@@ -673,6 +673,8 @@ internal data class ThreadComposerUiState(
     val statusLabel: String? = null,
     val pendingAttachments: List<RaftPendingAttachmentItem> = emptyList(),
     val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
+    /** Server/channel roster lookup for naming pending mention targets as sent messages do. */
+    val pendingMentionTargets: PendingMentionTargetMap = PendingMentionTargetMap.Empty,
     /** The last send's `unresolvedMentionHandles` (the "Not notified" banner); empty: none. */
     val unresolvedMentionHandles: List<String> = emptyList(),
     val mentionActionNoticeTitle: String? = null,
@@ -3563,9 +3565,16 @@ internal fun ThreadComposerContentLeaf(
                     )
                 }
                 if (state.pendingMentionActions.isNotEmpty()) {
+                    val localPendingMentionTargets = LocalPendingMentionTargetMap.current
+                    val pendingMentionTargetMap =
+                        remember(localPendingMentionTargets, state.pendingMentionTargets, state.memberSuggestions) {
+                            buildPendingMentionTargetMap(memberSuggestions = state.memberSuggestions)
+                                .mergedWith(state.pendingMentionTargets)
+                                .mergedWith(localPendingMentionTargets)
+                        }
                     PendingMentionActionBanner(
                         actions = state.pendingMentionActions,
-                        memberSuggestions = state.memberSuggestions,
+                        pendingMentionTargetMap = pendingMentionTargetMap,
                         channelLabel = surface.localizedMentionScopeChannelLabel(),
                         actionStates = state.mentionActionStates,
                         removingIds = state.removingMentionActionIds.toSet(),
@@ -4364,53 +4373,35 @@ internal fun RaftPendingMentionActionItem.supportsMentionAction(verb: String): B
         }
     }
 
-internal fun RaftPendingMentionActionItem.targetLabel(): String {
-    val handle = targetHandle.ifBlank { targetType }
-    return if ((targetType == "user" || targetType == "agent") && handle.isNotBlank() && !handle.startsWith("@")) {
-        "@$handle"
-    } else {
-        handle.ifBlank { "@unknown" }
+internal fun RaftPendingMentionActionItem.targetLabel(displayName: String? = null): String {
+    val handle = targetHandle.trim().ifBlank { targetType.trim() }
+    if (targetType != "user" && targetType != "agent") {
+        return handle.ifBlank { "@unknown" }
     }
+    return mentionVisibleLabel(handle, displayName)
 }
 
 // The target's handle for the avatar's initials; no handle shows the placeholder icon
 // (never "?" or the target type).
-private fun RaftPendingMentionActionItem.targetAvatarName(): String = targetHandle.trim()
+private fun RaftPendingMentionActionItem.targetAvatarName(): String = targetHandle.trim().removePrefix("@").trim()
 
-/** The mention target's face: the matching suggestion's member when there is one, else just its kind. */
-private fun RaftPendingMentionActionItem.targetAvatarIdentity(suggestion: RaftComposerMemberItem?): RaftMemberAvatarIdentity =
+/** The mention target's face: the matching roster member when there is one, else just its kind. */
+private fun RaftPendingMentionActionItem.targetAvatarIdentity(target: PendingMentionTargetEntry?): RaftMemberAvatarIdentity =
     RaftMemberAvatarIdentity(
-        kind = suggestion?.kind ?: if (targetType == "agent") MemberKind.Agent else MemberKind.Human,
-        memberId = suggestion?.memberId,
-        serverId = suggestion?.sourceServerId,
+        kind = target?.kind ?: if (targetType == "agent") MemberKind.Agent else MemberKind.Human,
+        memberId = target?.memberId,
+        serverId = target?.sourceServerId,
     )
 
 internal fun RaftPendingMentionActionItem.targetAvatarWireValue(): String? =
     targetAvatarUrl?.takeIf { it.isNotBlank() }
 
-internal fun RaftPendingMentionActionItem.matchingTargetSuggestion(
-    suggestions: List<RaftComposerMemberItem>
-): RaftComposerMemberItem? {
-    val target = targetHandle.normalizedPendingMentionTargetHandle() ?: return null
-    return suggestions.firstOrNull { suggestion ->
-        suggestion.handle.normalizedPendingMentionTargetHandle() == target
-    } ?: suggestions.firstOrNull { suggestion ->
-        suggestion.displayName.normalizedPendingMentionTargetHandle() == target
-    }
-}
-
-private fun String?.normalizedPendingMentionTargetHandle(): String? =
-    this
-        ?.trim()
-        ?.removePrefix("@")
-        ?.takeIf { it.isNotBlank() }
-        ?.lowercase()
-
 internal fun RaftPendingMentionActionItem.pendingMentionActionDescription(
     channelLabel: String,
-    localState: String? = null
+    localState: String? = null,
+    displayName: String? = null
 ): String {
-    val target = targetLabel()
+    val target = targetLabel(displayName)
     if (isLoungeAgentExcluded()) {
         return "$target won't be notified: a message posted here goes only to this Lounge's agent. Mention them in a thread to notify them."
     }
@@ -4437,9 +4428,10 @@ internal fun RaftPendingMentionActionItem.pendingMentionActionDescription(
 @Composable
 private fun RaftPendingMentionActionItem.localizedPendingMentionActionDescription(
     channelLabel: String,
-    localState: String?
+    localState: String?,
+    displayName: String? = null
 ): String {
-    val target = targetLabel()
+    val target = targetLabel(displayName)
     if (isLoungeAgentExcluded()) {
         return stringResource(Res.string.thread_composer_mention_lounge_agent_excluded, target)
     }
@@ -5043,7 +5035,7 @@ private fun MentionActionNotice(
 @Composable
 private fun PendingMentionActionBanner(
     actions: List<RaftPendingMentionActionItem>,
-    memberSuggestions: List<RaftComposerMemberItem>,
+    pendingMentionTargetMap: PendingMentionTargetMap,
     channelLabel: String,
     actionStates: Map<String, String>,
     removingIds: Set<String>,
@@ -5100,7 +5092,7 @@ private fun PendingMentionActionBanner(
                 val action = displayedActions.single()
                 PendingMentionActionRow(
                     action = action,
-                    targetSuggestion = action.matchingTargetSuggestion(memberSuggestions),
+                    resolvedTarget = pendingMentionTargetMap.resolve(action),
                     channelLabel = action.channelName.toComposerChannelMentionLabel() ?: channelLabel,
                     executing = action.resolutionId in executingIds,
                     localState = actionStates[action.resolutionId],
@@ -5113,7 +5105,7 @@ private fun PendingMentionActionBanner(
             } else {
                 PendingMentionActionBatchSummary(
                     actions = displayedActions,
-                    memberSuggestions = memberSuggestions,
+                    pendingMentionTargetMap = pendingMentionTargetMap,
                     channelLabel = channelLabel,
                     addAllVisible = eligibleActions.size >= 2 || batchExecuting,
                     batchExecuting = batchExecuting,
@@ -5145,7 +5137,7 @@ private fun PendingMentionActionBanner(
         ) {
             PendingMentionActionDetailsList(
                 actions = displayedActions,
-                memberSuggestions = memberSuggestions,
+                pendingMentionTargetMap = pendingMentionTargetMap,
                 channelLabel = channelLabel,
                 actionStates = actionStates,
                 removingIds = removingIds,
@@ -5169,7 +5161,7 @@ private fun RaftPendingMentionActionItem.withNormalizedResolutionId(): RaftPendi
 @Composable
 private fun PendingMentionActionBatchSummary(
     actions: List<RaftPendingMentionActionItem>,
-    memberSuggestions: List<RaftComposerMemberItem>,
+    pendingMentionTargetMap: PendingMentionTargetMap,
     channelLabel: String,
     addAllVisible: Boolean,
     batchExecuting: Boolean,
@@ -5178,7 +5170,10 @@ private fun PendingMentionActionBatchSummary(
 ) {
     val summary = localizedPendingMentionBatchSummary(actions.size, channelLabel)
     val overflowCount = (actions.size - 2).coerceAtLeast(0)
-    val visibleNames = actions.take(2).joinToString(separator = " · ") { it.targetLabel() }
+    val visibleNames =
+        actions.take(2).joinToString(separator = " · ") { action ->
+            action.targetLabel(pendingMentionTargetMap.displayName(action))
+        }
     val namesLabel =
         if (overflowCount > 0) {
             "$visibleNames · ${stringResource(Res.string.thread_composer_mention_batch_more, overflowCount)}"
@@ -5192,7 +5187,7 @@ private fun PendingMentionActionBatchSummary(
     ) {
         PendingMentionActionAvatarStack(
             actions = actions,
-            memberSuggestions = memberSuggestions,
+            pendingMentionTargetMap = pendingMentionTargetMap,
             contentDescription = stringResource(Res.string.thread_composer_mention_batch_avatar_description, actions.size)
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -5205,6 +5200,7 @@ private fun PendingMentionActionBatchSummary(
             )
             Text(
                 text = namesLabel,
+                modifier = Modifier.testTag(PendingMentionActionBatchNamesTestTag),
                 style = RaftType.Caption,
                 color = RaftColor.TextMutedGray,
                 maxLines = 1,
@@ -5245,7 +5241,7 @@ private fun PendingMentionActionBatchSummary(
 @Composable
 private fun PendingMentionActionAvatarStack(
     actions: List<RaftPendingMentionActionItem>,
-    memberSuggestions: List<RaftComposerMemberItem>,
+    pendingMentionTargetMap: PendingMentionTargetMap,
     contentDescription: String
 ) {
     Row(
@@ -5254,15 +5250,12 @@ private fun PendingMentionActionAvatarStack(
         verticalAlignment = Alignment.CenterVertically
     ) {
         actions.take(2).forEach { action ->
-            val suggestion = action.matchingTargetSuggestion(memberSuggestions)
+            val target = pendingMentionTargetMap.resolve(action)
             RaftMemberAvatar(
-                identity = action.targetAvatarIdentity(suggestion),
-                label =
-                    suggestion?.displayName?.takeIf(String::isNotBlank)
-                        ?: suggestion?.avatarLabel?.takeIf(String::isNotBlank)
-                        ?: action.targetAvatarName(),
+                identity = action.targetAvatarIdentity(target),
+                label = target?.avatarDisplayLabel() ?: action.targetAvatarName(),
                 avatarSize = 24.dp,
-                carriedAvatarWireValue = action.targetAvatarWireValue() ?: suggestion?.avatarWireValue,
+                carriedAvatarWireValue = action.targetAvatarWireValue() ?: target?.avatarWireValue,
             )
         }
         val overflowCount = (actions.size - 2).coerceAtLeast(0)
@@ -5288,7 +5281,7 @@ private fun PendingMentionActionAvatarStack(
 @Composable
 private fun PendingMentionActionDetailsList(
     actions: List<RaftPendingMentionActionItem>,
-    memberSuggestions: List<RaftComposerMemberItem>,
+    pendingMentionTargetMap: PendingMentionTargetMap,
     channelLabel: String,
     actionStates: Map<String, String>,
     removingIds: Set<String>,
@@ -5310,7 +5303,7 @@ private fun PendingMentionActionDetailsList(
         key(action.resolutionId) {
             PendingMentionActionCompactRow(
                 action = action,
-                targetSuggestion = action.matchingTargetSuggestion(memberSuggestions),
+                resolvedTarget = pendingMentionTargetMap.resolve(action),
                 channelLabel = action.channelName.toComposerChannelMentionLabel() ?: channelLabel,
                 executing = action.resolutionId in executingIds,
                 localState = actionStates[action.resolutionId],
@@ -5362,7 +5355,7 @@ private fun PendingMentionActionDetailsActions(
 @Composable
 private fun PendingMentionActionCompactRow(
     action: RaftPendingMentionActionItem,
-    targetSuggestion: RaftComposerMemberItem?,
+    resolvedTarget: PendingMentionTargetEntry?,
     channelLabel: String,
     executing: Boolean,
     localState: String?,
@@ -5372,12 +5365,8 @@ private fun PendingMentionActionCompactRow(
     onNotify: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val targetAvatarLabel =
-        targetSuggestion?.displayName
-            ?.takeIf { it.isNotBlank() }
-            ?: targetSuggestion?.avatarLabel
-                ?.takeIf { it.isNotBlank() }
-            ?: action.targetAvatarName()
+    val targetLabel = action.targetLabel(resolvedTarget?.displayName)
+    val targetAvatarLabel = resolvedTarget?.avatarDisplayLabel() ?: action.targetAvatarName()
     val canInvite = action.supportsMentionAction("invite") && localState == null
     val canNotify = action.supportsMentionAction("notify") && localState == null
     val contentAlpha = if (removing) 0.45f else 1f
@@ -5391,14 +5380,15 @@ private fun PendingMentionActionCompactRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         RaftMemberAvatar(
-            identity = action.targetAvatarIdentity(targetSuggestion),
+            identity = action.targetAvatarIdentity(resolvedTarget),
             label = targetAvatarLabel,
             avatarSize = 28.dp,
-            carriedAvatarWireValue = action.targetAvatarWireValue() ?: targetSuggestion?.avatarWireValue,
+            carriedAvatarWireValue = action.targetAvatarWireValue() ?: resolvedTarget?.avatarWireValue,
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(
-                text = action.targetLabel(),
+                text = targetLabel,
+                modifier = Modifier.testTag(PendingMentionActionRowTargetTestTag),
                 style = RaftType.Button.copy(fontSize = 12.sp),
                 color = RaftColor.TextBlack.copy(alpha = contentAlpha),
                 maxLines = 1,
@@ -5407,10 +5397,11 @@ private fun PendingMentionActionCompactRow(
             Text(
                 text =
                     if (action.isLoungeAgentExcluded()) {
-                        stringResource(Res.string.thread_composer_mention_lounge_agent_excluded, action.targetLabel())
+                        stringResource(Res.string.thread_composer_mention_lounge_agent_excluded, targetLabel)
                     } else {
                         stringResource(Res.string.thread_composer_mention_batch_row_status, channelLabel)
                     },
+                modifier = Modifier.testTag(PendingMentionActionRowStatusTestTag),
                 style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
                 color = RaftColor.TextMutedGray.copy(alpha = contentAlpha),
                 maxLines = 1,
@@ -5486,7 +5477,7 @@ private fun localizedPendingMentionBatchSummary(count: Int, channelLabel: String
 @Composable
 private fun PendingMentionActionRow(
     action: RaftPendingMentionActionItem,
-    targetSuggestion: RaftComposerMemberItem?,
+    resolvedTarget: PendingMentionTargetEntry?,
     channelLabel: String,
     executing: Boolean,
     localState: String?,
@@ -5496,14 +5487,10 @@ private fun PendingMentionActionRow(
     onNotify: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val targetLabel = action.targetLabel()
-    val targetAvatarLabel =
-        targetSuggestion?.displayName
-            ?.takeIf { it.isNotBlank() }
-            ?: targetSuggestion?.avatarLabel
-                ?.takeIf { it.isNotBlank() }
-            ?: action.targetAvatarName()
-    val targetAvatarWireValue = action.targetAvatarWireValue() ?: targetSuggestion?.avatarWireValue
+    val targetDisplayName = resolvedTarget?.displayName
+    val targetLabel = action.targetLabel(targetDisplayName)
+    val targetAvatarLabel = resolvedTarget?.avatarDisplayLabel() ?: action.targetAvatarName()
+    val targetAvatarWireValue = action.targetAvatarWireValue() ?: resolvedTarget?.avatarWireValue
     val canInvite = action.supportsMentionAction("invite") && localState == null
     val canNotify = action.supportsMentionAction("notify") && localState == null
     val contentColor = if (removing) RaftColor.TextBlack.copy(alpha = 0.45f) else RaftColor.TextBlack
@@ -5528,7 +5515,7 @@ private fun PendingMentionActionRow(
                 )
             }
             RaftMemberAvatar(
-                identity = action.targetAvatarIdentity(targetSuggestion),
+                identity = action.targetAvatarIdentity(resolvedTarget),
                 label = targetAvatarLabel,
                 avatarSize = 24.dp,
                 carriedAvatarWireValue = targetAvatarWireValue,
@@ -5536,6 +5523,7 @@ private fun PendingMentionActionRow(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = targetLabel,
+                    modifier = Modifier.testTag(PendingMentionActionRowTargetTestTag),
                     // Web PendingMentionActionStripRow: text-footnote font-bold (13/18 700).
                     style = RaftType.SectionLabel,
                     color = contentColor,
@@ -5543,7 +5531,8 @@ private fun PendingMentionActionRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = action.localizedPendingMentionActionDescription(channelLabel, localState),
+                    text = action.localizedPendingMentionActionDescription(channelLabel, localState, targetDisplayName),
+                    modifier = Modifier.testTag(PendingMentionActionRowStatusTestTag),
                     style = RaftType.Caption.copy(color = mutedColor),
                     color = mutedColor,
                     maxLines = 3,
