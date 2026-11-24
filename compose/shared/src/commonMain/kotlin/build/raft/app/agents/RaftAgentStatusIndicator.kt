@@ -396,12 +396,6 @@ internal data class ExternalAgentDetailIndicator(
     val caption: ExternalAgentDetailCaption
 )
 
-internal const val ExternalAgentActiveThresholdMillis: Long = 5L * 60L * 1000L
-
-/** Server sends `toISOString()` (UTC, `Z`); the repo parser also accepts offsets and epoch-millis strings. */
-internal fun parseExternalAgentTimestampOrNull(iso: String?): Long? =
-    parseRaftTimestampEpochMillisOrNull(iso, localOffsetMinutes = 0)
-
 /**
  * Detail-page tone for an external agent, mirroring web `AgentStatusBadge`
  * (slock@2676dab22) with one deliberate difference:

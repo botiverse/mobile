@@ -825,8 +825,11 @@ or helper scripts as a workaround for branch protection.
   them. Check a file's `package` line, not its folder. `core/` holds the
   `build.raft.app` files that `data/` and `network/` depend on (logging, diagnostics,
   strict projection parsers, avatar labels, conversation and surface kind contracts, the
-  adaptive workspace and pane state with their reducers); it
-  is the first step towards a separate core module, so a file in `core/` must not use
+  adaptive workspace and pane state with their reducers, member detail identity & reader
+  visibility, feedback diagnostics lifecycle/bridge, settings web URLs, agent runtime
+  capability & create-agent option models, computer upgrade model, channel kind predicates,
+  inbox row contracts, sidebar sort mode, and composer temp-file retirement); it
+  is the first step towards a separate `:shared-data` module, so a file in `core/` must not use
   anything from a feature folder. The
   top level holds the remaining cross-cutting app infrastructure (theme, platform,
   avatars, icons, web view). Put a new file in its feature folder, not at the top level.

@@ -37,9 +37,6 @@ import org.jetbrains.compose.resources.StringResource
  * ActivityRowTime.tsx; raft-design patterns/lists.md "Rows grouped by day", "Times in list rows").
  */
 
-/** The time an Activity row shows, which is the time it is grouped by (web `inboxItemTime`). */
-internal fun InboxItem.activityRowTimeValue(): String? = latestActivityAt ?: lastMessageAt
-
 /** What a day's heading says (web `formatDayLabel`). */
 internal sealed interface ActivityDayLabel {
     data object Today : ActivityDayLabel
