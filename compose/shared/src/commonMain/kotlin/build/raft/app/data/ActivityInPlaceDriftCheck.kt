@@ -34,6 +34,18 @@ internal const val ActivityInPlaceCheckTtlMillis = 90_000L
 internal const val ActivityInPlaceExpectationsCap = 200
 internal const val ActivityInPlaceNoopSample = 20
 
+/**
+ * `#triage:#245`: delay before re-checking a `selected=1` `unread=0/N` conflict so observability
+ * can confirm whether the server's unread count converges to `0` once the in-flight read lands.
+ */
+internal const val ActivitySelectedReadFollowupDelayMillis = 30_000L
+
+/** Cap on concurrent pending selected-read convergence follow-ups per store. */
+internal const val ActivitySelectedReadFollowupsCap = 50
+
+/** Deterministic `followup_reason` marker in `outcomeDetail` for selected-read convergence follow-ups. */
+internal const val ActivitySelectedReadFollowupReason = "selected_read_in_flight"
+
 internal const val ActivityInPlaceCheckTraceDomain = "inbox"
 internal const val ActivityInPlaceCheckTraceEvent = "activity:inplace_check"
 
@@ -674,4 +686,143 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
     /** Index of [key] among the rows both lists have, so a row only one side lists does not shift it. */
     private fun sharedIndex(rows: List<InboxItem>, others: Set<String>, key: String): Int =
         rows.asSequence().map { it.key }.filter { it in others }.indexOf(key)
+}
+
+/** Reads `k=v` from a semicolon-delimited `outcomeDetail` string, or null when absent. */
+private fun String.outcomeDetailField(key: String): String? {
+    var start = 0
+    val prefix = "$key="
+    while (start <= length) {
+        val end = indexOf(';', start).let { if (it < 0) length else it }
+        if (regionMatches(start, prefix, 0, prefix.length)) {
+            return substring(start + prefix.length, end)
+        }
+        if (end == length) break
+        start = end + 1
+    }
+    return null
+}
+
+/** True when this check is already an audit follow-up (`;followup=1`) or a selected-read follow-up (`;selected_followup=1`). */
+internal fun ActivityInPlaceCheck.isFollowupCheck(): Boolean =
+    outcomeDetail.outcomeDetailField("followup") == "1" ||
+        outcomeDetail.outcomeDetailField("selected_followup") == "1"
+
+/**
+ * `#triage:#245`: returns the served unread count (`N > 0`) when this check is an initial
+ * (non-follow-up) `selected=1` conflict whose local row showed `unread=0` while the server
+ * reported `unread=N`, or null otherwise.
+ */
+internal fun ActivityInPlaceCheck.selectedUnreadZeroServedCountOrNull(): Int? {
+    if (outcome != ActivityInPlaceCheckOutcome.Conflict || selected != true) return null
+    if (isFollowupCheck()) return null
+    val resultParts = result.removeSuffix("_up_to_answer").split('+')
+    if ("unread" !in resultParts) return null
+    val unreadField = outcomeDetail.outcomeDetailField("unread") ?: return null
+    val slash = unreadField.indexOf('/')
+    if (slash <= 0 || slash >= unreadField.lastIndex) return null
+    val localUnread = unreadField.substring(0, slash).toIntOrNull() ?: return null
+    val servedUnread = unreadField.substring(slash + 1).toIntOrNull() ?: return null
+    return servedUnread.takeIf { localUnread == 0 && servedUnread > 0 }
+}
+
+/**
+ * `#triage:#245`: builds the ~30s follow-up `activity:inplace_check` after a `selected=1`
+ * `unread=0/N` conflict. Always sent with `sampleRate = 1` (never sampled out, whether the server
+ * converged to `match` / `noop` or remained a `conflict`) and never emits trigger `position_audit`,
+ * preserving `audits scheduled = checks with trigger position_audit`. Carries no conversation ID in
+ * `outcomeDetail` or flat attributes.
+ */
+internal fun buildSelectedReadFollowupCheck(
+    entityId: String,
+    trigger: InboxRefreshTrigger,
+    reread: String?,
+    initialScope: String?,
+    initialPosition: String?,
+    initialServedUnread: Int,
+    served: InboxItem,
+    localUnreadNow: Int?,
+    selectedNow: Boolean?,
+    backend: String?,
+    readStateArrived: Boolean,
+    ageMillis: Long,
+    nowMillis: Long,
+): ActivityInPlaceCheck {
+    val followupTrigger = if (trigger == InboxRefreshTrigger.PositionAudit) InboxRefreshTrigger.Other else trigger
+    val servedSeq = served.latestActivitySeq
+    val servedUnread = served.unreadCount
+    val servedMention = served.hasMention
+    val servedAhead =
+        initialPosition != null &&
+            servedSeq != null &&
+            compareActivitySeq(servedSeq, initialPosition) > 0
+    val initialReadOnServer =
+        initialPosition != null &&
+            served.readStateMaxReadSeq != null &&
+            compareActivitySeq(served.readStateMaxReadSeq, initialPosition) >= 0
+
+    val outcome: ActivityInPlaceCheckOutcome
+    val result: String
+    val reportedLocalUnread: Int
+    val reportedLocalMention: Int
+    val extraDetail: String
+    when {
+        servedUnread == 0 && !servedMention -> {
+            outcome = ActivityInPlaceCheckOutcome.Noop
+            result = "match"
+            reportedLocalUnread = 0
+            reportedLocalMention = 0
+            extraDetail = if (servedAhead) ";served_ahead=1" else ""
+        }
+        servedAhead && initialReadOnServer && selectedNow != true -> {
+            outcome = ActivityInPlaceCheckOutcome.Noop
+            result = "match"
+            reportedLocalUnread = localUnreadNow ?: 0
+            reportedLocalMention = 0
+            extraDetail = ";served_ahead=1;read_converged=1"
+        }
+        else -> {
+            val drift =
+                buildList {
+                    if (servedAhead) add("served_ahead")
+                    if (servedUnread > 0) add("unread")
+                    if (servedMention) add("mention")
+                }
+            outcome = ActivityInPlaceCheckOutcome.Conflict
+            result = drift.joinToString("+")
+            reportedLocalUnread = 0
+            reportedLocalMention = 0
+            extraDetail = ""
+        }
+    }
+
+    val rereadPart = reread?.let { ";reread=$it" } ?: ""
+    val initialScopePart = initialScope?.let { ";initial_scope=$it" } ?: ""
+    val outcomeDetail =
+        "trigger=${followupTrigger.wireValue};existed=1;result=$result" +
+            ";unread=$reportedLocalUnread/$servedUnread" +
+            ";mention=$reportedLocalMention/${if (servedMention) 1 else 0}" +
+            ";position=${initialPosition ?: "-"}/${servedSeq ?: "-"}" +
+            "$extraDetail$rereadPart$initialScopePart" +
+            ";initial_served_unread=$initialServedUnread" +
+            ";selected_followup=1;followup_reason=$ActivitySelectedReadFollowupReason" +
+            ";age_ms=${ageMillis.coerceAtLeast(0L)}" +
+            ";read_state=${if (readStateArrived) 1 else 0}"
+
+    return ActivityInPlaceCheck(
+        entityId = entityId,
+        trigger = followupTrigger,
+        rowExisted = true,
+        result = result,
+        outcome = outcome,
+        sampleRate = 1,
+        outcomeDetail = outcomeDetail,
+        timestampMillis = nowMillis,
+        scope = ActivityInPlaceScopeRow,
+        reread = reread,
+        backend = backend,
+        notJudgedCause = null,
+        fetchReason = null,
+        resumed = null,
+    )
 }
