@@ -17,10 +17,18 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import build.raft.app.base.BridgeModule
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.IModuleCreator
+import build.raft.app.compat.pager.PageData
+import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.PagerManager
 import build.raft.app.model.TaskStatus
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import java.io.File
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertNotEquals
 import org.junit.runner.RunWith
@@ -45,6 +53,18 @@ import org.robolectric.annotation.GraphicsMode
 class HoverGapsScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
+
+    // The reaction glyph logs once through the page's bridge: a live, registered page.
+    private val livePager =
+        object : Pager() {}.apply {
+            pagerId = "hover-gaps-screenshot"
+            pageData = PageData(JSONObject())
+            registerModule(BridgeModule.MODULE_NAME, IModuleCreator { BridgeModule() })
+        }
+
+    @BeforeTest fun registerPager() = PagerManager.register(livePager)
+
+    @AfterTest fun unregisterPager() = PagerManager.unregister(livePager)
 
     @Test
     fun metaChipHoverLight() = metaChipHover("hover.meta-chip", RaftAppAppearance.Light)

@@ -148,14 +148,15 @@ internal fun RaftAnchoredMetaChip(
     val interactionSource = remember { MutableInteractionSource() }
     val interactive = clickDispatch != RaftMetaChipClickDispatch.Disabled
     val anchored = clickDispatch == RaftMetaChipClickDispatch.Anchored
-    // raft-ui TaskChip / Badge as a button: a mouse hover and a press lay the medium overlay over
-    // the chip's fill (never moving it), sticker-medium on a colour block, fill-medium on a clear
-    // chip. Touch never hovers.
+    // raft-ui TaskChip as a button (`[a,button]:hover:overlay-medium [a,button]:active:overlay-medium`):
+    // a mouse hover and a press lay `fill-medium` over the chip's fill, never moving it. It is the
+    // themed overlay, so it shows on a dark soft fill too (an ink overlay would vanish there).
+    // Touch never hovers.
     val stateOverlay =
         rememberRaftStateOverlay(
             interactionSource = interactionSource,
             tier = RaftHoverTier.Medium,
-            surface = if (color.alpha == 0f) RaftPressSurface.Paper else RaftPressSurface.Sticker,
+            surface = RaftPressSurface.Paper,
             enabled = interactive && pressFeedback
         )
     // raft: chips are 6dp-radius tags (`rounded-chip`); a colour block keeps its ink edge.
