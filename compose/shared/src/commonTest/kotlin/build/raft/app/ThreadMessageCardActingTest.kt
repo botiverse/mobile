@@ -74,4 +74,56 @@ class ThreadMessageCardActingTest {
         assertEquals(RaftMessageCardActingState.Disabled, messageCardActingState(declined, "approve", MessageCardActingPage))
         assertEquals(RaftMessageCardActingNote.Declined(RaftMessageCardApp("client-vault", "Vault", null)), messageCardActingNote(declined))
     }
+
+    @Test
+    fun secretInputButtonRequiresFullSealMaterialAndPrepareConfirmation() {
+        val secretActions =
+            """{"approve":{"kind":"execute","action_id":"approve","confirm":"prepare","form":{"fields":[""" +
+                """{"type":"TextInput","id":"name","label":"Name"},{"type":"SecretInput","id":"value","label":"Value","required":true}]}},""" +
+                """"deny":{"kind":"execute","action_id":"deny","undoWindowMs":5000}}"""
+        val secretCard =
+            assertNotNull(
+                readMessageCardFromMetadata(
+                    Json { ignoreUnknownKeys = true }
+                        .decodeFromString(WireActionCardMetadata.serializer(), messageCardActingMetadataJson(actions = secretActions))
+                        .toMessageItemMetadata(),
+                ),
+            )
+        val approveAction = assertNotNull(secretCard.acting?.actions?.get("approve"))
+        val validKey =
+            """{"kty":"EC","crv":"P-256","use":"enc","alg":"ECDH-ES","kid":"test-2026-11-a",""" +
+                """"x":"_dsSyV6Maib6vDmb1MLPu-31qcVvNkbxUpWAfDnOGcA","y":"kIEVAwl4P1JF6_ondOiBCJDqXAD0wAM-xXM8OvfmmMM"}"""
+        val fullLive =
+            live(
+                """{"card_revision":"1","app":{"id":"client-vault","name":"Vault","icon":null,"encryption_key":$validKey,"client_key":"app_test_vault"},""" +
+                    """"actions":[{"element_id":"approve","action_id":"approve","url":"$MessageCardActingPage","ticket":"t","handle":"h-approve","handle_exp":1794700800},""" +
+                    """{"element_id":"deny","action_id":"deny","url":"$MessageCardActingPage","ticket":"t","handle":"h-deny"}]}""",
+            ).forCard(secretCard)
+
+        assertIs<RaftMessageCardActingState.Pressable>(messageCardActingState(fullLive, "approve", MessageCardActingPage, approveAction))
+        val pressCard = messageCardPressCard(secretCard, fullLive)
+        assertEquals("h-approve", pressCard.handles["approve"])
+        assertEquals("test-2026-11-a", pressCard.sealsTo["approve"]?.key?.kid)
+        assertEquals("app_test_vault", pressCard.sealsTo["approve"]?.clientKey)
+        assertEquals(1794700800L, pressCard.sealsTo["approve"]?.handleExp)
+        assertEquals(approveAction.form, pressCard.forms["approve"])
+
+        val missingCases =
+            listOf(
+                // Missing encryption_key
+                live("""{"card_revision":"1","app":{"id":"client-vault","name":"Vault","icon":null,"client_key":"app_test_vault"},"actions":[{"element_id":"approve","action_id":"approve","url":"$MessageCardActingPage","ticket":"t","handle":"h-approve","handle_exp":1794700800}]}"""),
+                // Missing client_key
+                live("""{"card_revision":"1","app":{"id":"client-vault","name":"Vault","icon":null,"encryption_key":$validKey},"actions":[{"element_id":"approve","action_id":"approve","url":"$MessageCardActingPage","ticket":"t","handle":"h-approve","handle_exp":1794700800}]}"""),
+                // Missing handle_exp
+                live("""{"card_revision":"1","app":{"id":"client-vault","name":"Vault","icon":null,"encryption_key":$validKey,"client_key":"app_test_vault"},"actions":[{"element_id":"approve","action_id":"approve","url":"$MessageCardActingPage","ticket":"t","handle":"h-approve"}]}"""),
+            )
+        for (missing in missingCases) {
+            assertEquals(
+                RaftMessageCardActingState.Disabled,
+                messageCardActingState(missing.forCard(secretCard), "approve", MessageCardActingPage, approveAction),
+            )
+            assertNull(messageCardPressCard(secretCard, missing.forCard(secretCard)).handles["approve"])
+            assertNull(messageCardPressCard(secretCard, missing.forCard(secretCard)).sealsTo["approve"])
+        }
+    }
 }

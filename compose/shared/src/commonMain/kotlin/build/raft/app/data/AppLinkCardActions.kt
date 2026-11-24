@@ -38,6 +38,8 @@ internal data class AppLinkExecuteRequestBody(
     val handle: String,
     @SerialName("prepared_action_id") val preparedActionId: String? = null,
     @SerialName("prepared_digest") val preparedDigest: String? = null,
+    val inputs: Map<String, String>? = null,
+    @SerialName("sealed_inputs") val sealedInputs: String? = null,
 ) {
     fun toJson(): String = appLinkActionJson.encodeToString(serializer(), this)
 }

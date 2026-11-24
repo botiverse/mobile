@@ -4812,6 +4812,12 @@
     <string name="thread_link_preview_action_failed">이 작업을 실행하지 못했어요. 다시 시도해 주세요.</string>
     <string name="thread_link_preview_refresh_failed">이 카드를 새로고침하지 못했어요. 다시 시도해 주세요.</string>
     <string name="thread_link_preview_action_changed">카드 내용이 바뀌었어요. 확인한 후 다시 시도해 주세요.</string>
+    <string name="thread_link_preview_action_form_secret_notice">이 값은 %1$s 전용으로 암호화되어 %1$s에만 전송돼요. Raft는 읽을 수 없어요.</string>
+    <string name="thread_link_preview_action_form_required">값을 입력하세요.</string>
+    <string name="thread_link_preview_action_form_one_line">한 줄로 입력하세요.</string>
+    <string name="thread_link_preview_action_form_too_long">최대 %1$d자까지 입력할 수 있어요.</string>
+    <string name="thread_link_preview_action_form_too_many_bytes">최대 %1$d바이트까지 입력할 수 있어요. 일부 문자는 여러 바이트를 차지해요.</string>
+    <string name="thread_link_preview_action_form_seal_stale">아무것도 보내지 않았어요. 이 양식은 최신 상태가 아니에요. 버튼을 다시 누르고 값을 다시 입력해 주세요.</string>
     <string name="thread_link_preview_action_working">처리 중…</string>
     <string name="thread_link_preview_action_state_sent">보냈어요. 앱의 응답을 기다리고 있어요.</string>
     <string name="thread_link_preview_action_state_accepted">앱이 요청을 받았어요. 마무리하는 중이에요.</string>

@@ -20,6 +20,17 @@ class AppLinkCardActionsTest {
             """{"client_request_id":"mobile-1","handle":"h","prepared_action_id":"p","prepared_digest":"d"}""",
             AppLinkExecuteRequestBody("mobile-1", "h", "p", "d").toJson(),
         )
+        assertEquals(
+            """{"client_request_id":"mobile-1","handle":"h","prepared_action_id":"p","prepared_digest":"d","inputs":{"name":"deploy-key"},"sealed_inputs":"a..b.c.d"}""",
+            AppLinkExecuteRequestBody(
+                clientRequestId = "mobile-1",
+                handle = "h",
+                preparedActionId = "p",
+                preparedDigest = "d",
+                inputs = mapOf("name" to "deploy-key"),
+                sealedInputs = "a..b.c.d",
+            ).toJson(),
+        )
     }
 
     @Test

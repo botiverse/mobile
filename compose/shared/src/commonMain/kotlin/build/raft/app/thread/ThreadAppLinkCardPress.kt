@@ -23,13 +23,23 @@ import build.raft.app.data.APP_LINK_HANDLE_FRESH_MILLIS
 import build.raft.app.data.AppLinkActionResult
 import build.raft.app.data.AppLinkExecuted
 import build.raft.app.data.AppLinkOperationStatus
+import build.raft.app.data.RaftAppCardEncryptionKey
 import build.raft.app.data.RaftLinkCardOperationHint
 import build.raft.app.data.AppLinkPrepared
 import build.raft.app.data.AppLinkResult
 import build.raft.app.data.RaftLinkCardButtonAction
 import build.raft.app.data.RaftLinkCardButtonVariant
+import build.raft.app.data.RaftLinkCardSealTo
 import build.raft.app.data.RaftLinkCardV2Element
+import build.raft.app.data.RaftMessageCardForm
+import build.raft.app.data.RaftSealedInputsBinding
+import build.raft.app.data.RaftSealedInputsBindingInputs
 import build.raft.app.data.appLinkClientRequestId
+import build.raft.app.data.sealInputs
+import build.raft.app.data.sealedInputsBinding
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerSize
+import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDialog
@@ -39,6 +49,7 @@ import build.raft.designsystem.components.RaftPreviewCardButtonKind
 import build.raft.designsystem.components.RaftToastIntent
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -79,7 +90,33 @@ internal class ThreadAppLinkCardActionHost(
     val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     /** Where the message's presses are seen from ([ThreadAppLinkCardActivity]); null where nothing follows them. */
     val activity: ThreadAppLinkCardActivity? = null,
-)
+    /**
+     * Form-aware execute carrying optional `inputs` and `sealed_inputs` (RFC 086 §5.4).
+     * Wired by message-card hosts; falls back to [execute] when neither is supplied.
+     */
+    val executeWithForm: (suspend (
+        handle: String,
+        clientRequestId: String,
+        prepared: AppLinkPrepared?,
+        inputs: Map<String, String>?,
+        sealedInputs: String?,
+    ) -> AppLinkActionResult<AppLinkExecuted>)? = null,
+    /** Viewer identity (`<userId>:<serverId>`), required to bind `sub` and `srv` in sealed JWE headers (RFC 086 §5.3). */
+    val viewerKey: String? = null,
+) {
+    suspend fun executeAction(
+        handle: String,
+        clientRequestId: String,
+        prepared: AppLinkPrepared?,
+        inputs: Map<String, String>? = null,
+        sealedInputs: String? = null,
+    ): AppLinkActionResult<AppLinkExecuted> {
+        val withForm = executeWithForm
+        if (withForm != null) return withForm(handle, clientRequestId, prepared, inputs, sealedInputs)
+        check(inputs == null && sealedInputs == null) { "executeWithForm must be wired for form submissions" }
+        return execute(handle, clientRequestId, prepared)
+    }
+}
 
 /**
  * What the cards of one message are doing, for the re-read after a `link_card.changed` nudge (web
@@ -116,6 +153,7 @@ internal fun rememberThreadAppLinkCardPress(
     val undo = stringResource(Res.string.common_undo)
     val refreshFailed = stringResource(Res.string.thread_link_preview_refresh_failed)
     val changed = stringResource(Res.string.thread_link_preview_action_changed)
+    val sealStale = stringResource(Res.string.thread_link_preview_action_form_seal_stale)
     val appSays = stringResource(Res.string.thread_link_preview_action_app_says)
     val appSaysUnnamed = stringResource(Res.string.thread_link_preview_action_app_says_unnamed)
     val working = stringResource(Res.string.thread_link_preview_action_working)
@@ -147,9 +185,11 @@ internal fun rememberThreadAppLinkCardPress(
                         resolvedManually = stateResolvedManually,
                     )
                 },
-            ) { app, text ->
-                if (app.isBlank()) appSaysUnnamed.replace("%1\$s", text) else appSays.replace("%1\$s", app).replace("%2\$s", text)
-            }
+                appSaysText = { app, text ->
+                    if (app.isBlank()) appSaysUnnamed.replace("%1\$s", text) else appSays.replace("%1\$s", app).replace("%2\$s", text)
+                },
+                sealStaleText = sealStale,
+            )
         }
     // The card is read again after a press: its handles and revision are the latest one's.
     press.card = card
@@ -201,6 +241,10 @@ internal class ThreadAppLinkCardPress(
     private val stateHintText: (state: String) -> String? = { null },
     /** "{App}: {text}" (web `message.appLink.action.appSays`): the App's own words, shown as the App's. */
     private val appSaysText: (app: String, text: String) -> String = { app, text -> if (app.isBlank()) text else "$app: $text" },
+    /** Fail-closed sealing refusal text (web `message.appLink.action.form.sealStale`). */
+    private val sealStaleText: String = changedText,
+    /** Device-side JWE sealer for SecretInput forms (default [sealInputs]; overridable in tests). */
+    private val sealer: (RaftAppCardEncryptionKey, RaftSealedInputsBinding, Map<String, String>) -> String = ::sealInputs,
 ) {
     /** The action whose prepare, execute, or post-execute reread is on its way. */
     private var running by mutableStateOf<String?>(null)
@@ -212,7 +256,8 @@ internal class ThreadAppLinkCardPress(
 
     /**
      * Raft's confirmation on screen: [prepared] is the App's description of a `confirm: "prepare"`
-     * button; null for an undo-window button of an unreviewed App, asked about by its [label].
+     * button; null for an undo-window button of an unreviewed App or with a TextInput [form], asked
+     * about by its [label].
      */
     internal class PendingConfirmation(
         val actionId: String,
@@ -222,7 +267,24 @@ internal class ThreadAppLinkCardPress(
         val label: String,
         val unreviewed: Boolean,
         val undoWindowMs: Long? = null,
-    )
+        val form: RaftMessageCardForm? = null,
+        val sealTo: RaftLinkCardSealTo? = null,
+        val executing: Boolean = false,
+    ) {
+        fun withExecuting(value: Boolean): PendingConfirmation =
+            PendingConfirmation(
+                actionId = actionId,
+                handle = handle,
+                prepared = prepared,
+                requestId = requestId,
+                label = label,
+                unreviewed = unreviewed,
+                undoWindowMs = undoWindowMs,
+                form = form,
+                sealTo = sealTo,
+                executing = value,
+            )
+    }
 
     /** The confirmation waiting on the person, or null. */
     internal val confirmation: PendingConfirmation? get() = confirming
@@ -234,40 +296,155 @@ internal class ThreadAppLinkCardPress(
     private var pendingOperationActionId by mutableStateOf<String?>(null)
 
     private val inFlightActionId: String? get() = running ?: pendingOperationActionId
-    private val interactionLocked: Boolean get() = running != null || undoing != null || pendingOperationActionId != null
+    private val interactionLocked: Boolean get() = running != null || undoing != null || pendingOperationActionId != null || confirming?.executing == true
 
     /** A button of this card is at work (sending, counting down its Undo, or following its operation): that work reads the card again. */
     internal val busy: Boolean get() = interactionLocked
 
-    /** Cancel (or dismiss) the confirmation: nothing is sent. */
+    /** Cancel (or dismiss) the confirmation: nothing is sent. Ignored while sealing/executing. */
     internal fun dismissConfirmation() {
+        if (confirming?.executing == true) return
         confirming = null
     }
 
     /**
-     * Confirm: a prepared action runs now; an unreviewed App's undo-window button starts its Undo
-     * window, as it would have without the dialog.
+     * Confirm: a prepared action runs now (sealing SecretInput values after fail-closed re-read when
+     * [secrets] is non-null); an undo-window button starts its Undo window with any TextInput [inputs].
      */
-    internal fun confirm() {
+    internal fun confirm(
+        inputs: Map<String, String>? = null,
+        secrets: MutableMap<String, String>? = null,
+    ) {
         val pending = confirming ?: return
+        if (pending.executing) return
         val host = actions ?: return
-        confirming = null
         if (pending.prepared == null) {
-            startUndoWindow(host, pending.actionId, pending.handle, pending.undoWindowMs, pending.requestId)
-        } else {
+            if (secrets != null) {
+                secrets.clear()
+                return
+            }
+            confirming = null
+            val held = host.held
+            val readAt = card.readAtMillis
+            if (held != null && (readAt == null || host.nowMillis() - readAt > APP_LINK_HANDLE_FRESH_MILLIS)) {
+                running = pending.actionId
+                scope.launch {
+                    val read =
+                        try {
+                            host.reread(card.url)
+                        } finally {
+                            running = null
+                        }
+                    val fresh = if (read) held(card.url) else null
+                    val freshHandle = fresh?.handles?.get(pending.actionId)
+                    val formChanged = fresh != null && fresh.forms[pending.actionId] != pending.form
+                    when {
+                        !read || fresh == null -> host.toast(refreshFailedText)
+                        freshHandle == null || formChanged -> host.toast(changedText)
+                        else -> {
+                            card = fresh
+                            startUndoWindow(host, pending.actionId, freshHandle, pending.undoWindowMs, pending.requestId, inputs)
+                        }
+                    }
+                }
+            } else {
+                startUndoWindow(host, pending.actionId, pending.handle, pending.undoWindowMs, pending.requestId, inputs)
+            }
+            return
+        }
+        if (secrets == null) {
+            confirming = null
             running = pending.actionId
-            scope.launch { run(host, pending.actionId, pending.handle, pending.prepared, pending.requestId) }
+            scope.launch { run(host, pending.actionId, pending.handle, pending.prepared, pending.requestId, inputs, sealedInputs = null) }
+            return
+        }
+        confirming = pending.withExecuting(true)
+        scope.launch {
+            val sealed = sealLinkCardSecrets(host, pending, secrets)
+            if (sealed == null) {
+                confirming = null
+                return@launch
+            }
+            confirming = null
+            run(host, pending.actionId, pending.handle, pending.prepared, pending.requestId, inputs, sealedInputs = sealed)
         }
     }
 
-    private fun startUndoWindow(host: ThreadAppLinkCardActionHost, id: String, handle: String, windowMs: Long?, requestId: String) {
+    /**
+     * Fail-closed re-read + sealing of SecretInput values (`sealLinkCardSecrets` in `linkCardSeal.ts`):
+     * refuses if the handle is expiring (< 5s left), re-reads the card, verifies the same App key
+     * (`kid`/`x`/`y`), `client_key`, and `card_revision`, seals bound to this prepared execute
+     * request, and ALWAYS clears [secrets] in `finally`. Never logs or surfaces secret values.
+     */
+    private suspend fun sealLinkCardSecrets(
+        host: ThreadAppLinkCardActionHost,
+        pending: PendingConfirmation,
+        secrets: MutableMap<String, String>,
+    ): String? {
+        val sealTo = pending.sealTo
+        val prepared = pending.prepared
+        return try {
+            if (sealTo == null || prepared == null || sealTo.isExpiring(host.nowMillis())) {
+                host.toastWithIntent(sealStaleText, RaftToastIntent.Warning)
+                return null
+            }
+            val read = host.reread(card.url)
+            if (!read) {
+                host.toastWithIntent(refreshFailedText, RaftToastIntent.Warning)
+                return null
+            }
+            val freshSealTo = host.held?.invoke(card.url)?.sealsTo?.get(pending.actionId)
+            if (freshSealTo == null || !freshSealTo.sameTarget(sealTo) || sealTo.isExpiring(host.nowMillis())) {
+                host.toastWithIntent(sealStaleText, RaftToastIntent.Warning)
+                return null
+            }
+            val viewerKey = host.viewerKey
+            val colon = viewerKey?.indexOf(':') ?: -1
+            if (viewerKey == null || colon <= 0 || colon >= viewerKey.length - 1) {
+                host.toastWithIntent(failedText, RaftToastIntent.Warning)
+                return null
+            }
+            val binding =
+                sealedInputsBinding(
+                    RaftSealedInputsBindingInputs(
+                        handle = pending.handle,
+                        serverId = viewerKey.substring(colon + 1),
+                        userId = viewerKey.substring(0, colon),
+                        appClientKey = sealTo.clientKey,
+                        actionId = pending.actionId,
+                        preparedId = prepared.preparedActionId,
+                        preparedDigest = prepared.preparedDigest,
+                        clientRequestId = pending.requestId,
+                        handleExp = sealTo.handleExp,
+                    ),
+                )
+            sealer(sealTo.key, binding, LinkedHashMap(secrets))
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            // Do not retain or log error details: they may reflect form inputs.
+            host.toastWithIntent(failedText, RaftToastIntent.Warning)
+            null
+        } finally {
+            secrets.clear()
+        }
+    }
+
+    private fun startUndoWindow(
+        host: ThreadAppLinkCardActionHost,
+        id: String,
+        handle: String,
+        windowMs: Long?,
+        requestId: String,
+        inputs: Map<String, String>? = null,
+    ) {
         undoing = id
         undoJob =
             scope.launch {
                 delay(windowMs ?: DefaultUndoWindowMs)
                 undoing = null
                 undoJob = null
-                run(host, id, handle, null, requestId)
+                run(host, id, handle, null, requestId, inputs, sealedInputs = null)
             }
     }
 
@@ -351,9 +528,10 @@ internal class ThreadAppLinkCardPress(
                 }
             val fresh = if (read) held(card.url) else null
             val freshHandle = fresh?.handles?.get(id)
+            val freshFormChanged = fresh != null && fresh.forms[id] != action.form
             when {
                 !read || fresh == null -> host.toast(refreshFailedText)
-                freshHandle == null -> host.toast(changedText)
+                freshHandle == null || freshFormChanged -> host.toast(changedText)
                 else -> {
                     card = fresh
                     pressWith(host, id, label, action, freshHandle)
@@ -366,27 +544,59 @@ internal class ThreadAppLinkCardPress(
     private fun pressWith(host: ThreadAppLinkCardActionHost, id: String, label: String, action: RaftLinkCardButtonAction.Execute, handle: String) {
         val requestId = appLinkClientRequestId(Uuid.random().toString())
         val unreviewed = card.app.unreviewed
+        val form = action.form
         if (action.confirm) {
             running = id
             scope.launch {
                 try {
                     when (val prepared = host.prepare(handle, card.claimedRevision)) {
-                        is AppLinkActionResult.Ok -> confirming = PendingConfirmation(id, handle, prepared.value, requestId, label, unreviewed)
+                        is AppLinkActionResult.Ok ->
+                            confirming =
+                                PendingConfirmation(
+                                    actionId = id,
+                                    handle = handle,
+                                    prepared = prepared.value,
+                                    requestId = requestId,
+                                    label = label,
+                                    unreviewed = unreviewed,
+                                    form = form,
+                                    sealTo = card.sealsTo[id],
+                                )
                         is AppLinkActionResult.Failed -> failure(host, prepared)
                     }
                 } finally {
                     running = null
                 }
             }
-        } else if (unreviewed) {
-            // RFC 076 section 17: an unreviewed App's undo-window button confirms first, then counts down.
-            confirming = PendingConfirmation(id, handle, null, requestId, label, unreviewed = true, undoWindowMs = action.undoWindowMs)
+        } else if (unreviewed || form != null) {
+            // SecretInput is strictly forbidden on undo-window buttons (RFC 086 §5.1).
+            if (form?.hasSecretInput == true) return
+            // RFC 076 §17 + RFC 086 §5.1: an unreviewed App or a form button confirms in Raft's dialog first, then counts down.
+            confirming =
+                PendingConfirmation(
+                    actionId = id,
+                    handle = handle,
+                    prepared = null,
+                    requestId = requestId,
+                    label = label,
+                    unreviewed = unreviewed,
+                    undoWindowMs = action.undoWindowMs,
+                    form = form,
+                )
         } else {
             startUndoWindow(host, id, handle, action.undoWindowMs, requestId)
         }
     }
 
-    private suspend fun run(host: ThreadAppLinkCardActionHost, id: String, handle: String, prepared: AppLinkPrepared?, requestId: String) {
+    private suspend fun run(
+        host: ThreadAppLinkCardActionHost,
+        id: String,
+        handle: String,
+        prepared: AppLinkPrepared?,
+        requestId: String,
+        inputs: Map<String, String>? = null,
+        sealedInputs: String? = null,
+    ) {
         running = id
         // Subscribe to operation hints BEFORE execute() goes out so a fast `link_card.operation_changed`
         // push arriving during execute() or the initial reread is buffered rather than dropped.
@@ -402,7 +612,7 @@ internal class ThreadAppLinkCardPress(
             }
         try {
             val executed =
-                when (val answer = host.execute(handle, requestId, prepared)) {
+                when (val answer = host.executeAction(handle, requestId, prepared, inputs, sealedInputs)) {
                     is AppLinkActionResult.Ok -> answer.value
                     is AppLinkActionResult.Failed -> {
                         failure(host, answer)
@@ -542,22 +752,58 @@ internal class ThreadAppLinkCardPress(
         val pending = confirming ?: return
         val description = pending.prepared?.description
         val app = card.app
+        val form = pending.form
+        val formState = form?.let { rememberThreadAppLinkCardFormState(pending.requestId, it) }
         val attribution = appLinkConfirmAttribution(unreviewed = pending.unreviewed, hasDescription = description != null)
+        val title =
+            description?.title
+                ?: if (form != null) pending.label else stringResource(Res.string.thread_link_preview_unreviewed_run_title, pending.label)
+        val onDismiss: () -> Unit = {
+            if (!pending.executing) {
+                formState?.clearSecrets()
+                dismissConfirmation()
+            }
+        }
+        val onConfirm: () -> Unit = {
+            if (!pending.executing) {
+                if (formState == null) {
+                    confirm()
+                } else {
+                    val submission = formState.validateAndConsume()
+                    if (submission != null) {
+                        val (inputs, secrets) = submission
+                        if (secrets != null && pending.prepared == null) {
+                            secrets.clear()
+                        } else {
+                            confirm(inputs = inputs, secrets = secrets)
+                        }
+                    }
+                }
+            }
+        }
         RaftDialog(
-            onDismissRequest = ::dismissConfirmation,
-            title = description?.title ?: stringResource(Res.string.thread_link_preview_unreviewed_run_title, pending.label),
+            onDismissRequest = onDismiss,
+            title = title,
             // Web `data-link-card-confirm`.
             modifier = Modifier.testTag(AppLinkConfirmDialogTestTag),
-            size = RaftDialogSize.Sm,
+            size = if (form != null) RaftDialogSize.Md else RaftDialogSize.Sm,
             // Who is speaking goes right under the title, before the App's own body (slock #14724).
             description = description?.body?.takeUnless { attribution != null },
+            dismissOnClickOutside = form == null && !pending.executing,
+            showClose = !pending.executing,
             footer = {
                 RaftButton(
                     text = description?.cancelLabel ?: stringResource(Res.string.common_cancel),
-                    onClick = ::dismissConfirmation,
+                    onClick = onDismiss,
                     variant = RaftButtonVariant.Ghost,
+                    enabled = !pending.executing,
                 )
-                RaftButton(text = description?.confirmLabel ?: pending.label, onClick = ::confirm)
+                RaftButton(
+                    text = description?.confirmLabel ?: pending.label,
+                    onClick = onConfirm,
+                    loading = pending.executing,
+                    loadingLabel = workingLabel ?: RaftTheme.strings.loading,
+                )
             },
             content = {
                 if (attribution != null) {
@@ -589,7 +835,23 @@ internal class ThreadAppLinkCardPress(
                 description?.finePrint?.let {
                     RaftText(text = it, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
                 }
-                if (pending.unreviewed) {
+                if (form != null && pending.unreviewed) {
+                    RaftBanner(
+                        description = stringResource(Res.string.thread_link_preview_unreviewed_note, app.name),
+                        status = RaftBannerStatus.Warning,
+                        modifier = Modifier.testTag(AppLinkConfirmUnreviewedBannerTestTag),
+                        size = RaftBannerSize.Sm,
+                    )
+                }
+                if (formState != null) {
+                    ThreadAppLinkCardFormFields(
+                        state = formState,
+                        appName = app.name,
+                        disabled = pending.executing,
+                        onSubmit = onConfirm,
+                    )
+                }
+                if (pending.unreviewed && form == null) {
                     RaftText(
                         text = stringResource(Res.string.thread_link_preview_unreviewed_note, app.name),
                         style = RaftTheme.typography.footnote,
@@ -642,6 +904,9 @@ internal fun appLinkStateToastTone(state: String): String? =
 
 /** [ThreadAppLinkCardPress.Confirmation]'s dialog (web `data-link-card-confirm`). */
 internal const val AppLinkConfirmDialogTestTag = "link-card-confirm"
+
+/** Warning banner shown above form fields for an unreviewed App in [ThreadAppLinkCardPress.Confirmation]. */
+internal const val AppLinkConfirmUnreviewedBannerTestTag = "link-card-confirm-unreviewed-banner"
 
 /**
  * The App attribution row shown before an App's own prepared-action copy in [ThreadAppLinkCardPress.Confirmation]

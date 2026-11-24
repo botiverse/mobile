@@ -780,6 +780,8 @@ struct iOSApp: App {
         RaftIosShareSuggestionsHost.install { level, message in
             RaftIosDiagnosticsRecord(level, "RaftIosShareSuggestions", message)
         }
+        // RFC 086 §5.3: device-side CryptoKit P-256 ECDH-ES + A256GCM JWE sealing for card SecretInputs.
+        RaftIosSealedInputsBridge.install()
         // WebM / MKV / ... attachments play in-app through MobileVLCKit (AVPlayer cannot demux them);
         // registered before the first page decides which attachments are previewable videos.
         RaftIosVlcVideo.install()

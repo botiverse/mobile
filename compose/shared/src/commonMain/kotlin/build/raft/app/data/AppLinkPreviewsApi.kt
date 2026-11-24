@@ -142,6 +142,10 @@ sealed interface AppLinkResult {
          * with the same digest reads the card again ([SharedAppLinkPreviewStore]). Only ever compared.
          */
         val objectKey: String? = null,
+        /** Per-action seal targets for App-sent card SecretInput buttons, from Raft's handle read (RFC 086 §5.3). */
+        val sealsTo: Map<String, RaftLinkCardSealTo> = emptyMap(),
+        /** Per-action forms carried by App-sent card acting buttons (RFC 086 §5.1), for stale-handle form-change checks. */
+        val forms: Map<String, RaftMessageCardForm> = emptyMap(),
     ) : AppLinkResult {
         /** The revision a `confirm: "prepare"` button of this card claims (web `card.businessRevision`): the block card's, else the chip card's. */
         val claimedRevision: String get() = block?.businessRevision ?: businessRevision

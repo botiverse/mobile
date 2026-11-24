@@ -4641,6 +4641,12 @@
     <string name="thread_link_preview_action_failed">Couldn’t run this action. Try again.</string>
     <string name="thread_link_preview_refresh_failed">Couldn’t refresh this card. Try again.</string>
     <string name="thread_link_preview_action_changed">This card changed. Check it and try again.</string>
+    <string name="thread_link_preview_action_form_secret_notice">This value is encrypted for %1$s and sent only to it. Raft can’t read it.</string>
+    <string name="thread_link_preview_action_form_required">Enter a value.</string>
+    <string name="thread_link_preview_action_form_one_line">Use one line.</string>
+    <string name="thread_link_preview_action_form_too_long">Use at most %1$d characters.</string>
+    <string name="thread_link_preview_action_form_too_many_bytes">Use at most %1$d bytes. Some characters take more than one.</string>
+    <string name="thread_link_preview_action_form_seal_stale">Nothing was sent: this form is out of date. Press the button again and enter the value again.</string>
     <string name="thread_link_preview_action_working">Working…</string>
     <string name="thread_link_preview_action_state_sent">Sent. Waiting for the app.</string>
     <string name="thread_link_preview_action_state_accepted">Accepted. The app is finishing it.</string>

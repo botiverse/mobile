@@ -31,6 +31,12 @@ import kotlinx.serialization.json.JsonObject
 /** The capability a client declares on the batched read when it draws a card message's acting buttons (RFC 086 §4.4). */
 internal const val MESSAGE_CARD_EXECUTE_CAPABILITY = "card.execute.v1"
 
+/** The capability a client declares when it draws forms (`TextInput`) on acting buttons (RFC 086 §5.1). */
+internal const val MESSAGE_CARD_FORM_CAPABILITY = "card.form.v1"
+
+/** The capability a client declares when it draws `SecretInput` fields and seals values to the App (RFC 086 §5.1, §5.3). */
+internal const val MESSAGE_CARD_SECRET_INPUT_CAPABILITY = "card.form.secret.v1"
+
 /**
  * `execute.toast.v1` (RFC 076 §6.3, slock `EXECUTE_TOAST_CAPABILITY`): execute's answer may carry the
  * App's own toast (`app_result: { toast }`), which execute learns from the handle this read bound.
@@ -39,9 +45,15 @@ internal const val EXECUTE_TOAST_CAPABILITY = "execute.toast.v1"
 
 /**
  * What a card message read declares: the link card read's list (`unreviewed_app.v1` and `execute.toast.v1`
- * included) and `card.execute.v1`, in the web's order (one `LINK_CARD_READ_CAPABILITIES` for both).
+ * included) plus `card.execute.v1`, `card.form.v1`, and `card.form.secret.v1`, in the web's exact order.
  */
-internal val MESSAGE_CARD_READ_CAPABILITIES: List<String> = APP_LINK_CARD_READ_CAPABILITIES + MESSAGE_CARD_EXECUTE_CAPABILITY
+internal val MESSAGE_CARD_READ_CAPABILITIES: List<String> =
+    APP_LINK_CARD_READ_CAPABILITIES +
+        listOf(
+            MESSAGE_CARD_EXECUTE_CAPABILITY,
+            MESSAGE_CARD_FORM_CAPABILITY,
+            MESSAGE_CARD_SECRET_INPUT_CAPABILITY,
+        )
 
 /** The one stored text of an acting button (`MESSAGE_CARD_ACTING_BUTTON_DISABLED_REASON`), for older clients only. */
 internal const val MESSAGE_CARD_ACTING_BUTTON_DISABLED_REASON = "Update Raft to use this button"
@@ -74,21 +86,27 @@ internal fun readMessageCardActingButtons(card: RaftAppLinkCardV2, actionsJson: 
 }
 
 /**
- * `linkCardExecuteActionSchema` (strict): `{ kind: "execute", action_id, confirm: "prepare" }` or
- * `{ kind: "execute", action_id, undoWindowMs }` (an integer, 1000-10000).
+ * `messageCardExecuteActionSchema` (strict):
+ * - `{ kind: "execute", action_id, confirm: "prepare", form? }` (form may include SecretInput)
+ * - `{ kind: "execute", action_id, undoWindowMs, form? }` (1000-10000; form may only have TextInput)
  */
 private fun readMessageCardExecuteAction(raw: JsonElement): RaftLinkCardButtonAction.Execute? {
     val obj = raw as? JsonObject ?: return null
     if (obj["kind"].cardString() != "execute") return null
     val actionId = obj["action_id"].cardString()?.takeIf(MESSAGE_CARD_ACTION_ID::matches) ?: return null
-    return when (obj.keys) {
-        setOf("kind", "action_id", "confirm") ->
-            if (obj["confirm"].cardString() == "prepare") RaftLinkCardButtonAction.Execute(actionId, confirm = true) else null
-        setOf("kind", "action_id", "undoWindowMs") -> {
-            val window = obj["undoWindowMs"].cardSafeInteger()?.takeIf { it in 1000..10000 } ?: return null
-            RaftLinkCardButtonAction.Execute(actionId, confirm = false, undoWindowMs = window)
-        }
-        else -> null
+    val hasConfirm = "confirm" in obj
+    val hasUndo = "undoWindowMs" in obj
+    if (hasConfirm == hasUndo) return null
+    return if (hasConfirm) {
+        if (!obj.hasOnlyKeys(setOf("kind", "action_id", "confirm", "form"))) return null
+        if (obj["confirm"].cardString() != "prepare") return null
+        val form = if ("form" in obj) readMessageCardForm(obj["form"], allowSecret = true) ?: return null else null
+        RaftLinkCardButtonAction.Execute(actionId, confirm = true, form = form)
+    } else {
+        if (!obj.hasOnlyKeys(setOf("kind", "action_id", "undoWindowMs", "form"))) return null
+        val window = obj["undoWindowMs"].cardSafeInteger()?.takeIf { it in 1000..10000 } ?: return null
+        val form = if ("form" in obj) readMessageCardForm(obj["form"], allowSecret = false) ?: return null else null
+        RaftLinkCardButtonAction.Execute(actionId, confirm = false, undoWindowMs = window, form = form)
     }
 }
 
@@ -109,10 +127,23 @@ data class RaftMessageCardHandle(
     val url: String,
     val ticket: String,
     val handle: String,
+    /** Handle expiry in Unix seconds (`handle_exp`), present on SecretInput buttons for JWE `exp` binding (RFC 086 §5.3). */
+    val handleExp: Long? = null,
 )
 
-/** The App acting (`message_card.app`): [reviewed] false for an App acting on its own Server's confirmation (RFC 076 §17). */
-data class RaftMessageCardApp(val id: String, val name: String, val icon: String?, val reviewed: Boolean? = null) {
+/**
+ * The App acting (`message_card.app`): [reviewed] false for an App acting on its own Server's
+ * confirmation (RFC 076 §17); [encryptionKey] and [clientKey] are present together when the App
+ * has a valid card encryption key for sealing SecretInput values (RFC 086 §5.2).
+ */
+data class RaftMessageCardApp(
+    val id: String,
+    val name: String,
+    val icon: String?,
+    val reviewed: Boolean? = null,
+    val encryptionKey: RaftAppCardEncryptionKey? = null,
+    val clientKey: String? = null,
+) {
     fun toAppLinkApp(): AppLinkApp = AppLinkApp(name = name, icon = icon, reviewed = reviewed)
 
     fun toPromptApp(): AppLinkPromptApp = AppLinkPromptApp(id = id, name = name, icon = icon)
@@ -142,11 +173,31 @@ data class RaftMessageCardLive(
 }
 
 /**
+ * Builds the [RaftLinkCardSealTo] target for [handle] from [live] (`messageCardSealTo`), or null
+ * when any required sealing material (`app.encryption_key`, `app.client_key`, `handle.handle_exp`)
+ * is absent.
+ */
+internal fun messageCardSealTo(live: RaftMessageCardLive?, handle: RaftMessageCardHandle): RaftLinkCardSealTo? {
+    val app = live?.app ?: return null
+    val key = app.encryptionKey ?: return null
+    val clientKey = app.clientKey ?: return null
+    val handleExp = handle.handleExp ?: return null
+    return RaftLinkCardSealTo(
+        key = key,
+        clientKey = clientKey,
+        handleExp = handleExp,
+        revision = live.cardRevision,
+    )
+}
+
+private val MESSAGE_CARD_HANDLE_REQUIRED_KEYS = setOf("element_id", "action_id", "url", "ticket", "handle")
+
+/**
  * Reads the batched read's answer for a card message, or null when the body is not a JSON object
  * or carries no readable `message_card` (an older server reads the message as a link's). Tolerant of
- * keys added later (step 2 adds `app.encryption_key`); each handle entry is strict, and one this
- * client can't read is left out (its button stays disabled). `consent` other than the two words
- * reads as none.
+ * keys added later; each handle entry requires its 5 fields, and an unreadable `handle_exp` or
+ * `app.encryption_key` drops only the sealing fields so non-secret buttons still stand. `consent`
+ * other than the two words reads as none.
  */
 internal fun parseMessageCardReadAnswer(
     bodyText: String,
@@ -158,13 +209,15 @@ internal fun parseMessageCardReadAnswer(
     val handles =
         (card["actions"] as? JsonArray).orEmpty().take(MESSAGE_CARD_MAX_BUTTONS).mapNotNull { raw ->
             val entry = raw as? JsonObject ?: return@mapNotNull null
-            if (entry.keys != setOf("element_id", "action_id", "url", "ticket", "handle")) return@mapNotNull null
+            if (!entry.keys.containsAll(MESSAGE_CARD_HANDLE_REQUIRED_KEYS)) return@mapNotNull null
+            val handleExp = entry["handle_exp"]?.cardSafeInteger()?.takeIf { it > 0L }
             RaftMessageCardHandle(
                 elementId = entry["element_id"].cardString()?.takeIf(CARD_ELEMENT_ID::matches) ?: return@mapNotNull null,
                 actionId = entry["action_id"].cardString()?.takeIf(MESSAGE_CARD_ACTION_ID::matches) ?: return@mapNotNull null,
                 url = entry["url"].cardString()?.takeIf { it.length in 1..APP_LINK_PREVIEW_URL_MAX_LENGTH } ?: return@mapNotNull null,
                 ticket = entry["ticket"].cardString()?.takeIf { it.length in 1..4096 } ?: return@mapNotNull null,
                 handle = entry["handle"].cardString()?.takeIf { it.length in 1..4096 } ?: return@mapNotNull null,
+                handleExp = handleExp,
             )
         }.distinctBy { it.elementId }
     val app = readMessageCardApp(card["app"])?.let { it.copy(icon = it.icon?.let(resolveIcon)) }
@@ -196,7 +249,11 @@ internal fun parseMessageCardReadAnswer(
     )
 }
 
-/** `message_card.app`: `{ id, name, icon, reviewed? }`; `reviewed` present with any value reads `false` (confirm first). */
+/**
+ * `message_card.app`: `{ id, name, icon, reviewed?, encryption_key?, client_key? }`.
+ * `reviewed` present with any value reads `false` (confirm first). `encryption_key` and `client_key`
+ * are kept only when both validate; a malformed key drops both without dropping the app.
+ */
 private fun readMessageCardApp(raw: JsonElement?): RaftMessageCardApp? {
     val obj = raw as? JsonObject ?: return null
     val id = obj["id"].cardString()?.takeIf { it.length in 1..200 } ?: return null
@@ -206,7 +263,17 @@ private fun readMessageCardApp(raw: JsonElement?): RaftMessageCardApp? {
             null, is JsonNull -> null
             else -> value.cardString()?.takeIf { it.length <= APP_LINK_PREVIEW_URL_MAX_LENGTH }
         }
-    return RaftMessageCardApp(id = id, name = name, icon = icon, reviewed = if ("reviewed" in obj) false else null)
+    val parsedKey = readAppCardEncryptionKey(obj["encryption_key"])
+    val parsedClientKey = obj["client_key"].cardString()?.takeIf { it.length in 1..200 }
+    val keepSealPair = parsedKey != null && parsedClientKey != null
+    return RaftMessageCardApp(
+        id = id,
+        name = name,
+        icon = icon,
+        reviewed = if ("reviewed" in obj) false else null,
+        encryptionKey = if (keepSealPair) parsedKey else null,
+        clientKey = if (keepSealPair) parsedClientKey else null,
+    )
 }
 
 /** The body of a card message's read: the view's id and tickets, the declared capabilities with `card.execute.v1`. */

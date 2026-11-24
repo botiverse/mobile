@@ -4640,6 +4640,12 @@
     <string name="thread_link_preview_action_failed">この操作を実行できませんでした。もう一度お試しください。</string>
     <string name="thread_link_preview_refresh_failed">このカードを更新できませんでした。もう一度お試しください。</string>
     <string name="thread_link_preview_action_changed">このカードの内容が変更されました。内容を確認してから、もう一度お試しください。</string>
+    <string name="thread_link_preview_action_form_secret_notice">この値は %1$s 向けに暗号化され、%1$s にだけ送信されます。Raft は読み取れません。</string>
+    <string name="thread_link_preview_action_form_required">値を入力してください。</string>
+    <string name="thread_link_preview_action_form_one_line">1 行で入力してください。</string>
+    <string name="thread_link_preview_action_form_too_long">%1$d 文字以内で入力してください。</string>
+    <string name="thread_link_preview_action_form_too_many_bytes">%1$d バイト以内で入力してください。1 文字で複数バイトになる文字もあります。</string>
+    <string name="thread_link_preview_action_form_seal_stale">何も送信されていません。このフォームは古くなっています。もう一度ボタンを押して、値を入力し直してください。</string>
     <string name="thread_link_preview_action_working">処理中…</string>
     <string name="thread_link_preview_action_state_sent">送信しました。アプリの応答を待っています。</string>
     <string name="thread_link_preview_action_state_accepted">アプリが受け付けました。処理を完了しています。</string>

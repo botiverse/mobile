@@ -197,6 +197,10 @@ callable build.raft.app.data.RaftIosPixelAvatarRgba.*
 callable build.raft.app.data.RaftIosPixelAvatarRgba.Companion.*
 callable build.raft.app.data.RaftIosPushRegistrationBridge.*
 callable build.raft.app.data.RaftIosPushRegistrationBridge.Companion.*
+callable build.raft.app.data.RaftIosSealedInputsHost.*
+callable build.raft.app.data.RaftIosSealedInputsHost.Companion.*
+function build.raft.app.data.RaftIosSealedInputsSealer.sealEcdhEsA256Gcm
+callable build.raft.app.data.RaftIosSealedInputsSealer.Companion.*
 callable build.raft.app.data.RaftKeyValueStore.Companion.*
 callable build.raft.app.data.RaftNotificationTestAck.*
 callable build.raft.app.data.RaftNotificationTestAck.Companion.*

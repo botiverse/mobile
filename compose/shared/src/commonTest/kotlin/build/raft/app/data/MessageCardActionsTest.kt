@@ -111,12 +111,115 @@ class MessageCardActionsTest {
     fun `the read declares card execute with the link card capabilities and presents the view's tickets`() {
         val view = AppLinkCardView("6f1c1f86-5a83-4b1e-9b1a-0d2f0e0c0a01").apply { tickets[MessageCardActingPage] = "t-1" }
         val body = messageCardReadRequestBody(view, "ja")
-        assertEquals(APP_LINK_CARD_READ_CAPABILITIES + "card.execute.v1", body.capabilities)
+        assertEquals(
+            APP_LINK_CARD_READ_CAPABILITIES + listOf("card.execute.v1", "card.form.v1", "card.form.secret.v1"),
+            body.capabilities,
+        )
         assertEquals(1, body.capabilities.count { it == "execute.toast.v1" })
         assertEquals(true, "unreviewed_app.v1" in body.capabilities)
         assertEquals(mapOf(MessageCardActingPage to "t-1"), body.tickets)
         assertNull(body.urls)
         assertEquals("ja", body.locale)
+    }
+
+    @Test
+    fun `acting buttons parse TextInput and SecretInput forms and reject SecretInput on undo buttons`() {
+        val validActions =
+            """{"approve":{"kind":"execute","action_id":"approve","confirm":"prepare","form":{"fields":[""" +
+                """{"type":"TextInput","id":"name","label":"Name","placeholder":"deploy-key","required":true,"maxLength":20,"default":"prod"},""" +
+                """{"type":"SecretInput","id":"secret_val","label":"Secret","placeholder":"sk-...","required":true}]}},""" +
+                """"deny":{"kind":"execute","action_id":"deny","undoWindowMs":3000,"form":{"fields":[""" +
+                """{"type":"TextInput","id":"reason","label":"Reason","maxLength":100}]}}}"""
+        val card = assertNotNull(readMessageCardFromMetadata(metadataOf(messageCardActingMetadataJson(actions = validActions))))
+        val acting = assertNotNull(card.acting)
+        val approve = assertNotNull(acting.actions["approve"])
+        assertEquals(
+            RaftMessageCardForm(
+                listOf(
+                    RaftMessageCardFormField.TextInput(
+                        id = "name",
+                        label = "Name",
+                        placeholder = "deploy-key",
+                        required = true,
+                        maxLength = 20,
+                        defaultValue = "prod",
+                    ),
+                    RaftMessageCardFormField.SecretInput(
+                        id = "secret_val",
+                        label = "Secret",
+                        placeholder = "sk-...",
+                        required = true,
+                    ),
+                ),
+            ),
+            approve.form,
+        )
+        val deny = assertNotNull(acting.actions["deny"])
+        assertEquals(
+            RaftMessageCardForm(
+                listOf(RaftMessageCardFormField.TextInput(id = "reason", label = "Reason", maxLength = 100)),
+            ),
+            deny.form,
+        )
+
+        // SecretInput on undoWindowMs, duplicate field ids, default on SecretInput, multiline label, reserved id, or >4 fields are refused.
+        val invalidCases =
+            listOf(
+                """{"deny":{"kind":"execute","action_id":"deny","undoWindowMs":3000,"form":{"fields":[{"type":"SecretInput","id":"val","label":"Secret"}]}}}""",
+                """{"approve":{"kind":"execute","action_id":"approve","confirm":"prepare","form":{"fields":[{"type":"SecretInput","id":"val","label":"Secret","default":"nope"}]}}}""",
+                """{"approve":{"kind":"execute","action_id":"approve","confirm":"prepare","form":{"fields":[{"type":"TextInput","id":"a","label":"A"},{"type":"TextInput","id":"a","label":"B"}]}}}""",
+                """{"approve":{"kind":"execute","action_id":"approve","confirm":"prepare","form":{"fields":[{"type":"TextInput","id":"__proto__","label":"Bad"}]}}}""",
+                """{"approve":{"kind":"execute","action_id":"approve","confirm":"prepare","form":{"fields":[{"type":"TextInput","id":"a","label":"Line1\nLine2"}]}}}""",
+                """{"approve":{"kind":"execute","action_id":"approve","confirm":"prepare","form":{"fields":[{"type":"TextInput","id":"a","label":"A","maxLength":3,"default":"abcd"}]}}}""",
+                """{"approve":{"kind":"execute","action_id":"approve","confirm":"prepare","form":{"fields":[]}}}""",
+                """{"approve":{"kind":"execute","action_id":"approve","confirm":"prepare","form":{"fields":[""" +
+                    """{"type":"TextInput","id":"a","label":"1"},{"type":"TextInput","id":"b","label":"2"},""" +
+                    """{"type":"TextInput","id":"c","label":"3"},{"type":"TextInput","id":"d","label":"4"},""" +
+                    """{"type":"TextInput","id":"e","label":"5"}]}}}""",
+            )
+        for (bad in invalidCases) {
+            val parsed = assertNotNull(readMessageCardFromMetadata(metadataOf(messageCardActingMetadataJson(actions = bad))), bad)
+            assertNull(parsed.acting, "invalid form must be dropped: $bad")
+        }
+    }
+
+    @Test
+    fun `read answer keeps valid encryption key pair and handle exp while dropping malformed ones cleanly`() {
+        val validKey =
+            """{"kty":"EC","crv":"P-256","use":"enc","alg":"ECDH-ES","kid":"test-2026-11-a",""" +
+                """"x":"_dsSyV6Maib6vDmb1MLPu-31qcVvNkbxUpWAfDnOGcA","y":"kIEVAwl4P1JF6_ondOiBCJDqXAD0wAM-xXM8OvfmmMM"}"""
+        val good =
+            assertNotNull(
+                parseMessageCardReadAnswer(
+                    messageCardReadBody(
+                        """{"card_revision":"3","app":{"id":"app-1","name":"Vault","icon":null,"encryption_key":$validKey,"client_key":"app_test_vault"},""" +
+                            """"actions":[{"element_id":"approve","action_id":"approve","url":"$MessageCardActingPage","ticket":"t","handle":"h-1","handle_exp":1794700800}]}""",
+                    ),
+                ),
+            )
+        assertEquals("test-2026-11-a", good.app?.encryptionKey?.kid)
+        assertEquals("app_test_vault", good.app?.clientKey)
+        assertEquals(1794700800L, good.handles.single().handleExp)
+        val sealTo = assertNotNull(messageCardSealTo(good, good.handles.single()))
+        assertEquals("3", sealTo.revision)
+        assertEquals("app_test_vault", sealTo.clientKey)
+        assertEquals(1794700800L, sealTo.handleExp)
+
+        // Malformed encryption_key or handle_exp drops only the sealing fields; the answer and non-secret handle stand.
+        val bad =
+            assertNotNull(
+                parseMessageCardReadAnswer(
+                    messageCardReadBody(
+                        """{"card_revision":"3","app":{"id":"app-1","name":"Vault","icon":null,"encryption_key":{"kty":"EC","crv":"P-256","use":"enc","alg":"RSA-OAEP","kid":"k","x":"_dsSyV6Maib6vDmb1MLPu-31qcVvNkbxUpWAfDnOGcA","y":"kIEVAwl4P1JF6_ondOiBCJDqXAD0wAM-xXM8OvfmmMM"},"client_key":"app_test_vault"},""" +
+                            """"actions":[{"element_id":"approve","action_id":"approve","url":"$MessageCardActingPage","ticket":"t","handle":"h-1","handle_exp":"soon"}]}""",
+                    ),
+                ),
+            )
+        assertEquals(1, bad.handles.size)
+        assertNull(bad.app?.encryptionKey)
+        assertNull(bad.app?.clientKey)
+        assertNull(bad.handles.single().handleExp)
+        assertNull(messageCardSealTo(bad, bad.handles.single()))
     }
 
     @Test

@@ -53,6 +53,8 @@ class SharedAppLinkPreviewStoreMessageCardTest {
         val first = api.cardReads.single()
         assertEquals(view.id, first.viewInstanceId)
         assertTrue("card.execute.v1" in first.capabilities, "the read declares card.execute.v1")
+        assertTrue("card.form.v1" in first.capabilities, "the read declares card.form.v1")
+        assertTrue("card.form.secret.v1" in first.capabilities, "the read declares card.form.secret.v1")
         assertTrue("unreviewed_app.v1" in first.capabilities, "own-Server Apps need unreviewed_app.v1 too")
         assertNull(first.tickets)
         assertEquals(RaftMessageCardConsent.Needed, store.live()?.consent)
@@ -110,5 +112,34 @@ class SharedAppLinkPreviewStoreMessageCardTest {
         clock = 700_000L
         assertTrue(store.readMessageCard(CViewer, CServer, CMessage, view, "en", force = true))
         assertEquals(700_000L, store.live()?.readAtMillis)
+    }
+
+    @Test
+    fun prepareNeverCarriesFormFieldsWhileExecuteCarriesInputsAndSealedInputsWithoutLoggingThem() = runTest(StandardTestDispatcher()) {
+        val api = FakeAppLinkPreviewApi()
+        val logs = mutableListOf<String>()
+        val store = SharedAppLinkPreviewStore(api = api, scope = backgroundScope, diagnosticsLogger = { logs += it }, retryJitterMs = { 0L })
+
+        val preparedResult = store.prepareAction(CServer, "h-1", "1")
+        assertTrue(preparedResult is AppLinkActionResult.Ok)
+        val prepareJson = api.prepareRequests.single().toJson()
+        assertFalse("inputs" in prepareJson)
+        assertFalse("sealed_inputs" in prepareJson)
+
+        val secretJwe = "eyJhbGciOiJFQ0RILUVTIiwiZW5jIjoiQTI1NkdDTSJ9..iv.ct.tag"
+        val executedResult =
+            store.executeAction(
+                serverId = CServer,
+                handle = "h-1",
+                clientRequestId = "mobile-req-12345678",
+                prepared = preparedResult.value,
+                inputs = mapOf("name" to "deploy-key"),
+                sealedInputs = secretJwe,
+            )
+        assertTrue(executedResult is AppLinkActionResult.Ok)
+        val executeBody = api.executeRequests.single()
+        assertEquals(mapOf("name" to "deploy-key"), executeBody.inputs)
+        assertEquals(secretJwe, executeBody.sealedInputs)
+        assertTrue(logs.none { secretJwe in it || "deploy-key" in it })
     }
 }

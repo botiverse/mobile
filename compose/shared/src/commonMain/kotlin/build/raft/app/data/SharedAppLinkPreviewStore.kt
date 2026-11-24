@@ -1037,14 +1037,28 @@ class SharedAppLinkPreviewStore internal constructor(
         return parseAppLinkPrepareAnswer(response.code, response.bodyText ?: response.errorBodyText, response.traceId)
     }
 
-    /** Runs a button's action (after its confirmation, when it has one). The same [clientRequestId] repeats the same intent. */
+    /**
+     * Runs a button's action (after its confirmation, when it has one). The same [clientRequestId]
+     * repeats the same intent. [inputs] and [sealedInputs] (RFC 086 §5.4) ride only in this execute
+     * request and are never logged, cached, or persisted.
+     */
     suspend fun executeAction(
         serverId: String,
         handle: String,
         clientRequestId: String,
         prepared: AppLinkPrepared?,
+        inputs: Map<String, String>? = null,
+        sealedInputs: String? = null,
     ): AppLinkActionResult<AppLinkExecuted> {
-        val body = AppLinkExecuteRequestBody(clientRequestId, handle, prepared?.preparedActionId, prepared?.preparedDigest)
+        val body =
+            AppLinkExecuteRequestBody(
+                clientRequestId = clientRequestId,
+                handle = handle,
+                preparedActionId = prepared?.preparedActionId,
+                preparedDigest = prepared?.preparedDigest,
+                inputs = inputs,
+                sealedInputs = sealedInputs,
+            )
         val response = callOrNull("app_link_card_execute_error") { api.executeLinkCardAction(serverId, body) }
             ?: return AppLinkActionResult.Failed(null, null, outOfDate = false, traceId = null)
         return parseAppLinkExecuteAnswer(response.code, response.bodyText ?: response.errorBodyText, response.traceId)
