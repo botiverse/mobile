@@ -109,6 +109,7 @@ internal fun RaftComputerCreateAgentDialog(
         currentAgentCount = agentLimit.usage,
         maxAgents = agentLimit.limit,
         limitPlanLabel = agentLimit.planLabel,
+        seatLimit = agentLimit.seatState,
         onUpgrade = onUpgrade,
         onAddComputer = onAddComputer,
         onDismiss = { if (!submitting) onDismiss() },

@@ -2084,6 +2084,8 @@ internal class MembersCreateAgentInputs(
     val createAgentMaxAgents: Int = -1,
     /** The plan for the agent-limit banner ("… on Free plan"); null states the server's count. */
     val createAgentLimitPlanLabel: String? = null,
+    /** Universal-seat state under `seat_v1`; null under `person_v2` or non-seat plans. */
+    val createAgentSeatLimit: build.raft.app.data.CreateAgentSeatState? = null,
     val createAgentLoadMachines: () -> Unit = {},
     val createAgentRetryMachines: () -> Unit = {},
     val createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,

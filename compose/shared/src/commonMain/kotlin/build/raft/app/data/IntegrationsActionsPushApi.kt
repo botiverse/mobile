@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
+import build.raft.app.model.ServerId
 import build.raft.app.network.RaftFailedRequestTraceIds
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -80,6 +81,12 @@ internal interface RaftIntegrationsActionsPushApi {
     /** `POST /api/actions/:messageId/close` (botiverse/slock #16473): answerer closes a question card without answering. */
     suspend fun closeQuestionAction(messageId: MessageId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+    /** `GET /api/actions/:messageId/seat-request` (botiverse/slock #16449, #16453): check seats short & server pricing. */
+    suspend fun checkSeatRequest(messageId: MessageId, serverIdOverride: ServerId? = null): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+    /** `POST /api/actions/:messageId/seats-added` (botiverse/slock #16449, #16453): complete a seat request once seats cover it. */
+    suspend fun completeSeatRequest(messageId: MessageId, serverIdOverride: ServerId? = null): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun emitActionEvent(messageId: MessageId, body: String): HomeNetworkResponse
     suspend fun markActionExecuted(messageId: MessageId, body: String): HomeNetworkResponse
     suspend fun reconfirmAction(messageId: MessageId): HomeNetworkResponse
@@ -134,6 +141,22 @@ internal class RaftIntegrationsActionsPushNetworkApi(
 
     override suspend fun closeQuestionAction(messageId: MessageId): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Foreground, "actions/${messageId.value}/close", method = "POST")
+
+    override suspend fun checkSeatRequest(messageId: MessageId, serverIdOverride: ServerId?): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "actions/${messageId.value}/seat-request",
+            serverIdOverride = serverIdOverride,
+        )
+
+    override suspend fun completeSeatRequest(messageId: MessageId, serverIdOverride: ServerId?): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "actions/${messageId.value}/seats-added",
+            method = "POST",
+            bodyText = "{}",
+            serverIdOverride = serverIdOverride,
+        )
 
     override suspend fun emitActionEvent(messageId: MessageId, body: String): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Background, "actions/${messageId.value}/event", method = "POST", bodyText = body)
@@ -285,6 +308,53 @@ internal class RaftIntegrationsActionsPushApiClient(
             is DataResult.NoPermission -> result
         }
     }
+
+    /**
+     * GET /api/actions/:messageId/seat-request (botiverse/slock #16449, #16453): checks whether
+     * the requester can still act, how many seats are short now, and the card's server's pricing.
+     * Older servers without the route (404 without a structured action `errorCode`) resolve to
+     * [SeatRequestCheckOutcome.Unsupported] so the app falls back to opening the message on the web;
+     * older servers that omit `pricing` default to [ProPricing.SeatV1].
+     */
+    suspend fun checkSeatRequest(
+        messageId: MessageId,
+        serverIdOverride: ServerId? = null,
+    ): DataResult<SeatRequestCheckOutcome> {
+        val response = transport.checkSeatRequest(messageId, serverIdOverride)
+        if (!response.isSuccessful) {
+            if (response.code == 404 && response.actionErrorEnvelopeOrNull()?.errorCode == null) {
+                return DataResult.Content(SeatRequestCheckOutcome.Unsupported)
+            }
+            return response.mapActionError("action_seat_request_contract_mismatch")
+        }
+        return response.mapApiBody("action_seat_request_contract_mismatch", SeatRequestCheckResponseDto.serializer()) { wire ->
+            val parsedPricing = ProPricing.fromWireOrNull(wire.pricing)
+            SeatRequestCheckOutcome.Checked(
+                SeatRequestCheck(
+                    requesterAllowed = wire.requesterAllowed,
+                    seatsShort = wire.seatsShort,
+                    pricing = billingPricing(parsedPricing),
+                    pricingExplicit = parsedPricing != null,
+                )
+            )
+        }
+    }
+
+    /**
+     * POST /api/actions/:messageId/seats-added (botiverse/slock #16449, #16453): completes a
+     * `seats:add` card when no seats are short (including agents under `person_v2`) or the
+     * requester can no longer act.
+     */
+    suspend fun completeSeatRequest(
+        messageId: MessageId,
+        serverIdOverride: ServerId? = null,
+    ): DataResult<SeatRequestCompleteOutcome> =
+        when (val result = transport.completeSeatRequest(messageId, serverIdOverride).mapActionCard("action_seats_added_contract_mismatch")) {
+            is DataResult.Content -> DataResult.Content(SeatRequestCompleteOutcome.Completed(result.data.actionCard))
+            is DataResult.Empty -> result
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
 
     suspend fun emitActionEvent(messageId: MessageId, body: String): DataResult<ActionEventResult> =
         transport.emitActionEvent(messageId, body).mapActionEvent("action_event_contract_mismatch")
@@ -439,6 +509,21 @@ internal sealed interface ActionCardCloseOutcome {
     data class AlreadyExecuted(val card: ThreadActionCard?, val serverMessage: String?) : ActionCardCloseOutcome
 }
 
+/** What `GET /api/actions/:messageId/seat-request` came to ([RaftIntegrationsActionsPushApiClient.checkSeatRequest], slock #16449, #16453). */
+internal sealed interface SeatRequestCheckOutcome {
+    data class Checked(val check: SeatRequestCheck) : SeatRequestCheckOutcome
+
+    /** Older server without `GET /api/actions/:messageId/seat-request`: fall back to opening on the web. */
+    data object Unsupported : SeatRequestCheckOutcome
+}
+
+/** What `POST /api/actions/:messageId/seats-added` came to ([RaftIntegrationsActionsPushApiClient.completeSeatRequest], slock #16449, #16453). */
+internal sealed interface SeatRequestCompleteOutcome {
+    val card: ThreadActionCard?
+
+    data class Completed(override val card: ThreadActionCard?) : SeatRequestCompleteOutcome
+}
+
 internal data class ActionEventResult(val ok: Boolean)
 internal data class PushVapidKey(val publicKey: String)
 internal data class PushCommandResult(val ok: Boolean)
@@ -471,44 +556,46 @@ private inline fun <Wire, T> HomeNetworkResponse.mapApiBody(
     return DataResult.Content(value)
 }
 
-private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<ActionCardResult> {
-    if (!isSuccessful) {
-        // routes/actions.ts `handleError` answers a refusal with `{ error, errorCode }`; keep both so a caller can
-        // name a refusal no retry fixes (an install card's 409 `APP_PERMISSIONS_CHANGED`, ...).
-        val envelope = actionErrorEnvelopeOrNull()
-        val serverMessage = envelope?.error?.takeIf { it.isNotBlank() }
-        if (code == 401) {
-            // An expired session: the route signs out like every other card path.
-            return DataResult.NoPermission(
-                PermissionBlocker(
-                    code = "auth_required",
-                    requiredCapability = "auth_session",
-                    serverMessage = serverMessage,
-                    traceId = traceId ?: RaftFailedRequestTraceIds.recent(),
-                )
-            )
-        }
-        return DataResult.Error(
-            ScreenError(
-                code = contractCode,
-                retryable = code >= 500,
+private fun HomeNetworkResponse.mapActionError(contractCode: String): DataResult<Nothing> {
+    // routes/actions.ts `handleError` answers a refusal with `{ error, errorCode }`; keep both so a caller can
+    // name a refusal no retry fixes (an install card's 409 `APP_PERMISSIONS_CHANGED`, ...).
+    val envelope = actionErrorEnvelopeOrNull()
+    val serverMessage = envelope?.error?.takeIf { it.isNotBlank() }
+    if (code == 401) {
+        // An expired session: the route signs out like every other card path.
+        return DataResult.NoPermission(
+            PermissionBlocker(
+                code = "auth_required",
+                requiredCapability = "auth_session",
                 serverMessage = serverMessage,
-                // The feedback limiter's 429 (shared with POST /api/product-feedback) names it `code`
-                // (`feedback_rate_limited`); everything else under handleError says `errorCode`.
-                serverCode = (envelope?.errorCode?.takeIf { it.isNotBlank() } ?: envelope?.code?.takeIf { it.isNotBlank() }),
-                retryAfterSeconds = if (code == 429) retryAfterHeaderSeconds() else null,
-                serverFields =
-                    buildMap {
-                        // An install refused for a newer prompt-text revision (web appTextChangedCurrent).
-                        envelope?.currentTextRevisionId?.takeIf { it.isNotBlank() }?.let { put("current_text_revision_id", it) }
-                    },
-                // An Approve Login card's execute with two-step verification on: the caller steps
-                // up and runs it once more (SecondFactorStepUpCoordinator).
-                secondFactorStepUp = secondFactorStepUpChallengeOrNull(),
                 traceId = traceId ?: RaftFailedRequestTraceIds.recent(),
             )
         )
     }
+    return DataResult.Error(
+        ScreenError(
+            code = contractCode,
+            retryable = code >= 500,
+            serverMessage = serverMessage,
+            // The feedback limiter's 429 (shared with POST /api/product-feedback) names it `code`
+            // (`feedback_rate_limited`); everything else under handleError says `errorCode`.
+            serverCode = (envelope?.errorCode?.takeIf { it.isNotBlank() } ?: envelope?.code?.takeIf { it.isNotBlank() }),
+            retryAfterSeconds = if (code == 429) retryAfterHeaderSeconds() else null,
+            serverFields =
+                buildMap {
+                    // An install refused for a newer prompt-text revision (web appTextChangedCurrent).
+                    envelope?.currentTextRevisionId?.takeIf { it.isNotBlank() }?.let { put("current_text_revision_id", it) }
+                },
+            // An Approve Login card's execute with two-step verification on: the caller steps
+            // up and runs it once more (SecondFactorStepUpCoordinator).
+            secondFactorStepUp = secondFactorStepUpChallengeOrNull(),
+            traceId = traceId ?: RaftFailedRequestTraceIds.recent(),
+        )
+    )
+}
+
+private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<ActionCardResult> {
+    if (!isSuccessful) return mapActionError(contractCode)
     return mapApiBody(contractCode, ActionCardResponseDto.serializer()) { wire ->
         val id = wire.messageId.takeIf { it.isNotBlank() } ?: return@mapApiBody null
         val card = wire.metadata.toThreadActionCard()
@@ -830,6 +917,13 @@ private data class IntegrationRequestDto(
 private data class ActionCardResponseDto(
     val messageId: String,
     val metadata: WireActionCardMetadata? = null,
+)
+
+@Serializable
+private data class SeatRequestCheckResponseDto(
+    val requesterAllowed: Boolean,
+    val seatsShort: Int,
+    val pricing: String? = null,
 )
 
 @Serializable

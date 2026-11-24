@@ -6111,4 +6111,22 @@
     <string name="send_prompt_send">Send</string>
     <string name="send_prompt_failed">Couldn't send. Try again.</string>
     <string name="send_prompt_no_agents">There are no agents on this server you can message yet.</string>
+    <string name="upgrade_dialog_price_seat">%1$s per seat a month, or %2$s a month billed yearly.</string>
+    <string name="upgrade_dialog_price_person">%1$s per person a month, or %2$s a month billed yearly.</string>
+    <string name="upgrade_dialog_seat_note_seat">A seat covers 1 person or %1$d agents.</string>
+    <string name="upgrade_dialog_seat_note_person">A seat covers 1 person. Agents don't take seats.</string>
+    <string name="upgrade_dialog_seats_hint_person">All of %1$s's seats are taken. Each person uses 1 seat; agents don't take seats.</string>
+    <string name="agent_create_error_seat_limit_plan">Seat limit reached (%1$s/%2$d on %3$s plan).</string>
+    <string name="agent_create_seat_usage">%1$s/%2$d seats used; each agent takes 0.1 seat.</string>
+    <string name="action_card_seats_add_title_one">Add %1$d seat</string>
+    <string name="action_card_seats_add_title_other">Add %1$d seats</string>
+    <string name="action_card_seats_add_short_one">%1$d more seat is needed to cover this request.</string>
+    <string name="action_card_seats_add_short_other">%1$d more seats are needed to cover this request.</string>
+    <string name="action_card_seats_add_purpose_agent">%1$s × 0.1</string>
+    <string name="action_card_seats_add_purpose_assistant">%1$s's assistant × 0.1</string>
+    <string name="action_card_seats_add_purpose_invite_one">%1$d person × 1</string>
+    <string name="action_card_seats_add_purpose_invite_other">%1$d people × 1</string>
+    <string name="action_card_seats_add_purpose_person">%1$s × 1</string>
+    <string name="action_card_seats_add_sum_note">Each person takes 1 seat and each agent 0.1; apps take none.</string>
+    <string name="action_card_seats_add_sum_note_person">Each person takes 1 seat; agents and apps take none.</string>
 </resources>

@@ -6110,4 +6110,22 @@
     <string name="send_prompt_send">送信</string>
     <string name="send_prompt_failed">送信できませんでした。もう一度お試しください。</string>
     <string name="send_prompt_no_agents">このサーバーにはメッセージを送れるエージェントがまだいません。</string>
+    <string name="upgrade_dialog_price_seat">1 席あたり月額 %1$s、年払いなら月 %2$s 相当です。</string>
+    <string name="upgrade_dialog_price_person">1 人あたり月額 %1$s、年払いなら月 %2$s 相当です。</string>
+    <string name="upgrade_dialog_seat_note_seat">1 席は、人間 1 人またはエージェント %1$d 個分です。</string>
+    <string name="upgrade_dialog_seat_note_person">1 席は人間 1 人分です。エージェントは席を使いません。</string>
+    <string name="upgrade_dialog_seats_hint_person">%1$s のシートはすべて使用中です。1 人につき 1 席を使用します。エージェントは席を使いません。</string>
+    <string name="agent_create_error_seat_limit_plan">シートの上限に達しました（%3$s プランで %1$s/%2$d）。</string>
+    <string name="agent_create_seat_usage">%1$s/%2$d 席を使用中です。エージェントは 1 個につき 0.1 席を使用します。</string>
+    <string name="action_card_seats_add_title_one">シートを %1$d 席追加</string>
+    <string name="action_card_seats_add_title_other">シートを %1$d 席追加</string>
+    <string name="action_card_seats_add_short_one">このリクエストには、シートがあと %1$d 席必要です。</string>
+    <string name="action_card_seats_add_short_other">このリクエストには、シートがあと %1$d 席必要です。</string>
+    <string name="action_card_seats_add_purpose_agent">%1$s × 0.1</string>
+    <string name="action_card_seats_add_purpose_assistant">%1$s のアシスタント × 0.1</string>
+    <string name="action_card_seats_add_purpose_invite_one">%1$d 人 × 1</string>
+    <string name="action_card_seats_add_purpose_invite_other">%1$d 人 × 1</string>
+    <string name="action_card_seats_add_purpose_person">%1$s × 1</string>
+    <string name="action_card_seats_add_sum_note">人間は 1 人につき 1 席、エージェントは 1 個につき 0.1 席を使用します。アプリはシートを使用しません。</string>
+    <string name="action_card_seats_add_sum_note_person">人間は 1 人につき 1 席を使用します。エージェントとアプリはシートを使用しません。</string>
 </resources>

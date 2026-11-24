@@ -4,8 +4,12 @@ import build.raft.app.resources.*
 import org.jetbrains.compose.resources.StringResource
 import build.raft.app.data.ActionCardCloseOutcome
 import build.raft.app.data.PlanTrialActionCardType
+import build.raft.app.data.ProPricing
 import build.raft.app.data.ActionCardExecuteOutcome
 import build.raft.app.data.QuestionAskActionCardType
+import build.raft.app.data.SeatRequestCheckOutcome
+import build.raft.app.data.SeatRequestCompleteOutcome
+import build.raft.app.data.SeatsAddActionCardType
 import build.raft.app.data.SecondFactorStepUpCoordinator
 import build.raft.app.data.SecondFactorStepUpOutcome
 import build.raft.app.data.ScreenError
@@ -33,6 +37,8 @@ import build.raft.app.data.expiredAsOf
 import build.raft.app.data.isActionCardExpiredRefusal
 import build.raft.app.data.markedExpired
 import build.raft.app.data.isFeedbackSubmitAction
+import build.raft.app.data.seatRequestEffectiveSeatsShort
+import build.raft.app.data.seatsAddPurposeTenths
 import build.raft.app.data.stripActionCardSpec
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
@@ -170,7 +176,8 @@ internal fun ActionCardSpecIntent.typedActionType(): String? =
         ActionCardSpecIntent.FeedbackForm -> FeedbackSubmitActionCardType
         // A done feedback card's "View in Settings" (S0.3): Settings › Feedback on the ticket.
         ActionCardSpecIntent.FeedbackTicket -> FeedbackSubmitActionCardType
-        ActionCardSpecIntent.UpgradeDialog, ActionCardSpecIntent.AddSeats, ActionCardSpecIntent.MigrateAgent -> null
+        ActionCardSpecIntent.AddSeats -> SeatsAddActionCardType
+        ActionCardSpecIntent.UpgradeDialog, ActionCardSpecIntent.MigrateAgent -> null
     }
 
 /** The store's refusal for a card that ended ([threadActionCardCommitBlockedByEnd]); nothing ran. */
@@ -280,6 +287,12 @@ internal fun threadActionCardSpecPress(
                 // sends them as Settings › Feedback does and completes the card
                 // (POST /api/product-feedback with action_card_message_id).
                 card.isFeedbackSubmitAction() && raftFeedbackCardEntryEnabled(viewerServerId) -> ThreadActionCardSpecPress.Typed
+                action is ActionCardSpecAction.Open && action.intent == ActionCardSpecIntent.AddSeats ->
+                    if (card.type.equals(SeatsAddActionCardType, ignoreCase = true)) {
+                        ThreadActionCardSpecPress.Store
+                    } else {
+                        ThreadActionCardSpecPress.OpenInWeb
+                    }
                 action is ActionCardSpecAction.Open ->
                     if (action.intent.typedActionType()?.equals(card.type, ignoreCase = true) == true) {
                         ThreadActionCardSpecPress.Typed
@@ -452,16 +465,29 @@ internal data class ThreadActionCardSpecFormState(
     val error: ThreadActionCardSpecError? = null,
 )
 
+/** The add-seats sheet opened by a `seats:add` card when seats are short (slock #16449, #16453). */
+internal data class ThreadActionCardSpecSeatRequestState(
+    val messageId: String,
+    val elementId: String,
+    val card: ThreadActionCard,
+    val seatsShort: Int,
+    /** The card's server's pricing from `GET /actions/:id/seat-request` (never the open server's). */
+    val pricing: ProPricing,
+    /** Tenths of a seat the requested purpose takes under [pricing], or null when purpose is absent. */
+    val needTenths: Long?,
+)
+
 /**
  * Every spec card of a thread page: which Button runs ([busy], by message), the last failure
- * under each card ([errors]), the open confirm or form, and which Button handed its card to the
- * typed path ([typedPress]) so the frame can show that one busy while it runs.
+ * under each card ([errors]), the open confirm, form or seat-request sheet, and which Button handed
+ * its card to the typed path ([typedPress]) so the frame can show that one busy while it runs.
  */
 internal data class ThreadActionCardSpecState(
     val busy: Map<String, String> = emptyMap(),
     val errors: Map<String, ThreadActionCardSpecError> = emptyMap(),
     val confirm: ThreadActionCardSpecConfirmState? = null,
     val form: ThreadActionCardSpecFormState? = null,
+    val seatRequest: ThreadActionCardSpecSeatRequestState? = null,
     val typedPress: Map<String, String> = emptyMap(),
     /** A question card answered on the card (spec §5.9): its choices by message, kept while it scrolls away. */
     val inlineValues: Map<String, Map<String, ActionCardFormValue>> = emptyMap(),
@@ -494,6 +520,7 @@ internal data class ThreadActionCardInlineIssues(
 internal data class ThreadActionCardSpecDialogs(
     val confirm: ThreadActionCardSpecConfirmState? = null,
     val form: ThreadActionCardSpecFormState? = null,
+    val seatRequest: ThreadActionCardSpecSeatRequestState? = null,
 )
 
 /** One card's part of [ThreadActionCardSpecState]. */
@@ -560,6 +587,12 @@ internal sealed interface ThreadActionCardSpecIntent {
 
     /** "Open in web": [link] (this message on this page) on the Developer environment's web URL, in the browser. */
     data class OpenInWeb(val messageId: String, val link: RaftMessageLink?) : ThreadActionCardSpecIntent
+
+    /** Closes the add-seats sheet without opening the web. */
+    data object DismissSeatRequest : ThreadActionCardSpecIntent
+
+    /** Continues the open seat request on the web (closes the sheet and asks the page for the message link). */
+    data object OpenSeatRequestInWeb : ThreadActionCardSpecIntent
 }
 
 /** One-shot results for the page. */
@@ -572,6 +605,9 @@ internal sealed interface ThreadActionCardSpecEffect {
 
     /** "Open in web" had no link to open (no server slug, or an id a link can't carry). */
     data object OpenInWebFailed : ThreadActionCardSpecEffect
+
+    /** Open the `seats:add` card's message on the web (to buy seats or when an older server lacks `/seat-request`). */
+    data class OpenSeatRequestInWeb(val messageId: String) : ThreadActionCardSpecEffect
 }
 
 /**
@@ -586,6 +622,9 @@ internal sealed interface ThreadActionCardSpecEffect {
  *   with `{ form: { id, values } }`. 422 `FORM_INVALID` puts the issues under their fields (or
  *   the banner), 422 `FORM_REQUIRED` says to refresh, 409 `ALREADY_EXECUTED` applies the card it
  *   carries and closes the sheet ([ThreadActionCardSpecEffect.AlreadyExecuted]).
+ * - open `add_seats` on a `seats:add` card (slock #16449, #16453): checks `/seat-request`,
+ *   completes immediately via `/seats-added` when no seats are short (including agents under
+ *   `person_v2`) or the requester can no longer act, else opens [ThreadActionCardSpecState.seatRequest].
  * Links and the typed path never come here ([threadActionCardSpecPress]).
  */
 internal class ThreadActionCardSpecStore(
@@ -594,6 +633,14 @@ internal class ThreadActionCardSpecStore(
     private val applyCard: (messageId: String, card: ThreadActionCard) -> Unit,
     /** Answerer close (`POST /actions/:id/close`, slock #16473) on a `question:ask` card. */
     private val closeQuestion: suspend (messageId: String, card: ThreadActionCard) -> DataResult<ActionCardCloseOutcome> = { _, _ ->
+        DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+    },
+    /** Pre-payment check (`GET /actions/:id/seat-request`, slock #16449, #16453) on a `seats:add` card. */
+    private val checkSeatRequest: suspend (messageId: String, card: ThreadActionCard) -> DataResult<SeatRequestCheckOutcome> = { _, _ ->
+        DataResult.Content(SeatRequestCheckOutcome.Unsupported)
+    },
+    /** Completion (`POST /actions/:id/seats-added`, slock #16449, #16453) on a `seats:add` card. */
+    private val completeSeatRequest: suspend (messageId: String, card: ThreadActionCard) -> DataResult<SeatRequestCompleteOutcome> = { _, _ ->
         DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
     },
     /** A NoPermission the route handles (session expired): true when it did. */
@@ -639,6 +686,12 @@ internal class ThreadActionCardSpecStore(
             is ThreadActionCardSpecIntent.SubmitInlineForm -> submitInline(intent)
             is ThreadActionCardSpecIntent.CloseQuestion -> closeQuestion(intent)
             is ThreadActionCardSpecIntent.OpenInWeb -> openInWeb(intent.link)
+            ThreadActionCardSpecIntent.DismissSeatRequest -> update { it.copy(seatRequest = null) }
+            ThreadActionCardSpecIntent.OpenSeatRequestInWeb -> {
+                val seatRequest = _state.value.seatRequest ?: return
+                update { it.copy(seatRequest = null) }
+                effectChannel.trySend(ThreadActionCardSpecEffect.OpenSeatRequestInWeb(seatRequest.messageId))
+            }
         }
     }
 
@@ -662,7 +715,7 @@ internal class ThreadActionCardSpecStore(
         val current = _state.value
         val card = intent.card.expiredAsOf(nowMillis())
         if (threadActionCardSpecPress(card, intent.spec, intent.elementId) != ThreadActionCardSpecPress.Store) return
-        if (intent.messageId in current.busy || current.confirm != null || current.form != null) return
+        if (intent.messageId in current.busy || current.confirm != null || current.form != null || current.seatRequest != null) return
         val button = intent.spec.button(intent.elementId) ?: return
         when (val action = button.action) {
             is ActionCardSpecAction.Execute -> {
@@ -704,7 +757,106 @@ internal class ThreadActionCardSpecStore(
                             ),
                     )
             }
+            is ActionCardSpecAction.Open ->
+                if (action.intent == ActionCardSpecIntent.AddSeats) {
+                    startSeatRequest(intent.messageId, intent.elementId, intent.card)
+                }
             else -> Unit
+        }
+    }
+
+    /**
+     * `seats:add` Add Seats flow (web `useSeatRequestFlow`, slock #16449, #16453): asks the card's
+     * server whether the requester can still act, how many seats are short, and which pricing it
+     * counted under. When nothing is short (including an agent/assistant under `person_v2`, which
+     * takes 0 tenths) or the requester can no longer act, completes immediately via `/seats-added`
+     * with no charge; otherwise opens the add-seats sheet using the server's pricing.
+     */
+    private fun startSeatRequest(messageId: String, elementId: String, card: ThreadActionCard) {
+        update { it.copy(busy = it.busy + (messageId to elementId), errors = it.errors - messageId) }
+        scope.launch {
+            when (val checkResult = checkSeatRequest(messageId, card)) {
+                is DataResult.Content ->
+                    when (val outcome = checkResult.data) {
+                        SeatRequestCheckOutcome.Unsupported -> {
+                            update { it.copy(busy = it.busy - messageId) }
+                            effectChannel.send(ThreadActionCardSpecEffect.OpenSeatRequestInWeb(messageId))
+                        }
+                        is SeatRequestCheckOutcome.Checked -> {
+                            val check = outcome.check
+                            val effectiveShort = seatRequestEffectiveSeatsShort(card.seatsAddPurpose, check)
+                            if (!check.requesterAllowed || effectiveShort == 0) {
+                                val completeResult = completeSeatRequest(messageId, card)
+                                update { it.copy(busy = it.busy - messageId) }
+                                val error =
+                                    when (completeResult) {
+                                        is DataResult.Content -> {
+                                            completeResult.data.card?.let { applyCard(messageId, it) }
+                                            null
+                                        }
+                                        is DataResult.Empty -> ThreadActionCardSpecError.Failed()
+                                        is DataResult.Error -> expiredOrError(messageId, card, completeResult.error)
+                                        is DataResult.NoPermission ->
+                                            if (onNoPermission(completeResult)) {
+                                                null
+                                            } else {
+                                                ThreadActionCardSpecError.Failed(
+                                                    completeResult.blocker.serverMessage?.takeIf { it.isNotBlank() },
+                                                    completeResult.blocker.traceId,
+                                                )
+                                            }
+                                    }
+                                if (error != null) update { it.copy(errors = it.errors + (messageId to error)) }
+                            } else {
+                                dialogToken++
+                                val needTenths = card.seatsAddPurpose?.let { seatsAddPurposeTenths(it, check.pricing) }
+                                update {
+                                    it.copy(
+                                        busy = it.busy - messageId,
+                                        seatRequest =
+                                            ThreadActionCardSpecSeatRequestState(
+                                                messageId = messageId,
+                                                elementId = elementId,
+                                                card = card,
+                                                seatsShort = effectiveShort,
+                                                pricing = check.pricing,
+                                                needTenths = needTenths,
+                                            ),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                is DataResult.Empty ->
+                    update { it.copy(busy = it.busy - messageId, errors = it.errors + (messageId to ThreadActionCardSpecError.Failed())) }
+                is DataResult.Error -> {
+                    val err = expiredOrError(messageId, card, checkResult.error)
+                    update {
+                        it.copy(
+                            busy = it.busy - messageId,
+                            errors = if (err != null) it.errors + (messageId to err) else it.errors - messageId,
+                        )
+                    }
+                }
+                is DataResult.NoPermission -> {
+                    update { it.copy(busy = it.busy - messageId) }
+                    if (!onNoPermission(checkResult)) {
+                        update {
+                            it.copy(
+                                errors =
+                                    it.errors +
+                                        (
+                                            messageId to
+                                                ThreadActionCardSpecError.Failed(
+                                                    checkResult.blocker.serverMessage?.takeIf { s -> s.isNotBlank() },
+                                                    checkResult.blocker.traceId,
+                                                )
+                                        ),
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -971,6 +1123,7 @@ internal class ThreadActionCardSpecStore(
         val handledElsewhere = card.isExecuted || card.isFrozen
         val confirmOpen = current.confirm?.takeIf { it.messageId == messageId && it.card != card }
         val formOpen = current.form?.takeIf { it.messageId == messageId && it.card != card }
+        val seatRequestOpen = current.seatRequest?.takeIf { it.messageId == messageId && it.card != card }
         var closed = false
         val next =
             current.copy(
@@ -985,6 +1138,13 @@ internal class ThreadActionCardSpecStore(
                         formOpen == null -> current.form
                         handledElsewhere && !formOpen.submitting -> null.also { closed = true }
                         else -> formOpen.copy(card = card)
+                    },
+                seatRequest =
+                    when {
+                        seatRequestOpen == null -> current.seatRequest
+                        handledElsewhere -> null.also { closed = true }
+                        card.hasEnded -> null
+                        else -> seatRequestOpen.copy(card = card)
                     },
             )
         if (next != current) _state.value = next

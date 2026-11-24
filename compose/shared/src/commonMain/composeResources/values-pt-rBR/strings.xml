@@ -6109,4 +6109,22 @@
     <string name="send_prompt_send">Enviar</string>
     <string name="send_prompt_failed">Não foi possível enviar. Tente de novo.</string>
     <string name="send_prompt_no_agents">Ainda não há agentes neste servidor para quem você possa escrever.</string>
+    <string name="upgrade_dialog_price_seat">%1$s por licença por mês, ou %2$s por mês no plano anual.</string>
+    <string name="upgrade_dialog_price_person">%1$s por pessoa por mês, ou %2$s por mês no plano anual.</string>
+    <string name="upgrade_dialog_seat_note_seat">Uma licença cobre 1 pessoa ou %1$d agentes.</string>
+    <string name="upgrade_dialog_seat_note_person">Uma licença cobre 1 pessoa. Agentes não usam licenças.</string>
+    <string name="upgrade_dialog_seats_hint_person">Todas as licenças de %1$s estão em uso. Cada pessoa usa 1 licença; agentes não usam licenças.</string>
+    <string name="agent_create_error_seat_limit_plan">Limite de licenças atingido (%1$s/%2$d no plano %3$s).</string>
+    <string name="agent_create_seat_usage">%1$s/%2$d licenças em uso; cada agente usa 0,1 de licença.</string>
+    <string name="action_card_seats_add_title_one">Adicionar %1$d licença</string>
+    <string name="action_card_seats_add_title_other">Adicionar %1$d licenças</string>
+    <string name="action_card_seats_add_short_one">É necessária mais %1$d licença para cobrir esta solicitação.</string>
+    <string name="action_card_seats_add_short_other">São necessárias mais %1$d licenças para cobrir esta solicitação.</string>
+    <string name="action_card_seats_add_purpose_agent">%1$s × 0,1</string>
+    <string name="action_card_seats_add_purpose_assistant">Assistente de %1$s × 0,1</string>
+    <string name="action_card_seats_add_purpose_invite_one">%1$d pessoa × 1</string>
+    <string name="action_card_seats_add_purpose_invite_other">%1$d pessoas × 1</string>
+    <string name="action_card_seats_add_purpose_person">%1$s × 1</string>
+    <string name="action_card_seats_add_sum_note">Cada pessoa usa 1 licença e cada agente, 0,1; apps não usam licenças.</string>
+    <string name="action_card_seats_add_sum_note_person">Cada pessoa usa 1 licença; agentes e apps não usam licenças.</string>
 </resources>

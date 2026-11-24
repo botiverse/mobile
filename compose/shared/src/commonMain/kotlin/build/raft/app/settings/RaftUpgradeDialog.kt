@@ -27,11 +27,16 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import build.raft.app.base.Utils
 import build.raft.app.compat.pager.Pager
+import build.raft.app.data.PRO_AGENT_SEAT_BLOCK_SIZE
+import build.raft.app.data.ProPricing
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.billingPricing
+import build.raft.app.data.formatProSeatMonthlyUsd
+import build.raft.app.data.loadServerProPricing
 import build.raft.app.data.percentEncode
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.RaftTimeContext
@@ -369,6 +374,11 @@ internal data class RaftUpgradeRequest(
     val externalContext: RaftUpgradeExternalContext? = null,
     /** Owning shell store scope for pushing the authenticated in-app billing WebView (#proj-mobile:#204). */
     val storeScope: RaftShellStoreScope = RaftShellStoreScope.Legacy,
+    /**
+     * Server-resolved Pro pricing (slock #16367, `GET /api/billing/pricing`): null until the server
+     * answers, so the dialog never quotes a `seat_v1` price on a guess.
+     */
+    val pricing: ProPricing? = null,
 )
 
 /** The open upgrade dialog, if any (one per process, like web `useUpgradeDialogStore`). */
@@ -403,6 +413,8 @@ internal fun Pager.openRaftUpgradeDialog(
     storeScope: RaftShellStoreScope,
     externalContext: RaftUpgradeExternalContext? = null,
     targetServerId: String? = null,
+    knownBillingPresent: Boolean = false,
+    knownPricing: ProPricing? = null,
 ) {
     val bridge = Utils.bridgeModule(pagerId)
     val sharedStores = RaftSharedStoreRegistry.get(bridge)
@@ -434,8 +446,8 @@ internal fun Pager.openRaftUpgradeDialog(
         val resolvedSlug =
             server?.slug?.takeIf { it.isNotBlank() }
                 ?: if (requestedServerId == null) standaloneSettingsServerSlug(session) else null
-        RaftUpgradeDialogState.refresher = { request -> raftReloadServerPlan(authDataSource, request.serverId) }
-        RaftUpgradeDialogState.request =
+        val initialPricing = if (mode != RaftUpgradeMode.LimitNotice && knownBillingPresent) billingPricing(knownPricing) else null
+        val request =
             RaftUpgradeRequest(
                 gate = gate,
                 mode = mode,
@@ -454,7 +466,30 @@ internal fun Pager.openRaftUpgradeDialog(
                     ),
                 externalContext = pairedContext,
                 storeScope = storeScope,
+                pricing = initialPricing,
             )
+        RaftUpgradeDialogState.refresher = { current -> raftReloadServerPlan(authDataSource, current.serverId) }
+        RaftUpgradeDialogState.request = request
+        // #16367: ask GET /api/billing/pricing (readable by any member) when billing is not already known.
+        // Never in LimitNotice (iOS view-only App Store guideline 3.1.1) and never quote a guessed price.
+        if (mode != RaftUpgradeMode.LimitNotice && !knownBillingPresent && request.serverId.isNotBlank()) {
+            val resolved =
+                loadServerProPricing(
+                    networkClient = sharedStores.networkClient(storeScope),
+                    serverId = request.serverId,
+                )
+            if (resolved != null) {
+                val current = RaftUpgradeDialogState.request
+                if (current != null &&
+                    current.pagerId == request.pagerId &&
+                    current.serverId == request.serverId &&
+                    current.gate == request.gate &&
+                    current.mode == request.mode
+                ) {
+                    RaftUpgradeDialogState.request = current.copy(pricing = resolved)
+                }
+            }
+        }
     }
 }
 
@@ -673,6 +708,7 @@ internal fun RaftUpgradeDialog(
         }
     val hint =
         when {
+            seats && request.pricing == ProPricing.PersonV2 -> stringResource(Res.string.upgrade_dialog_seats_hint_person, server)
             seats -> stringResource(Res.string.upgrade_dialog_seats_hint, server)
             freezeDeadline != null ->
                 stringResource(Res.string.upgrade_dialog_external_freeze_upcoming_hint, freezeDeadline, server)
@@ -704,6 +740,9 @@ internal fun RaftUpgradeDialog(
         )
         if (!seats) {
             RaftUpgradeBenefitList(raftUpgradeBenefits(copy.first), firstIsHit = copy.first != null)
+            request.pricing?.let { resolvedPricing ->
+                RaftUpgradePricingSummary(resolvedPricing)
+            }
         }
         if (request.waitingForWeb) {
             RaftBanner(
@@ -785,5 +824,39 @@ private fun RaftUpgradeBenefitList(benefits: List<RaftUpgradeBenefit>, firstIsHi
                 }
             }
         }
+    }
+}
+
+/**
+ * Server-resolved Pro pricing lines (web `ProOffer` / `PlanSectionContent`, slock #16367):
+ * only rendered once the server has answered (`pricing != null`), never from a client-side guess.
+ */
+@Composable
+private fun RaftUpgradePricingSummary(pricing: ProPricing) {
+    val monthly = formatProSeatMonthlyUsd(annual = false, pricing = pricing)
+    val annualMonthly = formatProSeatMonthlyUsd(annual = true, pricing = pricing)
+    val priceLine =
+        if (pricing.agentsTakeSeats) {
+            stringResource(Res.string.upgrade_dialog_price_seat, monthly, annualMonthly)
+        } else {
+            stringResource(Res.string.upgrade_dialog_price_person, monthly, annualMonthly)
+        }
+    val seatNote =
+        if (pricing.agentsTakeSeats) {
+            stringResource(Res.string.upgrade_dialog_seat_note_seat, PRO_AGENT_SEAT_BLOCK_SIZE)
+        } else {
+            stringResource(Res.string.upgrade_dialog_seat_note_person)
+        }
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        RaftText(
+            text = priceLine,
+            style = RaftTheme.typography.callout,
+            color = RaftTheme.colors.foreground,
+        )
+        RaftText(
+            text = seatNote,
+            style = RaftTheme.typography.footnote,
+            color = RaftTheme.colors.foregroundHint,
+        )
     }
 }

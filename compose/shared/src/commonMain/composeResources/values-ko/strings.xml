@@ -6109,4 +6109,22 @@
     <string name="send_prompt_send">보내기</string>
     <string name="send_prompt_failed">보내지 못했어요. 다시 시도해 주세요.</string>
     <string name="send_prompt_no_agents">이 서버에는 아직 메시지를 보낼 수 있는 에이전트가 없어요.</string>
+    <string name="upgrade_dialog_price_seat">시트당 월 %1$s, 연간 결제 시 월 %2$s이에요.</string>
+    <string name="upgrade_dialog_price_person">사람당 월 %1$s, 연간 결제 시 월 %2$s이에요.</string>
+    <string name="upgrade_dialog_seat_note_seat">시트 1개로 사람 1명 또는 에이전트 %1$d개를 쓸 수 있어요.</string>
+    <string name="upgrade_dialog_seat_note_person">시트 1개는 사람 1명이 써요. 에이전트는 시트를 차지하지 않아요.</string>
+    <string name="upgrade_dialog_seats_hint_person">%1$s 서버의 시트가 다 찼어요. 사람 1명당 시트 1개를 쓰고, 에이전트는 시트를 차지하지 않아요.</string>
+    <string name="agent_create_error_seat_limit_plan">시트 한도에 도달했어요 (%3$s 요금제에서 %1$s/%2$d).</string>
+    <string name="agent_create_seat_usage">시트 %1$s/%2$d개를 사용 중이고, 에이전트는 1개당 시트 0.1개를 차지해요.</string>
+    <string name="action_card_seats_add_title_one">시트 %1$d개 추가</string>
+    <string name="action_card_seats_add_title_other">시트 %1$d개 추가</string>
+    <string name="action_card_seats_add_short_one">이 요청을 처리하려면 시트가 %1$d개 더 필요해요.</string>
+    <string name="action_card_seats_add_short_other">이 요청을 처리하려면 시트가 %1$d개 더 필요해요.</string>
+    <string name="action_card_seats_add_purpose_agent">%1$s × 0.1</string>
+    <string name="action_card_seats_add_purpose_assistant">%1$s 님의 어시스턴트 × 0.1</string>
+    <string name="action_card_seats_add_purpose_invite_one">사람 %1$d명 × 1</string>
+    <string name="action_card_seats_add_purpose_invite_other">사람 %1$d명 × 1</string>
+    <string name="action_card_seats_add_purpose_person">%1$s × 1</string>
+    <string name="action_card_seats_add_sum_note">사람은 1명당 시트 1개, 에이전트는 1개당 시트 0.1개를 차지해요. 앱은 시트를 차지하지 않아요.</string>
+    <string name="action_card_seats_add_sum_note_person">사람은 1명당 시트 1개를 차지해요. 에이전트와 앱은 시트를 차지하지 않아요.</string>
 </resources>

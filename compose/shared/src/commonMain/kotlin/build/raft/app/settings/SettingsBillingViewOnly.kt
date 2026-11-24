@@ -21,14 +21,19 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import build.raft.app.base.Utils
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
+import build.raft.app.data.PRO_AGENT_SEAT_BLOCK_SIZE
+import build.raft.app.data.ProPricing
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsBillingSnapshot
 import build.raft.app.data.SettingsBillingSubscriptionSnapshot
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
+import build.raft.app.data.billingPricing
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.formatSeatTenths
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.data.seatTenths
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
@@ -76,8 +81,8 @@ internal const val SettingsBillingFreeUploadBytes = 100L * 1024 * 1024
 private const val SettingsBillingDowngradeGraceDays = 7
 private const val SettingsBillingDayMillis = 24L * 60 * 60 * 1000
 
-/** Shared PRO_AGENT_SEAT_BLOCK_SIZE: ten agents take one seat, so an agent takes a tenth of one. */
-internal const val SettingsBillingAgentSeatBlock = 10
+/** Shared PRO_AGENT_SEAT_BLOCK_SIZE: ten agents take one seat under `seat_v1`, so an agent takes a tenth of one. */
+internal const val SettingsBillingAgentSeatBlock = PRO_AGENT_SEAT_BLOCK_SIZE
 
 internal enum class SettingsBillingViewOnlyPlan { Free, Pro, Founder, Partner, AppSumo, Other }
 
@@ -111,7 +116,14 @@ internal sealed interface SettingsBillingViewOnlyStatus {
 
 internal data class SettingsBillingViewOnlyDowngrade(val expired: Boolean, val daysLeft: Int)
 
-internal data class SettingsBillingViewOnlySeats(val used: Double, val capacity: Double, val humans: Int, val agents: Int)
+internal data class SettingsBillingViewOnlySeats(
+    val used: Double,
+    val capacity: Double,
+    val humans: Int,
+    val agents: Int,
+    /** Server-resolved Pro pricing (slock #16345, #16367); under `person_v2` agents take no seat. */
+    val pricing: ProPricing = ProPricing.SeatV1,
+)
 
 internal data class SettingsBillingViewOnlyAppSumo(
     val humans: Int,
@@ -145,6 +157,7 @@ internal data class SettingsBillingViewOnlyModel(
     val members: SettingsBillingViewOnlyMembers? = null,
     val details: SettingsBillingViewOnlyDetails? = null,
     val owner: Boolean = false,
+    val pricing: ProPricing = ProPricing.SeatV1,
 )
 
 internal fun settingsBillingViewOnlyModel(
@@ -153,6 +166,7 @@ internal fun settingsBillingViewOnlyModel(
     nowEpochMillis: Long,
 ): SettingsBillingViewOnlyModel {
     val summary: SettingsBillingSubscriptionSnapshot? = snapshot?.summary
+    val pricing = billingPricing(summary?.pricing)
     val planId = (summary?.effectivePlan ?: snapshot?.serverPlan ?: sessionPlan)?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "free"
     val appsumo = summary?.appsumo
     // web billingControls getBillingControlsState.
@@ -208,6 +222,7 @@ internal fun settingsBillingViewOnlyModel(
                 capacity = max(0.0, maxSeats),
                 humans = usage?.humans ?: 0,
                 agents = usage?.agents ?: 0,
+                pricing = pricing,
             )
         } else {
             null
@@ -261,6 +276,7 @@ internal fun settingsBillingViewOnlyModel(
                 null
             },
         owner = summary?.canManageBilling == true,
+        pricing = pricing,
     )
 }
 
@@ -277,18 +293,15 @@ internal fun settingsBillingYearMonth(month: String): Pair<Int, Int>? {
 internal fun settingsBillingFormatSeats(value: Double): String = settingsBillingFormatSeatTenths((value * 10).roundToLong())
 
 /** Seats counted in tenths, with at most one decimal: 15 is "1.5", 40 is "4". */
-internal fun settingsBillingFormatSeatTenths(tenths: Long): String {
-    val whole = tenths / 10
-    val fraction = kotlin.math.abs(tenths % 10)
-    return if (fraction == 0L) whole.toString() else "$whole.$fraction"
-}
+internal fun settingsBillingFormatSeatTenths(tenths: Long): String = formatSeatTenths(tenths)
 
 /**
- * Shared `seatTenths`: seats in tenths, as an integer (a person is 10, an agent 1). Seat math
- * counts these, never the 0.1 share itself, which drifts in floating point.
+ * Shared `seatTenths`: seats in tenths, as an integer (a person is 10; an agent is 1 under
+ * `seat_v1`, 0 under `person_v2`). Seat math counts these, never the 0.1 share itself, which
+ * drifts in floating point.
  */
-internal fun settingsBillingSeatTenths(humans: Int, agents: Int): Long =
-    max(0, humans).toLong() * SettingsBillingAgentSeatBlock + max(0, agents)
+internal fun settingsBillingSeatTenths(humans: Int, agents: Int, pricing: ProPricing = ProPricing.SeatV1): Long =
+    seatTenths(humans, agents, pricing)
 
 /** Who takes the seats of a [SettingsBillingSeatsBreakdownRow]. */
 internal enum class SettingsBillingSeatHolder { People, Agents }
@@ -298,15 +311,19 @@ internal data class SettingsBillingSeatsBreakdownRow(val holder: SettingsBilling
 
 /**
  * What a server's seats in use are made of, one row per kind (web SeatsBreakdown, botiverse/slock
- * 16f5f8bc40 `packages/web/src/components/billing/SeatsBreakdown.tsx`): the people, then the
- * agents, with no agents row when there are none. Agent seats are counted in tenths, as the rest
- * of seat math (`seatsFromTenths(seatTenths(0, agents))`): 15 agents take 1.5 seats.
+ * #15505, #16345, #16367 `packages/web/src/components/billing/SeatsBreakdown.tsx`): the people,
+ * then the agents under `seat_v1`, with no agents row when there are none or under `person_v2`
+ * (where agents take no seat). Agent seats are counted in tenths (`seatTenths(0, agents, pricing)`).
  */
-internal fun settingsBillingSeatsBreakdown(humans: Int, agents: Int): List<SettingsBillingSeatsBreakdownRow> =
+internal fun settingsBillingSeatsBreakdown(
+    humans: Int,
+    agents: Int,
+    pricing: ProPricing = ProPricing.SeatV1,
+): List<SettingsBillingSeatsBreakdownRow> =
     buildList {
-        add(SettingsBillingSeatsBreakdownRow(SettingsBillingSeatHolder.People, humans, settingsBillingSeatTenths(humans, 0)))
-        if (agents > 0) {
-            add(SettingsBillingSeatsBreakdownRow(SettingsBillingSeatHolder.Agents, agents, settingsBillingSeatTenths(0, agents)))
+        add(SettingsBillingSeatsBreakdownRow(SettingsBillingSeatHolder.People, humans, seatTenths(humans, 0, pricing)))
+        if (agents > 0 && pricing.agentsTakeSeats) {
+            add(SettingsBillingSeatsBreakdownRow(SettingsBillingSeatHolder.Agents, agents, seatTenths(0, agents, pricing)))
         }
     }
 
@@ -630,7 +647,7 @@ private fun SettingsBillingUsageCard(model: SettingsBillingViewOnlyModel) {
                             ),
                     )
                     // Under "n of m used": what the seats in use are made of.
-                    SettingsBillingSeatsBreakdown(seats.humans, seats.agents)
+                    SettingsBillingSeatsBreakdown(seats.humans, seats.agents, seats.pricing)
                 }
             }
             model.appSumo?.let { appSumo ->
@@ -715,14 +732,15 @@ private fun SettingsBillingUsageCard(model: SettingsBillingViewOnlyModel) {
 }
 
 /**
- * web SeatsBreakdown (botiverse/slock 16f5f8bc40, #15505; cindyz option 2): what the seats in use
- * are made of, in two columns, one row per kind, label then seats: "4 people | 4 seats",
- * "15 agents | 1.5 seats (1 per 10 agents)" ([settingsBillingSeatsBreakdown]).
+ * web SeatsBreakdown (botiverse/slock #15505, #16345, #16367; cindyz option 2): what the seats in
+ * use are made of, in two columns, one row per kind, label then seats: "4 people | 4 seats", and
+ * under `seat_v1` "15 agents | 1.5 seats (1 per 10 agents)". Under `person_v2`, agents take no seat
+ * and the agents row is omitted ([settingsBillingSeatsBreakdown]).
  */
 @Composable
-private fun SettingsBillingSeatsBreakdown(humans: Int, agents: Int) {
+private fun SettingsBillingSeatsBreakdown(humans: Int, agents: Int, pricing: ProPricing) {
     RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
-        settingsBillingSeatsBreakdown(humans, agents).forEach { row ->
+        settingsBillingSeatsBreakdown(humans, agents, pricing).forEach { row ->
             Item(term = row.termDesc().localized(), value = row.valueDesc().localized(), copyable = false)
         }
     }

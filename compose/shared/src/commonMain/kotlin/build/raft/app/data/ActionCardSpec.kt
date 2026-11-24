@@ -70,9 +70,11 @@ val ACTION_CARD_SPEC_CAPABILITIES: List<String> =
 // [raftAppActionCardCapabilities]). schemaVersion 8: field.choice, the question card's Choice and its form's steps
 // (the form sheet, ActionCardFormSheet). S0.3: intent.feedback_ticket, a done feedback card's "View in
 // Settings", which opens Settings › Feedback on the sender's ticket; shown only to the sender and
-// only for a ticket filed into this App (`showsFeedbackTicket`), else removed. Not
-// intent.upgrade_dialog or intent.add_seats: the App has no upgrade or add-seats dialog for a card, so
-// those buttons are "Open in web".
+// only for a ticket filed into this App (`showsFeedbackTicket`), else removed. #16449/#16453:
+// intent.add_seats, a `seats:add` card's Add Seats, checks `GET /actions/:id/seat-request` (on the
+// card's server), completes immediately when no seats are short or the requester can no longer act,
+// and otherwise opens the add-seats sheet counted under the server's pricing. Not
+// intent.upgrade_dialog: the App has no upgrade-card dialog, so that button is "Open in web".
 // Not intent.migrate_agent either (schemaVersion 9, an agent:migrate card's Move agent): no migration
 // dialog for a card, so it is "Open in web" too.
 val RAFT_APP_ACTION_CARD_CAPABILITIES: List<String> =
@@ -81,7 +83,7 @@ val RAFT_APP_ACTION_CARD_CAPABILITIES: List<String> =
         "field.text_input", "field.text_area", "field.select", "field.toggle", "field.member_picker", "field.channel_picker",
         "field.agent_picker", "field.choice",
         "intent.create_channel", "intent.add_members", "intent.create_agent", "intent.feedback_form",
-        "intent.feedback_ticket",
+        "intent.feedback_ticket", "intent.add_seats",
     )
 
 /**

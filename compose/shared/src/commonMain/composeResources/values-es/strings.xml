@@ -6109,4 +6109,22 @@
     <string name="send_prompt_send">Enviar</string>
     <string name="send_prompt_failed">No se pudo enviar. Inténtalo de nuevo.</string>
     <string name="send_prompt_no_agents">Todavía no hay agentes en este servidor a los que puedas escribir.</string>
+    <string name="upgrade_dialog_price_seat">%1$s por puesto al mes, o %2$s al mes con pago anual.</string>
+    <string name="upgrade_dialog_price_person">%1$s por persona al mes, o %2$s al mes con pago anual.</string>
+    <string name="upgrade_dialog_seat_note_seat">Un puesto cubre a 1 persona o %1$d agentes.</string>
+    <string name="upgrade_dialog_seat_note_person">Un puesto cubre a 1 persona. Los agentes no ocupan puestos.</string>
+    <string name="upgrade_dialog_seats_hint_person">Todos los puestos de %1$s están ocupados. Cada persona ocupa 1 puesto; los agentes no ocupan puestos.</string>
+    <string name="agent_create_error_seat_limit_plan">Se alcanzó el límite de puestos (%1$s/%2$d en el plan %3$s).</string>
+    <string name="agent_create_seat_usage">Puestos en uso: %1$s/%2$d; cada agente ocupa 0,1.</string>
+    <string name="action_card_seats_add_title_one">Agregar %1$d puesto</string>
+    <string name="action_card_seats_add_title_other">Agregar %1$d puestos</string>
+    <string name="action_card_seats_add_short_one">Se necesita %1$d puesto más para cubrir esta solicitud.</string>
+    <string name="action_card_seats_add_short_other">Se necesitan %1$d puestos más para cubrir esta solicitud.</string>
+    <string name="action_card_seats_add_purpose_agent">%1$s × 0,1</string>
+    <string name="action_card_seats_add_purpose_assistant">Asistente de %1$s × 0,1</string>
+    <string name="action_card_seats_add_purpose_invite_one">%1$d persona × 1</string>
+    <string name="action_card_seats_add_purpose_invite_other">%1$d personas × 1</string>
+    <string name="action_card_seats_add_purpose_person">%1$s × 1</string>
+    <string name="action_card_seats_add_sum_note">Cada persona ocupa 1 puesto y cada agente, 0,1; las apps no ocupan ninguno.</string>
+    <string name="action_card_seats_add_sum_note_person">Cada persona ocupa 1 puesto; los agentes y las apps no ocupan ninguno.</string>
 </resources>

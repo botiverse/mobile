@@ -6,14 +6,15 @@ import build.raft.app.data.ActionCardSpecCard
 import build.raft.app.data.ActionCardSpecIntent
 import build.raft.app.data.CardStack
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
+import build.raft.app.data.SeatsAddActionCardType
 import build.raft.app.data.parseActionCardSpec
 import build.raft.app.data.stripActionCardSpec
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 
 /**
@@ -59,14 +60,14 @@ class ActionCardStackRoleTest {
     }
 
     @Test
-    fun addSeatsReadsAsItsIntentAndTheAppOpensItInWeb() {
+    fun addSeatsReadsAsItsIntentAndKeepsItsNativeCapabilityForSeatsAddCards() {
         val read = assertNotNull(parseActionCardSpec(ActionCardSpecFixtures.rawCard("open_add_seats")))
         val button = read.spec.buttons.single()
         assertEquals(ActionCardSpecAction.Open(ActionCardSpecIntent.AddSeats), button.action)
-        assertFalse(ActionCardSpecIntent.AddSeats.capability in RAFT_APP_ACTION_CARD_CAPABILITIES)
+        assertTrue(ActionCardSpecIntent.AddSeats.capability in RAFT_APP_ACTION_CARD_CAPABILITIES)
         val stripped = assertNotNull(stripActionCardSpec(read, RAFT_APP_ACTION_CARD_CAPABILITIES))
-        assertEquals(ActionCardSpecAction.OpenInWeb, stripped.spec.buttons.single().action)
-        assertEquals(null, ActionCardSpecIntent.AddSeats.typedActionType())
+        assertEquals(ActionCardSpecAction.Open(ActionCardSpecIntent.AddSeats), stripped.spec.buttons.single().action)
+        assertEquals(SeatsAddActionCardType, ActionCardSpecIntent.AddSeats.typedActionType())
     }
 
     private fun cardWithReason(elements: String): ActionCardSpecCard {

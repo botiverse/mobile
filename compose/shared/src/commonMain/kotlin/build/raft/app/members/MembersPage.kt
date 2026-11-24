@@ -716,6 +716,7 @@ internal fun MembersPageContent(
             createAgentCurrentAgentCount = createAgentLimit.usage,
             createAgentMaxAgents = createAgentLimit.limit,
             createAgentLimitPlanLabel = createAgentLimit.planLabel,
+            createAgentSeatLimit = createAgentLimit.seatState,
             createAgentLoadMachines = loadMachines,
             createAgentRetryMachines = retryMachines,
             createAgentFormStore = createAgentFormStore,
@@ -725,7 +726,18 @@ internal fun MembersPageContent(
                 if (settingsBillingOffersUpgrade()) null else ({ pager.openSettingsBillingPage(storeScope) }),
             // Web CreateAgentDialog `seat_limit_agent_create`: Free → upgrade, Pro → add seats.
             createAgentUpgrade =
-                if (settingsBillingOffersUpgrade()) ({ pager.openRaftUpgradeDialog(RaftUpgradeGate.SeatLimitAgentCreate, storeScope) }) else null,
+                if (settingsBillingOffersUpgrade()) {
+                    {
+                        pager.openRaftUpgradeDialog(
+                            RaftUpgradeGate.SeatLimitAgentCreate,
+                            storeScope,
+                            knownBillingPresent = createAgentBilling != null,
+                            knownPricing = createAgentBilling?.pricing,
+                        )
+                    }
+                } else {
+                    null
+                },
             createAgentAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) },
         ),
         inviteHuman = MembersInviteHumanInputs(inviteHumanDialog = inviteHumanDialog),

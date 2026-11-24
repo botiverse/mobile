@@ -2441,6 +2441,16 @@ internal class SharedThreadDataSource(
         card: ThreadActionCard,
     ): DataResult<build.raft.app.data.ActionCardCloseOutcome> = actionCardCommands.closeQuestionActionCard(messageId, card)
 
+    suspend fun checkSeatRequest(
+        messageId: String,
+        card: ThreadActionCard,
+    ): DataResult<build.raft.app.data.SeatRequestCheckOutcome> = actionCardCommands.checkSeatRequest(messageId, card)
+
+    suspend fun completeSeatRequest(
+        messageId: String,
+        card: ThreadActionCard,
+    ): DataResult<build.raft.app.data.SeatRequestCompleteOutcome> = actionCardCommands.completeSeatRequest(messageId, card)
+
     suspend fun fetchThreadPayload(
         basePayload: RaftThreadScreenPayload,
         persistResult: Boolean = true,

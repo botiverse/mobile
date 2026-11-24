@@ -514,6 +514,7 @@ internal fun MembersListContent(
             currentAgentCount = createAgentCurrentAgentCount,
             maxAgents = createAgentMaxAgents,
             limitPlanLabel = createAgent.createAgentLimitPlanLabel,
+            seatLimit = createAgent.createAgentSeatLimit,
             onDismiss = {
                 if (!createAgentSubmitting) {
                     activeCreateAgentMode = null

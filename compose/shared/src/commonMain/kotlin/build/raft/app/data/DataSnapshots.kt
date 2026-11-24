@@ -1776,8 +1776,10 @@ data class SettingsBillingSubscriptionSnapshot(
     val canManageBilling: Boolean = false,
     val displayName: String? = null,
     val effectivePlan: String? = null,
-    /** `server`, `subscription` or `appsumo`: what the plan comes from. */
+    /** `server`, `subscription`, `appsumo` or `prepaid`: what the plan comes from. */
     val source: String? = null,
+    /** Server-resolved Pro pricing (`seat_v1` | `person_v2`, slock #16345); null when an older server omits it (`seat_v1`). */
+    val pricing: ProPricing? = null,
     val appsumoBillingReserved: Boolean = false,
     val appsumo: SettingsBillingAppSumoSnapshot? = null,
     /** Seats the plan holds; -1 unlimited, null when billing does not say. */
@@ -1799,7 +1801,7 @@ data class SettingsBillingAppSumoSnapshot(
     val hostedJointChannels: Int
 )
 
-/** Who is on the server for billing: people, agents and the seats they take (a person 1, an agent 0.1). */
+/** Who is on the server for billing: people, agents and the seats they take (a person 1; an agent 0.1 under `seat_v1`, 0 under `person_v2`). */
 data class SettingsBillingSeatUsageSnapshot(
     val humans: Int,
     val agents: Int,

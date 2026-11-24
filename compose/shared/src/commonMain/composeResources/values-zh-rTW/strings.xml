@@ -6109,4 +6109,22 @@
     <string name="send_prompt_send">傳送</string>
     <string name="send_prompt_failed">沒有送出，請再試一次。</string>
     <string name="send_prompt_no_agents">這個伺服器上還沒有你能傳訊息的 agent。</string>
+    <string name="upgrade_dialog_price_seat">每個席位每月 %1$s，按年付相當於每月 %2$s。</string>
+    <string name="upgrade_dialog_price_person">每人每月 %1$s，按年付相當於每月 %2$s。</string>
+    <string name="upgrade_dialog_seat_note_seat">1 個席位可供 1 人或 %1$d 個 Agent 使用。</string>
+    <string name="upgrade_dialog_seat_note_person">1 個席位對應 1 位成員，Agent 不佔席位。</string>
+    <string name="upgrade_dialog_seats_hint_person">%1$s 的席位已全部用完。每位成員佔 1 個席位，Agent 不佔席位。</string>
+    <string name="agent_create_error_seat_limit_plan">已達席位上限（%3$s 方案已用 %1$s/%2$d）。</string>
+    <string name="agent_create_seat_usage">已使用 %1$s/%2$d 個席位；每個 Agent 佔用 0.1 個席位。</string>
+    <string name="action_card_seats_add_title_one">增加 %1$d 個席位</string>
+    <string name="action_card_seats_add_title_other">增加 %1$d 個席位</string>
+    <string name="action_card_seats_add_short_one">此請求還需要再增加 %1$d 個席位。</string>
+    <string name="action_card_seats_add_short_other">此請求還需要再增加 %1$d 個席位。</string>
+    <string name="action_card_seats_add_purpose_agent">%1$s × 0.1</string>
+    <string name="action_card_seats_add_purpose_assistant">%1$s 的助理 × 0.1</string>
+    <string name="action_card_seats_add_purpose_invite_one">%1$d 人 × 1</string>
+    <string name="action_card_seats_add_purpose_invite_other">%1$d 人 × 1</string>
+    <string name="action_card_seats_add_purpose_person">%1$s × 1</string>
+    <string name="action_card_seats_add_sum_note">每人佔用 1 個席位，每個 Agent 佔用 0.1 個；應用程式不佔用席位。</string>
+    <string name="action_card_seats_add_sum_note_person">每人佔用 1 個席位；Agent 和應用程式不佔用席位。</string>
 </resources>

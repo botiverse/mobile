@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.ActionCardCloseOutcome
 import build.raft.app.data.ActionCardExecuteOutcome
+import build.raft.app.data.SeatRequestCheckOutcome
+import build.raft.app.data.SeatRequestCompleteOutcome
 import build.raft.app.data.AddChannelMembersBatchRequest
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.CreateAgentBody
@@ -249,6 +251,51 @@ internal class ThreadActionCardCommands(
                 }
             }
             is DataResult.Empty -> DataResult.Error(ScreenError(code = "action_card_close_empty", retryable = true))
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
+    /**
+     * Checks a `seats:add` card before paying (`GET /api/actions/:messageId/seat-request`, slock
+     * #16449, #16453). Routes with the card's `sourceServerId` because the DM may live on another
+     * server than the currently open server.
+     */
+    suspend fun checkSeatRequest(
+        messageId: String,
+        card: ThreadActionCard,
+    ): DataResult<SeatRequestCheckOutcome> {
+        val actionsApi =
+            actionCardsApiClient
+                ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+        if (card.isFrozen) return DataResult.Error(ScreenError(code = "action_card_frozen", retryable = false))
+        val serverIdOverride = card.sourceServerId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId)
+        return actionsApi.checkSeatRequest(MessageId(messageId), serverIdOverride)
+    }
+
+    /**
+     * Completes a `seats:add` card (`POST /api/actions/:messageId/seats-added`, slock #16449,
+     * #16453), routing to the card's `sourceServerId` when present.
+     */
+    suspend fun completeSeatRequest(
+        messageId: String,
+        card: ThreadActionCard,
+    ): DataResult<SeatRequestCompleteOutcome> {
+        val actionsApi =
+            actionCardsApiClient
+                ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+        if (card.isFrozen) return DataResult.Error(ScreenError(code = "action_card_frozen", retryable = false))
+        val serverIdOverride = card.sourceServerId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId)
+        return when (val result = actionsApi.completeSeatRequest(MessageId(messageId), serverIdOverride)) {
+            is DataResult.Content -> {
+                val outcome = result.data
+                if (outcome.card == null) {
+                    DataResult.Content(SeatRequestCompleteOutcome.Completed(card.copy(state = "executed")))
+                } else {
+                    result
+                }
+            }
+            is DataResult.Empty -> DataResult.Error(ScreenError(code = "action_card_seats_added_empty", retryable = true))
             is DataResult.Error -> result
             is DataResult.NoPermission -> result
         }

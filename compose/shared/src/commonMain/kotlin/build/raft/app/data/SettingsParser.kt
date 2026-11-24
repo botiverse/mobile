@@ -677,6 +677,7 @@ private data class WireSettingsBillingSubscription(
     val plan: String? = null,
     val displayName: String? = null,
     val source: String? = null,
+    val pricing: String? = null,
     val appsumoBillingReserved: Boolean = false,
     val appsumo: WireSettingsBillingAppSumo? = null,
     val capacity: WireSettingsBillingCapacity? = null,
@@ -752,6 +753,7 @@ fun parseSharedSettingsBillingSubscription(bodyText: String): SettingsBillingSub
         displayName = billing.displayName?.takeIf { it.isNotBlank() },
         effectivePlan = billing.plan?.takeIf { it.isNotBlank() },
         source = billing.source?.takeIf { it.isNotBlank() },
+        pricing = ProPricing.fromWireOrNull(billing.pricing),
         appsumoBillingReserved = billing.appsumoBillingReserved,
         appsumo = billing.appsumo?.takeIf { it.tier > 0 }?.let {
             SettingsBillingAppSumoSnapshot(
