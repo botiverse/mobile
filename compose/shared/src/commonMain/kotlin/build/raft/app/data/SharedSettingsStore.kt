@@ -579,7 +579,10 @@ sealed interface SharedSettingsIntent {
     data class UpdateSystemChannelVisibility(val allChannelId: String, val hide: Boolean) : SharedSettingsIntent
     data object RestoreSystemChannel : SharedSettingsIntent
     data class UpdateServerMemberRole(val request: SettingsServerMemberRoleUpdateRequest) : SharedSettingsIntent
-    data class RemoveServerMember(val memberId: String) : SharedSettingsIntent
+    data class RemoveServerMember(
+        val memberId: String,
+        val revokeComputerIds: List<String> = emptyList(),
+    ) : SharedSettingsIntent
     data object LeaveServer : SharedSettingsIntent
     data class DeleteServer(val request: SettingsServerDeleteRequest) : SharedSettingsIntent
     data class RequestServerConfirmation(val action: String, val itemId: String? = null) : SharedSettingsIntent
@@ -1265,7 +1268,10 @@ class SharedSettingsDataSource(
         (settingsRepository as? SettingsServerManagementRepository)?.updateServerMemberRole(request)
             ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
-    suspend fun removeServerMember(memberId: String): DataResult<SettingsServerActionResult> {
+    suspend fun removeServerMember(
+        memberId: String,
+        revokeComputerIds: List<String> = emptyList(),
+    ): DataResult<SettingsServerActionResult> {
         val cleanMemberId = memberId.trim()
         val session = sessionStore.readSession()
         val serverId = session?.currentServerId?.trim().orEmpty()
@@ -1286,7 +1292,7 @@ class SharedSettingsDataSource(
                 null
             }
         val result =
-            (settingsRepository as? SettingsServerManagementRepository)?.removeServerMember(memberId)
+            (settingsRepository as? SettingsServerManagementRepository)?.removeServerMember(memberId, revokeComputerIds)
                 ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         if (result is DataResult.Content && result.data.success) {
             if (serverId.isNotBlank() && cleanMemberId.isNotBlank()) {
@@ -2891,7 +2897,8 @@ class SharedSettingsStore(
             }
             is SharedSettingsIntent.RemoveServerMember -> {
                 runAction(SERVER_ACTION_MEMBER_REMOVE, intent.memberId) {
-                    dataSource.removeServerMember(intent.memberId).applyServerActionResult(SERVER_ACTION_MEMBER_REMOVE, intent.memberId)
+                    dataSource.removeServerMember(intent.memberId, intent.revokeComputerIds)
+                        .applyServerActionResult(SERVER_ACTION_MEMBER_REMOVE, intent.memberId)
                 }
             }
             SharedSettingsIntent.LeaveServer -> {

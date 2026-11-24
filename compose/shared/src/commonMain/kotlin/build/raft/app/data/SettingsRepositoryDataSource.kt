@@ -217,9 +217,16 @@ internal suspend fun RaftNetworkClient.settingsServerChannels(priority: DataRequ
 private suspend fun RaftNetworkClient.deleteSettingsServerMember(
     priority: DataRequestPriority,
     serverId: String,
-    memberId: String
+    memberId: String,
+    bodyText: String? = null,
 ): HomeNetworkResponse =
-    request(priority, "servers/$serverId/members/$memberId", method = "DELETE", serverIdOverride = ServerId(serverId))
+    request(
+        priority,
+        "servers/$serverId/members/$memberId",
+        method = "DELETE",
+        serverIdOverride = ServerId(serverId),
+        bodyText = bodyText,
+    )
 
 private suspend fun RaftNetworkClient.leaveSettingsServer(
     priority: DataRequestPriority,
@@ -1366,7 +1373,10 @@ class RealSettingsRepository(
         return settingsUpdateServerMemberRole(server.id, memberId, role)
     }
 
-    override suspend fun removeServerMember(memberId: String): DataResult<SettingsServerActionResult> {
+    override suspend fun removeServerMember(
+        memberId: String,
+        revokeComputerIds: List<String>,
+    ): DataResult<SettingsServerActionResult> {
         val server = selectedServer() ?: return serverRequired()
         if (!server.canManageServer) {
             return DataResult.NoPermission(
@@ -1375,7 +1385,7 @@ class RealSettingsRepository(
         }
         val normalizedMemberId = memberId.trim()
         if (normalizedMemberId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        return settingsRemoveServerMember(server.id, normalizedMemberId)
+        return settingsRemoveServerMember(server.id, normalizedMemberId, revokeComputerIds)
     }
 
     override suspend fun leaveServer(): DataResult<SettingsServerActionResult> {
@@ -2409,13 +2419,22 @@ class RealSettingsRepository(
 
     private suspend fun settingsRemoveServerMember(
         serverId: String,
-        memberId: String
+        memberId: String,
+        revokeComputerIds: List<String> = emptyList(),
     ): DataResult<SettingsServerActionResult> =
         executeTypedSettings(
             source = "settings_server_member_remove",
             contractCode = "settings_server_member_remove_contract_mismatch",
-            block = { networkClient.deleteSettingsServerMember(DataRequestPriority.Foreground, serverId, memberId) },
+            block = {
+                networkClient.deleteSettingsServerMember(
+                    DataRequestPriority.Foreground,
+                    serverId,
+                    memberId,
+                    bodyText = buildSettingsRemoveServerMemberBody(revokeComputerIds),
+                )
+            },
             errorTextDecoder = HomeNetworkResponse::settingsServerActionRouteErrorTextOrNull,
+            errorCodeDecoder = HomeNetworkResponse::settingsServerActionRouteErrorCodeOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerAction(bodyText)
                     ?: settingsContractMismatch("settings_server_member_remove_contract_mismatch")
@@ -2428,6 +2447,7 @@ class RealSettingsRepository(
             contractCode = "settings_server_leave_contract_mismatch",
             block = { networkClient.leaveSettingsServer(DataRequestPriority.Foreground, serverId) },
             errorTextDecoder = HomeNetworkResponse::settingsServerActionRouteErrorTextOrNull,
+            errorCodeDecoder = HomeNetworkResponse::settingsServerActionRouteErrorCodeOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerAction(bodyText)
                     ?: settingsContractMismatch("settings_server_leave_contract_mismatch")
@@ -2549,6 +2569,7 @@ class RealSettingsRepository(
         contractCode: String,
         block: suspend () -> HomeNetworkResponse,
         errorTextDecoder: (HomeNetworkResponse) -> String? = { null },
+        errorCodeDecoder: (HomeNetworkResponse) -> String? = { null },
         mapper: (String) -> T
     ): DataResult<T> =
         executeTypedSettingsWithDiagnostics(
@@ -2557,6 +2578,7 @@ class RealSettingsRepository(
             block = block,
             diagnosticsLogger = warningLogger,
             errorTextDecoder = errorTextDecoder,
+            errorCodeDecoder = errorCodeDecoder,
             mapper = mapper
         )
 
@@ -2592,6 +2614,7 @@ private suspend fun <T> executeTypedSettingsWithDiagnostics(
     block: suspend () -> HomeNetworkResponse,
     diagnosticsLogger: (String) -> Unit = {},
     errorTextDecoder: (HomeNetworkResponse) -> String? = { null },
+    errorCodeDecoder: (HomeNetworkResponse) -> String? = { null },
     mapper: (String) -> T
 ): DataResult<T> {
     var statusCode: Int? = null
@@ -2603,7 +2626,10 @@ private suspend fun <T> executeTypedSettingsWithDiagnostics(
             if (response.code == 404 && serverMessage == null) {
                 return DataResult.Error(ScreenError(code = contractCode, retryable = false))
             }
-            return response.toSettingsDataError(serverMessage)
+            return response.toSettingsDataError(
+                serverMessage = serverMessage,
+                serverCode = errorCodeDecoder(response),
+            )
         }
         val body = response.bodyText.orEmpty()
         if (body.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -2765,7 +2791,27 @@ private data class SettingsServerSectionRouteErrorDto(val error: String? = null)
 private data class SettingsBillingRouteErrorDto(val error: String? = null)
 
 @Serializable
-private data class SettingsServerActionRouteErrorDto(val error: String? = null)
+private data class SettingsServerActionRouteErrorDto(val error: String? = null, val code: String? = null)
+
+@Serializable
+private data class SettingsRemoveServerMemberBody(
+    val revokeComputers: Boolean,
+    val computerIds: List<String>,
+)
+
+/**
+ * Wire payload for `DELETE /servers/:id/members/:memberId` (slock #16386): sends
+ * `{ revokeComputers: true, computerIds }` when disconnecting blocking Computers with the removal,
+ * or null for a plain removal.
+ */
+internal fun buildSettingsRemoveServerMemberBody(revokeComputerIds: List<String>): String? {
+    val cleanIds = revokeComputerIds.map { it.trim() }.filter { it.isNotEmpty() }
+    if (cleanIds.isEmpty()) return null
+    return settingsRepositoryJson.encodeToString(
+        SettingsRemoveServerMemberBody.serializer(),
+        SettingsRemoveServerMemberBody(revokeComputers = true, computerIds = cleanIds),
+    )
+}
 
 @Serializable
 private data class SettingsServerNotificationRouteErrorDto(val error: String? = null)
@@ -2793,6 +2839,9 @@ internal fun HomeNetworkResponse.settingsBillingRouteErrorTextOrNull(): String? 
 
 internal fun HomeNetworkResponse.settingsServerActionRouteErrorTextOrNull(): String? =
     settingsErrorTextOrNull(SettingsServerActionRouteErrorDto.serializer()) { it.error }
+
+internal fun HomeNetworkResponse.settingsServerActionRouteErrorCodeOrNull(): String? =
+    settingsErrorTextOrNull(SettingsServerActionRouteErrorDto.serializer()) { it.code }
 
 internal fun HomeNetworkResponse.settingsServerNotificationRouteErrorTextOrNull(): String? =
     settingsErrorTextOrNull(SettingsServerNotificationRouteErrorDto.serializer()) { it.error }

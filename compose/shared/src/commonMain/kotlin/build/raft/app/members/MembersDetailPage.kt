@@ -31,6 +31,7 @@ import build.raft.app.data.BridgeRaftAvatarNativeCache
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.isMemberHasComputerRefusal
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.MemberRepository
@@ -1551,10 +1552,13 @@ internal fun MemberDetailPageContent(
                     )
                 }
                 // Remove member asks first (web HumanProfileActions' RemoveMemberConfirmDialog), and
-                // its banner says which of the person's Computers go offline (slock #13547).
+                // its banner lists any blocking Computers for one-step disconnect + remove (slock #16386)
+                // or legacy machines that go offline (#13547). A 409 member_has_computer re-reads the list.
                 var removeConfirmOpen by remember(current.member.id) { mutableStateOf(false) }
                 var removing by remember(current.member.id) { mutableStateOf(false) }
-                var removeFailed by remember(current.member.id) { mutableStateOf(false) }
+                var removeError by remember(current.member.id) { mutableStateOf<String?>(null) }
+                var removeImpactRevision by remember(current.member.id) { mutableStateOf(0) }
+                val removeFailedFallback = stringResource(Res.string.thread_members_remove_failed)
                 if (removeConfirmOpen) {
                     val personName = current.member.displayName.trim().ifBlank { current.member.handle }
                     MembersRemoveMemberConfirmDialog(
@@ -1564,24 +1568,36 @@ internal fun MemberDetailPageContent(
                                 repository = provider.memberRemovalImpactRepository,
                                 serverId = current.server.id.value,
                                 memberId = current.member.id.value,
+                                revision = removeImpactRevision,
                             ),
                         removing = removing,
-                        errorMessage = stringResource(Res.string.thread_members_remove_failed).takeIf { removeFailed },
+                        errorMessage = removeError,
                         onDismiss = { removeConfirmOpen = false },
-                        onConfirm = {
+                        onConfirm = { revokeComputerIds ->
                             removing = true
-                            removeFailed = false
+                            removeError = null
                             routeScope.launch {
                                 val result =
                                     runCatchingPreservingCancellation {
-                                        provider.removeHumanMember(current.server.id.value, current.member.id.value)
+                                        provider.removeHumanMember(
+                                            current.server.id.value,
+                                            current.member.id.value,
+                                            revokeComputerIds,
+                                        )
                                     }.getOrNull()
                                 removing = false
                                 if (result is DataResult.Content && result.data.success) {
                                     removeConfirmOpen = false
                                     closeDetail()
                                 } else {
-                                    removeFailed = true
+                                    removeError =
+                                        (result as? DataResult.Error)?.error?.userFacingMessage(errorStrings)
+                                            ?: (result as? DataResult.NoPermission)?.blocker?.serverMessage?.takeIf { it.isNotBlank() }
+                                            ?: (result as? DataResult.Content)?.data?.message?.takeIf { it.isNotBlank() }
+                                            ?: removeFailedFallback
+                                    if (result?.isMemberHasComputerRefusal() == true) {
+                                        removeImpactRevision += 1
+                                    }
                                 }
                             }
                         },
@@ -1619,7 +1635,8 @@ internal fun MemberDetailPageContent(
                             provider.copyMemberId(current.member, memberIdCopied)
                         },
                         onRemoveMember = if (canRemoveHumanMember) ({
-                            removeFailed = false
+                            removeError = null
+                            removeImpactRevision = 0
                             removeConfirmOpen = true
                         }) else null,
                         onPromoteGuest = if (canPromoteGuest) ({
