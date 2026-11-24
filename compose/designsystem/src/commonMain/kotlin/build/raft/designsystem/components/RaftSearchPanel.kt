@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,6 +37,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -131,6 +134,9 @@ object RaftSearchPanelDefaults {
  *   [RaftSearchPanelDefaults.height] tall (fixed, so it never jumps as results arrive), its top
  *   at [anchorTop] (the field's top edge in this layout's coordinates;
  *   [RaftSearchPanelDefaults.fallbackTop] when null), centred on the layout horizontally.
+ * - A software keyboard takes the bottom of the window: the panel is laid out in the room above it
+ *   ([keyboardHeight], the window's `WindowInsets.ime` when null; a host that reports its keyboard
+ *   another way passes it).
  * - Inside, top to bottom: [head] (the search field), [filters] when given, [body] filling the
  *   rest (the caller scrolls it), [footer] when given ([RaftSearchPanelFooter]); a 1dp
  *   `line-seam` between each.
@@ -144,6 +150,7 @@ fun RaftSearchPanel(
     anchorTop: Dp? = null,
     anchorWidth: Dp = 0.dp,
     dismissLabel: String = LocalRaftStrings.current.close,
+    keyboardHeight: Dp? = null,
     filters: (@Composable ColumnScope.() -> Unit)? = null,
     footer: (@Composable ColumnScope.() -> Unit)? = null,
     head: @Composable ColumnScope.() -> Unit,
@@ -155,10 +162,7 @@ fun RaftSearchPanel(
     // every press, nothing in the panel's window moves the window (the field, Clear and chips
     // included).
     val titleBar = LocalRaftWindowTitleBar.current
-    BoxWithConstraints(modifier.fillMaxSize().then(titleBar.modifier)) {
-        val top = anchorTop ?: RaftSearchPanelDefaults.fallbackTop(maxHeight)
-        val width = RaftSearchPanelDefaults.width(maxWidth, anchorWidth)
-        val height = RaftSearchPanelDefaults.height(maxHeight, top)
+    Box(modifier.fillMaxSize().then(titleBar.modifier)) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -180,39 +184,47 @@ fun RaftSearchPanel(
                     onClick(label = dismissLabel) { onDismissRequest(); true }
                 },
         )
-        CompositionLocalProvider(
-            LocalRaftContentColor provides colors.foreground,
-            LocalRaftSurfaceColor provides colors.layerPopover,
-        ) {
-            Column(
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .offset(y = top)
-                    .size(width, height)
-                    .raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftRadius.Dialog)
-                    // The card takes every pointer event that reaches it: a click on its blank
-                    // parts never falls through to the scrim and closes it.
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                // Main pass, after the card's controls: what they left is the card's.
-                                awaitPointerEvent().changes.forEach { change ->
-                                    if (change.pressed != change.previousPressed) change.consume()
+        // A keyboard over the bottom of the window (a tablet's) takes that room: the panel is laid out in what is left
+        // above it, so its results and footer stay in sight.
+        val keyboard = keyboardHeight ?: with(LocalDensity.current) { WindowInsets.ime.getBottom(this).toDp() }
+        BoxWithConstraints(Modifier.fillMaxSize().padding(bottom = keyboard.coerceAtLeast(0.dp))) {
+            val top = anchorTop ?: RaftSearchPanelDefaults.fallbackTop(maxHeight)
+            val width = RaftSearchPanelDefaults.width(maxWidth, anchorWidth)
+            val height = RaftSearchPanelDefaults.height(maxHeight, top)
+            CompositionLocalProvider(
+                LocalRaftContentColor provides colors.foreground,
+                LocalRaftSurfaceColor provides colors.layerPopover,
+            ) {
+                Column(
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = top)
+                        .size(width, height)
+                        .raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftRadius.Dialog)
+                        // The card takes every pointer event that reaches it: a click on its blank
+                        // parts never falls through to the scrim and closes it.
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    // Main pass, after the card's controls: what they left is the card's.
+                                    awaitPointerEvent().changes.forEach { change ->
+                                        if (change.pressed != change.previousPressed) change.consume()
+                                    }
                                 }
                             }
-                        }
-                    },
-            ) {
-                head()
-                RaftSearchPanelSeam()
-                if (filters != null) {
-                    filters()
+                        },
+                ) {
+                    head()
                     RaftSearchPanelSeam()
-                }
-                Column(Modifier.fillMaxWidth().weight(1f)) { body() }
-                if (footer != null) {
-                    RaftSearchPanelSeam()
-                    footer()
+                    if (filters != null) {
+                        filters()
+                        RaftSearchPanelSeam()
+                    }
+                    Column(Modifier.fillMaxWidth().weight(1f)) { body() }
+                    if (footer != null) {
+                        RaftSearchPanelSeam()
+                        footer()
+                    }
                 }
             }
         }

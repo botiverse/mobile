@@ -66,8 +66,8 @@ data class RaftSideColumnKeepOut(val top: Dp, val bottom: Dp)
  *   the ⋯ menu, the ⋯ wears the pixel instead.
  * - [keepVisible] keeps it out of the ⋯ before any [priority]; among the rest, a higher
  *   [priority] stays longer, and on a tie the action listed first does. Neither makes room
- *   that is not there, nor lifts the two-action cap
- *   ([RaftSideActionColumnDefaults.MaxActions]).
+ *   that is not there, nor lifts the cap of [RaftSideActionColumnDefaults.MaxActions]; a negative
+ *   [priority] keeps it in the ⋯ whatever the room ([raftSideColumnActionCap]).
  * - [systemSymbol] names the SF Symbol ("chevron.backward") a host draws for it when the host
  *   draws the column with its own system bar buttons ([RaftSideActionHost]); null keeps the
  *   column drawing [icon]. Ignored without such a host.
@@ -110,9 +110,19 @@ object RaftSideActionColumnDefaults {
     /** At least this between the primary buttons and the actions. */
     val SectionGap: Dp = 16.dp
 
-    /** The page actions a column shows, with Back or without; the rest go in the ⋯. */
-    const val MaxActions: Int = 2
+    /**
+     * The page actions a column shows at most, with Back or without; the rest go in the ⋯ (artin,
+     * #wg-mobile-sync:#266: four, where raft-design #859 had two).
+     */
+    const val MaxActions: Int = 4
 }
+
+/**
+ * How many of the actions ranked [ranks] a column shows when it has the room: up to
+ * [RaftSideActionColumnDefaults.MaxActions] page actions, never the ones a page ranks below zero (the ⋯ menu's own
+ * commands: Follow, Mark as unread, Timeline, Delete), which stay in the ⋯. A short column shows fewer.
+ */
+internal fun raftSideColumnActionCap(ranks: List<Int>): Int = minOf(RaftSideActionColumnDefaults.MaxActions, ranks.count { it >= 0 })
 
 /**
  * The side action column (iPhone Duo): a page's buttons in one vertical strip at the window's
@@ -134,8 +144,9 @@ object RaftSideActionColumnDefaults {
  *   bottom (top-level page) and a ⋯ ([overflowLabel]) takes the next slot (under them, or
  *   above them), opening a [RaftDropdownMenu] of the rest with their labels.
  *
- * What goes in it (raft-design #859): at most [RaftSideActionColumnDefaults.MaxActions] page
- * actions on any page, the rest in the ⋯ whatever the height (a short column moves more there).
+ * What goes in it: up to [RaftSideActionColumnDefaults.MaxActions] page actions, the rest and the ones ranked below
+ * zero (the ⋯ menu's own commands) in the ⋯ whatever the height ([raftSideColumnActionCap]; a short column moves
+ * more there).
  * A pushed page shows Back, its actions and the ⋯, and no tab bar. A top-level page shows no
  * Back, its actions, the ⋯, and the host's icon-only tab bar under them ([bottomReserved]). A
  * button that acts on only one pane of a split layout does not belong here: keep it above that
@@ -219,7 +230,8 @@ fun RaftSideActionColumn(
                     keepOut = keepOut.map { it.top.roundToPx() to it.bottom.roundToPx() },
                 )
             }
-        val maxActions = RaftSideActionColumnDefaults.MaxActions
+        val ranks = actions.map { if (it.keepVisible) Int.MAX_VALUE else it.priority }
+        val maxActions = raftSideColumnActionCap(ranks)
         val height =
             if (constraints.maxHeight != Constraints.Infinity) {
                 constraints.maxHeight
@@ -231,7 +243,7 @@ fun RaftSideActionColumn(
                 height = height,
                 metrics = metrics,
                 primaryCount = primary.size,
-                ranks = actions.map { if (it.keepVisible) Int.MAX_VALUE else it.priority },
+                ranks = ranks,
                 maxActions = maxActions,
             )
         CompositionLocalProvider(LocalRaftTooltipSide provides if (onRight) RaftTooltipSide.Left else RaftTooltipSide.Right) {
