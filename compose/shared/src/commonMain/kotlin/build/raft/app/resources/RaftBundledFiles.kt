@@ -1,6 +1,7 @@
 package build.raft.app.resources
 
-import build.raft.app.image.RaftAssetsScheme
+/** URL scheme for app-bundled assets (`assets://<path>`). */
+internal const val RaftAssetsScheme = "assets://"
 
 /**
  * A file shipped in `composeResources/files` (the former kmmresource `MR.assets`). [path] is the

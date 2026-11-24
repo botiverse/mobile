@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import build.raft.app.resources.*
 import build.raft.app.markdown.RaftMarkdownPreview
 import build.raft.app.markdown.markdownToPreview
+import build.raft.app.markdown.toAnnotatedString
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue

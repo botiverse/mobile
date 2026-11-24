@@ -163,7 +163,7 @@ internal object RaftAppLogin {
         AppLoginCoordinator(
             RaftSharedKeyValueStoreProvider.create(RAFT_APP_LOGIN_MMKV_NAMESPACE, "App login").store,
             runtime = {
-                RaftSharedStoreRegistry.currentOrNull()?.let { provider ->
+                RaftDataStoreRegistry.currentOrNull()?.let { provider ->
                     createAppLoginRuntime(
                         provider.apiEnvironmentStore,
                         provider.authStore,

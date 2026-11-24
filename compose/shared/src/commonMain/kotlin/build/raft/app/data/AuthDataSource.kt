@@ -12,7 +12,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
-import build.raft.app.image.raftClearImageCaches
 import build.raft.app.network.raftResponseTraceIdOrNull
 import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.app.resources.*
@@ -1493,7 +1492,7 @@ class SharedAuthDataSource(
 
     /** The Coil image memory + disk caches hold the previous account's images; drop them. */
     private suspend fun clearAccountImageCaches(source: String) {
-        runCatchingPreservingCancellation { raftClearImageCaches() }
+        runCatchingPreservingCancellation { RaftImageCacheHooks.clearImageCaches() }
             .onFailure { diagnosticsLogger("image_cache_clear result=failure source=$source") }
     }
 

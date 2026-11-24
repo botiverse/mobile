@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.compat.ui.NestedScrollMode
 import build.raft.app.compat.ui.nestedScroll
+import build.raft.app.markdown.toAnnotatedString
 import build.raft.app.data.AgentActivityActionCount
 import build.raft.app.data.AgentActivityDetailKindClaudeRootPrivileges
 import build.raft.app.data.AgentActivityDetailKindWakeCrashLoopBlocked

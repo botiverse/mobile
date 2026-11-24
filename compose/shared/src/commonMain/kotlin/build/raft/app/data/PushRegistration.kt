@@ -1118,10 +1118,10 @@ object RaftIosPushRegistrationBridge {
             ).store
         return RaftPushRegistrationCoordinator(
             store = store,
-            currentSession = { RaftSharedStoreRegistry.currentOrNull()?.authStore?.readSession() },
-            authRuntimeReady = { RaftSharedStoreRegistry.currentOrNull() != null },
+            currentSession = { RaftDataStoreRegistry.currentOrNull()?.authStore?.readSession() },
+            authRuntimeReady = { RaftDataStoreRegistry.currentOrNull() != null },
             apiProvider = {
-                RaftSharedStoreRegistry.currentOrNull()?.networkClient?.let(::RaftPushRegistrationNetworkApi)
+                RaftDataStoreRegistry.currentOrNull()?.networkClient?.let(::RaftPushRegistrationNetworkApi)
             },
             scope = scope,
             deviceStateProvider = raftPushDeviceStateProvider(),

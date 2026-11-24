@@ -8,6 +8,7 @@ import build.raft.app.data.raftAvatarContentIdentity
 import build.raft.app.network.raftRewriteRetiredContentHost
 import build.raft.app.raftCanonicalIdentityBytes
 import build.raft.app.raftSha256Hex
+import build.raft.app.resources.RaftAssetsScheme
 import coil3.key.Keyer
 import coil3.map.Mapper
 import coil3.request.Options
@@ -69,8 +70,6 @@ internal sealed interface RaftImageSource {
         override val cacheKey: String get() = raftManagedImageCacheKey(descriptor)
     }
 }
-
-internal const val RaftAssetsScheme = "assets://"
 
 /** Classifies a model string; null means "not ours, let Coil handle it". */
 internal fun raftImageSourceOf(model: String): RaftImageSource? {
