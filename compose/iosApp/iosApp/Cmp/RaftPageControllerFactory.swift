@@ -133,11 +133,15 @@ import shared
         container.raftPageWillBeCoveredHook = {
             page.pageWillBeCovered()
         }
-        // Scene-level toast overlay: bind to the hosting UIWindowScene and suppress avoidance
+        // Scene-level toast overlay: bind to the hosting UIWindowScene (lazily registering the
+        // scene's host when SwiftUI's WindowGroup owns window creation) and suppress avoidance
         // whenever this page is covered or presented as a non-fullscreen sheet.
-        container.raftToastOverlaySceneHook = { windowScene in
+        container.raftToastOverlaySceneHook = { [weak container] windowScene in
             guard let windowScene,
-                  let overlay = RaftIosToastOverlayRegistry.overlay(for: windowScene)
+                  let overlay = RaftIosToastOverlayRegistry.ensureOverlay(
+                      for: windowScene,
+                      mainWindow: container?.viewIfLoaded?.window
+                  )
             else {
                 return
             }

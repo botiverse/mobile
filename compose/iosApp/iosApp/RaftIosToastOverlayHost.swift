@@ -123,6 +123,7 @@ final class RaftIosToastOverlayHost: NSObject {
     private weak var windowScene: UIWindowScene?
     private let listenerBridge: RaftIosToastOverlayListenerBridge
     private var statusBarObserver: NSObjectProtocol?
+    private var sceneLifecycleObservers: [NSObjectProtocol] = []
     private var detached = false
 
     init(windowScene: UIWindowScene, mainWindow: UIWindow) {
@@ -149,6 +150,23 @@ final class RaftIosToastOverlayHost: NSObject {
             guard let self, !self.detached, !self.overlayWindow.isHidden else { return }
             self.overlayWindow.rootViewController?.setNeedsStatusBarAppearanceUpdate()
         }
+        // Observe scene lifecycle notifications directly so SwiftUI WindowGroup scenes (where
+        // RaftIosSceneDelegate is inert) still drive foreground/background overlay lifecycle.
+        let center = NotificationCenter.default
+        self.sceneLifecycleObservers = [
+            center.addObserver(forName: UIScene.didActivateNotification, object: windowScene, queue: .main) { [weak self] _ in
+                self?.sceneDidBecomeActive()
+            },
+            center.addObserver(forName: UIScene.willDeactivateNotification, object: windowScene, queue: .main) { [weak self] _ in
+                self?.sceneWillResignActive()
+            },
+            center.addObserver(forName: UIScene.willEnterForegroundNotification, object: windowScene, queue: .main) { [weak self] _ in
+                self?.sceneWillEnterForeground()
+            },
+            center.addObserver(forName: UIScene.didEnterBackgroundNotification, object: windowScene, queue: .main) { [weak self] _ in
+                self?.sceneDidEnterBackground()
+            },
+        ]
         let active = windowScene.activationState == .foregroundActive
         let foreground = active || windowScene.activationState == .foregroundInactive
         overlay.setLifecycle(visible: foreground || windowScene.activationState == .unattached, resumed: active)
@@ -156,6 +174,9 @@ final class RaftIosToastOverlayHost: NSObject {
 
     deinit {
         if let observer = statusBarObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        for observer in sceneLifecycleObservers {
             NotificationCenter.default.removeObserver(observer)
         }
     }
@@ -187,6 +208,10 @@ final class RaftIosToastOverlayHost: NSObject {
             NotificationCenter.default.removeObserver(observer)
             statusBarObserver = nil
         }
+        for observer in sceneLifecycleObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        sceneLifecycleObservers.removeAll()
         windowController.detach()
         overlayWindow.rootViewController = nil
         overlay.detach()
@@ -223,13 +248,47 @@ final class RaftIosToastOverlayHost: NSObject {
 /// `RaftIosToastOverlayHost` (main-thread only). Keeps iPad multi-window scenes isolated.
 final class RaftIosToastOverlayRegistry {
     private static var hostsBySessionId: [String: RaftIosToastOverlayHost] = [:]
+    private static var disconnectObserverInstalled = false
 
     static func register(scene: UIWindowScene, host: RaftIosToastOverlayHost) {
+        installDisconnectObserverIfNeeded()
         let key = scene.session.persistentIdentifier
         if let previous = hostsBySessionId[key], previous !== host {
             previous.detach()
         }
         hostsBySessionId[key] = host
+    }
+
+    /// Returns the scene's single window-level toast overlay, lazily creating and registering one
+    /// when SwiftUI's default `WindowGroup` created the scene without `RaftIosSceneDelegate`.
+    static func ensureOverlay(for scene: UIWindowScene, mainWindow: UIWindow?) -> RaftIosToastOverlay? {
+        let key = scene.session.persistentIdentifier
+        if let existing = hostsBySessionId[key] {
+            return existing.overlay
+        }
+        let resolvedMainWindow =
+            mainWindow
+            ?? scene.windows.first(where: { $0.isKeyWindow && !($0 is RaftIosToastOverlayWindow) })
+            ?? scene.windows.first(where: { !($0 is RaftIosToastOverlayWindow) })
+        guard let resolvedMainWindow else {
+            return nil
+        }
+        let host = RaftIosToastOverlayHost(windowScene: scene, mainWindow: resolvedMainWindow)
+        register(scene: scene, host: host)
+        return host.overlay
+    }
+
+    private static func installDisconnectObserverIfNeeded() {
+        guard !disconnectObserverInstalled else { return }
+        disconnectObserverInstalled = true
+        NotificationCenter.default.addObserver(
+            forName: UIScene.didDisconnectNotification,
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let scene = notification.object as? UIScene else { return }
+            unregister(session: scene.session)
+        }
     }
 
     static func unregister(session: UISceneSession) {
