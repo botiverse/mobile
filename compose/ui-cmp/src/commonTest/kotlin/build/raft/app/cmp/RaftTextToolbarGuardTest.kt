@@ -16,6 +16,7 @@ class RaftTextToolbarGuardTest {
         var hides = 0
         var pendingRequest = false
         var presented = false
+        var lastRect: Rect? = null
 
         override val status: TextToolbarStatus
             get() = if (presented) TextToolbarStatus.Shown else TextToolbarStatus.Hidden
@@ -28,6 +29,7 @@ class RaftTextToolbarGuardTest {
             onSelectAllRequested: (() -> Unit)?,
         ) {
             shows++
+            lastRect = rect
             pendingRequest = true
         }
 
@@ -74,5 +76,60 @@ class RaftTextToolbarGuardTest {
         assertEquals(1, platform.hides)
         assertEquals(false, platform.pendingRequest)
         assertEquals(TextToolbarStatus.Hidden, guard.status)
+    }
+
+    @Test
+    fun aZeroRectReusesTheLastUsableRect() {
+        val platform = FakePlatformToolbar()
+        val guard = RaftTextToolbarGuard(platform)
+        val usable = Rect(40f, 300f, 120f, 340f)
+
+        guard.showMenu(usable, null, {}, null, null)
+        // The field is re-attached (keyboard opening) and the request is replayed with Rect.Zero.
+        guard.showMenu(Rect.Zero, null, {}, null, null)
+
+        assertEquals(2, platform.shows)
+        assertEquals(usable, platform.lastRect)
+        assertEquals(TextToolbarStatus.Shown, guard.status)
+    }
+
+    @Test
+    fun aZeroRectWithNoUsableRectYetIsNotShown() {
+        val platform = FakePlatformToolbar()
+        val guard = RaftTextToolbarGuard(platform)
+
+        guard.showMenu(Rect.Zero, null, {}, null, null)
+        // A zero-size point away from the origin (Rect.Zero plus a window offset) is not usable either.
+        guard.showMenu(Rect(16f, 80f, 16f, 80f), null, {}, null, null)
+
+        assertEquals(0, platform.shows)
+        assertEquals(false, platform.pendingRequest)
+        assertEquals(TextToolbarStatus.Hidden, guard.status)
+    }
+
+    @Test
+    fun hideForgetsTheLastUsableRect() {
+        val platform = FakePlatformToolbar()
+        val guard = RaftTextToolbarGuard(platform)
+
+        guard.showMenu(Rect(40f, 300f, 120f, 340f), null, {}, null, null)
+        guard.hide()
+        guard.showMenu(Rect.Zero, null, {}, null, null)
+
+        assertEquals(1, platform.shows)
+        assertEquals(false, platform.pendingRequest)
+        assertEquals(TextToolbarStatus.Hidden, guard.status)
+    }
+
+    @Test
+    fun aCaretRectWithZeroWidthIsForwarded() {
+        val platform = FakePlatformToolbar()
+        val guard = RaftTextToolbarGuard(platform)
+        val caret = Rect(0f, 0f, 0f, 20f)
+
+        guard.showMenu(caret, null, {}, null, null)
+
+        assertEquals(1, platform.shows)
+        assertEquals(caret, platform.lastRect)
     }
 }
