@@ -1312,6 +1312,8 @@ fun RaftPaneGrid(
                     .testTag(RAFT_PANE_GRID_MAIN_TEST_TAG)
                     // Beside the leading column the main pane's start is away from the screen edge.
                     .then(if (beside) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.Start) else Modifier)
+                    // Before a shown side column the main pane's end is away from the screen edge.
+                    .then(if (lastShown >= 0) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.End) else Modifier)
                     // A tab not shown (rule 4) is out of reach (web `inert`): no semantics, no focus.
                     .then(if (mainHidden) Modifier.clearAndSetSemantics {} else Modifier)
                     .raftPaneGridInert(mainHidden)
@@ -1475,6 +1477,12 @@ fun RowScope.RaftPaneGridSideColumn(
             .fillMaxHeight()
             .testTag(RAFT_PANE_GRID_COLUMN_TEST_TAG + column.bounds.id)
             .background(RaftTheme.colors.layerCanvas)
+            // After the main pane the column's start is away from the screen edge, and so is its end unless it is the
+            // last; filling, the column is the row and keeps both.
+            .then(
+                if (fill) Modifier
+                else Modifier.raftConsumeSafeAreaHorizontal(if (atScreenEnd) WindowInsetsSides.Start else WindowInsetsSides.Horizontal)
+            )
             // A tab not shown, or a column out of sight while another fills the row ([RaftPaneGrid]'s `fillColumn`), is out of reach (web
             // `inert`): no semantics, no focus.
             .then(if (gone) Modifier.clearAndSetSemantics {} else Modifier)

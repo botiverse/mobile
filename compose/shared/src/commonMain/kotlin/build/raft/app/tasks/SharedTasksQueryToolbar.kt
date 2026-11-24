@@ -31,7 +31,6 @@ import build.raft.designsystem.components.RaftFitToolbarSearch
 import build.raft.designsystem.components.RaftFitToolbarView
 import build.raft.designsystem.components.RaftFitToolbarViewOption
 import build.raft.designsystem.components.RaftMenuItem
-import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.theme.LocalRaftContentColor
 
 /** Test tags of the Tasks page's toolbar (web `tasks-page-*` data-testids). */
@@ -121,7 +120,6 @@ internal fun SharedTasksQueryToolbar(
             Modifier
                 .fillMaxWidth()
                 .background(RaftColor.SurfaceWhite)
-                .raftSafeAreaHorizontalPadding()
                 .testTag(SharedTasksQueryToolbarTags.Toolbar)
     ) {
         RaftFitToolbar(
