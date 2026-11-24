@@ -372,7 +372,6 @@
     <string name="settings_usage_data_learn_more">Learn more</string>
     <string name="settings_usage_data_save_failed">Couldn't save this setting. Try again.</string>
     <string name="settings_computers_title">Computers</string>
-    <string name="settings_computers_alerts_section">Alerts</string>
     <string name="settings_computers_subtitle">Connected Computers and workspaces</string>
     <string name="settings_server_title">Server</string>
     <string name="settings_server_profile_title">Server profile</string>
@@ -2467,10 +2466,6 @@
     <string name="home_notification_action_download">Download</string>
     <string name="home_notification_action_downloading">Downloading</string>
     <string name="home_notification_action_install">Install</string>
-    <string name="home_notification_machine_offline_title_one">%1$s is offline</string>
-    <string name="home_notification_machine_offline_title_many">%1$s are offline</string>
-    <string name="home_notification_machine_offline_body_one">No agents are active on this computer right now — reconnect when you need it next.</string>
-    <string name="home_notification_machine_offline_body_many">No agents are active on these computers right now — reconnect when you need them next.</string>
     <string name="home_notification_machine_outdated_title_one">Update available for %1$s</string>
     <string name="home_notification_machine_outdated_title_many">Update available for %1$s</string>
     <string name="home_notification_machine_outdated_body">Stop it and reconnect to update.</string>
@@ -2817,8 +2812,6 @@
     <string name="background_kill_notice_body">Your device stopped Raft while it was in the background, which can delay messages and notifications. Open Notification settings to allow Raft to run in the background.</string>
     <string name="background_kill_notice_action_open_settings">Open settings</string>
     <string name="background_kill_notice_action_dont_show_again">Don't show again</string>
-    <string name="settings_notifications_offline_computers_title">Offline computer alerts</string>
-    <string name="settings_notifications_offline_computers_detail">Show a Home alert when a registered computer is offline. Off by default.</string>
     <string name="settings_notifications_test_title">Send a test notification</string>
     <string name="settings_notifications_test_detail">Post a local test notification to verify this device.</string>
     <string name="settings_notifications_test_allow_permission">Allow notifications for Raft to send a test.</string>

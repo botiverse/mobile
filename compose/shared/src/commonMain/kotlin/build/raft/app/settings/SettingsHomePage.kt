@@ -68,8 +68,6 @@ import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.NetworkRaftAnnouncementsRemindersApi
 import build.raft.app.data.RaftAnnouncementsRemindersApiClient
 import build.raft.app.data.NetworkRaftTasksApi
-import build.raft.app.data.KeyValueNotificationPreferenceStore
-import build.raft.app.data.PersistentNotificationPreferenceRepository
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
 import build.raft.app.data.DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN
 import build.raft.app.data.DEFAULT_SERVER_DRAWER_ENABLED
@@ -978,12 +976,6 @@ private fun RaftAppShellReadyContent(
             )
         }
     val sharedPreferenceStore = remember { raftSharedPreferenceStore() }
-    val notificationPreferenceRepository =
-        remember(sharedPreferenceStore) {
-            PersistentNotificationPreferenceRepository(
-                KeyValueNotificationPreferenceStore(sharedPreferenceStore)
-            )
-        }
     val memberRepository =
         remember(shellAuthStore, appShellNetworkClient, appShellServerMembersStore) {
             RealMemberRepository(
@@ -998,7 +990,6 @@ private fun RaftAppShellReadyContent(
             memberRepository,
             appShellServerMembersStore,
             settingsCapabilities,
-            notificationPreferenceRepository,
         ) {
             SharedHomeDataSource(
                 sessionStore = shellAuthStore,
@@ -1014,7 +1005,6 @@ private fun RaftAppShellReadyContent(
                         is DataResult.NoPermission -> result
                     }
                 },
-                notificationPreferenceRepository = notificationPreferenceRepository,
                 memberRepository = memberRepository,
                 serverMembersStore = appShellServerMembersStore,
                 parseHome = { payload, session ->

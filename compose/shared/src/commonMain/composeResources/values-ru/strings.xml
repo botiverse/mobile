@@ -372,7 +372,6 @@
     <string name="settings_usage_data_learn_more">Подробнее</string>
     <string name="settings_usage_data_save_failed">Не удалось сохранить настройку. Попробуйте ещё раз.</string>
     <string name="settings_computers_title">Компьютеры</string>
-    <string name="settings_computers_alerts_section">Оповещения</string>
     <string name="settings_computers_subtitle">Подключённые компьютеры и рабочие пространства</string>
     <string name="settings_server_title">Сервер</string>
     <string name="settings_server_profile_title">Профиль сервера</string>
@@ -2463,10 +2462,6 @@
     <string name="home_notification_action_download">Скачать</string>
     <string name="home_notification_action_downloading">Скачивание…</string>
     <string name="home_notification_action_install">Установить</string>
-    <string name="home_notification_machine_offline_title_one">Компьютер %1$s не в сети</string>
-    <string name="home_notification_machine_offline_title_many">Компьютеры не в сети: %1$s</string>
-    <string name="home_notification_machine_offline_body_one">Сейчас на этом компьютере нет активных агентов — подключите его, когда он снова понадобится.</string>
-    <string name="home_notification_machine_offline_body_many">Сейчас на этих компьютерах нет активных агентов — подключите их, когда они снова понадобятся.</string>
     <string name="home_notification_machine_outdated_title_one">Доступно обновление для %1$s</string>
     <string name="home_notification_machine_outdated_title_many">Доступно обновление для %1$s</string>
     <string name="home_notification_machine_outdated_body">Остановите и подключите заново, чтобы обновить.</string>
@@ -2813,8 +2808,6 @@
     <string name="background_kill_notice_body">Устройство остановило Raft в фоне, из-за чего сообщения и уведомления могут приходить с задержкой. Откройте настройки уведомлений и разрешите Raft работу в фоне.</string>
     <string name="background_kill_notice_action_open_settings">Открыть настройки</string>
     <string name="background_kill_notice_action_dont_show_again">Больше не показывать</string>
-    <string name="settings_notifications_offline_computers_title">Оповещения о компьютерах не в сети</string>
-    <string name="settings_notifications_offline_computers_detail">Показывать оповещение на «Главной», когда зарегистрированный компьютер не в сети. По умолчанию выключено.</string>
     <string name="settings_notifications_test_title">Отправить тестовое уведомление</string>
     <string name="settings_notifications_test_detail">Отправьте локальное тестовое уведомление, чтобы проверить это устройство.</string>
     <string name="settings_notifications_test_allow_permission">Разрешите уведомления Raft, чтобы отправить тестовое уведомление.</string>

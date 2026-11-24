@@ -130,7 +130,6 @@ import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.isRefreshing
 import build.raft.app.components.RaftStorePullToRefreshBox
-import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.MemberId
 import build.raft.app.model.RaftTimeContext
@@ -477,26 +476,6 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisible: Boolean) {
             )
         }
     var openUsage by remember { mutableStateOf<RaftComputersOpenUsage?>(null) }
-    // Offline computer alerts (the Home banner for an offline computer): this device's switch,
-    // here since 1.27.0 (it was under Notifications). The same stored preference; Home re-reads it.
-    var offlineComputerAlertsEnabled by remember { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(environment.notificationPreferenceRepository) {
-        offlineComputerAlertsEnabled =
-            runCatchingPreservingCancellation {
-                environment.notificationPreferenceRepository.getNotificationPreference().offlineComputerAlertsEnabled
-            }.getOrNull()
-    }
-    val onOfflineComputerAlertsChange: (Boolean) -> Unit = { enabled ->
-        offlineComputerAlertsEnabled = enabled
-        navigationScope.launch {
-            val saved =
-                runCatchingPreservingCancellation {
-                    environment.notificationPreferenceRepository.setOfflineComputerAlertsEnabled(enabled)
-                }.getOrNull()
-            offlineComputerAlertsEnabled = saved?.offlineComputerAlertsEnabled ?: !enabled
-            sharedStores.sharedHomeStore(environment.storeScope)?.dispatch(SharedHomeIntent.RefreshNotifications)
-        }
-    }
     var deleteComputerId by remember { mutableStateOf<String?>(null) }
     var actionConfirm by remember { mutableStateOf<RaftComputerActionConfirm?>(null) }
     fun refresh() {
@@ -643,8 +622,6 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisible: Boolean) {
                     }
                 },
                 onOpenAgent = { agent -> openAgentProfile(agent.id) },
-                offlineComputerAlerts = offlineComputerAlertsEnabled,
-                onOfflineComputerAlertsChange = onOfflineComputerAlertsChange,
             )
           }
         }
@@ -795,12 +772,6 @@ internal fun RaftSettingsComputersContent(
     currentUserId: String? = null,
     /** The loading skeleton pulses; screenshots draw its resting frame. */
     skeletonAnimated: Boolean = true,
-    /**
-     * This device's Offline computer alerts switch under the list ([RaftComputersAlertsSection]);
-     * null: not read yet (or a fixture), no section.
-     */
-    offlineComputerAlerts: Boolean? = null,
-    onOfflineComputerAlertsChange: (Boolean) -> Unit = {},
 ) {
     // The upgrade's in-flight window (web `computerUpgradeInFlight`) reads the clock.
     val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
@@ -899,8 +870,6 @@ internal fun RaftSettingsComputersContent(
                         serverId = serverId,
                         currentUserId = currentUserId,
                         nowMillis = nowMillis,
-                        offlineComputerAlerts = offlineComputerAlerts,
-                        onOfflineComputerAlertsChange = onOfflineComputerAlertsChange,
                     )
             }
         }
@@ -947,8 +916,6 @@ private fun RaftComputersRackBody(
     serverId: String?,
     currentUserId: String?,
     nowMillis: Long,
-    offlineComputerAlerts: Boolean?,
-    onOfflineComputerAlertsChange: (Boolean) -> Unit,
 ) {
     val groupLabels =
         RaftRackGroupLabels(
@@ -1158,38 +1125,7 @@ private fun RaftComputersRackBody(
                         if (offlineOpen) computers("offline", layout.offline)
                     }
                 }
-                offlineComputerAlerts?.let { checked ->
-                    item(key = "alerts") {
-                        RaftComputersAlertsSection(
-                            checked = checked,
-                            onCheckedChange = onOfflineComputerAlertsChange,
-                            modifier = Modifier.raftSafeAreaHorizontalPadding().padding(horizontal = cardEdge).padding(top = 24.dp),
-                        )
-                    }
-                }
                 item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
-            }
-        }
-    }
-}
-
-/**
- * Under the computers: this device's Offline computer alerts (a Home banner when a registered
- * computer goes offline, off by default). It was a Notifications switch until 1.27.0, but it is
- * about computers and shows on Home, not as a system notification.
- */
-@Composable
-private fun RaftComputersAlertsSection(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth()) {
-        SettingsFormSection(iconName = RaftLucideIconName.Bell, title = stringResource(Res.string.settings_computers_alerts_section)) {
-            RaftListRowGroup(Modifier.fillMaxWidth()) {
-                SettingsAppearanceSwitchRow(
-                    title = stringResource(Res.string.settings_notifications_offline_computers_title),
-                    description = stringResource(Res.string.settings_notifications_offline_computers_detail),
-                    checked = checked,
-                    onCheckedChange = onCheckedChange,
-                    divider = false,
-                )
             }
         }
     }
