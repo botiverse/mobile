@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.LocalRaftBarButtons
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import build.raft.app.resources.*
 import androidx.compose.foundation.focusable
@@ -601,6 +603,8 @@ private fun RaftImageLightboxTopBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+          // The bar's buttons take the head's bar-button size (36 in the wide touch head, 28 under a mouse).
+          CompositionLocalProvider(LocalRaftBarButtons provides true) {
             if (onEdit != null) {
                 RaftIconButton(
                     onClick = onEdit,
@@ -645,6 +649,7 @@ private fun RaftImageLightboxTopBar(
                 variant = RaftButtonVariant.Ghost,
                 size = RaftIconButtonSize.Lg
             ) { RaftSlotIcon(RaftLucideIconName.X) }
+          }
         }
     }
 }

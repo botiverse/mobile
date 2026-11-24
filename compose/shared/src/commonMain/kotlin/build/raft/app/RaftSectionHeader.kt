@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.LocalRaftBarButtons
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -261,7 +262,7 @@ internal fun RaftTopPageHeader(
                 headRowTabs != null -> Unit
                 leadingContent != null ->
                     Box(
-                        modifier = Modifier.size(RaftAppSize.HeaderIcon),
+                        modifier = Modifier.size(raftHeaderIconTileSize()),
                         contentAlignment = Alignment.Center,
                         content = leadingContent
                     )
@@ -269,7 +270,7 @@ internal fun RaftTopPageHeader(
                     Box(
                         modifier =
                             Modifier
-                                .size(RaftAppSize.HeaderIcon)
+                                .size(raftHeaderIconTileSize())
                                 // raft `PanelHeaderIcon`: a Source Yellow sticker, sticker radius, ink edge.
                                 .background(iconBackground, RoundedCornerShape(RaftAppRadius.Sticker))
                                 .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
@@ -277,7 +278,7 @@ internal fun RaftTopPageHeader(
                     ) {
                         RaftLucideIcon(
                             iconName,
-                            modifier = Modifier.size(18.dp),
+                            modifier = Modifier.size(raftHeaderIconGlyphSize()),
                             color = raftArgbHex(RaftColor.StickerInk)
                         )
                     }
@@ -665,7 +666,7 @@ internal fun RaftMainTabPageHeader(
  */
 @Composable
 internal fun RaftHeaderRefreshSlot(modifier: Modifier = Modifier) {
-    Box(modifier = modifier.size(RaftAppSize.IconButton), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.size(RaftTheme.controls.barButtonSize), contentAlignment = Alignment.Center) {
         RaftHeaderRefreshIndicator()
     }
 }
@@ -745,8 +746,9 @@ internal fun RaftHeaderIconAction(
         // The icon's name for accessibility and tests: it was taken but never set (#119).
         modifier = modifier
             .semantics { this.contentDescription = contentDescription }
-            .heightIn(min = 38.dp)
-            .widthIn(min = if (label == null) 38.dp else 54.dp)
+            // 38 in the phone's head; the bar button (36) in the wide touch head, 28 under a mouse.
+            .heightIn(min = minOf(38.dp, RaftTheme.controls.barButtonSize))
+            .widthIn(min = if (label == null) minOf(38.dp, RaftTheme.controls.barButtonSize) else 54.dp)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = if (label == null) 0.dp else RaftAppSpacing.Sm),
@@ -755,7 +757,7 @@ internal fun RaftHeaderIconAction(
         ) {
             RaftLucideIcon(
                 name = icon,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(minOf(18.dp, RaftTheme.controls.barIconSize)),
                 color = raftArgbHex(RaftColor.TextMuted)
             )
             label?.let {
@@ -770,3 +772,20 @@ internal fun RaftHeaderIconAction(
         }
     }
 }
+
+/**
+ * A page head's leading tile (raft `PanelHeaderIcon`): 36 in the phone's 56 head; the 27 location
+ * tile of a conversation head in the 48 short head and under a fine pointer
+ * ([RaftControlMetrics.headAvatar] is `sm` there), so the tiles and avatars of the heads side by
+ * side are one size.
+ */
+@Composable
+@ReadOnlyComposable
+internal fun raftHeaderIconTileSize(): Dp =
+    if (RaftTheme.controls.headAvatar == RaftAvatarSize.Sm) RaftAvatarSize.Sm.edge else RaftAppSize.HeaderIcon
+
+/** The glyph in [raftHeaderIconTileSize]: 18 in the 36 tile, 14 in the 27 one. */
+@Composable
+@ReadOnlyComposable
+internal fun raftHeaderIconGlyphSize(): Dp =
+    if (RaftTheme.controls.headAvatar == RaftAvatarSize.Sm) 14.dp else 18.dp

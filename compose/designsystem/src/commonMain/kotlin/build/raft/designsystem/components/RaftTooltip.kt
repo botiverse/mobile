@@ -56,7 +56,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
-import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import build.raft.designsystem.text.RaftText
@@ -272,7 +271,7 @@ fun RaftTooltip(
                 var anchorClipped by remember { mutableStateOf(false) }
                 Box(Modifier.raftPopupAnchorClipped { anchorClipped = it })
                 if (!anchorClipped) {
-                    Popup(
+                    RaftSelectionSafePopup(
                         popupPositionProvider = sideProvider ?: framed,
                         onDismissRequest = { if (state.isVisible) scope.launch { state.dismiss() } },
                         properties = PopupProperties(focusable = false, clippingEnabled = false),
