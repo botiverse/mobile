@@ -395,9 +395,12 @@ state (artin, 2026-11-17).
 ### 5.1 Android
 
 Hands app `raft-android` (id `a78f3891-f980-4f48-80d7-2a58e93a99aa`,
-`android-apk`). Channels: `main` (production), `preview` (prerelease/QA),
-`debug`, `nightly`. Clients update when the active release's versionCode is
-greater than theirs; drafts and cancelled releases are invisible.
+`android-apk`). Channels: `main` (production), `preview` (**Insiders**
+prerelease — never use `preview` for feature or delta-update testing; artin,
+2026-11-24), `alpha` (internal feature & delta-update testing, channel id
+`3e850962-33e1-47f3-b66d-51ec5c1c467d`), `debug`, `nightly`. Clients update
+when the active release's versionCode is greater than theirs; drafts and
+cancelled releases are invisible.
 
 **One APK per Hands channel** (Lagoon, 2026-10-23). The channel is compiled in
 (`BuildConfig.HANDS_CHANNEL` from `SLOCK_HANDS_CHANNEL`, workflow input
@@ -594,6 +597,12 @@ smoke.
    `docs/qa-acceptance/large-screen-smoke-test.md` across separate Tablet Touch
    and Wide Keyboard/Mouse (plus Phone Landscape/toggle) seats, and record each
    seat's `PASS / FAIL / NOT RUN` result in the release issue.
+9. **Mandatory log analysis on every smoke (artin 2026-11-24)**: every Android
+   and iOS smoke run must capture and analyze full runtime/diagnostic logs —
+   not just verify "did not reproduce" visually. Explicitly report findings on
+   request storms / cooldown & coalescing behavior, `SlockPerf` / jank /
+   redraw-storm warnings, new `ERROR` or high-rate `WARN` lines, unexpected
+   4xx/5xx responses, main-thread stalls, and crash traces before signing off.
 
 Alpha (`Android Alpha Validation`, `build.raft.app.alpha`) and internal
 TestFlight builds from `main` are for pre-cut smoke and owner trials; they do
@@ -921,7 +930,7 @@ a reminder is a process defect. The reminder authorizes nothing.
 - Artifact/hash/signing/UUID mismatch: stop; don't repair metadata around it.
 - versionCode not above the active version: raise the build or the version.
 - Malformed draft: supersede with a higher build; never touch the active
-  `main` release to test visibility (use `preview`).
+  `main` release or Insiders `preview` to test features or visibility (use `alpha`).
 - Apple processing not `VALID`: stop before distribution.
 - Anything uncertain (deps, notes, smoke): stay draft-only.
 - Live material regression: stop rollout expansion; record the hold.
