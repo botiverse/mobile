@@ -1864,7 +1864,7 @@ internal fun ThreadMembersPagerRow(
                             RaftText(
                                 text = signIn.fullText,
                                 style = RaftTheme.typography.caption,
-                                color = RaftTheme.colors.foregroundMuted,
+                                color = RaftTheme.colors.foreground,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.testTag(AgentRuntimeSignInTestTags.MemberRowStatus),

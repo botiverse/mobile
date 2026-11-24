@@ -1250,8 +1250,8 @@ internal fun ColumnScope.AgentMigrationStartForm(
                     stringResource(Res.string.agent_migration_hosted_note_final)
                 ).forEach { note ->
                     Row {
-                        RaftText(text = "•", modifier = Modifier.width(20.dp), style = typography.subhead, color = colors.foregroundMuted)
-                        RaftText(text = note, modifier = Modifier.weight(1f), style = typography.subhead, color = colors.foregroundMuted)
+                        RaftText(text = "•", modifier = Modifier.width(20.dp), style = typography.subhead, color = colors.foreground)
+                        RaftText(text = note, modifier = Modifier.weight(1f), style = typography.subhead, color = colors.foreground)
                     }
                 }
             }
@@ -1261,19 +1261,19 @@ internal fun ColumnScope.AgentMigrationStartForm(
                 text = stringResource(Res.string.agent_migration_place_from_revoked_computer_note),
                 modifier = Modifier.testTag(AgentMigrationSectionTestTags.PlaceNote),
                 style = typography.subhead,
-                color = colors.foregroundMuted
+                color = colors.foreground
             )
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 RaftText(
                     text = stringResource(Res.string.agent_migration_detail_migration_mode_stop_before_export),
                     style = typography.subhead,
-                    color = colors.foregroundMuted
+                    color = colors.foreground
                 )
                 RaftText(
                     text = stringResource(Res.string.agent_migration_detail_migration_session_reset_detailed),
                     style = typography.subhead,
-                    color = colors.foregroundMuted
+                    color = colors.foreground
                 )
             }
         }
@@ -1337,7 +1337,7 @@ private fun AgentMigrationCancelDialog(
                             stringResource(Res.string.agent_migration_cancel_dialog_safe_message, source, target)
                         },
                     style = typography.subhead,
-                    color = colors.foregroundMuted
+                    color = colors.foreground
                 )
             }
             AgentMigrationReference(notice, inputs)
@@ -1349,7 +1349,7 @@ private fun AgentMigrationCancelDialog(
                         stringResource(Res.string.agent_migration_cancel_dialog_explanation)
                     },
                 style = typography.callout,
-                color = colors.foregroundMuted
+                color = colors.foreground
             )
             // A problem is orange (warning); the dialog stays open on it.
             state.cancelError?.let { error ->

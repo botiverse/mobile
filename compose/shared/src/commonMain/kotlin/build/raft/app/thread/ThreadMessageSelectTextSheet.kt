@@ -182,7 +182,7 @@ internal fun ThreadMessageSelectTextSheetContent(
     val body: @Composable ColumnScope.() -> Unit = {
         val byline = listOf(senderName, timeLabel).filter { it.isNotBlank() }.joinToString(" · ")
         if (byline.isNotEmpty()) {
-            RaftText(byline, style = typography.footnote, color = colors.foregroundMuted)
+            RaftText(byline, style = typography.footnote, color = colors.foreground)
         }
         RaftNativeSelectableText(
             text = shownText,

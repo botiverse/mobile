@@ -398,7 +398,7 @@ private fun ColumnScope.ActionCardFormBody(
             )
         }
         form.description?.let {
-            RaftText(it.render(locale), style = RaftTheme.typography.callout, color = RaftTheme.colors.foregroundMuted)
+            RaftText(it.render(locale), style = RaftTheme.typography.callout, color = RaftTheme.colors.foreground)
         }
         state.pageTitle?.let {
             RaftText(it.render(locale), style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold), color = RaftTheme.colors.foreground)

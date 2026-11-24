@@ -593,7 +593,7 @@ private fun RaftComputerProcJobLine(
             RaftText(
                 text = stateText,
                 style = typography.caption,
-                color = colors.foregroundMuted,
+                color = colors.foreground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

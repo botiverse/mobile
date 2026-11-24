@@ -593,7 +593,7 @@ private fun ScreenshotFeedbackDiagnosticsStatusRow(
                 RaftText(
                     text = stringResource(Res.string.screenshot_feedback_diagnostics_preparing),
                     style = RaftTheme.typography.caption,
-                    color = colors.foregroundMuted,
+                    color = colors.foreground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -607,7 +607,7 @@ private fun ScreenshotFeedbackDiagnosticsStatusRow(
                 RaftText(
                     text = stringResource(Res.string.screenshot_feedback_diagnostics_ready),
                     style = RaftTheme.typography.caption,
-                    color = colors.foregroundMuted,
+                    color = colors.foreground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

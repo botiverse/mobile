@@ -217,7 +217,7 @@ internal fun RaftDescriptionListScope.MembersAgentComputerInfoRows(
                 RaftText(
                     text = botStatusText,
                     style = RaftTheme.typography.caption,
-                    color = RaftTheme.colors.foregroundMuted,
+                    color = RaftTheme.colors.foreground,
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }

@@ -260,7 +260,7 @@ internal fun ComputerRuntimeAuthHeaderLine(auth: ComputerRuntimeAuthCardState, u
             computerRuntimeLastSignedInText(stringResource(Res.string.settings_computers_runtime_auth_last_signed_in_as, last), last),
             modifier = Modifier.padding(top = 4.dp).testTag(COMPUTER_RUNTIME_AUTH_LAST_ACCOUNT_TAG),
             style = RaftTheme.typography.caption,
-            color = RaftTheme.colors.foregroundMuted,
+            color = RaftTheme.colors.foreground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -669,7 +669,7 @@ internal fun ComputerRuntimeSignInBody(
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         when {
             state.choosingRegion -> {
-                RaftText(stringResource(Res.string.settings_computers_runtime_auth_region_prompt, runtimeName), style = typography.subhead, color = colors.foregroundMuted)
+                RaftText(stringResource(Res.string.settings_computers_runtime_auth_region_prompt, runtimeName), style = typography.subhead, color = colors.foreground)
                 // Kimi's own site names, untranslated in every language, with nothing chosen (xxchan).
                 val items =
                     RuntimeAuthLoginRegion.entries.map { region ->
@@ -710,13 +710,13 @@ internal fun ComputerRuntimeSignInBody(
             !state.started ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     RaftSpinner()
-                    RaftText(stringResource(Res.string.settings_computers_runtime_auth_starting, computerName), style = typography.subhead, color = colors.foregroundMuted)
+                    RaftText(stringResource(Res.string.settings_computers_runtime_auth_starting, computerName), style = typography.subhead, color = colors.foreground)
                 }
             else -> {
                 state.authUrl?.let { url ->
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         // Our words for the prompt's kind, never the runtime's own English line.
-                        RaftText(stringResource(Res.string.settings_computers_runtime_auth_auth_url_hint, runtimeName), style = typography.subhead, color = colors.foregroundMuted)
+                        RaftText(stringResource(Res.string.settings_computers_runtime_auth_auth_url_hint, runtimeName), style = typography.subhead, color = colors.foreground)
                         RaftButton(
                             text = stringResource(Res.string.settings_computers_runtime_auth_open_page),
                             onClick = { openUrl(url) },
@@ -730,7 +730,7 @@ internal fun ComputerRuntimeSignInBody(
                 }
                 state.deviceCode?.let { device ->
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        RaftText(stringResource(Res.string.settings_computers_runtime_auth_device_code_hint), style = typography.subhead, color = colors.foregroundMuted)
+                        RaftText(stringResource(Res.string.settings_computers_runtime_auth_device_code_hint), style = typography.subhead, color = colors.foreground)
                         RaftTextLink(
                             text = device.verificationUri,
                             onClick = { openUrl(device.verificationUri) },
@@ -1026,7 +1026,7 @@ private fun ComputerRuntimePiBody(session: ComputerRuntimePiSession, runtimeName
             list == ComputerRuntimePiProviderList.Loading ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     RaftSpinner()
-                    RaftText(stringResource(Res.string.settings_computers_runtime_auth_provider_loading, computerName), style = typography.subhead, color = colors.foregroundMuted)
+                    RaftText(stringResource(Res.string.settings_computers_runtime_auth_provider_loading, computerName), style = typography.subhead, color = colors.foreground)
                 }
             list is ComputerRuntimePiProviderList.Failed ->
                 ComputerRuntimeAuthFailureBanner(list.failure.problem, list.failure.traceId, runtimeName, serverMessage = list.failure.serverMessage)
@@ -1034,7 +1034,7 @@ private fun ComputerRuntimePiBody(session: ComputerRuntimePiSession, runtimeName
                 if (session.step == ComputerRuntimePiStep.Key && session.chosen?.account == false) {
                     ComputerRuntimePiKeyForm(session, runtimeName, chosenLabel)
                 } else {
-                    RaftText(stringResource(Res.string.settings_computers_runtime_auth_pi_choose_prompt, runtimeName, computerName), style = typography.subhead, color = colors.foregroundMuted)
+                    RaftText(stringResource(Res.string.settings_computers_runtime_auth_pi_choose_prompt, runtimeName, computerName), style = typography.subhead, color = colors.foreground)
                     ComputerRuntimePiProviderChoices(list, session.chosen, session::choose, runtimeName, session.runtime, session.machineId)
                     RaftText(stringResource(Res.string.settings_computers_runtime_auth_pi_scope_note, runtimeName), style = typography.caption, color = colors.foregroundHint)
                 }

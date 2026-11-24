@@ -665,7 +665,7 @@ internal fun ThreadActionCardSpecSeatRequestSheet(
                     RaftText(
                         text = purposeLine,
                         style = RaftTheme.typography.callout,
-                        color = RaftTheme.colors.foregroundMuted,
+                        color = RaftTheme.colors.foreground,
                     )
                 }
                 RaftText(

@@ -798,7 +798,7 @@ internal fun RaftComputerBulkChangeModelDialog(
                     RaftText(
                         stringResource(Res.string.settings_computers_bulk_model_no_runtimes),
                         style = RaftTheme.typography.callout,
-                        color = RaftTheme.colors.foregroundMuted,
+                        color = RaftTheme.colors.foreground,
                     )
                 } else {
                     val runtimeLabels = runtimeIds.associateWith { observeAgentRuntimeDisplayName(it) }
@@ -984,7 +984,7 @@ private fun RaftBulkModelApplyRow(agent: SettingsComputerAgentSnapshot, state: R
                 }
             ),
             style = RaftTheme.typography.caption,
-            color = if (state == RaftBulkApplyState.Failed) RaftTheme.colors.warningStrong else RaftTheme.colors.foregroundMuted,
+            color = if (state == RaftBulkApplyState.Failed) RaftTheme.colors.warningStrong else RaftTheme.colors.foreground,
         )
     }
 }

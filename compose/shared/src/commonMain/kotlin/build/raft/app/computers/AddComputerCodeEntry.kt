@@ -290,7 +290,7 @@ private fun AddComputerCodeRequestDetails(request: DeviceLoginRequest, target: D
                     style = typography.callout,
                     color = colors.foreground,
                 )
-                if (machineDetail.isNotEmpty()) RaftText(machineDetail, style = typography.caption, color = colors.foregroundMuted)
+                if (machineDetail.isNotEmpty()) RaftText(machineDetail, style = typography.caption, color = colors.foreground)
                 RaftText(stringResource(Res.string.settings_computers_code_self_reported), style = typography.caption, color = colors.foregroundHint)
             }
         }

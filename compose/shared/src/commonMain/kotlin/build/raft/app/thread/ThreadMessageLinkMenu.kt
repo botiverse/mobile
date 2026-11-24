@@ -193,7 +193,7 @@ internal fun ThreadMessageLinkMenuUrl(url: String, modifier: Modifier = Modifier
         RaftText(
             url,
             style = RaftTheme.typography.caption,
-            color = RaftTheme.colors.foregroundMuted,
+            color = RaftTheme.colors.foreground,
             maxLines = 1,
             overflow = TextOverflow.MiddleEllipsis,
         )

@@ -279,7 +279,7 @@ internal fun MemberRemovalImpactNote(
                 RaftText(
                     stringResource(Res.string.member_removal_impact_loading),
                     style = RaftTheme.typography.callout,
-                    color = RaftTheme.colors.foregroundMuted,
+                    color = RaftTheme.colors.foreground,
                 )
             }
         MemberRemovalImpactState.Failed ->
@@ -287,7 +287,7 @@ internal fun MemberRemovalImpactNote(
                 stringResource(Res.string.member_removal_impact_failed),
                 modifier = modifier.testTag(MEMBER_REMOVAL_IMPACT_FAILED_TAG),
                 style = RaftTheme.typography.callout,
-                color = RaftTheme.colors.foregroundMuted,
+                color = RaftTheme.colors.foreground,
             )
         is MemberRemovalImpactState.Ready -> {
             val blocking = state.blockingComputers()

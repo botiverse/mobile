@@ -686,7 +686,7 @@ internal fun RaftUpgradeDialog(
                         else -> stringResource(copy.limit, server)
                     },
                 style = RaftTheme.typography.subhead,
-                color = RaftTheme.colors.foregroundMuted,
+                color = RaftTheme.colors.foreground,
             )
             RaftDialogFooter {
                 RaftButton(
