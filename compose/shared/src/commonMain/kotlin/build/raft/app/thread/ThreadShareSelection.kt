@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -500,16 +502,31 @@ internal fun ThreadSharePreviewModal(
         contentPadding = 16.dp,
         contentSpacing = 12.dp
     ) {
+        // #proj-mobile:#359: give the preview/empty body `weight(1f, fill = false)` so the
+        // dialog footer ("Copy MD" / "Download") is always measured first and stays inside the
+        // dialog bounds on compact phones, with the Custom width slider open, or in landscape.
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (offscreen != null) {
                 ThreadShareImageWidthPicker(choice = offscreen.choice, onChoiceChange = offscreen.onChoiceChange)
                 if (offscreen.image == null && !offscreen.rendering) {
-                    ThreadModalEmptyState(
-                        title = stringResource(Res.string.thread_share_export_failed),
-                        detail = stringResource(Res.string.thread_share_export_failed_detail)
-                    )
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = false)
+                                .verticalScroll(rememberScrollState()),
+                    ) {
+                        ThreadModalEmptyState(
+                            title = stringResource(Res.string.thread_share_export_failed),
+                            detail = stringResource(Res.string.thread_share_export_failed_detail)
+                        )
+                    }
                 } else {
-                    ThreadShareImagePreview(image = offscreen.image?.preview, rendering = offscreen.rendering)
+                    ThreadShareImagePreview(
+                        image = offscreen.image?.preview,
+                        rendering = offscreen.rendering,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
                 }
                 RaftDialogFooter {
                     RaftModalActionButton(
@@ -528,15 +545,24 @@ internal fun ThreadSharePreviewModal(
                 return@Column
             }
             if (image?.uri.isNullOrBlank()) {
-                ThreadModalEmptyState(
-                    title = stringResource(Res.string.thread_share_export_failed),
-                    detail = stringResource(Res.string.thread_share_export_failed_detail)
-                )
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false)
+                            .verticalScroll(rememberScrollState()),
+                ) {
+                    ThreadModalEmptyState(
+                        title = stringResource(Res.string.thread_share_export_failed),
+                        detail = stringResource(Res.string.thread_share_export_failed_detail)
+                    )
+                }
             } else {
                 Box(
                     modifier =
                         Modifier
                             .fillMaxWidth()
+                            .weight(1f, fill = false)
                             .height(threadSharePreviewImageHeight(image).dp)
                             .raftCardSurface()
                             .padding(8.dp)
