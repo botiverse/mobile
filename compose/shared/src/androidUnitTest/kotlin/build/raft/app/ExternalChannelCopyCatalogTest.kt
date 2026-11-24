@@ -255,7 +255,7 @@ class ExternalChannelCopyCatalogTest {
     }
 
     private fun catalog(locale: String): Map<String, String> {
-        val file = File("src/commonMain/composeResources/${raftComposeValuesDir(locale)}/strings.xml")
+        val file = File("../shared-data/src/commonMain/composeResources/${raftComposeValuesDir(locale)}/strings.xml")
         val nodes = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file).getElementsByTagName("string")
         return (0 until nodes.length).associate { index ->
             val node = nodes.item(index)
