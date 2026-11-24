@@ -117,6 +117,51 @@ enum class ActivityAuditNotJudgedCause(val wireValue: String) {
 /** Web `inbox.inplace.reread` for rows the per-row position rule took (`RereadOutcome` `position`). */
 internal const val ActivityInPlaceRereadPosition = "position"
 
+/** Web `inbox.inplace.reread` for an unlisted followed thread inserted live from `thread:updated`. */
+internal const val ActivityInPlaceRereadInserted = "inserted"
+
+/** Web `inbox.inplace.reread` for an unlisted unfollowed thread whose re-read was skipped. */
+internal const val ActivityInPlaceRereadUnfollowed = "unfollowed"
+
+internal const val ActivityInPlaceScopeList = "list"
+internal const val ActivityInPlaceScopeRow = "row"
+internal const val ActivityInPlaceScopeSyncRow = "sync_row"
+
+internal const val ActivityForegroundSyncUpdatedTraceEvent = "activity:foreground_sync_updated"
+
+/**
+ * Tenny item 3 (#proj-mobile:#163): foreground return -> sync pull + Activity updated latency,
+ * sent as `slock.state.transition` (`domain = "inbox"`, `event = "activity:foreground_sync_updated"`).
+ */
+internal data class ActivityForegroundSyncUpdated(
+    val serverId: String,
+    val durationMillis: Long,
+    val inboxRowsApplied: Int,
+    val syncedOk: Boolean,
+    val timestampMillis: Long,
+)
+
+internal fun ActivityForegroundSyncUpdated.stateTransitionTraceAttrs(): JsonObject =
+    buildJsonObject {
+        putJsonObject("key") {
+            put("domain", ActivityInPlaceCheckTraceDomain)
+            put("event", ActivityForegroundSyncUpdatedTraceEvent)
+            put("outcome", if (syncedOk) "applied" else "failed")
+            put("entityId", "server:$serverId")
+        }
+        putJsonObject("meta") {
+            put(
+                "outcomeDetail",
+                "duration_ms=$durationMillis;inbox_rows_applied=$inboxRowsApplied;synced_ok=${if (syncedOk) 1 else 0}"
+            )
+            put("touched", inboxRowsApplied)
+            put("timestamp", timestampMillis)
+        }
+        put("duration_ms", durationMillis.toString())
+        put("inbox_rows_applied", inboxRowsApplied.toString())
+        put("synced_ok", if (syncedOk) "true" else "false")
+    }
+
 /** An audited row as the patch left it, and whether the audit is the follow-up read (web `audit` / `audit.followup`). */
 internal data class ActivityRowAudit(val moved: Boolean, val followup: Boolean)
 
@@ -225,6 +270,22 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
         remember(scopeId, Expectation(trigger, existed = true, seq = row.latestActivitySeq, until = 0L, reread = reread, cause = cause))
     }
 
+    /** An unlisted followed thread inserted live in place from `thread:updated` (web `noteInsertedRow` + `noteInPlaceRow`). */
+    fun noteInserted(row: InboxItem, trigger: InboxRefreshTrigger = InboxRefreshTrigger.ThreadReply, cause: String = "") {
+        val scopeId = row.inPlaceScopeId() ?: return
+        remember(
+            scopeId,
+            Expectation(
+                trigger = trigger,
+                existed = false,
+                seq = row.latestActivitySeq,
+                until = 0L,
+                reread = ActivityInPlaceRereadInserted,
+                cause = cause,
+            )
+        )
+    }
+
     /** Web `noteInPlaceReadState`: a read state for [scopeId] arrived; the next check says so. */
     fun noteReadState(scopeId: String) {
         expectations[scopeId]?.readState = true
@@ -232,9 +293,23 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
 
     /** A live message for a row the list does not show: the re-read brings it; note whether it came. */
     fun noteAbsent(scopeId: String, trigger: InboxRefreshTrigger, seq: String?) {
-        if (expectations[scopeId]?.existed == true) return
+        if (expectations[scopeId]?.hasLocalRow == true) return
         remember(scopeId, Expectation(trigger, existed = false, seq = seq, until = 0L))
     }
+
+    /** Web `noteAbsentRereadSkipped`: an unlisted unfollowed thread whose re-read was skipped (conflict if a later answer shows it). */
+    fun noteAbsentRereadSkipped(scopeId: String, trigger: InboxRefreshTrigger = InboxRefreshTrigger.ThreadReply, seq: String? = null) {
+        if (expectations[scopeId]?.hasLocalRow == true) return
+        remember(scopeId, Expectation(trigger, existed = false, seq = seq, until = 0L, reread = ActivityInPlaceRereadUnfollowed))
+    }
+
+    /** A `sync_inbox_rows` delete removed the row: clear any pending expectation so it does not expire later. */
+    fun noteSyncRowDeleted(scopeId: String) {
+        expectations.remove(scopeId)
+    }
+
+    private val Expectation.hasLocalRow: Boolean
+        get() = existed || reread == ActivityInPlaceRereadInserted
 
     private fun remember(scopeId: String, expected: Expectation) {
         val now = nowMillis()
@@ -286,13 +361,13 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
             if (now > expected.until) {
                 iterator.remove()
                 // Done, read away or moved on since: nothing patched in place was left to judge.
-                if (expected.existed && (localRow == null || localRow.latestActivitySeq != expected.seq)) continue
+                if (expected.hasLocalRow && (localRow == null || localRow.latestActivitySeq != expected.seq)) continue
                 expiredCheck(localRow?.key ?: scopeId, expected, now, backend, read)?.let(checks::add)
                 continue
             }
             val result: String
             var detail = ""
-            if (!expected.existed) {
+            if (!expected.hasLocalRow) {
                 // Still absent: maybe the lag; wait. Arrived: the re-read was what showed it.
                 if (servedRow == null) continue
                 result = "appeared"
@@ -332,7 +407,9 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
                         if (servedAheadOnly) ";served_ahead=1" else ""
             }
             iterator.remove()
-            val agrees = result == "match" || result == "appeared"
+            val agrees =
+                result == "match" ||
+                    (result == "appeared" && expected.reread != ActivityInPlaceRereadUnfollowed)
             // Every conflict; one agreement in ActivityInPlaceNoopSample (counted, so exact over a session).
             if (agrees && noopChecks++ % ActivityInPlaceNoopSample != 0L) continue
             checks +=
@@ -347,7 +424,7 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
                         "trigger=${expected.trigger.wireValue};existed=${if (expected.existed) 1 else 0};result=$result$detail" +
                             webListSuffix(expected, now, readBehindAlways = false) + read.detail,
                     timestampMillis = now,
-                    scope = "list",
+                    scope = ActivityInPlaceScopeList,
                     reread = expected.reread,
                     backend = backend,
                     fetchReason = read.fetchReason ?: "none",
@@ -355,6 +432,79 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
                 )
         }
         return checks
+    }
+
+    /**
+     * Tenny requirement (#proj-mobile:#163 818f094b): judge a pending in-place expectation for
+     * [scopeId] against an incoming `sync_inbox_rows` upsert ([servedRow], after local read/Done
+     * holds) before [localRow] is replaced. Without full `/api/channels/inbox` reloads, expectations
+     * would otherwise sit unjudged for 90 s and expire. Emits with `scope = "sync_row"` (no list
+     * order comparison because incremental sync carries only changed rows).
+     */
+    fun checkSyncRow(
+        scopeId: String,
+        localRow: InboxItem?,
+        servedRow: InboxItem,
+        readBehind: Boolean = false,
+    ): ActivityInPlaceCheck? {
+        val expected = expectations[scopeId] ?: return null
+        val now = nowMillis()
+        val read = ActivityInPlaceRead(fetchReason = "sync_inbox_rows", resumed = false)
+        if (now > expected.until) {
+            expectations.remove(scopeId)
+            if (expected.hasLocalRow && (localRow == null || localRow.latestActivitySeq != expected.seq)) return null
+            return expiredCheck(localRow?.key ?: servedRow.key, expected, now, backend = null, read = read, scope = ActivityInPlaceScopeSyncRow)
+        }
+        val result: String
+        val detail: String
+        if (!expected.hasLocalRow) {
+            result = "appeared"
+            detail = ";served_unread=${servedRow.unreadCount}"
+        } else if (localRow == null || localRow.latestActivitySeq != expected.seq) {
+            expectations.remove(scopeId)
+            return null
+        } else {
+            val seqOrder = compareActivitySeq(servedRow.latestActivitySeq, expected.seq)
+            if (seqOrder < 0) return null
+            if (readBehind) {
+                expected.readBehind += 1
+                return null
+            }
+            val drift =
+                buildList {
+                    if (servedRow.unreadCount != localRow.unreadCount) add("unread")
+                    if (servedRow.hasMention != localRow.hasMention) add("mention")
+                }.toMutableList()
+            val servedAheadOnly = seqOrder > 0 && drift.isEmpty()
+            if (seqOrder > 0 && !servedAheadOnly) drift.add(0, "served_ahead")
+            result = if (drift.isEmpty()) "match" else drift.joinToString("+")
+            detail =
+                ";unread=${localRow.unreadCount}/${servedRow.unreadCount}" +
+                    ";mention=${if (localRow.hasMention) 1 else 0}/${if (servedRow.hasMention) 1 else 0}" +
+                    if (servedAheadOnly) ";served_ahead=1" else ""
+        }
+        expectations.remove(scopeId)
+        val agrees =
+            result == "match" ||
+                (result == "appeared" && expected.reread != ActivityInPlaceRereadUnfollowed)
+        if (agrees && noopChecks++ % ActivityInPlaceNoopSample != 0L) return null
+        return ActivityInPlaceCheck(
+            entityId = localRow?.key ?: servedRow.key,
+            trigger = expected.trigger,
+            rowExisted = expected.existed,
+            result = result,
+            outcome = if (agrees) ActivityInPlaceCheckOutcome.Noop else ActivityInPlaceCheckOutcome.Conflict,
+            sampleRate = if (agrees) ActivityInPlaceNoopSample else 1,
+            outcomeDetail =
+                "trigger=${expected.trigger.wireValue};existed=${if (expected.existed) 1 else 0};result=$result$detail" +
+                    webListSuffix(expected, now, readBehindAlways = false) + read.detail,
+            timestampMillis = now,
+            scope = ActivityInPlaceScopeSyncRow,
+            reread = expected.reread,
+            backend = null,
+            fetchReason = read.fetchReason ?: "none",
+            resumed = read.resumed,
+        )
     }
 
     /**
@@ -376,21 +526,22 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
         expected: Expectation,
         now: Long,
         backend: String?,
-        read: ActivityInPlaceRead
+        read: ActivityInPlaceRead,
+        scope: String = ActivityInPlaceScopeList,
     ): ActivityInPlaceCheck? {
-        if (!expected.existed && expiredAbsentChecks++ % ActivityInPlaceNoopSample != 0L) return null
+        if (!expected.hasLocalRow && expiredAbsentChecks++ % ActivityInPlaceNoopSample != 0L) return null
         return ActivityInPlaceCheck(
             entityId = entityId,
             trigger = expected.trigger,
             rowExisted = expected.existed,
             result = "expired",
             outcome = ActivityInPlaceCheckOutcome.Noop,
-            sampleRate = if (expected.existed) 1 else ActivityInPlaceNoopSample,
+            sampleRate = if (expected.hasLocalRow) 1 else ActivityInPlaceNoopSample,
             outcomeDetail =
                 "trigger=${expected.trigger.wireValue};existed=${if (expected.existed) 1 else 0};result=expired" +
                     webListSuffix(expected, now, readBehindAlways = true) + read.detail,
             timestampMillis = now,
-            scope = "list",
+            scope = scope,
             reread = expected.reread,
             backend = backend,
             fetchReason = read.fetchReason ?: "none",

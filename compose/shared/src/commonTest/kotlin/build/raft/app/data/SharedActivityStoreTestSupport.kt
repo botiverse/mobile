@@ -122,6 +122,13 @@ internal fun activityStore(
     inboxRowPositionEnabled: (serverId: String) -> Boolean = { false },
     rowRereadDelayMillis: Long = ActivityRowRereadDelayMillis,
     onSyncPullHint: (serverId: String, reason: String) -> Unit = { _, _ -> },
+    syncInboxRowsEnabled: (serverId: String) -> Boolean = { false },
+    knownThreadContext: (
+        serverId: String,
+        threadChannelId: String,
+        parentMessageId: String,
+        parentChannelId: String?,
+    ) -> ActivityUnlistedThreadContext = { _, _, _, _ -> ActivityUnlistedThreadContext() },
     isBackgroundProjectionDeferred: () -> Boolean = { false },
     awaitBackgroundProjectionWindow: suspend (kotlinx.coroutines.flow.StateFlow<Boolean>) -> Unit = {}
 ): SharedActivityStore =
@@ -170,6 +177,8 @@ internal fun activityStore(
         inPlaceCheckSink = inPlaceCheckSink,
         listRowLoweredSink = listRowLoweredSink,
         onSyncPullHint = onSyncPullHint,
+        syncInboxRowsEnabled = syncInboxRowsEnabled,
+        knownThreadContext = knownThreadContext,
         isBackgroundProjectionDeferred = isBackgroundProjectionDeferred,
         awaitBackgroundProjectionWindow = awaitBackgroundProjectionWindow
     )

@@ -830,6 +830,9 @@ private data class ThreadLatestReplyDto(
     val messageType: String? = null,
     /** The reply is the enriched message payload, so it carries `mentions` like `message:new`. */
     val mentions: List<MessageMentionWireDto>? = null,
+    val conversationContext: ConversationContextWireDto? = null,
+    val delegatedBy: WireDelegatedBy? = null,
+    val deletedAt: String? = null,
 )
 
 @Serializable
@@ -1549,6 +1552,27 @@ private fun ThreadUpdatedDto.toDomain(): ThreadUpdated? {
         latestReply = latestReply?.toReplyPreview(),
         syncCoreReplyWindow = syncCoreReplyWindow?.toDomain(),
         latestReplyMentions = latestReply?.mentions.toDomainMentions(),
+        parentChannelId =
+            latestReply?.conversationContext?.parentChannelId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ChannelId)
+                ?: syncCoreReplyWindow?.discussion?.parentScopeKey?.scopeId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ChannelId),
+        parentChannelType =
+            latestReply?.conversationContext?.parentChannelType?.trim()?.lowercase()?.takeIf { it.isNotEmpty() },
+        latestReplyChannelType =
+            latestReply?.conversationContext?.channelType?.trim()?.lowercase()?.takeIf { it.isNotEmpty() },
+        latestReplyMessageType =
+            if (latestReply?.messageType.equals("system", ignoreCase = true)) MessageType.System else MessageType.Chat,
+        latestReplyDelegatedBy =
+            latestReply?.let { reply ->
+                val senderKind =
+                    when (reply.senderType.trim().lowercase()) {
+                        "agent" -> MemberKind.Agent
+                        "system" -> MemberKind.System
+                        "external", "external_projection" -> MemberKind.External
+                        else -> MemberKind.Human
+                    }
+                reply.delegatedBy.toMessageDelegatedBy(senderKind)
+            },
+        latestReplyRetracted = !latestReply?.deletedAt.isNullOrBlank(),
     )
 }
 

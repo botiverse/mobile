@@ -9,7 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** How long realtime hints for one server gather before their one pull. */
-internal const val SYNC_CHANGES_REALTIME_DEBOUNCE_MILLIS: Long = 750L
+internal const val SYNC_CHANGES_REALTIME_DEBOUNCE_MILLIS: Long = 200L
 
 /** The `sync_changes_pull trigger=` of a pull realtime events asked for. */
 internal const val SYNC_CHANGES_REALTIME_TRIGGER: String = "realtime"
