@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -125,6 +126,9 @@ internal object RaftSidebarItemMetrics {
     /** `SidebarItemIcon` / `SidebarItemChannelIcon`: a 19dp box with a 16dp icon. */
     val IconBox = 19.dp
     val Icon = 16.dp
+
+    /** `md:pointer-fine:size-4`: with a mouse or trackpad the icon slot is the 16dp icon. */
+    val PointerIconBox = 16.dp
 }
 
 /** The icon size [RaftSidebarItemIcon] draws at: the enclosing row's [RaftSidebarItemVariant]. */
@@ -173,6 +177,10 @@ enum class RaftSidebarItemVariant(
  *   in `foreground-hint` ([LocalRaftContentColor]), 8dp from the name. [variant]
  *   [RaftSidebarItemVariant.Entry] (Home's Search / Activity / Saved) makes it a 20dp icon
  *   12dp from the name.
+ * - Wide window ([build.raft.designsystem.theme.RaftControlMetrics.sidebarRowHeight]): the
+ *   row is 38dp with a finger and 34dp with a mouse or trackpad, the title in `text-subhead`
+ *   at 500, and an [RaftSidebarItemVariant.Entry] row is drawn as a Default one (raft-ui
+ *   SidebarItem at `md`). With a mouse or trackpad a Default row's icon slot is 16dp.
  * - [title]: `text-body` (16/24) at 600, one line with an ellipsis; 700 when
  *   [RaftRowTone.Unread] or [selected]. [RaftRowTone.Muted] writes it in
  *   `foreground-muted`, [RaftRowTone.Away] in `foreground-hint`.
@@ -359,10 +367,19 @@ private fun RaftSidebarItemLayout(
     val look = raftActiveStickerLook(active = selected, colors = colors, restingInk = titleInk)
     val hintInk = if (selected) RaftUiPalette.stickerInk else colors.foregroundHint
     val subtitleInk = if (selected) RaftUiPalette.stickerInk else colors.foregroundMuted
-    val titleWeight = if (selected || tone == RaftRowTone.Unread) FontWeight.Bold else FontWeight.SemiBold
+    // In a wide window (raft-ui SidebarItem at `md`) a row is `h-(--row-height)` in
+    // `text-subhead` at 500: 38dp with a finger, 34dp with a mouse or trackpad. On a phone it is
+    // at least 44dp in `text-body` at 600.
+    val wideRow = RaftTheme.controls.sidebarRowHeight
+    // At `md` the web draws Saved and Drafts as plain rows (`SidebarItemIcon`, gap 8); the entry
+    // look (a 20dp icon 12dp from the name) is the phone Home's (`mobileInline`).
+    val shape = if (wideRow != null && variant == RaftSidebarItemVariant.Entry) RaftSidebarItemVariant.Default else variant
+    val restingWeight = if (wideRow != null) FontWeight.Medium else FontWeight.SemiBold
+    val titleWeight = if (selected || tone == RaftRowTone.Unread) FontWeight.Bold else restingWeight
+    val rowStyle = if (wideRow != null) typography.subhead else typography.body
     val surface = if (selected) RaftUiPalette.selected else RaftTheme.surfaceColor
     val edge = RaftStroke.Control
-    val pointerRow = RaftTheme.controls.rowHeight
+    val pointerRow = wideRow
     val padY = if (pointerRow != null) RaftSidebarItemMetrics.PointerPaddingVertical else RaftSidebarItemMetrics.PaddingVertical
     // With a mouse or trackpad the content sits on the sidebar's axes (raft-ui list-cell
     // `md:pointer-fine:[--cell-pad-x:calc(var(--page-inset)-var(--cell-inset-x))]`): 8dp inside
@@ -376,7 +393,7 @@ private fun RaftSidebarItemLayout(
         LocalRaftContentColor provides hintInk,
         LocalRaftSidebarItemHint provides hintInk,
         LocalRaftSurfaceColor provides surface,
-        LocalRaftSidebarItemIconSize provides variant.icon,
+        LocalRaftSidebarItemIconSize provides shape.icon,
     ) {
         Row(
             modifier
@@ -425,20 +442,35 @@ private fun RaftSidebarItemLayout(
             if (leading != null) {
                 Box(
                     Modifier
-                        .padding(end = variant.leadingGap - RaftSidebarItemMetrics.Gap)
+                        .padding(end = shape.leadingGap - RaftSidebarItemMetrics.Gap)
                         // `md:pointer-fine:*:data-[slot=avatar]:mr-[-3px]`: a DM's avatar pulls
                         // the name onto the text axis. (raft-ui's icon slot also drops to 16dp
                         // there; the app keeps the 19dp slot, as a Default row can hold an
                         // avatar the slot would squeeze.)
-                        .then(if (fine && variant == RaftSidebarItemVariant.Peer) Modifier.hangEnd(RaftSidebarItemMetrics.PointerAvatarPull) else Modifier)
-                        .size(variant.leadingBox),
+                        .then(if (fine && shape == RaftSidebarItemVariant.Peer) Modifier.hangEnd(RaftSidebarItemMetrics.PointerAvatarPull) else Modifier)
+                        .then(
+                            // `md:pointer-fine:size-4`: with a mouse or trackpad the icon slot
+                            // narrows to the 16dp icon, so a channel's name lands on the 40dp text
+                            // axis. Something wider in it (an avatar) overhangs the slot evenly.
+                            if (fine && wideRow != null && shape == RaftSidebarItemVariant.Default) {
+                                Modifier.size(RaftSidebarItemMetrics.PointerIconBox, shape.leadingBox)
+                            } else {
+                                Modifier.size(shape.leadingBox)
+                            },
+                        ),
                     contentAlignment = Alignment.Center,
-                ) { leading() }
+                ) {
+                    if (fine && wideRow != null && shape == RaftSidebarItemVariant.Default) {
+                        Box(Modifier.wrapContentSize(unbounded = true), contentAlignment = Alignment.Center) { leading() }
+                    } else {
+                        leading()
+                    }
+                }
             }
             if (stackedSubtitle != null) {
                 // SidebarItemContent `stacked`: the name over its second line.
                 Column(Modifier.weight(1f)) {
-                    titleText(Modifier, typography.body.copy(fontWeight = titleWeight), look.ink)
+                    titleText(Modifier, rowStyle.copy(fontWeight = titleWeight), look.ink)
                     stackedSubtitle(Modifier, typography.footnote, subtitleInk)
                 }
             } else Row(
@@ -448,7 +480,7 @@ private fun RaftSidebarItemLayout(
             ) {
                 // The title is measured first, so it keeps its width while the subtitle
                 // (weighted) takes what is left: the subtitle gives way first.
-                val titleStyle = typography.body.copy(fontWeight = titleWeight)
+                val titleStyle = rowStyle.copy(fontWeight = titleWeight)
                 if (titleTrailing == null) {
                     // A single text: reading its own baseline lays out no children.
                     titleText(if (subtitle == null) Modifier.weight(1f) else Modifier.alignByBaseline(), titleStyle, look.ink)
@@ -478,7 +510,7 @@ private fun RaftSidebarItemLayout(
             }
             if (trailing != null) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(variant.asideGap),
+                    horizontalArrangement = Arrangement.spacedBy(shape.asideGap),
                     verticalAlignment = Alignment.CenterVertically,
                     content = trailing,
                 )
@@ -820,8 +852,11 @@ fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier, overflow: T
 @Composable
 fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
     // With a mouse or trackpad on the glyph axis (`md:pointer-fine:px-(--sidebar-glyph-axis)`).
-    val inset = if (RaftTheme.pointerInput == RaftPointerInput.Fine) RaftSidebarPointerGlyphInset else 12.dp
-    RaftSectionEyebrow(title, modifier.raftSlot("sidebar-group-label").fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = inset, end = inset, top = 16.dp))
+    // `md:pointer-fine:pt-2`: 8dp above the words, 26dp in all, where a finger gets `pt-4`.
+    val fine = RaftTheme.pointerInput == RaftPointerInput.Fine
+    val inset = if (fine) RaftSidebarPointerGlyphInset else 12.dp
+    val top = if (fine) 8.dp else 16.dp
+    RaftSectionEyebrow(title, modifier.raftSlot("sidebar-group-label").fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = inset, end = inset, top = top))
 }
 
 /**
@@ -829,7 +864,7 @@ fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
  * collapsible group of rows (Pinned, Channels, a custom group).
  *
  * - `px-5 pt-4` (20dp from the list's edges with the page's 8dp), gap 8: 40dp tall at the
- *   default font scale. With a mouse or trackpad it starts on the sidebar's glyph axis (16dp
+ *   default font scale; 26dp with a mouse or trackpad (`md:pointer-fine:pt-2`, no `pb-1.5`). With a mouse or trackpad it starts on the sidebar's glyph axis (16dp
  *   from the edge with the page's 8dp) and ends 18dp from it (raft-ui
  *   `md:pointer-fine:pl-(--sidebar-glyph-axis)`).
  * - The disclosure: a 14dp `chevron-right` (turned down when [expanded]; `size-3.5`),
@@ -954,7 +989,7 @@ fun RaftSidebarSectionHeader(
                 },
             )
             // Below the gap: the ring and the fill paint only the line and its 6dp.
-            .padding(top = RaftSidebarSectionHeaderGap)
+            .padding(top = if (fine) RaftSidebarSectionHeaderPointerGap else RaftSidebarSectionHeaderGap)
             .raftFocusRing(focused, RaftRadius.Control, colors)
             .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Control)
             // `px-5` (raft-ui 0.49, #815): the words 12dp inside the fill, 20dp from the list's
@@ -965,8 +1000,8 @@ fun RaftSidebarSectionHeader(
             .padding(
                 start = if (fine) RaftSidebarPointerGlyphInset else 12.dp,
                 end = if (fine) RaftSidebarSectionHeaderPointerEnd else 12.dp,
-                top = RaftSidebarSectionHeaderInset,
-                bottom = RaftSidebarSectionHeaderInset,
+                top = if (fine) RaftSidebarSectionHeaderPointerInset else RaftSidebarSectionHeaderInset,
+                bottom = if (fine) RaftSidebarSectionHeaderPointerInset else RaftSidebarSectionHeaderInset,
             ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1040,6 +1075,17 @@ private val RaftSidebarSectionHeaderInset = 6.dp
 
 /** The rest of `pt-4` (16dp) above the fill: the gap between sections, tappable but unpainted. */
 private val RaftSidebarSectionHeaderGap = 16.dp - RaftSidebarSectionHeaderInset
+
+/**
+ * With a mouse or trackpad the header is 26dp (raft-ui `md:pointer-fine:pt-2` with no `pb-1.5`:
+ * 8dp over the 18dp line). The app keeps its fill even around the words (artin, 2026-11-04):
+ * 3dp above and below the line, under a 2dp gap, so the words sit 3dp higher than on the web
+ * and the header is as tall.
+ */
+private val RaftSidebarSectionHeaderPointerInset = 3.dp
+
+/** With a mouse or trackpad, the gap above the fill: 26dp in all with the 18dp line. */
+private val RaftSidebarSectionHeaderPointerGap = 2.dp
 
 /**
  * With a mouse or trackpad, from the page's 8dp to the sidebar's glyph axis
