@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
+import build.raft.app.network.RaftFailedRequestTraceIds
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
@@ -76,6 +77,9 @@ internal interface RaftIntegrationsActionsPushApi {
         HomeNetworkResponse(code = 501, bodyText = null)
 
     suspend fun executeAction(messageId: MessageId, body: String): HomeNetworkResponse
+    /** `POST /api/actions/:messageId/close` (botiverse/slock #16473): answerer closes a question card without answering. */
+    suspend fun closeQuestionAction(messageId: MessageId): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun emitActionEvent(messageId: MessageId, body: String): HomeNetworkResponse
     suspend fun markActionExecuted(messageId: MessageId, body: String): HomeNetworkResponse
     suspend fun reconfirmAction(messageId: MessageId): HomeNetworkResponse
@@ -127,6 +131,9 @@ internal class RaftIntegrationsActionsPushNetworkApi(
 
     override suspend fun executeAction(messageId: MessageId, body: String): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Foreground, "actions/${messageId.value}/execute", method = "POST", bodyText = body)
+
+    override suspend fun closeQuestionAction(messageId: MessageId): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "actions/${messageId.value}/close", method = "POST")
 
     override suspend fun emitActionEvent(messageId: MessageId, body: String): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Background, "actions/${messageId.value}/event", method = "POST", bodyText = body)
@@ -250,6 +257,29 @@ internal class RaftIntegrationsActionsPushApiClient(
         }
         return when (val result = response.mapActionCard("action_execute_contract_mismatch")) {
             is DataResult.Content -> DataResult.Content(ActionCardExecuteOutcome.Executed(result.data.actionCard))
+            is DataResult.Empty -> result
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
+    /**
+     * POST /api/actions/:messageId/close (botiverse/slock #16473, routes/actions.ts): a person who
+     * may answer a `question:ask` card closes it without answering. 200 carries `{ messageId,
+     * metadata }` with the closed card (`state: "expired"` + `closedBy`/`closedAt`, or `state:
+     * "closed"`); 409 `ALREADY_EXECUTED` carries the answered card in `metadata`; any other refusal
+     * stays an error with the server's message, code and trace id.
+     */
+    suspend fun closeQuestionActionCard(messageId: MessageId): DataResult<ActionCardCloseOutcome> {
+        val response = transport.closeQuestionAction(messageId)
+        if (!response.isSuccessful) {
+            val already = response.actionCardFormRefusalOrNull() as? ActionCardExecuteOutcome.AlreadyExecuted
+            if (already != null) {
+                return DataResult.Content(ActionCardCloseOutcome.AlreadyExecuted(already.card, already.serverMessage))
+            }
+        }
+        return when (val result = response.mapActionCard("action_close_contract_mismatch")) {
+            is DataResult.Content -> DataResult.Content(ActionCardCloseOutcome.Closed(result.data.actionCard))
             is DataResult.Empty -> result
             is DataResult.Error -> result
             is DataResult.NoPermission -> result
@@ -400,6 +430,15 @@ internal sealed interface ActionCardExecuteOutcome {
     data class AlreadyExecuted(val card: ThreadActionCard?, val serverMessage: String?) : ActionCardExecuteOutcome
 }
 
+/** What `POST /api/actions/:messageId/close` came to ([RaftIntegrationsActionsPushApiClient.closeQuestionActionCard], slock #16473). */
+internal sealed interface ActionCardCloseOutcome {
+    /** 200: closed without answering; [card] is the closed card returned by the server. */
+    data class Closed(val card: ThreadActionCard?) : ActionCardCloseOutcome
+
+    /** 409 `ALREADY_EXECUTED`: answered first; [card] is the answered card returned by the server. */
+    data class AlreadyExecuted(val card: ThreadActionCard?, val serverMessage: String?) : ActionCardCloseOutcome
+}
+
 internal data class ActionEventResult(val ok: Boolean)
 internal data class PushVapidKey(val publicKey: String)
 internal data class PushCommandResult(val ok: Boolean)
@@ -441,7 +480,12 @@ private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<
         if (code == 401) {
             // An expired session: the route signs out like every other card path.
             return DataResult.NoPermission(
-                PermissionBlocker(code = "auth_required", requiredCapability = "auth_session", serverMessage = serverMessage)
+                PermissionBlocker(
+                    code = "auth_required",
+                    requiredCapability = "auth_session",
+                    serverMessage = serverMessage,
+                    traceId = traceId ?: RaftFailedRequestTraceIds.recent(),
+                )
             )
         }
         return DataResult.Error(
@@ -461,6 +505,7 @@ private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<
                 // An Approve Login card's execute with two-step verification on: the caller steps
                 // up and runs it once more (SecondFactorStepUpCoordinator).
                 secondFactorStepUp = secondFactorStepUpChallengeOrNull(),
+                traceId = traceId ?: RaftFailedRequestTraceIds.recent(),
             )
         )
     }

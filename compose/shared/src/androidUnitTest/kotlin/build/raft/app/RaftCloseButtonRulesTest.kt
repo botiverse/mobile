@@ -142,6 +142,7 @@ class RaftCloseButtonRulesTest {
                 "app/tasks/SharedTasksPage.kt" to Allowed(1, "Clear all, $Clear"),
                 "app/tasks/SharedTasksQueryToolbar.kt" to Allowed(1, "Clear all, $Clear"),
                 "app/tasks/TaskCreateFromMessageDialog.kt" to Allowed(1, "a title row's remove, $Remove"),
+                "app/thread/ActionCardQuestionCard.kt" to Allowed(1, "a question card's answerer close × (slock #16473), raft-ui icon-sm in the card header"),
                 "app/thread/RaftEmojiPicker.kt" to Allowed(1, TextButton),
                 "app/thread/ThreadAgentFollowers.kt" to Allowed(1, "a follower's remove, $Remove"),
                 "app/thread/ThreadFind.kt" to Allowed(1, "the find bar's close, a bar over the messages (web ThreadSearchBar)"),

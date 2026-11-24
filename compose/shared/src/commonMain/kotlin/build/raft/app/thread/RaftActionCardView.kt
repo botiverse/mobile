@@ -184,6 +184,8 @@ internal fun RaftActionCardView(
     footer: (@Composable () -> Unit)? = null,
     /** A question card's slim frame ([RaftActionCardSlim]); null: the generic frame. */
     slim: RaftActionCardSlim? = null,
+    /** Trailing control at the end of the header: a question card's answerer close `×` / "Closed · Undo". */
+    headerTrailing: (@Composable () -> Unit)? = null,
 ) {
     val executed = state.status == RaftActionCardStatus.Executed
     val ended = state.status.ended
@@ -253,6 +255,7 @@ internal fun RaftActionCardView(
             onExpandedChange =
                 if (slim == null && (executed || viewOnly || state.status != RaftActionCardStatus.Prepared)) ({ expanded = it }) else null,
             toggleLabel = stringResource(Res.string.thread_action_card_toggle_details),
+            headerTrailing = headerTrailing,
         ) {
             state.runsOnServerName?.takeIf { it.isNotBlank() }?.let { server ->
                 RaftMessageActionCardNotice(stringResource(Res.string.thread_action_card_runs_on_server, server))

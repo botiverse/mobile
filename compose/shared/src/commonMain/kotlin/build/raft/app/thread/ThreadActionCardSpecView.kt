@@ -10,6 +10,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -39,6 +41,7 @@ import build.raft.app.data.QuestionAskActionCardType
 import build.raft.app.data.SeatsAddActionCardType
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.expiredAsOf
 import build.raft.app.data.expiresAtEpochMillis
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
@@ -255,24 +258,26 @@ internal fun ThreadActionCardSpecView(
     val currentNames by rememberUpdatedState(names)
     LaunchedEffect(namesComputer, viewerServerId) { if (namesComputer) currentNames.ensureComputers() }
     val displayLocale = rememberActionCardDisplayLocale()
+    val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
+    val effectiveCard = card.expiredAsOf(nowMillis)
     val blockedReason =
         when {
-            card.isExecuted || card.hasEnded -> null
-            card.sourceServerId != null && viewerServerId != null && card.sourceServerId != viewerServerId ->
-                card.targetServerName?.let { stringResource(Res.string.thread_action_card_blocked_target_server, it) }
+            effectiveCard.isExecuted || effectiveCard.hasEnded -> null
+            effectiveCard.sourceServerId != null && viewerServerId != null && effectiveCard.sourceServerId != viewerServerId ->
+                effectiveCard.targetServerName?.let { stringResource(Res.string.thread_action_card_blocked_target_server, it) }
                     ?: stringResource(Res.string.thread_action_card_blocked_source_workspace)
             else -> null
         }
-    val endedLine = card.actionCardEndedLine()
-    val committedBy = card.executedByUserName?.takeIf { it.isNotBlank() }?.let { stringResource(Res.string.thread_action_card_committed_by, it) }
+    val endedLine = effectiveCard.actionCardEndedLine()
+    val committedBy = effectiveCard.executedByUserName?.takeIf { it.isNotBlank() }?.let { stringResource(Res.string.thread_action_card_committed_by, it) }
     val record = committedBy?.let { by -> executedTimeLabel?.let { "$by · $it" } ?: by } ?: executedTimeLabel
     val reconfirmLabel = stringResource(Res.string.thread_action_card_reconfirm)
     val viewPlanLabel = stringResource(Res.string.settings_billing_view_your_plan)
     val offersUpgrade = settingsBillingOffersUpgrade()
     val rendered =
-        remember(spec, card.needsReconfirmation, reconfirmLabel, viewPlanLabel, offersUpgrade, displayLocale) {
+        remember(spec, effectiveCard.needsReconfirmation, reconfirmLabel, viewPlanLabel, offersUpgrade, displayLocale) {
             val labelled =
-                if (card.needsReconfirmation) {
+                if (effectiveCard.needsReconfirmation) {
                     spec.withChangingButtonsLabelled(actionCardAppMsg("actionCard.reconfirm", reconfirmLabel, displayLocale))
                 } else {
                     spec
@@ -282,21 +287,50 @@ internal fun ThreadActionCardSpecView(
         }
     // A question card the server placed on the card (`placement: "inline"`, spec §5.9): answered in
     // its body, without its button or its question rows; every other card keeps its sheet.
-    val inline = remember(rendered, card) { card.inlineQuestionForm(rendered) }
+    val inline = remember(rendered, effectiveCard) { effectiveCard.inlineQuestionForm(rendered) }
     // A question card (redesign 2026-11): C, a button row without a card, or B, a slim card.
-    val questionLayout = remember(rendered, card) { card.questionCardLayout(rendered) }
-    val question = questionLayout?.let { rememberQuestionCardWords(card, rendered, askerName, displayLocale, record) }
+    val questionLayout = remember(rendered, effectiveCard) { effectiveCard.questionCardLayout(rendered) }
+    val question = questionLayout?.let { rememberQuestionCardWords(effectiveCard, rendered, askerName, displayLocale, record) }
     val singleQuestion = question?.single == true
     val shown =
         remember(rendered, inline, questionLayout, singleQuestion) {
             val body = if (inline == null) rendered.spec else rendered.spec.withoutInlineQuestions(inline)
             rendered.copy(spec = if (questionLayout == QuestionCardLayout.SlimCard) body.withoutSlimQuestionRows(singleQuestion) else body)
         }
+    val isOwnRequest =
+        effectiveCard.requesterUserId != null &&
+            host.viewerUserId != null &&
+            effectiveCard.requesterUserId.trim().equals(host.viewerUserId.trim(), ignoreCase = true)
     // Only the person asked (or anyone, on a card for anyone) may answer: the server refuses the rest (403 NOT_ADDRESSEE).
-    val canOperate = commitEnabled && blockedReason == null && (question?.asked ?: true)
-    val currentCard by rememberUpdatedState(card)
+    val canOperate = commitEnabled && blockedReason == null && !isOwnRequest && (question?.asked ?: true)
+    val currentCard by rememberUpdatedState(effectiveCard)
     val error = threadActionCardSpecErrorText(slice.error)
-    val canAnswer = canOperate && card.actionCardSpecStatus() == RaftActionCardStatus.Prepared
+    val mayAnswer = canOperate && effectiveCard.actionCardSpecStatus() == RaftActionCardStatus.Prepared
+    // Who may answer a question card may close it instead (slock #16473); while that close waits
+    // for its Undo or is in flight, the card is not answered.
+    val canClose = effectiveCard.questionAnswererCanClose(canAnswer = mayAnswer, nowMillis = nowMillis)
+    val closeUndoable =
+        rememberQuestionUndoableClose(messageId = messageId, canClose = canClose) {
+            host.onIntent(ThreadActionCardSpecIntent.CloseQuestion(messageId, currentCard))
+        }
+    var answerWaiting by remember(messageId) { mutableStateOf(false) }
+    val closeWaiting = canClose && closeUndoable.waiting
+    val closingInFlight = slice.busy == ACTION_CARD_CLOSE_ELEMENT_ID
+    val canAnswer = mayAnswer && !closeWaiting && !closingInFlight
+    val closeControl: (@Composable () -> Unit)? =
+        if (canClose) {
+            {
+                ActionCardQuestionCloseControl(
+                    waiting = closeWaiting,
+                    closing = closingInFlight,
+                    enabled = slice.busy == null && !answerWaiting,
+                    onStartClose = { closeUndoable.start(Unit) },
+                    onUndo = { closeUndoable.undo() },
+                )
+            }
+        } else {
+            null
+        }
     val send = { form: ActionCardInlineQuestionForm ->
         { values: Map<String, build.raft.app.data.ActionCardFormValue> ->
             host.onIntent(ThreadActionCardSpecIntent.SubmitInlineForm(messageId, currentCard, form.formId, form.buttonId, values))
@@ -313,24 +347,26 @@ internal fun ThreadActionCardSpecView(
             canSubmit = canAnswer,
             submitting = inline != null && slice.busy == inline.buttonId,
             hint = question.buttonRowHint,
-            answeredLine = if (card.isExecuted) question.answeredLine else null,
+            answeredLine = if (effectiveCard.isExecuted) question.answeredLine else null,
             error = error,
             displayLocale = displayLocale,
             onSend = { values -> inline?.let { send(it)(values) } },
             modifier = modifier,
             serverIssuesTraceId = slice.inlineIssuesTraceId,
             errorTraceId = slice.error.traceIdOrNull(),
+            headerTrailing = closeControl,
+            onWaitingChange = { answerWaiting = it },
         )
         return
     }
     val frame =
         RaftActionCardFrameState(
-            status = card.actionCardSpecStatus(),
+            status = effectiveCard.actionCardSpecStatus(),
             record = record,
             blockedReason = blockedReason,
             readOnly = !commitEnabled,
-            // Someone else's question: the same card, its controls disabled (who is asked never changes the shape).
-            controlsDisabled = question?.asked == false,
+            // Someone else's question (or a close waiting for Undo / in flight): the same card, its controls disabled.
+            controlsDisabled = question?.asked == false || closeWaiting || closingInFlight,
             busyElementKey = slice.busyElement(typedPending),
             error = error,
             errorTraceId = slice.error.traceIdOrNull(),
@@ -342,19 +378,20 @@ internal fun ThreadActionCardSpecView(
         entityName = { ref, serverId -> names.actionCardSpecEntityName(ref, serverId, viewerServerId) },
         onAction = onAction,
         modifier = modifier,
-        sourceServerId = card.sourceServerId,
+        sourceServerId = effectiveCard.sourceServerId,
         displayLocale = displayLocale,
-        linkNavigable = { button -> button.actionCardSpecLinkNavigable(card.sourceServerId, viewerServerId) },
+        linkNavigable = { button -> button.actionCardSpecLinkNavigable(effectiveCard.sourceServerId, viewerServerId) },
         fitLabels = inline != null,
         slim =
             question?.let {
                 RaftActionCardSlim(
                     title = it.slimTitle,
                     description = it.slimDescription,
-                    statusLine = if (card.isExecuted) it.answeredLine else it.endedLine?.let(::AnnotatedString),
-                    statusCheck = card.isExecuted,
+                    statusLine = if (effectiveCard.isExecuted) it.answeredLine else it.endedLine?.let(::AnnotatedString),
+                    statusCheck = effectiveCard.isExecuted,
                 )
             },
+        headerTrailing = closeControl,
         footer =
             inline?.let { form ->
                 {
@@ -370,6 +407,7 @@ internal fun ThreadActionCardSpecView(
                         displayLocale = displayLocale,
                         onSend = send(form),
                         serverIssuesTraceId = slice.inlineIssuesTraceId,
+                        onWaitingChange = { answerWaiting = it },
                     )
                 }
             },

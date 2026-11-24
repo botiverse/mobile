@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.isTerminalState
 import build.raft.app.data.ThreadCandidateProofGate
 import build.raft.app.data.ThreadIdentityProof
 import build.raft.app.data.ThreadRouteId
@@ -777,6 +778,9 @@ private fun RaftThreadMessageItem.withActionCard(card: ThreadActionCard): RaftTh
     // not replace a done card the server already sent (realtime `message_updated` can land before
     // the HTTP answer): that would drop the committed-by line and the result.
     val current = threadActionCard()
+    if (current != null && current.isTerminalState && !card.isTerminalState) {
+        return this
+    }
     if (current != null && current.isExecuted && current.executedAt != null && card.isExecuted && card.executedAt == null) {
         return this
     }

@@ -17,6 +17,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonTransformingSerializer
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
@@ -154,6 +155,13 @@ internal data class ThreadActionCard(
     val questionExpiresInMinutes: Int? = null,
     /** `question:ask`: the agent paged its questions (wire `action.pages` present); the server never places such a card inline. */
     val questionHasPages: Boolean = false,
+    /**
+     * `question:ask` (served only, never stored; slock #16473): true when the server supports
+     * closing this prepared question card without answering (`POST /api/actions/:messageId/close`).
+     * False on older servers and non-prepared cards so the client never renders a close button that
+     * would fail.
+     */
+    val answererCanClose: Boolean = false,
     /** `question:ask`: when a person closed the card without answering (wire `closedAt`, ISO UTC; slock #16473). */
     val closedAt: String? = null,
     /**
@@ -381,6 +389,8 @@ internal data class WireActionCardMetadata(
     val expiresAt: String? = null,
     /** A person's request: [ThreadActionCard.requesterUserId]. */
     val requesterUserId: String? = null,
+    /** `question:ask` (served only; slock #16473): whether answerer close is offered by the server, kept leniently as JSON. */
+    val answererCanClose: JsonElement? = null,
     /** `question:ask`: when a person closed it without answering (slock #16473). */
     val closedAt: String? = null,
     /** `question:ask`: who closed it without answering (`{ userId, handle }`), kept leniently as JSON. */
@@ -599,6 +609,7 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         questions = actionObject.questionShapes(),
         questionHasPages = actionObject["pages"].let { it != null && it !is JsonNull },
         questionExpiresInMinutes = (actionObject["expiresInMinutes"] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 },
+        answererCanClose = (meta.answererCanClose as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull == true,
         closedAt = meta.closedAt?.takeIf { it.isNotBlank() },
         closedBy =
             (meta.closedBy as? JsonObject)?.let { closer ->
@@ -699,6 +710,7 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         if (questions.isNotEmpty()) {
             put("${ActionCardMetadataPrefix}questions", threadActionCardJson.encodeToString(ListSerializer(ThreadActionCardQuestion.serializer()), questions))
         }
+        if (answererCanClose) putBoolean("answererCanClose", true)
         putString("closedAt", closedAt)
         closedBy?.let {
             put("${ActionCardMetadataPrefix}closedBy", threadActionCardJson.encodeToString(ThreadActionCardClosedBy.serializer(), it))
@@ -708,6 +720,21 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
 /** True when the projected message metadata carries an action card (any type). */
 internal fun messageMetadataHasActionCard(metadata: Map<String, String>): Boolean =
     metadata["${ActionCardMetadataPrefix}kind"] == "action-card"
+
+/** True when [this] action card is in a terminal state (`executed`, `withdrawn`, `expired`, `closed`). */
+internal val ThreadActionCard.isTerminalState: Boolean
+    get() = isExecuted || isWithdrawn || isExpired || isClosed
+
+/**
+ * True when [held] is an action card in a terminal state (`executed`, `withdrawn`, `expired`,
+ * `closed`) and [incoming] would regress it to a non-terminal state (web
+ * `isRegressingActionCardState`, slock #16473): an older open copy must never reopen an ended card.
+ */
+internal fun isRegressingActionCardState(held: Map<String, String>, incoming: Map<String, String>): Boolean {
+    val heldCard = actionCardFromMessageMetadata(held) ?: return false
+    val incomingCard = actionCardFromMessageMetadata(incoming) ?: return false
+    return heldCard.isTerminalState && !incomingCard.isTerminalState
+}
 
 internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): ThreadActionCard? {
     if (metadata["${ActionCardMetadataPrefix}kind"] != "action-card") return null
@@ -774,6 +801,7 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
             metadata["${ActionCardMetadataPrefix}questions"]?.let { raw ->
                 runCatching { threadActionCardJson.decodeFromString(ListSerializer(ThreadActionCardQuestion.serializer()), raw) }.getOrNull()
             }.orEmpty(),
+        answererCanClose = metadata["${ActionCardMetadataPrefix}answererCanClose"]?.equals("true", ignoreCase = true) == true,
         closedAt = metadata["${ActionCardMetadataPrefix}closedAt"]?.takeIf { it.isNotBlank() },
         closedBy =
             metadata["${ActionCardMetadataPrefix}closedBy"]?.let { raw ->

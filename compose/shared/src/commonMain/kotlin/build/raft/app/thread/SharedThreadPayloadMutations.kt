@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.isOlderMessageCardRevision
+import build.raft.app.data.isRegressingActionCardState
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.MessageMutationSummary
 import build.raft.app.data.MessageReactionSummary
@@ -696,7 +697,12 @@ internal fun RaftThreadMessageItem.mergeRealtimeUpdate(
         seq = update.seq ?: seq,
         messageType = update.messageType.ifBlank { messageType },
         systemEventType = update.systemEventType ?: systemEventType,
-        metadata = update.metadata.ifEmpty { metadata },
+        metadata =
+            when {
+                update.metadata.isEmpty() -> metadata
+                isRegressingActionCardState(held = metadata, incoming = update.metadata) -> metadata
+                else -> update.metadata
+            },
         body = update.body.ifBlank { body },
         // A realtime update with a body carries the full text: a cut Activity seed is no longer cut.
         activityPreviewTruncated = activityPreviewTruncated && update.body.isBlank(),
