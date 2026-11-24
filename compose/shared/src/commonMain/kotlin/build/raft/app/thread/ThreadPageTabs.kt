@@ -977,7 +977,7 @@ internal fun ThreadJoinFooter(
         modifier = Modifier.fillMaxWidth()
             .background(RaftColor.Canvas)
             .raftSafeAreaHorizontalPadding()
-            .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = bottomSafeArea)
+            .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = bottomSafeArea.coerceAtLeast(10.dp))
             .raftToastAvoid(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
