@@ -1189,6 +1189,36 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun removeServerMemberSendsRevokeComputersBodyAndPreserves409MemberHasComputerCode() = runBlocking {
+        val successNetwork = FakeSettingsNetworkClient(removeMemberJson = """{"ok":true}""")
+        val successRepo = RealSettingsRepository(sampleStore(), successNetwork)
+
+        assertTrue(successRepo.removeServerMember("member-plain") is DataResult.Content)
+        assertTrue(successRepo.removeServerMember("member-blocked", listOf("c-1", "c-2")) is DataResult.Content)
+        assertEquals(
+            listOf(null, """{"revokeComputers":true,"computerIds":["c-1","c-2"]}"""),
+            successNetwork.removeMemberBodies,
+        )
+
+        val conflictJson =
+            """{"error":"This member attached 1 Computer on this server.","code":"member_has_computer","computers":[{"id":"c-1","machineId":"m-1","name":"studio-mac","agentCount":2,"othersAgentCount":1}]}"""
+        val conflictNetwork = FakeSettingsNetworkClient(responseCode = 409, errorJson = conflictJson)
+        val conflictRepo = RealSettingsRepository(sampleStore(), conflictNetwork)
+
+        val removeConflict = conflictRepo.removeServerMember("member-blocked", listOf("c-old"))
+        assertTrue(removeConflict is DataResult.Error)
+        assertEquals("http_409", removeConflict.error.code)
+        assertEquals("member_has_computer", removeConflict.error.serverCode)
+        assertEquals("This member attached 1 Computer on this server.", removeConflict.error.serverMessage)
+
+        val leaveConflict = conflictRepo.leaveServer()
+        assertTrue(leaveConflict is DataResult.Error)
+        assertEquals("http_409", leaveConflict.error.code)
+        assertEquals("member_has_computer", leaveConflict.error.serverCode)
+        assertEquals("This member attached 1 Computer on this server.", leaveConflict.error.serverMessage)
+    }
+
+    @Test
     fun computersUseSelectedServerMachinesEndpointAndMapCanonicalFields() = runBlocking {
         val logs = mutableListOf<String>()
         val network =
@@ -1570,6 +1600,7 @@ class SettingsRepositoryDataSourceTest {
         val sidebarBodies = mutableListOf<String>()
         val serverOrderBodies = mutableListOf<String>()
         val memberRoleBodies = mutableListOf<String>()
+        val removeMemberBodies = mutableListOf<String?>()
         val registerBodies = mutableListOf<String>()
         val renameBodies = mutableListOf<String>()
         val avatarFileNames = mutableListOf<String>()
@@ -1794,6 +1825,7 @@ class SettingsRepositoryDataSourceTest {
                 }
                 normalized.matches(Regex("""servers/[^/]+/members/[^/]+""")) && method == "DELETE" -> {
                     deletedMemberId = normalized.split("/")[3]
+                    removeMemberBodies += bodyText
                     response(removeMemberJson)
                 }
                 normalized.matches(Regex("""servers/[^/]+/leave""")) && method == "POST" -> {

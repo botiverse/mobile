@@ -443,14 +443,20 @@ internal class MemberDetailRouteProvider(
     }
 
     /**
-     * Remove member (web HumanProfileActions `removeThisMember`): `DELETE servers/:id/members/:memberId`
-     * on the server the profile was opened on; the roster drops the person once the server agrees.
+     * Remove member (web HumanProfileActions `removeThisMember`, slock #16386):
+     * `DELETE servers/:id/members/:memberId` (optionally with `{ revokeComputers: true, computerIds }`
+     * to disconnect the person's attached Computers in one step) on the server the profile was opened
+     * on; the roster drops the person once the server agrees.
      */
-    suspend fun removeHumanMember(expectedServerId: String, memberId: String): DataResult<SettingsServerActionResult> {
+    suspend fun removeHumanMember(
+        expectedServerId: String,
+        memberId: String,
+        revokeComputerIds: List<String> = emptyList(),
+    ): DataResult<SettingsServerActionResult> {
         if (!membersHumanRoleUpdateServerMatches(expectedServerId, selectedServerStore.selectedServerId.value)) {
             return DataResult.Error(ScreenError("member_remove_server_changed", retryable = false))
         }
-        val result = settingsRepository.removeServerMember(memberId)
+        val result = settingsRepository.removeServerMember(memberId, revokeComputerIds)
         if (result is DataResult.Content && result.data.success) {
             serverMembersStore.removeMember(serverId = ServerId(expectedServerId), memberId = MemberId(memberId))
         }

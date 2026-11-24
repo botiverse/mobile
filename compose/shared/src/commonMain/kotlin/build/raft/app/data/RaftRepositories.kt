@@ -181,7 +181,10 @@ interface SettingsServerManagementRepository {
 
     suspend fun restoreSystemChannel(): DataResult<SettingsServerActionResult>
 
-    suspend fun removeServerMember(memberId: String): DataResult<SettingsServerActionResult>
+    suspend fun removeServerMember(
+        memberId: String,
+        revokeComputerIds: List<String> = emptyList(),
+    ): DataResult<SettingsServerActionResult>
     suspend fun leaveServer(): DataResult<SettingsServerActionResult>
 
     /**

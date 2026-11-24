@@ -244,6 +244,14 @@ internal fun SettingsNativeDetailScreen() {
         onOpenArchivedAgent = { agentId, workspace ->
             pager.openSettingsArchivedAgent(agentId, session?.currentServerId, workspace, environment.storeScope, bridge::logWarn)
         },
+        onOpenComputer = { machineId ->
+            val identity = settingsComputerRouteIdentity(session?.currentServerId, machineId)
+            if (identity != null) {
+                pager.openSettingsComputerPage(environment.storeScope, identity)
+            } else {
+                pager.openSettingsComputersPage(environment.storeScope)
+            }
+        },
     )
     }
     }
@@ -330,6 +338,8 @@ internal fun SettingsNativeDetailPageContent(
     onOpenArchivedChannel: (ArchivedChannel) -> Unit = {},
     /** Server's archived agent row (workspace false) or its View workspace (true): opens the agent. */
     onOpenArchivedAgent: (agentId: String, workspace: Boolean) -> Unit = { _, _ -> },
+    /** Leave server blocking Computer row's "Delete computer" link: opens the Computer page. */
+    onOpenComputer: ((machineId: String) -> Unit)? = null,
     onLogout: () -> Unit
 ) {
     val diagnosticsSnapshot =
@@ -676,6 +686,7 @@ internal fun SettingsNativeDetailPageContent(
                                 repository = repository,
                                 serverId = currentServer?.id?.value,
                                 currentUserId = session?.user?.id,
+                                onOpenComputer = onOpenComputer,
                             )
                         },
                 ) { action, itemId ->

@@ -36,7 +36,8 @@ import build.raft.app.data.ServerPublicExposedChannel
 import build.raft.app.data.ServerPublicVisibilityRepository
 import build.raft.app.data.MemberRemovalImpactRepository
 import build.raft.app.data.MemberRemovalImpactState
-import build.raft.app.data.holdsConfirm
+import build.raft.app.data.holdsLeaveConfirm
+import build.raft.app.data.isMemberHasComputerRefusalCode
 import build.raft.designsystem.components.RaftDialog
 import androidx.compose.ui.platform.testTag
 import org.jetbrains.compose.resources.StringResource
@@ -337,6 +338,10 @@ private fun SettingsServerDangerZoneCard(
     val canDelete = normalizedRole == "owner" || dangerSection?.state?.name == "Available"
     var showDeleteModal by remember { mutableStateOf(false) }
     var showLeaveModal by remember { mutableStateOf(false) }
+    var leaveImpactRevision by remember { mutableStateOf(0) }
+    var leaveAttemptPending by remember { mutableStateOf(false) }
+    var leaveErrorVisible by remember { mutableStateOf(false) }
+    var leaveSubmittedActionState by remember { mutableStateOf<SharedSettingsActionState?>(null) }
     var modalConfirmationSlug by remember { mutableStateOf("") }
     if (!canLeave && !canDelete) {
         return
@@ -364,7 +369,13 @@ private fun SettingsServerDangerZoneCard(
                         buttonVariant = RaftButtonVariant.Warning,
                         enabled = !leaveBusy,
                         // Web DangerZoneSection: Leave server asks first (LeaveServerConfirmDialog).
-                        onClick = { showLeaveModal = true }
+                        onClick = {
+                            leaveImpactRevision = 0
+                            leaveAttemptPending = false
+                            leaveErrorVisible = false
+                            leaveSubmittedActionState = actionState
+                            showLeaveModal = true
+                        }
                     )
                     if (leaveConfirmed) {
                         Text(
@@ -388,6 +399,19 @@ private fun SettingsServerDangerZoneCard(
         }
     }
     if (showLeaveModal) {
+        LaunchedEffect(actionState, leaveAttemptPending) {
+            if (
+                leaveAttemptPending &&
+                actionState !== leaveSubmittedActionState &&
+                actionState?.action == SERVER_ACTION_LEAVE &&
+                !actionState.inProgress
+            ) {
+                leaveAttemptPending = false
+                if (actionState.screenError?.serverCode.isMemberHasComputerRefusalCode()) {
+                    leaveImpactRevision += 1
+                }
+            }
+        }
         SettingsServerLeaveConfirmationDialog(
             serverName = serverName,
             impact =
@@ -396,14 +420,34 @@ private fun SettingsServerDangerZoneCard(
                     serverId = leaveImpact?.serverId,
                     // A Guest attaches no Computers (and the route refuses one asking): nothing is read.
                     memberId = if (leaveImpact == null || normalizedRole == "guest") null else leaveImpact.currentUserId.orEmpty(),
+                    revision = leaveImpactRevision,
                 ),
             leaveBusy = leaveBusy,
             errorMessage =
                 actionState
-                    ?.takeIf { it.action == SERVER_ACTION_LEAVE && !it.inProgress }
+                    ?.takeIf {
+                        leaveErrorVisible &&
+                            it !== leaveSubmittedActionState &&
+                            it.action == SERVER_ACTION_LEAVE &&
+                            !it.inProgress
+                    }
                     ?.userFacingErrorMessage(localizedErrorPresentationStrings()),
+            onDeleteComputer =
+                leaveImpact?.onOpenComputer?.let { openComputer ->
+                    { machineId ->
+                        if (!leaveBusy) {
+                            showLeaveModal = false
+                            openComputer(machineId)
+                        }
+                    }
+                },
             onDismiss = { if (!leaveBusy) showLeaveModal = false },
-            onLeave = onLeave
+            onLeave = {
+                leaveSubmittedActionState = actionState
+                leaveAttemptPending = true
+                leaveErrorVisible = true
+                onLeave()
+            }
         )
     }
     if (showDeleteModal) {
@@ -463,20 +507,24 @@ internal fun settingsServerLeftOrDeleted(actionState: SharedSettingsActionState?
         !actionState.inProgress &&
         !actionState.hasUserFacingError()
 
-/** What Leave server's confirmation needs to read the Computers leaving takes offline. */
+/** What Leave server's confirmation needs to read the Computers blocking or affected by leaving. */
 internal data class SettingsServerLeaveImpactBinding(
     val repository: MemberRemovalImpactRepository,
     val serverId: String?,
     val currentUserId: String?,
+    /** Opens a blocking Computer's detail page so the member can delete it before leaving. */
+    val onOpenComputer: ((machineId: String) -> Unit)? = null,
 )
 
 internal const val SETTINGS_SERVER_LEAVE_DIALOG_TAG = "server-leave-dialog"
 internal const val SETTINGS_SERVER_LEAVE_CONFIRM_TAG = "server-leave-confirm-button"
 
 /**
- * Web `LeaveServerConfirmDialog` (DangerZoneSection, slock #13547): "Leave server", what leaving
- * loses, then which Computers you attached go offline in a warning banner. The confirm (warning)
- * waits for that read, which gives up after 10 s, and stays available when it fails.
+ * Web `LeaveServerConfirmDialog` (DangerZoneSection, slock #13547, #16386, #16435): "Leave server",
+ * what leaving loses, then any blocking Computers (with "Delete computer" and Leave disabled), or
+ * legacy machines going offline, plus any handed-over Computers sign-in reminder. The confirm waits
+ * for the read (10 s timeout), stays disabled while blocking Computers exist, and stays available
+ * when the read fails (server still refuses 409 `member_has_computer`, which re-reads the list).
  */
 @Composable
 internal fun SettingsServerLeaveConfirmationDialog(
@@ -484,9 +532,11 @@ internal fun SettingsServerLeaveConfirmationDialog(
     impact: MemberRemovalImpactState,
     leaveBusy: Boolean,
     errorMessage: String?,
+    onDeleteComputer: ((machineId: String) -> Unit)? = null,
     onDismiss: () -> Unit,
     onLeave: () -> Unit
 ) {
+    val leaveDisabled = impact.holdsLeaveConfirm
     RaftDialog(
         onDismissRequest = onDismiss,
         title = stringResource(Res.string.settings_server_leave_dialog_title),
@@ -504,10 +554,10 @@ internal fun SettingsServerLeaveConfirmationDialog(
             )
             RaftButton(
                 text = stringResource(Res.string.settings_server_leave_dialog_confirm),
-                onClick = { if (!leaveBusy && !impact.holdsConfirm) onLeave() },
+                onClick = { if (!leaveBusy && !leaveDisabled) onLeave() },
                 variant = RaftButtonVariant.Warning,
                 size = RaftButtonSize.Lg,
-                enabled = !impact.holdsConfirm,
+                enabled = !leaveDisabled,
                 loading = leaveBusy,
                 loadingLabel = stringResource(Res.string.settings_server_leave_dialog_leaving),
                 modifier = Modifier.testTag(SETTINGS_SERVER_LEAVE_CONFIRM_TAG)
@@ -516,7 +566,12 @@ internal fun SettingsServerLeaveConfirmationDialog(
     ) {
         if (impact != MemberRemovalImpactState.None || errorMessage != null) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                MemberRemovalImpactNote(state = impact, banner = true)
+                MemberRemovalImpactNote(
+                    state = impact,
+                    banner = true,
+                    onDeleteComputer = onDeleteComputer,
+                )
+                HandedOverComputersNote(state = impact)
                 errorMessage?.let { message ->
                     RaftBanner(description = message, status = RaftBannerStatus.Destructive)
                 }

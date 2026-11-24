@@ -399,6 +399,13 @@ class SharedSettingsStoreTest {
             listOf("admin-1"),
             membersStore.currentServerMembers(ServerId("server-1")).map { it.id.value }
         )
+
+        val withRevoke = dataSource.removeServerMember("member-3", listOf("c-1", "c-2"))
+        assertIs<DataResult.Content<SettingsServerActionResult>>(withRevoke)
+        assertEquals(
+            listOf("removeServerMember:member-2", "removeServerMember:member-3:c-1,c-2"),
+            repository.calls,
+        )
     }
 
     @Test
@@ -2821,8 +2828,16 @@ class SharedSettingsStoreTest {
             return DataResult.Content(SettingsServerActionResult(success = true))
         }
 
-        override suspend fun removeServerMember(memberId: String): DataResult<SettingsServerActionResult> {
-            calls += "removeServerMember:$memberId"
+        override suspend fun removeServerMember(
+            memberId: String,
+            revokeComputerIds: List<String>,
+        ): DataResult<SettingsServerActionResult> {
+            calls +=
+                if (revokeComputerIds.isEmpty()) {
+                    "removeServerMember:$memberId"
+                } else {
+                    "removeServerMember:$memberId:${revokeComputerIds.joinToString(",")}"
+                }
             val current = (serverResult as? DataResult.Content)?.data
             if (current != null) {
                 serverResult = DataResult.Content(current.copy(admins = current.admins.filterNot { it.id == memberId }))
