@@ -78,6 +78,12 @@ class SharedHomeDataSource(
         priority: DataRequestPriority
     ): DataResult<ChannelUnreadSummary> = typedApi.channelUnreadSummary(serverId, priority)
 
+    /** `channels/dm?include=lounges` for [serverId] alone (`slock #16474` Lounge listing sync). */
+    suspend fun directMessages(
+        serverId: ServerId,
+        priority: DataRequestPriority
+    ): DataResult<HomeDirectMessagesWireResult> = typedApi.directMessages(serverId, priority)
+
     /** `servers/unread-summary` alone ([RaftHomeApiClient.serverUnreadSummary]). */
     suspend fun serverUnreadSummary(
         serverId: ServerId,
@@ -372,9 +378,10 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is build.raft.app.model.ActorUpdated -> false
         // "Collapse long messages" of one conversation (RaftMessageDisplayPrefsStore); no Home row.
         is build.raft.app.model.MessageDisplayPrefsChanged -> false
-        // Notification levels, account settings and retractions change no Home row; the notification
-        // level store and the platform tray handle them.
-        is build.raft.app.model.NotificationLevelChanged,
+        // Thread notification level changes are thread follow/unfollow frames (`slock #16474`):
+        // while Home is hidden they may change which Agent Lounges are listed or followed-thread unread.
+        is build.raft.app.model.NotificationLevelChanged -> scope == "thread"
+        // Account settings and retractions change no Home row; the platform tray handles them.
         is build.raft.app.model.NotificationAccountSettingsChanged,
         is build.raft.app.model.NotificationRetracted,
         is build.raft.app.model.NotificationNoticeReceived -> false
@@ -640,6 +647,7 @@ data class HomeNetworkPayload(
     val channels: List<HomeChannelWireDto>,
     val directMessages: List<HomeDirectMessageWireDto>,
     val standaloneLounges: List<HomeStandaloneLoungeWireDto> = emptyList(),
+    val directMessagesNamesLounges: Boolean = false,
     val unreadCounts: Map<ChannelId, Int>,
     /** `channels/unread?summary=1` scopes whose unread messages mention the user (`hasMention`). */
     val mentionedChannelIds: Set<ChannelId> = emptySet(),
@@ -800,6 +808,7 @@ internal class RaftHomeApiClient(
                 channels = channels,
                 directMessages = directMessages,
                 standaloneLounges = standaloneLounges,
+                directMessagesNamesLounges = directMessagesResult.loungesPresent,
                 unreadCounts = unreadCounts,
                 mentionedChannelIds = unreadSummary?.mentionedChannelIds ?: emptySet(),
                 followedThreadUnread = unreadSummary?.followedThreadUnread ?: emptyMap(),
@@ -843,6 +852,20 @@ internal class RaftHomeApiClient(
             result
         }
     }
+
+    /** `channels/dm?include=lounges` alone (`slock #16474` Lounge listing reconcile). */
+    suspend fun directMessages(
+        serverId: ServerId,
+        priority: DataRequestPriority
+    ): DataResult<HomeDirectMessagesWireResult> =
+        requestHomeSection(
+            category = "direct_messages",
+            contractCode = "home_direct_messages_contract_mismatch",
+            serializer = HomeDirectMessagesWireResultSerializer,
+            errorTextDecoder = HomeNetworkResponse::homeDirectMessagesRouteErrorTextOrNull
+        ) {
+            transport.directMessages(serverId, priority)
+        }
 
     /**
      * `channels/unread?summary=1` alone: Home's followed-thread reconcile after a reply into a thread the

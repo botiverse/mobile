@@ -686,7 +686,13 @@ data class HomeSnapshot(
     val unreadLatestActivitySeqs: Map<String, Long> = emptyMap(),
     /** The unread summary's read state per scope, by channel id value. Never persisted. */
     @Transient
-    val unreadReadFrontiers: Map<String, ReadReceiptFrontier> = emptyMap()
+    val unreadReadFrontiers: Map<String, ReadReceiptFrontier> = emptyMap(),
+    /**
+     * `slock #16474` / `#16479`: true when the last `GET /channels/dm?include=lounges` answer
+     * carried an explicit `lounges` array (a server that speaks `listed`). Never persisted.
+     */
+    @Transient
+    val dmListNamesLounges: Boolean = false,
 )
 
 @Serializable

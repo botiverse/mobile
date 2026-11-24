@@ -630,6 +630,24 @@ class HomeParserTest {
         assertEquals(0, result.data.directMessages.single().lounge?.unreadCount)
     }
 
+    @Test
+    fun directMessagesWireResultTracksLoungesPresentDistinctlyForArrayObjectAndNullLounges() {
+        val bareArray = json.decodeFromString(HomeDirectMessagesWireResult.serializer(), """[]""")
+        assertEquals(false, bareArray.loungesPresent)
+        assertEquals(false, parseDirectMessagesForHomeRefresh(bareArray).namesLounges)
+
+        val objectWithoutLounges = json.decodeFromString(HomeDirectMessagesWireResult.serializer(), """{"dms":[]}""")
+        assertEquals(false, objectWithoutLounges.loungesPresent)
+        assertEquals(false, parseDirectMessagesForHomeRefresh(objectWithoutLounges).namesLounges)
+
+        val objectWithNullLounges = json.decodeFromString(HomeDirectMessagesWireResult.serializer(), """{"dms":[],"lounges":null}""")
+        assertEquals(false, objectWithNullLounges.loungesPresent)
+
+        val objectWithEmptyLounges = json.decodeFromString(HomeDirectMessagesWireResult.serializer(), """{"dms":[],"lounges":[]}""")
+        assertEquals(true, objectWithEmptyLounges.loungesPresent)
+        assertEquals(true, parseDirectMessagesForHomeRefresh(objectWithEmptyLounges).namesLounges)
+    }
+
     private fun homePayload(
         serverId: ServerId = ServerId("server-1"),
         channels: List<HomeChannelWireDto> = emptyList(),

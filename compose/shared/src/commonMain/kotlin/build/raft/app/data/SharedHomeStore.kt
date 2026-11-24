@@ -25,6 +25,7 @@ import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
+import build.raft.app.model.NotificationLevelChanged
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
@@ -212,6 +213,18 @@ internal class SharedHomeStore(
     private val awaitBackgroundProjectionWindow: suspend () -> Unit = {
         RaftScrollFrameSignal.awaitHomeScrollSettled()
     },
+    /**
+     * `slock #16474` / `#16493`: whether `agent_lounge_v0` is enabled on [ServerId].
+     * Gates unplaced-channel Lounge refresh and coalesced DM list sync for Lounges.
+     */
+    private val isAgentLoungeEnabled: (ServerId) -> Boolean = { false },
+    /**
+     * `slock #16474`: optional lookup for a thread/task conversation's parent channel from sibling
+     * stores (Activity rows, tasks store) when Home itself has not seen the thread yet.
+     */
+    private val resolveExternalThreadParentChannelId: (ServerId, String) -> String? = { _, _ -> null },
+    /** Coalesce window for Lounge listing DM-list refreshes (`slock #16474` `DM_LIST_READ_DELAY_MS`). */
+    loungeDmListRefreshDelayMillis: Long = HOME_FOLLOWED_THREAD_REFRESH_DELAY_MS,
 ) : SharedConversationIdentityProvider {
     private val _state = raftStoreState(SharedHomeState(), "SharedHomeStore")
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
@@ -321,6 +334,21 @@ internal class SharedHomeStore(
     private val readProjectionOwnerLock = SynchronizedObject()
     // A reply into a thread Home does not know reloads the summary once per window (web followedThreadsRefresh).
     private val followedThreadUnreadRefresh = HomeCoalescedRefresh(scope = scope) { refreshFollowedThreadUnread() }
+    // `slock #16474` (`loungeFollowListing.ts`): coalesced `GET /channels/dm?include=lounges` read
+    // keeping Agent Lounge `listed` state in sync on follow/unfollow frames and unplaced follows.
+    private val loungeDmListLock = SynchronizedObject()
+    private var loungeDmListGeneration: Long = 0L
+    private val loungeDmListAskedFor = mutableSetOf<String>()
+    private val loungeDmListRetried = mutableSetOf<String>()
+    private val loungeDmListWaiting = mutableSetOf<String>()
+    private var loungeDmListWaitingForEvent: Boolean = false
+    private val knownThreadParents = mutableMapOf<String, String>()
+    private val pendingThreadUnfollowParents = mutableMapOf<String, String>()
+    private val threadNotificationPrefsVersions = mutableMapOf<String, Long>()
+    private val loungeDmListRefresh =
+        HomeCoalescedRefresh(scope = scope, delayMillis = loungeDmListRefreshDelayMillis) {
+            refreshDirectMessagesForLoungeListing()
+        }
     // requestUnreadCountsReconcile: the running visible reconcile (its token) and whether asks came in meanwhile.
     private val unreadReconcileLock = SynchronizedObject()
     private var unreadReconcileOwner: Any? = null
@@ -556,6 +584,7 @@ internal class SharedHomeStore(
         conversationIdentityOwners.value = emptyMap()
         hiddenHomeSnapshotDirty = false
         followedThreadUnreadRefresh.cancel()
+        resetLoungeListingState()
         synchronized(unreadReconcileLock) {
             unreadReconcileOwner = null
             unreadReconcilePending = false
@@ -834,7 +863,10 @@ internal class SharedHomeStore(
                 supersedeServerDrawerRequest(ServerId(intent.serverId))
                 // A pending followed-thread reload belongs to the server being left; its result
                 // would be dropped anyway, so don't spend the request.
-                if (intent.serverId != currentServerId) followedThreadUnreadRefresh.cancel()
+                if (intent.serverId != currentServerId) {
+                    followedThreadUnreadRefresh.cancel()
+                    resetLoungeListingState()
+                }
                 val nextSwitch =
                     if (intent.serverId == currentServerId) {
                         _state.value.serverSwitchState.refresh()
@@ -900,15 +932,23 @@ internal class SharedHomeStore(
             is SharedHomeIntent.MarkConversationReadAll ->
                 markConversationReadAll(intent.conversationId)
             is SharedHomeIntent.ProjectThreadUnfollow ->
-                projectThreadUnfollow(intent.threadChannelId, intent.phase)
+                projectThreadUnfollow(intent.threadChannelId, intent.phase, intent.parentChannelId)
+            is SharedHomeIntent.NoteLoungeThreadFollowed ->
+                noteLoungeThreadFollowed(intent)
             is SharedHomeIntent.MarkFollowedThreadRead ->
                 markFollowedThreadRead(intent.threadChannelId)
             is SharedHomeIntent.CloseDirectMessage ->
                 closeDirectMessage(intent.conversationId)
             is SharedHomeIntent.ReopenClosedConversation ->
                 reopenClosedConversation(intent.conversationId)
-            is SharedHomeIntent.OwnMessagesSent ->
+            is SharedHomeIntent.OwnMessagesSent -> {
                 unhideDirectMessagesWithOwnReply(ServerId(intent.serverId), intent.channelIds)
+                noteOwnSentConversationsForLoungeListing(
+                    ServerId(intent.serverId),
+                    intent.channelIds,
+                    intent.loungeParentChannelId,
+                )
+            }
             is SharedHomeIntent.ArchiveChannel ->
                 archiveConversationChannel(intent.conversationId)
             is SharedHomeIntent.LeaveChannel ->
@@ -1101,18 +1141,43 @@ internal class SharedHomeStore(
         if (visibleServerId != null && visibleServerId != serverId) {
             return
         }
+        // `slock #16474`: a thread follow/unfollow frame of another server never touches this server's
+        // Home snapshot or dirty flag (the user's room spans every server they belong to).
+        if (
+            event is NotificationLevelChanged &&
+            visibleServerId != null &&
+            event.serverId != visibleServerId
+        ) {
+            return
+        }
+        val realtimeMessages = event.homeRealtimeMessages()
+        rememberThreadParentsFromRealtime(event, realtimeMessages)
         // Task #59: the user's own message (from this or another device) unhides its DM even
         // while Home is hidden, so the row is there when the user comes back to Home.
         currentContent?.let { content ->
-            val ownRepliedDmIds =
-                event.homeRealtimeMessages().ownRepliedConversationIds(MemberId(content.session.user.id))
+            val currentMemberId = MemberId(content.session.user.id)
+            val ownRepliedDmIds = realtimeMessages.ownRepliedConversationIds(currentMemberId)
             if (ownRepliedDmIds.isNotEmpty()) unhideDirectMessagesWithOwnReply(serverId, ownRepliedDmIds)
+            realtimeMessages.forEach { message ->
+                if (
+                    message.author.id == currentMemberId &&
+                    message.author.kind == MemberKind.Human &&
+                    message.messageType != MessageType.System &&
+                    message.delegatedBy == null
+                ) {
+                    noteOwnMessageForLoungeListing(serverId, message)
+                }
+            }
         }
-        // Agent Lounge v0: a message in a known Lounge is its latest activity (the sidebar's recency).
-        event.homeRealtimeMessages().forEach { message ->
-            val channelId = message.channelId?.value ?: return@forEach
-            if (RaftAgentLounges.lounge(serverId.value, channelId) != null) {
+        // Agent Lounge v0: a message in a known Lounge (or in one of its threads) is its latest activity.
+        realtimeMessages.forEach { message ->
+            val channelId = message.channelId?.value
+            if (channelId != null && RaftAgentLounges.lounge(serverId.value, channelId) != null) {
                 RaftAgentLounges.noteActivity(serverId.value, channelId, message.timestampLabel)
+            }
+            val parentChannelId = message.conversationContext?.parentChannelId?.value
+            if (parentChannelId != null && parentChannelId != channelId && RaftAgentLounges.lounge(serverId.value, parentChannelId) != null) {
+                RaftAgentLounges.noteActivity(serverId.value, parentChannelId, message.timestampLabel)
             }
         }
         if (event is RealtimeRefreshRequired && event.scope == RealtimeRefreshScope.Machines) {
@@ -1155,6 +1220,10 @@ internal class SharedHomeStore(
         }
         if (event is PerReceiverNotificationPrefsChanged) {
             applyPerReceiverNotificationPrefsChanged(serverId, event)
+            return
+        }
+        if (event is NotificationLevelChanged) {
+            applyNotificationLevelChanged(serverId, event)
             return
         }
         if (event is PerReceiverPinnedChanged) {
@@ -1731,6 +1800,13 @@ internal class SharedHomeStore(
         val content = current.content as? SharedHomeContentState.Content ?: return false
         if (content.baseSnapshot.server.id != serverId) return false
         if (event is ThreadUpdated) return applyThreadUpdatedLocally(event)
+        // `slock #16493`: replies in a Lounge thread (or an unplaced public channel thread while
+        // Lounges are enabled) own their live unread from `message:new` because non-members are not
+        // in the Lounge room while it is closed and never receive `thread:updated`.
+        if (event is MessageNew && applyLoungeThreadReplyLocally(serverId, event.message)) {
+            markRealtimeUnreadDirtyForInflightLoads()
+            return true
+        }
         val startedAt = kotlin.time.TimeSource.Monotonic.markNow()
         val messagePatch =
             when (event) {
@@ -1789,20 +1865,81 @@ internal class SharedHomeStore(
         return changed
     }
 
+    /** `slock #16493` (`loungeThreadReply.ts::applyLoungeThreadReply`); caller holds [readProjectionOwnerLock]. */
+    private fun applyLoungeThreadReplyLocally(serverId: ServerId, message: Message): Boolean {
+        val current = _state.value
+        val content = current.content as? SharedHomeContentState.Content ?: return false
+        val (openConversationIds, openParentMessageId) = current.seenOpenConversations()
+        val memberId = content.baseSnapshot.currentMember.id
+        val decision =
+            content.baseSnapshot.decideLoungeThreadReplyMessage(
+                message = message,
+                openConversationIds = openConversationIds,
+                openParentMessageId = openParentMessageId,
+                loungeFeatureEnabled = isAgentLoungeEnabled(serverId),
+                acceptedMaxReadSeq = { threadId -> acceptedThreadMaxReadSeq(serverId, memberId, threadId) },
+                pendingReadSeq = { threadId -> pendingThreadReadSeq(serverId, memberId, threadId) },
+            )
+        return when (decision) {
+            HomeThreadReplyDecision.Ignore -> false
+            HomeThreadReplyDecision.Refresh -> {
+                val threadId = (message.channelId ?: ChannelId(message.threadId.value)).value
+                diagnosticsLogger("home_lounge_thread_refresh_request threadId=$threadId")
+                followedThreadUnreadRefresh.request()
+                false
+            }
+            HomeThreadReplyDecision.Bump -> applyHomeSnapshotLocally { it.withLoungeThreadReplyMessage(message) }
+            HomeThreadReplyDecision.MentionOnly -> false
+        }
+    }
+
     /** Web `socketBridge.ts` `threadUpdated` for the sidebar mark; caller holds [readProjectionOwnerLock]. */
     private fun applyThreadUpdatedLocally(event: ThreadUpdated): Boolean {
         val current = _state.value
         val content = current.content as? SharedHomeContentState.Content ?: return false
         val (openConversationIds, openParentMessageId) = current.seenOpenConversations()
-        return when (content.baseSnapshot.decideThreadReply(event, openConversationIds, openParentMessageId)) {
+        val serverId = content.baseSnapshot.server.id
+        val memberId = content.baseSnapshot.currentMember.id
+        return when (
+            content.baseSnapshot.decideThreadReply(
+                event = event,
+                openConversationIds = openConversationIds,
+                openParentMessageId = openParentMessageId,
+                acceptedMaxReadSeq = { threadId -> acceptedThreadMaxReadSeq(serverId, memberId, threadId) },
+                pendingReadSeq = { threadId -> pendingThreadReadSeq(serverId, memberId, threadId) },
+            )
+        ) {
             HomeThreadReplyDecision.Ignore -> false
             HomeThreadReplyDecision.Refresh -> {
                 diagnosticsLogger("home_followed_thread_refresh_request threadId=${event.threadChannelId.value}")
                 followedThreadUnreadRefresh.request()
                 false
             }
-            HomeThreadReplyDecision.Bump -> applyHomeSnapshotLocally { it.withFollowedThreadReply(event) }
+            HomeThreadReplyDecision.MentionOnly -> applyHomeSnapshotLocally { it.withFollowedThreadMentionOnly(event) }
+            HomeThreadReplyDecision.Bump ->
+                applyHomeSnapshotLocally { it.withFollowedThreadReply(event) }.also { changed ->
+                    if (changed) markRealtimeUnreadDirtyForInflightLoads()
+                }
         }
+    }
+
+    private fun acceptedThreadMaxReadSeq(serverId: ServerId, memberId: MemberId, threadId: String): Long? {
+        val checkpoint =
+            perReceiverStateVersionStore.readReadStateCheckpoint(
+                serverId = serverId,
+                memberId = memberId,
+                scopeId = ChannelId(threadId),
+            )
+        return checkpoint.maxReadSeq.takeIf { checkpoint.version > 0L }
+    }
+
+    private fun pendingThreadReadSeq(serverId: ServerId, memberId: MemberId, threadId: String): Long? {
+        val owner = readReceiptOwnerFactory?.invoke(serverId.value, memberId.value) ?: return null
+        val coordinator = readReceiptCoordinator ?: return null
+        val channelId = ChannelId(threadId)
+        val pending = coordinator.pendingReadSeqs(owner)[channelId]
+        val acknowledged = coordinator.acknowledgedReadSeqs(owner)[channelId]
+        return listOfNotNull(pending, acknowledged).maxOrNull()
     }
 
     /** The selected conversation while it is seen ([selectedConversationSeen]); null otherwise. */
@@ -1859,6 +1996,7 @@ internal class SharedHomeStore(
                 coordinator.noteReadFrontier(owner, ChannelId(id), frontier)
             }
         }
+        val followedParentIds = mutableListOf<String>()
         val changed =
             synchronized(readProjectionOwnerLock) {
                 val now = _state.value.content as? SharedHomeContentState.Content ?: return@synchronized false
@@ -1892,6 +2030,12 @@ internal class SharedHomeStore(
                             )
                         },
                     )
+                rememberThreadParentsFromSummary(summary.followedThreadUnread)
+                summary.followedThreadUnread.forEach { (threadId, row) ->
+                    if (threadId !in pendingThreadUnfollows) {
+                        followedParentIds += row.parentChannelId.value
+                    }
+                }
                 applyHomeSnapshotLocally {
                     it.withFollowedThreadUnread(
                         threads = threads,
@@ -1900,9 +2044,400 @@ internal class SharedHomeStore(
                     )
                 }
             }
+        if (followedParentIds.isNotEmpty()) {
+            noteFollowedParentsForLoungeListing(serverId, followedParentIds, localFollow = false)
+        }
         diagnosticsLogger(
             "home_followed_thread_refresh result=content threads=${summary.followedThreadUnread.size} changed=$changed"
         )
+    }
+
+    /** Resets per-server Agent Lounge listing sync state (`slock #16474` `startOver`). */
+    private fun resetLoungeListingState() {
+        synchronized(loungeDmListLock) {
+            loungeDmListGeneration += 1L
+            loungeDmListAskedFor.clear()
+            loungeDmListRetried.clear()
+            loungeDmListWaiting.clear()
+            loungeDmListWaitingForEvent = false
+            knownThreadParents.clear()
+            pendingThreadUnfollowParents.clear()
+            threadNotificationPrefsVersions.clear()
+        }
+        loungeDmListRefresh.cancel()
+    }
+
+    private fun rememberThreadParentsFromRealtime(event: RealtimeEvent, messages: List<Message>) {
+        var any = false
+        synchronized(loungeDmListLock) {
+            messages.forEach { message ->
+                val context = message.conversationContext
+                if (context?.channelKind == ConversationKind.Thread) {
+                    val threadId = (message.channelId ?: ChannelId(message.threadId.value)).value.trim()
+                    val parentId = context.parentChannelId?.value?.trim()
+                    if (threadId.isNotEmpty() && !parentId.isNullOrEmpty()) {
+                        knownThreadParents[threadId] = parentId
+                        any = true
+                    }
+                }
+            }
+            if (event is ThreadUpdated) {
+                val threadId = event.threadChannelId.value.trim()
+                val parentId = event.parentChannelId?.value?.trim()
+                if (threadId.isNotEmpty() && !parentId.isNullOrEmpty()) {
+                    knownThreadParents[threadId] = parentId
+                    any = true
+                }
+            }
+        }
+        if (any) Unit
+    }
+
+    private fun rememberThreadParentsFromSummary(followed: Map<String, HomeFollowedThreadUnread>) {
+        if (followed.isEmpty()) return
+        synchronized(loungeDmListLock) {
+            followed.forEach { (threadId, row) ->
+                val cleanThread = threadId.trim()
+                val cleanParent = row.parentChannelId.value.trim()
+                if (cleanThread.isNotEmpty() && cleanParent.isNotEmpty()) {
+                    knownThreadParents[cleanThread] = cleanParent
+                }
+            }
+        }
+    }
+
+    private fun resolveThreadParentChannelId(
+        snapshot: HomeSnapshot,
+        serverId: ServerId,
+        threadChannelId: String,
+        explicitParentChannelId: String? = null,
+    ): String? {
+        explicitParentChannelId?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        snapshot.followedThreadUnread[threadChannelId]?.parentChannelId?.value?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        synchronized(loungeDmListLock) {
+            knownThreadParents[threadChannelId]?.takeIf { it.isNotEmpty() }?.let { return it }
+            pendingThreadUnfollowParents[threadChannelId]?.takeIf { it.isNotEmpty() }?.let { return it }
+        }
+        return resolveExternalThreadParentChannelId(serverId, threadChannelId)?.trim()?.takeIf { it.isNotEmpty() }?.also { resolved ->
+            synchronized(loungeDmListLock) { knownThreadParents[threadChannelId] = resolved }
+        }
+    }
+
+    /**
+     * Resolves task-conversation indirection for Lounge listing (`slock #16474` `listingChannel`):
+     * a thread inside a task's conversation counts for the task's channel on the server.
+     */
+    private fun resolveListingChannelId(snapshot: HomeSnapshot, serverId: ServerId, channelId: String): String {
+        val clean = channelId.trim()
+        if (clean.isEmpty()) return clean
+        if (
+            snapshot.channels.any { it.channelId.value == clean } ||
+            snapshot.directMessages.any { it.channelId.value == clean } ||
+            snapshot.isKnownAgentLounge(clean)
+        ) {
+            return clean
+        }
+        val alreadyAsked = synchronized(loungeDmListLock) { clean in loungeDmListAskedFor }
+        if (alreadyAsked) return clean
+        val externalParent =
+            snapshot.followedThreadUnread[clean]?.parentChannelId?.value?.trim()?.takeIf { it.isNotEmpty() }
+                ?: resolveExternalThreadParentChannelId(serverId, clean)?.trim()?.takeIf { it.isNotEmpty() }
+        return externalParent ?: clean
+    }
+
+    /**
+     * Coalesced `GET /channels/dm?include=lounges` request (`slock #16474` `requestDmList`).
+     * Only schedules when [HomeSnapshot.agentLoungeListingCouldChange] is true.
+     * - [forIds] != null: each unplaced id is asked once on this server (retried at most once on failure).
+     * - [forIds] == null: follow/unfollow event that may change listing each time (retried once on failure).
+     */
+    private fun requestDmListForLoungeListing(forIds: Set<String>?) {
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        val snapshot = content.baseSnapshot
+        if (!snapshot.agentLoungeListingCouldChange(isAgentLoungeEnabled(snapshot.server.id))) return
+        val shouldRequest =
+            synchronized(loungeDmListLock) {
+                if (forIds != null) {
+                    val fresh =
+                        forIds.filter { id ->
+                            id.isNotBlank() &&
+                                !snapshot.isAgentLoungePlaced(id) &&
+                                id !in loungeDmListAskedFor
+                        }
+                    if (fresh.isEmpty()) {
+                        false
+                    } else {
+                        loungeDmListAskedFor.addAll(fresh)
+                        loungeDmListWaiting.addAll(fresh)
+                        true
+                    }
+                } else {
+                    loungeDmListWaitingForEvent = true
+                    true
+                }
+            }
+        if (shouldRequest) {
+            loungeDmListRefresh.request()
+        }
+    }
+
+    private suspend fun refreshDirectMessagesForLoungeListing() {
+        val (askedGeneration, waitingIds, forEvent) =
+            synchronized(loungeDmListLock) {
+                val ids = loungeDmListWaiting.toList()
+                loungeDmListWaiting.clear()
+                val eventFlag = loungeDmListWaitingForEvent
+                loungeDmListWaitingForEvent = false
+                Triple(loungeDmListGeneration, ids, eventFlag)
+            }
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        val serverId = content.baseSnapshot.server.id
+        val accountId = content.baseSnapshot.currentMember.id
+        if (!content.baseSnapshot.agentLoungeListingCouldChange(isAgentLoungeEnabled(serverId))) return
+        val dmRequestSeq = RaftAgentLounges.nextFollowSequence()
+        val result =
+            try {
+                dataSource.directMessages(serverId, DataRequestPriority.Background)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                diagnosticsLogger(
+                    "home_lounge_dm_list_refresh result=exception errorType=${throwable.safeHomeStoreDiagnosticsType()}"
+                )
+                DataResult.Error(ScreenError(code = "home_lounge_dm_list_exception", retryable = true))
+            }
+        val parsed =
+            (result as? DataResult.Content)?.data?.let { body ->
+                parseDirectMessagesForHomeRefresh(body, diagnosticsLogger)
+            }
+        val currentGeneration = synchronized(loungeDmListLock) { loungeDmListGeneration }
+        val nowContent = _state.value.content as? SharedHomeContentState.Content
+        if (
+            currentGeneration != askedGeneration ||
+            nowContent == null ||
+            nowContent.baseSnapshot.server.id != serverId ||
+            nowContent.baseSnapshot.currentMember.id != accountId
+        ) {
+            return
+        }
+        if (parsed == null) {
+            diagnosticsLogger("home_lounge_dm_list_refresh result=failed forEvent=$forEvent ids=${waitingIds.size}")
+            var retryEvent = false
+            synchronized(loungeDmListLock) {
+                if (loungeDmListGeneration != askedGeneration) return@synchronized
+                waitingIds.forEach { id ->
+                    if (id !in loungeDmListRetried) {
+                        loungeDmListRetried += id
+                        loungeDmListAskedFor -= id
+                    }
+                }
+                if (forEvent && nowContent.baseSnapshot.agentLoungeListingCouldChange(isAgentLoungeEnabled(serverId))) {
+                    retryEvent = true
+                }
+            }
+            if (retryEvent) {
+                loungeDmListRefresh.request()
+            }
+            return
+        }
+        RaftAgentLounges.bindAccount(accountId.value)
+        RaftAgentLounges.reconcileDirectMessages(
+            serverId = serverId.value,
+            directMessages = parsed.directMessages,
+            standaloneLounges = parsed.standaloneLounges,
+            namesLounges = parsed.namesLounges,
+            requestSeq = dmRequestSeq,
+        )
+        val changed =
+            synchronized(readProjectionOwnerLock) {
+                applyHomeSnapshotLocally(reconcileLounges = false) { snapshot ->
+                    snapshot.withDirectMessagesRefreshedForLoungeListing(parsed, serverId.value, dmRequestSeq)
+                }
+            }
+        diagnosticsLogger(
+            "home_lounge_dm_list_refresh result=content dms=${parsed.directMessages.size} " +
+                "standaloneLounges=${parsed.standaloneLounges.size} namesLounges=${parsed.namesLounges} changed=$changed"
+        )
+    }
+
+    /**
+     * Marks any known Lounge among [parentIds] as `listed = true` locally and asks the DM list once
+     * for any unplaced parent (`slock #16474` `noteFollowedIn`).
+     */
+    private fun noteFollowedParentsForLoungeListing(
+        serverId: ServerId,
+        parentIds: Collection<String>,
+        localFollow: Boolean,
+        allowWhileLoading: Boolean = false,
+    ) {
+        if (parentIds.isEmpty()) return
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        if (content.baseSnapshot.server.id != serverId) return
+        val snapshot = content.baseSnapshot
+        val resolvedIds =
+            parentIds
+                .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+                .map { resolveListingChannelId(snapshot, serverId, it) }
+                .distinct()
+        if (resolvedIds.isEmpty()) return
+        val knownLoungeIds = resolvedIds.filter { snapshot.isKnownAgentLounge(it) }.toSet()
+        if (knownLoungeIds.isNotEmpty()) {
+            knownLoungeIds.forEach { loungeId ->
+                RaftAgentLounges.markListed(serverId.value, loungeId, localFollow = localFollow)
+            }
+            synchronized(readProjectionOwnerLock) {
+                applyHomeSnapshotLocally(reconcileLounges = false) { it.withLoungesMarkedListed(knownLoungeIds) }
+            }
+        }
+        if (!localFollow && !allowWhileLoading && loadJob?.isActive == true) return
+        val latestSnapshot = (_state.value.content as? SharedHomeContentState.Content)?.baseSnapshot ?: snapshot
+        val unplaced = resolvedIds.filterTo(linkedSetOf()) { !latestSnapshot.isAgentLoungePlaced(it) }
+        if (unplaced.isNotEmpty()) {
+            requestDmListForLoungeListing(forIds = unplaced)
+        }
+    }
+
+    /** `slock #16474` `noteOwnMessage`: an own message follows its thread / Lounge. */
+    private fun noteOwnMessageForLoungeListing(serverId: ServerId, message: Message) {
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        if (content.baseSnapshot.server.id != serverId) return
+        val snapshot = content.baseSnapshot
+        val channelId = message.channelId?.value?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val context = message.conversationContext
+        if (context?.channelKind == ConversationKind.Thread) {
+            val parent =
+                resolveThreadParentChannelId(
+                    snapshot = snapshot,
+                    serverId = serverId,
+                    threadChannelId = channelId,
+                    explicitParentChannelId = context.parentChannelId?.value,
+                )
+            if (parent != null) {
+                noteFollowedParentsForLoungeListing(serverId, listOf(parent), localFollow = true)
+            } else {
+                requestDmListForLoungeListing(forIds = setOf(channelId))
+            }
+            return
+        }
+        if (
+            snapshot.channels.any { it.channelId.value == channelId } ||
+            snapshot.directMessages.any { it.channelId.value == channelId }
+        ) {
+            return
+        }
+        if (snapshot.isKnownAgentLounge(channelId)) {
+            noteFollowedParentsForLoungeListing(serverId, listOf(channelId), localFollow = true)
+            return
+        }
+        if (context?.channelKind == ConversationKind.Task) {
+            val parent =
+                resolveThreadParentChannelId(
+                    snapshot = snapshot,
+                    serverId = serverId,
+                    threadChannelId = channelId,
+                    explicitParentChannelId = context.parentChannelId?.value,
+                )
+            if (parent != null) {
+                noteFollowedParentsForLoungeListing(serverId, listOf(parent), localFollow = true)
+            } else {
+                requestDmListForLoungeListing(forIds = setOf(channelId))
+            }
+            return
+        }
+        if (context == null || context.channelKind == ConversationKind.Channel) {
+            noteFollowedParentsForLoungeListing(serverId, listOf(channelId), localFollow = true)
+        }
+    }
+
+    private fun noteOwnSentConversationsForLoungeListing(
+        serverId: ServerId,
+        channelIds: Set<String>,
+        loungeParentChannelId: String?,
+    ) {
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        if (content.baseSnapshot.server.id != serverId) return
+        val snapshot = content.baseSnapshot
+        val explicitParent = loungeParentChannelId?.trim()?.takeIf { it.isNotEmpty() }
+        if (explicitParent != null) {
+            noteFollowedParentsForLoungeListing(serverId, listOf(explicitParent), localFollow = true)
+            return
+        }
+        val knownLounges = channelIds.filter { snapshot.isKnownAgentLounge(it) }
+        if (knownLounges.isNotEmpty()) {
+            noteFollowedParentsForLoungeListing(serverId, knownLounges, localFollow = true)
+        }
+    }
+
+    /** `slock #16474` `noteThreadFollowed`: a local follow marks a known Lounge listed or asks the DM list. */
+    private fun noteLoungeThreadFollowed(intent: SharedHomeIntent.NoteLoungeThreadFollowed) {
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        val serverId = ServerId(intent.serverId)
+        if (content.baseSnapshot.server.id != serverId) return
+        val snapshot = content.baseSnapshot
+        val threadId = intent.threadChannelId?.trim()?.takeIf { it.isNotEmpty() }
+        val parent =
+            intent.parentChannelId?.trim()?.takeIf { it.isNotEmpty() }
+                ?: threadId?.let { resolveThreadParentChannelId(snapshot, serverId, it) }
+        if (threadId != null && parent != null) {
+            synchronized(loungeDmListLock) { knownThreadParents[threadId] = parent }
+        }
+        if (parent != null) {
+            noteFollowedParentsForLoungeListing(serverId, listOf(parent), localFollow = true)
+        } else {
+            requestDmListForLoungeListing(forIds = null)
+        }
+    }
+
+    /**
+     * `slock #16474` `noteThreadFollowFrame`: handles realtime `notification_prefs:updated`
+     * with `type: "thread"` (cross-device or local follow/unfollow echo).
+     * - Ignores non-thread scopes, other servers, and stale `prefsVersion`.
+     * - Clears followed-thread unread immediately on unfollow (`muted` / `none`).
+     * - Skips DM-list refresh for ordinary channels / DMs (0 reads).
+     * - Requests coalesced DM-list refresh for a Lounge thread or an unplaced thread.
+     */
+    private fun applyNotificationLevelChanged(serverId: ServerId, event: NotificationLevelChanged) {
+        if (!event.scope.equals("thread", ignoreCase = true)) return
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        val effectiveServerId = event.serverId
+        if (content.baseSnapshot.server.id != effectiveServerId) return
+        val scopeId = event.scopeId.trim().takeIf { it.isNotEmpty() } ?: return
+        val incomingVersion = event.prefsVersion
+        if (incomingVersion > 0L) {
+            val stale =
+                synchronized(loungeDmListLock) {
+                    val previous = threadNotificationPrefsVersions[scopeId]
+                    if (previous != null && incomingVersion <= previous) {
+                        true
+                    } else {
+                        threadNotificationPrefsVersions[scopeId] = incomingVersion
+                        false
+                    }
+                }
+            if (stale) return
+        }
+        val unfollowed =
+            event.level.equals("muted", ignoreCase = true) ||
+                event.level.equals("none", ignoreCase = true)
+        val snapshot = content.baseSnapshot
+        val parent = resolveThreadParentChannelId(snapshot, effectiveServerId, scopeId)
+        if (unfollowed) {
+            synchronized(readProjectionOwnerLock) {
+                applyHomeSnapshotLocally { it.withThreadUnfollowed(scopeId) }
+            }
+        }
+        val effectiveParent = parent?.let { resolveListingChannelId(snapshot, effectiveServerId, it) }
+        val isOrdinaryChannelOrDm =
+            effectiveParent != null &&
+                (
+                    snapshot.channels.any { it.channelId.value == effectiveParent } ||
+                        snapshot.directMessages.any { it.channelId.value == effectiveParent }
+                    )
+        if (isOrdinaryChannelOrDm) return
+        diagnosticsLogger(
+            "home_lounge_follow_frame scopeId=${scopeId.take(8)} level=${event.level} parent=${effectiveParent?.take(8) ?: "_"}"
+        )
+        requestDmListForLoungeListing(forIds = null)
     }
 
     private suspend fun applyRealtimeRefresh(event: RealtimeRefreshRequired) {
@@ -2813,6 +3348,7 @@ internal class SharedHomeStore(
             pendingReadOwner?.let { owner -> readReceiptCoordinator?.pendingReadSeqs(owner) }.orEmpty()
         val syncReadServer = activeServer?.value ?: activeSession.currentServerId
         val syncReadTicket = syncReadServer?.let { syncReloads?.beginListRead(it, RaftSyncListRead.Home) }
+        val dmListRequestSeq = RaftAgentLounges.nextFollowSequence()
         val dataResult =
             try {
                 dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)
@@ -2911,6 +3447,9 @@ internal class SharedHomeStore(
                     }
                 }
             }?.withPendingReads(pendingReadsAtRequest)
+                ?.let { snapshot ->
+                    snapshot.withNewerLocalLoungeFollows(snapshot.server.id.value, dmListRequestSeq)
+                }
         // task #322: the sidebar-order fetch runs concurrently with the home request.
         // Wait a short cap for it before building the published content so the pinned
         // section lands in the same frame as the channel list; on timeout the home
@@ -3134,10 +3673,10 @@ internal class SharedHomeStore(
                     publication != null && readStateV1Canary?.completePreparedPublication(
                         publication = publication,
                         projectionFact = preparedHydrates.projectionFact,
-                        publishContent = { publishLoadedHomeState(nextState, freshSnapshot) },
+                        publishContent = { publishLoadedHomeState(nextState, freshSnapshot, dmListRequestSeq) },
                     ) == true
                 } else {
-                    publishLoadedHomeState(nextState, freshSnapshot)
+                    publishLoadedHomeState(nextState, freshSnapshot, dmListRequestSeq)
                     true
                 }
             if (!published) {
@@ -3223,7 +3762,11 @@ internal class SharedHomeStore(
         return content
     }
 
-    private fun publishLoadedHomeState(nextState: SharedHomeState, freshSnapshot: HomeSnapshot?) {
+    private fun publishLoadedHomeState(
+        nextState: SharedHomeState,
+        freshSnapshot: HomeSnapshot?,
+        dmListRequestSeq: Long = Long.MAX_VALUE,
+    ) {
         if (freshSnapshot != null) {
             // The server unread-summary is the canonical aggregate after
             // cold start/reconnect/refresh. Drop only the local count-only
@@ -3238,9 +3781,26 @@ internal class SharedHomeStore(
             if (freshSnapshot.unreadEnrichmentAvailable) {
                 backgroundUnreadByScope.clear()
             }
+            RaftAgentLounges.bindAccount(freshSnapshot.currentMember.id.value)
+            RaftAgentLounges.reconcileDirectMessages(
+                serverId = freshSnapshot.server.id.value,
+                directMessages = freshSnapshot.directMessages,
+                standaloneLounges = freshSnapshot.standaloneLounges,
+                namesLounges = freshSnapshot.dmListNamesLounges,
+                requestSeq = dmListRequestSeq,
+            )
+            rememberThreadParentsFromSummary(freshSnapshot.followedThreadUnread)
             (nextState.content as? SharedHomeContentState.Content)?.let(::commitDurableContent)
         }
-        reduceState(nextState)
+        reduceState(nextState, reconcileLounges = freshSnapshot == null)
+        if (freshSnapshot != null && freshSnapshot.unreadEnrichmentAvailable && freshSnapshot.followedThreadUnread.isNotEmpty()) {
+            noteFollowedParentsForLoungeListing(
+                serverId = freshSnapshot.server.id,
+                parentIds = freshSnapshot.followedThreadUnread.values.map { it.parentChannelId.value },
+                localFollow = false,
+                allowWhileLoading = true,
+            )
+        }
     }
 
     private fun commitDurableContent(content: SharedHomeContentState.Content) {
@@ -4313,24 +4873,68 @@ internal class SharedHomeStore(
      */
     private val pendingThreadUnfollows = mutableMapOf<String, HomeFollowedThreadUnread?>()
 
-    private fun projectThreadUnfollow(threadChannelId: String, phase: HomeThreadUnfollowPhase) {
+    private fun projectThreadUnfollow(
+        threadChannelId: String,
+        phase: HomeThreadUnfollowPhase,
+        parentChannelId: String? = null,
+    ) {
         val threadId = threadChannelId.trim().takeIf { it.isNotEmpty() } ?: return
+        var requestDmListForLoungeUnfollow = false
         synchronized(readProjectionOwnerLock) {
+            val content = _state.value.content as? SharedHomeContentState.Content
             when (phase) {
                 HomeThreadUnfollowPhase.Unfollowed -> {
-                    val content = _state.value.content as? SharedHomeContentState.Content
                     val cleared = content?.snapshot?.followedThreadUnread?.get(threadId)
                     // A second Unfollow while one is pending keeps the first one's count to restore.
                     if (threadId !in pendingThreadUnfollows || cleared != null) pendingThreadUnfollows[threadId] = cleared
+                    val resolvedParent =
+                        content?.let {
+                            resolveThreadParentChannelId(
+                                snapshot = it.baseSnapshot,
+                                serverId = it.baseSnapshot.server.id,
+                                threadChannelId = threadId,
+                                explicitParentChannelId = parentChannelId ?: cleared?.parentChannelId?.value,
+                            )
+                        } ?: parentChannelId?.trim()?.takeIf { it.isNotEmpty() }
+                    if (resolvedParent != null) {
+                        synchronized(loungeDmListLock) {
+                            pendingThreadUnfollowParents[threadId] = resolvedParent
+                            knownThreadParents[threadId] = resolvedParent
+                        }
+                    }
                     applyHomeSnapshotLocally { it.withThreadUnfollowed(threadId) }
                 }
-                HomeThreadUnfollowPhase.Confirmed -> pendingThreadUnfollows.remove(threadId)
+                HomeThreadUnfollowPhase.Confirmed -> {
+                    pendingThreadUnfollows.remove(threadId)
+                    val savedParent = synchronized(loungeDmListLock) { pendingThreadUnfollowParents.remove(threadId) }
+                    if (content != null) {
+                        val snapshot = content.baseSnapshot
+                        val serverId = snapshot.server.id
+                        val effectiveParent =
+                            resolveThreadParentChannelId(
+                                snapshot = snapshot,
+                                serverId = serverId,
+                                threadChannelId = threadId,
+                                explicitParentChannelId = parentChannelId ?: savedParent,
+                            )
+                        if (effectiveParent != null) {
+                            val listingId = resolveListingChannelId(snapshot, serverId, effectiveParent)
+                            if (snapshot.isKnownAgentLounge(listingId)) {
+                                requestDmListForLoungeUnfollow = true
+                            }
+                        }
+                    }
+                }
                 HomeThreadUnfollowPhase.Restored -> {
+                    synchronized(loungeDmListLock) { pendingThreadUnfollowParents.remove(threadId) }
                     if (threadId !in pendingThreadUnfollows) return@synchronized
                     val cleared = pendingThreadUnfollows.remove(threadId)
                     applyHomeSnapshotLocally { it.withThreadUnfollowRestored(threadId, cleared) }
                 }
             }
+        }
+        if (requestDmListForLoungeUnfollow) {
+            requestDmListForLoungeListing(forIds = null)
         }
         diagnosticsLogger("home_thread_unfollow phase=$phase thread=${threadId.take(8)}")
     }
@@ -4830,6 +5434,7 @@ internal class SharedHomeStore(
 
     private fun applyHomeSnapshotLocally(
         intentOverride: SharedHomeIntent? = null,
+        reconcileLounges: Boolean = true,
         transform: (HomeSnapshot) -> HomeSnapshot
     ): Boolean {
         val current = _state.value.content as? SharedHomeContentState.Content ?: return false
@@ -4857,7 +5462,8 @@ internal class SharedHomeStore(
                         nowMillis = nowMillis
                     )
             ),
-            intentOverride = intentOverride
+            intentOverride = intentOverride,
+            reconcileLounges = reconcileLounges,
         )
         return true
     }
@@ -4968,7 +5574,8 @@ internal class SharedHomeStore(
 
     private fun reduceState(
         nextState: SharedHomeState,
-        intentOverride: SharedHomeIntent? = null
+        intentOverride: SharedHomeIntent? = null,
+        reconcileLounges: Boolean = true,
     ): Boolean {
         val previousState = _state.value
         val intent = intentOverride ?: stateDiagnosticsIntent
@@ -4999,15 +5606,26 @@ internal class SharedHomeStore(
         if (finalState == previousState) return false
         (finalState.content as? SharedHomeContentState.Content)?.let { content ->
             updateConversationIdentity(content.baseSnapshot)
-            RaftAgentLounges.bindAccount(content.baseSnapshot.currentMember.id.value)
-            RaftAgentLounges.rememberDirectMessages(
-                content.baseSnapshot.server.id.value,
-                content.baseSnapshot.directMessages
-            )
-            RaftAgentLounges.rememberStandaloneLounges(
-                content.baseSnapshot.server.id.value,
-                content.baseSnapshot.standaloneLounges
-            )
+            if (reconcileLounges) {
+                val previousContent = previousState.content as? SharedHomeContentState.Content
+                val dmListChanged =
+                    previousContent == null ||
+                        previousContent.baseSnapshot.server.id != content.baseSnapshot.server.id ||
+                        previousContent.baseSnapshot.currentMember.id != content.baseSnapshot.currentMember.id ||
+                        previousContent.baseSnapshot.directMessages !== content.baseSnapshot.directMessages ||
+                        previousContent.baseSnapshot.standaloneLounges !== content.baseSnapshot.standaloneLounges
+                if (dmListChanged) {
+                    RaftAgentLounges.bindAccount(content.baseSnapshot.currentMember.id.value)
+                    RaftAgentLounges.rememberDirectMessages(
+                        content.baseSnapshot.server.id.value,
+                        content.baseSnapshot.directMessages
+                    )
+                    RaftAgentLounges.rememberStandaloneLounges(
+                        content.baseSnapshot.server.id.value,
+                        content.baseSnapshot.standaloneLounges
+                    )
+                }
+            }
             contentByServer[content.baseSnapshot.server.id] = content
             content.baseSnapshot.sidebarOrder?.let { sidebarOrder ->
                 sidebarOrderByServer[content.baseSnapshot.server.id] = sidebarOrder
@@ -5332,6 +5950,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.MarkUnread -> "${SharedHomeChannelFoldEvent.Patch.wireName}:unread:$conversationId"
         is SharedHomeIntent.MarkConversationReadAll -> "${SharedHomeChannelFoldEvent.Patch.wireName}:read-all:$conversationId"
         is SharedHomeIntent.ProjectThreadUnfollow -> "${SharedHomeChannelFoldEvent.Patch.wireName}:thread-unfollow:$threadChannelId:$phase"
+        is SharedHomeIntent.NoteLoungeThreadFollowed -> "${SharedHomeChannelFoldEvent.Patch.wireName}:lounge-follow:${parentChannelId ?: threadChannelId ?: "_"}"
         is SharedHomeIntent.MarkFollowedThreadRead -> "${SharedHomeChannelFoldEvent.Patch.wireName}:thread-read:$threadChannelId"
         is SharedHomeIntent.CloseDirectMessage -> "${SharedHomeChannelFoldEvent.Remove.wireName}:dm:$conversationId"
         is SharedHomeIntent.ReopenClosedConversation -> "${SharedHomeChannelFoldEvent.Patch.wireName}:reopen:$conversationId"
@@ -5590,10 +6209,13 @@ private fun HomeSnapshot.withRealtimeAgentLoungeMessages(
     incrementUnread: Boolean,
     activeConversationId: String?
 ): HomeSnapshot {
-    val index = directMessages.indexOfFirst { it.lounge?.channelId == streamChannelId }
-    if (index < 0) return this
-    val row = directMessages[index]
-    val lounge = row.lounge ?: return this
+    val dmIndex = directMessages.indexOfFirst { it.lounge?.channelId == streamChannelId }
+    val standaloneIndex =
+        if (dmIndex < 0) standaloneLounges.indexOfFirst { it.lounge.channelId == streamChannelId } else -1
+    if (dmIndex < 0 && standaloneIndex < 0) return this
+    val lounge =
+        if (dmIndex >= 0) directMessages[dmIndex].lounge ?: return this
+        else standaloneLounges[standaloneIndex].lounge
     // Post-#proj-chat:#44 non-member model (`listed != null && !joined`): humans have no channel-level
     // Lounge unread (only followed-thread unread counted by server summaries), so skip local top-level
     // unread increments while still recording mention/last-message state.
@@ -5623,12 +6245,25 @@ private fun HomeSnapshot.withRealtimeAgentLoungeMessages(
         )
     if (nextLounge == lounge) return this
     val nextServerUnreadCount = (server.unreadCount + increment).coerceAtLeast(0)
-    return copy(
-        directMessages = directMessages.replaceAt(index, row.copy(lounge = nextLounge)),
-        server = server.copy(unreadCount = nextServerUnreadCount),
-        unreadTotal = (unreadTotal + increment).coerceAtLeast(0),
-        serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
-    )
+    return if (dmIndex >= 0) {
+        copy(
+            directMessages = directMessages.replaceAt(dmIndex, directMessages[dmIndex].copy(lounge = nextLounge)),
+            server = server.copy(unreadCount = nextServerUnreadCount),
+            unreadTotal = (unreadTotal + increment).coerceAtLeast(0),
+            serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
+        )
+    } else {
+        copy(
+            standaloneLounges =
+                standaloneLounges.replaceAt(
+                    standaloneIndex,
+                    standaloneLounges[standaloneIndex].copy(lounge = nextLounge)
+                ),
+            server = server.copy(unreadCount = nextServerUnreadCount),
+            unreadTotal = (unreadTotal + increment).coerceAtLeast(0),
+            serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
+        )
+    }
 }
 
 private fun HomeChannelRow.withRealtimePreview(
@@ -6429,8 +7064,25 @@ sealed interface SharedHomeIntent {
      * Web #11687: unfollowing a thread (from the thread, its parent message's menu, or Activity)
      * clears its unread on Home at once; [HomeThreadUnfollowPhase.Restored] (Undo, or a failed
      * request) puts it back. The Unfollow request itself belongs to the surface that sends it.
+     * [parentChannelId], when known, also tells Agent Lounge listing sync (`slock #16474`) which
+     * channel the thread belonged to so confirming an unfollow in a Lounge re-reads the DM list.
      */
-    data class ProjectThreadUnfollow(val threadChannelId: String, val phase: HomeThreadUnfollowPhase) : SharedHomeIntent
+    data class ProjectThreadUnfollow(
+        val threadChannelId: String,
+        val phase: HomeThreadUnfollowPhase,
+        val parentChannelId: String? = null,
+    ) : SharedHomeIntent
+
+    /**
+     * `slock #16474` (`noteThreadFollowed`): a thread or task conversation was followed locally.
+     * Marks a known Lounge `listed = true` immediately (protected against older in-flight DM list
+     * answers) or asks the DM list once when the parent channel is not placed yet.
+     */
+    data class NoteLoungeThreadFollowed(
+        val serverId: String,
+        val parentChannelId: String?,
+        val threadChannelId: String? = null,
+    ) : SharedHomeIntent
 
     /**
      * Web threadStore `clearThreadUnread` (#11494): read a followed thread without opening it (the
@@ -6449,8 +7101,14 @@ sealed interface SharedHomeIntent {
      * Task #59: the current user sent a message successfully in these conversations (the DM, or
      * for a thread reply also its parent). A hidden DM among them leaves the local `hiddenDmIds`,
      * matching the server (botiverse/slock #10809), which drops it from the sender's hidden list.
+     * [loungeParentChannelId] (`slock #16474`): the channel or parent channel sent into (never a
+     * thread channel id), so sending in a Lounge or unplaced Lounge keeps sidebar `listed` in sync.
      */
-    data class OwnMessagesSent(val serverId: String, val channelIds: Set<String>) : SharedHomeIntent
+    data class OwnMessagesSent(
+        val serverId: String,
+        val channelIds: Set<String>,
+        val loungeParentChannelId: String? = null,
+    ) : SharedHomeIntent
     data class ArchiveChannel(val conversationId: String) : SharedHomeIntent
     /** Row menu "Leave Channel", confirmed: `POST channels/:id/leave` (see channel settings' Leave). */
     data class LeaveChannel(val conversationId: String) : SharedHomeIntent
@@ -6512,6 +7170,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.MarkConversationReadAll,
             is SharedHomeIntent.ProjectThreadUnfollow,
+            is SharedHomeIntent.NoteLoungeThreadFollowed,
             is SharedHomeIntent.MarkFollowedThreadRead,
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.ReopenClosedConversation,
@@ -6568,6 +7227,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.MarkConversationReadAll,
             is SharedHomeIntent.ProjectThreadUnfollow,
+            is SharedHomeIntent.NoteLoungeThreadFollowed,
             is SharedHomeIntent.MarkFollowedThreadRead,
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.ReopenClosedConversation,
@@ -6624,6 +7284,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.MarkConversationReadAll,
             is SharedHomeIntent.ProjectThreadUnfollow,
+            is SharedHomeIntent.NoteLoungeThreadFollowed,
             is SharedHomeIntent.MarkFollowedThreadRead,
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.ReopenClosedConversation,

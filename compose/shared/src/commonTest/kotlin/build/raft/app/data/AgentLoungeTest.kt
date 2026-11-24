@@ -350,4 +350,96 @@ class AgentLoungeTest {
         )
         assertNull(RaftAgentLounges.lounge("server-1", "general"), "an ordinary channel is not a Lounge")
     }
+
+    @Test
+    fun openLoungeChannelJoinedCatchUpPredicateMatchesOnlyOpenLoungeOnSameServer() {
+        assertTrue(
+            shouldCatchUpOpenLoungeOnChannelJoined(
+                openServerId = "server-1",
+                openChannelId = "lounge-bugen",
+                isOpenChannelLounge = true,
+                ackServerId = "server-1",
+                ackChannelId = "lounge-bugen",
+            )
+        )
+        assertFalse(
+            shouldCatchUpOpenLoungeOnChannelJoined(
+                openServerId = "server-1",
+                openChannelId = "general",
+                isOpenChannelLounge = false,
+                ackServerId = "server-1",
+                ackChannelId = "general",
+            ),
+            "ordinary channel does not use Lounge catch-up",
+        )
+        assertFalse(
+            shouldCatchUpOpenLoungeOnChannelJoined(
+                openServerId = "server-1",
+                openChannelId = "lounge-bugen",
+                isOpenChannelLounge = true,
+                ackServerId = "server-1",
+                ackChannelId = "lounge-other",
+            ),
+            "other Lounge ack ignored",
+        )
+        assertFalse(
+            shouldCatchUpOpenLoungeOnChannelJoined(
+                openServerId = "server-1",
+                openChannelId = "lounge-bugen",
+                isOpenChannelLounge = true,
+                ackServerId = "server-2",
+                ackChannelId = "lounge-bugen",
+            ),
+            "other server ack ignored",
+        )
+    }
+
+    @Test
+    fun reconcileDirectMessagesHonorsNamesLoungesAndFollowedSinceGuard() {
+        val standalone =
+            HomeStandaloneLoungeRow(
+                agentId = "agent-nova",
+                agentName = "Nova",
+                lounge = AgentLoungeSummary(ChannelId("lounge-nova"), joined = false, listed = true),
+            )
+        RaftAgentLounges.reconcileDirectMessages(
+            serverId = "server-1",
+            directMessages = emptyList(),
+            standaloneLounges = listOf(standalone),
+            namesLounges = true,
+        )
+        assertEquals(true, RaftAgentLounges.lounge("server-1", "lounge-nova")?.listed)
+
+        // slock #16479: namesLounges=false (answer omitted `lounges`) unlists nothing.
+        RaftAgentLounges.reconcileDirectMessages(
+            serverId = "server-1",
+            directMessages = emptyList(),
+            standaloneLounges = emptyList(),
+            namesLounges = false,
+        )
+        assertEquals(true, RaftAgentLounges.lounge("server-1", "lounge-nova")?.listed)
+
+        // slock #16474: local follow after requestSeq survives an older namesLounges=true answer omitting it.
+        val beforeLocalFollow = RaftAgentLounges.nextFollowSequence()
+        RaftAgentLounges.markListed("server-1", "lounge-nova", localFollow = true)
+        RaftAgentLounges.reconcileDirectMessages(
+            serverId = "server-1",
+            directMessages = emptyList(),
+            standaloneLounges = emptyList(),
+            namesLounges = true,
+            requestSeq = beforeLocalFollow,
+        )
+        assertEquals(true, RaftAgentLounges.lounge("server-1", "lounge-nova")?.listed)
+
+        // A fresh namesLounges=true answer requested AFTER the local follow unlists cleanly.
+        val afterLocalFollow = RaftAgentLounges.nextFollowSequence()
+        RaftAgentLounges.reconcileDirectMessages(
+            serverId = "server-1",
+            directMessages = emptyList(),
+            standaloneLounges = emptyList(),
+            namesLounges = true,
+            requestSeq = afterLocalFollow,
+        )
+        assertEquals(false, RaftAgentLounges.lounge("server-1", "lounge-nova")?.listed)
+    }
 }

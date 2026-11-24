@@ -831,6 +831,7 @@ private data class ThreadLatestReplyDto(
     val messageType: String? = null,
     /** The reply is the enriched message payload, so it carries `mentions` like `message:new`. */
     val mentions: List<MessageMentionWireDto>? = null,
+    val conversationContext: ConversationContextWireDto? = null,
 )
 
 @Serializable
@@ -1554,6 +1555,9 @@ private fun ThreadUpdatedDto.toDomain(): ThreadUpdated? {
         latestReply = latestReply?.toReplyPreview(),
         syncCoreReplyWindow = syncCoreReplyWindow?.toDomain(),
         latestReplyMentions = latestReply?.mentions.toDomainMentions(),
+        parentChannelId =
+            latestReply?.conversationContext?.parentChannelId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ChannelId)
+                ?: syncCoreReplyWindow?.discussion?.parentScopeKey?.scopeId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ChannelId),
     )
 }
 
