@@ -18,6 +18,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.compat.ui.raftImeBottomPx
 import build.raft.designsystem.components.RaftStatusBarBackdropClaim
+import build.raft.designsystem.components.RaftLaidAside
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.animation.AnimatedVisibility
@@ -169,6 +170,15 @@ internal fun RaftAppShellSurface(
     val wideKeyboardRoom = rememberRaftWideKeyboardRoom(shellScope.topSafeArea)
     val wideKeyboardUp by remember(wideKeyboardRoom) { derivedStateOf { wideKeyboardRoom.value != null } }
     val topBarShown = raftAppShellTopBarShown(topNavigation != null, wideKeyboardUp)
+    // #338 step 3 (Kirby 640ad7a2, "通栏全宽"): only the composer fits above the keyboard and it is what is typed in,
+    // so the rail and the list column step aside and the composer runs the window's width. Laid aside, not removed:
+    // nothing is recomposed or reparented, so the composer keeps its draft, its focus and the keyboard.
+    val composerFocus = remember { RaftWideKeyboardComposerFocus() }
+    val composerOnlyRoom by
+        remember(wideKeyboardRoom, composerFocus) {
+            derivedStateOf { composerFocus.focused && raftWideKeyboardComposerOnly(wideKeyboardRoom.value) }
+        }
+    val wideComposerOnly = topNavigation != null && !topBarShown && composerOnlyRoom
     val effectiveModalHostState = modalHostState ?: ownedModalHostState
     val effectiveTopNoticeBanner: (@Composable () -> Unit)? =
         if (networkStatus == RaftAppShellNetworkStatus.Offline) null else topNoticeBanner
@@ -245,8 +255,11 @@ internal fun RaftAppShellSurface(
                     Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                         Row(modifier = Modifier.fillMaxSize()) {
                             if (leadingNavigation != null) {
-                                RaftFocusRegionHost(region = RaftFocusRegion.Navigation, modifier = Modifier.fillMaxHeight()) {
-                                    leadingNavigation()
+                                // #338: aside while only the composer fits above the keyboard (wideComposerOnly).
+                                RaftLaidAside(aside = wideComposerOnly, modifier = Modifier.fillMaxHeight()) {
+                                    RaftFocusRegionHost(region = RaftFocusRegion.Navigation, modifier = Modifier.fillMaxHeight()) {
+                                        leadingNavigation()
+                                    }
                                 }
                             }
                             Box(
@@ -257,7 +270,7 @@ internal fun RaftAppShellSurface(
                                         // The rail beside it takes the start safe area (its frame
                                         // bleeds to the edge); the content starts past the rail.
                                         .then(
-                                            if (leadingNavigation != null) {
+                                            if (leadingNavigation != null && !wideComposerOnly) {
                                                 Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.Start)
                                             } else {
                                                 Modifier
@@ -271,6 +284,8 @@ internal fun RaftAppShellSurface(
                                     // and detail panes) must not pad it again (xxchan 11-02).
                                     LocalRaftTopSafeAreaConsumed provides (topNavigation != null),
                                     LocalRaftWideKeyboardRoom provides (if (topNavigation != null && !topBarShown) wideKeyboardRoom else null),
+                                    LocalRaftWideKeyboardComposerFocus provides (if (topNavigation != null) composerFocus else null),
+                                    LocalRaftWideKeyboardComposerOnly provides wideComposerOnly,
                                 ) {
                                     content()
                                 }

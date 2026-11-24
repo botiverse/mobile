@@ -68,6 +68,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
@@ -79,6 +80,8 @@ import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.theme.RaftTheme
@@ -684,8 +687,49 @@ class RaftPaneGridLeadingColumn(
      * sidebar for as long as it is true). Null: nobody asks.
      */
     val onCrowdsRowChange: ((Boolean) -> Unit)? = null,
+    /**
+     * Stepped aside for a moment, whatever [mode] says ([RaftLaidAside]): still measured at its width and composed
+     * (its list keeps where it was), but not placed, not drawn and out of reach; the main pane has the whole row. The
+     * app's wide shell does this while the conversation's composer is all that fits above the keyboard (#338).
+     */
+    val aside: Boolean = false,
     val content: @Composable () -> Unit,
 )
+
+/**
+ * [content] laid aside where [aside]: still composed and measured (at [asideWidth] where given, else at its own width),
+ * but taking no width and not placed, so it is not drawn, takes no touches and is out of the semantics, while it keeps
+ * its state (a list's scroll, a field's text) and the node it hangs on. Not aside, it lays out as a plain box would.
+ * Always the same node either way, so stepping aside and back recomposes and reparents nothing. For a region that
+ * steps aside for a moment (#338: the rail and the list while the composer alone fits above the keyboard); a region
+ * gone for good leaves composition.
+ */
+@Composable
+fun RaftLaidAside(
+    aside: Boolean,
+    modifier: Modifier = Modifier,
+    asideWidth: Dp? = null,
+    content: @Composable () -> Unit,
+) {
+    Layout(content = content, modifier = modifier) { measurables, constraints ->
+        if (!aside) {
+            val placeables = measurables.map { it.measure(constraints) }
+            val width = constraints.constrainWidth(placeables.maxOfOrNull { it.width } ?: 0)
+            val height = constraints.constrainHeight(placeables.maxOfOrNull { it.height } ?: 0)
+            layout(width, height) { placeables.forEach { it.place(0, 0) } }
+        } else {
+            val inner =
+                if (asideWidth != null) {
+                    val px = asideWidth.roundToPx().coerceAtLeast(0)
+                    constraints.copy(minWidth = px, maxWidth = px)
+                } else {
+                    constraints.copy(minWidth = 0)
+                }
+            val height = constraints.constrainHeight(measurables.maxOfOrNull { it.measure(inner).height } ?: 0)
+            layout(constraints.minWidth, height) {}
+        }
+    }
+}
 
 /**
  * Whether a leading column [leadingWidthDp] wide (its seam included) leaves the row of [availableDp] too little room for
@@ -1234,16 +1278,18 @@ fun RaftPaneGrid(
         val fillIds = if (outer != null) emptySet() else host.fillIds(fillColumn)
         // Where the main pane's width is kept: the innermost page's that names it, else this grid's, else the conversation's.
         val keptMain = if (outer != null) mainBounds ?: RaftPaneGridConversationBounds else host.mainBounds(mainBounds)
-        val beside = leading?.mode == RaftPaneGridLeadingMode.Beside
+        // #338: a leading column laid aside takes no room; the main pane has the row.
+        val leadingShown = leading?.takeIf { !it.aside }
+        val beside = leadingShown?.mode == RaftPaneGridLeadingMode.Beside
         val leadingDp =
-            when (leading?.mode) {
-                RaftPaneGridLeadingMode.Beside -> leading.widthDp + RaftStroke.Hairline.value
+            when (leadingShown?.mode) {
+                RaftPaneGridLeadingMode.Beside -> leadingShown.widthDp + RaftStroke.Hairline.value
                 RaftPaneGridLeadingMode.Fill -> availableDp
                 else -> 0f
             }
         val roomDp = maxOf(0f, availableDp - leadingDp)
         val filling = placed.any { place -> place.sourceIds.any { it in fillIds } }
-        val leadingFills = leading?.mode == RaftPaneGridLeadingMode.Fill
+        val leadingFills = leadingShown?.mode == RaftPaneGridLeadingMode.Fill
         // The #189 row (raftPaneGridRowPlan) once measured; a column filling the row (the Tasks page's task without room
         // beside its list) and a list filling the row lay out as before.
         val planned = availableDp > 0f && placed.isNotEmpty() && !filling && !leadingFills
@@ -1447,25 +1493,29 @@ fun RaftPaneGrid(
 private fun RowScope.RaftPaneGridLeadingView(leading: RaftPaneGridLeadingColumn) {
     val beside = leading.mode == RaftPaneGridLeadingMode.Beside
     Box(
-        when (leading.mode) {
-            RaftPaneGridLeadingMode.Fill -> Modifier.weight(1f)
-            RaftPaneGridLeadingMode.Beside -> Modifier.width(leading.widthDp.dp + RaftStroke.Hairline)
-            RaftPaneGridLeadingMode.Hidden -> Modifier.width(0.dp)
+        when {
+            leading.aside -> Modifier.width(0.dp)
+            leading.mode == RaftPaneGridLeadingMode.Fill -> Modifier.weight(1f)
+            leading.mode == RaftPaneGridLeadingMode.Beside -> Modifier.width(leading.widthDp.dp + RaftStroke.Hairline)
+            else -> Modifier.width(0.dp)
         }.fillMaxHeight()
     ) {
-        Row(Modifier.fillMaxSize()) {
-            Box(
-                Modifier.weight(1f).fillMaxHeight()
-                    // Beside the main pane the column's inner side is away from the screen edge.
-                    .then(if (beside) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.End) else Modifier)
-            ) {
-                CompositionLocalProvider(
-                    LocalRaftPaneGridHost provides null,
-                    LocalRaftPaneGridHeadTabs provides null,
-                ) { leading.content() }
+        // Aside (#338) it is laid out at the width it has beside the main pane, and not placed.
+        RaftLaidAside(leading.aside, Modifier.fillMaxSize(), asideWidth = leading.widthDp.dp + RaftStroke.Hairline) {
+            Row(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier.weight(1f).fillMaxHeight()
+                        // Beside the main pane the column's inner side is away from the screen edge.
+                        .then(if (beside) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.End) else Modifier)
+                ) {
+                    CompositionLocalProvider(
+                        LocalRaftPaneGridHost provides null,
+                        LocalRaftPaneGridHeadTabs provides null,
+                    ) { leading.content() }
+                }
+                // raft-ui: one line-seam between regions, as the rail's.
+                if (beside) Box(Modifier.width(RaftStroke.Hairline).fillMaxHeight().background(RaftTheme.colors.lineSeam))
             }
-            // raft-ui: one line-seam between regions, as the rail's.
-            if (beside) Box(Modifier.width(RaftStroke.Hairline).fillMaxHeight().background(RaftTheme.colors.lineSeam))
         }
     }
 }

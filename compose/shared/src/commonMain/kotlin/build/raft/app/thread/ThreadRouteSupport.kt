@@ -1157,7 +1157,10 @@ internal fun ThreadRouteScaffold(
                                                     composerModifier =
                                                         composerDock.composerModifier.onFocusChanged { focusState ->
                                                             latestOnFocusChanged?.invoke(focusState.hasFocus)
-                                                        },
+                                                        }
+                                                            // #338: typed in where only it fits above the keyboard, it runs the
+                                                            // wide shell's full width (raftWideKeyboardComposerOnly).
+                                                            .raftWideKeyboardComposerFocus(),
                                                     keyboardLiftPx = composerDock.keyboardLiftPx,
                                                 ) {
                                                     CompositionLocalProvider(

@@ -5,6 +5,13 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -24,9 +31,11 @@ import build.raft.designsystem.theme.RaftTheme
  *  2. if the conversation's head, the composer and a few rows of messages still don't fit, the head steps aside too
  *     ([raftWideKeyboardHidesHead]);
  *  3. if even the composer and a few rows don't fit, the composer keeps its height on the keyboard over what is
- *     above it ([raftThreadComposerKeptPlacement], #5630).
- * The rail neither scrolls nor moves: the keyboard covers it. With the keyboard down everything is back at once, no
- * animation.
+ *     above it ([raftThreadComposerKeptPlacement], #5630), and while it is the composer that is typed in, it runs the
+ *     window's full width ("通栏全宽", Kirby 640ad7a2): the rail and the list column step aside
+ *     ([raftWideKeyboardComposerOnly], [build.raft.designsystem.components.RaftLaidAside]), so the conversation's pane has the whole row.
+ * The rail neither scrolls nor moves otherwise: the keyboard covers it. With the keyboard down everything is back at
+ * once, no animation.
  */
 
 /**
@@ -97,4 +106,45 @@ internal fun raftWideKeyboardHeadHidden(): Boolean {
     val headHeight by rememberUpdatedState(RaftTheme.controls.headHeight)
     val hidden by remember(room) { derivedStateOf { raftWideKeyboardHidesHead(room.value, headHeight) } }
     return hidden
+}
+
+/**
+ * Whether only the composer fits above the keyboard on the wide shell (#338 step 3): [roomAboveKeyboard] can't hold
+ * the composer's kept height and a few rows of messages, the head already aside. Null room: no.
+ */
+internal fun raftWideKeyboardComposerOnly(roomAboveKeyboard: Dp?): Boolean =
+    roomAboveKeyboard != null && roomAboveKeyboard < RAFT_THREAD_COMPOSER_KEPT_HEIGHT + RAFT_WIDE_KEYBOARD_MESSAGE_ROOM
+
+/**
+ * The wide shell's note of which conversation composer holds focus, so the rail and the list column step aside only
+ * while it is the composer being typed in (a search field in the list keeps its list). One owner at a time: the latest
+ * to gain focus; an owner losing focus or leaving clears only its own.
+ */
+@Stable
+internal class RaftWideKeyboardComposerFocus {
+    private var owner by mutableStateOf<Any?>(null)
+
+    val focused: Boolean get() = owner != null
+
+    fun report(who: Any, hasFocus: Boolean) {
+        if (hasFocus) owner = who else if (owner === who) owner = null
+    }
+}
+
+/** The wide shell's [RaftWideKeyboardComposerFocus]; null outside it (a phone, a fixture). */
+internal val LocalRaftWideKeyboardComposerFocus = staticCompositionLocalOf<RaftWideKeyboardComposerFocus?> { null }
+
+/**
+ * True while the wide shell has its rail and list column aside for the composer (#338 step 3: the keyboard up, only
+ * the composer fits above it, and it holds focus): the list split lays its list aside ([RaftAdaptiveListDetailSplit]).
+ */
+internal val LocalRaftWideKeyboardComposerOnly = compositionLocalOf { false }
+
+/** On a conversation's composer: tells the wide shell whether it holds focus ([RaftWideKeyboardComposerFocus]). */
+@Composable
+internal fun Modifier.raftWideKeyboardComposerFocus(): Modifier {
+    val note = LocalRaftWideKeyboardComposerFocus.current ?: return this
+    val who = remember { Any() }
+    DisposableEffect(note, who) { onDispose { note.report(who, false) } }
+    return this.onFocusChanged { state -> note.report(who, state.hasFocus) }
 }
