@@ -46,6 +46,9 @@ dependencies {
     testImplementation(libs.coil.compose)
     // NavDisplay host tests (runComposeUiTest).
     testImplementation(libs.cmp.ui.test)
+    // Desktop WebView container bridge tests (RaftDesktopWebContainerEngineTest).
+    testImplementation(project(":web-container"))
+    testImplementation(libs.kotlinx.coroutines.test)
 }
 
 // Tests run on the packaged app's JDK 21 runtime: :shared's desktop classes can be JDK 21

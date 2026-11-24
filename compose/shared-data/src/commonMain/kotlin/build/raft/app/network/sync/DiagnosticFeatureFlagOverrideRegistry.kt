@@ -4,6 +4,7 @@ import build.raft.app.RaftCoreInternalApi
 
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
 import build.raft.app.data.MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY
+import build.raft.app.data.MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY
 import build.raft.app.data.SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
 import build.raft.app.data.defaultNowMillis
@@ -433,6 +434,12 @@ class DiagnosticFeatureFlagOverrideRegistry(
                 nowMillis = nowMillis,
                 expiryScheduler = expiryScheduler,
                 onChanged = { bumpRevision(MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY) },
+            ),
+            ServerExactDiagnosticFeatureFlagConsumer(
+                key = MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY,
+                nowMillis = nowMillis,
+                expiryScheduler = expiryScheduler,
+                onChanged = { bumpRevision(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY) },
             ),
         ).associateBy { it.key }
 

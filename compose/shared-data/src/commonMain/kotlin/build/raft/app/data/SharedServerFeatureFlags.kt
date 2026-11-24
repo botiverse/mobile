@@ -253,6 +253,15 @@ const val MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY: String = "mobile_raft_sign_in_v0
 const val MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY: String = "mobile_screenshot_feedback_v0"
 
 /**
+ * Standalone cross-platform Hybrid WebView Container (`compose/web-container`, `dm:@artin:#6`):
+ * routes `RaftSandboxWebView` / `RaftWebView` surfaces through `WebContainerView` with the pure
+ * Kotlin JSB runtime (`window.raftBridge`) and unified navigation/watchdog/isolation pipeline.
+ * Default OFF everywhere (unresolved or missing evaluates false); local developer/QA override is
+ * registered in [build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry].
+ */
+const val MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY: String = "mobile_web_container_v1"
+
+/**
  * Quote replies (botiverse/slock `packages/shared/src/featureFlags.ts`
  * `QUOTE_REPLY_FEATURE_FLAG_KEY`, #15536 / #16027 / #16210): per server, default off. On, verified
  * `> <excerpt>\n> msg=<id>` blocks render as one-line quote chips, the message menu offers Quote,
@@ -298,6 +307,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY,
     // Screenshot -> quick feedback sheet allowlist (#wg-mobile-feedback:#276).
     MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY,
+    // Standalone cross-platform Hybrid WebView Container (`compose/web-container`, default OFF).
+    MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY,
     // Quote replies as one-line chips + multi-quote composer (slock `quote_reply_v0`, #16027 / #16210).
     QUOTE_REPLY_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.

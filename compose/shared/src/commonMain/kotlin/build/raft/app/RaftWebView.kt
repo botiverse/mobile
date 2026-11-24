@@ -346,7 +346,22 @@ internal fun RaftSandboxWebView(
         }
     // Full-bleed: in a clipped pane of the wide row (the Artifact column) the page is cut hard at the pane's edge, never
     // faded (raftPaneGridNoFade): a fade over a dark page glows. A native view (iOS WKWebView) is clipped as it is.
-    RaftSandboxWebViewHost(config = config, events = events, controller = controller, modifier = modifier.raftPaneGridNoFade())
+    val useWebContainer = rememberRaftWebContainerV1Enabled()
+    if (useWebContainer) {
+        RaftWebContainerAdaptedHost(
+            config = config,
+            events = events,
+            controller = controller,
+            modifier = modifier.raftPaneGridNoFade(),
+        )
+    } else {
+        RaftSandboxWebViewHost(
+            config = config,
+            events = events,
+            controller = controller,
+            modifier = modifier.raftPaneGridNoFade(),
+        )
+    }
 }
 
 /**

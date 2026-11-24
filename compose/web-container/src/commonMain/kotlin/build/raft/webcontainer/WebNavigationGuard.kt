@@ -198,13 +198,20 @@ fun isAllowedSubframeUrl(
         return true
     }
     val scheme = extractUrlScheme(trimmed) ?: return false
+    if (scheme == "blob" || scheme == "data") {
+        return true
+    }
     if (policy.normalizedAllowedSchemes.isNotEmpty() && scheme !in policy.normalizedAllowedSchemes) {
         return false
     }
     val allowedHosts = policy.normalizedSubframeHosts
     if (allowedHosts.isEmpty()) return true
     val origin = parseWebContainerOrigin(trimmed) ?: return false
-    return origin.host in allowedHosts
+    val host = origin.host.removeSuffix(".")
+    return allowedHosts.any { rawAllowed ->
+        val allowed = rawAllowed.removeSuffix(".")
+        allowed.isNotEmpty() && (host == allowed || host.endsWith(".$allowed"))
+    }
 }
 
 /**

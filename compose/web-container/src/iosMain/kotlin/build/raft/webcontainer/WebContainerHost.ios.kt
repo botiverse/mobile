@@ -851,6 +851,7 @@ internal class WebContainerIosHost(
         currentUrl = source.URL?.absoluteString ?: currentUrl
         chainState.markCommitted()
         watchdog.onEvent(WebContainerWatchdogEvent.PageCommitted(loadGeneration), webContainerMonotonicMillis())
+        events.onUrlChange(currentUrl)
         events.onLoadCommit()
         revealTimer?.invalidate()
         revealTimer =

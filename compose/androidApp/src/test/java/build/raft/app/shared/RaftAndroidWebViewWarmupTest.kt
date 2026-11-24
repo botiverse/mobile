@@ -65,4 +65,40 @@ class RaftAndroidWebViewWarmupTest {
             RaftAndroidWebViewWarmup.hasScheduled()
         )
     }
+
+    @Test
+    fun asyncProviderStartupNoOpsWhenDisabledAndDelegatesWhenEnabled() {
+        val calls = AtomicInteger(0)
+        val infoLogs = mutableListOf<String>()
+        val warnLogs = mutableListOf<String>()
+        RaftAndroidWebViewWarmup.resolveContext = { context }
+        RaftAndroidWebViewWarmup.log = { infoLogs += it }
+        RaftAndroidWebViewWarmup.logWarn = { warnLogs += it }
+        RaftAndroidWebViewWarmup.runAsyncStartup = { _, onCompleted ->
+            calls.incrementAndGet()
+            onCompleted(true, null)
+            true
+        }
+
+        assertFalse(RaftAndroidWebViewWarmup.scheduleAsyncProviderStartupForTest(context, enabled = false))
+        assertEquals(0, calls.get())
+
+        assertTrue(RaftAndroidWebViewWarmup.scheduleAsyncProviderStartupForTest(context, enabled = true))
+        assertEquals(1, calls.get())
+        assertTrue(infoLogs.any { it.contains("webview_async_startup status=ready") })
+        assertTrue(warnLogs.isEmpty())
+    }
+
+    @Test
+    fun asyncProviderStartupSwallowsExceptionsAndLogsWarning() {
+        val warnLogs = mutableListOf<String>()
+        RaftAndroidWebViewWarmup.resolveContext = { context }
+        RaftAndroidWebViewWarmup.logWarn = { warnLogs += it }
+        RaftAndroidWebViewWarmup.runAsyncStartup = { _, _ ->
+            throw IllegalStateException("startup unsupported")
+        }
+
+        assertFalse(RaftAndroidWebViewWarmup.scheduleAsyncProviderStartupForTest(context, enabled = true))
+        assertTrue(warnLogs.any { it.contains("webview_async_startup status=exception") })
+    }
 }

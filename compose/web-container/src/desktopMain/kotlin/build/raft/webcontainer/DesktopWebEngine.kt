@@ -52,6 +52,18 @@ interface DesktopWebSessionCallbacks {
         isMainFrame: Boolean,
         reply: (replyJson: String) -> Unit,
     )
+
+    /** Reported when the page requests a new window (`window.open` / `target=_blank`). */
+    fun onNewWindowRequested(url: String) = Unit
+
+    /** Reported on the EDT when the native filter already rejected a navigation off-EDT. */
+    fun onNavigationBlocked(
+        url: String,
+        reason: String,
+    ) = Unit
+
+    /** Reported when the committed top-level document URL changes (including SPA `pushState`). */
+    fun onUrlChanged(url: String) = Unit
 }
 
 /**
@@ -307,6 +319,32 @@ class DesktopWebContainerHostController(
                     isMainFrame = isMainFrame,
                     onReply = reply,
                 )
+            }
+
+            override fun onNewWindowRequested(url: String) {
+                if (disposed) return
+                val trimmed = url.trim()
+                if (trimmed.isEmpty()) return
+                if (!config.navigationPolicy.allowNewWindows) {
+                    notifyBlocked(trimmed, "new_window_blocked")
+                }
+            }
+
+            override fun onNavigationBlocked(
+                url: String,
+                reason: String,
+            ) {
+                if (disposed) return
+                notifyBlocked(url, reason)
+            }
+
+            override fun onUrlChanged(url: String) {
+                if (disposed) return
+                val trimmed = url.trim()
+                if (trimmed.isEmpty()) return
+                currentState = currentState.copy(url = trimmed)
+                events.onUrlChange(trimmed)
+                notifyNavigationState(force = false)
             }
         }
 
