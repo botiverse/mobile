@@ -6214,4 +6214,22 @@
     <string name="settings_computers_workspaces_scan_failed">Não foi possível ler os espaços de trabalho deste computador.</string>
     <string name="channel_settings_slack_reading_channels">Lendo os canais do Slack…</string>
     <string name="channel_settings_slack_channels_read_failed">Não foi possível ler os canais do Slack.</string>
+    <string name="app_update_remind_later">Lembrar mais tarde</string>
+    <string name="app_update_restart_to_update">Reiniciar para atualizar</string>
+    <string name="app_update_top_bar_tooltip_update">Atualizar o Raft para %1$s</string>
+    <string name="app_update_top_bar_tooltip_install">Instalar o Raft %1$s</string>
+    <string name="app_update_top_bar_tooltip_restart">Reiniciar para atualizar o Raft para %1$s</string>
+    <string name="app_update_strong_dialog_title_available">Atualizar o Raft para %1$s</string>
+    <string name="app_update_strong_dialog_title_ready">A atualização %1$s está pronta</string>
+    <string name="app_update_strong_dialog_title_ready_generic">A atualização está pronta</string>
+    <string name="app_update_strong_dialog_body_ready_to_restart">O download da atualização terminou. Reinicie o Raft para concluir a atualização.</string>
+    <string name="app_update_strong_dialog_body_ready_to_install">A atualização foi baixada e está pronta para instalar.</string>
+    <string name="app_update_strong_dialog_body_important">Esta atualização inclui correções e melhorias importantes. Atualize em breve para manter o Raft funcionando bem.</string>
+    <string name="app_update_strong_dialog_body_behind">Sua versão do Raft está várias versões atrás. Atualize para obter os recursos e correções mais recentes.</string>
+    <string name="app_update_strong_dialog_body_waiting">Uma versão mais recente do Raft está disponível há alguns dias. Atualize agora para aproveitar as melhorias mais recentes.</string>
+    <string name="app_update_strong_dialog_action_update_now">Atualizar agora</string>
+    <string name="app_update_strong_dialog_action_install_now">Instalar agora</string>
+    <string name="app_update_strong_dialog_action_later">Mais tarde (24h)</string>
+    <string name="app_update_post_update_banner_title">Atualizado para %1$s</string>
+    <string name="app_update_post_update_banner_action">Novidades</string>
 </resources>

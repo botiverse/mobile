@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.data.DataResult
 import build.raft.app.data.RaftAppUpdateEvents
+import build.raft.app.data.RaftAppUpdatePromptStore
 import build.raft.app.data.RaftAppUpdates
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
@@ -23,6 +24,7 @@ import build.raft.app.data.SharedSettingsUpdateTransactionState
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.raftSharedPreferenceStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -175,7 +177,10 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
             errorMessage = errorMessage,
             onRetry = ::refresh,
             onSkipVersion = {
-                snapshot?.latestVersionCode?.let(::saveSkippedAppUpdateVersionCode)
+                snapshot?.let { current ->
+                    RaftAppUpdates.coordinator.publishSnapshot(current)
+                    RaftAppUpdates.coordinator.snoozeCurrentUpdate()
+                }
                 appUpdateEvents.notifyStatusChanged()
                 pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
             },
@@ -371,6 +376,7 @@ internal fun AppUpdateSummary(
             downloadingLabel = stringResource(Res.string.app_update_downloading),
             installingLabel = stringResource(Res.string.app_update_installing),
             installLabel = stringResource(Res.string.app_update_install),
+            restartToUpdateLabel = stringResource(Res.string.app_update_restart_to_update),
             installedLabel = stringResource(Res.string.app_update_installed),
             updateLabel = stringResource(Res.string.app_update_update)
         )
@@ -451,7 +457,7 @@ internal fun AppUpdateSummary(
         RaftSeparator()
         if (appUpdateCanSkipVersion(snapshot)) {
             RaftTextLink(
-                text = stringResource(Res.string.app_update_skip_version),
+                text = stringResource(Res.string.app_update_remind_later),
                 onClick = onSkipVersion,
                 modifier = Modifier.align(Alignment.End).padding(vertical = 4.dp),
                 style = RaftType.Caption,
@@ -539,27 +545,44 @@ internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
 
 private const val SkippedAppUpdateVersionCodeKey = "appUpdate.skippedVersionCode"
 
+/**
+ * Returns the version code currently suppressed by an active 24h snooze (or an unmigrated legacy
+ * `appUpdate.skippedVersionCode` entry), or `0L` once the 24h window expires.
+ */
 internal fun skippedAppUpdateVersionCode(
-    store: SharedPreferenceStore = raftSharedPreferenceStore()
-): Long = store.getString(SkippedAppUpdateVersionCodeKey)?.toLongOrNull() ?: 0L
+    store: SharedPreferenceStore = raftSharedPreferenceStore(),
+    nowMs: Long = defaultNowMillis(),
+): Long {
+    val promptState = RaftAppUpdatePromptStore(store).readState()
+    if (promptState.snoozedVersionCode > 0L && promptState.snoozedUntilMs > 0L) {
+        return if (nowMs < promptState.snoozedUntilMs) promptState.snoozedVersionCode else 0L
+    }
+    return store.getString(SkippedAppUpdateVersionCodeKey)?.trim()?.toLongOrNull()?.takeIf { it > 0L } ?: 0L
+}
 
 internal fun saveSkippedAppUpdateVersionCode(
     versionCode: Long,
-    store: SharedPreferenceStore = raftSharedPreferenceStore()
+    store: SharedPreferenceStore = raftSharedPreferenceStore(),
+    nowMs: Long = defaultNowMillis(),
 ) {
     if (versionCode > 0L) {
-        store.putString(SkippedAppUpdateVersionCodeKey, versionCode.toString())
+        RaftAppUpdatePromptStore(store).snoozeUpdate(versionCode = versionCode, nowMs = nowMs)
     }
 }
 
 internal fun SharedSettingsUpdateCheckSnapshot.withSkippedAppUpdateVersionApplied(
     skippedVersionCode: Long = skippedAppUpdateVersionCode()
-): SharedSettingsUpdateCheckSnapshot =
-    if (latestVersionCode > 0L && latestVersionCode == skippedVersionCode) {
+): SharedSettingsUpdateCheckSnapshot {
+    val readyToComplete =
+        transactionState == SharedSettingsUpdateTransactionState.ReadyToInstall ||
+            transactionState == SharedSettingsUpdateTransactionState.InstallerOpened ||
+            transactionState == SharedSettingsUpdateTransactionState.ReadyToRestart
+    return if (!readyToComplete && latestVersionCode > 0L && latestVersionCode == skippedVersionCode) {
         copy(updateAvailable = false)
     } else {
         this
     }
+}
 
 internal fun appUpdatePrimaryActionLabel(
     snapshot: SharedSettingsUpdateCheckSnapshot?,
@@ -572,10 +595,14 @@ internal fun appUpdatePrimaryActionLabel(
     downloadingLabel: String = "Downloading",
     installingLabel: String = "Installing",
     installLabel: String = "Install",
+    restartToUpdateLabel: String = "Restart to update",
     installedLabel: String = "Installed",
     updateLabel: String = "Update"
 ): String =
     when {
+        // Ready-to-restart updates (e.g. Google Play Flexible download completed) always ask for restart.
+        snapshot?.transactionState == SharedSettingsUpdateTransactionState.ReadyToRestart ->
+            if (actionRunning) workingLabel else restartToUpdateLabel
         // A store install's update opens the store page: nothing downloads here.
         snapshot != null && snapshot.storeChannel.isNotBlank() && snapshot.updateAvailable ->
             if (actionRunning) workingLabel else updateLabel
@@ -589,7 +616,6 @@ internal fun appUpdatePrimaryActionLabel(
         snapshot.transactionState == SharedSettingsUpdateTransactionState.Downloading -> downloadingLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.ReadyToInstall -> installLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened -> installLabel
-        snapshot.transactionState == SharedSettingsUpdateTransactionState.ReadyToRestart -> installLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.Failed -> downloadLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.Stale -> downloadLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.Installed -> installedLabel

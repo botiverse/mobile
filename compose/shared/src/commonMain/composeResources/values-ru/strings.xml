@@ -6214,4 +6214,22 @@
     <string name="settings_computers_workspaces_scan_failed">Не удалось прочитать рабочие пространства на этом компьютере.</string>
     <string name="channel_settings_slack_reading_channels">Читаем каналы Slack…</string>
     <string name="channel_settings_slack_channels_read_failed">Не удалось прочитать каналы Slack.</string>
+    <string name="app_update_remind_later">Напомнить позже</string>
+    <string name="app_update_restart_to_update">Перезапустить для обновления</string>
+    <string name="app_update_top_bar_tooltip_update">Обновить Raft до %1$s</string>
+    <string name="app_update_top_bar_tooltip_install">Установить Raft %1$s</string>
+    <string name="app_update_top_bar_tooltip_restart">Перезапустить, чтобы обновить Raft до %1$s</string>
+    <string name="app_update_strong_dialog_title_available">Обновить Raft до %1$s</string>
+    <string name="app_update_strong_dialog_title_ready">Обновление %1$s готово</string>
+    <string name="app_update_strong_dialog_title_ready_generic">Обновление готово</string>
+    <string name="app_update_strong_dialog_body_ready_to_restart">Обновление загружено. Перезапустите Raft, чтобы завершить обновление.</string>
+    <string name="app_update_strong_dialog_body_ready_to_install">Обновление загружено и готово к установке.</string>
+    <string name="app_update_strong_dialog_body_important">Это обновление содержит важные исправления и улучшения. Обновитесь в ближайшее время, чтобы Raft работал стабильно.</string>
+    <string name="app_update_strong_dialog_body_behind">Ваша версия Raft отстаёт на несколько выпусков. Обновитесь, чтобы получить новые функции и исправления.</string>
+    <string name="app_update_strong_dialog_body_waiting">Новая версия Raft доступна уже несколько дней. Обновитесь сейчас, чтобы получить последние улучшения.</string>
+    <string name="app_update_strong_dialog_action_update_now">Обновить сейчас</string>
+    <string name="app_update_strong_dialog_action_install_now">Установить сейчас</string>
+    <string name="app_update_strong_dialog_action_later">Позже (24 ч)</string>
+    <string name="app_update_post_update_banner_title">Обновлено до %1$s</string>
+    <string name="app_update_post_update_banner_action">Что нового</string>
 </resources>

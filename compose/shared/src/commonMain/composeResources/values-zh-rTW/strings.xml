@@ -6214,4 +6214,22 @@
     <string name="settings_computers_workspaces_scan_failed">讀不到這台電腦上的工作區。</string>
     <string name="channel_settings_slack_reading_channels">正在讀取 Slack 頻道…</string>
     <string name="channel_settings_slack_channels_read_failed">讀不到 Slack 頻道。</string>
+    <string name="app_update_remind_later">24 小時後再提醒</string>
+    <string name="app_update_restart_to_update">重新啟動以更新</string>
+    <string name="app_update_top_bar_tooltip_update">更新 Raft 至 %1$s</string>
+    <string name="app_update_top_bar_tooltip_install">安裝 Raft %1$s</string>
+    <string name="app_update_top_bar_tooltip_restart">重新啟動以將 Raft 更新至 %1$s</string>
+    <string name="app_update_strong_dialog_title_available">更新 Raft 至 %1$s</string>
+    <string name="app_update_strong_dialog_title_ready">%1$s 更新已就緒</string>
+    <string name="app_update_strong_dialog_title_ready_generic">更新已就緒</string>
+    <string name="app_update_strong_dialog_body_ready_to_restart">更新已下載完成，重新啟動 Raft 即可完成更新。</string>
+    <string name="app_update_strong_dialog_body_ready_to_install">更新檔已下載完成，現在即可安裝。</string>
+    <string name="app_update_strong_dialog_body_important">此版本包含重要修復與體驗改進，建議盡快更新。</string>
+    <string name="app_update_strong_dialog_body_behind">目前版本已落後多個版本，建議立即更新以取得最新功能與修復。</string>
+    <string name="app_update_strong_dialog_body_waiting">新版本已發布多日，現在更新即可體驗最新改進。</string>
+    <string name="app_update_strong_dialog_action_update_now">立即更新</string>
+    <string name="app_update_strong_dialog_action_install_now">立即安裝</string>
+    <string name="app_update_strong_dialog_action_later">稍後提醒（24 小時）</string>
+    <string name="app_update_post_update_banner_title">已更新至 %1$s</string>
+    <string name="app_update_post_update_banner_action">查看更新日誌</string>
 </resources>

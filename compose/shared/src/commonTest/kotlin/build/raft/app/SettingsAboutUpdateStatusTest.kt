@@ -16,6 +16,7 @@ class SettingsAboutUpdateStatusTest {
             downloading = "下载中",
             installing = "安装中",
             install = "安装",
+            restartToUpdate = "重启以更新",
             installed = "已安装",
             retry = "重试",
             permissionRequired = "需要权限",
@@ -55,6 +56,17 @@ class SettingsAboutUpdateStatusTest {
         assertEquals("有可用更新", status(SharedSettingsUpdateCheckSnapshot(supported = true, statusLabel = "Update available", updateAvailable = true)))
         assertEquals("下载中", status(SharedSettingsUpdateCheckSnapshot(supported = true, statusLabel = "Downloading", updateAvailable = true)))
         assertEquals("安装", status(SharedSettingsUpdateCheckSnapshot(supported = true, statusLabel = "Install", updateAvailable = true)))
+        assertEquals(
+            "重启以更新",
+            status(
+                SharedSettingsUpdateCheckSnapshot(
+                    supported = true,
+                    transactionState = SharedSettingsUpdateTransactionState.ReadyToRestart,
+                    statusLabel = "Ready",
+                    updateAvailable = true,
+                )
+            )
+        )
         assertEquals(
             "准备中",
             status(SharedSettingsUpdateCheckSnapshot(supported = true, transactionState = SharedSettingsUpdateTransactionState.Patching, statusLabel = "Preparing"))

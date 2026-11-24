@@ -6214,4 +6214,22 @@
     <string name="settings_computers_workspaces_scan_failed">No se pudieron leer los espacios de trabajo de esta computadora.</string>
     <string name="channel_settings_slack_reading_channels">Leyendo los canales de Slack…</string>
     <string name="channel_settings_slack_channels_read_failed">No se pudieron leer los canales de Slack.</string>
+    <string name="app_update_remind_later">Recordármelo más tarde</string>
+    <string name="app_update_restart_to_update">Reiniciar para actualizar</string>
+    <string name="app_update_top_bar_tooltip_update">Actualizar Raft a %1$s</string>
+    <string name="app_update_top_bar_tooltip_install">Instalar Raft %1$s</string>
+    <string name="app_update_top_bar_tooltip_restart">Reiniciar para actualizar Raft a %1$s</string>
+    <string name="app_update_strong_dialog_title_available">Actualizar Raft a %1$s</string>
+    <string name="app_update_strong_dialog_title_ready">La actualización %1$s está lista</string>
+    <string name="app_update_strong_dialog_title_ready_generic">La actualización está lista</string>
+    <string name="app_update_strong_dialog_body_ready_to_restart">La actualización terminó de descargarse. Reinicia Raft para completar la actualización.</string>
+    <string name="app_update_strong_dialog_body_ready_to_install">La actualización se descargó y está lista para instalarse.</string>
+    <string name="app_update_strong_dialog_body_important">Esta actualización incluye correcciones y mejoras importantes. Actualiza pronto para que Raft siga funcionando sin problemas.</string>
+    <string name="app_update_strong_dialog_body_behind">Tu versión de Raft lleva varias versiones de retraso. Actualiza para obtener las últimas funciones y correcciones.</string>
+    <string name="app_update_strong_dialog_body_waiting">Hay una versión más reciente de Raft disponible desde hace unos días. Actualiza ahora para obtener las últimas mejoras.</string>
+    <string name="app_update_strong_dialog_action_update_now">Actualizar ahora</string>
+    <string name="app_update_strong_dialog_action_install_now">Instalar ahora</string>
+    <string name="app_update_strong_dialog_action_later">Más tarde (24 h)</string>
+    <string name="app_update_post_update_banner_title">Actualizado a %1$s</string>
+    <string name="app_update_post_update_banner_action">Novedades</string>
 </resources>
