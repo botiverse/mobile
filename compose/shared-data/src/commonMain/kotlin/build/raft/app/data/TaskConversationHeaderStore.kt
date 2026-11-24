@@ -1,0 +1,353 @@
+package build.raft.app.data
+
+import build.raft.app.RaftCoreInternalApi
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import build.raft.app.model.ChannelId
+import build.raft.app.model.TaskId
+import build.raft.app.model.TaskStatus
+import build.raft.app.model.TaskSummary
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+/** One row of the status menu. [reopensToTodo]: web labels Closed -> Todo "Reopen to Todo". */
+@RaftCoreInternalApi data class TaskStatusOption(val status: TaskStatus, val reopensToTodo: Boolean = false)
+
+/**
+ * Web `getTaskStatusOptions`: every status, from any status, for members and admins alike (the
+ * server has no transition table: slock `taskService.getTaskStatusTransitionError` only refuses the
+ * current status). Closed -> Todo reads "Reopen to Todo". [v2Task]: see [taskStatusChoices].
+ */
+@RaftCoreInternalApi fun taskStatusOptions(current: TaskStatus, v2Task: Boolean): List<TaskStatusOption> =
+    taskStatusChoices(current, v2Task).map { status ->
+        TaskStatusOption(status = status, reopensToTodo = current == TaskStatus.Closed && status == TaskStatus.Todo)
+    }
+
+/**
+ * The statuses a task's status menu offers, in board order (Backlog first). [v2Task]: the task opens
+ * as its own conversation (web `opensAsTaskConversation(task, taskV2)`).
+ *
+ * - In Review is retired for a task v2 task (#wg-task-v2:f7043517, raft-design decision 0043; web
+ *   slock #12884): the server stores In Progress when asked for it.
+ * - Backlog is task v2 only (slock #12963 `getTaskStatusOptions` noBacklog): the server refuses it on
+ *   a pre-v2 task with the flag off (`task_status_not_available`), so a legacy task, or any task with
+ *   task v2 off, is not offered it.
+ *
+ * A task already in either keeps it as its current option. [TaskStatus.Unknown] is never a choice.
+ */
+@RaftCoreInternalApi fun taskStatusChoices(current: TaskStatus, v2Task: Boolean): List<TaskStatus> =
+    TaskStatus.known.filter { status ->
+        !(v2Task && status == TaskStatus.InReview && current != TaskStatus.InReview) &&
+            !(!v2Task && status == TaskStatus.Backlog && current != TaskStatus.Backlog)
+    }
+
+/**
+ * A pick in a status menu that asks for a reason first (web `TaskBacklogReasonPopover`): a move into
+ * Backlog from another status. A task already in Backlog asks nothing.
+ */
+@RaftCoreInternalApi fun taskStatusPickAsksBacklogReason(current: TaskStatus, next: TaskStatus): Boolean =
+    next == TaskStatus.Backlog && current != TaskStatus.Backlog
+
+/**
+ * Web `canEditTaskStatus`: anyone who may write the task's channel ([canWriteChannel],
+ * [canWriteTasksInChannel]), unless the task is read-only (historical joint). A guest sees only its
+ * own channel's tasks and moves them like a member (slock task matrix §1).
+ */
+@RaftCoreInternalApi fun TaskSummary.canEditStatus(canWriteChannel: Boolean = true): Boolean = readOnlyReason == null && canWriteChannel
+
+/**
+ * Web TaskProperties `canEditAssignee` (`authorizeTaskAction({action: "assign"})`): the reader may
+ * write the task's channel ([canWriteChannel]), the task is not read-only and not done (the server
+ * freezes a completed task's assignee). A guest assigns in its channel like a member.
+ */
+@RaftCoreInternalApi fun TaskSummary.canEditAssignee(canWriteChannel: Boolean = true): Boolean =
+    canWriteChannel && status != TaskStatus.Done && readOnlyReason == null
+
+@RaftCoreInternalApi enum class TaskConversationRefStatus {
+    Loading,
+    Resolved,
+
+    /** The channel is not a task conversation (or the row is partial): no task bar. */
+    NotTask,
+    Failed,
+}
+
+/**
+ * The task conversation page's own state beside the task itself (which lives in the shared task
+ * projection of its channel): which task and channel the conversation belongs to, the reader's
+ * follow overrides, and whether the task was deleted while the page was open.
+ */
+@RaftCoreInternalApi data class TaskConversationHeaderState(
+    val conversationChannelId: ChannelId,
+    val ref: TaskConversationChannelRef? = null,
+    val refStatus: TaskConversationRefStatus = TaskConversationRefStatus.Loading,
+    /**
+     * A follow or unfollow done on this page: wins over the task DTO's `conversationFollowed` until
+     * the page closes (web `taskFollowOverrides`).
+     */
+    val followOverride: Boolean? = null,
+    val followPending: Boolean = false,
+    /**
+     * Bumped by every follow / unfollow started on this page: a follow-state refetch that started
+     * before it answers with what the server had then, so it must not undo this page's write.
+     */
+    val followWriteGeneration: Long = 0L,
+    /**
+     * The task as this page last saw it (its channel's projection or a `task:updated`). The channel
+     * list can be status-filtered (the board's open tasks), so a task moved to Done or Closed may
+     * drop out of it; the bar keeps showing this copy instead.
+     */
+    val lastSeenTask: TaskSummary? = null,
+    /**
+     * The task was deleted: only a `task:deleted` for it says so. Leaving the channel's (possibly
+     * filtered) task list is not a deletion.
+     */
+    val removed: Boolean = false,
+) {
+    /** The reader follows the conversation: this page's override, else the DTO's value (null = unknown). */
+    fun followed(taskFollowed: Boolean?): Boolean? = followOverride ?: taskFollowed
+
+    /** What the bar shows: the task from its channel's list, else the last copy seen; none once deleted. */
+    fun barTask(listed: TaskSummary?): TaskSummary? =
+        if (removed) null else listed?.takeIf { it.id == ref?.taskId } ?: lastSeenTask
+}
+
+@RaftCoreInternalApi sealed interface TaskConversationHeaderIntent {
+    data class RefLoaded(val result: DataResult<TaskConversationChannelRef>) : TaskConversationHeaderIntent
+
+    data class FollowStarted(val follow: Boolean) : TaskConversationHeaderIntent
+
+    data class FollowSettled(val follow: Boolean, val accepted: Boolean) : TaskConversationHeaderIntent
+
+    /** `task:deleted` for [taskId] (and, from a v2 server, the conversation it deleted). */
+    data class TaskDeleted(val taskId: TaskId, val conversationChannelId: ChannelId?) : TaskConversationHeaderIntent
+
+    /** This page's task as its channel's list or a `task:updated` has it now. */
+    data class TaskSeen(val task: TaskSummary) : TaskConversationHeaderIntent
+
+    /**
+     * The reader's follow state as `GET /tasks/channel/:id/number/:n` answered after a
+     * `thread:followers-updated` for this conversation; [writeGeneration] is
+     * [TaskConversationHeaderState.followWriteGeneration] when the request started.
+     */
+    data class FollowRefetched(val followed: Boolean, val writeGeneration: Long) : TaskConversationHeaderIntent
+}
+
+@RaftCoreInternalApi fun TaskConversationHeaderState.reduce(intent: TaskConversationHeaderIntent): TaskConversationHeaderState =
+    when (intent) {
+        is TaskConversationHeaderIntent.RefLoaded ->
+            when (val result = intent.result) {
+                is DataResult.Content ->
+                    if (result.data.conversationChannelId == conversationChannelId) {
+                        copy(ref = result.data, refStatus = TaskConversationRefStatus.Resolved)
+                    } else {
+                        copy(refStatus = TaskConversationRefStatus.NotTask)
+                    }
+                is DataResult.Empty -> copy(refStatus = TaskConversationRefStatus.NotTask)
+                is DataResult.Error,
+                is DataResult.NoPermission -> copy(refStatus = TaskConversationRefStatus.Failed)
+            }
+        is TaskConversationHeaderIntent.FollowStarted -> copy(followPending = true, followWriteGeneration = followWriteGeneration + 1)
+        is TaskConversationHeaderIntent.FollowSettled ->
+            copy(
+                followPending = false,
+                followOverride = if (intent.accepted) intent.follow else followOverride,
+            )
+        is TaskConversationHeaderIntent.TaskDeleted -> {
+            val matches =
+                ref?.taskId == intent.taskId || intent.conversationChannelId == conversationChannelId
+            if (matches) copy(removed = true) else this
+        }
+        is TaskConversationHeaderIntent.TaskSeen -> {
+            val seen = intent.task
+            val previous = lastSeenTask
+            val older = previous?.revision != null && seen.revision != null && seen.revision < previous.revision
+            // A `task:updated` copy has no `conversationFollowed` (the reader's own): keep the known one.
+            val followKept = if (seen.conversationFollowed == null) seen.copy(conversationFollowed = previous?.conversationFollowed) else seen
+            // Nor, from an older frame, `createdAt` or `sourceRecorded`: fixed facts of the task, kept once known.
+            val createdKept = if (followKept.createdAt == null) followKept.copy(createdAt = previous?.createdAt) else followKept
+            val kept = if (createdKept.sourceRecorded == null) createdKept.copy(sourceRecorded = previous?.sourceRecorded) else createdKept
+            if (seen.id != ref?.taskId || older) this else copy(lastSeenTask = kept)
+        }
+        is TaskConversationHeaderIntent.FollowRefetched ->
+            // The server's answer is newer than the DTO the bar reads and than an earlier write of this
+            // page, so it becomes the override; a write started since then wins (its own event refetches).
+            if (followPending || removed || intent.writeGeneration != followWriteGeneration) {
+                this
+            } else {
+                copy(
+                    followOverride = intent.followed,
+                    lastSeenTask = lastSeenTask?.copy(conversationFollowed = intent.followed),
+                )
+            }
+    }
+
+@RaftCoreInternalApi sealed interface TaskConversationHeaderEvent {
+    data class FollowFailed(
+        val follow: Boolean,
+        val code: String,
+        val traceId: String? = null,
+        val serverMessage: String? = null,
+        val serverCode: String? = null,
+    ) : TaskConversationHeaderEvent {
+        fun toScreenError(): ScreenError =
+            ScreenError(
+                code = code,
+                retryable = false,
+                serverMessage = serverMessage,
+                serverCode = serverCode,
+                traceId = traceId,
+            )
+    }
+}
+
+/**
+ * Task v2 (web `TaskConversationBar` + `useTaskConversationFollow`): owns the task conversation's
+ * parent context and its follow state. The task's status and assignee are the task projection's
+ * ([SharedTasksViewModel] over the task's channel), so status/assignee writes and `task:updated`
+ * folds share the Tasks board's path.
+ */
+@RaftCoreInternalApi class TaskConversationHeaderViewModel(
+    conversationChannelId: ChannelId,
+    private val loadRef: suspend (ChannelId) -> DataResult<TaskConversationChannelRef>,
+    private val follow: suspend (ChannelId) -> DataResult<ThreadActionResult>,
+    private val unfollow: suspend (ChannelId) -> DataResult<ThreadActionResult>,
+    private val log: (String) -> Unit = {},
+    /**
+     * `GET /tasks/channel/:parentChannelId/number/:taskNumber` (Background): the task as the
+     * reader's channel sees it, with `conversationFollowed` (routes/tasks.ts withConversationFollowed).
+     */
+    private val loadTask: suspend (serverId: String, parentChannelId: ChannelId, taskNumber: Int) -> DataResult<TaskSummary> =
+        { _, _, _ -> DataResult.Empty(EmptyReason.NoTasks) },
+    private val scopeOverride: CoroutineScope? = null,
+) : ViewModel() {
+    private val scope: CoroutineScope
+        get() = scopeOverride ?: viewModelScope
+
+    private val _state = MutableStateFlow(TaskConversationHeaderState(conversationChannelId))
+    val state: StateFlow<TaskConversationHeaderState> = _state.asStateFlow()
+
+    private val effects = MviEffectEmitter<TaskConversationHeaderEvent>()
+    val events: Flow<TaskConversationHeaderEvent> = effects.effects
+
+    private var refJob: Job? = null
+    private var followRefetchJob: Job? = null
+    private var followRefetchDirty = false
+
+    private fun dispatch(intent: TaskConversationHeaderIntent) {
+        _state.update { it.reduce(intent) }
+    }
+
+    /** Resolves the conversation's task and channel once (again after a failure). */
+    fun start() {
+        val current = _state.value
+        if (current.refStatus == TaskConversationRefStatus.Resolved || current.refStatus == TaskConversationRefStatus.NotTask) return
+        if (refJob?.isActive == true) return
+        refJob =
+            scope.launch {
+                val result = loadRef(current.conversationChannelId)
+                log(
+                    "task_conversation_header_ref conversationId=${current.conversationChannelId.value} " +
+                        "result=${result::class.simpleName}"
+                )
+                dispatch(TaskConversationHeaderIntent.RefLoaded(result))
+            }
+    }
+
+    /** Follows when [currentlyFollowed] is false, else unfollows; one request at a time. */
+    fun toggleFollow(currentlyFollowed: Boolean) {
+        val current = _state.value
+        if (current.followPending || current.removed) return
+        val next = !currentlyFollowed
+        dispatch(TaskConversationHeaderIntent.FollowStarted(next))
+        scope.launch {
+            val conversation = current.conversationChannelId
+            val result =
+                try {
+                    if (next) follow(conversation) else unfollow(conversation)
+                } catch (cancellation: CancellationException) {
+                    dispatch(TaskConversationHeaderIntent.FollowSettled(next, accepted = false))
+                    throw cancellation
+                } catch (_: Throwable) {
+                    DataResult.Error(ScreenError(code = "task_conversation_follow_network", retryable = true, traceId = null))
+                }
+            val accepted = result is DataResult.Content || result is DataResult.Empty
+            log(
+                "task_conversation_follow conversationId=${conversation.value} follow=$next " +
+                    "result=${result::class.simpleName}"
+            )
+            dispatch(TaskConversationHeaderIntent.FollowSettled(next, accepted))
+            if (!accepted) {
+                effects.emit(
+                    TaskConversationHeaderEvent.FollowFailed(
+                        follow = next,
+                        code = result.failureCodeOrNull() ?: "task_conversation_follow_failed",
+                        traceId = result.failureTraceIdOrNull(),
+                        serverMessage = result.failureServerMessageOrNull(),
+                        serverCode = result.failureServerCodeOrNull(),
+                    )
+                )
+            }
+        }
+    }
+
+    fun onTaskDeleted(taskId: TaskId, conversationChannelId: ChannelId?) {
+        dispatch(TaskConversationHeaderIntent.TaskDeleted(taskId, conversationChannelId))
+    }
+
+    fun onTaskSeen(task: TaskSummary) {
+        dispatch(TaskConversationHeaderIntent.TaskSeen(task))
+    }
+
+    /**
+     * `thread:followers-updated { threadChannelId }` (slock threadFollowerRealtimeService, sent to the
+     * conversation's room): someone's follow of the conversation changed — maybe the reader's, on
+     * another device or by a server auto-follow (reply, assignment, mention). The frame does not say
+     * whose, so re-read the task's `conversationFollowed`. Single-flight: events during a fetch
+     * coalesce into one more fetch after it, so the last answer is never older than the last event.
+     * Before the task is known the page's first load carries the current value; nothing to do.
+     */
+    fun onFollowersUpdated(serverId: String, threadChannelId: ChannelId) {
+        if (threadChannelId != _state.value.conversationChannelId) return
+        scope.launch {
+            followRefetchDirty = true
+            if (followRefetchJob?.isActive == true) return@launch
+            followRefetchJob = coroutineContext[Job]
+            while (followRefetchDirty) {
+                followRefetchDirty = false
+                refetchFollow(serverId)
+            }
+        }
+    }
+
+    private suspend fun refetchFollow(serverId: String) {
+        val current = _state.value
+        if (current.removed) return
+        val ref = current.ref ?: return
+        val taskNumber = current.lastSeenTask?.takeIf { it.id == ref.taskId }?.taskNumber ?: return
+        val writeGeneration = current.followWriteGeneration
+        val result =
+            try {
+                loadTask(serverId, ref.parentChannelId, taskNumber)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                DataResult.Error(ScreenError(code = "task_conversation_follow_refetch_network", retryable = true, traceId = null))
+            }
+        val followed = (result as? DataResult.Content)?.data?.takeIf { it.id == ref.taskId }?.conversationFollowed
+        log(
+            "task_conversation_follow_refetch conversationId=${current.conversationChannelId.value} " +
+                "result=${result::class.simpleName} followed=${followed ?: "unknown"}"
+        )
+        if (followed != null) dispatch(TaskConversationHeaderIntent.FollowRefetched(followed, writeGeneration))
+    }
+}
+

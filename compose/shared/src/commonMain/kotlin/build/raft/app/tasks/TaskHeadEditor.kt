@@ -140,7 +140,8 @@ internal class TaskHeadEditState {
         this.base = current
         val patch = if (field == TaskHeadEditField.Title) TaskAmendPatch.Title(value) else TaskAmendPatch.Description(value)
         val retry = retryRevision
-        val expectedRevision = if (retry != null && (task.revision == null || retry > task.revision)) retry else task.revision
+        val taskRevision = task.revision
+        val expectedRevision = if (retry != null && (taskRevision == null || retry > taskRevision)) retry else taskRevision
         busy = true
         problem = null
         val result =
@@ -357,7 +358,8 @@ internal fun TaskSummary.canBeDeletedBy(viewerUserId: String?, serverRole: Strin
     // Web useCanDeleteTask: only where the reader may write the task's channel.
     if (readOnlyReason != null || !canWriteChannel) return false
     val viewer = viewerUserId?.trim()?.takeIf { it.isNotEmpty() }
-    val isCreator = viewer != null && creator?.kind == build.raft.app.model.MemberKind.Human && creator.id.value == viewer
+    val taskCreator = creator
+    val isCreator = viewer != null && taskCreator?.kind == build.raft.app.model.MemberKind.Human && taskCreator.id.value == viewer
     return isCreator || serverRole == "owner" || serverRole == "admin"
 }
 

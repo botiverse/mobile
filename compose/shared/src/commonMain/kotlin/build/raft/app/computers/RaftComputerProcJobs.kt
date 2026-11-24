@@ -310,8 +310,8 @@ internal fun computerProcJobExitFormat(job: ComputerProcJobSnapshot): ComputerPr
                 ComputerProcJobExitFormat.OwnerStopUnknown
             }
         job.exitReason == "memory_limit" -> ComputerProcJobExitFormat.MemoryLimit
-        job.exitCode != null -> ComputerProcJobExitFormat.Code(job.exitCode)
-        !job.exitSignal.isNullOrBlank() -> ComputerProcJobExitFormat.Signal(job.exitSignal)
+        job.exitCode != null -> ComputerProcJobExitFormat.Code(requireNotNull(job.exitCode))
+        !job.exitSignal.isNullOrBlank() -> ComputerProcJobExitFormat.Signal(requireNotNull(job.exitSignal))
         else -> ComputerProcJobExitFormat.Plain
     }
 

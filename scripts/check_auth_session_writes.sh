@@ -9,6 +9,7 @@ set -euo pipefail
 # :core holds the UI-free data foundation split out of :shared; both commonMain trees are checked.
 source_roots=(
   "compose/shared/src/commonMain/kotlin"
+  "compose/shared-data/src/commonMain/kotlin"
   "compose/core/src/commonMain/kotlin"
   "compose/ui-cmp/src/commonMain/kotlin"
 )

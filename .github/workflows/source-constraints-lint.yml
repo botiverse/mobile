@@ -16,7 +16,7 @@ on:
       - "compose/shared/src/commonMain/kotlin/**/*.kt"
       # Same glob as check_string_edge_spaces.py: a fourth locale must trigger
       # this job on its own PR, not only after it lands (LiBai, #2327 review).
-      - "compose/shared/src/commonMain/composeResources/values*/strings.xml"
+      - "compose/shared-data/src/commonMain/composeResources/values*/strings.xml"
       - "scripts/ci/check_source_constraints.py"
       - "scripts/ci/check_jvm_method_size.py"
       # check_no_production_run_blocking (#3823) scans every non-test Kotlin source set.

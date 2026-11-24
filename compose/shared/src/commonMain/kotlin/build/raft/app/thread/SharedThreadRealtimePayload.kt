@@ -679,7 +679,7 @@ private fun RaftThreadScreenPayload.applyThreadUpdated(event: ThreadUpdated): Ra
                 firstUnreadReplyMessageId =
                     when {
                         event.unreadCount == 0 -> null
-                        event.firstUnreadMessageId != null -> event.firstUnreadMessageId.value
+                        event.firstUnreadMessageId != null -> event.firstUnreadMessageId?.value
                         else -> firstUnreadReplyMessageId
                     },
             )

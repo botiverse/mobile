@@ -111,14 +111,17 @@ internal fun channelAnnouncementAuthorName(name: String?): String =
  * one); seen, the first line of the text, else who updated it.
  */
 @Composable
-internal fun channelAnnouncementStripLine(announcement: RaftChannelAnnouncement, authorName: String): String =
-    when {
-        !announcement.seen && announcement.note != null ->
-            stringResource(Res.string.channel_announcement_strip_updated_with_note, authorName, announcement.note)
+internal fun channelAnnouncementStripLine(announcement: RaftChannelAnnouncement, authorName: String): String {
+    val note = announcement.note
+    val excerpt = announcement.excerpt
+    return when {
+        !announcement.seen && note != null ->
+            stringResource(Res.string.channel_announcement_strip_updated_with_note, authorName, note)
         !announcement.seen -> stringResource(Res.string.channel_announcement_strip_updated, authorName)
-        announcement.excerpt != null -> announcement.excerpt
+        excerpt != null -> excerpt
         else -> stringResource(Res.string.channel_announcement_strip_updated_by, authorName)
     }
+}
 
 /**
  * The strip above the timeline: megaphone, the title (bold while the current version is unseen,

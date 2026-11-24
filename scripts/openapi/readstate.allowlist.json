@@ -1,6 +1,6 @@
 {
   "package": "build.raft.app.data.generated",
-  "output": "compose/shared/src/commonMain/kotlin/build/raft/app/data/generated/ReadStateDtos.kt",
+  "output": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/generated/ReadStateDtos.kt",
   "classSuffix": "Dto",
   "operations": ["markConversationUnread"],
   "schemas": ["MarkUnreadOutcome"],

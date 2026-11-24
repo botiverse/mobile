@@ -315,10 +315,11 @@ internal fun ThreadActionCardSpecView(
             val body = if (inline == null) rendered.spec else rendered.spec.withoutInlineQuestions(inline)
             rendered.copy(spec = if (questionLayout == QuestionCardLayout.SlimCard) body.withoutSlimQuestionRows(singleQuestion) else body)
         }
+    val requesterUserId = effectiveCard.requesterUserId
     val isOwnRequest =
-        effectiveCard.requesterUserId != null &&
+        requesterUserId != null &&
             host.viewerUserId != null &&
-            effectiveCard.requesterUserId.trim().equals(host.viewerUserId.trim(), ignoreCase = true)
+            requesterUserId.trim().equals(host.viewerUserId.trim(), ignoreCase = true)
     // Only the person asked (or anyone, on a card for anyone) may answer: the server refuses the rest (403 NOT_ADDRESSEE).
     val canOperate = commitEnabled && blockedReason == null && !isOwnRequest && (question?.asked ?: true)
     val currentCard by rememberUpdatedState(effectiveCard)

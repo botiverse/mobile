@@ -47,10 +47,11 @@ internal fun agentDeliveryHoldOf(
 ): AgentDeliveryHold? {
     if (deliveryHold == null || appBot || external || blocked != null || likelyOnline) return null
     if (status == null || status == AgentStatus.Offline || status == AgentStatus.Disconnected) return null
+    val holdUntilMs = deliveryHold.untilMs
     if (
         deliveryHold.reason == AgentDeliveryHoldReason.ProviderLimit &&
-        deliveryHold.untilMs != null &&
-        deliveryHold.untilMs <= nowMs
+        holdUntilMs != null &&
+        holdUntilMs <= nowMs
     ) {
         return null
     }
@@ -136,10 +137,10 @@ internal fun formatAgentDeliveryHoldText(
     val reason =
         when (hold.reason) {
             AgentDeliveryHoldReason.CredentialInvalid ->
-                when (hold.credentialDetail) {
+                when (val detail = hold.credentialDetail) {
                     AgentCredentialHoldReason.UserModelAccess,
                     AgentCredentialHoldReason.Billing ->
-                        agentCredentialInvalidText(hold.credentialDetail, runtime, model)
+                        agentCredentialInvalidText(detail, runtime, model)
                     AgentCredentialHoldReason.UserReauth ->
                         stringResource(Res.string.agent_status_delivery_hold_sign_in, runtimeName)
                     null ->

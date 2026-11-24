@@ -464,7 +464,7 @@ internal fun ComputerRuntimeAuthProviderRows(auth: ComputerRuntimeAuthCardState,
                             provider.apiKey -> Res.string.settings_computers_runtime_auth_pi_method_api_key
                             // OpenCode does not say whether an account is a subscription: neither is claimed.
                             provider.subscription == null -> Res.string.settings_computers_runtime_auth_signed_in
-                            provider.subscription -> Res.string.settings_computers_runtime_auth_pi_method_subscription
+                            provider.subscription == true -> Res.string.settings_computers_runtime_auth_pi_method_subscription
                             else -> Res.string.settings_computers_runtime_auth_pi_method_account
                         }
                     ),

@@ -85,7 +85,7 @@ val cmpComposeResourceModules =
     mapOf(
         ":designsystem" to "build.raft.designsystem.resources",
         ":ui-cmp" to "build.raft.app.cmp.resources",
-        ":shared" to "build.raft.app.resources",
+        ":shared-data" to "build.raft.app.resources",
     )
 
 val syncComposeResourcesForXcodeApp by tasks.registering(Sync::class) {

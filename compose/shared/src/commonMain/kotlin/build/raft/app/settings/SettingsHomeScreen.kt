@@ -486,10 +486,11 @@ internal fun SharedHomeScreen(
                 onInviteHuman = onInviteHuman,
                 onCreateChannelClick = onCreateChannel
             )
-        is SharedHomeContentState.Error ->
-            if (current.session != null) {
+        is SharedHomeContentState.Error -> {
+            val errorSession = current.session
+            if (errorSession != null) {
                 SharedHomeSessionShell(
-                    session = current.session,
+                    session = errorSession,
                     searchAndActivityOnShellNav = searchAndActivityOnShellNav,
                     scrollToTopRequest = scrollToTopRequest,
                     serverSwitcherExpanded = serverSwitcherExpanded,
@@ -543,6 +544,7 @@ internal fun SharedHomeScreen(
                     onRetry = { onIntent(SharedHomeIntent.Refresh) }
                 )
             }
+        }
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
             SideEffect {

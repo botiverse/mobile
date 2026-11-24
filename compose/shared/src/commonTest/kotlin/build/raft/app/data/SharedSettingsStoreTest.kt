@@ -2978,7 +2978,7 @@ class SharedSettingsStoreTest {
                                     )
                                 request.preferredLanguage != null ->
                                     current.browserLanguage.copy(
-                                        selectedKey = request.preferredLanguage,
+                                        selectedKey = requireNotNull(request.preferredLanguage),
                                         selectedLabel = "English",
                                         statusLabel = "English"
                                     )

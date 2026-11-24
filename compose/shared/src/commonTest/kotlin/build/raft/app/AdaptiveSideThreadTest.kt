@@ -31,7 +31,7 @@ class AdaptiveSideThreadTest {
         assertIs<AdaptiveSideThreadOpen.Opened>(this).session
 
     private fun SharedAdaptiveWorkspaceSession.mainSource(): RaftAdaptiveDetailCloseRequest =
-        RaftAdaptiveDetailCloseRequest("shell", workspace!!.selection!!.identity.key, workspace.selection!!.generation)
+        workspace!!.selection!!.let { RaftAdaptiveDetailCloseRequest("shell", it.identity.key, it.generation) }
 
     @Test fun columnFollowsTheRowPlansFoldNotAFixedWindowWidth() {
         // #189 rule 3 (web decideFold): alone with the conversation, the thread stands beside while the two keep 360

@@ -8,7 +8,6 @@ plugins {
     id("maven-publish")
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
-    id("app.cash.sqldelight")
     // Screenshot tests (androidUnitTest): recordRoborazziDebug / verifyRoborazziDebug / compareRoborazziDebug.
     id("io.github.takahirom.roborazzi")
 }
@@ -39,14 +38,6 @@ val raftIosLinkProbeProfilePhases =
     providers.gradleProperty("raft.iosLinkProbe.profilePhases")
         .map { it.equals("true", ignoreCase = true) }
         .getOrElse(false)
-// App strings and bundled files: Compose Multiplatform resources (src/commonMain/composeResources),
-// generated as the internal `build.raft.app.resources.Res`. Read strings through the Raft string
-// layer (build.raft.app.resources.stringResource / StringDesc), which follows the in-app language.
-compose.resources {
-    packageOfResClass = "build.raft.app.resources"
-    publicResClass = false
-    generateResClass = always
-}
 
 // The vendored slock Activity row contract cases (src/commonTest/resources/contract-cases/activity-row,
 // scripts/sync_slock_contract_cases.py) as a generated commonTest Kotlin source, so a commonTest suite
@@ -158,8 +149,10 @@ kotlin {
             isStatic = true
             license = "MIT"
             // Compose Multiplatform pages: Swift/ObjC reach RaftCmpIos (view controller factory,
-            // routing, bridge/navigator protocols). Not transitive: :core stays unexported.
+            // routing, bridge/navigator protocols) and :shared-data APIs (RaftHostStrings, OAuth,
+            // share envelope, logging). Not transitive: :core stays unexported.
             export(project(":ui-cmp"))
+            export(project(":shared-data"))
         }
         extraSpecAttributes["libraries"] = "['c++', 'sqlite3']"
         extraSpecAttributes["resources"] = "['src/commonMain/assets/**']"
@@ -168,7 +161,6 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
-            kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/commonMain/kotlin"))
             if (raftVisualFixturesEnabled) {
                 kotlin.srcDir("src/visualFixtures/kotlin")
                 // Visual fixture DATA follows the gated host into commonMain, so the visual
@@ -184,6 +176,8 @@ kotlin {
                 // UI-free foundation (models, network base, JSON helpers, HostCapabilities, store
                 // dispatcher). Not exported to the iOS framework: Swift uses none of it yet.
                 api(project(":core"))
+                // Data, stores, networking, SQLDelight, resources and pure helpers split out of :shared.
+                api(project(":shared-data"))
                 // Common-Kotlin Socket.IO client (realtime unification; RaftKmpRealtimeSocket is the host facade).
                 implementation(project(":realtime-socket"))
                 // CMP switch (Phase A): :shared's UI renders on upstream Compose Multiplatform
@@ -264,7 +258,6 @@ kotlin {
         // Plain-JVM actuals shared by Android and desktop (OkHttp transport, dispatchers, ...).
         val jvmCommonMain by creating {
             dependsOn(commonMain)
-            kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/jvmMain/kotlin"))
             dependencies {
                 implementation(libs.ktor.client.okhttp)
                 implementation(libs.okhttp.transport)
@@ -342,7 +335,6 @@ kotlin {
         val iosSimulatorArm64Main by getting
         val iosMain by creating {
             dependsOn(commonMain)
-            kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/nativeMain/kotlin"))
             iosArm64Main.dependsOn(this)
             iosSimulatorArm64Main.dependsOn(this)
             dependencies {
@@ -390,28 +382,6 @@ publishing {
     }
 }
 
-sqldelight {
-    databases {
-        create("RaftDatabase") {
-            packageName.set("build.raft.app.shared.data.local")
-            schemaOutputDirectory.set(file("src/commonMain/sqldelight/databases"))
-            verifyMigrations.set(true)
-        }
-    }
-}
-
-// Kotlin compilations depend on the SQLDelight generator directly (the Kuikly KSP tasks used to
-// carry that dependency).
-tasks.matching { task ->
-    task.name.startsWith("compile") && task.name.contains("Kotlin") && !task.name.contains("Test")
-}.configureEach {
-    dependsOn("generateCommonMainRaftDatabaseInterface")
-}
-
-tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKotlinAndroid" }.configureEach {
-    dependsOn("generateCommonMainRaftDatabaseInterface")
-}
-
 if (raftVisualFixturesEnabled) {
     tasks.matching { task ->
         task.name in setOf(
@@ -421,10 +391,6 @@ if (raftVisualFixturesEnabled) {
     }.configureEach {
         outputs.upToDateWhen { false }
     }
-}
-
-tasks.matching { it.name.startsWith("kspKotlinIos") }.configureEach {
-    dependsOn("generateCommonMainRaftDatabaseInterface")
 }
 
 // Xcode can run Gradle more than once per iOS build: the CocoaPods "Build shared" phase
@@ -480,13 +446,13 @@ android {
             assets.srcDirs("src/commonMain/assets")
         }
         named("test") {
-            resources.srcDir("src/commonMain/sqldelight/databases")
+            resources.srcDir("../shared-data/src/commonMain/sqldelight/databases")
             // KMP does not put commonTest resources on the Android unit-test classpath; the vendored
             // slock contract cases (contract-cases/unread, UnreadContractCasesTest) live there.
             resources.srcDir("src/commonTest/resources")
         }
         named("androidTest") {
-            assets.srcDir("src/commonMain/sqldelight/databases")
+            assets.srcDir("../shared-data/src/commonMain/sqldelight/databases")
         }
     }
 }

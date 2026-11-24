@@ -124,18 +124,23 @@ internal fun computerRuntimeUpgradeCopy(state: ComputerRuntimeUpgradeState): Com
             )
         is ComputerRuntimeUpgradeState.Done ->
             when (val result = state.result) {
-                is RuntimeUpgradeResult.Upgraded ->
-                    if (result.from != null && result.to != null) {
-                        ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_upgrade_upgraded_from_to, listOf(result.from, result.to), success = true)
+                is RuntimeUpgradeResult.Upgraded -> {
+                    val from = result.from
+                    val to = result.to
+                    if (from != null && to != null) {
+                        ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_upgrade_upgraded_from_to, listOf(from, to), success = true)
                     } else {
                         ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_upgrade_upgraded, success = true)
                     }
-                is RuntimeUpgradeResult.Current ->
-                    if (result.version != null) {
-                        ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_upgrade_current_version, listOf(result.version), success = true)
+                }
+                is RuntimeUpgradeResult.Current -> {
+                    val version = result.version
+                    if (version != null) {
+                        ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_upgrade_current_version, listOf(version), success = true)
                     } else {
                         ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_upgrade_current, success = true)
                     }
+                }
                 is RuntimeUpgradeResult.Unchanged -> ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_upgrade_unchanged, success = false)
                 is RuntimeUpgradeResult.Failed -> ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_upgrade_failed, success = false)
                 is RuntimeUpgradeResult.Unsupported ->
@@ -321,12 +326,14 @@ internal fun computerRuntimeInstallCopy(state: ComputerRuntimeInstallState): Com
             )
         is ComputerRuntimeInstallState.Done ->
             when (val result = state.result) {
-                is RuntimeInstallResult.Installed ->
-                    if (result.version != null) {
-                        ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_installed_version, listOf(result.version), success = true)
+                is RuntimeInstallResult.Installed -> {
+                    val version = result.version
+                    if (version != null) {
+                        ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_installed_version, listOf(version), success = true)
                     } else {
                         ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_installed, success = true)
                     }
+                }
                 is RuntimeInstallResult.AlreadyInstalled -> ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_already_installed, success = true)
                 is RuntimeInstallResult.Failed -> ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed, success = false)
                 is RuntimeInstallResult.Unsupported -> ComputerRuntimeOperationCopy(computerRuntimeInstallUnsupportedCopy(result.reason), success = false)

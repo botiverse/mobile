@@ -882,7 +882,7 @@ internal fun RealtimeEvent.refreshesThreadMemberSuggestions(mentionChannelId: St
             when (scope) {
                 RealtimeRefreshScope.ChannelMembers ->
                     mentionChannelId != null &&
-                        (channelId == null || channelId.value == mentionChannelId)
+                        (channelId == null || channelId?.value == mentionChannelId)
                 RealtimeRefreshScope.ServerMembers -> true
                 else -> false
             }

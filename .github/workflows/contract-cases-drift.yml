@@ -32,22 +32,22 @@ on:
       - "compose/shared/src/commonTest/kotlin/build/raft/app/contract/**"
       - "compose/shared/src/androidUnitTest/kotlin/build/raft/app/contract/**"
       # The app code the cases drive (Mark as Unread answer, Home row unread, thread hold).
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/MarkUnreadOutcome.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/UnreadParser.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/ReadReceipt*.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedHomeStore.kt"
+      - "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/MarkUnreadOutcome.kt"
+      - "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/UnreadParser.kt"
+      - "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/ReadReceipt*.kt"
+      - "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SharedHomeStore.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/thread/SharedThread*.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/home/RaftHomeComponents.kt"
       # The app code the Activity row cases drive (in-place row patch, live unread predicate).
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedActivityStore.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedActivityLocalMutationOverlay.kt"
+      - "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SharedActivityStore.kt"
+      - "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SharedActivityLocalMutationOverlay.kt"
       # The pure port of slock's shared Activity row rule (reduceActivityRow, activityLiveUnread).
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/ActivityRowPosition.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/ActivityUnreadPredicate.kt"
+      - "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/ActivityRowPosition.kt"
+      - "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/ActivityUnreadPredicate.kt"
       - "scripts/sync_slock_contract_cases.py"
       # Notification level fixture (slock docs/contracts/fixtures/notification-levels.json).
       - "compose/shared/src/androidUnitTest/kotlin/build/raft/app/contract/NotificationLevelContractCasesTest.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/RaftNotificationContract.kt"
+      - "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/RaftNotificationContract.kt"
       - "scripts/sync_slock_notification_levels.py"
       # Runtime Raft capabilities + recommended runtimes (slock packages/shared/src/runtimeCatalog.ts;
       # the runtime pickers' Recommended / Limited badges and capability hint, #triage:#534).

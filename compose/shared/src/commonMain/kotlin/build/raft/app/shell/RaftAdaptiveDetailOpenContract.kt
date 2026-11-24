@@ -619,14 +619,15 @@ internal fun evaluateRaftAdaptiveDetailOpen(
             selectionForOpen,
             RaftAdaptiveWorkspaceIntent.OpenDetail(request.identity),
         )
-    if (opened.selection?.identity != request.identity) {
+    val openedSelection = opened.selection
+    if (openedSelection?.identity != request.identity) {
         return session to
             RaftAdaptiveDetailOpenDecision.Rejected(
                 RaftAdaptiveDetailOpenRejectReason.NOT_DUAL_PANE.wireName
             )
     }
 
-    val generation = opened.selection.generation
+    val generation = openedSelection.generation
     val next =
         session.copy(
             workspace = opened,
@@ -664,7 +665,7 @@ internal fun completeRaftAdaptiveDetailOpen(
             ?: return session to null
     val matches =
         session.workspace?.selection?.identity?.key == identityKey &&
-            session.workspace.selection?.generation == generation
+            session.workspace?.selection?.generation == generation
     return if (matches) {
         // Keep the pending entry — it settles only on the native commit receipt. READY marks it
         // acknowledged so a duplicate READY does not re-ack.

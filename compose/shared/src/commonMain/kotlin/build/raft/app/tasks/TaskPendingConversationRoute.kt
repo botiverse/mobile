@@ -227,10 +227,12 @@ internal fun resolvePendingTaskSummary(
             candidateHasConversation && !bestHasConversation -> best = candidate
             !candidateHasConversation && bestHasConversation -> Unit
             candidate.revision != null && best.revision != null -> {
-                if (candidate.revision > best.revision) {
+                val candidateRev = requireNotNull(candidate.revision)
+                val bestRev = requireNotNull(best.revision)
+                if (candidateRev > bestRev) {
                     best = candidate
                 } else if (
-                    candidate.revision == best.revision &&
+                    candidateRev == bestRev &&
                     candidate.conversationDetailsLoaded &&
                     !best.conversationDetailsLoaded
                 ) {

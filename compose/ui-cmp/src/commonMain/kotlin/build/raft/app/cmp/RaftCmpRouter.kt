@@ -1,6 +1,7 @@
 package build.raft.app.cmp
 
 import androidx.compose.runtime.Composable
+import build.raft.app.RaftBuildFlags
 import build.raft.app.cmp.pages.CmpHelloPage
 import kotlin.concurrent.Volatile
 
@@ -88,6 +89,7 @@ object RaftCmpRouter {
     /** Called once by each host at startup. [debugBuild] admits [RaftCmpPages.debugOnly]. */
     fun configure(debugBuild: Boolean) {
         debugPagesEnabled = debugBuild
+        RaftBuildFlags.isDebugBuild = debugBuild
     }
 
     /**

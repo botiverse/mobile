@@ -20,7 +20,7 @@ UNICODE_URL = (
 )
 UNICODE_SHA256 = "d62e5bab70ca74f099343f71224fa051cb1fdd61a1ab45c0488c44cfc0b6102e"
 SOURCE_PATH = Path(
-    "compose/shared/src/commonMain/kotlin/build/raft/app/core/UnicodeIdentityHandle.kt"
+    "compose/shared-data/src/commonMain/kotlin/build/raft/app/core/UnicodeIdentityHandle.kt"
 )
 BEGIN_MARKER = "// BEGIN GENERATED UNICODE IDENTITY RANGES"
 END_MARKER = "// END GENERATED UNICODE IDENTITY RANGES"

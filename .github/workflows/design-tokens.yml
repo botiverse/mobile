@@ -6,7 +6,7 @@ on:
   pull_request:
     paths:
       - "tools/design-tokens/**"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/designtokens/**"
+      - "compose/shared-data/src/commonMain/kotlin/build/raft/app/designtokens/**"
       - "compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/tokens/**"
       - ".github/workflows/design-tokens.yml"
       - "scripts/generate_lucide_icons.py"

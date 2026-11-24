@@ -114,9 +114,11 @@ internal fun weChatPollOutcome(failure: WeChatRequestFailure): WeChatPollOutcome
         "wechat_account_in_use" -> WeChatPollOutcome.Fail(WeChatConnectFailure.InUse)
         "wechat_upstream_refused" -> WeChatPollOutcome.Fail(WeChatConnectFailure.Upstream)
         "wechat_unavailable", "assistant_not_found" -> WeChatPollOutcome.Fail(WeChatConnectFailure.Unavailable)
-        else ->
-            if (failure.httpStatus == null || failure.httpStatus >= 500) WeChatPollOutcome.Retry
+        else -> {
+            val httpStatus = failure.httpStatus
+            if (httpStatus == null || httpStatus >= 500) WeChatPollOutcome.Retry
             else WeChatPollOutcome.Fail(WeChatConnectFailure.Other)
+        }
     }
 
 private val FinalStatuses: Map<WeChatAttemptStatus, WeChatConnectFailure> =

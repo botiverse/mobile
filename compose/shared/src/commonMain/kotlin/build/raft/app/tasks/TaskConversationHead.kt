@@ -1597,7 +1597,7 @@ internal fun TaskSummary.taskConversationHeaderChrome(
         assigneeIsViewer =
             assignee?.kind == MemberKind.Human &&
                 normalizedViewerId != null &&
-                assignee.id.value.trim() == normalizedViewerId,
+                assignee?.id?.value?.trim() == normalizedViewerId,
         avatarServerId = serverId?.trim()?.takeIf { it.isNotEmpty() },
         isJointChannel = parseConversationKindOrNull(channelType) == ConversationKind.Joint,
         summarized = summarized,

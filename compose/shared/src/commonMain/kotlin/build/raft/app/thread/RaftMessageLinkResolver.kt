@@ -190,7 +190,7 @@ internal class RaftMessageLinkResolver(
                             target != null && (
                                 targetParentId == null ||
                                     !raftMessageIdMatches(redirect.parentMessageId, targetParentId) ||
-                                    (target.channelId != null && target.channelId.value != redirect.parentChannelId)
+                                    (target.channelId != null && target.channelId?.value != redirect.parentChannelId)
                                 )
                         ) {
                             notFound("thread_reply_mismatch")
