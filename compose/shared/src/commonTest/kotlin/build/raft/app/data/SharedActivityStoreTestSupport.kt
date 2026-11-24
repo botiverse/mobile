@@ -121,6 +121,7 @@ internal fun activityStore(
     listRowLoweredSink: (serverId: String, lowered: ActivityListRowLowered) -> Unit = { _, _ -> },
     inboxRowPositionEnabled: (serverId: String) -> Boolean = { false },
     rowRereadDelayMillis: Long = ActivityRowRereadDelayMillis,
+    selectedReadFollowupDelayMillis: Long = ActivitySelectedReadFollowupDelayMillis,
     onSyncPullHint: (serverId: String, reason: String) -> Unit = { _, _ -> },
     syncInboxRowsEnabled: (serverId: String) -> Boolean = { false },
     knownThreadContext: (
@@ -173,6 +174,7 @@ internal fun activityStore(
         conversationsReadOnSight = conversationsReadOnSight,
         inboxRowPositionEnabled = inboxRowPositionEnabled,
         rowRereadDelayMillis = rowRereadDelayMillis,
+        selectedReadFollowupDelayMillis = selectedReadFollowupDelayMillis,
         inPlaceReconcileIntervalMillis = inPlaceReconcileIntervalMillis,
         inPlaceCheckSink = inPlaceCheckSink,
         listRowLoweredSink = listRowLoweredSink,

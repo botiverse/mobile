@@ -9,10 +9,13 @@ import build.raft.app.model.MessageMention
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageSystemProvenance
 import build.raft.app.model.MessageType
+import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -23,6 +26,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -501,5 +505,506 @@ class SharedActivityStoreInboxInPlaceCheckTest {
             assertEquals(3, f.inbox.initialLoadCount)
             assertEquals(listOf(backgrounded, false), f.sent.map { it.check.resumed }, "backgrounded=$backgrounded: the second read is not")
         }
+    }
+
+    // --- #triage:#245: ~30s convergence follow-up after selected=1 unread=0/N conflicts ---
+
+    private data class RecordedRowRead(
+        val serverId: ServerId,
+        val rowIds: List<String>,
+        val reason: InboxFetchReason?,
+        val trigger: InboxRefreshTriggerCount?,
+    )
+
+    private class RowCapableInbox(
+        listAnswers: List<List<InboxItem>>,
+        private val rowAnswers: List<DataResult<InboxSnapshot>> = emptyList(),
+    ) : InboxRepository by FakeInboxRepository(initialSnapshots = listAnswers.map(::snapshot)) {
+        val rowReads = mutableListOf<RecordedRowRead>()
+        private var rowAnswerIndex = 0
+
+        override suspend fun loadRows(serverId: ServerId, rowIds: List<String>): DataResult<InboxSnapshot> {
+            val context = currentCoroutineContext()[InboxFetchReasonContext]
+            rowReads += RecordedRowRead(serverId, rowIds, context?.reason, context?.trigger)
+            return if (rowAnswers.isEmpty()) {
+                DataResult.Empty(EmptyReason.NoInboxItems)
+            } else {
+                rowAnswers.getOrElse(rowAnswerIndex++) { rowAnswers.last() }
+            }
+        }
+    }
+
+    private class SelectedFollowupFixture(
+        val store: SharedActivityStore,
+        val inbox: RowCapableInbox,
+        val sent: MutableList<Sent>,
+    )
+
+    private fun TestScope.loadedStoreWithRows(
+        listAnswers: List<List<InboxItem>>,
+        rowAnswers: List<DataResult<InboxSnapshot>>,
+        readingOnSight: () -> Set<String>?,
+        rowPosition: Boolean = false,
+        foreground: MutableStateFlow<Boolean> = MutableStateFlow(true),
+    ): SelectedFollowupFixture {
+        val inbox = RowCapableInbox(listAnswers = listAnswers, rowAnswers = rowAnswers)
+        val sent = mutableListOf<Sent>()
+        val store =
+            activityStore(
+                scope = backgroundScope,
+                inboxRepository = inbox,
+                perReceiverStateVersionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore()),
+                realtimeBackgroundRefreshIntervalMillis = ActivityRealtimeBackgroundRefreshIntervalMillis,
+                nowMillis = { testScheduler.currentTime },
+                appForeground = foreground,
+                inboxInPlaceEnabled = { true },
+                inboxRowPositionEnabled = { rowPosition },
+                conversationsReadOnSight = readingOnSight,
+                inPlaceCheckSink = { serverId, check -> sent += Sent(serverId, check) },
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        return SelectedFollowupFixture(store, inbox, sent)
+    }
+
+    private fun liveSelected(id: String, channelId: String, seq: Long, activeConversationId: String? = channelId) =
+        SharedActivityIntent.ApplyRealtimeEvent(
+            event = MessageNew(message(id, channelId = channelId, seq = seq)),
+            activeConversationId = activeConversationId,
+        )
+
+    @Test
+    fun selectedUnreadZeroConflictSchedulesThirtySecondFollowupAndConfirmsServerConvergence() = runTest {
+        val initialOther = otherRow
+        val matchingOther = otherRow.copy(latestActivitySeq = "6", unreadCount = 1)
+        val servedUnread = channelRow.copy(latestActivitySeq = "11", unreadCount = 1)
+        val converged = channelRow.copy(latestActivitySeq = "11", unreadCount = 0)
+        val f =
+            loadedStoreWithRows(
+                listAnswers = listOf(
+                    listOf(initialOther, channelRow),
+                    listOf(matchingOther, channelRow),
+                    listOf(servedUnread, matchingOther),
+                ),
+                rowAnswers = listOf(DataResult.Content(snapshot(listOf(converged)).copy(inboxBackend = "risingwave"))),
+                readingOnSight = { setOf("channel-1") },
+            )
+
+        // Consume the 1st sampled noop on channel-2 so the next ordinary noop would be sampled out (1-in-20),
+        // proving the selected follow-up always emits with sampleRate = 1.
+        f.store.dispatch(live("m-6", channelId = "channel-2", seq = 6L))
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(listOf("match"), f.sent.map { it.check.result })
+
+        // Live message arrives in selected channel-1 (read on sight -> local unread=0), server still reports unread=1.
+        f.store.dispatch(liveSelected("m-11", channelId = "channel-1", seq = 11L))
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(2, f.sent.size)
+        val initialConflict = f.sent.last().check
+        assertEquals(ActivityInPlaceCheckOutcome.Conflict, initialConflict.outcome)
+        assertEquals("unread", initialConflict.result)
+        assertEquals(true, initialConflict.selected)
+        assertEquals("0/1", initialConflict.fields()["unread"])
+
+        // Read state event arrives while the 30s follow-up timer is waiting.
+        advanceTimeBy(5_000L)
+        f.store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                PerReceiverReadStateChanged(
+                    serverId = ServerId("server-1"),
+                    scopes = listOf(PerReceiverReadStateScope(ChannelId("channel-1"), maxReadSeq = 11L, readStateVersion = 2L)),
+                )
+            )
+        )
+        runCurrent()
+
+        // Not yet due just before 30s.
+        advanceTimeBy(ActivitySelectedReadFollowupDelayMillis - 5_001L)
+        runCurrent()
+        assertTrue(f.inbox.rowReads.isEmpty(), "must wait full 30s before re-checking")
+
+        // At +30s, a single-row read runs and confirms server convergence (unread=0/0).
+        advanceTimeBy(1L)
+        runCurrent()
+        val rowRead = f.inbox.rowReads.single()
+        assertEquals(ServerId("server-1"), rowRead.serverId)
+        assertEquals(listOf("channel-1"), rowRead.rowIds)
+        assertEquals(InboxFetchReason.PositionReread, rowRead.reason)
+        assertEquals(InboxRefreshTriggerCount(InboxRefreshTrigger.MessageNew), rowRead.trigger)
+
+        assertEquals(3, f.sent.size)
+        val followup = f.sent.last().check
+        assertEquals("channel:channel-1", followup.entityId)
+        assertEquals(InboxRefreshTrigger.MessageNew, followup.trigger)
+        assertEquals("match", followup.result)
+        assertEquals(ActivityInPlaceCheckOutcome.Noop, followup.outcome)
+        assertEquals(1, followup.sampleRate, "selected follow-ups are never sampled out")
+        assertEquals("row", followup.scope)
+        assertEquals("risingwave", followup.backend)
+        assertEquals(true, followup.selected)
+        assertNull(followup.notJudgedCause)
+        val fields = followup.fields()
+        assertEquals("0/0", fields["unread"])
+        assertEquals("0/0", fields["mention"])
+        assertEquals("11/11", fields["position"])
+        assertEquals("list", fields["initial_scope"])
+        assertEquals("1", fields["initial_served_unread"])
+        assertEquals("1", fields["selected_followup"])
+        assertEquals(ActivitySelectedReadFollowupReason, fields["followup_reason"])
+        assertEquals(ActivitySelectedReadFollowupDelayMillis.toString(), fields["age_ms"])
+        assertEquals("1", fields["read_state"])
+
+        // Privacy: no conversation id in outcomeDetail or flat inbox.inplace.* attributes.
+        assertFalse(followup.outcomeDetail.contains("channel-1"), followup.outcomeDetail)
+        val attrs = followup.stateTransitionTraceAttrs()
+        attrs.entries
+            .filter { (k, _) -> k.startsWith("inbox.inplace.") }
+            .forEach { (k, v) -> assertFalse(v.toString().contains("channel-1"), "$k=$v") }
+    }
+
+    @Test
+    fun selectedUnreadZeroFollowupStillUnreadEmitsConflictAndDoesNotLoopInfinitely() = runTest {
+        val servedUnread = channelRow.copy(latestActivitySeq = "11", unreadCount = 1)
+        val f =
+            loadedStoreWithRows(
+                listAnswers = listOf(listOf(otherRow, channelRow), listOf(servedUnread, otherRow)),
+                rowAnswers = listOf(DataResult.Content(snapshot(listOf(servedUnread)))),
+                readingOnSight = { setOf("channel-1") },
+            )
+
+        f.store.dispatch(liveSelected("m-11", channelId = "channel-1", seq = 11L))
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(1, f.sent.size)
+        // Even if the client holds a local read overlay on the row (90s hold), the follow-up must check
+        // the raw server unread count rather than masking a lingering server unread=1 down to 0.
+        f.store.dispatch(SharedActivityIntent.MarkRead(f.store.state.value.items.first { it.key == channelRow.key }))
+        runCurrent()
+
+        advanceTimeBy(ActivitySelectedReadFollowupDelayMillis)
+        runCurrent()
+        assertEquals(1, f.inbox.rowReads.size)
+        assertEquals(2, f.sent.size)
+        val followup = f.sent.last().check
+        assertEquals(ActivityInPlaceCheckOutcome.Conflict, followup.outcome)
+        assertEquals("unread", followup.result)
+        assertEquals(1, followup.sampleRate)
+        assertEquals(true, followup.selected)
+        val fields = followup.fields()
+        assertEquals("0/1", fields["unread"])
+        assertEquals("1", fields["selected_followup"])
+        assertEquals(ActivitySelectedReadFollowupReason, fields["followup_reason"])
+        assertEquals("0", fields["read_state"])
+
+        // Must never schedule a follow-up of a follow-up.
+        advanceTimeBy(10 * ActivitySelectedReadFollowupDelayMillis)
+        runCurrent()
+        assertEquals(1, f.inbox.rowReads.size, "no follow-up loop")
+        assertEquals(2, f.sent.size, "no extra check emitted")
+    }
+
+    @Test
+    fun unselectedOrNonZeroLocalUnreadConflictDoesNotScheduleSelectedFollowup() = runTest {
+        // Case 1: selected=0 + unread=0/1 (user left conversation before the list check ran).
+        var reading = setOf("channel-1")
+        val servedUnread = channelRow.copy(latestActivitySeq = "11", unreadCount = 1)
+        val unselected =
+            loadedStoreWithRows(
+                listAnswers = listOf(listOf(otherRow, channelRow), listOf(servedUnread, otherRow)),
+                rowAnswers = listOf(DataResult.Content(snapshot(listOf(channelRow.copy(latestActivitySeq = "11", unreadCount = 0))))),
+                readingOnSight = { reading },
+            )
+        unselected.store.dispatch(liveSelected("m-11", channelId = "channel-1", seq = 11L))
+        reading = emptySet()
+        unselected.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(1, unselected.sent.size)
+        assertEquals(false, unselected.sent.single().check.selected)
+        assertEquals("0/1", unselected.sent.single().check.fields()["unread"])
+
+        advanceTimeBy(2 * ActivitySelectedReadFollowupDelayMillis)
+        runCurrent()
+        assertTrue(unselected.inbox.rowReads.isEmpty(), "selected=0 must not schedule a selected follow-up")
+        assertEquals(1, unselected.sent.size)
+
+        // Case 2: selected=1 + unread=1/2 (local unread > 0).
+        var readingTwo = emptySet<String>()
+        val servedTwo = channelRow.copy(latestActivitySeq = "11", unreadCount = 2)
+        val nonZeroLocal =
+            loadedStoreWithRows(
+                listAnswers = listOf(listOf(otherRow, channelRow), listOf(servedTwo, otherRow)),
+                rowAnswers = listOf(DataResult.Content(snapshot(listOf(channelRow.copy(latestActivitySeq = "11", unreadCount = 0))))),
+                readingOnSight = { readingTwo },
+            )
+        nonZeroLocal.store.dispatch(live("m-11", channelId = "channel-1", seq = 11L))
+        readingTwo = setOf("channel-1")
+        nonZeroLocal.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(1, nonZeroLocal.sent.size)
+        assertEquals(true, nonZeroLocal.sent.single().check.selected)
+        assertEquals("1/2", nonZeroLocal.sent.single().check.fields()["unread"])
+
+        advanceTimeBy(2 * ActivitySelectedReadFollowupDelayMillis)
+        runCurrent()
+        assertTrue(nonZeroLocal.inbox.rowReads.isEmpty(), "local unread > 0 must not schedule a selected follow-up")
+        assertEquals(1, nonZeroLocal.sent.size)
+    }
+
+    @Test
+    fun serverSwitchClearAndBackgroundCancelOrSkipPendingSelectedFollowup() = runTest {
+        val servedUnread = channelRow.copy(latestActivitySeq = "11", unreadCount = 1)
+        val converged = channelRow.copy(latestActivitySeq = "11", unreadCount = 0)
+
+        // Server switch cancels pending follow-up.
+        val switched =
+            loadedStoreWithRows(
+                listAnswers = listOf(listOf(otherRow, channelRow), listOf(servedUnread, otherRow), listOf(otherRow)),
+                rowAnswers = listOf(DataResult.Content(snapshot(listOf(converged)))),
+                readingOnSight = { setOf("channel-1") },
+            )
+        switched.store.dispatch(liveSelected("m-11", channelId = "channel-1", seq = 11L))
+        switched.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(1, switched.sent.size)
+        advanceTimeBy(10_000L)
+        switched.store.dispatch(SharedActivityIntent.ServerSelected("server-2"))
+        advanceTimeBy(2 * ActivitySelectedReadFollowupDelayMillis)
+        runCurrent()
+        assertTrue(switched.inbox.rowReads.isEmpty(), "server switch must cancel pending selected follow-up")
+        assertEquals(1, switched.sent.size)
+
+        // Store clear() cancels pending follow-up.
+        val cleared =
+            loadedStoreWithRows(
+                listAnswers = listOf(listOf(otherRow, channelRow), listOf(servedUnread, otherRow)),
+                rowAnswers = listOf(DataResult.Content(snapshot(listOf(converged)))),
+                readingOnSight = { setOf("channel-1") },
+            )
+        cleared.store.dispatch(liveSelected("m-11", channelId = "channel-1", seq = 11L))
+        cleared.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        advanceTimeBy(10_000L)
+        cleared.store.clear()
+        advanceTimeBy(2 * ActivitySelectedReadFollowupDelayMillis)
+        runCurrent()
+        assertTrue(cleared.inbox.rowReads.isEmpty(), "clear() must cancel pending selected follow-up")
+        assertEquals(1, cleared.sent.size)
+
+        // Backgrounding skips the follow-up without firing a network request.
+        val foreground = MutableStateFlow(true)
+        val backgrounded =
+            loadedStoreWithRows(
+                listAnswers = listOf(listOf(otherRow, channelRow), listOf(servedUnread, otherRow)),
+                rowAnswers = listOf(DataResult.Content(snapshot(listOf(converged)))),
+                readingOnSight = { setOf("channel-1") },
+                foreground = foreground,
+            )
+        backgrounded.store.dispatch(liveSelected("m-11", channelId = "channel-1", seq = 11L))
+        backgrounded.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        advanceTimeBy(10_000L)
+        foreground.value = false
+        runCurrent()
+        advanceTimeBy(2 * ActivitySelectedReadFollowupDelayMillis)
+        runCurrent()
+        assertTrue(backgrounded.inbox.rowReads.isEmpty(), "backgrounded store must skip selected follow-up")
+        assertEquals(1, backgrounded.sent.size)
+    }
+
+    @Test
+    fun selectedFollowupPreservesPositionAuditAccountingDeduplicatesAndWorksOnSyncRow() = runTest {
+        // 1. Position audit conflict with selected=1 unread=0/1 schedules a 30s follow-up whose trigger is NOT
+        //    position_audit, preserving `audits scheduled == checks with trigger position_audit`.
+        val baseRow = channelRow.copy(readStateLatestActivitySeq = "10")
+        val auditServedUnread = baseRow.copy(latestActivitySeq = "30", readStateLatestActivitySeq = "30", unreadCount = 1)
+        val convergedAt30 = baseRow.copy(latestActivitySeq = "30", readStateLatestActivitySeq = "30", unreadCount = 0)
+        val auditFixture =
+            loadedStoreWithRows(
+                listAnswers = listOf(listOf(baseRow)),
+                rowAnswers = listOf(
+                    DataResult.Content(snapshot(listOf(auditServedUnread))),
+                    DataResult.Content(snapshot(listOf(convergedAt30))),
+                ),
+                readingOnSight = { setOf("channel-1") },
+                rowPosition = true,
+            )
+        repeat(20) { idx ->
+            auditFixture.store.dispatch(liveSelected("m-${11 + idx}", channelId = "channel-1", seq = 11L + idx))
+        }
+        advanceTimeBy(ActivityRowRereadDelayMillis + 1L)
+        runCurrent()
+        assertEquals(1, auditFixture.sent.size)
+        assertEquals(InboxRefreshTrigger.PositionAudit, auditFixture.sent.single().check.trigger)
+        assertEquals("0/1", auditFixture.sent.single().check.fields()["unread"])
+
+        advanceTimeBy(ActivitySelectedReadFollowupDelayMillis)
+        runCurrent()
+        assertEquals(2, auditFixture.sent.size)
+        assertEquals(
+            1,
+            auditFixture.sent.count { it.check.trigger == InboxRefreshTrigger.PositionAudit },
+            "selected follow-up must not inflate position_audit count"
+        )
+        val auditFollowup = auditFixture.sent.last().check
+        assertEquals(InboxRefreshTrigger.Other, auditFollowup.trigger)
+        assertEquals("match", auditFollowup.result)
+        assertEquals("0/0", auditFollowup.fields()["unread"])
+        assertEquals("1", auditFollowup.fields()["selected_followup"])
+
+        // 2. Deduplication per scope: two selected=1 unread=0/1 conflicts before 30s issue only one follow-up read.
+        val served11 =
+            baseRow.copy(
+                latestActivitySeq = "11",
+                readStateLatestActivitySeq = "11",
+                lastMessageId = MessageId("m-11"),
+                latestActivityMessageId = MessageId("m-11"),
+                unreadCount = 1,
+            )
+        val served12 =
+            baseRow.copy(
+                latestActivitySeq = "12",
+                readStateLatestActivitySeq = "12",
+                lastMessageId = MessageId("m-12"),
+                latestActivityMessageId = MessageId("m-12"),
+                unreadCount = 1,
+            )
+        val converged12 = served12.copy(unreadCount = 0)
+        val dedupe =
+            loadedStoreWithRows(
+                listAnswers = listOf(
+                    listOf(otherRow, baseRow),
+                    listOf(served11, otherRow),
+                    listOf(served12, otherRow),
+                ),
+                rowAnswers = listOf(DataResult.Content(snapshot(listOf(converged12)))),
+                readingOnSight = { setOf("channel-1") },
+            )
+        dedupe.store.dispatch(liveSelected("m-11", channelId = "channel-1", seq = 11L))
+        dedupe.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(1, dedupe.sent.size)
+        advanceTimeBy(5_000L)
+        // Clear local unread back to 0 via read state, then land another live message + conflict while first follow-up waits.
+        dedupe.store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                PerReceiverReadStateChanged(
+                    serverId = ServerId("server-1"),
+                    scopes = listOf(PerReceiverReadStateScope(ChannelId("channel-1"), maxReadSeq = 11L, readStateVersion = 2L)),
+                )
+            )
+        )
+        runCurrent()
+        dedupe.store.dispatch(liveSelected("m-12", channelId = "channel-1", seq = 12L))
+        dedupe.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(2, dedupe.sent.size)
+
+        advanceTimeBy(ActivitySelectedReadFollowupDelayMillis + 10_000L)
+        runCurrent()
+        assertEquals(1, dedupe.inbox.rowReads.size, "pending follow-up for same scope is deduplicated")
+        assertEquals(3, dedupe.sent.size)
+        assertEquals("match", dedupe.sent.last().check.result)
+
+        // 3. sync_inbox_rows conflict (scope=sync_row) also triggers a 30s follow-up.
+        val syncFixture =
+            loadedStoreWithRows(
+                listAnswers = listOf(listOf(baseRow)),
+                rowAnswers = listOf(DataResult.Content(snapshot(listOf(baseRow.copy(latestActivitySeq = "11", unreadCount = 0))))),
+                readingOnSight = { setOf("channel-1") },
+                rowPosition = true,
+            )
+        syncFixture.store.dispatch(liveSelected("m-11", channelId = "channel-1", seq = 11L))
+        runCurrent()
+        val syncChanges =
+            parseSyncChangesPage(
+                syncChangesBody("c1.1.1", changes = listOf(syncInboxRowUpsert(1, "channel-1", syncInboxChannelRow("channel-1", "11", unread = 1))))
+            )!!.changes.filterIsInstance<RaftSyncInboxRowChange>()
+        syncFixture.store.applySyncInboxRows("server-1", syncChanges)
+        runCurrent()
+        assertEquals(1, syncFixture.sent.size)
+        assertEquals(ActivityInPlaceScopeSyncRow, syncFixture.sent.single().check.scope)
+        assertEquals("0/1", syncFixture.sent.single().check.fields()["unread"])
+
+        advanceTimeBy(ActivitySelectedReadFollowupDelayMillis)
+        runCurrent()
+        assertEquals(1, syncFixture.inbox.rowReads.size)
+        val syncFollowup = syncFixture.sent.last().check
+        assertEquals("match", syncFollowup.result)
+        assertEquals("0/0", syncFollowup.fields()["unread"])
+        assertEquals(ActivityInPlaceScopeSyncRow, syncFollowup.fields()["initial_scope"])
+        assertEquals("1", syncFollowup.fields()["selected_followup"])
+    }
+
+    @Test
+    fun selectedReadFollowupHelpersEnforceNonChainingAndServedAheadConvergence() {
+        val auditFollowupConflict =
+            ActivityInPlaceCheck(
+                entityId = "channel:channel-1",
+                trigger = InboxRefreshTrigger.PositionAudit,
+                rowExisted = true,
+                result = "unread",
+                outcome = ActivityInPlaceCheckOutcome.Conflict,
+                sampleRate = 1,
+                outcomeDetail = "trigger=position_audit;existed=1;result=unread;unread=0/1;mention=0/0;position=11/11;followup=1;reread=position;age_ms=0;read_state=0",
+                timestampMillis = 1_000L,
+                scope = ActivityInPlaceScopeRow,
+                selected = true,
+            )
+        assertTrue(auditFollowupConflict.isFollowupCheck())
+        assertNull(auditFollowupConflict.selectedUnreadZeroServedCountOrNull(), "audit follow-up must not chain a selected follow-up")
+
+        // User left conversation after initial seq 11 was read on server (maxReadSeq=11), and newer seq 12 arrived unread.
+        val newerAfterRead =
+            channelRow.copy(
+                latestActivitySeq = "12",
+                unreadCount = 1,
+                readStateMaxReadSeq = "11",
+            )
+        val convergedBeforeNewMessage =
+            buildSelectedReadFollowupCheck(
+                entityId = "channel:channel-1",
+                trigger = InboxRefreshTrigger.MessageNew,
+                reread = null,
+                initialScope = ActivityInPlaceScopeList,
+                initialPosition = "11",
+                initialServedUnread = 1,
+                served = newerAfterRead,
+                localUnreadNow = 1,
+                selectedNow = false,
+                backend = "postgres",
+                readStateArrived = true,
+                ageMillis = 30_000L,
+                nowMillis = 40_000L,
+            )
+        assertEquals(ActivityInPlaceCheckOutcome.Noop, convergedBeforeNewMessage.outcome)
+        assertEquals("match", convergedBeforeNewMessage.result)
+        assertEquals("1", convergedBeforeNewMessage.fields()["read_converged"])
+        assertEquals("1", convergedBeforeNewMessage.fields()["served_ahead"])
+        assertTrue(convergedBeforeNewMessage.isFollowupCheck())
+        assertNull(convergedBeforeNewMessage.copy(outcome = ActivityInPlaceCheckOutcome.Conflict, selected = true).selectedUnreadZeroServedCountOrNull())
+
+        // Still selected and unread on a newer message -> still a conflict.
+        val stillUnreadWhileSelected =
+            buildSelectedReadFollowupCheck(
+                entityId = "channel:channel-1",
+                trigger = InboxRefreshTrigger.ThreadReply,
+                reread = ActivityInPlaceRereadPosition,
+                initialScope = ActivityInPlaceScopeRow,
+                initialPosition = "11",
+                initialServedUnread = 1,
+                served = newerAfterRead.copy(readStateMaxReadSeq = "10"),
+                localUnreadNow = 0,
+                selectedNow = true,
+                backend = "risingwave",
+                readStateArrived = false,
+                ageMillis = 30_000L,
+                nowMillis = 40_000L,
+            )
+        assertEquals(ActivityInPlaceCheckOutcome.Conflict, stillUnreadWhileSelected.outcome)
+        assertEquals("served_ahead+unread", stillUnreadWhileSelected.result)
+        assertEquals("0/1", stillUnreadWhileSelected.fields()["unread"])
+        assertNull(stillUnreadWhileSelected.copy(selected = true).selectedUnreadZeroServedCountOrNull())
     }
 }

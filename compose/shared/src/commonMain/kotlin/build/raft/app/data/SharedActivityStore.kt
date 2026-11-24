@@ -455,6 +455,8 @@ class SharedActivityStore internal constructor(
     private val inboxRowPositionEnabled: (serverId: String) -> Boolean = { false },
     /** See [ActivityRowRereadDelayMillis]; injectable for virtual time. */
     private val rowRereadDelayMillis: Long = ActivityRowRereadDelayMillis,
+    /** See [ActivitySelectedReadFollowupDelayMillis]; injectable for virtual time. */
+    private val selectedReadFollowupDelayMillis: Long = ActivitySelectedReadFollowupDelayMillis,
     /**
      * A realtime event this list cannot settle from its own read, for the server it is bound to: a
      * live message or reply for a row it lacks (`activity_inplace result=absent`: the inbox read model
@@ -670,6 +672,13 @@ class SharedActivityStore internal constructor(
     private var liveAppliedCount = 0L
     /** Follow-up audits waiting for their delay (web `followupTimers`): each ends in one check. */
     private val auditFollowups = LinkedHashMap<String, ActivityAuditFollowup>()
+    /**
+     * `#triage:#245` (guarded by realtimeOwnerLock): pending ~30s convergence follow-ups for
+     * `selected=1` `unread=0/N` conflicts, keyed by conversation scope id.
+     */
+    private class ActivitySelectedReadFollowup(var job: Job? = null, var readStateArrived: Boolean = false)
+    private val selectedReadFollowups = LinkedHashMap<String, ActivitySelectedReadFollowup>()
+    private var selectedReadFollowupGeneration = 0L
     /**
      * `inbox_row_position_v1`: the server whose list a fresh network answer (not the cache-restored
      * page, not a remembered stale one) has loaded in this session; null after a switch or reset.
@@ -2382,7 +2391,14 @@ class SharedActivityStore internal constructor(
         inPlaceReconcileJob = null
         inPlaceReconcileMark = null
         inPlaceDriftCheck.clear()
+        resetSelectedReadFollowupsLocked()
         resetRowPositionLocked()
+    }
+
+    private fun resetSelectedReadFollowupsLocked() {
+        selectedReadFollowupGeneration += 1L
+        selectedReadFollowups.values.forEach { it.job?.cancel() }
+        selectedReadFollowups.clear()
     }
 
     // ---- `inbox_row_position_v1` (#triage:#244, web inboxRowPosition.ts) ---------------------------
@@ -2440,7 +2456,11 @@ class SharedActivityStore internal constructor(
     }
 
     /** One `activity:inplace_check` to [serverId]'s trace stream (web `emitStateTransitionTrace`). */
-    private fun emitInPlaceCheckLocked(serverId: String?, unmarked: ActivityInPlaceCheck) {
+    private fun emitInPlaceCheckLocked(
+        serverId: String?,
+        unmarked: ActivityInPlaceCheck,
+        allowSelectedFollowup: Boolean = true,
+    ) {
         val check = unmarked.copy(selected = inPlaceCheckSelectedLocked(unmarked.entityId))
         diagnosticsLogger(
             "activity_inplace_check entity=${check.entityId} trigger=${check.trigger.wireValue} " +
@@ -2448,7 +2468,135 @@ class SharedActivityStore internal constructor(
                 " selected=${check.selected?.let { if (it) 1 else 0 } ?: "-"}" +
                 (check.notJudgedCause?.let { " cause=${it.wireValue}" } ?: "")
         )
-        if (serverId != null) inPlaceCheckSink(serverId, check)
+        if (serverId != null) {
+            inPlaceCheckSink(serverId, check)
+            if (allowSelectedFollowup) {
+                check.selectedUnreadZeroServedCountOrNull()?.let { initialServedUnread ->
+                    scheduleSelectedReadFollowupLocked(serverId, check, initialServedUnread)
+                }
+            }
+        }
+    }
+
+    /**
+     * `#triage:#245`: schedules a one-shot ~30s single-row re-check after a `selected=1`
+     * `unread=0/N` conflict so observability can confirm whether the server's unread count
+     * converges to `0` once the in-flight read lands. Deduplicated and capped per scope, cancelled
+     * on store clear / server switch, skipped when backgrounded, never triggers list-read
+     * fallbacks, and never chains a follow-up of a follow-up.
+     */
+    private fun scheduleSelectedReadFollowupLocked(
+        serverId: String,
+        triggerCheck: ActivityInPlaceCheck,
+        initialServedUnread: Int,
+    ) {
+        if (!inboxInPlaceEnabled(serverId)) return
+        val row = _state.value.snapshot?.items?.firstOrNull { it.key == triggerCheck.entityId }
+        val scopeId = row?.takeIf { it.isActivityPositionRow() }?.activityRowScopeId() ?: return
+        if (scopeId in selectedReadFollowups || selectedReadFollowups.size >= ActivitySelectedReadFollowupsCap) return
+        val generation = selectedReadFollowupGeneration
+        val initialPosition = row.latestActivitySeq
+        val scheduledAtMillis = nowMillis()
+        val followupTrigger =
+            if (triggerCheck.trigger == InboxRefreshTrigger.PositionAudit) {
+                InboxRefreshTrigger.Other
+            } else {
+                triggerCheck.trigger
+            }
+        val entry = ActivitySelectedReadFollowup()
+        val job =
+            scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    delay(selectedReadFollowupDelayMillis)
+                    val shouldFetch =
+                        synchronized(realtimeOwnerLock) {
+                            if (generation != selectedReadFollowupGeneration) return@synchronized false
+                            if (_state.value.ownerServerId != serverId || !inboxInPlaceEnabled(serverId)) {
+                                return@synchronized false
+                            }
+                            if (!appForeground.value) {
+                                diagnosticsLogger("activity_selected_followup phase=skip reason=background")
+                                return@synchronized false
+                            }
+                            true
+                        }
+                    if (!shouldFetch) return@launch
+                    diagnosticsLogger(
+                        "activity_selected_followup phase=start trigger=${followupTrigger.wireValue} " +
+                            "initial_served_unread=$initialServedUnread"
+                    )
+                    val result =
+                        try {
+                            withInboxFetchReason(
+                                InboxFetchReason.PositionReread,
+                                InboxRefreshTriggerCount(followupTrigger)
+                            ) {
+                                inboxRepository.loadRows(ServerId(serverId), listOf(scopeId))
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            diagnosticsLogger(
+                                "activity_selected_followup phase=finish result=exception type=${failure::class.simpleName}"
+                            )
+                            DataResult.Error(ScreenError(code = "inbox_rows_exception", retryable = true))
+                        }
+                    synchronized(realtimeOwnerLock) {
+                        if (generation != selectedReadFollowupGeneration ||
+                            _state.value.ownerServerId != serverId ||
+                            !inboxInPlaceEnabled(serverId)
+                        ) {
+                            return@launch
+                        }
+                        if (result !is DataResult.Content || result.data.staleReason != null) {
+                            diagnosticsLogger(
+                                "activity_selected_followup phase=finish result=${result.activityDiagnosticsResult()}"
+                            )
+                            return@launch
+                        }
+                        val rawServed =
+                            result.data.items.firstOrNull {
+                                it.isActivityPositionRow() && it.activityRowScopeId() == scopeId
+                            }
+                        if (rawServed == null) {
+                            diagnosticsLogger("activity_selected_followup phase=finish result=row_missing")
+                            return@launch
+                        }
+                        val now = nowMillis()
+                        val currentRow =
+                            _state.value.snapshot?.items?.firstOrNull {
+                                it.isActivityPositionRow() && it.activityRowScopeId() == scopeId
+                            }
+                        val selectedNow = inPlaceCheckSelectedLocked(triggerCheck.entityId)
+                        val followupCheck =
+                            buildSelectedReadFollowupCheck(
+                                entityId = triggerCheck.entityId,
+                                trigger = followupTrigger,
+                                reread = triggerCheck.reread,
+                                initialScope = triggerCheck.scope,
+                                initialPosition = initialPosition,
+                                initialServedUnread = initialServedUnread,
+                                served = rawServed,
+                                localUnreadNow = currentRow?.unreadCount,
+                                selectedNow = selectedNow,
+                                backend = result.data.inboxBackend,
+                                readStateArrived = entry.readStateArrived,
+                                ageMillis = now - scheduledAtMillis,
+                                nowMillis = now,
+                            )
+                        emitInPlaceCheckLocked(serverId, followupCheck, allowSelectedFollowup = false)
+                    }
+                } finally {
+                    synchronized(realtimeOwnerLock) {
+                        if (selectedReadFollowups[scopeId] === entry) {
+                            selectedReadFollowups.remove(scopeId)
+                        }
+                    }
+                }
+            }
+        entry.job = job
+        selectedReadFollowups[scopeId] = entry
+        job.start()
     }
 
     /**
@@ -3757,7 +3905,12 @@ class SharedActivityStore internal constructor(
         var acceptedHere = false
         val reconcileJobs = mutableListOf<Job>()
         // Web noteInPlaceReadState: the next drift check of these rows says a read state came.
-        synchronized(realtimeOwnerLock) { event.scopes.forEach { inPlaceDriftCheck.noteReadState(it.scopeId.value) } }
+        synchronized(realtimeOwnerLock) {
+            event.scopes.forEach {
+                inPlaceDriftCheck.noteReadState(it.scopeId.value)
+                selectedReadFollowups[it.scopeId.value]?.readStateArrived = true
+            }
+        }
         event.scopes.forEach { readScope ->
             val productionOwner =
                 readReceiptOwnerFactory
@@ -3956,6 +4109,7 @@ class SharedActivityStore internal constructor(
             )
             // This path keeps its own versions (not the checkpoint the ledger fold reads): its cursor is the
             // conversation's read seq, lower too.
+            selectedReadFollowups[fact.channelId]?.readStateArrived = true
             rowPositions.setReadCursor(fact.channelId, fact.maxReadSeq.takeIf { it >= 0L }?.toString())
             reconcileJob =
                 projectRemoteReadLocked(
@@ -4196,6 +4350,7 @@ class SharedActivityStore internal constructor(
                                 }
                                 realtimeHighWater.clear()
                                 resetRealtimeCatchUpLocked()
+                                resetSelectedReadFollowupsLocked()
                                 presentationStore.clear()
                             }
                             val stateForOwner =
