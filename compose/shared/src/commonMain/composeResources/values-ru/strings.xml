@@ -6051,4 +6051,8 @@
     <string name="send_prompt_send">Отправить</string>
     <string name="send_prompt_failed">Не удалось отправить. Попробуйте ещё раз.</string>
     <string name="send_prompt_no_agents">На этом сервере пока нет агентов, которым вы можете написать.</string>
+    <string name="settings_appearance_assistant_section">Ассистент</string>
+    <string name="settings_appearance_assistant_otter_description">Ассистент %1$s сидит на поле ввода сообщения — нажмите, чтобы открыть. Отключите, чтобы скрыть его на всех страницах и устройствах. Личные сообщения с ассистентом %1$s продолжат работать.</string>
+    <string name="settings_appearance_assistant_panel_link_title">Другие настройки %1$s</string>
+    <string name="settings_appearance_assistant_panel_link_description">Разрешения, дополнительные инструкции и WeChat — в профиле %1$s, рядом с чатом.</string>
 </resources>

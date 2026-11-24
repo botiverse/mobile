@@ -6051,4 +6051,8 @@
     <string name="send_prompt_send">Enviar</string>
     <string name="send_prompt_failed">Não foi possível enviar. Tente de novo.</string>
     <string name="send_prompt_no_agents">Ainda não há agentes neste servidor para quem você possa escrever.</string>
+    <string name="settings_appearance_assistant_section">Assistente</string>
+    <string name="settings_appearance_assistant_otter_description">%1$s fica sobre a sua caixa de mensagem, pronto para abrir com um toque. Desative para ocultá-lo em todas as páginas e em todos os dispositivos. A mensagem direta de %1$s continua funcionando.</string>
+    <string name="settings_appearance_assistant_panel_link_title">Mais configurações de %1$s</string>
+    <string name="settings_appearance_assistant_panel_link_description">Permissões, instruções extras e WeChat ficam no perfil de %1$s, ao lado do chat.</string>
 </resources>

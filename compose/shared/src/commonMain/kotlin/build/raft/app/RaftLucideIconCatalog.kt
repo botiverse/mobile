@@ -209,6 +209,7 @@ enum class RaftLucideIconName(val wireName: String) {
     PanelLeftOpen("panel-left-open"),
     PanelRightOpen("panel-right-open"),
     Pause("pause"),
+    PawPrint("paw-print"),
     Pencil("pencil"),
     Pin("pin"),
     PinOff("pin-off"),

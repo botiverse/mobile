@@ -6052,4 +6052,8 @@
     <string name="send_prompt_send">发送</string>
     <string name="send_prompt_failed">没发出去，请再试一次。</string>
     <string name="send_prompt_no_agents">这个服务器上还没有你能发消息的 agent。</string>
+    <string name="settings_appearance_assistant_section">助理</string>
+    <string name="settings_appearance_assistant_otter_description">%1$s 趴在输入框上，点一下就能打开。关掉后，所有页面、所有设备上都不再显示，%1$s 的私信照常能用。</string>
+    <string name="settings_appearance_assistant_panel_link_title">更多 %1$s 设置</string>
+    <string name="settings_appearance_assistant_panel_link_description">权限、补充指令和微信在 %1$s 的资料面板里，就在它的聊天旁边。</string>
 </resources>
