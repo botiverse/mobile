@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.designsystem.components.raftClickable
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -20,7 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -105,6 +103,7 @@ import build.raft.app.resources.thread_reply_title
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
@@ -127,7 +126,6 @@ import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftSpacing
 import build.raft.designsystem.tokens.RaftStroke
 import kotlinx.coroutines.Dispatchers
@@ -379,34 +377,18 @@ private fun RaftScreenshotFeedbackPromptPill(
                     .clip(pillShape)
                     .background(colors.layerCard, pillShape)
                     .border(RaftStroke.Strong, colors.lineStrong, pillShape)
-                    .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                    .padding(6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(
-                modifier =
-                    Modifier
-                        .testTag(RaftScreenshotFeedbackPromptActionTag)
-                        .weight(1f, fill = false)
-                        .clip(RoundedCornerShape(RaftRadius.Control))
-                        .raftClickable(onClick = onTap, shape = RoundedCornerShape(RaftRadius.Control))
-                        .padding(vertical = 4.dp, horizontal = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                RaftLucideIcon(
-                    name = RaftLucideIconName.MessageSquarePlus,
-                    modifier = Modifier.size(16.dp),
-                    color = raftArgbHex(colors.foreground),
-                )
-                RaftText(
-                    text = stringResource(Res.string.screenshot_feedback_prompt_action),
-                    style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Medium),
-                    color = colors.foreground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            RaftButton(
+                text = stringResource(Res.string.screenshot_feedback_prompt_action),
+                onClick = onTap,
+                modifier = Modifier.testTag(RaftScreenshotFeedbackPromptActionTag).weight(1f, fill = false),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Md,
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.MessageSquarePlus) },
+            )
             RaftCloseButton(
                 onClick = onDismiss,
                 modifier = Modifier.testTag(RaftScreenshotFeedbackPromptDismissTag),
