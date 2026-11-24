@@ -249,7 +249,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
 /// Installs `RaftIosDisplayLinkJankTracker` once with both local JSONL diagnostics logging and
 /// ScopeDB frame-metrics trace reporting (`mobile.frames.{scroll,resume,nav_transition}`) via
 /// `RaftIosHostHooks`, keeping the tracker itself decoupled from `import shared`.
-private enum RaftIosFrameMetricsHost {
+enum RaftIosFrameMetricsHost {
     private static var installed = false
 
     static func install() {

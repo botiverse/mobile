@@ -820,6 +820,12 @@ struct iOSApp: App {
         RaftIosNativeMenuTouchGuard.diagnosticLogger = { message in
             RaftIosDiagnosticsRecord("info", "RaftIosMenuGuard", message)
         }
+        // Install scene-independent iOS hosts here (all idempotent) so SwiftUI's default
+        // WindowGroup lifecycle runs theme bridging, topband diagnostics, and CADisplayLink
+        // ScopeDB frame metrics (#proj-mobile:#352) even when RaftIosSceneDelegate is inert.
+        RaftIosAppearanceHost.attach()
+        RaftIosTopBandDiagnostics.install()
+        RaftIosFrameMetricsHost.install()
         #if RAFT_QA_SESSION_BOOTSTRAP
         // Debug Simulator QA harness only: start consuming the launch's QA session envelope before
         // any window exists; RaftIosRootView holds the shell back until it is done.
