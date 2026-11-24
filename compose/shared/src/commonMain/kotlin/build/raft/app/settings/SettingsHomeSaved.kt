@@ -605,6 +605,8 @@ private fun SharedHomeSavedResultCard(
                     .raftGesturePointerInput(gestureOwner) { owner ->
                         val trailingActionWidthPx = SavedUnsaveHitTargetSize.toPx()
                         var gesture: RaftGestureSession<SharedHomeSavedResultGestureCallbacks>? = null
+                        // raw-click: gesture-owner row (the tap splits by offset into open / unsave, long press
+                        // for the menu); raftClickable has no tap offset or owner token.
                         detectTapGestures(
                             onPress = {
                                 gesture = owner.beginGesture()

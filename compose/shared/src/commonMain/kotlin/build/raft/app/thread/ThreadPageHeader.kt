@@ -538,7 +538,7 @@ internal fun ThreadPageHeader(
                                 .padding(end = ThreadHeaderChannelTitleGapExtra)
                                 .then(
                                     loungeHeader.onOpenAgentProfile?.let { open ->
-                                        Modifier.clickable {
+                                        Modifier.clickable { // raw-click: an avatar face, see above
                                             trackHeader(RaftConversationHeaderAction.OpenProfile, RaftConversationHeaderSurface.Title)
                                             open()
                                         }
@@ -1735,7 +1735,7 @@ private fun ThreadDmPeerAvatarTile(
         modifier =
             Modifier
                 .size(ThreadHeaderDmAvatarSize)
-                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier) // raw-click: an avatar face, see above
     ) {
         RaftAppAvatar(
             kind = kind,

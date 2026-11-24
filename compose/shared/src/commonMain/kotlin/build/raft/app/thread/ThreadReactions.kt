@@ -141,6 +141,8 @@ internal fun ThreadReactionChip(
                 modifier = Modifier
                     .raftGesturePointerInput(gestureOwner, onClick != null) { owner ->
                         var gesture: RaftGestureSession<ThreadReactionChipGestureCallbacks>? = null
+                        // raw-click: gesture-owner chip (tap toggles, long press lists who reacted, on one
+                        // detector that survives lazy-slot reuse); raftClickable can't hold the owner token.
                         detectTapGestures(
                             onPress = {
                                 gesture = owner.beginGesture()

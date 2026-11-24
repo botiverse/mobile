@@ -6961,14 +6961,20 @@ private fun HomeServerDrawerServerHeader(
                     Modifier
                         .width(44.dp)
                         .heightIn(min = HomeServerSwitcherRowMinHeight)
-                        .clickable {
-                            dispatchHomeServerDrawerHeaderAction(
-                                action = HomeServerDrawerHeaderAction.ToggleSection,
-                                serverId = section.server.id,
-                                onServerClick = onServerClick,
-                                onSectionToggle = onSectionToggle,
-                            )
-                        },
+                        // The other half of the header band: the same subtle row hover as the open-server
+                        // part beside it, press fill-medium.
+                        .raftClickable(
+                            onClick = {
+                                dispatchHomeServerDrawerHeaderAction(
+                                    action = HomeServerDrawerHeaderAction.ToggleSection,
+                                    serverId = section.server.id,
+                                    onServerClick = onServerClick,
+                                    onSectionToggle = onSectionToggle,
+                                )
+                            },
+                            role = null,
+                            tier = RaftHoverTier.Subtle,
+                        ),
                 contentAlignment = Alignment.Center
             ) {
                 RaftLucideIcon(

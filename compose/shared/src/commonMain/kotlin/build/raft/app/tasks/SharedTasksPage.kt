@@ -1842,6 +1842,7 @@ private fun SharedTaskCard(
                     // tap = open task; long-press = open status menu. Wrapping both in the
                     // same pointer input keeps gesture semantics consistent and avoids
                     // clickable() swallowing the long-press.
+                    // raw-click: gesture-owner card (tap opens, long press opens the status menu at the finger).
                     detectTapGestures(
                         onPress = {
                             gesture = owner.beginGesture()

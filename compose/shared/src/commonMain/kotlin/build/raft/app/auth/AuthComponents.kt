@@ -321,6 +321,8 @@ private fun AuthTopBar(
                 AuthSmallBrand(
                     modifier =
                         if (onBrandClick != null) {
+                            // raw-click: the brand mark; the app's press wash draws over the logo, a state overlay
+                            // would draw a box behind it.
                             Modifier.clickable { onBrandClick() }
                         } else {
                             Modifier

@@ -76,7 +76,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -600,19 +599,20 @@ private fun MembersAgentReminderCard(
                                 .weight(1f, fill = false)
                                 .then(
                                     if (permalink != null) {
-                                        Modifier
-                                            .heightIn(min = 44.dp)
-                                            .clickable(role = Role.Button) { onOpenMessageRef(permalink) }
+                                        Modifier.heightIn(min = 44.dp)
                                     } else {
                                         Modifier.alpha(0.7f)
                                     }
                                 ),
                             contentAlignment = Alignment.CenterStart
                         ) {
+                            // A badge button (raft-ui Badge `render={<button />}`): hover and press on the
+                            // badge itself, its own 44dp touch target round it.
                             RaftBadge(
                                 text = messageRef,
                                 appearance = RaftBadgeAppearance.Outline,
-                                icon = { RaftContentLucideIcon(RaftLucideIconName.Link2, size = 13.dp) }
+                                icon = { RaftContentLucideIcon(RaftLucideIconName.Link2, size = 13.dp) },
+                                onClick = permalink?.let { link -> { onOpenMessageRef(link) } }
                             )
                         }
                     }
