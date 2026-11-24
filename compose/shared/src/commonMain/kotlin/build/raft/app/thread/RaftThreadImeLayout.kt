@@ -10,10 +10,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.constrainHeight
-import androidx.compose.ui.unit.offset
+import androidx.compose.ui.unit.dp
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.compat.ui.raftImeBottomPx
 import build.raft.app.compat.ui.raftKeyboardHeightExcludesNavigationBars
@@ -86,13 +87,58 @@ internal fun Modifier.raftThreadComposerLiveKeyboardPadding(
                         bottomSafeArea = bottomSafeArea,
                         keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea,
                     ).roundToPx().coerceAtLeast(0)
-                val placeable = measurable.measure(constraints.offset(vertical = -bottomPx))
-                layout(placeable.width, constraints.constrainHeight(placeable.height + bottomPx)) {
-                    placeable.place(0, 0)
+                // #338: the composer is measured with at least RAFT_THREAD_COMPOSER_KEPT_HEIGHT of the slot, not only
+                // the slot less the keyboard, so it keeps its own height; where the slot is too short for it above the
+                // keyboard (a landscape phone in the wide shell) it rises over what is above it instead of being
+                // squashed (raftThreadComposerKeptPlacement).
+                val placeable =
+                    measurable.measure(
+                        raftThreadComposerKeptConstraints(constraints, bottomPx, RAFT_THREAD_COMPOSER_KEPT_HEIGHT.roundToPx())
+                    )
+                val kept = raftThreadComposerKeptPlacement(constraints.maxHeight, placeable.height, bottomPx)
+                layout(placeable.width, constraints.constrainHeight(kept.heightPx)) {
+                    placeable.place(0, kept.yPx)
                 }
             }
         }
     return this.then(padding)
+}
+
+/**
+ * The room the composer keeps above the keyboard however short its slot (#338): a one-line field with its toolbar, a
+ * reply quote over them, or a few lines of draft. Taller than that it is squashed as before, its field scrolling.
+ */
+internal val RAFT_THREAD_COMPOSER_KEPT_HEIGHT = 160.dp
+
+/**
+ * The composer's constraints in a slot of [constraints] with [bottomPx] of keyboard lift under it: the slot less the
+ * lift (as before #338), but never less than [keptPx] of the slot.
+ */
+internal fun raftThreadComposerKeptConstraints(constraints: Constraints, bottomPx: Int, keptPx: Int): Constraints {
+    val lift = bottomPx.coerceAtLeast(0)
+    val maxHeight =
+        if (constraints.maxHeight == Constraints.Infinity) Constraints.Infinity
+        else maxOf(constraints.maxHeight - lift, minOf(constraints.maxHeight, keptPx)).coerceAtLeast(0)
+    val minHeight = (constraints.minHeight - lift).coerceIn(0, maxHeight)
+    return constraints.copy(minHeight = minHeight, maxHeight = maxHeight)
+}
+
+/** Where the composer goes in its slot: the slot's [heightPx], and the composer's top within it ([yPx], under 0 above it). */
+internal data class RaftThreadComposerPlacement(val heightPx: Int, val yPx: Int)
+
+/**
+ * #338 (Reef's patrol item 8): the composer's place in a slot at most [maxHeightPx] tall with [bottomPx] of keyboard
+ * lift under it. With room it is what it always was: the composer's [composerHeightPx] plus the lift, the composer at
+ * the top. Where the slot can't hold both (a 914 x 411 phone in landscape, in the wide shell: the top bar, the
+ * conversation's head and the keyboard leave about 40dp), the slot takes all it has and the composer keeps its full
+ * height on top of the keyboard, rising over the messages and the head above it, so its field, its toolbar and Send
+ * stay whole; squashed to the slot, its field was cut in half and Send was out of sight. Nothing changes without the
+ * keyboard, as the composer always fits its slot then.
+ */
+internal fun raftThreadComposerKeptPlacement(maxHeightPx: Int, composerHeightPx: Int, bottomPx: Int): RaftThreadComposerPlacement {
+    val wanted = composerHeightPx + bottomPx.coerceAtLeast(0)
+    if (maxHeightPx == Constraints.Infinity || wanted <= maxHeightPx) return RaftThreadComposerPlacement(wanted, 0)
+    return RaftThreadComposerPlacement(maxHeightPx, maxHeightPx - wanted)
 }
 
 /**

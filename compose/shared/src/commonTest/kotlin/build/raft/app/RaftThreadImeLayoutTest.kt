@@ -126,4 +126,34 @@ class RaftThreadImeLayoutTest {
             ),
         )
     }
+
+    @Test
+    fun withRoomTheComposerSitsOnTheKeyboardAsBefore() {
+        // A phone upright: a 600 slot, a 300 keyboard, a 96 composer.
+        val constraints = androidx.compose.ui.unit.Constraints(maxWidth = 393, maxHeight = 600)
+        assertEquals(300, raftThreadComposerKeptConstraints(constraints, bottomPx = 300, keptPx = 160).maxHeight)
+        assertEquals(RaftThreadComposerPlacement(heightPx = 396, yPx = 0), raftThreadComposerKeptPlacement(600, 96, 300))
+        // No keyboard: the composer's own height.
+        assertEquals(RaftThreadComposerPlacement(heightPx = 96, yPx = 0), raftThreadComposerKeptPlacement(600, 96, 0))
+        assertEquals(600, raftThreadComposerKeptConstraints(constraints, bottomPx = 0, keptPx = 160).maxHeight)
+    }
+
+    @Test
+    fun aShortSlotKeepsTheComposerWholeAboveTheKeyboard() {
+        // #338: 914 x 411 in landscape, the wide shell: a 291 slot under the top bar and the head, a 250 keyboard. Before,
+        // the composer got the 41 left and its field was cut in half.
+        val constraints = androidx.compose.ui.unit.Constraints(maxWidth = 500, maxHeight = 291)
+        assertEquals(160, raftThreadComposerKeptConstraints(constraints, bottomPx = 250, keptPx = 160).maxHeight)
+        // Its 96 stand on the keyboard, 55 of them over what is above the slot.
+        val placed = raftThreadComposerKeptPlacement(291, 96, 250)
+        assertEquals(RaftThreadComposerPlacement(heightPx = 291, yPx = -55), placed)
+        assertEquals(291 - 250, placed.yPx + 96, "the composer's bottom is the keyboard's top")
+        // A slot shorter than the kept room gives what it has.
+        assertEquals(120, raftThreadComposerKeptConstraints(androidx.compose.ui.unit.Constraints(maxHeight = 120), 100, 160).maxHeight)
+        // A minimum is never above the maximum.
+        val tight = androidx.compose.ui.unit.Constraints(minHeight = 291, maxHeight = 291)
+        val kept = raftThreadComposerKeptConstraints(tight, bottomPx = 250, keptPx = 160)
+        assertEquals(41, kept.minHeight)
+        assertEquals(160, kept.maxHeight)
+    }
 }
