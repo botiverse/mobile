@@ -7,7 +7,7 @@ import kotlinx.serialization.json.Json
 /**
  * The agent part of `GET /billing/subscription` (web `serverStore.loadBilling`, read by
  * `CreateAgentDialog`): the plan, `capacity.maxAgents` and `usage.agents`. Owners and admins
- * can read it; anyone else gets a 403 and the dialog falls back to the plan's own limits.
+ * can read it; anyone else gets a 403 and defers agent-cap enforcement to the server.
  */
 internal data class CreateAgentBilling(
     val plan: String? = null,
@@ -64,14 +64,14 @@ internal suspend fun loadCreateAgentBilling(networkClient: RaftNetworkClient): C
     }
 
 /**
- * Web `CreateAgentDialog`: the plan is the billing's, else the server's, else Free; the cap is
- * billing `capacity.maxAgents`, else the plan's own `maxAgents` (`getEffectiveLimits`); the
- * usage is billing `usage.agents`, else the server's agents. Reached when one more would pass
- * the cap. External agents count like any other.
+ * The plan is the billing's, else the server's, else Free; the cap comes strictly from billing
+ * `capacity.maxAgents` (when readable), otherwise `-1` (let the server enforce any real cap and
+ * return its reason so non-admin members on Pro servers with >= 10 agents are never falsely
+ * blocked client-side under universal seats or per-person `person_v2` pricing).
  */
 internal fun createAgentLimit(billing: CreateAgentBilling?, serverPlan: String?, serverAgentCount: Int): CreateAgentLimit {
     val plan = billing?.plan ?: serverPlan?.trim()?.takeIf { it.isNotEmpty() } ?: "free"
-    val limit = billing?.maxAgents ?: planMaxAgents(plan)
+    val limit = billing?.maxAgents ?: -1
     val usage = (billing?.agents ?: serverAgentCount).coerceAtLeast(0)
     return CreateAgentLimit(
         reached = limit != -1 && usage + 1 > limit,
@@ -80,16 +80,6 @@ internal fun createAgentLimit(billing: CreateAgentBilling?, serverPlan: String?,
         planLabel = planDisplayName(plan),
     )
 }
-
-/** raft-shared `PLAN_CONFIG[plan].limits.maxAgents` (staging 947bd94): only Pro caps agents, at one pack. */
-private fun planMaxAgents(plan: String): Int =
-    when (plan) {
-        "pro" -> PRO_PACK_AGENT_SEATS
-        else -> -1
-    }
-
-/** raft-shared `PRO_PACK_AGENT_SEATS` (= `PRO_AGENT_SEAT_BLOCK_SIZE`). */
-private const val PRO_PACK_AGENT_SEATS = 10
 
 /** raft-shared `PLAN_CONFIG[plan].displayName`; an unknown plan shows as Free, as the web's fallback. */
 private fun planDisplayName(plan: String): String =

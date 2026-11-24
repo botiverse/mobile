@@ -50,9 +50,11 @@ class CreateAgentLimitTest {
     }
 
     @Test
-    fun unreadBillingOnProFallsBackToOnePackOfAgents() {
-        assertTrue(createAgentLimit(billing = null, serverPlan = "pro", serverAgentCount = 10).reached)
-        assertFalse(createAgentLimit(billing = null, serverPlan = "pro", serverAgentCount = 9).reached)
+    fun unreadBillingOnProDefersCapEnforcementToServer() {
+        val atTen = createAgentLimit(billing = null, serverPlan = "pro", serverAgentCount = 10)
+        assertEquals(CreateAgentLimit(reached = false, usage = 10, limit = -1, planLabel = "Pro"), atTen)
+        assertFalse(createAgentAtLimit(atTen.usage, atTen.limit))
+        assertFalse(createAgentLimit(billing = null, serverPlan = "pro", serverAgentCount = 40).reached)
     }
 
     @Test
