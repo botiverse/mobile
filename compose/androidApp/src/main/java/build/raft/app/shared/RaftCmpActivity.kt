@@ -6627,6 +6627,8 @@ internal class RaftBridgeModule(
         )
         if (!install && decision.updateAvailable) {
             handsDeltaSilentPrepareIfSupported(
+                    checker = checker,
+                    languageTag = languageTag,
                     updateRoute = updateRoute,
                     currentVersionCode = currentVersionCode,
                     latestVersionCode = latestVersionCode,
@@ -6857,6 +6859,8 @@ internal class RaftBridgeModule(
     }
 
     private fun handsDeltaSilentPrepareIfSupported(
+            checker: UpdateChecker,
+            languageTag: String,
             updateRoute: HandsUpdateRoute,
             currentVersionCode: Long,
             latestVersionCode: Long,
@@ -6887,15 +6891,37 @@ internal class RaftBridgeModule(
                 )
                 return@launch
             }
-            // Hands Android SDK 0.15.0 UpdateChecker.install() opens the system installer UI
-            // immediately whenever canInstallUpdates() is true, and surfaces
-            // INSTALL_PERMISSION_REQUIRED otherwise. Never call install() silently; wait for
-            // UpdateChecker.prepare(languageTag) in SDK 0.15.1.
-            wifiPreloadAttemptedVersionCode = latestVersionCode
-            RaftAppLog.infoAlways(
-                    "SlockHandsUpdate",
-                    "wifi_preload_delta_deferred reason=sdk_prepare_api_pending mode=${updateRoute.mode} latest=$latestVersionCode"
-            )
+            // Hands Android SDK 0.15.1+ UpdateChecker.prepare(languageTag) downloads/patches and
+            // verifies the target APK to READY_TO_INSTALL without launching the system installer.
+            var preparedStatus: HandsUpdateStatus? = null
+            handsDeltaUpdateCallOwner.runIfEligible(eligible = true) {
+                if (wifiPreloadAttemptedVersionCode == latestVersionCode) return@runIfEligible
+                wifiPreloadAttemptedVersionCode = latestVersionCode
+                RaftAppLog.infoAlways(
+                        "SlockHandsUpdate",
+                        "wifi_preload_delta_start mode=${updateRoute.mode} latest=$latestVersionCode language=$languageTag"
+                )
+                try {
+                    preparedStatus = checker.prepare(languageTag)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    RaftAppLog.w(
+                            "SlockHandsUpdate",
+                            "wifi_preload_delta_failed mode=${updateRoute.mode} latest=$latestVersionCode " +
+                                    "error=${error.javaClass.simpleName}"
+                    )
+                }
+            }
+            preparedStatus?.let { prepared ->
+                RaftAppLog.infoAlways(
+                        "SlockHandsUpdate",
+                        "wifi_preload_delta_done mode=${updateRoute.mode} latest=$latestVersionCode " +
+                                "state=${prepared.state.wireValue} target=${prepared.targetVersionCode ?: 0L} " +
+                                "error=${prepared.errorCode.orEmpty()}"
+                )
+                emitHandsUpdateStatusEvent()
+            }
         }
     }
 
