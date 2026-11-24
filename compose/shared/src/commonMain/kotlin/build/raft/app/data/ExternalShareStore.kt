@@ -987,6 +987,7 @@ internal class ExternalShareStore(
                     target.copy(
                         channelId = destination.channelId,
                         channelKind = destination.channelKind,
+                        jointChannelId = destination.jointChannelId?.trim()?.takeIf { it.isNotBlank() } ?: target.jointChannelId,
                         requiredAction = ForwardMessageTargetRequiredAction.None,
                         canForwardNow = true
                     )

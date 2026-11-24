@@ -387,6 +387,38 @@ internal fun threadMessageSurfaceIsJoint(
 }
 
 /**
+ * Resolve the shared joint-channel UUID (`jointChannelId`) for the rendered composer surface so
+ * joint channels and reply threads inside them share one personal draft across participating
+ * servers. Reply threads inherit `jointChannelId` from their parent joint channel projection.
+ */
+internal fun threadComposerJointChannelId(
+    payload: RaftThreadScreenPayload,
+    lookupIds: List<String>,
+    projections: Map<String, SharedConversationDirectoryProjection>,
+    stableHeaderProjection: SharedConversationDirectoryProjection? = null,
+): String? {
+    if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage || payload.isTaskConversationSurface()) return null
+    val isReplyThread = payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread
+    if (isReplyThread) {
+        return payload.parentChannelId
+            ?.takeIf { it.isNotBlank() }
+            ?.let { parentId -> projections[parentId]?.jointChannelId?.takeIf { it.isNotBlank() } }
+            ?: payload.jointChannelId?.takeIf { it.isNotBlank() }
+            ?: lookupIds.firstNotNullOfOrNull { id ->
+                projections[id]
+                    ?.takeUnless { it.surfaceKind == RaftThreadSurfaceKind.ReplyThread }
+                    ?.jointChannelId
+                    ?.takeIf { it.isNotBlank() }
+            }
+    }
+    return stableHeaderProjection?.jointChannelId?.takeIf { it.isNotBlank() }
+        ?: payload.jointChannelId?.takeIf { it.isNotBlank() }
+        ?: lookupIds.firstNotNullOfOrNull { id ->
+            projections[id]?.jointChannelId?.takeIf { it.isNotBlank() }
+        }
+}
+
+/**
  * Resolve the joint over-limit state for the rendered surface. Reply threads
  * inherit the notice from their parent joint channel (thread projections carry
  * no billing metadata). `parentChannelId` takes precedence for reply threads;

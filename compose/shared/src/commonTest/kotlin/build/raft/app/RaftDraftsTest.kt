@@ -279,4 +279,200 @@ class RaftDraftsTest {
         assertEquals(ChannelId("conv-7"), task?.conversationIdentity?.channelId)
         assertIs<ThreadId>(task?.conversationIdentity?.threadId)
     }
+
+    @Test
+    fun jointChannelRootAndReplyDraftsAreListedAndOpenableInBothServersDrafts() {
+        val serverADirectory =
+            RaftDraftDirectory(
+                serverId = "server-a",
+                channels =
+                    mapOf(
+                        "chan-a" to
+                            HomeChannelRow(
+                                threadId = topLevelThreadId(ChannelId("chan-a")),
+                                channelId = ChannelId("chan-a"),
+                                kind = ConversationKind.Joint,
+                                name = "wg-shared",
+                                jointChannelId = "joint-42",
+                            ),
+                    ),
+                channelSymbols = mapOf("chan-a" to "⇄"),
+            )
+        val serverBDirectory =
+            RaftDraftDirectory(
+                serverId = "server-b",
+                channels =
+                    mapOf(
+                        "chan-b" to
+                            HomeChannelRow(
+                                threadId = topLevelThreadId(ChannelId("chan-b")),
+                                channelId = ChannelId("chan-b"),
+                                kind = ConversationKind.Joint,
+                                name = "wg-shared",
+                                jointChannelId = "joint-42",
+                            ),
+                    ),
+                channelSymbols = mapOf("chan-b" to "⇄"),
+            )
+        val unrelatedServerDirectory =
+            RaftDraftDirectory(
+                serverId = "server-c",
+                channels =
+                    mapOf(
+                        "other" to
+                            HomeChannelRow(
+                                threadId = topLevelThreadId(ChannelId("other")),
+                                channelId = ChannelId("other"),
+                                name = "general",
+                            ),
+                    ),
+            )
+
+        val rootRecord =
+            SharedThreadComposerDraftRecord(
+                key = "send=chan-a|parent=_|mention=chan-a|joint=joint-42",
+                sendChannelId = "chan-a",
+                mentionChannelId = "chan-a",
+                jointChannelId = "joint-42",
+            )
+        val replyRecord =
+            SharedThreadComposerDraftRecord(
+                key = "send=thread-a|parent=msg-9|mention=chan-a|joint=joint-42",
+                sendChannelId = "thread-a",
+                parentMessageId = "msg-9",
+                mentionChannelId = "chan-a",
+                jointChannelId = "joint-42",
+            )
+        val drafts =
+            listOf(
+                draft(rootRecord, "shared channel note", 100),
+                draft(replyRecord, "shared thread note", 200),
+            )
+
+        val listingA = raftDraftListing(drafts, serverADirectory, lookups = emptyMap())
+        assertEquals(emptySet(), listingA.lookupChannelIds)
+        assertEquals(
+            listOf(
+                RaftDraftPlace.Thread("chan-a", "msg-9", threadChannelId = "thread-a"),
+                RaftDraftPlace.Conversation("chan-a", directMessage = false),
+            ),
+            listingA.entries.map { it.place },
+        )
+
+        // Server B places both onto its own local projection `chan-b` with zero server lookups!
+        val listingB = raftDraftListing(drafts, serverBDirectory, lookups = emptyMap())
+        assertEquals(emptySet(), listingB.lookupChannelIds)
+        assertEquals(
+            listOf(
+                RaftDraftPlace.Thread("chan-b", "msg-9", threadChannelId = null),
+                RaftDraftPlace.Conversation("chan-b", directMessage = false),
+            ),
+            listingB.entries.map { it.place },
+        )
+
+        // Opening both entries on Server B routes directly into Server B's local joint channel / reply thread.
+        val openThreadB = listingB.entries[0].toHomeMessageOpenRequest("server-b", serverBDirectory, SharedConversationDirectoryState())
+        assertEquals(ConversationKind.Thread, openThreadB?.conversationIdentity?.kind)
+        assertEquals(ChannelId("chan-b"), openThreadB?.conversationIdentity?.thread?.parentChannelId)
+        assertEquals(MessageId("msg-9"), openThreadB?.conversationIdentity?.thread?.parentMessageId)
+        assertNull(openThreadB?.conversationIdentity?.thread?.streamChannelId)
+        assertEquals("joint-42", openThreadB?.conversationIdentity?.jointChannelId)
+
+        val openRootB = listingB.entries[1].toHomeMessageOpenRequest("server-b", serverBDirectory, SharedConversationDirectoryState())
+        assertEquals(ConversationKind.Joint, openRootB?.conversationIdentity?.kind)
+        assertEquals(ChannelId("chan-b"), openRootB?.conversationIdentity?.channelId)
+        assertEquals("joint-42", openRootB?.conversationIdentity?.jointChannelId)
+
+        // Activity/resolver path without explicit jointChannelId inherits it from the parent projection in conversationDirectory.
+        val serverBConversationDir =
+            SharedConversationDirectoryState(
+                projectionsByCanonicalId =
+                    mapOf(
+                        "chan-b" to
+                            build.raft.app.data.SharedConversationDirectoryProjection(
+                                serverId = "server-b",
+                                canonicalChannelId = "chan-b",
+                                aliases = setOf("chan-b"),
+                                conversationKind = ConversationKind.Joint,
+                                surfaceKind = RaftThreadSurfaceKind.Channel,
+                                channelKind = "joint",
+                                title = "wg-shared",
+                                jointChannelId = "joint-42",
+                            ),
+                    ),
+            )
+        val resolvedFromDir =
+            resolveOpenRequest(
+                serverId = "server-b",
+                sourceMessageIdentity =
+                    ConversationOpenSourceMessageIdentity(
+                        source = ConversationOpenSource.ActivityRow,
+                        messageId = "msg-reply-1",
+                        channelId = null,
+                        threadChannelId = "thread-b",
+                        parentChannelId = "chan-b",
+                        parentMessageId = "msg-9",
+                        conversationKind = ConversationKind.Thread,
+                    ),
+                conversationDirectory = serverBConversationDir,
+            )
+        assertIs<ConversationOpenResolution.Resolved>(resolvedFromDir)
+        assertEquals("joint-42", resolvedFromDir.request.conversationIdentity.jointChannelId)
+
+        // Unrelated server does not show the joint channel draft once lookup returns 404 (null).
+        val listingC = raftDraftListing(drafts, unrelatedServerDirectory, lookups = mapOf("chan-a" to null))
+        assertEquals(0, listingC.count)
+    }
+
+    @Test
+    fun duplicateSiblingJointDraftsDeduplicateKeepingNewestEdit() {
+        val serverBDirectory =
+            RaftDraftDirectory(
+                serverId = "server-b",
+                channels =
+                    mapOf(
+                        "chan-b" to
+                            HomeChannelRow(
+                                threadId = topLevelThreadId(ChannelId("chan-b")),
+                                channelId = ChannelId("chan-b"),
+                                kind = ConversationKind.Joint,
+                                name = "wg-shared",
+                                jointChannelId = "joint-42",
+                            ),
+                    ),
+            )
+        val older =
+            draft(
+                SharedThreadComposerDraftRecord(
+                    key = "send=chan-a|parent=_|mention=chan-a|joint=joint-42",
+                    sendChannelId = "chan-a",
+                    mentionChannelId = "chan-a",
+                    jointChannelId = "joint-42",
+                ),
+                "older text",
+                100,
+            )
+        val newer =
+            draft(
+                SharedThreadComposerDraftRecord(
+                    key = "send=chan-b|parent=_|mention=chan-b|joint=joint-42",
+                    sendChannelId = "chan-b",
+                    mentionChannelId = "chan-b",
+                    jointChannelId = "joint-42",
+                ),
+                "newer text",
+                200,
+            )
+        val listing = raftDraftListing(listOf(older, newer), serverBDirectory, lookups = emptyMap())
+        assertEquals(1, listing.count)
+        assertEquals("newer text", listing.entries.single().text)
+    }
+
+    @Test
+    fun channelLookupParsesOptionalJointChannelId() {
+        assertEquals(
+            RaftDraftChannelPlace("c1", "joint", jointChannelId = "j1"),
+            parseRaftDraftChannelPlace("""{"id":"c1","type":"joint","jointChannelId":"j1"}"""),
+        )
+    }
 }

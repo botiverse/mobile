@@ -37,6 +37,7 @@ internal data class WireThreadLaunchPayload(
     val instanceId: String = "",
     val surfaceKind: String = RaftThreadSurfaceKind.Channel,
     val channelKind: String? = null,
+    val jointChannelId: String? = null,
     val threadId: String? = null,
     val sourceThreadId: String? = null,
     val streamChannelId: String? = null,
@@ -131,6 +132,7 @@ internal data class WireThreadLaunchPayload(
                 } else {
                     RaftThreadSurfaceKind.Channel
                 },
+            jointChannelId = jointChannelId.nonBlank(),
             sourceThreadId = resolvedSourceId,
             streamChannelId = resolvedStreamId,
             parentChannelId = parentChannelId.nonBlank(),
@@ -550,6 +552,7 @@ internal fun RaftThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLaun
         instanceId = instanceId,
         surfaceKind = surfaceKind,
         channelKind = channelKind.takeIf { it.isNotBlank() },
+        jointChannelId = jointChannelId.nonBlank(),
         threadId =
             when (surfaceKind) {
                 RaftThreadSurfaceKind.ReplyThread,
@@ -603,7 +606,8 @@ internal fun WireThreadLaunchPayload.threadComposerDraftKey(
         .copy(streamChannelId = resolvedStreamChannelId)
         .toThreadComposerSurface(
             channelId = resolvedStreamChannelId.orEmpty(),
-            parentChannelId = initialPayload.parentChannelId
+            parentChannelId = initialPayload.parentChannelId,
+            jointChannelId = initialPayload.jointChannelId
         )
         .threadComposerDraftKey()
 }

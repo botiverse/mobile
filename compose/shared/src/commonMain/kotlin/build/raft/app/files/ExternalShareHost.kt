@@ -205,8 +205,13 @@ private fun ExternalShareSurface(
     }
 }
 
-internal fun ForwardMessageTarget.toExternalShareConversationIdentityOrNull(): ThreadLaunchConversationIdentity? {
+internal fun ForwardMessageTarget.toExternalShareConversationIdentityOrNull(
+    resolvedJointChannelId: String? = null,
+): ThreadLaunchConversationIdentity? {
     val destinationChannelId = channelId ?: return null
+    val effectiveJointChannelId =
+        jointChannelId?.trim()?.takeIf { it.isNotBlank() }
+            ?: resolvedJointChannelId?.trim()?.takeIf { it.isNotBlank() }
     return when (channelKind) {
         ConversationKind.Task -> taskConversationLaunchIdentity(destinationChannelId)
         ConversationKind.Thread -> {
@@ -224,14 +229,16 @@ internal fun ForwardMessageTarget.toExternalShareConversationIdentityOrNull(): T
                 parentChannelId = resolvedParentChannelId,
                 parentMessageId = resolvedParentMessageId,
                 parentSurfaceKind = parentKind.threadParentSurfaceKindOrNull(),
-                parentChannelKind = normalizedParentChannelKind
+                parentChannelKind = normalizedParentChannelKind,
+                jointChannelId = if (parentKind == ConversationKind.DirectMessage) null else effectiveJointChannelId,
             )
         }
         else ->
             buildThreadLaunchConversationIdentity(
                 kind = channelKind,
                 channelId = destinationChannelId,
-                channelType = channelType
+                channelType = channelType,
+                jointChannelId = if (channelKind == ConversationKind.DirectMessage) null else effectiveJointChannelId,
             )
     }
 }

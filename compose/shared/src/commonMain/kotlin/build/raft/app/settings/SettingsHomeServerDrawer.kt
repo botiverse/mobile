@@ -462,6 +462,7 @@ internal data class SharedHomeConversationRowSeed(
     val fallbackSlackSyncProblem: RaftSlackSyncProblem? = null,
     val fallbackGuestVisible: Boolean = false,
     val fallbackHasExternalRelation: Boolean = false,
+    val jointChannelId: String? = null,
     /** Unread summary `hasMention` (or a followed thread's), carried by the store. */
     val mentioned: Boolean = false,
     /** Followed threads under this channel with new replies, carried by the store. */
@@ -605,7 +606,8 @@ private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeCon
         fallbackBridgeProvider = bridgeProvider,
         fallbackSlackSyncProblem = slackSyncProblem,
         fallbackGuestVisible = guestVisible,
-        fallbackHasExternalRelation = hasExternalRelation
+        fallbackHasExternalRelation = hasExternalRelation,
+        jointChannelId = jointChannelId?.takeIf { it.isNotBlank() }
     )
 
 private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
@@ -639,7 +641,7 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         avatarWireValue = directoryProjection?.avatarWireValue ?: fallbackAvatarWireValue,
         peerType = peerType,
         presenceMemberId = directoryProjection?.peerIdentity?.memberId?.value ?: fallbackPresenceMemberId,
-        hasDraft = draftProjection.hasRootDraft(id),
+        hasDraft = draftProjection.hasRootDraft(id, directoryProjection?.jointChannelId ?: jointChannelId),
         joined = directoryProjection?.joined ?: fallbackJoined,
         archived = directoryProjection?.archived ?: fallbackArchived,
         activityMuted = directoryProjection?.activityMuted ?: fallbackActivityMuted,

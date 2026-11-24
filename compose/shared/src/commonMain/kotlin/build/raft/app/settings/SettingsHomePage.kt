@@ -4731,7 +4731,36 @@ private fun RaftAppShellReadyContent(
     ): Boolean {
         val target = handoff.target
         val normalizedServerId = target.serverId.value.trim().takeIf { it.isNotBlank() }
-        val identity = target.toExternalShareConversationIdentityOrNull()
+        val targetLookupChannelId =
+            if (target.channelKind == ConversationKind.Thread) {
+                target.parentChannelId?.value?.trim()?.takeIf { it.isNotBlank() }
+            } else {
+                target.channelId?.value?.trim()?.takeIf { it.isNotBlank() }
+            }
+        val resolvedJointChannelId =
+            target.jointChannelId?.trim()?.takeIf { it.isNotBlank() }
+                ?: normalizedServerId?.let { serverKey ->
+                    targetLookupChannelId?.let { channelKey ->
+                        homeShellStore.state.value.home.serverDrawer.sections[ServerId(serverKey)]
+                            ?.content
+                            ?.snapshot
+                            ?.channels
+                            ?.firstOrNull { it.channelId.value == channelKey }
+                            ?.jointChannelId
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() }
+                    }
+                }
+                ?: targetLookupChannelId
+                    ?.let(latestAppShellConversationDirectory::resolve)
+                    ?.takeIf { projection ->
+                        projection.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
+                            (normalizedServerId == null || projection.serverId == normalizedServerId || projection.serverId.isBlank())
+                    }
+                    ?.jointChannelId
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+        val identity = target.toExternalShareConversationIdentityOrNull(resolvedJointChannelId = resolvedJointChannelId)
         if (normalizedServerId == null || identity == null) {
             bridge.logWarn("external_share_composer_open_rejected reason=destination_identity_missing")
             bridge.toast(conversationUnavailableMessage)

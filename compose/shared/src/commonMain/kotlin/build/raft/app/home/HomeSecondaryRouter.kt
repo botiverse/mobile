@@ -1011,10 +1011,6 @@ private fun HomeSearchRouterContent(
     val ownListState = rememberLazyListState()
     val searchListState = listState ?: ownListState
     val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
-    val draftProjection =
-        remember(activeDraftRecords) {
-            activeDraftRecords.toSharedThreadComposerDraftProjection()
-        }
     // t5/#419 A3: user-initiated opens resolve against the real directory + server id.
     val conversationDirectoryFlow =
         remember(environment.conversationIdentityProvider, searchServerId) {
@@ -1035,6 +1031,10 @@ private fun HomeSearchRouterContent(
         remember(searchConversationDirectory, conversationDirectory) {
             listOf(searchConversationDirectory, conversationDirectory)
                 .mergedSharedConversationDirectoryState()
+        }
+    val draftProjection =
+        remember(activeDraftRecords, openConversationDirectory) {
+            activeDraftRecords.toSharedThreadComposerDraftProjection(openConversationDirectory)
         }
     LaunchedEffect(environment.sharedHomeStore, searchServerId, searchSavedState.search.items) {
         val serverId = searchServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return@LaunchedEffect
@@ -1337,10 +1337,6 @@ private fun HomeSavedRouterContent(
     val scrollScope = rememberCoroutineScope()
     val copyScope = rememberCoroutineScope()
     val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
-    val draftProjection =
-        remember(activeDraftRecords) {
-            activeDraftRecords.toSharedThreadComposerDraftProjection()
-        }
     // The shell's selected server, followed: the wide layout keeps Saved beside the server rail,
     // so a switch there must move the page (and its store, which reloads) to the new server.
     val savedServerId by
@@ -1378,6 +1374,10 @@ private fun HomeSavedRouterContent(
         remember(savedConversationDirectory, conversationDirectory) {
             listOf(savedConversationDirectory, conversationDirectory)
                 .mergedSharedConversationDirectoryState()
+        }
+    val draftProjection =
+        remember(activeDraftRecords, openConversationDirectory) {
+            activeDraftRecords.toSharedThreadComposerDraftProjection(openConversationDirectory)
         }
     LaunchedEffect(environment.sharedHomeStore, savedServerId, searchSavedState.saved.items) {
         val serverId = savedServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return@LaunchedEffect

@@ -1328,6 +1328,8 @@
     <string name="external_share_error_title">共有コンテンツを開けませんでした</string>
     <string name="external_share_error_detail">もう一度試すか、閉じて共有し直してください。</string>
     <string name="external_share_retry_failed">失敗した項目を再試行</string>
+    <string name="thread_composer_external_share_other_server">この共有下書きは %1$s からのみ送信できます。</string>
+    <string name="thread_composer_external_share_other_server_generic">この共有下書きは共有先のサーバーからのみ送信できます。</string>
     <string name="thread_share_preview_title">共有プレビュー</string>
     <string name="thread_share_export_failed">画像の書き出しに失敗しました</string>
     <string name="thread_share_export_failed_detail">選択したメッセージが表示されている状態で、もう一度お試しください。</string>

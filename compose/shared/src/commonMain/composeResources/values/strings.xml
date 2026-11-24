@@ -1329,6 +1329,8 @@
     <string name="external_share_error_title">Could not open shared content</string>
     <string name="external_share_error_detail">Try again, or close and share the content again.</string>
     <string name="external_share_retry_failed">Retry failed items</string>
+    <string name="thread_composer_external_share_other_server">This shared draft can only be sent from %1$s.</string>
+    <string name="thread_composer_external_share_other_server_generic">This shared draft can only be sent from the server it was shared to.</string>
     <string name="thread_share_preview_title">Share preview</string>
     <string name="thread_share_export_failed">IMAGE EXPORT FAILED</string>
     <string name="thread_share_export_failed_detail">TRY AGAIN AFTER THE SELECTED MESSAGES ARE VISIBLE.</string>

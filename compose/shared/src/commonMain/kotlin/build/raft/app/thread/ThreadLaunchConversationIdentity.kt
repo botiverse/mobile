@@ -19,7 +19,8 @@ internal data class ThreadLaunchConversationIdentity(
     val thread: ThreadConversation? = null,
     val threadStreamChannelIdHint: ChannelId? = null,
     val kind: ConversationKind,
-    val dmPeerIdentity: MemberDetailIdentity? = null
+    val dmPeerIdentity: MemberDetailIdentity? = null,
+    val jointChannelId: String? = null
 )
 
 internal fun buildThreadLaunchConversationIdentity(
@@ -31,7 +32,8 @@ internal fun buildThreadLaunchConversationIdentity(
     parentMessageId: MessageId? = null,
     parentSurfaceKind: String? = null,
     parentChannelKind: String? = null,
-    dmPeerIdentity: MemberDetailIdentity? = null
+    dmPeerIdentity: MemberDetailIdentity? = null,
+    jointChannelId: String? = null
 ): ThreadLaunchConversationIdentity {
     val isReplyThread = kind == ConversationKind.Thread
     val stableThreadIdentity =
@@ -57,7 +59,8 @@ internal fun buildThreadLaunchConversationIdentity(
                 null
             },
         kind = kind,
-        dmPeerIdentity = dmPeerIdentity.takeIf { kind == ConversationKind.DirectMessage }
+        dmPeerIdentity = dmPeerIdentity.takeIf { kind == ConversationKind.DirectMessage },
+        jointChannelId = jointChannelId?.trim()?.takeIf { it.isNotBlank() }
     )
 }
 
@@ -116,7 +119,8 @@ internal fun SharedConversationDirectoryProjection.toThreadLaunchConversationIde
         parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         parentSurfaceKind = parentKind?.toRaftSurfaceKind(),
         parentChannelKind = parentKind?.toWireChannelKindOrNull(),
-        dmPeerIdentity = peerIdentity
+        dmPeerIdentity = peerIdentity,
+        jointChannelId = if (isReplyThread) parentProjection?.jointChannelId else jointChannelId
     )
 }
 
@@ -146,7 +150,8 @@ internal fun ConversationSummary.toThreadLaunchConversationIdentity(): ThreadLau
         channelType = channelType,
         thread = thread,
         kind = kind,
-        dmPeerIdentity = directMessagePeerIdentity()
+        dmPeerIdentity = directMessagePeerIdentity(),
+        jointChannelId = jointChannelId?.trim()?.takeIf { it.isNotBlank() }
     )
 
 internal fun HomeConversationRow.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity =
@@ -156,7 +161,8 @@ internal fun HomeConversationRow.toThreadLaunchConversationIdentity(): ThreadLau
         channelType = channelType,
         thread = thread,
         kind = kind,
-        dmPeerIdentity = directMessagePeerIdentity()
+        dmPeerIdentity = directMessagePeerIdentity(),
+        jointChannelId = jointChannelId?.trim()?.takeIf { it.isNotBlank() }
     )
 
 private fun ConversationSummary.directMessagePeerIdentity(): MemberDetailIdentity? =
