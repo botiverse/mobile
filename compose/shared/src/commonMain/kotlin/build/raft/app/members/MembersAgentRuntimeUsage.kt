@@ -222,6 +222,7 @@ internal fun MembersAgentRuntimeUsageChip(
     val access = LocalMembersRuntimeAccountUsageAccess.current
     val key = membersRuntimeAccountUsageKey(access, runtimeId, machineId)
     val scope = rememberCoroutineScope()
+    val nowMillis = rememberRuntimeUsageNowMillis()
     // The Computer page's controller: the same read, refresh and follow-ups as its chips.
     val controller =
         remember(key, access) {
@@ -234,6 +235,7 @@ internal fun MembersAgentRuntimeUsageChip(
                     scope = scope,
                     log = { message -> access.log("member_$message") },
                     onIdentityChanged = access.onIdentityChanged,
+                    nowMillis = nowMillis,
                 )
             }
         }

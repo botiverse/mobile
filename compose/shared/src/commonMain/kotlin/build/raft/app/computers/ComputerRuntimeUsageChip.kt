@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1032,6 +1033,15 @@ internal fun RuntimeAccountUsageLoad?.computerRuntimeUsageHealth(): RaftStatusVa
     return if (attention) RaftStatusVariant.Warning else RaftStatusVariant.Success
 }
 
+/** Clock aligned with [currentRaftTimeContextProvider] so controller auto-checks match sheetState(). */
+@Composable
+internal fun rememberRuntimeUsageNowMillis(): () -> Long {
+    val latestProvider by rememberUpdatedState(currentRaftTimeContextProvider)
+    return remember {
+        { latestProvider?.current?.nowEpochMillis ?: defaultNowMillis() }
+    }
+}
+
 @Composable
 private fun ComputerRuntimeUsageChip(
     label: String,
@@ -1046,6 +1056,7 @@ private fun ComputerRuntimeUsageChip(
     plain: @Composable () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val nowMillis = rememberRuntimeUsageNowMillis()
     val controller =
         remember(key, access?.store) {
             if (key == null || access == null) {
@@ -1057,6 +1068,7 @@ private fun ComputerRuntimeUsageChip(
                     scope = scope,
                     log = access.log,
                     onIdentityChanged = access.onIdentityChanged,
+                    nowMillis = nowMillis,
                 )
             }
         }
@@ -1162,6 +1174,7 @@ internal fun ComputerRuntimeUsageSheetHost(
     agents: List<SettingsComputerAgentSnapshot>? = null,
 ) {
     val scope = rememberCoroutineScope()
+    val controllerNowMillis = rememberRuntimeUsageNowMillis()
     val controller =
         remember(key, access.store) {
             ComputerRuntimeUsageController(
@@ -1170,6 +1183,7 @@ internal fun ComputerRuntimeUsageSheetHost(
                 scope = scope,
                 log = access.log,
                 onIdentityChanged = access.onIdentityChanged,
+                nowMillis = controllerNowMillis,
             )
         }
     DisposableEffect(controller) { onDispose { controller.cancel() } }

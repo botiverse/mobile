@@ -157,20 +157,24 @@ private val fixedZone =
 
 // slock f9d094481 packages/shared/src/runtimeAccountUsage.ts (protocol 2) read envelope:
 // `collectedAt` / `resetsAt` are ISO instants (isoInstantSchema).
-private const val CLAUDE_USAGE =
-    """{"state":"fresh","snapshot":{"protocolVersion":2,"provider":"claude","collectedAt":"2026-10-22T02:04:00.000Z","staleAfter":"2026-10-22T02:34:00.000Z","accounts":[{"accountKey":"acct-1","planLabel":"Max","health":"rate_limited","windows":[{"id":"five_hour","label":"5-hour limit","status":"ok","usedRatio":0.62,"resetsAt":"2026-10-22T05:10:00.000Z"},{"id":"seven_day_opus","label":"Opus weekly","status":"limit_reached","usedRatio":1,"resetsAt":"2026-10-23T04:10:00.000Z"}]}]}}"""
+private const val CLAUDE_USAGE_SNAPSHOT =
+    """{"protocolVersion":2,"provider":"claude","collectedAt":"2026-10-22T02:04:00.000Z","staleAfter":"2026-10-22T02:34:00.000Z","accounts":[{"accountKey":"acct-1","planLabel":"Max","health":"rate_limited","windows":[{"id":"five_hour","label":"5-hour limit","status":"ok","usedRatio":0.62,"resetsAt":"2026-10-22T05:10:00.000Z"},{"id":"seven_day_opus","label":"Opus weekly","status":"limit_reached","usedRatio":1,"resetsAt":"2026-10-23T04:10:00.000Z"}]}]}"""
+
+private const val CLAUDE_USAGE = """{"state":"fresh","snapshot":$CLAUDE_USAGE_SNAPSHOT}"""
 
 private class ClaudeUsageApi : RaftComputersApi {
     override suspend fun runtimeAccountUsage(serverId: ServerId, machineId: String, provider: String): HomeNetworkResponse =
         HomeNetworkResponse(code = 200, bodyText = CLAUDE_USAGE)
 
+    // #16501 auto-checks on open when a snapshot is >= 2 min old (this fixture is 6 min old);
+    // answer as an online Computer so the footer keeps the plain "6 分钟前更新" label.
     override suspend fun refreshRuntimeAccountUsage(
         serverId: ServerId,
         machineId: String,
         provider: String,
         body: String,
         priority: DataRequestPriority,
-    ): HomeNetworkResponse = HomeNetworkResponse(code = 202, bodyText = """{"accepted":false,"state":"computer_offline"}""")
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = """{"accepted":true,"state":"fresh","snapshot":$CLAUDE_USAGE_SNAPSHOT}""")
 
     override suspend fun machines(serverId: ServerId): HomeNetworkResponse = error("unused")
     override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("unused")
