@@ -12,23 +12,28 @@ import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedCreateAgentFormStore
+import build.raft.app.data.ComposeLocalDataStore
 import build.raft.app.data.PendingMentionAction
 import build.raft.app.data.PendingMentionActionExecuteResult
 import build.raft.app.data.SharedMembersChannelSuggestionSlice
 import build.raft.app.data.SharedMembersMemberSuggestionSlice
+import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
+import build.raft.app.model.ServerId
 import build.raft.app.model.TaskStatus
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.ProvidedValue
 import build.raft.designsystem.components.LocalRaftPaneGridHeadTabs
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -39,6 +44,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.downloads.RaftBridgeSaveAttachmentTask
 import build.raft.app.downloads.RaftDownloadCenter
@@ -1016,12 +1024,44 @@ internal fun RaftThreadComposerPayload.withThreadComposerDraftState(
     )
 }
 
+internal class ThreadRouteForegroundBannerSlot(
+    val banner: RaftForegroundMessageBanner?,
+    val topSafeArea: Dp,
+    val serverMembersStore: SharedServerMembersStore? = null,
+    val currentServerStore: ComposeLocalDataStore? = null,
+    val currentServerIdOverride: ServerId? = null,
+    val onBannerClick: (RaftForegroundMessageBanner) -> Unit,
+    val onBannerDismiss: (RaftForegroundMessageBanner) -> Unit = {},
+)
+
+/**
+ * Persistent composer dock descriptor hosted directly by [ThreadRouteScaffold] so switching from
+ * `LoadingShell` to `FeatureSurfaces` replaces only [ThreadRouteScaffoldSlots.body] while keeping
+ * [ThreadComposerDock] and its live `BasicTextField` attached to the exact same parent `LayoutNode`
+ * (preventing `FocusTargetNode.onDetach` / `InputConnection` teardown and keyboard dismissal,
+ * Hands `2f972fb1` / #wg-mobile-feedback:#285).
+ */
+internal class ThreadRouteComposerDockSlot(
+    val args: ThreadComposerRouteArgs,
+    val edgePadding: Dp,
+    val composerModifier: Modifier = Modifier,
+    val keyboardLiftPx: Density.() -> Float = { 0f },
+    val suggestionPortal: ThreadComposerSuggestionPortalState? = null,
+    val agentLoungeComposerName: String? = null,
+    val dmAgentPeerId: String? = null,
+    val onFocusChanged: ((Boolean) -> Unit)? = null,
+)
+
 internal class ThreadRouteScaffoldSlots(
     val scaffoldPlan: ThreadRouteScaffoldPlan,
     val rootModifier: Modifier = Modifier,
+    val providedValues: Array<ProvidedValue<*>> = emptyArray(),
+    val foregroundBanner: ThreadRouteForegroundBannerSlot? = null,
     val header: @Composable () -> Unit,
     val body: @Composable ColumnScope.() -> Unit,
+    val composerDock: ThreadRouteComposerDockSlot? = null,
     val overlays: @Composable BoxScope.() -> Unit = {},
+    val postScaffoldOverlays: @Composable () -> Unit = {},
     /**
      * Task v2's Tasks / Files cards ([ConversationSideCardsCover]): drawn over the body (the
      * conversation and its composer), under the header. Null keeps the body as it always was.
@@ -1034,52 +1074,115 @@ internal class ThreadRouteScaffoldSlots(
     val sideColumns: List<RaftPaneGridColumn> = emptyList(),
 )
 
+/**
+ * Restartable stage wrapper hosting the single unconditional [ThreadRouteScaffold] call site across
+ * `LoadingShell` and `FeatureSurfaces`. Keeping this wrapper returning `Unit` isolates UI-local
+ * state reads inside [featureSlots] (modals, find bar, share selection, side-card width) from
+ * invalidating the enclosing `SharedThreadRouteContentContent`, while guaranteeing zero
+ * `LayoutNode.detach()` across `LoadingShell -> FeatureSurfaces`.
+ */
+@Composable
+internal fun ThreadRouteScaffoldStage(
+    isLoadingShell: Boolean,
+    loadingSlots: (@Composable () -> ThreadRouteScaffoldSlots)?,
+    featureSlots: (@Composable () -> ThreadRouteScaffoldSlots)?,
+) {
+    val slots =
+        if (isLoadingShell) {
+            loadingSlots?.invoke() ?: error("ThreadRouteScaffoldStage requires loadingSlots when isLoadingShell=true")
+        } else {
+            featureSlots?.invoke() ?: error("ThreadRouteScaffoldStage requires featureSlots when isLoadingShell=false")
+        }
+    ThreadRouteScaffold(slots)
+}
+
 @Composable
 internal fun ThreadRouteScaffold(
     slots: ThreadRouteScaffoldSlots
 ) {
     val surfaceColor = RaftColor.SurfaceWhite
-    key(slots.scaffoldPlan.rootIdentity) {
-        Box(
-            modifier =
-                slots.rootModifier
-                    .fillMaxSize()
-                    .background(surfaceColor)
-        ) {
-            val carriesMainTabs = LocalThreadAssistantPanelEmbed.current == null
-            RaftPaneGrid(
-                columns = slots.sideColumns,
-                modifier = Modifier.fillMaxSize(),
-                topInset = if (carriesMainTabs && slots.sideColumns.isNotEmpty()) raftTopSafeAreaPadding() else 0.dp,
-                mainHeadCarriesTabs = carriesMainTabs,
-            ) {
-            Column(
-                modifier = Modifier.fillMaxSize().background(surfaceColor)
-            ) {
-                // In the assistant's panel the panel's head stands for the page's (web ChatPanel `hideHeader`).
-                if (carriesMainTabs) slots.header()
-                // Only the conversation header carries the main pane's row tabs; body / cover headers do not.
-                CompositionLocalProvider(build.raft.designsystem.components.LocalRaftPaneGridHeadTabs provides null) {
-                    val bodyCover = slots.bodyCover
-                    if (bodyCover == null) {
-                        slots.body(this)
-                    } else {
-                        Box(Modifier.weight(1f).fillMaxWidth()) {
-                            Column(Modifier.fillMaxSize()) { slots.body(this) }
-                            bodyCover()
+    val foregroundBanner = slots.foregroundBanner
+    RaftForegroundBannerHost(
+        banner = foregroundBanner?.banner,
+        topSafeArea = foregroundBanner?.topSafeArea ?: 0.dp,
+        serverMembersStore = foregroundBanner?.serverMembersStore,
+        currentServerStore = foregroundBanner?.currentServerStore,
+        currentServerIdOverride = foregroundBanner?.currentServerIdOverride,
+        onBannerClick = foregroundBanner?.onBannerClick ?: {},
+        onBannerDismiss = foregroundBanner?.onBannerDismiss ?: {},
+    ) {
+        CompositionLocalProvider(*slots.providedValues) {
+            key(slots.scaffoldPlan.rootIdentity) {
+                ThreadFollowersOverlayHost {
+                    Box(
+                        modifier =
+                            slots.rootModifier
+                                .fillMaxSize()
+                                .background(surfaceColor)
+                    ) {
+                        val carriesMainTabs = LocalThreadAssistantPanelEmbed.current == null
+                        RaftPaneGrid(
+                            columns = slots.sideColumns,
+                            modifier = Modifier.fillMaxSize(),
+                            topInset = if (carriesMainTabs && slots.sideColumns.isNotEmpty()) raftTopSafeAreaPadding() else 0.dp,
+                            mainHeadCarriesTabs = carriesMainTabs,
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxSize().background(surfaceColor)
+                            ) {
+                                // In the assistant's panel the panel's head stands for the page's (web ChatPanel `hideHeader`).
+                                if (carriesMainTabs) slots.header()
+                                // Only the conversation header carries the main pane's row tabs; body / cover headers do not.
+                                CompositionLocalProvider(build.raft.designsystem.components.LocalRaftPaneGridHeadTabs provides null) {
+                                    // Keep the body+composer Column inside one persistent Box regardless of
+                                    // bodyCover so opening/closing Task v2's phone cover or switching
+                                    // LoadingShell -> FeatureSurfaces never reparents or detaches the composer.
+                                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                                        Column(Modifier.fillMaxSize()) {
+                                            slots.body(this)
+                                            val composerDock = slots.composerDock
+                                            if (composerDock != null) {
+                                                val latestOnFocusChanged by rememberUpdatedState(composerDock.onFocusChanged)
+                                                val resolvedRemovedAppBot =
+                                                    rememberRaftMemberAppBot(composerDock.dmAgentPeerId)?.takeIf { it.removed }
+                                                        ?: composerDock.args.removedAppBot
+                                                ThreadComposerDock(
+                                                    edgePadding = composerDock.edgePadding,
+                                                    composerModifier =
+                                                        composerDock.composerModifier.onFocusChanged { focusState ->
+                                                            latestOnFocusChanged?.invoke(focusState.hasFocus)
+                                                        },
+                                                    keyboardLiftPx = composerDock.keyboardLiftPx,
+                                                ) {
+                                                    CompositionLocalProvider(
+                                                        LocalThreadComposerSuggestionPortal provides composerDock.suggestionPortal,
+                                                        LocalAgentLoungeComposerName provides composerDock.agentLoungeComposerName,
+                                                    ) {
+                                                        ThreadComposerRouteFromArgs(
+                                                            args = composerDock.args,
+                                                            removedAppBotOverride = resolvedRemovedAppBot,
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        slots.bodyCover?.invoke(this)
+                                    }
+                                }
+                            }
                         }
+                        slots.overlays(this)
                     }
                 }
             }
-            }
-            slots.overlays(this)
         }
+        slots.postScaffoldOverlays()
     }
 }
 
 /**
- * Maximum time [ThreadDeferredLoadingRouteContent] keeps prefilled (non-interactive) native nav
- * bar buttons on screen while waiting for FeatureSurfaces to mount. Long enough to span the iOS
+ * Maximum time [rememberThreadDeferredLoadingScaffoldSlots] keeps prefilled (non-interactive) native
+ * nav bar buttons on screen while waiting for FeatureSurfaces to mount. Long enough to span the iOS
  * push animation and fast loads without flashing, short enough that a stalled / offline load does
  * not leave dead buttons on the bar indefinitely.
  */
@@ -1091,7 +1194,6 @@ internal class ThreadLoadingOptimisticComposerHost(
     val composerDraftViewModel: SharedThreadComposerDraftViewModel,
     val composerLocked: Boolean = false,
     val externalFrozen: Boolean = false,
-    val movableComposer: (@Composable (ThreadComposerRouteArgs) -> Unit)? = null,
     val composerSendKeyEnabled: Boolean = false,
     val composerSendKey: build.raft.app.data.RaftComposerSendKey = build.raft.app.data.RaftComposerSendKey.Default,
     val onSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission = { ThreadComposerSendAdmission.Rejected },
@@ -1099,8 +1201,7 @@ internal class ThreadLoadingOptimisticComposerHost(
 )
 
 @Composable
-internal fun ThreadDeferredLoadingRouteContent(
-    scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
+internal fun rememberThreadDeferredLoadingScaffoldSlots(
     payload: RaftThreadScreenPayload,
     displayModel: ThreadHeaderDisplayModel,
     memberAvatarResolver: RaftMemberAvatarResolver,
@@ -1108,7 +1209,7 @@ internal fun ThreadDeferredLoadingRouteContent(
     showLoadingIndicator: Boolean = true,
     lounge: ThreadPageLounge? = null,
     optimisticComposerHost: ThreadLoadingOptimisticComposerHost? = null,
-) {
+): ThreadRouteScaffoldSlots {
     var preservePrefilledActions by remember(payload.instanceId) {
         androidx.compose.runtime.mutableStateOf(payload.status == "loading")
     }
@@ -1145,143 +1246,139 @@ internal fun ThreadDeferredLoadingRouteContent(
                 loungeFooterActive = loadingLoungeFooterKind != null,
                 replyParentAuthority = optimisticComposerHost.replyParentAuthority,
             )
-    val loadingRemovedAppBot =
-        rememberRaftMemberAppBot(displayModel.composerDmAgentPeerId())?.takeIf { it.removed }
     val composerBottomSafeArea = raftBottomSafeAreaPadding()
     val composerKeyboardInsetExcludesBottomSafeArea = raftKeyboardInsetExcludesBottomSafeArea()
     val emptyMemberSuggestionsFlow = remember { MutableStateFlow(SharedMembersMemberSuggestionSlice()) }
     val emptyChannelSuggestionsFlow = remember { MutableStateFlow(SharedMembersChannelSuggestionSlice()) }
     val loadingAssistantPanelContext = LocalThreadAssistantPanelEmbed.current?.context
-    scaffold(
-        ThreadRouteScaffoldSlots(
-            scaffoldPlan = ThreadRouteMountPlan.LoadingShell.toThreadRouteScaffoldPlan(),
-            header = {
-                ThreadPageHeader(
-                    payload = payload,
-                    headerDisplay = displayModel,
-                    activityMutedIndicatorVisible = false,
-                    memberAvatarResolver = memberAvatarResolver,
-                    showActions = false,
-                    showBack = !threadInSplitDetailPane(),
-                    onBack = onBack,
-                    onOpenInChannel = {},
-                    onOpenMemberProfile = {},
-                    onOpenSearch = {},
-                    onShowMembers = {},
-                    onShowSettings = {},
-                    lounge = lounge,
-                    preserveNativePrefilledActions = preservePrefilledActions,
-                )
-            },
-            body = {
-                Box(
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .background(RaftColor.SurfaceWhite)
+    val composerDock =
+        if (showOptimisticComposer && optimisticComposerHost != null && loadingOptimisticChannelId != null) {
+            val loadingBaseComposerState =
+                remember(
+                    payload.composer,
+                    payload.instanceId,
+                    displayModel.title,
+                    payload.surfaceKind,
+                    payload.sourceThreadId,
+                    payload.streamChannelId,
+                    payload.parentChannelId,
+                    payload.parentMessageId,
+                    payload.originParentMessageId,
+                    loadingOptimisticChannelId,
                 ) {
-                    if (showLoadingIndicator) {
-                        ThreadLoadingState()
-                    }
+                    payload
+                        .resolveThreadComposer(displayName = displayModel.title)
+                        .copy(streamChannelId = loadingOptimisticChannelId, enabled = true)
                 }
-                if (showOptimisticComposer && optimisticComposerHost != null && loadingOptimisticChannelId != null) {
-                    val loadingBaseComposerState =
-                        remember(
-                            payload.composer,
-                            payload.instanceId,
-                            displayModel.title,
-                            payload.surfaceKind,
-                            payload.sourceThreadId,
-                            payload.streamChannelId,
-                            payload.parentChannelId,
-                            payload.parentMessageId,
-                            payload.originParentMessageId,
-                            loadingOptimisticChannelId,
-                        ) {
-                            payload
-                                .resolveThreadComposer(displayName = displayModel.title)
-                                .copy(streamChannelId = loadingOptimisticChannelId, enabled = true)
-                        }
-                    val loadingComposerSurface =
-                        remember(
-                            loadingBaseComposerState,
-                            loadingOptimisticChannelId,
-                            payload.parentChannelId,
-                            displayModel.title,
-                            displayModel.subtitle,
-                            payload.surfaceKind,
-                            payload.parentSurfaceKind,
-                            loadingAssistantPanelContext,
-                        ) {
-                            loadingBaseComposerState
-                                .toThreadComposerSurface(
-                                    channelId = loadingOptimisticChannelId,
-                                    parentChannelId = payload.parentChannelId,
-                                    mentionChannelLabel = displayModel.threadComposerMentionScopeChannelLabel(),
-                                    memberSuggestionHeadersVisible = payload.threadComposerMemberSuggestionHeadersVisible(),
-                                )
-                                .withTaskV2()
-                                .copy(assistantContext = loadingAssistantPanelContext)
-                        }
-                    val loadingDraftKey =
-                        remember(loadingComposerSurface) { loadingComposerSurface.threadComposerDraftKey() }
-                    remember(
-                        optimisticComposerHost.composerDraftViewModel,
-                        loadingBaseComposerState.instanceId,
-                        loadingDraftKey,
-                    ) {
-                        ensureThreadComposerDraftStarted(
-                            composerDraftViewModel = optimisticComposerHost.composerDraftViewModel,
-                            composer = loadingBaseComposerState,
-                            draftKey = loadingDraftKey,
+            val loadingComposerSurface =
+                remember(
+                    loadingBaseComposerState,
+                    loadingOptimisticChannelId,
+                    payload.parentChannelId,
+                    displayModel.title,
+                    displayModel.subtitle,
+                    payload.surfaceKind,
+                    payload.parentSurfaceKind,
+                    loadingAssistantPanelContext,
+                ) {
+                    loadingBaseComposerState
+                        .toThreadComposerSurface(
+                            channelId = loadingOptimisticChannelId,
+                            parentChannelId = payload.parentChannelId,
+                            mentionChannelLabel = displayModel.threadComposerMentionScopeChannelLabel(),
+                            memberSuggestionHeadersVisible = payload.threadComposerMemberSuggestionHeadersVisible(),
                         )
-                    }
-                    val loadingTimelineSlice = remember(payload) { payload.toThreadTimelineSlice() }
-                    ThreadComposerDock(
-                        edgePadding = if (threadInSplitDetailPane()) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
-                        composerModifier =
-                            Modifier.raftThreadComposerLiveKeyboardPadding(
-                                bottomSafeArea = composerBottomSafeArea,
-                                keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
-                            ),
-                        keyboardLiftPx =
-                            rememberThreadComposerKeyboardLiftPx(
-                                bottomSafeArea = composerBottomSafeArea,
-                                keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
-                            ),
-                    ) {
-                        val args =
-                            ThreadComposerRouteArgs(
-                                baseComposerState = loadingBaseComposerState,
-                                removedAppBot = loadingRemovedAppBot,
-                                composerDraftViewModel = optimisticComposerHost.composerDraftViewModel,
-                                renderedPayload = payload,
-                                timelineSlice = loadingTimelineSlice,
-                                resolvedAuxiliaryThreadId = loadingOptimisticChannelId,
-                                surface = loadingComposerSurface,
-                                memberSuggestionsFlow = emptyMemberSuggestionsFlow,
-                                channelSuggestionsFlow = emptyChannelSuggestionsFlow,
-                                agentStatusResolver = EmptyRaftAgentStatusResolver,
-                                onEvent = optimisticComposerHost.onEvent,
-                                onDropFiles = { it.release() },
-                                onSendRequest = optimisticComposerHost.onSendRequest,
-                                composerSendKeyEnabled = optimisticComposerHost.composerSendKeyEnabled,
-                                composerSendKey = optimisticComposerHost.composerSendKey,
-                                onKeyboardHeightChange = {},
-                                adaptiveNativeEditingStateReader = LocalThreadAdaptiveNativeEditingReader.current,
-                                optimisticPendingAccess = true,
-                            )
-                        val movable = optimisticComposerHost.movableComposer
-                        if (movable != null) {
-                            movable(args)
-                        } else {
-                            ThreadComposerRouteFromArgs(args)
-                        }
-                    }
+                        .withTaskV2()
+                        .copy(assistantContext = loadingAssistantPanelContext)
+                }
+            val loadingDraftKey =
+                remember(loadingComposerSurface) { loadingComposerSurface.threadComposerDraftKey() }
+            remember(
+                optimisticComposerHost.composerDraftViewModel,
+                loadingBaseComposerState.instanceId,
+                loadingDraftKey,
+            ) {
+                ensureThreadComposerDraftStarted(
+                    composerDraftViewModel = optimisticComposerHost.composerDraftViewModel,
+                    composer = loadingBaseComposerState,
+                    draftKey = loadingDraftKey,
+                )
+            }
+            val loadingTimelineSlice = remember(payload) { payload.toThreadTimelineSlice() }
+            val loadingArgs =
+                ThreadComposerRouteArgs(
+                    baseComposerState = loadingBaseComposerState,
+                    removedAppBot = null,
+                    composerDraftViewModel = optimisticComposerHost.composerDraftViewModel,
+                    renderedPayload = payload,
+                    timelineSlice = loadingTimelineSlice,
+                    resolvedAuxiliaryThreadId = loadingOptimisticChannelId,
+                    surface = loadingComposerSurface,
+                    memberSuggestionsFlow = emptyMemberSuggestionsFlow,
+                    channelSuggestionsFlow = emptyChannelSuggestionsFlow,
+                    agentStatusResolver = EmptyRaftAgentStatusResolver,
+                    onEvent = optimisticComposerHost.onEvent,
+                    onDropFiles = { it.release() },
+                    onSendRequest = optimisticComposerHost.onSendRequest,
+                    composerSendKeyEnabled = optimisticComposerHost.composerSendKeyEnabled,
+                    composerSendKey = optimisticComposerHost.composerSendKey,
+                    onKeyboardHeightChange = {},
+                    adaptiveNativeEditingStateReader = LocalThreadAdaptiveNativeEditingReader.current,
+                    optimisticPendingAccess = true,
+                )
+            ThreadRouteComposerDockSlot(
+                args = loadingArgs,
+                edgePadding = if (threadInSplitDetailPane()) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
+                composerModifier =
+                    Modifier.raftThreadComposerLiveKeyboardPadding(
+                        bottomSafeArea = composerBottomSafeArea,
+                        keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
+                    ),
+                keyboardLiftPx =
+                    rememberThreadComposerKeyboardLiftPx(
+                        bottomSafeArea = composerBottomSafeArea,
+                        keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
+                    ),
+                agentLoungeComposerName = loadingConversationLounge?.let { agentLoungeTitle(it.displayAgentName) },
+                dmAgentPeerId = displayModel.composerDmAgentPeerId(),
+            )
+        } else {
+            null
+        }
+    return ThreadRouteScaffoldSlots(
+        scaffoldPlan = ThreadRouteMountPlan.LoadingShell.toThreadRouteScaffoldPlan(),
+        header = {
+            ThreadPageHeader(
+                payload = payload,
+                headerDisplay = displayModel,
+                activityMutedIndicatorVisible = false,
+                memberAvatarResolver = memberAvatarResolver,
+                showActions = false,
+                showBack = !threadInSplitDetailPane(),
+                onBack = onBack,
+                onOpenInChannel = {},
+                onOpenMemberProfile = {},
+                onOpenSearch = {},
+                onShowMembers = {},
+                onShowSettings = {},
+                lounge = lounge,
+                preserveNativePrefilledActions = preservePrefilledActions,
+            )
+        },
+        body = {
+            Box(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .background(RaftColor.SurfaceWhite)
+            ) {
+                if (showLoadingIndicator) {
+                    ThreadLoadingState()
                 }
             }
-        )
+        },
+        composerDock = composerDock,
     )
 }
 

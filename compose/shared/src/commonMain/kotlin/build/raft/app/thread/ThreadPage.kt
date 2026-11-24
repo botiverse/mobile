@@ -183,7 +183,6 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -2795,9 +2794,10 @@ private fun SharedThreadRouteContentContent(
             }
         onDispose { canonicalFinalLifecycleEffects?.dispose(handle) }
     }
-    // Hoist the route's draft ViewModel, pending optimistic send slot, and movable composer above
-    // LoadingShell so cold opens render the real optimistic composer on Frame 1 and move the live
-    // editor into FeatureSurfaces without losing focus, keyboard, or typed draft.
+    // Hoist the route's draft ViewModel and pending optimistic send slot above LoadingShell so
+    // cold opens render the real optimistic composer on Frame 1 inside one persistent
+    // ThreadRouteScaffold call site (no movableContentOf detach on LoadingShell -> FeatureSurfaces,
+    // preserving focus, keyboard, and typed draft — Hands 2f972fb1 / #wg-mobile-feedback:#285).
     val composerDraftViewModel: SharedThreadComposerDraftViewModel =
         viewModel(key = "shared-thread-composer-$threadInstanceKey") {
             SharedThreadComposerDraftViewModel(persistSlices = listOf(composerDraftPersistSlice))
@@ -2805,21 +2805,8 @@ private fun SharedThreadRouteContentContent(
     FlushComposerDraftOnLeave(composerDraftViewModel, threadInstanceKey)
     val pendingOptimisticSendState =
         remember(threadInstanceKey) { mutableStateOf<ThreadComposerSendRequest?>(null) }
-    val movableThreadComposer =
-        remember(threadInstanceKey) {
-            movableContentOf<ThreadComposerRouteArgs> { args ->
-                ThreadComposerRouteFromArgs(args)
-            }
-        }
-    // Loading still returns before feature-owner construction, but the one movable
-    // scaffold instance keeps the route root/header composition when its lightweight
-    // body is replaced by the feature body after canonical access resolves.
-    val movableThreadRouteScaffold =
-        remember(threadInstanceKey) {
-            movableContentOf<ThreadRouteScaffoldSlots> { slots ->
-                ThreadRouteScaffold(slots)
-            }
-        }
+    var loadingSlotsBuilder: (@Composable () -> ThreadRouteScaffoldSlots)? = null
+    var featureSlotsBuilder: (@Composable () -> ThreadRouteScaffoldSlots)? = null
     if (routeMountPlan == ThreadRouteMountPlan.LoadingShell) {
         val loadingLounge =
             mutePageLounge?.let { lounge ->
@@ -2854,107 +2841,106 @@ private fun SharedThreadRouteContentContent(
                 nowEpochMillis = loadingNowEpochMillis,
             )
         val loadingSendKey = build.raft.app.data.RaftComposerSendKeyRuntime.observeSendKey()
-        ThreadDeferredLoadingRouteContent(
-            scaffold = movableThreadRouteScaffold,
-            payload = payload,
-            displayModel = headerDisplayModel,
-            memberAvatarResolver = memberAvatarResolver,
-            onBack = onBack,
-            showLoadingIndicator = timelineSlice.loadingIndicatorRevealed,
-            lounge = loadingLounge,
-            optimisticComposerHost =
-                ThreadLoadingOptimisticComposerHost(
-                    accessResolution = renderSlice.accessResolution,
-                    replyParentAuthority = renderSlice.replyParentAuthority,
-                    composerDraftViewModel = composerDraftViewModel,
-                    composerLocked = threadLimitLocksWrites(loadingJointBillingNotice, loadingExternalFreezeState),
-                    externalFrozen = loadingExternalFreezeState == ExternalFreezeState.Active,
-                    movableComposer = movableThreadComposer,
-                    composerSendKey = loadingSendKey,
-                    onSendRequest = { request ->
-                        composerDraftViewModel.dispatch(
-                            SharedThreadComposerDraftIntent.Change(
-                                seedText = request.value.text,
-                                seedAsTask = request.asTask,
+        loadingSlotsBuilder = {
+            rememberThreadDeferredLoadingScaffoldSlots(
+                payload = payload,
+                displayModel = headerDisplayModel,
+                memberAvatarResolver = memberAvatarResolver,
+                onBack = onBack,
+                showLoadingIndicator = timelineSlice.loadingIndicatorRevealed,
+                lounge = loadingLounge,
+                optimisticComposerHost =
+                    ThreadLoadingOptimisticComposerHost(
+                        accessResolution = renderSlice.accessResolution,
+                        replyParentAuthority = renderSlice.replyParentAuthority,
+                        composerDraftViewModel = composerDraftViewModel,
+                        composerLocked = threadLimitLocksWrites(loadingJointBillingNotice, loadingExternalFreezeState),
+                        externalFrozen = loadingExternalFreezeState == ExternalFreezeState.Active,
+                        composerSendKey = loadingSendKey,
+                        onSendRequest = { request ->
+                            composerDraftViewModel.dispatch(
+                                SharedThreadComposerDraftIntent.Change(
+                                    seedText = request.value.text,
+                                    seedAsTask = request.asTask,
+                                )
                             )
-                        )
-                        val hasSendableDraft =
-                            request.value.text.isNotBlank() ||
-                                composerDraftViewModel.state.value.uploadedAttachments.isNotEmpty()
-                        if (hasSendableDraft) {
-                            pendingOptimisticSendState.value = request
-                            bridge.log(
-                                "thread_composer_send_deferred_for_access stage=loading_shell " +
-                                    "instanceId=${payload.instanceId} textLen=${request.value.text.length}"
-                            )
-                            ThreadComposerSendAdmission.Deferred
-                        } else {
-                            ThreadComposerSendAdmission.Rejected
-                        }
-                    },
-                    onEvent = { action, value, asTask, _ ->
-                        when (action) {
-                            "change", "staleEditorCommandIgnored" ->
-                                composerDraftViewModel.dispatch(
-                                    SharedThreadComposerDraftIntent.Change(
-                                        seedText = value,
-                                        seedAsTask = asTask,
-                                    )
+                            val hasSendableDraft =
+                                request.value.text.isNotBlank() ||
+                                    composerDraftViewModel.state.value.uploadedAttachments.isNotEmpty()
+                            if (hasSendableDraft) {
+                                pendingOptimisticSendState.value = request
+                                bridge.log(
+                                    "thread_composer_send_deferred_for_access stage=loading_shell " +
+                                        "instanceId=${payload.instanceId} textLen=${request.value.text.length}"
                                 )
-                            "toggleAsTask" ->
-                                composerDraftViewModel.dispatch(
-                                    SharedThreadComposerDraftIntent.Change(seedAsTask = asTask)
-                                )
-                            "send" -> {
-                                val currentDraft = composerDraftViewModel.state.value
-                                val sendText = value ?: currentDraft.seedText
-                                val sendAsTask = asTask ?: currentDraft.seedAsTask
-                                composerDraftViewModel.dispatch(
-                                    SharedThreadComposerDraftIntent.Change(
-                                        seedText = sendText,
-                                        seedAsTask = sendAsTask,
-                                    )
-                                )
-                                if (sendText.isNotBlank() || currentDraft.uploadedAttachments.isNotEmpty()) {
-                                    pendingOptimisticSendState.value =
-                                        ThreadComposerSendRequest(
-                                            editorSessionId = 0L,
-                                            value = TextFieldValue(sendText),
-                                            asTask = sendAsTask,
-                                        )
-                                    bridge.log(
-                                        "thread_composer_send_deferred_for_access stage=loading_shell " +
-                                            "instanceId=${payload.instanceId} textLen=${sendText.length}"
-                                    )
-                                }
+                                ThreadComposerSendAdmission.Deferred
+                            } else {
+                                ThreadComposerSendAdmission.Rejected
                             }
-                            "dismissMention" ->
-                                value?.takeIf { it.isNotBlank() }?.let { resolutionId ->
+                        },
+                        onEvent = { action, value, asTask, _ ->
+                            when (action) {
+                                "change", "staleEditorCommandIgnored" ->
                                     composerDraftViewModel.dispatch(
-                                        SharedThreadComposerDraftIntent.DismissMentionAction(resolutionId)
+                                        SharedThreadComposerDraftIntent.Change(
+                                            seedText = value,
+                                            seedAsTask = asTask,
+                                        )
                                     )
+                                "toggleAsTask" ->
+                                    composerDraftViewModel.dispatch(
+                                        SharedThreadComposerDraftIntent.Change(seedAsTask = asTask)
+                                    )
+                                "send" -> {
+                                    val currentDraft = composerDraftViewModel.state.value
+                                    val sendText = value ?: currentDraft.seedText
+                                    val sendAsTask = asTask ?: currentDraft.seedAsTask
+                                    composerDraftViewModel.dispatch(
+                                        SharedThreadComposerDraftIntent.Change(
+                                            seedText = sendText,
+                                            seedAsTask = sendAsTask,
+                                        )
+                                    )
+                                    if (sendText.isNotBlank() || currentDraft.uploadedAttachments.isNotEmpty()) {
+                                        pendingOptimisticSendState.value =
+                                            ThreadComposerSendRequest(
+                                                editorSessionId = 0L,
+                                                value = TextFieldValue(sendText),
+                                                asTask = sendAsTask,
+                                            )
+                                        bridge.log(
+                                            "thread_composer_send_deferred_for_access stage=loading_shell " +
+                                                "instanceId=${payload.instanceId} textLen=${sendText.length}"
+                                        )
+                                    }
                                 }
-                            "dismissMentionNotice" ->
-                                composerDraftViewModel.dispatch(
-                                    SharedThreadComposerDraftIntent.ClearMentionActionNotice
-                                )
-                            ThreadComposerDismissUnresolvedMentionsEvent ->
-                                composerDraftViewModel.dispatch(
-                                    SharedThreadComposerDraftIntent.DismissUnresolvedMentions
-                                )
-                            else -> {
-                                if (threadComposerEventRequiresWriteAccess(action)) {
-                                    bridge.log(
-                                        "thread_composer_action_blocked action=$action reason=loading_shell_access_pending"
+                                "dismissMention" ->
+                                    value?.takeIf { it.isNotBlank() }?.let { resolutionId ->
+                                        composerDraftViewModel.dispatch(
+                                            SharedThreadComposerDraftIntent.DismissMentionAction(resolutionId)
+                                        )
+                                    }
+                                "dismissMentionNotice" ->
+                                    composerDraftViewModel.dispatch(
+                                        SharedThreadComposerDraftIntent.ClearMentionActionNotice
                                     )
+                                ThreadComposerDismissUnresolvedMentionsEvent ->
+                                    composerDraftViewModel.dispatch(
+                                        SharedThreadComposerDraftIntent.DismissUnresolvedMentions
+                                    )
+                                else -> {
+                                    if (threadComposerEventRequiresWriteAccess(action)) {
+                                        bridge.log(
+                                            "thread_composer_action_blocked action=$action reason=loading_shell_access_pending"
+                                        )
+                                    }
                                 }
                             }
-                        }
-                    },
-                ),
-        )
-        return
-    }
+                        },
+                    ),
+            )
+        }
+    } else {
     var selectedThreadTab by remember(threadInstanceKey, payload.selectedTab) {
         mutableStateOf(RaftThreadTab.fromWireValue(payload.selectedTab))
     }
@@ -5987,21 +5973,23 @@ private fun SharedThreadRouteContentContent(
             threadLimitLocked = threadLimitLocked,
         )
     val threadRouteEventHandler = buildThreadRouteEventHandler()
-    RaftForegroundBannerHost(
-        banner =
-            foregroundMessageBanner?.takeIf {
-                threadForegroundBannerOnPage(
-                    inAssistantPanel = inAssistantPanelEmbed,
-                    assistantPanelOpen = false,
-                )
-            },
-        topSafeArea = foregroundBannerTopSafeArea,
-        serverMembersStore = serverMembersStore,
-        currentServerStore = foregroundBannerCurrentServerStore,
-        currentServerIdOverride = foregroundBannerServerId,
-        onBannerClick = onForegroundBannerClick,
-        onBannerDismiss = onForegroundBannerDismiss,
-    ) {
+    val foregroundBannerSlot =
+        ThreadRouteForegroundBannerSlot(
+            banner =
+                foregroundMessageBanner?.takeIf {
+                    threadForegroundBannerOnPage(
+                        inAssistantPanel = inAssistantPanelEmbed,
+                        assistantPanelOpen = false,
+                    )
+                },
+            topSafeArea = foregroundBannerTopSafeArea,
+            serverMembersStore = serverMembersStore,
+            currentServerStore = foregroundBannerCurrentServerStore,
+            currentServerIdOverride = foregroundBannerServerId,
+            onBannerClick = onForegroundBannerClick,
+            onBannerDismiss = onForegroundBannerDismiss,
+        )
+    featureSlotsBuilder = {
         // OFF-zero-work provider set (task #20 P1, reviewed round 4): with
         // diagnostics OFF the census session Local is NOT part of the vararg
         // at all — the base array is used by identity, so the production
@@ -6077,20 +6065,6 @@ private fun SharedThreadRouteContentContent(
                         }
                         ?.body,
             )
-        // Read through the local, not captured (this lambda is at the JVM's captured-value limit).
-        val bannerHandoff = LocalRaftForegroundBannerHandoff.current
-        // A press opens the assistant over this page (web AssistantOtter's phone Drawer): its head,
-        // then its DM as the conversation page itself (THREAD_PAGE embedded, without its head).
-        assistantOtter?.let { otter ->
-            ThreadRouteAssistantPanel(
-                otter = otter,
-                bannerHandoff = bannerHandoff,
-                renderedThread = renderedThread,
-                conversationIdentityProvider = conversationIdentityProvider,
-                bridge = bridge,
-                storeScope = storeScope,
-            )
-        }
         // App link previews (artin #20 lane L): this viewer on this Server, asked once per conversation.
         val appLinkPreviewViewerId = currentSession?.user?.id?.takeIf(String::isNotBlank)
         val appLinkPreviewConversationId = renderedThread.streamChannelId ?: initialRouteIdentity.instanceKey
@@ -6241,7 +6215,6 @@ private fun SharedThreadRouteContentContent(
             )
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
-                LocalThreadMovableComposer provides movableThreadComposer,
                 LocalThreadQuoteReplyHost provides quoteReplyHost,
                 LocalRaftViewerServerLogos provides viewerServerLogos,
                 LocalRaftChannelJointServers provides channelJointServers,
@@ -6691,13 +6664,86 @@ private fun SharedThreadRouteContentContent(
             val loungeId = openedLoungeId ?: return@LaunchedEffect
             sharedHomeStore?.dispatch(SharedHomeIntent.ReopenClosedConversation(loungeId))
         }
-        // JVM limit: this lambda captures about 255 locals of the route, the most an invokedynamic
-        // lambda may take. One more fails at runtime (BootstrapMethodError "bad parameter count 256":
-        // the page never composes and stays on Loading). Read new inputs from values already used
-        // here, or group these captures into a state holder, before adding a local referenced below.
-        CompositionLocalProvider(*threadProvidedValues) {
-            ThreadPageContent(
-                lounge = threadLounge,
+        // Where a quote of selected text lands (Select Text > Quote, the mouse selection's Quote).
+        val selectionQuoteTarget =
+            threadSelectTextQuoteTarget(
+                surfaceKind = renderedThread.surfaceKind,
+                composerAvailable =
+                    !threadLimitLocked &&
+                        shouldShowThreadComposerForReadyContent(
+                            joined = payload.joined && renderSlice.writeActionsEnabled,
+                            showComposer = payload.showComposer && renderSlice.writeActionsEnabled,
+                            selectedTab = selectedThreadTab.wireValue
+                        )
+            )
+        // The in-place selection toolbar's Quote: the same composer append as Select Text > Quote.
+        val selectionQuoteAvailable = selectionQuoteTarget != ThreadSelectTextQuoteTarget.None
+        val inPlaceSelectionQuote: ((String) -> Unit)? =
+            remember(selectionQuoteAvailable, composerDraftViewModel) {
+                if (selectionQuoteAvailable) {
+                    { quote: String -> composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.AppendQuote(quote)) }
+                } else {
+                    null
+                }
+            }
+        val inPlaceSelectionQuoteInsert: ((ThreadComposerQuoteInsert) -> Unit)? =
+            remember(selectionQuoteAvailable, quoteReplyHost) {
+                if (selectionQuoteAvailable) quoteReplyHost::requestInsertQuote else null
+            }
+        SideEffect {
+            inPlaceTextSelectionHost.quoteIntoComposer = inPlaceSelectionQuote
+            inPlaceTextSelectionHost.insertQuoteIntoComposer = inPlaceSelectionQuoteInsert
+        }
+        rememberThreadPageContentScaffoldSlots(
+            providedValues = threadProvidedValues,
+            foregroundBanner = foregroundBannerSlot,
+            postScaffoldOverlays = {
+                // Read through the local inside RaftForegroundBannerHost so standalone phone
+                // ThreadPage receives the host's live effectiveHandoff (not null).
+                val bannerHandoff = LocalRaftForegroundBannerHandoff.current
+                assistantOtter?.let { otter ->
+                    ThreadRouteAssistantPanel(
+                        otter = otter,
+                        bannerHandoff = bannerHandoff,
+                        renderedThread = renderedThread,
+                        conversationIdentityProvider = conversationIdentityProvider,
+                        bridge = bridge,
+                        storeScope = storeScope,
+                    )
+                }
+                ThreadRouteDialogs(
+                    states = threadRouteDialogStates,
+                    data = data,
+                    labels = labels,
+                    selectionQuoteTarget = selectionQuoteTarget,
+                    quoteReplyHost = quoteReplyHost,
+                    payload = payload,
+                    resolvedMessageBodyTextStyle = resolvedMessageBodyTextStyle,
+                    composerDraftViewModel = composerDraftViewModel,
+                    threadViewModel = threadViewModel,
+                    renderedTimelineSlice = renderedTimelineSlice,
+                    linkedTasksProjection = linkedTasksProjection,
+                    installAppDialogStore = installAppDialogStore,
+                    actionCardSpecState = actionCardSpecState,
+                    actionCardNames = actionCardNames,
+                    currentServerId = currentServerId,
+                    sharedHomeState = sharedHomeState,
+                    threadServerMembersEntry = threadServerMembersEntry,
+                    threadMembersServerId = threadMembersServerId,
+                    threadMembersChannelId = threadMembersChannelId,
+                    actionCardStepUp = actionCardStepUp,
+                    actionCardStepUpState = actionCardStepUpState,
+                    coroutineScope = coroutineScope,
+                    pager = pager,
+                    onAuthRequired = onAuthRequired,
+                    routeAuthRequiredForCode = ::routeAuthRequired,
+                    routeAuthRequiredForResult = ::routeAuthRequired,
+                    onReloadAttachmentComments = ::reloadAttachmentComments,
+                    onSendAttachmentComment = ::sendAttachmentComment,
+                    onResolveAttachmentComment = ::resolveAttachmentComment,
+                )
+            },
+            lounge = threadLounge,
                 onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
                 // task #180: forwarded from the route scope, which owns the workspace store.
                 onToggleFocusMode = threadFocusModeToggle,
@@ -6757,7 +6803,6 @@ private fun SharedThreadRouteContentContent(
                     )
                 }
             },
-            scaffold = movableThreadRouteScaffold,
             threadInstanceKey = threadInstanceKey,
             routeActive = active,
             hostForeground = threadHostForeground,
@@ -7015,68 +7060,12 @@ private fun SharedThreadRouteContentContent(
             }
             )
         }
-        // Where a quote of selected text lands (Select Text > Quote, the mouse selection's Quote).
-        val selectionQuoteTarget =
-            threadSelectTextQuoteTarget(
-                surfaceKind = renderedThread.surfaceKind,
-                composerAvailable =
-                    !threadLimitLocked &&
-                        shouldShowThreadComposerForReadyContent(
-                            joined = payload.joined && renderSlice.writeActionsEnabled,
-                            showComposer = payload.showComposer && renderSlice.writeActionsEnabled,
-                            selectedTab = selectedThreadTab.wireValue
-                        )
-            )
-        // The in-place selection toolbar's Quote: the same composer append as Select Text > Quote.
-        val selectionQuoteAvailable = selectionQuoteTarget != ThreadSelectTextQuoteTarget.None
-        val inPlaceSelectionQuote: ((String) -> Unit)? =
-            remember(selectionQuoteAvailable, composerDraftViewModel) {
-                if (selectionQuoteAvailable) {
-                    { quote: String -> composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.AppendQuote(quote)) }
-                } else {
-                    null
-                }
-            }
-        val inPlaceSelectionQuoteInsert: ((ThreadComposerQuoteInsert) -> Unit)? =
-            remember(selectionQuoteAvailable, quoteReplyHost) {
-                if (selectionQuoteAvailable) quoteReplyHost::requestInsertQuote else null
-            }
-        SideEffect {
-            inPlaceTextSelectionHost.quoteIntoComposer = inPlaceSelectionQuote
-            inPlaceTextSelectionHost.insertQuoteIntoComposer = inPlaceSelectionQuoteInsert
-        }
-        ThreadRouteDialogs(
-            states = threadRouteDialogStates,
-            data = data,
-            labels = labels,
-            selectionQuoteTarget = selectionQuoteTarget,
-            quoteReplyHost = quoteReplyHost,
-            payload = payload,
-            resolvedMessageBodyTextStyle = resolvedMessageBodyTextStyle,
-            composerDraftViewModel = composerDraftViewModel,
-            threadViewModel = threadViewModel,
-            renderedTimelineSlice = renderedTimelineSlice,
-            linkedTasksProjection = linkedTasksProjection,
-            installAppDialogStore = installAppDialogStore,
-            actionCardSpecState = actionCardSpecState,
-            actionCardNames = actionCardNames,
-            currentServerId = currentServerId,
-            sharedHomeState = sharedHomeState,
-            threadServerMembersEntry = threadServerMembersEntry,
-            threadMembersServerId = threadMembersServerId,
-            threadMembersChannelId = threadMembersChannelId,
-            actionCardStepUp = actionCardStepUp,
-            actionCardStepUpState = actionCardStepUpState,
-            coroutineScope = coroutineScope,
-            pager = pager,
-            onAuthRequired = onAuthRequired,
-            routeAuthRequiredForCode = ::routeAuthRequired,
-            routeAuthRequiredForResult = ::routeAuthRequired,
-            onReloadAttachmentComments = ::reloadAttachmentComments,
-            onSendAttachmentComment = ::sendAttachmentComment,
-            onResolveAttachmentComment = ::resolveAttachmentComment,
-        )
     }
+    ThreadRouteScaffoldStage(
+        isLoadingShell = routeMountPlan == ThreadRouteMountPlan.LoadingShell,
+        loadingSlots = loadingSlotsBuilder,
+        featureSlots = featureSlotsBuilder,
+    )
 }
 
 private fun RaftThreadScreenPayload.threadComposerMentionScopeChannelId(): String? {

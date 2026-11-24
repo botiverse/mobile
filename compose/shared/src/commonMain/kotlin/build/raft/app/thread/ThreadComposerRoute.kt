@@ -21,7 +21,6 @@ import build.raft.app.model.MemberServerRef
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -557,16 +556,11 @@ internal class ThreadComposerRouteArgs(
     val optimisticPendingAccess: Boolean = false,
 )
 
-/**
- * Route-scoped movable composer instance shared between the cold LoadingShell and FeatureSurfaces
- * so transitioning from LoadingShell to FeatureSurfaces keeps the live editor mounted without
- * dropping focus, keyboard state, or typed draft.
- */
-internal val LocalThreadMovableComposer =
-    compositionLocalOf<(@Composable (ThreadComposerRouteArgs) -> Unit)?> { null }
-
 @Composable
-internal fun ThreadComposerRouteFromArgs(args: ThreadComposerRouteArgs) {
+internal fun ThreadComposerRouteFromArgs(
+    args: ThreadComposerRouteArgs,
+    removedAppBotOverride: RaftAppBotIdentity? = args.removedAppBot,
+) {
     ThreadComposerRoute(
         baseComposerState = args.baseComposerState,
         composerDraftViewModel = args.composerDraftViewModel,
@@ -587,7 +581,7 @@ internal fun ThreadComposerRouteFromArgs(args: ThreadComposerRouteArgs) {
         composerSendKey = args.composerSendKey,
         onKeyboardHeightChange = args.onKeyboardHeightChange,
         adaptiveNativeEditingStateReader = args.adaptiveNativeEditingStateReader,
-        removedAppBot = args.removedAppBot,
+        removedAppBot = removedAppBotOverride,
         autofocusOnOpen = args.autofocusOnOpen,
         optimisticPendingAccess = args.optimisticPendingAccess,
     )
