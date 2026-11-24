@@ -405,6 +405,38 @@ internal fun threadMarkdownTaskStatusesByNumber(
 }
 
 /**
+ * Title of each task of the conversation being read, by task number (web MessageItem
+ * `taskByChannelNumber` for `taskContextChannelId`, botiverse/slock #15631): server tasks of
+ * [currentChannelId], then channel tasks, then [currentTask] (the task conversation's own task,
+ * when loaded), so a hand-off card shows `#N <title>` (or `#N` alone before the task arrives).
+ */
+internal fun threadTaskTitlesByNumber(
+    channelTasks: List<TaskSummary>,
+    serverTasks: List<TaskSummary>,
+    currentChannelId: String? = null,
+    currentTask: TaskSummary? = null,
+): Map<Int, String> {
+    val titles = LinkedHashMap<Int, String>()
+    serverTasks.forEach { task ->
+        if (currentChannelId == null || task.channelId?.value != currentChannelId) return@forEach
+        val number = task.taskNumber?.takeIf { it > 0 } ?: return@forEach
+        val title = task.title.trim().takeIf { it.isNotEmpty() } ?: return@forEach
+        titles[number] = title
+    }
+    channelTasks.forEach { task ->
+        val number = task.taskNumber?.takeIf { it > 0 } ?: return@forEach
+        val title = task.title.trim().takeIf { it.isNotEmpty() } ?: return@forEach
+        titles[number] = title
+    }
+    currentTask?.let { task ->
+        val number = task.taskNumber?.takeIf { it > 0 } ?: return@let
+        val title = task.title.trim().takeIf { it.isNotEmpty() } ?: return@let
+        titles[number] = title
+    }
+    return titles
+}
+
+/**
  * Task status by conversation for `#proj:#7` / `dm:@peer:#7` chips ([raftMarkdownTaskRefStatusKey]),
  * Web `taskRefKey(channelId, number)`: a qualified ref only ever shows its own conversation's task.
  * Channels are keyed by the task's channel name. A DM task's channel name is not the peer, so DM

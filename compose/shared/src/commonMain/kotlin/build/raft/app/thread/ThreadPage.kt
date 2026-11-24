@@ -5939,6 +5939,20 @@ private fun SharedThreadRouteContentContent(
         val taskConversationTasksViewModel = taskConversation.tasksViewModel
         val taskConversationTasksState = taskConversation.tasksState
         val taskConversationTask = taskConversation.task
+        val threadTaskTitlesByNumber =
+            remember(
+                markdownTaskContextProjectionSlice.tasks,
+                serverTaskProjectionSlice.tasks,
+                markdownTaskContextChannelId,
+                taskConversationTask,
+            ) {
+                threadTaskTitlesByNumber(
+                    channelTasks = markdownTaskContextProjectionSlice.tasks,
+                    serverTasks = serverTaskProjectionSlice.tasks,
+                    currentChannelId = markdownTaskContextChannelId?.value,
+                    currentTask = taskConversationTask,
+                )
+            }
         val taskConversationDetailsViewModel = taskConversation.detailsViewModel
         val taskConversationDetailsState = taskConversation.detailsState
         val taskConversationJointSurface =
@@ -6015,6 +6029,7 @@ private fun SharedThreadRouteContentContent(
                 LocalRaftMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
                 LocalRaftMarkdownTaskStatuses provides markdownTaskStatuses,
                 LocalRaftMarkdownTaskRefStatuses provides markdownTaskRefStatuses,
+                LocalThreadTaskTitlesByNumber provides threadTaskTitlesByNumber,
                 // The conversation has a task source that has not loaded yet: task refs keep the
                 // status chip's shape in a neutral look until it does.
                 LocalRaftMarkdownTaskStatusesPending provides

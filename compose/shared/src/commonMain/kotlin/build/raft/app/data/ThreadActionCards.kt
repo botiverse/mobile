@@ -3,6 +3,8 @@ package build.raft.app.data
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.KeepGeneratedSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
@@ -14,6 +16,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonTransformingSerializer
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
@@ -337,7 +340,9 @@ internal data class WireActionCardPresentation(
     val card: JsonElement? = null,
 )
 
-@Serializable
+@OptIn(ExperimentalSerializationApi::class)
+@KeepGeneratedSerializer
+@Serializable(with = WireActionCardMetadataSerializer::class)
 internal data class WireActionCardMetadata(
     val kind: String? = null,
     val version: Int? = null,
@@ -393,9 +398,16 @@ internal data class WireActionCardMetadata(
      * A task's assignment line (`kind: "task-assignment"`, TaskAssignmentNotice.kt; it also reads
      * [actor]): kept as JSON for the same reason. An explicit `assignee: null` (cleared) and an
      * absent one both decode to null here; either way the line is no hand-off.
+     *
+     * For [previousAssignee] (botiverse/slock #15631), explicit `null` (nobody held it) must stay
+     * apart from absent (older lines written before it was recorded), even under `coerceInputValues
+     * = true`. [WireActionCardMetadataSerializer] records key presence in [previousAssigneePresent]
+     * from the raw JSON object before field decoding runs.
      */
     val taskNumber: JsonElement? = null,
     val assignee: JsonElement? = null,
+    val previousAssignee: JsonElement? = null,
+    val previousAssigneePresent: Boolean = previousAssignee != null,
     val reason: JsonElement? = null,
     /*
      * A delegated-send receipt's lines (`kind: "delegated-receipt"`, AssistantDmCards.kt): kept as
@@ -449,10 +461,27 @@ internal fun WireActionCardMetadata.taskAssignmentNotice(): TaskAssignmentNotice
                 taskNumber?.let { put("taskNumber", it) }
                 actor?.let { put("actor", it) }
                 put("assignee", assignee ?: JsonNull)
+                if (previousAssigneePresent) put("previousAssignee", previousAssignee ?: JsonNull)
                 reason?.let { put("reason", it) }
             }
         )
     )
+}
+
+@OptIn(ExperimentalSerializationApi::class)
+internal object WireActionCardMetadataSerializer :
+    JsonTransformingSerializer<WireActionCardMetadata>(WireActionCardMetadata.generatedSerializer()) {
+    override fun transformDeserialize(element: JsonElement): JsonElement {
+        if (element !is JsonObject) return element
+        return JsonObject(element + ("previousAssigneePresent" to JsonPrimitive("previousAssignee" in element)))
+    }
+
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject && "previousAssigneePresent" in element) {
+            JsonObject(element - "previousAssigneePresent")
+        } else {
+            element
+        }
 }
 
 @Serializable

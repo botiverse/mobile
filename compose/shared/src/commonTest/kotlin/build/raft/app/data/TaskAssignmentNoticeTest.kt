@@ -9,9 +9,10 @@ import kotlin.test.assertTrue
 
 /**
  * A task's assignment line (`actionMetadata.kind: "task-assignment"`), read as botiverse/slock
- * v1.21.64 (0d4ec9fd) reads it: `packages/shared/src/taskAssignmentNotice.ts`, the cases of
- * `packages/web/tests/taskHandoffNotice.test.ts`, and the shape `buildTaskAssignmentNotice`
- * (`packages/server/src/services/taskConversationNotice.ts`) writes.
+ * #15631 (`4635757f2`) reads it: `packages/shared/src/taskAssignmentNotice.ts`, the cases of
+ * `packages/web/tests/taskHandoffNotice.test.ts`, and the shape `buildTaskAssignmentNotice` /
+ * `buildTaskReleaseNoticeMetadata` (`packages/server/src/services/taskConversationNotice.ts`)
+ * write.
  */
 class TaskAssignmentNoticeTest {
     private val otter = TaskAssignmentNoticeParty(TaskAssignmentPartyType.Agent, "agent-otter", "otter", "Otter")
@@ -21,26 +22,80 @@ class TaskAssignmentNoticeTest {
     private fun partyJson(party: TaskAssignmentNoticeParty?): String =
         party?.let { """{"type":"${it.type.wireValue}","id":"${it.id}","name":"${it.name}","displayName":"${it.displayName}"}""" } ?: "null"
 
-    private fun json(actor: TaskAssignmentNoticeParty, assignee: TaskAssignmentNoticeParty?, reason: String? = null): String =
-        """{"kind":"task-assignment","taskNumber":51,"actor":${partyJson(actor)},"assignee":${partyJson(assignee)}${reason?.let { ",\"reason\":\"$it\"" } ?: ""}}"""
+    private fun json(
+        actor: TaskAssignmentNoticeParty,
+        assignee: TaskAssignmentNoticeParty?,
+        reason: String? = null,
+        includePreviousAssignee: Boolean = false,
+        previousAssignee: TaskAssignmentNoticeParty? = null,
+        rawPreviousAssignee: String? = null,
+    ): String {
+        val prevField =
+            when {
+                rawPreviousAssignee != null -> ""","previousAssignee":$rawPreviousAssignee"""
+                includePreviousAssignee -> ""","previousAssignee":${partyJson(previousAssignee)}"""
+                else -> ""
+            }
+        val reasonField = reason?.let { ""","reason":"$it"""" }.orEmpty()
+        return """{"kind":"task-assignment","taskNumber":51,"actor":${partyJson(actor)},"assignee":${partyJson(assignee)}$prevField$reasonField}"""
+    }
 
     private fun read(raw: String): TaskAssignmentNotice? = readTaskAssignmentNotice(Json.parseToJsonElement(raw))
 
     /** The line as the App projects it from a message's `actionMetadata` and reads it back where it draws the line. */
-    private fun projected(raw: String): TaskAssignmentNotice? {
-        val wire = Json { ignoreUnknownKeys = true }.decodeFromString(WireActionCardMetadata.serializer(), raw)
+    private fun projected(raw: String, coerceInputValues: Boolean = true): TaskAssignmentNotice? {
+        val wire =
+            Json {
+                ignoreUnknownKeys = true
+                this.coerceInputValues = coerceInputValues
+            }.decodeFromString(WireActionCardMetadata.serializer(), raw)
         return taskAssignmentNoticeOf(wire.toMessageItemMetadata())
     }
 
     @Test
-    fun onlyAHandOffToSomeoneElseWithAReasonReadsAsAHandOffCard() {
-        val handoff = json(otter, xx, "Your call: Friday or Monday?")
-        assertEquals("Your call: Friday or Monday?", read(handoff).asTaskHandoff()?.reason)
-        assertNull(read(json(otter, xx)).asTaskHandoff(), "no reason: the one-line notice")
-        assertNull(read(json(otter, otter, "mine")).asTaskHandoff(), "taking it yourself")
+    fun aHandOffToSomeoneElseWithOrWithoutAReasonReadsAsAHandOffCard() {
+        val withReason = json(otter, xx, "Your call: Friday or Monday?")
+        assertEquals("Your call: Friday or Monday?", read(withReason).asTaskHandoff()?.reason)
+        val withoutReason = read(json(otter, xx)).asTaskHandoff()
+        assertEquals(xx, withoutReason?.assignee, "no reason: still a hand-off")
+        assertNull(withoutReason?.reason)
+        assertNull(read(json(otter, otter)).asTaskHandoff(), "taking it yourself")
+        assertNull(read(json(otter, otter, "mine")).asTaskHandoff(), "taking it yourself, with a reason")
         assertNull(read(json(otter, null)).asTaskHandoff(), "clearing the assignee")
-        assertNull(read(json(otter, xx, "   ")).asTaskHandoff(), "a blank reason is none")
-        for (raw in listOf(handoff, json(otter, xx), json(otter, null))) assertEquals(read(raw), projected(raw), raw)
+        val blankReason = read(json(otter, xx, "   ")).asTaskHandoff()
+        assertEquals(xx, blankReason?.assignee, "blank reason is still a hand-off without reason")
+        assertNull(blankReason?.reason, "a blank reason is none")
+        for (raw in listOf(
+            withReason,
+            json(otter, xx),
+            json(otter, null),
+            json(otter, xx, "Bob is out", includePreviousAssignee = true, previousAssignee = bob),
+            json(otter, xx, "First pass", includePreviousAssignee = true, previousAssignee = null),
+            json(otter, null, includePreviousAssignee = true, previousAssignee = xx),
+        )) {
+            assertEquals(read(raw), projected(raw, coerceInputValues = true), "coerce=true: $raw")
+            assertEquals(read(raw), projected(raw, coerceInputValues = false), "coerce=false: $raw")
+        }
+    }
+
+    @Test
+    fun previousAssigneeDistinguishesPartyExplicitNullAbsentAndMalformed() {
+        val withParty = checkNotNull(read(json(otter, xx, "Bob is out", includePreviousAssignee = true, previousAssignee = bob)))
+        assertEquals(bob, withParty.previousAssignee)
+        assertTrue(withParty.previousAssigneeRecorded)
+
+        val explicitNull = checkNotNull(read(json(otter, xx, includePreviousAssignee = true, previousAssignee = null)))
+        assertNull(explicitNull.previousAssignee)
+        assertTrue(explicitNull.previousAssigneeRecorded, "explicit null stays apart from absent")
+
+        val absent = checkNotNull(read(json(otter, xx)))
+        assertNull(absent.previousAssignee)
+        assertFalse(absent.previousAssigneeRecorded, "older line without previousAssignee")
+
+        val malformed = checkNotNull(read(json(otter, xx, rawPreviousAssignee = """{"type":"bot","id":"x"}""")))
+        assertNull(malformed.previousAssignee)
+        assertFalse(malformed.previousAssigneeRecorded, "malformed previousAssignee falls back to unrecorded")
+        assertEquals(malformed, projected(json(otter, xx, rawPreviousAssignee = """"not-a-party""""), coerceInputValues = true))
     }
 
     @Test
@@ -67,35 +122,81 @@ class TaskAssignmentNoticeTest {
     }
 
     @Test
-    fun aHandOffComesBackWhenAssignedBackToItsActorOrItsActorTakesIt() {
-        fun line(id: String, at: String, notice: TaskAssignmentNotice?) = TaskAssignmentTimelineLine(id, at, notice)
-        val handoff = line("h1", "2026-11-10T08:00:00.000Z", TaskAssignmentNotice(51, otter, xx, "Your call"))
-        val status = line("s1", "2026-11-10T08:00:00.000Z", null)
-        val back = line("b1", "2026-11-10T09:30:00.000Z", TaskAssignmentNotice(51, xx, otter))
-        assertEquals(mapOf("h1" to TaskHandoffReturn("2026-11-10T09:30:00.000Z", xx)), taskHandoffReturns(listOf(handoff, status, back)), "xxchan handed it back")
+    fun aHandOffGoesBackWhenLatestLineGivingTaskToActorWasMadeByNewAssignee() {
+        fun line(id: String, notice: TaskAssignmentNotice?) = TaskAssignmentTimelineLine(id, notice)
+        val first = line("h1", TaskAssignmentNotice(51, xx, otter, "Can you draft it?"))
+        val status = line("s1", null)
+        val back = line("h2", TaskAssignmentNotice(51, otter, xx, "Draft is up"))
+        val timeline = taskHandoffTimeline(listOf(first, status, back))
+        assertEquals(false, timeline["h1"]?.back, "nobody gave Otter the task before")
+        assertEquals(true, timeline["h2"]?.back, "back to xxchan, who gave it to Otter")
 
-        val second = line("h2", "2026-11-10T10:00:00.000Z", TaskAssignmentNotice(51, otter, xx, "Review the copy"))
-        val took = line("t2", "2026-11-10T11:00:00.000Z", TaskAssignmentNotice(51, otter, otter))
-        assertEquals(TaskHandoffReturn("2026-11-10T11:00:00.000Z", otter), taskHandoffReturns(listOf(second, took))["h2"], "Otter took it back")
+        val onward = line("h3", TaskAssignmentNotice(51, otter, bob, "Bob reviews"))
+        assertEquals(false, taskHandoffTimeline(listOf(first, onward))["h3"]?.back, "on to someone new")
+
+        // Otter later took it themselves: the latest line giving it to Otter is Otter's own.
+        val took = line("t1", TaskAssignmentNotice(51, otter, otter))
+        val afterTake = line("h4", TaskAssignmentNotice(51, otter, xx, "Done"))
+        assertEquals(false, taskHandoffTimeline(listOf(first, took, afterTake))["h4"]?.back, "Otter took it, nobody handed it over")
     }
 
     @Test
-    fun aHandOffPassedOnIsStillWaitingUntilItReachesItsActor() {
-        fun line(id: String, at: String, notice: TaskAssignmentNotice) = TaskAssignmentTimelineLine(id, at, notice)
-        val handoff = line("h1", "2026-11-10T08:00:00.000Z", TaskAssignmentNotice(51, otter, xx, "Your call"))
-        val passedOn = line("p1", "2026-11-10T08:00:00.000Z", TaskAssignmentNotice(51, xx, bob, "Bob knows the numbers"))
-        assertTrue(taskHandoffReturns(listOf(handoff, passedOn)).isEmpty())
-        val backToXx = line("x1", "2026-11-10T12:00:00.000Z", TaskAssignmentNotice(51, bob, xx, "Done, numbers attached"))
-        val all = taskHandoffReturns(listOf(handoff, passedOn, backToXx))
-        assertEquals("2026-11-10T12:00:00.000Z", all["p1"]?.at, "Bob gave it back to xxchan")
-        assertFalse("h1" in all, "Otter's hand-off is still waiting")
+    fun previousHolderUsesRecordedPreviousAssigneeElseLatestEarlierAssignmentLine() {
+        fun line(id: String, notice: TaskAssignmentNotice) = TaskAssignmentTimelineLine(id, notice)
+        val first = line("h1", TaskAssignmentNotice(51, otter, xx, "Your call"))
+        val reassigned = line("h2", TaskAssignmentNotice(51, otter, bob, "Bob instead"))
+        // Older lines carry no previousAssignee: xxchan held it, from the line before.
+        val olderTimeline = taskHandoffTimeline(listOf(first, reassigned))
+        assertNull(olderTimeline["h1"]?.previous, "nobody held it before the first line here")
+        assertEquals(xx, olderTimeline["h2"]?.previous)
+
+        // A line that records nobody held it is not read from the line before (a release left no holder).
+        val none = line("h3", TaskAssignmentNotice(51, otter, bob, "Bob instead", previousAssignee = null, previousAssigneeRecorded = true))
+        assertNull(taskHandoffTimeline(listOf(first, none))["h3"]?.previous)
+
+        val released = line("r1", TaskAssignmentNotice(51, xx, null, previousAssignee = xx, previousAssigneeRecorded = true))
+        val again = line("h4", TaskAssignmentNotice(51, otter, xx, "Back to you"))
+        val afterRelease = taskHandoffTimeline(listOf(first, released, again))
+        assertNull(afterRelease["h4"]?.previous, "released: nobody held it")
+
+        // The line's own record works even without an earlier line in the timeline.
+        val recorded = line("h5", TaskAssignmentNotice(51, otter, bob, "Bob instead", previousAssignee = xx))
+        assertEquals(xx, taskHandoffTimeline(listOf(recorded))["h5"]?.previous)
     }
 
     @Test
-    fun theProjectedKeysStayOutOfTheLinesDetails() {
-        val metadata = checkNotNull(read(json(otter, xx, "Your call"))).toMessageMetadata()
+    fun theProjectedKeysStayOutOfTheLinesDetailsAndStayBackwardCompatible() {
+        val metadata =
+            checkNotNull(read(json(otter, xx, "Your call", includePreviousAssignee = true, previousAssignee = bob)))
+                .toMessageMetadata()
         assertTrue(metadata.keys.all(::isTaskAssignmentNoticeMetadataKey))
         assertTrue(metadata.keys.any { it.startsWith("taskAssignment.assignee") })
+        assertTrue(metadata.keys.any { it.startsWith("taskAssignment.previousAssignee") })
+
+        val explicitNullMetadata =
+            checkNotNull(read(json(otter, xx, includePreviousAssignee = true, previousAssignee = null)))
+                .toMessageMetadata()
+        assertTrue(explicitNullMetadata.keys.all(::isTaskAssignmentNoticeMetadataKey))
+        val roundTrippedNull = checkNotNull(taskAssignmentNoticeOf(explicitNullMetadata))
+        assertNull(roundTrippedNull.previousAssignee)
+        assertTrue(roundTrippedNull.previousAssigneeRecorded)
+
+        // Cached metadata stored by older builds (before previousAssignee existed) decodes cleanly as unrecorded.
+        val legacyMetadata =
+            mapOf(
+                "taskAssignment.taskNumber" to "51",
+                "taskAssignment.actorType" to "agent",
+                "taskAssignment.actorId" to "agent-otter",
+                "taskAssignment.actorName" to "otter",
+                "taskAssignment.actorDisplayName" to "Otter",
+                "taskAssignment.assigneeType" to "user",
+                "taskAssignment.assigneeId" to "user-xx",
+                "taskAssignment.assigneeName" to "xxchan",
+                "taskAssignment.assigneeDisplayName" to "xxchan",
+                "taskAssignment.reason" to "Your call",
+            )
+        val legacyNotice = checkNotNull(taskAssignmentNoticeOf(legacyMetadata))
+        assertEquals(TaskAssignmentNotice(51, otter, xx, "Your call", previousAssignee = null, previousAssigneeRecorded = false), legacyNotice)
         assertFalse(checkNotNull(read(json(otter, null))).toMessageMetadata().keys.any { it.startsWith("taskAssignment.assignee") }, "cleared: no assignee keys")
     }
 }

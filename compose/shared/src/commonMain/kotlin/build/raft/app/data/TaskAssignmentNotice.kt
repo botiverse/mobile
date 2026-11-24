@@ -11,9 +11,10 @@ import kotlinx.serialization.json.doubleOrNull
  * The structure of an assignment line in a task's conversation ("📌 Otter assigned #51 "…" to
  * @xxchan: <reason>", "📌 Otter took #51 …", "🔓 Otter unassigned #51 …"), carried as the system
  * message's `actionMetadata` (botiverse/slock `packages/shared/src/taskAssignmentNotice.ts`,
- * #13927). The text stays the record; the App reads this to draw a hand-off with a reason as a
- * card ([isTaskHandoffWithReason]) and to see when the task later comes back to whoever handed it
- * off ([taskHandoffReturns], web `taskHandoffNotice.ts`).
+ * #13927, #15631). The text stays the record; the App reads this to draw every hand-off to someone
+ * else (with or without a reason) as its actor's message with a card ([isTaskHandoff]) and to
+ * resolve who held the task before and whether it goes back ([taskHandoffTimeline], web
+ * `taskHandoffNotice.ts`).
  */
 
 /** `TASK_ASSIGNMENT_NOTICE_KIND`: the system message's `actionMetadata.kind` (the stored spelling). */
@@ -30,7 +31,7 @@ enum class TaskAssignmentPartyType(val wireValue: String) {
     }
 }
 
-/** `TaskAssignmentNoticeParty`: who changed the assignee, or the new assignee. */
+/** `TaskAssignmentNoticeParty`: who changed the assignee, the new assignee, or who held it before. */
 data class TaskAssignmentNoticeParty(
     val type: TaskAssignmentPartyType,
     val id: String,
@@ -49,6 +50,19 @@ data class TaskAssignmentNotice(
     val assignee: TaskAssignmentNoticeParty?,
     /** A hand-off to someone else: what the task waits on them for. */
     val reason: String? = null,
+    /**
+     * Who held the task before, when someone held it and it changed hands (botiverse/slock
+     * #15631): with [actor] and [assignee], the three people a reassignment involves. Null when
+     * nobody held it ([previousAssigneeRecorded] = true) or on lines written before it was
+     * recorded ([previousAssigneeRecorded] = false).
+     */
+    val previousAssignee: TaskAssignmentNoticeParty? = null,
+    /**
+     * True when `previousAssignee` was explicitly recorded on the line (either a party or `null`
+     * for nobody); false when absent (older lines before #15631), so [taskHandoffTimeline] falls
+     * back to the latest earlier assignment or release line's holder.
+     */
+    val previousAssigneeRecorded: Boolean = previousAssignee != null,
 )
 
 private fun JsonElement?.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
@@ -74,57 +88,106 @@ fun readTaskAssignmentNotice(actionMetadata: JsonElement?): TaskAssignmentNotice
     val rawAssignee = metadata["assignee"]
     val assignee = if (rawAssignee is JsonNull) null else readParty(rawAssignee) ?: return null
     val reason = metadata["reason"].stringOrNull()?.takeIf { it.isNotBlank() }
-    return TaskAssignmentNotice(taskNumber = taskNumber.toInt(), actor = actor, assignee = assignee, reason = reason)
+    // Null (nobody held it) stays apart from absent (an older line).
+    val rawPrevious = metadata["previousAssignee"]
+    val previousAssignee: TaskAssignmentNoticeParty?
+    val previousAssigneeRecorded: Boolean
+    when {
+        rawPrevious is JsonNull -> {
+            previousAssignee = null
+            previousAssigneeRecorded = true
+        }
+        rawPrevious != null -> {
+            val parsed = readParty(rawPrevious)
+            previousAssignee = parsed
+            previousAssigneeRecorded = parsed != null
+        }
+        else -> {
+            previousAssignee = null
+            previousAssigneeRecorded = false
+        }
+    }
+    return TaskAssignmentNotice(
+        taskNumber = taskNumber.toInt(),
+        actor = actor,
+        assignee = assignee,
+        reason = reason,
+        previousAssignee = previousAssignee,
+        previousAssigneeRecorded = previousAssigneeRecorded,
+    )
 }
 
 /** Web `sameParty`. */
 fun TaskAssignmentNoticeParty.sameParty(other: TaskAssignmentNoticeParty?): Boolean =
     other != null && type == other.type && id == other.id
 
-/** `isTaskHandoffWithReason`: the task went to someone other than the actor, saying why. */
-val TaskAssignmentNotice.isTaskHandoffWithReason: Boolean
-    get() = reason != null && assignee != null && !assignee.sameParty(actor)
+/**
+ * Web `isTaskHandoff` (botiverse/slock #15631): the task went to someone other than whoever moved
+ * it, with or without a reason. Claims ("took") and unassigns stay one-line events.
+ */
+val TaskAssignmentNotice.isTaskHandoff: Boolean
+    get() = assignee != null && !assignee.sameParty(actor)
 
-/** A hand-off with a reason (web `readTaskHandoffNotice`): the notice when [isTaskHandoffWithReason], else null. */
-fun TaskAssignmentNotice?.asTaskHandoff(): TaskAssignmentNotice? = this?.takeIf { it.isTaskHandoffWithReason }
+/** A hand-off (web `readTaskHandoffNotice`): the notice when [isTaskHandoff], else null. */
+fun TaskAssignmentNotice?.asTaskHandoff(): TaskAssignmentNotice? = this?.takeIf { it.isTaskHandoff }
 
-/** When a hand-off came back to whoever made it (web `TaskHandoffReturn`). */
-data class TaskHandoffReturn(
-    /** When it came back (the later line's `createdAt`). */
-    val at: String,
-    /** Who gave it back: the hand-off's actor (took it back) or someone else (handed it back). */
-    val by: TaskAssignmentNoticeParty,
+/** A hand-off's place in its conversation's timeline (web `TaskHandoffTimeline`, #15631). */
+data class TaskHandoffTimeline(
+    /**
+     * Who held the task before the hand-off: its line's `previousAssignee` (null: nobody), or for
+     * a line written before that was recorded, the assignee of the latest earlier assignment or
+     * release line here (null when there is none).
+     */
+    val previous: TaskAssignmentNoticeParty?,
+    /**
+     * The task goes back to whoever handed it to the actor: the latest earlier line here that gave
+     * the task to the actor was made by the new assignee.
+     */
+    val back: Boolean,
 )
 
-/** One line of a task's conversation as [taskHandoffReturns] reads it. */
+/** One line of a task's conversation as [taskHandoffTimeline] reads it. */
 data class TaskAssignmentTimelineLine(
     val messageId: String,
-    val createdAt: String,
     /** The line's assignment notice; null for any other message (and for a non-system one). */
     val notice: TaskAssignmentNotice?,
 )
 
 /**
- * Web `taskHandoffReturns`: for each hand-off with a reason, the first later assignment line that
- * gives the task back to whoever handed it off (they took it, or someone assigned it to them). A
- * hand-off another one replaced before it came back stays open: only a return to its own actor
- * closes it. [lines] are in timeline order.
+ * Web `taskHandoffTimeline` (#15631): for each hand-off in a task's conversation, who held the
+ * task before it and whether it hands the task back. [lines] are in timeline order.
  */
-fun taskHandoffReturns(lines: List<TaskAssignmentTimelineLine>): Map<String, TaskHandoffReturn> {
-    val returns = LinkedHashMap<String, TaskHandoffReturn>()
-    val open = mutableListOf<Pair<String, TaskAssignmentNoticeParty>>()
+fun taskHandoffTimeline(lines: List<TaskAssignmentTimelineLine>): Map<String, TaskHandoffTimeline> {
+    val timeline = LinkedHashMap<String, TaskHandoffTimeline>()
+    var holder: TaskAssignmentNoticeParty? = null
+    // Who gave the task to whom, latest last.
+    val given = mutableListOf<Pair<TaskAssignmentNoticeParty, TaskAssignmentNoticeParty>>()
     for (line in lines) {
         val notice = line.notice ?: continue
-        for (i in open.indices.reversed()) {
-            val (id, actor) = open[i]
-            if (actor.sameParty(notice.assignee)) {
-                returns[id] = TaskHandoffReturn(at = line.createdAt, by = notice.actor)
-                open.removeAt(i)
-            }
+        if (notice.isTaskHandoff) {
+            val assignee = notice.assignee
+            timeline[line.messageId] =
+                TaskHandoffTimeline(
+                    previous = if (notice.previousAssigneeRecorded) notice.previousAssignee else holder,
+                    back = assignee != null && lastGivenBy(given, notice.actor)?.sameParty(assignee) == true,
+                )
         }
-        if (notice.isTaskHandoffWithReason) open += line.messageId to notice.actor
+        notice.assignee?.let { given += it to notice.actor }
+        holder = notice.assignee
     }
-    return returns
+    return timeline
+}
+
+/** Who made the latest line here that gave the task to [party]; null when none did. */
+private fun lastGivenBy(
+    given: List<Pair<TaskAssignmentNoticeParty, TaskAssignmentNoticeParty>>,
+    party: TaskAssignmentNoticeParty,
+): TaskAssignmentNoticeParty? {
+    for (i in given.indices.reversed()) {
+        val (to, by) = given[i]
+        if (to.sameParty(party)) return by
+    }
+    return null
 }
 
 /*
@@ -134,8 +197,10 @@ fun taskHandoffReturns(lines: List<TaskAssignmentTimelineLine>): Map<String, Tas
 private const val NoticeMetadataPrefix = "taskAssignment."
 private const val NoticeMetadataTaskNumber = "${NoticeMetadataPrefix}taskNumber"
 private const val NoticeMetadataReason = "${NoticeMetadataPrefix}reason"
+private const val NoticeMetadataPreviousAssigneeNone = "${NoticeMetadataPrefix}previousAssigneeNone"
 private const val ActorPrefix = "${NoticeMetadataPrefix}actor"
 private const val AssigneePrefix = "${NoticeMetadataPrefix}assignee"
+private const val PreviousAssigneePrefix = "${NoticeMetadataPrefix}previousAssignee"
 
 /** Whether [key] is one of the notice's metadata strings (left out of a system line's details). */
 internal fun isTaskAssignmentNoticeMetadataKey(key: String): Boolean = key.startsWith(NoticeMetadataPrefix)
@@ -160,16 +225,24 @@ fun TaskAssignmentNotice.toMessageMetadata(): Map<String, String> =
         putParty(ActorPrefix, actor)
         assignee?.let { putParty(AssigneePrefix, it) }
         reason?.let { put(NoticeMetadataReason, it) }
+        when {
+            previousAssignee != null -> putParty(PreviousAssigneePrefix, previousAssignee)
+            previousAssigneeRecorded -> put(NoticeMetadataPreviousAssigneeNone, "1")
+        }
     }
 
 /** The notice a projected message's metadata carries; null for any other message. */
 fun taskAssignmentNoticeOf(metadata: Map<String, String>): TaskAssignmentNotice? {
     val taskNumber = metadata[NoticeMetadataTaskNumber]?.toIntOrNull() ?: return null
     val actor = metadata.party(ActorPrefix) ?: return null
+    val previousParty = metadata.party(PreviousAssigneePrefix)
+    val previousNone = metadata[NoticeMetadataPreviousAssigneeNone] == "1"
     return TaskAssignmentNotice(
         taskNumber = taskNumber,
         actor = actor,
         assignee = metadata.party(AssigneePrefix),
         reason = metadata[NoticeMetadataReason]?.takeIf { it.isNotBlank() },
+        previousAssignee = previousParty,
+        previousAssigneeRecorded = previousParty != null || previousNone,
     )
 }

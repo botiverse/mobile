@@ -61,8 +61,10 @@ private val ThreadSystemMessageBodyColor: Color get() = RaftColor.TextBlack.copy
 internal fun ThreadSystemMessageRow(
     message: RaftThreadMessageItem,
     timestampValue: String,
-    /** The conversation's messages, oldest first: a hand-off card reads whether the task came back since. */
+    /** The conversation's messages, oldest first: a hand-off card reads who held the task before and whether it goes back. */
     timeline: List<RaftThreadMessageItem> = emptyList(),
+    /** Precomputed hand-off timeline entry for [message] (avoids rescanning [timeline] per row). */
+    handoffTimeline: build.raft.app.data.TaskHandoffTimeline? = null,
     /**
      * The conversation list's link opener and server: with them, the assistant DM's receipt and
      * WeChat notice are cards (ThreadAssistantDmCards.kt); without (a share image, a thread's
@@ -74,11 +76,27 @@ internal fun ThreadSystemMessageRow(
     onExpand: (() -> Unit)? = null,
     /** A hand-off card's reason draws refs, @mentions and links with these; null keeps it plain text. */
     handoffReasonMarkdown: ThreadTaskHandoffReasonMarkdown? = null,
+    /** The reader's message body size: a hand-off's reason reads at body size (botiverse/slock #15631). */
+    messageBodyTextStyle: TextStyle = build.raft.designsystem.theme.RaftTheme.typography.body,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    memberModelLabelResolver: RaftMemberModelLabelResolver = EmptyRaftMemberModelLabelResolver,
+    onOpenMember: ((MemberDetailIdentity) -> Unit)? = null,
 ) {
     // The assistant DM's delegated-send receipt and WeChat connected notice are cards (web MessageItem).
     if (onOpenUrl != null && ThreadAssistantDmCardRow(message, serverSlug, onOpenUrl)) return
-    // A task handed to someone with a reason is a card, not the one-line notice (web MessageItem).
-    if (ThreadTaskHandoffRow(message, timeline, handoffReasonMarkdown)) return
+    // A task handed to someone else is its actor's message with a card, not the one-line notice (web MessageItem, #15631).
+    if (
+        ThreadTaskHandoffRow(
+            message = message,
+            timeline = timeline,
+            reasonMarkdown = handoffReasonMarkdown,
+            handoffTimeline = handoffTimeline,
+            messageBodyTextStyle = messageBodyTextStyle,
+            memberAvatarResolver = memberAvatarResolver,
+            memberModelLabelResolver = memberModelLabelResolver,
+            onOpenMember = onOpenMember,
+        )
+    ) return
     var expanded by remember(message.id) { mutableStateOf(false) }
     val timestampLayout = remember { threadSystemMessageTimestampLayoutSpec() }
     // A channel announcement's set, replace or remove line, in the reader's language (its text is
@@ -598,7 +616,11 @@ internal fun ThreadOriginCard(
                     if (displayOrigin.isSystemMessage() && originActionCard == null) {
                         ThreadSystemMessageRow(
                             message = displayOrigin,
-                            timestampValue = origin.timestampLabel
+                            timestampValue = origin.timestampLabel,
+                            messageBodyTextStyle = messageBodyTextStyle,
+                            memberAvatarResolver = memberAvatarResolver,
+                            memberModelLabelResolver = memberModelLabelResolver,
+                            onOpenMember = onOpenMember,
                         )
                     } else {
                         // The root message belongs to the parent scope, not this thread's read receipts.

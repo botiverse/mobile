@@ -27,7 +27,7 @@ import build.raft.designsystem.components.raftClickable
  * scroll anchoring and jump targets stay exact; a folded member of a closed group draws nothing.
  *
  * A run is broken only by a message that does not fold: a normal message, or a system line drawn
- * as a card (an action card, a task handed off with a reason). A day boundary does not break it
+ * as a card (an action card, a task handed off to someone else). A day boundary does not break it
  * (web neither); the timeline has no unread marker row to break it.
  */
 
@@ -68,7 +68,7 @@ private fun String.stripLeadingStatusGlyph(): String {
 /** Web `classifySystemMessage`; null for a message that never folds. */
 internal fun RaftThreadMessageItem.threadSystemMessageCategory(): ThreadSystemMessageCategory? {
     if (!isSystemMessage()) return null
-    // Drawn as cards, not event lines (web: delegated receipt, WeChat notice, hand-off with a reason).
+    // Drawn as cards, not event lines (web: delegated receipt, WeChat notice, task hand-off).
     if (threadActionCard() != null) return null
     if (taskHandoffNotice() != null) return null
     if (isAssistantDmCardLine()) return null

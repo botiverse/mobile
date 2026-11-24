@@ -21,10 +21,10 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The task hand-off card in the timeline (web `TaskHandoffCard.tsx`, botiverse/slock v1.21.64,
- * #13927 / #14007 / #14091), light and dark: waiting ("[avatar] @otter → [avatar] @xxchan", its
- * time, the reason), handed back by the assignee, taken back by its actor (both faded), between a
- * one-line assignment notice. Reports land in `build/reports/home-screenshots/`.
+ * The task hand-off message row and card in the timeline (web `MessageItem.tsx` +
+ * `TaskHandoffCard.tsx`, botiverse/slock #15631): actor's message with "Assigned to",
+ * "Assigned back to", "Reassigned from … to …", a hand-off without a reason, and a one-line claim.
+ * Reports land in `build/reports/home-screenshots/`.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -38,7 +38,11 @@ class ThreadTaskHandoffCardScreenshotTest {
     private fun capture(name: String, appearance: RaftAppAppearance) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalThreadActionCardSpecHost provides ThreadActionCardSpecHost(viewerUserId = ThreadTaskHandoffFixtures.xx.id),
+                LocalThreadTaskTitlesByNumber provides mapOf(51 to "Ship it"),
+            ) {
                 RaftDesignSystemTheme {
                     ThreadTaskHandoffFixtures.WithTime {
                         Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) { Lines() }
@@ -52,12 +56,11 @@ class ThreadTaskHandoffCardScreenshotTest {
 @Composable
 private fun Lines() {
     val f = ThreadTaskHandoffFixtures
-    val waiting = f.handoff
-    // Bob hands it to xxchan, who hands it back; xxchan hands another to Bob and takes it back.
-    val handedBack = f.line("h2", "2026-11-10T09:00:00.000Z", f.bob, f.xx, "Can you check the numbers before Friday?")
-    val back = f.line("b2", "2026-11-10T09:30:00.000Z", f.xx, f.bob)
-    val tookBack = f.line("h3", "2026-11-10T10:00:00.000Z", f.xx, f.bob, "Review the release copy, please.")
-    val took = f.line("t3", "2026-11-10T10:51:00.000Z", f.xx, f.xx)
-    val timeline = listOf(waiting, handedBack, back, tookBack, took)
+    val assigned = f.handoff
+    val back = f.line("h2", "2026-11-10T09:00:00.000Z", f.xx, f.otter, "Looks good, go ahead.")
+    val reassigned = f.line("h3", "2026-11-10T09:30:00.000Z", f.bob, f.xx, "Otter is away", previousAssignee = f.otter)
+    val noReason = f.line("h4", "2026-11-10T10:00:00.000Z", f.xx, f.bob, reason = null)
+    val took = f.line("t1", "2026-11-10T10:51:00.000Z", f.bob, f.bob)
+    val timeline = listOf(assigned, back, reassigned, noReason, took)
     timeline.forEach { ThreadSystemMessageRow(message = it, timestampValue = it.timestampLabel, timeline = timeline) }
 }
