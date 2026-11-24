@@ -61,15 +61,15 @@ permissions:
   packages: read
 
 concurrency:
-  # The nightly gets its own group. It runs on refs/heads/main, and in the shared
-  # test-refs/heads/main group GitHub keeps only the newest pending run, so a main push
-  # queued behind a running push replaced the pending nightly and the full readback
-  # (device suite, attachment legs) silently did not run.
-  group: test-${{ github.ref }}${{ github.event_name == 'schedule' && '-nightly' || '' }}
+  # The nightly and manual dispatches get their own groups. They run on refs/heads/main
+  # (or release branches), and in the shared test-refs/heads/main group GitHub keeps only
+  # the newest pending run, so a main push queued behind a running push replaced the pending
+  # nightly, and a manual `scope=ios` dispatch on main could collide with a main push run.
+  group: test-${{ github.ref }}${{ github.event_name == 'schedule' && '-nightly' || (github.event_name == 'workflow_dispatch' && format('-dispatch-{0}', inputs.scope) || '') }}
   # Preserve the running post-merge record on protected branches. GitHub still
   # coalesces multiple pending runs in the same group to the newest commit.
   # PR and merge-queue refs keep superseding stale work for that exact ref.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/release-') }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/release-') && !startsWith(github.ref, 'refs/heads/release/') }}
 
 jobs:
   plan:
@@ -500,45 +500,18 @@ jobs:
             :androidApp:compileDebugKotlin
             :androidApp:compileDebugUnitTestKotlin
             :ui-cmp:compileAndroidHostTest
-            :designsystem:compileTestKotlinDesktop
             # App identity receipt: the store variants' merged manifests declare
             # AppIdentityReceiptProvider enabled + DUMP-protected (manifest merge only, no R8).
             :androidApp:verifyReleaseIdentityReceiptProvider
             :androidApp:verifyPlayIdentityReceiptProvider
           )
-          compile=("${tasks[@]}")
-          if [ "$BUILD_CONNECTED_APKS" = true ]; then
-            # HandsCrash installs from Application.onCreate; keep that SDK on loopback in the
-            # connected-test APKs so the emulator suites never report to a real Hands host.
-            # (defaultConfig, so the debug unit-test build sees it as well on these tiers; no unit
-            # test reads BuildConfig.HANDS_BASE_URL.)
-            export SLOCK_HANDS_BASE_URL=https://127.0.0.1:1
-            # Assembling the three test APKs makes D8 merge their dex in the Gradle heap. On
-            # 2026-10-18 it died at 4g with "D8: java.lang.OutOfMemoryError: Java heap space" inside
-            # :androidApp:mergeLibDexConnectedTest while the runner reported 12 GiB available; the
-            # 8g compile heap covers it. Built in the compile invocation, before the tests: run
-            # together, the APK build's D8/R8 work overlapped the :shared test JVMs and the runner
-            # killed the job ~2 min into :shared:testDebugUnitTest (task #proj-mobile#74; runs
-            # 41812394919, 41825428986).
-            compile+=(
-              :shared:assembleDebugAndroidTest
-              :androidApp:assembleConnectedTest
-              :androidApp:assembleConnectedTestAndroidTest
-            )
+          # Compile :designsystem's desktopTest source set only when its desktop tests will run
+          # (touches compose/designsystem/, full tier, or record_screenshots); non-designsystem
+          # ordinary PRs skip desktop Skiko/Roborazzi test compilation.
+          if [ "$RECORD_SCREENSHOTS" = true ] || [ "$ANDROID_UNIT_SCOPE" != jvm ] || [ "$RUN_DESIGNSYSTEM_TESTS" != false ]; then
+            tasks+=(:designsystem:compileTestKotlinDesktop)
           fi
-          "$GRADLE_HEAP" 8g
-          ./gradlew "${compile[@]}" \
-            --continue \
-            --no-daemon \
-            --console=plain \
-            --stacktrace
-          "$GRADLE_HEAP" 4g
-          # :shared:verifySqlDelightMigration applies every checked-in migration (.sqm) to each
-          # schema snapshot (src/commonMain/sqldelight/databases/<n>.db) and fails if the result
-          # differs from the current RaftDatabase.sq schema (verifyMigrations is on in
-          # compose/shared/build.gradle.kts). CI never runs `check`, the only thing depending on
-          # verifySqlDelightMigration, so it is invoked explicitly.
-          tasks+=(
+          test_tasks=(
             :shared:verifySqlDelightMigration
             :core:testAndroidHostTest
             :realtime-socket:testAndroidHostTest
@@ -549,21 +522,67 @@ jobs:
           # Unit tier (comment above): anything but jvm runs the whole suite.
           unit_tier=()
           if [ "$RECORD_SCREENSHOTS" = true ]; then
-            tasks+=(:designsystem:recordRoborazziDesktop :shared:recordRoborazziDebug)
+            test_tasks+=(:designsystem:recordRoborazziDesktop :shared:recordRoborazziDebug)
           elif [ "$ANDROID_UNIT_SCOPE" = jvm ]; then
             unit_tier+=(-Praft.unitTest.skipRobolectric=true)
             if [ "$RUN_DESIGNSYSTEM_TESTS" != false ]; then
-              tasks+=(:designsystem:verifyRoborazziDesktop)
+              test_tasks+=(:designsystem:verifyRoborazziDesktop)
             fi
           else
-            tasks+=(:designsystem:verifyRoborazziDesktop :shared:verifyRoborazziDebug)
+            test_tasks+=(:designsystem:verifyRoborazziDesktop :shared:verifyRoborazziDebug)
           fi
           echo "Android unit tier: ${ANDROID_UNIT_SCOPE} (design system tests: ${RUN_DESIGNSYSTEM_TESTS}) ${unit_tier[*]}"
-          ./gradlew "${tasks[@]}" "${unit_tier[@]}" \
-            --continue \
-            --no-daemon \
-            --console=plain \
-            --stacktrace
+          if [ "$BUILD_CONNECTED_APKS" != true ] && [ "$ANDROID_UNIT_SCOPE" = jvm ] && [ "$RECORD_SCREENSHOTS" != true ]; then
+            # Ordinary PR tier (no connected APKs, no Robolectric/Roborazzi forks): run compile
+            # and plain JVM tests in one Gradle invocation to skip a second cold JVM boot and
+            # 9-project configuration pass (~45-75 s). 7g in-process compile heap + at most 2
+            # plain JVM test forks (512m each) stays well within the 16 GB runner memory budget.
+            "$GRADLE_HEAP" 7g
+            ./gradlew "${tasks[@]}" "${test_tasks[@]}" "${unit_tier[@]}" \
+              -Praft.unitTest.maxParallelForks=2 \
+              --continue \
+              --no-daemon \
+              --console=plain \
+              --stacktrace
+          else
+            compile=("${tasks[@]}")
+            if [ "$BUILD_CONNECTED_APKS" = true ]; then
+              # HandsCrash installs from Application.onCreate; keep that SDK on loopback in the
+              # connected-test APKs so the emulator suites never report to a real Hands host.
+              # (defaultConfig, so the debug unit-test build sees it as well on these tiers; no unit
+              # test reads BuildConfig.HANDS_BASE_URL.)
+              export SLOCK_HANDS_BASE_URL=https://127.0.0.1:1
+              # Assembling the three test APKs makes D8 merge their dex in the Gradle heap. On
+              # 2026-10-18 it died at 4g with "D8: java.lang.OutOfMemoryError: Java heap space" inside
+              # :androidApp:mergeLibDexConnectedTest while the runner reported 12 GiB available; the
+              # 8g compile heap covers it. Built in the compile invocation, before the tests: run
+              # together, the APK build's D8/R8 work overlapped the :shared test JVMs and the runner
+              # killed the job ~2 min into :shared:testDebugUnitTest (task #proj-mobile#74; runs
+              # 41812394919, 41825428986).
+              compile+=(
+                :shared:assembleDebugAndroidTest
+                :androidApp:assembleConnectedTest
+                :androidApp:assembleConnectedTestAndroidTest
+              )
+            fi
+            "$GRADLE_HEAP" 8g
+            ./gradlew "${compile[@]}" \
+              --continue \
+              --no-daemon \
+              --console=plain \
+              --stacktrace
+            "$GRADLE_HEAP" 4g
+            # :shared:verifySqlDelightMigration applies every checked-in migration (.sqm) to each
+            # schema snapshot (src/commonMain/sqldelight/databases/<n>.db) and fails if the result
+            # differs from the current RaftDatabase.sq schema (verifyMigrations is on in
+            # compose/shared/build.gradle.kts). CI never runs `check`, the only thing depending on
+            # verifySqlDelightMigration, so it is invoked explicitly.
+            ./gradlew "${tasks[@]}" "${test_tasks[@]}" "${unit_tier[@]}" \
+              --continue \
+              --no-daemon \
+              --console=plain \
+              --stacktrace
+          fi
 
       # 1.25.1 (#4802): RaftAppShellReadyContent grew past the JVM's 64 KB method limit and the
       # release compile failed with "Method too large". Read the class files the compile above wrote
