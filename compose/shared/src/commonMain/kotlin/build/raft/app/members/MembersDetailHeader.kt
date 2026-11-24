@@ -39,6 +39,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -86,6 +87,7 @@ import build.raft.designsystem.components.raftCopyable
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.data.map
@@ -94,9 +96,11 @@ import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.RaftHoverTier
 import androidx.compose.ui.semantics.selected
 
-// raft-ui PanelHeader on a phone: Back and the trailing action are 44dp ghost icon buttons
-// sitting 3dp from the screen edges, so their 22dp glyphs mirror each other.
-private val MembersHumanHeaderEdgeInset = 3.dp
+// raft-ui PanelHeader: Back and the trailing action are bar buttons whose glyphs land on the
+// 16dp content line (3dp from the edges with a phone's 44dp buttons, 8 with the wide touch head's 36).
+private val MembersHumanHeaderEdgeInset: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.barEdgeInset
 
 private val MembersHumanHeaderContentSpacing = 6.dp
 
@@ -147,7 +151,7 @@ internal fun MembersHumanDetailHeader(
             loading = directMessageOpening
         ) {
             // raft-ui `DirectMessageIcon`, 22px (web HumanDetailPanel).
-            MembersHumanGlyph(RaftLucideIconName.DirectMessage, 22.dp)
+            MembersHumanGlyph(RaftLucideIconName.DirectMessage, RaftTheme.controls.barIconSize)
         }
     }
     RaftTopPageHeader(
@@ -169,7 +173,7 @@ internal fun MembersHumanDetailHeader(
         titleLeadingContent = {
             if (showsBack) RaftPaneAwareBackButton(onClick = onBack)
             if (headRowTabs == null) {
-                MembersStickerAvatar(member, RaftAvatarSize.Md, memberAvatarResolver)
+                MembersStickerAvatar(member, RaftTheme.controls.headAvatar, memberAvatarResolver)
             }
         },
         titleContent = {
@@ -409,7 +413,7 @@ internal fun MembersDetailHeader(
                         // The web's panel head shows the avatar only; it is changed from the profile hero.
                         MembersRaftAvatar(
                             member = member,
-                            size = RaftAvatarSize.Md,
+                            size = RaftTheme.controls.headAvatar,
                             memberAvatarResolver = memberAvatarResolver
                         )
                         if (RaftTheme.scale == RaftScale.Wide && !headerMetaLabel.isNullOrBlank()) {
@@ -473,7 +477,7 @@ internal fun MembersDetailHeader(
                                 loading = loungeOpening,
                                 modifier = Modifier.testTag(AgentLoungeTestTags.ProfileAction)
                             ) {
-                                RaftContentLucideIcon(RaftLucideIconName.Users, size = 22.dp)
+                                RaftContentLucideIcon(RaftLucideIconName.Users, size = RaftTheme.controls.barIconSize)
                             }
                         }
                         if (showMessage && membersHeaderMessageUsesIconOnly(member.kind)) {
@@ -485,14 +489,16 @@ internal fun MembersDetailHeader(
                                 loading = directMessageOpening
                             ) {
                                 // raft-ui `DirectMessageIcon`, as the web head draws it.
-                                RaftContentLucideIcon(RaftLucideIconName.DirectMessage, size = 22.dp)
+                                RaftContentLucideIcon(RaftLucideIconName.DirectMessage, size = RaftTheme.controls.barIconSize)
                             }
                         } else if (showMessage) {
                             // A filled Button straight in the head ends on the content edge (raft-ui panelHeadEdges).
                             RaftButton(
                                 text = stringResource(Res.string.member_label_message),
                                 onClick = onOpenDirectMessage,
-                                modifier = Modifier.padding(end = 7.dp),
+                                // The filled button ends 10dp from the edge whatever the head's inset
+                                // (endInset, the bar-button inset less 2): 7 + 3 on a phone.
+                                modifier = Modifier.padding(end = (12.dp - RaftBackButtonDefaults.EdgeInset).coerceAtLeast(0.dp)),
                                 loading = directMessageOpening,
                                 leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.DirectMessage) }
                             )
@@ -515,7 +521,7 @@ internal fun MembersDetailHeader(
                                     }
                             ) {
                                 // Web AgentProfileOverflowMenu: EllipsisVertical.
-                                RaftContentLucideIcon(RaftLucideIconName.EllipsisVertical, size = 22.dp)
+                                RaftContentLucideIcon(RaftLucideIconName.EllipsisVertical, size = RaftTheme.controls.barIconSize)
                             }
                         }
                         // web AgentDetailPanel: the side pane's Close ends the head (nothing outside one).
