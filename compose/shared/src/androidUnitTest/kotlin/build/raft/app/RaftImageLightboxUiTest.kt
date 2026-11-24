@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftControlMetrics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
@@ -197,8 +198,7 @@ class RaftImageLightboxUiTest {
             )
             val bar = onNodeWithTag(RaftImageLightboxTopBarTag).getBoundsInRoot()
             val sender = onNodeWithTag(RaftImageLightboxSenderTag).getBoundsInRoot()
-            // The wide head by touch: 48 (#wg-mobile-sync:#265).
-            assertEquals(48.dp, bar.bottom, "one row with the title bar, not under it")
+            assertEquals(RaftControlMetrics.MobileShortHead.headHeight, bar.bottom, "one row with the title bar, not under it")
             assertTrue(sender.left >= 70.dp + 16.dp, "sender after the traffic lights: ${sender.left}")
             onNodeWithTagContentDescription("Close").performMouseInput { click(center) }
             mainClock.advanceTimeBy(500)

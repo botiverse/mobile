@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftControlMetrics
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -92,6 +93,10 @@ class RaftWideSplitHeaderAlignmentUiTest {
         AgentProfile,
         ChannelDetails,
     }
+
+    // The heads' height from the design system's own metrics (a wide window: the short head by touch).
+    private val TouchHead = RaftControlMetrics.MobileShortHead.headHeight.value
+    private val FineHead = RaftControlMetrics.Desktop.headHeight.value
 
     private var pointer by mutableStateOf(RaftPointerInput.Touch)
     private var rowWidth by mutableStateOf(2000f)
@@ -365,7 +370,7 @@ class RaftWideSplitHeaderAlignmentUiTest {
             pointer = RaftPointerInput.Touch
             showSplit()
 
-            listOf(RaftPointerInput.Touch to 48f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
+            listOf(RaftPointerInput.Touch to TouchHead, RaftPointerInput.Fine to FineHead).forEach { (mode, expected) ->
                 runOnIdle { pointer = mode }
                 waitForIdle()
                 val label = mode.name
@@ -407,7 +412,7 @@ class RaftWideSplitHeaderAlignmentUiTest {
             pointer = RaftPointerInput.Touch
             showSplit()
 
-            listOf(RaftPointerInput.Touch to 48f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
+            listOf(RaftPointerInput.Touch to TouchHead, RaftPointerInput.Fine to FineHead).forEach { (mode, expected) ->
                 runOnIdle { pointer = mode }
                 waitForIdle()
                 val convBottom = bottomDp(CONVERSATION_HEAD)
@@ -439,7 +444,7 @@ class RaftWideSplitHeaderAlignmentUiTest {
             pointer = RaftPointerInput.Touch
             showSplit()
 
-            listOf(RaftPointerInput.Touch to 48f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
+            listOf(RaftPointerInput.Touch to TouchHead, RaftPointerInput.Fine to FineHead).forEach { (mode, expected) ->
                 runOnIdle { pointer = mode }
                 waitForIdle()
                 val label = "700dp ${mode.name}"
@@ -482,7 +487,7 @@ class RaftWideSplitHeaderAlignmentUiTest {
                 pointer = RaftPointerInput.Touch
             }
             waitForIdle()
-            listOf(RaftPointerInput.Touch to 48f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
+            listOf(RaftPointerInput.Touch to TouchHead, RaftPointerInput.Fine to FineHead).forEach { (mode, expected) ->
                 runOnIdle { pointer = mode }
                 waitForIdle()
                 val label = "420dp ${mode.name}"
@@ -508,7 +513,7 @@ class RaftWideSplitHeaderAlignmentUiTest {
                 pointer = RaftPointerInput.Touch
             }
             waitForIdle()
-            listOf(RaftPointerInput.Touch to 48f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
+            listOf(RaftPointerInput.Touch to TouchHead, RaftPointerInput.Fine to FineHead).forEach { (mode, expected) ->
                 runOnIdle { pointer = mode }
                 waitForIdle()
                 val label = "280dp ${mode.name}"
