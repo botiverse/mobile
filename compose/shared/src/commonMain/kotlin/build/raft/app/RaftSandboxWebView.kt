@@ -123,6 +123,13 @@ internal data class RaftWebViewConfig(
      * [RaftHostHeader.origin] carry `Raft-Host: <value>`, and cross-origin GET redirects strip it.
      */
     val raftHost: RaftHostHeader? = null,
+    /**
+     * Desktop: true while a Compose loading cover (e.g. `RaftArtifactViewerSplashCover`) is drawn
+     * over this WebView. Keeps the heavyweight `SwingPanel` clipped to a 1dp corner and the native
+     * Wry view parked off-screen so Skiko's `ClipRectangle` never punches a blank hole through the
+     * Compose cover (#wg-mobile-sync:#242). Android and iOS ignore this.
+     */
+    val coverActive: Boolean = false,
 ) {
     val effectiveStoragePartition: RaftWebViewStoragePartition
         get() =

@@ -1314,6 +1314,9 @@ private fun RaftArtifactViewerWebBody(
             diagnosticsSurface = RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE,
             // #proj-workspace:#360: pinch-to-zoom stays available outside Desktop Mode too.
             allowPinchZoom = true,
+            // #wg-mobile-sync:#242: keep desktop's heavyweight SwingPanel tucked behind Compose's
+            // AppSplash until the cover ends so the splash is visible instead of a blank panel.
+            coverActive = loadingIndicator == RaftArtifactViewerLoadingIndicator.AppSplash,
             loadWatchdog = loadWatchdog,
             onLoadCommit = {
                 // A new document: it holds the token its injected session wrote.

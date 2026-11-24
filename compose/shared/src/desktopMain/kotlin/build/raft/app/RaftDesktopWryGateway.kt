@@ -49,6 +49,9 @@ interface RaftDesktopWryBridge {
     /** Moves the native view on screen once the page is past its loading frame (AWT EDT). */
     fun reveal()
 
+    /** Moves the native view back off screen while a Compose cover hides it (AWT EDT). */
+    fun hide() = Unit
+
     /**
      * Reads IPC messages, loading state, title, and back/forward capability off the AWT EDT and
      * delivers [onResult] back on the AWT EDT. Returns false without scheduling if not ready or
@@ -194,6 +197,7 @@ class RaftDesktopWryGateway(
     private val readWebviewId: () -> ULong?,
     private val registerNavigateListener: ((String) -> Boolean) -> Unit,
     private val revealComponent: () -> Unit,
+    private val hideComponent: () -> Unit = {},
     private val nativeOps: RaftDesktopWryNativeOps = RealRaftDesktopWryNativeOps,
     private val worker: (() -> Unit) -> Unit = RaftDesktopWryWorker::submit,
     private val postToEdt: (() -> Unit) -> Unit = { SwingUtilities.invokeLater(it) },
@@ -212,6 +216,11 @@ class RaftDesktopWryGateway(
         if (disposed) return
         visibilityGeneration.incrementAndGet()
         revealComponent()
+    }
+
+    override fun hide() {
+        if (disposed) return
+        hideComponent()
     }
 
     override fun poll(onResult: (RaftDesktopWryPollSnapshot) -> Unit): Boolean {
@@ -370,8 +379,13 @@ class RaftDesktopWryGateway(
                     dataDirectory = dataDirectory,
                     initScript = policy.documentStartScript(),
                     supportZoom = false,
-                    backgroundColor = Rgba(255u, 255u, 255u, 255u),
-                    transparent = false,
+                    // #wg-mobile-sync:#242: Wry's native createWebview places a new WKWebView at
+                    // (0, 0) until its 16 ms boundsTimer moves it off-screen. Keep the WKWebView
+                    // backdrop transparent so it never flashes a white rectangle over the top-left
+                    // of the window before placement; RaftDesktopWryNativeView supplies the white
+                    // backdrop once revealed in the target pane.
+                    backgroundColor = Rgba(0u, 0u, 0u, 0u),
+                    transparent = true,
                     enableNavigationGestures = false,
                     incognito = ephemeral,
                     autoplayWithoutUserInteraction = false,
@@ -398,7 +412,8 @@ class RaftDesktopWryGateway(
                 component = nativeView,
                 readWebviewId = { RaftDesktopWryPanelAccess.readWebviewId(panel) },
                 registerNavigateListener = { listener -> panel.addNavigateListener(listener) },
-                revealComponent = { nativeView.reveal() },
+                revealComponent = { nativeView.setRevealed(true) },
+                hideComponent = { nativeView.setRevealed(false) },
             ).also { gatewayRef = it }
         }
     }
