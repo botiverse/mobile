@@ -58,6 +58,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
@@ -511,122 +512,207 @@ internal fun TaskOpenSurfaceHost(
 ) {
     when (val surface = flow.surface) {
         is TaskOpenSurface.Pending -> {
-            val channelTasks =
-                editing?.let { rememberTaskChannelTasksViewModel(surface.task.channelId, it.authStore, it.tasksDataSource, it.tasksDataStore, it.log) }
-            val channelTasksState = channelTasks?.state?.collectAsState()?.value
-            val listed = channelTasksState?.currentTaskSummary(surface.task.id.value)
-            // The page follows the task channel's copy (an edit's optimistic value, its rollback, a
-            // `task:updated`), and gives way to the conversation once it exists.
-            LaunchedEffect(listed) {
-                flow.onTaskChanged(listed)?.let(onConversationArrived)
-            }
-            val onFailed by rememberUpdatedState(editing?.onFailed)
-            val onFailedWithTrace by rememberUpdatedState(editing?.onFailedWithTrace)
-            val onOperationFailed by rememberUpdatedState(editing?.onOperationFailed)
-            LaunchedEffect(channelTasks) {
-                channelTasks?.uiEvents?.collect { event ->
-                    if (event is SharedTasksEvent.OperationFailed) {
-                        onOperationFailed?.invoke(event)
-                            ?: onFailedWithTrace?.invoke(event.code, event.traceId)
-                            ?: onFailed?.invoke(event.code)
-                    }
-                }
-            }
-            LaunchedEffect(flow.handingOff, hostVisible) {
-                if (!flow.handingOff) return@LaunchedEffect
-                // The conversation page is over this one now; where it opened in place (a wide
-                // layout's pane) the host stays visible, so it goes after the page had time to show.
-                if (hostVisible) delay(TaskPendingHandOffFallbackMs)
-                flow.finishHandOff()
-            }
-            val task = surface.task
-            val resolvedServer = serverId?.takeIf { it.isNotBlank() }
-            val taskChannelId = task.channelId
-            val taskNumber = task.taskNumber
-            val hydrationDataSource = editing?.tasksDataSource
-            val currentEditing by rememberUpdatedState(editing)
-            val currentOnConversationArrived by rememberUpdatedState(onConversationArrived)
-            var summaryDetailHydrationSettled by remember(task.id, resolvedServer, taskChannelId, taskNumber) {
-                mutableStateOf(false)
-            }
-            val needsSummaryHydration =
-                hydrationDataSource != null &&
-                    !task.conversationDetailsLoaded &&
-                    task.conversationChannelId == null &&
-                    !summaryDetailHydrationSettled &&
-                    resolvedServer != null &&
-                    taskChannelId != null &&
-                    taskNumber != null
-            LaunchedEffect(
-                task.id,
-                task.conversationDetailsLoaded,
-                resolvedServer,
-                taskChannelId,
-                taskNumber,
-                hydrationDataSource,
-            ) {
-                if (
-                    hydrationDataSource == null ||
-                    summaryDetailHydrationSettled ||
-                    task.conversationDetailsLoaded ||
-                    task.conversationChannelId != null
-                ) {
-                    return@LaunchedEffect
-                }
-                val activeServer = resolvedServer ?: return@LaunchedEffect
-                val channelId = taskChannelId ?: return@LaunchedEffect
-                val number = taskNumber ?: return@LaunchedEffect
-                val detail =
-                    hydrationDataSource.loadChannelTaskByNumber(
-                        serverId = ServerId(activeServer),
-                        channelId = channelId,
-                        taskNumber = number,
-                        priority = build.raft.app.data.DataRequestPriority.Visible,
-                    )
-                if (detail is DataResult.Content && detail.data.task.id == task.id) {
-                    val fullTask = detail.data.task
-                    currentEditing?.tasksDataStore?.upsertTaskForCurrentOwner(activeServer, fullTask)
-                    flow.onTaskChanged(fullTask)?.let(currentOnConversationArrived)
-                }
-                summaryDetailHydrationSettled = true
-            }
-            val edits = channelTasks?.let { TaskHeadEdits(it::dispatch) }
-            val agentStatusResolver =
-                remember(membersStore, serverId) {
-                    membersStore?.let { store -> raftScopedAgentStatusResolver(store, serverId) }
-                }
             TaskPendingConversationWindow(onDismissRequest = { flow.requestClose() }) {
-                TaskPendingConversationPage(
-                    task = task,
-                    details = rememberTaskConversationDetails(task, detailsRepository, serverId),
-                    members = rememberTaskChannelMembers(membersStore, serverId, task.channelId),
-                    timeContext = timeContext,
-                    editable = edits != null && channelTasksState?.standIn != true,
-                    // Web canWriteTasksInChannel: the host says whether the reader may write the task's channel.
-                    canWriteChannel = canWriteTaskChannel(task.channelId),
-                    statusUpdating = channelTasksState?.statusUpdatingTaskId == task.id.value,
-                    sending = flow.sending || flow.handingOff,
-                    errorText = flow.errorText,
-                    errorTraceId = flow.errorTraceId,
-                    joined = joined(task),
-                    draft = flow.draft(serverId, task.id.value),
-                    onDraftChange = { flow.onDraftChange(serverId, task.id.value, it) },
-                    onBack = { flow.dismiss() },
-                    onSend = { text -> onSend(task, text) },
-                    onJoin = { onJoin(task) },
-                    onUpdateStatus = { status -> edits?.updateStatus(task, status) },
-                    onAssign = { member -> edits?.assign(task, member) },
+                TaskPendingSurfaceContent(
+                    surface = surface,
+                    flow = flow,
+                    onSend = onSend,
+                    joined = joined,
+                    onJoin = onJoin,
+                    detailsRepository = detailsRepository,
                     serverId = serverId,
-                    onMoveToBacklog = { reason -> edits?.moveToBacklog(task, reason) },
-                    onAmend = channelTasks.taskHeadAmend(task),
-                    loadingDiscussion = needsSummaryHydration,
+                    timeContext = timeContext,
+                    membersStore = membersStore,
+                    editing = editing,
+                    hostVisible = hostVisible,
+                    onConversationArrived = onConversationArrived,
+                    canWriteTaskChannel = canWriteTaskChannel,
                     viewerUserId = viewerUserId,
-                    agentStatusResolver = agentStatusResolver,
+                    useHostSafeArea = false,
+                    onBack = { flow.dismiss() },
                 )
             }
         }
         is TaskOpenSurface.Legacy -> TaskLegacyPanelSheet(task = surface.task, onDismiss = { flow.dismiss() })
         null -> Unit
+    }
+}
+
+/**
+ * Renders an open [TaskOpenSurface.Pending] task with its live channel-task store, detail
+ * hydration, first-send hand-off and editable head — either inside [TaskPendingConversationWindow]
+ * (from [TaskOpenSurfaceHost]) or inline inside [RaftTasksTaskColumnLayout] on the wide Tasks tab.
+ */
+@Composable
+internal fun TaskPendingSurfaceContent(
+    surface: TaskOpenSurface.Pending,
+    flow: TaskOpenSurfaceFlow,
+    onSend: (TaskSummary, String) -> Unit,
+    modifier: Modifier = Modifier,
+    joined: (TaskSummary) -> Boolean? = { null },
+    onJoin: (TaskSummary) -> Unit = {},
+    detailsRepository: TaskConversationDetailsRepository? = null,
+    serverId: String? = null,
+    timeContext: RaftTimeContext? = null,
+    membersStore: SharedServerMembersStore? = null,
+    editing: TaskPageEditing? = null,
+    hostVisible: Boolean = true,
+    onConversationArrived: (TaskSummary) -> Unit = {},
+    canWriteTaskChannel: (ChannelId?) -> Boolean = { true },
+    viewerUserId: String? = null,
+    useHostSafeArea: Boolean = false,
+    onBack: () -> Unit = { flow.dismiss() },
+) {
+    val task = surface.task
+    key(task.id.value) {
+        val currentEditing by rememberUpdatedState(editing)
+        val currentOnConversationArrived by rememberUpdatedState(onConversationArrived)
+        val channelTasks =
+            editing?.let { rememberTaskChannelTasksViewModel(task.channelId, it.authStore, it.tasksDataSource, it.tasksDataStore, it.log) }
+        val channelTasksState = channelTasks?.state?.collectAsState()?.value
+        val listed = channelTasksState?.currentTaskSummary(task.id.value)
+        // The page follows the task channel's copy (an edit's optimistic value, its rollback, a
+        // `task:updated`), and gives way to the conversation once it exists.
+        LaunchedEffect(listed) {
+            flow.onTaskChanged(listed)?.let(currentOnConversationArrived)
+        }
+        val onFailed by rememberUpdatedState(editing?.onFailed)
+        val onFailedWithTrace by rememberUpdatedState(editing?.onFailedWithTrace)
+        val onOperationFailed by rememberUpdatedState(editing?.onOperationFailed)
+        LaunchedEffect(channelTasks) {
+            channelTasks?.uiEvents?.collect { event ->
+                if (event is SharedTasksEvent.OperationFailed) {
+                    onOperationFailed?.invoke(event)
+                        ?: onFailedWithTrace?.invoke(event.code, event.traceId)
+                        ?: onFailed?.invoke(event.code)
+                }
+            }
+        }
+        LaunchedEffect(flow.handingOff, hostVisible) {
+            if (!flow.handingOff) return@LaunchedEffect
+            // The conversation page is over this one now; where it opened in place (a wide
+            // layout's pane) the host stays visible, so it goes after the page had time to show.
+            if (hostVisible) delay(TaskPendingHandOffFallbackMs)
+            flow.finishHandOff()
+        }
+        val resolvedServer = serverId?.takeIf { it.isNotBlank() }
+        val taskChannelId = task.channelId
+        val taskNumber = task.taskNumber
+        val hydrationDataSource = editing?.tasksDataSource
+        var summaryDetailHydrationSettled by remember(task.id, resolvedServer, taskChannelId, taskNumber) {
+            mutableStateOf(false)
+        }
+        val needsSummaryHydration =
+            hydrationDataSource != null &&
+                !task.conversationDetailsLoaded &&
+                task.conversationChannelId == null &&
+                !summaryDetailHydrationSettled &&
+                resolvedServer != null &&
+                taskChannelId != null &&
+                taskNumber != null
+        LaunchedEffect(
+            task.id,
+            task.conversationDetailsLoaded,
+            resolvedServer,
+            taskChannelId,
+            taskNumber,
+            hydrationDataSource,
+        ) {
+            if (
+                hydrationDataSource == null ||
+                summaryDetailHydrationSettled ||
+                task.conversationDetailsLoaded ||
+                task.conversationChannelId != null
+            ) {
+                return@LaunchedEffect
+            }
+            val activeServer = resolvedServer ?: return@LaunchedEffect
+            val channelId = taskChannelId ?: return@LaunchedEffect
+            val number = taskNumber ?: return@LaunchedEffect
+            val detail =
+                hydrationDataSource.loadChannelTaskByNumber(
+                    serverId = ServerId(activeServer),
+                    channelId = channelId,
+                    taskNumber = number,
+                    priority = build.raft.app.data.DataRequestPriority.Visible,
+                )
+            if (detail is DataResult.Content && detail.data.task.id == task.id) {
+                val fullTask = detail.data.task
+                currentEditing?.tasksDataStore?.upsertTaskForCurrentOwner(activeServer, fullTask)
+                flow.onTaskChanged(fullTask)?.let(currentOnConversationArrived)
+            }
+            summaryDetailHydrationSettled = true
+        }
+        val edits = channelTasks?.let { TaskHeadEdits(it::dispatch) }
+        val agentStatusResolver =
+            remember(membersStore, serverId) {
+                membersStore?.let { store -> raftScopedAgentStatusResolver(store, serverId) }
+            }
+        TaskPendingConversationPage(
+            task = task,
+            details = rememberTaskConversationDetails(task, detailsRepository, serverId),
+            members = rememberTaskChannelMembers(membersStore, serverId, task.channelId),
+            timeContext = timeContext,
+            editable = edits != null && channelTasksState?.standIn != true,
+            // Web canWriteTasksInChannel: the host says whether the reader may write the task's channel.
+            canWriteChannel = canWriteTaskChannel(task.channelId),
+            statusUpdating = channelTasksState?.statusUpdatingTaskId == task.id.value,
+            sending = flow.sending || flow.handingOff,
+            errorText = flow.errorText,
+            errorTraceId = flow.errorTraceId,
+            joined = joined(task),
+            draft = flow.draft(serverId, task.id.value),
+            onDraftChange = { flow.onDraftChange(serverId, task.id.value, it) },
+            onBack = onBack,
+            onSend = { text -> onSend(task, text) },
+            onJoin = { onJoin(task) },
+            onUpdateStatus = { status -> edits?.updateStatus(task, status) },
+            onAssign = { member -> edits?.assign(task, member) },
+            modifier = modifier,
+            serverId = serverId,
+            onMoveToBacklog = { reason -> edits?.moveToBacklog(task, reason) },
+            onAmend = channelTasks.taskHeadAmend(task),
+            useHostSafeArea = useHostSafeArea,
+            loadingDiscussion = needsSummaryHydration,
+            viewerUserId = viewerUserId,
+            agentStatusResolver = agentStatusResolver,
+        )
+    }
+}
+
+/**
+ * Keeps a pending task in the Tasks page's right column aligned with the tab, layout, live detail
+ * column, and server lifecycle — matching [AppShellAdaptiveColumnEffects] for live tasks while
+ * never cutting off an in-flight first send.
+ */
+@Composable
+internal fun TasksTabPendingColumnEffects(
+    flow: TaskOpenSurfaceFlow,
+    pendingColumnAllowed: Boolean,
+    liveDetailColumnOpen: Boolean,
+    serverId: String?,
+    onPendingClosed: () -> Unit,
+) {
+    val currentOnPendingClosed by rememberUpdatedState(onPendingClosed)
+    LaunchedEffect(pendingColumnAllowed, flow.surface, flow.sending) {
+        if (!pendingColumnAllowed && flow.surface is TaskOpenSurface.Pending && flow.requestClose()) {
+            currentOnPendingClosed()
+        }
+    }
+    LaunchedEffect(liveDetailColumnOpen, flow.surface, flow.sending) {
+        if (liveDetailColumnOpen && flow.surface is TaskOpenSurface.Pending) {
+            flow.requestClose()
+        }
+    }
+    var lastServerId by remember { mutableStateOf(serverId) }
+    LaunchedEffect(serverId, flow.sending) {
+        if (lastServerId != serverId) {
+            val hadSurface = flow.surface != null
+            if (!hadSurface || flow.requestClose()) {
+                lastServerId = serverId
+                if (hadSurface) currentOnPendingClosed()
+            }
+        }
     }
 }
 
@@ -709,13 +795,17 @@ internal fun TaskPendingConversationWindow(onDismissRequest: () -> Unit, content
     ) {
         // Opaque under the system bars too: without a scrim the host's tab bar showed through the
         // nav-bar strip, so the page looked like a floating sheet (web: full-screen, opaque).
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(RaftTheme.colors.layerCanvas)
-                .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)))
-        ) {
-            content()
+        // Clear LocalRaftTaskColumnHead so a modal opened from a live task thread inside the Tasks
+        // column still renders as a full-screen modal (leading Back, no column Expand/Close).
+        CompositionLocalProvider(LocalRaftTaskColumnHead provides null) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(RaftTheme.colors.layerCanvas)
+                    .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)))
+            ) {
+                content()
+            }
         }
     }
 }
@@ -835,6 +925,7 @@ internal fun TaskPendingConversationPage(
                 },
             titleContent = { TaskConversationBarTitle(chrome, Modifier.weight(1f)) },
             trailingContent = if (taskColumnHead != null) { { RaftTaskColumnHeadEnd(taskColumnHead) } } else null,
+            showBodyTopBanner = taskColumnHead == null,
         )
         // The head, as on the conversation page: the first row of what scrolls here, and pulled down
         // from the bar while that row is out of view ([TaskHeadPlacement.Page] holds the page's effects).
@@ -935,6 +1026,7 @@ internal fun TaskPendingConversationPage(
                 )
             // The conversation page's own composer in its dock: multi-line, paste, its send button.
             ThreadComposerDock(
+                edgePadding = if (taskColumnHead != null) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
                 composerModifier =
                     if (useHostSafeArea) {
                         Modifier

@@ -272,6 +272,39 @@ internal fun appShellTasksDetailColumnStaysActive(
         selectionPresent
 
 /**
+ * LS-07 / web TasksRoute: whether the Tasks tab may host a pending task (no conversation yet,
+ * [TaskOpenSurface.Pending]) inside its right-hand task column beside the list.
+ */
+internal fun appShellTasksPendingColumnAllowed(
+    desktopModeOnLargeScreen: Boolean,
+    dualPane: Boolean,
+    selectedTab: String,
+    railInlineSecondaryDestination: String? = null,
+): Boolean =
+    desktopModeOnLargeScreen &&
+        dualPane &&
+        retainedAppShellSelectedTab(selectedTab) == "tasks" &&
+        railInlineSecondaryDestination == null
+
+/**
+ * LS-07 / web TasksRoute: whether the Tasks page's right-hand task column is currently showing a
+ * pending task (no conversation yet), without needing an adaptive-workspace conversation selection.
+ */
+internal fun appShellTasksPendingColumnOpen(
+    desktopModeOnLargeScreen: Boolean,
+    dualPane: Boolean,
+    selectedTab: String,
+    pendingSurfaceOpen: Boolean,
+    railInlineSecondaryDestination: String? = null,
+): Boolean =
+    appShellTasksPendingColumnAllowed(
+        desktopModeOnLargeScreen = desktopModeOnLargeScreen,
+        dualPane = dualPane,
+        selectedTab = selectedTab,
+        railInlineSecondaryDestination = railInlineSecondaryDestination,
+    ) && pendingSurfaceOpen
+
+/**
  * task #13 destination preservation: once the wide rail (or an inline rail destination like
  * Search) has let the user reach Activity — a rail-only key absent from the legacy ordered
  * tab set — narrowing back to compact must not silently evict that live selection to Home.
