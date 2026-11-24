@@ -372,6 +372,7 @@ extension RaftIosTabBarController: UITabBarControllerDelegate {
             RaftIosDiagnosticsRecord("warn", "RaftIosTabBar", "tab_tap_unhandled key=\(key)")
         }
         RaftIosTopBandDiagnostics.noteTabSwitch()
+        RaftIosDisplayLinkJankTracker.noteOperation("bottom_tab_\(key)")
     }
 }
 

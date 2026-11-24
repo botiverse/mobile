@@ -3981,6 +3981,7 @@ NSString *const RaftBridgeCallbackKey = @"callback";
     if (action.length == 0) {
         action = @"enter";
     }
+    [RaftIosDisplayLinkJankTracker notePerformanceScene:sceneName action:action];
     NSLog(@"[SlockPerfScene] action=%@ scene=%@", action, sceneName);
 }
 
@@ -3991,6 +3992,7 @@ NSString *const RaftBridgeCallbackKey = @"callback";
     if (routeName.length == 0 && phase.length == 0) {
         return;
     }
+    [RaftIosDisplayLinkJankTracker notePerformanceMarkerWithRoute:routeName phase:phase];
     NSString *sceneId = RaftBridgeString(params[@"sceneId"]);
     NSString *event = RaftBridgeString(params[@"event"]);
     NSString *threadHash = RaftBridgeString(params[@"threadHash"]);

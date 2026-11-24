@@ -71,6 +71,9 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
             RaftIosAppearanceHost.attach()
             window.makeKeyAndVisible()
         }
+        RaftIosDisplayLinkJankTracker.install { level, tag, message in
+            RaftIosDiagnosticsRecord(level, tag, message)
+        }
 
         // Product analytics: a launch for a URL or a link is not a plain launcher open.
         if !connectionOptions.urlContexts.isEmpty || connectionOptions.userActivities.contains(where: {
