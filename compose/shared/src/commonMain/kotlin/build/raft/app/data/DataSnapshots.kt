@@ -1970,7 +1970,59 @@ data class SettingsComputerSnapshot(
     /** Server `attention`'s machine logins that need a step, for the usage cells (web `rackLoginStep`); empty when none or not reported. */
     val loginSteps: List<ComputerLoginStep> = emptyList(),
     /** Server `attention.count > 0` verdict (web `serverNeedsAttention`, slock #15534); null when not reported by the server. */
-    val serverNeedsAttention: Boolean? = null
+    val serverNeedsAttention: Boolean? = null,
+    /**
+     * Server `revocation` (slock #16468): set for a machine whose Computers are all revoked
+     * (when, why, and the names this viewer may see). Null for a live Computer, a legacy row never
+     * adopted, or an older server.
+     */
+    val revocation: SettingsComputerRevocationSnapshot? = null,
+    /**
+     * Server `versionRefusedAt` (slock #16514): when the server last refused this machine on
+     * connect for being below the Computer version floor (or reporting no version); null otherwise.
+     */
+    val versionRefusedAt: String? = null
+)
+
+/**
+ * Why a Computer's key was revoked (slock packages/shared/src/computerRevocation.ts
+ * `ComputerRevokedVia`, #16468). Additive: unknown wire values decode as null so older builds
+ * still show the revoked state without a specific cause sentence.
+ */
+enum class SettingsComputerRevokedVia(val wire: String) {
+    MemberLeft("member_left"),
+    MemberRemoved("member_removed"),
+    AccountDeleted("account_deleted"),
+    KeyRevokedManually("key_revoked_manually"),
+    RevokeLink("revoke_link"),
+    ComputerDetached("computer_detached"),
+    SessionRevoked("session_revoked"),
+    ApproverSessionRevoked("approver_session_revoked"),
+    SetupReset("setup_reset");
+
+    companion object {
+        fun fromWire(value: String?): SettingsComputerRevokedVia? {
+            val normalized = value?.trim() ?: return null
+            return entries.firstOrNull { it.wire == normalized }
+        }
+    }
+}
+
+/**
+ * The latest revoke of a machine whose Computers are all revoked (slock
+ * `ComputerRevocation`, GET /api/servers/:id/machines `revocation`, #16468).
+ */
+data class SettingsComputerRevocationSnapshot(
+    /** When the key was revoked (ISO). */
+    val at: String,
+    /** Why; null for a revoke before #16468 or an unrecognized future value. */
+    val via: SettingsComputerRevokedVia? = null,
+    /** Who did it (removed the attacher, or revoked the key); null if hidden or unused. */
+    val byUserName: String? = null,
+    /** Whose departure caused it; null if hidden or unused. */
+    val subjectUserName: String? = null,
+    /** `left`, `removed`, or `account_deleted` for membership vias; null otherwise. */
+    val departureReason: String? = null,
 )
 
 /**

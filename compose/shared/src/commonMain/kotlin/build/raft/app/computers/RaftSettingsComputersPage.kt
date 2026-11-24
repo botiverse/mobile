@@ -3197,6 +3197,7 @@ private fun RaftComputerDetailBody(
             onUpgrade = { version -> actionConfirm = RaftComputerActionConfirm.Upgrade(machineId, version) },
             onCopy = { command -> onIntent(SharedSettingsIntent.CopyComputerCommand(command)) },
             onOpenInstallGuide = { onIntent(SharedSettingsIntent.OpenComputerInstallGuide) },
+            assignedAgentCount = model.assignedAgentCount,
         )
     // The agents' live state (the members store), for their rows and the bulk toolbar.
     val agentLive =
@@ -4253,7 +4254,7 @@ private fun RaftComputerTile(row: RaftComputerRowModel, size: RaftIconTileSize =
     }
 }
 
-/** The detail head's light and word (raft-design patterns/status.md): Online, Offline or Updating…. */
+/** The detail head's light and word (raft-design patterns/status.md): Online, Key revoked, Offline or Updating…. */
 @Composable
 private fun RaftComputerStatus(computer: RaftComputerRowModel) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -4269,9 +4270,10 @@ private fun RaftComputerStatus(computer: RaftComputerRowModel) {
             when {
                 computer.updating -> stringResource(Res.string.settings_computers_status_updating)
                 computer.online -> stringResource(Res.string.settings_computers_status_connected)
+                computer.revoked -> stringResource(Res.string.settings_computers_revoked_status)
                 else -> stringResource(Res.string.settings_computers_status_offline)
             },
-            maxWidth = 120.dp,
+            maxWidth = 160.dp,
         )
     }
 }

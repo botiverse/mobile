@@ -75,6 +75,10 @@ class SharedServerMembersBlockedTest {
     @Test
     fun aRevokedOrTooOldComputerIsAHeldState() {
         assertEquals(AgentBlockedState.ComputerAccessRevoked, agentBlockedState("computer_access_revoked"))
+        assertEquals(
+            "Computer access revoked: reattach the computer or move the agent",
+            AgentBlockedState.ComputerAccessRevoked.englishStatusLabel,
+        )
         assertEquals(AgentBlockedState.ComputerUpdateRequired, agentBlockedState("computer_version_unsupported"))
         assertEquals(AgentBlockedState.ComputerUpdateRequired, agentBlockedState(" computer_version_unknown "))
         assertEquals("Computer update required", AgentBlockedState.ComputerUpdateRequired.englishStatusLabel)

@@ -15,11 +15,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.SettingsComputerCommandContext
 import build.raft.app.data.SettingsComputerReleaseNotesSnapshot
 import build.raft.app.data.SettingsComputerRestartProgress
+import build.raft.app.data.SettingsComputerRevocationSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.COMPUTER_RESTART_TIMED_OUT
 import build.raft.app.markdown.RaftMarkdownBody
@@ -59,13 +61,21 @@ internal class RaftComputerControlsContext(
     val onUpgrade: (String) -> Unit,
     val onCopy: (String) -> Unit,
     val onOpenInstallGuide: () -> Unit,
+    val assignedAgentCount: Int = computer.agentCount,
 ) {
     val platform: RaftComputerCommandPlatform = raftComputerCommandPlatform(computer.platform)
 
     /**
+     * Web `revocation` (slock #16468): set only when all Computers of this machine were revoked
+     * (`isComputer == false` and `computer.revocation != null`). A live Computer is never revoked.
+     */
+    val revocation: SettingsComputerRevocationSnapshot? =
+        computer.revocation.takeUnless { computer.isComputer }
+
+    /**
      * The machine's own commands (web `machineComputerCommands`, which equal its
      * `computerFreshInstallCommands`: no version pin, the installer resolves the latest release).
-     * Legacy daemon rows adopt themselves with `--machine <id>`.
+     * Legacy daemon rows and revoked Computers adopt themselves with `--machine <id>`.
      */
     val commands: RaftComputerCommandSet? =
         raftComputerCommands(commandContext, platform, machineId = computer.id.takeUnless { computer.isComputer })
@@ -107,8 +117,9 @@ internal fun RaftComputerCommandLine(
     onCopy: (String) -> Unit,
     label: String? = null,
     copyLabel: String = stringResource(Res.string.settings_computers_copy_command),
+    modifier: Modifier = Modifier,
 ) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (label != null) RaftComputerStepLabel(label)
         RaftCodeBlock(
             text = command,
@@ -225,10 +236,19 @@ internal fun RaftComputerVersionNotice(context: RaftComputerControlsContext) {
         } else {
             stringResource(Res.string.settings_computers_version_notice_ask_admin_upgrade)
         }
+    val packageManagerFirst =
+        if (context.canManage && tier.reinstall) {
+            stringResource(Res.string.settings_computers_version_notice_package_manager_first)
+        } else {
+            null
+        }
     val oneClick = (context.upgrade.card as? RaftComputerCardState.OneClick)?.version?.takeIf { !tier.reinstall && context.canManage }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).testTag("computer-version-notice"),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         RaftBanner(
-            description = listOfNotNull(body, askAdmin).joinToString("\n"),
+            description = listOfNotNull(body, askAdmin, packageManagerFirst).joinToString("\n"),
             status = RaftBannerStatus.Warning,
             title = title,
             action =
@@ -242,31 +262,46 @@ internal fun RaftComputerVersionNotice(context: RaftComputerControlsContext) {
                 },
         )
         if (context.canManage && (tier.reinstall || context.upgrade.card is RaftComputerCardState.ManualUpgrade)) {
-            RaftComputerManualInstall(context)
+            RaftComputerManualInstallCommands(
+                context.commands,
+                context.platform,
+                context.onCopy,
+                context.onOpenInstallGuide,
+                modifier = Modifier.testTag("computer-version-notice-reinstall"),
+            )
         }
     }
 }
 
 // endregion
 
-// region Connection (offline / legacy daemon)
+// region Connection (offline / legacy daemon / revoked Computer)
 
 /**
- * The connection blocks between Info and Agents (web: the legacy daemon's migrate block, its
- * admin-only note, the upgrade's reconnect banner and the offline recovery card). Nothing when the
- * Computer is online and up to date.
+ * The connection blocks between Info and Agents (web: the revoked Computer banner & recovery block,
+ * the legacy daemon's migrate block, its admin-only note, the upgrade's reconnect banner and the
+ * offline recovery card). Nothing when the Computer is online and up to date.
  */
 @Composable
 internal fun RaftComputerConnectionSection(context: RaftComputerControlsContext) {
     val computer = context.computer
     val reconnect = context.upgrade.reconnect
-    val migrate = !computer.isComputer && context.canManage && context.commands != null
-    val daemonAdminOnly = !computer.isComputer && !context.canManage && !computer.online
+    val revocation = context.revocation
+    val migrate = !computer.isComputer && revocation == null && context.canManage && context.commands != null
+    val daemonAdminOnly = !computer.isComputer && revocation == null && !context.canManage && !computer.online
     val bringOnline = computer.isComputer && !computer.online && !reconnect.reconnecting
-    if (!migrate && !daemonAdminOnly && !reconnect.reconnecting && !bringOnline) return
+    if (revocation == null && !migrate && !daemonAdminOnly && !reconnect.reconnecting && !bringOnline) return
     Column(Modifier.fillMaxWidth()) {
         RaftSeparator()
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (revocation != null) {
+                RaftComputerRevokedNotice(
+                    revocation = revocation,
+                    agentCount = context.assignedAgentCount,
+                    setupCommand = context.commands?.setup,
+                    onCopy = context.onCopy,
+                )
+            }
             if (migrate) RaftComputerMigrateBlock(context)
             if (daemonAdminOnly) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

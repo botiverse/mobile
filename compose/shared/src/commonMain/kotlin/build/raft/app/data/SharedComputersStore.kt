@@ -1057,8 +1057,41 @@ internal data class RaftDurableComputer(
     val creator: RaftDurableComputerCreator? = null,
     /** Computer owner v1: who Raft records as the owner (null = Public), so a cold start shows it too. */
     val ownerUserId: String? = null,
-    val owner: RaftDurableComputerCreator? = null
+    val owner: RaftDurableComputerCreator? = null,
+    /** Server `revocation` (slock #16468), so a cold start paints Key revoked instead of flashing Offline. */
+    val revocation: RaftDurableComputerRevocation? = null,
+    /** Server `versionRefusedAt` (slock #16514), for offline reinstall eligibility across cold starts. */
+    val versionRefusedAt: String? = null
 )
+
+@Serializable
+internal data class RaftDurableComputerRevocation(
+    val at: String,
+    val via: String? = null,
+    val byUserName: String? = null,
+    val subjectUserName: String? = null,
+    val departureReason: String? = null
+)
+
+private fun SettingsComputerRevocationSnapshot.toDurableComputerRevocation(): RaftDurableComputerRevocation =
+    RaftDurableComputerRevocation(
+        at = at,
+        via = via?.wire,
+        byUserName = byUserName,
+        subjectUserName = subjectUserName,
+        departureReason = departureReason
+    )
+
+private fun RaftDurableComputerRevocation.toComputerRevocationSnapshot(): SettingsComputerRevocationSnapshot? {
+    val cleanAt = at.trim().takeIf { it.isNotBlank() } ?: return null
+    return SettingsComputerRevocationSnapshot(
+        at = cleanAt,
+        via = SettingsComputerRevokedVia.fromWire(via),
+        byUserName = byUserName?.trim()?.takeIf { it.isNotBlank() },
+        subjectUserName = subjectUserName?.trim()?.takeIf { it.isNotBlank() },
+        departureReason = departureReason?.trim()?.takeIf { it == "left" || it == "removed" || it == "account_deleted" }
+    )
+}
 
 @Serializable
 internal data class RaftDurableComputerCreator(
@@ -1106,7 +1139,9 @@ private fun SharedComputersServerSlice.toDurableRecord(): RaftComputersDurableRe
                     latestComputerVersion = machine.latestComputerVersion,
                     creator = machine.creator?.toDurableComputerCreator(),
                     ownerUserId = machine.ownerUserId,
-                    owner = machine.owner?.toDurableComputerCreator()
+                    owner = machine.owner?.toDurableComputerCreator(),
+                    revocation = machine.revocation?.toDurableComputerRevocation(),
+                    versionRefusedAt = machine.versionRefusedAt
                 )
             },
         machineCount = machineCount,
@@ -1148,7 +1183,9 @@ private fun RaftComputersDurableRecord.toServerSlice(): SharedComputersServerSli
                     latestComputerVersion = machine.latestComputerVersion,
                     creator = machine.creator?.toComputerCreatorSnapshot(),
                     ownerUserId = machine.ownerUserId,
-                    owner = machine.owner?.toComputerCreatorSnapshot()
+                    owner = machine.owner?.toComputerCreatorSnapshot(),
+                    revocation = machine.revocation?.toComputerRevocationSnapshot(),
+                    versionRefusedAt = machine.versionRefusedAt?.trim()?.takeIf { it.isNotBlank() }
                 )
             },
         machineCount = machineCount,

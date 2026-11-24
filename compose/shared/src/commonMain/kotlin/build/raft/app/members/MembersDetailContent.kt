@@ -934,6 +934,26 @@ internal fun MembersDetailContent(
         } else {
             null
         }
+    val computerRevokedNote =
+        if (member.kind == MemberKind.Agent) {
+            resolveMembersAgentComputerRevokedNoteState(
+                machineId = detail?.summary?.machineId ?: member.membersComputerId,
+                machines = offlineComputerInputs.machines,
+                commandContext = offlineComputerInputs.commandContext,
+                deleted = deleted || member.agentDeletedAt?.isNotBlank() == true,
+                isExternalAgent =
+                    isExternalAgent || build.raft.app.model.isExternalAgentRuntime(detail?.summary?.runtime),
+                isBoundedPublicProjection =
+                    membersAgentIsBoundedPublicProjection(
+                        accessMode = accessMode,
+                        profileProjection =
+                            detail?.summary?.profileProjection?.takeIf { it.isNotBlank() }
+                                ?: member.profileProjection,
+                    ),
+            )
+        } else {
+            null
+        }
     val canRetryRestart =
         canManage && agentDetailActions != null && !membersAgentProfileIsRemote(accessMode) && !retryRestartComputerOffline
     var retryRestartInFlight by remember(member.id.value) { mutableStateOf(false) }
@@ -1381,7 +1401,8 @@ internal fun MembersDetailContent(
                                                             }
                                                         )
                                                     },
-                                                computerOfflineCard = computerOfflineCard
+                                                computerOfflineCard = computerOfflineCard,
+                                                computerRevokedNote = computerRevokedNote
                                             ),
                                             machineStatusRow = machineStatusRow,
                                             timeContext = timeContext,

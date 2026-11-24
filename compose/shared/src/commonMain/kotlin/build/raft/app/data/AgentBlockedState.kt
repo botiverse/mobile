@@ -64,7 +64,7 @@ val AgentBlockedState.englishStatusLabel: String
     get() =
         when (this) {
             AgentBlockedState.ComputerAccessRevoked ->
-                "Computer access revoked: move the agent to another computer (re-attaching adds a new one)"
+                "Computer access revoked: reattach the computer or move the agent"
             AgentBlockedState.ComputerUpdateRequired -> "Computer update required"
         }
 

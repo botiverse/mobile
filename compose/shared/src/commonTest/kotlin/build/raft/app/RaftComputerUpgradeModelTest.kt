@@ -31,8 +31,57 @@ class RaftComputerUpgradeModelTest {
         assertFalse(raftIsComputerSemver("1.0.4-01"))
         assertFalse(raftIsComputerSemver("v1.0.4"))
         assertEquals(null, raftIsRemoteUpgradeSupported(" "))
-        assertEquals(false, raftIsRemoteUpgradeSupported("1.0.45-rc.1"))
-        assertEquals(true, raftIsRemoteUpgradeSupported("1.0.45"))
+        assertEquals(null, raftIsRemoteUpgradeSupported(null))
+        assertEquals(false, raftIsRemoteUpgradeSupported("1.0.45"))
+        assertEquals(false, raftIsRemoteUpgradeSupported("1.0.52"))
+        assertEquals(false, raftIsRemoteUpgradeSupported("1.0.52-rc.1"))
+        assertEquals(true, raftIsRemoteUpgradeSupported("1.0.53"))
+        assertEquals(true, raftIsRemoteUpgradeSupported("1.0.53-rc.1"))
+        assertEquals(true, raftIsRemoteUpgradeSupported("1.0.53+build.5"))
+        assertEquals(true, raftIsRemoteUpgradeSupported("1.0.54"))
+        assertEquals(false, raftIsRemoteUpgradeSupported("v1.0.53"))
+    }
+
+    @Test
+    fun versionTierUsesBuiltIn1053FloorEvenWhileOffline() {
+        val builtInGate =
+            SettingsComputerVersionGateSnapshot(
+                reason = "computer_version_unsupported",
+                minVersion = RAFT_COMPUTER_VERSION_FLOOR,
+                enforcedAt = null,
+                enforced = true,
+            )
+        val offlineTooOld = computer(version = "1.0.52", online = false, gate = builtInGate)
+        assertEquals(
+            RaftComputerVersionTier.Notice(
+                reinstall = true,
+                reason = "computer_version_unsupported",
+                minVersion = "1.0.53",
+                enforced = true,
+                enforcedAt = null,
+            ),
+            raftComputerVersionTier(offlineTooOld),
+        )
+        assertEquals(RaftComputerCardState.Reinstall, model(offlineTooOld).card)
+
+        val raisedGate =
+            SettingsComputerVersionGateSnapshot(
+                reason = "computer_version_unsupported",
+                minVersion = "1.0.60",
+                enforcedAt = "2026-12-01T00:00:00.000Z",
+                enforced = false,
+            )
+        assertEquals(
+            RaftComputerVersionTier.Notice(
+                reinstall = false,
+                reason = "computer_version_unsupported",
+                minVersion = "1.0.60",
+                enforced = false,
+                enforcedAt = "2026-12-01T00:00:00.000Z",
+            ),
+            raftComputerVersionTier(computer(version = "1.0.53-rc.1", gate = raisedGate)),
+        )
+        assertEquals(RaftComputerVersionTier.None, raftComputerVersionTier(computer(version = "1.0.52", gate = null)))
     }
 
     @Test

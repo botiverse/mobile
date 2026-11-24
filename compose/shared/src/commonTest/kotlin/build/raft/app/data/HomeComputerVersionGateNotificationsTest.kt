@@ -10,30 +10,39 @@ import kotlinx.datetime.TimeZone
 
 class HomeComputerVersionGateNotificationsTest {
     private val deadline = "2026-11-10T00:00:00.000Z"
+    private val nowMillis = 1_795_521_600_000L // 2026-11-24T12:00:00.000Z
+    private val recentRefusal = "2026-11-24T11:59:00.000Z"
+    private val exactSevenDayRefusal = "2026-11-17T12:00:00.000Z"
+    private val staleRefusal = "2026-11-17T11:59:59.000Z"
 
     private fun gate(
         reason: String = "computer_version_unsupported",
+        minVersion: String = "1.0.60",
         enforcedAt: String? = deadline,
         enforced: Boolean = false,
-    ) = SettingsComputerVersionGateSnapshot(reason = reason, minVersion = "1.0.53", enforcedAt = enforcedAt, enforced = enforced)
+    ) = SettingsComputerVersionGateSnapshot(reason = reason, minVersion = minVersion, enforcedAt = enforcedAt, enforced = enforced)
 
     private fun computer(
         id: String = "computer-1",
         name: String = "Studio Mac",
-        version: String? = "1.0.50",
+        version: String? = "1.0.55",
+        status: ComputerStatus = ComputerStatus.Online,
+        isComputer: Boolean = true,
         versionGate: SettingsComputerVersionGateSnapshot? = gate(),
+        versionRefusedAt: String? = null,
+        revocation: SettingsComputerRevocationSnapshot? = null,
         creatorUserId: String? = null,
         attachedByCurrentUser: Boolean = false,
     ) = ComputerSummary(
         id = id,
         name = name,
-        status = ComputerStatus.Online,
+        status = status,
         statusVersion = 1L,
         apiKeyPrefix = null,
         runtimes = emptyList(),
         daemonVersion = null,
         computerVersion = version,
-        isComputer = true,
+        isComputer = isComputer,
         hostname = null,
         os = null,
         description = null,
@@ -42,26 +51,34 @@ class HomeComputerVersionGateNotificationsTest {
         creatorUserId = creatorUserId,
         attachedByCurrentUser = attachedByCurrentUser,
         versionGate = versionGate,
+        revocation = revocation,
+        versionRefusedAt = versionRefusedAt,
     )
 
-    private fun notices(vararg machines: ComputerSummary, role: String? = "admin", userId: String? = "user-1") =
-        homeComputerVersionGateNotifications(machines.toList(), role, userId, TimeZone.UTC)
+    private fun notices(
+        vararg machines: ComputerSummary,
+        role: String? = "admin",
+        userId: String? = "user-1",
+        now: Long = nowMillis,
+    ) = homeComputerVersionGateNotifications(machines.toList(), role, userId, TimeZone.UTC, now)
 
     @Test
-    fun noGateOrNoPendingDeadlineYieldsNoNotice() {
+    fun noGateOrNoPendingDeadlineForUpgradableComputerYieldsNoNotice() {
         listOf(
             null,
             gate(enforcedAt = null),
             gate(enforcedAt = "not-a-date"),
             gate(enforced = true),
         ).forEach { versionGate ->
-            assertEquals(emptyList(), notices(computer(versionGate = versionGate)), "gate=$versionGate")
+            assertEquals(emptyList(), notices(computer(version = "1.0.55", versionGate = versionGate)), "gate=$versionGate")
         }
+        // Offline upgradable Computer is skipped even with a pending deadline (web machinesNeedingUpgradeByDeadline).
+        assertEquals(emptyList(), notices(computer(version = "1.0.55", status = ComputerStatus.Offline)))
     }
 
     @Test
-    fun gatedVersionAtOrAboveRemoteUpgradeMinimumAsksForAnUpgradeBeforeTheDeadline() {
-        listOf("1.0.45", "1.0.50").forEach { version ->
+    fun gatedVersionAtOrAboveBuiltInFloorAsksForAnUpgradeBeforeTheDeadline() {
+        listOf("1.0.53", "1.0.53-rc.1", "1.0.55").forEach { version ->
             val notice = notices(computer(version = version)).single()
 
             assertEquals("computer-version-gate:upgrade:$deadline:computer-1", notice.id, "version=$version")
@@ -73,14 +90,129 @@ class HomeComputerVersionGateNotificationsTest {
     }
 
     @Test
-    fun gatedVersionBelowRemoteUpgradeMinimumAsksForAReinstallBeforeTheDeadline() {
-        val notice = notices(computer(version = "1.0.44")).single()
+    fun gatedVersionBelowBuiltInFloorAsksForAReinstallBeforeTheDeadline() {
+        listOf("1.0.44", "1.0.52").forEach { version ->
+            val notice = notices(computer(version = version)).single()
 
-        assertEquals("computer-version-gate:reinstall:$deadline:computer-1", notice.id)
-        assertEquals("Studio Mac: update required before Nov 10, 2026", notice.title)
+            assertEquals("computer-version-gate:reinstall:$deadline:computer-1", notice.id, "version=$version")
+            assertEquals("Studio Mac: update required before Nov 10, 2026", notice.title)
+            assertEquals(
+                "After that, agents on this computer stop running. Your agents and files stay where they are.",
+                notice.body,
+            )
+        }
+    }
+
+    @Test
+    fun refusalWindowMatchesSevenDaysInclusiveAndRejectsStaleOrMalformedTimestamps() {
+        assertTrue(raftComputerVersionRefusedRecently(recentRefusal, nowMillis))
+        assertTrue(raftComputerVersionRefusedRecently(exactSevenDayRefusal, nowMillis))
+        assertFalse(raftComputerVersionRefusedRecently(staleRefusal, nowMillis))
+        assertFalse(raftComputerVersionRefusedRecently(null, nowMillis))
+        assertFalse(raftComputerVersionRefusedRecently("   ", nowMillis))
+        assertFalse(raftComputerVersionRefusedRecently("not-a-timestamp", nowMillis))
+
+        assertTrue(raftComputerActiveForReinstallNotice(online = true, versionRefusedAt = null, nowMillis = nowMillis))
+        assertTrue(raftComputerActiveForReinstallNotice(online = false, versionRefusedAt = recentRefusal, nowMillis = nowMillis))
+        assertFalse(raftComputerActiveForReinstallNotice(online = false, versionRefusedAt = staleRefusal, nowMillis = nowMillis))
+        assertFalse(raftComputerActiveForReinstallNotice(online = false, versionRefusedAt = null, nowMillis = nowMillis))
+    }
+
+    @Test
+    fun offlineComputerRefusedWithinSevenDaysGetsOneTimeReinstallNoticeAndAbandonedStaysOut() {
+        val enforcedGate = gate(minVersion = "1.0.53", enforcedAt = null, enforced = true)
+        val recentComputer =
+            computer(
+                id = "refused-box",
+                name = "Refused Box",
+                version = "1.0.52",
+                status = ComputerStatus.Offline,
+                versionGate = enforcedGate,
+                versionRefusedAt = recentRefusal,
+            )
+        val abandonedComputer =
+            computer(
+                id = "abandoned-box",
+                name = "Abandoned Box",
+                version = "1.0.40",
+                status = ComputerStatus.Offline,
+                versionGate = enforcedGate,
+                versionRefusedAt = staleRefusal,
+            )
+        val neverRefusedOffline =
+            computer(
+                id = "quiet-box",
+                name = "Quiet Box",
+                version = "1.0.40",
+                status = ComputerStatus.Offline,
+                versionGate = enforcedGate,
+                versionRefusedAt = null,
+            )
+
+        val notice = notices(recentComputer, abandonedComputer, neverRefusedOffline).single()
+        assertEquals("computer-version-gate:reinstall:now:refused-box", notice.id)
+        assertEquals("Refused Box needs a one-time reinstall", notice.title)
+        assertEquals("Your agents and files stay where they are.", notice.body)
+        assertEquals("refused-box", notice.targetId)
+        val title = notice.titleDesc as ResourceFormattedStringDesc
+        assertEquals(Res.string.home_notification_computer_reinstall_title_one, title.stringRes)
+        assertEquals(listOf("Refused Box"), title.args)
+    }
+
+    @Test
+    fun offlineLegacyDaemonRefusedRecentlyGetsMigrateNoticeWhileRevokedComputerStaysOut() {
+        val refusedDaemon =
+            computer(
+                id = "daemon-1",
+                name = "Legacy Box",
+                version = null,
+                status = ComputerStatus.Offline,
+                isComputer = false,
+                versionGate = null,
+                versionRefusedAt = recentRefusal,
+            )
+        val staleDaemon =
+            computer(
+                id = "daemon-old",
+                name = "Abandoned Daemon",
+                version = null,
+                status = ComputerStatus.Offline,
+                isComputer = false,
+                versionGate = null,
+                versionRefusedAt = staleRefusal,
+            )
+        val revokedMachine =
+            computer(
+                id = "revoked-1",
+                name = "Revoked Box",
+                version = null,
+                status = ComputerStatus.Offline,
+                isComputer = false,
+                versionGate = null,
+                versionRefusedAt = recentRefusal,
+                revocation = SettingsComputerRevocationSnapshot(at = "2026-11-20T00:00:00.000Z", via = SettingsComputerRevokedVia.MemberLeft),
+            )
+
+        val migrateOnly = notices(refusedDaemon, staleDaemon, revokedMachine).single()
+        assertEquals("computer-version-gate:reinstall:now:daemon-1", migrateOnly.id)
+        assertEquals("Legacy Box needs to be migrated to Raft Computer", migrateOnly.title)
+        assertEquals(Res.string.home_notification_computer_migrate_title_one, (migrateOnly.titleDesc as ResourceFormattedStringDesc).stringRes)
+
+        val refusedComputer =
+            computer(
+                id = "comp-1",
+                name = "Alpha Box",
+                version = "1.0.50",
+                status = ComputerStatus.Offline,
+                versionGate = gate(minVersion = "1.0.53", enforcedAt = null, enforced = true),
+                versionRefusedAt = recentRefusal,
+            )
+        val mixed = notices(refusedDaemon, refusedComputer).single()
+        assertEquals("computer-version-gate:reinstall:now:comp-1,daemon-1", mixed.id)
+        assertEquals("2 machines need a one-time reinstall or migration", mixed.title)
         assertEquals(
-            "After that, agents on this computer stop running. Your agents and files stay where they are.",
-            notice.body,
+            Res.string.home_notification_computer_reinstall_or_migrate_title_many,
+            (mixed.titleDesc as ResourceFormattedStringDesc).stringRes,
         )
     }
 
@@ -111,9 +243,9 @@ class HomeComputerVersionGateNotificationsTest {
     fun severalComputersShareOneNoticePerTierUnderTheEarliestDeadline() {
         val result =
             notices(
-                computer(id = "late", name = "Late", version = "1.0.50", versionGate = gate(enforcedAt = "2026-12-01T00:00:00.000Z")),
-                computer(id = "early", name = "Early", version = "1.0.51", versionGate = gate(enforcedAt = "2026-11-20T00:00:00.000Z")),
-                computer(id = "old", name = "Old", version = "1.0.30"),
+                computer(id = "late", name = "Late", version = "1.0.55", versionGate = gate(enforcedAt = "2026-12-01T00:00:00.000Z")),
+                computer(id = "early", name = "Early", version = "1.0.54", versionGate = gate(enforcedAt = "2026-11-20T00:00:00.000Z")),
+                computer(id = "old", name = "Old", version = "1.0.52"),
             )
 
         assertEquals(
@@ -130,14 +262,16 @@ class HomeComputerVersionGateNotificationsTest {
 
     @Test
     fun dismissalKeepsCoveringFixedComputersUntilTheDeadlineOrSetChanges() {
-        val dismissed = setOf("computer-version-gate:upgrade:$deadline:a,b")
+        val dismissed = setOf("computer-version-gate:upgrade:$deadline:a,b", "computer-version-gate:reinstall:now:x,y")
 
         assertTrue(homeLocalNotificationDismissed("computer-version-gate:upgrade:$deadline:a", dismissed))
         assertTrue(homeLocalNotificationDismissed("computer-version-gate:upgrade:$deadline:a,b", dismissed))
+        assertTrue(homeLocalNotificationDismissed("computer-version-gate:reinstall:now:x", dismissed))
         // A new Computer, a new deadline or the other tier brings it back.
         assertFalse(homeLocalNotificationDismissed("computer-version-gate:upgrade:$deadline:a,c", dismissed))
         assertFalse(homeLocalNotificationDismissed("computer-version-gate:upgrade:2026-12-01T00:00:00.000Z:a", dismissed))
         assertFalse(homeLocalNotificationDismissed("computer-version-gate:reinstall:$deadline:a", dismissed))
+        assertFalse(homeLocalNotificationDismissed("computer-version-gate:reinstall:$deadline:x", dismissed))
     }
 
     @Test
@@ -149,11 +283,12 @@ class HomeComputerVersionGateNotificationsTest {
         assertTrue(notice.id.isMachineHomeNotificationId())
         assertNull(homeComputerVersionGateTargetOrNull("machine-offline:computer-9", "computer-9"))
     }
+
     @Test
     fun deadlineIsTheReadersLocalCalendarDay() {
         listOf(TimeZone.UTC to 10, TimeZone.of("America/Los_Angeles") to 9).forEach { (zone, day) ->
             val notice =
-                homeComputerVersionGateNotifications(listOf(computer()), "admin", "user-1", zone).single()
+                homeComputerVersionGateNotifications(listOf(computer()), "admin", "user-1", zone, nowMillis).single()
             val title = notice.titleDesc as ResourceFormattedStringDesc
 
             assertEquals(Res.string.home_notification_computer_upgrade_deadline_title_one, title.stringRes)

@@ -34,12 +34,12 @@ class RaftComputersRackCardsModelTest {
 
     @Test
     fun belowTheVersionFloorSaysUpdateRequiredWhetherAnUpgradeOrAReinstall() {
-        val gate = SettingsComputerVersionGateSnapshot(reason = "computer_version_unsupported", minVersion = "1.0.50")
-        val upgrade = computer("m-1", computerVersion = "1.0.46", latest = "1.0.53", versionGate = gate).toRaftComputerRow()
+        val gate = SettingsComputerVersionGateSnapshot(reason = "computer_version_unsupported", minVersion = "1.0.60")
+        val upgrade = computer("m-1", computerVersion = "1.0.53", latest = "1.0.60", versionGate = gate).toRaftComputerRow()
         assertEquals(RaftComputerVersionNotice.BelowFloor(reinstall = false), upgrade.versionNotice)
         assertEquals(RaftComputerDot.Upgrade, upgrade.dot)
-        // Older than web upgrade can reach: a reinstall.
-        val reinstall = computer("m-2", computerVersion = "1.0.40", latest = "1.0.53", versionGate = gate).toRaftComputerRow()
+        // Below the built-in 1.0.53 floor: a reinstall.
+        val reinstall = computer("m-2", computerVersion = "1.0.52", latest = "1.0.60", versionGate = gate).toRaftComputerRow()
         assertEquals(RaftComputerVersionNotice.BelowFloor(reinstall = true), reinstall.versionNotice)
     }
 
