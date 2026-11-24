@@ -598,6 +598,7 @@ private fun ChannelConversionStepsPopover(
         Box(Modifier.onSizeChanged { measured = Size(it.width.toFloat(), it.height.toFloat()) }) {
             RaftPopoverSurface(
                 // A tap on the popover is not a tap outside it.
+                // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
                 modifier = Modifier.testTag(ChannelConversionTestTags.Steps).pointerInput(Unit) { detectTapGestures {} },
                 width = width,
             ) {

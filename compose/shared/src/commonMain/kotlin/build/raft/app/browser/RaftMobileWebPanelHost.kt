@@ -277,6 +277,7 @@ internal fun RaftMobileWebPanelBackdrop(
                 .testTag(RAFT_WEB_PANEL_BACKDROP_TAG)
                 .graphicsLayer { alpha = scrimAlpha }
                 .background(colors.layerCanvas)
+                // raw-click: backdrop scrim, a tap collapses the panel; not a control
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,

@@ -127,6 +127,7 @@ internal fun Modifier.raftModalDismissPointerBarrier(
     onDismiss: () -> Unit
 ): Modifier =
     pointerInput(enabled) {
+        // raw-click: scrim, a tap outside only dismisses; not a control
         detectTapGestures {
             if (enabled) {
                 onDismiss()

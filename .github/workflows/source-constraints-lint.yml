@@ -48,6 +48,9 @@ on:
       - "scripts/ci/check_component_sizes.py"
       - "tools/design-tokens/manifest.json"
       - "tools/design-tokens/source/**"
+      # check_raw_clickables.py: clickable UI in compose/shared goes through raftClickable / DS (#wg-mobile-sync:#268).
+      - "scripts/ci/check_raw_clickables.py"
+      - "scripts/ci/raw_clickables_baseline.txt"
       # objc_entry_points.py --check: the iOS framework's Objective-C export list must name every
       # Kotlin API the Swift/Objective-C app uses (Kotlin sources are covered by compose/**/src above).
       - "compose/iosApp/**/*.swift"
@@ -110,6 +113,15 @@ jobs:
 
       - name: Enforce component sizes
         run: python3 scripts/ci/check_component_sizes.py
+
+      # Hover and press by default: clickable UI in compose/shared uses Modifier.raftClickable or a DS
+      # component, not a raw clickable / combinedClickable / detectTapGestures, unless marked
+      # `// raw-click: <reason>`; older sites are counted in raw_clickables_baseline.txt (#wg-mobile-sync:#268).
+      - name: Self-test raw clickable check
+        run: python3 scripts/ci/check_raw_clickables.py --self-test
+
+      - name: Enforce raw clickable check
+        run: python3 scripts/ci/check_raw_clickables.py
 
       # compose/shared/build.gradle.kts exports to Objective-C only what this list names
       # (objcExportEntryPointsPath, #wg-mobile-sync:#220). A Swift change that starts using new Kotlin

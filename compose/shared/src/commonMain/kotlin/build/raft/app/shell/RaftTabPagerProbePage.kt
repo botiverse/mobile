@@ -152,6 +152,7 @@ private fun RaftTabPagerProbeScreen() {
                             // this. Swapping to .padding().clickable() would
                             // shrink the band and silently change the
                             // acceptance criteria.
+                            // raw-click: gesture probe page (test harness), the tap band is its acceptance contract
                             .clickable { logEvent("rowTap ${TabPagerProbeLabels[page]} $row") }
                             .padding(16.dp)
                     )

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftHoverTier
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftMenuSearchField
 import build.raft.app.components.RaftMetrics
@@ -194,6 +195,7 @@ private fun RaftLookFilterPopover(
                 .raftLookOverlaySurface()
                 // Keeps taps on card whitespace from dismissing the overlay while leaving
                 // the nested list scrollable (see the brutal surface above).
+                // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
                 .clickable(onClick = {})
         ) {
             Row(
@@ -257,10 +259,14 @@ private fun RaftLookFilterPopover(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(RaftMetrics.MenuRowHeight)
-                                    .clickable {
-                                        onToggle(option.id)
-                                        if (!multiSelect) onDismiss()
-                                    }
+                                    .raftClickable(
+                                        onClick = {
+                                            onToggle(option.id)
+                                            if (!multiSelect) onDismiss()
+                                        },
+                                        role = null,
+                                        tier = RaftHoverTier.Highlight,
+                                    )
                                     .padding(horizontal = RaftMetrics.MenuItemPaddingHorizontal),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(RaftMetrics.MenuItemGap)

@@ -302,6 +302,7 @@ internal fun RaftLookBaseMenuPanel(
             .raftLookOverlaySurface()
             // Keeps blank menu space out of the sibling dismiss barrier (see the
             // brutal surface).
+            // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
             .clickable(onClick = {})
             .padding(vertical = RaftMetrics.PopupPadding)
     ) {

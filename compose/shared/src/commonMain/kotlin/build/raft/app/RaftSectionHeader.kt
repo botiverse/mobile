@@ -297,6 +297,7 @@ internal fun RaftTopPageHeader(
                 val titleTapModifier =
                     if (onTitleClick != null) {
                         // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
+                        // raw-click: hidden shortcut, the title's tap scrolls to top; shows no press
                         Modifier.clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -480,6 +481,7 @@ internal fun RaftPanelBackHeader(
                 } else {
                     val titleTapModifier =
                         if (onTitleClick != null) {
+                            // raw-click: hidden shortcut, the title's tap scrolls to top; shows no press
                             Modifier.weight(1f).clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,

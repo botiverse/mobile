@@ -836,9 +836,11 @@ private fun MembersWorkspaceNodeRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable {
-                    if (folder) onToggleDirectory(node.path) else onSelectFile(node.path)
-                }
+                .raftClickable(
+                    onClick = { if (folder) onToggleDirectory(node.path) else onSelectFile(node.path) },
+                    role = null,
+                    tier = RaftHoverTier.Subtle,
+                )
                 .padding(start = (row.depth * 16 + if (folder) 8 else 22).dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)

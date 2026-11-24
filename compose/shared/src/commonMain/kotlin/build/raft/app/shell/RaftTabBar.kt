@@ -763,4 +763,5 @@ private fun RaftVerticalTabItem(
  */
 @Composable
 private fun Modifier.raftTouchBlocker(): Modifier =
+    // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
     clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {})

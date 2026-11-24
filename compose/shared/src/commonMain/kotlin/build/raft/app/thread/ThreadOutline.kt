@@ -638,6 +638,7 @@ private fun ThreadOutlineTicks(
                             // Raw clickable on purpose: web OutlineTick shows hover and the current
                             // place by the tick itself (it grows), with no fill; raftClickable would
                             // wash the whole row of the narrow rail.
+                            // raw-click: the tick shows hover by growing (web OutlineTick), no fill
                             Modifier.hoverable(interaction).clickable(interactionSource = interaction, indication = null) {
                                 onTickClick(item.id)
                             }
@@ -762,6 +763,7 @@ private fun ThreadOutlineCardRow(
                 .hoverable(interaction)
                 // Raw clickable on purpose: the row draws its own hover and press state, web
                 // OutlineCard's `brand-soft` fill (above); raftClickable would lay fill-medium over it.
+                // raw-click: the row draws its own hover and press (brand-soft fill, web OutlineCard)
                 .clickable(interactionSource = interaction, indication = null, onClick = onClick)
                 .testTag(threadOutlineRowTestTag(item.id))
                 .semantics {

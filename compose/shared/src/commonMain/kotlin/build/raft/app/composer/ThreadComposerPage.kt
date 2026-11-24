@@ -483,6 +483,7 @@ internal fun ThreadComposerSuggestionPortalHost(
                     // the panel instead of reaching the composer under it. A press keeps the
                     // editor's focus, as every clickable of the list does.
                     .threadComposerSuggestionKeepsEditorFocus()
+                    // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
                     .clickable(onClick = {})
         ) {
             ComposerSuggestionPanelContent(
@@ -3619,6 +3620,7 @@ internal fun ThreadComposerContentLeaf(
                         // Blank-area tap only forwards focus to the editor. No indication: the
                         // default one paints the whole card gray (pressed/focused overlay); raft-ui
                         // shows composer focus through the editor caret, not a fill.
+                        // raw-click: blank-area tap only forwards focus to the editor; composer focus shows as the caret, not a fill
                         .clickable(
                             enabled = composerEnabled,
                             interactionSource = remember { MutableInteractionSource() },
@@ -4660,6 +4662,7 @@ private fun ComposerSuggestionStatusRow(message: String) {
                 // Raw clickable on purpose: a tap sink, so a tap on the status line stays in the
                 // suggestion panel instead of reaching what is under it.
                 .threadComposerSuggestionKeepsEditorFocus()
+                // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
                 .clickable(onClick = {})
                 .padding(horizontal = ComposerSuggestionPanelInset + ComposerSuggestionItemPaddingHorizontal),
         contentAlignment = Alignment.CenterStart
@@ -4688,6 +4691,7 @@ private fun ComposerSuggestionHeader(
                 // Raw clickable on purpose: a tap sink, so a tap on a group label stays in the
                 // suggestion panel instead of reaching what is under it.
                 .threadComposerSuggestionKeepsEditorFocus()
+                // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
                 .clickable(onClick = {})
     ) {
         if (topDivider) {

@@ -1,6 +1,7 @@
 package build.raft.app
 
-import androidx.compose.foundation.clickable
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -234,7 +235,7 @@ internal fun ThreadTimelineGapRow(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .clickable { onFillGap(gap) }
+                        .raftClickable(onClick = { onFillGap(gap) }, role = null, tier = RaftHoverTier.Subtle)
             ) {
                 ThreadHistoryStatusRow(
                     ThreadHistoryStatusSpec(

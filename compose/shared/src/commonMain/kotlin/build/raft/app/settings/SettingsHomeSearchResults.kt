@@ -446,6 +446,7 @@ internal fun SharedHomeSearchEntityRow(
                     var gesture: RaftGestureSession<SharedHomeSearchEntityGestureCallbacks>? = null
                     coroutineScope {
                         val pressScope = this
+                        // raw-click: the row draws its own hover and press (raftSearchRowHover / raftSearchRowPressed) and owns tap + long press
                         detectTapGestures(
                             onPress = { offset ->
                                 gesture = owner.beginGesture()
@@ -790,6 +791,7 @@ internal fun SharedHomeSearchMessageResultRow(
                 .raftSearchRowGap(showSeparator)
                 .raftSearchRowPressed(pressed, RaftColor.FillPressed)
                 .raftSearchRowHover(interactionSource, selected = selected, pressed = pressed)
+                // raw-click: the row draws its own hover and press (raftSearchRowHover / raftSearchRowPressed)
                 .clickable(interactionSource = interactionSource, indication = null, onClick = onOpen)
                 .raftSafeAreaHorizontalPadding().padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
         horizontalArrangement = Arrangement.spacedBy(RaftSearchMetrics.EntityGap),

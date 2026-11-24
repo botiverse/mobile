@@ -94,6 +94,7 @@ internal fun RaftConversationUnavailableScreen(onBack: () -> Unit, modifier: Mod
                     .fillMaxSize()
                     .background(RaftTheme.colors.layerCanvas)
                     // The surface owns every touch under it (no tap reaches the shell beneath).
+                    // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
         ) {
             RaftConversationUnavailableState(wide = maxWidth.value >= DualPaneMinimumWidthDp, onBack = onBack)

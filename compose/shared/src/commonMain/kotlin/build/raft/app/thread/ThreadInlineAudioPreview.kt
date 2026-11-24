@@ -470,6 +470,7 @@ private fun ThreadInlineAudioSeekBar(
             .height(32.dp)
             .onGloballyPositioned { coordinates -> widthPx = coordinates.size.width.toFloat() }
             .pointerInput(seekEnabled, totalTimeMs) {
+                // raw-click: seek bar, a tap seeks to the point; not a control
                 detectTapGestures(onTap = { offset -> if (seekEnabled) onSeek(timeAt(offset.x)) })
             }
             // The seek bar keeps horizontal drags from the host back swipe.

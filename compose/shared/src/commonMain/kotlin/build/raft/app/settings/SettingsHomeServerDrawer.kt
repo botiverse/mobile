@@ -351,6 +351,7 @@ internal fun AppShellServerDrawerHost(
                             }
                             // Raw clickable on purpose: the drawer's scrim, a tap outside that
                             // closes it, with no press of its own.
+                            // raw-click: scrim, a tap outside only dismisses; not a control
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
