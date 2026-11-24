@@ -1251,6 +1251,80 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun scanComputerWorkspacesDedupesInFlightPreservesSessionListAndKeepsListOnError() = runBlocking {
+        // slock #16502 (#587 site 7): concurrent scan joins in-flight request; failed scan does NOT
+        // mark unscanned computer as scanned and keeps prior scanned workspaces; reopening the page
+        // in the same session keeps the previously scanned list without scanning again.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scanBlock = BlockingCall()
+        val workspace =
+            SettingsComputerWorkspaceSnapshot(
+                id = "ws-1",
+                name = "Raft",
+                path = "~/.slock/agents/Raft/",
+                statusLabel = "active",
+            )
+        val repository =
+            FakeSettingsRepository(
+                computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")),
+                computerWorkspacesResult = DataResult.Error(ScreenError(code = "workspaces_timeout", retryable = true)),
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository,
+                    ),
+                scope = scope,
+            )
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+
+        // 1. First scan fails: workspacesScanned stays false, workspacesError is populated.
+        store.accept(SharedSettingsIntent.ScanComputerWorkspaces("machine-42"))
+        val afterFirstFail =
+            assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data
+        assertEquals(false, afterFirstFail.workspacesScanned)
+        assertEquals("workspaces_timeout", afterFirstFail.workspacesError?.code)
+
+        // 2. Concurrent scans dedupe to one repository call while the first is in flight.
+        repository.computerWorkspacesResult = DataResult.Content(listOf(workspace))
+        repository.scanComputerWorkspacesBlock = scanBlock
+        val firstScan = scope.launch { store.accept(SharedSettingsIntent.ScanComputerWorkspaces("machine-42")) }
+        val secondScan = scope.launch { store.accept(SharedSettingsIntent.ScanComputerWorkspaces("machine-42")) }
+        scanBlock.awaitStarted()
+        assertEquals(2, repository.calls.count { it == "scanComputerWorkspaces:machine-42" })
+        scanBlock.release()
+        firstScan.join()
+        secondScan.join()
+        val afterSuccess =
+            assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data
+        assertEquals(true, afterSuccess.workspacesScanned)
+        assertEquals(listOf("ws-1"), afterSuccess.workspaces.map { it.id })
+        assertNull(afterSuccess.workspacesError)
+
+        // 3. Reopening the Computer detail in the same session shows the scanned list without scanning.
+        store.accept(SharedSettingsIntent.Back)
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+        val reopened =
+            assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data
+        assertEquals(true, reopened.workspacesScanned)
+        assertEquals(listOf("ws-1"), reopened.workspaces.map { it.id })
+        assertEquals(2, repository.calls.count { it == "scanComputerWorkspaces:machine-42" })
+
+        // 4. Subsequent failed re-scan keeps the previously scanned workspaces under the error banner.
+        repository.scanComputerWorkspacesBlock = null
+        repository.computerWorkspacesResult = DataResult.Error(ScreenError(code = "workspaces_500", retryable = true))
+        store.accept(SharedSettingsIntent.ScanComputerWorkspaces("machine-42"))
+        val afterSecondFail =
+            assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data
+        assertEquals(true, afterSecondFail.workspacesScanned)
+        assertEquals(listOf("ws-1"), afterSecondFail.workspaces.map { it.id })
+        assertEquals("workspaces_500", afterSecondFail.workspacesError?.code)
+        scope.cancel()
+    }
+
+    @Test
     fun openComputerKeepsManageActionsHiddenForNonAdmins() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository = FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
@@ -2304,6 +2378,7 @@ class SharedSettingsStoreTest {
         var uploadAvatarBlock: BlockingCall? = null
         var providerLinkBlock: BlockingCall? = null
         var registerConnectedAppBlock: BlockingCall? = null
+        var scanComputerWorkspacesBlock: BlockingCall? = null
         var createServerInviteBlock: BlockingCall? = null
         var deleteServerBlock: BlockingCall? = null
         var computersBlock: BlockingCall? = null
@@ -2568,6 +2643,7 @@ class SharedSettingsStoreTest {
 
         override suspend fun scanComputerWorkspaces(machineId: String): DataResult<List<SettingsComputerWorkspaceSnapshot>> {
             calls += "scanComputerWorkspaces:$machineId"
+            scanComputerWorkspacesBlock?.consume()
             return computerWorkspacesResult
         }
 

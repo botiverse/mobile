@@ -35,10 +35,8 @@ import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftField
-import build.raft.designsystem.components.RaftSelect
 import build.raft.designsystem.components.RaftSelectFitMaxWidth
 import build.raft.designsystem.components.RaftSelectFitMinWidth
-import build.raft.app.data.ChannelSlackBridgeOption
 import build.raft.app.data.ChannelSlackBridgeState
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextarea
@@ -998,6 +996,7 @@ private fun ChannelSettingsPageScreen() {
                                 onSaveProfile = { name, description, slackBridge ->
                                     settingsStore.dispatch(ChannelSettingsIntent.UpdateProfile(name, description, slackBridge))
                                 },
+                                onRefreshSlackBridge = { settingsStore.refreshSlackBridge() },
                                 onClearProfileStatus = { settingsStore.dispatch(ChannelSettingsIntent.ClearProfileStatus) },
                                 onConfirm = { confirm = it },
                                 onUnarchive = { settingsStore.dispatch(ChannelSettingsIntent.Unarchive) },
@@ -1246,6 +1245,7 @@ internal class ChannelSettingsCallbacks(
     val onTogglePin: () -> Unit = {},
     val onSetVisitorVisible: (Boolean) -> Unit = {},
     val onSaveProfile: (name: String, description: String, slackBridge: ChannelSlackBridgeSelection?) -> Unit = { _, _, _ -> },
+    val onRefreshSlackBridge: (suspend () -> ChannelSlackBridgeReadOutcome)? = null,
     val onClearProfileStatus: () -> Unit = {},
     val onConfirm: (ChannelSettingsConfirm) -> Unit = {},
     val onUnarchive: () -> Unit = {},
@@ -1977,9 +1977,18 @@ internal fun ChannelInfoForm(
     whoSees: String? = null,
     /** Cancel: the edit ends. */
     onCancel: () -> Unit = {},
+    /** `#587 site 11` (slock `#16506`): reads the Slack channel list on menu open / return / Retry. */
+    onRefreshSlackBridge: (suspend () -> ChannelSlackBridgeReadOutcome)? = null,
 ) {
     val savedSlack = slackBridge?.pairedSlackChannelId
-    var slackPick by remember(channel.channelId, savedSlack) { mutableStateOf(savedSlack) }
+    var slackBaseline by remember(channel.channelId) { mutableStateOf(savedSlack) }
+    var slackPick by remember(channel.channelId) { mutableStateOf(savedSlack) }
+    LaunchedEffect(savedSlack) {
+        if (slackBaseline != savedSlack) {
+            if (slackPick == slackBaseline) slackPick = savedSlack
+            slackBaseline = savedSlack
+        }
+    }
     val slackDirty = slackBridge != null && slackPick != savedSlack
     val savedName = channel.name.removePrefix("#")
     val savedDescription = channel.subtitle.orEmpty()
@@ -2063,6 +2072,7 @@ internal fun ChannelInfoForm(
                     slackPick = it
                     clearStatusOnEdit()
                 },
+                onRefresh = onRefreshSlackBridge,
             )
         }
         // Web: the warning takes the place of the error for the refused rename.
@@ -2133,6 +2143,7 @@ private fun ChannelSlackBridgeField(
     selected: String?,
     enabled: Boolean,
     onSelect: (String?) -> Unit,
+    onRefresh: (suspend () -> ChannelSlackBridgeReadOutcome)? = null,
 ) {
     RaftField(
         label = stringResource(Res.string.channel_settings_slack_title),
@@ -2140,7 +2151,7 @@ private fun ChannelSlackBridgeField(
         enabled = enabled,
         labelTrailing = { RaftBadge(text = stringResource(Res.string.channel_bridge_provider_slack), appearance = RaftBadgeAppearance.Outline) },
     ) {
-        ChannelSlackBridgeSelect(state = state, selected = selected, enabled = enabled, onSelect = onSelect)
+        ChannelSlackBridgeSelect(state = state, selected = selected, enabled = enabled, onSelect = onSelect, onRefresh = onRefresh)
     }
 }
 
@@ -2156,29 +2167,15 @@ private fun ChannelSlackBridgeSelect(
     enabled: Boolean,
     onSelect: (String?) -> Unit,
     label: String? = null,
+    onRefresh: (suspend () -> ChannelSlackBridgeReadOutcome)? = null,
 ) {
-    val notConnected = stringResource(Res.string.channel_settings_slack_not_connected)
-    val options: List<ChannelSlackBridgeOption?> = listOf(null) + state.options
-    val labels =
-        options.associateWith { option ->
-            when {
-                option == null -> notConnected
-                option.membershipRequired -> stringResource(Res.string.channel_settings_slack_membership_required, option.name)
-                option.pairedElsewhere && option.slackChannelId != selected ->
-                    stringResource(Res.string.channel_settings_slack_already_paired, option.name)
-                else -> stringResource(Res.string.channel_settings_slack_channel, option.name)
-            }
-        }
-    RaftSelect(
-        value = options.firstOrNull { it?.slackChannelId == selected },
-        options = options,
-        onValueChange = { onSelect(it?.slackChannelId) },
-        optionLabel = { labels.getValue(it) },
+    ChannelSlackBridgePicker(
+        state = state,
+        selected = selected,
         enabled = enabled,
+        onSelect = onSelect,
         label = label,
-        optionEnabled = { option ->
-            option == null || (!option.membershipRequired && (!option.pairedElsewhere || option.slackChannelId == selected))
-        },
+        onRefresh = onRefresh,
     )
 }
 
@@ -2360,6 +2357,7 @@ private fun ChannelDetailsChannelSettingsSection(
                 // Name and description unchanged: the Save sends the Slack pair alone.
                 callbacks.onSaveProfile(channel.name.removePrefix("#"), channel.subtitle.orEmpty(), ChannelSlackBridgeSelection(pick))
             },
+            onRefresh = callbacks.onRefreshSlackBridge,
         )
     }
 }
@@ -2370,7 +2368,7 @@ private fun ChannelDetailsChannelSettingsSection(
  * names it, never a part of another Save (raft-design channel.md).
  */
 @Composable
-private fun ChannelSlackBridgeDialog(
+internal fun ChannelSlackBridgeDialog(
     channel: HomeChannelRow,
     state: ChannelSlackBridgeState,
     saving: Boolean,
@@ -2382,8 +2380,16 @@ private fun ChannelSlackBridgeDialog(
     enabled: Boolean,
     onDismiss: () -> Unit,
     onSubmit: (String?) -> Unit,
+    onRefresh: (suspend () -> ChannelSlackBridgeReadOutcome)? = null,
 ) {
-    var pick by remember(state.pairedSlackChannelId) { mutableStateOf(state.pairedSlackChannelId) }
+    var baseline by remember(channel.channelId) { mutableStateOf(state.pairedSlackChannelId) }
+    var pick by remember(channel.channelId) { mutableStateOf(state.pairedSlackChannelId) }
+    LaunchedEffect(state.pairedSlackChannelId) {
+        if (baseline != state.pairedSlackChannelId) {
+            if (pick == baseline) pick = state.pairedSlackChannelId
+            baseline = state.pairedSlackChannelId
+        }
+    }
     val title = stringResource(Res.string.channel_details_slack_dialog_title, channel.name.removePrefix("#"))
     val errorStrings = localizedErrorPresentationStrings()
     RaftDesignSystemTheme {
@@ -2423,6 +2429,7 @@ private fun ChannelSlackBridgeDialog(
                     enabled = enabled && !saving,
                     onSelect = { pick = it },
                     label = stringResource(Res.string.channel_details_slack_title),
+                    onRefresh = onRefresh,
                 )
                 if (failed) {
                     RaftBanner(
@@ -2685,7 +2692,7 @@ internal fun ChannelActionsSection(
                 ChannelSettingsActionRow.Leave ->
                     ChannelActionRow(
                         stringResource(Res.string.channel_settings_leave),
-                        RaftLucideIconName.LogOut,
+                        RaftLucideIconName.DoorOpen,
                         risk = channelSettingsActionRisk(ChannelSettingsActionRow.Leave),
                         enabled = buttonEnabled,
                         divider = divider,

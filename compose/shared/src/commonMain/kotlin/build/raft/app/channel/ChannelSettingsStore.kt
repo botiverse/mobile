@@ -393,6 +393,9 @@ internal interface ChannelSettingsDataSource {
     suspend fun setPinned(pinned: Boolean): DataResult<SettingsServerSidebarOrderSnapshot>
     suspend fun updateProfile(name: String, description: String): DataResult<ChannelProfileUpdateResult>
     suspend fun applySlackBridge(channel: HomeChannelRow, slackChannelId: String?): DataResult<ChannelSlackBridgeState?>
+    /** `#587 site 11` (slock `#16506`): re-reads the Slack channel list for the open menu / return / Retry. */
+    suspend fun refreshSlackBridge(channel: HomeChannelRow): DataResult<ChannelSlackBridgeState?> =
+        DataResult.Content(null)
     suspend fun makePrivate(): DataResult<Unit>
     suspend fun makePublic(): DataResult<Unit>
     suspend fun setVisitorVisible(visible: Boolean): DataResult<HomeChannelRow>
@@ -504,6 +507,14 @@ internal class RealChannelSettingsDataSource(
         runner.run { _, networkClient ->
             SlackBridgeChannelPairingRepository(networkClient, route.serverId)
                 .apply(route.channelId, channelSettingsSlackVisibility(channel), slackChannelId)
+        }
+
+    override suspend fun refreshSlackBridge(
+        channel: HomeChannelRow,
+    ): DataResult<ChannelSlackBridgeState?> =
+        runner.run { _, networkClient ->
+            SlackBridgeChannelPairingRepository(networkClient, route.serverId)
+                .refreshState(route.channelId, channelSettingsSlackVisibility(channel))
         }
 
     override suspend fun makePublic(): DataResult<Unit> =
@@ -756,6 +767,47 @@ internal class ChannelSettingsStore(
             ChannelSettingsIntent.UnarchiveArchivedCollision -> unarchiveCollision()
             ChannelSettingsIntent.ConsumeEffect ->
                 mutableState.value = mutableState.value.copy(effect = null)
+        }
+    }
+
+    /**
+     * `#587 site 11` (slock `#16506`): refreshes the Slack channel list when the menu opens, the
+     * user returns to the app, or taps Retry. Skips while another action is running and drops any
+     * answer that lands after a reload or mutation started, updating only [ChannelSettingsState.slackBridge].
+     */
+    suspend fun refreshSlackBridge(): ChannelSlackBridgeReadOutcome {
+        val current = mutableState.value
+        val channel = current.channel ?: return ChannelSlackBridgeReadOutcome.Skipped
+        if (
+            current.status != ChannelSettingsLoadStatus.Content ||
+            current.actionInFlight != null ||
+            current.collisionUnarchiving
+        ) {
+            return ChannelSlackBridgeReadOutcome.Skipped
+        }
+        val requestActionGeneration = actionGeneration
+        val requestLoadGeneration = loadGeneration
+        val result = runDataSourceCall { dataSource.refreshSlackBridge(channel) }
+        val latest = mutableState.value
+        if (
+            requestActionGeneration != actionGeneration ||
+            requestLoadGeneration != loadGeneration ||
+            latest.status != ChannelSettingsLoadStatus.Content ||
+            latest.actionInFlight != null ||
+            latest.collisionUnarchiving
+        ) {
+            return ChannelSlackBridgeReadOutcome.Skipped
+        }
+        return when (result) {
+            is DataResult.Content -> {
+                val next = latest.copy(slackBridge = result.data)
+                mutableState.value = next
+                next.toSnapshotOrNull()?.let { snapshot -> snapshotCache.put(owner, route, snapshot) }
+                ChannelSlackBridgeReadOutcome.Success
+            }
+            is DataResult.Error,
+            is DataResult.NoPermission,
+            is DataResult.Empty -> ChannelSlackBridgeReadOutcome.Failed
         }
     }
 

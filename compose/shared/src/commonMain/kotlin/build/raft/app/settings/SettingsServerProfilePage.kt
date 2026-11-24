@@ -365,7 +365,7 @@ private fun SettingsServerDangerZoneCard(
                         title = stringResource(Res.string.settings_server_action_leave),
                         detail = stringResource(Res.string.settings_server_leave_detail),
                         buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_LEAVE, stringResource(Res.string.settings_server_action_leave)),
-                        buttonIcon = RaftLucideIconName.LogOut,
+                        buttonIcon = RaftLucideIconName.DoorOpen,
                         buttonVariant = RaftButtonVariant.Warning,
                         enabled = !leaveBusy,
                         // Web DangerZoneSection: Leave server asks first (LeaveServerConfirmDialog).

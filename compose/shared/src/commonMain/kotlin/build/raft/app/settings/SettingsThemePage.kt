@@ -104,7 +104,7 @@ internal fun SettingsThemeContent(
     ) {
         if (serverTheme != null && hasServer) {
             item {
-                SettingsFormDetailText(stringResource(Res.string.settings_server_theme_description, serverTheme.state.serverName))
+                SettingsFormDetailText(stringResource(Res.string.settings_server_theme_description))
             }
         }
         if (SettingsThemePageSection.Mode in sections) {

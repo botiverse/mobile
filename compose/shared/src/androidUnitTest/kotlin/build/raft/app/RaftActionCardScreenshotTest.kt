@@ -191,7 +191,7 @@ private fun Frame2() {
 private fun ContractUpdates() {
     Card("field_clamp_6")
     Card("scope_list_groups")
-    Card("icon_shield", RaftActionCardFrameState(runsOnServerName = "Raft Labs"))
+    Card("icon_shield")
     Card("icon_credit_card")
     Card("read_unknown_prop_execute", RaftActionCardFrameState(status = RaftActionCardStatus.Frozen))
 }

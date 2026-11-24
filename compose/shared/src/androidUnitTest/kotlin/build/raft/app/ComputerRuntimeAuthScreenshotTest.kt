@@ -212,8 +212,6 @@ private fun AuthCard(name: String, runtime: RuntimeAuthRuntime, raftRuntimeId: S
                     ComputerRuntimeUsageSheetState(
                         load = RuntimeAccountUsageLoad.Loaded(read),
                         loading = false,
-                        refresh = ComputerRuntimeUsageRefreshStatus.Idle,
-                        cooldownLeftMillis = 0L,
                         runtimeVersion = "0.98.0",
                     ),
                 timeContext = null,

@@ -85,7 +85,7 @@ class AgentMigrationTargetListScreenshotTest {
                     AgentMigrationTargetDetailsSurface(
                         computer = threeComputers[1],
                         agentRuntime = "claude",
-                        usage = ComputerRuntimeUsageSheetState(studioUsage, loading = false, ComputerRuntimeUsageRefreshStatus.Idle, 0L),
+                        usage = ComputerRuntimeUsageSheetState(studioUsage, loading = false),
                         timeContext = pickerTimeContext,
                         modifier = Modifier.padding(top = 24.dp)
                     )

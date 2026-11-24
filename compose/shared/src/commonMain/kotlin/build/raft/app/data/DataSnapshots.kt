@@ -1952,6 +1952,11 @@ data class SettingsComputerSnapshot(
     val upgradeScopeRefused: Boolean = false,
     /** Server `runtimeVersions`: runtime id -> detected CLI version, for the usage sheet's "Version …" line. */
     val runtimeVersions: Map<String, String> = emptyMap(),
+    /**
+     * Server `runtimeDetection` (task #1268 / slock #16477): explicit runtime detection status
+     * reported by the Computer; null when complete or absent (older Computers).
+     */
+    val runtimeDetection: SettingsComputerRuntimeDetection? = null,
     /** Server `diskStatus`: free and total disk while online; null when offline or never reported. */
     val diskStatus: SettingsComputerSizeStatusSnapshot? = null,
     /** Server `memoryStatus`: free and total memory while online; null when offline, never reported, or an older Computer. */
@@ -1982,6 +1987,48 @@ data class SettingsComputerSnapshot(
      * connect for being below the Computer version floor (or reporting no version); null otherwise.
      */
     val versionRefusedAt: String? = null
+)
+
+/**
+ * Runtime detection status of a Computer (`machines[].runtimeDetection`, slock #16477 / task #1268).
+ */
+enum class SettingsComputerRuntimeDetectionStatus(val wire: String) {
+    Pending("pending"),
+    Complete("complete"),
+    Incomplete("incomplete");
+
+    companion object {
+        fun fromWire(value: String?): SettingsComputerRuntimeDetectionStatus? {
+            val normalized = value?.trim() ?: return null
+            return entries.firstOrNull { it.wire == normalized }
+        }
+    }
+}
+
+/**
+ * Why a Computer's runtime detection finished [SettingsComputerRuntimeDetectionStatus.Incomplete].
+ */
+enum class SettingsComputerRuntimeDetectionReason(val wire: String) {
+    Deadline("deadline"),
+    ChildFailed("child_failed"),
+    Cancelled("cancelled");
+
+    companion object {
+        fun fromWire(value: String?): SettingsComputerRuntimeDetectionReason? {
+            val normalized = value?.trim() ?: return null
+            return entries.firstOrNull { it.wire == normalized }
+        }
+    }
+}
+
+/**
+ * `runtimeDetection` of a machines row (slock `MachineRuntimeDetection`, #16477).
+ */
+data class SettingsComputerRuntimeDetection(
+    val status: SettingsComputerRuntimeDetectionStatus,
+    val unfinishedRuntimes: List<String> = emptyList(),
+    val reason: SettingsComputerRuntimeDetectionReason? = null,
+    val updatedAtMs: Long? = null,
 )
 
 /**

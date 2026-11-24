@@ -26,7 +26,6 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftMessageActionCard
 import build.raft.designsystem.components.RaftMessageActionCardDefaults
 import build.raft.designsystem.components.RaftMessageActionCardHeaderDescription
-import build.raft.designsystem.components.RaftMessageActionCardNotice
 import build.raft.designsystem.components.RaftMessageActionCardStatusTone
 import build.raft.designsystem.theme.RaftTheme
 
@@ -68,9 +67,6 @@ internal enum class RaftActionCardStatus {
  * - [error]: the last action's failure, under the body.
  * - [endedLine]: an [RaftActionCardStatus.ended] card's line under the title: when it expired and
  *   to ask for a new one, or a seat request's "no owner answered".
- * - [runsOnServerName]: `actionMetadata.targetServerName` when the card's message is in a joint
- *   channel (web `useActionCardAccess.runsOnTargetServer`): the action always runs on that
- *   server, never the viewer's, and the body opens with "Runs on {server}". Null otherwise.
  */
 internal data class RaftActionCardFrameState(
     val status: RaftActionCardStatus = RaftActionCardStatus.Prepared,
@@ -80,7 +76,6 @@ internal data class RaftActionCardFrameState(
     val busyElementKey: String? = null,
     val error: String? = null,
     val errorTraceId: String? = null,
-    val runsOnServerName: String? = null,
     val endedLine: String? = null,
     /**
      * The viewer may not act here, but the card keeps the shape everyone sees (a question card for
@@ -146,10 +141,8 @@ internal fun actionCardFrameButtonState(
  *
  * - Header: the card's [ActionCardSpecCard.icon] (the default zap for one this build has
  *   no glyph for) and its title (a Msg in the viewer's language, entities by name).
- * - Body: "Runs on {server}" first for a joint channel's card
- *   ([RaftActionCardFrameState.runsOnServerName]), then the spec ([RaftCardTree]); once
- *   executed, the spec stays as the record without its buttons, then the `result` tree (web
- *   `ActionCardSpecCard`).
+ * - Body: the spec ([RaftCardTree]); once executed, the spec stays as the record without its
+ *   buttons, then the `result` tree (web `ActionCardSpecCard`).
  * - Status, as [ThreadActionCardView]: Done with the success pixel and the [record] under the
  *   title (with a check), folded; Expired / Withdrawn folded with the [endedLine] under the title
  *   and no action button; Frozen with every action button disabled; Confirm again
@@ -257,9 +250,6 @@ internal fun RaftActionCardView(
             toggleLabel = stringResource(Res.string.thread_action_card_toggle_details),
             headerTrailing = headerTrailing,
         ) {
-            state.runsOnServerName?.takeIf { it.isNotBlank() }?.let { server ->
-                RaftMessageActionCardNotice(stringResource(Res.string.thread_action_card_runs_on_server, server))
-            }
             RaftCardTree(card.spec.root, card.spec.elements, context)
             if (executed && slim == null) card.result?.let { result -> RaftCardTree(result.root, result.elements, context(inSpecOfExecutedCard = false)) }
             slim?.statusLine?.takeIf { (executed || ended) && it.isNotBlank() }?.let { line -> QuestionStatusLine(line, check = slim.statusCheck) }

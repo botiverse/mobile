@@ -278,8 +278,7 @@ private fun RuntimeUsagePreviewCardContent(usage: String, label: String = "Claud
                     ComputerRuntimeUsageSheetState(
                         load = RuntimeAccountUsageLoad.Loaded(read),
                         loading = false,
-                        refresh = ComputerRuntimeUsageRefreshStatus.Idle,
-                        cooldownLeftMillis = 0L,
+                        checkDue = true,
                         runtimeVersion = "2.1.304 (Claude Code)".takeIf { label == "Claude Code" },
                     ),
                 timeContext = usageTimeContext,
@@ -347,8 +346,7 @@ private fun StatesCard(
                 ComputerRuntimeUsageSheetState(
                     load = RuntimeAccountUsageLoad.Loaded(read),
                     loading = false,
-                    refresh = ComputerRuntimeUsageRefreshStatus.Idle,
-                    cooldownLeftMillis = 0L,
+                    checkDue = true,
                     runtimeVersion = "0.98.0",
                     limitReset = limitReset,
                 ),

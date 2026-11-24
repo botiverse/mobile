@@ -173,14 +173,35 @@ internal fun RaftThreadScreenPayload.mergedEmptyDetailWith(base: RaftThreadScree
         base.emptyDetail
     }
 
+/**
+ * Web `isFinalNotFound` without `history_limited` (botiverse/slock #16398, bug #555): a focused
+ * message's context load returned a final not-found (`404` / `message_not_found`, not a transient
+ * network error and not a plan history-window refusal). The thread falls back quietly to its latest
+ * messages / replies and clears the stale focus target.
+ */
+internal fun isFinalFocusedMessageNotFoundError(error: build.raft.app.data.ScreenError): Boolean {
+    if (error.historyLimitedTarget != null) return false
+    val serverCode = error.serverCode?.trim()?.lowercase()
+    if (serverCode == "history_limited") return false
+    val code = error.code.trim().lowercase()
+    return code == "http_404" ||
+        code.endsWith("_http_404") ||
+        code == "message_not_found" ||
+        code == "message_id_invalid" ||
+        code == "channel_id_invalid" ||
+        serverCode == "message_not_found" ||
+        serverCode == "message_id_invalid" ||
+        serverCode == "channel_id_invalid"
+}
+
 internal fun RaftThreadScreenPayload.withRouteContext(base: RaftThreadScreenPayload): RaftThreadScreenPayload =
     (if (hasResolvedReplyThreadStreamFrom(base)) {
         copy(
             navigationLabel = base.navigationLabel,
             selectedTab = base.selectedTab,
             showModeTabs = base.showModeTabs,
-            focusedMessageId = base.focusedMessageId,
-            focusedMessageRequestNonce = base.focusedMessageRequestNonce,
+            focusedMessageId = if (focusedTargetMissing) null else base.focusedMessageId,
+            focusedMessageRequestNonce = if (focusedTargetMissing) 0 else base.focusedMessageRequestNonce,
             alignOwnMessagesRight = base.alignOwnMessagesRight,
             compactConsecutiveMessages = base.compactConsecutiveMessages,
             localOffsetMinutes = base.localOffsetMinutes,
@@ -201,8 +222,8 @@ internal fun RaftThreadScreenPayload.withRouteContext(base: RaftThreadScreenPayl
             navigationLabel = base.navigationLabel,
             selectedTab = base.selectedTab,
             showModeTabs = base.showModeTabs,
-            focusedMessageId = base.focusedMessageId,
-            focusedMessageRequestNonce = base.focusedMessageRequestNonce,
+            focusedMessageId = if (focusedTargetMissing) null else base.focusedMessageId,
+            focusedMessageRequestNonce = if (focusedTargetMissing) 0 else base.focusedMessageRequestNonce,
             alignOwnMessagesRight = base.alignOwnMessagesRight,
             compactConsecutiveMessages = base.compactConsecutiveMessages,
             localOffsetMinutes = base.localOffsetMinutes,

@@ -512,6 +512,53 @@ class ChannelSettingsStoreTest {
     }
 
     @Test
+    fun refreshSlackBridgeUpdatesOptionsSkipsDuringMutationAndReportsFailure() = runTest {
+        val initialSlack =
+            ChannelSlackBridgeState(
+                options = listOf(ChannelSlackBridgeOption("C1", "triage", membershipRequired = false, pairedElsewhere = false)),
+                pairedSlackChannelId = null,
+            )
+        val refreshedSlack =
+            ChannelSlackBridgeState(
+                options =
+                    listOf(
+                        ChannelSlackBridgeOption("C1", "triage", membershipRequired = false, pairedElsewhere = false),
+                        ChannelSlackBridgeOption("C2", "alerts", membershipRequired = false, pairedElsewhere = false),
+                    ),
+                pairedSlackChannelId = null,
+            )
+        val pinGate = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
+        val dataSource =
+            FakeChannelSettingsDataSource(
+                loadResult = DataResult.Content(snapshot().copy(slackBridge = initialSlack)),
+                pinResult = pinGate,
+            )
+        dataSource.slackRefreshResult = DataResult.Content(refreshedSlack)
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        // Success replaces slackBridge with fresh options.
+        assertEquals(ChannelSlackBridgeReadOutcome.Success, store.refreshSlackBridge())
+        assertEquals(listOf("C1", "C2"), store.state.value.slackBridge?.options?.map { it.slackChannelId })
+        assertEquals(1, dataSource.slackRefreshCalls)
+
+        // Failure leaves the last list intact and returns Failed.
+        dataSource.slackRefreshResult = DataResult.Error(ScreenError("slack_bridge_http_502", retryable = true))
+        assertEquals(ChannelSlackBridgeReadOutcome.Failed, store.refreshSlackBridge())
+        assertEquals(listOf("C1", "C2"), store.state.value.slackBridge?.options?.map { it.slackChannelId })
+
+        // While a channel mutation is in flight, refreshSlackBridge skips cleanly.
+        store.dispatch(ChannelSettingsIntent.TogglePin)
+        runCurrent()
+        assertEquals(ChannelSlackBridgeReadOutcome.Skipped, store.refreshSlackBridge())
+        assertEquals(2, dataSource.slackRefreshCalls)
+        pinGate.complete(DataResult.Content(SettingsServerSidebarOrderSnapshot()))
+        runCurrent()
+        store.clear()
+    }
+
+    @Test
     fun profileArchiveAndVisitorVisibleRefusalsPreserveServerMessageCodeAndTraceId() = runTest {
         val capabilities = ChannelCapabilities(editChannelMetadata = true, manageVisitorAccess = true, archiveChannels = true)
         val initial = snapshot().let { base -> base.copy(channel = base.channel.copy(channelCapabilities = capabilities)) }
@@ -912,6 +959,14 @@ private class FakeChannelSettingsDataSource(
     override suspend fun applySlackBridge(channel: HomeChannelRow, slackChannelId: String?): DataResult<ChannelSlackBridgeState?> {
         slackApplies += slackChannelId
         return slackResult
+    }
+
+    var slackRefreshCalls = 0
+    var slackRefreshResult: DataResult<ChannelSlackBridgeState?>? = null
+
+    override suspend fun refreshSlackBridge(channel: HomeChannelRow): DataResult<ChannelSlackBridgeState?> {
+        slackRefreshCalls += 1
+        return slackRefreshResult ?: slackResult
     }
 
     override suspend fun makePublic(): DataResult<Unit> {

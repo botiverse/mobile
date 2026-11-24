@@ -149,8 +149,6 @@ private fun UsageCard(atLimit: Boolean, offer: ComputerRuntimeClaudeLimitResetOf
                     ComputerRuntimeUsageSheetState(
                         load = RuntimeAccountUsageLoad.Loaded(read),
                         loading = false,
-                        refresh = ComputerRuntimeUsageRefreshStatus.Idle,
-                        cooldownLeftMillis = 0L,
                         runtimeVersion = "2.1.322 (Claude Code)",
                         claudeLimitReset = offer,
                         claudeLimitResetNote = note,

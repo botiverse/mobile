@@ -148,7 +148,7 @@ internal val RaftSettingsSearchCopies: Map<String, RaftSettingsSearchCopy> =
             ),
         "theme" to RaftSettingsSearchCopy(Res.string.settings_theme_group_mode, Res.string.settings_appearance_theme_description),
         "server-theme" to
-            RaftSettingsSearchCopy(Res.string.settings_theme_title, Res.string.settings_server_theme_description, descriptionWithServer = true),
+            RaftSettingsSearchCopy(Res.string.settings_theme_title, Res.string.settings_server_theme_description),
         "mute-server" to RaftSettingsSearchCopy(Res.string.notification_level_mute, Res.string.notification_level_muted_note),
         "server-name" to RaftSettingsSearchCopy(Res.string.settings_server_label_name, section = Res.string.settings_profile_title),
         "public-access" to

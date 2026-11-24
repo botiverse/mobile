@@ -187,7 +187,6 @@ internal fun AgentMigrationLogScreen(
                                 AgentMigrationLogEmpty(
                                     stringResource(Res.string.agent_migration_log_empty_filtered_title),
                                     RaftLucideIconName.SearchX,
-                                    description = stringResource(Res.string.agent_migration_log_empty_filtered_body),
                                     action =
                                         stringResource(Res.string.agent_migration_log_filter_clear_all) to
                                             { onIntent(AgentMigrationLogIntent.SetFilters(AgentMigrationLogFilters())) },

@@ -2204,6 +2204,21 @@ internal class SharedThreadStore(
                                 currentPayload
                                     .withThreadContentProjectionFrom(commitNextPayload)
                                     .let { payload ->
+                                        // Web #16398 (bug #555): when the focused target returned a final
+                                        // 404 / message_not_found and fell back quietly to the latest
+                                        // messages / replies, clear the stale focusedMessageId so the
+                                        // thread does not stay stuck waiting on a deleted message.
+                                        if (commitNextPayload.focusedTargetMissing) {
+                                            payload.copy(
+                                                focusedMessageId = null,
+                                                focusedMessageRequestNonce = 0,
+                                                focusedTargetMissing = true,
+                                            )
+                                        } else {
+                                            payload
+                                        }
+                                    }
+                                    .let { payload ->
                                         if (
                                             resolvingInitialAccess &&
                                             result is DataResult.Content &&
@@ -2352,6 +2367,9 @@ internal class SharedThreadStore(
             return
         }
         if (result !is DataResult.Error) anchorPendingStandIn = null
+        if (committedPayload?.focusedTargetMissing == true) {
+            lastRoutePayload = lastRoutePayload?.copy(focusedMessageId = null, focusedMessageRequestNonce = 0)
+        }
         if (result is DataResult.Content) {
             basePayload.resolveThreadRouteIdentity().timelineChannelId?.let { conversationId ->
                 dataSource.clearStaleConversation(conversationId, refreshProvenance)

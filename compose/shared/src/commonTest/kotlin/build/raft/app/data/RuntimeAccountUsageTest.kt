@@ -204,6 +204,44 @@ class RuntimeAccountUsageTest {
         )
     }
 
+    @Test
+    fun failedTimeoutOrOfflineRefreshGivesBackTheTwoMinuteWindow() = runPortableCoroutineTest<Unit> {
+        // slock #16501 (#587 site 6): only an accepted Fresh / Requested / Cooldown answer holds the
+        // client's 2-minute window; timeout, computer_offline, HTTP error, and network error give it back.
+        var now = 10_000L
+        val responses =
+            ArrayDeque(
+                listOf(
+                    { ok("""{"accepted":true,"state":"timeout"}""") },
+                    { ok("""{"accepted":false,"state":"computer_offline"}""") },
+                    { status(502) },
+                    { throw RuntimeException("network dropped") },
+                    { ok(FRESH_REFRESH_BODY) },
+                )
+            )
+        val api = FakeUsageApi(refreshRespond = { responses.removeFirst().invoke() }) { ok(FRESH_BODY) }
+        val store = store(api, clock = { now })
+
+        val timedOut = assertIs<RuntimeAccountUsageRefreshLoad.Done>(store.refresh(key(), RuntimeAccountUsageRefreshReason.Manual))
+        assertEquals(RuntimeAccountUsageRefreshState.Timeout, timedOut.refresh.state)
+        assertEquals(0L, store.refreshCooldownRemainingMillis(key()))
+
+        val offline = assertIs<RuntimeAccountUsageRefreshLoad.Done>(store.refresh(key(), RuntimeAccountUsageRefreshReason.Manual))
+        assertEquals(RuntimeAccountUsageRefreshState.ComputerOffline, offline.refresh.state)
+        assertEquals(0L, store.refreshCooldownRemainingMillis(key()))
+
+        assertIs<RuntimeAccountUsageRefreshLoad.Failed>(store.refresh(key(), RuntimeAccountUsageRefreshReason.Manual))
+        assertEquals(0L, store.refreshCooldownRemainingMillis(key()))
+
+        assertIs<RuntimeAccountUsageRefreshLoad.Failed>(store.refresh(key(), RuntimeAccountUsageRefreshReason.Manual))
+        assertEquals(0L, store.refreshCooldownRemainingMillis(key()))
+
+        val fresh = assertIs<RuntimeAccountUsageRefreshLoad.Done>(store.refresh(key(), RuntimeAccountUsageRefreshReason.Manual))
+        assertEquals(RuntimeAccountUsageRefreshState.Fresh, fresh.refresh.state)
+        assertEquals(RUNTIME_ACCOUNT_USAGE_REFRESH_COOLDOWN_MILLIS, store.refreshCooldownRemainingMillis(key()))
+        assertEquals(5, api.calls.size)
+    }
+
     private fun parseRefresh(body: String): RuntimeAccountUsageRefresh? =
         Json.parseToJsonElement(body).toRuntimeAccountUsageRefresh()
 
