@@ -460,4 +460,92 @@ class RaftAndroidBackgroundKillNoticeTest {
         assertNull(reloaded.notice.value)
         assertTrue(store.state.suppressedForever)
     }
+
+    @Test
+    fun nonInteractiveOemPrestartExitsNeverTriggerWhitelistNotice() {
+        val killAt = installedAt + hour
+        val spegExit =
+            exit(
+                pid = 801,
+                at = killAt,
+                reason = ApplicationExitInfo.REASON_OTHER,
+                importance = IMPORTANCE_CACHED,
+                description = "stop build.raft.app due to SPEG",
+            )
+        val prestartExit =
+            exit(
+                pid = 802,
+                at = killAt + 1_000L,
+                reason = ApplicationExitInfo.REASON_OTHER,
+                importance = IMPORTANCE_CACHED,
+                description = "PreStartCachedKill",
+            )
+        val appCreated =
+            StartupPhaseRecord(
+                pid = 802,
+                processStartMillis = killAt + 950L,
+                processName = mainProcess,
+                phase = RaftStartupPhaseMarker.Phase.ApplicationCreated,
+                phaseAtMillis = killAt + 975L,
+            )
+        assertNull(
+            selectBackgroundKillForNotice(
+                exits = listOf(spegExit, prestartExit),
+                snapshots = emptyList(),
+                state = BackgroundKillNoticePersistenceState(baselineMillis = installedAt),
+                baselineMillis = installedAt,
+                nowMillis = killAt + 60_000L,
+                mainProcessName = mainProcess,
+                vendor = AndroidOemVendor.Xiaomi,
+                noPlayServicesFallbackApplies = true,
+                keepAlivePreferenceEnabled = true,
+                startupRecords = listOf(appCreated),
+            ),
+        )
+        // A newer OEM prestart exit must not mask an older qualifying background kill.
+        val olderRealBackgroundKill =
+            exit(
+                pid = 800,
+                at = killAt - 5_000L,
+                reason = ApplicationExitInfo.REASON_SIGNALED,
+                importance = IMPORTANCE_SERVICE,
+            )
+        assertEquals(
+            olderRealBackgroundKill,
+            selectBackgroundKillForNotice(
+                exits = listOf(olderRealBackgroundKill, spegExit, prestartExit),
+                snapshots = emptyList(),
+                state = BackgroundKillNoticePersistenceState(baselineMillis = installedAt),
+                baselineMillis = installedAt,
+                nowMillis = killAt + 60_000L,
+                mainProcessName = mainProcess,
+                vendor = AndroidOemVendor.Xiaomi,
+                noPlayServicesFallbackApplies = true,
+                keepAlivePreferenceEnabled = true,
+                startupRecords = listOf(appCreated),
+            ),
+        )
+        // Once the process actually reached ActivityCreated, a later background kill still qualifies.
+        val activityCreated =
+            appCreated.copy(
+                phase = RaftStartupPhaseMarker.Phase.ActivityCreated,
+                firstActivityAtMillis = killAt + 980L,
+                firstActivityAfterStartMs = 30L,
+            )
+        assertEquals(
+            prestartExit,
+            selectBackgroundKillForNotice(
+                exits = listOf(prestartExit),
+                snapshots = emptyList(),
+                state = BackgroundKillNoticePersistenceState(baselineMillis = installedAt),
+                baselineMillis = installedAt,
+                nowMillis = killAt + 60_000L,
+                mainProcessName = mainProcess,
+                vendor = AndroidOemVendor.Xiaomi,
+                noPlayServicesFallbackApplies = true,
+                keepAlivePreferenceEnabled = true,
+                startupRecords = listOf(activityCreated),
+            ),
+        )
+    }
 }

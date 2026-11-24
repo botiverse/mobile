@@ -113,6 +113,7 @@ internal fun selectBackgroundKillForNotice(
     vendor: AndroidOemVendor,
     noPlayServicesFallbackApplies: Boolean,
     keepAlivePreferenceEnabled: Boolean,
+    startupRecords: List<StartupPhaseRecord> = emptyList(),
 ): SystemKillExit? {
     if (state.suppressedForever || state.shownCount >= BackgroundKillNoticeMaxAppearances) return null
     if (state.dismissCount > 0 && state.lastDismissedAtMillis > 0L) {
@@ -145,6 +146,7 @@ internal fun selectBackgroundKillForNotice(
         }
         .filter { exit ->
             val telemetry = MemoryTelemetryRing.match(snapshots, exit.pid, exit.timestampMillis)
+            val startup = startupRecordForExit(startupRecords, exit.pid, exit.timestampMillis)
             val decision =
                 classifySystemKill(
                     reasonCode = exit.reasonCode,
@@ -152,6 +154,8 @@ internal fun selectBackgroundKillForNotice(
                     telemetry = telemetry,
                     exitTimestampMillis = exit.timestampMillis,
                     status = exit.status,
+                    description = exit.description,
+                    startup = startup,
                 )
             decision == SystemKillDecision.ReportBackground &&
                 qualifiesForBackgroundKillNotice(
@@ -195,6 +199,7 @@ internal class RaftAndroidBackgroundKillNoticeController(
         vendor: AndroidOemVendor,
         noPlayServicesFallbackApplies: Boolean,
         keepAlivePreferenceEnabled: Boolean,
+        startupRecords: List<StartupPhaseRecord> = emptyList(),
     ): RaftBackgroundKillNotice? {
         val now = nowMillis()
         // Keep SharedPreferences / disk I/O strictly outside [lock] so main-thread clicks never
@@ -225,6 +230,7 @@ internal class RaftAndroidBackgroundKillNoticeController(
                     vendor = vendor,
                     noPlayServicesFallbackApplies = noPlayServicesFallbackApplies,
                     keepAlivePreferenceEnabled = keepAlivePreferenceEnabled,
+                    startupRecords = startupRecords,
                 )
             // A notice already on screen stays when nothing is selected (see above).
             result =
@@ -412,6 +418,9 @@ internal object RaftAndroidBackgroundKillNoticeHost : RaftBackgroundKillNoticeHo
             val keepAliveEnabled =
                 runCatching { AndroidRealtimeKeepAliveController.isForegroundKeepAliveEnabled(appContext) }
                     .getOrDefault(false)
+            val startupRecords =
+                runCatching { RaftStartupPhaseMarker.readAll(appContext.filesDir) }
+                    .getOrDefault(emptyList())
             activeController.evaluate(
                 exits = exits,
                 snapshots = previousTelemetry,
@@ -420,6 +429,7 @@ internal object RaftAndroidBackgroundKillNoticeHost : RaftBackgroundKillNoticeHo
                 vendor = vendor,
                 noPlayServicesFallbackApplies = noPlayServicesFallback,
                 keepAlivePreferenceEnabled = keepAliveEnabled,
+                startupRecords = startupRecords,
             )
         }.onFailure { error ->
             RaftAndroidLocalDiagnostics.recordLog(
