@@ -1802,7 +1802,7 @@ HSPLbuild/raft/app/ThreadPixelAvatarSpec;-><init>(JLjava/util/List;Lkotlin/jvm/i
 HSPLbuild/raft/app/ThreadRouteIdentity;->getTimelineChannelId()Ljava/lang/String;
 HSPLbuild/raft/app/ThreadRouteIdentityKt;->resolveThreadRouteIdentity(Lbuild/raft/app/RaftThreadScreenPayload;)Lbuild/raft/app/ThreadRouteIdentity;
 HSPLbuild/raft/app/ThreadRouteIdentityKt;->resolveThreadRouteIdentity(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lbuild/raft/app/model/ConversationKind;)Lbuild/raft/app/ThreadRouteIdentity;
-HSPLbuild/raft/app/ThreadSurfaceContractKt;->normalizedThreadChannelKind(Ljava/lang/String;)Ljava/lang/String;
+HSPLbuild/raft/app/ThreadSurfaceKindsKt;->normalizedThreadChannelKind(Ljava/lang/String;)Ljava/lang/String;
 HSPLbuild/raft/app/ThreadSurfaceContractKt;->threadSurfaceComposerPlaceholder(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 HSPLbuild/raft/app/ThreadTimelineSlice;->getMessages()Ljava/util/List;
 HSPLbuild/raft/app/ThreadTimelineSlice;->getOriginMessage()Lbuild/raft/app/RaftThreadMessageItem;
