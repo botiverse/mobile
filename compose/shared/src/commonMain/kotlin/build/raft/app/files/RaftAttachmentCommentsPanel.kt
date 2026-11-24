@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -44,13 +46,14 @@ import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCloseButton
-import build.raft.designsystem.components.RaftCloseButtonSize
+import build.raft.designsystem.components.LocalRaftBarButtons
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
@@ -58,15 +61,11 @@ import build.raft.designsystem.components.raftClickable
 import androidx.compose.foundation.shape.CircleShape
 
 // web AttachmentCommentsPanel (packages/web/src/components/message/AttachmentCommentsPanel.tsx):
-// a `min-h-10 px-3 py-1.5` header over a `line-seam`, the comment cards in a `px-3 py-2`
+// a raft-ui PanelHeader over a `line-seam`, the comment cards in a `px-3 py-2`
 // list with `gap-3`, and the compact composer docked under one seam with `p-3` around it.
 // The translucent lines (`line-seam`, `line-hairline`) are drawn pre-composited on the opaque
 // surface under them, so they come out as the browser blends them (rounded, not truncated).
-// The web panel now uses raft-ui PanelHeader (header-height); moving to it is its own change, with new screenshots.
-// app-only: the app's header still follows the web's old `min-h-10` row.
-private val CommentsHeaderMinHeight = 40.dp
 private val CommentsEdge = 12.dp
-private val CommentsHeaderPaddingVertical = 6.dp
 private val CommentsListPaddingVertical = 8.dp
 private val CommentsCardGap = 12.dp
 private val CommentCardPaddingVertical = 10.dp
@@ -125,27 +124,62 @@ internal fun RaftAttachmentCommentsPanel(
 @Composable
 private fun AttachmentCommentsHeader(filename: String, onClose: (() -> Unit)?) {
     val colors = RaftTheme.colors
+    val controls = RaftTheme.controls
+    val title = stringResource(Res.string.thread_comments_title)
+    // web AttachmentCommentsPanel: raft-ui PanelHeader, `header-height` (56 on a phone, 48 by touch
+    // from 744pt, 44 with a mouse) over a `line-seam`. PanelTitle "Comments", the file name as its
+    // PanelMeta: under the title on a phone, after it on its line when wide (panel.md § Anatomy).
     Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = CommentsHeaderMinHeight - RaftStroke.Hairline)
-                    .padding(horizontal = CommentsEdge, vertical = CommentsHeaderPaddingVertical),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RaftText(
-                text = stringResource(Res.string.thread_comments_header, filename),
-                style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold).withRaftTextRendering(),
-                color = colors.foreground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            if (onClose != null) {
-                // The compact head's × at its end: the 32dp one, as a sheet's.
-                RaftCloseButton(onClick = onClose, label = stringResource(Res.string.common_close), size = RaftCloseButtonSize.Dialog)
+        // The head's × is a bar button: 28dp under a mouse or trackpad, 44dp by touch (sizing v12).
+        CompositionLocalProvider(LocalRaftBarButtons provides true) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(controls.headHeight - RaftStroke.Hairline)
+                        .padding(start = 16.dp, end = if (onClose != null) controls.barEdgeInset else 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val titleText: @Composable (Modifier) -> Unit = { titleModifier ->
+                    RaftText(
+                        text = title,
+                        modifier = titleModifier.semantics { heading() },
+                        style = RaftTheme.typography.headline,
+                        color = colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                val metaText: @Composable (Modifier) -> Unit = { metaModifier ->
+                    // raft-ui PanelMeta: text-caption in foreground-hint.
+                    RaftText(
+                        text = filename,
+                        modifier = metaModifier,
+                        style = RaftTheme.typography.caption,
+                        color = colors.foregroundHint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (RaftTheme.scale == RaftScale.Wide) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(RaftPanelHeadInlineMetaGap)
+                    ) {
+                        // The title keeps its room; the meta gives way first.
+                        titleText(Modifier.alignByBaseline())
+                        metaText(Modifier.weight(1f).alignByBaseline())
+                    }
+                } else {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        titleText(Modifier)
+                        metaText(Modifier)
+                    }
+                }
+                if (onClose != null) {
+                    RaftCloseButton(onClick = onClose, label = stringResource(Res.string.common_close))
+                }
             }
         }
         Box(Modifier.fillMaxWidth().heightIn(min = RaftStroke.Hairline, max = RaftStroke.Hairline).background(colors.lineSeam.compositeOver(colors.layerCanvas)))

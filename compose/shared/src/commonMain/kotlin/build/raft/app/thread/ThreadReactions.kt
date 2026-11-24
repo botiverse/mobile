@@ -24,6 +24,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -143,10 +144,22 @@ internal fun ThreadReactionChip(
                         var gesture: RaftGestureSession<ThreadReactionChipGestureCallbacks>? = null
                         // raw-click: gesture-owner chip (tap toggles, long press lists who reacted, on one
                         // detector that survives lazy-slot reuse); raftClickable can't hold the owner token.
+                        // The design-system chip still draws hover and press from hoverInteractionSource.
                         detectTapGestures(
-                            onPress = {
+                            onPress = { offset ->
                                 gesture = owner.beginGesture()
-                                tryAwaitRelease()
+                                // The chip's press (web MessageReactionChip `:active`): into the source the
+                                // design-system chip draws from, as its own toggle would; hover is already its.
+                                val press = PressInteraction.Press(offset)
+                                hoverInteractionSource.tryEmit(press)
+                                var released = false
+                                try {
+                                    released = tryAwaitRelease()
+                                } finally {
+                                    hoverInteractionSource.tryEmit(
+                                        if (released) PressInteraction.Release(press) else PressInteraction.Cancel(press)
+                                    )
+                                }
                             },
                             onTap = {
                                 (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick?.invoke()
