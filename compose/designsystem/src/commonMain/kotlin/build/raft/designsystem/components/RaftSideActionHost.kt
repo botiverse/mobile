@@ -44,7 +44,7 @@ interface RaftSideActionHost {
  *
  * [actions] are all of them in their listed order, and the column's own rules
  * ([RaftSideAction.keepVisible], [RaftSideAction.priority], the
- * [RaftSideActionColumnDefaults.MaxActions] cap) split them into [visibleActionIds] (buttons, in
+ * [raftSideColumnActionCap]) split them into [visibleActionIds] (buttons, in
  * listed order) and [overflowActionIds] (rows of the ⋯ menu, named [overflowLabel], in listed
  * order; empty = no ⋯). The split ignores the column's height and keep-out bands: the system
  * strip places its own buttons.
@@ -87,7 +87,7 @@ internal fun raftSideActionHostColumn(
     primary: List<RaftSideAction>,
     actions: List<RaftSideAction>,
     overflowLabel: String,
-    maxActions: Int = RaftSideActionColumnDefaults.MaxActions,
+    maxActions: Int = raftSideColumnActionCap(actions.map { it.raftSideRank() }),
 ): RaftSideActionHostColumn? {
     fun RaftSideAction.item(): RaftSideActionHostColumn.Item? {
         val symbol = systemSymbol?.takeIf { it.isNotBlank() } ?: return null
