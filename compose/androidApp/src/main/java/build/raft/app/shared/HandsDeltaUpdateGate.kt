@@ -254,7 +254,8 @@ internal data class HandsUpdateBridgeDecision(
     val installedVersionCode: Long?,
     val updateAvailable: Boolean,
     val retryable: Boolean,
-    val targetDrifted: Boolean
+    val targetDrifted: Boolean,
+    val supersededPriorInstall: Boolean = false
 )
 
 internal data class HandsUpdateTargetIdentity(
@@ -284,6 +285,28 @@ internal fun handsUpdateBridgeDecision(
         sdkTarget.versionCode != null &&
             sdkInstalledVersionCode != null &&
             sdkInstalledVersionCode >= sdkTarget.versionCode
+    val completedInstall =
+        installedTarget || sdkState == SharedSettingsUpdateTransactionState.Installed
+    val newerOfferAfterInstall =
+        completedInstall &&
+            offerChecked &&
+            offerAvailable &&
+            offerTarget.versionCode != null &&
+            (sdkInstalledVersionCode == null || offerTarget.versionCode > sdkInstalledVersionCode) &&
+            (sdkInstalledVersionCode != null ||
+                sdkTarget.versionCode == null ||
+                offerTarget.versionCode > sdkTarget.versionCode)
+    if (newerOfferAfterInstall) {
+        return HandsUpdateBridgeDecision(
+            state = SharedSettingsUpdateTransactionState.Idle,
+            targetVersionCode = offerTarget.versionCode,
+            installedVersionCode = sdkInstalledVersionCode,
+            updateAvailable = true,
+            retryable = false,
+            targetDrifted = false,
+            supersededPriorInstall = true
+        )
+    }
     val targetDrifted =
         !installedTarget &&
             sdkState.hasInFlightTarget() &&
@@ -292,7 +315,7 @@ internal fun handsUpdateBridgeDecision(
             (!offerAvailable || sdkTarget.differsFrom(offerTarget))
     val state =
         when {
-            installedTarget || sdkState == SharedSettingsUpdateTransactionState.Installed ->
+            completedInstall ->
                 SharedSettingsUpdateTransactionState.Installed
             targetDrifted -> SharedSettingsUpdateTransactionState.Stale
             else -> sdkState
@@ -331,6 +354,19 @@ internal fun handsUpdateBridgeDecision(
         targetDrifted = targetDrifted
     )
 }
+
+internal fun handsUpdateBridgeErrorCode(
+    decision: HandsUpdateBridgeDecision,
+    offerAvailable: Boolean,
+    sdkErrorCode: String?
+): String? =
+    when {
+        decision.targetDrifted && offerAvailable -> "target_changed"
+        decision.targetDrifted -> "offer_withdrawn"
+        decision.supersededPriorInstall ||
+            decision.state == SharedSettingsUpdateTransactionState.Installed -> null
+        else -> sdkErrorCode
+    }
 
 /** Reported for a waiting update when the build does not declare REQUEST_INSTALL_PACKAGES. */
 internal const val HANDS_DELTA_INSTALL_UNSUPPORTED = "install_unsupported"
