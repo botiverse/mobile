@@ -48,7 +48,7 @@ class RaftSideActionHostTest {
     }
 
     @Test
-    fun theCapAndPrioritiesSplitButtonsFromTheOverflowInListedOrder() {
+    fun prioritiesSplitButtonsFromTheOverflowInListedOrder() {
         val actions =
             listOf(
                 action("a", priority = -1),
@@ -59,16 +59,18 @@ class RaftSideActionHostTest {
             )
         val pushed = raftSideActionHostColumn(listOf(back), actions, "More")!!
         assertEquals(listOf("a", "b", "c", "d", "e"), pushed.actions.map { it.id }, "every action, listed order")
-        assertEquals(listOf("c", "d"), pushed.visibleActionIds)
-        assertEquals(listOf("a", "b", "e"), pushed.overflowActionIds)
-        // A top-level page (no Back) follows the same cap.
+        // Every page action shows (no cap of two since #wg-mobile-sync:#266); one ranked below zero is a ⋯ command.
+        assertEquals(listOf("b", "c", "d", "e"), pushed.visibleActionIds)
+        assertEquals(listOf("a"), pushed.overflowActionIds)
+        // A top-level page (no Back) follows the same rule.
         val topLevel = raftSideActionHostColumn(emptyList(), actions.take(3), "More")!!
         assertEquals(listOf("b", "c"), topLevel.visibleActionIds)
         assertEquals(listOf("a"), topLevel.overflowActionIds)
-        // Within the cap nothing overflows (no ⋯).
-        val two = raftSideActionHostColumn(listOf(back), actions.take(2), "More")!!
-        assertEquals(listOf("a", "b"), two.visibleActionIds)
-        assertEquals(emptyList(), two.overflowActionIds)
+        // With no ⋯ command nothing overflows (no ⋯), however many there are.
+        val five = listOf(action("s"), action("t"), action("f"), action("m"), action("x"))
+        val all = raftSideActionHostColumn(listOf(back), five, "More")!!
+        assertEquals(listOf("s", "t", "f", "m", "x"), all.visibleActionIds)
+        assertEquals(emptyList(), all.overflowActionIds)
         val one = raftSideActionHostColumn(emptyList(), listOf(action("bell", "bell")), "More")!!
         assertEquals(listOf("bell"), one.visibleActionIds)
     }
