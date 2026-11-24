@@ -53,7 +53,16 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.AuthenticatedRouteOwner
+import build.raft.app.data.ChannelConversionIntent
+import build.raft.app.data.ChannelConversionKey
+import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.RaftSharedStoreProvider
+import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.StoredAuthSession
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ServerId
+import kotlinx.coroutines.launch
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftTooltip
@@ -79,9 +88,32 @@ import build.raft.designsystem.theme.RaftTheme
 internal class JointConnectedServersHolder(val store: JointChannelConnectionsStore)
 
 /**
- * The section's store for the open channel, loaded while [active] (a joint channel, or a private
- * one offering Connect your servers) and the route's account is the live one. Its effects become
- * the web's toasts.
+ * Web `useChannelConversionInProgress` (slock #16389): observes [SharedChannelConversionStore] for
+ * `(serverId, channelId)` and triggers a background read once while [active] if not yet read.
+ */
+@Composable
+internal fun rememberChannelConversionInProgress(
+    sharedStores: RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    serverId: ServerId,
+    channelId: ChannelId,
+    active: Boolean,
+): Boolean {
+    val conversionStore = remember(sharedStores, storeScope) { sharedStores.channelConversionStore(storeScope) }
+    val key = remember(serverId, channelId) { ChannelConversionKey(serverId.value, channelId.value) }
+    val slice by remember(conversionStore, key) { conversionStore.slice(key) }.collectAsState(conversionStore.current(key))
+    LaunchedEffect(conversionStore, key, active, slice.read) {
+        if (active && !slice.read) {
+            conversionStore.dispatch(ChannelConversionIntent.Load(key, "connect_entry", DataRequestPriority.Background))
+        }
+    }
+    return slice.isConversionInProgress
+}
+
+/**
+ * The section's store for the open channel, loaded while [active] (a joint channel, a private one
+ * offering Connect your servers, or a Guest's Connect your servers entry) and the route's account
+ * is the live one. Its effects become the web's toasts.
  */
 @Composable
 internal fun rememberJointConnectedServers(
@@ -92,13 +124,18 @@ internal fun rememberJointConnectedServers(
     storeScope: RaftShellStoreScope,
     bridge: BridgeModule,
     active: Boolean,
+    seedConnections: JointChannelConnections? = null,
     onConnectionsChanged: () -> Unit = {},
+    onServersChanged: () -> Unit = {},
 ): JointConnectedServersHolder {
     val scope = rememberCoroutineScope()
     val authorityGateway = remember(sharedStores, storeScope) { sharedStores.authenticatedRouteAuthorityGateway(storeScope) }
+    val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val latestOnConnectionsChanged = androidx.compose.runtime.rememberUpdatedState(onConnectionsChanged)
+    val latestOnServersChanged = androidx.compose.runtime.rememberUpdatedState(onServersChanged)
     val holder =
         remember(route, routeOwner, authorityGateway, scope, sharedStores) {
+            var storeRef: JointChannelConnectionsStore? = null
             JointConnectedServersHolder(
                 JointChannelConnectionsStore(
                     dataSource =
@@ -118,16 +155,31 @@ internal fun rememberJointConnectedServers(
                             "${routeOwner.environmentId}|${routeOwner.accountId}|${route.serverId.value}|${route.channelId.value}",
                         ),
                     onConnectionsChanged = { latestOnConnectionsChanged.value() },
-                ),
+                    onServersChanged = {
+                        scope.launch {
+                            val authDataSource = sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope)
+                            val refreshed = runCatchingPreservingCancellation { authDataSource.loadServers() }.getOrNull()
+                            val session =
+                                (refreshed as? SharedAuthResult.Success<StoredAuthSession>)?.data
+                                    ?: runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
+                            storeRef?.dispatch(
+                                JointChannelConnectionsIntent.SetMemberConnectAccount(session?.memberConnectAccount(route.serverId.value))
+                            )
+                            latestOnServersChanged.value()
+                        }
+                    },
+                ).also { storeRef = it },
             )
         }
     val store = holder.store
     val state by store.state.collectAsState()
-    val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     // Connect your servers: the account's servers and its role on each, as `GET /api/servers` sent them.
     LaunchedEffect(store, authStore, liveOwner) {
         val session = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
         store.dispatch(JointChannelConnectionsIntent.SetMemberConnectAccount(session?.memberConnectAccount(route.serverId.value)))
+    }
+    LaunchedEffect(store, seedConnections) {
+        if (seedConnections != null) store.dispatch(JointChannelConnectionsIntent.SeedChannel(seedConnections))
     }
     LaunchedEffect(store, liveOwner, routeOwner, active) {
         if (active && liveOwner == routeOwner) store.dispatch(JointChannelConnectionsIntent.Refresh)
@@ -172,6 +224,11 @@ internal fun JointConnectedServersOverlays(
             store.dispatch(JointChannelConnectionsIntent.DismissMemberConnect)
             onUpgradeServer(serverId)
         },
+        onOpenCreateServer = { store.dispatch(JointChannelConnectionsIntent.OpenMemberConnectNewServer) },
+        onCloseCreateServer = { store.dispatch(JointChannelConnectionsIntent.CloseMemberConnectNewServer) },
+        onNewServerNameChange = { store.dispatch(JointChannelConnectionsIntent.SetMemberConnectNewServerName(it)) },
+        onNewServerSlugChange = { store.dispatch(JointChannelConnectionsIntent.SetMemberConnectNewServerSlug(it)) },
+        onSubmitNewServer = { store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnectNewServer) },
     )
 }
 

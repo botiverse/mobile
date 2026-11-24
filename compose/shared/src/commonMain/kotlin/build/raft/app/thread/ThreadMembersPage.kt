@@ -20,9 +20,17 @@ import build.raft.app.data.RaftProductEvents
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
+import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
+import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.JointChannelConnections
+import build.raft.app.data.JointChannelRole
+import build.raft.app.data.JointChannelServer
+import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RemoveChannelMemberRequest
+import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.model.ConversationKind
 import build.raft.app.data.ChangeChannelMemberRoleRequest
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -564,12 +572,16 @@ private fun ThreadMembersPageScreen() {
     // External invites (web ChannelMembers): the viewer's role and this server's name.
     var viewerServerRole by remember(routeOwner) { mutableStateOf<String?>(null) }
     var viewerServerName by remember(routeOwner) { mutableStateOf("") }
+    // Guest "Connect your servers" entry (slock #16375/#16389): the account's servers and role on each.
+    var memberConnectAccount by remember(routeOwner) { mutableStateOf<MemberConnectAccount?>(null) }
+    var guestServersRevision by remember(routeOwner) { mutableStateOf(0) }
     // Member labels (web #14535/#15817): logos of the viewer's joined servers overlaid with this
     // external channel's `jointServers[].serverAvatarUrl`.
     var viewerServerLogoPairs by remember(routeOwner) { mutableStateOf<List<Pair<String, String?>>>(emptyList()) }
-    LaunchedEffect(liveOwner, routeOwner) {
+    LaunchedEffect(liveOwner, routeOwner, guestServersRevision) {
         canCreateAgents = false
         viewerServerRole = null
+        memberConnectAccount = null
         if (liveOwner == routeOwner) {
             val session = sharedStores.authStore(storeScope).readSession()
             viewerServerLogoPairs = session?.servers.orEmpty().map { it.id to it.avatarUrl }
@@ -580,6 +592,7 @@ private fun ThreadMembersPageScreen() {
             viewerServerRole = stored?.role
             viewerServerName = stored?.name.orEmpty()
             viewerUserId = session?.user?.id?.trim()?.takeIf { it.isNotEmpty() }
+            memberConnectAccount = session?.memberConnectAccount(routeOwner.serverId)
         } else createAgentName = null
     }
     val viewerServerLogos =
@@ -712,6 +725,25 @@ private fun ThreadMembersPageScreen() {
         !authorityRejected &&
             channelMembersSlice.canAddMembersKnown &&
             channelMembersSlice.canAddMembers
+    val guestConnect =
+        rememberThreadMembersGuestConnect(
+            route = route,
+            routeOwner = routeOwner,
+            liveOwner = liveOwner,
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            bridge = bridge,
+            projection = addChannelProjection,
+            channelName = channelName,
+            canAddMembers = canAddMembers,
+            authorityRejected = authorityRejected,
+            memberConnectAccount = memberConnectAccount,
+            onConnectionsChanged = {
+                latestHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                latestRefreshMembers()
+            },
+            onServersChanged = { guestServersRevision += 1 },
+        )
     var initialAddApplied by remember(route) { mutableStateOf(false) }
     LaunchedEffect(route.openAddMember, canAddMembers) {
         if (route.openAddMember && canAddMembers && !initialAddApplied) {
@@ -999,6 +1031,8 @@ private fun ThreadMembersPageScreen() {
             membersFailed = membersFailed, membersLoading = membersLoading,
             refreshing = channelMembersSlice.status == SharedServerMembersLoadStatus.InFlight && members.isNotEmpty(),
             canAddMembers = canAddMembers, agentStatusResolver = agentStatusResolver, memberAvatarResolver = memberAvatarResolver,
+            guestConnectEntry = guestConnect.available,
+            onGuestConnect = guestConnect.onOpen,
             onBack = { router.closePage() },
             onRefresh = {
                 refreshMembers()
@@ -1178,6 +1212,22 @@ private fun ThreadMembersPageScreen() {
                 )
             }
         }
+        if (guestConnect.showOverlays) {
+            JointConnectedServersOverlays(
+                holder = guestConnect.holder,
+                onUpgradeServer = { targetServerId ->
+                    if (settingsBillingOffersUpgrade()) {
+                        pager.openRaftUpgradeDialog(
+                            gate = RaftUpgradeGate.ExternalChannelFreeLimit,
+                            storeScope = storeScope,
+                            targetServerId = targetServerId,
+                        )
+                    } else {
+                        pager.openSettingsBillingPage(storeScope)
+                    }
+                },
+            )
+        }
         removalGate.pending?.let { confirmation ->
             ThreadRemoveMemberConfirmationDialog(
                 confirmation = confirmation,
@@ -1208,6 +1258,119 @@ private fun ThreadMembersPageScreen() {
 
 
 
+
+private data class ThreadMembersGuestConnectHandle(
+    val available: Boolean,
+    val showOverlays: Boolean,
+    val onOpen: () -> Unit,
+    val holder: JointConnectedServersHolder,
+)
+
+/**
+ * Web `useGuestConnectDialog` on the members page (slock #16375/#16389): for a Guest of the host
+ * server who cannot add members, loads conversion status + channel connections and opens Connect
+ * your servers with the Guest helper line and Create a server and connect.
+ */
+@Composable
+private fun rememberThreadMembersGuestConnect(
+    route: ThreadMembersPageRoute,
+    routeOwner: AuthenticatedRouteOwner,
+    liveOwner: AuthenticatedRouteOwner?,
+    sharedStores: RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    bridge: BridgeModule,
+    projection: SharedConversationDirectoryProjection?,
+    channelName: String,
+    canAddMembers: Boolean,
+    authorityRejected: Boolean,
+    memberConnectAccount: MemberConnectAccount?,
+    onConnectionsChanged: () -> Unit,
+    onServersChanged: () -> Unit,
+): ThreadMembersGuestConnectHandle {
+    val active = !authorityRejected && !canAddMembers && memberConnectAccount?.currentServerRole == "guest" && projection?.archived != true
+    val conversionFromStore =
+        rememberChannelConversionInProgress(
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            serverId = route.serverId,
+            channelId = route.channelId,
+            active = active,
+        )
+    val seedConnections =
+        remember(projection, route.channelId, route.serverId, channelName, memberConnectAccount, conversionFromStore) {
+            projection?.let { proj ->
+                val isJoint = proj.conversationKind == ConversationKind.Joint || proj.channelKind.equals("joint", ignoreCase = true)
+                val isPrivate = !isJoint && proj.channelKind.equals("private", ignoreCase = true)
+                val jointRole = JointChannelRole.fromWire(proj.jointRole)
+                val servers =
+                    if (isJoint) {
+                        proj.jointServers
+                            .map { ref ->
+                                JointChannelServer(
+                                    serverId = ref.id,
+                                    name = ref.name,
+                                    slug = ref.slug,
+                                    active = true,
+                                    isCurrentServer = ref.id == route.serverId.value,
+                                    plan = null,
+                                    role = if (jointRole == JointChannelRole.Host && ref.id == route.serverId.value) JointChannelRole.Host else null,
+                                    avatarUrl = ref.avatarUrl,
+                                )
+                            }
+                            .ifEmpty {
+                                listOf(
+                                    JointChannelServer(
+                                        serverId = route.serverId.value,
+                                        name = memberConnectAccount?.currentServerName.orEmpty(),
+                                        slug = memberConnectAccount?.currentServerSlug.orEmpty(),
+                                        active = true,
+                                        isCurrentServer = true,
+                                        plan = null,
+                                        role = jointRole,
+                                    )
+                                )
+                            }
+                    } else {
+                        emptyList()
+                    }
+                JointChannelConnections(
+                    channelId = route.channelId,
+                    channelName = channelName,
+                    isJoint = isJoint,
+                    archived = proj.archived,
+                    servers = servers,
+                    hasCurrentServerPendingInvites = false,
+                    jointRole = jointRole,
+                    isPrivate = isPrivate,
+                    joined = proj.joined,
+                    conversionInProgress = conversionFromStore,
+                )
+            }
+        }
+    val settingsRoute = remember(route.serverId, route.channelId) { ChannelSettingsRoute(route.serverId, route.channelId) }
+    val holder =
+        rememberJointConnectedServers(
+            route = settingsRoute,
+            routeOwner = routeOwner,
+            liveOwner = liveOwner,
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            bridge = bridge,
+            active = active && !conversionFromStore,
+            seedConnections = seedConnections,
+            onConnectionsChanged = onConnectionsChanged,
+            onServersChanged = onServersChanged,
+        )
+    val state by holder.store.state.collectAsState()
+    val conversionInProgress = conversionFromStore || state.connections?.conversionInProgress == true
+    val available = active && !conversionInProgress && state.guestConnectEntryAvailable
+    return ThreadMembersGuestConnectHandle(
+        available = available,
+        showOverlays = available || state.memberConnectSheet != null,
+        onOpen = { holder.store.dispatch(JointChannelConnectionsIntent.OpenGuestMemberConnect) },
+        holder = holder,
+    )
+}
 
 /** The production roster renderer; visual fixtures supply typed state without route payloads. */
 @Composable
@@ -1255,6 +1418,9 @@ internal fun ThreadMembersPageContent(
     channelKind: String? = null,
     /** The viewed server's name, for "Members of {server}" (web `currentServerName`). */
     viewerServerName: String = "",
+    /** Guest "Connect your servers" entry in Add Member's place (slock #16375/#16389). */
+    guestConnectEntry: Boolean = false,
+    onGuestConnect: () -> Unit = {},
 ) {
     // A joint channel's two groups fold like the other sections and start open (web
     // MemberPageSection `defaultOpen`); only this page shows them, so their state stays here.
@@ -1342,7 +1508,7 @@ internal fun ThreadMembersPageContent(
                     ),
             )
         }
-        val showBottomActionBar = !membersLoading && (canAddMembers || externalInvites?.access == true)
+        val showBottomActionBar = !membersLoading && (canAddMembers || externalInvites?.access == true || guestConnectEntry)
         // Pull-to-refresh reloads the roster through the same path as the error state's Retry.
         RaftStorePullToRefreshBox(
             refreshing = refreshing,
@@ -1505,6 +1671,8 @@ internal fun ThreadMembersPageContent(
                 bottomSafeArea = bottomSafeArea,
                 onClick = { onAddVisibleChange(!addDialogVisible) },
                 showAddMember = canAddMembers,
+                showGuestConnect = !canAddMembers && guestConnectEntry,
+                onGuestConnect = onGuestConnect,
                 inviteOutsideServerName = externalEntry?.serverName,
                 inviteOutsideLoading = externalEntry?.state?.openingEntry == true,
                 onInviteOutside = externalEntry?.onOpenInvite,

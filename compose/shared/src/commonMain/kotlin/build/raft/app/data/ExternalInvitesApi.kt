@@ -20,7 +20,8 @@ import kotlinx.serialization.json.Json
  *    Channel's External): the same answer for the current server, before the channel exists.
  *  - `POST channels/:id/external-invites` `{ emails, makePrivate?, connectInviteMemberEmails? }` →
  *    `{ sent: [{ id, email, expiresAt }], added: string[], skipped: { duplicates, invalid,
- *    alreadyPending, alreadyMembers, alreadyInChannel, guestsElsewhere } }`.
+ *    alreadyPending, alreadyMembers, alreadyInChannel } }` (`guestsElsewhere` are now sent an
+ *    ordinary emailed invite to connect or create a server, slock #16294).
  *  - `GET channels/:id/external-invites` → `{ invites: [{ id, email, awaitingApproval, connecting,
  *    connectPhase, revocable, invitedBy: { id, name } | null, createdAt, expiresAt }], slotsLeft }`.
  *  - `POST channels/:id/external-invites/:inviteId/resend` → `{ id, email, expiresAt }`.

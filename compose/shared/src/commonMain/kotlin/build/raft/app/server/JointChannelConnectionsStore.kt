@@ -12,9 +12,12 @@ import build.raft.app.data.RaftDurableSnapshotKey
 import build.raft.app.data.RaftKeyedSnapshotCache
 import build.raft.app.data.RealJointChannelRepository
 import build.raft.app.data.ScreenError
+import build.raft.app.data.InviteeRefusal
 import build.raft.app.data.JointChannelServer
 import build.raft.app.data.JointChannelServerPlan
 import build.raft.app.data.JointChannelRole
+import build.raft.app.data.MemberConnectNewServerResponse
+import build.raft.app.data.MemberConnectOptions
 import build.raft.app.data.MemberConnectResponse
 import build.raft.app.data.MemberConnectServerLimit
 import build.raft.app.data.ServerConnectOutcome
@@ -102,45 +105,44 @@ internal data class JointChannelConnectionsState(
     val connectedByYou: Set<String> = emptySet(),
 ) {
     /**
-     * The rows as shown (web `jointServerRows`, slock c8849c8b3cfd EditChannelDialog.tsx:445): the
-     * host leads, the rest keep the server's order; a private channel offering Connect your
-     * servers lists this server alone, as its host.
+     * The rows as shown (web `jointServerRows`, slock #16395 EditChannelDialog.tsx): the host
+     * leads, the rest keep the server's order. Private channels no longer synthesize a host-only
+     * Connected servers section; they use Channel settings › Connect your servers instead.
      */
     val displayServers: List<JointChannelServer>
         get() {
             val servers = connections?.servers.orEmpty()
-            privateHostRow?.let { return listOf(it) }
             val (host, rest) = servers.partition { it.role == JointChannelRole.Host }
             return host + rest
-        }
-
-    /**
-     * Web `showPrivateConnectSection`: a private channel lists one row, this server as the host
-     * (a member may connect a server to it, which makes it joint).
-     */
-    private val privateHostRow: JointChannelServer?
-        get() {
-            val current = connections ?: return null
-            val account = memberConnectAccount ?: return null
-            if (current.isJoint || !current.isPrivate) return null
-            return JointChannelServer(
-                serverId = account.currentServerId,
-                name = account.currentServerName,
-                slug = account.currentServerSlug,
-                active = true,
-                isCurrentServer = true,
-                plan = null,
-                role = JointChannelRole.Host,
-            )
         }
 
     /** Web `useMemberConnectRows`: the servers the viewer could connect, and why each can or can't be. */
     val memberConnectRows: List<MemberConnectRow>
         get() = memberConnectRows(connections?.memberConnectChannel(), memberConnectAccount)
 
-    /** Web `memberConnect.available`: the ⋯ with Connect your servers, only with a server to connect. */
+    /** Server rows shown in the sheet: [memberConnectRows] plus any member-only `askServers` (slock #16361). */
+    val memberConnectDisplayRows: List<MemberConnectRow>
+        get() = memberConnectDisplayRows(memberConnectRows, memberConnectSheet?.askServers.orEmpty())
+
+    /** Web `memberConnect.available`: the ⋯ or Connect row, only with a server to connect. */
     val memberConnectAvailable: Boolean
-        get() = memberConnectRows.any { it.state == MemberConnectRowState.Eligible }
+        get() =
+            connections?.conversionInProgress != true &&
+                memberConnectRows.any { it.state == MemberConnectRowState.Eligible }
+
+    /**
+     * Web `useGuestConnectEntry` / `useGuestConnectDialog` (slock #16375/#16389): true when the
+     * viewer is a Guest of the host bound to this channel and no conversion is under way (rows may
+     * be empty so the Guest can still create a server or see `askServers`).
+     */
+    val guestConnectEntryAvailable: Boolean
+        get() =
+            memberConnectGuestEntryAvailable(
+                channel = connections?.memberConnectChannel(),
+                account = memberConnectAccount,
+                jointRole = connections?.jointRole,
+                conversionInProgress = connections?.conversionInProgress == true,
+            )
 
     /** The connect is to a private channel: it becomes shared (web `channelType === "private"`). */
     val memberConnectToPrivate: Boolean
@@ -211,15 +213,27 @@ internal data class JointChannelConnectionsState(
 internal sealed interface JointChannelConnectionsIntent {
     data object Load : JointChannelConnectionsIntent
     data object Refresh : JointChannelConnectionsIntent
+    /** Seeds the channel metadata before the first network answer arrives (e.g. private Connect row / Guest entry). */
+    data class SeedChannel(val connections: JointChannelConnections) : JointChannelConnectionsIntent
     /** The account's servers and roles, as the stored session holds them. */
     data class SetMemberConnectAccount(val account: MemberConnectAccount?) : JointChannelConnectionsIntent
-    /** Connected servers ⋯ > Connect your servers. */
+    /** Connected servers ⋯ or Channel settings › Connect your servers. */
     data object OpenMemberConnect : JointChannelConnectionsIntent
-    /** The sheet's × / Cancel / Close (ignored while the request runs). */
+    /** Guest's Connect your servers entry (slock #16375/#16389): opens with Guest helper line + Create a server and connect. */
+    data object OpenGuestMemberConnect : JointChannelConnectionsIntent
+    /** The sheet's × / Cancel / Close (ignored while a request runs). */
     data object DismissMemberConnect : JointChannelConnectionsIntent
     data class SetMemberConnectSelection(val serverIds: Set<String>) : JointChannelConnectionsIntent
     /** The sheet's Connect. */
     data object SubmitMemberConnect : JointChannelConnectionsIntent
+    /** "Create a server and connect" inside the Guest's sheet (slock #16353/#16375). */
+    data object OpenMemberConnectNewServer : JointChannelConnectionsIntent
+    /** Back from "Create a server and connect" to the server list (ignored while busy). */
+    data object CloseMemberConnectNewServer : JointChannelConnectionsIntent
+    data class SetMemberConnectNewServerName(val name: String) : JointChannelConnectionsIntent
+    data class SetMemberConnectNewServerSlug(val slug: String) : JointChannelConnectionsIntent
+    /** Create and connect the new server (`POST channels/:id/connect-new-server`). */
+    data object SubmitMemberConnectNewServer : JointChannelConnectionsIntent
     /** A row's Disconnect: open its confirm. */
     data class ConfirmDisconnectServer(val serverId: String) : JointChannelConnectionsIntent
     /** The confirm's Cancel (ignored while the request runs). */
@@ -233,7 +247,10 @@ internal interface JointChannelConnectionsDataSource {
     suspend fun load(): DataResult<JointChannelConnectionsSnapshot>
     suspend fun disconnectServer(serverId: String): DataResult<Unit>
     suspend fun connectMyServers(serverIds: List<String>): DataResult<MemberConnectResponse>
+    suspend fun connectNewServer(name: String, slug: String): DataResult<MemberConnectNewServerResponse> =
+        DataResult.Error(ScreenError(code = "unsupported", retryable = false))
     suspend fun listMemberConnectLimits(): Map<String, MemberConnectServerLimit> = emptyMap()
+    suspend fun listMemberConnectOptions(): MemberConnectOptions = MemberConnectOptions(limits = listMemberConnectLimits())
 }
 
 internal class RealJointChannelConnectionsDataSource(
@@ -265,12 +282,18 @@ internal class RealJointChannelConnectionsDataSource(
     override suspend fun connectMyServers(serverIds: List<String>): DataResult<MemberConnectResponse> =
         runner.run { _, networkClient -> repository(networkClient).connectMyServers(route.channelId, serverIds) }
 
-    override suspend fun listMemberConnectLimits(): Map<String, MemberConnectServerLimit> {
+    override suspend fun connectNewServer(name: String, slug: String): DataResult<MemberConnectNewServerResponse> =
+        runner.run { _, networkClient -> repository(networkClient).connectNewServer(route.channelId, name, slug) }
+
+    override suspend fun listMemberConnectLimits(): Map<String, MemberConnectServerLimit> =
+        listMemberConnectOptions().limits
+
+    override suspend fun listMemberConnectOptions(): MemberConnectOptions {
         val result =
             runner.run { _, networkClient ->
-                DataResult.Content(repository(networkClient).listMemberConnectLimits(route.channelId))
+                DataResult.Content(repository(networkClient).listMemberConnectOptions(route.channelId))
             }
-        return (result as? DataResult.Content)?.data.orEmpty()
+        return (result as? DataResult.Content)?.data ?: MemberConnectOptions()
     }
 
     private fun repository(networkClient: build.raft.app.data.RaftNetworkClient) =
@@ -318,6 +341,7 @@ internal class JointChannelConnectionsStore(
     private val cacheSlot: JointChannelConnectionsCacheSlot? = null,
     private val connectedByYouSlot: MemberConnectedByYouSlot? = null,
     private val onConnectionsChanged: () -> Unit = {},
+    private val onServersChanged: () -> Unit = {},
 ) {
     private val mutableState =
         MutableStateFlow(
@@ -337,6 +361,16 @@ internal class JointChannelConnectionsStore(
         when (intent) {
             JointChannelConnectionsIntent.Load -> load(force = false)
             JointChannelConnectionsIntent.Refresh -> load(force = true)
+            is JointChannelConnectionsIntent.SeedChannel -> {
+                val current = mutableState.value
+                if (current.connections == null) {
+                    mutableState.value =
+                        current.copy(
+                            status = JointChannelConnectionsLoadStatus.Content,
+                            connections = intent.connections,
+                        )
+                }
+            }
             is JointChannelConnectionsIntent.SetMemberConnectAccount ->
                 if (mutableState.value.memberConnectAccount != intent.account) {
                     mutableState.value = mutableState.value.copy(memberConnectAccount = intent.account)
@@ -344,13 +378,20 @@ internal class JointChannelConnectionsStore(
             JointChannelConnectionsIntent.OpenMemberConnect -> {
                 val current = mutableState.value
                 if (current.memberConnectSheet == null && current.actionInFlight == null && current.memberConnectAvailable) {
-                    mutableState.value = current.copy(memberConnectSheet = MemberConnectSheet())
-                    fetchMemberConnectLimits()
+                    mutableState.value = current.copy(memberConnectSheet = MemberConnectSheet(guestEntry = false))
+                    fetchMemberConnectOptions()
+                }
+            }
+            JointChannelConnectionsIntent.OpenGuestMemberConnect -> {
+                val current = mutableState.value
+                if (current.memberConnectSheet == null && current.actionInFlight == null && current.guestConnectEntryAvailable) {
+                    mutableState.value = current.copy(memberConnectSheet = MemberConnectSheet(guestEntry = true))
+                    fetchMemberConnectOptions()
                 }
             }
             JointChannelConnectionsIntent.DismissMemberConnect -> {
                 val current = mutableState.value
-                if (current.memberConnectSheet != null && current.memberConnectSheet.busy.not()) {
+                if (current.memberConnectSheet != null && !current.memberConnectSheet.anyBusy) {
                     memberConnectLimitsJob?.cancel()
                     memberConnectLimitsJob = null
                     mutableState.value = current.copy(memberConnectSheet = null)
@@ -366,6 +407,63 @@ internal class JointChannelConnectionsStore(
                 }
             }
             JointChannelConnectionsIntent.SubmitMemberConnect -> submitMemberConnect()
+            JointChannelConnectionsIntent.OpenMemberConnectNewServer -> {
+                val current = mutableState.value
+                val sheet = current.memberConnectSheet
+                if (sheet != null && sheet.guestEntry && !sheet.busy && !sheet.closed && sheet.newServer == null) {
+                    mutableState.value =
+                        current.copy(
+                            memberConnectSheet = sheet.copy(newServer = MemberConnectNewServerFormState()),
+                        )
+                }
+            }
+            JointChannelConnectionsIntent.CloseMemberConnectNewServer -> {
+                val current = mutableState.value
+                val sheet = current.memberConnectSheet
+                val form = sheet?.newServer
+                if (form != null && !form.busy) {
+                    mutableState.value = current.copy(memberConnectSheet = sheet.copy(newServer = null))
+                }
+            }
+            is JointChannelConnectionsIntent.SetMemberConnectNewServerName -> {
+                val current = mutableState.value
+                val sheet = current.memberConnectSheet
+                val form = sheet?.newServer
+                if (form != null && !form.busy && !form.kept) {
+                    mutableState.value =
+                        current.copy(
+                            memberConnectSheet =
+                                sheet.copy(
+                                    newServer =
+                                        form.copy(
+                                            name = intent.name,
+                                            slug = if (form.slugTouched) form.slug else toServerSlug(intent.name),
+                                            fieldErrors = NewServerFieldErrors(),
+                                        ),
+                                ),
+                        )
+                }
+            }
+            is JointChannelConnectionsIntent.SetMemberConnectNewServerSlug -> {
+                val current = mutableState.value
+                val sheet = current.memberConnectSheet
+                val form = sheet?.newServer
+                if (form != null && !form.busy && !form.kept) {
+                    mutableState.value =
+                        current.copy(
+                            memberConnectSheet =
+                                sheet.copy(
+                                    newServer =
+                                        form.copy(
+                                            slug = toServerSlug(intent.slug),
+                                            slugTouched = true,
+                                            fieldErrors = form.fieldErrors.copy(slug = null),
+                                        ),
+                                ),
+                        )
+                }
+            }
+            JointChannelConnectionsIntent.SubmitMemberConnectNewServer -> submitMemberConnectNewServer()
             is JointChannelConnectionsIntent.ConfirmDisconnectServer -> {
                 val current = mutableState.value
                 val server = current.connections?.servers?.firstOrNull { it.serverId == intent.serverId }
@@ -608,30 +706,211 @@ internal class JointChannelConnectionsStore(
         }
     }
 
-    private fun fetchMemberConnectLimits() {
+    /**
+     * Web `ConnectNewServerForm` `submit` (slock #16353/#16375): validates name & slug, posts
+     * `POST channels/:id/connect-new-server`. On `connected` / `connecting`, closes with the same
+     * toast as the server list, refreshes the channel and the user's server list. If the server
+     * was created and connecting failed (`serverId` returned or refused outcome), keeps the form
+     * disabled with the "created" + refusal banner and refreshes the user's server list.
+     */
+    private fun submitMemberConnectNewServer() {
+        val current = mutableState.value
+        val sheet = current.memberConnectSheet ?: return
+        val form = sheet.newServer ?: return
+        if (current.actionInFlight != null || form.busy || form.kept) return
+        val trimmed = form.name.trim()
+        val slug = form.slug
+        val invalid = newServerFieldErrors(trimmed, slug)
+        if (invalid.any) {
+            mutableState.value =
+                current.copy(
+                    memberConnectSheet = sheet.copy(newServer = form.copy(fieldErrors = invalid, lines = emptyList(), traceId = null)),
+                )
+            return
+        }
+        mutableState.value =
+            current.copy(
+                actionInFlight = JointChannelConnectionsAction.MemberConnect,
+                memberConnectSheet =
+                    sheet.copy(
+                        newServer = form.copy(busy = true, fieldErrors = NewServerFieldErrors(), lines = emptyList(), traceId = null),
+                    ),
+                effect = null,
+            )
+        launchAction {
+            val result = runCall { dataSource.connectNewServer(trimmed, slug) }
+            val previous = mutableState.value
+            val open = previous.memberConnectSheet ?: sheet
+            val openForm = open.newServer ?: form
+            val answer = (result as? DataResult.Content)?.data
+            when (answer) {
+                is MemberConnectNewServerResponse.Answered -> {
+                    val outcome = answer.servers.firstOrNull { it.serverId == answer.serverId } ?: answer.servers.firstOrNull()
+                    if (outcome is ServerConnectOutcome.Connected || outcome is ServerConnectOutcome.Connecting) {
+                        val byYou =
+                            connectedByYouSlot?.let { it.memory.add(it.key, listOf(answer.serverId)) }
+                                ?: (previous.connectedByYou + answer.serverId)
+                        val effect =
+                            if (outcome is ServerConnectOutcome.Connected) {
+                                JointChannelConnectionsEffect.MemberConnectFinished(connected = listOf(trimmed))
+                            } else {
+                                JointChannelConnectionsEffect.MemberConnectFinished(connecting = listOf(trimmed))
+                            }
+                        memberConnectLimitsJob?.cancel()
+                        memberConnectLimitsJob = null
+                        mutableState.value =
+                            previous.copy(
+                                actionInFlight = null,
+                                memberConnectSheet = null,
+                                connectedByYou = byYou,
+                                effect = effect,
+                            )
+                        load(force = true)
+                        onConnectionsChanged()
+                        onServersChanged()
+                        return@launchAction
+                    }
+                    // Server created, then outcome refused: caller keeps the new empty server.
+                    val refusalLine =
+                        if (outcome is ServerConnectOutcome.Refused) {
+                            resolveMemberConnectNewServerLine(
+                                status = outcome.status.takeIf { it > 0 },
+                                code = outcome.code,
+                                error = outcome.error,
+                                traceId = answer.traceId,
+                            )
+                        } else {
+                            MemberConnectLine.Request(MemberConnectMessage.Generic)
+                        }
+                    mutableState.value =
+                        previous.copy(
+                            actionInFlight = null,
+                            memberConnectSheet =
+                                open.copy(
+                                    newServer =
+                                        openForm.copy(
+                                            busy = false,
+                                            kept = true,
+                                            lines = listOf(MemberConnectLine.NewServerKept(trimmed), refusalLine),
+                                            traceId = answer.traceId,
+                                        ),
+                                ),
+                        )
+                    onServersChanged()
+                }
+                is MemberConnectNewServerResponse.Refused -> {
+                    if (answer.serverId != null) {
+                        val refusalLine =
+                            resolveMemberConnectNewServerLine(
+                                status = answer.status,
+                                code = answer.code,
+                                error = answer.error,
+                                traceId = answer.traceId,
+                            )
+                        mutableState.value =
+                            previous.copy(
+                                actionInFlight = null,
+                                memberConnectSheet =
+                                    open.copy(
+                                        newServer =
+                                            openForm.copy(
+                                                busy = false,
+                                                kept = true,
+                                                lines = listOf(MemberConnectLine.NewServerKept(trimmed), refusalLine),
+                                                traceId = answer.traceId,
+                                            ),
+                                    ),
+                            )
+                        onServersChanged()
+                        return@launchAction
+                    }
+                    val fieldRefused =
+                        newServerInputRefusal(
+                            InviteeRefusal(status = answer.status, code = answer.code, serverId = answer.serverId, error = answer.error),
+                            trimmed,
+                            slug,
+                        )
+                    if (fieldRefused != null) {
+                        mutableState.value =
+                            previous.copy(
+                                actionInFlight = null,
+                                memberConnectSheet =
+                                    open.copy(
+                                        newServer = openForm.copy(busy = false, fieldErrors = fieldRefused, lines = emptyList(), traceId = null),
+                                    ),
+                            )
+                        return@launchAction
+                    }
+                    val refusalLine =
+                        resolveMemberConnectNewServerLine(
+                            status = answer.status,
+                            code = answer.code,
+                            error = answer.error,
+                            traceId = answer.traceId,
+                        )
+                    mutableState.value =
+                        previous.copy(
+                            actionInFlight = null,
+                            memberConnectSheet =
+                                open.copy(
+                                    newServer = openForm.copy(busy = false, lines = listOf(refusalLine), traceId = answer.traceId),
+                                ),
+                        )
+                }
+                null -> {
+                    val traceId =
+                        when (result) {
+                            is DataResult.Error -> result.error.traceId
+                            is DataResult.NoPermission -> result.blocker.traceId
+                            else -> null
+                        }
+                    mutableState.value =
+                        previous.copy(
+                            actionInFlight = null,
+                            memberConnectSheet =
+                                open.copy(
+                                    newServer =
+                                        openForm.copy(
+                                            busy = false,
+                                            lines = listOf(MemberConnectLine.Request(MemberConnectMessage.Generic)),
+                                            traceId = traceId,
+                                        ),
+                                ),
+                        )
+                }
+            }
+        }
+    }
+
+    private fun fetchMemberConnectOptions() {
         memberConnectLimitsJob?.cancel()
         memberConnectLimitsJob =
             scope.launch {
-                val limits =
+                val options =
                     try {
-                        dataSource.listMemberConnectLimits()
+                        dataSource.listMemberConnectOptions()
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
-                        emptyMap()
+                        MemberConnectOptions()
                     }
                 val current = mutableState.value
                 val open = current.memberConnectSheet ?: return@launch
-                if (limits.isEmpty()) return@launch
+                if (options.limits.isEmpty() && options.askServers.isEmpty()) return@launch
                 val nextSelected =
                     if (open.busy) {
                         open.selected
                     } else {
-                        open.selected.filterNot { limits[it]?.atLimit == true }.toSet()
+                        open.selected.filterNot { options.limits[it]?.atLimit == true }.toSet()
                     }
                 mutableState.value =
                     current.copy(
-                        memberConnectSheet = open.copy(limits = limits, selected = nextSelected),
+                        memberConnectSheet =
+                            open.copy(
+                                limits = options.limits,
+                                askServers = options.askServers,
+                                selected = nextSelected,
+                            ),
                     )
             }
     }

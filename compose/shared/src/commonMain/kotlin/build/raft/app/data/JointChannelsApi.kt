@@ -5,6 +5,7 @@ import build.raft.app.model.ServerId
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Typed joint-channel (cross-server) connection boundary.
@@ -188,6 +189,8 @@ data class JointChannelConnections(
     val isPrivate: Boolean = false,
     /** The channel row's `joined`; null when the payload has none. */
     val joined: Boolean? = null,
+    /** True when the channel row reports a conversion command pending or a job pending/running/failed (slock #16389). */
+    val conversionInProgress: Boolean = false,
 )
 
 data class PendingJointInvite(
@@ -204,10 +207,24 @@ data class JointChannelAccepted(
 )
 
 internal fun parseSharedJointChannelConnections(bodyText: String): JointChannelConnections? = runCatching {
-    jointChannelsJson.decodeFromString(WireJointChannel.serializer(), bodyText).toConnections()
+    val wire = jointChannelsJson.decodeFromString(WireJointChannel.serializer(), bodyText)
+    val conversion =
+        (jointChannelsJson.parseToJsonElement(bodyText) as? JsonObject)
+            ?.let(::parseRaftChannelConversionRow)
+    val inProgress =
+        conversion != null && (
+            conversion.commandPending ||
+                conversion.job?.status in
+                    setOf(
+                        RaftChannelConversionJobStatus.Pending,
+                        RaftChannelConversionJobStatus.Running,
+                        RaftChannelConversionJobStatus.Failed,
+                    )
+        )
+    wire.toConnections(conversionInProgress = inProgress)
 }.getOrNull()
 
-private fun WireJointChannel.toConnections(): JointChannelConnections? {
+private fun WireJointChannel.toConnections(conversionInProgress: Boolean = false): JointChannelConnections? {
     val channelId = id.trim().takeIf(String::isNotBlank) ?: return null
     val metadataServers = jointServers.orEmpty()
     // Web EditChannelDialog: older payloads without `jointServers` still name one peer.
@@ -248,6 +265,7 @@ private fun WireJointChannel.toConnections(): JointChannelConnections? {
         federateChannels = channelCapabilities?.federateChannels,
         isPrivate = type == "private",
         joined = joined,
+        conversionInProgress = conversionInProgress,
     )
 }
 
@@ -337,6 +355,14 @@ internal class RealJointChannelRepository(
     /** A member connects servers they own or administer (`POST channels/:id/connect-my-servers`). */
     suspend fun connectMyServers(channelId: ChannelId, serverIds: List<String>): DataResult<MemberConnectResponse> =
         networkClient.connectMyServers(channelId, serverIds, warningLogger)
+
+    /** A member creates a new server and connects it (`POST channels/:id/connect-new-server`, slock #16353). */
+    suspend fun connectNewServer(channelId: ChannelId, name: String, slug: String): DataResult<MemberConnectNewServerResponse> =
+        networkClient.connectNewServer(channelId, name, slug, warningLogger)
+
+    /** Free external-channel limit state + member-only `askServers` (`GET channels/:id/connect-my-servers`, slock #16361). */
+    suspend fun listMemberConnectOptions(channelId: ChannelId): MemberConnectOptions =
+        networkClient.listMemberConnectOptions(channelId, warningLogger)
 
     /** Free external-channel limit state for connectable servers (`GET channels/:id/connect-my-servers`). */
     suspend fun listMemberConnectLimits(channelId: ChannelId): Map<String, MemberConnectServerLimit> =

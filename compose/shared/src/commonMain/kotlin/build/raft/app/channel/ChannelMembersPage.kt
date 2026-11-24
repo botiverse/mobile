@@ -279,9 +279,12 @@ internal fun ChannelMembersWarning(message: String) {
     )
 }
 
+internal const val ChannelMembersGuestConnectButtonTag = "member-page-guest-connect"
+
 /**
  * Web bottom-pinned members action bar (`ChannelMembers.tsx`): a seam above, `p-3`, `Add Member`
- * and (when external invite access is on) `Invite people outside {server}` stacked with 8dp spacing.
+ * (or `Connect your servers` for a Guest of the channel, slock #16375/#16389) and (when external
+ * invite access is on) `Invite people outside {server}` stacked with 8dp spacing.
  */
 @Composable
 internal fun ChannelMembersAddBar(
@@ -289,6 +292,8 @@ internal fun ChannelMembersAddBar(
     bottomSafeArea: Dp,
     onClick: () -> Unit,
     showAddMember: Boolean = true,
+    showGuestConnect: Boolean = false,
+    onGuestConnect: (() -> Unit)? = null,
     inviteOutsideServerName: String? = null,
     inviteOutsideLoading: Boolean = false,
     onInviteOutside: (() -> Unit)? = null,
@@ -310,6 +315,15 @@ internal fun ChannelMembersAddBar(
                     size = RaftButtonSize.Lg,
                     enabled = enabled,
                     leadingIcon = { ChannelMembersIcon(RaftLucideIconName.Plus, size = 14.dp) },
+                )
+            } else if (showGuestConnect && onGuestConnect != null) {
+                RaftButton(
+                    text = stringResource(Res.string.joint_member_connect_menu_item),
+                    onClick = onGuestConnect,
+                    modifier = Modifier.fillMaxWidth().testTag(ChannelMembersGuestConnectButtonTag),
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Lg,
+                    leadingIcon = { ChannelMembersIcon(RaftLucideIconName.Plug, size = 14.dp) },
                 )
             }
             if (inviteOutsideServerName != null && onInviteOutside != null) {

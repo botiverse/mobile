@@ -1042,6 +1042,9 @@
     <string name="channel_details_slack_dialog_title">Connect #%1$s to Slack</string>
     <string name="channel_details_slack_dialog_lead">Pair this channel with one Slack channel. What's posted in either shows up in both.</string>
     <string name="channel_details_slack_failed">The Slack channel wasn't connected. Try again.</string>
+    <string name="channel_details_other_servers_title">Connect your servers</string>
+    <string name="channel_details_other_servers_not_connected">Not connected</string>
+    <string name="channel_details_other_servers_connect">Connect</string>
     <string name="channel_settings_visitor_visible_title">Visible to visitors</string>
     <string name="channel_settings_visitor_visible_description">Anyone can read its messages and replies on this server's public page, without signing in.</string>
     <string name="channel_settings_visitor_visible_save_failed">Couldn't change whether visitors can see this channel.</string>
@@ -4173,6 +4176,11 @@
     <string name="joint_member_connect_toast_connecting_many">Connecting %1$s. They show under Connected servers once it's done.</string>
     <string name="joint_member_connect_toast_connecting_one">Connecting %1$s. It shows under Connected servers once it's done.</string>
     <string name="joint_member_connect_visibility">In %1$s, people who are already in this channel can see it from there; others need to be added.</string>
+    <string name="joint_member_connect_guest_entry_why">You're a guest in this channel, so you can't add members directly. Connect your server to this channel, and the agents and teammates in your server can join.</string>
+    <string name="joint_member_connect_guest_create_server">Create a server and connect</string>
+    <string name="joint_member_connect_row_ask_approvers">Ask %1$s to connect it</string>
+    <string name="joint_member_connect_list_or_two">%1$s or %2$s</string>
+    <string name="joint_member_connect_list_or_end">%1$s, or %2$s</string>
     <string name="joint_invite_notification_title">Invitation to join #%1$s</string>
     <string name="joint_invite_notification_body">%1$s invited this server to an external channel.</string>
     <string name="joint_invite_notification_accept">Accept</string>
@@ -5563,10 +5571,10 @@
     <string name="channel_external_invite_status_already_in_channel">Already in this channel · no invite</string>
     <string name="channel_external_invite_status_member_in_channel">Already in this channel</string>
     <string name="channel_external_invite_invite_to_connect">Invite to connect their server</string>
-    <string name="channel_external_invite_status_guest_elsewhere">Guest in %1$s · can't be invited</string>
-    <string name="channel_external_invite_status_guest_elsewhere_unnamed">Guest in another channel · can't be invited</string>
-    <string name="channel_external_invite_status_guest_elsewhere_hint">A guest can be in only one channel in %1$s. To invite them here, remove them from %2$s first.</string>
-    <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">A guest can be in only one channel in %1$s. To invite them here, remove them from their other channel first.</string>
+    <string name="channel_external_invite_status_guest_elsewhere">Guest in %1$s · invited to connect a server</string>
+    <string name="channel_external_invite_status_guest_elsewhere_unnamed">Guest in another channel · invited to connect a server</string>
+    <string name="channel_external_invite_status_guest_elsewhere_hint">A guest can be in only one channel in %1$s, so they can't join here as a guest. With this invite they can join by connecting a server they belong to, or by creating one.</string>
+    <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">A guest can be in only one channel in %1$s, so they can't join here as a guest. With this invite they can join by connecting a server they belong to, or by creating one.</string>
     <string name="channel_external_invite_status_duplicate">Listed more than once · one invite</string>
     <string name="channel_external_invite_status_invalid">Not a valid email · no invite</string>
     <string name="channel_external_invite_commit">Invite</string>

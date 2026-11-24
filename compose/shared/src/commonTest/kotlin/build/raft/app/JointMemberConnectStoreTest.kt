@@ -4,6 +4,9 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.JointChannelRole
 import build.raft.app.data.JointChannelServer
+import build.raft.app.data.MemberAskServer
+import build.raft.app.data.MemberConnectNewServerResponse
+import build.raft.app.data.MemberConnectOwnerRef
 import build.raft.app.data.MemberConnectResponse
 import build.raft.app.data.MemberConnectServerLimit
 import build.raft.app.data.ScreenError
@@ -290,13 +293,208 @@ class JointMemberConnectStoreTest {
         wholeFailStore.clear()
     }
 
+    @Test
+    fun privateChannelHasNoSyntheticHostDisplayServer() = runTest {
+        val store = memberStore(FakeJointConnectionsDataSource(connections = privateTestConnections()))
+        assertEquals(emptyList(), store.state.value.displayServers)
+        assertTrue(store.state.value.memberConnectAvailable)
+        store.clear()
+    }
+
+    @Test
+    fun askServersFromOptionsAreStoredAndMergedIntoDisplayRows() = runTest {
+        val dataSource =
+            FakeJointConnectionsDataSource(connections = memberTestConnections()).apply {
+                memberConnectAskServers =
+                    listOf(
+                        MemberAskServer(
+                            id = "srv-member",
+                            name = "Member Co",
+                            slug = "member-co",
+                            approvers = listOf(MemberConnectOwnerRef("u1", "Tom"), MemberConnectOwnerRef("u2", "Lena")),
+                        ),
+                        MemberAskServer(
+                            id = "srv-extra-ask",
+                            name = "Extra Ask Co",
+                            slug = "extra-ask",
+                            approvers = listOf(MemberConnectOwnerRef("u3", "Kai")),
+                        ),
+                    )
+            }
+        val store = memberStore(dataSource)
+        store.dispatch(JointChannelConnectionsIntent.OpenMemberConnect)
+        runCurrent()
+        val sheet = assertNotNull(store.state.value.memberConnectSheet)
+        assertEquals(2, sheet.askServers.size)
+        val displayIds = store.state.value.memberConnectDisplayRows.map { it.server.id }
+        assertTrue("srv-member" in displayIds)
+        assertTrue("srv-extra-ask" in displayIds)
+        assertEquals(MemberConnectRowState.NotAdmin, store.state.value.memberConnectDisplayRows.first { it.server.id == "srv-extra-ask" }.state)
+        store.clear()
+    }
+
+    @Test
+    fun guestEntryOpensEvenWithNoEligibleServersAndHidesDuringConversion() = runTest {
+        val guestNoServers =
+            MemberConnectAccount(
+                currentServerId = "srv-cur",
+                currentServerName = "Host Co",
+                currentServerSlug = "host-co",
+                currentServerRole = "guest",
+                servers = listOf(MemberConnectServer("srv-cur", "Host Co", "host-co", null, "guest")),
+            )
+        val store = memberStore(FakeJointConnectionsDataSource(connections = privateTestConnections()), account = guestNoServers)
+        assertFalse(store.state.value.memberConnectAvailable)
+        assertTrue(store.state.value.guestConnectEntryAvailable)
+        store.dispatch(JointChannelConnectionsIntent.OpenGuestMemberConnect)
+        runCurrent()
+        assertEquals(true, store.state.value.memberConnectSheet?.guestEntry)
+        store.clear()
+
+        val converting =
+            memberStore(
+                FakeJointConnectionsDataSource(connections = privateTestConnections().copy(conversionInProgress = true)),
+                account = guestNoServers,
+            )
+        assertFalse(converting.state.value.guestConnectEntryAvailable)
+        converting.dispatch(JointChannelConnectionsIntent.OpenGuestMemberConnect)
+        assertNull(converting.state.value.memberConnectSheet)
+        converting.clear()
+    }
+
+    @Test
+    fun createAndConnectSubmitsNewServerClosesWithToastAndNotifiesChanges() = runTest {
+        val guestAccount =
+            MemberConnectAccount(
+                currentServerId = "srv-cur",
+                currentServerName = "Host Co",
+                currentServerSlug = "host-co",
+                currentServerRole = "guest",
+                servers = listOf(MemberConnectServer("srv-cur", "Host Co", "host-co", null, "guest")),
+            )
+        val dataSource =
+            FakeJointConnectionsDataSource(connections = privateTestConnections()).apply {
+                connectNewServerResult =
+                    DataResult.Content(
+                        MemberConnectNewServerResponse.Answered(
+                            serverId = "srv-kirby",
+                            servers = listOf(ServerConnectOutcome.Connecting("srv-kirby")),
+                            traceId = null,
+                        )
+                    )
+            }
+        var connectionsChanged = 0
+        var serversChanged = 0
+        val store =
+            memberStore(
+                dataSource = dataSource,
+                account = guestAccount,
+                onConnectionsChanged = { connectionsChanged += 1 },
+                onServersChanged = { serversChanged += 1 },
+            )
+        store.dispatch(JointChannelConnectionsIntent.OpenGuestMemberConnect)
+        store.dispatch(JointChannelConnectionsIntent.OpenMemberConnectNewServer)
+        store.dispatch(JointChannelConnectionsIntent.SetMemberConnectNewServerName("Kirby Lab"))
+        assertEquals("kirby-lab", store.state.value.memberConnectSheet?.newServer?.slug)
+        store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnectNewServer)
+        runCurrent()
+
+        assertEquals(listOf("Kirby Lab" to "kirby-lab"), dataSource.connectNewServerCalls)
+        assertNull(store.state.value.memberConnectSheet)
+        assertEquals(JointChannelConnectionsEffect.MemberConnectFinished(connecting = listOf("Kirby Lab")), store.state.value.effect)
+        assertEquals(setOf("srv-kirby"), store.state.value.connectedByYou)
+        assertEquals(1, connectionsChanged)
+        assertEquals(1, serversChanged)
+        store.clear()
+    }
+
+    @Test
+    fun createAndConnectKeptServerAndRefusalsKeepDialogOpenWithExpectedFeedback() = runTest {
+        val guestAccount =
+            MemberConnectAccount(
+                currentServerId = "srv-cur",
+                currentServerName = "Host Co",
+                currentServerSlug = "host-co",
+                currentServerRole = "guest",
+                servers = listOf(MemberConnectServer("srv-cur", "Host Co", "host-co", null, "guest")),
+            )
+        // 1) 200 answered with refused outcome -> server kept, onServersChanged called.
+        val keptSource =
+            FakeJointConnectionsDataSource(connections = privateTestConnections()).apply {
+                connectNewServerResult =
+                    DataResult.Content(
+                        MemberConnectNewServerResponse.Answered(
+                            serverId = "srv-kept",
+                            servers = listOf(ServerConnectOutcome.Refused("srv-kept", 409, "free_external_limit", "Host limit", limitSide = "host")),
+                            traceId = TRACE,
+                        )
+                    )
+            }
+        var keptServersChanged = 0
+        val keptStore = memberStore(keptSource, account = guestAccount, onServersChanged = { keptServersChanged += 1 })
+        keptStore.dispatch(JointChannelConnectionsIntent.OpenGuestMemberConnect)
+        keptStore.dispatch(JointChannelConnectionsIntent.OpenMemberConnectNewServer)
+        keptStore.dispatch(JointChannelConnectionsIntent.SetMemberConnectNewServerName("Kirby Lab"))
+        keptStore.dispatch(JointChannelConnectionsIntent.SubmitMemberConnectNewServer)
+        runCurrent()
+
+        val keptForm = assertNotNull(keptStore.state.value.memberConnectSheet?.newServer)
+        assertTrue(keptForm.kept)
+        assertEquals(listOf(MemberConnectLine.NewServerKept("Kirby Lab"), MemberConnectLine.Request(MemberConnectMessage.HostLimit)), keptForm.lines)
+        assertEquals(TRACE, keptForm.traceId)
+        assertEquals(1, keptServersChanged)
+        keptStore.clear()
+
+        // 2) 409 without code (server slug collision) -> inline slug field error, server NOT kept.
+        val slugSource =
+            FakeJointConnectionsDataSource(connections = privateTestConnections()).apply {
+                connectNewServerResult =
+                    DataResult.Content(MemberConnectNewServerResponse.Refused(409, null, "A server with this slug already exists", traceId = TRACE))
+            }
+        val slugStore = memberStore(slugSource, account = guestAccount)
+        slugStore.dispatch(JointChannelConnectionsIntent.OpenGuestMemberConnect)
+        slugStore.dispatch(JointChannelConnectionsIntent.OpenMemberConnectNewServer)
+        slugStore.dispatch(JointChannelConnectionsIntent.SetMemberConnectNewServerName("Kirby Lab"))
+        slugStore.dispatch(JointChannelConnectionsIntent.SubmitMemberConnectNewServer)
+        runCurrent()
+        val slugForm = assertNotNull(slugStore.state.value.memberConnectSheet?.newServer)
+        assertFalse(slugForm.kept)
+        assertEquals(NewServerFieldError.SlugTaken, slugForm.fieldErrors.slug)
+        slugStore.clear()
+
+        // 3) 409 guest_has_computer -> preflight refusal shows GuestHasComputer without keeping server.
+        val computerSource =
+            FakeJointConnectionsDataSource(connections = privateTestConnections()).apply {
+                connectNewServerResult =
+                    DataResult.Content(MemberConnectNewServerResponse.Refused(409, "guest_has_computer", "Has computer", traceId = TRACE))
+            }
+        val computerStore = memberStore(computerSource, account = guestAccount)
+        computerStore.dispatch(JointChannelConnectionsIntent.OpenGuestMemberConnect)
+        computerStore.dispatch(JointChannelConnectionsIntent.OpenMemberConnectNewServer)
+        computerStore.dispatch(JointChannelConnectionsIntent.SetMemberConnectNewServerName("Kirby Lab"))
+        computerStore.dispatch(JointChannelConnectionsIntent.SubmitMemberConnectNewServer)
+        runCurrent()
+        val computerForm = assertNotNull(computerStore.state.value.memberConnectSheet?.newServer)
+        assertFalse(computerForm.kept)
+        assertEquals(listOf(MemberConnectLine.Request(MemberConnectMessage.GuestHasComputer)), computerForm.lines)
+        computerStore.clear()
+    }
+
     private fun TestScope.memberStore(
         dataSource: FakeJointConnectionsDataSource,
         account: MemberConnectAccount = memberTestAccount(),
         connectedByYou: MemberConnectedByYouSlot? = null,
         onConnectionsChanged: () -> Unit = {},
+        onServersChanged: () -> Unit = {},
     ): JointChannelConnectionsStore {
-        val store = JointChannelConnectionsStore(dataSource, this, connectedByYouSlot = connectedByYou, onConnectionsChanged = onConnectionsChanged)
+        val store =
+            JointChannelConnectionsStore(
+                dataSource,
+                this,
+                connectedByYouSlot = connectedByYou,
+                onConnectionsChanged = onConnectionsChanged,
+                onServersChanged = onServersChanged,
+            )
         store.dispatch(JointChannelConnectionsIntent.SetMemberConnectAccount(account))
         store.dispatch(JointChannelConnectionsIntent.Load)
         runCurrent()

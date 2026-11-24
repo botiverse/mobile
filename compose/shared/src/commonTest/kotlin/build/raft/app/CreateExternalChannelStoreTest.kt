@@ -4,6 +4,7 @@ import build.raft.app.data.CreateChannelRequest
 import build.raft.app.data.CreateChannelResult
 import build.raft.app.data.DataResult
 import build.raft.app.data.ExternalInviteAnswer
+import build.raft.app.data.ExternalInviteGuestElsewhere
 import build.raft.app.data.ExternalInvitePreview
 import build.raft.app.data.ExternalInviteRefusal
 import build.raft.app.data.HomeChannelRow
@@ -46,6 +47,7 @@ private class FakeCreateExternalChannelDataSource : CreateExternalChannelDataSou
     val previewCalls = mutableListOf<List<String>>()
     val createCalls = mutableListOf<CreateChannelRequest>()
     val sendCalls = mutableListOf<Pair<ChannelId, List<String>>>()
+    val connectMemberCalls = mutableListOf<List<String>>()
     val connectCalls = mutableListOf<Pair<ChannelId, List<String>>>()
 
     override suspend fun freeLimitReached() = freeLimit.also { freeLimitCalls++ }
@@ -62,6 +64,7 @@ private class FakeCreateExternalChannelDataSource : CreateExternalChannelDataSou
         connectMemberEmails: List<String>,
     ): DataResult<ExternalInviteAnswer<SendExternalInvitesResult>> {
         sendCalls += channelId to emails
+        connectMemberCalls += connectMemberEmails
         sendGate?.await()
         return sendAnswers.removeFirstOrNull()
             ?: DataResult.Content(ExternalInviteAnswer.Ok(SendExternalInvitesResult(sent = listOf(SentExternalInvite("i1", emails.first())))))
@@ -310,5 +313,31 @@ class CreateExternalChannelStoreTest {
         assertEquals(traceId, notConnected.traceId)
         assertEquals(sentence, notConnected.failure?.serverMessage)
         assertIs<CreateExternalChannelEffect.Finished>(mixed.state.value.effects.last())
+    }
+
+    @Test
+    fun guestsElsewhereAreSentAsServerConnectInvitesWhenCreatingExternalChannel() = runTest {
+        val source =
+            FakeCreateExternalChannelDataSource().apply {
+                previewAnswer =
+                    DataResult.Content(
+                        ExternalInviteAnswer.Ok(
+                            ExternalInvitePreview(
+                                guestsElsewhere = listOf(ExternalInviteGuestElsewhere("guest@example.com", "vendor")),
+                                slotsLeft = 28,
+                            )
+                        )
+                    )
+            }
+        val store = started(source)
+        store.dispatch(CreateExternalChannelIntent.SetText("guest@example.com"))
+        store.dispatch(CreateExternalChannelIntent.Review)
+        runCurrent()
+        assertEquals(1, store.state.value.invite.actionCount)
+        store.dispatch(CreateExternalChannelIntent.Commit(draft))
+        runCurrent()
+        assertEquals(listOf(ChannelId("c1") to listOf("guest@example.com")), source.sendCalls)
+        assertEquals(listOf(emptyList<String>()), source.connectMemberCalls)
+        assertIs<CreateExternalChannelEffect.Finished>(store.state.value.effects.last())
     }
 }

@@ -238,7 +238,7 @@ internal fun inviteeMessageDesc(message: InviteeMessage, target: String, channel
     }
 
 @Composable
-private fun newServerFieldErrorText(error: NewServerFieldError): String =
+internal fun newServerFieldErrorText(error: NewServerFieldError): String =
     when (error) {
         NewServerFieldError.NameRequired -> stringResource(Res.string.external_invite_new_server_name_required)
         NewServerFieldError.SlugRequired -> stringResource(Res.string.external_invite_new_server_slug_required)

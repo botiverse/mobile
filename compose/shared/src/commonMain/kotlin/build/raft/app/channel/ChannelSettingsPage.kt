@@ -117,11 +117,31 @@ import build.raft.designsystem.theme.RaftPointerInput
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import build.raft.app.base.BridgeModule
+import build.raft.app.data.AuthenticatedRouteOwner
+import build.raft.app.data.JointChannelConnections
+import build.raft.app.data.JointChannelRole
+import build.raft.app.data.JointChannelServer
+import build.raft.app.data.RaftSharedStoreProvider
+import build.raft.designsystem.tokens.RaftRadius
+import build.raft.designsystem.tokens.RaftStroke
 import org.jetbrains.compose.resources.StringResource
 
 internal const val CHANNEL_SETTINGS_PAGE = "compose_channel_settings"
+internal const val ChannelSettingsOtherServersTag = "channel-settings-other-servers"
+internal const val ChannelSettingsOtherServersConnectTag = "channel-settings-other-servers-connect"
+internal const val ChannelSettingsMembersGuestConnectTag = "channel-overflow-members-add-tile"
 
 internal data class ChannelSettingsRoute(
     val serverId: ServerId,
@@ -290,21 +310,17 @@ internal fun channelSettingsHostCannotDisconnect(channel: HomeChannelRow): Boole
     channelSettingsIsJoint(channel) && channel.jointRole == "host"
 
 /**
- * Web EditChannelDialog `showPrivateConnectSection` (cindyz 38086073): a private channel (never
- * #all) the viewer is in shows Connected servers, with this server as the host, when they have a
- * server to connect to it (web `useMemberConnectRows`). The servers and roles are the account's
- * from `GET /api/servers`; the route decides.
- *
- * The web also hides it while a conversion to joint is in progress (`!conversionInProgress`: its
- * own Convert action, or the conversion receipt). The app has neither: it cannot start a
- * conversion and does not read `conversionJob` or conversion receipts, so there is nothing here to
- * gate on. A channel whose conversion has finished arrives as `joint` and is refused above.
+ * Web EditChannelDialog `showPrivateConnectRow` (slock #16395/#16454): a private channel (never
+ * #all) the viewer is in shows the Channel settings "Connect your servers · Not connected ·
+ * Connect" row when they have a server to connect to it (web `useMemberConnectRows`) and no
+ * conversion to an external channel is under way.
  */
 internal fun channelSettingsOffersPrivateMemberConnect(
     channel: HomeChannelRow,
     account: MemberConnectAccount?,
+    conversionInProgress: Boolean = false,
 ): Boolean {
-    if (channelSettingsIsJoint(channel) || !channel.channelType.equals("private", ignoreCase = true)) {
+    if (conversionInProgress || channelSettingsIsJoint(channel) || !channel.channelType.equals("private", ignoreCase = true)) {
         return false
     }
     val memberChannel =
@@ -317,6 +333,108 @@ internal fun channelSettingsOffersPrivateMemberConnect(
             servers = emptyList(),
         )
     return memberConnectRows(memberChannel, account).any { it.state == MemberConnectRowState.Eligible }
+}
+
+/**
+ * Web `useGuestConnectDialog` on the members strip (slock #16375/#16389): when the viewer cannot
+ * add members and is a Guest of the host bound to this channel (private non-#all, or host's live
+ * external channel), the strip's dashed tile shows a Plug and opens Connect your servers with the
+ * Guest helper line and Create a server and connect. Hidden while a conversion is under way.
+ */
+internal fun channelSettingsOffersGuestMemberConnect(
+    channel: HomeChannelRow,
+    canAddMembers: Boolean,
+    account: MemberConnectAccount?,
+    conversionInProgress: Boolean = false,
+): Boolean {
+    if (canAddMembers || conversionInProgress) return false
+    val isJoint = channelSettingsIsJoint(channel)
+    val isPrivate = !isJoint && channel.channelType.equals("private", ignoreCase = true)
+    val jointRole = JointChannelRole.fromWire(channel.jointRole)
+    val servers =
+        if (isJoint) {
+            channel.jointServers
+                .map { ref ->
+                    JointChannelServer(
+                        serverId = ref.id,
+                        name = ref.name,
+                        slug = ref.slug,
+                        active = true,
+                        isCurrentServer = ref.id == account?.currentServerId,
+                        plan = null,
+                        role = if (jointRole == JointChannelRole.Host && ref.id == account?.currentServerId) JointChannelRole.Host else null,
+                        avatarUrl = ref.avatarUrl,
+                    )
+                }
+                .ifEmpty {
+                    listOf(
+                        JointChannelServer(
+                            serverId = account?.currentServerId.orEmpty(),
+                            name = account?.currentServerName.orEmpty(),
+                            slug = account?.currentServerSlug.orEmpty(),
+                            active = true,
+                            isCurrentServer = true,
+                            plan = null,
+                            role = jointRole,
+                        )
+                    )
+                }
+        } else {
+            emptyList()
+        }
+    return memberConnectGuestEntryAvailable(
+        channel =
+            MemberConnectChannel(
+                isJoint = isJoint,
+                isPrivate = isPrivate,
+                name = channel.name,
+                archived = channel.archived,
+                joined = channel.joined,
+                servers = servers,
+            ),
+        account = account,
+        jointRole = jointRole,
+        conversionInProgress = conversionInProgress,
+    )
+}
+
+internal fun HomeChannelRow.toSeedJointChannelConnections(
+    currentServerId: String,
+    conversionInProgress: Boolean = false,
+): JointChannelConnections {
+    val isJoint = channelSettingsIsJoint(this)
+    val isPrivate = !isJoint && channelType.equals("private", ignoreCase = true)
+    val resolvedJointRole = JointChannelRole.fromWire(jointRole)
+    val servers =
+        if (isJoint) {
+            jointServers.map { ref ->
+                JointChannelServer(
+                    serverId = ref.id,
+                    name = ref.name,
+                    slug = ref.slug,
+                    active = true,
+                    isCurrentServer = ref.id == currentServerId,
+                    plan = null,
+                    role = if (resolvedJointRole == JointChannelRole.Host && ref.id == currentServerId) JointChannelRole.Host else null,
+                    avatarUrl = ref.avatarUrl,
+                )
+            }
+        } else {
+            emptyList()
+        }
+    return JointChannelConnections(
+        channelId = channelId,
+        channelName = name.removePrefix("#"),
+        isJoint = isJoint,
+        archived = archived,
+        servers = servers,
+        hasCurrentServerPendingInvites = false,
+        jointRole = resolvedJointRole,
+        federateChannels = channelCapabilities?.federateChannels,
+        isPrivate = isPrivate,
+        joined = joined,
+        conversionInProgress = conversionInProgress,
+    )
 }
 
 /**
@@ -637,9 +755,10 @@ private fun ChannelSettingsPageScreen() {
     var viewerServerName by remember(route) { mutableStateOf<String?>(null) }
     var viewerServerPublicPageLive by remember(route) { mutableStateOf<Boolean?>(null) }
     var viewerServerLoaded by remember(route) { mutableStateOf(false) }
-    // Connect your servers on a private channel: the account's servers and its role on each.
+    // Connect your servers on a private channel / Guest entry: the account's servers and its role on each.
     var memberConnectAccount by remember(route) { mutableStateOf<MemberConnectAccount?>(null) }
-    LaunchedEffect(authStore, route) {
+    var serversRevision by remember(route) { mutableStateOf(0) }
+    LaunchedEffect(authStore, route, serversRevision) {
         val session = authStore.readSession()
         val server = session?.servers?.firstOrNull { it.id == route.serverId.value }
         viewerServerRole = server?.role
@@ -648,20 +767,18 @@ private fun ChannelSettingsPageScreen() {
         viewerServerLoaded = true
         memberConnectAccount = session?.memberConnectAccount(route.serverId.value)
     }
-    // Connected servers, a section of the details (web `serversSection`): its store lives here,
-    // outside the lazy list, so an open confirm survives scrolling it away.
-    val showsServers =
-        channel != null &&
-            (channelSettingsIsJoint(channel) || channelSettingsOffersPrivateMemberConnect(channel, memberConnectAccount))
-    val connectedServers =
-        rememberJointConnectedServers(
+    val connectWiring =
+        rememberChannelSettingsConnectWiring(
             route = route,
             routeOwner = routeOwner,
             liveOwner = liveOwner,
             sharedStores = sharedStores,
             storeScope = storeScope,
             bridge = bridge,
-            active = showsServers,
+            channel = channel,
+            canAddMembers = channel != null && memberSlice.canAddMembers && !channel.archived,
+            authorityAccepted = authorityAccepted,
+            memberConnectAccount = memberConnectAccount,
             onConnectionsChanged = {
                 settingsStore.dispatch(ChannelSettingsIntent.Refresh)
                 homeStore?.dispatch(SharedHomeIntent.Refresh)
@@ -674,7 +791,9 @@ private fun ChannelSettingsPageScreen() {
                     )
                 }
             },
+            onServersChanged = { serversRevision += 1 },
         )
+    val connectedServers = connectWiring.connectedServers
     var sosStore by remember(route) { mutableStateOf<ChannelSosStore?>(null) }
     val agentControlsApi = remember(sharedStores, storeScope) {
         RaftAgentControlsApi(sharedStores.networkClient(storeScope))
@@ -812,7 +931,9 @@ private fun ChannelSettingsPageScreen() {
                                 profileCollision = settingsState.archivedCollisionFor(settingsStore),
                                 slackBridge = settingsState.slackBridge,
                                 section = section,
-                                privateMemberConnect = channelSettingsOffersPrivateMemberConnect(channel, memberConnectAccount),
+                                privateMemberConnect = connectWiring.offersPrivateConnect,
+                                guestConnectEntry = connectWiring.offersGuestConnect,
+                                conversionInProgress = connectWiring.conversionInProgress,
                                 serverName = viewerServerName ?: homeServer?.name,
                                 serverPublicPageLive = serverPublicPageLive,
                                 visitorVisible = settingsState.displayVisitorVisible,
@@ -906,6 +1027,12 @@ private fun ChannelSettingsPageScreen() {
                                         )
                                     }
                                 },
+                                onConnectServers = {
+                                    connectedServers.store.dispatch(JointChannelConnectionsIntent.OpenMemberConnect)
+                                },
+                                onGuestConnectServers = {
+                                    connectedServers.store.dispatch(JointChannelConnectionsIntent.OpenGuestMemberConnect)
+                                },
                             ),
                     )
                 }
@@ -933,7 +1060,7 @@ private fun ChannelSettingsPageScreen() {
             )
         }
 
-        if (showsServers) {
+        if (connectWiring.showOverlays) {
             JointConnectedServersOverlays(
                 holder = connectedServers,
                 onUpgradeServer = { targetServerId ->
@@ -959,6 +1086,87 @@ private fun ChannelSettingsPageScreen() {
             )
         }
     }
+}
+
+private data class ChannelSettingsConnectWiring(
+    val connectedServers: JointConnectedServersHolder,
+    val conversionInProgress: Boolean,
+    val offersPrivateConnect: Boolean,
+    val offersGuestConnect: Boolean,
+    val showOverlays: Boolean,
+)
+
+@Composable
+private fun rememberChannelSettingsConnectWiring(
+    route: ChannelSettingsRoute,
+    routeOwner: AuthenticatedRouteOwner,
+    liveOwner: AuthenticatedRouteOwner?,
+    sharedStores: RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    bridge: BridgeModule,
+    channel: HomeChannelRow?,
+    canAddMembers: Boolean,
+    authorityAccepted: Boolean,
+    memberConnectAccount: MemberConnectAccount?,
+    onConnectionsChanged: () -> Unit,
+    onServersChanged: () -> Unit,
+): ChannelSettingsConnectWiring {
+    val conversionStoreActive =
+        authorityAccepted &&
+            channel != null &&
+            !channel.archived &&
+            (channelSettingsIsJoint(channel) || channel.channelType.equals("private", ignoreCase = true))
+    val conversionFromStore =
+        rememberChannelConversionInProgress(
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            serverId = route.serverId,
+            channelId = route.channelId,
+            active = conversionStoreActive,
+        )
+    val offersPrivateBase =
+        channel != null && channelSettingsOffersPrivateMemberConnect(channel, memberConnectAccount, conversionFromStore)
+    val offersGuestBase =
+        channel != null &&
+            channelSettingsOffersGuestMemberConnect(channel, canAddMembers, memberConnectAccount, conversionFromStore)
+    val needsStore = channel != null && (channelSettingsIsJoint(channel) || offersPrivateBase || offersGuestBase)
+    val seedConnections =
+        remember(channel, route.serverId, offersPrivateBase, offersGuestBase, conversionFromStore) {
+            channel
+                ?.takeIf {
+                    (!channelSettingsIsJoint(it) && (offersPrivateBase || offersGuestBase)) ||
+                        (channelSettingsIsJoint(it) && offersGuestBase && it.jointServers.isNotEmpty())
+                }
+                ?.toSeedJointChannelConnections(route.serverId.value, conversionInProgress = conversionFromStore)
+        }
+    val connectedServers =
+        rememberJointConnectedServers(
+            route = route,
+            routeOwner = routeOwner,
+            liveOwner = liveOwner,
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            bridge = bridge,
+            active = needsStore && !conversionFromStore,
+            seedConnections = seedConnections,
+            onConnectionsChanged = onConnectionsChanged,
+            onServersChanged = onServersChanged,
+        )
+    val connectedState by connectedServers.store.state.collectAsState()
+    val conversionInProgress = conversionFromStore || connectedState.connections?.conversionInProgress == true
+    val showsServers = channel != null && channelSettingsIsJoint(channel) && !conversionInProgress
+    val offersPrivateConnect =
+        channel != null && channelSettingsOffersPrivateMemberConnect(channel, memberConnectAccount, conversionInProgress)
+    val offersGuestConnect =
+        channel != null &&
+            channelSettingsOffersGuestMemberConnect(channel, canAddMembers, memberConnectAccount, conversionInProgress)
+    return ChannelSettingsConnectWiring(
+        connectedServers = connectedServers,
+        conversionInProgress = conversionInProgress,
+        offersPrivateConnect = offersPrivateConnect,
+        offersGuestConnect = offersGuestConnect,
+        showOverlays = showsServers || offersPrivateConnect || offersGuestConnect || connectedState.memberConnectSheet != null,
+    )
 }
 
 internal fun channelSettingsMembersPageData(route: ChannelSettingsRoute, openAddMember: Boolean = false): JSONObject =
@@ -1006,9 +1214,17 @@ internal data class ChannelSettingsUiModel(
     val section: ChannelSectionPlacement? = null,
     /**
      * A private channel the viewer can connect one of their servers to
-     * ([channelSettingsOffersPrivateMemberConnect]): it then lists Connected servers too.
+     * ([channelSettingsOffersPrivateMemberConnect]): draws Channel settings › Connect your servers
+     * (slock #16395/#16454) instead of a host-only Connected servers section.
      */
     val privateMemberConnect: Boolean = false,
+    /**
+     * A Guest of the host bound to this channel ([channelSettingsOffersGuestMemberConnect],
+     * slock #16375/#16389): the members strip's dashed tile connects their server instead of Add.
+     */
+    val guestConnectEntry: Boolean = false,
+    /** A conversion to an external channel is under way (hides completed external-channel settings, slock #16389). */
+    val conversionInProgress: Boolean = false,
     /** The server's name: who a public channel reaches, and who sees its name and description. */
     val serverName: String? = null,
     /** Whether this server's public page is live (`publicPageLive`); null leaves the row up so the server decides. */
@@ -1036,6 +1252,8 @@ internal class ChannelSettingsCallbacks(
     val onStopAllAgents: () -> Unit = {},
     val onMoveSection: (List<ChannelSectionMove>) -> Unit = {},
     val onCreateSection: (name: String, emoji: String?) -> Unit = { _, _ -> },
+    val onConnectServers: () -> Unit = {},
+    val onGuestConnectServers: () -> Unit = {},
 )
 
 /** The rename's archived-name warning as [ChannelInfoForm] shows it, with its store hooks. */
@@ -1258,15 +1476,17 @@ internal fun ChannelSettingsContent(
                 slice = model.memberSlice,
                 fallbackCount = channel.memberCount,
                 canAdd = model.memberSlice.canAddMembers && !channel.archived,
+                guestConnect = model.guestConnectEntry,
                 agentStatusResolver = agentStatusResolver,
                 onOpen = callbacks.onOpenMembers,
                 onAdd = callbacks.onAddMember,
+                onGuestConnect = callbacks.onGuestConnectServers,
             )
         }
         if (announcement != null) {
             item(key = "announcement") { announcement() }
         }
-        if (servers != null && (channelSettingsIsJoint(channel) || model.privateMemberConnect)) {
+        if (servers != null && channelSettingsIsJoint(channel) && !model.conversionInProgress) {
             item(key = "joint-connections") { servers() }
         }
         if (channelDetailsHasChannelSettings(model, visitorVisibleShown = showVisitorVisibleRow)) {
@@ -1355,7 +1575,7 @@ internal fun channelSettingsActionRows(model: ChannelSettingsUiModel): List<Chan
 internal fun channelSettingsIsVisibilityAction(row: ChannelSettingsActionRow): Boolean =
     row == ChannelSettingsActionRow.MakePrivate || row == ChannelSettingsActionRow.MakePublic
 
-/** Whether the Channel settings group has a row: visibility, Visible to visitors, or Slack. */
+/** Whether the Channel settings group has a row: visibility, Visible to visitors, Slack, or Connect your servers. */
 internal fun channelDetailsHasChannelSettings(
     model: ChannelSettingsUiModel,
     visitorVisibleShown: Boolean =
@@ -1363,7 +1583,8 @@ internal fun channelDetailsHasChannelSettings(
 ): Boolean =
     channelSettingsActionRows(model).any(::channelSettingsIsVisibilityAction) ||
         visitorVisibleShown ||
-        (model.slackBridge != null && channelSettingsSlackBridgeApplies(model.channel, model.permissions))
+        (model.slackBridge != null && channelSettingsSlackBridgeApplies(model.channel, model.permissions)) ||
+        model.privateMemberConnect
 
 /**
  * The top of the details, read first (web ChannelDetailsIdentity): the channel's icon, name and
@@ -1521,10 +1742,13 @@ internal fun ChannelMembersSection(
     agentStatusResolver: RaftAgentStatusResolver,
     onOpen: () -> Unit,
     onAdd: () -> Unit,
+    guestConnect: Boolean = false,
+    onGuestConnect: () -> Unit = {},
 ) {
     val members = slice.members.distinctBy { it.id }
     val loading = slice.status == SharedServerMembersLoadStatus.InFlight && members.isEmpty()
     val summary = channelSettingsMemberSummary(slice = slice, fallbackCount = fallbackCount)
+    val showAddTile = canAdd || guestConnect
     RaftListRowGroup(Modifier.fillMaxWidth()) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val cardWidth = maxWidth
@@ -1542,7 +1766,7 @@ internal fun ChannelMembersSection(
                 // A row that belongs to the heading (ListRow `attached`): no top inset, the row's 12 under it.
                 Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
                     val columns = channelSettingsMemberStripColumns(stripWidth)
-                    val visible = channelSettingsMemberStripVisibleCount(members.size + slice.externalMembers.size, columns, canAdd)
+                    val visible = channelSettingsMemberStripVisibleCount(members.size + slice.externalMembers.size, columns, showAddTile)
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(ChannelSettingsStripGap),
                         verticalArrangement = Arrangement.spacedBy(ChannelSettingsStripGap),
@@ -1572,11 +1796,66 @@ internal fun ChannelMembersSection(
                                 enabled = !loading,
                                 onClick = onAdd,
                             )
+                        } else if (guestConnect) {
+                            ChannelMembersGuestConnectTile(
+                                contentDescription = stringResource(Res.string.joint_member_connect_menu_item),
+                                enabled = !loading,
+                                onClick = onGuestConnect,
+                            )
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * Web `MembersStrip` dashed add tile when `addConnects` is true (slock #16375/#16389): same
+ * 35dp dashed sticker square as [RaftAvatarEmpty], carrying a Plug icon for a Guest's Connect
+ * your servers entry.
+ */
+@Composable
+private fun ChannelMembersGuestConnectTile(
+    contentDescription: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val edge = if (enabled) colors.foregroundHint else colors.lineHairline
+    val ink = if (enabled) colors.foregroundHint else colors.foregroundDisabled
+    val radius = RaftRadius.Sticker
+    val stroke = RaftStroke.Control
+    Box(
+        modifier =
+            Modifier
+                .size(ChannelSettingsStripTile)
+                .testTag(ChannelSettingsMembersGuestConnectTag)
+                .raftClickable(
+                    onClick = onClick,
+                    enabled = enabled,
+                    shape = RoundedCornerShape(radius),
+                    tier = RaftHoverTier.Medium,
+                )
+                .semantics { this.contentDescription = contentDescription }
+                .drawBehind {
+                    val inset = stroke.toPx() / 2f
+                    val dash = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))
+                    drawRoundRect(
+                        color = edge,
+                        topLeft = Offset(inset, inset),
+                        size = Size(size.width - inset * 2f, size.height - inset * 2f),
+                        cornerRadius = CornerRadius((radius.toPx() - inset).coerceAtLeast(0f)),
+                        style = Stroke(width = stroke.toPx(), pathEffect = dash),
+                    )
+                },
+        contentAlignment = Alignment.Center,
+    ) {
+        RaftLucideIcon(
+            RaftLucideIconName.Plug,
+            modifier = Modifier.size(RaftAvatarSize.Md.iconSize),
+            color = raftArgbHex(ink),
+        )
     }
 }
 
@@ -2032,6 +2311,27 @@ private fun ChannelDetailsChannelSettingsSection(
                             callbacks.onClearProfileStatus()
                             slackDialogOpen = true
                         },
+                        size = RaftButtonSize.Md,
+                        enabled = model.writeActionsEnabled && model.actionInFlight == null,
+                    )
+                },
+            )
+            rowAfterFirst = true
+        }
+        if (model.privateMemberConnect) {
+            // Web OtherServersConnectRow (slock #16395/#16454): private channel's Connect your servers row.
+            RaftListRow(
+                title = stringResource(Res.string.channel_details_other_servers_title),
+                modifier = Modifier.testTag(ChannelSettingsOtherServersTag),
+                variant = RaftListRowVariant.Plain,
+                divider = rowAfterFirst,
+                description = stringResource(Res.string.channel_details_other_servers_not_connected),
+                wrapDescription = true,
+                trailing = {
+                    RaftButton(
+                        text = stringResource(Res.string.channel_details_other_servers_connect),
+                        onClick = callbacks.onConnectServers,
+                        modifier = Modifier.testTag(ChannelSettingsOtherServersConnectTag),
                         size = RaftButtonSize.Md,
                         enabled = model.writeActionsEnabled && model.actionInFlight == null,
                     )

@@ -1042,6 +1042,9 @@
     <string name="channel_details_slack_dialog_title">把 #%1$s 连接到 Slack</string>
     <string name="channel_details_slack_dialog_lead">把这个频道和一个 Slack 频道配对，任一边发的内容两边都会显示。</string>
     <string name="channel_details_slack_failed">没能连接 Slack 频道，请重试。</string>
+    <string name="channel_details_other_servers_title">连接你的服务器</string>
+    <string name="channel_details_other_servers_not_connected">未连接</string>
+    <string name="channel_details_other_servers_connect">连接</string>
     <string name="channel_settings_visitor_visible_title">游客可见</string>
     <string name="channel_settings_visitor_visible_description">任何人无需登录，就能在此服务器的公开页面上阅读这个频道的消息和回复。</string>
     <string name="channel_settings_visitor_visible_save_failed">无法更改这个频道的游客可见设置。</string>
@@ -4172,6 +4175,11 @@
     <string name="joint_member_connect_toast_connecting_many">正在连接 %1$s，完成后会出现在已连接的服务器里。</string>
     <string name="joint_member_connect_toast_connecting_one">正在连接 %1$s，完成后会出现在已连接的服务器里。</string>
     <string name="joint_member_connect_visibility">在 %1$s 里，已经在这个频道里的人可以从那里看到它，其他人要再被加进来。</string>
+    <string name="joint_member_connect_guest_entry_why">你是这个频道的访客，不能直接添加成员。把你的服务器连进这个频道，你服务器里的 Agent 和队友就能加入。</string>
+    <string name="joint_member_connect_guest_create_server">新建一个服务器并连接</string>
+    <string name="joint_member_connect_row_ask_approvers">请 %1$s 连接此服务器</string>
+    <string name="joint_member_connect_list_or_two">%1$s或%2$s</string>
+    <string name="joint_member_connect_list_or_end">%1$s或%2$s</string>
     <string name="joint_invite_notification_title">邀请加入 #%1$s</string>
     <string name="joint_invite_notification_body">%1$s 邀请本服务器加入外部频道。</string>
     <string name="joint_invite_notification_accept">接受</string>
@@ -5562,10 +5570,10 @@
     <string name="channel_external_invite_status_already_in_channel">已在此频道中 · 不发送邀请</string>
     <string name="channel_external_invite_status_member_in_channel">已在此频道中</string>
     <string name="channel_external_invite_invite_to_connect">邀请对方连接自己的服务器</string>
-    <string name="channel_external_invite_status_guest_elsewhere">已是 %1$s 的访客 · 无法邀请</string>
-    <string name="channel_external_invite_status_guest_elsewhere_unnamed">已是另一个频道的访客 · 无法邀请</string>
-    <string name="channel_external_invite_status_guest_elsewhere_hint">在 %1$s 里，一位访客只能加入一个频道。要邀请对方加入这里，请先把对方从 %2$s 移除。</string>
-    <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">在 %1$s 里，一位访客只能加入一个频道。要邀请对方加入这里，请先把对方从另一个频道移除。</string>
+    <string name="channel_external_invite_status_guest_elsewhere">已是 %1$s 的访客 · 邀请其连接服务器</string>
+    <string name="channel_external_invite_status_guest_elsewhere_unnamed">已是另一个频道的访客 · 邀请其连接服务器</string>
+    <string name="channel_external_invite_status_guest_elsewhere_hint">在 %1$s 里，一位访客只能加入一个频道，所以对方不能作为访客加入这里。收到邀请后，对方可以连接自己所在的服务器，或新建一个服务器来加入。</string>
+    <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">在 %1$s 里，一位访客只能加入一个频道，所以对方不能作为访客加入这里。收到邀请后，对方可以连接自己所在的服务器，或新建一个服务器来加入。</string>
     <string name="channel_external_invite_status_duplicate">重复填写 · 只发送一个邀请</string>
     <string name="channel_external_invite_status_invalid">不是有效的邮箱 · 不发送邀请</string>
     <string name="channel_external_invite_commit">邀请</string>

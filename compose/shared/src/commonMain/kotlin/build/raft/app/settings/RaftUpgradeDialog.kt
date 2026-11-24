@@ -88,12 +88,12 @@ internal enum class RaftUpgradeGate(val wire: String) {
 
     /**
      * The Free plan's one external channel (shared `UPGRADE_GATES` `external_channel_free_limit`,
-     * botiverse/slock #14034; the server's `free_external_limit` refusal): the server's one slot is
-     * in use. Its own copy, leading with unlimited external channels (web upgradeGateCopy.ts
-     * GATE_COPY, UpgradeDialog GATE_HIGHLIGHT, botiverse/slock #14533). The web's lines naming a
-     * channel (`externalLimitCopy`: the channel holding the slot, an open invite to it, or another
-     * server's channel to connect to) need that channel, which no app entry passes yet: the
-     * gate's own line, as on the web without one.
+     * botiverse/slock #14034/#16295; the server's `free_external_limit` refusal): the server's one
+     * slot is in use by a shared channel (open invites no longer count). Its own copy, leading
+     * with unlimited external channels (web upgradeGateCopy.ts GATE_COPY, UpgradeDialog
+     * GATE_HIGHLIGHT, botiverse/slock #14533). The web's lines naming a channel (`externalLimitCopy`:
+     * the channel holding the slot, or another server's channel to connect to) pair with
+     * [RaftUpgradeExternalContext.Slot].
      */
     ExternalChannelFreeLimit("external_channel_free_limit"),
 
