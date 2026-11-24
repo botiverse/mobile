@@ -4793,6 +4793,12 @@
     <string name="thread_link_preview_action_failed">Не удалось выполнить действие. Попробуйте ещё раз.</string>
     <string name="thread_link_preview_refresh_failed">Не удалось обновить карточку. Попробуйте ещё раз.</string>
     <string name="thread_link_preview_action_changed">Карточка изменилась. Проверьте её и попробуйте ещё раз.</string>
+    <string name="thread_link_preview_action_form_secret_notice">Это значение шифруется для %1$s и отправляется только ему. Raft не может его прочитать.</string>
+    <string name="thread_link_preview_action_form_required">Введите значение.</string>
+    <string name="thread_link_preview_action_form_one_line">Используйте одну строку.</string>
+    <string name="thread_link_preview_action_form_too_long">Не больше %1$d символов.</string>
+    <string name="thread_link_preview_action_form_too_many_bytes">Не больше %1$d байт. Некоторые символы занимают больше одного байта.</string>
+    <string name="thread_link_preview_action_form_seal_stale">Ничего не отправлено: форма устарела. Нажмите кнопку ещё раз и введите значение заново.</string>
     <string name="thread_link_preview_action_working">Выполнение…</string>
     <string name="thread_link_preview_action_state_sent">Отправлено. Ожидаем ответа приложения.</string>
     <string name="thread_link_preview_action_state_accepted">Принято. Приложение завершает действие.</string>

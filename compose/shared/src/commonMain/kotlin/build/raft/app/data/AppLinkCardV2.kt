@@ -165,8 +165,13 @@ sealed interface RaftLinkCardButtonAction {
 
     data object Read : RaftLinkCardButtonAction
 
-    /** [confirm]: `confirm: "prepare"`; otherwise [undoWindowMs] (1000-10000). */
-    data class Execute(val actionId: String, val confirm: Boolean, val undoWindowMs: Long? = null) : RaftLinkCardButtonAction
+    /** [confirm]: `confirm: "prepare"`; otherwise [undoWindowMs] (1000-10000). [form]: App-sent card acting button form (RFC 086 §5.1). */
+    data class Execute(
+        val actionId: String,
+        val confirm: Boolean,
+        val undoWindowMs: Long? = null,
+        val form: RaftMessageCardForm? = null,
+    ) : RaftLinkCardButtonAction
 }
 
 /** A version 3 `card` item with `placement: "block"`: [title] (the card's, up to 160) and its tree, drawn after the link's paragraph. */

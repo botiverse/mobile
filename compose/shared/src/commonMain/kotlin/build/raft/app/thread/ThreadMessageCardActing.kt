@@ -39,6 +39,8 @@ import build.raft.app.data.RaftMessageCardLive
 import build.raft.app.data.appLinkAppKey
 import build.raft.app.data.appLinkCardReadLocale
 import build.raft.app.data.appLinkMessageCardKey
+import build.raft.app.data.hasSecretInput
+import build.raft.app.data.messageCardSealTo
 import build.raft.app.data.runtimeFormRequestLanguageTag
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
@@ -92,9 +94,23 @@ internal fun RaftMessageCardLive?.forCard(card: RaftMessageCard): RaftMessageCar
     this?.takeIf { it.cardRevision == card.revision.toString() }
 
 /** The state of the acting button [elementId] (its fallback page [fallbackUrl]) for this viewer's [live] read. */
-internal fun messageCardActingState(live: RaftMessageCardLive?, elementId: String, fallbackUrl: String?): RaftMessageCardActingState {
+internal fun messageCardActingState(
+    live: RaftMessageCardLive?,
+    elementId: String,
+    fallbackUrl: String?,
+    action: RaftLinkCardButtonAction.Execute? = null,
+): RaftMessageCardActingState {
     if (live == null || live.waitingFor != null) return RaftMessageCardActingState.Disabled
-    live.handleFor(elementId)?.let { return RaftMessageCardActingState.Pressable(it) }
+    val handle = live.handleFor(elementId)
+    if (handle != null) {
+        if (action != null && (handle.actionId != action.actionId || (fallbackUrl != null && handle.url != fallbackUrl))) {
+            return RaftMessageCardActingState.Disabled
+        }
+        if (action?.hasSecretInput == true && (!action.confirm || messageCardSealTo(live, handle) == null)) {
+            return RaftMessageCardActingState.Disabled
+        }
+        return RaftMessageCardActingState.Pressable(handle)
+    }
     if (live.consent == RaftMessageCardConsent.Needed) {
         val prompt = live.prompt ?: live.app?.let { app -> fallbackUrl?.let { AppLinkResult.Consent(it, app.toPromptApp()) } }
         if (prompt != null) return RaftMessageCardActingState.AskConsent(prompt)
@@ -135,18 +151,39 @@ internal fun messageCardPressResumes(
 
 /**
  * The press of a card message's acting buttons, as a link card's ([ThreadAppLinkCardPress]): the
- * handles by action id, the App (`reviewed: false` confirms every button first), and the card's
- * revision as the prepare's `business_revision` (RFC 086 §4.2).
+ * handles by action id (omitting any SecretInput button that lacks full seal material or is not
+ * `confirm: "prepare"`), per-action seal targets (`sealsTo`), per-action forms (`forms`), the App
+ * (`reviewed: false` confirms every button first), and the card's revision as the prepare's
+ * `business_revision` (RFC 086 §4.2, §5.3).
  */
-internal fun messageCardPressCard(card: RaftMessageCard, live: RaftMessageCardLive?): AppLinkResult.Card =
-    AppLinkResult.Card(
+internal fun messageCardPressCard(card: RaftMessageCard, live: RaftMessageCardLive?): AppLinkResult.Card {
+    val actionsByElement = card.acting?.actions.orEmpty()
+    val handles = LinkedHashMap<String, String>()
+    val sealsTo = LinkedHashMap<String, build.raft.app.data.RaftLinkCardSealTo>()
+    for (entry in live?.handles.orEmpty()) {
+        val action = actionsByElement[entry.elementId]
+        if (action?.hasSecretInput == true) {
+            if (!action.confirm) continue
+            val sealTo = messageCardSealTo(live, entry) ?: continue
+            sealsTo[entry.actionId] = sealTo
+        }
+        handles[entry.actionId] = entry.handle
+    }
+    val forms =
+        actionsByElement.values
+            .mapNotNull { action -> action.form?.let { action.actionId to it } }
+            .toMap()
+    return AppLinkResult.Card(
         url = live?.handles?.firstOrNull()?.url.orEmpty(),
         app = live?.app?.toAppLinkApp() ?: AppLinkApp(name = "", icon = null),
         title = "",
-        handles = live?.handles?.associate { it.actionId to it.handle }.orEmpty(),
+        handles = handles,
         block = AppLinkBlockCard(title = "", card = card.card, businessRevision = live?.cardRevision ?: card.revision.toString()),
         readAtMillis = live?.readAtMillis,
+        sealsTo = sealsTo,
+        forms = forms,
     )
+}
 
 /** What the card view needs from the conversation to run its acting buttons; null where it can't (fixtures, a share image). */
 internal class ThreadMessageCardActingHost(
@@ -192,6 +229,10 @@ internal fun rememberThreadMessageCardActingHost(messageId: String?, card: RaftM
                 operationHints = RaftLinkCardOperationHints.forServer(host.serverId),
                 held = { _ -> host.store.heldMessageCard(host.viewerKey, messageId)?.let { messageCardPressCard(currentCard, it) } },
                 nowMillis = host.store.nowMillis,
+                executeWithForm = { handle, requestId, prepared, inputs, sealedInputs ->
+                    host.store.executeAction(host.serverId, handle, requestId, prepared, inputs = inputs, sealedInputs = sealedInputs)
+                },
+                viewerKey = host.viewerKey,
             )
         }
     return ThreadMessageCardActingHost(host, live, actions, status)
@@ -431,7 +472,7 @@ internal fun ThreadMessageCardResume(
             return@LaunchedEffect
         }
         val fallbackUrl = (button.action as? RaftLinkCardButtonAction.Navigate)?.url
-        when (messageCardActingState(live, elementId, fallbackUrl)) {
+        when (messageCardActingState(live, elementId, fallbackUrl, action)) {
             // Not read again yet.
             is RaftMessageCardActingState.AskConsent -> Unit
             RaftMessageCardActingState.Disabled -> if (live != null) flow.resumed()

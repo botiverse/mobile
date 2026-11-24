@@ -137,7 +137,7 @@ internal fun RaftMessageCardView(
                                 id,
                                 button,
                                 action,
-                                messageCardActingState(live, id, fallbackUrl),
+                                messageCardActingState(live, id, fallbackUrl, action),
                                 press,
                                 onAsk = { prompt -> consent?.ask(prompt, ThreadMessageCardConsentFlow.Press(id, card.revision)) },
                             )

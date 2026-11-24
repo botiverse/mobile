@@ -4818,6 +4818,12 @@
     <string name="thread_link_preview_action_failed">Não foi possível executar esta ação. Tente novamente.</string>
     <string name="thread_link_preview_refresh_failed">Não foi possível atualizar este cartão. Tente novamente.</string>
     <string name="thread_link_preview_action_changed">Este cartão mudou. Confira e tente novamente.</string>
+    <string name="thread_link_preview_action_form_secret_notice">Este valor é criptografado para %1$s e enviado só para ele. O Raft não consegue lê-lo.</string>
+    <string name="thread_link_preview_action_form_required">Digite um valor.</string>
+    <string name="thread_link_preview_action_form_one_line">Use uma só linha.</string>
+    <string name="thread_link_preview_action_form_too_long">Use no máximo %1$d caracteres.</string>
+    <string name="thread_link_preview_action_form_too_many_bytes">Use no máximo %1$d bytes. Alguns caracteres ocupam mais de um.</string>
+    <string name="thread_link_preview_action_form_seal_stale">Nada foi enviado: este formulário está desatualizado. Pressione o botão de novo e digite o valor outra vez.</string>
     <string name="thread_link_preview_action_working">Processando…</string>
     <string name="thread_link_preview_action_state_sent">Enviada. Aguardando o app.</string>
     <string name="thread_link_preview_action_state_accepted">Aceita. O app está concluindo a ação.</string>

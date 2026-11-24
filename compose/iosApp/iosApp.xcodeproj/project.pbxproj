@@ -112,6 +112,9 @@
 		E36000010000000000000010 /* RaftIosShareSuggestionsHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36000020000000000000008 /* RaftIosShareSuggestionsHost.swift */; };
 		E36000010000000000000011 /* RaftIosShareSuggestionsHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36000020000000000000008 /* RaftIosShareSuggestionsHost.swift */; };
 		E36000010000000000000012 /* RaftIosShareSuggestionsHostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36000020000000000000009 /* RaftIosShareSuggestionsHostTests.swift */; };
+		F08600010000000000000001 /* RaftIosSealedInputsHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = F08600020000000000000001 /* RaftIosSealedInputsHost.swift */; };
+		F08600010000000000000002 /* RaftIosSealedInputsHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = F08600020000000000000001 /* RaftIosSealedInputsHost.swift */; };
+		F08600010000000000000003 /* RaftIosSealedInputsHostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F08600020000000000000002 /* RaftIosSealedInputsHostTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -277,6 +280,8 @@
 		E36000020000000000000007 /* RaftExternalShareEnvelopeStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftExternalShareEnvelopeStorageTests.swift; sourceTree = "<group>"; };
 		E36000020000000000000008 /* RaftIosShareSuggestionsHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosShareSuggestionsHost.swift; sourceTree = "<group>"; };
 		E36000020000000000000009 /* RaftIosShareSuggestionsHostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosShareSuggestionsHostTests.swift; sourceTree = "<group>"; };
+		F08600020000000000000001 /* RaftIosSealedInputsHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosSealedInputsHost.swift; sourceTree = "<group>"; };
+		F08600020000000000000002 /* RaftIosSealedInputsHostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosSealedInputsHostTests.swift; sourceTree = "<group>"; };
 		E360000F0000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		E360000F0000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		E360000F0000000000000003 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -497,6 +502,7 @@
 				A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */,
 				E36000020000000000000002 /* RaftIosExternalShareLaunch.swift */,
 				E36000020000000000000008 /* RaftIosShareSuggestionsHost.swift */,
+				F08600020000000000000001 /* RaftIosSealedInputsHost.swift */,
 				058557D7273AAEEB004C7B11 /* Preview Content */,
 			);
 			path = iosApp;
@@ -536,6 +542,7 @@
 				N0CE00020000000000000002 /* RaftIosPageOpenGateTests.swift */,
 				E36000020000000000000007 /* RaftExternalShareEnvelopeStorageTests.swift */,
 				E36000020000000000000009 /* RaftIosShareSuggestionsHostTests.swift */,
+				F08600020000000000000002 /* RaftIosSealedInputsHostTests.swift */,
 			);
 			path = iosAppTests;
 			sourceTree = "<group>";
@@ -1020,6 +1027,7 @@
 				E36000010000000000000001 /* RaftExternalShareEnvelopeStorage.swift in Sources */,
 				E36000010000000000000002 /* RaftIosExternalShareLaunch.swift in Sources */,
 				E36000010000000000000010 /* RaftIosShareSuggestionsHost.swift in Sources */,
+				F08600010000000000000001 /* RaftIosSealedInputsHost.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1072,6 +1080,8 @@
 				E36000010000000000000007 /* RaftExternalShareEnvelopeStorageTests.swift in Sources */,
 				E36000010000000000000011 /* RaftIosShareSuggestionsHost.swift in Sources */,
 				E36000010000000000000012 /* RaftIosShareSuggestionsHostTests.swift in Sources */,
+				F08600010000000000000002 /* RaftIosSealedInputsHost.swift in Sources */,
+				F08600010000000000000003 /* RaftIosSealedInputsHostTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

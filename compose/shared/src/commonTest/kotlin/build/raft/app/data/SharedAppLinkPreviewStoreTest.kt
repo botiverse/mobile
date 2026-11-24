@@ -77,6 +77,25 @@ internal class FakeAppLinkPreviewApi : RaftAppLinkPreviewApi {
         answers += "decline:$appId"
         return declineResponse
     }
+
+    val prepareRequests = mutableListOf<AppLinkPrepareRequestBody>()
+    val executeRequests = mutableListOf<AppLinkExecuteRequestBody>()
+    var prepareResponse =
+        HomeNetworkResponse(
+            200,
+            """{"prepared_action_id":"6b0a3c1e-2f4d-4a8b-9c7e-1d2e3f4a5b6c","prepared_digest":"${"a".repeat(64)}","description":{"title":"Confirm","confirm_label":"Save","cancel_label":"Cancel"}}""",
+        )
+    var executeResponse = HomeNetworkResponse(200, """{"operation_id":"op-1","state":"done"}""")
+
+    override suspend fun prepareLinkCardAction(serverId: String, body: AppLinkPrepareRequestBody): HomeNetworkResponse {
+        prepareRequests += body
+        return prepareResponse
+    }
+
+    override suspend fun executeLinkCardAction(serverId: String, body: AppLinkExecuteRequestBody): HomeNetworkResponse {
+        executeRequests += body
+        return executeResponse
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)

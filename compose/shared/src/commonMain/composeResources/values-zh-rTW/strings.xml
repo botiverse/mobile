@@ -4818,6 +4818,12 @@
     <string name="thread_link_preview_action_failed">無法執行此操作，請再試一次。</string>
     <string name="thread_link_preview_refresh_failed">無法重新整理此卡片，請再試一次。</string>
     <string name="thread_link_preview_action_changed">此卡片內容已變更，請確認後再試一次。</string>
+    <string name="thread_link_preview_action_form_secret_notice">此值會為 %1$s 加密，只傳送給它。Raft 無法讀取。</string>
+    <string name="thread_link_preview_action_form_required">請填寫此欄。</string>
+    <string name="thread_link_preview_action_form_one_line">請只填寫一行。</string>
+    <string name="thread_link_preview_action_form_too_long">最多 %1$d 個字元。</string>
+    <string name="thread_link_preview_action_form_too_many_bytes">最多 %1$d 位元組。有些字元佔多個位元組。</string>
+    <string name="thread_link_preview_action_form_seal_stale">未傳送任何內容：此表單已過期。請再按一次按鈕並重新輸入。</string>
     <string name="thread_link_preview_action_working">處理中…</string>
     <string name="thread_link_preview_action_state_sent">已傳送，正在等待應用程式回應。</string>
     <string name="thread_link_preview_action_state_accepted">應用程式已接受，正在完成處理。</string>

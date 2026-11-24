@@ -4646,6 +4646,12 @@
     <string name="thread_link_preview_action_failed">无法执行此操作，请重试。</string>
     <string name="thread_link_preview_refresh_failed">无法刷新此卡片，请重试。</string>
     <string name="thread_link_preview_action_changed">卡片内容已更新，请确认后重试。</string>
+    <string name="thread_link_preview_action_form_secret_notice">此值会为 %1$s 加密，只发送给它。Raft 无法读取。</string>
+    <string name="thread_link_preview_action_form_required">请填写此项。</string>
+    <string name="thread_link_preview_action_form_one_line">请只填写一行。</string>
+    <string name="thread_link_preview_action_form_too_long">最多 %1$d 个字符。</string>
+    <string name="thread_link_preview_action_form_too_many_bytes">最多 %1$d 字节。有些字符占多个字节。</string>
+    <string name="thread_link_preview_action_form_seal_stale">未发送任何内容：此表单已过期。请再次点击按钮并重新输入。</string>
     <string name="thread_link_preview_action_working">处理中…</string>
     <string name="thread_link_preview_action_state_sent">已发送，正在等待应用。</string>
     <string name="thread_link_preview_action_state_accepted">应用已接受，正在完成。</string>
