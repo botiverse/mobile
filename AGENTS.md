@@ -824,7 +824,8 @@ or helper scripts as a workaround for branch protection.
   subpackage; `assistant/AssistantPage.kt` is the one `build.raft.app` file among
   them. Check a file's `package` line, not its folder. `core/` holds the
   `build.raft.app` files that `data/` and `network/` depend on (logging, diagnostics,
-  strict projection parsers, avatar labels, conversation and surface kind contracts); it
+  strict projection parsers, avatar labels, conversation and surface kind contracts, the
+  adaptive workspace and pane state with their reducers); it
   is the first step towards a separate core module, so a file in `core/` must not use
   anything from a feature folder. The
   top level holds the remaining cross-cutting app infrastructure (theme, platform,
