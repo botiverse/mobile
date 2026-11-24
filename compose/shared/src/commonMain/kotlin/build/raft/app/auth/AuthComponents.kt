@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.components.rememberRaftDesignSystemEditor
 import build.raft.designsystem.components.RaftTextField
@@ -235,7 +236,7 @@ internal fun AuthScaffold(
                 AuthTopBar(statusBarHeight, onBrandClick, topBarHorizontalPadding, topBarBrandImagePadding, topLeadingContent)
                 topBanner?.invoke()
                 Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 36.dp),
+                    modifier = Modifier.fillMaxWidth().weight(1f).raftSafeAreaHorizontalPadding().padding(horizontal = 36.dp),
                     contentAlignment = Alignment.TopCenter
                 ) {
                     if (contentScrollable) {
@@ -310,6 +311,7 @@ private fun AuthTopBar(
                 .padding(top = statusBarHeight.dp)
                 .fillMaxWidth()
                 .height(AuthTopBarHeight)
+                .raftSafeAreaHorizontalPadding()
                 .padding(horizontal = horizontalPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {

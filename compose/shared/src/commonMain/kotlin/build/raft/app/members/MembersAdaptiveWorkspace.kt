@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.raftConsumeSafeAreaHorizontal
 
 /** Keep the list at one composition location, including while a selected detail
  * becomes full-width after resize. Search, collapse and scroll stay mounted. */
@@ -23,9 +24,17 @@ internal fun MembersAdaptiveWorkspace(
             selected -> Modifier.width(0.dp)
             else -> Modifier.weight(1f)
         }
-        Box(listModifier.fillMaxHeight()) { listPane() }
+        Box(
+            listModifier
+                .fillMaxHeight()
+                .then(if (split) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.End) else Modifier),
+        ) { listPane() }
         Spacer(Modifier.width(if (split) 1.dp else 0.dp).fillMaxHeight().background(RaftColor.BorderSeam)) // raft-ui: one line-seam between regions
-        Box((if (split || selected) Modifier.weight(1f) else Modifier.width(0.dp)).fillMaxHeight()) {
+        Box(
+            (if (split || selected) Modifier.weight(1f) else Modifier.width(0.dp))
+                .fillMaxHeight()
+                .then(if (split) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.Start) else Modifier),
+        ) {
             if (split || selected) detailPane()
         }
     }

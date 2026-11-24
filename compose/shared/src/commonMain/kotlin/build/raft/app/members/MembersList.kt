@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.setValue
 import build.raft.app.components.raftCardSurface
@@ -474,7 +475,7 @@ internal fun MembersListContent(
                             } else {
                                 stringResource(Res.string.members_page_empty)
                             },
-                            Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Md),
+                            Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Md),
                             style = RaftTheme.typography.callout,
                             color = RaftTheme.colors.foregroundMuted,
                         )
@@ -726,6 +727,7 @@ private fun MembersToolbar(
         if (query.isNotEmpty()) onQuery("") else searchOpen = false
     }
     RaftFitToolbar(
+        modifier = Modifier.raftSafeAreaHorizontalPadding(),
         scope =
             RaftFitToolbarScope(
                 options = tabs.map { RaftFitToolbarOption(key = it.name, label = labels.getValue(it), count = counts[it]) },
@@ -829,6 +831,7 @@ private fun MembersWideHead(
             Modifier
                 .fillMaxWidth()
                 .height(RaftTheme.controls.headHeight - RaftStroke.Hairline)
+                .raftSafeAreaHorizontalPadding()
                 .padding(horizontal = MembersListContainerInset + RaftAppSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1239,6 +1242,7 @@ private fun MembersListGroupHeading(label: String, count: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .raftSafeAreaHorizontalPadding()
             .padding(start = MembersListMachineLabelInset, end = MembersListMachineLabelInset, top = RaftAppSpacing.Md, bottom = RaftAppSpacing.Xs)
             .semantics { heading() },
         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),

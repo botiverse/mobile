@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.designsystem.components.LocalRaftPaneGridHeadTabs
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.LocalRaftBarButtons
 import build.raft.designsystem.components.RaftPaneGridHeadRowTabs
@@ -349,7 +350,7 @@ internal fun MembersDetailHeader(
     ) {
         // The head's icon-lg buttons are bar buttons: 28dp under a mouse or trackpad (sizing v12).
         CompositionLocalProvider(LocalRaftBarButtons provides true) {
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
+            BoxWithConstraints(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding()) {
                 val startInset = if (showsBack) RaftBackButtonDefaults.EdgeInset - 2.dp else MembersHeaderContentMargin
                 val endInset = RaftBackButtonDefaults.EdgeInset - 2.dp
                 val hasLounge = onOpenLounge != null

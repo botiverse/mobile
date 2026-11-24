@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftMessageListJumpControls
 import build.raft.designsystem.components.RaftMessageListJumpPill
 import build.raft.designsystem.components.RaftMessageListJumpSide
@@ -148,6 +149,7 @@ internal fun BoxWithConstraintsScope.ThreadMessagesListOverlays(
             // `--message-list-bottom-inset`, ABOVE_AGENT_TYPING_LINE_CLASS), so the two never
             // overlap; otherwise on the list's edge, as the list's end keeps no slot then either.
             modifier = Modifier.align(Alignment.BottomCenter)
+                .raftSafeAreaHorizontalPadding()
                 .padding(bottom = if (agentTypingLineShown) ThreadAgentTypingLineHeight else 0.dp)
                 .zIndex(ThreadJumpControlsZIndex).raftNativeDispatchCapture(),
         ) {
@@ -191,7 +193,7 @@ internal fun BoxWithConstraintsScope.ThreadMessagesListOverlays(
     }
     unreadThreadJump?.takeIf { it.direction == ThreadUnreadThreadJumpDirection.Earliest }?.let { earliest ->
         RaftMessageListJumpControls(
-            modifier = Modifier.align(Alignment.TopCenter).zIndex(ThreadJumpControlsZIndex).raftNativeDispatchCapture(),
+            modifier = Modifier.align(Alignment.TopCenter).raftSafeAreaHorizontalPadding().zIndex(ThreadJumpControlsZIndex).raftNativeDispatchCapture(),
             side = RaftMessageListJumpSide.Top,
         ) {
             unreadThreadPill(earliest)

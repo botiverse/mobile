@@ -315,14 +315,16 @@ internal fun RaftImageLightboxContent(
         val byTouch = RaftTheme.pointerInput == RaftPointerInput.Touch
         // By touch, the bar and the arrows fade with the backdrop while the image is dragged down.
         val chromeFade = if (byTouch) Modifier.graphicsLayer { alpha = dismissState.backgroundAlpha } else Modifier
+        // Full-bleed dark backdrop bleeds into the Modal's horizontal safe-area strips so
+        // landscape cutout/side-nav areas stay dark while the top bar and pager arrows remain
+        // inset inside the safe area.
+        val horizontalSafeAreaBleed = LocalRaftHorizontalSafeAreaBleed.current
         Box(
             modifier =
                 modifier
                     .testTag(RaftImageLightboxTag)
                     .fillMaxSize()
                     .onSizeChanged { dismissState.viewportHeight = it.height.toFloat() }
-                    // Fully drawn at rest; fades as the image is dragged down to close.
-                    .drawBehind { drawRect(RaftImageLightboxBackdrop, alpha = dismissState.backgroundAlpha) }
                     .focusRequester(focusRequester)
                     .onPreviewKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -338,6 +340,14 @@ internal fun RaftImageLightboxContent(
                     // A click on the backdrop (around the pages, under the bar) closes.
                     .pointerInput(Unit) { detectTapGestures { currentOnDismiss() } }
         ) {
+            Box(
+                modifier =
+                    Modifier
+                        .raftBleedHorizontalSafeArea(horizontalSafeAreaBleed)
+                        .fillMaxSize()
+                        // Fully drawn at rest; fades as the image is dragged down to close.
+                        .drawBehind { drawRect(RaftImageLightboxBackdrop, alpha = dismissState.backgroundAlpha) }
+            )
             HorizontalPager(
                 state = pagerState,
                 modifier =

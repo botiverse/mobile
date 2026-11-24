@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.raftSelectedServerIdFlow
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -826,7 +827,7 @@ internal fun RaftSettingsComputersContent(
             // The phone's counts on a row of their own (the wide head holds them beside the title).
             RaftText(
                 raftComputersCountsLine(raftComputersCounts(content.rows, agentsByMachine)),
-                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+                modifier = Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 20.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
                 style = RaftTheme.typography.monoMeta,
                 color = RaftTheme.colors.foregroundHint,
                 maxLines = 2,
@@ -973,8 +974,6 @@ private fun RaftComputersRackBody(
         // Web ComputersRack desktop: `p-5` around the grid; the phone's single column keeps 16dp.
         val cardEdge = if (cardColumns > 1) RaftComputerCardGridEdge else 16.dp
         val list = rackView == ComputersRackView.List
-        // The phone list's runtime cells and their header: one width for every row (web `phoneRuntimeGrid`).
-        val listCellWidth = raftRackPhoneUsageCellWidth(maxWidth - RaftComputerBlockEdge * 2, fleetColumns.usage.size, fleetColumns.other.isNotEmpty())
         Column(Modifier.fillMaxSize()) {
             // Web ComputersRack cards: one column on a phone, a grid of cards at least 250dp wide on
             // a wide window (`repeat(auto-fill,minmax(250px,1fr))`, gap 12).
@@ -999,7 +998,6 @@ private fun RaftComputersRackBody(
                     onClick = { onOpenComputer(row.id) },
                     onOpenAgent = onOpenAgent,
                     fleetColumns = fleetColumns,
-                    cellWidth = listCellWidth,
                     usageLoads = usageLoads[row.id].orEmpty(),
                     runtimeCatalog = runtimeCatalog,
                     onOpenUsage = { column, label -> onOpenUsage(row.id, column, label) },
@@ -1049,7 +1047,7 @@ private fun RaftComputersRackBody(
                 // Web: the cards sit in the page's padding; the phone list runs edge to edge under its header.
                 if (!list) item(key = "top-gap") { Spacer(Modifier.height(if (cardColumns > 1) RaftComputerCardGridEdge else 16.dp)) }
                 if (list && !layout.empty && (fleetColumns.usage.isNotEmpty() || fleetColumns.other.isNotEmpty())) {
-                    stickyHeader(key = "rack-header") { RaftComputersRackListHeader(fleetColumns, listCellWidth, runtimeCatalog) }
+                    stickyHeader(key = "rack-header") { RaftComputersRackListHeader(fleetColumns, runtimeCatalog) }
                 }
                 actionError?.let { failed -> item(key = "action-error") { RaftComputerActionErrorBanner(failed) } }
                 if (layout.empty) {
@@ -1066,6 +1064,7 @@ private fun RaftComputersRackBody(
                                 stringResource(
                                     if (attentionOnly) Res.string.settings_computers_rack_no_attention_description else Res.string.settings_computers_rack_no_match_description
                                 ),
+                            modifier = Modifier.raftSafeAreaHorizontalPadding(),
                             icon = { RaftComputersIcon(RaftLucideIconName.SearchX, size = 36.dp) },
                             actions = {
                                 RaftButton(
@@ -1100,6 +1099,7 @@ private fun RaftComputersRackBody(
                                     Row(
                                         Modifier
                                             .fillMaxWidth()
+                                            .raftSafeAreaHorizontalPadding()
                                             .padding(horizontal = cardEdge)
                                             .padding(top = top)
                                             .then(if (rowCards.size > 1) Modifier.height(IntrinsicSize.Max) else Modifier),
@@ -1123,6 +1123,7 @@ private fun RaftComputersRackBody(
                                         .fillMaxWidth()
                                         .background(RaftTheme.colors.layerCanvas)
                                         .raftRackBottomLine(RaftTheme.colors.lineHairline)
+                                        .raftSafeAreaHorizontalPadding()
                                         .padding(start = RaftComputerBlockEdge, end = RaftComputerBlockEdge, top = 16.dp, bottom = 8.dp)
                                 ) {
                                     RaftRackFoldTitle(title = title, count = count, collapsed = collapsed, onToggle = onToggle, modifier = Modifier.testTag(testTag))
@@ -1133,7 +1134,7 @@ private fun RaftComputersRackBody(
                                     count = count,
                                     collapsed = collapsed,
                                     onToggle = onToggle,
-                                    modifier = Modifier.padding(horizontal = cardEdge).padding(top = top).testTag(testTag),
+                                    modifier = Modifier.raftSafeAreaHorizontalPadding().padding(horizontal = cardEdge).padding(top = top).testTag(testTag),
                                 )
                             }
                         }
@@ -1162,7 +1163,7 @@ private fun RaftComputersRackBody(
                         RaftComputersAlertsSection(
                             checked = checked,
                             onCheckedChange = onOfflineComputerAlertsChange,
-                            modifier = Modifier.padding(horizontal = cardEdge).padding(top = 24.dp),
+                            modifier = Modifier.raftSafeAreaHorizontalPadding().padding(horizontal = cardEdge).padding(top = 24.dp),
                         )
                     }
                 }
@@ -1207,6 +1208,7 @@ private fun RaftComputersRackLoading(animated: Boolean) {
         Column(
             Modifier
                 .fillMaxWidth()
+                .raftSafeAreaHorizontalPadding()
                 .padding(16.dp)
                 .semantics { contentDescription = loading }
                 .testTag(RaftComputersRackTags.LoadingSkeleton),
@@ -1641,45 +1643,52 @@ private fun Modifier.raftRackBottomLine(color: Color): Modifier =
  * and short name) and Other, on the blocks' grid. Not sortable (the toolbar's Sort is).
  */
 @Composable
-private fun RaftComputersRackListHeader(columns: RaftRackRuntimeColumns, cellWidth: Dp, catalog: ServerRuntimeCatalog) {
-    Row(
+private fun RaftComputersRackListHeader(columns: RaftRackRuntimeColumns, catalog: ServerRuntimeCatalog) {
+    BoxWithConstraints(
         Modifier
             .fillMaxWidth()
             .background(RaftTheme.colors.layerCard)
             .raftRackBottomLine(RaftTheme.colors.lineSeam)
-            .height(28.dp)
+            .raftSafeAreaHorizontalPadding()
             .padding(horizontal = RaftComputerBlockEdge)
+            .height(28.dp)
             .testTag(RaftComputersRackTags.ListHeader),
-        horizontalArrangement = Arrangement.spacedBy(RaftRackPhoneCellGap),
-        verticalAlignment = Alignment.CenterVertically,
+        contentAlignment = Alignment.CenterStart,
     ) {
-        val muted = RaftTheme.colors.foregroundMuted
-        columns.usage.forEach { column ->
-            val name = catalog.entry(column.runtimeId)?.displayName ?: raftAgentRuntimeDisplayName(column.runtimeId)
-            Row(
-                Modifier.width(cellWidth).semantics(mergeDescendants = true) { contentDescription = name },
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RaftRuntimeMark(column.runtimeId, color = muted)
+        val cellWidth = raftRackPhoneUsageCellWidth(maxWidth, columns.usage.size, columns.other.isNotEmpty())
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(RaftRackPhoneCellGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val muted = RaftTheme.colors.foregroundMuted
+            columns.usage.forEach { column ->
+                val name = catalog.entry(column.runtimeId)?.displayName ?: raftAgentRuntimeDisplayName(column.runtimeId)
+                Row(
+                    Modifier.width(cellWidth).semantics(mergeDescendants = true) { contentDescription = name },
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RaftRuntimeMark(column.runtimeId, color = muted)
+                    RaftText(
+                        raftRackRuntimeShortName(column.runtimeId, catalog),
+                        style = RaftTheme.typography.monoMeta,
+                        color = muted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (columns.other.isNotEmpty()) {
                 RaftText(
-                    raftRackRuntimeShortName(column.runtimeId, catalog),
+                    stringResource(Res.string.settings_computers_rack_col_other),
+                    modifier = Modifier.width(RaftRackPhoneOtherCell),
                     style = RaftTheme.typography.monoMeta,
-                    color = muted,
+                    color = RaftTheme.colors.foregroundHint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-        if (columns.other.isNotEmpty()) {
-            RaftText(
-                stringResource(Res.string.settings_computers_rack_col_other),
-                modifier = Modifier.width(RaftRackPhoneOtherCell),
-                style = RaftTheme.typography.monoMeta,
-                color = RaftTheme.colors.foregroundHint,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
@@ -1700,7 +1709,6 @@ private fun RaftComputerRackBlock(
     onClick: () -> Unit,
     onOpenAgent: (RaftComputerCardAgent) -> Unit,
     fleetColumns: RaftRackRuntimeColumns,
-    cellWidth: Dp,
     usageLoads: Map<RuntimeAccountUsageProvider, RuntimeAccountUsageLoad>,
     runtimeCatalog: ServerRuntimeCatalog,
     onOpenUsage: (RaftRackUsageColumn, String) -> Unit,
@@ -1720,6 +1728,7 @@ private fun RaftComputerRackBlock(
                 .background(surface)
                 .raftClickable(onClick = onClick, onClickLabel = row.name)
                 .raftRackBottomLine(colors.lineSeam)
+                .raftSafeAreaHorizontalPadding()
                 .padding(horizontal = RaftComputerBlockEdge, vertical = 12.dp)
                 .testTag("rack-row-${row.id}"),
         ) {
@@ -1767,7 +1776,7 @@ private fun RaftComputerRackBlock(
                 )
             }
             if (row.online && (fleetColumns.usage.isNotEmpty() || fleetColumns.other.isNotEmpty())) {
-                RaftComputerRackCells(row, fleetColumns, cellWidth, usageLoads, runtimeCatalog, onOpenUsage, nowMillis, Modifier.padding(top = 8.dp))
+                RaftComputerRackCells(row, fleetColumns, usageLoads, runtimeCatalog, onOpenUsage, nowMillis, Modifier.padding(top = 8.dp))
             }
             if (!row.present) {
                 row.lastSeenAt?.let { lastSeen ->
@@ -1795,7 +1804,6 @@ private fun RaftComputerRackBlock(
 private fun RaftComputerRackCells(
     row: RaftComputerRowModel,
     fleetColumns: RaftRackRuntimeColumns,
-    cellWidth: Dp,
     usageLoads: Map<RuntimeAccountUsageProvider, RuntimeAccountUsageLoad>,
     runtimeCatalog: ServerRuntimeCatalog,
     onOpenUsage: (RaftRackUsageColumn, String) -> Unit,
@@ -1803,26 +1811,29 @@ private fun RaftComputerRackCells(
     modifier: Modifier = Modifier,
 ) {
     val own = remember(row.runtimes, runtimeCatalog) { raftRackRuntimeColumns(row.runtimes, runtimeCatalog.runtimes.map { it.id }) }
-    Row(modifier.fillMaxWidth().testTag("rack-metrics-${row.id}"), horizontalArrangement = Arrangement.spacedBy(RaftRackPhoneCellGap), verticalAlignment = Alignment.Top) {
-        fleetColumns.usage.forEach { fleetColumn ->
-            val column = own.usage.firstOrNull { it.provider == fleetColumn.provider }
-            Box(Modifier.width(cellWidth)) {
-                if (column != null && !usageLoads[column.provider].unsupportedRead) {
-                    val line = raftRackUsageLine(raftRackUsageCell(column, usageLoads[column.provider]), runtimeCatalog, row.canViewRuntimeUsage, onOpenUsage, row.id, nowMillis, raftRackLoginStep(row.runtimes, row.loginSteps, column.provider))
-                    val card = line.usageCard
-                    if (card != null) card { click -> RaftRackUsageCellContent(line, click = click) } else RaftRackUsageCellContent(line, click = line.onClick)
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val cellWidth = raftRackPhoneUsageCellWidth(maxWidth, fleetColumns.usage.size, fleetColumns.other.isNotEmpty())
+        Row(Modifier.fillMaxWidth().testTag("rack-metrics-${row.id}"), horizontalArrangement = Arrangement.spacedBy(RaftRackPhoneCellGap), verticalAlignment = Alignment.Top) {
+            fleetColumns.usage.forEach { fleetColumn ->
+                val column = own.usage.firstOrNull { it.provider == fleetColumn.provider }
+                Box(Modifier.width(cellWidth)) {
+                    if (column != null && !usageLoads[column.provider].unsupportedRead) {
+                        val line = raftRackUsageLine(raftRackUsageCell(column, usageLoads[column.provider]), runtimeCatalog, row.canViewRuntimeUsage, onOpenUsage, row.id, nowMillis, raftRackLoginStep(row.runtimes, row.loginSteps, column.provider))
+                        val card = line.usageCard
+                        if (card != null) card { click -> RaftRackUsageCellContent(line, click = click) } else RaftRackUsageCellContent(line, click = line.onClick)
+                    }
                 }
             }
-        }
-        if (fleetColumns.other.isNotEmpty()) {
-            val others = fleetColumns.other.filter { it in own.other }
-            val names = others.map { runtimeCatalog.entry(it)?.displayName ?: raftAgentRuntimeDisplayName(it) }.joinToString(", ")
-            Row(
-                Modifier.width(RaftRackPhoneOtherCell).height(18.dp).clipToBounds().semantics { if (names.isNotEmpty()) contentDescription = names },
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                others.forEach { RaftRuntimeMark(it, color = RaftTheme.colors.foregroundHint) }
+            if (fleetColumns.other.isNotEmpty()) {
+                val others = fleetColumns.other.filter { it in own.other }
+                val names = others.map { runtimeCatalog.entry(it)?.displayName ?: raftAgentRuntimeDisplayName(it) }.joinToString(", ")
+                Row(
+                    Modifier.width(RaftRackPhoneOtherCell).height(18.dp).clipToBounds().semantics { if (names.isNotEmpty()) contentDescription = names },
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    others.forEach { RaftRuntimeMark(it, color = RaftTheme.colors.foregroundHint) }
+                }
             }
         }
     }
@@ -3191,7 +3202,7 @@ private fun RaftComputerDetailBody(
     }
     // Back leaves select mode first.
     RaftBackHandler(enabled = bulk != null && bulkState.selectionMode, label = "computer_agents_select") { bulkState.clearSelection() }
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize().raftSafeAreaHorizontalPadding()) {
         item(key = "header") { RaftComputerDetailHeader(computer, onOpenMigrationLog) }
         item(key = "version-notice") { RaftComputerVersionNotice(controls) }
         raftComputerMemoryLimitNotApplied(snapshot.computer)?.let { scopes ->
@@ -4276,7 +4287,7 @@ private fun RaftComputersStateBlock(
     onAction: () -> Unit = {},
 ) {
     Column(
-        Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 48.dp),
+        Modifier.fillMaxSize().raftSafeAreaHorizontalPadding().padding(horizontal = 32.dp, vertical = 48.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

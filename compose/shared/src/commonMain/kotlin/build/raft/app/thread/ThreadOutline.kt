@@ -1,6 +1,8 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.WindowInsetsSides
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -552,6 +554,7 @@ internal fun ThreadOutlineRail(
         Box(
             Modifier
                 .align(Alignment.CenterEnd)
+                .raftSafeAreaHorizontalPadding(WindowInsetsSides.End)
                 .padding(end = 8.dp)
                 .then(hover)
                 // One stop for assistive tech and the keyboard: the rail is a button that opens the
