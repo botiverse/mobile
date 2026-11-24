@@ -484,7 +484,7 @@ class ThreadComposerLayoutTest {
                 text = "@f\u2006r",
                 cursor = 99,
                 selectionEnd = 99,
-                composition = TextRange(-5, 99),
+                composition = TextRange(0, 99),
             ),
         )
         assertEquals(
