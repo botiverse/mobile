@@ -22,6 +22,7 @@ import build.raft.app.data.traceSampleEvaluations
 import build.raft.app.data.traceSampled
 import build.raft.app.nav.LocalRaftStackPageInMotion
 import build.raft.app.nav.LocalRaftStackPageLeaving
+import build.raft.app.network.RaftAppIdentityRegistry
 import kotlinx.coroutines.launch
 
 /** `mobile.thread_open`'s rate for this open: flags first, then the App default (RaftTraceSampling.kt). */
@@ -47,6 +48,8 @@ internal fun rememberThreadOpenTraceSession(
     flags: () -> ServerFeatureFlagSnapshot,
     serverId: () -> String?,
     log: (String) -> Unit,
+    appBuild: String? = null,
+    layoutMode: String? = null,
 ): ThreadOpenTraceSession? {
     val holder = remember { ThreadOpenTraceHolder() }
     val session =
@@ -61,6 +64,8 @@ internal fun rememberThreadOpenTraceSession(
                 recordCondition = "trace_sample",
                 viewKey = openKey,
                 nowEpochMs = ProcessRaftDatetimeFoundationOwner::nowEpochMillis,
+                appBuild = appBuild,
+                layoutMode = layoutMode,
             )
         }
     val currentServerId = rememberUpdatedState(serverId)
@@ -96,6 +101,12 @@ internal fun ThreadMessagesListOpenTrace(
 ) {
     val viewerServerId =
         (LocalThreadViewerServerId.current ?: initialServerId)?.trim()?.takeIf { it.isNotBlank() }
+    val layoutMode = if (LocalRaftAppShellTopBar.current != null) "wide" else "narrow"
+    val appBuild =
+        runCatching { RaftAppIdentityRegistry.current()?.buildNumber }
+            .getOrNull()
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
     val session =
         rememberThreadOpenTraceSession(
             openKey = openKey,
@@ -104,6 +115,8 @@ internal fun ThreadMessagesListOpenTrace(
             flags = { flags.snapshotFor(viewerServerId?.let(::ServerId)) },
             serverId = { viewerServerId },
             log = log,
+            appBuild = appBuild,
+            layoutMode = layoutMode,
         ) ?: return
     val fontScale = LocalDensity.current.fontScale
     ThreadOpenShiftRecorderEffect(

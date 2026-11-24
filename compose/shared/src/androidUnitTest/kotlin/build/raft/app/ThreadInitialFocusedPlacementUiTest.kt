@@ -219,4 +219,81 @@ class ThreadInitialFocusedPlacementUiTest {
             mainClock.autoAdvance = true
             waitForIdle()
         }
+
+    @Test
+    fun replyThreadOriginOnlyFrameStaysArmedUntilCachedRepliesArrive() =
+        runRobolectricComposeUiTest {
+            // Frame 1: reply thread paints only origin + bottom padding (messages empty) while focused on r9.
+            val rows = mutableStateOf(listOf("origin", "bottom-padding"))
+            val focusedIndex = mutableStateOf(-1)
+            lateinit var viewport: ThreadListViewport
+            lateinit var owner: ThreadInitialFocusedPlacementOwner
+            mainClock.autoAdvance = false
+            setContent {
+                val raw = rememberLazyListState(initialFirstVisibleItemIndex = 0)
+                viewport = remember(raw) { ThreadListViewport(raw, reverse = true) }
+                val scope = rememberCoroutineScope()
+                owner =
+                    remember(viewport) {
+                        ThreadInitialFocusedPlacementOwner(
+                            listState = viewport,
+                            scope = scope,
+                            armed =
+                                shouldArmThreadInitialFocusedPlacement(
+                                    reverseLayout = true,
+                                    adaptiveAnchorRestoreInFlight = false,
+                                    initialFocusedItemIndex = -1,
+                                    messagesEmpty = true,
+                                    focusedMessageId = "r9",
+                                ),
+                        )
+                    }
+                val afterLayout: () -> Unit = {
+                    owner.afterLayout(
+                        owns = { !viewport.isScrollInProgress && !viewport.isRetired },
+                        retiredByHost = { false },
+                        focusedForwardIndex = { focusedIndex.value },
+                        placement = { LazyViewportAnchorPlacement.Focused },
+                        minBottomReservePx = 100,
+                    )
+                }
+                val currentRows = rows.value
+                LazyColumn(
+                    state = raw,
+                    reverseLayout = true,
+                    verticalArrangement = Arrangement.Bottom,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .onGloballyPositioned { afterLayout() },
+                ) {
+                    items(currentRows.asReversed(), key = { it }) { id ->
+                        val height = if (id == "bottom-padding") 16.dp else 120.dp
+                        Box(Modifier.fillMaxWidth().height(height).onGloballyPositioned { afterLayout() })
+                    }
+                }
+            }
+            repeat(2) { mainClock.advanceTimeByFrame() }
+            assertFalse(owner.applied, "origin-only frame has no target row yet")
+            assertFalse(owner.retired, "owner must stay armed while waiting for cached replies")
+
+            // Frame 2: cached replies arrive (origin + r0..r15 + bottom-padding); r9 (forward index 10)
+            // has 6 replies + bottom-padding below it (> 800dp viewport) and sits inside the initial
+            // reversed bottom window, so the still-armed owner aligns it to forward top 0 before draw.
+            runOnUiThread {
+                rows.value = listOf("origin") + (0 until 16).map { "r$it" } + "bottom-padding"
+                focusedIndex.value = 10
+                Snapshot.sendApplyNotifications()
+            }
+            repeat(3) { mainClock.advanceTimeByFrame() }
+            assertTrue(owner.applied, "owner should align focused reply once replies lay out")
+            assertTrue(owner.retired, "owner retires after single-shot placement")
+            val placed = viewport.layoutInfo.visibleItemsInfo.firstOrNull { it.index == 10 }
+            assertNotNull(placed, "focused reply r9 must be visible")
+            assertEquals(0, placed.offset, "focused reply must land at forward top 0")
+            assertEquals(ThreadViewportOwnerTag.FocusedReanchor, viewport.lastScrollOwnerTag)
+            assertEquals(1, viewport.lastScrollOwnerAttempt)
+            mainClock.autoAdvance = true
+            waitForIdle()
+        }
 }

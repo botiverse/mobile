@@ -65,6 +65,9 @@ internal object ThreadViewportOwnerTag {
 
     /** The typing / working line came or went while the list rested on its end (ThreadMessagesList). */
     const val TypingLineEnd = "typing_line_end"
+
+    /** The reading anchor kept the anchored row's top in place across an in-place row height change (ThreadReadingAnchorKeeper). */
+    const val ReadingAnchor = "reading_anchor"
 }
 
 /** A shift's cause when no viewport owner scrolled in its frame. */
@@ -191,6 +194,8 @@ internal class ThreadOpenTraceSession(
     private val nowMs: () -> Long = ThreadOpenClock::nowMs,
     private val nowEpochMs: () -> Long,
     random: Random = Random,
+    val appBuild: String? = null,
+    val layoutMode: String? = null,
 ) {
     val traceId: String = randomTraceHex(16, random)
     val spanId: String = randomTraceHex(8, random)
@@ -244,6 +249,8 @@ internal class ThreadOpenTraceSession(
     private val shiftPhase = arrayOfNulls<String>(ThreadOpenMaxShiftRecords)
     private val shiftRowsResized = IntArray(ThreadOpenMaxShiftRecords)
     private val shiftMaxRowDelta = FloatArray(ThreadOpenMaxShiftRecords)
+    private val shiftPaddingDelta = FloatArray(ThreadOpenMaxShiftRecords)
+    private val shiftViewportDelta = FloatArray(ThreadOpenMaxShiftRecords)
     private val shiftCause = arrayOfNulls<String>(ThreadOpenMaxShiftRecords)
     private val shiftAttempt = IntArray(ThreadOpenMaxShiftRecords)
     private var lastCause: String? = null
@@ -368,11 +375,15 @@ internal class ThreadOpenTraceSession(
                         rowsResized > 0 -> ThreadOpenShiftCause.ContentRowHeight
                         else -> ThreadOpenShiftCause.Unknown
                     }
+                val paddingDeltaDp = if (prevPadding >= 0 && padding != prevPadding) (padding - prevPadding) / density else 0f
+                val viewportDeltaDp = if (prevHeight >= 0 && height != prevHeight) (height - prevHeight) / density else 0f
                 recordShift(
                     t = t,
                     movedDp = movedDp,
                     rowsResized = rowsResized,
                     maxRowDeltaDp = maxRowDeltaPx / density,
+                    paddingDeltaDp = paddingDeltaDp,
+                    viewportDeltaDp = viewportDeltaDp,
                     viewportHeight = height,
                     movedPx = movedPx,
                     cause = cause,
@@ -413,6 +424,8 @@ internal class ThreadOpenTraceSession(
         movedDp: Float,
         rowsResized: Int,
         maxRowDeltaDp: Float,
+        paddingDeltaDp: Float,
+        viewportDeltaDp: Float,
         viewportHeight: Int,
         movedPx: Int,
         cause: String,
@@ -429,6 +442,8 @@ internal class ThreadOpenTraceSession(
                 shiftDelta[slot] += movedDp
                 shiftRowsResized[slot] += rowsResized
                 if (maxRowDeltaDp > shiftMaxRowDelta[slot]) shiftMaxRowDelta[slot] = maxRowDeltaDp
+                shiftPaddingDelta[slot] += paddingDeltaDp
+                shiftViewportDelta[slot] += viewportDeltaDp
                 if (shiftDelta[slot] > shiftMaxDp) shiftMaxDp = shiftDelta[slot]
             } else if (movedDp > shiftMaxDp) {
                 shiftMaxDp = movedDp
@@ -446,6 +461,8 @@ internal class ThreadOpenTraceSession(
         shiftPhase[slot] = phase
         shiftRowsResized[slot] = rowsResized
         shiftMaxRowDelta[slot] = maxRowDeltaDp
+        shiftPaddingDelta[slot] = paddingDeltaDp
+        shiftViewportDelta[slot] = viewportDeltaDp
         shiftCause[slot] = cause
         shiftAttempt[slot] = attempt
     }
@@ -469,6 +486,10 @@ internal class ThreadOpenTraceSession(
 
     fun shiftAttemptAt(index: Int): Int = shiftAttempt[index]
 
+    fun shiftPaddingDeltaDpAt(index: Int): Float = shiftPaddingDelta[index]
+
+    fun shiftViewportDeltaDpAt(index: Int): Float = shiftViewportDelta[index]
+
     val timeToStableMs: Long?
         get() = milestoneMs(ThreadOpenMilestone.Stable)
 
@@ -482,6 +503,8 @@ internal class ThreadOpenTraceSession(
         buildMap {
             put("surface_kind", surfaceKind)
             put("open_kind", openKind)
+            appBuild?.trim()?.takeIf { it.isNotEmpty() }?.let { put("app_build", it) }
+            layoutMode?.trim()?.takeIf { it.isNotEmpty() }?.let { put("layout_mode", it) }
             put("end", end?.wire ?: "open")
             put("duration_ms", endMs)
             put("cache", cache.ifEmpty { "none" })
@@ -509,6 +532,8 @@ internal class ThreadOpenTraceSession(
             if (shiftAttempt[index] > 0) put("owner_attempt", shiftAttempt[index])
             put("rows_resized", shiftRowsResized[index])
             put("max_row_delta_dp", shiftMaxRowDelta[index].oneDecimal())
+            if (shiftPaddingDelta[index] != 0f) put("padding_delta_dp", shiftPaddingDelta[index].oneDecimal())
+            if (shiftViewportDelta[index] != 0f) put("viewport_delta_dp", shiftViewportDelta[index].oneDecimal())
         }
 
     /** Diagnostics lines (kept in every build, RaftDiagnosticsVolume `open_trace_`). */

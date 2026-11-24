@@ -4,7 +4,9 @@ import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 /**
  * Pure unit tests for cached focused-open initial placement (#proj-mobile:#258):
@@ -137,6 +139,69 @@ class ThreadInitialFocusedPlacementTest {
                 rawBeforeContentPadding = 0,
                 rawAfterContentPadding = 40,
             ),
+        )
+    }
+
+    @Test
+    fun shouldArmInitialFocusedPlacementStaysArmedForReplyThreadAwaitingCachedReplies() {
+        // Reply thread painting only originMessage while waiting for cached replies -> stay armed.
+        assertTrue(
+            shouldArmThreadInitialFocusedPlacement(
+                reverseLayout = true,
+                adaptiveAnchorRestoreInFlight = false,
+                initialFocusedItemIndex = -1,
+                messagesEmpty = true,
+                focusedMessageId = "reply-5",
+            )
+        )
+        // Cached focused target already in slice -> armed.
+        assertTrue(
+            shouldArmThreadInitialFocusedPlacement(
+                reverseLayout = true,
+                adaptiveAnchorRestoreInFlight = false,
+                initialFocusedItemIndex = 4,
+                messagesEmpty = false,
+                focusedMessageId = "reply-5",
+            )
+        )
+        // Non-empty messages without focused target in slice -> not armed.
+        assertFalse(
+            shouldArmThreadInitialFocusedPlacement(
+                reverseLayout = true,
+                adaptiveAnchorRestoreInFlight = false,
+                initialFocusedItemIndex = -1,
+                messagesEmpty = false,
+                focusedMessageId = "reply-5",
+            )
+        )
+        // No focusedMessageId -> not armed.
+        assertFalse(
+            shouldArmThreadInitialFocusedPlacement(
+                reverseLayout = true,
+                adaptiveAnchorRestoreInFlight = false,
+                initialFocusedItemIndex = -1,
+                messagesEmpty = true,
+                focusedMessageId = " ",
+            )
+        )
+        // Adaptive restore in flight or forward layout -> not armed.
+        assertFalse(
+            shouldArmThreadInitialFocusedPlacement(
+                reverseLayout = true,
+                adaptiveAnchorRestoreInFlight = true,
+                initialFocusedItemIndex = 4,
+                messagesEmpty = false,
+                focusedMessageId = "reply-5",
+            )
+        )
+        assertFalse(
+            shouldArmThreadInitialFocusedPlacement(
+                reverseLayout = false,
+                adaptiveAnchorRestoreInFlight = false,
+                initialFocusedItemIndex = -1,
+                messagesEmpty = true,
+                focusedMessageId = "reply-5",
+            )
         )
     }
 }

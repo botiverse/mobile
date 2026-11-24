@@ -13,31 +13,33 @@ import kotlin.test.assertTrue
  */
 class ThreadOfflineLastKnownTipTest {
     @Test
-    fun insetIsReservedWhileTheFrameStandsInAndTheTipWaitsForAFailedLoad() {
-        // Hands e0a5248d: the stand-in is published before its refresh starts, online too. No
-        // failure yet, so no "offline" tip, only the inset.
+    fun insetIsReservedOnlyWhenTheOfflineTipIsActuallyVisible() {
+        // Hands e0a5248d / 1.30.0 P0-2: the stand-in is published before its refresh starts,
+        // online too. No failure yet, so neither the offline tip nor its 40dp top inset activates
+        // (reserving phantom top padding on online cached opens caused an inset:padding collapse
+        // on network_applied).
         val opening =
             threadOfflineLastKnownChrome(durableLastKnown = true, status = "content", backgroundRefreshing = false, mainLoadFailed = false)
-        assertTrue(opening.insetActive)
+        assertFalse(opening.insetActive)
         assertFalse(opening.tipVisible)
 
-        // Durable frame rendered, network refresh still running: reserve the inset, no tip yet.
+        // Durable frame rendered, network refresh still running: still online-optimistic, no inset or tip.
         val refreshing =
             threadOfflineLastKnownChrome(durableLastKnown = true, status = "content", backgroundRefreshing = true, mainLoadFailed = false)
-        assertTrue(refreshing.insetActive)
+        assertFalse(refreshing.insetActive)
         assertFalse(refreshing.tipVisible)
 
-        // Refresh ended without replacing the frame (transient failure): tip on, inset unchanged (no jump).
+        // Refresh ended without replacing the frame (transient failure): tip and its 40dp inset activate together.
         val failed =
             threadOfflineLastKnownChrome(durableLastKnown = true, status = "content", backgroundRefreshing = false, mainLoadFailed = true)
         assertTrue(failed.insetActive)
         assertTrue(failed.tipVisible)
 
-        // A recovery retry is running again after that failure: the tip waits for its answer.
-        assertFalse(
+        // A recovery retry is running again after that failure: both tip and inset wait for its answer.
+        val retrying =
             threadOfflineLastKnownChrome(durableLastKnown = true, status = "content", backgroundRefreshing = true, mainLoadFailed = true)
-                .tipVisible
-        )
+        assertFalse(retrying.tipVisible)
+        assertFalse(retrying.insetActive)
     }
 
     @Test

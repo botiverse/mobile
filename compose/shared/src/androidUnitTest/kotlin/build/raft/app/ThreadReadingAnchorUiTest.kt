@@ -172,6 +172,8 @@ class ThreadReadingAnchorUiTest {
             assertEquals(before[id], after[id], "$id moved after changing $changed in place")
         }
         assertTrue(harness.owner.keeper.corrections >= 1, "no correction made")
+        assertEquals(ThreadViewportOwnerTag.ReadingAnchor, harness.viewport.lastScrollOwnerTag)
+        assertTrue(harness.viewport.lastScrollOwnerAttempt >= 1, "reading anchor correction must record a 1-based attempt")
     }
 
     @Test

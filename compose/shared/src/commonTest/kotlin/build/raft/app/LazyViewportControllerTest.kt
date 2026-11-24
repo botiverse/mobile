@@ -327,4 +327,216 @@ class LazyViewportControllerTest {
         assertNull(dragging.pendingCommand)
         assertFalse(dragging.accepts(latestCommand))
     }
+
+    @Test
+    fun lockAnchorOffsetSettlesFocusedToExactOffsetWithoutCommandAndNeverReplaysFocused() {
+        val target = LazyViewportAnchorTarget.Message("focused-near-tail")
+        val focused =
+            reduceLazyViewport(
+                LazyViewportControllerState(),
+                LazyViewportEvent.Anchor(
+                    target = target,
+                    offset = 0,
+                    layoutGeneration = 5L,
+                    placement = LazyViewportAnchorPlacement.Focused,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        val consumed =
+            reduceLazyViewport(
+                focused,
+                LazyViewportEvent.CommandConsumed(focused.pendingCommand!!.id)
+            )
+
+        // Lock to the bottom-clamped settled visual offset (e.g. 184px from top).
+        val locked =
+            reduceLazyViewport(
+                consumed,
+                LazyViewportEvent.LockAnchorOffset(
+                    target = target,
+                    offset = 184,
+                    layoutGeneration = 6L
+                )
+            )
+        val lockedIntent = assertIs<LazyViewportIntent.Anchored>(locked.intent)
+        assertEquals(target, lockedIntent.target)
+        assertEquals(184, lockedIntent.offset)
+        assertEquals(6L, lockedIntent.layoutGeneration)
+        assertEquals(LazyViewportAnchorPlacement.ExactOffset, lockedIntent.placement)
+        assertEquals(LazyViewportAnchorFallback.Free, lockedIntent.fallback)
+        assertNull(locked.pendingCommand, "LockAnchorOffset must never emit a scroll command")
+
+        // Subsequent Prepend / HeightChange / InsetChange replay ExactOffset(184), never Focused(0).
+        listOf(
+            LazyViewportMutation.Prepend,
+            LazyViewportMutation.HeightChange,
+            LazyViewportMutation.InsetChange,
+        ).forEach { mutation ->
+            val afterMutation =
+                reduceLazyViewport(
+                    locked,
+                    LazyViewportEvent.ContentMutated(mutation)
+                )
+            val commandTarget = assertIs<LazyViewportCommandTarget.Anchor>(afterMutation.pendingCommand?.target)
+            assertEquals(target, commandTarget.target, mutation.toString())
+            assertEquals(184, commandTarget.offset, mutation.toString())
+            assertEquals(6L, commandTarget.layoutGeneration, mutation.toString())
+            assertEquals(LazyViewportAnchorPlacement.ExactOffset, commandTarget.placement, mutation.toString())
+        }
+
+        // Append leaves the locked ExactOffset anchor untouched without emitting a command.
+        val afterAppend =
+            reduceLazyViewport(
+                locked,
+                LazyViewportEvent.ContentMutated(LazyViewportMutation.Append)
+            )
+        assertEquals(locked, afterAppend)
+        assertNull(afterAppend.pendingCommand)
+    }
+
+    @Test
+    fun lockAnchorOffsetIgnoresOtherIntentsOrTargetsAndCancelsStalePendingCommand() {
+        val target = LazyViewportAnchorTarget.Message("m1")
+        val otherTarget = LazyViewportAnchorTarget.Message("m2")
+
+        // Ignored on FollowingLatest, PinnedTop, UserDragging.
+        val following = LazyViewportControllerState()
+        assertEquals(following, reduceLazyViewport(following, LazyViewportEvent.LockAnchorOffset(target, 42, 1L)))
+        val pinned = reduceLazyViewport(following, LazyViewportEvent.PinTop)
+        assertEquals(pinned, reduceLazyViewport(pinned, LazyViewportEvent.LockAnchorOffset(target, 42, 1L)))
+        val dragging = reduceLazyViewport(following, LazyViewportEvent.PointerDown)
+        assertEquals(dragging, reduceLazyViewport(dragging, LazyViewportEvent.LockAnchorOffset(target, 42, 1L)))
+
+        // Ignored when anchored on a different target.
+        val anchored =
+            reduceLazyViewport(
+                following,
+                LazyViewportEvent.Anchor(
+                    target = target,
+                    offset = 0,
+                    layoutGeneration = 2L,
+                    placement = LazyViewportAnchorPlacement.Focused,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        val staleCommand = anchored.pendingCommand!!
+        assertEquals(anchored, reduceLazyViewport(anchored, LazyViewportEvent.LockAnchorOffset(otherTarget, 99, 3L)))
+
+        // Locking the same target cancels the pending Focused command without emitting a new one.
+        val locked = reduceLazyViewport(anchored, LazyViewportEvent.LockAnchorOffset(target, 99, 3L))
+        assertNull(locked.pendingCommand)
+        assertFalse(locked.accepts(staleCommand))
+        assertEquals(LazyViewportAnchorPlacement.ExactOffset, assertIs<LazyViewportIntent.Anchored>(locked.intent).placement)
+
+        // Idempotent when already locked at the same offset and layout generation with no pending command.
+        assertEquals(locked, reduceLazyViewport(locked, LazyViewportEvent.LockAnchorOffset(target, 99, 3L)))
+    }
+
+    @Test
+    fun focusedAnchorKeepAndReanchorHelpersPreserveSettledExactOffset() {
+        val id = "m10:1"
+        // Restart after already anchored with target still visible -> keep ExactOffset.
+        assertTrue(
+            shouldKeepVisibleFocusedAnchorOffset(
+                placement = LazyViewportAnchorPlacement.Focused,
+                currentVisibleOffset = 140,
+                targetIdentity = id,
+                sessionIdentity = id,
+                initialPlacementApplied = false,
+                initialFocusedIdentity = null,
+            )
+        )
+        // Initial pre-first-draw placement applied for this exact focus target -> keep ExactOffset.
+        assertTrue(
+            shouldKeepVisibleFocusedAnchorOffset(
+                placement = LazyViewportAnchorPlacement.Focused,
+                currentVisibleOffset = 0,
+                targetIdentity = id,
+                sessionIdentity = null,
+                initialPlacementApplied = true,
+                initialFocusedIdentity = id,
+            )
+        )
+        // Target fell off-screen -> must anchor normally.
+        assertFalse(
+            shouldKeepVisibleFocusedAnchorOffset(
+                placement = LazyViewportAnchorPlacement.Focused,
+                currentVisibleOffset = null,
+                targetIdentity = id,
+                sessionIdentity = id,
+                initialPlacementApplied = true,
+                initialFocusedIdentity = id,
+            )
+        )
+        // New request nonce / different message -> must anchor normally.
+        assertFalse(
+            shouldKeepVisibleFocusedAnchorOffset(
+                placement = LazyViewportAnchorPlacement.Focused,
+                currentVisibleOffset = 140,
+                targetIdentity = "m10:2",
+                sessionIdentity = id,
+                initialPlacementApplied = true,
+                initialFocusedIdentity = id,
+            )
+        )
+        // FocusedThreadReplies / RenderedBottom keep their existing placement path.
+        assertFalse(
+            shouldKeepVisibleFocusedAnchorOffset(
+                placement = LazyViewportAnchorPlacement.FocusedThreadReplies,
+                currentVisibleOffset = 140,
+                targetIdentity = id,
+                sessionIdentity = id,
+                initialPlacementApplied = true,
+                initialFocusedIdentity = id,
+            )
+        )
+        assertFalse(
+            shouldKeepVisibleFocusedAnchorOffset(
+                placement = LazyViewportAnchorPlacement.RenderedBottom,
+                currentVisibleOffset = 140,
+                targetIdentity = id,
+                sessionIdentity = id,
+                initialPlacementApplied = true,
+                initialFocusedIdentity = id,
+            )
+        )
+
+        // Reanchor restores anchoredOffset under ExactOffset for Focused, and preserves other placements.
+        assertEquals(
+            ThreadFocusedReanchorTarget(LazyViewportAnchorPlacement.ExactOffset, 210),
+            resolveThreadFocusedReanchorTarget(
+                anchoredOffset = 210,
+                resolvedPlacement = LazyViewportAnchorPlacement.Focused,
+                fallbackOffsetPx = 0,
+            ),
+        )
+        assertEquals(
+            ThreadFocusedReanchorTarget(LazyViewportAnchorPlacement.Focused, 0),
+            resolveThreadFocusedReanchorTarget(
+                anchoredOffset = null,
+                resolvedPlacement = LazyViewportAnchorPlacement.Focused,
+                fallbackOffsetPx = 0,
+            ),
+        )
+        assertEquals(
+            ThreadFocusedReanchorTarget(LazyViewportAnchorPlacement.FocusedThreadReplies, 0),
+            resolveThreadFocusedReanchorTarget(
+                anchoredOffset = 210,
+                resolvedPlacement = LazyViewportAnchorPlacement.FocusedThreadReplies,
+                fallbackOffsetPx = 0,
+            ),
+        )
+        assertEquals(
+            ThreadFocusedReanchorTarget(LazyViewportAnchorPlacement.RenderedBottom, 120),
+            resolveThreadFocusedReanchorTarget(
+                anchoredOffset = 210,
+                resolvedPlacement = LazyViewportAnchorPlacement.RenderedBottom,
+                fallbackOffsetPx = 120,
+            ),
+        )
+
+        assertEquals(ThreadViewportOwnerTag.FocusedReanchor, threadFocusedDispatchOwnerTag(LazyViewportAnchorPlacement.Focused))
+        assertEquals(ThreadViewportOwnerTag.JumpPill, threadFocusedDispatchOwnerTag(LazyViewportAnchorPlacement.FocusedThreadReplies))
+        assertEquals(ThreadViewportOwnerTag.RenderedTail, threadFocusedDispatchOwnerTag(LazyViewportAnchorPlacement.RenderedBottom))
+    }
 }

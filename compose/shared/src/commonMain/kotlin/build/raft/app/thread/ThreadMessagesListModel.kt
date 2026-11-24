@@ -125,16 +125,6 @@ internal fun threadOlderMessagesStatusSpec(
 }
 
 /**
- * Task #1125: chrome around a durable last-known (offline stand-in) frame.
- *
- * - [insetActive]: the list reserves the tip's height at its top for as long as the frame is the
- *   stand-in, so the tip can appear later without pushing content (no jump) and never covers the
- *   first row when scrolled to the top.
- * - [tipVisible]: the tip itself shows only once the background refresh has ended without
- *   replacing the frame (transient failure). A canonical answer clears `durableLastKnown` and
- *   both go away together with the content replacement.
- */
-/**
  * The realtime transport for this page's server (re)connected — that server is reachable again. An
  * event for another server, or with no server, is not this page's recovery (LiBai #2782).
  */
@@ -189,6 +179,17 @@ internal class OfflineStandInRecoveryGate {
         }
 }
 
+/**
+ * Task #1125 / 1.30.0 open-path jitter P0-2: chrome around a durable last-known (offline stand-in)
+ * frame.
+ *
+ * - [tipVisible]: the tip itself shows only once the background refresh has ended without
+ *   replacing the frame (transient failure).
+ * - [insetActive]: mirrors [tipVisible]. Online cached opens also start on a durable stand-in
+ *   before the refresh completes; reserving a phantom 40dp top inset while online causes an
+ *   `inset:padding` collapse on `network_applied` and triggers 40dp drift reanchors on focused
+ *   opens. Reserve the top inset only while the offline tip is actually visible.
+ */
 internal data class ThreadOfflineLastKnownChrome(
     val insetActive: Boolean,
     val tipVisible: Boolean
@@ -202,11 +203,14 @@ internal fun threadOfflineLastKnownChrome(
 ): ThreadOfflineLastKnownChrome {
     // Task #1137: a channel that was empty when last seen is a stand-in too.
     val standIn = durableLastKnown && (status == "content" || status == "empty")
-    // Hands e0a5248d: the stand-in also opens online, before its refresh has even started; the
-    // tip says "offline" only once the network load actually failed and nothing is retrying.
+    // Hands e0a5248d / 1.30.0 P0-2: the stand-in also opens online, before its refresh has even
+    // started; show the offline tip — and reserve its 40dp top inset — only once the network load
+    // actually failed and nothing is retrying, so online cached opens do not reserve phantom
+    // padding that collapses on `network_applied`.
+    val tipVisible = standIn && mainLoadFailed && !backgroundRefreshing
     return ThreadOfflineLastKnownChrome(
-        insetActive = standIn,
-        tipVisible = standIn && mainLoadFailed && !backgroundRefreshing
+        insetActive = tipVisible,
+        tipVisible = tipVisible
     )
 }
 
