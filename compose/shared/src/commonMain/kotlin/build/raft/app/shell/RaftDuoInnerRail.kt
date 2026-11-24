@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.tokens.RaftUiComponentTokens
 import build.raft.designsystem.components.raftAppRailMetricsFor
 import build.raft.app.resources.*
 import androidx.compose.foundation.clickable
@@ -77,8 +78,15 @@ internal fun RaftAppRailServerTile(
     val label = stringResource(Res.string.server_tab_a11y_label, server.name)
     val actionLabel = stringResource(Res.string.server_tab_switch_action)
     val otherUnreadDescription = stringResource(Res.string.home_server_switcher_other_unread)
-    // The rail's item square: 40dp, 36dp in a compact (short-window) rail.
-    val itemSize = RaftAppRailDefaults.metrics.itemSize
+    // The rail's item square: 40dp, 36dp in a compact (short-window) rail; in a 48dp header (the short head, a wide
+    // window by touch) the compact rail's 36dp, so it keeps 6dp above and below as there (artin, #wg-mobile-sync:#265).
+    val railMetrics = RaftAppRailDefaults.metrics
+    val itemSize =
+        if (railMetrics.headerHeight <= RaftUiComponentTokens.Touch.headerHeightShort) {
+            minOf(railMetrics.itemSize, RaftUiComponentTokens.Touch.railItemShort)
+        } else {
+            railMetrics.itemSize
+        }
     // The server's name beside the rail under a mouse, or on a touch long press (which then doesn't
     // open the panel), as the web strip's avatars name theirs (WorkspaceStripButton).
     val tile: @Composable () -> Unit = {
