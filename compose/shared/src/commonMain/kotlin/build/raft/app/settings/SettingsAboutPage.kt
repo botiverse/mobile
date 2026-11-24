@@ -468,12 +468,15 @@ internal fun settingsAboutUpdateStatus(
             updateCheck.screenError != null ||
             label in setOf("failed", "check failed", "install failed")
     return when {
+        updateCheck.transactionState == SharedSettingsUpdateTransactionState.Patching -> copy.preparing
+        updateCheck.transactionState == SharedSettingsUpdateTransactionState.Downloading -> copy.downloading
+        label == "preparing" -> copy.preparing
+        label == "downloading" -> copy.downloading
+        label == "installing" -> copy.installing
         busy -> copy.checking
         updateCheck.errorCode == "install_permission_required" || label == "permission required" ->
             copy.permissionRequired
         updateCheck.transactionState == SharedSettingsUpdateTransactionState.Checking -> copy.checking
-        updateCheck.transactionState == SharedSettingsUpdateTransactionState.Patching -> copy.preparing
-        updateCheck.transactionState == SharedSettingsUpdateTransactionState.Downloading -> copy.downloading
         updateCheck.transactionState == SharedSettingsUpdateTransactionState.ReadyToInstall ||
             updateCheck.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened -> copy.install
         updateCheck.transactionState == SharedSettingsUpdateTransactionState.Installed -> copy.installed
@@ -481,9 +484,6 @@ internal fun settingsAboutUpdateStatus(
             updateCheck.transactionState == SharedSettingsUpdateTransactionState.Stale -> copy.retry
         failed -> copy.retry
         label == "checking" -> copy.checking
-        label == "preparing" -> copy.preparing
-        label == "downloading" -> copy.downloading
-        label == "installing" -> copy.installing
         label == "install" -> copy.install
         label == "installed" -> copy.installed
         updateCheck.updateAvailable -> copy.updateAvailable

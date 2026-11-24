@@ -878,6 +878,16 @@ class HandsDeltaUpdateGateTest {
         assertFalse(touched)
     }
 
+    @Test
+    fun handsUpdateEventShouldRefreshIncludesPatchStartAndFallback() {
+        assertTrue(handsUpdateEventShouldRefresh("state_changed"))
+        assertTrue(handsUpdateEventShouldRefresh("patch_started"))
+        assertTrue(handsUpdateEventShouldRefresh("patch_fallback"))
+        assertFalse(handsUpdateEventShouldRefresh("patch_download_started"))
+        assertFalse(handsUpdateEventShouldRefresh("patch_apply_started"))
+        assertFalse(handsUpdateEventShouldRefresh("check_started"))
+    }
+
     private fun updateTarget(
         versionCode: Long?,
         buildId: String? = versionCode?.let { "build-$it" },

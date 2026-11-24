@@ -470,7 +470,7 @@ internal fun handsUpdateEventLogLine(
         "resolved_lang=${resolvedLanguageTag.handsLogToken()}"
 
 internal fun handsUpdateEventShouldRefresh(name: String): Boolean =
-    name == "state_changed"
+    name == "state_changed" || name == "patch_started" || name == "patch_fallback"
 
 private fun String?.handsLogToken(): String =
     this

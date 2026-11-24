@@ -43,6 +43,11 @@ object RaftAppLog {
         RaftAndroidLocalDiagnostics.recordLog("info", tag, message)
     }
 
+    /** Always-on low-volume info line (e.g. Hands update lifecycle), persisted even with verbose diagnostics off. */
+    fun infoAlways(tag: String, message: String) {
+        RaftAndroidLocalDiagnostics.recordLog("info", tag, message)
+    }
+
     fun w(tag: String, message: String) {
         RaftAndroidLocalDiagnostics.recordLog("warn", tag, message)
     }
