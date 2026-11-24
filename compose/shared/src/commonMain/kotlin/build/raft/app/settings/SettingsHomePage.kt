@@ -5170,6 +5170,8 @@ private fun RaftAppShellReadyContent(
             LocalRaftWorkingNow provides workingNowSource,
             // One channel-kind glyph per channel (search, drafts, pickers): this server's Home rows.
             LocalRaftChannelKinds provides rememberRaftChannelKindsState(homeState),
+            // App-shell inline surfaces (wide search, Artifacts rail page, split panes) share the shell's scope.
+            LocalRaftArtifactOpenStoreScope provides storeScope,
         ) {
         RaftAppShellSurface(
             shellScope = shellScope,
@@ -6933,7 +6935,11 @@ private fun RaftAppShellReadyContent(
                                     "homeRealtimeDirty=${homeState.homeRealtimeDirty}"
                             )
                         }
-                        CompositionLocalProvider(LocalRaftTimeContextProvider provides hostThreadTimeContextProvider) {
+                        CompositionLocalProvider(
+                            LocalRaftTimeContextProvider provides hostThreadTimeContextProvider,
+                            // Each child tab runs in a RaftChildPage without serialized shell scope in pageData.
+                            LocalRaftArtifactOpenStoreScope provides storeScope,
+                        ) {
                             when (tab) {
                                 "home" -> homeTabContent(active)
                                 "tasks" -> tasksTabContent(active)
@@ -7127,7 +7133,11 @@ private fun RaftAppShellReadyContent(
                         fadeThrough = raftPlatformAppShellTabFadeThrough() && !navRailActive,
                         log = { bridge.log(it) }
                     ) { tab, active ->
-                        CompositionLocalProvider(LocalRaftTimeContextProvider provides hostThreadTimeContextProvider) {
+                        CompositionLocalProvider(
+                            LocalRaftTimeContextProvider provides hostThreadTimeContextProvider,
+                            // Each child tab runs in a RaftChildPage without serialized shell scope in pageData.
+                            LocalRaftArtifactOpenStoreScope provides storeScope,
+                        ) {
                             when (tab) {
                                 "settings" -> settingsTabContent(active)
                                 else -> childTabRenderer(tab, active)

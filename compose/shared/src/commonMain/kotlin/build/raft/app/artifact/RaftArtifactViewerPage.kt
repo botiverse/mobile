@@ -284,9 +284,10 @@ internal class RaftArtifactOpener(
 @Composable
 internal fun rememberRaftArtifactOpener(
     conversationId: String? = LocalRaftArtifactOpenConversation.current,
+    storeScope: RaftShellStoreScope? = LocalRaftArtifactOpenStoreScope.current,
     fallback: (ArtifactLinkTarget) -> Unit,
 ): RaftArtifactOpener {
-    val host = rememberRaftArtifactViewerHost(LocalRaftArtifactOpenStoreScope.current)
+    val host = rememberRaftArtifactViewerHost(storeScope)
     val coroutineScope = rememberCoroutineScope()
     val currentFallback by rememberUpdatedState(fallback)
     val conversation = raftArtifactViewerHostConversationOrNull(conversationId)
@@ -352,9 +353,13 @@ internal fun rememberRaftArtifactOpener(
  * kept document of another conversation or head height is not reused for them.
  */
 @Composable
-internal fun RaftArtifactViewerPrewarm(enabled: Boolean, conversationId: String? = LocalRaftArtifactOpenConversation.current) {
+internal fun RaftArtifactViewerPrewarm(
+    enabled: Boolean,
+    conversationId: String? = LocalRaftArtifactOpenConversation.current,
+    storeScope: RaftShellStoreScope? = LocalRaftArtifactOpenStoreScope.current,
+) {
     if (!enabled) return
-    val host = rememberRaftArtifactViewerHost(LocalRaftArtifactOpenStoreScope.current) ?: return
+    val host = rememberRaftArtifactViewerHost(storeScope) ?: return
     val authStore = remember(host) { host.sharedStores.authStore(host.storeScope) }
     RaftArtifactViewerPrewarmRuntime(
         enabled = true,
