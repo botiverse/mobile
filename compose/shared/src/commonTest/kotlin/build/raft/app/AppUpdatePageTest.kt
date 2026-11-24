@@ -152,6 +152,7 @@ class AppUpdatePageTest {
         assertEquals("Downloading", labels[SharedSettingsUpdateTransactionState.Downloading])
         assertEquals("Install", labels[SharedSettingsUpdateTransactionState.ReadyToInstall])
         assertEquals("Install", labels[SharedSettingsUpdateTransactionState.InstallerOpened])
+        assertEquals("Install", labels[SharedSettingsUpdateTransactionState.ReadyToRestart])
         assertEquals("Download", labels[SharedSettingsUpdateTransactionState.Failed])
         assertEquals("Download", labels[SharedSettingsUpdateTransactionState.Stale])
         assertEquals("Installed", labels[SharedSettingsUpdateTransactionState.Installed])
@@ -173,6 +174,7 @@ class AppUpdatePageTest {
         assertFalse(appUpdateCanSkipVersion(snapshot(SharedSettingsUpdateTransactionState.Patching)))
         assertFalse(appUpdateCanSkipVersion(snapshot(SharedSettingsUpdateTransactionState.Downloading)))
         assertFalse(appUpdateCanSkipVersion(snapshot(SharedSettingsUpdateTransactionState.ReadyToInstall)))
+        assertFalse(appUpdateCanSkipVersion(snapshot(SharedSettingsUpdateTransactionState.ReadyToRestart)))
         assertFalse(appUpdateCanSkipVersion(snapshot(SharedSettingsUpdateTransactionState.Installed)))
     }
 

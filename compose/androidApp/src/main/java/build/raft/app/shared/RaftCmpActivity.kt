@@ -6403,6 +6403,7 @@ internal class RaftBridgeModule(
                         "updateCheckDetail" to updateDetail,
                         "updateCheckActionLabel" to installResult.actionLabel,
                         "updateAvailable" to updateAvailable,
+                        "updateForceUpdate" to (response.latest?.force_update == true),
                         "currentVersionLabel" to (BuildConfig.VERSION_NAME.ifBlank { BuildConfig.VERSION_CODE.toString() }),
                         "currentVersionCode" to BuildConfig.VERSION_CODE.toLong(),
                         "latestVersionLabel" to response.latest?.version.orEmpty(),
@@ -6544,6 +6545,7 @@ internal class RaftBridgeModule(
                         "updateCheckDetail" to updateDetail,
                         "updateCheckActionLabel" to installResult.actionLabel,
                         "updateAvailable" to decision.updateAvailable,
+                        "updateForceUpdate" to (response?.latest?.force_update == true),
                         "currentVersionLabel" to
                                 if (currentVersionCode == BuildConfig.VERSION_CODE.toLong()) {
                                     BuildConfig.VERSION_NAME.ifBlank { currentVersionCode.toString() }
@@ -6603,7 +6605,8 @@ internal class RaftBridgeModule(
                 SharedSettingsUpdateTransactionState.Downloading ->
                         HandsInstallResult(statusLabel = "Downloading", actionLabel = "Downloading", errorCode = errorCode)
                 SharedSettingsUpdateTransactionState.ReadyToInstall,
-                SharedSettingsUpdateTransactionState.InstallerOpened ->
+                SharedSettingsUpdateTransactionState.InstallerOpened,
+                SharedSettingsUpdateTransactionState.ReadyToRestart ->
                         HandsInstallResult(statusLabel = "Install", actionLabel = "Install", errorCode = errorCode)
                 SharedSettingsUpdateTransactionState.Failed,
                 SharedSettingsUpdateTransactionState.Stale ->

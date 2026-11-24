@@ -163,6 +163,40 @@ class BridgeSettingsSnapshotParserTest {
         assertEquals(SharedSettingsUpdateTransactionState.Unknown, update.transactionState)
     }
 
+    @Test
+    fun developerParsesReadyToRestartAndUpdateUrgencyFields() {
+        val update =
+            buildJsonObject {
+                put("status", "ok")
+                put("updateTransactionState", "ready_to_restart")
+                put("updateForceUpdate", true)
+                put("updatePriority", 5)
+                put("updateStalenessDays", 4L)
+            }
+                .toDeveloperSnapshot()
+                .updateCheck
+
+        assertEquals(SharedSettingsUpdateTransactionState.ReadyToRestart, update.transactionState)
+        assertTrue(update.forceUpdate)
+        assertEquals(5, update.updatePriority)
+        assertEquals(4, update.stalenessDays)
+    }
+
+    @Test
+    fun developerDefaultsUrgencyFieldsWhenOmittedOrNegative() {
+        val update =
+            buildJsonObject {
+                put("status", "ok")
+                put("updateStalenessDays", -1L)
+            }
+                .toDeveloperSnapshot()
+                .updateCheck
+
+        assertEquals(false, update.forceUpdate)
+        assertEquals(0, update.updatePriority)
+        assertEquals(null, update.stalenessDays)
+    }
+
     private fun storageRowsJson(target: String): JsonArray =
         buildJsonArray {
             add(

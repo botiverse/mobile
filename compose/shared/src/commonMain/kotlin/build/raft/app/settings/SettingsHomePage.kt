@@ -55,7 +55,11 @@ import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.KeyValuePushPreviewModePreferenceStore
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.RaftHostNetworkEvents
+import build.raft.app.data.RaftAppModalPromptSlot
 import build.raft.app.data.RaftAppUpdateEvents
+import build.raft.app.data.RaftMinBuildGate
+import build.raft.app.data.RaftMinBuildGateDecision
+import build.raft.app.data.arbitrateRaftAppModalPrompt
 import build.raft.app.data.RaftChatLayoutPreferenceEvents
 import build.raft.app.data.RaftComposerSendKey
 import build.raft.app.data.RaftComposerSendKeyRuntime
@@ -7425,6 +7429,14 @@ private fun RaftAppShellReadyContent(
                         }
                     )
                 }
+                val minBuildGateDecision by RaftMinBuildGate.decision.collectAsState()
+                val announcementPromptSlot =
+                    arbitrateRaftAppModalPrompt(
+                        minBuildGateBlocking = minBuildGateDecision is RaftMinBuildGateDecision.Block,
+                        userDialogActive = createChannelDialogOpen || sendPromptHostState.activeRequest != null,
+                        announcementReady = true,
+                        appUpdateStrongPromptReady = false,
+                    )
                 AppShellAnnouncementModalHost(
                     announcementStore = announcementStore,
                     pageVisible = pageVisible,
@@ -7432,7 +7444,7 @@ private fun RaftAppShellReadyContent(
                     hostDidAppearTick = hostDidAppearTick,
                     isOnline = hostNetworkStatus != RaftAppShellNetworkStatus.Offline,
                     onModalShownChanged = { announcementModalShown = it },
-                    suppressedBySiblingDialog = sendPromptHostState.activeRequest != null,
+                    suppressedBySiblingDialog = announcementPromptSlot != RaftAppModalPromptSlot.Announcement,
                     onDismissAnnouncement = { announcementId ->
                         if (announcementStore.dismiss(announcementId)) {
                             appShellCoroutineScope.launch {

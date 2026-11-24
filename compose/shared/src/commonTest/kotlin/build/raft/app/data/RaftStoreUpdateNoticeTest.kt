@@ -63,6 +63,22 @@ class RaftStoreUpdateNoticeTest {
     }
 
     @Test
+    fun storeUpdateForwardsPriorityAndStalenessDays() {
+        val update =
+            snapshot(
+                RaftInstallChannelLatest.Available(
+                    build = 12_700_000L,
+                    updateUrl = page,
+                    updatePriority = 4,
+                    stalenessDays = 5,
+                )
+            )
+        assertTrue(update.updateAvailable)
+        assertEquals(4, update.updatePriority)
+        assertEquals(5, update.stalenessDays)
+    }
+
+    @Test
     fun noNoticeWhenUpToDateUnknownOrNotCertain() {
         listOf(
             "up to date" to snapshot(RaftInstallChannelLatest.UpToDate),

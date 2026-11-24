@@ -85,7 +85,12 @@ sealed interface RaftInstallChannelLatest {
     data object UpToDate : RaftInstallChannelLatest
 
     /** The channel offers [build] for this install; [updateUrl] is where the person gets it. */
-    data class Available(val build: Long, val updateUrl: String?) : RaftInstallChannelLatest
+    data class Available(
+        val build: Long,
+        val updateUrl: String?,
+        val updatePriority: Int = 0,
+        val stalenessDays: Int? = null,
+    ) : RaftInstallChannelLatest
 }
 
 /**
