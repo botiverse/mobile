@@ -11,11 +11,15 @@ import build.raft.app.resources.*
 import build.raft.app.compat.ui.nativeEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.compat.ui.raftImeBottomPx
+import build.raft.designsystem.components.RaftStatusBarBackdropClaim
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -161,6 +165,10 @@ internal fun RaftAppShellSurface(
     // on top of the keyboard or cover the focused field otherwise).
     val imeVisible = raftImeVisible()
     val bottomTabsShown = raftAppShellBottomTabsShown(showBottomTabs, imeVisible)
+    // #338 (Kirby 11-24): the wide shell's top bar steps aside the same way, back at once when the keyboard closes.
+    val wideKeyboardRoom = rememberRaftWideKeyboardRoom(shellScope.topSafeArea)
+    val wideKeyboardUp by remember(wideKeyboardRoom) { derivedStateOf { wideKeyboardRoom.value != null } }
+    val topBarShown = raftAppShellTopBarShown(topNavigation != null, wideKeyboardUp)
     val effectiveModalHostState = modalHostState ?: ownedModalHostState
     val effectiveTopNoticeBanner: (@Composable () -> Unit)? =
         if (networkStatus == RaftAppShellNetworkStatus.Offline) null else topNoticeBanner
@@ -206,12 +214,25 @@ internal fun RaftAppShellSurface(
                                 }
                             )
                 ) {
-                    if (topNavigation != null) {
+                    if (topNavigation != null && topBarShown) {
                         RaftFocusRegionHost(region = RaftFocusRegion.TopBar, modifier = Modifier.fillMaxWidth()) {
                             topNavigation()
                         }
+                    } else if (topNavigation != null) {
+                        // The top bar is aside for the keyboard: its status bar strip stays, as the pages below
+                        // still count on the shell to clear the status bar.
+                        RaftDesignSystemTheme {
+                            RaftStatusBarBackdropClaim(RaftTheme.colors.layerFrame, enabled = shellScope.topSafeArea > 0.dp)
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(shellScope.topSafeArea)
+                                        .background(RaftTheme.colors.layerFrame)
+                            )
+                        }
                     }
-                    if (topNavigation != null && effectiveTopNoticeBanner != null) {
+                    if (topNavigation != null && topBarShown && effectiveTopNoticeBanner != null) {
                         effectiveTopNoticeBanner()
                         Box(
                             modifier =
@@ -249,6 +270,7 @@ internal fun RaftAppShellSurface(
                                     // The top bar above cleared the status bar: pages here (list
                                     // and detail panes) must not pad it again (xxchan 11-02).
                                     LocalRaftTopSafeAreaConsumed provides (topNavigation != null),
+                                    LocalRaftWideKeyboardRoom provides (if (topNavigation != null && !topBarShown) wideKeyboardRoom else null),
                                 ) {
                                     content()
                                 }
@@ -312,6 +334,13 @@ internal fun RaftAppShellSurface(
 /** The shell's bottom bar is drawn only when the page wants it and no keyboard is open. */
 internal fun raftAppShellBottomTabsShown(showBottomTabs: Boolean, imeVisible: Boolean): Boolean =
     showBottomTabs && !imeVisible
+
+/**
+ * The wide shell's top bar is drawn unless a keyboard is open ([raftWideKeyboardRoom]; #338, Kirby 11-24: it steps
+ * aside like the phone's bottom bar, and comes back at once, without animation, when the keyboard closes).
+ */
+internal fun raftAppShellTopBarShown(hasTopBar: Boolean, keyboardUp: Boolean): Boolean =
+    hasTopBar && !keyboardUp
 
 /** How long the bottom bar takes to come back when the keyboard closes (raft-design #620). */
 internal const val RaftAppShellBottomBarReturnMillis = 200
