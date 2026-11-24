@@ -18,8 +18,9 @@ import androidx.compose.ui.unit.dp
  * host provides it (Android, previews and screenshot tests get zero).
  *
  * Apple's rule: backgrounds run edge to edge, content gets out of the way. A full-width bar or
- * row keeps its background (header frame, selection wash, composer surface) on the full width and
- * pads only its content with [raftSafeAreaHorizontalPadding].
+ * row keeps its background (header frame, selection wash, composer surface) and its edge lines (a
+ * toolbar's bottom line) on the full width and pads only its content with
+ * [raftSafeAreaHorizontalPadding].
  */
 @Immutable
 data class RaftSafeAreaInsets(val left: Dp = 0.dp, val right: Dp = 0.dp) {

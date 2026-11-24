@@ -1579,7 +1579,6 @@ private fun SharedTasksToolbar(
             Modifier
                 .fillMaxWidth()
                 .background(RaftColor.SurfaceWhite)
-                .raftSafeAreaHorizontalPadding()
                 .testTag(SharedTasksToolbarTags.Toolbar)
                 .raftSlot("tasks-panel-toolbar")
     ) {
