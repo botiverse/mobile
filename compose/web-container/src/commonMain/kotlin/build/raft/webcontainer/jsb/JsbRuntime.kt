@@ -485,14 +485,18 @@ class JsbDispatcher(
     fun cancelInFlight(reason: String) {
         val snapshot =
             stateLock.withLock {
-                if (activeCalls.isEmpty()) return
-                val copy = activeCalls.values.toList()
-                activeCalls.clear()
-                for (call in copy) {
-                    call.cancelledByHostReason = reason
+                if (activeCalls.isEmpty()) {
+                    emptyList()
+                } else {
+                    val copy = activeCalls.values.toList()
+                    activeCalls.clear()
+                    for (call in copy) {
+                        call.cancelledByHostReason = reason
+                    }
+                    copy
                 }
-                copy
             }
+        if (snapshot.isEmpty()) return
         for (call in snapshot) {
             val failure = JsbResult.Failure(JsbErrorCode.CANCELLED, "Call cancelled: $reason")
             recordTelemetry(call.method, failure, call.startedAtMs)
