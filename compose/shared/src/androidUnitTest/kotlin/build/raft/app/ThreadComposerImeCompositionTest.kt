@@ -8,20 +8,27 @@ import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import build.raft.app.data.SharedMembersLoadStatus
 import java.time.Duration
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -54,6 +61,7 @@ class ThreadComposerImeCompositionTest {
         val inputConnection: InputConnection,
         val editorCommand: MutableState<ThreadComposerEditorCommand?>,
         val insertMentionRequest: MutableState<ThreadComposerInsertMentionRequest?>,
+        val suggestionPortal: ThreadComposerSuggestionPortalState,
     )
 
     private val editLog = mutableListOf<String>()
@@ -69,10 +77,19 @@ class ThreadComposerImeCompositionTest {
         ThreadComposerProgrammaticEditLog.sink = defaultEditLogSink
     }
 
-    private fun mountComposer(): Harness {
+    private fun mountComposer(
+        memberSuggestions: List<RaftComposerMemberItem> = emptyList(),
+        memberSuggestionsStatus: SharedMembersLoadStatus = SharedMembersLoadStatus.Idle,
+    ): Harness {
         val activity = activities.launch()
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
-        var uiState by mutableStateOf(ThreadComposerUiState(instanceId = "ime-composition"))
+        var uiState by mutableStateOf(
+            ThreadComposerUiState(
+                instanceId = "ime-composition",
+                memberSuggestions = memberSuggestions,
+                memberSuggestionsStatus = memberSuggestionsStatus,
+            )
+        )
         val owner = ThreadComposerControlledEditorOwner(seedText = "", seedAsTask = false)
         val composed = mutableListOf<TextFieldValue>()
         val accepted = mutableListOf<TextFieldValue>()
@@ -80,6 +97,7 @@ class ThreadComposerImeCompositionTest {
         val events = mutableListOf<String>()
         val editorCommand = mutableStateOf<ThreadComposerEditorCommand?>(null)
         val insertMentionRequest = mutableStateOf<ThreadComposerInsertMentionRequest?>(null)
+        val suggestionPortal = ThreadComposerSuggestionPortalState()
         activity.setContent {
             val value = owner.value
             composed += value
@@ -99,23 +117,27 @@ class ThreadComposerImeCompositionTest {
                 owner = owner,
                 onEvent = onEvent,
             )
-            ThreadComposerContentLeaf(
-                surface = ThreadComposerSurface(channelId = "c1"),
-                state = uiState,
-                editorSessionId = owner.editorSessionId,
-                editorValue = value,
-                onEditorValueChange = { id, next -> owner.acceptEditorValue(id, next) },
-                onNativeEditorValueChange = { id, next ->
-                    owner.acceptNativeEditorValue(id, next)?.also { accepted += it }
-                },
-                isEditorSessionActive = owner::isActiveSession,
-                editorAsTask = owner.asTask,
-                onEditorAsTaskChange = owner::acceptAsTask,
-                onEvent = onEvent,
-                attachmentPreviewEnabled = true,
-                composerSendKeyEnabled = true,
-                insertMentionRequest = insertMentionRequest.value,
-            )
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                CompositionLocalProvider(LocalThreadComposerSuggestionPortal provides suggestionPortal) {
+                    ThreadComposerContentLeaf(
+                        surface = ThreadComposerSurface(channelId = "c1"),
+                        state = uiState,
+                        editorSessionId = owner.editorSessionId,
+                        editorValue = value,
+                        onEditorValueChange = { id, next -> owner.acceptEditorValue(id, next) },
+                        onNativeEditorValueChange = { id, next ->
+                            owner.acceptNativeEditorValue(id, next)?.also { accepted += it }
+                        },
+                        isEditorSessionActive = owner::isActiveSession,
+                        editorAsTask = owner.asTask,
+                        onEditorAsTaskChange = owner::acceptAsTask,
+                        onEvent = onEvent,
+                        attachmentPreviewEnabled = true,
+                        composerSendKeyEnabled = true,
+                        insertMentionRequest = insertMentionRequest.value,
+                    )
+                }
+            }
         }
         settle(activity)
         // The state-based text field starts its input session only in a focused window
@@ -136,6 +158,7 @@ class ThreadComposerImeCompositionTest {
             inputConnection,
             editorCommand,
             insertMentionRequest,
+            suggestionPortal,
         )
     }
 
@@ -264,6 +287,64 @@ class ThreadComposerImeCompositionTest {
         settle(harness.activity)
         assertEquals(TextFieldValue("hi world", selection = TextRange(8)), harness.owner.value)
         assertEquals("hi world", harness.inputConnection.extractedText())
+    }
+
+    @Test
+    fun mentionSuggestionsMatchDuringIosSyllableSeparatedComposingAndReplaceWholeSpan() {
+        val e40 =
+            RaftComposerMemberItem(
+                displayName = "E40",
+                handle = "E40",
+                description = "frontend infra",
+                memberId = "agent-e40",
+                inMentionChannel = true,
+            )
+        val other =
+            RaftComposerMemberItem(
+                displayName = "Lagoon",
+                handle = "Lagoon",
+                description = "Mobile DRI",
+                memberId = "agent-lagoon",
+                inMentionChannel = true,
+            )
+        val harness =
+            mountComposer(
+                memberSuggestions = listOf(other, e40),
+                memberSuggestionsStatus = SharedMembersLoadStatus.Loaded,
+            )
+        // Mirrors iOS Shuangpin / Pinyin typing `@` followed by composing `f r` (U+2006 separator).
+        harness.composeMarked(committed = "@", marked = "f\u2006r")
+        var matchedPresentation: ThreadComposerSuggestionPresentation? = null
+        for (attempt in 0 until 40) {
+            val current = harness.suggestionPortal.presentation
+            if (current != null &&
+                current.panelState == ThreadComposerSuggestionPanelState.MemberItems &&
+                current.selectionContext.query == "fr" &&
+                current.memberSuggestions.map { it.handle } == listOf("E40")
+            ) {
+                matchedPresentation = current
+                break
+            }
+            Thread.sleep(25L)
+            settle(harness.activity)
+        }
+        val presentation =
+            assertNotNull(
+                matchedPresentation,
+                "expected member suggestions for composing @f\\u2006r, got=${harness.suggestionPortal.presentation?.selectionContext} items=${harness.suggestionPortal.presentation?.memberSuggestions?.map { it.handle }}",
+            )
+        assertEquals(
+            TextFieldValue("@f\u2006r", selection = TextRange(4), composition = TextRange(1, 4)),
+            harness.owner.value,
+            "matching suggestions must not disturb active IME composition",
+        )
+
+        presentation.pickSuggestionRow(0)
+        settle(harness.activity)
+
+        assertEquals(TextFieldValue("@E40 ", selection = TextRange(5)), harness.owner.value)
+        assertNull(harness.owner.value.composition)
+        assertEquals("@E40 ", harness.inputConnection.extractedText())
     }
 
     private fun InputConnection.extractedText(): String? =

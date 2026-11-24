@@ -1526,18 +1526,30 @@ internal data class ThreadComposerSuggestionSelectionContext(
     val selectionEnd: Int,
     val kind: ThreadComposerSuggestionSelectionKind,
     val triggerStart: Int,
-    val query: String
+    val query: String,
+    val composition: TextRange? = null
 )
 
 internal fun threadComposerSuggestionSelectionContext(
     text: String,
     selectionStart: Int,
     selectionEnd: Int,
-    suggestionsEnabled: Boolean
+    suggestionsEnabled: Boolean,
+    composition: TextRange? = null
 ): ThreadComposerSuggestionSelectionContext? {
     val safeStart = minOf(selectionStart, selectionEnd).coerceIn(0, text.length)
     val safeEnd = maxOf(selectionStart, selectionEnd).coerceIn(safeStart, text.length)
-    return when (val trigger = threadComposerSuggestionTrigger(text, safeStart, suggestionsEnabled)) {
+    val safeComposition = normalizeThreadComposerCompositionRange(composition, text.length)
+    return when (
+        val trigger =
+            threadComposerSuggestionTrigger(
+                text = text,
+                cursor = safeStart,
+                suggestionsEnabled = suggestionsEnabled,
+                selectionEnd = safeEnd,
+                composition = safeComposition
+            )
+    ) {
         is RaftComposerSuggestionTrigger.MemberTrigger ->
             ThreadComposerSuggestionSelectionContext(
                 text = text,
@@ -1545,7 +1557,8 @@ internal fun threadComposerSuggestionSelectionContext(
                 selectionEnd = safeEnd,
                 kind = ThreadComposerSuggestionSelectionKind.Member,
                 triggerStart = trigger.triggerStart,
-                query = trigger.query
+                query = trigger.query,
+                composition = safeComposition
             )
         is RaftComposerSuggestionTrigger.ChannelTrigger ->
             ThreadComposerSuggestionSelectionContext(
@@ -1554,7 +1567,8 @@ internal fun threadComposerSuggestionSelectionContext(
                 selectionEnd = safeEnd,
                 kind = ThreadComposerSuggestionSelectionKind.Channel,
                 triggerStart = trigger.triggerStart,
-                query = trigger.query
+                query = trigger.query,
+                composition = safeComposition
             )
         RaftComposerSuggestionTrigger.None -> null
     }
@@ -1570,22 +1584,29 @@ internal class ThreadComposerSuggestionSelectionDispatcher(
     initialText: String,
     initialSelectionStart: Int,
     initialSelectionEnd: Int,
-    initialSuggestionsEnabled: Boolean
+    initialSuggestionsEnabled: Boolean,
+    initialComposition: TextRange? = null
 ) {
     private data class Draft(
         val text: String,
         val selectionStart: Int,
-        val selectionEnd: Int
+        val selectionEnd: Int,
+        val composition: TextRange? = null
     )
 
-    private var draft = normalizedDraft(initialText, initialSelectionStart, initialSelectionEnd)
+    private var draft = normalizedDraft(initialText, initialSelectionStart, initialSelectionEnd, initialComposition)
     private var suggestionsEnabled = initialSuggestionsEnabled
     private var memberSuggestions: List<RaftComposerMemberItem> = emptyList()
     private var channelSuggestions: List<RaftComposerChannelItem> = emptyList()
     private var onCommit: (RaftComposerSuggestionEdit) -> Unit = {}
 
-    fun updateDraft(text: String, selectionStart: Int, selectionEnd: Int) {
-        draft = normalizedDraft(text, selectionStart, selectionEnd)
+    fun updateDraft(
+        text: String,
+        selectionStart: Int,
+        selectionEnd: Int,
+        composition: TextRange? = null
+    ) {
+        draft = normalizedDraft(text, selectionStart, selectionEnd, composition)
     }
 
     fun updateComposition(
@@ -1609,11 +1630,19 @@ internal class ThreadComposerSuggestionSelectionDispatcher(
             return false
         }
         if (memberSuggestions.none { current -> current.hasSameSuggestionIdentity(member) }) return false
+        val replacementEnd =
+            threadComposerSuggestionReplacementEnd(
+                textLength = currentContext.text.length,
+                selectionStart = currentContext.selectionStart,
+                selectionEnd = currentContext.selectionEnd,
+                triggerStart = currentContext.triggerStart,
+                composition = currentContext.composition
+            )
         val edit =
             applyRaftComposerSuggestionEdit(
                 text = currentContext.text,
                 selectionStart = currentContext.selectionStart,
-                selectionEnd = currentContext.selectionEnd,
+                selectionEnd = replacementEnd,
                 triggerStart = currentContext.triggerStart,
                 replacement = "@${member.handle} "
             )?.copy(mention = member.composerStructuredMentionOrNull()) ?: return false
@@ -1630,11 +1659,19 @@ internal class ThreadComposerSuggestionSelectionDispatcher(
             return false
         }
         if (channelSuggestions.none { current -> current.name == channel.name }) return false
+        val replacementEnd =
+            threadComposerSuggestionReplacementEnd(
+                textLength = currentContext.text.length,
+                selectionStart = currentContext.selectionStart,
+                selectionEnd = currentContext.selectionEnd,
+                triggerStart = currentContext.triggerStart,
+                composition = currentContext.composition
+            )
         val edit =
             applyRaftComposerSuggestionEdit(
                 text = currentContext.text,
                 selectionStart = currentContext.selectionStart,
-                selectionEnd = currentContext.selectionEnd,
+                selectionEnd = replacementEnd,
                 triggerStart = currentContext.triggerStart,
                 replacement = "#${channel.name} "
             ) ?: return false
@@ -1647,13 +1684,25 @@ internal class ThreadComposerSuggestionSelectionDispatcher(
             text = draft.text,
             selectionStart = draft.selectionStart,
             selectionEnd = draft.selectionEnd,
-            suggestionsEnabled = suggestionsEnabled
+            suggestionsEnabled = suggestionsEnabled,
+            composition = draft.composition
         )
 
-    private fun normalizedDraft(text: String, selectionStart: Int, selectionEnd: Int): Draft {
+    private fun normalizedDraft(
+        text: String,
+        selectionStart: Int,
+        selectionEnd: Int,
+        composition: TextRange?
+    ): Draft {
         val safeStart = minOf(selectionStart, selectionEnd).coerceIn(0, text.length)
         val safeEnd = maxOf(selectionStart, selectionEnd).coerceIn(safeStart, text.length)
-        return Draft(text = text, selectionStart = safeStart, selectionEnd = safeEnd)
+        val safeComposition = normalizeThreadComposerCompositionRange(composition, text.length)
+        return Draft(
+            text = text,
+            selectionStart = safeStart,
+            selectionEnd = safeEnd,
+            composition = safeComposition
+        )
     }
 }
 
@@ -2665,6 +2714,7 @@ internal fun ThreadComposerContentLeaf(
             text = activeFieldValue.text,
             selectionStart = activeFieldValue.selection.start,
             selectionEnd = activeFieldValue.selection.end,
+            composition = activeFieldValue.composition,
         )
     }
     val suggestionAnchorRef = remember(state.instanceId) { RaftLiveRootAnchorRef(suggestionPortalOwner) }
@@ -2815,12 +2865,15 @@ internal fun ThreadComposerContentLeaf(
     )
     val selectionStart = minOf(activeFieldValue.selection.start, activeFieldValue.selection.end).coerceIn(0, activeText.length)
     val selectionEnd = maxOf(activeFieldValue.selection.start, activeFieldValue.selection.end).coerceIn(0, activeText.length)
+    val activeComposition = normalizeThreadComposerCompositionRange(activeFieldValue.composition, activeText.length)
     val suggestionTrigger =
-        remember(activeText, selectionStart, state.suggestionsEnabled) {
+        remember(activeText, selectionStart, selectionEnd, activeComposition, state.suggestionsEnabled) {
             threadComposerSuggestionTrigger(
                 text = activeText,
                 cursor = selectionStart,
-                suggestionsEnabled = state.suggestionsEnabled
+                suggestionsEnabled = state.suggestionsEnabled,
+                selectionEnd = selectionEnd,
+                composition = activeComposition
             )
         }
     val suggestionDemand =
@@ -2982,7 +3035,8 @@ internal fun ThreadComposerContentLeaf(
             text = activeText,
             selectionStart = selectionStart,
             selectionEnd = selectionEnd,
-            suggestionsEnabled = state.suggestionsEnabled
+            suggestionsEnabled = state.suggestionsEnabled,
+            composition = activeComposition
         )
     // The open list's keyboard highlight (web useAutocomplete `index`): the first row, and back
     // there whenever the query changes ([ThreadComposerSuggestionHighlight]).
@@ -3169,10 +3223,18 @@ internal fun ThreadComposerContentLeaf(
                 is RaftComposerSuggestionTrigger.ChannelTrigger -> trigger.triggerStart
                 RaftComposerSuggestionTrigger.None -> return
             }
+        val tokenEnd =
+            threadComposerSuggestionReplacementEnd(
+                textLength = activeText.length,
+                selectionStart = selectionStart,
+                selectionEnd = selectionEnd,
+                triggerStart = triggerStart,
+                composition = activeComposition
+            )
         commitRaftComposerSuggestionToken(
             text = activeText,
             selectionStart = selectionStart,
-            selectionEnd = selectionEnd,
+            selectionEnd = tokenEnd,
             triggerStart = triggerStart
         )?.let { edit ->
             // Enter / Space on an open trigger commits the typed token now, composition included.
@@ -3256,6 +3318,7 @@ internal fun ThreadComposerContentLeaf(
                 text = if (segmentedAtSend) nativeValue.text else sendFieldValue.text,
                 selectionStart = if (segmentedAtSend) nativeValue.selection.start else sendFieldValue.selection.start,
                 selectionEnd = if (segmentedAtSend) nativeValue.selection.end else sendFieldValue.selection.end,
+                composition = if (segmentedAtSend) nativeValue.composition else sendFieldValue.composition,
             )
             val request =
                 ThreadComposerSendRequest(
@@ -3706,6 +3769,7 @@ internal fun ThreadComposerContentLeaf(
                                         text = nextValue.text,
                                         selectionStart = nextValue.selection.start,
                                         selectionEnd = nextValue.selection.end,
+                                        composition = nextValue.composition,
                                     )
                                     continueThreadComposerSuggestionsForEditing(
                                         portalState = suggestionPortal,
@@ -3787,7 +3851,8 @@ internal fun ThreadComposerContentLeaf(
                                 suggestionSelectionDispatcher.updateDraft(
                                     text = acceptedValue.text,
                                     selectionStart = acceptedValue.selection.start,
-                                    selectionEnd = acceptedValue.selection.end
+                                    selectionEnd = acceptedValue.selection.end,
+                                    composition = acceptedValue.composition
                                 )
                                 continueThreadComposerSuggestionsForEditing(
                                     portalState = suggestionPortal,
@@ -6215,18 +6280,115 @@ internal fun applyRaftComposerDirectMentionInsert(
     )
 }
 
+internal fun normalizeThreadComposerCompositionRange(
+    composition: TextRange?,
+    textLength: Int
+): TextRange? {
+    val range = composition ?: return null
+    val start = minOf(range.start, range.end).coerceIn(0, textLength)
+    val end = maxOf(range.start, range.end).coerceIn(start, textLength)
+    return if (start < end) TextRange(start, end) else null
+}
+
+private fun activeThreadComposerCompositionRange(
+    composition: TextRange?,
+    safeStart: Int,
+    safeEnd: Int,
+    textLength: Int
+): TextRange? {
+    val normalized = normalizeThreadComposerCompositionRange(composition, textLength) ?: return null
+    return if (safeStart <= normalized.end && safeEnd >= normalized.start) normalized else null
+}
+
+internal fun threadComposerSuggestionReplacementEnd(
+    textLength: Int,
+    selectionStart: Int,
+    selectionEnd: Int,
+    triggerStart: Int,
+    composition: TextRange? = null
+): Int {
+    val safeStart = minOf(selectionStart, selectionEnd).coerceIn(0, textLength)
+    val safeEnd = maxOf(selectionStart, selectionEnd).coerceIn(safeStart, textLength)
+    val normalized = normalizeThreadComposerCompositionRange(composition, textLength) ?: return safeEnd
+    val touchesTriggerOrSelection =
+        normalized.start <= safeEnd && normalized.end >= minOf(triggerStart, safeStart)
+    return if (touchesTriggerOrSelection) maxOf(safeEnd, normalized.end) else safeEnd
+}
+
+private fun isThreadComposerIgnoredComposingSeparator(ch: Char): Boolean =
+    ch == '\u2006' || ch == '\u200B' || ch == '\uFEFF' || ch == '\'' || ch == '\u2019'
+
+private fun isThreadComposerComposingContentChar(ch: Char): Boolean =
+    !ch.isWhitespace() && !isThreadComposerIgnoredComposingSeparator(ch) && ch != '@' && ch != '#'
+
+/**
+ * Characters inserted by CJK / mobile IMEs inside an active marked-text (`composition`) span to
+ * separate syllables (e.g. iOS Pinyin / Shuangpin inserts U+2006 SIX-PER-EM SPACE in `@f r`;
+ * Android / desktop Pinyin IMEs insert `' '` or apostrophe `'` in `xi'an`). Line breaks, tabs,
+ * full-width spaces, leading/trailing ASCII spaces, and anything outside `activeComposition`
+ * never count as ignored separators so committed whitespace and trailing Space still terminate.
+ */
+private fun isThreadComposerIgnoredComposingChar(
+    text: String,
+    index: Int,
+    scanEnd: Int,
+    activeComposition: TextRange?
+): Boolean {
+    val comp = activeComposition ?: return false
+    if (index !in comp.start until comp.end) return false
+    val ch = text[index]
+    if (isThreadComposerIgnoredComposingSeparator(ch)) return true
+    if (ch != ' ') return false
+    val limit = minOf(scanEnd, comp.end)
+    var hasContentBefore = false
+    for (prev in (index - 1) downTo comp.start) {
+        val prevChar = text[prev]
+        if (prevChar.isWhitespace() || prevChar == '@' || prevChar == '#') break
+        if (isThreadComposerComposingContentChar(prevChar)) {
+            hasContentBefore = true
+            break
+        }
+    }
+    if (!hasContentBefore) return false
+    for (next in (index + 1) until limit) {
+        val nextChar = text[next]
+        if (nextChar.isWhitespace() || nextChar == '@' || nextChar == '#') break
+        if (isThreadComposerComposingContentChar(nextChar)) return true
+    }
+    return false
+}
+
 internal fun detectRaftComposerSuggestionTrigger(
     text: String,
-    cursor: Int = text.length
+    cursor: Int = text.length,
+    selectionEnd: Int = cursor,
+    composition: TextRange? = null
 ): RaftComposerSuggestionTrigger {
     if (text.isBlank()) {
         return RaftComposerSuggestionTrigger.None
     }
-    val beforeCursor = text.substring(0, cursor.coerceIn(0, text.length))
+    val safeStart = minOf(cursor, selectionEnd).coerceIn(0, text.length)
+    val safeEnd = maxOf(cursor, selectionEnd).coerceIn(safeStart, text.length)
+    val activeComposition =
+        activeThreadComposerCompositionRange(
+            composition = composition,
+            safeStart = safeStart,
+            safeEnd = safeEnd,
+            textLength = text.length
+        )
+    val scanEnd =
+        if (activeComposition != null) {
+            maxOf(safeEnd, activeComposition.end).coerceIn(0, text.length)
+        } else {
+            safeStart
+        }
     var triggerIndex = -1
     var triggerChar = ' '
-    for (i in beforeCursor.indices.reversed()) {
-        val current = beforeCursor[i]
+    for (i in (scanEnd - 1) downTo 0) {
+        val current = text[i]
+        if (isThreadComposerIgnoredComposingChar(text, i, scanEnd, activeComposition)) {
+            continue
+        }
         if (current.isWhitespace()) {
             break
         }
@@ -6236,10 +6398,21 @@ internal fun detectRaftComposerSuggestionTrigger(
             break
         }
     }
-    if (triggerIndex < 0) {
+    if (triggerIndex < 0 || triggerIndex >= safeStart) {
         return RaftComposerSuggestionTrigger.None
     }
-    val query = beforeCursor.substring(triggerIndex + 1)
+    val query =
+        if (activeComposition == null) {
+            text.substring(triggerIndex + 1, scanEnd)
+        } else {
+            buildString(scanEnd - triggerIndex - 1) {
+                for (i in (triggerIndex + 1) until scanEnd) {
+                    if (!isThreadComposerIgnoredComposingChar(text, i, scanEnd, activeComposition)) {
+                        append(text[i])
+                    }
+                }
+            }
+        }
     return when (triggerChar) {
         '@' -> RaftComposerSuggestionTrigger.MemberTrigger(query, triggerIndex)
         '#' -> RaftComposerSuggestionTrigger.ChannelTrigger(query, triggerIndex)
@@ -6250,10 +6423,17 @@ internal fun detectRaftComposerSuggestionTrigger(
 internal fun threadComposerSuggestionTrigger(
     text: String,
     cursor: Int = text.length,
-    suggestionsEnabled: Boolean = true
+    suggestionsEnabled: Boolean = true,
+    selectionEnd: Int = cursor,
+    composition: TextRange? = null
 ): RaftComposerSuggestionTrigger =
     if (suggestionsEnabled) {
-        detectRaftComposerSuggestionTrigger(text, cursor)
+        detectRaftComposerSuggestionTrigger(
+            text = text,
+            cursor = cursor,
+            selectionEnd = selectionEnd,
+            composition = composition
+        )
     } else {
         RaftComposerSuggestionTrigger.None
     }
