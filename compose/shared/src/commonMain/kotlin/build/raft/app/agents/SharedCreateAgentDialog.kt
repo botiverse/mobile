@@ -52,10 +52,12 @@ import build.raft.app.data.BundledRuntimeCatalog
 import build.raft.app.data.createAgentRuntimeForOptions
 import build.raft.app.data.createAgentSuggestedRuntimeNoticeCause
 import build.raft.app.data.createAgentSuggestedRuntimeUnavailable
+import build.raft.app.data.CreateAgentSeatState
 import build.raft.app.data.CreateAgentSuggestedRuntimeUnavailable
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.RaftRuntimeCatalogNames
 import build.raft.app.data.RuntimeCatalogSource
+import build.raft.app.data.formatSeatTenths
 import build.raft.app.data.runtimeFormV2Availability
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Values
 import build.raft.app.data.SharedCreateAgentFormStore
@@ -467,6 +469,8 @@ internal fun SharedCreateAgentDialog(
     currentAgentCount: Int = 0,
     maxAgents: Int = -1,
     limitPlanLabel: String? = null,
+    /** Universal-seat state under `seat_v1` (slock #16345, #16367); null under `person_v2` or non-seat plans. */
+    seatLimit: CreateAgentSeatState? = null,
     external: Boolean = false,
     /**
      * The Members and Add Member flows offer a cloud agent next to the computers. Off for action
@@ -696,8 +700,12 @@ internal fun SharedCreateAgentDialog(
     // Web CreateAgentDialog (slock #15664): an action card can prefill a description over the limit
     // (its own cap is longer); the error says so and Create waits for it to fit.
     val descriptionTooLong = profileDescriptionLength(description.text) > PROFILE_DESCRIPTION_MAX_LENGTH
-    // Web `CreateAgentDialog`: the agent limit holds for an external agent too (it takes a seat).
-    val atLimit = createAgentAtLimit(currentAgentCount, maxAgents)
+    // Web `CreateAgentDialog` (slock #16345, #16367): agent cap (Free/AppSumo) holds for every agent;
+    // universal seats block an agent only under `seat_v1` (`seatLimit != null && seatLimit.reached`),
+    // never under `person_v2` where `seatLimit` is null.
+    val agentCapReached = createAgentAtLimit(currentAgentCount, maxAgents)
+    val seatLimitReached = !agentCapReached && seatLimit?.reached == true
+    val atLimit = agentCapReached || seatLimitReached
     val selectedMachine = machines.firstOrNull { it.id == selectedMachineId }
     val selectedMachineRuntimeIds =
         normalizeCreateAgentRuntimeIds(
@@ -806,8 +814,22 @@ internal fun SharedCreateAgentDialog(
                             currentAgentCount = currentAgentCount,
                             maxAgents = maxAgents,
                             planLabel = limitPlanLabel,
+                            seatLimit = seatLimit?.takeIf { seatLimitReached },
                             onViewPlan = onViewPlan,
                             onUpgrade = onUpgrade,
+                        )
+                    }
+                } else if (seatLimit != null) {
+                    item(key = "seat-usage") {
+                        RaftText(
+                            text =
+                                stringResource(
+                                    Res.string.agent_create_seat_usage,
+                                    formatSeatTenths(seatLimit.usedTenths),
+                                    seatLimit.seatCapacity,
+                                ),
+                            style = RaftTheme.typography.footnote,
+                            color = RaftTheme.colors.foregroundMuted,
                         )
                     }
                 }
@@ -1202,6 +1224,7 @@ private fun PlanLimitBanner(
     currentAgentCount: Int,
     maxAgents: Int,
     planLabel: String?,
+    seatLimit: CreateAgentSeatState? = null,
     onViewPlan: (() -> Unit)? = null,
     onUpgrade: (() -> Unit)? = null
 ) {
@@ -1211,7 +1234,23 @@ private fun PlanLimitBanner(
     val viewPlan: (@Composable RowScope.() -> Unit)? =
         if (onViewPlan != null && !offersUpgrade) ({ RaftViewPlanButton(onClick = onViewPlan) }) else null
     val description =
-        if (planLabel.isNullOrBlank()) {
+        if (seatLimit != null) {
+            val summary =
+                Res.string.agent_create_error_seat_limit_plan
+                    .format(listOf(formatSeatTenths(seatLimit.usedTenths), seatLimit.seatCapacity, planLabel.orEmpty().ifBlank { "Pro" }))
+                    .localized()
+            val upgrade = raftKeepTogether(stringResource(raftUpsellCopy(Res.string.agent_create_action_upgrade_for_more, offersUpgrade)))
+            val upgradeLink = onUpgrade?.takeIf { offersUpgrade && viewPlan == null }
+            buildAnnotatedString {
+                append(summary)
+                append(" ")
+                if (upgradeLink != null) {
+                    appendRaftTextLink(upgrade, onClick = upgradeLink)
+                } else {
+                    append(upgrade)
+                }
+            }
+        } else if (planLabel.isNullOrBlank()) {
             AnnotatedString(
                 raftUpsellCopy(Res.string.agent_create_error_limit, offersUpgrade)
                     .format(listOf(currentAgentCount, maxAgents))

@@ -71,8 +71,10 @@ class RaftUpsellCopyTest {
         val seatRequest = ThreadActionCard(type = "seats:add")
         assertEquals(ThreadActionCardSpecPress.ViewPlan, threadActionCardSpecPress(seatRequest, labelled, "add", offersUpgrade = false))
         assertEquals(ThreadActionCardSpecPress.ViewPlan, threadActionCardSpecPress(seatRequest, labelled, "upgrade", offersUpgrade = false))
-        // Android and desktop: the app has no add-seats screen, so the web as before.
-        assertEquals(ThreadActionCardSpecPress.OpenInWeb, threadActionCardSpecPress(seatRequest, card, "add", offersUpgrade = true))
+        // Android and desktop (#16449/#16453): seats:add runs through the store (pre-checks /seat-request);
+        // an AddSeats button on any other card type falls back to OpenInWeb.
+        assertEquals(ThreadActionCardSpecPress.Store, threadActionCardSpecPress(seatRequest, card, "add", offersUpgrade = true))
+        assertEquals(ThreadActionCardSpecPress.OpenInWeb, threadActionCardSpecPress(ThreadActionCard(type = "channel:create"), card, "add", offersUpgrade = true))
     }
 
     private fun msg(text: String) = ActionCardSpecMsg(key = "test.$text", text = mapOf("en" to text))

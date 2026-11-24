@@ -171,6 +171,13 @@ internal data class ThreadActionCard(
      * from an expiry.
      */
     val closedBy: ThreadActionCardClosedBy? = null,
+    /** `seats:add`: seat count recorded when the card was prepared (wire `action.seats`). */
+    val seatsAddCount: Int? = null,
+    /**
+     * `seats:add`: what the seat request is for (wire `action.purpose`, slock #16449, #16453).
+     * Counted under the card's server's pricing returned by `GET /actions/:id/seat-request`.
+     */
+    val seatsAddPurpose: SeatsAddPurpose? = null,
 ) {
     /**
      * The card described as data ([parseActionCardSpec]), or null: no `presentation.card`, or one
@@ -263,9 +270,10 @@ internal fun ThreadActionCard.markedExpired(): ThreadActionCard =
 
 /**
  * The server's 409 codes for a card refused because it expired (`{ error, errorCode }`): the
- * 30-day rule's (slock #13254, shared `ACTION_CARD_EXPIRED_ERROR_CODE`) and a question card's.
+ * 30-day rule's (slock #13254, shared `ACTION_CARD_EXPIRED_ERROR_CODE`), a question card's,
+ * and a seat request's (`EXPIRED`, slock `seatRequestService.ts`).
  */
-internal val ActionCardExpiredErrorCodes: Set<String> = setOf("ACTION_CARD_EXPIRED", "QUESTION_EXPIRED")
+internal val ActionCardExpiredErrorCodes: Set<String> = setOf("ACTION_CARD_EXPIRED", "QUESTION_EXPIRED", "EXPIRED")
 
 /** Whether a refusal says the card expired ([ActionCardExpiredErrorCodes]). */
 internal fun ScreenError.isActionCardExpiredRefusal(): Boolean =
@@ -618,6 +626,8 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
                     handle = closer.actionCardStringOrNull("handle"),
                 )
             },
+        seatsAddCount = (actionObject["seats"] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 },
+        seatsAddPurpose = parseSeatsAddPurpose(actionObject["purpose"] as? JsonObject),
     )
 }
 
@@ -715,6 +725,10 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         closedBy?.let {
             put("${ActionCardMetadataPrefix}closedBy", threadActionCardJson.encodeToString(ThreadActionCardClosedBy.serializer(), it))
         }
+        putString("seatsAddCount", seatsAddCount?.toString())
+        seatsAddPurpose?.let {
+            put("${ActionCardMetadataPrefix}seatsAddPurpose", threadActionCardJson.encodeToString(SeatsAddPurpose.serializer(), it))
+        }
     }
 
 /** True when the projected message metadata carries an action card (any type). */
@@ -806,6 +820,11 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         closedBy =
             metadata["${ActionCardMetadataPrefix}closedBy"]?.let { raw ->
                 runCatching { threadActionCardJson.decodeFromString(ThreadActionCardClosedBy.serializer(), raw) }.getOrNull()
+            },
+        seatsAddCount = metadata["${ActionCardMetadataPrefix}seatsAddCount"]?.toIntOrNull(),
+        seatsAddPurpose =
+            metadata["${ActionCardMetadataPrefix}seatsAddPurpose"]?.let { raw ->
+                runCatching { threadActionCardJson.decodeFromString(SeatsAddPurpose.serializer(), raw) }.getOrNull()
             },
     )
 }

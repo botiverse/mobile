@@ -214,7 +214,7 @@ internal fun ThreadActionCard.actionCardIconName(): RaftLucideIconName? =
         "integration:recover_app_owner" -> RaftLucideIconName.ShieldAlert
         "integration:connect_mcp" -> RaftLucideIconName.Plug
         "feedback:submit", "question:ask" -> RaftLucideIconName.MessageSquare
-        "plan:upgrade" -> RaftLucideIconName.CreditCard
+        "plan:upgrade", build.raft.app.data.SeatsAddActionCardType -> RaftLucideIconName.CreditCard
         else -> null
     }
 

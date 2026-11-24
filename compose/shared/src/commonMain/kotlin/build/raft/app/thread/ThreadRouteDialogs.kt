@@ -202,8 +202,11 @@ internal fun ThreadRouteDialogs(
     installAppDialogState?.let { dialogState ->
         ThreadInstallAppActionDialog(state = dialogState, onIntent = installAppDialogStore::dispatch)
     }
-    // A4: a spec card's confirm / form follows the live card (its confirmation version, done elsewhere).
-    val actionCardSpecDialogMessageId = actionCardSpecState.confirm?.messageId ?: actionCardSpecState.form?.messageId
+    // A4: a spec card's confirm / form / seat-request sheet follows the live card (its confirmation version, done elsewhere).
+    val actionCardSpecDialogMessageId =
+        actionCardSpecState.confirm?.messageId
+            ?: actionCardSpecState.form?.messageId
+            ?: actionCardSpecState.seatRequest?.messageId
     val liveActionCardSpecCard =
         actionCardSpecDialogMessageId?.let { messageId ->
             renderedTimelineSlice.threadActionMessage(messageId, linkedTasksProjection)?.threadActionCard()
@@ -219,6 +222,18 @@ internal fun ThreadRouteDialogs(
             LocalThreadViewerServerId provides currentServerId,
         ) {
             ThreadActionCardSpecConfirmSheet(state = confirmState, onIntent = actionCardSpecStore::dispatch)
+        }
+    }
+    actionCardSpecState.seatRequest?.let { seatRequestState ->
+        CompositionLocalProvider(
+            LocalThreadActionCardNames provides actionCardNames,
+            LocalThreadViewerServerId provides currentServerId,
+        ) {
+            ThreadActionCardSpecSeatRequestSheet(
+                state = seatRequestState,
+                onOpenWeb = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.OpenSeatRequestInWeb) },
+                onDismiss = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.DismissSeatRequest) },
+            )
         }
     }
     actionCardSpecState.form?.let { formState ->

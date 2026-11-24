@@ -4000,6 +4000,8 @@ private fun SharedThreadRouteContentContent(
                 scope = coroutineScope,
                 execute = { messageId, card, form -> dataSource.executeActionCardSpec(messageId, card, form) },
                 closeQuestion = { messageId, card -> dataSource.closeQuestionActionCard(messageId, card) },
+                checkSeatRequest = { messageId, card -> dataSource.checkSeatRequest(messageId, card) },
+                completeSeatRequest = { messageId, card -> dataSource.completeSeatRequest(messageId, card) },
                 stepUp = actionCardStepUp,
                 applyCard = { messageId, card -> threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card)) },
                 onNoPermission = { result -> routeAuthRequired(result) },
@@ -4016,10 +4018,10 @@ private fun SharedThreadRouteContentContent(
                 onApproved = RaftRatingPrompt::onActionCardApproved,
             )
         }
-    // The page reads only the open confirm / form; each card reads its own slice (ThreadActionCardSpecView).
+    // The page reads only the open confirm / form / seat-request sheet; each card reads its own slice (ThreadActionCardSpecView).
     val actionCardSpecDialogsFlow =
         remember(actionCardSpecStore) {
-            actionCardSpecStore.state.map { ThreadActionCardSpecDialogs(it.confirm, it.form) }.distinctUntilChanged()
+            actionCardSpecStore.state.map { ThreadActionCardSpecDialogs(it.confirm, it.form, it.seatRequest) }.distinctUntilChanged()
         }
     val actionCardSpecState by actionCardSpecDialogsFlow.collectAsState(ThreadActionCardSpecDialogs())
     val actionCardAlreadyExecutedLabel = stringResource(Res.string.thread_action_card_already_executed)
@@ -4027,6 +4029,8 @@ private fun SharedThreadRouteContentContent(
         stringResource(Res.string.thread_action_card_already_executed_by, ThreadLocalizedFeedbackPlaceholder)
     val actionCardOpenInWebFailedLabel = stringResource(Res.string.thread_action_card_open_in_web_failed)
     val actionCardFrozenClosedLabel = stringResource(Res.string.thread_action_card_frozen_closed)
+    val latestActionCardThread by rememberUpdatedState(renderedThread)
+    val latestActionCardServerSlug by rememberUpdatedState(currentServerSlug)
     LaunchedEffect(actionCardSpecStore) {
         actionCardSpecStore.effects.collect { effect ->
             when (effect) {
@@ -4040,11 +4044,16 @@ private fun SharedThreadRouteContentContent(
                         }
                     )
                 ThreadActionCardSpecEffect.OpenInWebFailed -> bridge.toast(actionCardOpenInWebFailedLabel)
+                is ThreadActionCardSpecEffect.OpenSeatRequestInWeb ->
+                    actionCardSpecStore.dispatch(
+                        ThreadActionCardSpecIntent.OpenInWeb(
+                            effect.messageId,
+                            latestActionCardThread.threadMessageLink(effect.messageId, latestActionCardServerSlug),
+                        )
+                    )
             }
         }
     }
-    val latestActionCardThread by rememberUpdatedState(renderedThread)
-    val latestActionCardServerSlug by rememberUpdatedState(currentServerSlug)
     // Home's DM rows: a navigate to a message in a DM opens the DM route.
     val actionCardDirectMessageIds =
         remember(sharedHomeState.content) {

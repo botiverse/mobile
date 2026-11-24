@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.ProPricing
 import build.raft.app.resources.StringDesc
 import build.raft.app.resources.resolve
 import kotlin.test.AfterTest
@@ -26,9 +27,15 @@ class SettingsBillingSeatsBreakdownLocaleTest {
     }
 
     /** Each row as (label, seats), resolved in [tag]. */
-    private fun breakdown(tag: String, humans: Int, agents: Int): List<Pair<String, String>> {
+    private fun breakdown(tag: String, humans: Int, agents: Int, pricing: ProPricing = ProPricing.SeatV1): List<Pair<String, String>> {
         StringDesc.localeType = StringDesc.LocaleType.Custom(tag)
-        return settingsBillingSeatsBreakdown(humans, agents).map { it.termDesc().resolve() to it.valueDesc().resolve() }
+        return settingsBillingSeatsBreakdown(humans, agents, pricing).map { it.termDesc().resolve() to it.valueDesc().resolve() }
+    }
+
+    @Test
+    fun personV2OmitsAgentsRowInEveryLocale() {
+        assertEquals(listOf("4 people" to "4 seats"), breakdown("en", 4, 15, ProPricing.PersonV2))
+        assertEquals(listOf("3 человека" to "3 места"), breakdown("ru", 3, 12, ProPricing.PersonV2))
     }
 
     @Test

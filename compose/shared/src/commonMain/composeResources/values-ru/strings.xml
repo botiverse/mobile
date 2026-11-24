@@ -6109,4 +6109,22 @@
     <string name="send_prompt_send">Отправить</string>
     <string name="send_prompt_failed">Не удалось отправить. Попробуйте ещё раз.</string>
     <string name="send_prompt_no_agents">На этом сервере пока нет агентов, которым вы можете написать.</string>
+    <string name="upgrade_dialog_price_seat">%1$s за место в месяц или %2$s в месяц при оплате за год.</string>
+    <string name="upgrade_dialog_price_person">%1$s за человека в месяц или %2$s в месяц при оплате за год.</string>
+    <string name="upgrade_dialog_seat_note_seat">Одно место — это 1 человек или %1$d агентов.</string>
+    <string name="upgrade_dialog_seat_note_person">Одно место — это 1 человек. Агенты мест не занимают.</string>
+    <string name="upgrade_dialog_seats_hint_person">Все места сервера %1$s заняты. Каждый человек занимает 1 место; агенты мест не занимают.</string>
+    <string name="agent_create_error_seat_limit_plan">Достигнут лимит мест (%1$s/%2$d, тариф %3$s).</string>
+    <string name="agent_create_seat_usage">Занято мест: %1$s/%2$d; каждый агент занимает 0,1 места.</string>
+    <string name="action_card_seats_add_title_one">Добавить %1$d место</string>
+    <string name="action_card_seats_add_title_other">Добавить %1$d мест</string>
+    <string name="action_card_seats_add_short_one">Для этого запроса нужно ещё %1$d место.</string>
+    <string name="action_card_seats_add_short_other">Для этого запроса нужно ещё %1$d мест.</string>
+    <string name="action_card_seats_add_purpose_agent">%1$s × 0,1</string>
+    <string name="action_card_seats_add_purpose_assistant">Ассистент пользователя %1$s × 0,1</string>
+    <string name="action_card_seats_add_purpose_invite_one">%1$d человек × 1</string>
+    <string name="action_card_seats_add_purpose_invite_other">%1$d человек × 1</string>
+    <string name="action_card_seats_add_purpose_person">%1$s × 1</string>
+    <string name="action_card_seats_add_sum_note">Каждый человек занимает 1 место, каждый агент — 0,1; приложения мест не занимают.</string>
+    <string name="action_card_seats_add_sum_note_person">Каждый человек занимает 1 место; агенты и приложения мест не занимают.</string>
 </resources>

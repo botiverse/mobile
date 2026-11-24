@@ -1,10 +1,12 @@
 package build.raft.app
 
+import build.raft.app.data.ProPricing
 import build.raft.app.data.SettingsBillingCurrentPlanSnapshot
 import build.raft.app.data.SettingsBillingFileUploadQuotaSnapshot
 import build.raft.app.data.SettingsBillingSeatUsageSnapshot
 import build.raft.app.data.SettingsBillingSnapshot
 import build.raft.app.data.SettingsBillingSubscriptionSnapshot
+import build.raft.app.data.parseSharedSettingsBillingSubscription
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -79,7 +81,7 @@ class SettingsBillingViewOnlyModelTest {
         assertNull(model.members)
     }
 
-    /** Web SeatsBreakdown (botiverse/slock 16f5f8bc40): people, then agents in tenths of a seat; no agents row without agents. */
+    /** Web SeatsBreakdown (botiverse/slock 16f5f8bc40, #16345): people, then agents under seat_v1; person_v2 omits agents. */
     @Test
     fun theSeatsBreakdownHasPeopleThenAgentsCountedInTenths() {
         val people = SettingsBillingSeatHolder.People
@@ -91,5 +93,31 @@ class SettingsBillingViewOnlyModelTest {
         ).forEach { (usage, rows) ->
             assertEquals(rows, settingsBillingSeatsBreakdown(humans = usage.first, agents = usage.second), "$usage")
         }
+        // Under person_v2, agents take no seats and are omitted even when agents > 0.
+        assertEquals(
+            listOf(SettingsBillingSeatsBreakdownRow(people, 4, 40)),
+            settingsBillingSeatsBreakdown(humans = 4, agents = 15, pricing = ProPricing.PersonV2),
+        )
+    }
+
+    @Test
+    fun proSubscriptionPropagatesServerResolvedPricingAndFallsBackOnOmission() {
+        val personV2 =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"pro","pricing":"person_v2","source":"subscription","stripeConfigured":true,"subscription":{"status":"active","billingInterval":"monthly"},"capacity":{"maxUniversalSeats":5},"usage":{"humans":3,"agents":20,"universalSeats":3},"provisioned":{"humans":3,"agents":20,"proPackQuantity":5}}"""
+            )
+        assertEquals(ProPricing.PersonV2, personV2?.pricing)
+        val v2Model = settingsBillingViewOnlyModel(snapshot(personV2), sessionPlan = null, nowEpochMillis = now)
+        assertEquals(ProPricing.PersonV2, v2Model.pricing)
+        assertEquals(ProPricing.PersonV2, v2Model.seats?.pricing)
+
+        val omitted =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"pro","source":"subscription","stripeConfigured":true,"subscription":{"status":"active","billingInterval":"monthly"},"capacity":{"maxUniversalSeats":5},"usage":{"humans":3,"agents":20,"universalSeats":5},"provisioned":{"humans":3,"agents":20,"proPackQuantity":5}}"""
+            )
+        assertNull(omitted?.pricing)
+        val legacyModel = settingsBillingViewOnlyModel(snapshot(omitted), sessionPlan = null, nowEpochMillis = now)
+        assertEquals(ProPricing.SeatV1, legacyModel.pricing)
+        assertEquals(ProPricing.SeatV1, legacyModel.seats?.pricing)
     }
 }

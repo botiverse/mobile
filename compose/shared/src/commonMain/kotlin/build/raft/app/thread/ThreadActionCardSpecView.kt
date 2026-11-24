@@ -36,9 +36,11 @@ import build.raft.app.data.ActionCardSpecMsgParam
 import build.raft.app.data.ActionCardSpecTree
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.PRO_AGENT_SEAT_BLOCK_SIZE
 import build.raft.app.data.jointInviteRateLimitMinutes
 import build.raft.app.data.QuestionAskActionCardType
 import build.raft.app.data.SeatsAddActionCardType
+import build.raft.app.data.SeatsAddPurpose
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.expiredAsOf
@@ -50,6 +52,8 @@ import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDialogSheet
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
 
 /**
  * What a thread page gives its spec cards (task #39, A4).
@@ -556,6 +560,105 @@ internal fun ThreadActionCardSpecConfirmSheet(
                         RaftTraceIdNote(state.error.traceIdOrNull())
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Add-seats sheet for a `seats:add` action card when seats are short (web `useSeatRequestFlow` +
+ * `AddSeatsDialog`, slock #16449, #16453). Counts the purpose row and renders the seat-rule note
+ * under [ThreadActionCardSpecSeatRequestState.pricing] — the card's server's pricing returned by
+ * `GET /actions/:id/seat-request`, never the currently open server's.
+ */
+@Composable
+internal fun ThreadActionCardSpecSeatRequestSheet(
+    state: ThreadActionCardSpecSeatRequestState,
+    onOpenWeb: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val names = LocalThreadActionCardNames.current
+    val someone = stringResource(Res.string.action_card_question_someone)
+    val requesterName =
+        state.card.requesterUserId?.let { names.name(ThreadActionCardEntityKind.Human, it) }
+            ?.takeIf { it.isNotBlank() }
+            ?: someone
+    val title =
+        if (state.seatsShort == 1) {
+            stringResource(Res.string.action_card_seats_add_title_one, state.seatsShort)
+        } else {
+            stringResource(Res.string.action_card_seats_add_title_other, state.seatsShort)
+        }
+    val shortLine =
+        if (state.seatsShort == 1) {
+            stringResource(Res.string.action_card_seats_add_short_one, state.seatsShort)
+        } else {
+            stringResource(Res.string.action_card_seats_add_short_other, state.seatsShort)
+        }
+    val purposeLine =
+        when (val purpose = state.card.seatsAddPurpose) {
+            is SeatsAddPurpose.AgentCreate ->
+                stringResource(Res.string.action_card_seats_add_purpose_agent, purpose.name)
+            SeatsAddPurpose.AssistantCreate ->
+                stringResource(Res.string.action_card_seats_add_purpose_assistant, requesterName)
+            is SeatsAddPurpose.Invite -> {
+                val inviteCount = ((state.needTenths ?: 0L) / PRO_AGENT_SEAT_BLOCK_SIZE).toInt().coerceAtLeast(1)
+                if (inviteCount == 1) {
+                    stringResource(Res.string.action_card_seats_add_purpose_invite_one, inviteCount)
+                } else {
+                    stringResource(Res.string.action_card_seats_add_purpose_invite_other, inviteCount)
+                }
+            }
+            is SeatsAddPurpose.MemberPromote ->
+                stringResource(Res.string.action_card_seats_add_purpose_person, purpose.name)
+            is SeatsAddPurpose.Join ->
+                stringResource(Res.string.action_card_seats_add_purpose_person, purpose.name)
+            null -> null
+        }
+    val sumNote =
+        stringResource(
+            if (state.pricing.agentsTakeSeats) {
+                Res.string.action_card_seats_add_sum_note
+            } else {
+                Res.string.action_card_seats_add_sum_note_person
+            }
+        )
+    RaftDesignSystemTheme {
+        RaftDialogSheet(
+            onDismissRequest = onDismiss,
+            title = title,
+            commitLabel = stringResource(Res.string.upgrade_dialog_seats_continue),
+            onCommit = onOpenWeb,
+            commitEnabled = !state.card.isExecuted && !state.card.isFrozen && !state.card.hasEnded,
+            commitVariant = RaftButtonVariant.Primary,
+            closeLabel = stringResource(Res.string.common_close),
+            cancelLabel = stringResource(Res.string.common_cancel),
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                RaftText(
+                    text = shortLine,
+                    style = RaftTheme.typography.subhead,
+                    color = RaftTheme.colors.foreground,
+                )
+                if (purposeLine != null) {
+                    RaftText(
+                        text = purposeLine,
+                        style = RaftTheme.typography.callout,
+                        color = RaftTheme.colors.foregroundMuted,
+                    )
+                }
+                RaftText(
+                    text = sumNote,
+                    style = RaftTheme.typography.footnote,
+                    color = RaftTheme.colors.foregroundHint,
+                )
             }
         }
     }
