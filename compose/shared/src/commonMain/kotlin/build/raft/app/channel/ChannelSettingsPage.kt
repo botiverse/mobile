@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -1245,7 +1246,7 @@ internal fun ChannelSettingsContent(
     val showVisitorVisibleRow =
         channelSettingsShowsVisitorVisible(channel, model.permissions) && (offersVisitorVisible || visitorVisibleLatched)
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().raftSafeAreaHorizontalPadding(),
         contentPadding = PaddingValues(start = inset, top = 16.dp, end = inset, bottom = 16.dp + bottomSafeArea),
         verticalArrangement = Arrangement.spacedBy(ChannelDetailsSectionGap),
     ) {

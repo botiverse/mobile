@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -142,6 +143,7 @@ internal fun RaftFilePreviewCsvPanel(
         modifier = modifier
             .fillMaxSize()
             .background(colors.layerSidebar)
+            .raftSafeAreaHorizontalPadding()
             .padding(RaftSpacing.Md)
     ) {
         Row(

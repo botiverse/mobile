@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.layout.Arrangement
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -98,6 +99,7 @@ internal fun ThreadTaskHandoffRow(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .raftSafeAreaHorizontalPadding()
                 .padding(
                     start = RaftAppSpacing.Sm + 35.dp + 12.dp,
                     end = RaftAppSpacing.Sm,

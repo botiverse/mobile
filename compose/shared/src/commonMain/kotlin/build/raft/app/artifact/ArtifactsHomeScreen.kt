@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -247,7 +248,7 @@ private fun ArtifactsHomeToolbar(
     val viewSwitch = artifactsHomeViewSwitch(view, onView)
     val clearLabel = stringResource(Res.string.artifacts_dashboard_clear_filters)
 
-    Box(Modifier.fillMaxWidth().background(RaftTheme.colors.layerCanvas).testTag(ArtifactsHomeTags.Toolbar)) {
+    Box(Modifier.fillMaxWidth().background(RaftTheme.colors.layerCanvas).raftSafeAreaHorizontalPadding().testTag(ArtifactsHomeTags.Toolbar)) {
         RaftFitToolbar(
             search =
                 RaftFitToolbarSearch(
@@ -660,7 +661,7 @@ private fun ArtifactsHomeList(
     var forYouOpen by remember { mutableStateOf(true) }
     val failed: @Composable () -> Unit = {
         if (state.status == ArtifactsHomeStatus.Failed) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = ArtifactsHomeMargin, vertical = 8.dp).testTag(ArtifactsHomeTags.Failed)) {
+            Column(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(horizontal = ArtifactsHomeMargin, vertical = 8.dp).testTag(ArtifactsHomeTags.Failed)) {
                 RaftBanner(
                     description = stringResource(Res.string.artifacts_dashboard_failed_title),
                     status = RaftBannerStatus.Warning,
@@ -749,7 +750,11 @@ private fun ArtifactsHomeList(
 
             LazyVerticalGrid(
                 columns = columns,
-                modifier = Modifier.fillMaxSize().then(if (!grouped.searching) Modifier.testTag(ArtifactsHomeTags.Groups) else Modifier),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .then(if (isGrid || wide) Modifier.raftSafeAreaHorizontalPadding() else Modifier)
+                        .then(if (!grouped.searching) Modifier.testTag(ArtifactsHomeTags.Groups) else Modifier),
                 contentPadding = contentPadding,
                 horizontalArrangement = Arrangement.spacedBy(horizontalGap),
                 verticalArrangement = Arrangement.spacedBy(verticalGap),
@@ -930,7 +935,7 @@ private fun ArtifactsHomeEmptyByCause(state: ArtifactsHomeState, onIntent: (Arti
 
 @Composable
 private fun ArtifactsHomeEmpty(title: String, testTag: String, action: (@Composable () -> Unit)? = null) {
-    Box(Modifier.fillMaxSize().testTag(testTag), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().raftSafeAreaHorizontalPadding().testTag(testTag), contentAlignment = Alignment.Center) {
         RaftEmptyState(
             title = title,
             icon = { RaftSlotIcon(RaftLucideIconName.Artifact, size = 36.dp) },
@@ -942,7 +947,7 @@ private fun ArtifactsHomeEmpty(title: String, testTag: String, action: (@Composa
 @Composable
 private fun ArtifactsHomeMore(state: ArtifactsHomeState, horizontalPadding: Dp, onIntent: (ArtifactsHomeIntent) -> Unit) {
     if (state.nextCursor == null) return
-    Box(Modifier.fillMaxWidth().padding(horizontal = horizontalPadding, vertical = 4.dp)) {
+    Box(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(horizontal = horizontalPadding, vertical = 4.dp)) {
         RaftButton(
             text = stringResource(Res.string.artifacts_dashboard_show_more),
             onClick = { onIntent(ArtifactsHomeIntent.LoadMore) },

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -122,7 +123,7 @@ internal fun RaftComputersRackToolbar(
             .map { it.first }
     val clearAllLabel = stringResource(Res.string.settings_computers_rack_filter_clear_all)
     val addLabel = stringResource(Res.string.settings_computers_add_computer)
-    Box(modifier.fillMaxWidth().background(RaftTheme.colors.layerCanvas).testTag(RaftComputersRackTags.Toolbar)) {
+    Box(modifier.fillMaxWidth().background(RaftTheme.colors.layerCanvas).raftSafeAreaHorizontalPadding().testTag(RaftComputersRackTags.Toolbar)) {
         RaftFitToolbar(
             search =
                 RaftFitToolbarSearch(

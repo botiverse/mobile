@@ -1348,11 +1348,9 @@ internal open class RaftCmpActivity :
         recordServerSwitchWindowFirstFrame()
         val now = SystemClock.elapsedRealtime()
         renderReadinessTopPageLoad = RaftLoadReadiness(succeeded = true, completedAtMillis = now)
-        if (Build.VERSION.SDK_INT >= 30) {
-            window?.decorView?.rootWindowInsets?.let { insets ->
-                lastPublishedInsetsKey = null
-                publishWindowInsets(insets)
-            }
+        window?.decorView?.rootWindowInsets?.let { insets ->
+            lastPublishedInsetsKey = null
+            publishWindowInsets(insets)
         }
         releaseHomeColdStartSplashAfterDatabaseLaunch()
         // task #6: warm the WebView provider once the first page has drawn, at the next main
@@ -3092,81 +3090,36 @@ internal open class RaftCmpActivity :
     }
 
     private fun RaftPageData.withAndroidRuntimeWindowInsets(): RaftPageData =
-            withAndroidRuntimeWindowInsets(
-                    statusBarHeightPx = androidStatusBarHeightPx(),
-                    navigationBarHeightPx = androidNavigationBarHeightPx(),
-                    statusBarHidden = !androidStatusBarVisible(),
-            )
+            withAndroidRuntimeWindowInsets(androidRuntimeWindowInsets())
 
     // Explicit-values overload used by the live inset publisher so the stored
     // spec always carries the authoritative numbers from the dispatch that just
     // happened — decorView.rootWindowInsets can lag behind the callback.
     private fun RaftPageData.withAndroidRuntimeWindowInsets(
-            statusBarHeightPx: Int,
-            navigationBarHeightPx: Int,
-            statusBarHidden: Boolean,
+            insets: AndroidRuntimeWindowInsets,
     ): RaftPageData =
             RaftPageData.fromJson(
-                    JSONObject(text).apply {
-                        put(KEY_HOST_EXCLUDES_NAVIGATION_BAR, androidHostExcludesNavigationBar())
-                        put(KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA, true)
-                        put(KEY_HOST_WINDOW_ID, hostWindowId)
-                        val statusBarVisible = !statusBarHidden
-                        put(KEY_STATUS_BAR_HIDDEN, statusBarHidden)
-                        // task #482: the renderer's reported top inset can lag or arrive in
-                        // the wrong unit on large-screen/desktop-mode hosts (it resolved to
-                        // ~22dp on a 48px status bar), which left the nav rail divider and
-                        // page headers drawing under the system bar. Feed the real
-                        // WindowInsets pixel value through the same "statusBarHeight"
-                        // channel the shared resolver already merges with the native
-                        // report (the live per-window snapshot, once present, is
-                        // authoritative and may be smaller or zero).
-                        if (statusBarVisible && statusBarHeightPx > 0) {
-                            put("statusBarHeight", statusBarHeightPx.toString())
-                            put("safeAreaTop", statusBarHeightPx.toString())
-                        }
-                        // Same source for the bottom edge: gesture-nav taskbars are not
-                        // always included in the renderer's reported bottom inset, which
-                        // left the DM composer under the system bar on large screens.
-                        // Write zero explicitly too: a taskbar that hides or shrinks must
-                        // clear the reserved padding, not keep a stale positive value.
-                        if (navigationBarHeightPx > 0) {
-                            put("navigationBarHeight", navigationBarHeightPx.toString())
-                            put("safeAreaBottom", navigationBarHeightPx.toString())
-                        } else {
-                            remove("navigationBarHeight")
-                            remove("safeAreaBottom")
-                        }
-                    }
+                    applyAndroidRuntimeWindowInsets(
+                            json = JSONObject(text),
+                            hostExcludesNavigationBar = androidHostExcludesNavigationBar(),
+                            hostWindowId = hostWindowId,
+                            insets = insets,
+                    )
             )
 
     // A pushed page builds its pageData in onCreate, before its window is attached, so
-    // rootWindowInsets is still null. Use the bars the previous host window last saw:
-    // reading zero drew the first frame's header under the status bar, then it jumped
-    // down once the real insets arrived (a one-frame flash on every page push).
-    private fun androidStatusBarHeightPx(): Int {
-        val decorView = window?.decorView ?: return lastKnownStatusBarTopPx
-        if (Build.VERSION.SDK_INT >= 30) {
-            val insets = decorView.rootWindowInsets ?: return lastKnownStatusBarTopPx
-            return insets.getInsets(WindowInsets.Type.statusBars()).top
+    // rootWindowInsets is still null. Use the bars and horizontal safe areas the previous
+    // host window last saw so the first frame neither flashes under the status bar nor
+    // draws under a landscape display cutout or side navigation bar.
+    private fun androidRuntimeWindowInsets(): AndroidRuntimeWindowInsets {
+        val insets = window?.decorView?.rootWindowInsets
+        if (insets != null) {
+            return extractAndroidRuntimeWindowInsets(
+                    insets = insets,
+                    legacyStatusBarVisible = androidStatusBarVisible(),
+            )
         }
-        @Suppress("DEPRECATION")
-        return decorView.rootWindowInsets?.systemWindowInsetTop ?: 0
-    }
-
-    // Navigation bar and the gesture-mode taskbar can be reported under different
-    // inset types; take the max so either presentation clears the composer.
-    private fun androidNavigationBarHeightPx(): Int {
-        val decorView = window?.decorView ?: return lastKnownNavigationBarBottomPx
-        if (Build.VERSION.SDK_INT >= 30) {
-            val insets = decorView.rootWindowInsets ?: return lastKnownNavigationBarBottomPx
-            val navigation = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
-            val gestures =
-                    insets.getInsets(WindowInsets.Type.systemGestures()).bottom
-            return maxOf(navigation, gestures)
-        }
-        @Suppress("DEPRECATION")
-        return decorView.rootWindowInsets?.systemWindowInsetBottom ?: 0
+        return lastKnownAndroidRuntimeWindowInsets(statusBarHidden = !androidStatusBarVisible())
     }
 
     private fun androidHostExcludesNavigationBar(): Boolean =
@@ -3271,11 +3224,18 @@ internal open class RaftCmpActivity :
     // Kuikly's Android11PlusKeyboardWatcher (global-layout driven, reads
     // rootWindowInsets ime−nav) never fires: the composer stayed behind the
     // keyboard. Insets are still dispatched, so force the layout pass the
-    // watcher is waiting for whenever they change. API 30+ only: below that
-    // decorFits stays true and the legacy popup watcher still sees resizes.
+    // watcher is waiting for whenever they change. On API < 30 decorFits stays
+    // true and the legacy popup watcher still sees resizes, so only publish
+    // updated window/cutout insets and delegate untouched to onApplyWindowInsets.
     private fun setupImeInsetsRelayout() {
-        if (Build.VERSION.SDK_INT < 30) return
         val content = findViewById<View>(android.R.id.content) ?: return
+        if (Build.VERSION.SDK_INT < 30) {
+            content.setOnApplyWindowInsetsListener { view, insets ->
+                publishWindowInsets(insets)
+                view.onApplyWindowInsets(insets)
+            }
+            return
+        }
         content.setOnApplyWindowInsetsListener { view, insets ->
             view.requestLayout()
             hostImeInsets?.imeBottomPx = insets.getInsets(WindowInsets.Type.ime()).bottom
@@ -3379,40 +3339,28 @@ internal open class RaftCmpActivity :
     private var lastPublishedInsetsKey: String? = null
 
     private fun publishWindowInsets(insets: WindowInsets) {
-        val top = insets.getInsets(WindowInsets.Type.statusBars()).top
-        val bottom =
-                maxOf(
-                        insets.getInsets(WindowInsets.Type.navigationBars()).bottom,
-                        insets.getInsets(WindowInsets.Type.systemGestures()).bottom,
+        val runtimeInsets =
+                extractAndroidRuntimeWindowInsets(
+                        insets = insets,
+                        legacyStatusBarVisible = androidStatusBarVisible(),
                 )
-        val hidden = !insets.isVisible(WindowInsets.Type.statusBars())
-        val key = "$top:$bottom:$hidden"
+        val key = runtimeInsets.publishKey()
         if (key == lastPublishedInsetsKey) return
         lastPublishedInsetsKey = key
-        if (!hidden) lastKnownStatusBarTopPx = top
-        lastKnownNavigationBarBottomPx = bottom
+        if (!runtimeInsets.statusBarHidden) lastKnownStatusBarTopPx = runtimeInsets.statusBarHeightPx
+        lastKnownNavigationBarBottomPx = runtimeInsets.navigationBarHeightPx
+        lastKnownSafeAreaLeftPx = runtimeInsets.safeAreaLeftPx
+        lastKnownSafeAreaRightPx = runtimeInsets.safeAreaRightPx
         // Keep the stored pageData spec in sync with the latest authoritative
         // values so pages/children attached later already carry this snapshot —
         // a pager event alone would be missed by observers registered after it
         // fired (and equal future events would be deduped away).
         pageSpec = pageSpec?.let { spec ->
-            spec.copy(
-                    pageData =
-                            spec.pageData.withAndroidRuntimeWindowInsets(
-                                    statusBarHeightPx = top,
-                                    navigationBarHeightPx = bottom,
-                                    statusBarHidden = hidden,
-                            )
-            )
+            spec.copy(pageData = spec.pageData.withAndroidRuntimeWindowInsets(runtimeInsets))
         }
         sendHostEvent(
                 EVENT_WINDOW_INSETS_CHANGED,
-                mapOf(
-                        "statusBarHeightPx" to top.toString(),
-                        "navigationBarHeightPx" to bottom.toString(),
-                        "statusBarHidden" to hidden,
-                        KEY_HOST_WINDOW_ID to hostWindowId,
-                ),
+                androidWindowInsetsChangedPayload(hostWindowId, runtimeInsets),
         )
     }
 
@@ -3550,9 +3498,12 @@ internal open class RaftCmpActivity :
     companion object {
         private const val TAG = "SlockCmpHost"
 
-        // Last bars seen by any host window; seeds a new window before its own insets arrive.
-        @Volatile private var lastKnownStatusBarTopPx = 0
-        @Volatile private var lastKnownNavigationBarBottomPx = 0
+        // Last bars and horizontal safe areas seen by any host window; seeds a new window
+        // before its own insets arrive.
+        @Volatile internal var lastKnownStatusBarTopPx = 0
+        @Volatile internal var lastKnownNavigationBarBottomPx = 0
+        @Volatile internal var lastKnownSafeAreaLeftPx = 0
+        @Volatile internal var lastKnownSafeAreaRightPx = 0
         private const val ATTACHMENT_SAVE_AS_STATE_KEY = "slockAttachmentSaveAsState"
         private const val THREAD_CAMERA_CAPTURE_STATE_KEY = "slockThreadCameraCaptureState"
         const val PAGE_LOGIN = RaftPages.LOGIN
@@ -3591,14 +3542,15 @@ internal open class RaftCmpActivity :
         private const val KEY_OPEN_WITHOUT_ANIMATION = build.raft.app.RAFT_OPEN_WITHOUT_ANIMATION
         private const val KEY_VERIFY_KUIKLY_THREAD = "slockKuiklyVerifyThread"
         private const val KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER = "slockKuiklyVerifyReactiveObserver"
-        private const val KEY_HOST_EXCLUDES_NAVIGATION_BAR = "slockHostExcludesNavigationBar"
-        private const val KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA =
+        internal const val KEY_HOST_EXCLUDES_NAVIGATION_BAR = "slockHostExcludesNavigationBar"
+        internal const val KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA =
                 "slockKeyboardInsetExcludesBottomSafeArea"
-        private const val KEY_STATUS_BAR_HIDDEN = "slockStatusBarHidden"
-        private const val KEY_HOST_WINDOW_ID = "slockWindowId"
-        // "statusBarHeight" / "safeAreaTop" / "navigationBarHeight" / "safeAreaBottom"
-        // are written as string px values by withAndroidRuntimeWindowInsets(); they map
-        // to JSONObject params.safeAreaPx keys in shared/shell/RaftAppSafeArea.kt.
+        internal const val KEY_STATUS_BAR_HIDDEN = "slockStatusBarHidden"
+        internal const val KEY_HOST_WINDOW_ID = "slockWindowId"
+        // "statusBarHeight" / "safeAreaTop" / "navigationBarHeight" / "safeAreaBottom" /
+        // "safeAreaLeft" / "safeAreaRight" are written as string px values by
+        // withAndroidRuntimeWindowInsets(); they map to JSONObject params.safeAreaPx keys
+        // in shared/shell/RaftAppSafeArea.kt.
         private const val EVENT_WINDOW_INSETS_CHANGED = "slockWindowInsetsChanged"
         private const val THREAD_SURFACE_CHANNEL = "channel"
         private const val THREAD_SURFACE_DIRECT_MESSAGE = "dm"
@@ -10185,3 +10137,135 @@ internal fun isAndroidSystemDark(uiMode: Int): Boolean =
 /** Content-root insets policy of [RaftCmpActivity]: fit nothing, pass every inset on. */
 private val edgeToEdgeContentRootInsetsListener =
     View.OnApplyWindowInsetsListener { _, insets -> insets }
+
+/**
+ * Physical window-inset snapshot reported by the Android host into shared [RaftHostWindowInsets].
+ * [safeAreaLeftPx] / [safeAreaRightPx] are physical left/right display cutout and system-bar
+ * insets (for landscape punch-hole cameras and 3-button side navigation bars); IME is excluded.
+ */
+internal data class AndroidRuntimeWindowInsets(
+    val statusBarHeightPx: Int,
+    val navigationBarHeightPx: Int,
+    val safeAreaLeftPx: Int,
+    val safeAreaRightPx: Int,
+    val statusBarHidden: Boolean,
+) {
+    fun publishKey(): String =
+        "$statusBarHeightPx:$navigationBarHeightPx:$safeAreaLeftPx:$safeAreaRightPx:$statusBarHidden"
+}
+
+/**
+ * Extracts vertical bar heights and physical horizontal safe areas from [WindowInsets].
+ *
+ * - API 30+: `systemBars() or displayCutout()` covers status bar, 3-button side navigation bar,
+ *   and physical display cutouts/waterfalls without pulling in IME or portrait back-swipe
+ *   `systemGestures()` margins.
+ * - API 28–29: combines `systemWindowInsetLeft/Right` with `displayCutout.safeInsetLeft/Right`,
+ *   and caps `systemWindowInsetBottom` by `stableInsetBottom` so an open IME under `adjustResize`
+ *   is never published as navigation-bar safe area.
+ */
+internal fun extractAndroidRuntimeWindowInsets(
+    insets: WindowInsets,
+    sdkInt: Int = Build.VERSION.SDK_INT,
+    legacyStatusBarVisible: Boolean = true,
+): AndroidRuntimeWindowInsets {
+    if (sdkInt >= 30) {
+        val top = insets.getInsets(WindowInsets.Type.statusBars()).top.coerceAtLeast(0)
+        val navigationBottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+        val gestureBottom = insets.getInsets(WindowInsets.Type.systemGestures()).bottom
+        val horizontalSafeArea =
+            insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+        return AndroidRuntimeWindowInsets(
+            statusBarHeightPx = top,
+            navigationBarHeightPx = maxOf(navigationBottom, gestureBottom).coerceAtLeast(0),
+            safeAreaLeftPx = horizontalSafeArea.left.coerceAtLeast(0),
+            safeAreaRightPx = horizontalSafeArea.right.coerceAtLeast(0),
+            statusBarHidden = !insets.isVisible(WindowInsets.Type.statusBars()),
+        )
+    }
+    @Suppress("DEPRECATION")
+    val top = insets.systemWindowInsetTop.coerceAtLeast(0)
+    @Suppress("DEPRECATION")
+    val bottom = minOf(insets.systemWindowInsetBottom, insets.stableInsetBottom).coerceAtLeast(0)
+    @Suppress("DEPRECATION")
+    val systemLeft = insets.systemWindowInsetLeft
+    @Suppress("DEPRECATION")
+    val systemRight = insets.systemWindowInsetRight
+    val cutout = if (sdkInt >= 28) insets.displayCutout else null
+    val left = maxOf(systemLeft, cutout?.safeInsetLeft ?: 0).coerceAtLeast(0)
+    val right = maxOf(systemRight, cutout?.safeInsetRight ?: 0).coerceAtLeast(0)
+    return AndroidRuntimeWindowInsets(
+        statusBarHeightPx = top,
+        navigationBarHeightPx = bottom,
+        safeAreaLeftPx = left,
+        safeAreaRightPx = right,
+        statusBarHidden = !legacyStatusBarVisible,
+    )
+}
+
+internal fun lastKnownAndroidRuntimeWindowInsets(statusBarHidden: Boolean): AndroidRuntimeWindowInsets =
+    AndroidRuntimeWindowInsets(
+        statusBarHeightPx = if (statusBarHidden) 0 else RaftCmpActivity.lastKnownStatusBarTopPx,
+        navigationBarHeightPx = RaftCmpActivity.lastKnownNavigationBarBottomPx,
+        safeAreaLeftPx = RaftCmpActivity.lastKnownSafeAreaLeftPx,
+        safeAreaRightPx = RaftCmpActivity.lastKnownSafeAreaRightPx,
+        statusBarHidden = statusBarHidden,
+    )
+
+/**
+ * Seeds or clears the Android host inset keys on a page's [JSONObject] params. Positive values are
+ * written as px strings; zero values remove stale keys so rotating back to portrait or hiding a
+ * bar clears previous values without poisoning cold-start fallback detection when all edges are 0.
+ */
+internal fun applyAndroidRuntimeWindowInsets(
+    json: JSONObject,
+    hostExcludesNavigationBar: Boolean,
+    hostWindowId: String,
+    insets: AndroidRuntimeWindowInsets,
+): JSONObject =
+    json.apply {
+        put(RaftCmpActivity.KEY_HOST_EXCLUDES_NAVIGATION_BAR, hostExcludesNavigationBar)
+        put(RaftCmpActivity.KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA, true)
+        put(RaftCmpActivity.KEY_HOST_WINDOW_ID, hostWindowId)
+        val statusBarVisible = !insets.statusBarHidden
+        put(RaftCmpActivity.KEY_STATUS_BAR_HIDDEN, insets.statusBarHidden)
+        // task #482: feed the real WindowInsets pixel values through the shared resolver's
+        // pageData contract (the live per-window event snapshot replaces this on every dispatch).
+        if (statusBarVisible && insets.statusBarHeightPx > 0) {
+            put("statusBarHeight", insets.statusBarHeightPx.toString())
+            put("safeAreaTop", insets.statusBarHeightPx.toString())
+        } else {
+            remove("statusBarHeight")
+            remove("safeAreaTop")
+        }
+        if (insets.navigationBarHeightPx > 0) {
+            put("navigationBarHeight", insets.navigationBarHeightPx.toString())
+            put("safeAreaBottom", insets.navigationBarHeightPx.toString())
+        } else {
+            remove("navigationBarHeight")
+            remove("safeAreaBottom")
+        }
+        if (insets.safeAreaLeftPx > 0) {
+            put("safeAreaLeft", insets.safeAreaLeftPx.toString())
+        } else {
+            remove("safeAreaLeft")
+        }
+        if (insets.safeAreaRightPx > 0) {
+            put("safeAreaRight", insets.safeAreaRightPx.toString())
+        } else {
+            remove("safeAreaRight")
+        }
+    }
+
+internal fun androidWindowInsetsChangedPayload(
+    hostWindowId: String,
+    insets: AndroidRuntimeWindowInsets,
+): Map<String, Any> =
+    mapOf(
+        "statusBarHeightPx" to insets.statusBarHeightPx.toString(),
+        "navigationBarHeightPx" to insets.navigationBarHeightPx.toString(),
+        "safeAreaLeftPx" to insets.safeAreaLeftPx.toString(),
+        "safeAreaRightPx" to insets.safeAreaRightPx.toString(),
+        "statusBarHidden" to insets.statusBarHidden,
+        RaftCmpActivity.KEY_HOST_WINDOW_ID to hostWindowId,
+    )

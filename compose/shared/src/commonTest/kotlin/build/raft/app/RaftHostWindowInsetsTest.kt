@@ -112,14 +112,66 @@ class RaftHostWindowInsetsTest {
 
     @Test
     fun hostWithoutHorizontalFieldsResolvesToZero() {
-        // The Android host's payload: top and bottom only. Its pages must stay unchanged.
-        val android =
+        // Hosts or fixtures that only publish vertical bars keep horizontal safe areas at zero.
+        val verticalOnly =
             raftHostWindowInsetsFromEvent(
                 JSONObject("""{"statusBarHeightPx":"96","navigationBarHeightPx":"48","statusBarHidden":false}""")
             )
-        assertEquals(RaftHostWindowInsetValues(96f, 48f, false), android)
-        assertEquals(RaftHorizontalSafeArea.Zero, resolveRaftHorizontalSafeArea(android, 2.625f))
+        assertEquals(RaftHostWindowInsetValues(96f, 48f, false), verticalOnly)
+        assertEquals(RaftHorizontalSafeArea.Zero, resolveRaftHorizontalSafeArea(verticalOnly, 2.625f))
         assertEquals(RaftHorizontalSafeArea.Zero, resolveRaftHorizontalSafeArea(null, 3f))
+    }
+
+    @Test
+    fun androidLandscapeSeedLiveUpdateAndPortraitRotationClearHorizontalSafeAreas() {
+        val w = freshWindow()
+        // Pushed Activity first-frame seed in landscape (punch-hole left 108px, 3-button nav right 126px at 3x).
+        RaftHostWindowInsets.seedFromPageDataIfPresent(
+            JSONObject(
+                """{"slockWindowId":"$w","safeAreaTop":"72","safeAreaLeft":"108","safeAreaRight":"126","slockStatusBarHidden":false}"""
+            )
+        )
+        assertEquals(
+            RaftHorizontalSafeArea(left = 36.dp, right = 42.dp),
+            resolveRaftHorizontalSafeArea(RaftHostWindowInsets.current(w), density = 3f),
+        )
+        // Rotate 90 -> 270: live event swaps physical edges.
+        RaftHostWindowInsets.publish(
+            w,
+            raftHostWindowInsetsFromEvent(
+                JSONObject(
+                    """{"statusBarHeightPx":"72","navigationBarHeightPx":"0","safeAreaLeftPx":"126",""" +
+                        """"safeAreaRightPx":"108","statusBarHidden":false}"""
+                )
+            ),
+        )
+        assertEquals(
+            RaftHorizontalSafeArea(left = 42.dp, right = 36.dp),
+            resolveRaftHorizontalSafeArea(RaftHostWindowInsets.current(w), density = 3f),
+        )
+        // Rotate back to portrait: live event sends 0/0 and clears stale landscape insets.
+        RaftHostWindowInsets.publish(
+            w,
+            raftHostWindowInsetsFromEvent(
+                JSONObject(
+                    """{"statusBarHeightPx":"96","navigationBarHeightPx":"63","safeAreaLeftPx":"0",""" +
+                        """"safeAreaRightPx":"0","statusBarHidden":false}"""
+                )
+            ),
+        )
+        assertEquals(
+            RaftHorizontalSafeArea.Zero,
+            resolveRaftHorizontalSafeArea(RaftHostWindowInsets.current(w), density = 3f),
+        )
+    }
+
+    @Test
+    fun coldStartPageDataWithoutInsetKeysDoesNotSeedZeroSnapshot() {
+        val w = freshWindow()
+        RaftHostWindowInsets.seedFromPageDataIfPresent(
+            JSONObject("""{"slockWindowId":"$w","slockStatusBarHidden":false}""")
+        )
+        assertEquals(null, RaftHostWindowInsets.current(w))
     }
 
     @Test

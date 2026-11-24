@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Base.Theme.Raft.Window" parent="Base.Theme.Raft">
+        <!-- Match RaftCmpActivity.setupImmersiveMode() (LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS)
+             so both Activity and Compose RaftWindowDialog windows draw edge-to-edge under display
+             cutouts on API 30+ without letterboxing behind Modal's horizontal safe-area shell. -->
+        <item name="android:windowLayoutInDisplayCutoutMode">always</item>
+    </style>
+</resources>

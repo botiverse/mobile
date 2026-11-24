@@ -4,6 +4,7 @@ import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftBackButton
@@ -1084,6 +1085,7 @@ private fun PageErrorBody(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .raftSafeAreaHorizontalPadding()
                 .padding(RaftAppSpacing.Md)
                 .raftCardSurface()
                 .padding(RaftAppSpacing.Md)
