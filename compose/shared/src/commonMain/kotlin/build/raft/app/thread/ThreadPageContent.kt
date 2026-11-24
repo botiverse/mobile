@@ -34,12 +34,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.NonRestartableComposable
+import androidx.compose.runtime.ProvidedValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.Canvas
@@ -77,8 +77,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 
 /**
- * task #346: state payload of [ThreadPageContent]. See RaftStructuralHomeShellData for why
- * the flat parameter list had to be grouped (Android dex verifier rejects the
+ * task #346: state payload of [rememberThreadPageContentScaffoldSlots]. See RaftStructuralHomeShellData
+ * for why the flat parameter list had to be grouped (Android dex verifier rejects the
  * un-minified giant composable frame on API 34/36 builds).
  */
 internal data class ThreadPageContentData(
@@ -164,9 +164,8 @@ internal data class ThreadPageContentData(
     val incomingNavigation: RaftIncomingNavigationSignal? = null,
 )
 
-/** task #346: callback payload of [ThreadPageContent]. See ThreadPageContentData. */
+/** task #346: callback payload of [rememberThreadPageContentScaffoldSlots]. See ThreadPageContentData. */
 internal class ThreadPageContentCallbacks(
-    val scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     val onSelectedTabChanged: (RaftThreadTab) -> Unit,
     val onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
     val onToggleActivityMute: (() -> Unit)?,
@@ -208,7 +207,10 @@ internal class ThreadPageContentCallbacks(
 )
 
 internal @Composable
-fun ThreadPageContent(
+fun rememberThreadPageContentScaffoldSlots(
+    providedValues: Array<ProvidedValue<*>> = emptyArray(),
+    foregroundBanner: ThreadRouteForegroundBannerSlot? = null,
+    postScaffoldOverlays: @Composable () -> Unit = {},
     /** Agent Lounge v0 (see [ThreadPageLounge]); null on pages that never show one. */
     lounge: ThreadPageLounge? = null,
     agentFollowersHeader: @Composable () -> Unit = {},
@@ -219,7 +221,6 @@ fun ThreadPageContent(
     taskConversationHead: TaskHeadScrollState? = null,
     taskConversationFloat: (@Composable () -> Unit)? = null,
     taskConversationHeadRow: TaskConversationHeadRow? = null,
-    scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
     routeActive: Boolean,
     hostForeground: Boolean,
@@ -322,10 +323,11 @@ fun ThreadPageContent(
     onComposerDropFiles: (ThreadComposerFileDrop) -> Unit = { it.release() },
     onToggleFocusMode: (() -> Unit)? = null,
     focusModeActive: Boolean = false,
-)
- {
-    ThreadFollowersOverlayHost {
-    ThreadPageContentContent(
+): ThreadRouteScaffoldSlots =
+    rememberThreadPageContentScaffoldSlotsContent(
+        providedValues = providedValues,
+        foregroundBanner = foregroundBanner,
+        postScaffoldOverlays = postScaffoldOverlays,
         modifier = Modifier,
         onToggleFocusMode = onToggleFocusMode,
         focusModeActive = focusModeActive,
@@ -405,7 +407,6 @@ fun ThreadPageContent(
             ),
         callbacks =
             ThreadPageContentCallbacks(
-                scaffold = scaffold,
                 onToggleFocusMode = onToggleFocusMode,
                 focusModeActive = focusModeActive,
                 onSelectedTabChanged = onSelectedTabChanged,
@@ -445,18 +446,18 @@ fun ThreadPageContent(
                 onComposerDropFiles = onComposerDropFiles,
             ),
     )
-}
-}
 
 @Composable
-private fun ThreadPageContentContent(
+private fun rememberThreadPageContentScaffoldSlotsContent(
+    providedValues: Array<ProvidedValue<*>>,
+    foregroundBanner: ThreadRouteForegroundBannerSlot? = null,
+    postScaffoldOverlays: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
     data: ThreadPageContentData,
     callbacks: ThreadPageContentCallbacks,
     onToggleFocusMode: (() -> Unit)? = null,
     focusModeActive: Boolean = false,
-) {
-    val scaffold = callbacks.scaffold
+): ThreadRouteScaffoldSlots {
     val threadInstanceKey = data.threadInstanceKey
     val routeActive = data.routeActive
     val hostForeground = data.hostForeground
@@ -499,10 +500,6 @@ private fun ThreadPageContentContent(
     val filesViewModel = data.filesViewModel
     val memberSuggestionsFlow = data.memberSuggestionsFlow
     val channelSuggestionsFlow = data.channelSuggestionsFlow
-    // botiverse/slock #11303 / #11321: the DM with an App Bot removed from this server, and that
-    // DM's threads, keep their history but the Bot can't answer: the composer is read-only.
-    val composerRemovedAppBot =
-        rememberRaftMemberAppBot(data.headerDisplay.composerDmAgentPeerId())?.takeIf { it.removed }
     val selectedTab = data.selectedTab
     val availableTabs = data.availableTabs
     // Task v2: the person's open Tasks / Files cards (app-level, not this conversation's).
@@ -850,46 +847,6 @@ private fun ThreadPageContentContent(
             taskChannelId
                 ?: ChannelId(threadInstanceKey)
         }
-    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
-    val draftProjection =
-        remember(activeDraftRecords) {
-            activeDraftRecords.toSharedThreadComposerDraftProjection()
-        }
-    val markdownTagResolution =
-        threadMarkdownTagResolution(
-            payload = payload,
-            timelineSlice = timelineSlice,
-            linkedTasksProjection = linkedTasksProjection,
-            highlightedMentions = highlightedMentions,
-            markdownReferencePendingActionId = markdownReferencePendingActionId,
-            onThreadEvent = onThreadEvent,
-            loungeRefsEnabled = data.lounge?.loungesEnabled == true,
-        )
-    val isMarkdownTagValid = markdownTagResolution.isMarkdownTagValid
-    val markdownTagContextSignature = markdownTagResolution.markdownTagContextSignature
-    val resolveMarkdownTagLabel = markdownTagResolution.resolveMarkdownTagLabel
-    val effectiveTimeFormat = currentRaftDateTimeContext(null)?.timeFormat ?: payload.timeFormat
-    val timelineRenderConfig =
-        remember(
-            payload.backgroundRefreshing,
-            payload.errorCode,
-            payload.errorServerMessage,
-            payload.errorTraceId,
-            payload.originPreview,
-            payload.originErrorCode,
-            payload.localOffsetMinutes,
-            payload.todayEpochDay,
-            payload.nowEpochMillis,
-            effectiveTimeFormat,
-            payload.members
-        ) {
-            val config = payload.toThreadTimelineRenderConfig()
-            if (config.timeContext.timeFormat == effectiveTimeFormat) {
-                config
-            } else {
-                config.copy(timeContext = config.timeContext.withTimeFormat(effectiveTimeFormat))
-            }
-        }
     val selectThreadTab: (RaftThreadTab) -> Unit = { tab ->
         onSelectedTabChanged(tab)
         if (tab != RaftThreadTab.Chat) {
@@ -901,6 +858,22 @@ private fun ThreadPageContentContent(
     var threadHeaderScrollToTopRequest by threadHeaderScrollToTopRequestState
     val renderThreadTabContent: @Composable (RaftThreadTab, Modifier, Boolean) -> Unit =
         { tab, contentModifier, tabActive ->
+            val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
+            val draftProjection =
+                remember(activeDraftRecords) {
+                    activeDraftRecords.toSharedThreadComposerDraftProjection()
+                }
+            val markdownTagResolution =
+                threadMarkdownTagResolution(
+                    payload = payload,
+                    timelineSlice = timelineSlice,
+                    linkedTasksProjection = linkedTasksProjection,
+                    highlightedMentions = highlightedMentions,
+                    markdownReferencePendingActionId = markdownReferencePendingActionId,
+                    onThreadEvent = onThreadEvent,
+                    loungeRefsEnabled = data.lounge?.loungesEnabled == true,
+                )
+            val timelineRenderConfig = rememberThreadTimelineRenderConfig(payload)
             ThreadTabContent(
                 tab = tab,
                 contentModifier = contentModifier,
@@ -953,21 +926,119 @@ private fun ThreadPageContentContent(
     LaunchedEffect(threadOutline, threadOutlineActive) {
         if (threadOutlineActive) threadOutline?.loadNewest()
     }
-    CompositionLocalProvider(
-        LocalThreadOutlineState provides threadOutline,
-        LocalThreadFindController provides
-            threadFind.takeIf { payload.threadHeaderSearchAction() == ThreadHeaderSearchAction.InlineThreadSearch },
-        LocalThreadFindHighlightQuery provides threadFindState.query.takeIf { threadFindState.open },
-    ) {
-    scaffold(
-        ThreadRouteScaffoldSlots(
-            scaffoldPlan = ThreadRouteMountPlan.FeatureSurfaces.toThreadRouteScaffoldPlan(),
-            rootModifier =
-                Modifier.onGloballyPositioned { coordinates ->
-                    onLayoutGeneration(coordinates.size.width, coordinates.size.height)
-                    val pageWidthDp = coordinates.size.width / sideCardsDensity
-                    if (pageWidthDp != sideCardsPageWidthDp) sideCardsPageWidthDp = pageWidthDp
-                }.then(data.taskConversationHead?.let { Modifier.taskHeadFloatOutsidePress(it) } ?: Modifier),
+    val loungeFooterKind = agentLoungeFooterKind(conversationLounge, pageLounge)
+    val archivedFooterActive = pageLounge == null && threadFooterShowsArchived(payload)
+    val optimisticComposerActive =
+        !primaryFooterReady &&
+            threadShowsOptimisticComposer(
+                accessResolution = accessResolution,
+                payloadStatus = payload.status,
+                surfaceKind = payload.surfaceKind,
+                joined = payload.joined,
+                showComposer = payload.showComposer,
+                selectedTab = selectedTab.wireValue,
+                composerLocked = threadLimitLocked,
+                channelArchived = archivedFooterActive,
+                externalFrozen = externalFreezeState == ExternalFreezeState.Active,
+                loungeFooterActive = loungeFooterKind != null,
+                replyParentAuthority = replyParentAuthority,
+            )
+    val renderComposerDock =
+        optimisticComposerActive ||
+            (
+                primaryFooterReady &&
+                    writeActionsEnabled &&
+                    !shareSelectionActive &&
+                    loungeFooterKind == null &&
+                    !archivedFooterActive &&
+                    externalFreezeState != ExternalFreezeState.Active &&
+                    !threadFooterShowsJoin(payload.joined, conversationLounge) &&
+                    showComposerForSelectedTab
+                )
+    val composerDockSlot =
+        if (renderComposerDock) {
+            val composerRouteArgs =
+                ThreadComposerRouteArgs(
+                    baseComposerState = baseComposerState,
+                    removedAppBot = null,
+                    composerDraftViewModel = composerDraftViewModel,
+                    renderedPayload = payload,
+                    timelineSlice = timelineSlice,
+                    resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
+                    surface = composerSurface,
+                    memberSuggestionsFlow = memberSuggestionsFlow,
+                    channelSuggestionsFlow = channelSuggestionsFlow,
+                    agentStatusResolver = agentStatusResolver,
+                    onEvent = onComposerEvent,
+                    onDropFiles = onComposerDropFiles,
+                    onSendRequest = onComposerSendRequest,
+                    insertMentionRequest = insertMentionRequest,
+                    onInsertMentionConsumed = { request ->
+                        if (insertMentionRequest?.nonce == request.nonce) {
+                            insertMentionRequest = null
+                        }
+                    },
+                    onSuggestionDemandChanged = onSuggestionDemandChanged,
+                    composerSendKeyEnabled = composerSendKeyEnabled,
+                    composerSendKey = composerSendKey,
+                    onKeyboardHeightChange = { nextInset ->
+                        if (nextInset != composerKeyboardInsetDp) {
+                            composerKeyboardInsetDp = nextInset
+                            onComposerKeyboardInsetChanged(nextInset)
+                        }
+                    },
+                    adaptiveNativeEditingStateReader = LocalThreadAdaptiveNativeEditingReader.current,
+                    autofocusOnOpen = composerAutofocusOnOpen,
+                    optimisticPendingAccess = optimisticComposerActive,
+                )
+            ThreadRouteComposerDockSlot(
+                args = composerRouteArgs,
+                edgePadding = if (threadInSplitDetailPane()) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
+                // Bottom padding follows WindowInsets.ime in the layout phase of the
+                // same frame; composerKeyboardInsetDp (two frames late) only feeds the
+                // page's decision state (see RaftThreadImeLayout.kt).
+                composerModifier =
+                    Modifier.raftThreadComposerLiveKeyboardPadding(
+                        bottomSafeArea = composerBottomSafeArea,
+                        keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
+                    ),
+                keyboardLiftPx =
+                    rememberThreadComposerKeyboardLiftPx(
+                        bottomSafeArea = composerBottomSafeArea,
+                        keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
+                    ),
+                suggestionPortal = composerSuggestionPortal,
+                agentLoungeComposerName = conversationLounge?.let { agentLoungeTitle(it.displayAgentName) },
+                dmAgentPeerId = headerDisplay.composerDmAgentPeerId(),
+                onFocusChanged =
+                    // Task v2: focus in the composer puts the pulled-down head back up.
+                    data.taskConversationHead?.let { taskHead ->
+                        { hasFocus -> if (hasFocus) taskHead.closeFloat() }
+                    },
+            )
+        } else {
+            null
+        }
+    val scaffoldProvidedValues: Array<ProvidedValue<*>> =
+        providedValues +
+            arrayOf(
+                LocalThreadOutlineState provides threadOutline,
+                LocalThreadFindController provides
+                    threadFind.takeIf { payload.threadHeaderSearchAction() == ThreadHeaderSearchAction.InlineThreadSearch },
+                LocalThreadFindHighlightQuery provides threadFindState.query.takeIf { threadFindState.open },
+            )
+    return ThreadRouteScaffoldSlots(
+        scaffoldPlan = ThreadRouteMountPlan.FeatureSurfaces.toThreadRouteScaffoldPlan(),
+        providedValues = scaffoldProvidedValues,
+        foregroundBanner = foregroundBanner,
+        postScaffoldOverlays = postScaffoldOverlays,
+        composerDock = composerDockSlot,
+        rootModifier =
+            Modifier.onGloballyPositioned { coordinates ->
+                onLayoutGeneration(coordinates.size.width, coordinates.size.height)
+                val pageWidthDp = coordinates.size.width / sideCardsDensity
+                if (pageWidthDp != sideCardsPageWidthDp) sideCardsPageWidthDp = pageWidthDp
+            }.then(data.taskConversationHead?.let { Modifier.taskHeadFloatOutsidePress(it) } ?: Modifier),
             header = {
                 // task #180: computed once per header composition, outside the header's own scope.
                 // The slice keeps reply facts out of its rows: the origin's thread channel and follow
@@ -1266,40 +1337,10 @@ private fun ThreadPageContentContent(
             } else {
                 threadTabContent()
             }
-            val loungeFooterKind = agentLoungeFooterKind(conversationLounge, pageLounge)
-            val archivedFooterActive = pageLounge == null && threadFooterShowsArchived(payload)
-            val optimisticComposerActive =
-                !primaryFooterReady &&
-                    threadShowsOptimisticComposer(
-                        accessResolution = accessResolution,
-                        payloadStatus = payload.status,
-                        surfaceKind = payload.surfaceKind,
-                        joined = payload.joined,
-                        showComposer = payload.showComposer,
-                        selectedTab = selectedTab.wireValue,
-                        composerLocked = threadLimitLocked,
-                        channelArchived = archivedFooterActive,
-                        externalFrozen = externalFreezeState == ExternalFreezeState.Active,
-                        loungeFooterActive = loungeFooterKind != null,
-                        replyParentAuthority = replyParentAuthority,
-                    )
-            val renderComposerDock =
-                optimisticComposerActive ||
-                    (
-                        primaryFooterReady &&
-                            writeActionsEnabled &&
-                            !shareSelectionActive &&
-                            loungeFooterKind == null &&
-                            !archivedFooterActive &&
-                            externalFreezeState != ExternalFreezeState.Active &&
-                            !threadFooterShowsJoin(payload.joined, conversationLounge) &&
-                            showComposerForSelectedTab
-                        )
             if (renderComposerDock) {
-                // Unified composer branch for BOTH optimistic pre-resolution (accessResolution ==
-                // Loading) and resolved writable state. Keeping one single branch guarantees that
-                // Loading -> Resolved NEVER unmounts/remounts ThreadComposerRoute, NEVER drops
-                // focus/keyboard/draft, and has ZERO layout jump.
+                // ThreadComposerDock itself lives in ThreadRouteScaffold.composerDock so
+                // LoadingShell -> FeatureSurfaces never detaches the live editor; only the
+                // optional upcoming-freeze banner sits at the bottom of slots.body above it.
                 if (
                     primaryFooterReady &&
                     externalFreezeState is ExternalFreezeState.Upcoming &&
@@ -1320,75 +1361,6 @@ private fun ThreadPageContentContent(
                             )
                         },
                     )
-                }
-                ThreadComposerDock(
-                    edgePadding = if (threadInSplitDetailPane()) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
-                    // Bottom padding follows WindowInsets.ime in the layout phase of the
-                    // same frame; composerKeyboardInsetDp (two frames late) only feeds the
-                    // page's decision state (see RaftThreadImeLayout.kt).
-                    composerModifier =
-                        Modifier.raftThreadComposerLiveKeyboardPadding(
-                            bottomSafeArea = composerBottomSafeArea,
-                            keyboardInsetExcludesBottomSafeArea =
-                                composerKeyboardInsetExcludesBottomSafeArea
-                        ).then(
-                            // Task v2: focus in the composer puts the pulled-down head back up.
-                            data.taskConversationHead?.let { taskHead ->
-                                Modifier.onFocusChanged { if (it.hasFocus) taskHead.closeFloat() }
-                            } ?: Modifier
-                        ),
-                    keyboardLiftPx =
-                        rememberThreadComposerKeyboardLiftPx(
-                            bottomSafeArea = composerBottomSafeArea,
-                            keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
-                        ),
-                ) {
-                    CompositionLocalProvider(
-                        LocalThreadComposerSuggestionPortal provides composerSuggestionPortal,
-                        LocalAgentLoungeComposerName provides conversationLounge?.let { agentLoungeTitle(it.displayAgentName) },
-                    ) {
-                        val composerRouteArgs =
-                            ThreadComposerRouteArgs(
-                                baseComposerState = baseComposerState,
-                                removedAppBot = composerRemovedAppBot,
-                                composerDraftViewModel = composerDraftViewModel,
-                                renderedPayload = payload,
-                                timelineSlice = timelineSlice,
-                                resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
-                                surface = composerSurface,
-                                memberSuggestionsFlow = memberSuggestionsFlow,
-                                channelSuggestionsFlow = channelSuggestionsFlow,
-                                agentStatusResolver = agentStatusResolver,
-                                onEvent = onComposerEvent,
-                                onDropFiles = onComposerDropFiles,
-                                onSendRequest = onComposerSendRequest,
-                                insertMentionRequest = insertMentionRequest,
-                                onInsertMentionConsumed = { request ->
-                                    if (insertMentionRequest?.nonce == request.nonce) {
-                                        insertMentionRequest = null
-                                    }
-                                },
-                                onSuggestionDemandChanged = onSuggestionDemandChanged,
-                                composerSendKeyEnabled = composerSendKeyEnabled,
-                                composerSendKey = composerSendKey,
-                                onKeyboardHeightChange = { nextInset ->
-                                    if (nextInset != composerKeyboardInsetDp) {
-                                        composerKeyboardInsetDp = nextInset
-                                        onComposerKeyboardInsetChanged(nextInset)
-                                    }
-                                },
-                                adaptiveNativeEditingStateReader =
-                                    LocalThreadAdaptiveNativeEditingReader.current,
-                                autofocusOnOpen = composerAutofocusOnOpen,
-                                optimisticPendingAccess = optimisticComposerActive,
-                            )
-                        val movableComposer = LocalThreadMovableComposer.current
-                        if (movableComposer != null) {
-                            movableComposer(composerRouteArgs)
-                        } else {
-                            ThreadComposerRouteFromArgs(composerRouteArgs)
-                        }
-                    }
                 }
             } else if (!primaryFooterReady) {
                 // Footer not ready and optimistic composer is suppressed (known error, no_permission,
@@ -1627,6 +1599,17 @@ private fun ThreadPageContentContent(
             overlays = {
         ThreadComposerSuggestionPortalHost(composerSuggestionPortal)
         if (threadShareImageRendersOffscreen && activeModal == "sharePreview" && selectedShareMessages.isNotEmpty()) {
+            val timelineRenderConfig = rememberThreadTimelineRenderConfig(payload)
+            val shareMarkdownTagResolution =
+                threadMarkdownTagResolution(
+                    payload = payload,
+                    timelineSlice = timelineSlice,
+                    linkedTasksProjection = linkedTasksProjection,
+                    highlightedMentions = highlightedMentions,
+                    markdownReferencePendingActionId = markdownReferencePendingActionId,
+                    onThreadEvent = onThreadEvent,
+                    loungeRefsEnabled = data.lounge?.loungesEnabled == true,
+                )
             val shareImageAuthorSuppression =
                 remember(selectedShareMessages, timelineSlice.messages, timelineSlice.compactConsecutiveMessages, timelineRenderConfig) {
                     threadShareImageSuppressesAuthor(
@@ -1704,9 +1687,9 @@ private fun ThreadPageContentContent(
                         memberAvatarResolver = memberAvatarResolver,
                         memberModelLabelResolver = memberModelLabelResolver,
                         inlineReplyParticipantsById = inlineReplyParticipantsById,
-                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                        isMarkdownTagValid = isMarkdownTagValid,
-                        markdownTagContextSignature = markdownTagContextSignature,
+                        resolveMarkdownTagLabel = shareMarkdownTagResolution.resolveMarkdownTagLabel,
+                        isMarkdownTagValid = shareMarkdownTagResolution.isMarkdownTagValid,
+                        markdownTagContextSignature = shareMarkdownTagResolution.markdownTagContextSignature,
                         alignOwnMessageRight = timelineSlice.alignOwnMessagesRight && message.isOwn,
                         messageAlignmentModeEnabled = timelineSlice.alignOwnMessagesRight,
                         currentServerSlug = currentServerSlug,
@@ -1765,7 +1748,30 @@ private fun ThreadPageContentContent(
         }
             }
         )
-    )
+}
+
+@Composable
+private fun rememberThreadTimelineRenderConfig(payload: RaftThreadScreenPayload): ThreadTimelineRenderConfig {
+    val effectiveTimeFormat = currentRaftDateTimeContext(null)?.timeFormat ?: payload.timeFormat
+    return remember(
+        payload.backgroundRefreshing,
+        payload.errorCode,
+        payload.errorServerMessage,
+        payload.errorTraceId,
+        payload.originPreview,
+        payload.originErrorCode,
+        payload.localOffsetMinutes,
+        payload.todayEpochDay,
+        payload.nowEpochMillis,
+        effectiveTimeFormat,
+        payload.members
+    ) {
+        val config = payload.toThreadTimelineRenderConfig()
+        if (config.timeContext.timeFormat == effectiveTimeFormat) {
+            config
+        } else {
+            config.copy(timeContext = config.timeContext.withTimeFormat(effectiveTimeFormat))
+        }
     }
 }
 
