@@ -51,7 +51,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.roundToIntRect
-import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import build.raft.designsystem.text.RaftText
@@ -414,7 +413,7 @@ fun RaftPreviewCardPopup(
     // A page pushed over this one closes the card first (pinned or not).
     RaftDismissOnPageCover { state.dismiss() }
     val pinned = state.isPinned
-    Popup(
+    RaftSelectionSafePopup(
         popupPositionProvider = provider,
         onDismissRequest = {
             // A press on the trigger of a pinned card is not "outside": the trigger's click keeps

@@ -75,6 +75,8 @@ internal fun RaftAppShellTopBar(
         RaftTopBar(
             modifier = modifier,
             topInset = topSafeArea,
+            // The workspace avatar on the rail's icon column under it.
+            leadingStartPadding = RaftTopBarDefaults.leadingStartPaddingOverRail(raftAppRailWindowMetrics().width),
             leading = {
                 if (currentServer != null) {
                     var stripShown by remember { mutableStateOf(true) }
