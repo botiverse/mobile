@@ -145,9 +145,11 @@ micromark-extension-math.
 - `$$…$$` is math wherever it appears. On its own lines it is a block
   (`BLOCK_MATH`), otherwise inline math (`INLINE_MATH`).
 - `$…$` is inline math only when the opening `$` is not followed by
-  whitespace and the closing `$` is not preceded by whitespace and not
-  followed by an ASCII digit. So `$x^2$` is math, while `$5 到 $10`, `$5,$10`
-  and `$5-$10` stay text.
+  whitespace, the closing `$` is not preceded by whitespace and not followed by
+  an ASCII digit, and its content does not contain CJK characters without a
+  LaTeX command (a backslash followed by an ASCII letter; botiverse/slock
+  #16343). So `$x^2$` and `$\text{速度}=v$` are math, while `$5 到 $10`,
+  `$5,$10`, `$5-$10`, and `「US $10」，只写「$」` stay text.
 - Single-dollar math stays on one line. A dollar run of another length inside
   a formula is part of it, and a closing candidate that fails the rules does
   not end the search.
