@@ -1,5 +1,9 @@
 package build.raft.app.data
 
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+
 /**
  * Port of the web's migration error copy (botiverse/slock `agentMigration/errors.ts` and
  * `presentation.ts`, `migrationFailurePresentation`): a migration failure or refusal becomes a
@@ -53,6 +57,10 @@ internal enum class MigrationCopy {
     ErrorStatusFailed,
     ErrorTargetRuntimeDetectionPending,
     ErrorTargetRuntimeDetectionIncomplete,
+    ErrorTargetRuntimeNeedsLogin,
+    ErrorTargetRuntimeCredentialInvalid,
+    ErrorTargetRuntimeUsageLimit,
+    ErrorTargetRuntimeNotReady,
     ErrorTransportLost,
     ErrorTransportLostEvent,
     ErrorTransportLostAt,
@@ -104,6 +112,64 @@ internal data class MigrationErrorPresentation(
 
 internal enum class MigrationErrorContext { Start, Status, Failed, Aborted }
 
+/** #proj-raft-computer:#135 (slock #16567): refusing preflight kinds in `TARGET_RUNTIME_NOT_READY.details.preflight.kind`. */
+internal enum class MigrationTargetRuntimeNotReadyKind(val wire: String) {
+    NeedsLogin("needs_login"),
+    CredentialInvalid("credential_invalid"),
+    UsageLimit("usage_limit"),
+    NotReady("not_ready"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): MigrationTargetRuntimeNotReadyKind? = entries.firstOrNull { it.wire == value }
+    }
+}
+
+/**
+ * #proj-raft-computer:#135 (slock #16567): `TARGET_RUNTIME_NOT_READY`'s parsed `details`:
+ * what the target's preflight answered, for which runtime and computer.
+ */
+internal data class MigrationTargetRuntimeNotReady(
+    val runtime: String,
+    val computerName: String,
+    val kind: MigrationTargetRuntimeNotReadyKind,
+)
+
+private val SAFE_RUNTIME_ID = Regex("^[a-z0-9][a-z0-9._-]{0,63}$", RegexOption.IGNORE_CASE)
+
+private const val FIELD_PREFLIGHT_RUNTIME = "migration_preflight_runtime"
+private const val FIELD_PREFLIGHT_COMPUTER = "migration_preflight_computer"
+private const val FIELD_PREFLIGHT_KIND = "migration_preflight_kind"
+
+/** Web `parseMigrationTargetRuntimeNotReady` (slock #16567). */
+internal fun parseMigrationTargetRuntimeNotReady(details: JsonElement?): MigrationTargetRuntimeNotReady? {
+    val obj = details as? JsonObject ?: return null
+    val preflight = obj["preflight"] as? JsonObject ?: return null
+    val kindRaw = (preflight["kind"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    val kind = MigrationTargetRuntimeNotReadyKind.fromWire(kindRaw) ?: return null
+    val runtime = (obj["runtime"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+    if (!SAFE_RUNTIME_ID.matches(runtime)) return null
+    val computerName = (obj["computerName"] as? JsonPrimitive)?.takeIf { it.isString }?.content.orEmpty()
+    return MigrationTargetRuntimeNotReady(runtime = runtime, computerName = computerName, kind = kind)
+}
+
+internal fun migrationTargetRuntimeNotReadyFields(details: MigrationTargetRuntimeNotReady): Map<String, String> =
+    mapOf(
+        FIELD_PREFLIGHT_RUNTIME to details.runtime,
+        FIELD_PREFLIGHT_COMPUTER to details.computerName,
+        FIELD_PREFLIGHT_KIND to details.kind.wire,
+    )
+
+internal fun parseMigrationTargetRuntimeNotReadyFromFields(fields: Map<String, String>): MigrationTargetRuntimeNotReady? {
+    val kind = MigrationTargetRuntimeNotReadyKind.fromWire(fields[FIELD_PREFLIGHT_KIND]) ?: return null
+    val runtime = fields[FIELD_PREFLIGHT_RUNTIME]?.takeIf { SAFE_RUNTIME_ID.matches(it) } ?: return null
+    return MigrationTargetRuntimeNotReady(
+        runtime = runtime,
+        computerName = fields[FIELD_PREFLIGHT_COMPUTER].orEmpty(),
+        kind = kind,
+    )
+}
+
 internal class MigrationErrorInput(
     val code: String? = null,
     val rawMessage: String? = null,
@@ -115,7 +181,9 @@ internal class MigrationErrorInput(
     val targetComputerOnline: Boolean? = null,
     val agentWorkspacePath: String? = null,
     val transportLostAt: String? = null,
-    val formatTimestamp: ((String) -> String?)? = null
+    val formatTimestamp: ((String) -> String?)? = null,
+    val targetRuntimeNotReady: MigrationTargetRuntimeNotReady? = null,
+    val runtimeDisplayName: (String) -> String = { it }
 )
 
 private const val GIB = 1024L * 1024L * 1024L
@@ -349,6 +417,7 @@ private val MIGRATION_ERROR_COPY: Map<String, MigrationCopy> =
 /** Codes whose copy is assembled from wire data or the input (web `MIGRATION_ERROR_BUILDERS` / `INPUT_BUILDERS`). */
 private fun builtMessage(code: String, input: MigrationErrorInput): List<MigrationText>? =
     when (code) {
+        "TARGET_RUNTIME_NOT_READY" -> listOf(targetRuntimeNotReadyMessage(input))
         "MIGRATION_OBJECT_STORE_BUNDLE_TOO_LARGE" -> listOf(bundleTooLarge(input.rawMessage))
         "MIGRATION_OBJECT_STORE_MANIFEST_TOO_LARGE" -> listOf(manifestTooLarge(input.rawMessage))
         "MIGRATION_OBJECT_STORE_INSUFFICIENT_DISK" -> listOf(insufficientDisk(input.rawMessage))
@@ -360,6 +429,25 @@ private fun builtMessage(code: String, input: MigrationErrorInput): List<Migrati
             listOf(workspaceConflict(input, MigrationCopy.ErrorWorkspaceCompleteOldCopyAt, MigrationCopy.ErrorWorkspaceCompleteOldCopy))
         else -> null
     }
+
+private fun targetRuntimeNotReadyMessage(input: MigrationErrorInput): MigrationText {
+    val notReady = input.targetRuntimeNotReady
+        ?: return MigrationText(MigrationCopy.ErrorTargetRuntimeNotReady, listOf("", input.targetComputerName.orEmpty()))
+    val copy =
+        when (notReady.kind) {
+            MigrationTargetRuntimeNotReadyKind.NeedsLogin -> MigrationCopy.ErrorTargetRuntimeNeedsLogin
+            MigrationTargetRuntimeNotReadyKind.CredentialInvalid -> MigrationCopy.ErrorTargetRuntimeCredentialInvalid
+            MigrationTargetRuntimeNotReadyKind.UsageLimit -> MigrationCopy.ErrorTargetRuntimeUsageLimit
+            MigrationTargetRuntimeNotReadyKind.NotReady -> MigrationCopy.ErrorTargetRuntimeNotReady
+        }
+    return MigrationText(
+        copy = copy,
+        args = listOf(
+            input.runtimeDisplayName(notReady.runtime),
+            notReady.computerName.ifEmpty { input.targetComputerName.orEmpty() },
+        )
+    )
+}
 
 private fun workspaceConflict(input: MigrationErrorInput, dated: MigrationCopy, plain: MigrationCopy): MigrationText {
     val path = input.agentWorkspacePath?.trim()?.takeIf { it.isNotEmpty() }

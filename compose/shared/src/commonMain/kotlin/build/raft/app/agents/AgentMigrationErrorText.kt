@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.AgentMigrationActionError
+import build.raft.app.data.AgentMigrationCannotRespondReason
 import build.raft.app.data.MigrationCopy
 import build.raft.app.data.MigrationErrorContext
 import build.raft.app.data.MigrationErrorInput
@@ -76,6 +77,10 @@ internal fun migrationCopyResource(copy: MigrationCopy): StringResource =
         MigrationCopy.ErrorStatusFailed -> Res.string.agent_migration_error_status_failed
         MigrationCopy.ErrorTargetRuntimeDetectionPending -> Res.string.agent_migration_error_target_runtime_detection_pending
         MigrationCopy.ErrorTargetRuntimeDetectionIncomplete -> Res.string.agent_migration_error_target_runtime_detection_incomplete
+        MigrationCopy.ErrorTargetRuntimeNeedsLogin -> Res.string.agent_migration_error_target_runtime_needs_login
+        MigrationCopy.ErrorTargetRuntimeCredentialInvalid -> Res.string.agent_migration_error_target_runtime_credential_invalid
+        MigrationCopy.ErrorTargetRuntimeUsageLimit -> Res.string.agent_migration_error_target_runtime_usage_limit
+        MigrationCopy.ErrorTargetRuntimeNotReady -> Res.string.agent_migration_error_target_runtime_not_ready
         MigrationCopy.ErrorTransportLost -> Res.string.agent_migration_error_transport_lost
         MigrationCopy.ErrorTransportLostEvent -> Res.string.agent_migration_error_transport_lost_event
         MigrationCopy.ErrorTransportLostAt -> Res.string.agent_migration_error_transport_lost_at
@@ -164,11 +169,21 @@ internal fun AgentMigrationActionErrorBanner(
     error: AgentMigrationActionError,
     context: MigrationErrorContext,
     modifier: Modifier = Modifier,
-    title: String? = null
+    title: String? = null,
+    targetComputerName: String? = null
 ) {
     val presentation =
-        remember(error, context) {
-            migrationErrorPresentation(MigrationErrorInput(code = error.code, rawMessage = error.serverMessage, context = context))
+        remember(error, context, targetComputerName) {
+            migrationErrorPresentation(
+                MigrationErrorInput(
+                    code = error.code,
+                    rawMessage = error.serverMessage,
+                    context = context,
+                    targetComputerName = targetComputerName,
+                    targetRuntimeNotReady = error.targetRuntimeNotReady,
+                    runtimeDisplayName = ::raftAgentRuntimeDisplayName
+                )
+            )
         }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         RaftBanner(
@@ -179,4 +194,34 @@ internal fun AgentMigrationActionErrorBanner(
         )
         presentation.technicalCode?.let { AgentMigrationTechnicalDetails(it) }
     }
+}
+
+/** Web `MIGRATION_CANNOT_RESPOND_IDS` (slock #16567): why a completed move's agent can't answer on [target]. */
+@Composable
+internal fun agentMigrationCannotRespondMessage(reason: AgentMigrationCannotRespondReason, target: String): String =
+    stringResource(
+        when (reason) {
+            AgentMigrationCannotRespondReason.NeedsLogin -> Res.string.agent_migration_cannot_respond_needs_login
+            AgentMigrationCannotRespondReason.CredentialInvalid -> Res.string.agent_migration_cannot_respond_credential_invalid
+            AgentMigrationCannotRespondReason.UsageLimit -> Res.string.agent_migration_cannot_respond_usage_limit
+            AgentMigrationCannotRespondReason.FirstTurnFailed -> Res.string.agent_migration_cannot_respond_first_turn_failed
+            AgentMigrationCannotRespondReason.NotReady -> Res.string.agent_migration_cannot_respond_not_ready
+        },
+        target
+    )
+
+internal const val AgentMigrationPreflightRuntimeToken = "__RAFT_PREFLIGHT_RUNTIME__"
+internal const val AgentMigrationPreflightComputerToken = "__RAFT_PREFLIGHT_COMPUTER__"
+
+/** Formats `agent.migration.preflightUnverified` from a localized template, or null when target/runtime is missing. */
+internal fun formatAgentMigrationPreflightUnverified(
+    template: String,
+    runtimeId: String?,
+    targetComputerName: String?
+): String? {
+    val target = targetComputerName?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val runtime = runtimeId?.trim()?.takeIf { it.isNotEmpty() }?.let(::raftAgentRuntimeDisplayName) ?: return null
+    return template
+        .replace(AgentMigrationPreflightRuntimeToken, runtime)
+        .replace(AgentMigrationPreflightComputerToken, target)
 }

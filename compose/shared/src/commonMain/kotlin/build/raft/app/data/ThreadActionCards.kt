@@ -70,6 +70,8 @@ internal data class ThreadActionCard(
     val executedByUserId: String? = null,
     val resultKind: String? = null,
     val resultId: String? = null,
+    /** `agent-migration` result: the target computer id the agent started moving to. */
+    val resultTargetMachineId: String? = null,
     /** `product-feedback` result (S0.3): the Hands ticket id, and the Hands app it was filed into (wire `source`). */
     val resultTicketId: String? = null,
     val resultSource: String? = null,
@@ -556,6 +558,8 @@ internal data class WireActionCardResult(
     val clientName: String? = null,
     val ownerAgentId: String? = null,
     val ownerAgentName: String? = null,
+    val agentId: String? = null,
+    val targetMachineId: String? = null,
     val addedHumanIds: List<String> = emptyList(),
     val addedAgentIds: List<String> = emptyList(),
     /** `product-feedback`: the Hands ticket (null when Hands named none). */
@@ -595,7 +599,8 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         resultKind = meta.result?.kind?.takeIf { it.isNotBlank() },
         resultTicketId = meta.result?.ticketId?.takeIf { it.isNotBlank() },
         resultSource = meta.result?.source?.takeIf { it.isNotBlank() },
-        resultId = firstNonBlank(meta.result?.id, meta.result?.channelId, meta.result?.clientId, meta.result?.ownerAgentId),
+        resultId = firstNonBlank(meta.result?.id, meta.result?.channelId, meta.result?.clientId, meta.result?.ownerAgentId, meta.result?.agentId),
+        resultTargetMachineId = meta.result?.targetMachineId?.takeIf { it.isNotBlank() },
         resultName = firstNonBlank(meta.result?.name, meta.result?.clientName, meta.result?.ownerAgentName),
         resultChannelName = meta.result?.channelName?.takeIf { it.isNotBlank() },
         resultAddedHumanIds = meta.result?.addedHumanIds.orEmpty(),
@@ -711,6 +716,7 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("resultTicketId", resultTicketId)
         putString("resultSource", resultSource)
         putString("resultId", resultId)
+        putString("resultTargetMachineId", resultTargetMachineId)
         putString("resultName", resultName)
         putString("resultChannelName", resultChannelName)
         putList("resultAddedHumanIds", resultAddedHumanIds)
@@ -805,6 +811,7 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         resultTicketId = metadata["${ActionCardMetadataPrefix}resultTicketId"]?.takeIf { it.isNotBlank() },
         resultSource = metadata["${ActionCardMetadataPrefix}resultSource"]?.takeIf { it.isNotBlank() },
         resultId = metadata["${ActionCardMetadataPrefix}resultId"]?.takeIf { it.isNotBlank() },
+        resultTargetMachineId = metadata["${ActionCardMetadataPrefix}resultTargetMachineId"]?.takeIf { it.isNotBlank() },
         resultName = metadata["${ActionCardMetadataPrefix}resultName"]?.takeIf { it.isNotBlank() },
         resultChannelName = metadata["${ActionCardMetadataPrefix}resultChannelName"]?.takeIf { it.isNotBlank() },
         resultAddedHumanIds = metadata.decodeList("resultAddedHumanIds"),
@@ -895,6 +902,24 @@ internal fun ThreadActionCard.withExecutedChannelMembers(
         resultAddedAgentIds = addedAgentIds
     )
 
+internal fun ThreadActionCard.withExecutedAgentMigration(
+    agentId: String,
+    targetMachineId: String,
+    executedByUserName: String? = null
+): ThreadActionCard =
+    copy(
+        state = "executed",
+        executedByUserName = executedByUserName ?: this.executedByUserName,
+        resultKind = "agent-migration",
+        resultId = agentId,
+        resultTargetMachineId = targetMachineId
+    )
+
+internal const val AgentMigrateActionCardType = "agent:migrate"
+
+internal fun ThreadActionCard.isAgentMigrateAction(): Boolean =
+    type.equals(AgentMigrateActionCardType, ignoreCase = true)
+
 /**
  * `feedback:submit`: never executed inline (the server refuses a generic execute); it is sent from
  * the feedback form, which in the App is the native feedback form on the card's draft (see
@@ -907,6 +932,7 @@ internal const val FeedbackSubmitActionCardType = "feedback:submit"
 
 internal fun ThreadActionCard.isSupportedCommitAction(): Boolean =
     type.equals("agent:create", ignoreCase = true) ||
+        isAgentMigrateAction() ||
         type.equals("channel:create", ignoreCase = true) ||
         type.equals("channel:add_member", ignoreCase = true) ||
         type.equals("integration:approve_agent_login", ignoreCase = true) ||
@@ -959,6 +985,7 @@ internal val ThreadActionCard.installSetBound: Boolean
 internal fun ThreadActionCard.isGenericInlineCommitAction(): Boolean =
     type.isNotBlank() &&
         !type.equals("agent:create", ignoreCase = true) &&
+        !isAgentMigrateAction() &&
         !type.equals("channel:create", ignoreCase = true) &&
         !type.equals("channel:add_member", ignoreCase = true) &&
         !type.equals("integration:approve_agent_login", ignoreCase = true) &&

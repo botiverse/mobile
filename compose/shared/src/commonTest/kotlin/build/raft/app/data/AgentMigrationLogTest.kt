@@ -54,6 +54,27 @@ class AgentMigrationLogTest {
     }
 
     @Test
+    fun parsesCannotRespondOnMigrationLogEntries() {
+        val log =
+            parseAgentMigrationLog(
+                """{"migrations":[
+                {"migrationRef":"r1","agentId":"a1","sourceMachineId":"m1","targetKind":"computer","targetMachineId":"m2",
+                 "outcome":"completed","startedAt":"2026-11-20T10:00:00.000Z","endedAt":"2026-11-20T10:01:00.000Z","cannotRespond":"needs_login"},
+                {"migrationRef":"r2","agentId":"a1","sourceMachineId":"m1","targetKind":"computer","targetMachineId":"m2",
+                 "outcome":"completed","startedAt":"2026-11-20T11:00:00.000Z","endedAt":"2026-11-20T11:01:00.000Z","cannotRespond":"not_ready"},
+                {"migrationRef":"r3","agentId":"a1","sourceMachineId":"m1","targetKind":"computer","targetMachineId":"m2",
+                 "outcome":"completed","startedAt":"2026-11-20T12:00:00.000Z","endedAt":"2026-11-20T12:01:00.000Z","cannotRespond":"future_reason"},
+                {"migrationRef":"r4","agentId":"a1","sourceMachineId":"m1","targetKind":"computer","targetMachineId":"m2",
+                 "outcome":"completed","startedAt":"2026-11-20T13:00:00.000Z","endedAt":"2026-11-20T13:01:00.000Z"}
+                ],"truncated":false}"""
+            )!!
+        assertEquals(AgentMigrationCannotRespondReason.NeedsLogin, log.entries[0].cannotRespond)
+        assertEquals(AgentMigrationCannotRespondReason.NotReady, log.entries[1].cannotRespond)
+        assertNull(log.entries[2].cannotRespond)
+        assertNull(log.entries[3].cannotRespond)
+    }
+
+    @Test
     fun codesReadLikeAirportCodesAndNeverRepeat() {
         val codes =
             agentMigrationComputerCodes(

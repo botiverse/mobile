@@ -109,8 +109,32 @@ internal data class AgentMigrationNotice(
     /** For a retry: the failed attempt's size next to this one's (server `agentMigrationRetryComparison`). */
     val retryComparison: AgentMigrationRetryComparison? = null,
     /** When someone closed this failed move's card (`POST agents/:id/migration/dismiss`, #16161); null while it shows. */
-    val dismissedAt: String? = null
+    val dismissedAt: String? = null,
+    /**
+     * #proj-raft-computer:#135 (slock #16567): a completed Computer move whose agent could not
+     * answer on the target, and why (`needs_login`, `credential_invalid`, `usage_limit`,
+     * `first_turn_failed`, `not_ready`); null or absent otherwise.
+     */
+    val cannotRespond: String? = null
 )
+
+/** Shared `AGENT_MIGRATION_CANNOT_RESPOND_REASONS` (slock #16567). */
+internal enum class AgentMigrationCannotRespondReason(val wire: String) {
+    NeedsLogin("needs_login"),
+    CredentialInvalid("credential_invalid"),
+    UsageLimit("usage_limit"),
+    FirstTurnFailed("first_turn_failed"),
+    NotReady("not_ready"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): AgentMigrationCannotRespondReason? = entries.firstOrNull { it.wire == value }
+    }
+}
+
+/** Parsed [AgentMigrationNotice.cannotRespond]; null when absent or unrecognized. */
+internal val AgentMigrationNotice.cannotRespondReason: AgentMigrationCannotRespondReason?
+    get() = AgentMigrationCannotRespondReason.fromWire(cannotRespond)
 
 /** Shared `AgentMigrationSourceDrain`: `waitingFor` is `turn`, `background_tasks`, `queued_input`, `other` or null. */
 @Serializable
@@ -172,11 +196,17 @@ internal data class AgentMigrationInitiator(
 private data class AgentMigrationStatusResponseDto(val migration: AgentMigrationNotice? = null)
 
 @Serializable
+private data class AgentMigrationStartPreflightDto(val kind: String? = null)
+
+@Serializable
 private data class AgentMigrationStartResponseDto(
     /** Null when the agent was placed without its source (`outcome: "placed_without_source"`). */
     val migrationRef: String? = null,
     val state: String,
-    val outcome: String? = null
+    val outcome: String? = null,
+    val targetMachineId: String? = null,
+    /** #proj-raft-computer:#135 (slock #16567): target preflight answer, when asked (a move with a source). */
+    val preflight: AgentMigrationStartPreflightDto? = null
 )
 
 @Serializable
@@ -188,6 +218,8 @@ private data class AgentMigrationHostedTargetDto(
 @Serializable
 private data class AgentMigrationStartRequestDto(
     val targetComputer: String? = null,
+    val preflight: String? = null,
+    val preflightOverride: Boolean? = null,
     val target: AgentMigrationHostedTargetDto? = null
 )
 
@@ -217,22 +249,51 @@ internal data class AgentMigrationStatusSnapshot(val migration: AgentMigrationNo
  * agent with nothing to bring over (its Computer's access was revoked) already placed on the
  * target ([placedWithoutSource]; web `outcome === "placed_without_source"`, botiverse/slock #13575).
  */
-internal data class AgentMigrationStartResult(val migrationRef: String?, val placedWithoutSource: Boolean = false)
+internal data class AgentMigrationStartResult(
+    val migrationRef: String?,
+    val placedWithoutSource: Boolean = false,
+    val targetMachineId: String? = null,
+    val preflightKind: String? = null
+)
 
 internal fun parseSharedAgentMigrationStart(bodyText: String): AgentMigrationStartResult? {
     val dto = runCatching { migrationJson.decodeFromString(AgentMigrationStartResponseDto.serializer(), bodyText) }.getOrNull()
         ?: return null
-    if (dto.outcome == "placed_without_source") return AgentMigrationStartResult(migrationRef = null, placedWithoutSource = true)
+    val targetMachineId = dto.targetMachineId?.takeIf { it.isNotBlank() }
+    val preflightKind = dto.preflight?.kind?.takeIf { it.isNotBlank() }
+    if (dto.outcome == "placed_without_source") {
+        return AgentMigrationStartResult(
+            migrationRef = null,
+            placedWithoutSource = true,
+            targetMachineId = targetMachineId,
+            preflightKind = preflightKind
+        )
+    }
     val ref = dto.migrationRef?.takeIf { it.isNotBlank() } ?: return null
-    return AgentMigrationStartResult(migrationRef = ref)
+    return AgentMigrationStartResult(
+        migrationRef = ref,
+        targetMachineId = targetMachineId,
+        preflightKind = preflightKind
+    )
 }
 
-/** Web AgentMigrationDialog: `{ targetComputer }` or `{ target: { kind: "hosted" } }` (server default model). */
-internal fun agentMigrationStartRequestBody(target: AgentMigrationTarget): String =
+/**
+ * Web AgentMigrationDialog (slock #16567): `{ targetComputer, preflight: "v1"[, preflightOverride: true] }`
+ * or `{ target: { kind: "hosted" } }` (server default model).
+ */
+internal fun agentMigrationStartRequestBody(
+    target: AgentMigrationTarget,
+    preflightOverride: Boolean = false
+): String =
     migrationRequestJson.encodeToString(
         AgentMigrationStartRequestDto.serializer(),
         when (target) {
-            is AgentMigrationTarget.Computer -> AgentMigrationStartRequestDto(targetComputer = target.machineId)
+            is AgentMigrationTarget.Computer ->
+                AgentMigrationStartRequestDto(
+                    targetComputer = target.machineId,
+                    preflight = "v1",
+                    preflightOverride = if (preflightOverride) true else null
+                )
             AgentMigrationTarget.Cloud -> AgentMigrationStartRequestDto(target = AgentMigrationHostedTargetDto(kind = "hosted"))
         }
     )
@@ -350,5 +411,6 @@ internal object AgentMigrationErrorCodes {
     const val ProPlanRequired = "MIGRATION_PRO_PLAN_REQUIRED"
     const val RevisionStale = "MIGRATION_REVISION_STALE"
     const val ConcurrentUpdate = "MIGRATION_CONCURRENT_UPDATE"
+    const val TargetRuntimeNotReady = "TARGET_RUNTIME_NOT_READY"
     const val UiDisabled = "agent_migration_ui_disabled"
 }

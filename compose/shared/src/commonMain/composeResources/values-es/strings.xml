@@ -1094,6 +1094,7 @@
     <string name="thread_action_card_blocked_target_server">Solo los miembros de %1$s pueden usar esta tarjeta.</string>
     <string name="thread_action_card_runs_on_server">Se ejecuta en %1$s</string>
     <string name="thread_action_card_blocked_source_workspace">Esta es una copia del historial. Solo el espacio de trabajo de origen puede ejecutar esta acción.</string>
+    <string name="thread_action_card_blocked_need_migrate_agents">Solo quien creó a %1$s o alguien con permiso para migrar agentes puede hacer esto.</string>
     <string name="thread_action_card_field_description">Descripción</string>
     <string name="thread_action_card_field_humans">Personas</string>
     <string name="thread_action_card_field_agents">Agentes</string>
@@ -4380,6 +4381,19 @@
     <string name="agent_migration_error_status_failed">No se pudo cargar el estado de la migración. Actualiza la página e inténtalo de nuevo.</string>
     <string name="agent_migration_error_target_runtime_detection_pending">La computadora de destino todavía está detectando sus runtimes. Inténtalo de nuevo en un momento.</string>
     <string name="agent_migration_error_target_runtime_detection_incomplete">La última detección de runtimes de la computadora de destino no terminó para %1$s. Vuelve a escanear sus runtimes en la página de la computadora e inténtalo de nuevo.</string>
+    <string name="agent_migration_error_target_runtime_needs_login">%1$s no tiene sesión iniciada en %2$s, así que el agente no podría responder allí. Inicia sesión en esa computadora primero, elige otra computadora o migra de todos modos.</string>
+    <string name="agent_migration_error_target_runtime_credential_invalid">Se rechazó el inicio de sesión de %1$s en %2$s, así que el agente no podría responder allí. Vuelve a iniciar sesión en esa computadora, elige otra computadora o migra de todos modos.</string>
+    <string name="agent_migration_error_target_runtime_usage_limit">La cuenta de %1$s en %2$s alcanzó su límite de uso, así que el agente no podría responder allí hasta que se restablezca. Elige otra computadora o migra de todos modos.</string>
+    <string name="agent_migration_error_target_runtime_not_ready">%1$s no puede ejecutarse en %2$s ahora mismo, así que el agente no podría responder allí. Pide al propietario de la computadora que lo revise, elige otra computadora o migra de todos modos.</string>
+    <string name="agent_migration_move_anyway">Migrar de todos modos</string>
+    <string name="agent_migration_preflight_unverified">No se pudo comprobar si %1$s tiene sesión iniciada en %2$s. Si el agente no responde después de migrar, inicia sesión allí.</string>
+    <string name="agent_migration_cannot_respond_title">Migrado, no puede responder</string>
+    <string name="agent_migration_cannot_respond_needs_login">Se migró a %1$s, pero el agente no puede responder allí: su runtime no tiene sesión iniciada en esa computadora.</string>
+    <string name="agent_migration_cannot_respond_credential_invalid">Se migró a %1$s, pero el agente no puede responder allí: se rechazó el inicio de sesión de su runtime en esa computadora.</string>
+    <string name="agent_migration_cannot_respond_usage_limit">Se migró a %1$s, pero el agente no puede responder allí: la cuenta de su runtime alcanzó su límite de uso.</string>
+    <string name="agent_migration_cannot_respond_first_turn_failed">Se migró a %1$s, pero su primer turno allí falló. El estado del agente muestra el error.</string>
+    <string name="agent_migration_cannot_respond_not_ready">Se migró a %1$s, pero el agente no puede responder allí ahora mismo. Pide al propietario de esa computadora que lo revise.</string>
+    <string name="agent_migration_log_outcome_cannot_respond">Migrado, no puede responder</string>
     <string name="agent_migration_error_transport_lost">La conexión entre las dos computadoras se cortó durante la transferencia. Asegúrate de que ambas estén en línea e inténtalo de nuevo.</string>
     <string name="agent_migration_error_transport_lost_event">La conexión entre las dos computadoras se cortó durante la transferencia.</string>
     <string name="agent_migration_error_transport_lost_at">La conexión entre las dos computadoras se cortó el %1$s, durante la transferencia.</string>

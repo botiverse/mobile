@@ -59,6 +59,8 @@ internal data class AgentMigrationLogEntry(
     /** When it completed, failed or was canceled; null while it is in progress. */
     val endedAt: String?,
     val failureKind: AgentMigrationLogFailureKind?,
+    /** #proj-raft-computer:#135 (slock #16567): completed move whose agent could not answer on target. */
+    val cannotRespond: AgentMigrationCannotRespondReason? = null,
 ) {
     /** The place it moved to: a computer's id, or [CLOUD_NODE] (web `targetNode`). */
     val targetNode: String
@@ -105,6 +107,7 @@ private data class AgentMigrationLogEntryDto(
     val startedAt: String,
     val endedAt: String? = null,
     val failureKind: String? = null,
+    val cannotRespond: String? = null,
 )
 
 @Serializable
@@ -136,6 +139,7 @@ internal fun parseAgentMigrationLog(bodyText: String?): AgentMigrationLog? {
                     startedAt = dto.startedAt,
                     endedAt = dto.endedAt,
                     failureKind = dto.failureKind?.let(AgentMigrationLogFailureKind::fromWire),
+                    cannotRespond = AgentMigrationCannotRespondReason.fromWire(dto.cannotRespond),
                 )
             }
         }

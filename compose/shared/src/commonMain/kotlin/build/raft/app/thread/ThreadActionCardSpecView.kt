@@ -45,6 +45,7 @@ import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.expiredAsOf
 import build.raft.app.data.expiresAtEpochMillis
+import build.raft.app.data.isAgentMigrateAction
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
 import build.raft.designsystem.components.RaftBanner
@@ -79,6 +80,8 @@ internal data class ThreadActionCardSpecHost(
     val openFeedbackTicket: (ticketId: String?) -> Unit = {},
     /** iOS view-only Billing: "View your plan" opens the view-only Plan & Billing page. */
     val openPlan: () -> Unit = {},
+    /** Permission evaluation for `agent:migrate` cards (web `actionCardCommon.tsx` `canMigrateAgent`). */
+    val evaluateMigrateAgentAccess: (ThreadActionCard) -> AgentMigrateCardAccess? = { null },
     /** The host's diagnostics log (the bridge log in the app). */
     val log: (String) -> Unit = {},
 )
@@ -264,12 +267,23 @@ internal fun ThreadActionCardSpecView(
     val displayLocale = rememberActionCardDisplayLocale()
     val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
     val effectiveCard = card.expiredAsOf(nowMillis)
+    val migrateAgentAccess =
+        if (!effectiveCard.isExecuted && !effectiveCard.hasEnded && effectiveCard.isAgentMigrateAction()) {
+            host.evaluateMigrateAgentAccess(effectiveCard)
+        } else {
+            null
+        }
     val blockedReason =
         when {
             effectiveCard.isExecuted || effectiveCard.hasEnded -> null
             effectiveCard.sourceServerId != null && viewerServerId != null && effectiveCard.sourceServerId != viewerServerId ->
                 effectiveCard.targetServerName?.let { stringResource(Res.string.thread_action_card_blocked_target_server, it) }
                     ?: stringResource(Res.string.thread_action_card_blocked_source_workspace)
+            migrateAgentAccess != null && !migrateAgentAccess.canMigrate ->
+                stringResource(
+                    Res.string.thread_action_card_blocked_need_migrate_agents,
+                    migrateAgentAccess.agentName ?: stringResource(Res.string.thread_agent_typing_agent_fallback)
+                )
             else -> null
         }
     val endedLine = effectiveCard.actionCardEndedLine()

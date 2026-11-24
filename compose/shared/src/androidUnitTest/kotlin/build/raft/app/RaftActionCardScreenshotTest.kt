@@ -213,9 +213,10 @@ private fun QuestionCards() {
 }
 
 /**
- * agent:migrate (botiverse/slock v1.21.64): another agent asked (Requested by), Current computer
- * before Suggested computer; Move agent as this App shows it ("Open in web", strip with the App's
- * capabilities), the same card in zh-cn, and the vector's open_migrate_agent with its intent kept.
+ * agent:migrate (botiverse/slock v1.21.64, #proj-mobile:#356): another agent asked (Requested by),
+ * Current computer before Suggested computer; Move agent as this App shows it natively (strip with
+ * the App's capabilities keeps `intent.migrate_agent`), the same card in zh-cn, and the vector's
+ * open_migrate_agent with its intent kept.
  */
 @Composable
 private fun MigrateAgent() {

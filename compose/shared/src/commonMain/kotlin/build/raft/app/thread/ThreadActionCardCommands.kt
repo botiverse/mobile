@@ -26,14 +26,17 @@ import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.buildCreateAgentBody
 import build.raft.app.data.buildExecuteActionBody
 import build.raft.app.data.buildMarkAgentActionExecutedBody
+import build.raft.app.data.buildMarkAgentMigrationActionExecutedBody
 import build.raft.app.data.buildMarkChannelActionExecutedBody
 import build.raft.app.data.buildMarkChannelMembersActionExecutedBody
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.installSetBound
+import build.raft.app.data.isAgentMigrateAction
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.isGenericInlineCommitAction
 import build.raft.app.data.isInstallMarketplaceAppAction
 import build.raft.app.data.withExecutedAgent
+import build.raft.app.data.withExecutedAgentMigration
 import build.raft.app.data.withExecutedChannel
 import build.raft.app.data.withExecutedChannelMembers
 import build.raft.app.model.ChannelId
@@ -129,6 +132,8 @@ internal class ThreadActionCardCommands(
                 reconfirmThreadActionCard(messageId, card)
             card.type.equals("agent:create", ignoreCase = true) ->
                 DataResult.Error(ScreenError(code = "action_card_agent_create_dialog_required", retryable = false))
+            card.isAgentMigrateAction() ->
+                DataResult.Error(ScreenError(code = "action_card_agent_migrate_dialog_required", retryable = false))
             card.type.equals("channel:create", ignoreCase = true) ->
                 commitChannelCreateActionCard(messageId, card, onChannelCreated)
             card.type.equals("channel:add_member", ignoreCase = true) ->
@@ -169,6 +174,36 @@ internal class ThreadActionCardCommands(
         stepUp.run(webTarget = null, action = threadActionCardStepUpAction(card.type)) {
             commitThreadActionCard(payload, messageId, card, onChannelCreated)
         }
+
+    /**
+     * Marks an `agent:migrate` card executed once the native migration dialog started the move
+     * (`POST /api/actions/:messageId/mark-executed`, `{ result: { kind: "agent-migration", agentId, targetMachineId } }`).
+     */
+    suspend fun markAgentMigrationActionCardExecuted(
+        messageId: String,
+        card: ThreadActionCard,
+        agentId: String,
+        targetMachineId: String,
+    ): DataResult<ThreadActionCard> {
+        if (!card.isAgentMigrateAction()) {
+            return DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
+        }
+        val actionsApi =
+            actionCardsApiClient
+                ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+        val executedCard = card.withExecutedAgentMigration(agentId = agentId, targetMachineId = targetMachineId)
+        return markThreadActionCardExecuted(
+            actionsApi = actionsApi,
+            messageId = messageId,
+            body =
+                buildMarkAgentMigrationActionExecutedBody(
+                    agentId = agentId,
+                    targetMachineId = targetMachineId,
+                    expectedConfirmationVersion = card.confirmationVersion,
+                ),
+            executedCard = executedCard,
+        ).also(::noteActionCardApproved)
+    }
 
     /**
      * The Install of an `integration:install_marketplace_app` card's confirmation (web

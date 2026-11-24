@@ -73,17 +73,18 @@ val ACTION_CARD_SPEC_CAPABILITIES: List<String> =
 // only for a ticket filed into this App (`showsFeedbackTicket`), else removed. #16449/#16453:
 // intent.add_seats, a `seats:add` card's Add Seats, checks `GET /actions/:id/seat-request` (on the
 // card's server), completes immediately when no seats are short or the requester can no longer act,
-// and otherwise opens the add-seats sheet counted under the server's pricing. Not
-// intent.upgrade_dialog: the App has no upgrade-card dialog, so that button is "Open in web".
-// Not intent.migrate_agent either (schemaVersion 9, an agent:migrate card's Move agent): no migration
-// dialog for a card, so it is "Open in web" too.
+// and otherwise opens the add-seats sheet counted under the server's pricing. #proj-mobile:#356:
+// intent.migrate_agent (schemaVersion 9, an agent:migrate card's Move agent) opens the native
+// AgentMigrationStartDialog preselected to suggestedComputer and marks the card executed once the
+// move starts. Not intent.upgrade_dialog: the App has no upgrade-card dialog, so that button is
+// "Open in web".
 val RAFT_APP_ACTION_CARD_CAPABILITIES: List<String> =
     listOf(
         "card.v1", "confirm.v1", "form.v1",
         "field.text_input", "field.text_area", "field.select", "field.toggle", "field.member_picker", "field.channel_picker",
         "field.agent_picker", "field.choice",
         "intent.create_channel", "intent.add_members", "intent.create_agent", "intent.feedback_form",
-        "intent.feedback_ticket", "intent.add_seats",
+        "intent.feedback_ticket", "intent.add_seats", "intent.migrate_agent",
     )
 
 /**
@@ -159,9 +160,8 @@ enum class ActionCardSpecIntent(val wire: String) {
     AddSeats("add_seats"),
 
     /**
-     * An agent:migrate card's Move agent (schemaVersion 9, botiverse/slock #14018): the agent page's
-     * migration dialog for the card's Agent. Not declared ([RAFT_APP_ACTION_CARD_CAPABILITIES]): the
-     * App has no migration dialog for a card yet, so strip makes it "Open in web".
+     * An agent:migrate card's Move agent (schemaVersion 9, botiverse/slock #14018, #proj-mobile:#356):
+     * opens the native migration dialog for the card's Agent preselected to `suggestedComputer`.
      */
     MigrateAgent("migrate_agent"),
     ;

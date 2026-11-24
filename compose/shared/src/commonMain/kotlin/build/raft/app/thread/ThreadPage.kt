@@ -3069,6 +3069,7 @@ private fun SharedThreadRouteContentContent(
     val markdownReferencePending by markdownRefOpenStore.state.collectAsState()
     val textSelectionMessageState = remember(threadInstanceKey) { mutableStateOf<RaftThreadMessageItem?>(null) }
     val createAgentDialogStateHolder = remember(threadInstanceKey) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
+    val migrateAgentDialogStateHolder = remember(threadInstanceKey) { mutableStateOf<ThreadMigrateAgentActionDialogState?>(null) }
     val markdownTaskOpenRequestGate = remember(threadInstanceKey) {
         MarkdownTaskNumberOpenRequestGate()
     }
@@ -4177,9 +4178,11 @@ private fun SharedThreadRouteContentContent(
             (sharedHomeState.content as? SharedHomeContentState.Content)?.baseSnapshot?.directMessages.orEmpty().mapTo(HashSet()) { it.channelId.value }
         }
     val latestActionCardDirectMessageIds by rememberUpdatedState(actionCardDirectMessageIds)
+    val evaluateMigrateAgentAccess =
+        rememberThreadActionCardMigrateAccess(currentSession, currentServerId, threadServerMembersEntry)
     // Not keyed on the store's state: each card selects its own slice of it.
     val actionCardSpecHost =
-        remember(feedbackCardEntryEnabled, actionCardSpecStore, currentSession?.user?.id) {
+        remember(feedbackCardEntryEnabled, actionCardSpecStore, currentSession?.user?.id, evaluateMigrateAgentAccess) {
             ThreadActionCardSpecHost(
                 capabilities = raftAppActionCardCapabilities(feedbackFormAvailable = feedbackCardEntryEnabled),
                 state = actionCardSpecStore.state,
@@ -4203,6 +4206,7 @@ private fun SharedThreadRouteContentContent(
                     bridge.log("thread_view_plan_open")
                     pager.openSettingsBillingPage(storeScope)
                 },
+                evaluateMigrateAgentAccess = evaluateMigrateAgentAccess,
                 log = { line -> bridge.log(line) },
             )
         }
@@ -5884,6 +5888,7 @@ private fun SharedThreadRouteContentContent(
             attachmentCommentsDialogState = attachmentCommentsDialogStateHolder,
             installAppDialogState = installAppDialogStateHolder,
             createAgentDialogState = createAgentDialogStateHolder,
+            migrateAgentDialogState = migrateAgentDialogStateHolder,
             createAgentComputerServerId = createAgentComputerServerIdState,
             createAgentComputerServerResolved = createAgentComputerServerResolvedState,
             pendingActionCardIds = pendingActionCardIdsState,
@@ -5938,6 +5943,7 @@ private fun SharedThreadRouteContentContent(
             markdownRefOpenStore = markdownRefOpenStore,
             textSelectionMessageState = textSelectionMessageState,
             createAgentDialogStateHolder = createAgentDialogStateHolder,
+            migrateAgentDialogStateHolder = migrateAgentDialogStateHolder,
             markdownTaskOpenRequestGate = markdownTaskOpenRequestGate,
             labels = labels,
             taskChannelId = taskChannelId,

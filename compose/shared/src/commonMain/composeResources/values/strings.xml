@@ -1095,6 +1095,7 @@
     <string name="thread_action_card_blocked_target_server">Only members of %1$s can use this card.</string>
     <string name="thread_action_card_runs_on_server">Runs on %1$s</string>
     <string name="thread_action_card_blocked_source_workspace">This is a history copy. Only the source workspace can run this action.</string>
+    <string name="thread_action_card_blocked_need_migrate_agents">Only %1$s's creator or someone with permission to migrate agents can do this.</string>
     <string name="thread_action_card_field_description">Description</string>
     <string name="thread_action_card_field_humans">Humans</string>
     <string name="thread_action_card_field_agents">Agents</string>
@@ -4560,6 +4561,19 @@
     <string name="agent_migration_error_status_failed">Migration status could not be loaded. Refresh and try again.</string>
     <string name="agent_migration_error_target_runtime_detection_pending">The target computer is still detecting its runtimes. Try again in a moment.</string>
     <string name="agent_migration_error_target_runtime_detection_incomplete">The target computer's last runtime detection did not finish for %1$s. Rescan its runtimes on the Computer page, then try again.</string>
+    <string name="agent_migration_error_target_runtime_needs_login">%1$s isn't signed in on %2$s, so the agent couldn't reply there. Sign in on that computer first, choose another computer, or move anyway.</string>
+    <string name="agent_migration_error_target_runtime_credential_invalid">The %1$s sign-in on %2$s was rejected, so the agent couldn't reply there. Sign in again on that computer, choose another computer, or move anyway.</string>
+    <string name="agent_migration_error_target_runtime_usage_limit">The %1$s account on %2$s has reached its usage limit, so the agent couldn't reply there until it resets. Choose another computer, or move anyway.</string>
+    <string name="agent_migration_error_target_runtime_not_ready">%1$s can't run on %2$s right now, so the agent couldn't reply there. Ask the computer's owner to check it, choose another computer, or move anyway.</string>
+    <string name="agent_migration_move_anyway">Move anyway</string>
+    <string name="agent_migration_preflight_unverified">Couldn't check whether %1$s is signed in on %2$s. If the agent doesn't reply after the move, sign in there.</string>
+    <string name="agent_migration_cannot_respond_title">Moved, can't respond</string>
+    <string name="agent_migration_cannot_respond_needs_login">Moved to %1$s, but the agent can't reply there: its runtime isn't signed in on that computer.</string>
+    <string name="agent_migration_cannot_respond_credential_invalid">Moved to %1$s, but the agent can't reply there: its runtime sign-in on that computer was rejected.</string>
+    <string name="agent_migration_cannot_respond_usage_limit">Moved to %1$s, but the agent can't reply there: its runtime account has reached its usage limit.</string>
+    <string name="agent_migration_cannot_respond_first_turn_failed">Moved to %1$s, but its first turn there failed. The agent's status shows the error.</string>
+    <string name="agent_migration_cannot_respond_not_ready">Moved to %1$s, but the agent can't reply there right now. Ask that computer's owner to check it.</string>
+    <string name="agent_migration_log_outcome_cannot_respond">Moved, can't respond</string>
     <string name="agent_migration_error_transport_lost">The connection between the two computers dropped during the transfer. Make sure both computers are online, then try again.</string>
     <string name="agent_migration_error_transport_lost_event">The connection between the two computers dropped during the transfer.</string>
     <string name="agent_migration_error_transport_lost_at">The connection between the two computers dropped at %1$s, during the transfer.</string>

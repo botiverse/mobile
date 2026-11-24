@@ -5,6 +5,7 @@ import build.raft.app.model.MemberId
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 
 // Agent remote controls (web parity). Wire shapes verified against
 // botiverse/slock 7d349b509d6511eb922f7870099017fdda0d3f61:
@@ -33,11 +34,12 @@ private data class AgentTurnInterruptResponseDto(
     val stuckForMs: Long? = null
 )
 
-/** `{ error, code }`: the agents/channels error envelope (`code` is optional). */
+/** `{ error, code, details }`: the agents/channels error envelope (`code` and `details` are optional). */
 @Serializable
 private data class AgentControlsErrorDto(
     val error: String? = null,
-    val code: String? = null
+    val code: String? = null,
+    val details: JsonElement? = null
 )
 
 /**
@@ -110,12 +112,19 @@ internal fun agentControlsErrorResult(response: HomeNetworkResponse): DataResult
             PermissionBlocker(code = "http_403", serverMessage = serverMessage)
         )
     }
+    val serverFields =
+        if (serverCode == AgentMigrationErrorCodes.TargetRuntimeNotReady) {
+            parseMigrationTargetRuntimeNotReady(envelope?.details)?.let(::migrationTargetRuntimeNotReadyFields).orEmpty()
+        } else {
+            emptyMap()
+        }
     return DataResult.Error(
         ScreenError(
             code = serverCode ?: "http_${response.code}",
             retryable = response.code >= 500 || response.code == 409,
             serverMessage = serverMessage,
-            serverCode = serverCode
+            serverCode = serverCode,
+            serverFields = serverFields
         )
     )
 }
@@ -247,12 +256,16 @@ internal class RaftAgentControlsApi(
             parse = ::parseSharedAgentMigrationStatus
         )
 
-    override suspend fun startMigration(agentId: MemberId, target: AgentMigrationTarget): DataResult<AgentMigrationStartResult> =
+    override suspend fun startMigration(
+        agentId: MemberId,
+        target: AgentMigrationTarget,
+        preflightOverride: Boolean
+    ): DataResult<AgentMigrationStartResult> =
         send(
             priority = DataRequestPriority.Foreground,
             path = "agents/${agentId.value}/migrate",
             method = "POST",
-            bodyText = agentMigrationStartRequestBody(target),
+            bodyText = agentMigrationStartRequestBody(target, preflightOverride = preflightOverride),
             parse = ::parseSharedAgentMigrationStart
         )
 

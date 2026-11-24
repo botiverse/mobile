@@ -675,7 +675,7 @@ internal fun AgentMigrationLogSide(
                             wrapDescription = true,
                             leading = { names.avatar(entry.agentId, ListAvatar) },
                             // Under "Failed moves" every row is one.
-                            trailing = if (failures.isEmpty()) ({ AgentMigrationLogOutcomeBadge(entry.outcome) }) else null,
+                            trailing = if (failures.isEmpty()) ({ AgentMigrationLogOutcomeBadge(entry.outcome, entry.cannotRespond) }) else null,
                         )
                     }
                 }
