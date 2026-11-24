@@ -189,6 +189,9 @@ internal class RaftAndroidSandboxWebView(
     private val navigationStateRelay = RaftWebViewNavigationStateRelay()
     private var lastRoutedBlockedUrl: String = ""
     private var lastRoutedBlockedAtMs: Long = 0L
+    /** URL intentionally cancelled by [RaftWebViewEvents.catchesMainFrameNavigation] (mirrors iOS `hostCancelledUrl`). */
+    private var lastHostCancelledUrl: String = ""
+    private var lastHostCancelledAtMs: Long = 0L
     private var lastLoadFailureReason: String = ""
     private var hostMessageListener: WebViewCompat.WebMessageListener? = null
     /** [startPageDownload]'s `blob:` reads in flight, by token; their port and name hook. */
@@ -394,6 +397,8 @@ internal class RaftAndroidSandboxWebView(
         navigationStateRelay.reset()
         lastRoutedBlockedUrl = ""
         lastRoutedBlockedAtMs = 0L
+        lastHostCancelledUrl = ""
+        lastHostCancelledAtMs = 0L
         lastLoadFailureReason = ""
         pendingRuntimeJavaScript = ""
         committedDocumentUrl = ""
@@ -585,6 +590,12 @@ internal class RaftAndroidSandboxWebView(
                         handleBlockedMainFrameNavigation(url)
                         return
                     }
+                    if (isRecentlyHostCancelled(target)) {
+                        view?.stopLoading()
+                        currentIsLoading = false
+                        notifyNavigationState()
+                        return
+                    }
                     if (target.isNotEmpty() && events.routesMainFrameNavigation?.invoke(target) == true) {
                         view?.stopLoading()
                         val now = System.currentTimeMillis()
@@ -701,12 +712,21 @@ internal class RaftAndroidSandboxWebView(
                     error: android.webkit.WebResourceError?
                 ) {
                     if (destroyed) return
+                    if (request?.isForMainFrame == true) {
+                        val failedUrl = request.url?.toString().orEmpty()
+                        if (isRecentlyHostCancelled(failedUrl) || isRecentlyRoutedBlocked(failedUrl)) {
+                            currentIsLoading = false
+                            notifyNavigationState()
+                            return
+                        }
+                    }
                     super.onReceivedError(view, request, error)
                     if (request?.isForMainFrame == true) {
+                        val failedUrl = request.url?.toString().orEmpty()
                         val modern = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                         val reason = (if (modern) error?.description?.toString() else null) ?: "webview_load_failed"
                         val errorCode = if (modern) error?.errorCode ?: 0 else 0
-                        currentUrl = request.url?.toString().orEmpty().ifBlank { currentUrl }
+                        currentUrl = failedUrl.ifBlank { currentUrl }
                         currentIsLoading = false
                         resetNavigationChain()
                         diagnosticsWarn("page_error code=$errorCode url=${currentUrl.formatUrlForLog()} ${loadElapsedField()}")
@@ -974,6 +994,10 @@ internal class RaftAndroidSandboxWebView(
         lastLoadFailureReason = ""
         committedDocumentUrl = ""
         hasCommittedDocument = false
+        lastHostCancelledUrl = ""
+        lastHostCancelledAtMs = 0L
+        lastRoutedBlockedUrl = ""
+        lastRoutedBlockedAtMs = 0L
         resetNavigationChain()
         allowedUri = normalized.takeIf { it.isNotBlank() }?.let { runCatching { Uri.parse(it) }.getOrNull() }
         if (isolatedProfileUnavailable) {
@@ -1149,6 +1173,8 @@ internal class RaftAndroidSandboxWebView(
                     hops = navChainHops.toList(),
                 )
             if (events.catchesMainFrameNavigation?.invoke(catchAsk) == true) {
+                lastHostCancelledUrl = target
+                lastHostCancelledAtMs = System.currentTimeMillis()
                 currentIsLoading = false
                 notifyNavigationState()
                 return true
@@ -1207,6 +1233,16 @@ internal class RaftAndroidSandboxWebView(
      * page asked for it (`window.open` loads in place here, multiple windows being off), so it is
      * handed over as a blocked navigation and the page stays as it is.
      */
+    private fun isRecentlyHostCancelled(url: String): Boolean =
+        url.isNotEmpty() &&
+            url == lastHostCancelledUrl &&
+            (System.currentTimeMillis() - lastHostCancelledAtMs) in 0L..1_500L
+
+    private fun isRecentlyRoutedBlocked(url: String): Boolean =
+        url.isNotEmpty() &&
+            url == lastRoutedBlockedUrl &&
+            (System.currentTimeMillis() - lastRoutedBlockedAtMs) in 0L..1_500L
+
     private fun shouldRouteMainFrameNavigation(url: String?): Boolean {
         val target = url ?: return false
         if (wouldBlockMainFrameNavigation(target)) return false
