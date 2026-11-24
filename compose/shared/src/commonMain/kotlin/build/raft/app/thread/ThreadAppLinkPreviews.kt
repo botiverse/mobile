@@ -35,6 +35,7 @@ import build.raft.app.data.AppLinkResult
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
+import build.raft.app.data.SharedArtifactFollowStore
 import build.raft.app.data.SharedArtifactScreenshotStore
 import build.raft.app.data.SharedArtifactSummaryStore
 import build.raft.app.data.SharedServerFeatureFlags
@@ -94,6 +95,8 @@ internal data class ThreadAppLinkPreviewHost(
     val toast: (String) -> Unit,
     /** [toast] with an intent (an operation state's tone); plain where none is wired (fixtures). */
     val toastWithIntent: (String, RaftToastIntent?) -> Unit = { text, _ -> toast(text) },
+    /** [toast] with one trailing action button (e.g. Unfollowed + Undo); null in fixtures without one. */
+    val toastWithAction: ((String, String, () -> Unit) -> Unit)? = null,
     /** Failed prepare/execute toast carrying the failed response's `X-Trace-Id` when present. */
     val errorToast: (String, String?) -> Unit = { text, _ -> toast(text) },
     /** Copies plain text to the clipboard (Artifact card menu's Copy link); no-op in fixtures without one. */
@@ -121,6 +124,8 @@ internal data class ThreadArtifactLinkHost(
     val screenshots: SharedArtifactScreenshotStore? = null,
     /** The signed-in person (a user id): their own settle reads "You" (web `useArtifactReaderId`). */
     val readerId: String? = null,
+    /** Own Follow/Unfollow state & mutations shared with Artifacts Home (web #16357); null in fixtures. */
+    val follows: SharedArtifactFollowStore? = null,
 )
 
 /** One message's Artifact links answered `ok`, and the hosts they were split on. */

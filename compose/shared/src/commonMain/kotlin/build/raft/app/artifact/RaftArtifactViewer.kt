@@ -377,23 +377,26 @@ internal fun raftArtifactViewerHostHeadIn(url: String): Int? =
 internal const val RAFT_ARTIFACT_VIEWER_HOST_LOADED_PARAM = "hostLoaded"
 
 /**
- * The `#host=<name>` actions the App offers the page's ⋯. [CopyLink] is no item of its own: a page
- * that sees it declared routes its own Copy link here (the WebView's `navigator.clipboard` write fails
- * silently on some Android devices, Hands d292d99f), and the App copies the canonical link itself.
+ * The `#host=<name>` actions the App offers the page's controls. [CopyLink] is no item of its own:
+ * a page that sees it declared routes its own Copy link here (the WebView's `navigator.clipboard`
+ * write fails silently on some Android devices, Hands d292d99f), and the App copies the canonical
+ * link itself. [ShareLink] (botiverse/slock #16442, #proj-workspace:#375) lets the phone Share
+ * drawer's "Share to other apps" open the native system share sheet for the Artifact's canonical link.
  */
 internal enum class RaftArtifactViewerHostAction(val wireName: String) {
     DesktopMode("desktop-mode"),
     CopyLink("copy-link"),
+    ShareLink("share-link"),
 }
 
 /** Every [RaftArtifactViewerHostAction], comma-separated (a const: [RaftArtifactViewerEmbedQuery] is read before it). */
-internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU = "desktop-mode,copy-link"
+internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU = "desktop-mode,copy-link,share-link"
 
 /** What [url]'s fragment asks the App for (`#host=<request>`: the text after `host=`), or null when it asks for nothing. */
 private fun raftArtifactViewerHostRequest(url: String): String? =
     url.substringAfter('#', "").takeIf { it.startsWith("host=") }?.removePrefix("host=")
 
-/** The App action [url]'s fragment asks for (`#host=desktop-mode`, `#host=copy-link`); null for any other. */
+/** The App action [url]'s fragment asks for (`#host=desktop-mode`, `#host=copy-link`, `#host=share-link`); null for any other. */
 internal fun raftArtifactViewerHostAction(url: String): RaftArtifactViewerHostAction? {
     val name = raftArtifactViewerHostRequest(url) ?: return null
     return RaftArtifactViewerHostAction.entries.firstOrNull { it.wireName == name }

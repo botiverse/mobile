@@ -2,6 +2,8 @@ package build.raft.app.data
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -549,11 +551,165 @@ class SharedArtifactsHomeStoreTest {
         assertEquals(listOf("a", "b"), store.state.value.rows?.map { it.summary.id })
     }
 
+    @Test
+    fun setFollowingIsSingleFlightPatchesRowsEmitsEventsAndNotifiesCallback() = runTest {
+        val api = FakeDashboardApi()
+        api.answer = { _, _ -> ok(listOf(row("a", following = true), row("b", following = false))) }
+        val gate = CompletableDeferred<ArtifactsHomeLoad<Boolean>>()
+        var followCalls = 0
+        api.followAnswer = { _, _, _ ->
+            followCalls++
+            gate.await()
+        }
+        val committed = mutableListOf<Triple<String, String, Boolean>>()
+        val store = store(api, onOwnFollowCommitted = { srv, id, f -> committed += Triple(srv, id, f) })
+        store.dispatch(ArtifactsHomeIntent.Start("s-1", "r-1"))
+        advanceUntilIdle()
+        val events = mutableListOf<ArtifactsHomeEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { store.events.toList(events) }
+
+        // Rapid double click is single-flight.
+        store.dispatch(ArtifactsHomeIntent.SetFollowing("a", false))
+        store.dispatch(ArtifactsHomeIntent.SetFollowing("a", false))
+        runCurrent()
+        assertEquals(1, followCalls)
+        assertTrue("a" in store.state.value.followingIds)
+
+        gate.complete(ArtifactsHomeLoad.Ok(false))
+        advanceUntilIdle()
+        assertFalse("a" in store.state.value.followingIds)
+        assertEquals(false, store.state.value.rows?.first { it.summary.id == "a" }?.summary?.following)
+        assertEquals(listOf(Triple("s-1", "a", false)), committed)
+        assertEquals(listOf<ArtifactsHomeEvent>(ArtifactsHomeEvent.Unfollowed("a")), events)
+
+        // Follow emits Followed.
+        api.followAnswer = { _, _, next -> ArtifactsHomeLoad.Ok(next) }
+        store.dispatch(ArtifactsHomeIntent.SetFollowing("a", true))
+        advanceUntilIdle()
+        assertEquals(true, store.state.value.rows?.first { it.summary.id == "a" }?.summary?.following)
+        assertEquals(ArtifactsHomeEvent.Followed("a"), events.last())
+
+        // Failed follow emits FollowFailed with traceId.
+        api.followAnswer = { _, _, _ -> ArtifactsHomeLoad.Failed(ScreenError("err", traceId = "tr-9")) }
+        store.dispatch(ArtifactsHomeIntent.SetFollowing("a", false))
+        advanceUntilIdle()
+        val failed = assertIs<ArtifactsHomeEvent.FollowFailed>(events.last())
+        assertEquals("tr-9", failed.error?.traceId)
+    }
+
+    @Test
+    fun unfollowingUnderRelevantRetainsItemAcrossBackgroundRefreshesAndClearsOnReload() = runTest {
+        val api = FakeDashboardApi()
+        val rowTop = row("top", following = true)
+        val rowA = row("a", following = true, news = ArtifactsHomeNews(mentioned = false, newerVersion = true, newComments = 2))
+        val rowMentioned = row("m", following = true, news = ArtifactsHomeNews(mentioned = true, newerVersion = true, newComments = 1))
+        val rowB = row("b", following = true)
+        api.answer = { _, _ -> ok(listOf(rowTop, rowA, rowMentioned, rowB)) }
+        api.followAnswer = { _, _, next -> ArtifactsHomeLoad.Ok(next) }
+
+        val store = store(api)
+        store.dispatch(ArtifactsHomeIntent.Start("s-1", "r-1"))
+        advanceUntilIdle()
+        store.dispatch(ArtifactsHomeIntent.SetRelevant(true))
+        advanceUntilIdle()
+        val initialGen = store.state.value.reloadGeneration
+
+        // Unfollow `a` (follow-only) and `m` (mentioned) under Relevant to me: both stay in rows and enter unfollowedIds.
+        store.dispatch(ArtifactsHomeIntent.SetFollowing("a", false))
+        store.dispatch(ArtifactsHomeIntent.SetFollowing("m", false))
+        advanceUntilIdle()
+        val afterUnfollow = store.state.value
+        assertEquals(listOf("top", "a", "m", "b"), afterUnfollow.rows?.map { it.summary.id })
+        assertEquals(setOf("a", "m"), afterUnfollow.unfollowedIds)
+        assertEquals(false, afterUnfollow.rows!!.first { it.summary.id == "a" }.summary.following)
+
+        // Background refresh (#16397, keepRows = true) where server omits `a` (follow-only) and returns `m` with stale `following = true`:
+        // - `a` stays in place right after `top` with non-mention news cleared (web `mergeRetainedUnfollowed`)
+        // - `m` keeps local `following = false` and preserves mention news (web `withOwnFollows`)
+        api.answer = { _, _ ->
+            ok(
+                listOf(
+                    rowTop,
+                    row("m", following = true, news = ArtifactsHomeNews(mentioned = true, newerVersion = true, newComments = 4)),
+                    rowB,
+                ),
+            )
+        }
+        store.dispatch(ArtifactsHomeIntent.ActivityChanged("s-1"))
+        advanceUntilIdle()
+        val afterBg = store.state.value
+        assertEquals(initialGen, afterBg.reloadGeneration, "background refresh must not advance reloadGeneration")
+        assertEquals(listOf("top", "a", "m", "b"), afterBg.rows?.map { it.summary.id })
+        assertEquals(setOf("a", "m"), afterBg.unfollowedIds)
+        val restoredA = afterBg.rows!![1]
+        assertEquals(false, restoredA.summary.following)
+        assertEquals(ArtifactsHomeNews(), restoredA.news, "follow-only omitted item clears stale news on restore")
+        val keptM = afterBg.rows!![2]
+        assertEquals(false, keptM.summary.following)
+        assertTrue(keptM.news.mentioned)
+
+        // Undo re-follows `a`, removes from unfollowedIds, and stays retained even if an immediate background refresh omits it.
+        store.dispatch(ArtifactsHomeIntent.SetFollowing("a", true))
+        advanceUntilIdle()
+        assertFalse("a" in store.state.value.unfollowedIds)
+        assertEquals(true, store.state.value.rows!!.first { it.summary.id == "a" }.summary.following)
+
+        api.answer = { _, _ -> ok(listOf(rowTop, rowB)) }
+        store.dispatch(ArtifactsHomeIntent.ActivityChanged("s-1"))
+        advanceUntilIdle()
+        assertEquals(listOf("top", "a", "m", "b"), store.state.value.rows?.map { it.summary.id })
+        assertEquals(true, store.state.value.rows!![1].summary.following)
+
+        // Unfollow `a` again, then trigger explicit filter reload (keepRows = false): retention clears & server omission applies.
+        store.dispatch(ArtifactsHomeIntent.SetFollowing("a", false))
+        advanceUntilIdle()
+        assertTrue("a" in store.state.value.unfollowedIds)
+
+        store.dispatch(ArtifactsHomeIntent.SetRelevant(false))
+        advanceUntilIdle()
+        assertTrue(store.state.value.reloadGeneration > initialGen)
+        assertEquals(emptySet(), store.state.value.unfollowedIds)
+        assertEquals(listOf("top", "b"), store.state.value.rows?.map { it.summary.id })
+    }
+
+    @Test
+    fun externalOwnFollowEventUpdatesHomeRowsAndRetainsUnfollowedUnderRelevant() = runTest {
+        val api = FakeDashboardApi()
+        api.answer = { _, _ -> ok(listOf(row("a", following = true), row("b", following = true))) }
+        val ownFollows = MutableSharedFlow<ArtifactOwnFollowEvent>(extraBufferCapacity = 8)
+        val store = store(api, ownFollowEvents = ownFollows)
+        store.dispatch(ArtifactsHomeIntent.Start("s-1", "r-1"))
+        advanceUntilIdle()
+        store.dispatch(ArtifactsHomeIntent.SetRelevant(true))
+        advanceUntilIdle()
+
+        // Unfollowed from a chat message card on the same server.
+        ownFollows.emit(ArtifactOwnFollowEvent(serverId = "s-1", artifactId = "a", following = false, seq = 1L))
+        advanceUntilIdle()
+        assertEquals(false, store.state.value.rows!!.first { it.summary.id == "a" }.summary.following)
+        assertTrue("a" in store.state.value.unfollowedIds)
+
+        // Event for another server is ignored.
+        ownFollows.emit(ArtifactOwnFollowEvent(serverId = "s-other", artifactId = "b", following = false, seq = 2L))
+        advanceUntilIdle()
+        assertEquals(true, store.state.value.rows!!.first { it.summary.id == "b" }.summary.following)
+        assertFalse("b" in store.state.value.unfollowedIds)
+
+        // Background refresh omitting `a` still retains it because the external unfollow registered it.
+        api.answer = { _, _ -> ok(listOf(row("b", following = true))) }
+        store.dispatch(ArtifactsHomeIntent.ActivityChanged("s-1"))
+        advanceUntilIdle()
+        assertEquals(listOf("a", "b"), store.state.value.rows?.map { it.summary.id })
+        assertTrue("a" in store.state.value.unfollowedIds)
+    }
+
     private fun TestScope.store(
         api: FakeDashboardApi,
         onSortChosen: (ArtifactsHomeSort) -> Unit = {},
         filterRepo: ArtifactsHomeFilterRepository? = null,
         settledRepo: ArtifactsHomeSettledSeenRepository? = null,
+        ownFollowEvents: SharedFlow<ArtifactOwnFollowEvent>? = null,
+        onOwnFollowCommitted: (String, String, Boolean) -> Unit = { _, _, _ -> },
     ) =
         SharedArtifactsHomeStore(
             api = api,
@@ -561,6 +717,8 @@ class SharedArtifactsHomeStoreTest {
             onSortChosen = onSortChosen,
             filterRepository = filterRepo,
             settledSeenRepository = settledRepo,
+            ownFollowEvents = ownFollowEvents,
+            onOwnFollowCommitted = onOwnFollowCommitted,
         )
 
     private fun TestScope.started(api: FakeDashboardApi, onSortChosen: (ArtifactsHomeSort) -> Unit = {}): SharedArtifactsHomeStore {
@@ -588,6 +746,9 @@ class SharedArtifactsHomeStoreTest {
         var settleAnswer: suspend (String, String, Boolean) -> ArtifactsHomeLoad<ArtifactsHomeSettlement> = { _, _, _ ->
             ArtifactsHomeLoad.Ok(ArtifactsHomeSettlement(null))
         }
+        var followAnswer: suspend (String, String, Boolean) -> ArtifactsHomeLoad<Boolean> = { _, _, next ->
+            ArtifactsHomeLoad.Ok(next)
+        }
 
         override suspend fun page(serverId: String, query: ArtifactsHomeQuery, cursor: String?, priority: DataRequestPriority): ArtifactsHomeLoad<ArtifactsHomePage> {
             calls += Call(serverId, query, cursor, priority)
@@ -600,6 +761,9 @@ class SharedArtifactsHomeStoreTest {
 
         override suspend fun setSettled(serverId: String, artifactId: String, settled: Boolean): ArtifactsHomeLoad<ArtifactsHomeSettlement> =
             settleAnswer(serverId, artifactId, settled)
+
+        override suspend fun setFollowing(serverId: String, artifactId: String, following: Boolean): ArtifactsHomeLoad<Boolean> =
+            followAnswer(serverId, artifactId, following)
     }
 }
 
@@ -611,6 +775,8 @@ private fun row(
     author: ArtifactsHomeActor = actor("u-1"),
     settled: ArtifactSettled? = null,
     settledShown: Boolean = false,
+    following: Boolean? = null,
+    news: ArtifactsHomeNews = ArtifactsHomeNews(),
 ) =
     ArtifactsHomeRow(
         summary =
@@ -625,10 +791,11 @@ private fun row(
                 home = ArtifactHome.Server,
                 settled = settled,
                 settledShown = settledShown,
+                following = following,
             ),
         author = author,
         openedAt = null,
-        news = ArtifactsHomeNews(),
+        news = news,
     )
 
 private fun rows(vararg ids: String) = ids.map { row(it) }

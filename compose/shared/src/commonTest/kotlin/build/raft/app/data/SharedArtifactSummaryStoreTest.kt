@@ -299,4 +299,28 @@ class SharedArtifactSummaryStoreTest {
         assertEquals(false, resource.removeIfNotSuperseded(olderKey, startedAt = olderStarted))
         assertEquals(newerRecord, resource.read(resource.key("user-1", server, target.key)!!))
     }
+
+    @Test
+    fun patchFollowingUpdatesPinnedAndUnpinnedSummariesAndExpiresTtl() = runTest {
+        val pt = "pt_0b6f1c2e-5d4a-4c3b-9a8e-7f6d5c4b3a21"
+        val short = "2QthvfPeGfDnqwr7LG6itx"
+        val api = FakeApi { okAnswer(it) }
+        val store = store(api)
+        val latest = ArtifactLinkTarget(pt)
+        val pinned = ArtifactLinkTarget(pt, 2)
+        val other = ArtifactLinkTarget("pt_other")
+        store.request(server, listOf(latest, pinned, other))
+        advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
+        assertTrue(store.isFresh(server, latest))
+        assertTrue(store.isFresh(server, pinned))
+
+        // Patching by the short id updates both unpinned and pinned entries of the same canonical Artifact and expires their TTL.
+        store.patchFollowing(server, short, false)
+        assertEquals(false, assertIs<ArtifactSummaryAnswer.Ok>(store.state.value.answersFor(server, listOf(latest))[latest.key]).summary.following)
+        assertEquals(false, assertIs<ArtifactSummaryAnswer.Ok>(store.state.value.answersFor(server, listOf(pinned))[pinned.key]).summary.following)
+        assertEquals(null, assertIs<ArtifactSummaryAnswer.Ok>(store.state.value.answersFor(server, listOf(other))[other.key]).summary.following)
+        assertEquals(false, store.isFresh(server, latest))
+        assertEquals(false, store.isFresh(server, pinned))
+        assertTrue(store.isFresh(server, other))
+    }
 }

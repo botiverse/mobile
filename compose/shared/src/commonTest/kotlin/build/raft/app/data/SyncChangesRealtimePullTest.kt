@@ -65,10 +65,10 @@ class SyncChangesRealtimePullTest {
         val p = fixture(logs = logs)
 
         p.realtime.request(syncTestScope, "message_absent")
-        advanceTimeBy(300L)
+        advanceTimeBy(100L)
         p.realtime.request(syncTestScope, "notification_retract")
         p.realtime.request(syncTestScope, "message_absent")
-        advanceTimeBy(SYNC_CHANGES_REALTIME_DEBOUNCE_MILLIS - 300L - 1L)
+        advanceTimeBy(SYNC_CHANGES_REALTIME_DEBOUNCE_MILLIS - 100L - 1L)
         runCurrent()
         assertTrue(p.pulls.isEmpty(), "the debounce runs from the first hint")
 

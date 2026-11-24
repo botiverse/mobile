@@ -4500,6 +4500,11 @@
     <string name="message_card_allow_app">Permitir %1$s</string>
     <string name="artifacts_menu_copy_link">Copiar link</string>
     <string name="artifacts_menu_link_copied">Link copiado.</string>
+    <string name="artifacts_menu_follow">Seguir</string>
+    <string name="artifacts_menu_unfollow">Deixar de seguir</string>
+    <string name="artifacts_follow_unfollowed">Deixou de seguir</string>
+    <string name="artifacts_follow_undo">Desfazer</string>
+    <string name="artifacts_follow_failed">Não foi possível alterar se você segue este Artifact. Tente novamente.</string>
     <string name="artifacts_card_comments_one">1 comentário</string>
     <string name="artifacts_card_comments_many">%1$d comentários</string>
     <string name="artifacts_card_loading">Carregando Artifact</string>

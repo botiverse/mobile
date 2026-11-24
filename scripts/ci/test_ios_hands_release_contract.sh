@@ -31,3 +31,23 @@ if "unset SLOCK_RELEASE_CHANGELOG_ZH_FILE SLOCK_RELEASE_CHANGELOG_EN_FILE SLOCK_
 
 print("iOS Hands release notes locale guard: PASS")
 PY
+
+# Audit tag helper must accept both canonical release/X.Y.Z and platform-ahead
+# release/X.Y.Z-ios branches (SOP §3.1) while rejecting arbitrary branch names.
+python3 - <<'PY'
+import re
+from pathlib import Path
+
+script = Path("scripts/create_ios_release_audit_tag.sh").read_text()
+match = re.search(r'\[\[ "\$\{RELEASE_BRANCH\}" =~ ([^ ]+) \]\]', script)
+if not match:
+    raise SystemExit("Could not locate RELEASE_BRANCH regex in scripts/create_ios_release_audit_tag.sh")
+pattern = re.compile(match.group(1))
+for good in ("release/1.29.0", "release/1.29.0-ios", "release-1.29.0"):
+    if not pattern.match(good):
+        raise SystemExit(f"Audit tag branch regex must accept {good!r}: {match.group(1)}")
+for bad in ("main", "release/1.29.0-android", "release/1.29.0-ios-extra", "agent/lagoon/test"):
+    if pattern.match(bad):
+        raise SystemExit(f"Audit tag branch regex must reject {bad!r}: {match.group(1)}")
+print("iOS audit tag branch regex guard: PASS")
+PY

@@ -222,6 +222,34 @@ class SharedArtifactSummaryStore internal constructor(
         }
     }
 
+    /**
+     * Patches the reader's own Follow/Unfollow answer into every kept summary of [artifactId] in
+     * [serverId] (pinned and unpinned) and marks them stale so the next read revalidates (web
+     * `setArtifactFollowingHere` -> `invalidateObjectSummary("artifact", id)`, slock #16357).
+     */
+    fun patchFollowing(serverId: String, artifactId: String, following: Boolean) {
+        val cleanServer = serverId.trim().takeIf { it.isNotEmpty() } ?: return
+        val canonical = artifactCanonicalId(artifactId)
+        val prefix = "$cleanServer\u0000"
+        synchronized(lock) {
+            mutableState.update { state ->
+                var changed = false
+                val nextEntries =
+                    state.entries.mapValues { (key, entry) ->
+                        if (!key.startsWith(prefix)) return@mapValues entry
+                        val ok = entry.answer as? ArtifactSummaryAnswer.Ok ?: return@mapValues entry
+                        if (artifactCanonicalId(ok.summary.id) != canonical) return@mapValues entry
+                        changed = true
+                        entry.copy(
+                            answer = ArtifactSummaryAnswer.Ok(ok.summary.copy(following = following)),
+                            expiresAtMillis = Long.MIN_VALUE,
+                        )
+                    }
+                if (changed) state.copy(entries = nextEntries) else state
+            }
+        }
+    }
+
     /** Drops one server's kept summaries and fences any in-flight responses (server access lost). */
     fun dropServer(serverId: String) {
         val cleanServer = serverId.trim().takeIf { it.isNotEmpty() } ?: return

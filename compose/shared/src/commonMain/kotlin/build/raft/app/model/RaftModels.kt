@@ -1264,6 +1264,16 @@ data class ThreadUpdated(
      * or `syncCoreReplyWindow.discussion.parentScopeKey.scopeId`). Used to identify Lounge threads (`slock #16493`).
      */
     val parentChannelId: ChannelId? = null,
+    /** Wire `latestReply.conversationContext.parentChannelType` (`channel` | `private` | `dm` | `joint`), when carried. */
+    val parentChannelType: String? = null,
+    /** Wire `latestReply.conversationContext.channelType` (`"thread"`), when carried. */
+    val latestReplyChannelType: String? = null,
+    /** Wire `latestReply.messageType`, when carried. */
+    val latestReplyMessageType: MessageType = MessageType.Chat,
+    /** RFC 077 `latestReply.delegatedBy`, when carried. */
+    val latestReplyDelegatedBy: MessageDelegatedBy? = null,
+    /** RFC 077 PR 2b: `latestReply.deletedAt` present on the reply. */
+    val latestReplyRetracted: Boolean = false,
 ) : RealtimeEvent
 
 @Serializable

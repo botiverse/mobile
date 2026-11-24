@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -48,6 +49,7 @@ import build.raft.app.data.ArtifactsHomeStatus
 import build.raft.app.data.ArtifactsHomeStatusFilter
 import build.raft.app.data.ArtifactsHomeView
 import build.raft.app.data.ARTIFACTS_HOME_SEARCH_MAX_CHARS
+import build.raft.app.data.artifactCanonicalId
 import build.raft.app.data.artifactDateTimestamp
 import build.raft.app.data.buildArtifactsHomeGroups
 import build.raft.app.data.isArtifactDimmed
@@ -103,6 +105,8 @@ internal fun ArtifactsHomeScreen(
     cover: @Composable (ArtifactsHomeRow, Boolean) -> Unit = { row, _ -> ArtifactsHomeTilePlaceholder(row.summary.kind) },
     /** The list row's 76dp 16:10 thumbnail: screenshot, excerpt, or placeholder. */
     thumbnail: @Composable (ArtifactsHomeRow, Boolean) -> Unit = { row, _ -> ArtifactsHomeRowThumbnailPlaceholder(row.summary.kind) },
+    /** Artifact currently open in the wide split viewer column; null when closed or on narrow viewports. */
+    currentArtifactId: String? = null,
 ) {
     RaftDesignSystemTheme {
         SettingsDetailShell(
@@ -125,6 +129,7 @@ internal fun ArtifactsHomeScreen(
                         readerId = readerId,
                         serverName = serverName,
                         wide = wide,
+                        currentArtifactId = currentArtifactId,
                         onIntent = onIntent,
                         onOpen = onOpen,
                         onCopyLink = onCopyLink,
@@ -173,12 +178,14 @@ internal object ArtifactsHomeTags {
     const val SettledStrip = "artifacts-settled-strip"
     const val SettledStripAction = "artifacts-settled-strip-action"
     const val PublicBadge = "artifacts-public-badge"
+    const val UnfollowedTag = "artifact-unfollowed-tag"
     const val MentionedPill = "artifact-card-mentioned"
     const val NewVersionPill = "artifact-card-new-version"
     const val CommentBadge = "artifacts-comment-count"
     const val HomeMenu = "artifacts-home-menu"
     const val HomeMenuOpen = "artifacts-home-menu-open"
     const val HomeMenuCopyLink = "artifacts-home-menu-copy-link"
+    const val HomeMenuFollow = "artifacts-home-menu-follow"
     const val HomeMenuSettle = "artifacts-home-menu-settle"
 }
 
@@ -683,6 +690,7 @@ private fun ArtifactsHomeList(
     readerId: String?,
     serverName: String?,
     wide: Boolean,
+    currentArtifactId: String?,
     onIntent: (ArtifactsHomeIntent) -> Unit,
     onOpen: (ArtifactsHomeRow) -> Unit,
     onCopyLink: ((ArtifactsHomeRow) -> Unit)?,
@@ -752,127 +760,149 @@ private fun ArtifactsHomeList(
                 return
             }
 
+            // Responsive to the list container's own width (web `@container` breakpoints, slock #16418):
+            // when the split viewer column opens beside the list, the list naturally steps down columns.
+            val shownUnfollowedIds = if (state.query.relevant) state.unfollowedIds else emptySet()
+            val currentCanonicalId = currentArtifactId?.let(::artifactCanonicalId)
             val isGrid = view == ArtifactsHomeView.Grid
-            val columns =
-                if (isGrid) {
-                    artifactsHomeGridColumns(wide)
-                } else {
-                    if (wide) GridCells.Fixed(2) else GridCells.Fixed(1)
-                }
-            val horizontalGap =
-                when {
-                    isGrid && wide -> 12.dp
-                    isGrid -> 8.dp
-                    wide -> 8.dp
-                    else -> 0.dp
-                }
-            val verticalGap =
-                when {
-                    isGrid && wide -> 14.dp
-                    isGrid -> 8.dp
-                    else -> 2.dp
-                }
-            val contentPadding =
-                if (isGrid) {
-                    PaddingValues(start = ArtifactsHomeMargin, end = ArtifactsHomeMargin, top = 4.dp, bottom = 24.dp + raftBottomSafeAreaPadding())
-                } else {
-                    PaddingValues(top = 4.dp, bottom = 24.dp + raftBottomSafeAreaPadding())
-                }
-            // Full-span items inside the grid already inherit horizontal padding; in list view they add their own margin.
-            val headerPadding = if (isGrid) 0.dp else ArtifactsHomeMargin
-
-            LazyVerticalGrid(
-                columns = columns,
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .then(if (isGrid || wide) Modifier.raftSafeAreaHorizontalPadding() else Modifier)
-                        .then(if (!grouped.searching) Modifier.testTag(ArtifactsHomeTags.Groups) else Modifier),
-                contentPadding = contentPadding,
-                horizontalArrangement = Arrangement.spacedBy(horizontalGap),
-                verticalArrangement = Arrangement.spacedBy(verticalGap),
-            ) {
-                if (state.status == ArtifactsHomeStatus.Failed) {
-                    item(key = "failed", span = { GridItemSpan(maxLineSpan) }) { failed() }
-                }
-                if (showSettledStrip) {
-                    item(key = "settled-strip", span = { GridItemSpan(maxLineSpan) }) {
-                        ArtifactSettledStrip(
-                            status = grouped.status,
-                            hiddenCount = grouped.hiddenSettledCount,
-                            dimmedCount = grouped.dimmedSettledCount,
-                            horizontalPadding = headerPadding,
-                            onStatusChange = { onIntent(ArtifactsHomeIntent.SetStatus(it)) },
-                        )
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val containerWidthDp = maxWidth.value
+                val wideGrid = containerWidthDp >= ArtifactsHomeWideGridMinWidthDp
+                val twoColList = containerWidthDp >= ArtifactsHomeTwoColListMinWidthDp
+                val trailingListBadges = containerWidthDp >= ArtifactsHomeTrailingBadgesMinWidthDp
+                val columns =
+                    if (isGrid) {
+                        artifactsHomeGridColumnsForWidth(containerWidthDp)
+                    } else {
+                        if (twoColList) GridCells.Fixed(2) else GridCells.Fixed(1)
                     }
-                }
-
-                fun addSectionItems(prefix: String, sectionRows: List<ArtifactsHomeRow>) {
-                    items(sectionRows, key = { row -> "$prefix:${row.summary.id}" }) { row ->
-                        val dimmed = isArtifactDimmed(row, grouped.status, grouped.settledEnabled)
-                        val settling = row.summary.id in state.settlingIds
-                        val copyAction = onCopyLink?.let { cb -> { cb(row) } }
-                        val settleAction: (Boolean) -> Unit = { next -> onIntent(ArtifactsHomeIntent.SetSettled(row.summary.id, next)) }
-                        if (isGrid) {
-                            ArtifactsHomeTile(
-                                row = row,
-                                readerId = readerId,
-                                serverName = serverName,
-                                byOpened = state.rowsByOpened,
-                                dimmed = dimmed,
-                                settledEnabled = grouped.settledEnabled,
-                                settling = settling,
-                                onOpen = { onOpen(row) },
-                                onCopyLink = copyAction,
-                                onSetSettled = settleAction,
-                                cover = cover,
-                            )
-                        } else {
-                            ArtifactsHomeListRow(
-                                row = row,
-                                readerId = readerId,
-                                serverName = serverName,
-                                byOpened = state.rowsByOpened,
-                                wide = wide,
-                                dimmed = dimmed,
-                                settledEnabled = grouped.settledEnabled,
-                                settling = settling,
-                                onOpen = { onOpen(row) },
-                                onCopyLink = copyAction,
-                                onSetSettled = settleAction,
-                                thumbnail = thumbnail,
-                            )
-                        }
+                val horizontalGap =
+                    when {
+                        isGrid && wideGrid -> 12.dp
+                        isGrid -> 8.dp
+                        twoColList -> 8.dp
+                        else -> 0.dp
                     }
-                }
+                val verticalGap =
+                    when {
+                        isGrid && wideGrid -> 14.dp
+                        isGrid -> 8.dp
+                        else -> 2.dp
+                    }
+                val contentPadding =
+                    if (isGrid) {
+                        PaddingValues(start = ArtifactsHomeMargin, end = ArtifactsHomeMargin, top = 4.dp, bottom = 24.dp + raftBottomSafeAreaPadding())
+                    } else {
+                        PaddingValues(top = 4.dp, bottom = 24.dp + raftBottomSafeAreaPadding())
+                    }
+                // Full-span items inside the grid already inherit horizontal padding; in list view they add their own margin.
+                val headerPadding = if (isGrid) 0.dp else ArtifactsHomeMargin
 
-                if (grouped.searching) {
-                    addSectionItems("search", grouped.visible)
-                } else {
-                    if (grouped.forYou.isNotEmpty()) {
-                        item(key = "group-head:for-you", span = { GridItemSpan(maxLineSpan) }) {
-                            ArtifactForYouHead(
-                                count = grouped.forYou.size,
-                                open = forYouOpen,
-                                onToggle = { forYouOpen = !forYouOpen },
+                LazyVerticalGrid(
+                    columns = columns,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .then(if (isGrid || wide) Modifier.raftSafeAreaHorizontalPadding() else Modifier)
+                            .then(if (!grouped.searching) Modifier.testTag(ArtifactsHomeTags.Groups) else Modifier),
+                    contentPadding = contentPadding,
+                    horizontalArrangement = Arrangement.spacedBy(horizontalGap),
+                    verticalArrangement = Arrangement.spacedBy(verticalGap),
+                ) {
+                    if (state.status == ArtifactsHomeStatus.Failed) {
+                        item(key = "failed", span = { GridItemSpan(maxLineSpan) }) { failed() }
+                    }
+                    if (showSettledStrip) {
+                        item(key = "settled-strip", span = { GridItemSpan(maxLineSpan) }) {
+                            ArtifactSettledStrip(
+                                status = grouped.status,
+                                hiddenCount = grouped.hiddenSettledCount,
+                                dimmedCount = grouped.dimmedSettledCount,
                                 horizontalPadding = headerPadding,
+                                onStatusChange = { onIntent(ArtifactsHomeIntent.SetStatus(it)) },
                             )
                         }
-                        if (forYouOpen) {
-                            addSectionItems("for-you", grouped.forYou)
-                        }
                     }
-                    grouped.dateGroups.forEach { group ->
-                        item(key = "group-head:${group.key}", span = { GridItemSpan(maxLineSpan) }) {
-                            ArtifactDateGroupHead(label = group.label, horizontalPadding = headerPadding)
-                        }
-                        addSectionItems("group:${group.key}", group.rows)
-                    }
-                }
 
-                if (state.nextCursor != null) {
-                    item(key = "more", span = { GridItemSpan(maxLineSpan) }) {
-                        ArtifactsHomeMore(state, horizontalPadding = headerPadding, onIntent = onIntent)
+                    fun addSectionItems(prefix: String, sectionRows: List<ArtifactsHomeRow>) {
+                        items(sectionRows, key = { row -> "$prefix:${row.summary.id}" }) { row ->
+                            val unfollowed = row.summary.id in shownUnfollowedIds && row.summary.following == false
+                            val dimmed = unfollowed || isArtifactDimmed(row, grouped.status, grouped.settledEnabled)
+                            val current = currentCanonicalId != null && artifactCanonicalId(row.summary.id) == currentCanonicalId
+                            val settling = row.summary.id in state.settlingIds
+                            val followingPending = row.summary.id in state.followingIds
+                            val copyAction = onCopyLink?.let { cb -> { cb(row) } }
+                            val followAction: (Boolean) -> Unit = { next -> onIntent(ArtifactsHomeIntent.SetFollowing(row.summary.id, next)) }
+                            val settleAction: (Boolean) -> Unit = { next -> onIntent(ArtifactsHomeIntent.SetSettled(row.summary.id, next)) }
+                            if (isGrid) {
+                                ArtifactsHomeTile(
+                                    row = row,
+                                    readerId = readerId,
+                                    serverName = serverName,
+                                    byOpened = state.rowsByOpened,
+                                    dimmed = dimmed,
+                                    settledEnabled = grouped.settledEnabled,
+                                    settling = settling,
+                                    onOpen = { onOpen(row) },
+                                    onCopyLink = copyAction,
+                                    onSetSettled = settleAction,
+                                    current = current,
+                                    unfollowed = unfollowed,
+                                    followingPending = followingPending,
+                                    onSetFollowing = followAction,
+                                    cover = cover,
+                                )
+                            } else {
+                                ArtifactsHomeListRow(
+                                    row = row,
+                                    readerId = readerId,
+                                    serverName = serverName,
+                                    byOpened = state.rowsByOpened,
+                                    wide = trailingListBadges,
+                                    dimmed = dimmed,
+                                    settledEnabled = grouped.settledEnabled,
+                                    settling = settling,
+                                    onOpen = { onOpen(row) },
+                                    onCopyLink = copyAction,
+                                    onSetSettled = settleAction,
+                                    current = current,
+                                    unfollowed = unfollowed,
+                                    followingPending = followingPending,
+                                    onSetFollowing = followAction,
+                                    thumbnail = thumbnail,
+                                )
+                            }
+                        }
+                    }
+
+                    if (grouped.searching) {
+                        addSectionItems("search", grouped.visible)
+                    } else {
+                        if (grouped.forYou.isNotEmpty()) {
+                            item(key = "group-head:for-you", span = { GridItemSpan(maxLineSpan) }) {
+                                ArtifactForYouHead(
+                                    count = grouped.forYou.size,
+                                    open = forYouOpen,
+                                    onToggle = { forYouOpen = !forYouOpen },
+                                    horizontalPadding = headerPadding,
+                                )
+                            }
+                            if (forYouOpen) {
+                                addSectionItems("for-you", grouped.forYou)
+                            }
+                        }
+                        grouped.dateGroups.forEach { group ->
+                            item(key = "group-head:${group.key}", span = { GridItemSpan(maxLineSpan) }) {
+                                ArtifactDateGroupHead(label = group.label, horizontalPadding = headerPadding)
+                            }
+                            addSectionItems("group:${group.key}", group.rows)
+                        }
+                    }
+
+                    if (state.nextCursor != null) {
+                        item(key = "more", span = { GridItemSpan(maxLineSpan) }) {
+                            ArtifactsHomeMore(state, horizontalPadding = headerPadding, onIntent = onIntent)
+                        }
                     }
                 }
             }
@@ -880,11 +910,17 @@ private fun ArtifactsHomeList(
     }
 }
 
-/** The grid's columns: two on a phone; on a wide layout adaptive columns of at least 196dp (web `minmax(196px, 1fr)`). */
+/** The grid's columns: two on narrow containers; adaptive 196dp columns at >= 440dp (`@min-[27.5rem]`, web #16418). */
 internal fun artifactsHomeGridColumns(wide: Boolean): GridCells =
     if (wide) GridCells.Adaptive(ArtifactsHomeTileMinWidth) else GridCells.Fixed(2)
 
+internal fun artifactsHomeGridColumnsForWidth(containerWidthDp: Float): GridCells =
+    artifactsHomeGridColumns(containerWidthDp >= ArtifactsHomeWideGridMinWidthDp)
+
 internal val ArtifactsHomeTileMinWidth: Dp = 196.dp
+internal const val ArtifactsHomeWideGridMinWidthDp: Float = 440f
+internal const val ArtifactsHomeTwoColListMinWidthDp: Float = 672f
+internal const val ArtifactsHomeTrailingBadgesMinWidthDp: Float = 560f
 
 /** web `DashboardList` `settledEmpty`: all rows hidden by Unsettled or none matching Settled. */
 @Composable

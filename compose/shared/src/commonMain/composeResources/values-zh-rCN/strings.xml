@@ -4700,6 +4700,11 @@
     <string name="message_card_consent_not_now">暂不</string>
     <string name="artifacts_menu_copy_link">复制链接</string>
     <string name="artifacts_menu_link_copied">链接已复制。</string>
+    <string name="artifacts_menu_follow">关注</string>
+    <string name="artifacts_menu_unfollow">取消关注</string>
+    <string name="artifacts_follow_unfollowed">已取消关注</string>
+    <string name="artifacts_follow_undo">撤销</string>
+    <string name="artifacts_follow_failed">没能更改关注状态，请重试。</string>
     <string name="artifacts_card_comments_one">1 条评论</string>
     <string name="artifacts_card_comments_many">%1$d 条评论</string>
     <string name="artifacts_card_loading">正在加载 Artifact</string>

@@ -123,6 +123,13 @@ data class ArtifactCardWireDto(
     val updatedAt: String,
     val commentCount: Int,
     val home: ArtifactHomeWireDto,
+    /**
+     * Whether the signed-in reader currently follows this Artifact (botiverse/slock #16357,
+     * `workspaceArtifacts.ts` `ArtifactCard.following`). Present for a reader who keeps own state
+     * on it (same server or joint channel); absent for an outsider reading another server's public
+     * Artifact and from older servers.
+     */
+    val following: Boolean? = null,
     val preview: ArtifactPreviewWireDto? = null,
     val facts: ArtifactFactsWireDto? = null,
     /** Another server's public Artifact read as an outsider (absent otherwise and from older servers). */
@@ -338,7 +345,21 @@ data class ArtifactSummary(
      * server and the reader is not an outsider (web `settledShown`: `card.settled !== undefined`).
      */
     val settledShown: Boolean = settled != null,
+    /**
+     * Whether the signed-in reader currently follows this Artifact (slock #16357). Null when the
+     * server omitted it (older server or cross-server outsider reading a public link).
+     */
+    val following: Boolean? = null,
+    /** Another server's public Artifact read as an outsider (web `readsAsOutsider`). */
+    val fromAnotherServer: Boolean = false,
 )
+
+/** web `readsInOwnServer` (`artifactOwnServer.ts`): false for an outsider reading another server's public link. */
+internal fun ArtifactSummary.readsInOwnServer(): Boolean = !(home == ArtifactHome.Public && fromAnotherServer)
+
+/** Whether the card/home context menu offers Follow / Unfollow (web `ArtifactMenuContent`, slock #16357). */
+internal fun ArtifactSummary.canToggleFollow(followingOverride: Boolean? = null): Boolean =
+    (followingOverride ?: following) != null && readsInOwnServer()
 
 /** web `ArtifactSettled` as this client shows it: who settled it, when (ISO 8601) and at which version. */
 data class ArtifactSettled(
@@ -527,6 +548,8 @@ internal fun ArtifactCardWireDto.toArtifactSummaryOrNull(): ArtifactSummary? {
         excerpt = card.preview?.excerptOrNull(),
         settled = card.settledOrNull(),
         settledShown = card.settled.isPresent,
+        following = card.following,
+        fromAnotherServer = card.fromAnotherServer == true,
     )
 }
 

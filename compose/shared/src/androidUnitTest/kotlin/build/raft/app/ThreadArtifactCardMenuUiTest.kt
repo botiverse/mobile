@@ -28,6 +28,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.MouseButton
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -370,6 +371,65 @@ class ThreadArtifactCardMenuUiTest {
         waitForIdle()
         onNodeWithText("Open in browser").assertDoesNotExist()
         assertEquals(1, toggles)
+    }
+
+    @Test
+    fun messageCardMenuShowsFollowUnfollowDisablesWhilePendingAndOmitsForForeignPublic() = runRobolectricComposeUiTest {
+        var cardSummary by mutableStateOf(summary.copy(following = true))
+        var pending by mutableStateOf(false)
+        val toggled = mutableListOf<Boolean>()
+        setContent {
+            RaftDesignSystemTheme {
+                Box(Modifier.fillMaxSize().background(RaftColor.Canvas).padding(24.dp)) {
+                    Box(Modifier.width(440.dp)) {
+                        ArtifactMessageCard(
+                            summary = cardSummary,
+                            onOpen = {},
+                            onCopyLink = {},
+                            followPending = pending,
+                            onToggleFollow = { toggled += it },
+                        )
+                    }
+                }
+            }
+        }
+        waitForIdle()
+
+        // Following = true -> Open, Copy link, Unfollow; clicking dispatches false.
+        rightClick(ArtifactCardMenuTags.Card)
+        onNodeWithTag(ArtifactCardMenuTags.Menu).assertIsDisplayed()
+        val copyTop = onNodeWithTag(ArtifactCardMenuTags.CopyLink).fetchSemanticsNode().boundsInRoot.top
+        val followTop = onNodeWithTag(ArtifactCardMenuTags.Follow).fetchSemanticsNode().boundsInRoot.top
+        assertEquals(true, copyTop < followTop, "Copy link precedes Unfollow")
+        assertEquals("Unfollow", onNodeWithTag(ArtifactCardMenuTags.Follow).fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("") { it.text })
+        onNodeWithTag(ArtifactCardMenuTags.Follow).performClick()
+        waitForIdle()
+        assertEquals(listOf(false), toggled)
+
+        // Following = false -> Follow; disabled while pending.
+        cardSummary = summary.copy(following = false)
+        pending = true
+        waitForIdle()
+        rightClick(ArtifactCardMenuTags.Card)
+        assertEquals("Follow", onNodeWithTag(ArtifactCardMenuTags.Follow).fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("") { it.text })
+        onNodeWithTag(ArtifactCardMenuTags.Follow).assertIsNotEnabled()
+
+        // Dismiss menu by toggling pending and reopening for Follow dispatch.
+        onNodeWithTag(ArtifactCardMenuTags.Open).performClick()
+        waitForIdle()
+        pending = false
+        waitForIdle()
+        rightClick(ArtifactCardMenuTags.Card)
+        onNodeWithTag(ArtifactCardMenuTags.Follow).performClick()
+        waitForIdle()
+        assertEquals(listOf(false, true), toggled)
+
+        // Cross-server public card omits Follow/Unfollow.
+        cardSummary = summary.copy(home = ArtifactHome.Public, fromAnotherServer = true, following = false)
+        waitForIdle()
+        rightClick(ArtifactCardMenuTags.Card)
+        onNodeWithTag(ArtifactCardMenuTags.Menu).assertIsDisplayed()
+        onNodeWithTag(ArtifactCardMenuTags.Follow).assertDoesNotExist()
     }
 
     private companion object {

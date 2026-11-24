@@ -25,6 +25,7 @@ val SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS: Set<String> =
         MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
         MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY,
         INBOX_ROW_POSITION_FEATURE_FLAG_KEY,
+        MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY,
     )
 
 /** The auth binding a last-known value belongs to. Token rotation does not change it. */

@@ -151,6 +151,13 @@ internal object RaftPaneGridColumns {
      * conversation's: none kept until then, at least 360.
      */
     val TasksList = RaftPaneGridColumnBounds(id = "tasksList", defaultWidthDp = 400f, minWidthDp = 360f)
+
+    /**
+     * The Artifacts home page's list, the main pane beside its split Artifact column (web `ArtifactsRoute`,
+     * slock #16418): keeps its own width (`contentMin = 360`) so resizing its seam never overwrites the
+     * conversation's width while the right column shares [Artifact]'s saved width (480dp default).
+     */
+    val ArtifactsList = RaftPaneGridColumnBounds(id = "artifactsList", defaultWidthDp = 400f, minWidthDp = 360f)
 }
 
 

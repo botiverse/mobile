@@ -210,6 +210,12 @@ internal interface RaftSyncChangesSink {
     /** Applies one page's changes. */
     suspend fun apply(scope: RaftSyncScope, plan: RaftSyncApplyPlan)
 
+    /** Applies one page's changes and returns how many `inbox_row` changes were applied to Activity. */
+    suspend fun applyPage(scope: RaftSyncScope, plan: RaftSyncApplyPlan): Int {
+        apply(scope, plan)
+        return 0
+    }
+
     /**
      * `inboxReset` (inbox_row capability): retake the inbox snapshot (the Activity list), [reason]
      * `inbox_reset_<reason>`. Not awaited, like any Activity reload; the page's changes were applied first.
@@ -247,6 +253,8 @@ internal sealed interface RaftSyncPullResult {
         val inboxResetReason: String? = null,
         /** Changes of the entities this client does not read ([RaftSyncChangesPage.ignoredEntities]) over the pull's pages. */
         val ignoredEntities: Map<String, Int> = emptyMap(),
+        /** Number of `inbox_row` changes applied to Activity over the pull's pages. */
+        val inboxRowsApplied: Int = 0,
     ) : RaftSyncPullResult {
         /**
          * Go on in a follow-up pull: stopped at the page cap with more waiting, and the cursor moved.
@@ -417,6 +425,7 @@ internal class RaftSyncChangesEngine(
         var resetReason: String? = null
         var pages = 0
         var changes = 0
+        var inboxRowsApplied = 0
         var retryAfter: Long? = null
         var inboxReloadAfter: Long? = null
         var inboxResetReason: String? = null
@@ -442,6 +451,7 @@ internal class RaftSyncChangesEngine(
                 inboxReloadAfterMillis = inboxReloadAfter,
                 inboxResetReason = inboxResetReason,
                 ignoredEntities = ignored.toMap(),
+                inboxRowsApplied = inboxRowsApplied,
             )
         }
 
@@ -514,7 +524,7 @@ internal class RaftSyncChangesEngine(
                 changes += page.changes.size
                 page.ignoredEntities.forEach { (entity, count) -> ignored[entity] = (ignored[entity] ?: 0) + count }
                 val plan = page.changes.toSyncApplyPlan()
-                if (!plan.isEmpty) sink.apply(scope, plan)
+                if (!plan.isEmpty) inboxRowsApplied += sink.applyPage(scope, plan)
                 // inboxReset: the changes above still apply (unlike `reset`); then the inbox snapshot, at
                 // once or, with `retryAfterMs`, after it (the caller schedules that one).
                 page.inboxReset?.let { inboxReset ->

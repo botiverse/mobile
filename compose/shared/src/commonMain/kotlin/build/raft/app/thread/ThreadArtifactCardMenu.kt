@@ -32,11 +32,12 @@ import kotlin.math.roundToInt
 import org.jetbrains.compose.resources.StringResource
 
 // web `ArtifactCardMenu.tsx` + `ArtifactHomeMenu.tsx` (`ArtifactMenuContent`) + `artifactMenuKeys.ts`
-// (botiverse/slock #16110, menu order v4 #16225; #proj-workspace:#382 + #395): a message's live
-// Artifact card has its own context menu on right-click (non-touch secondary pointer) or keyboard
-// Shift+F10 / ContextMenu key. Touch long press, select mode, deleted/preview cards, and text
-// selection inside the card stay with the message row's menu. Items on Mobile: Open, separator,
-// Copy link (Open in new page is dropped in the native App; no Settle).
+// (botiverse/slock #16110, menu order v4 #16225, Follow/Unfollow #16357; #proj-workspace:#382 + #395):
+// a message's live Artifact card has its own context menu on right-click (non-touch secondary
+// pointer) or keyboard Shift+F10 / ContextMenu key. Touch long press, select mode, deleted/preview
+// cards, and text selection inside the card stay with the message row's menu. Items on Mobile:
+// Open, separator, Copy link, Follow/Unfollow (when the reader can toggle follow on this server;
+// Open in new page is dropped in the native App; no Settle).
 
 /** Test tags (web `data-testid`s on `ArtifactMessageCard` / `ArtifactCardMenu`). */
 internal object ArtifactCardMenuTags {
@@ -45,12 +46,14 @@ internal object ArtifactCardMenuTags {
     const val Menu = "artifact-card-menu"
     const val Open = "artifact-card-menu-open"
     const val CopyLink = "artifact-card-menu-copy-link"
+    const val Follow = "artifact-card-menu-follow"
 }
 
-/** One item of a message Artifact card's context menu, in menu order v4 (#16225). */
+/** One item of a message Artifact card's context menu, in menu order v4 (#16225) + #16357. */
 internal enum class ArtifactCardMenuAction {
     Open,
     CopyLink,
+    Follow,
 }
 
 internal data class ArtifactCardMenuItemSpec(
@@ -59,29 +62,51 @@ internal data class ArtifactCardMenuItemSpec(
     val icon: RaftLucideIconName,
     val testTag: String,
     val dividerBefore: Boolean = false,
+    val enabled: Boolean = true,
 )
 
 /**
  * The Artifact card context menu's items (web `ArtifactMenuContent` with `place = "message"`,
- * `home = null`, botiverse/slock #16110 + #16225, minus `Open in new page` per #proj-workspace:#395):
- * Open, then the #16225 group separator and Copy link. No Settle on message cards.
+ * `home = null`, botiverse/slock #16110 + #16225 + #16357, minus `Open in new page` per
+ * #proj-workspace:#395): Open, then the #16225 group separator, Copy link, and Follow/Unfollow
+ * (omitted when [showFollow] is false or [following] is unknown). No Settle on message cards.
  */
-internal fun artifactCardMenuItems(): List<ArtifactCardMenuItemSpec> =
-    listOf(
-        ArtifactCardMenuItemSpec(
-            action = ArtifactCardMenuAction.Open,
-            label = Res.string.common_open,
-            icon = RaftLucideIconName.PanelRightOpen,
-            testTag = ArtifactCardMenuTags.Open,
-        ),
-        ArtifactCardMenuItemSpec(
-            action = ArtifactCardMenuAction.CopyLink,
-            label = Res.string.artifacts_menu_copy_link,
-            icon = RaftLucideIconName.Link,
-            testTag = ArtifactCardMenuTags.CopyLink,
-            dividerBefore = true,
-        ),
-    )
+internal fun artifactCardMenuItems(
+    following: Boolean? = null,
+    showFollow: Boolean = false,
+    followPending: Boolean = false,
+): List<ArtifactCardMenuItemSpec> =
+    buildList {
+        add(
+            ArtifactCardMenuItemSpec(
+                action = ArtifactCardMenuAction.Open,
+                label = Res.string.common_open,
+                icon = RaftLucideIconName.PanelRightOpen,
+                testTag = ArtifactCardMenuTags.Open,
+            ),
+        )
+        add(
+            ArtifactCardMenuItemSpec(
+                action = ArtifactCardMenuAction.CopyLink,
+                label = Res.string.artifacts_menu_copy_link,
+                icon = RaftLucideIconName.Link,
+                testTag = ArtifactCardMenuTags.CopyLink,
+                dividerBefore = true,
+            ),
+        )
+        if (showFollow && following != null) {
+            add(
+                ArtifactCardMenuItemSpec(
+                    action = ArtifactCardMenuAction.Follow,
+                    label = if (following) Res.string.artifacts_menu_unfollow else Res.string.artifacts_menu_follow,
+                    icon = if (following) RaftLucideIconName.UnfollowArtifact else RaftLucideIconName.FollowArtifact,
+                    testTag = ArtifactCardMenuTags.Follow,
+                    dividerBefore = false,
+                    enabled = !followPending,
+                ),
+            )
+        }
+    }
 
 /**
  * Whether a pointer press on an [ArtifactMessageCard] opens the Artifact's own context menu (web
@@ -278,6 +303,10 @@ internal fun ArtifactCardContextMenuAnchor(
     onDismiss: () -> Unit,
     onOpen: () -> Unit,
     onCopyLink: () -> Unit,
+    following: Boolean? = null,
+    showFollow: Boolean = false,
+    followPending: Boolean = false,
+    onToggleFollow: ((Boolean) -> Unit)? = null,
 ) {
     val placedAnchor = anchor ?: IntOffset.Zero
     Box(Modifier.offset { placedAnchor }.size(1.dp)) {
@@ -289,17 +318,23 @@ internal fun ArtifactCardContextMenuAnchor(
             offset = 0.dp,
             returnFocusTo = returnFocusTo,
         ) {
-            artifactCardMenuItems().forEach { item ->
+            artifactCardMenuItems(
+                following = following,
+                showFollow = showFollow && onToggleFollow != null,
+                followPending = followPending,
+            ).forEach { item ->
                 if (item.dividerBefore) RaftMenuSeparator()
                 RaftMenuItem(
                     text = stringResource(item.label),
                     leadingIcon = { RaftSlotIcon(item.icon) },
+                    enabled = item.enabled,
                     modifier = Modifier.testTag(item.testTag),
                     onClick = {
                         onDismiss()
                         when (item.action) {
                             ArtifactCardMenuAction.Open -> onOpen()
                             ArtifactCardMenuAction.CopyLink -> onCopyLink()
+                            ArtifactCardMenuAction.Follow -> if (following != null) onToggleFollow?.invoke(!following)
                         }
                     },
                 )

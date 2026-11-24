@@ -44,6 +44,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -64,11 +65,13 @@ import build.raft.app.data.ArtifactsHomeScope
 import build.raft.app.data.ArtifactsHomeStatusFilter
 import build.raft.app.data.ArtifactsHomeView
 import build.raft.app.data.artifactDateTimestamp
+import build.raft.app.data.canToggleFollow
 import build.raft.app.markdown.lucideIcon
 import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.floorMod
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftListRow
@@ -275,12 +278,15 @@ internal fun ArtifactSettledStrip(
 }
 
 /**
- * Compact grid tile (web `ArtifactTile`, slock #16137):
- * - 16:10 cover with overlays: top-right Settled + Public (only when `home == Public`),
- *   bottom-left Mentions you / Updated pills, bottom-right combined comment badge.
+ * Compact grid tile (web `ArtifactTile`, slock #16137, #16357, #16418):
+ * - 16:10 cover with overlays: top-right Unfollowed (under Relevant to me) + Settled + Public
+ *   (only when `home == Public`), bottom-left Mentions you / Updated pills, bottom-right combined
+ *   comment badge.
  * - Below cover: 2-line bold title (no version badge, no standalone time line) +
  *   single meta line `Avatar + Author · [Home icon] Home`.
- * - Settled tiles under All are visually dimmed (grayscale image + `opacityDimmed`).
+ * - Settled tiles under All and unfollowed tiles under Relevant to me are visually dimmed
+ *   (grayscale image + `opacityDimmed`).
+ * - The tile open in the wide split viewer shows the selected cell fill and strong hairline border.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -295,15 +301,18 @@ internal fun ArtifactsHomeTile(
     onOpen: () -> Unit,
     onCopyLink: (() -> Unit)?,
     onSetSettled: ((Boolean) -> Unit)?,
+    current: Boolean = false,
+    unfollowed: Boolean = false,
+    followingPending: Boolean = false,
+    onSetFollowing: ((Boolean) -> Unit)? = null,
     cover: @Composable (ArtifactsHomeRow, Boolean) -> Unit,
 ) {
     val colors = RaftTheme.colors
     val label = artifactsHomeOpenLabel(row, readerId, serverName, byOpened)
     val shape = RoundedCornerShape(RaftRadius.Container)
-    val menuEnabled = onCopyLink != null || (row.summary.settledShown && onSetSettled != null)
     var menuAnchor by remember { mutableStateOf<IntOffset?>(null) }
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
-    val hasTopRight = row.summary.settled != null || row.summary.home == ArtifactHome.Public
+    val hasTopRight = unfollowed || row.summary.settled != null || row.summary.home == ArtifactHome.Public
     val hasBottomLeft = row.news.mentioned || row.news.newerVersion
     val hasBottomRight = row.summary.commentCount > 0 || row.news.newComments > 0
 
@@ -312,7 +321,7 @@ internal fun ArtifactsHomeTile(
             .fillMaxWidth()
             .onGloballyPositioned { boxSize = it.size }
             .artifactHomeContextMenuGestures(
-                enabled = menuEnabled,
+                enabled = true,
                 cardSize = { boxSize },
                 onOpenMenu = { menuAnchor = it },
             ),
@@ -322,13 +331,14 @@ internal fun ArtifactsHomeTile(
                 .fillMaxWidth()
                 .then(if (dimmed) Modifier.alpha(RaftTheme.sizes.opacityDimmed) else Modifier)
                 .clip(shape)
-                .background(colors.layerCard, shape)
-                .border(RaftStroke.Hairline, colors.lineSeam, shape)
+                .background(if (current) colors.fillCellSelected else colors.layerCard, shape)
+                .border(RaftStroke.Hairline, if (current) colors.lineStrong else colors.lineSeam, shape)
                 .testTag(ArtifactsHomeTags.Tile)
                 .raftClickable(onClick = onOpen)
                 .semantics {
                     contentDescription = label
                     role = Role.Button
+                    selected = current
                     onClick {
                         onOpen()
                         true
@@ -343,6 +353,7 @@ internal fun ArtifactsHomeTile(
                         horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
+                        if (unfollowed) ArtifactUnfollowedBadge(onCover = true)
                         row.summary.settled?.let { ArtifactCoverSettledBadge(it, readerId) }
                         if (row.summary.home == ArtifactHome.Public) ArtifactPublicBadge(onCover = true)
                     }
@@ -389,12 +400,16 @@ internal fun ArtifactsHomeTile(
         if (menuAnchor != null) {
             ArtifactsHomeRowMenu(
                 anchor = menuAnchor!!,
+                following = row.summary.following,
+                showFollow = row.summary.canToggleFollow() && onSetFollowing != null,
+                followingPending = followingPending,
                 settled = row.summary.settled != null,
-                showSettle = row.summary.settledShown && onSetSettled != null,
+                showSettle = settledEnabled && row.summary.settledShown && onSetSettled != null,
                 settling = settling,
                 onDismiss = { menuAnchor = null },
                 onOpen = onOpen,
                 onCopyLink = onCopyLink,
+                onSetFollowing = onSetFollowing,
                 onSetSettled = onSetSettled,
             )
         }
@@ -402,12 +417,14 @@ internal fun ArtifactsHomeTile(
 }
 
 /**
- * Thumbnail list row (web `ArtifactListRow`, slock #16137 + #16290):
- * - Built on [RaftListRow] (`variant = Entry`, `divider = false`, full-row hit target, 16dp edge).
+ * Thumbnail list row (web `ArtifactListRow`, slock #16137 + #16290 + #16357 + #16418):
+ * - Built on [RaftListRow] (`variant = Entry`, `divider = false`, full-row hit target, 16dp edge,
+ *   `selected = current` when open in the wide split viewer).
  * - 76dp 16:10 thumbnail (cover image, scaled excerpt, or kind glyph placeholder).
  * - Single-line bold title + single meta line `Avatar + Author · [Home icon] Home · Relative time`.
- * - Badges: Mentions you / Updated, combined comment badge, Settled, Public (only on public home)
- *   — trailing on wide, wrapped cleanly under the meta line on phone.
+ * - Badges: Unfollowed (under Relevant to me), Mentions you / Updated, combined comment badge,
+ *   Settled, Public (only on public home) — trailing on wide containers, wrapped under the meta
+ *   line on narrower containers.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -423,19 +440,23 @@ internal fun ArtifactsHomeListRow(
     onOpen: () -> Unit,
     onCopyLink: (() -> Unit)?,
     onSetSettled: ((Boolean) -> Unit)?,
+    current: Boolean = false,
+    unfollowed: Boolean = false,
+    followingPending: Boolean = false,
+    onSetFollowing: ((Boolean) -> Unit)? = null,
     thumbnail: @Composable (ArtifactsHomeRow, Boolean) -> Unit,
 ) {
     val colors = RaftTheme.colors
     val label = artifactsHomeOpenLabel(row, readerId, serverName, byOpened)
     val time = raftRelativeTimestampLabel(artifactDateTimestamp(row, byOpened))
     val hasBadges =
-        row.news.mentioned ||
+        unfollowed ||
+            row.news.mentioned ||
             row.news.newerVersion ||
             row.summary.commentCount > 0 ||
             row.news.newComments > 0 ||
             row.summary.settled != null ||
             row.summary.home == ArtifactHome.Public
-    val menuEnabled = onCopyLink != null || (row.summary.settledShown && onSetSettled != null)
     var menuAnchor by remember { mutableStateOf<IntOffset?>(null) }
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
 
@@ -445,6 +466,7 @@ internal fun ArtifactsHomeListRow(
             verticalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier.testTag(ArtifactsHomeTags.ListBadges),
         ) {
+            if (unfollowed) ArtifactUnfollowedBadge(onCover = false)
             ArtifactNewsPills(row.news)
             ArtifactCombinedCommentBadge(
                 commentCount = row.summary.commentCount,
@@ -461,7 +483,7 @@ internal fun ArtifactsHomeListRow(
             .fillMaxWidth()
             .onGloballyPositioned { boxSize = it.size }
             .artifactHomeContextMenuGestures(
-                enabled = menuEnabled,
+                enabled = true,
                 cardSize = { boxSize },
                 onOpenMenu = { menuAnchor = it },
             ),
@@ -476,6 +498,7 @@ internal fun ArtifactsHomeListRow(
             onClick = onOpen,
             variant = RaftListRowVariant.Entry,
             divider = false,
+            selected = current,
             menuOpen = menuAnchor != null,
             text = RaftListRowText.Member,
             leading = { thumbnail(row, dimmed) },
@@ -508,12 +531,16 @@ internal fun ArtifactsHomeListRow(
         if (menuAnchor != null) {
             ArtifactsHomeRowMenu(
                 anchor = menuAnchor!!,
+                following = row.summary.following,
+                showFollow = row.summary.canToggleFollow() && onSetFollowing != null,
+                followingPending = followingPending,
                 settled = row.summary.settled != null,
-                showSettle = row.summary.settledShown && onSetSettled != null,
+                showSettle = settledEnabled && row.summary.settledShown && onSetSettled != null,
                 settling = settling,
                 onDismiss = { menuAnchor = null },
                 onOpen = onOpen,
                 onCopyLink = onCopyLink,
+                onSetFollowing = onSetFollowing,
                 onSetSettled = onSetSettled,
             )
         }
@@ -569,6 +596,25 @@ internal fun ArtifactPublicBadge(onCover: Boolean = false) {
     }
     if (onCover) {
         Box(Modifier.background(colors.layerCard, shape)) { badge() }
+    } else {
+        badge()
+    }
+}
+
+/** Outline muted "Unfollowed" badge shown on unfollowed items under "Relevant to me" (web #16357). */
+@Composable
+internal fun ArtifactUnfollowedBadge(onCover: Boolean = false) {
+    val shape = RoundedCornerShape(RaftRadius.Chip)
+    val badge: @Composable () -> Unit = {
+        RaftBadge(
+            text = stringResource(Res.string.artifacts_follow_unfollowed),
+            appearance = RaftBadgeAppearance.Outline,
+            variant = RaftBadgeVariant.Muted,
+            modifier = Modifier.testTag(ArtifactsHomeTags.UnfollowedTag),
+        )
+    }
+    if (onCover) {
+        Box(Modifier.background(RaftTheme.colors.layerCard, shape)) { badge() }
     } else {
         badge()
     }
@@ -803,18 +849,23 @@ internal fun ArtifactsHomeSkeleton(
     }
 }
 
-/** Context menu on a home tile or list row (web `ArtifactHomeMenu`: Open, Copy link, Settle/Unsettle). */
+/** Context menu on a home tile or list row (web `ArtifactHomeMenu`, slock #16357: Open, Copy link, Follow/Unfollow, Settle/Unsettle). */
 @Composable
 private fun ArtifactsHomeRowMenu(
     anchor: IntOffset,
+    following: Boolean?,
+    showFollow: Boolean,
+    followingPending: Boolean,
     settled: Boolean,
     showSettle: Boolean,
     settling: Boolean,
     onDismiss: () -> Unit,
     onOpen: () -> Unit,
     onCopyLink: (() -> Unit)?,
+    onSetFollowing: ((Boolean) -> Unit)?,
     onSetSettled: ((Boolean) -> Unit)?,
 ) {
+    val canFollow = showFollow && following != null && onSetFollowing != null
     Box(Modifier.offset { anchor }.size(1.dp)) {
         RaftDropdownMenu(
             expanded = true,
@@ -832,8 +883,10 @@ private fun ArtifactsHomeRowMenu(
                     onOpen()
                 },
             )
-            if (onCopyLink != null) {
+            if (onCopyLink != null || canFollow) {
                 RaftMenuSeparator()
+            }
+            if (onCopyLink != null) {
                 RaftMenuItem(
                     text = stringResource(Res.string.artifacts_menu_copy_link),
                     leadingIcon = { RaftSlotIcon(RaftLucideIconName.Link) },
@@ -841,6 +894,20 @@ private fun ArtifactsHomeRowMenu(
                     onClick = {
                         onDismiss()
                         onCopyLink()
+                    },
+                )
+            }
+            if (canFollow) {
+                RaftMenuItem(
+                    text = stringResource(if (following == true) Res.string.artifacts_menu_unfollow else Res.string.artifacts_menu_follow),
+                    leadingIcon = {
+                        RaftSlotIcon(if (following == true) RaftLucideIconName.UnfollowArtifact else RaftLucideIconName.FollowArtifact)
+                    },
+                    enabled = !followingPending,
+                    modifier = Modifier.testTag(ArtifactsHomeTags.HomeMenuFollow),
+                    onClick = {
+                        onDismiss()
+                        onSetFollowing(following != true)
                     },
                 )
             }

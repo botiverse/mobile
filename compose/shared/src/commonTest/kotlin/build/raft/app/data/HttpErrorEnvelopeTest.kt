@@ -160,6 +160,8 @@ class HttpErrorEnvelopeTest {
                 override suspend fun conversations(serverId: String, q: String) = response(code = 200, bodyText = "{}")
 
                 override suspend fun setSettled(serverId: String, artifactId: String, settled: Boolean) = response(code = 200, bodyText = "{}")
+
+                override suspend fun setFollowing(serverId: String, artifactId: String, following: Boolean) = response(code = 200, bodyText = "{}")
             }
         val artifactsLoad = fakeArtifactsApi.loadArtifactsHomePage("srv-1", ArtifactsHomeQuery(), cursor = null, DataRequestPriority.Visible)
         val artifactsError = assertIs<ArtifactsHomeLoad.Failed>(artifactsLoad).error

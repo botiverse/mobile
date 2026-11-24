@@ -4701,6 +4701,11 @@
     <string name="message_card_consent_not_now">Not now</string>
     <string name="artifacts_menu_copy_link">Copy link</string>
     <string name="artifacts_menu_link_copied">Link copied.</string>
+    <string name="artifacts_menu_follow">Follow</string>
+    <string name="artifacts_menu_unfollow">Unfollow</string>
+    <string name="artifacts_follow_unfollowed">Unfollowed</string>
+    <string name="artifacts_follow_undo">Undo</string>
+    <string name="artifacts_follow_failed">Couldn't change whether you follow this Artifact. Try again.</string>
     <string name="artifacts_card_comments_one">1 comment</string>
     <string name="artifacts_card_comments_many">%1$d comments</string>
     <string name="artifacts_card_loading">Loading Artifact</string>

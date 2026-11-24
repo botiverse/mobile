@@ -92,6 +92,16 @@ data class ArtifactsHomeSettlement(
     val changed: Boolean = true,
 )
 
+/**
+ * Subscription write answer (botiverse/slock `packages/shared/src/webArtifactsContract.ts`
+ * `artifactWebPaths.subscription`: `PUT` / `DELETE /api/artifacts/:id/subscription`):
+ * `{ following: boolean }`.
+ */
+@Serializable
+data class ArtifactWebSubscriptionWireDto(
+    val following: Boolean,
+)
+
 /** `ArtifactShownActor` as the home page names it (web `artifactAuthorText.ts`). */
 data class ArtifactsHomeActor(
     val type: String,
@@ -330,6 +340,11 @@ fun parseArtifactsHomeSettlement(bodyText: String?): ArtifactsHomeSettlement? {
     return ArtifactsHomeSettlement(settled = settled, changed = wire.changed)
 }
 
+fun parseArtifactSubscription(bodyText: String?): Boolean? =
+    bodyText
+        ?.let { runCatching { artifactsDashboardJson.decodeFromString(ArtifactWebSubscriptionWireDto.serializer(), it) }.getOrNull() }
+        ?.following
+
 private fun <T> HomeNetworkResponse.toArtifactsHomeLoad(parse: (String?) -> T?): ArtifactsHomeLoad<T> {
     if (isSuccessful) {
         return parse(bodyText)?.let { ArtifactsHomeLoad.Ok(it) }
@@ -360,6 +375,8 @@ internal interface RaftArtifactsDashboardApi {
     suspend fun conversations(serverId: String, q: String): HomeNetworkResponse
 
     suspend fun setSettled(serverId: String, artifactId: String, settled: Boolean): HomeNetworkResponse
+
+    suspend fun setFollowing(serverId: String, artifactId: String, following: Boolean): HomeNetworkResponse
 }
 
 private fun searchParam(q: String): List<Pair<String, String>> =
@@ -398,6 +415,14 @@ internal class NetworkRaftArtifactsDashboardApi(private val networkClient: RaftN
             method = if (settled) "POST" else "DELETE",
             serverIdOverride = ServerId(serverId),
         )
+
+    override suspend fun setFollowing(serverId: String, artifactId: String, following: Boolean): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "artifacts/${artifactId.appLinkPathSegment()}/subscription",
+            method = if (following) "PUT" else "DELETE",
+            serverIdOverride = ServerId(serverId),
+        )
 }
 
 /** A failure to reach the server at all: no response, so no trace id. */
@@ -432,7 +457,15 @@ internal suspend fun RaftArtifactsDashboardApi.updateArtifactSettled(
     runCatchingPreservingCancellation { setSettled(serverId, artifactId, settled) }
         .fold({ it.toArtifactsHomeLoad(::parseArtifactsHomeSettlement) }, { ArtifactsHomeLoad.Failed(unreachable(it)) })
 
-/** The store's typed reads and settle writes: routes through response mapping (a test hands answers directly). */
+internal suspend fun RaftArtifactsDashboardApi.updateArtifactFollowing(
+    serverId: String,
+    artifactId: String,
+    following: Boolean,
+): ArtifactsHomeLoad<Boolean> =
+    runCatchingPreservingCancellation { setFollowing(serverId, artifactId, following) }
+        .fold({ it.toArtifactsHomeLoad(::parseArtifactSubscription) }, { ArtifactsHomeLoad.Failed(unreachable(it)) })
+
+/** The store's typed reads and settle/follow writes: routes through response mapping (a test hands answers directly). */
 internal interface ArtifactsHomeSource {
     suspend fun page(serverId: String, query: ArtifactsHomeQuery, cursor: String?, priority: DataRequestPriority): ArtifactsHomeLoad<ArtifactsHomePage>
 
@@ -442,6 +475,9 @@ internal interface ArtifactsHomeSource {
 
     suspend fun setSettled(serverId: String, artifactId: String, settled: Boolean): ArtifactsHomeLoad<ArtifactsHomeSettlement> =
         ArtifactsHomeLoad.Failed(ScreenError("artifacts_settle_unsupported", retryable = false))
+
+    suspend fun setFollowing(serverId: String, artifactId: String, following: Boolean): ArtifactsHomeLoad<Boolean> =
+        ArtifactsHomeLoad.Failed(ScreenError("artifacts_follow_unsupported", retryable = false))
 }
 
 internal fun RaftArtifactsDashboardApi.asArtifactsHomeSource(): ArtifactsHomeSource {
@@ -456,5 +492,8 @@ internal fun RaftArtifactsDashboardApi.asArtifactsHomeSource(): ArtifactsHomeSou
 
         override suspend fun setSettled(serverId: String, artifactId: String, settled: Boolean) =
             api.updateArtifactSettled(serverId, artifactId, settled)
+
+        override suspend fun setFollowing(serverId: String, artifactId: String, following: Boolean) =
+            api.updateArtifactFollowing(serverId, artifactId, following)
     }
 }

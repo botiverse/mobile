@@ -205,10 +205,16 @@ Pick the smallest bump that is honest (artin, 2026-11-02):
 - Every patch fix lands on `main` first (or at once), then is cherry-picked.
   Verify each cherry-pick against its merge commit, not by grepping strings.
 - Changelog: full for a minor; short, fixes only, for a patch; none for a build.
-- **One version line.** A number means the same code on every platform
-  (Android, iOS, desktop); no platform reuses a number for different content.
-  Live versions may differ: a one-platform fix bumps the shared patch and ships
-  only there. The next minor realigns.
+- **One version line (with explicit platform-ahead carve-out, §3.1).** By
+  default a number means the same code on every platform (Android, iOS,
+  desktop). Live versions may differ when a one-platform fix bumps the shared
+  patch and ships only there, or when one platform has already shipped and
+  frozen `release/X.Y.Z` while the other platform has not yet gone live
+  publicly and needs a small batch of extra fixes on a platform-ahead branch
+  (`release/X.Y.Z-ios` or `release/X.Y.Z-android`, §3.1). In the platform-ahead
+  case, the two platforms keep separate audit tags (`vX.Y.Z` vs
+  `ios-vX.Y.Z-b<build>`), the release issue lists the exact delta commits, and
+  the next minor realigns.
 
 Coordinates:
 
@@ -241,8 +247,8 @@ Record branch and commit in the issue. Known gaps with the slash name:
 `scripts/create_android_release_branch.sh` creates the old `release-X.Y.Z`
 form; `test.yml` (`release-*` full run) accepts only the dash form. Dispatch
 `test.yml -f scope=full` on the branch by hand rather than renaming branches.
-`scripts/create_ios_release_audit_tag.sh` accepts `release/X.Y.Z` (and the
-legacy dash form).
+`scripts/create_ios_release_audit_tag.sh` accepts `release/X.Y.Z`,
+`release/X.Y.Z-ios` (§3.1), and the legacy dash form.
 
 After the cut:
 
@@ -252,6 +258,66 @@ After the cut:
 - never merge `main` into the release branch; a fix PR that targeted `main` by
   mistake is retargeted or recreated;
 - update the issue whenever scope changes.
+
+### 3.1 Platform-ahead release branch (`release/X.Y.Z-ios` / `release/X.Y.Z-android`)
+
+(artin, 2026-11-24.) Use this procedure when **Platform A** (typically Android)
+has already shipped `X.Y.Z` publicly and `release/X.Y.Z` is frozen (or ready to
+freeze), while **Platform B** (typically iOS) has not yet been released
+publicly (still in TestFlight internal/external or `WAITING_FOR_REVIEW` /
+`MANUAL` hold) and must pick up a small, bounded set of extra fixes slightly
+ahead of Platform A.
+
+Rules:
+
+1. **Never unfreeze or mutate `release/X.Y.Z`.** The shipped Android commit
+   (`vX.Y.Z`, `release/X.Y.Z`) stays immutable, merges back to `main`, and
+   freezes normally (§9) so Android's shipped bytes remain 1:1 reproducible.
+2. **Fix on `main` first, then cherry-pick.** Every commit added to
+   `release/X.Y.Z-ios` MUST land on `main` through a reviewed, tested PR first
+   (zero release-only drift). Never merge `main` wholesale into the branch.
+3. **Cut `release/X.Y.Z-ios` from the frozen `release/X.Y.Z` commit:**
+   ```bash
+   git push origin <shipped-release-X.Y.Z-40-char-sha>:refs/heads/release/X.Y.Z-ios
+   ```
+   Then cherry-pick only the approved delta commits from `origin/main` into
+   `release/X.Y.Z-ios` via reviewed PR(s) targeting `release/X.Y.Z-ios`, verify
+   tests, and record the exact delta commit list in the release issue.
+4. **Version & monotonic build number.** Keep marketing version `X.Y.Z` (since
+   iOS `X.Y.Z` has not gone live on the App Store yet) and increment
+   `version_build` strictly above every prior `X.Y.Z` iOS build (e.g.
+   `12900004` → `12900005`). Dispatch `ios-release.yml` on
+   `--ref release/X.Y.Z-ios` with `testflight_internal=true`.
+5. **Internal smoke first, then replace pending Apple submissions.** Verify the
+   new build (`12900005`) in TestFlight internal (`Botiverse`) first (§6.2).
+   Once verified (and with explicit release-owner confirmation when withdrawing
+   a pending store review, §Roles):
+   - **App Store (if an older build of `X.Y.Z` is `WAITING_FOR_REVIEW`):**
+     run `hands app-store withdraw raft-ios` (dry-run first, then `--commit`)
+     to cancel the stale submission, re-run `hands app-store prepare` binding
+     the new build (`12900005`), verify localizations & `preflight`, and
+     `hands app-store submit raft-ios --commit` (`MANUAL` release).
+   - **TestFlight external (`Insiders`):** submit the new build with
+     `hands builds testflight-publish raft-ios <newBuildId> --distribution external ... --notify-testers --json`
+     (supersedes the prior external build), then complete notification
+     verification once approved (§7.4).
+6. **Separate audit tag & release-issue ledger.** Push the immutable iOS audit
+   tag `ios-vX.Y.Z-b<newBuild>` pointing to `release/X.Y.Z-ios` HEAD via
+   `scripts/create_ios_release_audit_tag.sh --release-branch release/X.Y.Z-ios ...`.
+   In the release issue, record BOTH `Android (vX.Y.Z / release/X.Y.Z)` and
+   `iOS (ios-vX.Y.Z-b<newBuild> / release/X.Y.Z-ios)` commits and explicitly
+   list the delta commits iOS carries ahead of Android.
+7. **Closeout & branch lock.** Because every delta commit landed on `main`
+   first, verify `git cherry origin/main origin/release/X.Y.Z-ios` (or
+   `git diff`) confirms zero un-merged fixes remain only on `release/X.Y.Z-ios`,
+   close remaining iOS-gated tickets and the release issue, and freeze
+   `release/X.Y.Z-ios` with an exact-ref ruleset (`Freeze release/X.Y.Z-ios`,
+   §9.3). Any later iOS-only `X.Y.Z+1` hotfix branches from `ios-vX.Y.Z-b<newBuild>`;
+   any Android-only `X.Y.Z+1` hotfix still branches from `vX.Y.Z`.
+
+*Threshold check:* if the delta is no longer a small, bounded fix batch (e.g.
+it pulls in major features or diverges significantly from Android `X.Y.Z`),
+skip `release/X.Y.Z-ios` and ship a normal `1.(Y+1).0` train instead.
 
 ## 4. Aggregate and review notes
 
@@ -729,8 +795,11 @@ decisions hold; an earlier publish
 instruction never carries over. **Cadence** (artin, 2026-10-23): Android ships
 every release; iOS internal gets every release; iOS external is submitted only
 after the previous external submission was approved; releases in between stay
-internal. Never withdraw a pending review to replace it. External What to Test
-covers everything since the last external release.
+internal. Never withdraw a pending review to replace it, **except** when the
+release owner explicitly directs a platform-ahead rebuild on
+`release/X.Y.Z-ios` (§3.1, e.g. to include critical perf/stability fixes before
+iOS goes public). External What to Test covers everything since the last
+external release.
 
 ```bash
 hands builds testflight-publish raft-ios <buildId> --distribution external \

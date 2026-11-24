@@ -48,6 +48,87 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
+    fun activityInPlaceV1DefaultsOnAndHonorsBothRemoteOffSwitches() = runTest {
+        assertEquals("mobile_activity_inplace_v1", MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY)
+        assertTrue(MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertTrue(MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        assertTrue(MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+
+        // Before evaluation (unresolved) and when server reports missing_flag: default ON.
+        val missingFlags =
+            SharedServerFeatureFlags(
+                FakeApi(
+                    ok(
+                        """{"evaluations":[
+                            {"key":"$MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY","enabled":false,"reason":"missing_flag"},
+                            {"key":"$MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY","enabled":false,"reason":"default"}
+                        ]}"""
+                    )
+                )
+            )
+        assertTrue(missingFlags.isActivityInPlaceEnabled(server), "unresolved defaults ON")
+        missingFlags.prefetch(server)
+        assertTrue(missingFlags.isActivityInPlaceEnabled(server), "missing_flag + legacy default-false stays ON")
+
+        // Explicit server off on mobile_activity_inplace_v1 (flag_disabled, kill_switch, server_rule, default) turns it OFF.
+        for (reason in listOf("flag_disabled", "kill_switch", "server_rule", "default")) {
+            val disabled =
+                SharedServerFeatureFlags(
+                    FakeApi(
+                        ok(
+                            """{"evaluations":[
+                                {"key":"$MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY","enabled":false,"reason":"$reason"},
+                                {"key":"$MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY","enabled":false,"reason":"default"}
+                            ]}"""
+                        )
+                    )
+                )
+            disabled.prefetch(server)
+            assertFalse(disabled.isActivityInPlaceEnabled(server), "v1 off ($reason) disables path")
+        }
+
+        // Emergency day-0 global kill on legacy mobile_inbox_inplace_v0 (reason == kill_switch) turns it OFF.
+        val legacyKilled =
+            SharedServerFeatureFlags(
+                FakeApi(
+                    ok(
+                        """{"evaluations":[
+                            {"key":"$MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY","enabled":false,"reason":"missing_flag"},
+                            {"key":"$MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}
+                        ]}"""
+                    )
+                )
+            )
+        legacyKilled.prefetch(server)
+        assertFalse(legacyKilled.isActivityInPlaceEnabled(server), "legacy kill_switch disables 1.30 path")
+
+        // Local diagnostic override can force mobile_activity_inplace_v1 OFF.
+        val overridden =
+            SharedServerFeatureFlags(
+                api = FakeApi(ok("""{"evaluations":[{"key":"$MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY","enabled":false,"reason":"missing_flag"}]}""")),
+                diagnosticOverride = { _, key, eff -> if (key == MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY) false else eff },
+            )
+        overridden.prefetch(server)
+        assertFalse(overridden.isActivityInPlaceEnabled(server), "diagnostic override force-off takes effect")
+
+        // Explicit off on mobile_activity_inplace_v1 persists across offline cold start via lastKnown.
+        val disk = InMemoryRaftKeyValueStore()
+        val binding = ServerFeatureFlagLastKnownBinding("https://api.example", "user-a")
+        fun process(api: RaftFeatureFlagsApi) =
+            SharedServerFeatureFlags(
+                api = api,
+                lastKnown = ServerFeatureFlagLastKnownStore(store = disk, currentBinding = { binding }),
+            )
+        process(
+            FakeApi(
+                ok("""{"evaluations":[{"key":"$MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY","enabled":false,"reason":"flag_disabled"}]}""")
+            )
+        ).prefetch(server)
+        val coldStart = process(FakeApi(HomeNetworkResponse(code = 0, bodyText = null)))
+        assertFalse(coldStart.isActivityInPlaceEnabled(server), "persisted off-switch holds across offline cold start")
+    }
+
+    @Test
     fun diagnosticOverrideHookCanForceAServerEnabledFlagOff() = runBlocking {
         val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_notification_prefs_v0","enabled":true}]}"""))
         val flags = SharedServerFeatureFlags(api, diagnosticOverride = { _, _, _ -> false })

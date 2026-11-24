@@ -16,10 +16,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -57,14 +59,18 @@ import build.raft.app.data.ArtifactScreenshotReader
 import build.raft.app.data.ArtifactSettled
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
+import build.raft.app.data.ArtifactsHomeLoad
+import build.raft.app.data.artifactFollowKey
 import build.raft.app.data.artifactScreenshotFile
 import build.raft.app.data.artifactWebUrl
+import build.raft.app.data.canToggleFollow
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.MillisPerDay
 import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampEpochMillis
 import build.raft.app.resources.*
+import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -90,6 +96,7 @@ import coil3.compose.LocalPlatformContext
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 // web `ArtifactMessageRefs.tsx` / `ArtifactMessageCard.tsx` (botiverse/slock staging 84e41d9be):
 // the cards under a message for the Artifacts its text links to, mounted by `MessageItem.tsx`
@@ -269,6 +276,54 @@ internal fun ThreadArtifactMessageRefs(
     val opener = rememberRaftArtifactOpener { openArtifactWebPage(artifactWebUrl(webBaseUrl, it)) }
     val screenshots = remember(artifacts.screenshots, host.serverId) { artifacts.screenshots?.reader(host.serverId) }
     val linkCopiedMessage = stringResource(Res.string.artifacts_menu_link_copied)
+    val unfollowedToast = stringResource(Res.string.artifacts_follow_unfollowed)
+    val undoLabel = stringResource(Res.string.artifacts_follow_undo)
+    val followFailed = stringResource(Res.string.artifacts_follow_failed)
+    val follows = artifacts.follows
+    val followState = follows?.state?.collectAsState()?.value
+    val scope = rememberCoroutineScope()
+    val toastHost = LocalRaftToastHostState.current
+    val currentToastHost by rememberUpdatedState(toastHost)
+    val undoToastIds = remember { mutableMapOf<String, Long>() }
+    val toggleFollow: ((ArtifactSummary, Boolean) -> Unit)? =
+        follows?.let { followStore ->
+            { summary, nextFollowing ->
+                val serverId = host.serverId
+                val artifactId = summary.id
+                val key = artifactFollowKey(serverId, artifactId)
+                scope.launch {
+                    when (val result = followStore.setFollowing(serverId, artifactId, nextFollowing)) {
+                        null -> Unit
+                        is ArtifactsHomeLoad.Ok -> {
+                            undoToastIds.remove(key)?.let { currentToastHost?.dismiss(it) }
+                            if (!result.value) {
+                                val undo = {
+                                    scope.launch {
+                                        when (val undone = followStore.setFollowing(serverId, artifactId, true)) {
+                                            null -> Unit
+                                            is ArtifactsHomeLoad.Ok -> undoToastIds.remove(key)?.let { currentToastHost?.dismiss(it) }
+                                            is ArtifactsHomeLoad.Failed -> host.errorToast(followFailed, undone.error.traceId)
+                                            is ArtifactsHomeLoad.Missing -> host.errorToast(followFailed, undone.error.traceId)
+                                            ArtifactsHomeLoad.Off -> host.errorToast(followFailed, null)
+                                        }
+                                    }
+                                    Unit
+                                }
+                                val activeHost = currentToastHost
+                                if (activeHost != null) {
+                                    undoToastIds[key] = activeHost.show(title = unfollowedToast, actionLabel = undoLabel, onAction = undo)
+                                } else {
+                                    host.toastWithAction?.invoke(unfollowedToast, undoLabel, undo) ?: host.toast(unfollowedToast)
+                                }
+                            }
+                        }
+                        is ArtifactsHomeLoad.Failed -> host.errorToast(followFailed, result.error.traceId)
+                        is ArtifactsHomeLoad.Missing -> host.errorToast(followFailed, result.error.traceId)
+                        ArtifactsHomeLoad.Off -> host.errorToast(followFailed, null)
+                    }
+                }
+            }
+        }
     RaftDesignSystemTheme {
         CompositionLocalProvider(LocalArtifactScreenshotReader provides screenshots) {
             ThreadArtifactMessageRefsContent(
@@ -284,6 +339,9 @@ internal fun ThreadArtifactMessageRefs(
                 modifier = modifier,
                 readerId = artifacts.readerId,
                 contextMenuEnabled = contextMenuEnabled,
+                followingOf = { summary -> followState?.followingOf(host.serverId, summary.id) ?: summary.following },
+                followPendingOf = { summary -> followState?.isPending(host.serverId, summary.id) == true },
+                onToggleFollow = toggleFollow,
             )
         }
     }
@@ -299,6 +357,9 @@ internal fun ThreadArtifactMessageRefsContent(
     readerId: String? = null,
     onCopyLink: (ArtifactSummary) -> Unit = {},
     contextMenuEnabled: Boolean = true,
+    followingOf: (ArtifactSummary) -> Boolean? = { it.following },
+    followPendingOf: (ArtifactSummary) -> Boolean = { false },
+    onToggleFollow: ((ArtifactSummary, Boolean) -> Unit)? = null,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when (view) {
@@ -315,6 +376,9 @@ internal fun ThreadArtifactMessageRefsContent(
                                     readerId = readerId,
                                     onCopyLink = { onCopyLink(ref.summary) },
                                     contextMenuEnabled = contextMenuEnabled,
+                                    followingOverride = followingOf(ref.summary),
+                                    followPending = followPendingOf(ref.summary),
+                                    onToggleFollow = onToggleFollow?.let { cb -> { next -> cb(ref.summary, next) } },
                                 )
                             is ThreadArtifactMessageRef.Deleted -> ArtifactDeletedCard(ref.deleted)
                         }
@@ -473,6 +537,9 @@ internal fun ArtifactMessageCard(
     onCopyLink: () -> Unit = {},
     contextMenuEnabled: Boolean = true,
     preview: Boolean = false,
+    followingOverride: Boolean? = null,
+    followPending: Boolean = false,
+    onToggleFollow: ((Boolean) -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -642,12 +709,17 @@ internal fun ArtifactMessageCard(
             }
         }
         if (!preview) {
+            val effectiveFollowing = followingOverride ?: summary.following
             ArtifactCardContextMenuAnchor(
                 anchor = menuAnchor,
                 returnFocusTo = cardFocusRequester,
                 onDismiss = { menuAnchor = null },
                 onOpen = onOpen,
                 onCopyLink = onCopyLink,
+                following = effectiveFollowing,
+                showFollow = summary.canToggleFollow(effectiveFollowing) && onToggleFollow != null,
+                followPending = followPending,
+                onToggleFollow = onToggleFollow,
             )
         }
     }
