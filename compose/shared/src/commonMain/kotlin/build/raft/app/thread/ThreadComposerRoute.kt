@@ -606,6 +606,8 @@ internal fun ThreadComposerRoute(
             state = composerUiState,
             threadMessages = timelineSlice.messages,
             originMessage = renderedPayload.originMessage,
+            payloadMembers = renderedPayload.members,
+            payloadMemberCandidates = renderedPayload.memberCandidates,
             prioritizeThreadParticipants = renderedPayload.shouldPrioritizeThreadMentionParticipants(),
             memberSuggestionsFlow = memberSuggestionsFlow,
             channelSuggestionsFlow = channelSuggestionsFlow,
@@ -757,6 +759,8 @@ private fun ThreadComposerContentWithSuggestions(
     state: ThreadComposerUiState,
     threadMessages: List<RaftThreadMessageItem>,
     originMessage: RaftThreadMessageItem?,
+    payloadMembers: List<RaftThreadMemberItem>,
+    payloadMemberCandidates: List<RaftThreadMemberItem>,
     prioritizeThreadParticipants: Boolean,
     memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
@@ -833,9 +837,28 @@ private fun ThreadComposerContentWithSuggestions(
             fallbackSuggestions = state.channelSuggestions,
             status = channelSuggestionSlice.status
         )
+    val pendingMentionTargets =
+        remember(state.pendingMentionActions.isNotEmpty(), payloadMembers, payloadMemberCandidates) {
+            if (state.pendingMentionActions.isNotEmpty()) {
+                buildPendingMentionTargetMap(
+                    payloadMembers = payloadMembers,
+                    payloadMemberCandidates = payloadMemberCandidates,
+                )
+            } else {
+                PendingMentionTargetMap.Empty
+            }
+        }
     val renderedState =
-        remember(state, memberSuggestionSlice, renderedMemberSuggestions, channelSuggestionSlice, renderedChannelSuggestions) {
+        remember(
+            state,
+            pendingMentionTargets,
+            memberSuggestionSlice,
+            renderedMemberSuggestions,
+            channelSuggestionSlice,
+            renderedChannelSuggestions,
+        ) {
             state.copy(
+                pendingMentionTargets = pendingMentionTargets,
                 memberSuggestions = renderedMemberSuggestions,
                 memberSuggestionsStatus = memberSuggestionSlice.status,
                 memberSuggestionsErrorCode = memberSuggestionSlice.errorCode,

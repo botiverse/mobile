@@ -17,6 +17,7 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -666,7 +667,33 @@ internal class ThreadRouteComposerActions(
                         val succeeded = mentionActionSucceeded(verb, rowResult)
                         val notice =
                             if (succeeded) {
-                                pendingAction.mentionActionDeliveredNotice(verb, composerSurface.mentionScopeChannelLabel())
+                                val targetDisplayName =
+                                    buildPendingMentionTargetMap(
+                                        serverMembers =
+                                            threadMembersServerId
+                                                ?.let { serverMembersStore?.currentServerMembers(it) }
+                                                .orEmpty(),
+                                        channelMembers =
+                                            if (serverMembersStore != null && threadMembersServerId != null) {
+                                                composerSurface.mentionScopeChannelId
+                                                    ?.let(::ChannelId)
+                                                    ?.let { serverMembersStore.currentChannelMembers(threadMembersServerId, it) }
+                                                    .orEmpty()
+                                            } else {
+                                                emptyList()
+                                            },
+                                        payloadMembers = payload.members,
+                                        payloadMemberCandidates = payload.memberCandidates,
+                                        jointActors =
+                                            threadMembersServerId
+                                                ?.let { serverMembersStore?.jointActors?.currentActors(it) }
+                                                .orEmpty(),
+                                    ).displayName(pendingAction)
+                                pendingAction.mentionActionDeliveredNotice(
+                                    action = verb,
+                                    channelLabel = composerSurface.mentionScopeChannelLabel(),
+                                    displayName = targetDisplayName,
+                                )
                             } else {
                                 localizedPendingMentionActionRequestFailure(
                                     result = result,

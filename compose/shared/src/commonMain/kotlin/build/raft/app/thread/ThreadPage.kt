@@ -4762,6 +4762,13 @@ private fun SharedThreadRouteContentContent(
                             )
                         )
                     }
+                    if (pendingMentionActions.isNotEmpty() && serverMembersStore != null && threadMembersServerId != null) {
+                        if (serverMembersStore.currentServerMembers(threadMembersServerId).isEmpty()) {
+                            coroutineScope.launch {
+                                serverMembersStore.refreshMembers(threadMembersServerId, DataRequestPriority.Background)
+                            }
+                        }
+                    }
                 } else {
                     bridge.logWarn(
                         "thread_send_success_terminal_projection_dropped localMessageId=$localMessageId " +
@@ -6052,6 +6059,15 @@ private fun SharedThreadRouteContentContent(
                 // The Add Reaction picker keeps its skin tone and frequently used emoji per account.
                 LocalRaftEmojiPickerOwnerKey provides messageBodyOwnerKey,
                 LocalThreadActionCardNames provides actionCardNames,
+                LocalPendingMentionTargetMap provides
+                    rememberThreadPendingMentionTargetMap(
+                        serverMembersEntry = threadServerMembersEntry,
+                        channelMembersSlice = threadChannelMembersSlice,
+                        payloadMembers = renderedThread.members,
+                        payloadMemberCandidates = renderedThread.memberCandidates,
+                        serverId = threadMembersServerId,
+                        jointActors = serverMembersStore?.jointActors,
+                    ),
                 LocalThreadActionCardSpecHost provides actionCardSpecHost,
                 LocalThreadKeyboardTapDismissal provides threadKeyboardTapDismissal,
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,

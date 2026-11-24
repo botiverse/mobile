@@ -46,7 +46,7 @@ internal fun threadMarkdownMentionDisplayLabels(
                 id = member.id,
                 handle = member.handle,
                 displayName = member.displayName,
-                label = "@$name"
+                label = mentionVisibleLabel(member.handle, name)
             )
         }
     )

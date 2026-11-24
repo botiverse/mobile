@@ -130,6 +130,13 @@ class SharedJointActorDirectory internal constructor(
         return _rows.value.rowFor(scope, id.trim(), kind)
     }
 
+    /** All resolved actors currently cached for [serverId] in the current owner's scope (read-only). */
+    internal fun currentActors(serverId: ServerId): List<ResolvedActor> {
+        val scope = scopeOf(serverId) ?: return emptyList()
+        ensureHydrated(scope)
+        return _rows.value[scope]?.values?.toList().orEmpty()
+    }
+
     /** Observes the cached resolved row for [id] without issuing a resolve request. */
     @OptIn(ExperimentalCoroutinesApi::class)
     internal fun cachedActorFlow(serverId: ServerId, id: String, kind: MemberKind? = null): Flow<ResolvedActor?> {

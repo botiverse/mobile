@@ -902,9 +902,10 @@ internal fun PendingMentionAction.toRaftPendingMentionActionItem(): RaftPendingM
 
 internal fun RaftPendingMentionActionItem.mentionActionDeliveredNotice(
     action: String,
-    channelLabel: String
+    channelLabel: String,
+    displayName: String? = null
 ): String {
-    val label = targetLabel()
+    val label = targetLabel(displayName)
     return if (action == "invite" || action == "add") {
         "$label was added to $channelLabel"
     } else {
