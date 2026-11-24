@@ -589,6 +589,7 @@ internal fun RaftMobileWebPanelBrowserBody(
     var loadError by remember(sessionKey, effectiveLaunchUrl) { mutableStateOf<String?>(null) }
     var webViewAttachReady by remember(sessionKey, effectiveLaunchUrl) { mutableStateOf(false) }
     var deflectedPurchase by remember(sessionKey, effectiveLaunchUrl) { mutableStateOf(false) }
+    var lastDeflectedNavigationKey by remember(sessionKey, effectiveLaunchUrl) { mutableStateOf<String?>(null) }
     var lastCommittedGeneration by remember(sessionKey, effectiveLaunchUrl) { mutableIntStateOf(-1) }
 
     LaunchedEffect(sessionKey, effectiveLaunchUrl) {
@@ -773,11 +774,23 @@ internal fun RaftMobileWebPanelBrowserBody(
                                     activeApiBaseUrl = activeApiBaseUrl,
                                 )
                             ) {
-                                controller.stop()
-                                if (!deflectedPurchase) {
-                                    deflectedPurchase = true
-                                    if (!handleAppStoreRestrictedPurchase(nextUrl, closeCurrentPage = true)) {
-                                        routeRaftHostOut(nextUrl, closeOnHandoff = true)
+                                val navigationKey = "${nextState.loadGeneration}|$nextUrl"
+                                if (lastDeflectedNavigationKey != navigationKey) {
+                                    lastDeflectedNavigationKey = navigationKey
+                                    if (nextState.isLoading) {
+                                        controller.stop()
+                                    }
+                                    if (!deflectedPurchase) {
+                                        val isRestrictedPurchase =
+                                            handleAppStoreRestrictedPurchase(nextUrl, closeCurrentPage = true)
+                                        if (isRestrictedPurchase) {
+                                            deflectedPurchase = true
+                                        } else {
+                                            if (entryContext == null && appStoreBillingRules) {
+                                                deflectedPurchase = true
+                                            }
+                                            routeRaftHostOut(nextUrl, closeOnHandoff = true)
+                                        }
                                     }
                                 }
                                 return@RaftWebView

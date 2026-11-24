@@ -186,7 +186,9 @@ internal class RaftAndroidSandboxWebView(
 
     /** Main-frame loads started ([RaftWebViewNavigationState.loadGeneration]); kept across a rebuilt WebView. */
     private var loadGeneration: Int = 0
-    private var lastNavigationStateKey: String = ""
+    private val navigationStateRelay = RaftWebViewNavigationStateRelay()
+    private var lastRoutedBlockedUrl: String = ""
+    private var lastRoutedBlockedAtMs: Long = 0L
     private var lastLoadFailureReason: String = ""
     private var hostMessageListener: WebViewCompat.WebMessageListener? = null
     /** [startPageDownload]'s `blob:` reads in flight, by token; their port and name hook. */
@@ -349,7 +351,7 @@ internal class RaftAndroidSandboxWebView(
         (context as? MutableContextWrapper)?.baseContext = hostContext
         parkedForKeepAlive = false
         events = nextEvents
-        lastNavigationStateKey = ""
+        navigationStateRelay.reset()
         notifyNavigationState(force = true)
         if (lastSuccessfulUrl.isNotBlank()) events.onLoadSuccess()
     }
@@ -389,7 +391,9 @@ internal class RaftAndroidSandboxWebView(
         currentTitle = ""
         currentProgress = 0
         currentIsLoading = false
-        lastNavigationStateKey = ""
+        navigationStateRelay.reset()
+        lastRoutedBlockedUrl = ""
+        lastRoutedBlockedAtMs = 0L
         lastLoadFailureReason = ""
         pendingRuntimeJavaScript = ""
         committedDocumentUrl = ""
@@ -579,6 +583,23 @@ internal class RaftAndroidSandboxWebView(
                     if (wouldBlockMainFrameNavigation(url)) {
                         view?.stopLoading()
                         handleBlockedMainFrameNavigation(url)
+                        return
+                    }
+                    if (target.isNotEmpty() && events.routesMainFrameNavigation?.invoke(target) == true) {
+                        view?.stopLoading()
+                        val now = System.currentTimeMillis()
+                        val recentlyRouted =
+                            target == lastRoutedBlockedUrl &&
+                                (now - lastRoutedBlockedAtMs) in 0L..1_500L
+                        if (!recentlyRouted) {
+                            diagnosticsInfo("page_started_routed_as_link url=${target.formatUrlForLog()}")
+                            lastRoutedBlockedUrl = target
+                            lastRoutedBlockedAtMs = now
+                            handleBlockedMainFrameNavigation(target)
+                        } else {
+                            currentIsLoading = false
+                            notifyNavigationState()
+                        }
                         return
                     }
                     currentUrl = target
@@ -862,6 +883,7 @@ internal class RaftAndroidSandboxWebView(
             loadControllerUrl(next.removePrefix(RaftWebViewController.COMMAND_LOAD_URL_PREFIX))
             return
         }
+        var forceNotify = true
         when (next.trim()) {
             RaftWebViewController.COMMAND_GO_BACK -> if (webView.canGoBack()) webView.goBack()
             RaftWebViewController.COMMAND_GO_FORWARD -> if (webView.canGoForward()) webView.goForward()
@@ -881,10 +903,11 @@ internal class RaftAndroidSandboxWebView(
             RaftWebViewController.COMMAND_STOP -> {
                 webView.stopLoading()
                 currentIsLoading = false
+                forceNotify = false
             }
             else -> return
         }
-        notifyNavigationState(force = true)
+        notifyNavigationState(force = forceNotify)
     }
 
     private fun evaluateRuntimeJavaScript(script: String, allowQueue: Boolean = true) {
@@ -1189,6 +1212,8 @@ internal class RaftAndroidSandboxWebView(
         if (wouldBlockMainFrameNavigation(target)) return false
         if (events.routesMainFrameNavigation?.invoke(target) != true) return false
         diagnosticsInfo("navigation_routed_as_link url=${target.formatUrlForLog()}")
+        lastRoutedBlockedUrl = target
+        lastRoutedBlockedAtMs = System.currentTimeMillis()
         handleBlockedMainFrameNavigation(target)
         return true
     }
@@ -1302,21 +1327,22 @@ internal class RaftAndroidSandboxWebView(
     }
 
     private fun notifyNavigationState(force: Boolean = false) {
-        if (destroyed) return
-        val state =
-            RaftWebViewNavigationState(
-                url = currentUrl,
-                title = currentTitle,
-                canGoBack = webView.canGoBack(),
-                canGoForward = webView.canGoForward(),
-                isLoading = currentIsLoading,
-                progress = currentProgress.coerceIn(0, 100),
-                loadGeneration = loadGeneration,
-            )
-        val stateKey = state.toString()
-        if (!force && stateKey == lastNavigationStateKey) return
-        lastNavigationStateKey = stateKey
-        events.onNavigationStateChange(state)
+        navigationStateRelay.notify(
+            force = force,
+            isActive = { !destroyed },
+            readState = {
+                RaftWebViewNavigationState(
+                    url = currentUrl,
+                    title = currentTitle,
+                    canGoBack = webView.canGoBack(),
+                    canGoForward = webView.canGoForward(),
+                    isLoading = currentIsLoading,
+                    progress = currentProgress.coerceIn(0, 100),
+                    loadGeneration = loadGeneration,
+                )
+            },
+            deliver = { state -> events.onNavigationStateChange(state) },
+        )
     }
 
     private fun evaluateInjectedJavaScript(pageUrl: String? = null) {
