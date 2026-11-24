@@ -552,3 +552,135 @@ if (raftSkipRobolectric) {
         }
     }
 }
+
+// PR CI Roborazzi / screenshot golden split (#proj-mobile:#340, artin 2026-11-24): screenshot
+// golden verification runs post-merge (main, release-*, nightly, merge queue, full-ci, scope=full,
+// record_screenshots), never on ordinary PRs. When test.yml passes -Praft.unitTest.skipScreenshots=true,
+// :designsystem:desktopTest skips every vcase / screenshot golden class (subclasses of VCaseDesktopTest,
+// @RunWith(VCaseRunner), or *ScreenshotTest) while keeping all commonTest unit tests and desktopTest
+// Compose UI logic / semantics / interaction tests, and :shared skips every RaftRobolectricScreenshot /
+// *ScreenshotTest class while keeping non-screenshot Robolectric + Compose UI logic tests (used on
+// build/deps PRs where skipRobolectric is off). Unset on local runs and on the full tier.
+val raftSkipScreenshots =
+    providers.gradleProperty("raft.unitTest.skipScreenshots")
+        .map { it.equals("true", ignoreCase = true) }
+        .getOrElse(false)
+
+// Fully qualified names of screenshot golden test classes under [roots]: subclasses of VCaseDesktopTest,
+// classes with @RunWith(VCaseRunner), classes whose body calls RaftRobolectricScreenshot / captureRoboImage,
+// or classes named *ScreenshotTest (plus subclasses of any of those).
+fun raftScreenshotTestClasses(roots: List<File>): Set<String> {
+    class Declared(
+        val fqcn: String,
+        val name: String,
+        val runWith: String?,
+        val supertypes: Set<String>,
+        val body: String,
+    )
+    val annotations = """(?:@[\w.]+(?:\([^)\n]*\))?[ \t]+)*"""
+    val modifiers =
+        """(?:(?:public|internal|private|protected|open|abstract|final|sealed|data|enum|annotation|value|inner|expect|actual)[ \t]+)*"""
+    val runWithPattern = Regex("""^$annotations@(?:org\.junit\.runner\.)?RunWith\s*\(([^)]*)\)""", RegexOption.MULTILINE)
+    val declarationPattern = Regex("""^$annotations$modifiers(?:class|interface|object)[ \t]+(\w+)""", RegexOption.MULTILINE)
+    val packagePattern = Regex("""^\s*package\s+([\w.]+)""", RegexOption.MULTILINE)
+    val parensPattern = Regex("""\((?:[^()]|\([^()]*\))*\)""")
+    val wordPattern = Regex("""\w+""")
+    val declared = mutableListOf<Declared>()
+    roots.filter { it.isDirectory }
+        .flatMap { root -> root.walkTopDown().filter { it.isFile && (it.extension == "kt" || it.extension == "java") }.toList() }
+        .forEach { source ->
+            val code = raftCodeOnly(source.readText())
+            val pkg = packagePattern.find(code)?.groupValues?.get(1)
+            val runWiths = runWithPattern.findAll(code).toList()
+            val classes = declarationPattern.findAll(code).toList()
+            var regionStart = 0
+            classes.forEachIndexed { index, match ->
+                val name = match.groupValues[1]
+                val headerStart = match.range.last + 1
+                val next = classes.getOrNull(index + 1)?.range?.first ?: code.length
+                val brace = code.indexOf('{', headerStart)
+                val headerEnd = if (brace < 0 || brace > next) next else brace
+                val header = code.substring(headerStart, headerEnd).replace(parensPattern, " ")
+                declared += Declared(
+                    fqcn = if (pkg == null) name else "$pkg.$name",
+                    name = name,
+                    runWith = runWiths.lastOrNull { it.range.first in regionStart..match.range.first }?.groupValues?.get(1),
+                    supertypes = wordPattern.findAll(header).map { it.value }.toSet(),
+                    body = code.substring(match.range.first, next),
+                )
+                regionStart = headerStart
+            }
+        }
+    val screenshotBases = mutableSetOf("VCaseDesktopTest", "VCaseRunner")
+    val screenshotHelpers = setOf("RaftRobolectricScreenshot", "captureRoboImage")
+    val skipped = sortedSetOf<String>()
+    do {
+        val before = skipped.size
+        declared.filter { it.fqcn !in skipped && it.name !in screenshotHelpers }.forEach { declaration ->
+            val runner = declaration.runWith?.let { arg -> wordPattern.findAll(arg).any { it.value in screenshotBases } } == true
+            val supertype = declaration.supertypes.any { it in screenshotBases }
+            val callsHelper = wordPattern.findAll(declaration.body).any { it.value in screenshotHelpers }
+            if (runner || supertype || callsHelper || declaration.name.endsWith("ScreenshotTest")) {
+                skipped += declaration.fqcn
+                screenshotBases += declaration.name
+            }
+        }
+    } while (skipped.size != before)
+    return skipped
+}
+
+if (raftSkipScreenshots) {
+    val roborazziTask = gradle.startParameter.taskNames.firstOrNull { name ->
+        val simple = name.substringAfterLast(':')
+        simple.startsWith("verifyRoborazzi") ||
+            simple.startsWith("recordRoborazzi") ||
+            simple.startsWith("compareRoborazzi")
+    }
+    if (roborazziTask != null) {
+        throw GradleException(
+            "raft.unitTest.skipScreenshots=true cannot be combined with Roborazzi task $roborazziTask"
+        )
+    }
+    project(":designsystem") {
+        val screenshotClasses by lazy {
+            raftScreenshotTestClasses(
+                listOf("src/commonTest", "src/desktopTest", "src/desktopVcase").map { file(it) }
+            ).also { classes ->
+                logger.lifecycle("raft.unitTest.skipScreenshots: :designsystem desktopTest skips ${classes.size} screenshot test classes")
+            }
+        }
+        afterEvaluate {
+            tasks.withType(org.gradle.api.tasks.testing.Test::class.java)
+                .matching { it.name == "desktopTest" }
+                .configureEach {
+                    systemProperty("roborazzi.test.verify", "false")
+                    filter {
+                        screenshotClasses.forEach { excludeTestsMatching(it) }
+                        isFailOnNoMatchingTests = false
+                    }
+                    failOnNoDiscoveredTests.set(false)
+                }
+        }
+    }
+    project(":shared") {
+        val screenshotClasses by lazy {
+            raftScreenshotTestClasses(
+                listOf("src/commonTest", "src/androidUnitTest").map { file(it) }
+            ).also { classes ->
+                logger.lifecycle("raft.unitTest.skipScreenshots: :shared unit tests skip ${classes.size} screenshot test classes")
+            }
+        }
+        afterEvaluate {
+            tasks.withType(org.gradle.api.tasks.testing.Test::class.java)
+                .matching { it.name.endsWith("UnitTest") }
+                .configureEach {
+                    systemProperty("roborazzi.test.verify", "false")
+                    filter {
+                        screenshotClasses.forEach { excludeTestsMatching(it) }
+                        isFailOnNoMatchingTests = false
+                    }
+                    failOnNoDiscoveredTests.set(false)
+                }
+        }
+    }
+}

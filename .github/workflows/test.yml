@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile and plain JVM unit tests: no Robolectric class, no :shared goldens, design system tests and goldens included; no iOS, no device suite); ios = deliberate one-off iOS check (plan + 'iOS compile' only; no Android, no Xcode 27.1 lane, no device suite); premerge = Stamp's ready-to-merge check (no iOS and no Android rerun into main: the merge queue batch on stamp-mq/* compiles iOS; a diff Stamp cannot read reruns Android; a release/* or release-* base_ref runs the full tier); full = release-candidate / deliberate full readback (all platforms + device suite; the Xcode 27.1 lane stays nightly/release-*/merge-queue only)."
+        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile and plain JVM / UI logic unit tests: no Robolectric class, no Roborazzi/vcase screenshot goldens, design system non-screenshot unit and Compose UI tests included; no iOS, no device suite); ios = deliberate one-off iOS check (plan + 'iOS compile' only; no Android, no Xcode 27.1 lane, no device suite); premerge = Stamp's ready-to-merge check (no iOS and no Android rerun into main: the merge queue batch on stamp-mq/* compiles iOS; a diff Stamp cannot read reruns Android; a release/* or release-* base_ref runs the full tier); full = release-candidate / deliberate full readback (all platforms + Roborazzi goldens + device suite; the Xcode 27.1 lane stays nightly/release-*/merge-queue only)."
         type: choice
         options:
           - pr
@@ -96,6 +96,7 @@ jobs:
       attachment_api_levels: ${{ steps.plan.outputs.attachment_api_levels }}
       android_unit_scope: ${{ steps.plan.outputs.android_unit_scope }}
       run_designsystem_tests: ${{ steps.plan.outputs.run_designsystem_tests }}
+      run_roborazzi: ${{ steps.plan.outputs.run_roborazzi }}
       reason: ${{ steps.plan.outputs.reason }}
     steps:
       # Full history for the PR merge-base / push before..after diffs below, but
@@ -449,15 +450,20 @@ jobs:
       #   shared suite, still a hard gate) in verify mode (AGENTS.md "Screenshot tests (:shared)").
       #   A dispatch with record_screenshots=true records both instead (recordRoborazziDesktop,
       #   recordRoborazziDebug); the rest of the suite still runs and must pass.
-      # - Unit tier (plan android_unit_scope; artin 2026-11-22: "PRs run only a little, like
-      #   slock"). jvm, the ordinary PR tier (pull_request without full-ci, scope=pr, a premerge
-      #   into main that reruns Android): the same compile, then the plain JVM unit tests only:
-      #   -Praft.unitTest.skipRobolectric=true makes :shared and :androidApp skip every Robolectric
-      #   class (compose/build.gradle.kts), so no :shared golden runs either, and
-      #   :designsystem:verifyRoborazziDesktop runs only when the change touches
-      #   compose/designsystem/ (run_designsystem_tests). all, every other tier (main and release-*
-      #   pushes, nightly, full-ci, scope=full, premerge into a release base, the merge queue,
-      #   record_screenshots): the whole suite and both golden sets, as above.
+      # - Unit & Roborazzi tier (plan android_unit_scope & run_roborazzi; artin 2026-11-22 &
+      #   2026-11-24 #proj-mobile:#340: "PRs run only a little, like slock" and screenshot golden
+      #   verification moves post-merge):
+      #   - run_roborazzi=false (all ordinary PRs including compose/designsystem/ and build/deps
+      #     PRs, scope=pr, and main premerge with an unreadable diff): -Praft.unitTest.skipScreenshots=true
+      #     skips every screenshot golden test (DesignSystemVCases in :designsystem, RaftRobolectricScreenshot
+      #     classes in :shared; compose/build.gradle.kts) and runs :designsystem:desktopTest (unit +
+      #     Compose UI logic tests only) when run_designsystem_tests=true instead of
+      #     verifyRoborazziDesktop. On android_unit_scope=jvm, -Praft.unitTest.skipRobolectric=true
+      #     also skips every Robolectric class in :shared and :androidApp.
+      #   - run_roborazzi=true (main and release-* pushes, nightly schedule, full-ci PRs, scope=full,
+      #     premerge into a release base, the merge-queue candidate, merge_group, record_screenshots):
+      #     runs the whole suite and both golden sets (:designsystem:verifyRoborazziDesktop and
+      #     :shared:verifyRoborazziDebug, or record* when record_screenshots=true).
       # - Connected-test APKs (BUILD_CONNECTED_APKS above): built here so the emulator jobs below
       #   install the exact APKs without a second Gradle/Kotlin build. The visual fixture gives the
       #   regression a deterministic empty Thread composer.
@@ -487,6 +493,7 @@ jobs:
           RECORD_SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.record_screenshots }}
           ANDROID_UNIT_SCOPE: ${{ needs.plan.outputs.android_unit_scope }}
           RUN_DESIGNSYSTEM_TESTS: ${{ needs.plan.outputs.run_designsystem_tests }}
+          RUN_ROBORAZZI: ${{ needs.plan.outputs.run_roborazzi }}
         run: |
           set -euo pipefail
           tasks=(
@@ -519,19 +526,27 @@ jobs:
             :androidApp:testDebugUnitTest
             :ui-cmp:testAndroidHostTest
           )
-          # Unit tier (comment above): anything but jvm runs the whole suite.
+          # Unit & Roborazzi tier (comment above):
+          # - record_screenshots=true: record both golden sets with the full suite.
+          # - run_roborazzi=true: verify both golden sets with the full suite.
+          # - run_roborazzi=false: PR CI never runs Roborazzi/vcase golden verification
+          #   (-Praft.unitTest.skipScreenshots=true); run :designsystem:desktopTest (unit +
+          #   Compose UI logic tests only) when selected, and skip Robolectric when scope=jvm.
           unit_tier=()
           if [ "$RECORD_SCREENSHOTS" = true ]; then
             test_tasks+=(:designsystem:recordRoborazziDesktop :shared:recordRoborazziDebug)
-          elif [ "$ANDROID_UNIT_SCOPE" = jvm ]; then
-            unit_tier+=(-Praft.unitTest.skipRobolectric=true)
-            if [ "$RUN_DESIGNSYSTEM_TESTS" != false ]; then
-              test_tasks+=(:designsystem:verifyRoborazziDesktop)
-            fi
-          else
+          elif [ "$RUN_ROBORAZZI" = true ]; then
             test_tasks+=(:designsystem:verifyRoborazziDesktop :shared:verifyRoborazziDebug)
+          else
+            unit_tier+=(-Praft.unitTest.skipScreenshots=true)
+            if [ "$ANDROID_UNIT_SCOPE" = jvm ]; then
+              unit_tier+=(-Praft.unitTest.skipRobolectric=true)
+            fi
+            if [ "$RUN_DESIGNSYSTEM_TESTS" != false ]; then
+              test_tasks+=(:designsystem:desktopTest)
+            fi
           fi
-          echo "Android unit tier: ${ANDROID_UNIT_SCOPE} (design system tests: ${RUN_DESIGNSYSTEM_TESTS}) ${unit_tier[*]}"
+          echo "Android unit tier: ${ANDROID_UNIT_SCOPE} (design system tests: ${RUN_DESIGNSYSTEM_TESTS}, roborazzi: ${RUN_ROBORAZZI}) ${unit_tier[*]}"
           if [ "$BUILD_CONNECTED_APKS" != true ] && [ "$ANDROID_UNIT_SCOPE" = jvm ] && [ "$RECORD_SCREENSHOTS" != true ]; then
             # Ordinary PR tier (no connected APKs, no Robolectric/Roborazzi forks): run compile
             # and plain JVM tests in one Gradle invocation to skip a second cold JVM boot and
@@ -594,11 +609,13 @@ jobs:
         run: python3 scripts/ci/check_jvm_method_size.py compose/shared/build/tmp/kotlin-classes/debug
 
       # What the unit tier ran: test classes and cases per test task, from the JUnit XML reports
-      # (log and job summary). On the jvm tier :shared and :androidApp list no Robolectric class.
+      # (log and job summary). On the jvm tier :shared and :androidApp list no Robolectric class;
+      # when run_roborazzi=false :designsystem and :shared list no screenshot golden class.
       - name: Summarize Android unit test results
         if: ${{ !cancelled() }}
         env:
           ANDROID_UNIT_SCOPE: ${{ needs.plan.outputs.android_unit_scope }}
+          RUN_ROBORAZZI: ${{ needs.plan.outputs.run_roborazzi }}
         run: |
           python3 - <<'PY'
           import os, pathlib, xml.etree.ElementTree as ET
@@ -613,7 +630,7 @@ jobs:
               if suites:
                   count = lambda key: sum(int(suite.get(key, "0")) for suite in suites)
                   rows.append(f"| :{results.parts[1]}:{results.name} | {len(suites)} | {count('tests')} | {count('skipped')} | {count('failures') + count('errors')} |")
-          lines = [f"### Android unit tests ({os.environ['ANDROID_UNIT_SCOPE']} tier)", "", "| Task | Classes | Tests | Skipped | Failed |", "| --- | ---: | ---: | ---: | ---: |", *rows]
+          lines = [f"### Android unit tests ({os.environ['ANDROID_UNIT_SCOPE']} tier, roborazzi={os.environ['RUN_ROBORAZZI']})", "", "| Task | Classes | Tests | Skipped | Failed |", "| --- | ---: | ---: | ---: | ---: |", *rows]
           print("\n".join(lines))
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
               summary.write("\n".join(lines) + "\n")

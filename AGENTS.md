@@ -395,42 +395,54 @@ Robolectric native-graphics captures of shared UI, compared with the goldens in
 - Ordinary PRs do not verify these goldens; the merge queue, `main`, the
   nightly, `release-*` and `full-ci` PRs do (next section).
 
-### Android unit tiers in CI (artin 2026-11-22)
+### Android unit tiers in CI (artin 2026-11-22 & 2026-11-24)
 
 "PRs run only a little, like slock": the web repo's ordinary PRs run types and
 lightweight checks, and its heavy suites run on staging pushes, the nightly
-and release candidates. The `Test` plan (`scripts/ci/plan_test_tier.sh`,
-output `android_unit_scope`) picks what `Android compile & tests` runs:
+and release candidates. Roborazzi / vcase screenshot golden verification is
+likewise kept out of ordinary PR CI (`#proj-mobile:#340`). The `Test` plan
+(`scripts/ci/plan_test_tier.sh`, outputs `android_unit_scope`,
+`run_designsystem_tests`, and `run_roborazzi`) picks what `Android compile &
+tests` runs:
 
-- `jvm`, the ordinary PR tier: a pull request without `full-ci`, `scope=pr`,
-  and Stamp's premerge into `main` when it reruns Android. The job compiles
-  every main and test source set it compiles on the full tier (the type
-  check), then runs only the plain JVM unit tests:
-  `-Praft.unitTest.skipRobolectric=true` makes `:shared` and `:androidApp`
-  skip every class JUnit runs on Robolectric (found in the sources: its
-  `@RunWith` names `RobolectricTestRunner`, `ParameterizedRobolectricTestRunner`
-  or `AndroidJUnit4`, or it extends such a class; `compose/build.gradle.kts`),
-  so no `:shared` golden runs either. `:designsystem:verifyRoborazziDesktop`
-  (its tests and goldens, the design system's contract) runs only when the
-  change touches `compose/designsystem/` or has no readable diff (as on
-  `scope=pr`). A pull request that touches a build or dependency file
-  (`compose/gradle/` including the version catalog, `compose/gradle.properties`,
-  a `build.gradle.kts` or `settings.gradle.kts`, `compose/buildSrc/`,
-  `third_party/`) stays on `all`: such a change moves every golden and test.
-  commonTest, the `:core`,
-  `:realtime-socket` (socket.io interop server included) and `:ui-cmp` host
-  tests and `:shared:verifySqlDelightMigration` run as before.
-- `all`: `main` and `release-*` pushes, the nightly, `full-ci` PRs,
-  `scope=full`, premerge into a release base, the merge-queue candidate and
-  the `record_screenshots` dispatch run the whole suite and both golden sets.
+- `jvm` + `run_roborazzi=false`, the ordinary PR tier: a pull request without
+  `full-ci` (not touching build/deps), `scope=pr`, and Stamp's premerge into
+  `main` when it reruns Android. The job compiles every main and test source
+  set it needs (skipping `:designsystem:compileTestKotlinDesktop` when
+  `run_designsystem_tests=false`), then runs only plain JVM unit tests and
+  non-screenshot UI logic tests: `-Praft.unitTest.skipRobolectric=true` makes
+  `:shared` and `:androidApp` skip every class JUnit runs on Robolectric
+  (found in the sources: its `@RunWith` names `RobolectricTestRunner`,
+  `ParameterizedRobolectricTestRunner` or `AndroidJUnit4`, or it extends such
+  a class; `compose/build.gradle.kts`), and
+  `-Praft.unitTest.skipScreenshots=true` skips every screenshot golden class.
+  When the change touches `compose/designsystem/` or has no readable diff (as
+  on `scope=pr`), `:designsystem:desktopTest` runs its `commonTest` unit tests
+  and `desktopTest` Compose UI logic/semantics/interaction tests without
+  `DesignSystemVCases` or `verifyRoborazziDesktop`. `commonTest`, `:core`,
+  `:realtime-socket` (socket.io interop server included), `:ui-cmp` host
+  tests, and `:shared:verifySqlDelightMigration` run as before.
+- `all` + `run_roborazzi=false`, build/deps ordinary PRs: a pull request that
+  touches a build or dependency file (`compose/gradle/` including the version
+  catalog, `compose/gradle.properties`, a `build.gradle.kts` or
+  `settings.gradle.kts`, `compose/buildSrc/`, `third_party/`) runs the full
+  non-screenshot unit and Compose UI logic suite (including non-screenshot
+  Robolectric tests and `:designsystem:desktopTest`), still with
+  `-Praft.unitTest.skipScreenshots=true` (no Roborazzi / vcase goldens).
+- `all` + `run_roborazzi=true`: `main` and `release-*` pushes, the nightly,
+  `full-ci` PRs, `scope=full`, premerge into a release base, the merge-queue
+  candidate, `merge_group`, and the `record_screenshots=true` dispatch run the
+  whole suite and both golden sets (`:designsystem:verifyRoborazziDesktop` and
+  `:shared:verifyRoborazziDebug`, or `record*` when `record_screenshots=true`).
 
-A green ordinary PR has therefore not run the Robolectric tests or the
-`:shared` goldens. With the merge queue off they first run on the push to
-`main` after the merge; Stamp reports a new failure there to whoever merged,
-who fixes it the same day.
-To run them on the PR, add the `full-ci` label; to see golden changes,
-dispatch `record_screenshots=true`. Say so when reporting ("Android compile +
-JVM unit: pass; Robolectric and goldens: run in the merge queue").
+A green ordinary PR has therefore not run Roborazzi / vcase screenshot golden
+verification (nor Robolectric tests on non-build/deps PRs). With the merge
+queue off they first run on the push to `main` after the merge (and nightly);
+Stamp reports a new failure there to whoever merged, who fixes it the same day.
+To run them on the PR, add the `full-ci` label; to record golden changes on
+demand, dispatch `record_screenshots=true`. Say so when reporting ("Android
+compile + JVM/UI unit: pass; Robolectric and Roborazzi goldens: run post-merge
+/ in the merge queue").
 
 ## Task / Commit / Thread Discipline
 

@@ -30,17 +30,22 @@ job (`scripts/ci/plan_test_tier.sh`) picks jobs:
 | `workflow_dispatch` `scope=premerge` (`base_ref`, default `main`) | **no** (fail-closed: yes if the diff is unavailable) | **no** (moved to the merge queue, 2026-11-19) | no |
 | `workflow_dispatch` `scope=premerge` with `base_ref=release/*` | yes | yes | yes (= `scope=full`) |
 
-Android unit tier (artin 2026-11-22: "PRs run only a little, like slock";
-planner output `android_unit_scope`): where the table says "plain JVM unit
-tests only" (also premerge into `main` when it reruns Android), the Android
-job compiles everything as usual but runs only the plain JVM unit tests:
-`-Praft.unitTest.skipRobolectric=true` skips every Robolectric class in
-`:shared` and `:androidApp`, so no `:shared` golden runs, and
-`:designsystem:verifyRoborazziDesktop` runs only when the PR touches
-`compose/designsystem/` (always on `scope=pr`, which has no diff). Every
-other Android run (and `record_screenshots`)
-runs the whole suite and both golden sets. To run them on a PR before the
-queue, add `full-ci`; AGENTS.md "Android unit tiers in CI".
+Android unit & Roborazzi tier (artin 2026-11-22 & 2026-11-24, `#proj-mobile:#340`;
+planner outputs `android_unit_scope`, `run_designsystem_tests`, `run_roborazzi`):
+where the table says "plain JVM unit tests only" (also premerge into `main` when
+it reruns Android), the Android job compiles everything it needs and runs only
+plain JVM unit tests and non-screenshot UI logic tests:
+`-Praft.unitTest.skipRobolectric=true` skips every Robolectric class in `:shared`
+and `:androidApp`, and `-Praft.unitTest.skipScreenshots=true` skips every
+Roborazzi / vcase screenshot golden class. `:designsystem:desktopTest` (unit +
+Compose UI logic tests only, no `DesignSystemVCases` goldens) runs only when the
+PR touches `compose/designsystem/` (always on `scope=pr`, which has no diff).
+Ordinary build/deps PRs run the full non-screenshot suite (`android_unit_scope=all`,
+`run_roborazzi=false`). Every post-merge / merge-queue / release / full /
+`full-ci` / `record_screenshots` Android run has `run_roborazzi=true` and runs
+the whole suite plus both golden sets. To run them on a PR before merge, add
+`full-ci`, or dispatch `record_screenshots=true` to record goldens; AGENTS.md
+"Android unit tiers in CI".
 
 ### The merge queue (pre-merge iOS compile)
 

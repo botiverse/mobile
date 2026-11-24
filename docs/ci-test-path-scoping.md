@@ -1,6 +1,6 @@
 # Test workflow path scoping
 
-> **Partly stale (2026-10-20):** since task #37 ordinary PRs never run the iOS compile, even for iOS paths; `scripts/ci/plan_test_tier.sh` is authoritative (skill `raft-ci-validation`). What the Android job tests on each event: [Android unit tier](#android-unit-tier-artin-2026-11-22) below.
+> **Partly stale (2026-10-20):** since task #37 ordinary PRs never run the iOS compile, even for iOS paths; `scripts/ci/plan_test_tier.sh` is authoritative (skill `raft-ci-validation`). What the Android job tests on each event: [Android unit tier](#android-unit-tier-artin-2026-11-22--2026-11-24) below.
 
 The `Test` workflow always starts for pull requests and protected-branch
 pushes so the stable `CI gate` context can report. Its lightweight `plan` job
@@ -48,19 +48,20 @@ unselected job is in fact skipped, then lets the stable `CI gate` context
 succeed. That aggregate success is evidence that the no-op plan was enforced;
 it is not evidence that a skipped platform job ran green.
 
-## Android unit tier (artin 2026-11-22)
+## Android unit tier (artin 2026-11-22 & 2026-11-24)
 
 "PRs run only a little, like slock" (the web repo's ordinary PRs run types and
 lightweight checks; its heavy suites run on staging pushes, the nightly and
-release candidates). Once the path groups select Android, the planner output
-`android_unit_scope` decides what `Android compile & tests` runs after the
-compile, which is the same on every tier (every main and test source set it
-compiled before; the connected-test APK rules are unchanged).
+release candidates), and Roborazzi / vcase screenshot golden verification runs
+post-merge (`#proj-mobile:#340`). Once the path groups select Android, the
+planner outputs `android_unit_scope`, `run_designsystem_tests`, and
+`run_roborazzi` decide what `Android compile & tests` runs after the compile.
 
-| Event | `android_unit_scope` | Unit tests and goldens |
-| --- | --- | --- |
-| Ordinary pull request (no `full-ci`) that touches no build or dependency file, `scope=pr`, premerge into `main` with an unreadable diff | `jvm` | Plain JVM unit tests only: `-Praft.unitTest.skipRobolectric=true` makes `:shared` and `:androidApp` skip every Robolectric class (`compose/build.gradle.kts`), so no `:shared` golden runs. `:designsystem:verifyRoborazziDesktop` (its tests and goldens) runs only when the change touches `compose/designsystem/` (`run_designsystem_tests`; an unreadable diff and `scope=pr` run it). |
-| Pull request touching `compose/gradle/` (version catalog, wrapper), `compose/gradle.properties`, a `build.gradle.kts` / `settings.gradle.kts`, `compose/buildSrc/` or `third_party/`; `full-ci` PR, merge-queue candidate, merge queue, push to `main` or `release-*`, nightly, `scope=full`, premerge into a release base, `record_screenshots` dispatch | `all` | The whole suite and both golden sets (recorded instead of verified on `record_screenshots`). |
+| Event | `android_unit_scope` | `run_roborazzi` | Unit tests and goldens |
+| --- | --- | --- | --- |
+| Ordinary pull request (no `full-ci`) that touches no build or dependency file, `scope=pr`, premerge into `main` with an unreadable diff | `jvm` | `false` | Plain JVM unit tests + non-screenshot UI logic tests only: `-Praft.unitTest.skipRobolectric=true` skips every Robolectric class in `:shared` and `:androidApp`, and `-Praft.unitTest.skipScreenshots=true` skips every screenshot golden class (`compose/build.gradle.kts`). `:designsystem:desktopTest` (unit + Compose UI logic tests only, no `DesignSystemVCases` / Roborazzi) runs only when the change touches `compose/designsystem/` (`run_designsystem_tests`; an unreadable diff and `scope=pr` run it). |
+| Ordinary pull request touching `compose/gradle/` (version catalog, wrapper), `compose/gradle.properties`, a `build.gradle.kts` / `settings.gradle.kts`, `compose/buildSrc/` or `third_party/` | `all` | `false` | Full non-screenshot Android unit suite (including non-screenshot Robolectric + Compose UI logic tests and `:designsystem:desktopTest`), still with `-Praft.unitTest.skipScreenshots=true` (no Roborazzi / vcase goldens). |
+| `full-ci` PR, merge-queue candidate, merge queue, push to `main` or `release-*`, nightly, `scope=full`, premerge into a release base, `record_screenshots` dispatch | `all` | `true` | The whole suite and both golden sets (`:designsystem:verifyRoborazziDesktop` and `:shared:verifyRoborazziDebug`; recorded instead of verified on `record_screenshots=true`). |
 
 The Android job's timeout follows the tier: 40 minutes for `jvm`, 60 for
 `all`. The job summary lists the test classes and cases each test task ran.
