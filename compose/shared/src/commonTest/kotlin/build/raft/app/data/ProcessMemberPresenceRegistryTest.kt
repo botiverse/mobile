@@ -1,6 +1,9 @@
 package build.raft.app.data
 
 import build.raft.app.model.AgentCredentialHoldReason
+import build.raft.app.model.AgentDeliveryHold
+import build.raft.app.model.AgentDeliveryHoldReason
+import build.raft.app.model.AgentProviderLimitHoldKind
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -10,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ProcessMemberPresenceRegistryTest {
 
@@ -268,5 +272,53 @@ class ProcessMemberPresenceRegistryTest {
         assertEquals(AgentCredentialHoldReason.Billing, registry.factFor(ownerServerA, "agent-1")?.credentialHold)
         registry.apply(ownerServerA, released.copy(serverSeq = 6), GEN0)
         assertNull(registry.factFor(ownerServerA, "agent-1")?.credentialHold)
+    }
+
+    @Test
+    fun deliveryHoldIsVisibleStateIgnoresSinceAndUpdatesViaCoarseFrames() {
+        // botiverse/slock #16333: `deliveryHold` rides any frame (including coarse agent:activity_state),
+        // ignores `since` in visible equality, survives `agent:seen`, and clears when absent.
+        val quota =
+            AgentDeliveryHold(
+                reason = AgentDeliveryHoldReason.ProviderLimit,
+                providerLimitDetail = AgentProviderLimitHoldKind.QuotaExhausted,
+                untilMs = 10_000L,
+                since = 1_000L,
+            )
+        val held = fact(status = AgentStatus.Working, serverSeq = 4).copy(deliveryHold = quota)
+        val sameHoldMovedSince = held.copy(serverSeq = 5, deliveryHold = quota.copy(since = 2_000L))
+        val differentUntil = held.copy(serverSeq = 6, deliveryHold = quota.copy(untilMs = 20_000L))
+        val released = held.copy(serverSeq = 7, deliveryHold = null)
+
+        assertTrue(sameHoldMovedSince.hasSameVisibleRegisteredPresenceAs(held), "re-recording same hold moves since only")
+        assertFalse(differentUntil.hasSameVisibleRegisteredPresenceAs(held), "changed untilMs is a visible change")
+        assertFalse(released.hasSameVisibleRegisteredPresenceAs(held), "cleared deliveryHold is a visible change")
+
+        val registry = ProcessMemberPresenceRegistry()
+        registry.apply(ownerServerA, held, GEN0)
+        registry.apply(
+            ownerServerA,
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                lastSeenAt = "2026-11-23T09:00:00.000Z"
+            ),
+            GEN0
+        )
+        assertEquals(quota, registry.factFor(ownerServerA, "agent-1")?.deliveryHold)
+
+        val coarseRelease =
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Working,
+                serverSeq = 8L,
+                deliveryHold = null,
+                coarseState = true,
+            )
+        registry.apply(ownerServerA, coarseRelease, GEN0)
+        assertNull(registry.factFor(ownerServerA, "agent-1")?.deliveryHold, "newer coarse frame without hold clears it")
     }
 }

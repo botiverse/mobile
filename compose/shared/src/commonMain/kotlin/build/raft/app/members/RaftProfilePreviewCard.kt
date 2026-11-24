@@ -11,6 +11,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -278,10 +280,21 @@ internal fun RaftProfilePreviewCardContent(model: RaftProfilePreviewCardModel) {
             if (appBot != null) {
                 RaftAppBotBadge(identity = appBot, botName = model.displayName, modifier = Modifier.padding(start = 6.dp))
             } else if (status != null) {
+                val deliveryHold = rememberAgentDeliveryHoldView(status)
                 RaftStatusDot(Modifier.padding(start = 6.dp), size = RaftStatusSize.Sm, color = status.color)
                 RaftText(
-                    text = status.localizedMemberStatusLabel(),
-                    modifier = Modifier.padding(start = 6.dp).weight(1f, fill = false),
+                    text = deliveryHold?.shortText ?: status.localizedMemberStatusLabel(),
+                    modifier =
+                        Modifier
+                            .padding(start = 6.dp)
+                            .weight(1f, fill = false)
+                            .then(
+                                if (deliveryHold != null) {
+                                    Modifier.semantics { contentDescription = deliveryHold.text }
+                                } else {
+                                    Modifier
+                                }
+                            ),
                     style = typography.callout,
                     color = colors.foregroundHint,
                     maxLines = 1,

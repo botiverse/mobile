@@ -27,6 +27,7 @@ import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.ScreenError
 import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.SharedCreateAgentFormStore
+import build.raft.app.model.AgentDeliveryHoldReason
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentStatus
 import build.raft.app.data.AgentActivityDetailKindWakeCrashLoopBlocked
@@ -658,8 +659,22 @@ internal fun MembersAgentProfileStatus(
                 blocked == null &&
                 agentSpawnFailureCopy(it.spawnFailure, it.daemonDetail, nowMs = Long.MIN_VALUE) != null
         }
-    // Web AgentStatusBadge `credentialReason` (botiverse/slock #13276): an unusable sign-in, plan or
-    // balance reads as the error light; the reason is a detail of the error, for its managers only.
+    // Web AgentStatusBadge `heldView` (botiverse/slock #16333): the daemon holds the agent's
+    // deliveries on every frame, whatever the activity. Every member sees why (detailed badge:
+    // "Can't respond: <reason>"; compact badge: "Can't respond" with the reason in semantics).
+    val deliveryHoldView =
+        rememberMembersAgentDeliveryHoldView(
+            indicator = agentStatusIndicatorState,
+            summary = summary,
+            external = external,
+            blocked = blocked,
+            timeContext = timeContext,
+            appBot = appBot,
+        )
+    val deliveryHold = deliveryHoldView?.hold
+    // Web AgentStatusBadge `credentialReason` (botiverse/slock #13276, #16333): an unusable
+    // sign-in, plan or balance reads as the error light; also falls back to a credential-invalid
+    // deliveryHold's detail so managers still see Retry.
     val credentialReason =
         if (appBot) {
             null
@@ -669,7 +684,7 @@ internal fun MembersAgentProfileStatus(
                 summary = summary,
                 external = external,
                 blocked = blocked,
-            )
+            ) ?: deliveryHold?.takeIf { it.reason == AgentDeliveryHoldReason.CredentialInvalid }?.credentialDetail
         }
     // Web `runtimeSignInNeededOf` (slock #15282): the runtime is not signed in on the Computer, so
     // the agent cannot start. The error light and "Sign-in needed for {runtime}"; the chip opens
@@ -732,6 +747,12 @@ internal fun MembersAgentProfileStatus(
             stringResource(Res.string.member_row_status_error)
         } else if (runtimeSignIn != null) {
             runtimeSignIn.fullText
+        } else if (deliveryHoldView != null) {
+            if (showActivityDetail) {
+                deliveryHoldView.text
+            } else {
+                deliveryHoldView.shortText
+            }
         } else if (credentialReason != null) {
             if (showActivityDetail) {
                 agentCredentialInvalidText(
@@ -753,8 +774,8 @@ internal fun MembersAgentProfileStatus(
     // something authoritative arrives (task #253/#256).
     // An App Bot renders no presence (web: always-offline on a signal that does
     // not apply to it).
-    // Web: held or not, an invalid credential cannot run until someone acts: the error light.
-    val errorLight = credentialReason != null || runtimeSignInNeeded
+    // Web: held or not, an invalid credential or delivery hold cannot respond: the error light.
+    val errorLight = credentialReason != null || runtimeSignInNeeded || deliveryHold != null
     val chipStatus = if (errorLight) AgentStatus.Error else agentStatusObservedState?.status
     val chipColor = if (errorLight) RaftColor.AccentOrange else agentStatusObservedState?.color
     val statusChip: @Composable (Modifier) -> Unit = { chipModifier ->
@@ -775,10 +796,10 @@ internal fun MembersAgentProfileStatus(
     }
     val openComputer = onOpenComputer?.takeIf { blocked == AgentBlockedState.ComputerUpdateRequired || runtimeSignInNeeded }
     val chipDetailSemantics =
-        if (runtimeSignIn != null) {
-            Modifier.semantics { contentDescription = runtimeSignIn.detail }
-        } else {
-            Modifier
+        when {
+            runtimeSignIn != null -> Modifier.semantics { contentDescription = runtimeSignIn.detail }
+            deliveryHoldView != null -> Modifier.semantics { contentDescription = deliveryHoldView.text }
+            else -> Modifier
         }
     // Nothing known about its presence (e.g. a joint channel's agent of another server
     // whose profile read failed): no chip, never an empty "—" one.
@@ -821,7 +842,7 @@ internal fun MembersAgentProfileStatus(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                statusChip(Modifier.weight(1f, fill = false))
+                statusChip(Modifier.weight(1f, fill = false).then(chipDetailSemantics))
                 AgentStatusRetryLink(inProgress = retryInProgress, onRetry = onRetry)
             }
         } else {

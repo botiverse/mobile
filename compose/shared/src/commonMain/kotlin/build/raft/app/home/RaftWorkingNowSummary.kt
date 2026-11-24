@@ -47,6 +47,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AgentActivitySubscriptions
 import build.raft.app.data.RaftDisplayPreferenceRuntime
 import build.raft.app.data.RaftLiveAgentActivityItem
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberKind
 import build.raft.designsystem.components.RaftAvatarSize
@@ -348,8 +349,16 @@ private fun RaftWorkingNowRow(
                 if (item.status == AgentStatus.Thinking) Res.string.home_dm_agent_activity_thinking
                 else Res.string.home_dm_agent_activity_working
             )
-    // Web `presence={activity === "error" ? "error" : "busy"}`: the still yellow light while it works.
-    val light = if (indicator?.status == AgentStatus.Error) RaftColor.PresenceError else RaftColor.PresenceBusy
+    val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
+    val deliveryHold = rememberAgentDeliveryHoldView(indicator)
+    // Web `presence={activity === "error" ? "error" : "busy"}`: the still yellow light while it works,
+    // or the error light when deliveries are held (#16333).
+    val light =
+        if (indicator?.status == AgentStatus.Error || indicator?.activeDeliveryHold(nowMillis) != null) {
+            RaftColor.PresenceError
+        } else {
+            RaftColor.PresenceBusy
+        }
     Row(
         modifier =
             Modifier
@@ -362,6 +371,7 @@ private fun RaftWorkingNowRow(
     ) {
         RaftAvatarWithStatus(
             statusColor = light,
+            statusDescription = deliveryHold?.text,
             avatarSize = RaftAvatarSize.Sm.edge,
             cutoutColor = colors.layerPopover,
         ) {

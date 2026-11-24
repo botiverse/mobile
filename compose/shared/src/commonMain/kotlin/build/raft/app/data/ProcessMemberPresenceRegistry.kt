@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.MemberPresenceUpdated
+import build.raft.app.model.sameAgentDeliveryHold
 import build.raft.app.parseExternalAgentTimestampOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -624,6 +625,7 @@ internal class ProcessMemberPresenceRegistry(
                         wakeCrashLoop = if (event.statusLabel != null) event.wakeCrashLoop else previous.wakeCrashLoop,
                         spawnFailure = if (event.statusLabel != null) event.spawnFailure else previous.spawnFailure,
                         credentialHold = if (event.statusLabel != null) event.credentialHold else previous.credentialHold,
+                        deliveryHold = if (event.statusLabel != null) event.deliveryHold else previous.deliveryHold,
                         errorCode = if (event.statusLabel != null) event.errorCode else previous.errorCode,
                         // agent:seen is not an activity frame; only an activity frame without
                         // `toolStuck` means "not stuck".
@@ -1330,6 +1332,7 @@ internal fun MemberPresenceUpdated.hasSameVisibleRegisteredPresenceAs(
         wakeCrashLoop == previous.wakeCrashLoop &&
         spawnFailure == previous.spawnFailure &&
         credentialHold == previous.credentialHold &&
+        sameAgentDeliveryHold(deliveryHold, previous.deliveryHold) &&
         errorCode == previous.errorCode &&
         toolStuck == previous.toolStuck &&
         kind == previous.kind &&

@@ -4782,6 +4782,12 @@ internal fun ComposerMemberSuggestionRow(
         } else {
             null
         }
+    val agentDeliveryHold =
+        if (agentStatus != null) {
+            rememberAgentDeliveryHoldView(agentStatus)
+        } else {
+            null
+        }
     ComposerSuggestionInteractiveRow(
         selected = selected,
         muted = muted,
@@ -4804,6 +4810,7 @@ internal fun ComposerMemberSuggestionRow(
                     statusColor = agentStatus?.color,
                     avatarSize = ComposerMemberSuggestionAvatarSize,
                     statusSize = ComposerMemberSuggestionStatusSize,
+                    statusDescription = agentDeliveryHold?.text,
                 ) {
                     RaftMemberAvatar(
                         identity = RaftMemberAvatarIdentity(member.kind, member.memberId, member.sourceServerId),

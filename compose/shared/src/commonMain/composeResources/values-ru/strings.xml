@@ -4850,6 +4850,14 @@
     <string name="agent_status_credential_plan_model">Тариф не включает %1$s</string>
     <string name="agent_status_credential_plan_default_model">Тариф не включает эту модель</string>
     <string name="agent_status_credential_billing">Баланс провайдера исчерпан</string>
+    <string name="agent_status_cant_respond">Не может ответить: %1$s</string>
+    <string name="agent_status_cant_respond_short">Не может ответить</string>
+    <string name="agent_status_delivery_hold_sign_in">Требуется внимание ко входу в %1$s</string>
+    <string name="agent_status_delivery_hold_credential">Требуется внимание ко входу или тарифу %1$s</string>
+    <string name="agent_status_delivery_hold_usage_limit">Лимит использования %1$s исчерпан</string>
+    <string name="agent_status_delivery_hold_usage_limit_until">Лимит использования %1$s исчерпан, до %2$s</string>
+    <string name="agent_status_delivery_hold_rate_limit">Ограничение частоты %1$s, скоро повторная попытка</string>
+    <string name="agent_status_delivery_hold_rate_limit_until">Ограничение частоты %1$s, повторная попытка в %2$s</string>
     <string name="agent_status_computer_access_revoked">Доступ компьютера отозван: перенесите агента на другой компьютер (повторное подключение добавит новый компьютер)</string>
     <string name="agent_status_computer_update_required">Требуется обновление компьютера</string>
     <string name="agent_status_computer_offline">Компьютер не в сети</string>

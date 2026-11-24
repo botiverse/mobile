@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -33,7 +34,9 @@ internal data class AgentActivityStatusProjection(
      */
     val toolName: String? = null,
     /** The code of the runtime error an Error [status] shows (web `activityErrorCode`, #13985). */
-    val errorCode: AgentRuntimeErrorCode? = null
+    val errorCode: AgentRuntimeErrorCode? = null,
+    /** The daemon holds this agent's deliveries (botiverse/slock #16333); null when not held. */
+    val deliveryHold: AgentDeliveryHold? = null,
 ) {
     val presence: Presence
         get() = status.presence
@@ -117,7 +120,8 @@ internal fun AgentDetailSummary?.agentActivityStatusFallbackProjection(): AgentA
     return AgentActivityStatusProjection(
         status = status,
         detail = activityDetail.projectionNonBlankOrNull(),
-        errorCode = activityErrorCode.takeIf { status == AgentStatus.Error }
+        errorCode = activityErrorCode.takeIf { status == AgentStatus.Error },
+        deliveryHold = deliveryHold,
     )
 }
 
@@ -159,6 +163,7 @@ internal fun AgentActivityStatusProjection.toMemberPresenceUpdated(
         detailKind = detailKind,
         activityToolName = toolName,
         serverSeq = serverSeq,
+        deliveryHold = deliveryHold,
         errorCode = errorCode
     )
 

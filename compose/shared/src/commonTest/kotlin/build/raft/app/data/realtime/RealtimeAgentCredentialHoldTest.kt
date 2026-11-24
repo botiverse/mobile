@@ -1,6 +1,9 @@
 package build.raft.app.data.realtime
 
 import build.raft.app.model.AgentCredentialHoldReason
+import build.raft.app.model.AgentDeliveryHold
+import build.raft.app.model.AgentDeliveryHoldReason
+import build.raft.app.model.AgentProviderLimitHoldKind
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberPresenceUpdated
 import kotlin.test.Test
@@ -48,5 +51,122 @@ class RealtimeAgentCredentialHoldTest {
         assertNull(map(frame(activity = "working", detailKind = "starting")).credentialHold, "only an idle frame carries it")
         assertNull(map(frame(carrier = """{ "reason": "quota" }""")).credentialHold, "an unknown reason is no reason")
         assertNull(map(frame(carrier = null)).credentialHold, "an older daemon's held notice: none")
+    }
+
+    @Test
+    fun deliveryHoldRidesAnyActivityFrameAndClearsWhenAbsent() {
+        val workingQuota =
+            map(
+                """
+                {
+                  "agentId": "agent-held",
+                  "activity": "working",
+                  "detail": "Running tests",
+                  "detailKind": "running_command",
+                  "timestamp": 1782367200000,
+                  "serverSeq": 8,
+                  "deliveryHold": { "reason": "provider_limit", "detail": "quota_exhausted", "untilMs": 1782370800000, "since": 1782367000000 }
+                }
+                """.trimIndent()
+            )
+        assertEquals(AgentStatus.Working, workingQuota.agentStatus)
+        assertEquals(
+            AgentDeliveryHold(
+                reason = AgentDeliveryHoldReason.ProviderLimit,
+                providerLimitDetail = AgentProviderLimitHoldKind.QuotaExhausted,
+                untilMs = 1782370800000L,
+                since = 1782367000000L,
+            ),
+            workingQuota.deliveryHold,
+        )
+
+        val credHold =
+            map(
+                """
+                {
+                  "agentId": "agent-held",
+                  "activity": "online",
+                  "detail": "$heldDetail",
+                  "detailKind": "idle",
+                  "timestamp": 1782367200000,
+                  "serverSeq": 9,
+                  "credentialHold": { "reason": "user_reauth" },
+                  "deliveryHold": { "reason": "credential_invalid", "detail": "user_reauth", "since": 1782367000000 }
+                }
+                """.trimIndent()
+            )
+        assertEquals(AgentCredentialHoldReason.UserReauth, credHold.credentialHold)
+        assertEquals(
+            AgentDeliveryHold(
+                reason = AgentDeliveryHoldReason.CredentialInvalid,
+                credentialDetail = AgentCredentialHoldReason.UserReauth,
+                since = 1782367000000L,
+            ),
+            credHold.deliveryHold,
+        )
+
+        val released =
+            map(
+                """
+                {
+                  "agentId": "agent-held",
+                  "activity": "working",
+                  "detail": "Running tests",
+                  "detailKind": "running_command",
+                  "timestamp": 1782367205000,
+                  "serverSeq": 10
+                }
+                """.trimIndent()
+            )
+        assertNull(released.deliveryHold, "frame without deliveryHold clears it")
+    }
+
+    @Test
+    fun coarseActivityStateCarriesDeliveryHoldAndClearsWhenAbsent() {
+        val heldCoarse =
+            assertIs<MemberPresenceUpdated>(
+                RealtimeEventMapper().map(
+                    RealtimeSocketEvents.AgentActivityState,
+                    """
+                    {
+                      "agentId": "agent-held",
+                      "state": "busy",
+                      "activity": "working",
+                      "timestamp": 1782367200000,
+                      "serverSeq": 11,
+                      "deliveryHold": { "reason": "provider_limit", "detail": "transient_rate_limit", "untilMs": 1782367320000, "since": 1782367200000 }
+                    }
+                    """.trimIndent()
+                )
+            )
+        assertEquals(true, heldCoarse.coarseState)
+        assertEquals(AgentStatus.Working, heldCoarse.agentStatus)
+        assertEquals(
+            AgentDeliveryHold(
+                reason = AgentDeliveryHoldReason.ProviderLimit,
+                providerLimitDetail = AgentProviderLimitHoldKind.TransientRateLimit,
+                untilMs = 1782367320000L,
+                since = 1782367200000L,
+            ),
+            heldCoarse.deliveryHold,
+        )
+
+        val clearedCoarse =
+            assertIs<MemberPresenceUpdated>(
+                RealtimeEventMapper().map(
+                    RealtimeSocketEvents.AgentActivityState,
+                    """
+                    {
+                      "agentId": "agent-held",
+                      "state": "online",
+                      "activity": "online",
+                      "timestamp": 1782367325000,
+                      "serverSeq": 12
+                    }
+                    """.trimIndent()
+                )
+            )
+        assertEquals(true, clearedCoarse.coarseState)
+        assertNull(clearedCoarse.deliveryHold)
     }
 }

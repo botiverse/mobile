@@ -1101,16 +1101,28 @@ private fun MembersListRowAvatar(
         } else {
             null
         }
+    val deliveryHold =
+        if (showsStatus && holdingReadiness == null && signIn == null) {
+            rememberAgentDeliveryHoldView(
+                state = rawStatus,
+                fallbackRuntime = member.roleDescription,
+                fallbackModel = member.model,
+            )
+        } else {
+            null
+        }
     val status =
         when {
             holdingReadiness != null -> rawStatus?.copy(color = holdingReadiness.dotColor())
             signIn != null -> rawStatus?.copy(color = RaftColor.AccentOrange)
+            deliveryHold != null -> rawStatus?.copy(color = RaftColor.AccentOrange)
             else -> rawStatus
         }
     MembersAvatar(
         member = member,
         showStatusOverlay = showsStatus && status != null,
         statusIndicatorState = status,
+        statusDescription = signIn?.detail ?: deliveryHold?.text,
         memberAvatarResolver = memberAvatarResolver
     )
 }
@@ -1121,6 +1133,7 @@ private fun MembersAvatar(
     avatarSize: Dp = MembersListAvatarSize,
     statusDisplayState: MembersAgentStatusDisplayState = MembersUnknownAgentStatusDisplayState,
     statusIndicatorState: RaftAgentStatusIndicatorState? = null,
+    statusDescription: String? = null,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     showStatusOverlay: Boolean = true,
     modifier: Modifier = Modifier
@@ -1138,6 +1151,7 @@ private fun MembersAvatar(
             } else {
                 null
             },
+        statusDescription = if (showStatusOverlay && member.kind == MemberKind.Agent) statusDescription else null,
         avatarSize = avatarSize,
     ) {
         RaftAppAvatar(

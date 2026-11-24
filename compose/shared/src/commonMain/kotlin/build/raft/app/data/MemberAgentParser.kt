@@ -221,6 +221,8 @@ private data class WireAgent(
      * unexpected shapes never fail decoding the agent roster.
      */
     val readiness: JsonElement? = null,
+    /** `GET /agents` `deliveryHold` (botiverse/slock #16333): parsed defensively via [parseAgentDeliveryHold]. */
+    val deliveryHold: JsonElement? = null,
 )
 
 @Serializable
@@ -1112,6 +1114,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         agentBlockedReason = blockedReason?.trim()?.takeIf { it.isNotBlank() },
         lastRuntimeErrorSpawnFailureReason = lastRuntimeError?.spawnFailureReason?.trim()?.takeIf { it.isNotBlank() },
         agentReadiness = parseWireAgentReadiness(readiness),
+        agentDeliveryHold = parseAgentDeliveryHold(deliveryHold),
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },

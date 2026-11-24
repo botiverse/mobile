@@ -1624,6 +1624,12 @@ internal fun ThreadMembersPagerRow(
         } else {
             null
         }
+    val deliveryHold =
+        if (appBot == null && readinessCopy == null && signIn == null && member.kind.equals("agent", ignoreCase = true)) {
+            rememberAgentDeliveryHoldView(status)
+        } else {
+            null
+        }
     val subtitle =
         threadMembersRosterSubtitle(
             memberKind = member.kind,
@@ -1666,7 +1672,7 @@ internal fun ThreadMembersPagerRow(
         }
     ChannelMembersRow(
         title = member.displayName,
-        subtitle = readinessCopy?.title ?: subtitle,
+        subtitle = readinessCopy?.title ?: deliveryHold?.text ?: subtitle,
         subtitleContent =
             when {
                 readinessCopy != null -> {
@@ -1706,6 +1712,21 @@ internal fun ThreadMembersPagerRow(
                         }
                     }
                 }
+                deliveryHold != null -> {
+                    {
+                        RaftText(
+                            text = deliveryHold.text,
+                            style = RaftTheme.typography.caption,
+                            color = RaftTheme.colors.foregroundHint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier =
+                                Modifier
+                                    .testTag(AgentDeliveryHoldTestTags.MemberRowStatus)
+                                    .semantics { contentDescription = deliveryHold.text },
+                        )
+                    }
+                }
                 else -> null
             },
         trailingAction =
@@ -1722,7 +1743,9 @@ internal fun ThreadMembersPagerRow(
         avatarKind = raftAvatarKind(member.kind.parsedMemberKindOrNull()),
         cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
         cacheServerId = member.sourceServerId,
-        statusColor = readinessCopy?.light?.dotColor() ?: if (signIn != null) RaftColor.AccentOrange else status?.color,
+        statusColor =
+            readinessCopy?.light?.dotColor()
+                ?: if (signIn != null || deliveryHold != null) RaftColor.AccentOrange else status?.color,
         badges = listOfNotNull(roleBadge),
         titleBadge =
             if (appBot == null && originNames.isEmpty() && alsoIn == null) {

@@ -15,6 +15,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -109,6 +111,7 @@ internal fun RaftAvatarWithStatus(
     statusSize: Dp? = null,
     shape: RaftStatusIndicatorShape = RaftStatusIndicatorTokens.Shape,
     cutoutColor: Color = RaftColor.Canvas,
+    statusDescription: String? = null,
     avatar: @Composable BoxScope.() -> Unit
 ) {
     val step = RaftAvatarStep.nearest(avatarSize)
@@ -129,6 +132,13 @@ internal fun RaftAvatarWithStatus(
                     Modifier
                         .align(Alignment.BottomEnd)
                         .offset(x = step.badgeOverhang, y = step.badgeOverhang)
+                        .then(
+                            if (statusDescription != null) {
+                                Modifier.semantics { contentDescription = statusDescription }
+                            } else {
+                                Modifier
+                            }
+                        )
                         // `outline-2 outline-layer-canvas` (1px on xs/2xs/3xs): the outline
                         // follows the light's corners, so its outer radius is radius + width.
                         .drawBehind {

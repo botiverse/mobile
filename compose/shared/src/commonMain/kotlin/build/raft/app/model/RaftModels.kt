@@ -514,6 +514,12 @@ data class MemberProfile(
      */
     val agentReadiness: AgentReadiness? = null,
     /**
+     * The daemon holds this agent's deliveries (`GET /agents` `deliveryHold`, botiverse/slock #16333):
+     * credential invalid or provider limit. Cleared by `withoutVolatileStatus()` / durable caches so
+     * disk caches never flash stale holds on cold start.
+     */
+    val agentDeliveryHold: AgentDeliveryHold? = null,
+    /**
      * External agents (runtime `external`) have no managed liveness. Web keeps
      * `agent.external === true || runtime === "external"` as parallel sources
      * (agentStore.ts resolveAgentDisplayState); producers fold both via
@@ -1356,6 +1362,11 @@ data class MemberPresenceUpdated(
      */
     val credentialHold: AgentCredentialHoldReason? = null,
     /**
+     * The daemon holds this agent's deliveries on any activity frame or coarse `agent:activity_state`
+     * (the `deliveryHold` carrier, botiverse/slock #16333); absent means "not held" (or older daemon).
+     */
+    val deliveryHold: AgentDeliveryHold? = null,
+    /**
      * The code of the runtime error this frame shows (the `errorCode` carrier of `agent:activity`,
      * web #13985), only with [agentStatus] Error; null otherwise or for an unknown code.
      */
@@ -1397,6 +1408,74 @@ enum class AgentCredentialHoldReason(val wireValue: String) {
             value?.let { wire -> entries.firstOrNull { it.wireValue == wire } }
     }
 }
+
+/**
+ * Why the daemon holds an agent's deliveries (shared `DELIVERY_HOLD_REASONS`, botiverse/slock #16333):
+ * its credential is invalid (`credential_invalid`) or a provider limit on its credential is waiting out
+ * (`provider_limit`).
+ */
+@Serializable
+enum class AgentDeliveryHoldReason(val wireValue: String) {
+    CredentialInvalid("credential_invalid"),
+    ProviderLimit("provider_limit");
+
+    companion object {
+        fun fromWireValue(value: String?): AgentDeliveryHoldReason? =
+            value?.let { wire -> entries.firstOrNull { it.wireValue == wire } }
+    }
+}
+
+/**
+ * Which provider limit holds the agent's deliveries (shared `PROVIDER_LIMIT_HOLD_KINDS`,
+ * botiverse/slock #16333): a used-up quota or a rate-limit wait.
+ */
+@Serializable
+enum class AgentProviderLimitHoldKind(val wireValue: String) {
+    QuotaExhausted("quota_exhausted"),
+    TransientRateLimit("transient_rate_limit");
+
+    companion object {
+        fun fromWireValue(value: String?): AgentProviderLimitHoldKind? =
+            value?.let { wire -> entries.firstOrNull { it.wireValue == wire } }
+    }
+}
+
+/**
+ * Typed carrier on every `agent:activity` frame, coarse `agent:activity_state`, and REST
+ * `GET /agents` / `GET /agents/:id` response while the daemon holds the agent's deliveries
+ * (shared `DeliveryHoldActivityDiagnostic`, botiverse/slock #16333). Not tied to a detail kind, so
+ * a working frame does not clear it; a frame without it means "not held".
+ */
+@Serializable
+data class AgentDeliveryHold(
+    val reason: AgentDeliveryHoldReason,
+    /** Credential sub-reason when [reason] is [AgentDeliveryHoldReason.CredentialInvalid]; null when absent/unknown. */
+    val credentialDetail: AgentCredentialHoldReason? = null,
+    /** Provider-limit sub-reason when [reason] is [AgentDeliveryHoldReason.ProviderLimit]; null when absent/unknown. */
+    val providerLimitDetail: AgentProviderLimitHoldKind? = null,
+    /** When a provider-limit wait ends (daemon clock, epoch ms); always null for [AgentDeliveryHoldReason.CredentialInvalid]. */
+    val untilMs: Long? = null,
+    /** When the record holding the agent was made (daemon clock, epoch ms). */
+    val since: Long,
+) {
+    /**
+     * Shared `sameDeliveryHold`: compares reason, detail and (for `provider_limit`) `untilMs`.
+     * `since` is deliberately ignored because re-recording the same hold moves `since` without
+     * changing what holds the agent.
+     */
+    fun sameHoldAs(other: AgentDeliveryHold?): Boolean {
+        if (other == null) return false
+        return reason == other.reason &&
+            credentialDetail == other.credentialDetail &&
+            providerLimitDetail == other.providerLimitDetail &&
+            (if (reason == AgentDeliveryHoldReason.ProviderLimit) untilMs else null) ==
+                (if (other.reason == AgentDeliveryHoldReason.ProviderLimit) other.untilMs else null)
+    }
+}
+
+/** Shared `sameDeliveryHold` (absent equals absent). */
+fun sameAgentDeliveryHold(a: AgentDeliveryHold?, b: AgentDeliveryHold?): Boolean =
+    if (a == null || b == null) a == null && b == null else a.sameHoldAs(b)
 
 /**
  * Why an agent's start failed (shared `SpawnFailureActivityDiagnostic`, botiverse/slock task #1123):

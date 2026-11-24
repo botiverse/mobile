@@ -5059,6 +5059,14 @@
     <string name="agent_status_credential_plan_model">Plan doesn't include %1$s</string>
     <string name="agent_status_credential_plan_default_model">Plan doesn't include this model</string>
     <string name="agent_status_credential_billing">Provider balance exhausted</string>
+    <string name="agent_status_cant_respond">Can't respond: %1$s</string>
+    <string name="agent_status_cant_respond_short">Can't respond</string>
+    <string name="agent_status_delivery_hold_sign_in">%1$s sign-in needs attention</string>
+    <string name="agent_status_delivery_hold_credential">%1$s sign-in or plan needs attention</string>
+    <string name="agent_status_delivery_hold_usage_limit">%1$s usage limit reached</string>
+    <string name="agent_status_delivery_hold_usage_limit_until">%1$s usage limit reached, until %2$s</string>
+    <string name="agent_status_delivery_hold_rate_limit">%1$s rate limit, retrying soon</string>
+    <string name="agent_status_delivery_hold_rate_limit_until">%1$s rate limit, retrying %2$s</string>
     <string name="agent_status_computer_access_revoked">Computer access revoked: move the agent to another computer (re-attaching adds a new one)</string>
     <string name="agent_status_computer_update_required">Computer update required</string>
     <string name="agent_status_computer_offline">Computer offline</string>

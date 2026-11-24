@@ -1,7 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.agentBlockedState
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.statusLabelRes
+import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
 import build.raft.app.resources.*
@@ -22,11 +24,24 @@ fun raftAgentStatusDotKind(
     lastSeenAt: String? = null,
     nowEpochMillis: Long? = null,
     blockedReason: String? = null,
+    deliveryHold: AgentDeliveryHold? = null,
 ): RaftAgentStatusDotKind {
     if (!external && agentBlockedState(blockedReason) != null) return RaftAgentStatusDotKind.Orange
+    val parsedStatus = AgentStatus.fromWireValue(statusWireValue)
+    if (
+        deliveryHold != null &&
+        agentDeliveryHoldOf(
+            status = parsedStatus,
+            deliveryHold = deliveryHold,
+            nowMs = nowEpochMillis ?: defaultNowMillis(),
+            external = external,
+        ) != null
+    ) {
+        return RaftAgentStatusDotKind.Orange
+    }
     val state =
         raftAgentStatusIndicatorState(
-            status = AgentStatus.fromWireValue(statusWireValue),
+            status = parsedStatus,
             // No live presence outside the app: an agent without a known status reads offline.
             presence = Presence.Offline,
             external = external,

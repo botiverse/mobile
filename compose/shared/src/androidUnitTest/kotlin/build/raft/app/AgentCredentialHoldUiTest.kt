@@ -6,8 +6,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AgentDetailSummary
@@ -15,10 +17,15 @@ import build.raft.app.data.AppLocale
 import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.AgentCredentialHoldReason
+import build.raft.app.model.AgentDeliveryHold
+import build.raft.app.model.AgentDeliveryHoldReason
+import build.raft.app.model.AgentProviderLimitHoldKind
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.resources.StringDesc
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -65,21 +72,32 @@ class AgentCredentialHoldUiTest {
 
     private val agent = MemberProfile(id = MemberId("agent-1"), displayName = "Ruby", handle = "ruby", kind = MemberKind.Agent)
 
-    private fun live(status: AgentStatus, detail: String, detailKind: String): RaftAgentStatusIndicatorState =
+    private fun live(
+        status: AgentStatus,
+        detail: String,
+        detailKind: String,
+        runtime: String = "codex",
+        model: String? = "gpt-x",
+        deliveryHold: AgentDeliveryHold? = null,
+        nowMs: Long? = null,
+    ): RaftAgentStatusIndicatorState =
         SharedServerMemberStatus(
             status = status,
             presence = status.presence,
             statusLabel = detail,
             detailKind = detailKind,
-            runtime = "codex",
-            external = false
-        ).toRaftAgentStatusIndicatorState()
+            runtime = runtime,
+            model = model,
+            external = false,
+            deliveryHold = deliveryHold,
+        ).toRaftAgentStatusIndicatorState(nowEpochMillis = nowMs)
 
     private fun ComposeUiTest.showHero(
         state: RaftAgentStatusIndicatorState,
         summary: AgentDetailSummary,
         onRetry: (() -> Unit)?,
         showActivityDetail: Boolean = true,
+        timeContext: RaftTimeContext? = null,
     ) {
         setContent {
             RaftDesignSystemTheme {
@@ -92,6 +110,7 @@ class AgentCredentialHoldUiTest {
                         agentStatusIndicatorState = state,
                         onChangeAvatar = {},
                         showActivityDetail = showActivityDetail,
+                        timeContext = timeContext,
                         onRetry = onRetry,
                     )
                 }
@@ -103,19 +122,23 @@ class AgentCredentialHoldUiTest {
         activity: String,
         detail: String,
         detailKind: String,
+        runtime: String = "codex",
+        model: String? = "gpt-x",
         hold: AgentCredentialHoldReason? = null,
+        deliveryHold: AgentDeliveryHold? = null,
         errorMessage: String? = null,
         errorClass: String? = null,
         requiredAction: AgentCredentialHoldReason? = null,
     ) = AgentDetailSummary(
         id = "agent-1",
         name = "ruby",
-        runtime = "codex",
-        model = "gpt-x",
+        runtime = runtime,
+        model = model,
         activity = activity,
         activityDetail = detail,
         activityDetailKind = detailKind,
         credentialHold = hold,
+        deliveryHold = deliveryHold,
         lastRuntimeErrorMessage = errorMessage,
         lastRuntimeErrorClass = errorClass,
         lastRuntimeErrorRequiredAction = requiredAction,
@@ -152,5 +175,122 @@ class AgentCredentialHoldUiTest {
             onNodeWithText("Error").assertExists()
             onAllNodesWithText("Sign-in needed", substring = true).assertCountEquals(0)
             onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(1)
+        }
+
+    @Test
+    fun deliveryHoldShowsCantRespondWithReasonWhileWorkingAndCompactWithoutDetails() =
+        runRobolectricComposeUiTest {
+            // 2026-11-23 09:00 UTC -> until 14:05 UTC (same day, 24h format)
+            val nowMs = 1_795_424_400_000L
+            val untilMs = 1_795_442_700_000L
+            val clock = RaftTimeContext(nowEpochMillis = nowMs, localOffsetMinutes = 0, timeFormat = RaftTimeFormat24Hour)
+            val quota =
+                AgentDeliveryHold(
+                    reason = AgentDeliveryHoldReason.ProviderLimit,
+                    providerLimitDetail = AgentProviderLimitHoldKind.QuotaExhausted,
+                    untilMs = untilMs,
+                    since = nowMs - 60_000L,
+                )
+            showHero(
+                state = live(AgentStatus.Working, "Running tests", "running_command", runtime = "claude", deliveryHold = quota, nowMs = nowMs),
+                summary = summary("working", "Running tests", "running_command", runtime = "claude", deliveryHold = quota),
+                onRetry = {},
+                showActivityDetail = true,
+                timeContext = clock,
+            )
+            onNodeWithText("Can't respond: Claude Code usage limit reached, until 14:05").assertExists()
+            onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(0)
+        }
+
+    @Test
+    fun deliveryHoldCompactBadgeShowsCantRespondWithReasonInSemanticsAndRetryForCredentialInvalid() =
+        runRobolectricComposeUiTest {
+            val nowMs = 1_795_424_400_000L
+            val clock = RaftTimeContext(nowEpochMillis = nowMs, localOffsetMinutes = 0, timeFormat = RaftTimeFormat24Hour)
+            val signIn =
+                AgentDeliveryHold(
+                    reason = AgentDeliveryHoldReason.CredentialInvalid,
+                    credentialDetail = AgentCredentialHoldReason.UserReauth,
+                    since = nowMs - 60_000L,
+                )
+            showHero(
+                state = live(AgentStatus.Working, "Running tests", "running_command", runtime = "claude", deliveryHold = signIn, nowMs = nowMs),
+                summary = summary("working", "Running tests", "running_command", runtime = "claude", deliveryHold = signIn),
+                onRetry = {},
+                showActivityDetail = false,
+                timeContext = clock,
+            )
+            onNodeWithText("Can't respond").assertExists()
+            onNodeWithContentDescription("Can't respond: Claude Code sign-in needs attention").assertExists()
+            onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(1)
+        }
+
+    @Test
+    fun deliveryHoldFormatsBillingWithRetry() =
+        runRobolectricComposeUiTest {
+            val nowMs = 1_795_424_400_000L
+            val clock = RaftTimeContext(nowEpochMillis = nowMs, localOffsetMinutes = 0, timeFormat = RaftTimeFormat24Hour)
+            val billingHold =
+                AgentDeliveryHold(
+                    reason = AgentDeliveryHoldReason.CredentialInvalid,
+                    credentialDetail = AgentCredentialHoldReason.Billing,
+                    since = nowMs - 60_000L,
+                )
+            showHero(
+                state = live(AgentStatus.Online, "", "idle", runtime = "claude", deliveryHold = billingHold, nowMs = nowMs),
+                summary = summary("online", "", "idle", runtime = "claude", deliveryHold = billingHold),
+                onRetry = {},
+                showActivityDetail = true,
+                timeContext = clock,
+            )
+            onNodeWithText("Can't respond: Provider balance exhausted").assertExists()
+            onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(1)
+        }
+
+    @Test
+    fun deliveryHoldFormatsRateLimitWithoutRetry() =
+        runRobolectricComposeUiTest {
+            val nowMs = 1_795_424_400_000L
+            val untilMs = 1_795_442_700_000L
+            val clock = RaftTimeContext(nowEpochMillis = nowMs, localOffsetMinutes = 0, timeFormat = RaftTimeFormat24Hour)
+            val rateLimit =
+                AgentDeliveryHold(
+                    reason = AgentDeliveryHoldReason.ProviderLimit,
+                    providerLimitDetail = AgentProviderLimitHoldKind.TransientRateLimit,
+                    untilMs = untilMs,
+                    since = nowMs - 60_000L,
+                )
+            showHero(
+                state = live(AgentStatus.Online, "", "idle", runtime = "claude", deliveryHold = rateLimit, nowMs = nowMs),
+                summary = summary("online", "", "idle", runtime = "claude", deliveryHold = rateLimit),
+                onRetry = {},
+                showActivityDetail = true,
+                timeContext = clock,
+            )
+            onNodeWithText("Can't respond: Claude Code rate limit, retrying 14:05").assertExists()
+            onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(0)
+        }
+
+    @Test
+    fun deliveryHoldClearsOnceUntilMsHasPassed() =
+        runRobolectricComposeUiTest {
+            val nowMs = 1_795_424_400_000L
+            val clock = RaftTimeContext(nowEpochMillis = nowMs, localOffsetMinutes = 0, timeFormat = RaftTimeFormat24Hour)
+            val expired =
+                AgentDeliveryHold(
+                    reason = AgentDeliveryHoldReason.ProviderLimit,
+                    providerLimitDetail = AgentProviderLimitHoldKind.TransientRateLimit,
+                    untilMs = nowMs - 1_000L,
+                    since = nowMs - 120_000L,
+                )
+            showHero(
+                state = live(AgentStatus.Working, "Running tests", "running_command", runtime = "claude", deliveryHold = expired, nowMs = nowMs),
+                summary = summary("working", "Running tests", "running_command", runtime = "claude", deliveryHold = expired),
+                onRetry = {},
+                showActivityDetail = true,
+                timeContext = clock,
+            )
+            onAllNodesWithText("Can't respond", substring = true).assertCountEquals(0)
+            onNodeWithText("Running tests").assertExists()
         }
 }
