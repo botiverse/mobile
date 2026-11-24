@@ -1671,6 +1671,36 @@ internal class SharedTasksDataStore(
         )
     }
 
+    /**
+     * `slock #16474` (`loungeFollowListing.ts::allTasks`): looks up the parent channel id of a
+     * task whose own conversation channel is [conversationChannelId] on [serverId].
+     */
+    internal fun parentChannelIdForTaskConversation(
+        serverId: String,
+        conversationChannelId: String,
+    ): String? {
+        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return null
+        val normalizedConversationId = conversationChannelId.normalizedTasksStoreId() ?: return null
+        val current = state.value
+        current.serverSnapshots[normalizedServerId]
+            ?.tasks
+            ?.firstOrNull { it.conversationChannelId?.value == normalizedConversationId }
+            ?.channelId
+            ?.value
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+        current.channelSnapshots.forEach { (key, snapshot) ->
+            if (key.serverId != normalizedServerId) return@forEach
+            snapshot.tasks
+                .firstOrNull { it.conversationChannelId?.value == normalizedConversationId }
+                ?.channelId
+                ?.value
+                ?.takeIf { it.isNotBlank() }
+                ?.let { return it }
+        }
+        return null
+    }
+
     private fun SharedTasksDataStoreState.hasCanonicalConflictForServer(serverId: String): Boolean =
         taskProjectionRoutes.keys.any { key ->
             key.serverId == serverId && key.taskId in canonicalConflicts

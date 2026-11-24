@@ -2,6 +2,7 @@ package build.raft.app.data.realtime
 
 import build.raft.app.data.RaftNotificationRoute
 import build.raft.app.data.parseRaftNotificationRoute
+import build.raft.app.model.ChannelId
 import build.raft.app.model.NotificationAccountSettingsChanged
 import build.raft.app.model.NotificationLevelChanged
 import build.raft.app.model.NotificationNoticeReceived
@@ -9,6 +10,7 @@ import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.NotificationRetracted
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.ServerNotificationPreferencesChanged
+import build.raft.app.model.ThreadUpdated
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -175,5 +177,41 @@ class RealtimeEventMapperNotificationContractTest {
             ),
             "an unknown level is rejected"
         )
+    }
+
+    @Test
+    fun threadUpdatedExtractsParentChannelIdFromLatestReplyConversationContext() {
+        val fromContext =
+            assertIs<ThreadUpdated>(
+                mapper.map(
+                    RealtimeSocketEvents.ThreadUpdated,
+                    """
+                    {
+                      "parentMessageId": "pm-1",
+                      "threadChannelId": "th-1",
+                      "replyCount": 2,
+                      "lastReplyAt": "2026-11-24T06:00:00Z",
+                      "participantIds": ["u-2"],
+                      "latestReply": {
+                        "id": "m-2",
+                        "seq": 9,
+                        "content": "hi",
+                        "senderId": "u-2",
+                        "senderType": "user",
+                        "senderName": "Cindy",
+                        "createdAt": "2026-11-24T06:00:00Z",
+                        "conversationContext": {
+                          "channelId": "th-1",
+                          "channelType": "thread",
+                          "parentChannelId": "lounge-bugen",
+                          "parentChannelType": "channel",
+                          "parentMessageId": "pm-1"
+                        }
+                      }
+                    }
+                    """.trimIndent(),
+                )
+            )
+        assertEquals(ChannelId("lounge-bugen"), fromContext.parentChannelId)
     }
 }

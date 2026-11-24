@@ -787,11 +787,24 @@ internal class ThreadRouteEventHandler(
                                             replyCount = result.data.replyCount
                                         )
                                     )
-                                    // #proj-chat:#44: following a thread in a Lounge lists it locally without waiting for GET /channels/dm.
+                                    // #proj-chat:#44 & slock #16474: following a thread in a Lounge lists it locally without waiting for GET /channels/dm.
                                     currentServerId?.let { serverId ->
+                                        val parentChannelId =
+                                            renderedThread.agentLoungeLookupChannelId()
+                                                ?: renderedThread.parentChannelId?.takeIf { it.isNotBlank() }
+                                                ?: renderedThread.sourceThreadId?.takeIf {
+                                                    renderedThread.surfaceKind == RaftThreadSurfaceKind.Channel && it.isNotBlank()
+                                                }
                                         renderedThread.agentLoungeLookupChannelId()?.let { loungeChannelId ->
                                             RaftAgentLounges.markListed(serverId, loungeChannelId)
                                         }
+                                        sharedHomeStore?.dispatch(
+                                            SharedHomeIntent.NoteLoungeThreadFollowed(
+                                                serverId = serverId,
+                                                parentChannelId = parentChannelId,
+                                                threadChannelId = result.data.threadChannelId.value,
+                                            )
+                                        )
                                     }
                                     bridge.toast(followedThreadLabel)
                                 }
@@ -818,12 +831,20 @@ internal class ThreadRouteEventHandler(
                     pendingThreadFollowMessageIds = pendingThreadFollowMessageIds + threadChannelId
                     coroutineScope.launch {
                         try {
-                            // Web #11687: the thread's unread leaves Home at once, back if this fails.
+                            // Web #11687 & slock #16474: the thread's unread leaves Home at once, back if this fails;
+                            // confirming an unfollow in a Lounge also refreshes the DM list's `listed` state.
+                            val parentChannelId =
+                                renderedThread.agentLoungeLookupChannelId()
+                                    ?: renderedThread.parentChannelId?.takeIf { it.isNotBlank() }
+                                    ?: renderedThread.sourceThreadId?.takeIf {
+                                        renderedThread.surfaceKind == RaftThreadSurfaceKind.Channel && it.isNotBlank()
+                                    }
                             val unfollowResult =
                                 unfollowThreadProjectingHome(
                                     ChannelId(threadChannelId),
                                     project = { intent -> sharedHomeStore?.dispatch(intent) },
                                     unfollow = dataSource::unfollowThread,
+                                    parentChannelId = parentChannelId,
                                 )
                             when (val result = unfollowResult) {
                                 is DataResult.Content -> {

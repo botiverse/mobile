@@ -571,6 +571,8 @@ internal class RaftSharedStoreProvider private constructor(
      * stop them. Cancelled on remove / send, sign-out and lost server access; not persisted.
      */
     internal val composerDraftUploads = RaftComposerDraftUploads(threadSendScope)
+    /** `slock #16493`: `channel:joined` acks for open Agent Lounge tail catch-up. */
+    internal val channelJoinedSignals = RaftChannelJoinedSignals()
     // task #166: display-only last-known unread counts and previews for the cached cold-start
     // Home. Declared first so every later initializer that builds the Home store sees it.
     private val homeRowHintPersistStorage = HomeRowHintPersistStorage(sharedPreferenceStore)
@@ -2212,6 +2214,9 @@ internal class RaftSharedStoreProvider private constructor(
                         transportEpoch,
                         joined,
                     )
+                    if (joined) {
+                        channelJoinedSignals.publish(grant.serverId, channelId)
+                    }
                 }
             },
             // Phase 3: with multi-session realtime on, token rotation keeps every window's server.
@@ -3236,6 +3241,18 @@ internal class RaftSharedStoreProvider private constructor(
                 onChannelLeft = { channelId -> publishChannelAccessLost(scope, channelId) },
                 selectedConversationSeen = { raftHostShowsContent(scope.shellInstanceId) },
                 openSideThread = { adaptiveWorkspaceStore(scope).snapshot().openSideThreadMatch() },
+                isAgentLoungeEnabled = { serverId ->
+                    serverFeatureFlags.isEnabled(serverId, AGENT_LOUNGE_FEATURE_FLAG_KEY)
+                },
+                resolveExternalThreadParentChannelId = { serverId, threadChannelId ->
+                    homeActivityStores.get(scope)?.state?.value
+                        ?.takeIf { it.ownerServerId == serverId.value }
+                        ?.items
+                        ?.firstOrNull { it.threadChannelId?.value == threadChannelId }
+                        ?.parentChannelId
+                        ?.value
+                        ?: tasksDataStore.parentChannelIdForTaskConversation(serverId.value, threadChannelId)
+                },
                 // Identity first: the hint slice attaches to the durable content it restores.
                 persistSlices = listOf(homeIdentityPersistSlice, homeRowHintPersistSlice),
                 conversationIdentityPublicationSink = publication@{ publication ->
@@ -3318,6 +3335,7 @@ internal class RaftSharedStoreProvider private constructor(
                     foregroundLoadGate = threadPayloadStore.foregroundLoadGate,
                     onUnreadCountsChanged = onUnreadCountsChanged,
                     onThreadUnfollowProjection = { intent -> homeStores.get(scope)?.dispatch(intent) },
+                    onThreadFollowProjection = { intent -> homeStores.get(scope)?.dispatch(intent) },
                     onSummaryFact = activityUnreadSummaryStore::submitFact,
                     onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
                     diagnosticsLogger = diagnosticsLogger
@@ -3346,6 +3364,7 @@ internal class RaftSharedStoreProvider private constructor(
                 foregroundLoadGate = threadPayloadStore.foregroundLoadGate,
                 onUnreadCountsChanged = onUnreadCountsChanged ?: {},
                 onThreadUnfollowProjection = { intent -> homeStores.get(scope)?.dispatch(intent) },
+                onThreadFollowProjection = { intent -> homeStores.get(scope)?.dispatch(intent) },
                 onSummaryFact = activityUnreadSummaryStore::submitFact,
                 onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
                 onBadgeReleased = { serverId ->

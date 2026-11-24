@@ -1674,18 +1674,35 @@ private fun rememberThreadTaskConversationState(
         payload.resolvedAuxiliaryThreadId()
             ?.takeIf { payload.channelKind == RaftTaskConversationChannelKind }
             ?.let(::ChannelId)
+    val taskParentChannelIdRef = remember(taskConversationId) { mutableStateOf<String?>(null) }
+    val latestTaskServerId by rememberUpdatedState(currentServerId)
     val taskConversationHeaderViewModel: TaskConversationHeaderViewModel? =
         taskConversationId?.let { conversationId ->
             viewModel(key = "task-conversation-header-${conversationId.value}") {
                 TaskConversationHeaderViewModel(
                     conversationChannelId = conversationId,
                     loadRef = dataSource::loadTaskConversationRef,
-                    follow = dataSource::followTaskConversation,
+                    follow = { id ->
+                        dataSource.followTaskConversation(id).also { result ->
+                            if (result is DataResult.Content || result is DataResult.Empty) {
+                                latestTaskServerId?.takeIf { it.isNotBlank() }?.let { serverId ->
+                                    sharedHomeStore?.dispatch(
+                                        SharedHomeIntent.NoteLoungeThreadFollowed(
+                                            serverId = serverId,
+                                            parentChannelId = taskParentChannelIdRef.value,
+                                            threadChannelId = (result as? DataResult.Content)?.data?.threadChannelId?.value ?: id.value,
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    },
                     unfollow = { conversationId ->
                         unfollowThreadProjectingHome(
                             conversationId,
                             project = { intent -> sharedHomeStore?.dispatch(intent) },
                             unfollow = dataSource::unfollowThread,
+                            parentChannelId = taskParentChannelIdRef.value,
                         )
                     },
                     log = { bridge.log(it) },
@@ -1701,6 +1718,7 @@ private fun rememberThreadTaskConversationState(
         taskConversationHeaderViewModel?.state?.collectAsState()?.value
     LaunchedEffect(taskConversationHeaderViewModel) { taskConversationHeaderViewModel?.start() }
     val taskConversationParentChannelId = taskConversationHeaderState?.ref?.parentChannelId
+    taskParentChannelIdRef.value = taskConversationParentChannelId?.value
     // The task channel's tasks store, shared with the pending task page ([TaskOpenSurfaceHost]).
     val taskConversationTasksViewModel: SharedTasksViewModel? =
         rememberTaskChannelTasksViewModel(taskConversationParentChannelId, authStore, tasksDataSource, tasksDataStore) { bridge.log(it) }
@@ -2618,6 +2636,31 @@ private fun SharedThreadRouteContentContent(
             }
         },
     )
+    // `slock #16493` (`agentLoungeRoomCatchUp.test.ts`): an open Agent Lounge joins its socket room
+    // on demand; when the server confirms `channel:joined`, catch up from the visible tail so messages
+    // sent while the socket was joining the room are not missed.
+    val latestMutePageLoungeChannelId by rememberUpdatedState(mutePageLounge?.channelId?.value)
+    val latestLoungeContentReady by rememberUpdatedState(payload.status == "content" && !payload.mainLoadFailed)
+    LaunchedEffect(sharedStores.channelJoinedSignals, threadInstanceKey) {
+        sharedStores.channelJoinedSignals.events.collect { signal ->
+            if (
+                latestRouteActive &&
+                latestLoungeContentReady &&
+                build.raft.app.data.shouldCatchUpOpenLoungeOnChannelJoined(
+                    openServerId = latestCurrentSession?.currentServerId,
+                    openChannelId = latestMutePageLoungeChannelId,
+                    isOpenChannelLounge = latestMutePageLoungeChannelId != null,
+                    ackServerId = signal.serverId,
+                    ackChannelId = signal.channelId,
+                )
+            ) {
+                bridge.log(
+                    "thread_lounge_channel_joined_catch_up channelId=${signal.channelId.take(8)} shell=${storeScope.shellInstanceId}"
+                )
+                threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+            }
+        }
+    }
 
     // Pager lifecycle notifications remain mounted with the route core. A
     // loading -> resolved transition must not reset foreground reconciliation.
@@ -4698,15 +4741,29 @@ private fun SharedThreadRouteContentContent(
                         expectedRoute = sendRoute
                     )
                 )
-                // Task #59: replying in a hidden DM shows it in Home's DM list right away.
+                // Task #59 & slock #16474: replying in a hidden DM shows it in Home's DM list right away,
+                // and posting in a Lounge or one of its threads keeps the Lounge's `listed` state in sync.
                 val ownSentChannelIds =
                     sentPage.ownSentConversationIds(
                         fallbackChannelId = context.channelId,
                         parentConversationId = sendBasePayload.parentChannelId.takeIf { sendRoute.surfaceKind == RaftThreadSurfaceKind.ReplyThread }
                     )
+                val loungeParentChannelId =
+                    when (sendRoute.surfaceKind) {
+                        RaftThreadSurfaceKind.Channel ->
+                            sendBasePayload.parentChannelId?.takeIf { it.isNotBlank() } ?: context.channelId
+                        RaftThreadSurfaceKind.ReplyThread ->
+                            sendBasePayload.parentChannelId?.takeIf { it.isNotBlank() }
+                        RaftThreadSurfaceKind.DirectMessage -> null
+                        else -> sendBasePayload.parentChannelId?.takeIf { it.isNotBlank() }
+                    }
                 if (ownSentChannelIds.isNotEmpty()) {
                     sharedHomeStore?.dispatch(
-                        SharedHomeIntent.OwnMessagesSent(sendProvenance.serverId, ownSentChannelIds)
+                        SharedHomeIntent.OwnMessagesSent(
+                            serverId = sendProvenance.serverId,
+                            channelIds = ownSentChannelIds,
+                            loungeParentChannelId = loungeParentChannelId,
+                        )
                     )
                 }
                 // Agent Lounge v0: your first post in a Lounge joins it (no Join step), so its row

@@ -357,6 +357,11 @@ class SharedActivityStore internal constructor(
      * (the panel clears it when the person unfollows; this confirms or restores it).
      */
     onThreadUnfollowProjection: (SharedHomeIntent.ProjectThreadUnfollow) -> Unit = {},
+    /**
+     * `slock #16474`: following a thread or task conversation from Activity tells Home so a Lounge
+     * is listed immediately or refreshed via `GET /channels/dm?include=lounges`.
+     */
+    onThreadFollowProjection: (SharedHomeIntent.NoteLoungeThreadFollowed) -> Unit = {},
     onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = {},
     onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = {},
     /**
@@ -486,6 +491,7 @@ class SharedActivityStore internal constructor(
     private var activitySurfaceHidden = false
     private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
     private var onThreadUnfollowProjection: (SharedHomeIntent.ProjectThreadUnfollow) -> Unit = onThreadUnfollowProjection
+    private var onThreadFollowProjection: (SharedHomeIntent.NoteLoungeThreadFollowed) -> Unit = onThreadFollowProjection
     private var onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = onSummaryFact
     private var onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = onSummaryInvalidated
     // Local read / Done overlays: keep a confirmed mutation applied while the
@@ -758,6 +764,7 @@ class SharedActivityStore internal constructor(
         readStateV1Canary: ReadStateV1ProductionCanary? = this.readStateV1Canary,
         onUnreadCountsChanged: (() -> Unit)? = null,
         onThreadUnfollowProjection: ((SharedHomeIntent.ProjectThreadUnfollow) -> Unit)? = null,
+        onThreadFollowProjection: ((SharedHomeIntent.NoteLoungeThreadFollowed) -> Unit)? = null,
         onSummaryFact: ((ActivityUnreadSummaryFact) -> Unit)? = null,
         onSummaryInvalidated: ((ActivityUnreadSummaryInvalidation) -> Unit)? = null,
         diagnosticsLogger: ((String) -> Unit)? = null
@@ -791,6 +798,9 @@ class SharedActivityStore internal constructor(
         }
         if (onThreadUnfollowProjection != null) {
             this.onThreadUnfollowProjection = onThreadUnfollowProjection
+        }
+        if (onThreadFollowProjection != null) {
+            this.onThreadFollowProjection = onThreadFollowProjection
         }
         if (onSummaryFact != null) {
             this.onSummaryFact = onSummaryFact
@@ -836,7 +846,13 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.UnfollowObject -> unfollowObject(intent.item)
             is SharedActivityIntent.ProjectThreadUnfollow ->
                 intent.item.threadChannelId?.value?.let { threadId ->
-                    onThreadUnfollowProjection(SharedHomeIntent.ProjectThreadUnfollow(threadId, intent.phase))
+                    onThreadUnfollowProjection(
+                        SharedHomeIntent.ProjectThreadUnfollow(
+                            threadChannelId = threadId,
+                            phase = intent.phase,
+                            parentChannelId = intent.item.parentChannelId?.value,
+                        )
+                    )
                 }
             is SharedActivityIntent.ProjectPendingDeferredHide -> projectPendingDeferredHide(intent)
             is SharedActivityIntent.ApplyReadReceiptPrediction -> applyReadReceiptPrediction(intent.prediction)
@@ -5324,8 +5340,17 @@ class SharedActivityStore internal constructor(
                 intent.listOwnerUserId == state.ownerUserId &&
                 intent.listOwnerServerId == state.ownerServerId
         val threadId = item.threadChannelId?.value
+        val parentChannelId = (heldItem ?: item).parentChannelId?.value
         fun settleHome(phase: HomeThreadUnfollowPhase) {
-            threadId?.let { onThreadUnfollowProjection(SharedHomeIntent.ProjectThreadUnfollow(it, phase)) }
+            threadId?.let {
+                onThreadUnfollowProjection(
+                    SharedHomeIntent.ProjectThreadUnfollow(
+                        threadChannelId = it,
+                        phase = phase,
+                        parentChannelId = parentChannelId,
+                    )
+                )
+            }
         }
         // Nothing is written for a row of another list: Home gets back the unread it cleared.
         val currentItem = heldItem ?: item.takeIf { sameListOwner } ?: return settleHome(HomeThreadUnfollowPhase.Restored)
@@ -5406,6 +5431,16 @@ class SharedActivityStore internal constructor(
                 finishThreadFollowMutation(item.key)
             }
             if (result.isAcceptedThreadFollowMutation()) {
+                val followServerId = _state.value.ownerServerId ?: previous.ownerServerId
+                if (!followServerId.isNullOrBlank()) {
+                    onThreadFollowProjection(
+                        SharedHomeIntent.NoteLoungeThreadFollowed(
+                            serverId = followServerId,
+                            parentChannelId = target.parentChannelId?.value,
+                            threadChannelId = (result as? DataResult.Content)?.data?.threadChannelId?.value ?: target.threadChannelId?.value,
+                        )
+                    )
+                }
                 onUnreadCountsChanged()
                 if (currentItem == null) {
                     load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)

@@ -1259,6 +1259,11 @@ data class ThreadUpdated(
     val syncCoreReplyWindow: build.raft.app.network.sync.ThreadRepliesSyncWindowEnvelope? = null,
     /** `latestReply.mentions` (the reply is the full message payload); feeds Home's thread @ mark. */
     val latestReplyMentions: List<MessageMention> = emptyList(),
+    /**
+     * Parent channel the thread hangs off, when the frame carried it (`latestReply.conversationContext.parentChannelId`
+     * or `syncCoreReplyWindow.discussion.parentScopeKey.scopeId`). Used to identify Lounge threads (`slock #16493`).
+     */
+    val parentChannelId: ChannelId? = null,
 ) : RealtimeEvent
 
 @Serializable

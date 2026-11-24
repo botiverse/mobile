@@ -32,6 +32,7 @@ import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -222,14 +223,17 @@ data class HomeStandaloneLoungeWireDto(
 )
 
 /**
- * Dual-shape wire payload for `GET /channels/dm?include=lounges` (`#proj-chat:#44`):
- * - Older servers return a root JSON array of [HomeDirectMessageWireDto].
- * - Servers supporting `include=lounges` return `{ "dms": [...], "lounges": [...] }`.
+ * Dual-shape wire payload for `GET /channels/dm?include=lounges` (`#proj-chat:#44`, `slock #16479`):
+ * - Older servers return a root JSON array of [HomeDirectMessageWireDto] ([loungesPresent] = false).
+ * - Servers supporting `include=lounges` return `{ "dms": [...], "lounges": [...] }` ([loungesPresent] = true).
+ * - An object answer without a `lounges` array says nothing about standalone Lounges ([loungesPresent] = false)
+ *   and unlists nothing.
  */
 @Serializable(with = HomeDirectMessagesWireResultSerializer::class)
 data class HomeDirectMessagesWireResult(
     val dms: List<HomeDirectMessageWireDto>,
     val lounges: List<HomeStandaloneLoungeWireDto> = emptyList(),
+    val loungesPresent: Boolean = false,
 )
 
 internal object HomeDirectMessagesWireResultSerializer : KSerializer<HomeDirectMessagesWireResult> {
@@ -245,20 +249,22 @@ internal object HomeDirectMessagesWireResultSerializer : KSerializer<HomeDirectM
                 HomeDirectMessagesWireResult(
                     dms = jsonDecoder.json.decodeFromJsonElement(dmListSerializer, element),
                     lounges = emptyList(),
+                    loungesPresent = false,
                 )
             is JsonObject -> {
                 val dmsElement = element["dms"] as? JsonArray
                     ?: throw SerializationException("Expected 'dms' array in channels/dm object response")
                 val loungesElement = element["lounges"]
-                val lounges =
+                val (lounges, loungesPresent) =
                     when (loungesElement) {
-                        null -> emptyList()
-                        is JsonArray -> jsonDecoder.json.decodeFromJsonElement(loungeListSerializer, loungesElement)
+                        null, is JsonNull -> emptyList<HomeStandaloneLoungeWireDto>() to false
+                        is JsonArray -> jsonDecoder.json.decodeFromJsonElement(loungeListSerializer, loungesElement) to true
                         else -> throw SerializationException("Expected 'lounges' array in channels/dm object response")
                     }
                 HomeDirectMessagesWireResult(
                     dms = jsonDecoder.json.decodeFromJsonElement(dmListSerializer, dmsElement),
                     lounges = lounges,
+                    loungesPresent = loungesPresent,
                 )
             }
             else -> throw SerializationException("Expected array or {dms, lounges} object for channels/dm")
@@ -268,6 +274,41 @@ internal object HomeDirectMessagesWireResultSerializer : KSerializer<HomeDirectM
     override fun serialize(encoder: Encoder, value: HomeDirectMessagesWireResult) {
         error("HomeDirectMessagesWireResult serialization is not used")
     }
+}
+
+internal data class ParsedHomeDirectMessagesRefresh(
+    val directMessages: List<HomeDirectMessageRow>,
+    val standaloneLounges: List<HomeStandaloneLoungeRow>,
+    val namesLounges: Boolean,
+)
+
+/**
+ * Decodes a standalone `GET /channels/dm?include=lounges` answer into DM rows and standalone
+ * Lounges using the exact DM-wins deduplication of [parseRaftHome] (`slock #16474` / `#16479`).
+ */
+internal fun parseDirectMessagesForHomeRefresh(
+    wire: HomeDirectMessagesWireResult,
+    warningLogger: (String) -> Unit = {},
+): ParsedHomeDirectMessagesRefresh {
+    val directMessages =
+        wire.dms
+            .map { it.toDirectMessageRow(warningLogger) }
+            .dedupeHomeDirectMessages()
+    val dmAgentIdsWithLounge =
+        directMessages
+            .filter { it.directMessagePeerType.equals("agent", ignoreCase = true) && it.lounge != null }
+            .mapNotNull { it.presenceMemberId?.value?.takeIf { id -> id.isNotBlank() } }
+            .toSet()
+    val standaloneLounges =
+        wire.lounges
+            .mapNotNull { entry -> entry.toStandaloneLoungeRow() }
+            .filterNot { it.agentId in dmAgentIdsWithLounge }
+            .distinctBy { it.agentId }
+    return ParsedHomeDirectMessagesRefresh(
+        directMessages = directMessages,
+        standaloneLounges = standaloneLounges,
+        namesLounges = wire.loungesPresent,
+    )
 }
 
 @Serializable
@@ -528,7 +569,8 @@ fun parseRaftHome(
             unreadEnrichmentAvailable = payload.unreadEnrichmentAvailable,
             unreadStale = payload.unreadStale,
             unreadUnavailable = payload.unreadUnavailable,
-            unreadRetryAfterMillis = payload.unreadRetryAfterMillis
+            unreadRetryAfterMillis = payload.unreadRetryAfterMillis,
+            dmListNamesLounges = payload.directMessagesNamesLounges,
         )
     )
 }

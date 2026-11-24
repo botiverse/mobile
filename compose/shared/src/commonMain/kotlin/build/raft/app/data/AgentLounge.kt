@@ -5,8 +5,13 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
+import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.serialization.Serializable
@@ -508,53 +513,141 @@ object RaftAgentLounges {
         loading.update { it - key }
     }
 
+    private val followSeqClock = atomic(0L)
+    private val followedAtByServer = MutableStateFlow<Map<String, Map<String, Long>>>(emptyMap())
+
+    /** Monotonic clock for local Lounge follows vs DM-list request ordering (`slock #16474` `nextPatchSeq`). */
+    fun nextFollowSequence(): Long = followSeqClock.incrementAndGet()
+
+    /** True if a local follow/post in [channelId] on [serverId] happened after [requestSeq]. */
+    fun followedSince(serverId: String, channelId: String, requestSeq: Long): Boolean {
+        if (requestSeq == Long.MAX_VALUE) return false
+        val stamp = followedAtByServer.value[serverId]?.get(channelId) ?: return false
+        return stamp > requestSeq
+    }
+
     /** Remember the Lounges an agent DM list carries (the agent's name is the DM row's). */
     fun rememberDirectMessages(serverId: String, directMessages: List<HomeDirectMessageRow>) {
+        reconcileDirectMessages(
+            serverId = serverId,
+            directMessages = directMessages,
+            standaloneLounges = emptyList(),
+            namesLounges = false,
+            requestSeq = Long.MAX_VALUE,
+        )
+    }
+
+    /** Remember listed Lounges returned outside DM rows (`GET /channels/dm?include=lounges` `lounges[]`). */
+    fun rememberStandaloneLounges(serverId: String, standaloneLounges: List<HomeStandaloneLoungeRow>) {
+        if (standaloneLounges.isEmpty()) return
+        reconcileDirectMessages(
+            serverId = serverId,
+            directMessages = emptyList(),
+            standaloneLounges = standaloneLounges,
+            namesLounges = false,
+            requestSeq = Long.MAX_VALUE,
+        )
+    }
+
+    /**
+     * Authoritatively reconciles `RaftAgentLounges` for [serverId] with a `GET /channels/dm?include=lounges`
+     * answer (`slock #16474` `hydrateDmChannels` + `#16479`):
+     * - Updates/inserts every DM Lounge summary and standalone Lounge entry.
+     * - If a local follow was stamped AFTER [requestSeq], keeps `listed = true` even if this older
+     *   in-flight answer still says `listed = false` or omits the standalone Lounge.
+     * - When [namesLounges] is true (the answer carried an explicit `lounges` array), any known Lounge
+     *   whose `listed != null` is absent from both [directMessages] and [standaloneLounges] (and not
+     *   followed since [requestSeq]) is settled to `listed = false` so unfollowing the last thread
+     *   cleanly unlists standalone Lounges.
+     * - When [namesLounges] is false (`#16479`, bare array or object without `lounges`), absent Lounges
+     *   are left untouched (unlists nothing).
+     */
+    fun reconcileDirectMessages(
+        serverId: String,
+        directMessages: List<HomeDirectMessageRow>,
+        standaloneLounges: List<HomeStandaloneLoungeRow>,
+        namesLounges: Boolean,
+        requestSeq: Long = Long.MAX_VALUE,
+    ) {
         val carried =
             directMessages.mapNotNull { dm ->
                 val lounge = dm.lounge ?: return@mapNotNull null
                 val agentId = dm.presenceMemberId?.value?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 Triple(lounge, agentId, dm.name)
             }
-        if (carried.isEmpty()) return
-        byServer.update { all ->
-            val current = all[serverId].orEmpty()
-            val next = current.toMutableMap()
-            for ((summary, agentId, agentName) in carried) {
-                val previous = current[summary.channelId.value]
-                next[summary.channelId.value] =
-                    (previous ?: RaftAgentLounge(channelId = summary.channelId, agentId = agentId))
-                        .copy(
-                            agentId = agentId,
-                            agentName = agentName.takeIf { it.isNotBlank() } ?: previous?.agentName,
-                            joined = if (summary.listed != null) summary.joined else (summary.joined || previous?.joined == true),
-                            listed = summary.listed ?: previous?.listed,
-                        )
-            }
-            if (next == current) all else all + (serverId to next)
-        }
-    }
+        val stamps = followedAtByServer.value[serverId].orEmpty()
+        fun isFollowedSince(channelId: String): Boolean =
+            requestSeq != Long.MAX_VALUE && (stamps[channelId] ?: 0L) > requestSeq
 
-    /** Remember listed Lounges returned outside DM rows (`GET /channels/dm?include=lounges` `lounges[]`). */
-    fun rememberStandaloneLounges(serverId: String, standaloneLounges: List<HomeStandaloneLoungeRow>) {
-        if (standaloneLounges.isEmpty()) return
-        byServer.update { all ->
-            val current = all[serverId].orEmpty()
-            val next = current.toMutableMap()
-            for (row in standaloneLounges) {
-                val summary = row.lounge
-                val previous = current[summary.channelId.value]
-                next[summary.channelId.value] =
-                    (previous ?: RaftAgentLounge(channelId = summary.channelId, agentId = row.agentId))
-                        .copy(
-                            agentId = row.agentId,
-                            agentName = row.agentName.takeIf { it.isNotBlank() } ?: previous?.agentName,
-                            joined = if (summary.listed != null) summary.joined else (summary.joined || previous?.joined == true),
-                            listed = summary.listed ?: previous?.listed,
-                            canPost = row.canPost ?: previous?.canPost,
-                        )
+        val saidIds = HashSet<String>(carried.size + standaloneLounges.size)
+        if (carried.isNotEmpty() || standaloneLounges.isNotEmpty() || namesLounges) {
+            byServer.update { all ->
+                val current = all[serverId].orEmpty()
+                val next = current.toMutableMap()
+                for ((summary, agentId, agentName) in carried) {
+                    val id = summary.channelId.value
+                    saidIds += id
+                    val previous = current[id]
+                    val resolvedListed =
+                        when {
+                            summary.listed == false && isFollowedSince(id) -> true
+                            summary.listed != null -> summary.listed
+                            else -> previous?.listed
+                        }
+                    next[id] =
+                        (previous ?: RaftAgentLounge(channelId = summary.channelId, agentId = agentId))
+                            .copy(
+                                agentId = agentId,
+                                agentName = agentName.takeIf { it.isNotBlank() } ?: previous?.agentName,
+                                joined = if (summary.listed != null) summary.joined else (summary.joined || previous?.joined == true),
+                                listed = resolvedListed,
+                            )
+                }
+                for (row in standaloneLounges) {
+                    val summary = row.lounge
+                    val id = summary.channelId.value
+                    saidIds += id
+                    val previous = current[id]
+                    val resolvedListed =
+                        when {
+                            summary.listed == false && isFollowedSince(id) -> true
+                            summary.listed != null -> summary.listed
+                            else -> previous?.listed
+                        }
+                    next[id] =
+                        (previous ?: RaftAgentLounge(channelId = summary.channelId, agentId = row.agentId))
+                            .copy(
+                                agentId = row.agentId,
+                                agentName = row.agentName.takeIf { it.isNotBlank() } ?: previous?.agentName,
+                                joined = if (summary.listed != null) summary.joined else (summary.joined || previous?.joined == true),
+                                listed = resolvedListed,
+                                canPost = row.canPost ?: previous?.canPost,
+                            )
+                }
+                if (namesLounges) {
+                    for ((id, previous) in current) {
+                        if (id !in saidIds && previous.listed == true && !isFollowedSince(id)) {
+                            next[id] = previous.copy(listed = false)
+                        }
+                    }
+                }
+                if (next == current) all else all + (serverId to next)
             }
-            if (next == current) all else all + (serverId to next)
+        }
+        if (stamps.isNotEmpty()) {
+            followedAtByServer.update { all ->
+                val current = all[serverId] ?: return@update all
+                val remaining =
+                    if (requestSeq == Long.MAX_VALUE) emptyMap()
+                    else current.filterValues { seq -> seq > requestSeq }
+                if (remaining.size == current.size) {
+                    all
+                } else if (remaining.isEmpty()) {
+                    all - serverId
+                } else {
+                    all + (serverId to remaining)
+                }
+            }
         }
     }
 
@@ -570,6 +663,7 @@ object RaftAgentLounges {
 
     /** Your first post joined it (older servers) or auto-followed your thread (`listed = true`, `#proj-chat:#44`). */
     fun markJoined(serverId: String, channelId: String) {
+        stampLocalFollow(serverId, channelId)
         remember(serverId, channelId) { previous ->
             previous?.copy(
                 joined = if (previous.listed != null) previous.joined else true,
@@ -578,16 +672,31 @@ object RaftAgentLounges {
         }
     }
 
-    /** Following a thread in this Lounge lists it locally without waiting for `GET /channels/dm` (`#proj-chat:#44`). */
-    fun markListed(serverId: String, channelId: String) {
+    /**
+     * Following a thread in this Lounge lists it locally without waiting for `GET /channels/dm`
+     * (`#proj-chat:#44`, `slock #16474`). When [localFollow] is true, stamps a local follow sequence
+     * so an older in-flight DM list answer does not undo it.
+     */
+    fun markListed(serverId: String, channelId: String, localFollow: Boolean = true) {
+        if (localFollow) stampLocalFollow(serverId, channelId)
         remember(serverId, channelId) { previous ->
             previous?.copy(listed = true)
+        }
+    }
+
+    private fun stampLocalFollow(serverId: String, channelId: String) {
+        if (serverId.isBlank() || channelId.isBlank()) return
+        val seq = nextFollowSequence()
+        followedAtByServer.update { all ->
+            val current = all[serverId].orEmpty()
+            all + (serverId to (current + (channelId to seq)))
         }
     }
 
     /** Sign-out (and test hook): forget every Lounge, and the account they were known for. */
     fun clear() {
         byServer.value = emptyMap()
+        followedAtByServer.value = emptyMap()
         boundAccountId.value = null
         loading.value = emptySet()
     }
@@ -595,6 +704,7 @@ object RaftAgentLounges {
     /** Removed from (or deleted) server [serverId]: its Lounges go. */
     fun forgetServer(serverId: String) {
         byServer.update { all -> if (serverId in all) all - serverId else all }
+        followedAtByServer.update { all -> if (serverId in all) all - serverId else all }
     }
 
     /**
@@ -605,7 +715,10 @@ object RaftAgentLounges {
         val clean = accountId?.trim()?.takeIf { it.isNotEmpty() } ?: return
         val previous = boundAccountId.value
         if (previous == clean) return
-        if (previous != null) byServer.value = emptyMap()
+        if (previous != null) {
+            byServer.value = emptyMap()
+            followedAtByServer.value = emptyMap()
+        }
         boundAccountId.value = clean
     }
 
@@ -670,4 +783,44 @@ internal fun HomeSnapshot.agentLoungeConversationRow(channelId: String): HomeCha
         activityNotificationPreference = known?.activityNotificationPreference ?: ChannelActivityNotificationPreference.Unsupported,
         loungeAgentId = agentId,
     )
+}
+
+/** Server acknowledgement of `join:channel` (`channel:joined { channelId }`, `slock #16493`). */
+internal data class RaftChannelJoinedSignal(
+    val serverId: String,
+    val channelId: String,
+)
+
+/**
+ * Process-wide `channel:joined` acknowledgements so an open Agent Lounge catches up from its tail
+ * when its on-demand socket room finishes joining (`slock #16493` `socketBridge.ts` `channelJoined`).
+ */
+internal class RaftChannelJoinedSignals {
+    private val _events =
+        MutableSharedFlow<RaftChannelJoinedSignal>(extraBufferCapacity = 32, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val events: SharedFlow<RaftChannelJoinedSignal> = _events.asSharedFlow()
+
+    fun publish(serverId: String, channelId: String) {
+        val cleanServer = serverId.trim().takeIf { it.isNotEmpty() } ?: return
+        val cleanChannel = channelId.trim().takeIf { it.isNotEmpty() } ?: return
+        _events.tryEmit(RaftChannelJoinedSignal(cleanServer, cleanChannel))
+    }
+}
+
+/**
+ * `slock #16493` (`agentLoungeRoomCatchUp.test.ts`): only the `channel:joined` ack of the currently
+ * open Agent Lounge re-reads from its tail. Acknowledgements of ordinary channels, reply threads,
+ * other Lounges, or other servers read nothing.
+ */
+internal fun shouldCatchUpOpenLoungeOnChannelJoined(
+    openServerId: String?,
+    openChannelId: String?,
+    isOpenChannelLounge: Boolean,
+    ackServerId: String?,
+    ackChannelId: String?,
+): Boolean {
+    if (!isOpenChannelLounge) return false
+    val server = openServerId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    val channel = openChannelId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    return ackServerId?.trim() == server && ackChannelId?.trim() == channel
 }

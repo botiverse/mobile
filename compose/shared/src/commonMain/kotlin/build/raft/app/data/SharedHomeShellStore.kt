@@ -437,6 +437,7 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.MarkUnread -> "patch:unread:$conversationId"
         is SharedHomeIntent.MarkConversationReadAll -> "patch:read-all:$conversationId"
         is SharedHomeIntent.ProjectThreadUnfollow -> "patch:thread-unfollow:$threadChannelId:$phase"
+        is SharedHomeIntent.NoteLoungeThreadFollowed -> "patch:lounge-thread-followed:${parentChannelId ?: threadChannelId ?: "_"}"
         is SharedHomeIntent.MarkFollowedThreadRead -> "patch:thread-read:$threadChannelId"
         is SharedHomeIntent.CloseDirectMessage -> "remove:dm:$conversationId"
         is SharedHomeIntent.ReopenClosedConversation -> "patch:reopen:$conversationId"
