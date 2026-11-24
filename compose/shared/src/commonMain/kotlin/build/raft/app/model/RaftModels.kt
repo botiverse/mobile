@@ -1329,6 +1329,8 @@ data class RealtimeAgentActivityEntry(
 data class AgentActivitySubagentLineage(
     val parentToolUseId: String? = null,
     val subagentType: String? = null,
+    /** Model reported in effect for this subagent (bounded id, omitted when unknown; slock #16323). */
+    val model: String? = null,
     val taskId: String? = null,
     val phase: String? = null,
     val outcome: String? = null

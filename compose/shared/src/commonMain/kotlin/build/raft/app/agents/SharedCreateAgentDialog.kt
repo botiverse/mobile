@@ -104,6 +104,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.widthIn
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.raftClickable
+import kotlinx.serialization.json.JsonObject
 
 // #55 visual parity: the legacy `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp`
 // cap has been removed. The dialog body now fills the viewport via
@@ -214,7 +215,8 @@ internal fun createAgentDialogSubmit(
     loaded: RuntimeFormV2Loaded?,
     values: RuntimeFormV2Values,
     hosted: Boolean = false,
-    hostedModel: String? = null
+    hostedModel: String? = null,
+    proposedEnvVars: ProposedEnvVars? = null
 ): SharedCreateAgentDialogSubmit? {
     val cleanName = name.trim().removePrefix("@")
     val cleanDescription = description.trim().takeIf { it.isNotBlank() }
@@ -230,6 +232,16 @@ internal fun createAgentDialogSubmit(
     }
     if (external) return SharedCreateAgentDialogSubmit(cleanName, cleanDescription, machineId = null, external = true)
     val form = loaded ?: return null
+    val submittedFormValues = runtimeFormV2Submission(form.form, values, form.sources)
+    val finalFormValues =
+        if (proposedEnvVars != null) {
+            JsonObject(
+                submittedFormValues +
+                    ("envVars" to proposedEnvVarsForSubmit(proposedEnvVars, submittedFormValues["envVars"]))
+            )
+        } else {
+            submittedFormValues
+        }
     return SharedCreateAgentDialogSubmit(
         name = cleanName,
         description = cleanDescription,
@@ -237,7 +249,7 @@ internal fun createAgentDialogSubmit(
         runtimeFormV2 =
             RuntimeFormV2SubmitBody(
                 runtimeId = form.form.runtimeId.ifBlank { runtime },
-                formValues = runtimeFormV2Submission(form.form, values, form.sources),
+                formValues = finalFormValues,
                 protocolVersion = form.form.protocolVersion
             )
     )
@@ -460,6 +472,13 @@ internal fun SharedCreateAgentDialog(
      * and the form says why. The person may change it; it is never remembered unless created with.
      */
     suggestedRuntime: String? = null,
+    /**
+     * A Create Agent card's proposed non-secret env vars (web `prefilledEnvVars`, slock #16341):
+     * shown open and editable; config directories start unticked with a warning.
+     */
+    suggestedEnvVars: Map<String, String> = emptyMap(),
+    /** The agent that proposed [suggestedEnvVars], by name; null when unseen by this viewer. */
+    suggestedEnvVarsProposer: String? = null,
     machines: List<SharedCreateAgentMachineOption> = emptyList(),
     machinesLoading: Boolean = false,
     machinesErrorMessage: String? = null,
@@ -528,6 +547,8 @@ internal fun SharedCreateAgentDialog(
     // [createAgentRuntimeForOptions] below.
     var runtime by remember(initialRuntime) { mutableStateOf(initialRuntime.trim()) }
     var advancedOpen by remember(initialAdvancedOpen) { mutableStateOf(initialAdvancedOpen) }
+    val hasProposedEnvVars = suggestedEnvVars.isNotEmpty()
+    var proposedEnvVars by remember(suggestedEnvVars) { mutableStateOf(proposedEnvVarEntries(suggestedEnvVars)) }
     var selectedMachineId by remember {
         mutableStateOf<String?>(
             createAgentInitialMachineSelection(
@@ -769,7 +790,8 @@ internal fun SharedCreateAgentDialog(
             loaded = v2Form ?: v2Loaded,
             values = v2Values,
             hosted = hostedMode,
-            hostedModel = createAgentHostedModelToSend(hostedModels, hostedModelPick)
+            hostedModel = createAgentHostedModelToSend(hostedModels, hostedModelPick),
+            proposedEnvVars = proposedEnvVars.takeIf { hasProposedEnvVars }
         )?.let(onSubmit)
     }
 
@@ -1039,6 +1061,16 @@ internal fun SharedCreateAgentDialog(
                                     sourceRefresh = v2SourceRefresh
                                 )
                             }
+                        }
+                    }
+                    if (hasProposedEnvVars) {
+                        item(key = "proposed-env-vars") {
+                            CreateAgentProposedEnvVarsField(
+                                proposal = proposedEnvVars,
+                                onChange = { proposedEnvVars = it },
+                                proposer = suggestedEnvVarsProposer,
+                                enabled = !submitting
+                            )
                         }
                     }
                 }
@@ -1570,11 +1602,14 @@ internal fun EnvVarsEditor(
                     )
                 }
                 Spacer(Modifier.width(4.dp))
+                val removeLabel = stringResource(Res.string.common_remove)
                 Box(
                     modifier =
                         Modifier
+                            .semantics { contentDescription = removeLabel }
                             .raftClickable(
                                 enabled = enabled,
+                                onClickLabel = removeLabel,
                                 onClick = { onChange(entries.toMutableList().also { it.removeAt(idx) }) },
                                 shape = RoundedCornerShape(RaftRadius.Control),
                             )

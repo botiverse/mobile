@@ -1,8 +1,10 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -221,5 +223,45 @@ class RuntimePickerGuidanceTest {
                     )
             )
         assertEquals(RuntimePickerGuidance(), deprecatedMachine)
+    }
+
+    /** slock #16311 (`runtimeModelHint.test.ts`): slower mid-task reply hint for Antigravity Orchestrator models. */
+    @Test
+    fun antigravityOrchestratorModelsGetSlowerMidTaskReplyHint() {
+        for (modelId in listOf(
+            "gemini-pro-orchestrator",
+            "gemini-pro-orchestrator-neon",
+            "gemini-pro-orchestrator-argon",
+            "gemini-pro-orchestrator-g1-pro",
+            "GEMINI-PRO-ORCHESTRATOR-NEON",
+            "  gemini-pro-orchestrator-neon  ",
+            "Orchestrator (Neon)",
+            "Orchestrator",
+        )) {
+            assertTrue(isAntigravityOrchestratorModel(modelId), modelId)
+            assertEquals(
+                Res.string.runtime_model_hint_antigravity_orchestrator,
+                runtimeModelHint("antigravity", modelId),
+                modelId,
+            )
+        }
+
+        for (modelId in listOf(
+            "",
+            "   ",
+            "gemini-3.1-pro-high",
+            "claude-opus-4-6-thinking",
+            "gpt-oss-120b-medium",
+            "gemini-pro-orchestratorx",
+            "orchestrator-helper",
+        )) {
+            assertFalse(isAntigravityOrchestratorModel(modelId), modelId)
+            assertNull(runtimeModelHint("antigravity", modelId), modelId)
+        }
+
+        assertNull(runtimeModelHint("claude", "gemini-pro-orchestrator-neon"))
+        assertNull(runtimeModelHint("codex", "gemini-pro-orchestrator-neon"))
+        assertNull(runtimeModelHint(null, "gemini-pro-orchestrator-neon"))
+        assertNull(runtimeModelHint("antigravity", ""))
     }
 }

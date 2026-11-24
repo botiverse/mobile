@@ -664,10 +664,16 @@ internal fun localizedAgentToolLogLabel(toolName: String): String =
     agentToolLogLabelRes(toolName)?.let { stringResource(it) }
         ?: agentToolLogLabel(toolName.trim()).ifBlank { stringResource(Res.string.member_activity_log_agent_activity) }
 
+internal fun membersActivitySubagentBadgeDetail(activity: AgentActivityEntry): String? =
+    listOfNotNull(
+        activity.subagentType?.takeIf { it.isNotBlank() } ?: activity.subagent?.subagentType?.takeIf { it.isNotBlank() },
+        activity.subagent?.model?.takeIf { it.isNotBlank() },
+    ).joinToString(" · ").takeIf { it.isNotEmpty() }
+
 @Composable
 private fun membersActivitySubagentBadgeLabel(activity: AgentActivityEntry): String? {
     if (!activity.membersActivityHasSubagentBadge()) return null
-    return activity.subagentType?.takeIf { it.isNotBlank() }
+    return membersActivitySubagentBadgeDetail(activity)
         ?.let { stringResource(Res.string.member_activity_log_subagent_with_type, it) }
         ?: stringResource(Res.string.member_activity_log_subagent)
 }

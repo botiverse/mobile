@@ -44,6 +44,7 @@ class SharedChannelAnnouncementStoreTest {
      */
     private class FakeApi : RaftChannelAnnouncementApi {
         var has: String? = RULES
+        var unavailable: String? = null
         var gated = false
         var failing = false
         val readCalls = mutableListOf<DataRequestPriority>()
@@ -56,8 +57,15 @@ class SharedChannelAnnouncementStoreTest {
         override suspend fun read(serverId: ServerId, channelId: ChannelId, priority: DataRequestPriority): HomeNetworkResponse {
             readCalls += priority
             val asked = has
+            val askedUnavailable = unavailable
             if (gated) CompletableDeferred<Unit>().also { waiting.addLast(it) }.await()
-            return if (failing) HomeNetworkResponse(code = 500, bodyText = null) else HomeNetworkResponse(code = 200, bodyText = announcementBody(asked))
+            val body =
+                if (asked == null && askedUnavailable != null) {
+                    """{ "announcement": null, "announcementUnavailable": "$askedUnavailable" }"""
+                } else {
+                    announcementBody(asked)
+                }
+            return if (failing) HomeNetworkResponse(code = 500, bodyText = null) else HomeNetworkResponse(code = 200, bodyText = body)
         }
 
         override suspend fun update(serverId: ServerId, channelId: ChannelId, artifactId: String?): HomeNetworkResponse {
@@ -566,5 +574,46 @@ class SharedChannelAnnouncementStoreTest {
             val failed = assertIs<ChannelAnnouncementMutationStatus.Failed>(store.state.value.mutations[key]?.status)
             assertEquals("channel_announcement_forbidden", failed.error.code)
             assertEquals("0123456789abcdef0123456789abcdef", failed.error.traceId)
+        }
+
+    @Test
+    fun jointServerOffHoldsUnavailableReasonAndDisabledRefusalRereadsImmediately() =
+        runTest {
+            val api = FakeApi()
+            api.has = null
+            api.unavailable = CHANNEL_ANNOUNCEMENT_UNAVAILABLE_JOINT_SERVER_OFF
+            val store = store(api)
+            open(store)
+            assertEquals(
+                ChannelAnnouncementSlice(
+                    read = true,
+                    announcement = null,
+                    unavailable = ChannelAnnouncementUnavailableReason.JointServerOff,
+                ),
+                store.current(key),
+            )
+            // When the peer turns pinning back on, the next read clears the unavailable reason.
+            api.unavailable = null
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key))
+            assertEquals(ChannelAnnouncementSlice(read = true, announcement = null, unavailable = null), store.current(key))
+
+            // If another server turns pinning off before our PATCH lands, a channel_announcement_disabled
+            // refusal keeps the failed mutation AND immediately re-reads the channel so the unavailable state appears.
+            api.unavailable = CHANNEL_ANNOUNCEMENT_UNAVAILABLE_JOINT_SERVER_OFF
+            store.dispatch(ChannelAnnouncementIntent.Change(key, RULES))
+            runCurrent()
+            val readsBeforeRefusal = api.reads
+            api.updates.removeFirst().complete(
+                HomeNetworkResponse(
+                    code = 403,
+                    bodyText = null,
+                    errorBodyText = """{ "code": "channel_announcement_disabled", "error": "Channel announcements are turned off for this channel." }""",
+                ),
+            )
+            runCurrent()
+            val failed = assertIs<ChannelAnnouncementMutationStatus.Failed>(store.state.value.mutations[key]?.status)
+            assertEquals(CHANNEL_ANNOUNCEMENT_DISABLED_CODE, failed.error.serverCode)
+            assertEquals(readsBeforeRefusal + 1, api.reads, "disabled refusal re-reads immediately")
+            assertEquals(ChannelAnnouncementUnavailableReason.JointServerOff, store.current(key).unavailable)
         }
 }

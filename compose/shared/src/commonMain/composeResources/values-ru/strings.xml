@@ -6168,4 +6168,16 @@
     <string name="home_notification_computer_migrate_title_many">Компьютеры (%1$d) нужно перевести на Raft Computer</string>
     <string name="home_notification_computer_reinstall_or_migrate_title_many">Компьютеры (%1$d) нужно один раз переустановить или перевести на Raft Computer</string>
     <string name="home_notification_computer_reinstall_body">Ваши агенты и файлы останутся на месте.</string>
+    <string name="send_prompt_recent_messages_one">Последнее личное сообщение</string>
+    <string name="send_prompt_recent_messages_other">Последние личные сообщения: %1$d</string>
+    <string name="send_prompt_preview_failed">Не удалось загрузить последние сообщения с этим агентом.</string>
+    <string name="send_prompt_switch_agent">Отправить: %1$s, сменить агента</string>
+    <string name="channel_announcement_details_unavailable_joint">Другой сервер, с которым общий этот канал, отключил закрепление, поэтому здесь закреплять нельзя.</string>
+    <string name="agent_create_proposed_env_vars_by">Предложено агентом %1$s. Проверьте каждое имя и значение; измените или удалите лишнее, прежде чем создать агента.</string>
+    <string name="agent_create_proposed_env_vars">Предложено агентом, отправившим эту карточку. Проверьте каждое имя и значение; измените или удалите лишнее, прежде чем создать агента.</string>
+    <string name="agent_create_proposed_config_dir_by">%1$s предлагает этот каталог настроек для нового агента. Всё, что там настроено (например, MCP-серверы и hooks), запускается на этом Computer от имени нового агента. Отправляется, только если вы отметите его.</string>
+    <string name="agent_create_proposed_config_dir">Агент, отправивший эту карточку, предлагает этот каталог настроек для нового агента. Всё, что там настроено (например, MCP-серверы и hooks), запускается на этом Computer от имени нового агента. Отправляется, только если вы отметите его.</string>
+    <string name="agent_create_proposed_config_dir_value">Значение %1$s</string>
+    <string name="member_activity_subagents_detail_model">Модель</string>
+    <string name="runtime_model_hint_antigravity_orchestrator">Сообщения посреди задачи сначала возвращаются к модели-планировщику перед ответом, поэтому ответы во время работы могут быть медленнее, чем у одной модели.</string>
 </resources>

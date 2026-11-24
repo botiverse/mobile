@@ -34,6 +34,8 @@ internal data class AgentActivitySubagentGroup(
     /** What it was asked: the spawn row's input, without Codex's operation prefix. Absent from older daemons. */
     val title: String? = null,
     val subagentType: String? = null,
+    /** Model reported in effect for this sub-agent; omitted when the runtime does not report it (slock #16323). */
+    val model: String? = null,
     /** Its own id, which a stop names. */
     val taskId: String? = null,
     val state: AgentActivitySubagentState,
@@ -130,6 +132,7 @@ internal fun groupAgentActivitySubagents(log: List<AgentActivityEntry>): List<Ag
         group = group.copy(
             parentToolUseId = group.parentToolUseId ?: lineage.parentToolUseId,
             subagentType = group.subagentType ?: lineage.subagentType,
+            model = lineage.model ?: group.model,
             taskId = group.taskId ?: lineage.taskId,
             lastAtMillis = at,
         )

@@ -281,12 +281,17 @@ internal fun ThreadRouteDialogs(
         )
     }
     createAgentDialogState?.let { dialogState ->
+        val proposedEnvVarsProposer =
+            dialogState.card.requesterAgentId?.let { id ->
+                actionCardNames.name(ThreadActionCardEntityKind.Agent, id)
+            }
         ThreadCreateAgentActionDialogHost(
             dialogState = dialogState,
             computersStore = computersStore,
             createAgentFormStore = createAgentFormStore,
             computerServerId = createAgentComputerServerId,
             computerServerResolved = createAgentComputerServerResolved,
+            suggestedEnvVarsProposer = proposedEnvVarsProposer,
             onAuthRequired = ::routeAuthRequired,
             onAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) },
             onDismiss = {

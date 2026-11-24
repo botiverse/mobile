@@ -6168,4 +6168,16 @@
     <string name="home_notification_computer_migrate_title_many">컴퓨터 %1$d대를 Raft Computer로 마이그레이션해야 해요</string>
     <string name="home_notification_computer_reinstall_or_migrate_title_many">컴퓨터 %1$d대를 한 번 다시 설치하거나 마이그레이션해야 해요</string>
     <string name="home_notification_computer_reinstall_body">에이전트와 파일은 그대로 유지돼요.</string>
+    <string name="send_prompt_recent_messages_one">최근 DM 1개</string>
+    <string name="send_prompt_recent_messages_other">최근 DM %1$d개</string>
+    <string name="send_prompt_preview_failed">이 에이전트와의 최근 메시지를 불러오지 못했습니다.</string>
+    <string name="send_prompt_switch_agent">%1$s에게 보내기, 에이전트 변경</string>
+    <string name="channel_announcement_details_unavailable_joint">이 채널을 공유하는 다른 서버에서 고정 기능을 꺼서 여기서는 고정할 수 없어요.</string>
+    <string name="agent_create_proposed_env_vars_by">%1$s이(가) 제안했어요. 에이전트를 만들기 전에 각 이름과 값을 확인하고 필요하면 수정하거나 삭제하세요.</string>
+    <string name="agent_create_proposed_env_vars">이 카드를 보낸 에이전트가 제안했어요. 에이전트를 만들기 전에 각 이름과 값을 확인하고 필요하면 수정하거나 삭제하세요.</string>
+    <string name="agent_create_proposed_config_dir_by">%1$s이(가) 새 에이전트에 이 설정 디렉터리를 제안했어요. 그곳에 설정된 모든 것(MCP 서버, hooks 등)은 이 Computer에서 새 에이전트로 실행돼요. 체크해야만 전송돼요.</string>
+    <string name="agent_create_proposed_config_dir">이 카드를 보낸 에이전트가 새 에이전트에 이 설정 디렉터리를 제안했어요. 그곳에 설정된 모든 것(MCP 서버, hooks 등)은 이 Computer에서 새 에이전트로 실행돼요. 체크해야만 전송돼요.</string>
+    <string name="agent_create_proposed_config_dir_value">%1$s 값</string>
+    <string name="member_activity_subagents_detail_model">모델</string>
+    <string name="runtime_model_hint_antigravity_orchestrator">작업 도중 새 메시지가 오면 응답 전에 플래너 모델로 넘어가므로 단일 모델보다 응답이 느려질 수 있어요.</string>
 </resources>

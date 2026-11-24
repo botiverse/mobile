@@ -95,14 +95,16 @@ data class ChannelAnnouncementKey(val serverId: String, val channelId: String)
 
 /**
  * What the store knows of one channel's announcement: [read] false until the first answer (the UI
- * shows nothing then); then [announcement], null for none.
+ * shows nothing then); then [announcement], null for none, and [unavailable] when a sharing server
+ * on a joint channel has pinning off (botiverse/slock #16305).
  */
 data class ChannelAnnouncementSlice(
     val read: Boolean,
     val announcement: RaftChannelAnnouncement?,
+    val unavailable: ChannelAnnouncementUnavailableReason? = null,
 ) {
     companion object {
-        val Unread = ChannelAnnouncementSlice(read = false, announcement = null)
+        val Unread = ChannelAnnouncementSlice(read = false, announcement = null, unavailable = null)
     }
 }
 
@@ -126,6 +128,8 @@ sealed interface ChannelAnnouncementMutationStatus {
 data class ChannelAnnouncementState(
     /** By channel: the announcement, null for none; absent until read. */
     val byChannel: Map<ChannelAnnouncementKey, RaftChannelAnnouncement?> = emptyMap(),
+    /** By channel: why it can't have one now, from the same answer; absent when it can (or an older server). */
+    val unavailableByChannel: Map<ChannelAnnouncementKey, ChannelAnnouncementUnavailableReason> = emptyMap(),
     val mutations: Map<ChannelAnnouncementKey, ChannelAnnouncementMutation> = emptyMap(),
 )
 
@@ -210,7 +214,15 @@ internal class SharedChannelAnnouncementStore(
     fun slice(key: ChannelAnnouncementKey): Flow<ChannelAnnouncementSlice> =
         state
             .map { current ->
-                if (key in current.byChannel) ChannelAnnouncementSlice(read = true, announcement = current.byChannel[key]) else ChannelAnnouncementSlice.Unread
+                if (key in current.byChannel) {
+                    ChannelAnnouncementSlice(
+                        read = true,
+                        announcement = current.byChannel[key],
+                        unavailable = current.unavailableByChannel[key],
+                    )
+                } else {
+                    ChannelAnnouncementSlice.Unread
+                }
             }
             .distinctUntilChanged()
 
@@ -220,7 +232,15 @@ internal class SharedChannelAnnouncementStore(
 
     fun current(key: ChannelAnnouncementKey): ChannelAnnouncementSlice {
         val current = state.value
-        return if (key in current.byChannel) ChannelAnnouncementSlice(read = true, announcement = current.byChannel[key]) else ChannelAnnouncementSlice.Unread
+        return if (key in current.byChannel) {
+            ChannelAnnouncementSlice(
+                read = true,
+                announcement = current.byChannel[key],
+                unavailable = current.unavailableByChannel[key],
+            )
+        } else {
+            ChannelAnnouncementSlice.Unread
+        }
     }
 
     fun dispatch(intent: ChannelAnnouncementIntent) {
@@ -433,7 +453,7 @@ internal class SharedChannelAnnouncementStore(
             try {
                 when (val result = repository.read(ServerId(key.serverId), ChannelId(key.channelId), priority)) {
                     is DataResult.Content ->
-                        if (applyIfCurrent(key, generation, startedEpoch, result.data.announcement)) {
+                        if (applyIfCurrent(key, generation, startedEpoch, result.data)) {
                             // Asked after the socket came back: the read waiting out its jitter is needless.
                             cancelWaitingReconnectIfSuperseded(key, readId)
                         }
@@ -471,13 +491,23 @@ internal class SharedChannelAnnouncementStore(
                 when (val result = repository.update(ServerId(key.serverId), ChannelId(key.channelId), artifactId)) {
                     is DataResult.Content -> {
                         // Our own update's answer names the announcement on the row as well (web: it patches the row).
-                        if (applyIfCurrent(key, generation, startedEpoch, result.data.announcement)) {
+                        if (applyIfCurrent(key, generation, startedEpoch, result.data)) {
                             synchronized(lock) { rowNames[key] = RaftChannelRowAnnouncement(result.data.announcement?.artifactId) }
                             cancelWaitingReconnectIfSuperseded(key, requestId)
                         }
                         ChannelAnnouncementMutationStatus.Succeeded
                     }
-                    is DataResult.Error -> ChannelAnnouncementMutationStatus.Failed(result.error)
+                    is DataResult.Error -> {
+                        // Refused as disabled (a sharing server turned it off since the last read):
+                        // read again at once so details shows why instead of a pin that can't work (slock #16305).
+                        if (
+                            result.error.serverCode == CHANNEL_ANNOUNCEMENT_DISABLED_CODE ||
+                            result.error.code == CHANNEL_ANNOUNCEMENT_DISABLED_CODE
+                        ) {
+                            load(key, "disabled_refusal", again = true)
+                        }
+                        ChannelAnnouncementMutationStatus.Failed(result.error)
+                    }
                     else -> ChannelAnnouncementMutationStatus.Failed(ScreenError("channel_announcement_failed", retryable = true))
                 }
             if (status is ChannelAnnouncementMutationStatus.Failed) {
@@ -515,12 +545,34 @@ internal class SharedChannelAnnouncementStore(
     }
 
     /** Applies an answer still the newest for its channel and from before no reset; only then is it a read (rule 13). */
-    private fun applyIfCurrent(key: ChannelAnnouncementKey, generation: Long, startedEpoch: Long, announcement: RaftChannelAnnouncement?): Boolean {
+    private fun applyIfCurrent(
+        key: ChannelAnnouncementKey,
+        generation: Long,
+        startedEpoch: Long,
+        read: ChannelAnnouncementRead,
+    ): Boolean {
         synchronized(lock) {
             if (generations[key] != generation || epoch != startedEpoch) return false
             lastReadAt[key] = nowMillis()
             mutableState.update { state ->
-                if (key in state.byChannel && state.byChannel[key] == announcement) state else state.copy(byChannel = state.byChannel + (key to announcement))
+                if (
+                    key in state.byChannel &&
+                    state.byChannel[key] == read.announcement &&
+                    state.unavailableByChannel[key] == read.unavailable
+                ) {
+                    state
+                } else {
+                    val nextUnavailable =
+                        if (read.unavailable != null) {
+                            state.unavailableByChannel + (key to read.unavailable)
+                        } else {
+                            state.unavailableByChannel - key
+                        }
+                    state.copy(
+                        byChannel = state.byChannel + (key to read.announcement),
+                        unavailableByChannel = nextUnavailable,
+                    )
+                }
             }
         }
         return true

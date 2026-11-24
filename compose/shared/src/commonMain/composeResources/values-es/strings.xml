@@ -6168,4 +6168,16 @@
     <string name="home_notification_computer_migrate_title_many">%1$d computadoras deben migrarse a Raft Computer</string>
     <string name="home_notification_computer_reinstall_or_migrate_title_many">%1$d computadoras necesitan reinstalarse una sola vez o migrarse</string>
     <string name="home_notification_computer_reinstall_body">Tus agentes y archivos se quedan donde están.</string>
+    <string name="send_prompt_recent_messages_one">Último mensaje directo</string>
+    <string name="send_prompt_recent_messages_other">Últimos %1$d mensajes directos</string>
+    <string name="send_prompt_preview_failed">No se pudieron cargar tus mensajes recientes con este agente.</string>
+    <string name="send_prompt_switch_agent">Enviar a %1$s, cambiar de agente</string>
+    <string name="channel_announcement_details_unavailable_joint">Otro servidor que comparte este canal desactivó la fijación, así que no puedes fijar aquí.</string>
+    <string name="agent_create_proposed_env_vars_by">Propuestas por %1$s. Revisa cada nombre y valor, y edita o quita los que quieras antes de crear el agente.</string>
+    <string name="agent_create_proposed_env_vars">Propuestas por el agente que envió esta tarjeta. Revisa cada nombre y valor, y edita o quita los que quieras antes de crear el agente.</string>
+    <string name="agent_create_proposed_config_dir_by">%1$s propone este directorio de configuración para el nuevo agente. Todo lo que esté configurado allí, como servidores MCP y hooks, se ejecuta en este Computer como el nuevo agente. Solo se envía si lo marcas.</string>
+    <string name="agent_create_proposed_config_dir">El agente que envió esta tarjeta propone este directorio de configuración para el nuevo agente. Todo lo que esté configurado allí, como servidores MCP y hooks, se ejecuta en este Computer como el nuevo agente. Solo se envía si lo marcas.</string>
+    <string name="agent_create_proposed_config_dir_value">Valor de %1$s</string>
+    <string name="member_activity_subagents_detail_model">Modelo</string>
+    <string name="runtime_model_hint_antigravity_orchestrator">Los mensajes a mitad de tarea vuelven primero al modelo planificador antes de responder, por lo que las respuestas mientras trabaja pueden ser más lentas que con un solo modelo.</string>
 </resources>

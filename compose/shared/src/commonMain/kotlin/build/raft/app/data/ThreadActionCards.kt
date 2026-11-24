@@ -8,6 +8,7 @@ import kotlinx.serialization.KeepGeneratedSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -47,6 +48,12 @@ internal data class ThreadActionCard(
      * string is none. A suggestion only; the person still picks.
      */
     val suggestedRuntime: String? = null,
+    /**
+     * `agent:create`: non-secret environment variables proposed by the preparing agent
+     * (wire `action.suggestedEnvVars`, botiverse/slock #16341). Shown open and editable in the
+     * Create agent dialog; config directories start unticked with a warning.
+     */
+    val suggestedEnvVars: Map<String, String> = emptyMap(),
     val humans: List<String> = emptyList(),
     val agents: List<String> = emptyList(),
     val initialHumans: List<String> = emptyList(),
@@ -132,6 +139,11 @@ internal data class ThreadActionCard(
      * web person card), whose expired line is "No owner answered within 7 days".
      */
     val requesterUserId: String? = null,
+    /**
+     * The agent that prepared the card (wire `requesterAgentId`; slock #16341): names the proposer
+     * for `agent:create`'s `suggestedEnvVars` when visible in this viewer's server roster.
+     */
+    val requesterAgentId: String? = null,
     /**
      * `question:ask`: the person it asks (wire `action.addressee`, `{kind:"user", userId, handle}`,
      * set by the server at prepare). Null with [questionAsksAnyone] false: the server sent no
@@ -397,6 +409,8 @@ internal data class WireActionCardMetadata(
     val expiresAt: String? = null,
     /** A person's request: [ThreadActionCard.requesterUserId]. */
     val requesterUserId: String? = null,
+    /** An agent-prepared card: [ThreadActionCard.requesterAgentId]. */
+    val requesterAgentId: String? = null,
     /** `question:ask` (served only; slock #16473): whether answerer close is offered by the server, kept leniently as JSON. */
     val answererCanClose: JsonElement? = null,
     /** `question:ask`: when a person closed it without answering (slock #16473). */
@@ -569,6 +583,7 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         suggestedComputer = action.suggestedComputer?.takeIf { it.isNotBlank() },
         requiredComputer = action.requiredComputer?.takeIf { it.isNotBlank() },
         suggestedRuntime = actionObject.actionCardStringOrNull("suggestedRuntime")?.trim(),
+        suggestedEnvVars = actionObject.actionCardStringMap("suggestedEnvVars"),
         humans = action.humans,
         agents = action.agents,
         initialHumans = action.initialHumans,
@@ -611,6 +626,7 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         // server, a card stored expired that keeps it there: web useExpiredCardLine).
         expiresAt = meta.expiresAt?.takeIf { it.isNotBlank() } ?: actionObject.actionCardStringOrNull("expiresAt"),
         requesterUserId = meta.requesterUserId?.takeIf { it.isNotBlank() },
+        requesterAgentId = meta.requesterAgentId?.takeIf { it.isNotBlank() },
         questionAddresseeUserId = actionObject.questionAddressee().first,
         questionAddresseeHandle = actionObject.questionAddressee().second,
         questionAsksAnyone = actionObject.questionAddressee().third,
@@ -633,6 +649,17 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
 
 private fun JsonObject.actionCardStringOrNull(key: String): String? =
     (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+
+/** Reads a JSON string->string map leniently, preserving entry order and empty string values (slock #16341). */
+private fun JsonObject.actionCardStringMap(key: String): Map<String, String> {
+    val obj = this[key] as? JsonObject ?: return emptyMap()
+    return buildMap {
+        for ((entryKey, element) in obj) {
+            val primitive = element as? JsonPrimitive ?: continue
+            if (primitive.isString) put(entryKey, primitive.content)
+        }
+    }
+}
 
 private const val ACTION_CARD_SPEC_CACHE_SIZE = 64
 
@@ -671,6 +698,7 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("suggestedComputer", suggestedComputer)
         putString("requiredComputer", requiredComputer)
         putString("suggestedRuntime", suggestedRuntime)
+        putStringMap("suggestedEnvVars", suggestedEnvVars)
         putList("humans", humans)
         putList("agents", agents)
         putList("initialHumans", initialHumans)
@@ -712,6 +740,7 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("presentationCard", presentationCardJson)
         putString("expiresAt", expiresAt)
         putString("requesterUserId", requesterUserId)
+        putString("requesterAgentId", requesterAgentId)
         putString("questionAddresseeUserId", questionAddresseeUserId)
         putString("questionAddresseeHandle", questionAddresseeHandle)
         putString("questionExpiresInMinutes", questionExpiresInMinutes?.toString())
@@ -763,6 +792,7 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         suggestedComputer = metadata["${ActionCardMetadataPrefix}suggestedComputer"]?.takeIf { it.isNotBlank() },
         requiredComputer = metadata["${ActionCardMetadataPrefix}requiredComputer"]?.takeIf { it.isNotBlank() },
         suggestedRuntime = metadata["${ActionCardMetadataPrefix}suggestedRuntime"]?.trim()?.takeIf { it.isNotEmpty() },
+        suggestedEnvVars = metadata.decodeStringMap("suggestedEnvVars"),
         humans = metadata.decodeList("humans"),
         agents = metadata.decodeList("agents"),
         initialHumans = metadata.decodeList("initialHumans"),
@@ -806,6 +836,7 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         presentationCardJson = metadata["${ActionCardMetadataPrefix}presentationCard"]?.takeIf { it.isNotBlank() },
         expiresAt = metadata["${ActionCardMetadataPrefix}expiresAt"]?.takeIf { it.isNotBlank() },
         requesterUserId = metadata["${ActionCardMetadataPrefix}requesterUserId"]?.takeIf { it.isNotBlank() },
+        requesterAgentId = metadata["${ActionCardMetadataPrefix}requesterAgentId"]?.takeIf { it.isNotBlank() },
         questionAddresseeUserId = metadata["${ActionCardMetadataPrefix}questionAddresseeUserId"]?.takeIf { it.isNotBlank() },
         questionAddresseeHandle = metadata["${ActionCardMetadataPrefix}questionAddresseeHandle"]?.takeIf { it.isNotBlank() },
         questionExpiresInMinutes = metadata["${ActionCardMetadataPrefix}questionExpiresInMinutes"]?.toIntOrNull(),
@@ -949,6 +980,11 @@ private fun MutableMap<String, String>.putList(key: String, value: List<String>)
     put("$ActionCardMetadataPrefix$key", threadActionCardJson.encodeToString(ListSerializer(String.serializer()), value))
 }
 
+private fun MutableMap<String, String>.putStringMap(key: String, value: Map<String, String>) {
+    if (value.isEmpty()) return
+    put("$ActionCardMetadataPrefix$key", threadActionCardJson.encodeToString(MapSerializer(String.serializer(), String.serializer()), value))
+}
+
 /** Like [putList], but an empty list is kept ("[]"): absent and empty mean different things. */
 private fun MutableMap<String, String>.putNullableList(key: String, value: List<String>?) {
     if (value == null) return
@@ -979,6 +1015,15 @@ private fun Map<String, String>.decodeList(key: String): List<String> {
 private fun Map<String, String>.decodeNullableList(key: String): List<String>? {
     if (!containsKey("$ActionCardMetadataPrefix$key")) return null
     return decodeList(key)
+}
+
+private fun Map<String, String>.decodeStringMap(key: String): Map<String, String> {
+    val raw = this["$ActionCardMetadataPrefix$key"]?.takeIf { it.isNotBlank() } ?: return emptyMap()
+    return try {
+        threadActionCardJson.decodeFromString(MapSerializer(String.serializer(), String.serializer()), raw)
+    } catch (_: SerializationException) {
+        emptyMap()
+    }
 }
 
 private fun Map<String, String>.decodeMetadataItems(key: String): List<ThreadActionCardMetadataItem> {

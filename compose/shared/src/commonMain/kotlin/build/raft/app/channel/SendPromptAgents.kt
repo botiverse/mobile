@@ -7,6 +7,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.RaftTimeContext
 
 /**
  * How [defaultSendPromptAgent] chose the suggested agent (matches web
@@ -25,12 +26,68 @@ internal data class SendPromptAgentSelection<A>(
     val kind: SendPromptDefaultAgentKind,
 )
 
-/** One read-only message row in the Send-to-agent sheet's DM preview (web `PreviewMessage`). */
+/** One read-only message row in the Send-to-agent dialog's DM look-back (web `SendPromptDialog`, slock #16396). */
 internal data class SendPromptPreviewMessage(
     val id: String,
     val senderName: String,
     val content: String,
+    val senderId: String = "",
+    val senderKind: MemberKind = MemberKind.Human,
+    val senderAvatarWireValue: String? = null,
+    val senderAvatarLabel: String = senderName,
+    val createdAtEpochMillis: Long? = null,
+    val timestampLabel: String = "",
+    val isSystem: Boolean = false,
 )
+
+/** State of the Send-to-agent DM look-back (null/Loading, Loaded, or Failed; slock #16396). */
+internal sealed interface SendPromptDmPreviewResult {
+    data object Loading : SendPromptDmPreviewResult
+    data class Loaded(val messages: List<SendPromptPreviewMessage>) : SendPromptDmPreviewResult
+    data object Failed : SendPromptDmPreviewResult
+}
+
+/** Per-row grouping & day divider state for the Send-to-agent DM look-back (web `computeMessageGrouping`). */
+internal data class SendPromptPreviewRowState(
+    val message: SendPromptPreviewMessage,
+    val showDayDivider: Boolean,
+    val day: ThreadDateDividerDay?,
+    val showHeader: Boolean,
+)
+
+/**
+ * Groups consecutive same-sender messages on the same local calendar day and marks day boundaries
+ * (matches web `computeMessageGrouping` in `packages/web/src/components/message/messageGrouping.ts`).
+ */
+internal fun computeSendPromptPreviewGrouping(
+    messages: List<SendPromptPreviewMessage>,
+    timeContext: RaftTimeContext? = null,
+): List<SendPromptPreviewRowState> {
+    if (messages.isEmpty()) return emptyList()
+    val offsetMinutes = timeContext?.localOffsetMinutes ?: 0
+    val todayEpochDay = timeContext?.todayEpochDay
+    var prevDay: Long? = null
+    return messages.mapIndexed { index, message ->
+        val prev = if (index > 0) messages[index - 1] else null
+        val epochDay = message.createdAtEpochMillis?.let { threadLocalEpochDay(it, offsetMinutes) }
+        val showDayDivider = epochDay != null && (prevDay == null || epochDay != prevDay)
+        if (epochDay != null) prevDay = epochDay
+        val continuesPrev =
+            prev != null &&
+                !showDayDivider &&
+                !message.isSystem &&
+                !prev.isSystem &&
+                message.senderId.isNotEmpty() &&
+                message.senderId == prev.senderId &&
+                message.senderKind == prev.senderKind
+        SendPromptPreviewRowState(
+            message = message,
+            showDayDivider = showDayDivider,
+            day = if (showDayDivider && epochDay != null) ThreadDateDividerDay(epochDay, todayEpochDay) else null,
+            showHeader = !continuesPrev && !message.isSystem,
+        )
+    }
+}
 
 /**
  * Agents a person can send a prompt to (matches web `sendPromptRecipients` in
@@ -122,6 +179,25 @@ internal fun defaultSendPromptAgent(
         return SendPromptAgentSelection(first, SendPromptDefaultAgentKind.FirstAgent)
     }
     return SendPromptAgentSelection(null, SendPromptDefaultAgentKind.None)
+}
+
+/**
+ * The picker's order (matches web `orderSendPromptAgents` in botiverse/slock #16396):
+ * the suggested agent first (no label on it — its place says it), then the agents DM'd most
+ * recently, then the rest in their listed order.
+ */
+internal fun orderSendPromptAgents(
+    recipients: List<MemberProfile>,
+    suggestedId: String?,
+    recentAgentIds: List<String>,
+): List<MemberProfile> {
+    val recency = recentAgentIds.withIndex().associate { (index, id) -> id to index }
+    return recipients.sortedBy { agent ->
+        when {
+            suggestedId != null && agent.id.value == suggestedId -> -1
+            else -> recency[agent.id.value] ?: recentAgentIds.size
+        }
+    }
 }
 
 /**

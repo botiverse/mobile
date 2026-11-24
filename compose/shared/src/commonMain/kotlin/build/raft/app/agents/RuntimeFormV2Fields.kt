@@ -404,7 +404,20 @@ private fun RuntimeFormV2FieldRow(
     val connectionOwned = managedHint != null && field.connectionOwned
     val fieldEnabled = enabled && !connectionOwned
     val required = isRuntimeFormV2FieldRequired(field, values) && !connectionOwned
-    val hint = if (connectionOwned) managedHint else field.hint
+    // Web RuntimeFormV2FieldControl (slock #16311): model-specific hint replaces the generic field hint;
+    // validation error still wins inside RuntimeFormV2FieldFrame.
+    val modelHint =
+        if (field.key == "model") {
+            runtimeModelHint(loaded.form.runtimeId, current)?.let { stringResource(it) }
+        } else {
+            null
+        }
+    val hint =
+        when {
+            connectionOwned -> managedHint
+            modelHint != null -> modelHint
+            else -> field.hint
+        }
     // A reasoning effort the selected model has no levels for, with the Computer's explanation.
     runtimeFormV2EffortUnavailable(field, loaded.sources, values)?.let { unavailable ->
         RuntimeFormV2EffortUnavailableField(field, unavailable)

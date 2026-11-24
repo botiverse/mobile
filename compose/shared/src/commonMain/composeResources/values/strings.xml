@@ -6170,4 +6170,16 @@
     <string name="home_notification_computer_migrate_title_many">%1$d machines need to be migrated to Raft Computer</string>
     <string name="home_notification_computer_reinstall_or_migrate_title_many">%1$d machines need a one-time reinstall or migration</string>
     <string name="home_notification_computer_reinstall_body">Your agents and files stay where they are.</string>
+    <string name="send_prompt_recent_messages_one">Last message</string>
+    <string name="send_prompt_recent_messages_other">Last %1$d messages</string>
+    <string name="send_prompt_preview_failed">Couldn't load your recent messages with this agent.</string>
+    <string name="send_prompt_switch_agent">Send to %1$s, change agent</string>
+    <string name="channel_announcement_details_unavailable_joint">Another server sharing this channel has turned off pinning, so you can't pin here.</string>
+    <string name="agent_create_proposed_env_vars_by">Proposed by %1$s. Check each name and value, and edit or remove any before you create the agent.</string>
+    <string name="agent_create_proposed_env_vars">Proposed by the agent that sent this card. Check each name and value, and edit or remove any before you create the agent.</string>
+    <string name="agent_create_proposed_config_dir_by">%1$s proposes this config directory for the new agent. Anything configured there, such as MCP servers and hooks, runs on this Computer as the new agent. It is sent only if you tick it.</string>
+    <string name="agent_create_proposed_config_dir">The agent that sent this card proposes this config directory for the new agent. Anything configured there, such as MCP servers and hooks, runs on this Computer as the new agent. It is sent only if you tick it.</string>
+    <string name="agent_create_proposed_config_dir_value">Value of %1$s</string>
+    <string name="member_activity_subagents_detail_model">Model</string>
+    <string name="runtime_model_hint_antigravity_orchestrator">Mid-task messages hand back to the planner model before replying, so replies while it is working can be slower than a single model.</string>
 </resources>
