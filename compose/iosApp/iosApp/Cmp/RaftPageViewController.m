@@ -645,8 +645,9 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
         [RaftIosWindowInsetsPublisher isSheetStyle:presented.modalPresentationStyle];
     // The bar that holds the Duo side column's buttons draws them in the vertical bar; its top
     // band is not the page's, so the page keeps the navigation controller's safe area.
-    UIEdgeInsets insets = self.raftSideActionsShown && self.navigationController != nil
-        ? self.navigationController.view.safeAreaInsets : view.safeAreaInsets;
+    UIEdgeInsets insets = [RaftIosWindowInsetsPublisher resolvedInsetsWithPage:view.safeAreaInsets
+                                                       navigationController:self.navigationController.view.safeAreaInsets
+                                                               sideActionsShown:self.raftSideActionsShown && self.navigationController != nil];
     NSDictionary *payload = [_raftWindowInsetsPublisher nextPayloadWithInsets:insets
                                                                         scale:scale
                                                               statusBarHidden:statusBarHidden

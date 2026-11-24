@@ -153,6 +153,25 @@ final class RaftIosWindowInsetsPublisherTests: XCTestCase {
         )
     }
 
+    func testSideActionsKeepPageBottomSafeArea() {
+        let resolved = RaftIosWindowInsetsPublisher.resolvedInsets(
+            page: UIEdgeInsets(top: 12, left: 0, bottom: 34, right: 84),
+            navigationController: UIEdgeInsets(top: 12, left: 0, bottom: 0, right: 84),
+            sideActionsShown: true
+        )
+
+        XCTAssertEqual(resolved.top, 12)
+        XCTAssertEqual(resolved.bottom, 34)
+        XCTAssertEqual(resolved.right, 84)
+
+        let withoutSideActions = RaftIosWindowInsetsPublisher.resolvedInsets(
+            page: UIEdgeInsets(top: 0, left: 0, bottom: 34, right: 0),
+            navigationController: UIEdgeInsets(),
+            sideActionsShown: false
+        )
+        XCTAssertEqual(withoutSideActions.bottom, 34)
+    }
+
     func testLandscapeLeftAndRightKeepTheSensorHousingOnItsPhysicalEdge() {
         // Dynamic Island iPhone, rotated with the island on the left (device landscape right).
         let islandLeft = payload(UIEdgeInsets(top: 0, left: 59, bottom: 21, right: 0), statusBarHidden: true)
