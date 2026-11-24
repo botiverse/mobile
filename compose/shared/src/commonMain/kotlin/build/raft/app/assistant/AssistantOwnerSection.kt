@@ -302,20 +302,25 @@ internal data class AssistantOwnerOtterRow(
 
 /** The otter row from the account's setting ([SharedMyAssistantStore.otterPrefs]); null without one. */
 @Composable
-private fun rememberAssistantOwnerOtterRow(owner: AssistantOwnerScope): AssistantOwnerOtterRow? {
-    val prefs = owner.store.otterPrefs ?: return null
-    LaunchedEffect(prefs, owner.userId) { prefs.ensureLoaded(owner.userId) }
+internal fun rememberAssistantOtterRow(store: SharedMyAssistantStore, userId: String): AssistantOwnerOtterRow? {
+    val prefs = store.otterPrefs ?: return null
+    LaunchedEffect(prefs, userId) { prefs.ensureLoaded(userId) }
     val state by prefs.state.collectAsState()
     val scope = rememberCoroutineScope()
-    val mine = state.accountId == owner.userId.trim()
+    val mine = state.accountId == userId.trim()
     return AssistantOwnerOtterRow(
         // Web: shown unless the account turned it off.
         checked = !mine || state.visible != false,
         enabled = mine && state.visible != null && !state.saving,
         failure = state.saveFailure.takeIf { mine },
-        onCheckedChange = { value -> scope.launch { prefs.setVisible(owner.userId, value) } },
+        onCheckedChange = { value -> scope.launch { prefs.setVisible(userId, value) } },
     )
 }
+
+/** The otter row from the account's setting ([SharedMyAssistantStore.otterPrefs]); null without one. */
+@Composable
+private fun rememberAssistantOwnerOtterRow(owner: AssistantOwnerScope): AssistantOwnerOtterRow? =
+    rememberAssistantOtterRow(owner.store, owner.userId)
 
 /**
  * Delete assistant? (web AssistantOwnerSection `assistant-delete-confirm`): a small dialog, × in
@@ -499,7 +504,7 @@ internal fun AssistantOwnerSectionContent(
             if (otter != null) {
                 // Web `assistant-owner-otter`; its shortcut row is web's desktop only (no keyboard here).
                 RaftListRowGroup(Modifier.fillMaxWidth().testTag("assistant-owner-otter")) {
-                    AssistantOwnerOtterSwitchRow(name, otter)
+                    AssistantOtterVisibleRow(name, otter)
                 }
             }
             if (showInstructions || weChat != null || showRecentChanges) {
@@ -602,16 +607,23 @@ private fun AssistantOwnerSwitchRow(
     }
 }
 
-/** "Show {name} on every page" with the profile's shorter line (web `OtterVisibleRow`). */
+/**
+ * "Show {name} on every page" (web `OtterVisibleRow`): defaults to the profile panel's shorter
+ * description; Settings › Appearance passes the full description.
+ */
 @Composable
-private fun AssistantOwnerOtterSwitchRow(name: String, otter: AssistantOwnerOtterRow) {
+internal fun AssistantOtterVisibleRow(
+    name: String,
+    otter: AssistantOwnerOtterRow,
+    description: String = stringResource(Res.string.assistant_otter_show_everywhere_description),
+) {
     val title = stringResource(Res.string.assistant_otter_show_everywhere, name)
     RaftListRow(
         title = title,
         modifier = Modifier.testTag("assistant-otter-visible-row"),
         variant = RaftListRowVariant.Plain,
         titleMaxLines = 2,
-        description = stringResource(Res.string.assistant_otter_show_everywhere_description),
+        description = description,
         wrapDescription = true,
         saveStatus =
             if (otter.failure != null) {

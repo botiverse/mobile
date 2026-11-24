@@ -372,7 +372,6 @@
     <string name="settings_usage_data_learn_more">了解更多</string>
     <string name="settings_usage_data_save_failed">设置没有保存成功，请重试。</string>
     <string name="settings_computers_title">计算机</string>
-    <string name="settings_computers_alerts_section">提醒</string>
     <string name="settings_computers_subtitle">已连接计算机和守护进程状态</string>
     <string name="settings_server_title">服务器</string>
     <string name="settings_server_profile_title">服务器信息</string>
@@ -2467,10 +2466,6 @@
     <string name="home_notification_action_download">下载</string>
     <string name="home_notification_action_downloading">下载中</string>
     <string name="home_notification_action_install">安装</string>
-    <string name="home_notification_machine_offline_title_one">%1$s 已离线</string>
-    <string name="home_notification_machine_offline_title_many">%1$s 已离线</string>
-    <string name="home_notification_machine_offline_body_one">这台计算机当前没有活跃的 Agent；下次需要时请重新连接。</string>
-    <string name="home_notification_machine_offline_body_many">这些计算机当前没有活跃的 Agent；下次需要时请重新连接。</string>
     <string name="home_notification_machine_outdated_title_one">%1$s 有可用更新</string>
     <string name="home_notification_machine_outdated_title_many">%1$s 有可用更新</string>
     <string name="home_notification_machine_outdated_body">停止后重新连接即可更新。</string>
@@ -2817,8 +2812,6 @@
     <string name="background_kill_notice_body">系统在后台停止了 Raft，可能导致消息和通知延迟。前往通知设置允许 Raft 在后台运行。</string>
     <string name="background_kill_notice_action_open_settings">去设置</string>
     <string name="background_kill_notice_action_dont_show_again">不再提示</string>
-    <string name="settings_notifications_offline_computers_title">计算机离线提醒</string>
-    <string name="settings_notifications_offline_computers_detail">当已注册的计算机离线时，在首页显示提醒。默认关闭。</string>
     <string name="settings_notifications_test_title">发送测试通知</string>
     <string name="settings_notifications_test_detail">发送一条本地测试通知，验证此设备的通知能力。</string>
     <string name="settings_notifications_test_allow_permission">允许 Raft 发送通知后，即可发送测试。</string>
@@ -6128,4 +6121,8 @@
     <string name="action_card_seats_add_purpose_person">%1$s × 1</string>
     <string name="action_card_seats_add_sum_note">每个人占 1 个席位，每个 Agent 占 0.1 个；应用不占。</string>
     <string name="action_card_seats_add_sum_note_person">每个人占 1 个席位；Agent 和应用都不占。</string>
+    <string name="settings_appearance_assistant_section">助理</string>
+    <string name="settings_appearance_assistant_otter_description">%1$s 趴在输入框上，点一下就能打开。关掉后，所有页面、所有设备上都不再显示，%1$s 的私信照常能用。</string>
+    <string name="settings_appearance_assistant_panel_link_title">更多 %1$s 设置</string>
+    <string name="settings_appearance_assistant_panel_link_description">权限、补充指令和微信在 %1$s 的资料面板里，就在它的聊天旁边。</string>
 </resources>

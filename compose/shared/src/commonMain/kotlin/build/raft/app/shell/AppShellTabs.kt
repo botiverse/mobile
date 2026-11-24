@@ -403,3 +403,35 @@ internal fun appShellServerMenuSwitchPlan(
     val target = pickedServerId.trim().takeIf { it.isNotEmpty() && it != currentServerId } ?: return null
     return AppShellServerSwitchPlan(serverId = target, tab = selectedTab)
 }
+
+/**
+ * Dismiss an open composer keyboard when switching to another app-shell tab (never on Search,
+ * where a re-tap intentionally focuses the search box).
+ */
+internal fun shouldDismissKeyboardOnAppShellTabSwitch(nextTab: String): Boolean =
+    nextTab != AppShellSearchTabKey
+
+/**
+ * Dismiss an open composer keyboard when tapping a rail tab that changes the shown surface (another
+ * tab or dismissing an inline secondary page like Search/Computers/Apps), while leaving inline
+ * Search itself and re-taps on the already-visible tab alone.
+ */
+internal fun shouldDismissKeyboardOnRailTabSelect(
+    tappedKey: String,
+    inlineSecondaryDestination: String?,
+    selectedTab: String,
+): Boolean {
+    if (tappedKey == AppShellRailSearchKey) return false
+    if (inlineSecondaryDestination != null) return true
+    return retainedAppShellSelectedTab(selectedTab) != retainedAppShellSelectedTab(tappedKey)
+}
+
+/**
+ * Dismiss an open composer keyboard when opening a different inline rail page (Computers, Apps,
+ * Artifacts, Assistant), while leaving re-taps on the already-active inline page (e.g. typing in
+ * Assistant or Computers search) and unrouted pages alone.
+ */
+internal fun shouldDismissKeyboardOnRailInlinePageSelect(
+    inlinePage: String?,
+    currentInlineSecondaryDestination: String?,
+): Boolean = inlinePage != null && currentInlineSecondaryDestination != inlinePage

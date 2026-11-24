@@ -26,11 +26,23 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.assistant.AssistantOtterVisibleRow
+import build.raft.app.assistant.AssistantOwnerOtterRow
+import build.raft.app.assistant.AssistantSettingChangesSection
+import build.raft.app.assistant.LocalAssistantSettingChangesSource
+import build.raft.app.assistant.assistantViewerIsGuest
+import build.raft.app.assistant.rememberAssistantOtterRow
+import build.raft.app.assistant.rememberAssistantSettingChanges
+import build.raft.app.assistant.rememberMyAssistantGate
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.data.APPEARANCE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
+import build.raft.app.data.ASSISTANT_ACTION_SETTINGS
+import build.raft.app.data.AssistantSettingChange
+import build.raft.app.data.MyAssistantRecord
+import build.raft.app.data.MyAssistantState
 import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.data.RaftComposerSendKey
 import build.raft.app.data.RaftComposerSendKeyRuntime
@@ -38,6 +50,8 @@ import build.raft.app.data.RaftDisplayPreferenceRuntime
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsAppearanceSnapshot
 import build.raft.app.data.SettingsMobileSnapshot
+import build.raft.app.data.SharedMyAssistantStore
+import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.defaultNowMillis
@@ -57,6 +71,23 @@ internal const val SettingsAppearanceSectionTag = "settings-appearance-section"
 internal const val SettingsAppearanceKeyboardSectionTag = "settings-appearance-keyboard-section"
 internal const val SettingsAppearanceSendKeyRowTag = "settings-appearance-send-key-row"
 internal const val SettingsAppearanceSendKeyErrorTag = "settings-appearance-send-key-error"
+internal const val SettingsAppearanceAssistantSectionTag = "assistant-otter-settings"
+internal const val SettingsAppearanceAssistantPanelLinkTag = "assistant-otter-settings-panel-link"
+
+/**
+ * What Settings › Appearance needs for its Assistant section (web `AssistantOtterSettingsSection`):
+ * "my assistant" ([store]) and its account-level otter switch ([SharedMyAssistantStore.otterPrefs]),
+ * gated by [featureFlags] (`personal_assistant`) and the signed-in viewer's server and role.
+ * Null hides the section (e.g. screenshot fixtures or callers without a shell store).
+ */
+internal class SettingsAppearanceAssistantSource(
+    val store: SharedMyAssistantStore,
+    val featureFlags: SharedServerFeatureFlags,
+    val serverId: String?,
+    val userId: String?,
+    val serverRole: String?,
+    val onOpenAssistantSettings: (agentId: String) -> Unit,
+)
 
 /**
  * The preview message's time. Null: the current time, like the Web's preview (`new Date()`); the
@@ -93,6 +124,10 @@ internal val LocalSettingsAppearanceVisualSwitches =
  * - **Keyboard** section (`Keyboard` icon) when a hardware keyboard is connected or plausible:
  *   "Send messages with" (`Enter` / `⌘Enter` or `Ctrl+Enter`, stored on the account) and
  *   "Keyboard shortcuts" in one `RaftListRowGroup`.
+ * - **Assistant** section (`PawPrint` icon, web `AssistantOtterSettingsSection`) when
+ *   `personal_assistant` is on, the viewer is not a guest, and they have an assistant on the
+ *   current server: "Show {name} on every page" switch, "More {name} settings" link to its profile,
+ *   and "Changed by your assistant" (`ASSISTANT_ACTION_SETTINGS`).
  */
 @Composable
 internal fun SettingsAppearanceContent(
@@ -118,12 +153,46 @@ internal fun SettingsAppearanceContent(
     /** Account-synced composer send key choice (`Enter` vs `⌘Enter`/`Ctrl+Enter`) for Keyboard section. */
     onComposerSendKeyChange: (RaftComposerSendKey) -> Unit = {},
     shortcutsUseCommand: Boolean = raftPlatformShortcutsUseCommand(),
+    /** Viewer's personal assistant binding (web `AssistantOtterSettingsSection`); null hides the section. */
+    assistantSource: SettingsAppearanceAssistantSource? = null,
 ) {
     val visual = LocalSettingsAppearanceVisualSwitches.current
     val appRows = preferences?.takeIf { visual?.showAppOnlyRows != false }
     val fontSizeSnapshot = (state as? ScreenLoadState.Content)?.data
     val observedComposerSendKey = RaftComposerSendKeyRuntime.observeSendKey()
     val composerSendKey = fontSizeSnapshot?.composerSendKey ?: observedComposerSendKey
+    // Web `AssistantOtterSettingsSection`: shown only when `personal_assistant` is on, the viewer
+    // is not a guest, and they have an assistant here; hidden in visual screenshot fixtures so
+    // existing SettingsAppearanceVisual baselines stay unaffected.
+    val assistant =
+        if (visual == null && assistantSource != null) {
+            val gate =
+                rememberMyAssistantGate(
+                    store = assistantSource.store,
+                    flags = assistantSource.featureFlags,
+                    serverId = assistantSource.serverId,
+                    userId = assistantSource.userId,
+                    viewerIsGuest = assistantViewerIsGuest(assistantSource.serverRole),
+                )
+            (gate.state as? MyAssistantState.Ready)?.assistant
+        } else {
+            null
+        }
+    val assistantOtter =
+        if (assistant != null && assistantSource != null) {
+            assistantSource.userId?.takeIf(String::isNotBlank)?.let { userId ->
+                rememberAssistantOtterRow(assistantSource.store, userId)
+            }
+        } else {
+            null
+        }
+    val assistantChangesSource = LocalAssistantSettingChangesSource.current
+    val assistantChanges =
+        if (assistant != null) {
+            rememberAssistantSettingChanges(ASSISTANT_ACTION_SETTINGS, assistantChangesSource)
+        } else {
+            emptyList()
+        }
     LazyColumn(
         state = rememberSettingsSearchListState(),
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(horizontal = 16.dp),
@@ -224,6 +293,17 @@ internal fun SettingsAppearanceContent(
                     actionState = actionState,
                     onComposerSendKeyChange = onComposerSendKeyChange,
                     shortcutsUseCommand = shortcutsUseCommand,
+                )
+            }
+        }
+        if (assistant != null && assistantSource != null) {
+            item {
+                SettingsAppearanceAssistantSection(
+                    assistant = assistant,
+                    otter = assistantOtter,
+                    changes = assistantChanges,
+                    changesServerId = assistantChangesSource?.serverId,
+                    onOpenAssistantSettings = { assistantSource.onOpenAssistantSettings(assistant.agentId) },
                 )
             }
         }
@@ -374,6 +454,64 @@ private fun SettingsAppearanceKeyboardSection(
                 SettingsKeyboardShortcutsDialog(
                     apple = shortcutsUseCommand,
                     onDismiss = { shortcutsDialogOpen = false },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Web `AssistantOtterSettingsSection` (Settings › Appearance › Assistant):
+ * - Group 1: "Show {name} on every page" switch wired to account-level [SharedMyAssistantStore.otterPrefs].
+ *   Web's desktop-only `OtterShortcutRow` is omitted on mobile because mobile has no keyboard
+ *   shortcut customization UI (matching web on phones).
+ * - Group 2 (12dp gap inside [SettingsFormSection]): "More {name} settings" link to the assistant's
+ *   profile on its Profile tab.
+ * - Optional "Changed by your assistant" audit block (24dp below, [ASSISTANT_ACTION_SETTINGS]).
+ */
+@Composable
+private fun SettingsAppearanceAssistantSection(
+    assistant: MyAssistantRecord,
+    otter: AssistantOwnerOtterRow?,
+    changes: List<AssistantSettingChange>,
+    changesServerId: String?,
+    onOpenAssistantSettings: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag(SettingsAppearanceAssistantSectionTag),
+        verticalArrangement = Arrangement.spacedBy(24.dp),
+    ) {
+        SettingsFormSection(
+            iconName = RaftLucideIconName.PawPrint,
+            title = stringResource(Res.string.settings_appearance_assistant_section),
+        ) {
+            if (otter != null) {
+                SettingsAppearanceGroup {
+                    AssistantOtterVisibleRow(
+                        name = assistant.name,
+                        otter = otter,
+                        description = stringResource(Res.string.settings_appearance_assistant_otter_description, assistant.name),
+                    )
+                }
+            }
+            SettingsAppearanceGroup {
+                RaftListRow(
+                    title = stringResource(Res.string.settings_appearance_assistant_panel_link_title, assistant.name),
+                    modifier = Modifier.testTag(SettingsAppearanceAssistantPanelLinkTag),
+                    onClick = onOpenAssistantSettings,
+                    variant = RaftListRowVariant.Plain,
+                    titleMaxLines = Int.MAX_VALUE,
+                    description = stringResource(Res.string.settings_appearance_assistant_panel_link_description, assistant.name),
+                    wrapDescription = true,
+                    trailing = { RaftListRowChevron() },
+                )
+            }
+        }
+        if (changes.isNotEmpty()) {
+            RaftDesignSystemTheme {
+                AssistantSettingChangesSection(
+                    changes = changes,
+                    currentServerId = changesServerId,
                 )
             }
         }

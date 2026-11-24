@@ -20,6 +20,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelected
@@ -33,6 +34,7 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.AppLocale
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.RaftLocalPreferenceStore
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
@@ -42,9 +44,11 @@ import build.raft.app.data.TasksContent
 import build.raft.app.data.TasksPresentationState
 import build.raft.app.data.TasksUiState
 import build.raft.app.data.TasksViewMode
+import build.raft.app.data.stringDescLocaleType
 import build.raft.app.data.summaryCounts
 import build.raft.app.data.toTaskSummary
 import build.raft.app.model.TaskSummary
+import build.raft.app.resources.StringDesc
 import build.raft.designsystem.gesture.LocalRaftBackSwipeRegions
 import build.raft.designsystem.gesture.RaftBackSwipeRegions
 import kotlin.test.Test
@@ -74,14 +78,21 @@ class RaftTasksTaskColumnUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
 
+    private var previousLocale = StringDesc.localeType
+
     @Before
     fun installPreferenceStore() {
+        previousLocale = StringDesc.localeType
+        StringDesc.localeType = AppLocale.English.stringDescLocaleType
         val store = InMemoryRaftKeyValueStore()
         RaftSharedKeyValueStoreProvider.installAppScopeFactory(RaftLocalPreferenceStore.KuiklyNamespace) { store }
     }
 
     @After
-    fun clearPreferenceStore() = RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+    fun clearPreferenceStore() {
+        StringDesc.localeType = previousLocale
+        RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+    }
 
     /** What the shell keeps: the open task, Expand, and how often the column's Back reached it. */
     private class Shell {
@@ -234,6 +245,227 @@ class RaftTasksTaskColumnUiTest {
 
         back.press()
         assertEquals(1, shell.pageBacks, "with the column closed Back is the page's")
+    }
+
+    private fun ComposeUiTest.clickTaskInList(title: String) {
+        onNode(hasText(title) and hasAnyAncestor(hasTestTag(RaftTasksTaskColumnTags.List))).performClick()
+        waitForIdle()
+    }
+
+    @Test
+    fun pendingTaskWithoutDiscussionOpensInColumnWithExpandAndCloseAndNoBack() = runRobolectricComposeUiTest {
+        val flow = TaskOpenSurfaceFlow()
+        var expanded by mutableStateOf(false)
+        var pendingColumnAllowed by mutableStateOf(true)
+        var liveDetailColumnOpen by mutableStateOf(false)
+        var serverId by mutableStateOf("server-1")
+        var pendingSurfaceServerId by mutableStateOf<String?>(null)
+        var pageBacks = 0
+        var dispatcher: OnBackPressedDispatcher? = null
+
+        fun closePending() {
+            if (flow.requestClose()) {
+                pendingSurfaceServerId = null
+                if (!liveDetailColumnOpen) {
+                    expanded = false
+                }
+            }
+        }
+
+        setContent {
+            dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+            RaftBackHandler(enabled = true, label = "test_pending_page") { pageBacks++ }
+            val pager =
+                remember {
+                    object : Pager() {}.apply {
+                        pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
+                    }
+                }
+            val grid = remember { RaftPaneGridStore() }
+            val pendingSurface =
+                (flow.surface as? TaskOpenSurface.Pending).takeIf {
+                    pendingColumnAllowed && !liveDetailColumnOpen && pendingSurfaceServerId == serverId
+                }
+            TasksTabPendingColumnEffects(
+                flow = flow,
+                pendingColumnAllowed = pendingColumnAllowed,
+                liveDetailColumnOpen = liveDetailColumnOpen,
+                serverId = serverId,
+                onPendingClosed = {
+                    pendingSurfaceServerId = null
+                    if (!liveDetailColumnOpen) expanded = false
+                },
+            )
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalRaftPaneGridStore provides grid,
+                LocalRaftTopSafeAreaConsumed provides true,
+            ) {
+                RaftDesignSystemTheme {
+                    RaftTasksTaskColumnLayout(
+                        open = liveDetailColumnOpen || pendingSurface != null,
+                        expanded = expanded,
+                        active = true,
+                        onToggleExpand = { expanded = !expanded },
+                        onClose = {
+                            if (pendingSurface != null) {
+                                closePending()
+                            } else {
+                                liveDetailColumnOpen = false
+                                expanded = false
+                            }
+                        },
+                        onBack = {
+                            if (pendingSurface != null) {
+                                closePending()
+                            } else {
+                                liveDetailColumnOpen = false
+                                expanded = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize().testTag(ROOT),
+                        task = {
+                            if (pendingSurface != null) {
+                                TaskPendingSurfaceContent(
+                                    surface = pendingSurface,
+                                    flow = flow,
+                                    onSend = { _, _ -> },
+                                    serverId = serverId,
+                                    useHostSafeArea = true,
+                                    onBack = { closePending() },
+                                )
+                            } else {
+                                TaskFixture("live-task")
+                            }
+                        },
+                    ) {
+                        CompositionLocalProvider(LocalSharedTasksOpenTaskId provides pendingSurface?.task?.id?.value) {
+                            SharedTasksPanel(
+                                state = TasksUiState(loadState = ScreenLoadState.Content(TasksContent(summaryCounts = tasks.summaryCounts(), tasks = tasks))),
+                                onIntent = {},
+                                onOpenTask = { clicked ->
+                                    if (!flow.sending) {
+                                        if (liveDetailColumnOpen) liveDetailColumnOpen = false
+                                        expanded = false
+                                        pendingSurfaceServerId = serverId
+                                        flow.open(TaskOpenSurface.Pending(clicked))
+                                    }
+                                },
+                                initialPresentationOverride = TasksPresentationState.Default.copy(selectedMode = TasksViewMode.List),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        assertFalse(has(RaftTasksTaskColumnTags.Column), "nothing open initially")
+
+        // LS-07: clicking a task without discussion opens inside the right column beside the list,
+        // with Expand + Close at the header end and NO leading Back arrow.
+        clickTaskInList(tasks[0].title)
+        assertTrue(has(RaftTasksTaskColumnTags.Column), "pending task opens in right column")
+        val root = widthOf(ROOT)
+        assertEquals(399f, widthOf(RaftTasksTaskColumnTags.Column), 1.5f, "pending task uses default detail column width")
+        assertEquals(root - 400f, widthOf(RaftTasksTaskColumnTags.List), 1.5f, "list stays beside the pending task")
+        assertTrue(openCardShows(tasks[0].title), "open pending task card is highlighted in the list")
+        onNode(hasText("No discussion in this task yet")).assertExists()
+        assertTrue(has(RaftTasksTaskColumnTags.Expand), "header ends with Expand")
+        assertTrue(has(RaftTasksTaskColumnTags.Close), "header ends with Close")
+        assertTrue(
+            onAllNodes(hasContentDescription("Back")).fetchSemanticsNodes().isEmpty(),
+            "header in right column must not show a leading Back button",
+        )
+
+        // Expand fills the row; first Back restores, second Back closes the pending column.
+        clickTagged(RaftTasksTaskColumnTags.Expand)
+        assertTrue(expanded)
+        assertEquals(root, widthOf(RaftTasksTaskColumnTags.Column), 1.5f, "expanded pending task fills row")
+        assertEquals(0f, widthOf(RaftTasksTaskColumnTags.List), 0.5f)
+
+        runOnIdle { assertNotNull(dispatcher).onBackPressed() }
+        waitForIdle()
+        assertFalse(expanded, "first Back restores Expand")
+        assertTrue(has(RaftTasksTaskColumnTags.Column), "pending task remains open after restoring Expand")
+
+        runOnIdle { assertNotNull(dispatcher).onBackPressed() }
+        waitForIdle()
+        assertFalse(has(RaftTasksTaskColumnTags.Column), "second Back closes the pending column")
+        assertEquals(null, flow.surface)
+        assertEquals(0, pageBacks)
+
+        // Non-modal: opening task 0 then clicking task 1 replaces task 0 in-place; Close (×) dismisses it.
+        clickTaskInList(tasks[0].title)
+        assertEquals("task-1", flow.surface?.task?.id?.value)
+        clickTaskInList(tasks[1].title)
+        assertEquals("task-4", flow.surface?.task?.id?.value)
+        assertTrue(openCardShows(tasks[1].title))
+        assertFalse(openCardShows(tasks[0].title))
+        clickTagged(RaftTasksTaskColumnTags.Close)
+        assertEquals(null, flow.surface)
+        assertFalse(has(RaftTasksTaskColumnTags.Column))
+
+        // Leaving Tasks / wide layout or switching server closes the pending column cleanly.
+        clickTaskInList(tasks[0].title)
+        clickTagged(RaftTasksTaskColumnTags.Expand)
+        assertTrue(expanded)
+        runOnIdle { pendingColumnAllowed = false }
+        waitForIdle()
+        assertEquals(null, flow.surface, "leaving wide Tasks closes pending surface")
+        assertFalse(expanded, "leaving wide Tasks resets expanded")
+
+        runOnIdle { pendingColumnAllowed = true }
+        waitForIdle()
+        clickTaskInList(tasks[0].title)
+        assertEquals("task-1", flow.surface?.task?.id?.value)
+        runOnIdle { serverId = "server-2" }
+        waitForIdle()
+        assertEquals(null, flow.surface, "switching server closes pending surface")
+        assertEquals(null, pendingSurfaceServerId, "server switch clears pending server fence")
+
+        // Restoring a live detail column clears any open pending surface cleanly, and clicking a
+        // pending task while a live task is open replaces the live task in the same column.
+        clickTaskInList(tasks[0].title)
+        assertEquals("task-1", flow.surface?.task?.id?.value)
+        runOnIdle { liveDetailColumnOpen = true }
+        waitForIdle()
+        assertEquals(null, flow.surface, "opening a live task clears pending surface")
+        onNodeWithTag("task-page-live-task").assertExists()
+
+        clickTaskInList(tasks[1].title)
+        assertFalse(liveDetailColumnOpen, "opening a pending task closes the live task column")
+        assertEquals("task-4", flow.surface?.task?.id?.value)
+        assertTrue(has(RaftTasksTaskColumnTags.Column), "pending task occupies the column")
+        onNode(hasText("No discussion in this task yet")).assertExists()
+    }
+
+    @Test
+    fun pendingTaskModalWindowClearsEnclosingTaskColumnHead() = runRobolectricComposeUiTest {
+        val flow = TaskOpenSurfaceFlow()
+        flow.open(TaskOpenSurface.Pending(tasks[0]))
+        setContent {
+            val pager =
+                remember {
+                    object : Pager() {}.apply {
+                        pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
+                    }
+                }
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalRaftTaskColumnHead provides RaftTaskColumnHead(expanded = false, onToggleExpand = {}, onClose = {}),
+            ) {
+                RaftDesignSystemTheme {
+                    TaskOpenSurfaceHost(flow = flow, onSend = { _, _ -> }, serverId = "server-1")
+                }
+            }
+        }
+        waitForIdle()
+        assertTrue(
+            onAllNodes(hasContentDescription("Back")).fetchSemanticsNodes().isNotEmpty(),
+            "full-screen pending task window keeps Back even when opened from inside the Tasks column",
+        )
+        assertFalse(has(RaftTasksTaskColumnTags.Expand), "modal window must not inherit column Expand")
+        assertFalse(has(RaftTasksTaskColumnTags.Close), "modal window must not inherit column Close")
     }
 
     private companion object {

@@ -4,6 +4,7 @@ import build.raft.app.links.ParsedRaftPermalink
 import build.raft.app.resources.*
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
@@ -122,6 +123,7 @@ internal fun ThreadSystemMessageRow(
                     },
                     tier = RaftHoverTier.Subtle
                 )
+                .raftSafeAreaHorizontalPadding()
                 // raft-ui SystemMessage `pt-timeline-lead pb-timeline-row`: an event line starts a
                 // turn, 16 from the text on either side (spacing.md#timeline-rhythm).
                 .padding(
@@ -198,7 +200,7 @@ internal fun ThreadInlineActionRow(
     RaftButton(
         text = label,
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding(),
         variant = RaftButtonVariant.Default,
         size = RaftButtonSize.Md,
         leadingIcon = leadingIcon?.let { icon -> { RaftSlotIcon(icon) } }
@@ -223,6 +225,7 @@ internal fun ThreadHistoryStatusRow(
     Column(
         modifier =
             Modifier.fillMaxWidth()
+                .raftSafeAreaHorizontalPadding()
                 .padding(horizontal = RaftAppSpacing.Md, vertical = 8.dp)
                 .alpha(if (loadingRevealed) 1f else 0f),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -280,6 +283,7 @@ internal fun ThreadDateDivider(label: String) {
         modifier =
             Modifier
                 .fillMaxWidth()
+                .raftSafeAreaHorizontalPadding()
                 .padding(
                     start = RaftAppSpacing.Md,
                     end = RaftAppSpacing.Md,
@@ -576,12 +580,12 @@ internal fun ThreadOriginCard(
                     text = stringResource(Res.string.thread_state_refreshing_original),
                     style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm)
+                    modifier = Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm)
                 )
             }
             "missing" -> {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm),
+                    modifier = Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm),
                     verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
                 ) {
                     Text(
@@ -695,7 +699,7 @@ internal fun ThreadOriginCard(
                         text = it,
                         style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
                         color = RaftColor.TextBlack,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm)
+                        modifier = Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm)
                     )
                 }
             }

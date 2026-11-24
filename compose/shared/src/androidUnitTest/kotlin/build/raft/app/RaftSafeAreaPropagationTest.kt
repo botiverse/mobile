@@ -21,6 +21,7 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.designsystem.components.RaftMobileNavDefaults
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import kotlin.math.roundToInt
 import kotlin.test.Test
@@ -72,6 +73,62 @@ class RaftSafeAreaPropagationTest {
         // A full-width child page: its background reaches the edge, its content pads once.
         assertEquals(0 to rootWidth, bounds.getValue("child.background"))
         assertEquals(0 to rootWidth - px(59), bounds.getValue("child.full"))
+    }
+
+    @Test
+    fun membersAdaptiveWorkspaceSplitConsumesInnerEdgesOnly() {
+        show(leftDp = 36, rightDp = 42) {
+            MembersAdaptiveWorkspace(
+                split = true,
+                selected = true,
+                listPane = {
+                    Box(Modifier.fillMaxSize().track("list.bg")) {
+                        Box(Modifier.fillMaxSize().raftSafeAreaHorizontalPadding().track("list.content"))
+                    }
+                },
+                detailPane = {
+                    Box(Modifier.fillMaxSize().track("detail.bg")) {
+                        Box(Modifier.fillMaxSize().raftSafeAreaHorizontalPadding().track("detail.content"))
+                    }
+                },
+            )
+        }
+        assertEquals(0 to px(360), bounds.getValue("list.bg"))
+        // List pane pads only its exposed left edge; inner right edge has zero padding.
+        assertEquals(px(36) to px(360), bounds.getValue("list.content"))
+        assertEquals(px(361) to rootWidth, bounds.getValue("detail.bg"))
+        // Detail pane pads only its exposed right edge; inner left edge has zero padding.
+        assertEquals(px(361) to rootWidth - px(42), bounds.getValue("detail.content"))
+    }
+
+    @Test
+    fun bottomTabBarKeepsFullBleedBackgroundAndPadsSlotsInsideSafeArea() {
+        show(leftDp = 36, rightDp = 42) {
+            RaftBottomTabBar(
+                items = listOf(RaftBottomTabItemPayload(key = AppShellServerTabKey, label = "Server")),
+                onSelect = {},
+                modifier = Modifier.track("bar.bg"),
+                serverTab = { slotModifier -> Box(slotModifier.track("bar.slot")) },
+            )
+        }
+        assertEquals(0 to rootWidth, bounds.getValue("bar.bg"))
+        val sidePad = (RaftMobileNavDefaults.SidePadding.value * density).roundToInt()
+        assertEquals(px(36) + sidePad to rootWidth - px(42) - sidePad, bounds.getValue("bar.slot"))
+    }
+
+    @Test
+    fun modalWindowRootBleedsBackdropFullWidthAndDoesNotDoublePadNestedContent() {
+        show(leftDp = 36, rightDp = 42) {
+            RaftHorizontalSafeAreaShell(required = raftHorizontalSafeArea(), windowRoot = true) {
+                val bleed = LocalRaftHorizontalSafeAreaBleed.current
+                Box(Modifier.fillMaxSize()) {
+                    Box(Modifier.raftBleedHorizontalSafeArea(bleed).fillMaxSize().track("modal.backdrop"))
+                    Box(Modifier.fillMaxSize().raftSafeAreaHorizontalPadding().track("modal.content"))
+                }
+            }
+        }
+        assertEquals(0 to rootWidth, bounds.getValue("modal.backdrop"))
+        assertEquals(px(36) to rootWidth - px(42), bounds.getValue("modal.content"))
     }
 
     private fun show(

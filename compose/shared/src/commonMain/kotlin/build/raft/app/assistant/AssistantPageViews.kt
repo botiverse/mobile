@@ -1,6 +1,7 @@
 package build.raft.app.assistant
 
 import androidx.compose.foundation.background
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -110,6 +111,7 @@ private fun AssistantCreateView(form: AssistantCreateForm, actions: AssistantPag
             Modifier
                 .fillMaxSize()
                 .background(colors.layerCanvas)
+                .raftSafeAreaHorizontalPadding()
                 .verticalScroll(rememberScrollState())
                 // Web ScrollArea `px-4 py-8`.
                 .padding(horizontal = 16.dp, vertical = 32.dp)
@@ -277,7 +279,7 @@ private fun RowScope.AssistantConversationTitle(name: String, subtitle: String, 
 @Composable
 internal fun ColumnScope.AssistantChatSettingUp() {
     Row(
-        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp).testTag(AssistantPageTags.SettingUp),
+        Modifier.weight(1f).fillMaxWidth().raftSafeAreaHorizontalPadding().padding(horizontal = 24.dp).testTag(AssistantPageTags.SettingUp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -1890,13 +1890,19 @@ internal class SharedThreadStore(
                 val admitted =
                     dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
                         val latest = _state.value
+                        val preservePositiveReplyCandidate =
+                            latest.payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+                                latest.replyParentAuthority == ReplyParentAuthorityStatus.Writable &&
+                                latest.initialHomeAccessCandidate?.let { it.joined && it.permissions.canSend } == true
                         reduceState(
                             latest.copy(
                                 accessResolution = ThreadAccessResolution.Loading,
                                 canonicalAccessResolved = false,
                                 provisionalCanonicalAccess = false,
-                                initialHomeAccessLookupComplete = false,
-                                initialHomeAccessCandidate = null
+                                initialHomeAccessLookupComplete =
+                                    if (preservePositiveReplyCandidate) latest.initialHomeAccessLookupComplete else false,
+                                initialHomeAccessCandidate =
+                                    if (preservePositiveReplyCandidate) latest.initialHomeAccessCandidate else null
                             )
                         )
                         refreshStartState = _state.value
@@ -2192,12 +2198,6 @@ internal class SharedThreadStore(
                                     acceptedReplies,
                                     currentPayload,
                                 )
-                            val canonicalAccessFromResultKnown =
-                                when (result) {
-                                    is DataResult.Content -> nextPayload.canonicalAccessKnown
-                                    is DataResult.Empty -> !currentPayload.isTaskConversationSurface()
-                                    else -> true
-                                }
                             val projectedPayload =
                                 currentPayload
                                     .withThreadContentProjectionFrom(commitNextPayload)
@@ -2224,6 +2224,18 @@ internal class SharedThreadStore(
                                         homeLookupComplete = currentState.initialHomeAccessLookupComplete,
                                         homeAccessCandidate = currentState.initialHomeAccessCandidate,
                                     )
+                            // A reply thread's canonical stream carries synthetic `type = "thread"`
+                            // details (`canonicalAccessKnown = false`) because write authority
+                            // belongs to its parent channel in Home. Loading the reply stream
+                            // still proves canonical read access for the reply surface.
+                            val canonicalAccessFromResultKnown =
+                                when (result) {
+                                    is DataResult.Content ->
+                                        nextPayload.canonicalAccessKnown ||
+                                            projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread
+                                    is DataResult.Empty -> !projectedPayload.isTaskConversationSurface()
+                                    else -> true
+                                }
                             val canonicalAccessResolved =
                                 currentState.canonicalAccessResolved ||
                                     (resolvingInitialAccess && result.resolvesCanonicalConversationAccess() && canonicalAccessFromResultKnown)
@@ -2787,6 +2799,20 @@ internal class SharedThreadStore(
                         ) {
                             return@withLock
                         }
+                        // If an early positive parent directory hint already unlocked this reply
+                        // thread while the initial lookup timed out / returned null, keep that
+                        // positive candidate instead of clobbering Writable back to Unknown.
+                        // A non-null candidate from this lookup (positive OR authoritative
+                        // negative) always takes precedence.
+                        val effectiveCandidate =
+                            candidate
+                                ?: currentState.initialHomeAccessCandidate?.takeIf { existing ->
+                                    currentPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+                                        currentState.replyParentAuthority == ReplyParentAuthorityStatus.Writable &&
+                                        existing.joined &&
+                                        existing.permissions.canSend &&
+                                        currentPayload.acceptsInitialConversationAccessCandidate(existing)
+                                }
                         val projectedPayload =
                             currentPayload
                                 .let { payload ->
@@ -2797,11 +2823,11 @@ internal class SharedThreadStore(
                                 .withInitialHomeConversationAccessFallbackUnlessCanonical(
                                     canonicalAccessResolved =
                                         currentState.canonicalAccessResolved || currentState.provisionalCanonicalAccess,
-                                    candidate = candidate,
+                                    candidate = effectiveCandidate,
                                 )
                                 .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
                                     homeLookupComplete = true,
-                                    homeAccessCandidate = candidate
+                                    homeAccessCandidate = effectiveCandidate
                                 )
                         val nextResolution =
                             when {
@@ -2814,7 +2840,7 @@ internal class SharedThreadStore(
                                     ThreadAccessResolution.Resolved
                                 projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
                                     currentState.canonicalAccessResolved &&
-                                    (candidate != null || projectedPayload.hasReadableCanonicalReplyContent()) ->
+                                    (effectiveCandidate != null || projectedPayload.hasReadableCanonicalReplyContent()) ->
                                     ThreadAccessResolution.Resolved
                                 projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
                                     currentState.canonicalAccessResolved ->
@@ -2838,17 +2864,17 @@ internal class SharedThreadStore(
                                 // added latency without adding information. A negative candidate (stale
                                 // unjoined row) keeps waiting for the canonical fetch, which must still
                                 // win; a later canonical NoPermission still closes access.
-                                candidate != null &&
-                                    candidate.joined &&
-                                    candidate.permissions.canSend &&
+                                effectiveCandidate != null &&
+                                    effectiveCandidate.joined &&
+                                    effectiveCandidate.permissions.canSend &&
                                     currentPayload.status == "content" ->
                                     ThreadAccessResolution.Resolved
-                                candidate != null && currentPayload.status == "empty" ->
+                                effectiveCandidate != null && currentPayload.status == "empty" ->
                                     ThreadAccessResolution.Resolved
                                 // A non-reply page whose content is already renderable (kept access or
                                 // unknown task parent detail) must not regress to Loading when the Home
                                 // lookup finds no row. A negative candidate still waits for canonical.
-                                candidate == null &&
+                                effectiveCandidate == null &&
                                     currentState.accessResolution == ThreadAccessResolution.Resolved &&
                                     !currentState.canonicalAccessResolved &&
                                     projectedPayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
@@ -2867,14 +2893,14 @@ internal class SharedThreadStore(
                                 !currentState.canonicalAccessResolved &&
                                 !currentState.provisionalCanonicalAccess &&
                                 authorityProjectedPayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
-                                candidate == null
+                                effectiveCandidate == null
                             ) {
                                 currentState.writeActionsEnabled
                             } else {
                                 authorityProjectedPayload.hasWriteAuthorityForAccess(
                                     accessResolution = nextResolution,
                                     homeLookupComplete = true,
-                                    homeAccessCandidate = candidate
+                                    homeAccessCandidate = effectiveCandidate
                                 )
                             }
                         reduceState(
@@ -2882,12 +2908,12 @@ internal class SharedThreadStore(
                                 payload = authorityProjectedPayload,
                                 accessResolution = nextResolution,
                                 initialHomeAccessLookupComplete = true,
-                                initialHomeAccessCandidate = candidate,
+                                initialHomeAccessCandidate = effectiveCandidate,
                                 replyParentAuthority =
                                     resolveReplyParentAuthorityStatus(
                                         accessResolution = nextResolution,
                                         payload = authorityProjectedPayload,
-                                        candidate = candidate,
+                                        candidate = effectiveCandidate,
                                     ),
                                 writeActionsEnabled = nextWriteActions
                             )
@@ -3150,7 +3176,12 @@ internal class SharedThreadStore(
         ) {
             return
         }
-        if (!state.canonicalAccessResolved || !state.initialHomeAccessLookupComplete) {
+        val earlyPositiveHint =
+            hint.present &&
+                hint.joined &&
+                hint.canSend &&
+                (!state.canonicalAccessResolved || !state.initialHomeAccessLookupComplete)
+        if ((!state.canonicalAccessResolved || !state.initialHomeAccessLookupComplete) && !earlyPositiveHint) {
             deferParentDirectoryHint(hint)
             return
         }
@@ -3203,7 +3234,9 @@ internal class SharedThreadStore(
             return
         }
         if (state.replyParentAuthority == ReplyParentAuthorityStatus.Writable &&
-            payload.joined == hint.joined && payload.canSend == hint.canSend
+            payload.joined == hint.joined && payload.canSend == hint.canSend &&
+            state.accessResolution == ThreadAccessResolution.Resolved &&
+            state.writeActionsEnabled
         ) {
             return
         }
@@ -3232,17 +3265,31 @@ internal class SharedThreadStore(
             if (current.payload.parentChannelId != parentChannelId ||
                 current.payload.sourceThreadId != payload.sourceThreadId ||
                 current.accessResolution == ThreadAccessResolution.NoPermission ||
-                current.accessResolution == ThreadAccessResolution.Error
+                current.accessResolution == ThreadAccessResolution.Error ||
+                (earlyPositiveHint && current.payload.channelArchived)
             ) {
                 return
             }
+            val nextResolution =
+                if (
+                    hint.joined &&
+                    hint.canSend &&
+                    current.accessResolution == ThreadAccessResolution.Loading &&
+                    current.payload.status in ThreadResolvedContentStatuses
+                ) {
+                    ThreadAccessResolution.Resolved
+                } else {
+                    current.accessResolution
+                }
+            val nextLookupComplete =
+                current.initialHomeAccessLookupComplete || (hint.joined && hint.canSend)
             val projected =
                 current.payload
                     .withInitialHomeConversationAccessFallbackUnlessCanonical(
                         canonicalAccessResolved = current.canonicalAccessResolved,
                         candidate = candidate,
                     )
-                    .withTerminalAccessWriteAuthorityClosed(current.accessResolution)
+                    .withTerminalAccessWriteAuthorityClosed(nextResolution)
             val nextAuthority =
                 if (hint.joined && hint.canSend) {
                     ReplyParentAuthorityStatus.Writable
@@ -3251,8 +3298,8 @@ internal class SharedThreadStore(
                 }
             val nextWriteActions =
                 projected.hasWriteAuthorityForAccess(
-                    accessResolution = current.accessResolution,
-                    homeLookupComplete = true,
+                    accessResolution = nextResolution,
+                    homeLookupComplete = nextLookupComplete,
                     homeAccessCandidate = candidate
                 )
             diagnosticsLogger?.invoke(
@@ -3262,6 +3309,8 @@ internal class SharedThreadStore(
             reduceState(
                 current.copy(
                     payload = projected,
+                    accessResolution = nextResolution,
+                    initialHomeAccessLookupComplete = nextLookupComplete,
                     initialHomeAccessCandidate = candidate,
                     replyParentAuthority = nextAuthority,
                     writeActionsEnabled = nextWriteActions,
@@ -6223,7 +6272,7 @@ internal class SharedThreadStore(
         dataSource.withCurrentReplyCacheProvenance(expectedProvenance) {
             val current = _state.value
             if (
-                !current.writeActionsEnabled ||
+                !current.canAdmitLocalSend() ||
                 expectedProvenance.threadPayloadOwnerScopeId == null ||
                 !current.payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)
             ) {

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -156,7 +157,7 @@ internal fun ChannelAnnouncementStrip(
         val wide = maxWidth >= ChannelAnnouncementStripWideFrom
         // The row opens it; ⋯ is a button of its own beside it, never inside the row's target.
         Row(
-            Modifier.fillMaxWidth().height(40.dp).padding(end = if (wide) 12.dp else 8.dp),
+            Modifier.fillMaxWidth().height(40.dp).raftSafeAreaHorizontalPadding().padding(end = if (wide) 12.dp else 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
         Row(

@@ -136,6 +136,98 @@ class RaftSandboxWebViewContractTest {
         assertEquals(0, missing.progress)
         assertEquals(RaftWebViewNavigationState(), invalid)
     }
+
+    @Test
+    fun navigationStateRelayCoalescesReentrantStopWithoutRecursing() {
+        val relay = RaftWebViewNavigationStateRelay()
+        val controller = RaftWebViewController()
+        var currentLoading = true
+        var stopCount = 0
+        val delivered = mutableListOf<RaftWebViewNavigationState>()
+
+        controller.bindCommandDispatcher(Any()) { command ->
+            if (command == RaftWebViewController.COMMAND_STOP) {
+                stopCount += 1
+                currentLoading = false
+                // Mirrors COMMAND_STOP notifying with force = false (and would previously recurse on force = true).
+                relay.notify(
+                    force = false,
+                    isActive = { true },
+                    readState = {
+                        RaftWebViewNavigationState(
+                            url = "https://api.raft.build/api/oauth/authorize?client_id=billing",
+                            isLoading = currentLoading,
+                            loadGeneration = 1,
+                        )
+                    },
+                    deliver = { state ->
+                        delivered += state
+                        // Buggy caller calling stop() unconditionally on every callback must never recurse.
+                        controller.stop()
+                    },
+                )
+            }
+        }
+
+        relay.notify(
+            force = false,
+            isActive = { true },
+            readState = {
+                RaftWebViewNavigationState(
+                    url = "https://api.raft.build/api/oauth/authorize?client_id=billing",
+                    isLoading = currentLoading,
+                    loadGeneration = 1,
+                )
+            },
+            deliver = { state ->
+                delivered += state
+                controller.stop()
+            },
+        )
+
+        assertEquals(2, delivered.size)
+        assertEquals(true, delivered[0].isLoading)
+        assertEquals(false, delivered[1].isLoading)
+        assertEquals(2, stopCount)
+    }
+
+    @Test
+    fun navigationStateRelayBoundsEvenForcedReentrantLoop() {
+        val relay = RaftWebViewNavigationStateRelay(maxReentrantRounds = 3)
+        var calls = 0
+
+        fun emitForced() {
+            relay.notify(
+                force = true,
+                isActive = { true },
+                readState = { RaftWebViewNavigationState(url = "https://api.raft.build/authorize", isLoading = false) },
+                deliver = {
+                    calls += 1
+                    emitForced()
+                },
+            )
+        }
+
+        emitForced()
+        assertEquals(3, calls)
+    }
+
+    @Test
+    fun controllerCoalescesReentrantStopCommandsWithoutStackOverflow() {
+        val controller = RaftWebViewController()
+        var dispatchCount = 0
+        controller.bindCommandDispatcher(Any()) { command ->
+            dispatchCount += 1
+            if (command == RaftWebViewController.COMMAND_STOP) {
+                // Re-entrant duplicate stops collapse iteratively and stop at the hard cap.
+                controller.stop()
+                controller.stop()
+            }
+        }
+
+        controller.stop()
+        assertEquals(9, dispatchCount) // 1 initial + 8 bounded re-entrant drains
+    }
 }
 
 @Suppress("unused")

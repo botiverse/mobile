@@ -149,7 +149,7 @@ internal class RaftIosSandboxWebView(
 
     /** Main-frame loads started ([RaftWebViewNavigationState.loadGeneration]). */
     private var loadGeneration = 0
-    private var lastNavigationStateKey = ""
+    private val navigationStateRelay = RaftWebViewNavigationStateRelay()
     private var lastSuccessfulURL = ""
     private var lastLoadFailureKey = ""
     /** A navigation became a download: its "Frame load interrupted" is no load failure. */
@@ -422,7 +422,7 @@ internal class RaftIosSandboxWebView(
         currentProgress = 0
         currentLoading = false
         currentTitle = ""
-        lastNavigationStateKey = ""
+        navigationStateRelay.reset()
         if (spare != null && placeholderBackground != 0) {
             // Until this page's document commits, the spare keeps showing its blank warm-up
             // document, which it laid out white (opaque, light): give it the canvas colour first.
@@ -515,6 +515,7 @@ internal class RaftIosSandboxWebView(
             loadControllerUrl(command.removePrefix(RaftWebViewController.COMMAND_LOAD_URL_PREFIX))
             return
         }
+        var forceNotify = true
         when (command) {
             RaftWebViewController.COMMAND_GO_BACK -> if (canGoBack(view)) view.goBack()
             RaftWebViewController.COMMAND_GO_FORWARD -> if (view.canGoForward) view.goForward()
@@ -528,10 +529,11 @@ internal class RaftIosSandboxWebView(
             RaftWebViewController.COMMAND_STOP -> {
                 view.stopLoading()
                 currentLoading = false
+                forceNotify = false
             }
             else -> return
         }
-        notifyNavigationState(force = true)
+        notifyNavigationState(force = forceNotify)
     }
 
     /**
@@ -830,8 +832,8 @@ internal class RaftIosSandboxWebView(
      * (#356 §3/§5). Order:
      * 1. [RaftWebViewEvents.catchesMainFrameNavigation];
      * 2. existing scheme/origin/navigation fence and [RaftWebViewEvents.routesMainFrameNavigation];
-     * 3. [raftHostNavigationDecision] (re-issue with `Raft-Host` on scoped GET links, or strip on
-     *    cross-origin GET redirects where WebKit copied headers).
+     * 3. [raftHostNavigationDecision] (re-issue with `Raft-Host` on pre-commit same-origin GET
+     *    redirects, or strip on cross-origin GET redirects where WebKit copied headers).
      */
     internal fun decideMainFramePolicy(
         source: WKWebView,
@@ -943,6 +945,7 @@ internal class RaftIosSandboxWebView(
                 carriesHeader = carriesHeader,
                 host = raftHost,
                 budgetLeft = navChainReissueBudget,
+                committed = hasCommittedDocument,
             )
         recordNavChainHop(targetString)
         return when (hostDecision) {
@@ -1160,22 +1163,23 @@ internal class RaftIosSandboxWebView(
     }
 
     private fun notifyNavigationState(force: Boolean) {
-        if (disposed) return
-        val view = webView
-        val state =
-            RaftWebViewNavigationState(
-                url = currentURL,
-                title = currentTitle,
-                canGoBack = view?.let(::canGoBack) ?: false,
-                canGoForward = view?.canGoForward ?: false,
-                isLoading = currentLoading,
-                progress = currentProgress.coerceIn(0, 100),
-                loadGeneration = loadGeneration,
-            )
-        val stateKey = state.toString()
-        if (!force && stateKey == lastNavigationStateKey) return
-        lastNavigationStateKey = stateKey
-        events.onNavigationStateChange(state)
+        navigationStateRelay.notify(
+            force = force,
+            isActive = { !disposed },
+            readState = {
+                val view = webView
+                RaftWebViewNavigationState(
+                    url = currentURL,
+                    title = currentTitle,
+                    canGoBack = view?.let(::canGoBack) ?: false,
+                    canGoForward = view?.canGoForward ?: false,
+                    isLoading = currentLoading,
+                    progress = currentProgress.coerceIn(0, 100),
+                    loadGeneration = loadGeneration,
+                )
+            },
+            deliver = { state -> events.onNavigationStateChange(state) },
+        )
     }
 
     private fun notifyLoadSuccess(url: String) {

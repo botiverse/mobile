@@ -5,6 +5,8 @@ import android.app.Application
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
+import android.view.WindowManager
 import build.raft.app.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -39,6 +41,24 @@ class AppShellWindowThemeTest {
         assertEquals(R.style.Theme_Raft, theme)
         for (host in listOf(RaftAppShellActivity::class.java, RaftDocumentShellActivity::class.java)) {
             assertNoActionBar(host.simpleName, manifestTheme(host), theme!!)
+        }
+    }
+
+    @Test
+    @Config(sdk = [29, 30, 34])
+    fun raftThemeDrawsIntoDisplayCutoutForActivitiesAndDialogs() {
+        val expectedMode =
+            if (Build.VERSION.SDK_INT >= 30) {
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            } else {
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        val theme = context.resources.newTheme().apply { applyStyle(R.style.Theme_Raft, true) }
+        val array = theme.obtainStyledAttributes(intArrayOf(android.R.attr.windowLayoutInDisplayCutoutMode))
+        try {
+            assertEquals(expectedMode, array.getInt(0, WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT))
+        } finally {
+            array.recycle()
         }
     }
 

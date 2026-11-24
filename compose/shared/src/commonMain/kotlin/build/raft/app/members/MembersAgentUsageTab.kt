@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
@@ -244,6 +245,7 @@ internal fun MembersAgentUsageTabBody(
             modifier
                 .fillMaxSize()
                 .background(colors.layerCanvas)
+                .raftSafeAreaHorizontalPadding()
                 .verticalScroll(rememberScrollState())
                 .testTag(AgentUsageTestTags.Tab),
     ) {

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +69,7 @@ import build.raft.designsystem.components.RaftFitToolbarView
 import build.raft.designsystem.components.RaftFitToolbarViewOption
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftStroke
 
@@ -180,25 +182,57 @@ internal object ArtifactsHomeTags {
     const val HomeMenuSettle = "artifacts-home-menu-settle"
 }
 
+internal fun artifactsHomeTitleIsInline(scale: RaftScale): Boolean = scale == RaftScale.Wide
+
 @Composable
 private fun RowScope.ArtifactsHomeTitle(state: ArtifactsHomeState) {
-    Column(Modifier.weight(1f).padding(vertical = 2.dp)) {
-        RaftText(
-            stringResource(Res.string.artifacts_dashboard_title),
-            style = RaftTheme.typography.headline,
-            color = RaftTheme.colors.foreground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        val counts = state.counts
-        if (counts != null) {
+    val countText = state.counts?.let { counts ->
+        artifactsHomeCountLine(counts.total, counts.filtered, state.countsNarrowed)
+    }
+    if (artifactsHomeTitleIsInline(RaftTheme.scale)) {
+        // raft-design desktop-density rule 2: wide heads place the count inline on the title's baseline.
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(RaftPanelHeadInlineMetaGap),
+        ) {
             RaftText(
-                artifactsHomeCountLine(counts.total, counts.filtered, state.countsNarrowed),
-                modifier = Modifier.testTag(ArtifactsHomeTags.Count),
-                style = RaftTheme.typography.footnote,
-                color = RaftTheme.colors.foregroundMuted,
+                stringResource(Res.string.artifacts_dashboard_title),
+                modifier = Modifier.alignByBaseline(),
+                style = RaftTheme.typography.headline,
+                color = RaftTheme.colors.foreground,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
+            if (countText != null) {
+                RaftText(
+                    countText,
+                    modifier = Modifier.weight(1f, fill = false).alignByBaseline().testTag(ArtifactsHomeTags.Count),
+                    style = RaftTheme.typography.footnote,
+                    color = RaftTheme.colors.foregroundMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    } else {
+        Column(Modifier.weight(1f).padding(vertical = 2.dp)) {
+            RaftText(
+                stringResource(Res.string.artifacts_dashboard_title),
+                style = RaftTheme.typography.headline,
+                color = RaftTheme.colors.foreground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (countText != null) {
+                RaftText(
+                    countText,
+                    modifier = Modifier.testTag(ArtifactsHomeTags.Count),
+                    style = RaftTheme.typography.footnote,
+                    color = RaftTheme.colors.foregroundMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -660,7 +694,7 @@ private fun ArtifactsHomeList(
     var forYouOpen by remember { mutableStateOf(true) }
     val failed: @Composable () -> Unit = {
         if (state.status == ArtifactsHomeStatus.Failed) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = ArtifactsHomeMargin, vertical = 8.dp).testTag(ArtifactsHomeTags.Failed)) {
+            Column(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(horizontal = ArtifactsHomeMargin, vertical = 8.dp).testTag(ArtifactsHomeTags.Failed)) {
                 RaftBanner(
                     description = stringResource(Res.string.artifacts_dashboard_failed_title),
                     status = RaftBannerStatus.Warning,
@@ -749,7 +783,11 @@ private fun ArtifactsHomeList(
 
             LazyVerticalGrid(
                 columns = columns,
-                modifier = Modifier.fillMaxSize().then(if (!grouped.searching) Modifier.testTag(ArtifactsHomeTags.Groups) else Modifier),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .then(if (isGrid || wide) Modifier.raftSafeAreaHorizontalPadding() else Modifier)
+                        .then(if (!grouped.searching) Modifier.testTag(ArtifactsHomeTags.Groups) else Modifier),
                 contentPadding = contentPadding,
                 horizontalArrangement = Arrangement.spacedBy(horizontalGap),
                 verticalArrangement = Arrangement.spacedBy(verticalGap),
@@ -930,7 +968,7 @@ private fun ArtifactsHomeEmptyByCause(state: ArtifactsHomeState, onIntent: (Arti
 
 @Composable
 private fun ArtifactsHomeEmpty(title: String, testTag: String, action: (@Composable () -> Unit)? = null) {
-    Box(Modifier.fillMaxSize().testTag(testTag), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().raftSafeAreaHorizontalPadding().testTag(testTag), contentAlignment = Alignment.Center) {
         RaftEmptyState(
             title = title,
             icon = { RaftSlotIcon(RaftLucideIconName.Artifact, size = 36.dp) },
@@ -942,7 +980,7 @@ private fun ArtifactsHomeEmpty(title: String, testTag: String, action: (@Composa
 @Composable
 private fun ArtifactsHomeMore(state: ArtifactsHomeState, horizontalPadding: Dp, onIntent: (ArtifactsHomeIntent) -> Unit) {
     if (state.nextCursor == null) return
-    Box(Modifier.fillMaxWidth().padding(horizontal = horizontalPadding, vertical = 4.dp)) {
+    Box(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(horizontal = horizontalPadding, vertical = 4.dp)) {
         RaftButton(
             text = stringResource(Res.string.artifacts_dashboard_show_more),
             onClick = { onIntent(ArtifactsHomeIntent.LoadMore) },

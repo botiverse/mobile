@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.layout.Arrangement
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -171,6 +172,7 @@ internal fun ThreadAssistantDmCardRow(
     val rowModifier =
         Modifier
             .fillMaxWidth()
+            .raftSafeAreaHorizontalPadding()
             .padding(
                 // raft-ui MessageItem compact: the card on the text column (past the 35dp avatar gutter and its 12dp gap).
                 start = RaftAppSpacing.Sm + 35.dp + 12.dp,

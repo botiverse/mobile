@@ -91,6 +91,8 @@ class RaftBrowserSignInSessionTest {
         var appForeground: Boolean = true,
         var account: RaftBrowserSignInAccountContext? = null,
         var preferredServerId: String? = "srv-1",
+        var webUrl: String? = "https://app.raft.build",
+        var setupOrigin: String? = raftAuthorizeOrigin("https://app.raft.build", allowLoopback = false),
         var fetchHandler: suspend (String) -> RaftAuthorizeResponse? = { null },
         var lookupHandler: suspend (String, String, String) -> RaftBrowserSignInLookupResult = { _, _, _ ->
             RaftBrowserSignInLookupResult.NotAvailable
@@ -110,7 +112,8 @@ class RaftBrowserSignInSessionTest {
             RaftBrowserSignInSession(
                 scope = scope,
                 authorizeOriginProvider = { raftAuthorizeOrigin("https://api.raft.build", allowLoopback = false) },
-                webUrlProvider = { "https://app.raft.build" },
+                webUrlProvider = { webUrl },
+                setupOriginProvider = { setupOrigin },
                 raftHostsProvider = { setOf("app.raft.build", "api.raft.build") },
                 featureEnabledProvider = { flagEnabled },
                 accountProvider = { account },
@@ -567,5 +570,204 @@ class RaftBrowserSignInSessionTest {
         val mode = assertIs<RaftBrowserSignInSheetMode.InstallRequired>(h.session.uiState.value.sheet?.mode)
         assertTrue(mode.canInstall)
         assertFalse(h.session.uiState.value.sheet!!.canApprove)
+    }
+
+    @Test
+    fun directSetupEntrySkipsAuthorizeFetchStripsOidcParamsAndCompletesSignIn() = runTest {
+        val returnEncoded = "https%3A%2F%2Fstamp.build%2Fauth%2Fcallback%3Fnext%3D1"
+        val setupPaths =
+            listOf(
+                "/login-with-raft/setup",
+                "/login-with-slock/setup",
+                "/login-with-slock-human/setup",
+                "/Login-With-Slock-Human/Setup/",
+            )
+        for (path in setupPaths) {
+            var fetchCalls = 0
+            val approveCalls = mutableListOf<RaftBrowserSignInApproveRequest>()
+            val setupEntryUrl =
+                "$webBase$path?flow=oidc&client_id=stamp&return_to=$returnEncoded&scope=openid+profile" +
+                    "&state=secret-state-xyz&nonce=secret-nonce-abc&code_challenge=challenge-secret-123" +
+                    "&code_challenge_method=S256&server=workspace&utm=1"
+            val h =
+                Harness(
+                    scope = this,
+                    account = defaultAccount(),
+                    fetchHandler = {
+                        fetchCalls += 1
+                        RaftAuthorizeResponse(302, setupLocation)
+                    },
+                    lookupHandler = { _, serverId, _ ->
+                        if (serverId == "srv-1") RaftBrowserSignInLookupResult.Found(readyClient(serverId = "srv-1"))
+                        else RaftBrowserSignInLookupResult.NotAvailable
+                    },
+                    approveHandler = { req ->
+                        approveCalls += req
+                        DataResult.Content(RaftBrowserSignInApproveOutcome.Approved(code = "direct-code-1", returnUrl = appReturnUrl))
+                    },
+                )
+
+            assertTrue(h.session.onMainFrameNavigation(pageAsk(setupEntryUrl)), path)
+            runCurrent()
+
+            assertEquals(0, fetchCalls, "$path must never call fetchAuthorize")
+            val sheet = assertNotNull(h.session.uiState.value.sheet, path)
+            assertEquals("Stamp", sheet.appName, path)
+            val mode = assertIs<RaftBrowserSignInSheetMode.ServerReady>(sheet.mode)
+            assertEquals("srv-1", mode.selectedServerId)
+
+            h.session.approveCurrent()
+            runCurrent()
+
+            val approveReq = approveCalls.single()
+            assertFalse(approveReq.oidcFlow, "$path must strip flow=oidc")
+            assertNull(approveReq.nonce, "$path must strip nonce")
+            assertNull(approveReq.codeChallenge, "$path must strip code_challenge")
+            assertNull(approveReq.codeChallengeMethod, "$path must strip code_challenge_method")
+            assertEquals("workspace", approveReq.serverHint)
+            assertEquals(
+                listOf("https://stamp.build/auth/callback?next=1&code=direct-code-1&state=secret-state-xyz"),
+                h.loadedUrls,
+                path,
+            )
+            // Zero secret logging.
+            val allLogs = h.logs.joinToString("\n")
+            assertFalse("direct-code-1" in allLogs)
+            assertFalse("secret-state-xyz" in allLogs)
+            assertFalse("secret-nonce-abc" in allLogs)
+            assertFalse("https://" in allLogs)
+        }
+
+        // Also verifies redirect_uri fallback + consent-skip path without authorize fetch.
+        var skipFetchCalls = 0
+        val skipApproveCalls = mutableListOf<RaftBrowserSignInApproveRequest>()
+        val skipHarness =
+            Harness(
+                scope = this,
+                account = defaultAccount(),
+                fetchHandler = {
+                    skipFetchCalls += 1
+                    RaftAuthorizeResponse(302, setupLocation)
+                },
+                lookupHandler = { _, serverId, _ ->
+                    if (serverId == "srv-1") {
+                        RaftBrowserSignInLookupResult.Found(
+                            readyClient(serverId = "srv-1", consent = RaftSignInConsent(granted = true, coversRequested = true)),
+                        )
+                    } else {
+                        RaftBrowserSignInLookupResult.NotAvailable
+                    }
+                },
+                approveHandler = { req ->
+                    skipApproveCalls += req
+                    DataResult.Content(RaftBrowserSignInApproveOutcome.Approved(code = "skip-direct", returnUrl = appReturnUrl))
+                },
+            )
+        val legacyRedirectUriEntry =
+            "$webBase/login-with-slock/setup?client_id=stamp&redirect_uri=$returnEncoded&flow=oidc&state=secret-state-xyz"
+        assertTrue(skipHarness.session.onMainFrameNavigation(pageAsk(legacyRedirectUriEntry)))
+        runCurrent()
+
+        assertEquals(0, skipFetchCalls)
+        assertTrue(skipApproveCalls.single().confirmSkipped)
+        assertFalse(skipApproveCalls.single().oidcFlow)
+        assertNull(skipHarness.session.uiState.value.sheet)
+        assertEquals(listOf("Stamp"), skipHarness.toasts)
+        assertEquals(
+            listOf("https://stamp.build/auth/callback?next=1&code=skip-direct&state=secret-state-xyz"),
+            skipHarness.loadedUrls,
+        )
+    }
+
+    @Test
+    fun directSetupEntryEnforcesAskRulesCancelStateQuietPeriodAndOriginCheck() = runTest {
+        val returnEncoded = "https%3A%2F%2Fstamp.build%2Fauth%2Fcallback%3Fnext%3D1"
+        val validEntry = "$webBase/login-with-raft/setup?client_id=stamp&return_to=$returnEncoded&state=direct-st"
+        var fetchCalls = 0
+        val h =
+            Harness(
+                scope = this,
+                account = defaultAccount(),
+                fetchHandler = {
+                    fetchCalls += 1
+                    RaftAuthorizeResponse(302, setupLocation)
+                },
+                lookupHandler = { _, serverId, _ ->
+                    if (serverId == "srv-1") RaftBrowserSignInLookupResult.Found(readyClient(serverId = "srv-1"))
+                    else RaftBrowserSignInLookupResult.NotAvailable
+                },
+            )
+
+        // Invalid / non-setup-origin URLs are not caught as requests.
+        listOf(
+            "$apiBase/login-with-raft/setup?client_id=stamp&return_to=$returnEncoded",
+            "https://app.raft.build:8443/login-with-raft/setup?client_id=stamp&return_to=$returnEncoded",
+            "$webBase/login-with-raft/setup?return_to=$returnEncoded",
+            "$webBase/login-with-raft/setup?client_id=stamp&return_to=$returnEncoded&state=a&state=b",
+            "$webBase/login-with-raft/setup?client_id=stamp&return_to=https%3A%2F%2Fstamp.build%2Fcb%23frag",
+        ).forEach { invalid ->
+            assertFalse(h.session.onMainFrameNavigation(pageAsk(invalid)), invalid)
+        }
+        assertNull(h.session.uiState.value.declinedAuthorizeUrl)
+
+        // Cross-site page or cross-site hop is caught (cancelled) and declined with other_site.
+        assertTrue(
+            h.session.onMainFrameNavigation(
+                RaftWebViewMainFrameCatchAsk(
+                    url = validEntry,
+                    starter = RaftSignInStarter.Page,
+                    page = "https://evil.example/login",
+                    committed = true,
+                    hops = emptyList(),
+                ),
+            ),
+        )
+        assertTrue(h.logs.last().contains("reason=other_site"))
+        assertTrue(
+            h.session.onMainFrameNavigation(
+                RaftWebViewMainFrameCatchAsk(
+                    url = validEntry,
+                    starter = RaftSignInStarter.Page,
+                    page = "https://stamp.build/pulls",
+                    committed = true,
+                    hops = listOf("https://evil.example/bounce"),
+                ),
+            ),
+        )
+        assertTrue(h.logs.last().contains("reason=other_site"))
+
+        // Hidden page / background app are refused too.
+        h.pageVisible = false
+        assertTrue(h.session.onMainFrameNavigation(pageAsk(validEntry)))
+        assertTrue(h.logs.last().contains("reason=hidden_page"))
+        h.pageVisible = true
+        h.appForeground = false
+        assertTrue(h.session.onMainFrameNavigation(pageAsk(validEntry)))
+        assertTrue(h.logs.last().contains("reason=background"))
+        h.appForeground = true
+        assertNull(h.session.uiState.value.sheet)
+
+        // Valid request shows sheet; cancelling echoes state and arms 10 s quiet period.
+        assertTrue(h.session.onMainFrameNavigation(pageAsk(validEntry)))
+        runCurrent()
+        assertNotNull(h.session.uiState.value.sheet)
+        h.session.cancelSheet()
+        assertNull(h.session.uiState.value.sheet)
+        assertEquals(
+            listOf("https://stamp.build/auth/callback?next=1&error=access_denied&state=direct-st"),
+            h.loadedUrls,
+        )
+
+        // Immediate retry within quiet period is declined without showing sheet.
+        assertTrue(h.session.onMainFrameNavigation(pageAsk("$webBase/login-with-slock/setup?client_id=stamp&return_to=$returnEncoded")))
+        runCurrent()
+        assertTrue(h.logs.last().contains("reason=raised_recently"))
+        assertNull(h.session.uiState.value.sheet)
+        assertEquals(0, fetchCalls)
+
+        // Null setupOrigin disables direct setup entry catch.
+        h.setupOrigin = null
+        advanceTimeBy(RAFT_SIGN_IN_RAISE_AGAIN_AFTER_MS + 1L)
+        assertFalse(h.session.onMainFrameNavigation(pageAsk(validEntry)))
     }
 }

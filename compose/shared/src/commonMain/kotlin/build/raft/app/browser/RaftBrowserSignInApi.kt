@@ -142,6 +142,7 @@ private data class RaftInstalledAppWireDto(
     val id: String? = null,
     val name: String? = null,
     val homepageUrl: String? = null,
+    val logoUrl: String? = null,
     val installationId: String? = null,
     val installStatus: String? = null,
 )
@@ -238,10 +239,21 @@ internal sealed interface RaftBrowserSignInApproveOutcome {
     ) : RaftBrowserSignInApproveOutcome
 }
 
-/** A verified installed App on the current Server matching a `#host=open-app` destination origin (#356 Decision #9). */
+/** A verified installed App on the current Server matching a destination origin (#356 Decision #9). */
 internal data class RaftInstalledAppOriginMatch(
     val origin: String,
     val appName: String?,
+    val logoUrl: String? = null,
+)
+
+/**
+ * Snapshot of installed App origins for one Server (`GET integrations/clients` + installed rows of
+ * `GET integrations/marketplace`). [complete] is true only when BOTH endpoints returned 2xx, so
+ * partial failures never poison negative cache entries.
+ */
+internal data class RaftInstalledAppOriginsFetchResult(
+    val origins: Map<String, RaftInstalledAppOriginMatch>,
+    val complete: Boolean,
 )
 
 internal interface RaftBrowserSignInApi {
@@ -272,6 +284,7 @@ internal interface RaftBrowserSignInApi {
 
 internal class NetworkRaftBrowserSignInApi(
     private val networkClient: RaftNetworkClient,
+    private val resolveLogoUrl: (String) -> String? = { it },
 ) : RaftBrowserSignInApi {
     override suspend fun lookupClient(
         clientId: String,
@@ -322,44 +335,66 @@ internal class NetworkRaftBrowserSignInApi(
         return parseRaftBrowserSignInApproveResponse(response)
     }
 
-    override suspend fun findInstalledAppByOrigin(
+    suspend fun fetchInstalledAppOrigins(
         serverId: String,
-        targetOrigin: String,
-    ): RaftInstalledAppOriginMatch? {
+    ): RaftInstalledAppOriginsFetchResult? {
         val cleanServerId = serverId.trim().takeIf { it.isNotEmpty() } ?: return null
-        val normalizedOrigin = raftAppEntryOriginOf(targetOrigin)?.takeIf { it == targetOrigin } ?: return null
         val server = ServerId(cleanServerId)
         val (clientsResponse, marketplaceResponse) =
             coroutineScope {
                 val clients =
                     async {
-                        runCatching {
+                        try {
                             networkClient.request(
                                 priority = DataRequestPriority.Foreground,
                                 path = RAFT_INTEGRATIONS_CLIENTS_PATH,
                                 method = "GET",
                                 serverIdOverride = server,
                             )
-                        }.getOrNull()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Throwable) {
+                            null
+                        }
                     }
                 val marketplace =
                     async {
-                        runCatching {
+                        try {
                             networkClient.request(
                                 priority = DataRequestPriority.Foreground,
                                 path = RAFT_INTEGRATIONS_MARKETPLACE_PATH,
                                 method = "GET",
                                 serverIdOverride = server,
                             )
-                        }.getOrNull()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Throwable) {
+                            null
+                        }
                     }
                 clients.await() to marketplace.await()
             }
-        return matchInstalledAppHomepageOrigin(
-            targetOrigin = normalizedOrigin,
-            clientsBody = clientsResponse?.takeIf { it.isSuccessful }?.bodyText,
-            marketplaceBody = marketplaceResponse?.takeIf { it.isSuccessful }?.bodyText,
+        val clientsOk = clientsResponse?.isSuccessful == true
+        val marketplaceOk = marketplaceResponse?.isSuccessful == true
+        if (!clientsOk && !marketplaceOk) return null
+        val origins =
+            parseInstalledAppHomepageOrigins(
+                clientsBody = clientsResponse?.takeIf { it.isSuccessful }?.bodyText,
+                marketplaceBody = marketplaceResponse?.takeIf { it.isSuccessful }?.bodyText,
+                resolveLogoUrl = resolveLogoUrl,
+            )
+        return RaftInstalledAppOriginsFetchResult(
+            origins = origins,
+            complete = clientsOk && marketplaceOk,
         )
+    }
+
+    override suspend fun findInstalledAppByOrigin(
+        serverId: String,
+        targetOrigin: String,
+    ): RaftInstalledAppOriginMatch? {
+        val normalizedOrigin = raftAppEntryOriginOf(targetOrigin)?.takeIf { it == targetOrigin } ?: return null
+        return fetchInstalledAppOrigins(serverId)?.origins?.get(normalizedOrigin)
     }
 }
 
@@ -525,43 +560,65 @@ internal fun parseRaftBrowserSignInApproveResponse(
 }
 
 /**
- * Matches [targetOrigin] against the `homepageUrl` origin of Apps installed on the current Server
+ * Parses the `homepageUrl` origin map of Apps installed on the current Server
  * (`GET integrations/clients` + installed entries of `GET integrations/marketplace`, #356 Decision #9).
  *
  * - `integrations/clients` lists this Server's own Apps; active entries (`installStatus != "suspended"`)
- *   qualify.
+ *   qualify and take precedence if the same origin also appears in `integrations/marketplace`.
  * - `integrations/marketplace` lists both public Marketplace Apps and installed Apps; ONLY rows with
  *   a non-blank `installationId` and `installStatus != "suspended"` qualify.
  */
-internal fun matchInstalledAppHomepageOrigin(
-    targetOrigin: String,
+internal fun parseInstalledAppHomepageOrigins(
     clientsBody: String?,
     marketplaceBody: String?,
-): RaftInstalledAppOriginMatch? {
-    val normalizedTarget = raftAppEntryOriginOf(targetOrigin)?.takeIf { it == targetOrigin } ?: return null
+    resolveLogoUrl: (String) -> String? = { it },
+): Map<String, RaftInstalledAppOriginMatch> {
+    val result = LinkedHashMap<String, RaftInstalledAppOriginMatch>()
     val ownClients = decodeInstalledAppList(clientsBody)
     for (app in ownClients) {
         if (app.installStatus == "suspended") continue
         val origin = app.homepageUrl?.let(::raftAppEntryOriginOf) ?: continue
-        if (origin == normalizedTarget) {
-            return RaftInstalledAppOriginMatch(
-                origin = normalizedTarget,
-                appName = app.name?.trim()?.takeIf { it.isNotEmpty() },
-            )
+        if (origin !in result) {
+            result[origin] =
+                RaftInstalledAppOriginMatch(
+                    origin = origin,
+                    appName = app.name?.trim()?.takeIf { it.isNotEmpty() },
+                    logoUrl = app.logoUrl?.trim()?.takeIf { it.isNotEmpty() }?.let(resolveLogoUrl)?.trim()?.takeIf { it.isNotEmpty() },
+                )
         }
     }
     val marketplaceClients = decodeInstalledAppList(marketplaceBody)
     for (app in marketplaceClients) {
         if (app.installationId.isNullOrBlank() || app.installStatus == "suspended") continue
         val origin = app.homepageUrl?.let(::raftAppEntryOriginOf) ?: continue
-        if (origin == normalizedTarget) {
-            return RaftInstalledAppOriginMatch(
-                origin = normalizedTarget,
-                appName = app.name?.trim()?.takeIf { it.isNotEmpty() },
-            )
+        if (origin !in result) {
+            result[origin] =
+                RaftInstalledAppOriginMatch(
+                    origin = origin,
+                    appName = app.name?.trim()?.takeIf { it.isNotEmpty() },
+                    logoUrl = app.logoUrl?.trim()?.takeIf { it.isNotEmpty() }?.let(resolveLogoUrl)?.trim()?.takeIf { it.isNotEmpty() },
+                )
         }
     }
-    return null
+    return result
+}
+
+/**
+ * Matches [targetOrigin] against the `homepageUrl` origin of Apps installed on the current Server
+ * (`GET integrations/clients` + installed entries of `GET integrations/marketplace`, #356 Decision #9).
+ */
+internal fun matchInstalledAppHomepageOrigin(
+    targetOrigin: String,
+    clientsBody: String?,
+    marketplaceBody: String?,
+    resolveLogoUrl: (String) -> String? = { it },
+): RaftInstalledAppOriginMatch? {
+    val normalizedTarget = raftAppEntryOriginOf(targetOrigin)?.takeIf { it == targetOrigin } ?: return null
+    return parseInstalledAppHomepageOrigins(
+        clientsBody = clientsBody,
+        marketplaceBody = marketplaceBody,
+        resolveLogoUrl = resolveLogoUrl,
+    )[normalizedTarget]
 }
 
 private fun decodeInstalledAppList(body: String?): List<RaftInstalledAppWireDto> {

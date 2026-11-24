@@ -227,8 +227,8 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
     val openArtifactWebPage = rememberRaftWebPageOpener()
     val webBaseUrl = remember(sharedStores) { standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore) }
     // Not opened from a conversation: no `hostConversation` (the page's title stays plain).
-    val opener = rememberRaftArtifactOpener(conversationId = null) { openArtifactWebPage(artifactWebUrl(webBaseUrl, it)) }
-    RaftArtifactViewerPrewarm(enabled = pageVisible && !state.rows.isNullOrEmpty(), conversationId = null)
+    val opener = rememberRaftArtifactOpener(conversationId = null, storeScope = storeScope) { openArtifactWebPage(artifactWebUrl(webBaseUrl, it)) }
+    RaftArtifactViewerPrewarm(enabled = pageVisible && !state.rows.isNullOrEmpty(), conversationId = null, storeScope = storeScope)
     val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
     val wide = LocalRaftSettingsWideDetail.current || windowWidth.value >= DualPaneMinimumWidthDp
     val screenshots = remember(sharedStores, serverId) { serverId?.let { sharedStores.artifactScreenshotStore.reader(it) } }

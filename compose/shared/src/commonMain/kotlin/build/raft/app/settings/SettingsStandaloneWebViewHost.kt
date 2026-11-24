@@ -33,6 +33,7 @@ import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.data.resolveAppLinkIconUrl
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -542,12 +543,23 @@ private fun StandaloneSettingsWebViewBody(
     val verifyInstalledAppOrigin: (suspend (serverId: String, targetOrigin: String) -> RaftInstalledAppOriginMatch?)? =
         remember(sharedStores, storeScope, spec.opensAppEntries) {
             if (spec.opensAppEntries) {
-                val api = NetworkRaftBrowserSignInApi(sharedStores.networkClient(storeScope))
+                val api =
+                    NetworkRaftBrowserSignInApi(
+                        networkClient = sharedStores.networkClient(storeScope),
+                        resolveLogoUrl = { logo ->
+                            resolveAppLinkIconUrl(logo, sharedStores.apiEnvironmentStore.current().apiBaseUrl)
+                        },
+                    )
                 api::findInstalledAppByOrigin
             } else {
                 null
             }
         }
+    if (spec.opensAppEntries) {
+        DisposableEffect(sharedStores) {
+            onDispose { sharedStores.invalidateInstalledAppOriginsCache() }
+        }
+    }
     LaunchedEffect(spec.surface, spec) {
         bridge.log("settings_${spec.surface.diagnosticsName}_open")
     }
