@@ -130,11 +130,14 @@ class InboxFetchReasonHeaderTest {
     }
 
     @Test
-    fun followedThreadsRequestsSendCallerReasonOrDefaultInitial() = runTest {
+    fun followedThreadsRequestsSendCallerReasonAndOmitHeaderWhenUnlabelled() = runTest {
         val network = RecordingFollowedThreadsClient()
         val repository = RealConversationRepository(InMemoryRaftAuthSessionStore(sampleSession()), network)
 
         repository.getFollowedThreads(ServerId("server-1"))
+        withInboxFetchReason(InboxFetchReason.Initial) {
+            repository.getFollowedThreads(ServerId("server-1"))
+        }
         withInboxFetchReason(InboxFetchReason.Visibility) {
             repository.getUnreadFollowedThreads(ServerId("server-1"))
         }
@@ -153,6 +156,7 @@ class InboxFetchReasonHeaderTest {
 
         assertEquals(
             listOf(
+                emptyMap(),
                 mapOf("X-Raft-Fetch-Reason" to "initial"),
                 mapOf("X-Raft-Fetch-Reason" to "visibility"),
                 mapOf(
