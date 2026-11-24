@@ -384,6 +384,7 @@ private fun HomeActivityRouterContent(
     // existing shared stores; only the surface's selection ownership is private.
     val sharedStores = remember(environment.bridge) { RaftSharedStoreRegistry.get(environment.bridge) }
     val activityWorkspaceStore = remember { SharedAdaptiveWorkspaceStore() }
+    val activityArtifactState = remember { ActivityWideArtifactState() }
     // Lease keeps the detail's realtime rooms subscribed while this surface owns the
     // selection; released when the workspace resets or the page disposes. Registry +
     // events are the same shell-scoped shared instances Home uses — the OWNER record is
@@ -445,6 +446,17 @@ private fun HomeActivityRouterContent(
             current.copy(workspace = next)
         }
     }
+    val workspace = activityWorkspace
+    val selection = workspace?.selection
+    val detailPayload = activityWorkspaceSession.launchPayload
+    val dualPane = activityAdaptiveEnabled && workspace?.pane?.layout == RaftAdaptivePaneLayout.DualPane
+    ActivityWideArtifactLifecycleEffect(
+        state = activityArtifactState,
+        wide = dualPane,
+        surfaceSelected = true,
+        active = true,
+        serverId = activityServerId,
+    )
     val activityListPane: @Composable (Boolean) -> Unit = { listActive ->
         SharedHomeActivityScreen(
             bridge = environment.bridge,
@@ -452,6 +464,7 @@ private fun HomeActivityRouterContent(
             routeVisibleTick = routeVisibleTick,
             active = listActive,
             onOpenMessage = { request ->
+                activityArtifactState.close()
                 val handled =
                     if (activityAdaptiveEnabled) {
                         openActivityAdaptiveMessageRequest(
@@ -494,14 +507,39 @@ private fun HomeActivityRouterContent(
             timeContext = environment.timeContext,
             shellScope = environment.shellScope,
             refreshOnAppLifecycleResume = true,
-            externalSelectedThreadId = activityWorkspace?.selection?.identity?.threadId,
+            externalSelectedThreadId =
+                if (activityArtifactState.isOpen) null else activityWorkspace?.selection?.identity?.threadId,
+            externalSelectedArtifactId = activityArtifactState.currentArtifactId.takeIf { dualPane },
+            externalSelectionOwned = dualPane,
+            onOpenArtifact =
+                if (dualPane) {
+                    { target, scopeOverride, conv ->
+                        openActivityWideArtifactInShell(
+                            state = activityArtifactState,
+                            target = target,
+                            scopeOverride = scopeOverride,
+                            fallbackScope = environment.storeScope,
+                            conversationId = conv,
+                            sharedStores = sharedStores,
+                            adaptiveWorkspaceStore = activityWorkspaceStore,
+                            releaseLease = { generation ->
+                                releaseActivityAdaptiveLease(
+                                    environment,
+                                    activityWorkspaceStore,
+                                    activityRealtimeEvents,
+                                    activityRoomLeaseRegistry,
+                                    generation,
+                                )
+                            },
+                            clearSelectedConversation = {},
+                        )
+                    }
+                } else {
+                    null
+                },
             storeScope = environment.storeScope
         )
     }
-    val workspace = activityWorkspace
-    val selection = workspace?.selection
-    val detailPayload = activityWorkspaceSession.launchPayload
-    val dualPane = activityAdaptiveEnabled && workspace?.pane?.layout == RaftAdaptivePaneLayout.DualPane
     val detailPageData =
         remember(
             detailPayload,
@@ -644,7 +682,13 @@ private fun HomeActivityRouterContent(
                     .weight(1f)
                     .fillMaxHeight(),
             ) {
-                if (detailPageData != null && selection != null) {
+                if (activityArtifactState.isOpen) {
+                    RaftActivityArtifactDetailPane(
+                        state = activityArtifactState,
+                        active = true,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else if (detailPageData != null && selection != null) {
                     RaftChildPage(
                         pageName = THREAD_PAGE,
                         pageData = detailPageData,

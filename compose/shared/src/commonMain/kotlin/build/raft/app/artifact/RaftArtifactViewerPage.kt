@@ -184,10 +184,12 @@ internal val LocalRaftArtifactViewerInColumn = compositionLocalOf { false }
 internal val LocalRaftArtifactViewerColumnWidthDp = compositionLocalOf<Float?> { null }
 
 /**
- * True where an Artifact opened here opens in the wide layout's Artifact column: the conversation, its thread and the
- * columns beside them, where their row has the column (RaftWidePanes.kt `RaftWorkspaceDetailGrid`, wide). False
- * elsewhere, where the viewer opens as a page of its own (a phone; Artifacts home, Activity). What a prewarm here boots
- * and what an opener here reuses carry the `hostHead` that viewer sends ([raftArtifactViewerOpenHostHead]).
+ * True where an Artifact opened here opens in a wide split viewer pane: a conversation, its thread
+ * and the columns beside them (`RaftWorkspaceDetailGrid`, wide), wide Artifacts home
+ * (`ArtifactsHomeSplitLayout`), or wide Activity (`ActivityWideArtifactPane`). False elsewhere,
+ * where the viewer opens as a page of its own (a phone / narrow viewport). What a prewarm here
+ * boots and what an opener here reuses carry the `hostHead` that viewer sends
+ * ([raftArtifactViewerOpenHostHead]).
  */
 internal val LocalRaftArtifactOpenInColumn = compositionLocalOf { false }
 
@@ -288,19 +290,24 @@ internal fun rememberRaftArtifactOpener(
     conversationId: String? = LocalRaftArtifactOpenConversation.current,
     storeScope: RaftShellStoreScope? = LocalRaftArtifactOpenStoreScope.current,
     openPageOverride: ((target: ArtifactLinkTarget, storeScope: RaftShellStoreScope?, conversationId: String?) -> Boolean)? = null,
+    openInColumn: Boolean = LocalRaftArtifactOpenInColumn.current,
     fallback: (ArtifactLinkTarget) -> Unit,
 ): RaftArtifactOpener {
     val host = rememberRaftArtifactViewerHost(storeScope)
     val coroutineScope = rememberCoroutineScope()
     val currentFallback by rememberUpdatedState(fallback)
     val currentOpenPageOverride by rememberUpdatedState(openPageOverride)
+    val currentStoreScope by rememberUpdatedState(storeScope)
     val conversation = raftArtifactViewerHostConversationOrNull(conversationId)
-    // The head height the viewer opened from here sends (the Artifact column's; none elsewhere), as at the tap.
-    val currentHostHead by rememberUpdatedState(raftArtifactViewerOpenHostHead())
+    // The head height the viewer opened from here sends (the split pane's; none elsewhere), as at the tap.
+    val currentHostHead by rememberUpdatedState(raftArtifactViewerHostHead(openInColumn, RaftTheme.controls.headHeight))
     return remember(host, coroutineScope, conversation) {
         RaftArtifactOpener { target, header, source ->
             RaftArtifactOpenTrace.tap(source, target.id)
             if (host == null) {
+                if (currentOpenPageOverride?.invoke(target, currentStoreScope, conversation) == true) {
+                    return@RaftArtifactOpener
+                }
                 RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_host")
                 currentFallback(target)
                 return@RaftArtifactOpener
@@ -363,6 +370,7 @@ internal fun RaftArtifactViewerPrewarm(
     enabled: Boolean,
     conversationId: String? = LocalRaftArtifactOpenConversation.current,
     storeScope: RaftShellStoreScope? = LocalRaftArtifactOpenStoreScope.current,
+    openInColumn: Boolean = LocalRaftArtifactOpenInColumn.current,
 ) {
     if (!enabled) return
     val host = rememberRaftArtifactViewerHost(storeScope) ?: return
@@ -375,7 +383,7 @@ internal fun RaftArtifactViewerPrewarm(
         webBaseUrl = host.webBaseUrl,
         scope = host.scope(),
         conversationId = conversationId,
-        hostHead = raftArtifactViewerOpenHostHead(),
+        hostHead = raftArtifactViewerHostHead(openInColumn, RaftTheme.controls.headHeight),
     )
 }
 

@@ -203,10 +203,17 @@ internal fun SharedHomeActivityScreen(
     // selection identity (threadId) is the source of truth for the row
     // highlight; a stale checkpoint key must not resurface.
     externalSelectedThreadId: String? = null,
+    /** Artifact id open beside the wide Activity list (web `object:artifact:<id>` highlight); null when none. */
+    externalSelectedArtifactId: String? = null,
+    /**
+     * Wide split-pane Artifact opener: when non-null, clicking an Activity Artifact row opens in
+     * the right detail pane beside the Activity list instead of pushing a full-screen window page.
+     */
+    onOpenArtifact: ((target: ArtifactLinkTarget, storeScope: RaftShellStoreScope?, conversationId: String?) -> Boolean)? = null,
     /**
      * True while the wide list-detail host owns the selection: then a null
-     * [externalSelectedThreadId] means nothing is open beside the list, and the row highlight
-     * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
+     * [externalSelectedThreadId] and [externalSelectedArtifactId] mean nothing is open beside the
+     * list, and the row highlight clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
      */
     externalSelectionOwned: Boolean = false,
     /**
@@ -640,7 +647,9 @@ internal fun SharedHomeActivityScreen(
         val item =
             activityArrivalReopenTarget(
                 wide = externalSelectionOwned,
-                somethingOpen = externalSelectedThreadId != null && externalSelectionOpenedHere != false,
+                somethingOpen =
+                    (externalSelectedThreadId != null && externalSelectionOpenedHere != false) ||
+                        !externalSelectedArtifactId.isNullOrBlank(),
                 items = arrivalItems.orEmpty(),
                 lastOpenedKey = lastOpenedStore.read(activitySummaryServerId.value),
             ) ?: return@ActivityArrivalReopenEffect
@@ -682,6 +691,11 @@ internal fun SharedHomeActivityScreen(
     SharedActivityPanelContent(
         state = safeOpenProjectedState,
         onOpenItem = openActivityItem,
+        onOpenArtifact = onOpenArtifact,
+        onArtifactRowOpened = { item ->
+            activityStore.dispatch(SharedActivityIntent.RowOpened(item))
+            lastOpenedStore.write(activitySummaryServerId.value, item.key)
+        },
         onClose = onClose,
         onIntent = activityStore::dispatch,
         bottomContentPadding = bottomContentPadding,
@@ -695,6 +709,7 @@ internal fun SharedHomeActivityScreen(
         active = active,
         prewarmActive = active,
         externalSelectedThreadId = externalSelectedThreadId,
+        externalSelectedArtifactId = externalSelectedArtifactId,
         externalSelectionOwned = externalSelectionOwned,
         mainTab = mainTab,
         conversationList = conversationList,
@@ -726,6 +741,30 @@ internal fun resolveActivityStableOrderEnabled(
 
 internal fun sharedInboxShouldPrewarmArtifactViewer(active: Boolean, items: List<InboxItem>): Boolean =
     active && items.any { it.kind == InboxItemKind.Object }
+
+/**
+ * Resolves the Activity row key highlighted by the wide split detail host: an open Artifact matches
+ * its object row by canonical id (`object:artifact:<id>`), otherwise an open conversation matches
+ * its row by `threadId`.
+ */
+internal fun activityExternalSelectedItemKey(
+    items: List<InboxItem>,
+    externalSelectedThreadId: String?,
+    externalSelectedArtifactId: String? = null,
+): String? {
+    val artifactId = externalSelectedArtifactId?.trim()?.takeIf { it.isNotEmpty() }
+    if (artifactId != null) {
+        val canonical = build.raft.app.data.artifactCanonicalId(artifactId)
+        return items.firstOrNull { item ->
+            item.kind == InboxItemKind.Object &&
+                item.activityObject?.objectId?.let { build.raft.app.data.artifactCanonicalId(it) } == canonical
+        }?.key
+    }
+    val threadId = externalSelectedThreadId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return items.firstOrNull { item ->
+        item.kind != InboxItemKind.Object && item.toConversationSummary().threadId.value == threadId
+    }?.key
+}
 
 internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int, active: Boolean = true): Boolean =
     routeVisibleTick > 0 && active
@@ -926,10 +965,12 @@ internal fun SharedHomeActivityScreen(
     foregroundEpoch: Long,
     modifier: Modifier = Modifier,
     externalSelectedThreadId: String? = null,
+    externalSelectedArtifactId: String? = null,
+    onOpenArtifact: ((target: ArtifactLinkTarget, storeScope: RaftShellStoreScope?, conversationId: String?) -> Boolean)? = null,
     /**
      * True while the wide list-detail host owns the selection: then a null
-     * [externalSelectedThreadId] means nothing is open beside the list, and the row highlight
-     * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
+     * [externalSelectedThreadId] and [externalSelectedArtifactId] mean nothing is open beside the
+     * list, and the row highlight clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
      */
     externalSelectionOwned: Boolean = false,
     mainTab: Boolean = false,
@@ -939,6 +980,7 @@ internal fun SharedHomeActivityScreen(
     SharedActivityPanelContent(
         state = state,
         onOpenItem = onOpenItem,
+        onOpenArtifact = onOpenArtifact,
         onClose = onClose,
         onIntent = onIntent,
         bottomContentPadding = bottomContentPadding,
@@ -950,6 +992,7 @@ internal fun SharedHomeActivityScreen(
         presentationStore = presentationStore,
         foregroundEpoch = 0L,
         externalSelectedThreadId = externalSelectedThreadId,
+        externalSelectedArtifactId = externalSelectedArtifactId,
         externalSelectionOwned = externalSelectionOwned,
         mainTab = mainTab,
         conversationList = conversationList,
@@ -976,10 +1019,12 @@ internal fun SharedHomeActivityPanel(
     foregroundEpoch: Long,
     modifier: Modifier = Modifier,
     externalSelectedThreadId: String? = null,
+    externalSelectedArtifactId: String? = null,
+    onOpenArtifact: ((target: ArtifactLinkTarget, storeScope: RaftShellStoreScope?, conversationId: String?) -> Boolean)? = null,
     /**
      * True while the wide list-detail host owns the selection: then a null
-     * [externalSelectedThreadId] means nothing is open beside the list, and the row highlight
-     * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
+     * [externalSelectedThreadId] and [externalSelectedArtifactId] mean nothing is open beside the
+     * list, and the row highlight clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
      */
     externalSelectionOwned: Boolean = false,
     conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
@@ -999,6 +1044,7 @@ internal fun SharedHomeActivityPanel(
                     pullRefreshing = pullRefreshing,
                 ),
             onOpenItem = onOpenItem,
+            onOpenArtifact = onOpenArtifact,
             onClose = onClose,
             onIntent = {},
             bottomContentPadding = bottomContentPadding,
@@ -1010,6 +1056,7 @@ internal fun SharedHomeActivityPanel(
             presentationStore = presentationStore,
             foregroundEpoch = foregroundEpoch,
             externalSelectedThreadId = externalSelectedThreadId,
+            externalSelectedArtifactId = externalSelectedArtifactId,
             externalSelectionOwned = externalSelectionOwned,
             conversationList = conversationList,
             channelMute = channelMute,
@@ -1034,10 +1081,13 @@ private fun SharedActivityPanelContent(
     foregroundEpoch: Long,
     modifier: Modifier = Modifier,
     externalSelectedThreadId: String? = null,
+    externalSelectedArtifactId: String? = null,
+    onOpenArtifact: ((target: ArtifactLinkTarget, storeScope: RaftShellStoreScope?, conversationId: String?) -> Boolean)? = null,
+    onArtifactRowOpened: ((InboxItem) -> Unit)? = null,
     /**
      * True while the wide list-detail host owns the selection: then a null
-     * [externalSelectedThreadId] means nothing is open beside the list, and the row highlight
-     * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
+     * [externalSelectedThreadId] and [externalSelectedArtifactId] mean nothing is open beside the
+     * list, and the row highlight clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
      */
     externalSelectionOwned: Boolean = false,
     mainTab: Boolean = false,
@@ -1156,28 +1206,33 @@ private fun SharedActivityPanelContent(
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             key(state.selectedFilter) {
                 if (state.snapshot != null && !conversationListPending) {
-                    SharedActivityBodyContent(
-                        active = active,
-                        prewarmActive = prewarmActive,
-                        state = state,
-                        onOpenItem = onOpenItem,
-                        onIntent = onIntent,
-                        bottomContentPadding = bottomContentPadding,
-                        timeContext = timeContext,
-                        listState = activityScrollToTopTarget(state.selectedFilter, pageListStates),
-                        draftProjection = draftProjection,
-                        presentationAccountId = state.ownerUserId.orEmpty(),
-                        stableOrderEnabled = stableOrderEnabled,
-                        stableOrderDecisionRevision = stableOrderDecisionRevision,
-                        presentationStore = presentationStore,
-                        foregroundEpoch = foregroundEpoch,
-                        externalSelectedThreadId = externalSelectedThreadId,
-                        externalSelectionOwned = externalSelectionOwned,
-                        conversationList = conversationList,
-                        channelMute = channelMute,
-                        swipeHostState = swipeHostState,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    CompositionLocalProvider(LocalRaftArtifactOpenInColumn provides (onOpenArtifact != null)) {
+                        SharedActivityBodyContent(
+                            active = active,
+                            prewarmActive = prewarmActive,
+                            state = state,
+                            onOpenItem = onOpenItem,
+                            onOpenArtifact = onOpenArtifact,
+                            onArtifactRowOpened = onArtifactRowOpened,
+                            onIntent = onIntent,
+                            bottomContentPadding = bottomContentPadding,
+                            timeContext = timeContext,
+                            listState = activityScrollToTopTarget(state.selectedFilter, pageListStates),
+                            draftProjection = draftProjection,
+                            presentationAccountId = state.ownerUserId.orEmpty(),
+                            stableOrderEnabled = stableOrderEnabled,
+                            stableOrderDecisionRevision = stableOrderDecisionRevision,
+                            presentationStore = presentationStore,
+                            foregroundEpoch = foregroundEpoch,
+                            externalSelectedThreadId = externalSelectedThreadId,
+                            externalSelectedArtifactId = externalSelectedArtifactId,
+                            externalSelectionOwned = externalSelectionOwned,
+                            conversationList = conversationList,
+                            channelMute = channelMute,
+                            swipeHostState = swipeHostState,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 } else {
                     SharedActivityStateBody(
                         title = stringResource(Res.string.common_loading),
@@ -1221,10 +1276,13 @@ private fun SharedActivityBodyContent(
     presentationStore: SharedActivityPresentationStore,
     foregroundEpoch: Long,
     externalSelectedThreadId: String? = null,
+    externalSelectedArtifactId: String? = null,
+    onOpenArtifact: ((target: ArtifactLinkTarget, storeScope: RaftShellStoreScope?, conversationId: String?) -> Boolean)? = null,
+    onArtifactRowOpened: ((InboxItem) -> Unit)? = null,
     /**
      * True while the wide list-detail host owns the selection: then a null
-     * [externalSelectedThreadId] means nothing is open beside the list, and the row highlight
-     * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
+     * [externalSelectedThreadId] and [externalSelectedArtifactId] mean nothing is open beside the
+     * list, and the row highlight clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
      */
     externalSelectionOwned: Boolean = false,
     conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
@@ -1306,6 +1364,8 @@ private fun SharedActivityBodyContent(
                     loadingMore = state.loadingMore,
                     loadMoreErrorCode = state.loadMoreErrorCode,
                     onOpenItem = onOpenItem,
+                    onOpenArtifact = onOpenArtifact,
+                    onArtifactRowOpened = onArtifactRowOpened,
                     onIntent = onIntent,
                     bottomContentPadding = bottomContentPadding,
                     timeContext = timeContext,
@@ -1316,6 +1376,7 @@ private fun SharedActivityBodyContent(
                     presentationStore = presentationStore,
                     foregroundEpoch = foregroundEpoch,
                     externalSelectedThreadId = externalSelectedThreadId,
+                    externalSelectedArtifactId = externalSelectedArtifactId,
                     externalSelectionOwned = externalSelectionOwned,
                     conversationList = conversationList,
                     channelMute = channelMute,
@@ -1554,10 +1615,13 @@ internal fun SharedActivityList(
     presentationStore: SharedActivityPresentationStore,
     foregroundEpoch: Long,
     externalSelectedThreadId: String? = null,
+    externalSelectedArtifactId: String? = null,
+    onOpenArtifact: ((target: ArtifactLinkTarget, storeScope: RaftShellStoreScope?, conversationId: String?) -> Boolean)? = null,
+    onArtifactRowOpened: ((InboxItem) -> Unit)? = null,
     /**
      * True while the wide list-detail host owns the selection: then a null
-     * [externalSelectedThreadId] means nothing is open beside the list, and the row highlight
-     * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
+     * [externalSelectedThreadId] and [externalSelectedArtifactId] mean nothing is open beside the
+     * list, and the row highlight clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
      */
     externalSelectionOwned: Boolean = false,
     conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
@@ -1734,21 +1798,25 @@ internal fun SharedActivityList(
         }
     }
     // task #45: when the adaptive workspace owns a selection, the row highlight
-    // must track THAT conversation (e.g. Search opened a different session while
-    // this panel was covered) instead of reviving a stale checkpoint key.
-    LaunchedEffect(presentedItems, externalSelectedThreadId, externalSelectionOwned, active) {
+    // must track THAT conversation or Artifact (e.g. Search opened a different session while
+    // this panel was covered, or an Artifact opened beside Activity) instead of reviving a stale
+    // checkpoint key.
+    LaunchedEffect(presentedItems, externalSelectedThreadId, externalSelectedArtifactId, externalSelectionOwned, active) {
         if (!active) return@LaunchedEffect
-        if (externalSelectedThreadId == null) {
+        val hasExternalTarget =
+            !externalSelectedArtifactId.isNullOrBlank() || !externalSelectedThreadId.isNullOrBlank()
+        if (!hasExternalTarget) {
             if (externalSelectionOwned && selectedItemKey != null) {
                 selectedItemKey = null
             }
             return@LaunchedEffect
         }
-        val match =
-            presentedItems.firstOrNull { item ->
-                item.toConversationSummary().threadId.value == externalSelectedThreadId
-            }
-        val nextKey = match?.key
+        val nextKey =
+            activityExternalSelectedItemKey(
+                items = presentedItems,
+                externalSelectedThreadId = externalSelectedThreadId,
+                externalSelectedArtifactId = externalSelectedArtifactId,
+            )
         if (selectedItemKey != nextKey) {
             selectedItemKey = nextKey
         }
@@ -1970,16 +2038,23 @@ internal fun SharedActivityList(
     val openArtifactWebPage = rememberRaftWebPageOpener()
     val activityObjectWebBaseUrl =
         remember { RaftSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.webUrl.orEmpty() }
-    // Workspace Artifacts: an object row opens the in-app viewer; the web page in the browser only
-    // when no page can open from here. Activity is no conversation: no `hostConversation`.
+    val artifactOpensInColumn = onOpenArtifact != null || LocalRaftArtifactOpenInColumn.current
+    // Workspace Artifacts: an object row opens the in-app viewer (in the wide right split pane
+    // when [onOpenArtifact] is supplied, else as a full-screen window page); the web page in the
+    // browser only when no page can open from here. Activity is no conversation: no `hostConversation`.
     val activityArtifactOpener =
-        rememberRaftArtifactOpener(conversationId = null) { openArtifactWebPage(artifactWebUrl(activityObjectWebBaseUrl, it)) }
+        rememberRaftArtifactOpener(
+            conversationId = null,
+            openPageOverride = onOpenArtifact,
+            openInColumn = artifactOpensInColumn,
+        ) { openArtifactWebPage(artifactWebUrl(activityObjectWebBaseUrl, it)) }
     // An Artifact row on screen: boot the in-app viewer's web page ahead of a tap — only while
     // Activity itself is active, so a token refresh while covered by a Thread does not construct
     // and load a hidden WebView on the main thread (#wg-mobile-feedback:#257, Hands 45eccbd9).
     RaftArtifactViewerPrewarm(
         enabled = sharedInboxShouldPrewarmArtifactViewer(active = active && prewarmActive, items = presentedItemsState.value),
         conversationId = null,
+        openInColumn = artifactOpensInColumn,
     )
     var swipeEndUndo by remember { mutableStateOf(ActivitySwipeEndUndoState()) }
     // raft-design #785: one row's swipe buttons open at a time; a tap elsewhere (including the
@@ -2059,6 +2134,7 @@ internal fun SharedActivityList(
                         version = objectRow.latestVersion,
                     )
                 }
+            onArtifactRowOpened?.invoke(currentItem)
             activityArtifactOpener.open(target, header, "activity_row")
             return
         }
