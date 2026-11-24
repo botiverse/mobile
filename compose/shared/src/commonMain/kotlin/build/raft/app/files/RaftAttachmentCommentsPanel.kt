@@ -62,6 +62,8 @@ import androidx.compose.foundation.shape.CircleShape
 // list with `gap-3`, and the compact composer docked under one seam with `p-3` around it.
 // The translucent lines (`line-seam`, `line-hairline`) are drawn pre-composited on the opaque
 // surface under them, so they come out as the browser blends them (rounded, not truncated).
+// The web panel now uses raft-ui PanelHeader (header-height); moving to it is its own change, with new screenshots.
+// app-only: the app's header still follows the web's old `min-h-10` row.
 private val CommentsHeaderMinHeight = 40.dp
 private val CommentsEdge = 12.dp
 private val CommentsHeaderPaddingVertical = 6.dp
