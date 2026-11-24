@@ -3733,21 +3733,6 @@ internal fun InboxItem.toConversationSummary(
     )
 }
 
-internal data class ThreadLaunchOriginFallback(
-    val parentChannelId: String?,
-    val parentMessageId: String,
-    val preview: String?,
-    val senderId: String?,
-    val senderKind: MemberKind?,
-    val expected: Boolean = true
-)
-
-internal data class HomeMessageOpenRequest(
-    val conversationIdentity: ThreadLaunchConversationIdentity,
-    val anchorMessageId: String?,
-    val originFallback: ThreadLaunchOriginFallback? = null
-)
-
 /**
  * User-initiated row open (Activity/Search/Saved). The resolver is the ONLY exit — the
  * caller must supply the real server id and conversation directory, and must handle

@@ -830,7 +830,10 @@ or helper scripts as a workaround for branch protection.
   capability & create-agent option models, computer upgrade model, channel kind predicates,
   inbox row contracts, sidebar sort mode, composer temp-file retirement, attachment &
   mention-handle models, agent lifecycle actions, Unicode identity handles, locale runtime,
-  human pixel-avatar URL check, and data-layer platform capabilities); it
+  human pixel-avatar URL check, data-layer platform capabilities, attachment download
+  owner/hashing, reply cache scopes, upload attempt fence, conversation open resolver,
+  thread route identity & launch payloads, send failure codes, access-lost predicate,
+  trace hex, and delegated label core merge); it
   is the first step towards a separate `:shared-data` module, so a file in `core/` must not use
   anything from a feature folder. The
   top level holds the remaining cross-cutting app infrastructure (theme, platform,

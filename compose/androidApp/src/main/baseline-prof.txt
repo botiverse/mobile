@@ -1800,7 +1800,7 @@ HSPLbuild/raft/app/ThreadMarkdownContextKt;->threadVisibleMarkdownPreparsePlan(L
 HSPLbuild/raft/app/ThreadPixelAvatarSpec;-><init>(JLjava/util/List;)V
 HSPLbuild/raft/app/ThreadPixelAvatarSpec;-><init>(JLjava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 HSPLbuild/raft/app/ThreadRouteIdentity;->getTimelineChannelId()Ljava/lang/String;
-HSPLbuild/raft/app/ThreadRouteIdentityKt;->resolveThreadRouteIdentity(Lbuild/raft/app/RaftThreadScreenPayload;)Lbuild/raft/app/ThreadRouteIdentity;
+HSPLbuild/raft/app/ThreadScreenPayloadRouteIdentityKt;->resolveThreadRouteIdentity(Lbuild/raft/app/RaftThreadScreenPayload;)Lbuild/raft/app/ThreadRouteIdentity;
 HSPLbuild/raft/app/ThreadRouteIdentityKt;->resolveThreadRouteIdentity(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lbuild/raft/app/model/ConversationKind;)Lbuild/raft/app/ThreadRouteIdentity;
 HSPLbuild/raft/app/ThreadSurfaceKindsKt;->normalizedThreadChannelKind(Ljava/lang/String;)Ljava/lang/String;
 HSPLbuild/raft/app/ThreadSurfaceContractKt;->threadSurfaceComposerPlaceholder(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;

@@ -122,21 +122,6 @@ internal fun ThreadRouteIdentity.canRetainThreadPageFor(incoming: ThreadRouteIde
     return false
 }
 
-internal fun RaftThreadScreenPayload.resolveThreadRouteIdentity(): ThreadRouteIdentity {
-    val parentMessage = parentMessageId.nonBlank() ?: originParentMessageId.nonBlank()
-    return resolveThreadRouteIdentity(
-        surfaceKind = surfaceKind,
-        channelKind = channelKind,
-        instanceId = instanceId,
-        sourceThreadId = sourceThreadId,
-        streamChannelId = streamChannelId,
-        parentChannelId = parentChannelId,
-        parentMessageId = parentMessage,
-        parentConversationKind =
-            typedReplyParentConversationKindOrNull(parentSurfaceKind, parentChannelKind)
-    )
-}
-
 internal fun ConversationSummary.resolveThreadRouteIdentity(): ThreadRouteIdentity {
     val isReplyThread = kind == ConversationKind.Thread
     val surface =
@@ -259,3 +244,5 @@ private fun ConversationSummary.conversationThreadChannelKind(): String? =
         ConversationKind.Task -> RaftTaskConversationChannelKind
         else -> channelType.normalizedThreadChannelKind()
     }
+
+internal fun String?.nonBlank(): String? = this?.takeIf { it.isNotBlank() }

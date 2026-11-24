@@ -32,53 +32,12 @@ private object ThreadFocusedMessageRequestNonce {
 internal fun nextThreadFocusedMessageRequestNonce(): Int =
     ThreadFocusedMessageRequestNonce.next()
 
-@Serializable
-internal data class WireThreadLaunchPayload(
-    val instanceId: String = "",
-    val surfaceKind: String = RaftThreadSurfaceKind.Channel,
-    val channelKind: String? = null,
-    val jointChannelId: String? = null,
-    val threadId: String? = null,
-    val sourceThreadId: String? = null,
-    val streamChannelId: String? = null,
-    val parentChannelId: String? = null,
-    val parentMessageId: String? = null,
-    val parentSurfaceKind: String? = null,
-    val parentChannelKind: String? = null,
-    val parentNavigationHint: String? = null,
-    val dmPeerIdentity: MemberDetailIdentity? = null,
-    val originParentMessageId: String? = null,
-    val focusedMessageId: String? = null,
-    val selectedTab: String = "chat",
-    val navigationLabel: String = "Back",
-    val alignOwnMessagesRight: Boolean = false,
-    val compactConsecutiveMessages: Boolean = false,
-    val showReactionActions: Boolean = true,
-    val localOffsetMinutes: Int = 0,
-    val todayEpochDay: Long? = null,
-    val nowEpochMillis: Long? = null,
-    val timeFormat: String = RaftTimeFormat24Hour,
-    val composerSeedText: String = "",
-    val composerSyncNonce: Int = 0,
-    val composerFocusRequestNonce: Int = 0,
-    val focusedMessageRequestNonce: Int = 0,
-    val originFallbackParentChannelId: String? = null,
-    val originFallbackParentMessageId: String? = null,
-    val originFallbackPreview: String? = null,
-    val originFallbackSenderId: String? = null,
-    val originFallbackSenderKind: MemberKind? = null,
-    val originFallbackExpected: Boolean = true
-) {
-    fun hasRouteIdentity(): Boolean =
-        listOf(threadId, sourceThreadId, streamChannelId, parentChannelId, parentMessageId)
-            .any { !it.isNullOrBlank() }
+internal fun WireThreadLaunchPayload.toInitialPayload(fallbackInstanceId: String): RaftThreadScreenPayload {
+    return toInitialPayloadOrNull(fallbackInstanceId)
+        ?: error("Invalid thread launch route kind")
+}
 
-    fun toInitialPayload(fallbackInstanceId: String): RaftThreadScreenPayload {
-        return toInitialPayloadOrNull(fallbackInstanceId)
-            ?: error("Invalid thread launch route kind")
-    }
-
-    fun toInitialPayloadOrNull(fallbackInstanceId: String): RaftThreadScreenPayload? {
+internal fun WireThreadLaunchPayload.toInitialPayloadOrNull(fallbackInstanceId: String): RaftThreadScreenPayload? {
         val routeKinds = toThreadLaunchRouteKindsOrNull() ?: return null
         val isReplyThread = routeKinds.isReplyThread
         val resolvedParentSurfaceKind = routeKinds.parentSurfaceKind
@@ -186,7 +145,6 @@ internal data class WireThreadLaunchPayload(
             )
         }
     }
-}
 
 internal fun WireThreadLaunchPayload.toAuthPendingOpenRequest(
     serverId: String,
@@ -679,5 +637,3 @@ internal fun String?.threadParentNavigationHintOrNull(): String? =
         ThreadParentNavigationPrevious -> ThreadParentNavigationPrevious
         else -> null
     }
-
-internal fun String?.nonBlank(): String? = this?.takeIf { it.isNotBlank() }
