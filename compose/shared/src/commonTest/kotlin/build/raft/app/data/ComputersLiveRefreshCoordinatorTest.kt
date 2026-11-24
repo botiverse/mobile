@@ -486,6 +486,7 @@ class ComputersLiveRefreshCoordinatorTest {
                         }.succeeded
                     },
                     windowMillis = 250L,
+                    minRefreshIntervalMillis = 0L,
                     timeSource = timeSource,
                 )
 
@@ -928,6 +929,195 @@ class ComputersLiveRefreshCoordinatorTest {
 
             freshnessJob.cancel()
             listStore2.clear()
+        }
+
+    @Test
+    fun machineStatusStormRespectsMinRefreshIntervalAndCoalescesTrailingRecovery() =
+        runTest {
+            val api = ScriptedMachinesApi()
+            api.statusByServer["server-1"] = "offline"
+            val computersStore =
+                SharedComputersStore(
+                    computersApiClient = RaftComputersApiClient(api),
+                    scope = backgroundScope,
+                )
+            computersStore.ensureComputerPickerForServer("server-1")
+
+            val coalescer = RaftRecentServerRefreshCoalescer(scope = backgroundScope, timeSource = testScheduler.timeSource)
+            val startedTimes = mutableListOf<Long>()
+            val coordinator =
+                ComputersLiveRefreshCoordinator(
+                    scope = backgroundScope,
+                    loadedOrObservedServerIds = { computersStore.loadedOrObservedServerIds() },
+                    hasLoadedOrObservedServer = computersStore::hasLoadedOrObservedServer,
+                    hasActiveObservers = computersStore::hasActiveObservers,
+                    refreshMachines = { serverId, reason, window, boundary ->
+                        startedTimes += testScheduler.currentTime
+                        coalescer.runOrCoalesceWithResult(
+                            serverId = serverId,
+                            reason = reason,
+                            coalesceFreshWithin = window,
+                            notStartedBefore = boundary,
+                        ) {
+                            computersStore.reloadMachinesForSyncSucceeded(serverId)
+                        }.succeeded
+                    },
+                    windowMillis = 1_500L,
+                    minRefreshIntervalMillis = 15_000L,
+                    timeSource = testScheduler.timeSource,
+                )
+
+            val callsBefore = api.calls.count { it == "server-1" }
+            // First machine:status after idle runs promptly in 1.5s.
+            coordinator.onMachinesRealtimeEvent("server-1", "machine:status")
+            advanceTimeBy(1_500L)
+            runCurrent()
+            assertEquals(callsBefore + 1, api.calls.count { it == "server-1" })
+            assertEquals(listOf(1_500L), startedTimes)
+
+            // Repeated high-frequency events every 3s for 30s coalesce behind the 15s cooldown.
+            val reasons = listOf("machine:status", "daemon:status", "machine:updated", "machine:capabilities")
+            for (step in 1..10) {
+                advanceTimeBy(3_000L)
+                if (step == 10) api.statusByServer["server-1"] = "online"
+                coordinator.onMachinesRealtimeEvent("server-1", reasons[step % reasons.size])
+                runCurrent()
+            }
+            advanceTimeBy(20_000L)
+            runCurrent()
+
+            val totalDuringStorm = api.calls.count { it == "server-1" } - callsBefore
+            assertTrue(totalDuringStorm <= 3, "expected <= 3 /machines fetches during 30s storm, got $totalDuringStorm")
+            startedTimes.zipWithNext().forEach { (prev, next) ->
+                assertTrue(next - prev >= 15_000L, "cooldown spacing violated: $startedTimes")
+            }
+            assertEquals(
+                ComputerStatus.Online,
+                computersStore.state.value.selectComputerServerSlice("server-1").machines.single().status,
+                "trailing coalesced refresh must capture final Online state",
+            )
+        }
+
+    @Test
+    fun interactiveUpgradeEventsBypassAndPromoteMachineStatusCooldown() =
+        runTest {
+            val api = ScriptedMachinesApi()
+            val computersStore =
+                SharedComputersStore(
+                    computersApiClient = RaftComputersApiClient(api),
+                    scope = backgroundScope,
+                )
+            computersStore.ensureComputerPickerForServer("server-1")
+
+            val refreshLog = mutableListOf<Pair<Long, String>>()
+            val coordinator =
+                ComputersLiveRefreshCoordinator(
+                    scope = backgroundScope,
+                    loadedOrObservedServerIds = { computersStore.loadedOrObservedServerIds() },
+                    hasLoadedOrObservedServer = computersStore::hasLoadedOrObservedServer,
+                    hasActiveObservers = computersStore::hasActiveObservers,
+                    refreshMachines = { _, reason, _, _ ->
+                        refreshLog += testScheduler.currentTime to reason
+                        true
+                    },
+                    windowMillis = 1_500L,
+                    minRefreshIntervalMillis = 15_000L,
+                    timeSource = testScheduler.timeSource,
+                )
+
+            // 1. Initial machine:status runs at t=1500 and starts 15s cooldown.
+            coordinator.onMachinesRealtimeEvent("server-1", "machine:status")
+            advanceTimeBy(1_500L)
+            runCurrent()
+            assertEquals(listOf(1_500L to "realtime_machine:status"), refreshLog)
+
+            // 2. Another machine:status at t=2500 schedules a throttled trailing job (~14s away).
+            advanceTimeBy(1_000L)
+            coordinator.onMachinesRealtimeEvent("server-1", "machine:status")
+            advanceTimeBy(2_000L)
+            runCurrent()
+            assertEquals(1, refreshLog.size, "second machine:status waits out cooldown")
+
+            // 3. Urgent computer:upgrade:done at t=4500 promotes the waiting throttled job to run in 1.5s.
+            coordinator.onMachinesRealtimeEvent("server-1", "computer:upgrade:done")
+            advanceTimeBy(1_500L)
+            runCurrent()
+            assertEquals(2, refreshLog.size)
+            assertEquals(6_000L to "realtime_computer:upgrade:done", refreshLog.last())
+
+            // 4. Urgent machine:upgrade-request immediately after also runs promptly in 1.5s.
+            advanceTimeBy(500L)
+            coordinator.onMachinesRealtimeEvent("server-1", "machine:upgrade-request")
+            advanceTimeBy(1_500L)
+            runCurrent()
+            assertEquals(3, refreshLog.size)
+            assertEquals(8_000L to "realtime_machine:upgrade-request", refreshLog.last())
+        }
+
+    @Test
+    fun cancelAndCancelAllResetRealtimeCooldownWhileFreshnessRemainsUnaffected() =
+        runTest {
+            val api = ScriptedMachinesApi()
+            val computersStore =
+                SharedComputersStore(
+                    computersApiClient = RaftComputersApiClient(api),
+                    scope = backgroundScope,
+                )
+            computersStore.ensureComputerPickerForServer("server-1")
+
+            var clock = 1_000_000L
+            val freshness = MutableSharedFlow<RaftFreshnessEvent>(extraBufferCapacity = 8)
+            val refreshReasons = mutableListOf<String>()
+            val coordinator =
+                ComputersLiveRefreshCoordinator(
+                    scope = backgroundScope,
+                    loadedOrObservedServerIds = { computersStore.loadedOrObservedServerIds() },
+                    hasLoadedOrObservedServer = computersStore::hasLoadedOrObservedServer,
+                    hasActiveObservers = computersStore::hasActiveObservers,
+                    refreshMachines = { _, reason, _, _ ->
+                        refreshReasons += reason
+                        true
+                    },
+                    syncChangesPullAllowed = { false },
+                    windowMillis = 1_500L,
+                    minRefreshIntervalMillis = 15_000L,
+                    nowMillis = { clock },
+                    timeSource = testScheduler.timeSource,
+                )
+            val freshnessJob = coordinator.startFreshness(freshness)
+            runCurrent()
+
+            // Initial machine:status starts cooldown.
+            coordinator.onMachinesRealtimeEvent("server-1", "machine:status")
+            advanceTimeBy(1_500L)
+            clock += 1_500L
+            runCurrent()
+            assertEquals(listOf("realtime_machine:status"), refreshReasons)
+
+            // Foreground freshness trigger during cooldown runs immediately.
+            freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Foreground))
+            runCurrent()
+            assertEquals(listOf("realtime_machine:status", "freshness_foreground"), refreshReasons)
+
+            // cancel(server-1) clears realtime cooldown so next machine:status runs promptly in 1.5s.
+            coordinator.cancel("server-1")
+            coordinator.onMachinesRealtimeEvent("server-1", "machine:status")
+            advanceTimeBy(1_500L)
+            clock += 1_500L
+            runCurrent()
+            assertEquals(
+                listOf("realtime_machine:status", "freshness_foreground", "realtime_machine:status"),
+                refreshReasons,
+            )
+
+            // cancelAll() also clears realtime cooldown.
+            coordinator.cancelAll()
+            coordinator.onMachinesRealtimeEvent("server-1", "machine:status")
+            advanceTimeBy(1_500L)
+            runCurrent()
+            assertEquals(4, refreshReasons.size)
+
+            freshnessJob.cancel()
         }
 
     private class SwitchingAuthSessionStore(

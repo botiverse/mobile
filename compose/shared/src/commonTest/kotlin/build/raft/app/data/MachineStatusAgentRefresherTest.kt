@@ -388,6 +388,7 @@ class MachineStatusAgentRefresherTest {
                 scope = backgroundScope,
                 storesForActiveServer = { id -> if (id == serverId.value) listOf(store) else emptyList() },
                 windowMillis = 1_500L,
+                minRefreshIntervalMillis = 0L,
                 timeSource = testScheduler.timeSource,
             )
 
@@ -506,5 +507,144 @@ class MachineStatusAgentRefresherTest {
         assertFalse(store.hasLoadedNonDurableRoster(serverId))
         activePresenceAccount = "local"
         assertTrue(store.hasLoadedNonDurableRoster(serverId))
+    }
+
+    @Test
+    fun machineStatusStormRespectsMinRefreshIntervalAndCoalescesTrailingRecovery() = runTest {
+        val offlineJson =
+            """[{"id":"agent-1","name":"a1","status":"active","activity":"offline","serverId":"server-1"}]"""
+        val onlineJson =
+            """[{"id":"agent-1","name":"a1","status":"active","activity":"online","serverId":"server-1"}]"""
+        val registry = ProcessMemberPresenceRegistry()
+        val repository = ScriptedAgentsRepository(membersJson = offlineJson, agentsJson = offlineJson)
+        val core =
+            ProcessServerMembersCore(
+                fetchMembers = repository::getMembers,
+                fetchAgents = repository::getServerAgents,
+                scope = backgroundScope,
+                timeSource = testScheduler.timeSource,
+            )
+        val store = createStore(repository, registry, core)
+        val transport = ProcessPresenceTransportEpoch("family-1", 1L)
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport)
+        store.refreshMembers(serverId, force = true, reason = "initial")
+
+        val refreshStartedTimes = mutableListOf<Long>()
+        val refresher =
+            MachineStatusAgentRefresher(
+                scope = backgroundScope,
+                storesForActiveServer = { id -> if (id == serverId.value) listOf(store) else emptyList() },
+                windowMillis = 1_500L,
+                minRefreshIntervalMillis = 15_000L,
+                timeSource = testScheduler.timeSource,
+                logger = { line ->
+                    if (line.startsWith("machine_status_agents_refresh ")) {
+                        refreshStartedTimes += testScheduler.currentTime
+                    }
+                },
+            )
+
+        // t=0: first machine:status after idle runs promptly after windowMillis (1.5s).
+        refresher.onMachineStatus(serverId.value)
+        advanceTimeBy(1_500L)
+        runCurrent()
+        assertEquals(1, repository.agentCalls)
+        assertEquals(listOf(1_500L), refreshStartedTimes)
+
+        // Storm of machine:status events every 3s for 30s; agent flips online near the end of cooldown.
+        for (step in 1..10) {
+            advanceTimeBy(3_000L)
+            if (step == 10) repository.agentsJson = onlineJson
+            refresher.onMachineStatus(serverId.value)
+            runCurrent()
+        }
+        // Let the final coalesced trailing refresh fire after cooldown elapses.
+        advanceTimeBy(20_000L)
+        runCurrent()
+
+        assertTrue(repository.agentCalls <= 3, "30s storm must stay <= 3 /agents fetches, got ${repository.agentCalls}")
+        refreshStartedTimes.zipWithNext().forEach { (prev, next) ->
+            assertTrue(
+                next - prev >= 15_000L,
+                "refreshes must be spaced by at least minRefreshIntervalMillis: $refreshStartedTimes",
+            )
+        }
+        assertEquals(AgentStatus.Online, registry.factFor(owner, "agent-1")?.agentStatus)
+        assertEquals(AgentStatus.Online, store.currentMemberStatus(serverId, "agent-1")?.status)
+    }
+
+    @Test
+    fun cancelAndCancelAllResetCooldownAndServersAreIsolated() = runTest {
+        val onlineJson1 =
+            """[{"id":"agent-1","name":"a1","status":"active","activity":"online","serverId":"server-1"}]"""
+        val onlineJson2 =
+            """[{"id":"agent-2","name":"a2","status":"active","activity":"online","serverId":"server-2"}]"""
+        val registry = ProcessMemberPresenceRegistry()
+        val repository = ScriptedAgentsRepository(membersJson = onlineJson1, agentsJson = onlineJson1).apply {
+            membersJsonByServerId[serverId.value] = onlineJson1
+            agentsJsonByServerId[serverId.value] = onlineJson1
+            membersJsonByServerId[otherServerId.value] = onlineJson2
+            agentsJsonByServerId[otherServerId.value] = onlineJson2
+        }
+        val core =
+            ProcessServerMembersCore(
+                fetchMembers = repository::getMembers,
+                fetchAgents = repository::getServerAgents,
+                scope = backgroundScope,
+                timeSource = testScheduler.timeSource,
+            )
+        val store1 = createStore(repository, registry, core)
+        val store2 = createStore(repository, registry, core)
+        store1.refreshMembers(serverId, force = true, reason = "initial")
+        store2.refreshMembers(otherServerId, force = true, reason = "initial")
+
+        val refresher =
+            MachineStatusAgentRefresher(
+                scope = backgroundScope,
+                storesForActiveServer = { id ->
+                    when (id) {
+                        serverId.value -> listOf(store1)
+                        otherServerId.value -> listOf(store2)
+                        else -> emptyList()
+                    }
+                },
+                windowMillis = 1_500L,
+                minRefreshIntervalMillis = 15_000L,
+                timeSource = testScheduler.timeSource,
+            )
+
+        // First refresh on server-1 starts cooldown at t=1500.
+        refresher.onMachineStatus(serverId.value)
+        advanceTimeBy(1_500L)
+        runCurrent()
+        assertEquals(1, repository.agentCalls)
+
+        // server-2 is NOT throttled by server-1's cooldown: runs promptly in 1.5s.
+        advanceTimeBy(500L)
+        refresher.onMachineStatus(otherServerId.value)
+        advanceTimeBy(1_500L)
+        runCurrent()
+        assertEquals(2, repository.agentCalls)
+
+        // server-1 is still in cooldown: a push does not run in 1.5s.
+        refresher.onMachineStatus(serverId.value)
+        advanceTimeBy(2_000L)
+        runCurrent()
+        assertEquals(2, repository.agentCalls)
+
+        // cancel(server-1) clears cooldown so the next push on server-1 runs promptly in 1.5s.
+        refresher.cancel(serverId.value)
+        refresher.onMachineStatus(serverId.value)
+        advanceTimeBy(1_500L)
+        runCurrent()
+        assertEquals(3, repository.agentCalls)
+
+        // cancelAll() clears cooldown too.
+        refresher.cancelAll()
+        advanceTimeBy(100L)
+        refresher.onMachineStatus(serverId.value)
+        advanceTimeBy(1_500L)
+        runCurrent()
+        assertEquals(4, repository.agentCalls)
     }
 }

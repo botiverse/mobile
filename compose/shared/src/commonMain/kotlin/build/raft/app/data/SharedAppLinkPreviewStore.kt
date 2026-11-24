@@ -184,6 +184,14 @@ internal const val APP_LINK_CARD_RETURN_WINDOW_MS = 30_000L
 internal const val APP_LINK_CARD_REENTRY_COOLDOWN_MS = 30_000L
 
 /**
+ * Maximum micro-batch window for committing concurrent initial link-card reads into [SharedAppLinkPreviewStore.state]
+ * (Hands `5abe9394`): when opening a conversation fires multiple `link-cards/read` calls together,
+ * completed answers stage briefly while sibling reads remain in flight and flush together once all
+ * concurrent initial reads finish or this cap elapses. Single-message reads flush immediately (0 ms).
+ */
+internal const val APP_LINK_READ_COMMIT_BATCH_WINDOW_MS = 120L
+
+/**
  * One message row on a page (web: a mounted message view and its `target` element): what the store
  * needs to read its cards again at the right moment. The row says when it is on screen, when the
  * person is on it and which cards are busy; [SharedAppLinkPreviewStore.keepFresh] does the rest.
@@ -435,6 +443,8 @@ class SharedAppLinkPreviewStore internal constructor(
     /** Disk cache for stale-while-revalidate link cards (#proj-mobile:#294). */
     private val offlineResource: RaftOfflineResource<String, PersistedAppLinkPreviewRecord>? = null,
     private val currentAccountId: () -> String? = { null },
+    /** Micro-batch cap for concurrent initial `read` state commits (0 disables batching). */
+    private val readCommitBatchWindowMs: Long = APP_LINK_READ_COMMIT_BATCH_WINDOW_MS,
 ) {
     private val _state = raftStoreState(initialState, "SharedAppLinkPreviewStore")
     val state: StateFlow<SharedAppLinkPreviewState> = _state.asStateFlow()
@@ -443,6 +453,9 @@ class SharedAppLinkPreviewStore internal constructor(
     private val stateGuardLock = SynchronizedObject()
     private val diskHydrationAttempted = mutableSetOf<String>()
     private val serverGenerations = HashMap<String, Long>()
+    private var activeInitialReads = 0
+    private val pendingReadCommits = LinkedHashMap<String, PendingReadCommit>()
+    private var pendingReadCommitFlushJob: Job? = null
 
     /** A server answered the batched read 404 and then the GET: this session reads with the GET (web `batchedReadMissing`). */
     private var batchedReadMissing = false
@@ -451,8 +464,17 @@ class SharedAppLinkPreviewStore internal constructor(
      * One message's [AppLinkMessageView] (its chips, cards and whether it should read), emitted
      * only when that message's view changes: the selector a row collects instead of [state].
      */
-    fun messageViewFlow(viewerKey: String, messageId: String, content: String, conversationId: String): Flow<AppLinkMessageView> =
-        state.map { it.messageView(viewerKey, messageId, content, conversationId, artifactHosts()) }.distinctUntilChanged()
+    fun messageViewFlow(
+        viewerKey: String,
+        messageId: String,
+        content: String,
+        conversationId: String,
+        mode: String = APP_LINK_READ_MODE_V1,
+        viewId: String? = null,
+    ): Flow<AppLinkMessageView> =
+        state
+            .map { it.messageView(viewerKey, messageId, content, conversationId, artifactHosts(), mode = mode, viewId = viewId) }
+            .distinctUntilChanged()
 
     /**
      * Drops every answer and every consent status (sign-out, account or environment switch).
@@ -460,48 +482,64 @@ class SharedAppLinkPreviewStore internal constructor(
      * way when this runs is not kept.
      */
     fun clearAll() {
-        synchronized(stateGuardLock) {
-            diskHydrationAttempted.clear()
-            _state.update { SharedAppLinkPreviewState(generation = it.generation + 1) }
-        }
+        val jobToCancel =
+            synchronized(stateGuardLock) {
+                diskHydrationAttempted.clear()
+                pendingReadCommits.clear()
+                val existing = pendingReadCommitFlushJob
+                pendingReadCommitFlushJob = null
+                _state.update { SharedAppLinkPreviewState(generation = it.generation + 1) }
+                existing
+            }
+        jobToCancel?.cancel()
     }
 
     /** Drops one server's cached answers and fences any in-flight reads for it (server access lost). */
     fun dropServer(serverId: String) {
         val cleanServer = serverId.trim().takeIf { it.isNotEmpty() } ?: return
-        synchronized(stateGuardLock) {
-            serverGenerations[cleanServer] = (serverGenerations[cleanServer] ?: 0L) + 1L
-            diskHydrationAttempted.removeAll { keyBelongsToServer(it, cleanServer) }
-            _state.update { state ->
-                val nextEntries = state.entries.filterNot { (key, loaded) ->
-                    loaded.serverId == cleanServer || keyBelongsToServer(key, cleanServer)
+        val jobToCancel =
+            synchronized(stateGuardLock) {
+                serverGenerations[cleanServer] = (serverGenerations[cleanServer] ?: 0L) + 1L
+                diskHydrationAttempted.removeAll { keyBelongsToServer(it, cleanServer) }
+                pendingReadCommits.entries.removeAll { it.value.serverId == cleanServer }
+                val cancelJob =
+                    if (pendingReadCommits.isEmpty()) {
+                        pendingReadCommitFlushJob.also { pendingReadCommitFlushJob = null }
+                    } else {
+                        null
+                    }
+                _state.update { state ->
+                    val nextEntries = state.entries.filterNot { (key, loaded) ->
+                        loaded.serverId == cleanServer || keyBelongsToServer(key, cleanServer)
+                    }
+                    val nextStatus = state.status.filterKeys { !keyBelongsToServer(it, cleanServer) }
+                    val nextEpoch = state.epoch.filterKeys { !keyBelongsToServer(it, cleanServer) }
+                    val nextClaims = state.claims.filterKeys { !keyBelongsToServer(it, cleanServer) }
+                    val nextMessageCards = state.messageCards.filterKeys { !keyBelongsToServer(it, cleanServer) }
+                    val nextSignatures = state.messageCardSignatures.filterKeys { !keyBelongsToServer(it, cleanServer) }
+                    if (
+                        nextEntries.size == state.entries.size &&
+                        nextStatus.size == state.status.size &&
+                        nextEpoch.size == state.epoch.size &&
+                        nextClaims.size == state.claims.size &&
+                        nextMessageCards.size == state.messageCards.size &&
+                        nextSignatures.size == state.messageCardSignatures.size
+                    ) {
+                        state
+                    } else {
+                        state.copy(
+                            entries = nextEntries,
+                            status = nextStatus,
+                            epoch = nextEpoch,
+                            claims = nextClaims,
+                            messageCards = nextMessageCards,
+                            messageCardSignatures = nextSignatures,
+                        )
+                    }
                 }
-                val nextStatus = state.status.filterKeys { !keyBelongsToServer(it, cleanServer) }
-                val nextEpoch = state.epoch.filterKeys { !keyBelongsToServer(it, cleanServer) }
-                val nextClaims = state.claims.filterKeys { !keyBelongsToServer(it, cleanServer) }
-                val nextMessageCards = state.messageCards.filterKeys { !keyBelongsToServer(it, cleanServer) }
-                val nextSignatures = state.messageCardSignatures.filterKeys { !keyBelongsToServer(it, cleanServer) }
-                if (
-                    nextEntries.size == state.entries.size &&
-                    nextStatus.size == state.status.size &&
-                    nextEpoch.size == state.epoch.size &&
-                    nextClaims.size == state.claims.size &&
-                    nextMessageCards.size == state.messageCards.size &&
-                    nextSignatures.size == state.messageCardSignatures.size
-                ) {
-                    state
-                } else {
-                    state.copy(
-                        entries = nextEntries,
-                        status = nextStatus,
-                        epoch = nextEpoch,
-                        claims = nextClaims,
-                        messageCards = nextMessageCards,
-                        messageCardSignatures = nextSignatures,
-                    )
-                }
+                cancelJob
             }
-        }
+        jobToCancel?.cancel()
     }
 
     private fun keyBelongsToServer(key: String, serverId: String): Boolean {
@@ -634,25 +672,40 @@ class SharedAppLinkPreviewStore internal constructor(
         if (presence != null && (currentEntry == null || currentEntry.staleFromDisk) && !reentryCooldownPassed(readScope, presence)) return
         val (before, askedServerGeneration) =
             synchronized(stateGuardLock) {
-                _state.value to (serverGenerations[serverId] ?: 0L)
+                val snapshot = _state.value
+                if (!wanted(snapshot)) return
+                if (!inFlight.add(readScope)) return
+                activeInitialReads += 1
+                snapshot to (serverGenerations[serverId] ?: 0L)
             }
-        if (!wanted(before)) return
-        if (!inFlight.add(readScope)) return
         val askedAt = before.epoch
         val askedGeneration = before.generation
         val resource = offlineResource
         val fetchStartedAt = resource?.fetchStarted()
         val accountIdAtStart = resolveDiskAccountId(viewerKey)
         val sentAt = monotonicMillis()
+        var completedNormally = false
+        var remainingInitialReads = 0
         val fetched =
             try {
-                fetch(messageId, serverId, batch, urls = null)
+                fetch(messageId, serverId, batch, urls = null).also { completedNormally = true }
             } finally {
-                inFlight.remove(readScope)
+                remainingInitialReads =
+                    synchronized(stateGuardLock) {
+                        inFlight.remove(readScope)
+                        activeInitialReads = (activeInitialReads - 1).coerceAtLeast(0)
+                        activeInitialReads
+                    }
+                if (!completedNormally && remainingInitialReads == 0) {
+                    flushPendingReadCommitsSync()
+                }
             }
         val answer =
             when (fetched) {
-                AppLinkFetch.Stale -> return
+                AppLinkFetch.Stale -> {
+                    if (remainingInitialReads == 0) flushPendingReadCommits()
+                    return
+                }
                 AppLinkFetch.Failed -> null
                 is AppLinkFetch.Answer -> fetched
             }
@@ -664,18 +717,20 @@ class SharedAppLinkPreviewStore internal constructor(
         }
         if (answer == null) {
             synchronized(stateGuardLock) {
-                if ((serverGenerations[serverId] ?: 0L) != askedServerGeneration) return
-                _state.update { state ->
-                    if (state.generation != askedGeneration) return@update state
-                    val previous = state.entries[readScope] ?: return@update state
-                    val kept =
-                        previous.results.filterValues { result ->
-                            result !is AppLinkResult.Consent ||
-                                state.status[appLinkAppKey(viewerKey, result.app.id)] != AppLinkConsentStatus.Allowed
-                        }
-                    state.copy(entries = state.entries + (readScope to previous.copy(results = kept, epochs = askedAt)))
+                if ((serverGenerations[serverId] ?: 0L) == askedServerGeneration) {
+                    _state.update { state ->
+                        if (state.generation != askedGeneration) return@update state
+                        val previous = state.entries[readScope] ?: return@update state
+                        val kept =
+                            previous.results.filterValues { result ->
+                                result !is AppLinkResult.Consent ||
+                                    state.status[appLinkAppKey(viewerKey, result.app.id)] != AppLinkConsentStatus.Allowed
+                            }
+                        state.copy(entries = state.entries + (readScope to previous.copy(results = kept, epochs = askedAt)))
+                    }
                 }
             }
+            if (remainingInitialReads == 0) flushPendingReadCommits()
             return
         }
         // Ask only on a link that can become the chip: a bare link of this content.
@@ -683,44 +738,163 @@ class SharedAppLinkPreviewStore internal constructor(
         val bare = raftAppLinkReadUrls(content, hosts, linkLimit(batch)).toSet()
         val results = answer.results.filterValues { it !is AppLinkResult.Consent || it.url in bare }
         val conversationKey = appLinkConversationKey(viewerKey, conversationId)
-        var accepted = false
+        commitOrStageRead(
+            PendingReadCommit(
+                readScope = readScope,
+                serverId = serverId,
+                messageId = messageId,
+                content = content,
+                mode = mode,
+                conversationKey = conversationKey,
+                askedAt = askedAt,
+                askedGeneration = askedGeneration,
+                askedServerGeneration = askedServerGeneration,
+                results = results,
+                limited = answer.limited,
+                viewId = batch?.view?.id,
+                rawKind = answer.rawKind,
+                rawBodyJson = answer.rawBodyJson,
+                accountIdAtStart = accountIdAtStart,
+                fetchStartedAt = fetchStartedAt,
+            )
+        )
+    }
+
+    private suspend fun commitOrStageRead(commit: PendingReadCommit) {
+        var timerToStart: Job? = null
+        var timerToCancel: Job? = null
+        var acceptedForDisk: List<PendingReadCommit> = emptyList()
         synchronized(stateGuardLock) {
-            if ((serverGenerations[serverId] ?: 0L) != askedServerGeneration) return
-            _state.update { state ->
-                if (state.generation != askedGeneration) return@update state
-                accepted = true
-                val claims = state.claims.toMutableMap()
-                results.values.filterIsInstance<AppLinkResult.Consent>().forEach { prompt ->
-                    val key = "$conversationKey:${prompt.app.id}"
-                    if (key !in claims) claims[key] = messageId
+            if ((serverGenerations[commit.serverId] ?: 0L) != commit.askedServerGeneration) {
+                if (activeInitialReads == 0 && pendingReadCommits.isNotEmpty()) {
+                    timerToCancel = pendingReadCommitFlushJob
+                    pendingReadCommitFlushJob = null
+                    acceptedForDisk = flushPendingReadCommitsLocked()
                 }
-                val entries = LinkedHashMap(state.entries)
-                entries.remove(readScope)
-                entries[readScope] = AppLinkLoaded(results, askedAt, limited = answer.limited, viewId = batch?.view?.id, serverId = serverId)
-                while (entries.size > APP_LINK_RESULT_CACHE_MAX) entries.remove(entries.keys.first())
-                state.copy(entries = entries, claims = claims)
+                return@synchronized
+            }
+            pendingReadCommits[commit.readScope] = commit
+            val shouldDefer = readCommitBatchWindowMs > 0L && activeInitialReads > 0
+            if (!shouldDefer) {
+                timerToCancel = pendingReadCommitFlushJob
+                pendingReadCommitFlushJob = null
+                acceptedForDisk = flushPendingReadCommitsLocked()
+            } else if (pendingReadCommitFlushJob?.isActive != true) {
+                lateinit var scheduled: Job
+                scheduled =
+                    scope.launch(start = CoroutineStart.LAZY) {
+                        delay(readCommitBatchWindowMs)
+                        flushPendingReadCommits(expectedTimerJob = scheduled)
+                    }
+                pendingReadCommitFlushJob = scheduled
+                timerToStart = scheduled
             }
         }
-        if (accepted && resource != null && accountIdAtStart != null && fetchStartedAt != null && answer.limited.isEmpty()) {
-            val diskKey = resource.key(accountIdAtStart, serverId, diskScopeParam(messageId, content, mode), mintedAt = fetchStartedAt)
-            if (diskKey != null) {
-                val hasCacheableCards = results.values.any { it is AppLinkResult.Card && it.connectUrl == null }
-                val rawKind = answer.rawKind
-                val rawBody = answer.rawBodyJson
-                val sanitized =
-                    if (hasCacheableCards && rawKind != null && rawBody != null) {
-                        sanitizeAppLinkPreviewBodyForDisk(rawKind, rawBody)
-                    } else {
-                        null
+        timerToCancel?.cancel()
+        timerToStart?.start()
+        persistAcceptedCommits(acceptedForDisk)
+    }
+
+    private suspend fun flushPendingReadCommits(expectedTimerJob: Job? = null) {
+        var timerToCancel: Job? = null
+        val acceptedForDisk =
+            synchronized(stateGuardLock) {
+                if (expectedTimerJob != null) {
+                    if (pendingReadCommitFlushJob === expectedTimerJob) {
+                        pendingReadCommitFlushJob = null
                     }
-                if (sanitized != null && rawKind != null) {
-                    runCatchingPreservingCancellation {
-                        resource.write(diskKey, PersistedAppLinkPreviewRecord(rawKind, sanitized), startedAt = fetchStartedAt)
+                } else {
+                    timerToCancel = pendingReadCommitFlushJob
+                    pendingReadCommitFlushJob = null
+                }
+                flushPendingReadCommitsLocked()
+            }
+        timerToCancel?.cancel()
+        persistAcceptedCommits(acceptedForDisk)
+    }
+
+    private fun flushPendingReadCommitsSync() {
+        var timerToCancel: Job? = null
+        val acceptedForDisk =
+            synchronized(stateGuardLock) {
+                timerToCancel = pendingReadCommitFlushJob
+                pendingReadCommitFlushJob = null
+                flushPendingReadCommitsLocked()
+            }
+        timerToCancel?.cancel()
+        if (acceptedForDisk.isNotEmpty() && offlineResource != null) {
+            scope.launch { persistAcceptedCommits(acceptedForDisk) }
+        }
+    }
+
+    private fun flushPendingReadCommitsLocked(): List<PendingReadCommit> {
+        if (pendingReadCommits.isEmpty()) return emptyList()
+        val batch = pendingReadCommits.values.toList()
+        pendingReadCommits.clear()
+        val accepted = mutableListOf<PendingReadCommit>()
+        _state.update { state ->
+            accepted.clear()
+            var claims: MutableMap<String, String>? = null
+            var entries: LinkedHashMap<String, AppLinkLoaded>? = null
+            for (commit in batch) {
+                if (state.generation != commit.askedGeneration) continue
+                if ((serverGenerations[commit.serverId] ?: 0L) != commit.askedServerGeneration) continue
+                accepted += commit
+                val nextEntries = entries ?: LinkedHashMap(state.entries).also { entries = it }
+                val prompts = commit.results.values.filterIsInstance<AppLinkResult.Consent>()
+                if (prompts.isNotEmpty()) {
+                    val nextClaims = claims ?: state.claims.toMutableMap().also { claims = it }
+                    prompts.forEach { prompt ->
+                        val key = "${commit.conversationKey}:${prompt.app.id}"
+                        if (key !in nextClaims) nextClaims[key] = commit.messageId
                     }
-                } else if (!hasCacheableCards) {
-                    runCatchingPreservingCancellation {
-                        resource.removeIfNotSuperseded(diskKey, startedAt = fetchStartedAt)
-                    }
+                }
+                nextEntries.remove(commit.readScope)
+                nextEntries[commit.readScope] =
+                    AppLinkLoaded(
+                        results = commit.results,
+                        epochs = commit.askedAt,
+                        limited = commit.limited,
+                        viewId = commit.viewId,
+                        serverId = commit.serverId,
+                    )
+                while (nextEntries.size > APP_LINK_RESULT_CACHE_MAX) nextEntries.remove(nextEntries.keys.first())
+            }
+            val updatedEntries = entries ?: return@update state
+            state.copy(entries = updatedEntries, claims = claims ?: state.claims)
+        }
+        return accepted
+    }
+
+    private suspend fun persistAcceptedCommits(commits: List<PendingReadCommit>) {
+        val resource = offlineResource ?: return
+        for (commit in commits) {
+            val accountIdAtStart = commit.accountIdAtStart ?: continue
+            val fetchStartedAt = commit.fetchStartedAt ?: continue
+            if (commit.limited.isNotEmpty()) continue
+            val diskKey =
+                resource.key(
+                    accountIdAtStart,
+                    commit.serverId,
+                    diskScopeParam(commit.messageId, commit.content, commit.mode),
+                    mintedAt = fetchStartedAt,
+                ) ?: continue
+            val hasCacheableCards = commit.results.values.any { it is AppLinkResult.Card && it.connectUrl == null }
+            val rawKind = commit.rawKind
+            val rawBody = commit.rawBodyJson
+            val sanitized =
+                if (hasCacheableCards && rawKind != null && rawBody != null) {
+                    sanitizeAppLinkPreviewBodyForDisk(rawKind, rawBody)
+                } else {
+                    null
+                }
+            if (sanitized != null && rawKind != null) {
+                runCatchingPreservingCancellation {
+                    resource.write(diskKey, PersistedAppLinkPreviewRecord(rawKind, sanitized), startedAt = fetchStartedAt)
+                }
+            } else if (!hasCacheableCards) {
+                runCatchingPreservingCancellation {
+                    resource.removeIfNotSuperseded(diskKey, startedAt = fetchStartedAt)
                 }
             }
         }
@@ -759,7 +933,7 @@ class SharedAppLinkPreviewStore internal constructor(
                 delay(minOf(60_000L, backoffMs + retryJitterMs()))
                 lastBackoffMs = backoffMs
                 // The whole read on its way covers these links (and a re-read sent now would be the view's latest).
-                if (readScope in inFlight) {
+                if (synchronized(stateGuardLock) { readScope in inFlight }) {
                     asked = null
                     continue
                 }
@@ -969,6 +1143,7 @@ class SharedAppLinkPreviewStore internal constructor(
         // What became of the answer: applied, kept or dropped and why (never in silence).
         var outcome = if (limited.isNotEmpty()) "kept reason=rate_limited" else "kept reason=no_card"
         if (fresh.isNotEmpty()) {
+            flushPendingReadCommitsSync()
             _state.update { state ->
                 if (state.generation != askedGeneration) {
                     outcome = "dropped reason=signed_out"
@@ -998,12 +1173,12 @@ class SharedAppLinkPreviewStore internal constructor(
     private suspend fun rereadWithGet(readScope: String, serverId: String, messageId: String, urls: List<String>): AppLinkReread {
         val askedGeneration = _state.value.generation
         val line = "app_link_card_reread message=${messageId.take(8)} why=changed get=true links=${urls.size}"
-        if (!inFlight.add(readScope)) return AppLinkReread.Superseded
+        if (!synchronized(stateGuardLock) { inFlight.add(readScope) }) return AppLinkReread.Superseded
         val fetched =
             try {
                 fetchWithGet(messageId, serverId)
             } finally {
-                inFlight.remove(readScope)
+                synchronized(stateGuardLock) { inFlight.remove(readScope) }
             }
         if (fetched !is AppLinkFetch.Answer) {
             diagnosticsLogger("$line result=failed")
@@ -1012,6 +1187,7 @@ class SharedAppLinkPreviewStore internal constructor(
         val fresh = urls.mapNotNull { url -> (fetched.results[url] as? AppLinkResult.Card)?.let { url to it } }
         var applied = fresh.isEmpty()
         if (fresh.isNotEmpty()) {
+            flushPendingReadCommitsSync()
             _state.update { state ->
                 val entry = state.entries[readScope]?.takeIf { state.generation == askedGeneration } ?: return@update state
                 applied = true
@@ -1114,6 +1290,7 @@ class SharedAppLinkPreviewStore internal constructor(
      * later reads it then (web: the cached answer's `changed`).
      */
     private fun onLinkCardChanged(serverId: String, objectKey: String) {
+        flushPendingReadCommitsSync()
         val shown = HashSet<String>()
         for (presence in presences.toList()) {
             if (presence.serverId != serverId) continue
@@ -1137,6 +1314,7 @@ class SharedAppLinkPreviewStore internal constructor(
      * comes back later than that is a return of its own (nudges were missed while it was down).
      */
     private fun onCameBack(serverId: String?) {
+        flushPendingReadCommitsSync()
         val now = monotonicMillis()
         val previous = lastCameBackAt
         lastCameBackAt = now
@@ -1227,7 +1405,7 @@ class SharedAppLinkPreviewStore internal constructor(
             presence.isEngaged.first { !it }
             presence.isOnScreen.first { it }
             // A read of the whole message on its way brings these cards.
-            if (readScope in inFlight) return true
+            if (synchronized(stateGuardLock) { readScope in inFlight }) return true
             refresh.reading = true
             val sentAt = monotonicMillis()
             lastRefreshAt.remember(intervalKey, sentAt)
@@ -1357,6 +1535,7 @@ class SharedAppLinkPreviewStore internal constructor(
     /** Allows the App's previews here; the messages that asked read again. */
     fun allow(viewerKey: String, serverId: String, app: AppLinkPromptApp): Deferred<AppLinkConsentAnswer> =
         scope.async {
+            flushPendingReadCommitsSync()
             val key = appLinkAppKey(viewerKey, app.id)
             setStatus(key, AppLinkConsentStatus.Allowing)
             val answer = appLinkConsentAnswerFor(callOrNull { api.allow(app.id, serverId) }, AppLinkConsentAnswer.Allowed)
@@ -1375,6 +1554,7 @@ class SharedAppLinkPreviewStore internal constructor(
     /** Declines the App's previews here: no prompt anywhere, the links stay plain. */
     fun decline(viewerKey: String, serverId: String, app: AppLinkPromptApp): Deferred<AppLinkConsentAnswer> =
         scope.async {
+            flushPendingReadCommitsSync()
             val key = appLinkAppKey(viewerKey, app.id)
             val previous = _state.value.status[key]
             setStatus(key, AppLinkConsentStatus.Declining)
@@ -1462,5 +1642,24 @@ private sealed interface AppLinkFetch {
     /** The view sent a later request meanwhile: this answer is dropped. */
     data object Stale : AppLinkFetch
 }
+
+private data class PendingReadCommit(
+    val readScope: String,
+    val serverId: String,
+    val messageId: String,
+    val content: String,
+    val mode: String,
+    val conversationKey: String,
+    val askedAt: Map<String, Int>,
+    val askedGeneration: Int,
+    val askedServerGeneration: Long,
+    val results: Map<String, AppLinkResult>,
+    val limited: Map<String, Int>,
+    val viewId: String?,
+    val rawKind: String?,
+    val rawBodyJson: String?,
+    val accountIdAtStart: String?,
+    val fetchStartedAt: Long?,
+)
 
 private const val APP_LINK_RESULT_CACHE_MAX = 300
