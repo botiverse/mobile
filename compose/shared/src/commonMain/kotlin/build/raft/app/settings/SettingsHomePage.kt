@@ -6321,13 +6321,12 @@ private fun RaftAppShellReadyContent(
                                 detailPane = detailPane,
                                 fillListWhenNothingPicked = fillListWhenNothingPicked,
                                 collapsed = collapseColumn != null && sidebarCollapse.isHidden(collapseColumn),
-                                // The handle's collapse (web `snap` "collapse"; by touch only on a deliberate release) and the
-                                // Expand sidebar strip where the list was: only where the rail's toggle can bring it back.
+                                // The handle's collapse (web `snap` "collapse"; by touch only on a deliberate release): only where the rail's toggle can bring it back.
                                 onCollapsedChange =
                                     collapseColumn?.takeIf { it == collapsibleColumn }?.let { column ->
                                         { hidden ->
                                             sidebarCollapse.setHidden(column, hidden)
-                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=split")
+                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=handle")
                                         }
                                     },
                                 // Web: Activity's list with an item open is at most half the row, so the
@@ -6335,8 +6334,6 @@ private fun RaftAppShellReadyContent(
                                 maxShare = 0.5f.takeIf { collapseColumn == RaftCollapsibleColumn.ActivityList && selection != null },
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 log = { bridge.log(it) },
-                                // The head beside the collapsed strip pads the status bar only without the top bar (Duo).
-                                detailHeadTopInset = if (railWithoutTopBar) shellScope.topSafeArea else 0.dp,
                             )
                         } else {
                             listPane(active)
@@ -6831,7 +6828,7 @@ private fun RaftAppShellReadyContent(
                                     RaftCollapsibleColumn.Sidebar.takeIf { it == collapsibleColumn }?.let { column ->
                                         { hidden ->
                                             sidebarCollapse.setHidden(column, hidden)
-                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=split")
+                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=handle")
                                         }
                                     },
                                 onResizingChange = { adaptiveListPaneResizing = it },
@@ -6850,7 +6847,6 @@ private fun RaftAppShellReadyContent(
                                         )
                                     }
                                 },
-                                detailHeadTopInset = if (railWithoutTopBar) shellScope.topSafeArea else 0.dp,
                             )
                         } else {
                         val stackPageClose = LocalAppShellServerStackPageClose.current
