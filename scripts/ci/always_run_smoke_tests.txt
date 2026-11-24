@@ -1,0 +1,32 @@
+# Always-run fast JVM smoke tests executed on every ordinary PR when changed-file
+# test selection (scripts/ci/select_changed_tests.py) is active (dm:@artin:#159).
+#
+# Format: <gradle-project>:<fully-qualified-test-class>
+# Every entry MUST be a fast, plain JVM test (no Robolectric, no screenshots) that
+# exists in the repository; `select_changed_tests.py --self-test` fails if any
+# entry is missing or marked Robolectric/screenshot.
+
+# :shared core invariants (auth, read-state sync, navigation, thread store, activity, action cards, resources)
+:shared:build.raft.app.AuthSessionTerminalRouteEffectTest
+:shared:build.raft.app.ComputerRuntimeAuthSessionTest
+:shared:build.raft.app.SettingsWebViewAuthBootstrapTest
+:shared:build.raft.app.network.sync.ReadStateV1ContractTest
+:shared:build.raft.app.network.sync.ReadStateV1PublicationFenceTest
+:shared:build.raft.app.RaftLinkNavigationTest
+:shared:build.raft.app.RaftShellNavigationIntakeTest
+:shared:build.raft.app.SharedThreadStoreCharacterizationTest
+:shared:build.raft.app.SharedThreadStoreForegroundGateTest
+:shared:build.raft.app.ThreadReadStateProjectionTest
+:shared:build.raft.app.ActionCardQuestionInlineTest
+:shared:build.raft.app.SharedThreadActionCardMarkExecutedTest
+:shared:build.raft.app.contract.ActivityRowContractCaseReducerTest
+:shared:build.raft.app.ActivityConversationListTest
+:shared:build.raft.app.ComposeResourcesCatalogParityTest
+:shared:build.raft.app.RaftPluralsTest
+
+# :androidApp host invariants (launch, links, external share, receipt/backup contracts)
+:androidApp:build.raft.app.MainActivityLaunchTest
+:androidApp:build.raft.app.RaftAppLinkHostsTest
+:androidApp:build.raft.app.AndroidExternalShareIntakeTest
+:androidApp:build.raft.app.core.data.auth.AppIdentityReceiptProviderManifestTest
+:androidApp:build.raft.app.core.data.auth.RaftBackupRulesTest
