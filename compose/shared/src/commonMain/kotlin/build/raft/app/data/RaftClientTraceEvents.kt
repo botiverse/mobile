@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.ServerId
 import build.raft.app.model.raftEpochMillisUtcIso
+import build.raft.app.network.RaftAppIdentityRegistry
 import kotlin.time.Instant
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -918,9 +919,14 @@ object RaftClientTraceEvents {
     }
 }
 
-/** `clientPlatform` as `X-Raft-Client-Platform` names the app, and its `appVersion`. */
+/** `clientPlatform` as `X-Raft-Client-Platform` names the app, its `appVersion`, and `app_build`. */
 internal fun raftClientTraceDefaultAttrs(): Map<String, String> =
     buildMap {
         runCatching { featureFlagClientOs() }.getOrNull()?.takeIf { it.isNotBlank() }?.let { put("clientPlatform", it) }
         runCatching { currentFeatureFlagClientContext().appVersion }.getOrNull()?.takeIf { it.isNotBlank() }?.let { put("appVersion", it) }
+        runCatching { RaftAppIdentityRegistry.current()?.buildNumber }
+            .getOrNull()
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { put("app_build", it) }
     }

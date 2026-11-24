@@ -1295,16 +1295,35 @@ private fun ThreadMessagesListContent(
                     )
                 }
         )
-    // Cached focused open pre-first-draw placement (#proj-mobile:#258): align the focused row on
-    // a reversed list before Frame 1 draws so the initial paint lands directly on the target.
-    // Reads live snapshot state directly (and user takeover / focus retirement guards) so a user
-    // drag or host settlement between recompositions permanently retires the owner.
+    // Cached focused open pre-first-draw placement (#proj-mobile:#258 / 1.30.0 P1-5): align the
+    // focused row on a reversed list before Frame 1 draws so the initial paint lands directly on
+    // the target (also stays armed when a reply thread paints `originMessage` before cached replies
+    // arrive). Reads live snapshot state directly (and user takeover / focus retirement guards) so
+    // a user drag or host settlement between recompositions permanently retires the owner.
+    val initialFocusedAnchorIdentity =
+        remember(threadInstanceKey) {
+            renderPayload.focusedMessageId
+                ?.takeIf { it.isNotBlank() }
+                ?.let { messageId ->
+                    focusedMessageAnchorIdentity(
+                        messageId = messageId,
+                        requestNonce = renderPayload.focusedMessageRequestNonce
+                    )
+                }
+        }
     val initialFocusedPlacementOwner =
         remember(threadInstanceKey, listState) {
             ThreadInitialFocusedPlacementOwner(
                 listState = listState,
                 scope = coroutineScope,
-                armed = reverseLayout && initialFocusedItemIndex >= 0,
+                armed =
+                    shouldArmThreadInitialFocusedPlacement(
+                        reverseLayout = reverseLayout,
+                        adaptiveAnchorRestoreInFlight = adaptiveAnchorRestoreInFlight,
+                        initialFocusedItemIndex = initialFocusedItemIndex,
+                        messagesEmpty = renderPayload.messages.isEmpty(),
+                        focusedMessageId = renderPayload.focusedMessageId,
+                    ),
             )
         }
     val initialFocusedUserNavigationCount = remember(threadInstanceKey, listState) { listState.userNavigationCount }
@@ -2723,31 +2742,74 @@ private fun ThreadMessagesListContent(
         ) {
             focusedAnchorPlacementState = resetThreadFocusedAnchorPlacement(targetIdentity, basePlacement)
         }
-        dispatchViewportEvent(
-            LazyViewportEvent.Anchor(
-                target = LazyViewportAnchorTarget.Message(targetMessageId),
-                offset = focusedAnchorPlacementState.offsetPx,
-                layoutGeneration = viewportLayoutGeneration,
+        val targetAnchor = LazyViewportAnchorTarget.Message(targetMessageId)
+        val currentVisibleOffset = listState.focusedAnchorTargetOffset(targetIndex)
+        if (
+            shouldKeepVisibleFocusedAnchorOffset(
                 placement = focusedAnchorPlacementState.placement,
-                renderedTailMessageId =
-                    focusedAnchorPlacementState.renderedTailMessageId.takeIf {
-                        focusedAnchorPlacementState.identity == targetIdentity &&
-                            focusedAnchorPlacementState.placement ==
-                                LazyViewportAnchorPlacement.RenderedBottom
-                    },
-                renderedTailAnchorIdentity =
-                    focusedAnchorPlacementState.identity.takeIf {
-                        it == targetIdentity &&
-                            focusedAnchorPlacementState.placement ==
-                                LazyViewportAnchorPlacement.RenderedBottom &&
-                            focusedAnchorPlacementState.renderedTailMessageId != null
-                    },
-                fallback = LazyViewportAnchorFallback.Free
+                currentVisibleOffset = currentVisibleOffset,
+                targetIdentity = targetIdentity,
+                sessionIdentity = focusedAnchorSessionIdentity,
+                initialPlacementApplied = initialFocusedPlacementOwner.applied,
+                initialFocusedIdentity = initialFocusedAnchorIdentity,
+            ) && currentVisibleOffset != null
+        ) {
+            if ((viewportControllerState.intent as? LazyViewportIntent.Anchored)?.target != targetAnchor) {
+                dispatchViewportEvent(
+                    LazyViewportEvent.Anchor(
+                        target = targetAnchor,
+                        offset = currentVisibleOffset,
+                        layoutGeneration = viewportLayoutGeneration,
+                        placement = LazyViewportAnchorPlacement.ExactOffset,
+                        fallback = LazyViewportAnchorFallback.Free
+                    )
+                )
+            }
+            dispatchViewportEvent(
+                LazyViewportEvent.LockAnchorOffset(
+                    target = targetAnchor,
+                    offset = currentVisibleOffset,
+                    layoutGeneration = viewportLayoutGeneration
+                )
             )
-        )
-        val focusCommandId = viewportControllerState.pendingCommand?.id
-        if (focusCommandId != null) {
-            awaitViewportCommandSettlement(focusCommandId)
+        } else {
+            listState.noteDispatchOwner(threadFocusedDispatchOwnerTag(focusedAnchorPlacementState.placement))
+            dispatchViewportEvent(
+                LazyViewportEvent.Anchor(
+                    target = targetAnchor,
+                    offset = focusedAnchorPlacementState.offsetPx,
+                    layoutGeneration = viewportLayoutGeneration,
+                    placement = focusedAnchorPlacementState.placement,
+                    renderedTailMessageId =
+                        focusedAnchorPlacementState.renderedTailMessageId.takeIf {
+                            focusedAnchorPlacementState.identity == targetIdentity &&
+                                focusedAnchorPlacementState.placement ==
+                                    LazyViewportAnchorPlacement.RenderedBottom
+                        },
+                    renderedTailAnchorIdentity =
+                        focusedAnchorPlacementState.identity.takeIf {
+                            it == targetIdentity &&
+                                focusedAnchorPlacementState.placement ==
+                                    LazyViewportAnchorPlacement.RenderedBottom &&
+                                focusedAnchorPlacementState.renderedTailMessageId != null
+                        },
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+            val focusCommandId = viewportControllerState.pendingCommand?.id
+            if (focusCommandId != null) {
+                awaitViewportCommandSettlement(focusCommandId)
+            }
+            val settledOffset = listState.focusedAnchorTargetOffset(targetIndex)
+            if (settledOffset != null && focusedAnchorPlacementState.placement == LazyViewportAnchorPlacement.Focused) {
+                dispatchViewportEvent(
+                    LazyViewportEvent.LockAnchorOffset(
+                        target = targetAnchor,
+                        offset = settledOffset,
+                        layoutGeneration = viewportLayoutGeneration
+                    )
+                )
+            }
         }
         val didFocus = listState.focusedAnchorTargetOffset(targetIndex) != null
         if (!didFocus) {
@@ -2849,21 +2911,31 @@ private fun ThreadMessagesListContent(
                             "originStatus=${renderPayload.originStatus} totalItems=${listState.layoutInfo.totalItemsCount} " +
                             "firstVisible=${listState.firstVisibleItemIndex} messageId=$targetMessageId"
                     )
+                    val resolvedPlacement =
+                        focusedAnchorPlacementForIdentity(
+                            targetIdentity = targetIdentity,
+                            placementIdentity = focusedAnchorPlacementState.identity,
+                            placement = focusedAnchorPlacementState.placement
+                        )
+                    val reanchorTarget =
+                        resolveThreadFocusedReanchorTarget(
+                            anchoredOffset = anchoredOffset,
+                            resolvedPlacement = resolvedPlacement,
+                            fallbackOffsetPx =
+                                focusedAnchorPlacementOffsetForIdentity(
+                                    targetIdentity = targetIdentity,
+                                    placementIdentity = focusedAnchorPlacementState.identity,
+                                    placement = focusedAnchorPlacementState.placement,
+                                    placementOffsetPx = focusedAnchorPlacementState.offsetPx
+                                ),
+                        )
+                    listState.noteDispatchOwner(threadFocusedDispatchOwnerTag(resolvedPlacement))
                     dispatchViewportEvent(
                         LazyViewportEvent.Anchor(
-                            target = LazyViewportAnchorTarget.Message(targetMessageId),
-                            offset = focusedAnchorPlacementOffsetForIdentity(
-                                targetIdentity = targetIdentity,
-                                placementIdentity = focusedAnchorPlacementState.identity,
-                                placement = focusedAnchorPlacementState.placement,
-                                placementOffsetPx = focusedAnchorPlacementState.offsetPx
-                            ),
+                            target = targetAnchor,
+                            offset = reanchorTarget.offsetPx,
                             layoutGeneration = viewportLayoutGeneration,
-                            placement = focusedAnchorPlacementForIdentity(
-                                targetIdentity = targetIdentity,
-                                placementIdentity = focusedAnchorPlacementState.identity,
-                                placement = focusedAnchorPlacementState.placement
-                            ),
+                            placement = reanchorTarget.placement,
                             renderedTailMessageId = focusedAnchorRenderedTailMessageIdForIdentity(
                                 targetIdentity = targetIdentity,
                                 placementIdentity = focusedAnchorPlacementState.identity,
@@ -2885,6 +2957,15 @@ private fun ThreadMessagesListContent(
                         awaitViewportCommandSettlement(reanchorCommandId)
                     }
                     anchoredOffset = listState.focusedAnchorTargetOffset(targetIndex)
+                    if (anchoredOffset != null && resolvedPlacement == LazyViewportAnchorPlacement.Focused) {
+                        dispatchViewportEvent(
+                            LazyViewportEvent.LockAnchorOffset(
+                                target = targetAnchor,
+                                offset = anchoredOffset,
+                                layoutGeneration = viewportLayoutGeneration
+                            )
+                        )
+                    }
                     quietMs = 0L
                 }
                 FocusedAnchorSessionAction.Continue -> {
@@ -2951,6 +3032,12 @@ private fun ThreadMessagesListContent(
             return@LaunchedEffect
         }
         correctedFocusedOriginIdentity = targetIdentity
+        val originCorrectionPlacement =
+            focusedAnchorPlacementForIdentity(
+                targetIdentity = targetIdentity,
+                placementIdentity = focusedAnchorPlacementState.identity,
+                placement = focusedAnchorPlacementState.placement
+            )
         listState.noteDispatchOwner(ThreadViewportOwnerTag.OriginCorrection)
         dispatchViewportEvent(
             LazyViewportEvent.Anchor(
@@ -2962,11 +3049,7 @@ private fun ThreadMessagesListContent(
                     placementOffsetPx = focusedAnchorPlacementState.offsetPx
                 ),
                 layoutGeneration = viewportLayoutGeneration,
-                placement = focusedAnchorPlacementForIdentity(
-                    targetIdentity = targetIdentity,
-                    placementIdentity = focusedAnchorPlacementState.identity,
-                    placement = focusedAnchorPlacementState.placement
-                ),
+                placement = originCorrectionPlacement,
                 renderedTailMessageId = focusedAnchorRenderedTailMessageIdForIdentity(
                     targetIdentity = targetIdentity,
                     placementIdentity = focusedAnchorPlacementState.identity,
@@ -2987,7 +3070,17 @@ private fun ThreadMessagesListContent(
         if (correctionCommandId != null) {
             awaitViewportCommandSettlement(correctionCommandId)
         }
-        val corrected = listState.focusedAnchorTargetOffset(targetIndex) != null
+        val correctedOffset = listState.focusedAnchorTargetOffset(targetIndex)
+        if (correctedOffset != null && originCorrectionPlacement == LazyViewportAnchorPlacement.Focused) {
+            dispatchViewportEvent(
+                LazyViewportEvent.LockAnchorOffset(
+                    target = LazyViewportAnchorTarget.Message(targetMessageId),
+                    offset = correctedOffset,
+                    layoutGeneration = viewportLayoutGeneration
+                )
+            )
+        }
+        val corrected = correctedOffset != null
         diagnosticsLogger(
             "thread_focused_origin_correction result=${if (corrected) "corrected" else "skipped_unmeasured"} " +
                 "messageId=$targetMessageId targetIndex=$targetIndex originStatus=${renderPayload.originStatus} " +
@@ -3980,6 +4073,7 @@ private fun ThreadMessagesListContent(
                                     renderPayload.originMessage?.id?.let { messageId ->
                                         recordMessageItemHeight(messageId, coordinates.size.height)
                                     }
+                                    alignInitialFocusedAfterLayout()
                                     keepReadingAnchorAfterLayout()
                                 },
                         renderConfig = renderConfig,
@@ -4162,6 +4256,7 @@ private fun ThreadMessagesListContent(
                     Box(
                         Modifier.fillMaxWidth().onGloballyPositioned { coordinates ->
                             recordMessageItemHeight(message.id, coordinates.size.height)
+                            alignInitialFocusedAfterLayout()
                             keepReadingAnchorAfterLayout()
                         }
                     )
@@ -4308,6 +4403,7 @@ private fun ThreadMessagesListContent(
                             .onGloballyPositioned { coordinates ->
                                 recordMessageItemHeight(message.id, coordinates.size.height)
                                 imeTailDrawProbe.recordPlaced(message.id)
+                                alignInitialFocusedAfterLayout()
                                 keepReadingAnchorAfterLayout()
                             }
                             .drawWithContent {

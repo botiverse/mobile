@@ -217,6 +217,7 @@ internal class ThreadReadingAnchorOwner(
                 preferredMessageId = preferredMessageId(),
             ) ?: return
         scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            listState.noteViewportOwner(ThreadViewportOwnerTag.ReadingAnchor)
             listState.scrollRawToItem(request.rawIndex, request.scrollOffset)
         }
     }

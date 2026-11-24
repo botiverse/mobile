@@ -62,6 +62,7 @@ internal class ThreadListViewport(
     private var pendingDispatchAttempt = 0
     private var activeOwnerTag: String = ThreadOpenShiftCause.Unknown
     private var activeOwnerAttempt = 0
+    private val ownerAttemptByTag: MutableMap<String, Int> = mutableMapOf()
 
     /** Scrolls issued by a named owner (this adapter's, and raw writes noted with [noteRawViewportWrite]). */
     var ownedScrollCount: Int = 0
@@ -70,6 +71,11 @@ internal class ThreadListViewport(
         private set
     var lastScrollOwnerAttempt: Int = 0
         private set
+
+    internal val activeScrollOwnerTag: String
+        get() = activeOwnerTag
+    internal val activeScrollOwnerAttempt: Int
+        get() = activeOwnerAttempt
 
     /**
      * Explicit non-drag user navigation count (e.g. Back to bottom pill, header scroll-to-top,
@@ -84,6 +90,17 @@ internal class ThreadListViewport(
         userNavigationCount += 1
     }
 
+    private fun resolveOwnerAttempt(tag: String, explicitAttempt: Int = 0): Int {
+        val previous = ownerAttemptByTag[tag] ?: 0
+        if (explicitAttempt > 0) {
+            if (explicitAttempt > previous) ownerAttemptByTag[tag] = explicitAttempt
+            return explicitAttempt
+        }
+        val next = previous + 1
+        ownerAttemptByTag[tag] = next
+        return next
+    }
+
     /** A writer that dispatches a controller event names itself; the command executor picks it up. */
     fun noteDispatchOwner(tag: String, attempt: Int = 0) {
         pendingDispatchOwner = tag
@@ -93,22 +110,26 @@ internal class ThreadListViewport(
     /** The command executor: the dispatching writer's name, else [defaultTag] for the command's target. */
     fun noteCommandOwner(defaultTag: String) {
         val pending = pendingDispatchOwner
-        activeOwnerTag = pending ?: defaultTag
-        activeOwnerAttempt = if (pending != null) pendingDispatchAttempt else 0
+        val tag = pending ?: defaultTag
+        val explicitAttempt = if (pending != null) pendingDispatchAttempt else 0
+        activeOwnerTag = tag
+        activeOwnerAttempt = resolveOwnerAttempt(tag, explicitAttempt)
         pendingDispatchOwner = null
+        pendingDispatchAttempt = 0
     }
 
     /** A writer that scrolls through this adapter directly. */
-    fun noteViewportOwner(tag: String) {
+    fun noteViewportOwner(tag: String, attempt: Int = 0) {
         activeOwnerTag = tag
-        activeOwnerAttempt = 0
+        activeOwnerAttempt = resolveOwnerAttempt(tag, attempt)
         pendingDispatchOwner = null
+        pendingDispatchAttempt = 0
     }
 
     /** A write that bypasses this adapter (`raw.requestScrollToItem`). */
-    fun noteRawViewportWrite(tag: String) {
+    fun noteRawViewportWrite(tag: String, attempt: Int = 0) {
         lastScrollOwnerTag = tag
-        lastScrollOwnerAttempt = 0
+        lastScrollOwnerAttempt = resolveOwnerAttempt(tag, attempt)
         ownedScrollCount += 1
     }
 

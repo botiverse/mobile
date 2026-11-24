@@ -723,18 +723,29 @@ private fun ThreadMessageCardContent(
             null
         }
     val shareCaptureActive = LocalThreadShareCaptureActive.current
-    val quotedPermalinkState = remember(message.id, message.body) { mutableStateOf<ThreadQuotedPermalinkUiState?>(null) }
-    var quotedPermalinkTarget by remember(message.id, message.body) { mutableStateOf<ParsedRaftPermalink?>(null) }
-    LaunchedEffect(message.id, message.body, currentServerSlug, quotedPermalinkLoader) {
-        quotedPermalinkState.value = null
-        quotedPermalinkTarget = null
+    val hasQuotedPermalinkLoader = quotedPermalinkLoader != null
+    val initialQuotedPermalinkTarget =
+        remember(message.id, message.body, currentServerSlug, hasQuotedPermalinkLoader) {
+            if (!hasQuotedPermalinkLoader) {
+                null
+            } else {
+                extractFirstQuotedRaftPermalink(
+                    content = message.body,
+                    hostnames = raftPermalinkHostnames(RaftClientConfigAppHosts.current),
+                    currentServerSlug = currentServerSlug
+                )?.parsed
+            }
+        }
+    val quotedPermalinkState =
+        remember(message.id, message.body, currentServerSlug, hasQuotedPermalinkLoader) {
+            mutableStateOf<ThreadQuotedPermalinkUiState?>(
+                if (initialQuotedPermalinkTarget != null) ThreadQuotedPermalinkUiState.Loading else null
+            )
+        }
+    val quotedPermalinkTarget = initialQuotedPermalinkTarget
+    LaunchedEffect(message.id, message.body, currentServerSlug, quotedPermalinkLoader, initialQuotedPermalinkTarget) {
         val loader = quotedPermalinkLoader ?: return@LaunchedEffect
-        val target =
-            extractFirstQuotedRaftPermalink(
-                content = message.body,
-                hostnames = raftPermalinkHostnames(RaftClientConfigAppHosts.current),
-                currentServerSlug = currentServerSlug
-            )?.parsed
+        val target = initialQuotedPermalinkTarget
         if (target == null) {
             // task #1153: quoted permalink cards used to fail silently. This
             // event only proves extraction returned null — it does not
@@ -749,8 +760,9 @@ private fun ThreadMessageCardContent(
             }
             return@LaunchedEffect
         }
-        quotedPermalinkTarget = target
-        quotedPermalinkState.value = ThreadQuotedPermalinkUiState.Loading
+        if (quotedPermalinkState.value == null) {
+            quotedPermalinkState.value = ThreadQuotedPermalinkUiState.Loading
+        }
         quotedPermalinkState.value =
             loader(target)?.let { item ->
                 if (item.item.isRetracted) ThreadQuotedPermalinkUiState.Retracted else ThreadQuotedPermalinkUiState.Loaded(item)

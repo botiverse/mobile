@@ -119,6 +119,18 @@ internal sealed interface LazyViewportEvent {
         val fallback: LazyViewportAnchorFallback
     ) : LazyViewportEvent
 
+    /**
+     * Settles an active [LazyViewportIntent.Anchored] for [target] to [LazyViewportAnchorPlacement.ExactOffset]
+     * at its current visual [offset] without emitting a scroll command. Subsequent content
+     * mutations (Prepend / HeightChange / InsetChange) then preserve the settled offset instead of
+     * replaying [LazyViewportAnchorPlacement.Focused].
+     */
+    data class LockAnchorOffset(
+        val target: LazyViewportAnchorTarget,
+        val offset: Int,
+        val layoutGeneration: Long
+    ) : LazyViewportEvent
+
     data object PointerDown : LazyViewportEvent
 
     data object PointerMove : LazyViewportEvent
@@ -181,6 +193,7 @@ internal fun reduceLazyViewport(
                 ),
                 emitCommand = true
             )
+        is LazyViewportEvent.LockAnchorOffset -> state.onLockAnchorOffset(event)
         LazyViewportEvent.PointerDown ->
             state.transitionTo(LazyViewportIntent.UserDragging, emitCommand = false)
         LazyViewportEvent.PointerMove -> state
@@ -256,6 +269,23 @@ internal fun LazyViewportControllerState.acceptsRenderedTailCommand(
         expectedTailMessageId == currentTailMessageId &&
         anchor.renderedTailAnchorIdentity != null &&
         anchor.renderedTailAnchorIdentity == currentAnchorIdentity
+}
+
+private fun LazyViewportControllerState.onLockAnchorOffset(
+    event: LazyViewportEvent.LockAnchorOffset
+): LazyViewportControllerState {
+    val anchored = intent as? LazyViewportIntent.Anchored ?: return this
+    if (anchored.target != event.target) return this
+    val nextIntent =
+        anchored.copy(
+            offset = event.offset,
+            layoutGeneration = event.layoutGeneration,
+            placement = LazyViewportAnchorPlacement.ExactOffset,
+            renderedTailMessageId = null,
+            renderedTailAnchorIdentity = null
+        )
+    if (nextIntent == anchored && pendingCommand == null) return this
+    return transitionTo(nextIntent, emitCommand = false)
 }
 
 private fun LazyViewportControllerState.onRenderedTailCommandInvalidated(

@@ -618,6 +618,65 @@ internal fun focusedAnchorRenderedTailMessageIdForIdentity(
         targetIdentity == placementIdentity && placement == LazyViewportAnchorPlacement.RenderedBottom
     }
 
+/**
+ * 1.30.0 P0-1: whether an already-visible `Focused` target row should keep its current visual
+ * offset under [LazyViewportAnchorPlacement.ExactOffset] instead of re-dispatching `Focused`
+ * (which would yank an already-visible or bottom-clamped row back to `y = 0`).
+ *
+ * True when either this `(messageId, requestNonce)` session already anchored the target (e.g. the
+ * focused-anchor effect restarted on `network_applied` changing item count/signature) or the
+ * pre-first-draw placement owner already aligned this initial focus target. Non-`Focused`
+ * placements (`FocusedThreadReplies`, `RenderedBottom`) stay on their existing path.
+ */
+internal fun shouldKeepVisibleFocusedAnchorOffset(
+    placement: LazyViewportAnchorPlacement,
+    currentVisibleOffset: Int?,
+    targetIdentity: String,
+    sessionIdentity: String?,
+    initialPlacementApplied: Boolean,
+    initialFocusedIdentity: String?,
+): Boolean =
+    placement == LazyViewportAnchorPlacement.Focused &&
+        currentVisibleOffset != null &&
+        (
+            sessionIdentity == targetIdentity ||
+                (initialPlacementApplied && initialFocusedIdentity == targetIdentity)
+        )
+
+internal data class ThreadFocusedReanchorTarget(
+    val placement: LazyViewportAnchorPlacement,
+    val offsetPx: Int,
+)
+
+/**
+ * 1.30.0 P0-1: drift reanchor target during a focused-anchor watch session. When the target row
+ * already settled at a visible [anchoredOffset] under [LazyViewportAnchorPlacement.Focused],
+ * restore that exact offset instead of yanking a bottom-clamped row to `y = 0`.
+ */
+internal fun resolveThreadFocusedReanchorTarget(
+    anchoredOffset: Int?,
+    resolvedPlacement: LazyViewportAnchorPlacement,
+    fallbackOffsetPx: Int,
+): ThreadFocusedReanchorTarget =
+    if (anchoredOffset != null && resolvedPlacement == LazyViewportAnchorPlacement.Focused) {
+        ThreadFocusedReanchorTarget(
+            placement = LazyViewportAnchorPlacement.ExactOffset,
+            offsetPx = anchoredOffset,
+        )
+    } else {
+        ThreadFocusedReanchorTarget(
+            placement = resolvedPlacement,
+            offsetPx = fallbackOffsetPx,
+        )
+    }
+
+internal fun threadFocusedDispatchOwnerTag(placement: LazyViewportAnchorPlacement): String =
+    when (placement) {
+        LazyViewportAnchorPlacement.FocusedThreadReplies -> ThreadViewportOwnerTag.JumpPill
+        LazyViewportAnchorPlacement.RenderedBottom -> ThreadViewportOwnerTag.RenderedTail
+        else -> ThreadViewportOwnerTag.FocusedReanchor
+    }
+
 internal data class ThreadBackToBottomButtonState(
     val initialBottomAnchorReady: Boolean,
     val pendingKeyboardBottomAnchor: Boolean,

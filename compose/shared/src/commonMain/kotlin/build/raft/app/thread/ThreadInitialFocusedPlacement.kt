@@ -83,6 +83,26 @@ internal fun resolveThreadInitialFocusedPlacement(
 }
 
 /**
+ * Whether [ThreadInitialFocusedPlacementOwner] should start armed for a thread open.
+ *
+ * Armed on reversed lists (outside an adaptive restore) when either the focused message is already
+ * in the initial cached slice (`initialFocusedItemIndex >= 0`), or the slice is a reply thread
+ * painting only its `originMessage` while waiting for cached replies (`messagesEmpty &&
+ * !focusedMessageId.isNullOrBlank()`) so the pre-first-draw owner is not permanently retired before
+ * those replies lay out.
+ */
+internal fun shouldArmThreadInitialFocusedPlacement(
+    reverseLayout: Boolean,
+    adaptiveAnchorRestoreInFlight: Boolean,
+    initialFocusedItemIndex: Int,
+    messagesEmpty: Boolean,
+    focusedMessageId: String?,
+): Boolean =
+    reverseLayout &&
+        !adaptiveAnchorRestoreInFlight &&
+        (initialFocusedItemIndex >= 0 || (messagesEmpty && !focusedMessageId.isNullOrBlank()))
+
+/**
  * Single-shot pre-first-draw placement owner for a cached focused open on a reversed thread list
  * (#proj-mobile:#258).
  *
