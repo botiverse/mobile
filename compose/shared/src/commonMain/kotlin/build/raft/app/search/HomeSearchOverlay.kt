@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.compat.ui.raftImeBottomPx
+import androidx.compose.ui.platform.LocalDensity
 import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
@@ -514,6 +516,8 @@ internal fun HomeSearchOverlayPanel(
             onDismissRequest = overlay.onDismiss,
             anchorTop = overlay.anchorTop,
             anchorWidth = overlay.anchorWidth,
+            // The host's keyboard where Compose's IME inset doesn't carry it (iOS).
+            keyboardHeight = with(LocalDensity.current) { raftImeBottomPx(this).toDp() },
             modifier =
                 Modifier.onPreviewKeyEvent { event ->
                     // A filter menu keeps its own keys, and a focused chip or button its Return.
