@@ -16,13 +16,6 @@ internal fun raftIosPullToRefreshStyle(onMac: Boolean): RaftPullToRefreshStyle =
     if (onMac) RaftPullToRefreshStyle.None else RaftPullToRefreshStyle.Cupertino
 
 /**
- * The "Enter sends" default: on with a Mac's keyboard, like desktop, and on an iPad or iPhone while
- * a hardware keyboard is connected (RaftIosHardwareKeyboard.kt). A choice saved in Settings wins.
- */
-internal fun raftIosComposerEnterSendsByDefault(onMac: Boolean, hardwareKeyboard: Boolean): Boolean =
-    onMac || hardwareKeyboard
-
-/**
  * The host's status-bar-hidden flag as the top inset reads it. A Mac has no status bar: a hidden
  * bar's 16dp margin would draw a frame-coloured strip under the title bar, so a Mac counts as
  * shown and uses its live top inset, as the desktop host publishes.

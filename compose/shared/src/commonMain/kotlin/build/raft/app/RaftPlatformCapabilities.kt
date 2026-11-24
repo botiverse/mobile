@@ -5,12 +5,6 @@ import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
 
-/**
- * The iPad app is running on a Mac ("Designed for iPad", `NSProcessInfo.isiOSAppOnMac`), where it
- * behaves like the desktop app (RaftIosAppOnMac.kt). False on every other host.
- */
-internal expect fun raftPlatformIsiOSAppOnMac(): Boolean
-
 /** The platform's own pull-to-refresh feel: Android = Material 3, iOS = UIRefreshControl-style, desktop = none. */
 internal expect fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle
 
@@ -37,8 +31,6 @@ internal expect fun raftPlatformThreadImeProgrammaticViewportPolicy():
 // cold-tab CPU/frame/memory evidence justifies enabling the complete set.
 internal expect fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode
 
-internal expect fun raftPlatformSupportsMultiShellHost(): Boolean
-
 /**
  * This device can show Raft on a large screen: a tablet, a foldable, an iPad or a Mac, the desktop
  * app. Settings > Appearance shows its Windows group ("Desktop layout on large screens", Multiple
@@ -46,16 +38,6 @@ internal expect fun raftPlatformSupportsMultiShellHost(): Boolean
  * can see (settings cleanup, 1.27.0).
  */
 internal expect fun raftPlatformLargeScreenPossible(): Boolean
-
-/** iOS is currently the only host with a native right-edge Forward recognizer. */
-internal expect fun raftPlatformSupportsConversationForwardGesture(): Boolean
-
-/**
- * Default of the "Enter sends" composer preference (an explicit choice in settings wins). Desktop:
- * on, like the web on a fine pointer (Enter / Cmd+Enter send, Shift+Enter inserts a newline, Enter
- * while an IME composes commits the conversion). Phones keep Enter as a newline.
- */
-internal expect fun raftPlatformComposerEnterSendsByDefault(): Boolean
 
 /**
  * Message text is selectable with the pointer (drag, double-click a word, Cmd+C), like the web:
@@ -77,13 +59,6 @@ internal expect fun raftPlatformHasFinePointer(): Boolean
  * Compose desktop app on macOS. The rail's ⌘\ / Ctrl+\ sidebar toggle reads it.
  */
 internal expect fun raftPlatformShortcutsUseCommand(): Boolean
-
-/**
- * An in-app browser page can show a web page. Desktop has no embedded web view yet
- * (RaftDesktopActuals `RaftSandboxWebViewHost`), so its web links always open in the default
- * browser and Settings does not offer the "Open web links" choice.
- */
-internal expect fun raftPlatformSupportsInAppBrowser(): Boolean
 
 /**
  * Whether this platform can host an embedded native WebView for authenticated Raft own-web pages

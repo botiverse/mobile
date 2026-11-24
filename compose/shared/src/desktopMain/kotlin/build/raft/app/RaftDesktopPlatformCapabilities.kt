@@ -8,8 +8,6 @@ import build.raft.app.data.RaftDesktopClipboardAttachments
 import java.text.BreakIterator
 import java.util.Locale
 
-internal actual fun raftPlatformIsiOSAppOnMac(): Boolean = false
-
 // Desktop draws with Skia like iOS but has no system bars, haptics or native media hosts.
 // No pull gesture on desktop: wheel / trackpad overscroll must not drag a pull indicator in.
 internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle = RaftPullToRefreshStyle.None
@@ -25,14 +23,8 @@ internal actual fun raftPlatformThreadImeProgrammaticViewportPolicy(): ThreadIme
 internal actual fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode =
     AppShellChildPagePrewarmMode.Canary
 
-internal actual fun raftPlatformSupportsMultiShellHost(): Boolean = false
-
 // A desktop window can always be made wide.
 internal actual fun raftPlatformLargeScreenPossible(): Boolean = true
-
-internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = false
-
-internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = true
 
 internal actual fun raftPlatformMessageTextPointerSelectable(): Boolean = true
 
@@ -40,8 +32,6 @@ internal actual fun raftPlatformHasFinePointer(): Boolean = true
 
 internal actual fun raftPlatformShortcutsUseCommand(): Boolean =
     System.getProperty("os.name").orEmpty().startsWith("Mac", ignoreCase = true)
-
-internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = false
 
 internal actual fun raftPlatformSupportsEmbeddedOwnWebView(): Boolean =
     !System.getProperty("os.name").orEmpty().lowercase().startsWith("windows")

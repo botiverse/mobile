@@ -1,7 +1,6 @@
 package build.raft.app.data
 
 import build.raft.app.KmmResourceLocaleRuntime
-import build.raft.app.RaftLucideIconName
 import build.raft.app.isConversationAccessLost
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -164,7 +163,6 @@ data class SharedSettingsNavItem(
     val destination: SharedSettingsDestination,
     val title: String,
     val subtitle: String,
-    val iconName: RaftLucideIconName,
     val value: String? = null,
     val productVisible: Boolean = true
 )
@@ -5621,17 +5619,17 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(): SharedSettingsHom
         subtitle = "",
         items =
             listOf(
-                nav(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", RaftLucideIconName.User, this?.user?.bestDisplayName),
-                nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", RaftLucideIconName.Languages, null),
-                nav(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", RaftLucideIconName.Type, null),
-                nav(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", RaftLucideIconName.Bell, null),
-                nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", RaftLucideIconName.Archive, null),
-                nav(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", RaftLucideIconName.Building2, server?.role?.titleLabel()),
-                nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", RaftLucideIconName.CreditCard, server?.plan?.titleLabel()),
-                nav(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", RaftLucideIconName.Shield, null),
-                nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", RaftLucideIconName.Link2, null),
-                nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", RaftLucideIconName.Monitor, null),
-                nav(SharedSettingsDestination.About, "About", "Version and build information", RaftLucideIconName.BadgeInfo, null)
+                nav(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", this?.user?.bestDisplayName),
+                nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", null),
+                nav(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", null),
+                nav(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", null),
+                nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", null),
+                nav(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", server?.role?.titleLabel()),
+                nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", server?.plan?.titleLabel()),
+                nav(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", null),
+                nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", null),
+                nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", null),
+                nav(SharedSettingsDestination.About, "About", "Version and build information", null)
             )
     )
 }
@@ -5640,14 +5638,12 @@ private fun nav(
     destination: SharedSettingsDestination,
     title: String,
     subtitle: String,
-    iconName: RaftLucideIconName,
     value: String?,
 ): SharedSettingsNavItem =
     SharedSettingsNavItem(
         destination = destination,
         title = title,
         subtitle = subtitle,
-        iconName = iconName,
         value = value,
     )
 

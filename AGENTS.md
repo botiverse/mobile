@@ -828,7 +828,9 @@ or helper scripts as a workaround for branch protection.
   adaptive workspace and pane state with their reducers, member detail identity & reader
   visibility, feedback diagnostics lifecycle/bridge, settings web URLs, agent runtime
   capability & create-agent option models, computer upgrade model, channel kind predicates,
-  inbox row contracts, sidebar sort mode, and composer temp-file retirement); it
+  inbox row contracts, sidebar sort mode, composer temp-file retirement, attachment &
+  mention-handle models, agent lifecycle actions, Unicode identity handles, locale runtime,
+  human pixel-avatar URL check, and data-layer platform capabilities); it
   is the first step towards a separate `:shared-data` module, so a file in `core/` must not use
   anything from a feature folder. The
   top level holds the remaining cross-cutting app infrastructure (theme, platform,
