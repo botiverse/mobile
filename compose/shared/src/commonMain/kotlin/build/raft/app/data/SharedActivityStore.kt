@@ -216,8 +216,15 @@ private fun ReplyPreview.toActivityLiveMessage(event: ThreadUpdated): Message {
             ),
         timestampLabel = createdAt,
         body = content,
-        messageType = if (kind == MemberKind.System) MessageType.System else MessageType.Chat,
-        mentions = event.latestReplyMentions
+        messageType =
+            if (kind == MemberKind.System || event.latestReplyMessageType == MessageType.System) {
+                MessageType.System
+            } else {
+                MessageType.Chat
+            },
+        mentions = event.latestReplyMentions,
+        delegatedBy = event.latestReplyDelegatedBy,
+        deletedAt = if (event.latestReplyRetracted) event.lastReplyAt ?: createdAt else null,
     )
 }
 
@@ -452,6 +459,24 @@ class SharedActivityStore internal constructor(
      */
     private val onSyncPullHint: (serverId: String, reason: String) -> Unit = { _, _ -> },
     /**
+     * `sync_inbox_rows_v0` (#proj-mobile:#163): when enabled for the server (and sync pull is
+     * allowed), `RealtimeRowPatch.Absent` and `DirectMessageCreated` rely on the coalesced
+     * [RaftSyncRealtimePull] (`inbox_row` capability) instead of firing full `GET /api/channels/inbox`
+     * reloads, and foreground returns rely on the foreground sync pull.
+     */
+    private val syncInboxRowsEnabled: (serverId: String) -> Boolean = { false },
+    /**
+     * Local metadata lookup for unlisted `thread:updated` frames (#proj-mobile:#163, web
+     * `inboxThreadInsert.ts` / `inboxUnfollowedThreadReply.ts`): parent channel, parent message
+     * author, and known follow / followed-thread metadata.
+     */
+    private val knownThreadContext: (
+        serverId: String,
+        threadChannelId: String,
+        parentMessageId: String,
+        parentChannelId: String?,
+    ) -> ActivityUnlistedThreadContext = { _, _, _, _ -> ActivityUnlistedThreadContext() },
+    /**
      * Defers hidden background-tab Activity projections while Home is actively scrolling
      * (#wg-mobile-feedback:#271). Injectable for tests.
      */
@@ -664,6 +689,14 @@ class SharedActivityStore internal constructor(
     private var loadResumed = false
     /** Bumped when the row state goes (server switch, reset): an answer from before is dropped. */
     private var rowRereadGeneration = 0L
+    /**
+     * Recently seen / Done followed thread rows, keyed by threadChannelId (guarded by realtimeOwnerLock).
+     * Enables live in-place insertion when a new `thread:updated` arrives for a followed thread not
+     * currently listed in Activity (e.g., previously marked Done or paged out).
+     */
+    private val knownFollowedThreads = LinkedHashMap<String, ActivityKnownFollowedThread>()
+    /** Session-local Follow / Unfollow overrides keyed by parentMessageId and threadChannelId (guarded by realtimeOwnerLock). */
+    private val threadFollowOverrides = LinkedHashMap<String, Boolean>()
 
     /**
      * `inbox_row_position_v1`: this list is [owner]'s badge's only writer (Tenny, #triage:#244), shown
@@ -730,6 +763,13 @@ class SharedActivityStore internal constructor(
                 // `inbox_row_position_v1`: a list that owns the badge always reads itself on the
                 // return (the summary read it suppresses was the only other one), shown or hidden.
                 if (!realtimeReconcileOwedOnForeground && !listOwnsBadgeLocked()) return@synchronized null
+                // #proj-mobile:#163: when `sync_inbox_rows_v0` is on for this server,
+                // SharedForegroundReconciler triggers `GET /api/sync/changes?capabilities=inbox_row`
+                // immediately on foreground return; avoid firing a redundant full `/api/channels/inbox`.
+                if (!realtimeReconcileOwedOnForeground && syncInboxRowsOnLocked()) {
+                    diagnosticsLogger("store_load domain=activity phase=foreground_return reason=sync_inbox_rows_covered")
+                    return@synchronized null
+                }
                 if (!realtimeReconcileOwedOnForeground) diagnosticsLogger("store_load domain=activity phase=foreground_return reason=list_owns_badge")
                 realtimeReconcileOwedOnForeground = false
                 resumeFoldLoads = resetLoadsStarted
@@ -1663,7 +1703,12 @@ class SharedActivityStore internal constructor(
             return if (owner != null && owner == event.serverId.value) scheduleRealtimeBackgroundReconcileLocked(trigger) else null
         }
         // dm:new refreshes like web (channelRealtimeSync.ts dmNew -> scheduleInboxRefresh):
-        // a brand-new DM row can only arrive through the canonical projection.
+        // with `sync_inbox_rows_v0` on, ask for the coalesced realtime sync pull instead of a full
+        // `/api/channels/inbox` reload.
+        if (event is DirectMessageCreated && syncInboxRowsOnLocked()) {
+            requestSyncPullLocked("dm_new")
+            return null
+        }
         if (event is MessageNew || event is SyncResumeResponse || event is ThreadUpdated || event is DirectMessageCreated) {
             if (inPlace != null) {
                 // Inbox refresh step 4: a row the list shows takes the message in place (preview,
@@ -1712,10 +1757,19 @@ class SharedActivityStore internal constructor(
                     RealtimeRowPatch.Absent -> {
                         noteInPlaceAbsentLocked(event)
                         requestSyncPullLocked(if (event is ThreadUpdated) "thread_reply_absent" else "message_absent")
-                        scheduleRealtimeBackgroundReconcileLocked(trigger)
+                        if (syncInboxRowsOnLocked()) null else scheduleRealtimeBackgroundReconcileLocked(trigger)
                     }
                     RealtimeRowPatch.NeedsRead -> scheduleRealtimeBackgroundReconcileLocked(trigger)
                 }
+            }
+            // Non-All filters (Unread / Mentions): skip full reload on unlisted unfollowed thread replies.
+            if (
+                event is ThreadUpdated &&
+                rowPositionFlagEnabledLocked() &&
+                _state.value.snapshot?.threadRowIndex(event.threadChannelId)?.let { it < 0 } == true &&
+                shouldSkipUnfollowedThreadRereadLocked(event, _state.value, _state.value.snapshot!!)
+            ) {
+                return null
             }
             // #triage:#244: Unread brings back, unread and on top, a row it kept read this visit.
             if (intent.allowLocalPatch) reviveRetainedReadRowLocked(event, intent)
@@ -2326,6 +2380,24 @@ class SharedActivityStore internal constructor(
             inboxRowPositionEnabled(serverId)
     }
 
+    /** Both in-place and per-row position flags are enabled for the bound server (filter-independent). */
+    private fun rowPositionFlagEnabledLocked(): Boolean {
+        val serverId = _state.value.ownerServerId ?: return false
+        return inboxInPlaceEnabled(serverId) && inboxRowPositionEnabled(serverId)
+    }
+
+    /**
+     * `sync_inbox_rows_v0` covers absent rows, new DMs, and foreground returns for this list:
+     * requires a fresh All list kept by the per-row position rule and `sync_inbox_rows_v0` enabled.
+     */
+    private fun syncInboxRowsOnLocked(): Boolean {
+        val current = _state.value
+        val serverId = current.ownerServerId ?: return false
+        return rowPositionOnLocked() &&
+            freshListOwner == (serverId to current.ownerUserId) &&
+            syncInboxRowsEnabled(serverId)
+    }
+
     private fun resetRowPositionLocked() {
         // Web resetRowPosition: the audits still waiting are not judged (one in flight records itself
         // on its answer).
@@ -2347,6 +2419,8 @@ class SharedActivityStore internal constructor(
         rowRereadFlushJob?.cancel()
         rowRereadFlushJob = null
         freshListOwner = null
+        knownFollowedThreads.clear()
+        threadFollowOverrides.clear()
     }
 
     /** One `activity:inplace_check` to [serverId]'s trace stream (web `emitStateTransitionTrace`). */
@@ -2574,7 +2648,7 @@ class SharedActivityStore internal constructor(
         if (!rowPositionOnLocked()) return null
         val snapshot = _state.value.snapshot ?: return null
         val index = snapshot.threadRowIndex(event.threadChannelId)
-        if (index < 0) return null
+        if (index < 0) return handleUnlistedThreadUpdatedLocked(event, intent, inPlace)
         val existing = snapshot.items[index]
         if (!existing.isActivityPositionRow()) return null
         val scopeId = existing.activityRowScopeId() ?: return null
@@ -2599,6 +2673,194 @@ class SharedActivityStore internal constructor(
             return RealtimeRowPatch.RowReread
         }
         return if (replyPatch == RealtimeRowPatch.Unchanged && metaPatched) RealtimeRowPatch.Patched else replyPatch
+    }
+
+    /**
+     * Web `receiveUnlistedThreadReply` + `skipUnfollowedThreadReread` (#proj-mobile:#163):
+     * 1. If the thread is followed and local metadata is sufficient, insert the row in place.
+     * 2. If the thread is unfollowed and cannot list for this viewer, skip the re-read cleanly.
+     * 3. Otherwise return [RealtimeRowPatch.Absent] so sync pull (or fallback list read) handles it.
+     */
+    private fun handleUnlistedThreadUpdatedLocked(
+        event: ThreadUpdated,
+        intent: SharedActivityIntent.ApplyRealtimeEvent,
+        inPlace: InPlaceUnreadContext,
+    ): RealtimeRowPatch {
+        val current = _state.value
+        val snapshot = current.snapshot ?: return RealtimeRowPatch.Absent
+        if (tryInsertUnlistedThreadLocked(event, intent, inPlace, current, snapshot)) {
+            return RealtimeRowPatch.Patched
+        }
+        if (shouldSkipUnfollowedThreadRereadLocked(event, current, snapshot)) {
+            return RealtimeRowPatch.Unchanged
+        }
+        return RealtimeRowPatch.Absent
+    }
+
+    private fun tryInsertUnlistedThreadLocked(
+        event: ThreadUpdated,
+        intent: SharedActivityIntent.ApplyRealtimeEvent,
+        inPlace: InPlaceUnreadContext,
+        current: SharedActivityState,
+        snapshot: InboxSnapshot,
+    ): Boolean {
+        val serverId = current.ownerServerId ?: return false
+        if (!rowPositionOnLocked()) return false
+        if (freshListOwner != (serverId to current.ownerUserId)) return false
+        if (loadJob?.isActive == true || realtimeBackgroundReconcileJob?.isActive == true) return false
+        val key = "thread:${event.threadChannelId.value}"
+        if (hasLocalRowHoldLocked(current, key)) return false
+        val context = resolveUnlistedThreadContextLocked(serverId, event)
+        if (context.follow != ActivityKnownThreadFollow.Followed) return false
+        val reply = event.latestReply?.toActivityLiveMessage(event)
+        val readOnArrival = isActiveActivityConversation(event.threadChannelId.value, inPlace.activeConversationId, snapshot)
+        val built =
+            buildInsertedThreadRow(
+                event = event,
+                reply = reply,
+                viewerId = inPlace.principalId,
+                readOnArrival = readOnArrival,
+                followed = context.followed,
+                parentChannel = context.parentChannel,
+            )
+        if (built !is ActivityThreadInsertResult.Inserted) return false
+        val index = insertedActivityRowIndex(snapshot.items, built.row, snapshot.hasMore) ?: return false
+        val scopeId = event.threadChannelId.value
+        rowPositions.keep(scopeId, built.state)
+        val baseline =
+            if (snapshot.hasMore && context.followed != null && context.followed.unreadCount > 0) {
+                context.followed.unreadCount
+            } else {
+                0
+            }
+        val unreadDelta = built.row.unreadCount - baseline
+        val items = snapshot.items.toMutableList().apply { add(index, built.row) }
+        reduceState(
+            intent,
+            current.copy(
+                snapshot =
+                    snapshot.copy(
+                        items = items,
+                        totalCount = snapshot.totalCount + 1,
+                        totalUnreadCount = maxOf(0, snapshot.totalUnreadCount + unreadDelta),
+                    ),
+                errorCode = null,
+            ),
+        )
+        rememberFollowedThreadLocked(built.row)
+        val own = reply != null && reply.author.kind == MemberKind.Human && reply.author.id.value == inPlace.principalId
+        inPlaceDriftCheck.noteInserted(
+            row = built.row,
+            trigger = InboxRefreshTrigger.ThreadReply,
+            cause = if (reply != null) built.row.inPlaceCauseDetail(reply, own) else "",
+        )
+        auditLiveAppliedLocked(scopeId, built.row)
+        diagnosticsLogger(
+            "activity_live_row_inserted scopeId=$scopeId index=$index unread=${built.row.unreadCount} mention=${built.row.hasMention}"
+        )
+        return true
+    }
+
+    private fun shouldSkipUnfollowedThreadRereadLocked(
+        event: ThreadUpdated,
+        current: SharedActivityState,
+        snapshot: InboxSnapshot,
+    ): Boolean {
+        val serverId = current.ownerServerId ?: return false
+        if (!rowPositionFlagEnabledLocked()) return false
+        if (current.selectedFilter == InboxFilter.All && freshListOwner != (serverId to current.ownerUserId)) return false
+        if (loadJob?.isActive == true) return false
+        val key = "thread:${event.threadChannelId.value}"
+        if (hasLocalRowHoldLocked(current, key)) return false
+        val reply = event.latestReply?.toActivityLiveMessage(event) ?: return false
+        if (reply.channelId != event.threadChannelId) return false
+        val context = resolveUnlistedThreadContextLocked(serverId, event)
+        val cause =
+            threadReplyMayListUnfollowed(
+                viewerId = current.ownerUserId,
+                reply = reply,
+                follow = context.follow,
+                parentChannelType = event.parentChannelType,
+                replyChannelType = event.latestReplyChannelType,
+                parentMessage = context.parentMessage,
+                filter = current.selectedFilter,
+                listComplete = !snapshot.hasMore,
+            )
+        if (cause != null) return false
+        inPlaceDriftCheck.noteAbsentRereadSkipped(
+            scopeId = event.threadChannelId.value,
+            trigger = InboxRefreshTrigger.ThreadReply,
+            seq = reply.seq?.takeIf { it >= 0L }?.toString(),
+        )
+        diagnosticsLogger(
+            "activity_unfollowed_reread_skipped scopeId=${event.threadChannelId.value} " +
+                "follow=${context.follow.wireValue} filter=${current.selectedFilter.wireValue} complete=${!snapshot.hasMore}"
+        )
+        return true
+    }
+
+    private fun hasLocalRowHoldLocked(current: SharedActivityState, key: String): Boolean {
+        val owner = overlayOwner(current) ?: return false
+        return doneOverlay.contains(owner, key) || readOverlay.contains(owner, key)
+    }
+
+    private fun resolveUnlistedThreadContextLocked(serverId: String, event: ThreadUpdated): ActivityUnlistedThreadContext {
+        val external =
+            knownThreadContext(
+                serverId,
+                event.threadChannelId.value,
+                event.parentMessageId.value,
+                event.parentChannelId?.value,
+            )
+        val cachedFollowed = knownFollowedThreads[event.threadChannelId.value]
+        val localOverride =
+            threadFollowOverrides[event.parentMessageId.value]
+                ?: threadFollowOverrides[event.threadChannelId.value]
+        val follow =
+            when {
+                localOverride == true -> ActivityKnownThreadFollow.Followed
+                localOverride == false -> ActivityKnownThreadFollow.UnfollowedHere
+                external.follow != ActivityKnownThreadFollow.Unknown -> external.follow
+                cachedFollowed != null -> ActivityKnownThreadFollow.Followed
+                else -> ActivityKnownThreadFollow.Unknown
+            }
+        val followed = external.followed ?: cachedFollowed
+        val parentMessage =
+            external.parentMessage
+                ?: followed?.let { known ->
+                    val senderId = known.parentMessageSenderId?.takeIf { it.isNotBlank() } ?: return@let null
+                    val senderKind = known.parentMessageSenderKind ?: return@let null
+                    ActivityKnownParentMessage(senderId = senderId, senderKind = senderKind)
+                }
+        return external.copy(follow = follow, followed = followed, parentMessage = parentMessage)
+    }
+
+    private fun rememberFollowedThreadsFromItemsLocked(items: List<InboxItem>) {
+        items.forEach { item -> rememberFollowedThreadLocked(item) }
+    }
+
+    private fun rememberFollowedThreadLocked(item: InboxItem, unreadCleared: Boolean = false) {
+        val known = item.toActivityKnownFollowedThread(unreadCleared = unreadCleared) ?: return
+        knownFollowedThreads.remove(known.threadChannelId)
+        knownFollowedThreads[known.threadChannelId] = known
+        while (knownFollowedThreads.size > ActivityInPlaceExpectationsCap) {
+            knownFollowedThreads.remove(knownFollowedThreads.keys.first())
+        }
+    }
+
+    private fun recordThreadFollowOverrideLocked(item: InboxItem, following: Boolean) {
+        item.parentMessageId?.value?.takeIf { it.isNotBlank() }?.let { id ->
+            threadFollowOverrides.remove(id)
+            threadFollowOverrides[id] = following
+        }
+        item.threadChannelId?.value?.takeIf { it.isNotBlank() }?.let { id ->
+            threadFollowOverrides.remove(id)
+            threadFollowOverrides[id] = following
+            if (!following) knownFollowedThreads.remove(id)
+        }
+        while (threadFollowOverrides.size > ActivityInPlaceExpectationsCap) {
+            threadFollowOverrides.remove(threadFollowOverrides.keys.first())
+        }
     }
 
     /**
@@ -3340,6 +3602,10 @@ class SharedActivityStore internal constructor(
         // Off the primary surface the shell used to send nothing; it still does nothing here unless
         // this list owns the badge (`inbox_row_position_v1`): then every live event reaches it.
         if (!primarySurfaceVisible && !ownsBadge) return
+        if (ownsBadge && event is DirectMessageCreated && synchronized(realtimeOwnerLock) { syncInboxRowsOnLocked() }) {
+            synchronized(realtimeOwnerLock) { requestSyncPullLocked("dm_new") }
+            return
+        }
         if (ownsBadge && event.rereadsHiddenOwnedList(_state.value.ownerServerId)) {
             // An event the +1 path cannot count (the summary read it used to make is suppressed):
             // the list re-reads itself, throttled (hidden: the hidden window).
@@ -3349,6 +3615,17 @@ class SharedActivityStore internal constructor(
         val current = _state.value
         val snapshot = current.snapshot ?: return
         val currentUserId = currentUserId() ?: return
+        // #proj-mobile:#163: keep the loaded All list maintained in place even while hidden on the
+        // Home/Chat tab so rows, unread counts, and `sync_inbox_rows` stay consistent and feed the
+        // badge without `limit=1` or full-list reload storms.
+        if (
+            (event is MessageNew || event is ThreadUpdated) &&
+            synchronized(realtimeOwnerLock) {
+                applyHiddenRealtimeInPlaceLocked(event, activeConversationId, activityMuted, currentUserId)
+            }
+        ) {
+            return
+        }
         // `inbox_row_position_v1`: a hidden list counts a live message by the shared rule (the mute,
         // system lines and noise subtypes included), not by today's author-only check.
         val rowPosition =
@@ -3390,6 +3667,70 @@ class SharedActivityStore internal constructor(
                 errorCode = null
             )
         )
+    }
+
+    /**
+     * Applies a live `message:new` / `thread:updated` directly to the loaded All list while
+     * Activity is hidden (on Home/Chat tab), using the same per-row position rule as when visible.
+     * Returns true when handled (patched in place, unchanged/skipped, single-row reread, or
+     * deferred to coalesced `sync_inbox_rows` pull); false falls back to the legacy summary +1 path.
+     */
+    private fun applyHiddenRealtimeInPlaceLocked(
+        event: RealtimeEvent,
+        activeConversationId: String?,
+        activityMuted: Boolean,
+        currentUserId: String,
+    ): Boolean {
+        if (!rowPositionOnLocked()) return false
+        val snapshot = _state.value.snapshot ?: return false
+        val intent =
+            SharedActivityIntent.ApplyRealtimeEvent(
+                event = event,
+                allowLocalPatch = !activityMuted,
+                activeConversationId = activeConversationId,
+                activityMuted = activityMuted,
+            )
+        val inPlace = InPlaceUnreadContext(currentUserId, readOnArrivalConversationId(activeConversationId, snapshot))
+        val patch =
+            when (event) {
+                is MessageNew ->
+                    applyLiveByPositionLocked(
+                        event.message,
+                        event.systemProvenance,
+                        intent,
+                        inPlace,
+                        InboxRefreshTrigger.MessageNew,
+                    )
+                is ThreadUpdated -> applyThreadUpdatedByPositionLocked(event, intent, inPlace)
+                else -> null
+            }
+        return when (patch) {
+            RealtimeRowPatch.Patched,
+            RealtimeRowPatch.Unchanged,
+            RealtimeRowPatch.RowReread -> {
+                val seq =
+                    when (event) {
+                        is MessageNew -> event.message.seq
+                        is ThreadUpdated -> event.latestReply?.seq
+                        else -> null
+                    }
+                if (seq != null && seq >= 0L) {
+                    realtimeCountedUnreadSeqs.add(seq)
+                    while (realtimeCountedUnreadSeqs.size > ActivityRealtimeCountedSeqLimit) {
+                        realtimeCountedUnreadSeqs.remove(realtimeCountedUnreadSeqs.first())
+                    }
+                }
+                true
+            }
+            RealtimeRowPatch.Absent,
+            null -> {
+                if (!syncInboxRowsOnLocked()) return false
+                noteInPlaceAbsentLocked(event)
+                requestSyncPullLocked(if (event is ThreadUpdated) "thread_reply_absent" else "message_absent")
+                true
+            }
+            RealtimeRowPatch.NeedsRead -> false
+        }
     }
 
     private suspend fun applyPerReceiverReadStateChanged(event: PerReceiverReadStateChanged) {
@@ -4549,6 +4890,9 @@ class SharedActivityStore internal constructor(
                             .withActivityThreadTaskProjection(result.data.server.id.value, tasksDataStore)
                             .reconcileLocallyClearedUnreadItems(current.selectedFilter, owner)
                     val pageItems = locallyRead.reconcileLocallyDoneItems(owner)
+                    if (result.data.staleReason == null) {
+                        rememberFollowedThreadsFromItemsLocked(result.data.items)
+                    }
                     // A remembered (`X-Raft-Stale`) answer can be minutes old: it judges nothing.
                     if (!append && result.data.staleReason == null) {
                         checkInPlaceDriftLocked(current, pageItems.items, result.data.items, result.data.inboxBackend)
@@ -5480,6 +5824,9 @@ class SharedActivityStore internal constructor(
         synchronized(realtimeOwnerLock) {
             val current = _state.value
             val snapshot = current.snapshot ?: return@synchronized
+            snapshot.items.firstOrNull { it.key == key }?.let { target ->
+                recordThreadFollowOverrideLocked(target, following)
+            }
             val updatedSnapshot =
                 snapshot.projectActivityFollowMutation(
                     itemKey = key,
@@ -5968,6 +6315,7 @@ class SharedActivityStore internal constructor(
                 var syncMergedCount = 0
                 var syncNewerCount = 0
                 var syncRereadCount = 0
+                val readStateLookup = if (inPlaceDriftCheck.isEmpty) null else acceptedReadStateLookupLocked(current)
                 fun listedIndex(id: String) = items.indexOfFirst { it.isActivityPositionRow() && it.activityRowScopeId() == id }
                 for (change in changes) {
                     when (change) {
@@ -5988,7 +6336,15 @@ class SharedActivityStore internal constructor(
                                     .items
                                     .singleOrNull() ?: continue
                             upserts += 1
+                            rememberFollowedThreadLocked(served)
                             val index = listedIndex(change.id)
+                            if (readStateLookup != null && !inPlaceDriftCheck.isEmpty) {
+                                val localRow = if (index >= 0) items[index] else null
+                                val readBehind = change.id in servedReadBehindScopes(listOf(parsed), readStateLookup)
+                                inPlaceDriftCheck.checkSyncRow(change.id, localRow, served, readBehind)?.let { check ->
+                                    emitInPlaceCheckLocked(serverId, check)
+                                }
+                            }
                             if (index >= 0) {
                                 val shown = items[index]
                                 realtimeHighWater.remove(shown.key)
@@ -6025,6 +6381,7 @@ class SharedActivityStore internal constructor(
                             val result = applySyncInboxRowChange(rowPositions.stateOf(shown), ActivitySyncRowChange.Delete(change.position))
                             if (result.row != null) continue
                             deletes += 1
+                            inPlaceDriftCheck.noteSyncRowDeleted(change.id)
                             if (change.reason == RaftSyncInboxRowDeleteReason.Done && owner != null) {
                                 // Already on the server: the hold starts now, as for a confirmed Done made here.
                                 doneOverlay.remember(owner, shown)?.let { generation -> doneOverlay.confirm(owner, shown.key, generation) }
@@ -6089,6 +6446,7 @@ class SharedActivityStore internal constructor(
     }
 
     private fun removeItemOptimistically(item: InboxItem) {
+        synchronized(realtimeOwnerLock) { rememberFollowedThreadLocked(item, unreadCleared = true) }
         val current = _state.value
         val snapshot = current.snapshot ?: return
         val alreadyLeftCount =

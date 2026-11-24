@@ -763,6 +763,11 @@ object RaftClientTraceEvents {
     internal fun emitListRowLowered(serverId: String, lowered: ActivityListRowLowered) {
         sender.emit(serverId, RaftStateTransitionTraceName, lowered.stateTransitionTraceAttrs())
     }
+
+    /** #proj-mobile:#163: foreground return -> sync pull + Activity updated latency (`activity:foreground_sync_updated`). */
+    internal fun emitForegroundSyncUpdated(serverId: String, telemetry: ActivityForegroundSyncUpdated) {
+        sender.emit(serverId, RaftStateTransitionTraceName, telemetry.stateTransitionTraceAttrs())
+    }
 }
 
 /** `clientPlatform` as `X-Raft-Client-Platform` names the app, and its `appVersion`. */

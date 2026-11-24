@@ -354,6 +354,43 @@ internal class SharedThreadPayloadStore(
     internal fun cachedKeysForTest(): List<SharedThreadOwnedPayloadCacheKey> =
         synchronized(recencyLock) { recency.filter { key -> key in payloads.value }.toList() }
 
+    /**
+     * Read-only lookup for Activity's unlisted-thread handler (#proj-mobile:#163): returns the
+     * cached parent message's author/type and whether the parent payload already marked the thread
+     * followed. Durable offline stand-ins are skipped so stale cache never suppresses a re-read.
+     */
+    internal fun cachedParentMessageForActivity(
+        serverId: String,
+        parentChannelId: String,
+        parentMessageId: String,
+    ): Pair<build.raft.app.data.ActivityKnownParentMessage, Boolean>? {
+        val entry =
+            payloads.value.entries.firstOrNull { (key, value) ->
+                key.payloadKey.serverId == serverId &&
+                    key.payloadKey.threadId == parentChannelId &&
+                    !value.payload.durableLastKnown
+            }?.value ?: return null
+        val msg = entry.payload.messages.firstOrNull { it.id == parentMessageId } ?: return null
+        val senderKind =
+            when (msg.authorKind.trim().lowercase()) {
+                "agent" -> build.raft.app.model.MemberKind.Agent
+                "system" -> build.raft.app.model.MemberKind.System
+                "external", "external_projection" -> build.raft.app.model.MemberKind.External
+                else -> build.raft.app.model.MemberKind.Human
+            }
+        val messageType =
+            if (msg.messageType.equals("system", ignoreCase = true)) {
+                build.raft.app.model.MessageType.System
+            } else {
+                build.raft.app.model.MessageType.Chat
+            }
+        return build.raft.app.data.ActivityKnownParentMessage(
+            senderId = msg.authorId,
+            senderKind = senderKind,
+            messageType = messageType,
+        ) to msg.isThreadFollowed
+    }
+
     private fun commitEntry(key: SharedThreadOwnedPayloadCacheKey, entry: SharedThreadPayloadEntry) {
         synchronized(recencyLock) {
             payloads.update { current -> current + (key to entry) }

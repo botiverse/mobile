@@ -1367,7 +1367,8 @@ internal class RaftSharedStoreProvider private constructor(
         onFailed: (() -> Unit)? = null,
         transientRetry: Boolean = false,
         onFinished: ((Boolean) -> Unit)? = null,
-    ): Boolean = launchSyncChangesPull(serverId, trigger, jitterSnapshots, jitterPull, onFailed, transientRetry, onFinished) != null
+        onResult: ((RaftSyncPullResult?) -> Unit)? = null,
+    ): Boolean = launchSyncChangesPull(serverId, trigger, jitterSnapshots, jitterPull, onFailed, transientRetry, onFinished, onResult) != null
 
     /** [requestSyncChangesPull], returning the pull's job (null when skipped). */
     private fun launchSyncChangesPull(
@@ -1378,6 +1379,7 @@ internal class RaftSharedStoreProvider private constructor(
         onFailed: (() -> Unit)? = null,
         transientRetry: Boolean = false,
         onFinished: ((Boolean) -> Unit)? = null,
+        onResult: ((RaftSyncPullResult?) -> Unit)? = null,
     ): Job? {
         val scope = currentSyncScope(serverId) ?: return null
         if (scopesForServer(scope.serverId).isEmpty()) return null
@@ -1387,16 +1389,19 @@ internal class RaftSharedStoreProvider private constructor(
         // It reads after every realtime hint so far: a waiting realtime pull is moot too.
         syncRealtimePull.onTriggerPull(scope)
         val finishedNotified = kotlinx.atomicfu.atomic(false)
-        val notifyFinished: (Boolean) -> Unit = { ok ->
+        val notifyFinished: (Boolean, RaftSyncPullResult?) -> Unit = { ok, pullResult ->
             if (finishedNotified.compareAndSet(expect = false, update = true)) {
+                onResult?.invoke(pullResult)
                 onFinished?.invoke(ok)
             }
         }
         val job =
             threadSendScope.launch(start = CoroutineStart.LAZY) {
                 var succeeded = false
+                var pullResult: RaftSyncPullResult? = null
                 try {
                     val result = syncChangesEngine.pull(scope, trigger, jitterSnapshots, jitterPull)
+                    pullResult = result
                     succeeded = result is RaftSyncPullResult.Synced
                     when (result) {
                         is RaftSyncPullResult.Failed -> if (result.needsFullRefetchFallback) onFailed?.invoke()
@@ -1427,16 +1432,20 @@ internal class RaftSharedStoreProvider private constructor(
                         }
                     }
                 } finally {
-                    notifyFinished(succeeded)
+                    notifyFinished(succeeded, pullResult)
                 }
             }
         synchronized(syncPullJobsLock) { syncPullJobs.getOrPut(scope.serverId) { mutableSetOf() } += job }
         job.invokeOnCompletion {
             synchronized(syncPullJobsLock) { syncPullJobs[scope.serverId]?.remove(job) }
-            notifyFinished(false)
+            notifyFinished(false, null)
         }
         job.start()
         return job
+    }
+
+    internal fun refreshActivityForSyncFallback(serverId: String, reason: String) {
+        syncStoreTargets.refreshActivity(serverId, reason)
     }
 
     internal suspend fun pullSyncChangesSucceeded(serverId: String, trigger: String): Boolean {
@@ -1531,8 +1540,9 @@ internal class RaftSharedStoreProvider private constructor(
                 // before the capability (and so do the others: a duplicate read is harmless).
                 val applied = outcomes.filterIsInstance<RaftSyncInboxRowsOutcome.Applied>()
                 if (applied.isEmpty() || applied.size != outcomes.size) return RaftSyncInboxRowsOutcome.NotApplied
-                // The badge's summary, as the Activity refetch read it (a list that owns the badge skips it).
-                activityUnreadSummaryStore.refresh(ServerId(serverId), reason = "sync_inbox_rows")
+                // #proj-mobile:#163: every active Activity store applied `inbox_row` in place and
+                // published updated unread counts via `onSummaryFact`; do not fire a redundant
+                // `GET /api/channels/inbox?limit=1` summary poll here.
                 return RaftSyncInboxRowsOutcome.Applied(applied.map { it.settledIds }.reduce { a, b -> a intersect b })
             }
 
@@ -2053,13 +2063,74 @@ internal class RaftSharedStoreProvider private constructor(
         )
     }
 
-    /** `mobile_inbox_inplace_v0` (Inbox refresh step 4) for [serverId]; default off. */
+    /**
+     * 1.30 web-aligned Activity in-place + per-row position path (#proj-mobile:#163, Tenny d229571c):
+     * default ON via `mobile_activity_inplace_v1` with emergency kill via `mobile_inbox_inplace_v0`
+     * `kill_switch` or explicit `mobile_activity_inplace_v1` off.
+     */
     private fun inboxInPlaceEnabled(serverId: String): Boolean =
-        serverFeatureFlags.isEnabled(ServerId(serverId), MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY)
+        serverFeatureFlags.isActivityInPlaceEnabled(ServerId(serverId))
 
-    /** `inbox_row_position_v1` (#triage:#244, inbox redesign step 2) for [serverId]; default off. */
+    /** Per-row position rule (#triage:#244 / #proj-mobile:#163); ships default-on together with [inboxInPlaceEnabled] in 1.30. */
     private fun inboxRowPositionEnabled(serverId: String): Boolean =
-        serverFeatureFlags.isEnabled(ServerId(serverId), INBOX_ROW_POSITION_FEATURE_FLAG_KEY)
+        serverFeatureFlags.isActivityInPlaceEnabled(ServerId(serverId))
+
+    /** `sync_inbox_rows_v0` enabled and incremental sync allowed for [serverId]. */
+    private fun syncInboxRowsEnabled(serverId: String): Boolean =
+        syncChangesPullAllowed(serverId) &&
+            serverFeatureFlags.isEnabled(ServerId(serverId), SYNC_INBOX_ROWS_FEATURE_FLAG_KEY)
+
+    /** Local Home + ThreadPayload metadata for unlisted `thread:updated` frames (#proj-mobile:#163). */
+    private fun knownThreadContextForActivity(
+        scope: RaftShellStoreScope,
+        serverId: String,
+        threadChannelId: String,
+        parentMessageId: String,
+        parentChannelId: String?,
+    ): ActivityUnlistedThreadContext {
+        val homeSnapshot =
+            (homeStores.get(scope)?.state?.value?.content as? SharedHomeContentState.Content)
+                ?.snapshot
+                ?.takeIf { it.server.id.value == serverId }
+        val parentRow =
+            if (homeSnapshot != null && !parentChannelId.isNullOrBlank()) {
+                homeSnapshot.channels.firstOrNull { it.channelId.value == parentChannelId }
+                    ?: homeSnapshot.directMessages.firstOrNull { it.channelId.value == parentChannelId }
+            } else {
+                null
+            }
+        val parentChannel =
+            parentRow?.let { row ->
+                val type =
+                    row.channelType?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+                        ?: if (row.kind == ConversationKind.DirectMessage) "dm" else "channel"
+                ActivityKnownParentChannel(
+                    id = row.channelId?.value ?: row.threadId.value,
+                    name = row.name,
+                    type = type,
+                    archived = row.archived,
+                )
+            }
+        val cachedParent =
+            if (!parentChannelId.isNullOrBlank()) {
+                threadPayloadStore.cachedParentMessageForActivity(serverId, parentChannelId, parentMessageId)
+            } else {
+                null
+            }
+        val followedByHome = homeSnapshot?.followedThreadUnread?.containsKey(threadChannelId) == true
+        val followedByPayload = cachedParent?.second == true
+        val follow =
+            if (followedByHome || followedByPayload) {
+                ActivityKnownThreadFollow.Followed
+            } else {
+                ActivityKnownThreadFollow.Unknown
+            }
+        return ActivityUnlistedThreadContext(
+            follow = follow,
+            parentChannel = parentChannel,
+            parentMessage = cachedParent?.first,
+        )
+    }
 
     init {
         // Minimum supported build: back in the foreground, read the gate flag again.
@@ -3450,6 +3521,10 @@ internal class RaftSharedStoreProvider private constructor(
                 listRowLoweredSink = RaftClientTraceEvents::emitListRowLowered,
                 inboxRowPositionEnabled = ::inboxRowPositionEnabled,
                 onSyncPullHint = ::requestRealtimeSyncPull,
+                syncInboxRowsEnabled = ::syncInboxRowsEnabled,
+                knownThreadContext = { serverId, threadChannelId, parentMessageId, parentChannelId ->
+                    knownThreadContextForActivity(scope, serverId, threadChannelId, parentMessageId, parentChannelId)
+                },
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {
                         if (scope == RaftShellStoreScope.Legacy) homeActivityStoreScope else RaftStoreThreading.newScope()
@@ -4379,9 +4454,28 @@ internal class RaftSharedStoreProvider private constructor(
                                 // Pull failed and dropped the cursor: the full refresh after all, through
                                 // the jitter (a first transient failure does not, #proj-mobile:#112).
                                 onFailed = {
-                                    provider.scheduleSyncFallbackRefetch(serverId.value, "foreground_fallback", fullRefresh)
+                                    provider.scheduleSyncFallbackRefetch(serverId.value, "foreground_fallback") {
+                                        fullRefresh()
+                                        provider.refreshActivityForSyncFallback(serverId.value, "foreground_sync_fallback")
+                                    }
                                 },
                                 onFinished = { ok -> syncOutcome.complete(ok) },
+                                onResult = { result ->
+                                    if (result != null) {
+                                        val synced = result as? RaftSyncPullResult.Synced
+                                        RaftClientTraceEvents.emitForegroundSyncUpdated(
+                                            serverId = serverId.value,
+                                            telemetry =
+                                                ActivityForegroundSyncUpdated(
+                                                    serverId = serverId.value,
+                                                    durationMillis = returnBoundary.elapsedNow().inWholeMilliseconds,
+                                                    inboxRowsApplied = synced?.inboxRowsApplied ?: 0,
+                                                    syncedOk = synced != null,
+                                                    timestampMillis = ProcessRaftDatetimeFoundationOwner.nowEpochMillis(),
+                                                ),
+                                        )
+                                    }
+                                },
                             )
                         if (pulled) {
                             // Agent presence and machine status are not in the change log (no jitter here);
