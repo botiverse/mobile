@@ -1,8 +1,13 @@
 package build.raft.designsystem
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -13,6 +18,8 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftToast
+import build.raft.designsystem.components.RaftToastHost
+import build.raft.designsystem.components.RaftToastHostState
 import build.raft.designsystem.components.RaftToastIntent
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftPointerInput
@@ -136,5 +143,102 @@ class RaftToastRenderTest {
             val titleLayout = titleNode.textLayoutResult()
             assertTrue(titleLayout.lineCount > 1, "expected title-only toast to wrap across multiple lines, got ${titleLayout.lineCount}")
             assertRenderedWhole("title-only toast", longTitle, titleLayout)
+        }
+
+    @Test
+    fun toastHostReportsDeduplicatedUnionBoundsAndNullOnEmptyAndDispose() =
+        runComposeUiTest {
+            val state = RaftToastHostState(limit = 2)
+            var mounted by mutableStateOf(true)
+            val reported = mutableListOf<Rect?>()
+
+            setContent {
+                RaftTheme(
+                    appearance = RaftAppearance.Light,
+                    systemDark = false,
+                    scale = RaftScale.Compact,
+                    pointerInput = RaftPointerInput.Touch,
+                ) {
+                    Box(Modifier.size(width = 390.dp, height = 844.dp)) {
+                        if (mounted) {
+                            RaftToastHost(
+                                state = state,
+                                onToastBoundsChange = { reported += it },
+                            )
+                        }
+                    }
+                }
+            }
+
+            waitForIdle()
+            assertTrue(reported.isEmpty() || reported.last() == null, "no non-null bounds before any toast: $reported")
+
+            val firstId = state.show("First toast", durationMillis = 0)
+            waitForIdle()
+            val singleBounds = reported.lastOrNull()
+            assertTrue(singleBounds != null && !singleBounds.isEmpty, "expected non-empty bounds for visible toast, got $reported")
+
+            val countBeforeIdle = reported.size
+            waitForIdle()
+            assertEquals(countBeforeIdle, reported.size, "unchanged settled bounds must not re-emit")
+
+            state.show("Second toast", durationMillis = 0)
+            waitForIdle()
+            val stackedBounds = reported.lastOrNull()
+            assertTrue(
+                stackedBounds != null && stackedBounds.height > singleBounds.height,
+                "expected union height to grow for stacked toasts: single=$singleBounds stacked=$stackedBounds",
+            )
+
+            state.dismiss(firstId)
+            state.dismissAll()
+            waitForIdle()
+            assertEquals(null, reported.lastOrNull(), "dismissing all toasts must report null")
+
+            val countBeforeDispose = reported.size
+            mounted = false
+            waitForIdle()
+            assertEquals(countBeforeDispose, reported.size, "disposing an already-empty host must not emit a duplicate null")
+            assertEquals(null, reported.last())
+        }
+
+    @Test
+    fun toastHostEmitsNullExactlyOnceWhenDisposedWithVisibleToast() =
+        runComposeUiTest {
+            val state = RaftToastHostState(limit = 2)
+            var mounted by mutableStateOf(true)
+            val reported = mutableListOf<Rect?>()
+
+            setContent {
+                RaftTheme(
+                    appearance = RaftAppearance.Light,
+                    systemDark = false,
+                    scale = RaftScale.Compact,
+                    pointerInput = RaftPointerInput.Touch,
+                ) {
+                    Box(Modifier.size(width = 390.dp, height = 844.dp)) {
+                        if (mounted) {
+                            RaftToastHost(
+                                state = state,
+                                onToastBoundsChange = { reported += it },
+                            )
+                        }
+                    }
+                }
+            }
+
+            state.show("Live toast on dispose", durationMillis = 0)
+            waitForIdle()
+            assertTrue(reported.lastOrNull()?.isEmpty == false, "expected live toast bounds before dispose: $reported")
+
+            val countBeforeDispose = reported.size
+            mounted = false
+            waitForIdle()
+            assertEquals(
+                countBeforeDispose + 1,
+                reported.size,
+                "disposing host while toast is visible must emit null exactly once: $reported",
+            )
+            assertEquals(null, reported.last())
         }
 }

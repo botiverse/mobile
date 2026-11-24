@@ -1,8 +1,12 @@
 package build.raft.designsystem
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import build.raft.designsystem.components.RaftToastHostState
 import build.raft.designsystem.components.RaftToastTimeoutMillis
 import build.raft.designsystem.components.raftToastSafeBottomPx
+import build.raft.designsystem.components.raftToastTransformedBounds
+import build.raft.designsystem.components.raftToastUnionBounds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -121,5 +125,32 @@ class RaftToastHostStateTest {
         source.handOffTo(target)
         assertEquals(emptyList(), source.visible)
         assertEquals(listOf("Trace ID 62ac7fa7…", "Trace ID 49a2bff6…"), target.visible.map { it.footnote })
+    }
+
+    @Test
+    fun transformedBoundsIncludeSlideInScaleAndSwipeTranslation() {
+        val base = Rect(left = 100f, top = 800f, right = 400f, bottom = 900f)
+        // Settled toast with no drag keeps its exact base rect.
+        assertEquals(base, raftToastTransformedBounds(base, entryProgress = 1f, swipeOffset = Offset.Zero))
+
+        // Slide-in start (entryProgress = 0): scale 0.98 around center + 120% height downward shift.
+        val entryStart = raftToastTransformedBounds(base, entryProgress = 0f, swipeOffset = Offset.Zero)
+        assertEquals(103f, entryStart.left, absoluteTolerance = 0.01f)
+        assertEquals(921f, entryStart.top, absoluteTolerance = 0.01f)
+        assertEquals(397f, entryStart.right, absoluteTolerance = 0.01f)
+        assertEquals(1019f, entryStart.bottom, absoluteTolerance = 0.01f)
+
+        // Drag-dismiss offset shifts all four edges.
+        val dragged = raftToastTransformedBounds(base, entryProgress = 1f, swipeOffset = Offset(24f, 18f))
+        assertEquals(Rect(124f, 818f, 424f, 918f), dragged)
+    }
+
+    @Test
+    fun unionBoundsCoversAllNonEmptyCardsAndReturnsNullWhenEmpty() {
+        assertEquals(null, raftToastUnionBounds(emptyList()))
+        assertEquals(null, raftToastUnionBounds(listOf(Rect.Zero)))
+        val first = Rect(left = 40f, top = 700f, right = 340f, bottom = 780f)
+        val second = Rect(left = 20f, top = 788f, right = 360f, bottom = 860f)
+        assertEquals(Rect(left = 20f, top = 700f, right = 360f, bottom = 860f), raftToastUnionBounds(listOf(first, second)))
     }
 }

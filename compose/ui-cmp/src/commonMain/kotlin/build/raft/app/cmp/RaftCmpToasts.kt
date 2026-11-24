@@ -136,16 +136,28 @@ private val LocalRaftCmpToastWindow = staticCompositionLocalOf<RaftCmpToastWindo
 /**
  * The window's one toast host ([RaftToastHost]) over [content], provided to it as
  * [LocalRaftToastHostState] and attached to [RaftCmpToasts] for the window's lifecycle
- * (`LocalLifecycleOwner`). Inside another layer it adds none: [content] uses the outer one,
- * so a window that composes several roots (Android's page stack, the desktop's) keeps one host.
- * [origin] is the capabilities of the host whose pages [content] renders.
+ * (`LocalLifecycleOwner`). Inside another layer — or when the host supplies a window-level
+ * [externalWindow] (iOS's scene-level transparent overlay window) — it adds no per-page
+ * [RaftToastHost]: [content] shares the outer/external window's state and registers [origin] on it.
  */
 @Composable
-fun RaftCmpToastLayer(origin: HostCapabilities? = null, content: @Composable () -> Unit) {
-    val outer = LocalRaftCmpToastWindow.current
+fun RaftCmpToastLayer(
+    origin: HostCapabilities? = null,
+    externalWindow: RaftCmpToastWindow? = null,
+    content: @Composable () -> Unit,
+) {
+    val outer = externalWindow ?: LocalRaftCmpToastWindow.current
     if (outer != null) {
         if (origin != null) DisposableEffect(outer, origin) { onDispose(outer.addOrigin(origin)) }
-        content()
+        if (externalWindow != null) {
+            CompositionLocalProvider(
+                LocalRaftCmpToastWindow provides outer,
+                LocalRaftToastHostState provides outer.state,
+                content = content,
+            )
+        } else {
+            content()
+        }
         return
     }
     val state = remember { RaftToastHostState() }

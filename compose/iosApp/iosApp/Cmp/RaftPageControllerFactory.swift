@@ -108,7 +108,8 @@ import shared
             pageDataJson: jsonText(container.raftPageData),
             bridge: bridge,
             navigator: navigator,
-            listener: listener
+            listener: listener,
+            toastOverlay: RaftIosToastOverlayRegistry.overlay(for: nil)
         )
         let content: UIViewController
         if let nativeTabBar = nativeTabBar {
@@ -131,6 +132,19 @@ import shared
         // Covered (a native push, a full-screen presentation): the page closes its overlays.
         container.raftPageWillBeCoveredHook = {
             page.pageWillBeCovered()
+        }
+        // Scene-level toast overlay: bind to the hosting UIWindowScene and suppress avoidance
+        // whenever this page is covered or presented as a non-fullscreen sheet.
+        container.raftToastOverlaySceneHook = { windowScene in
+            guard let windowScene,
+                  let overlay = RaftIosToastOverlayRegistry.overlay(for: windowScene)
+            else {
+                return
+            }
+            page.setToastOverlay(overlay: overlay)
+        }
+        container.raftToastAvoidanceActiveHook = { active in
+            page.setToastAvoidanceActive(active: active)
         }
         return container
     }

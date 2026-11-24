@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.Density
+import build.raft.designsystem.components.LocalRaftToastAvoidanceActive
 import build.raft.designsystem.components.RaftToastBottomInsetProvider
 
 /*
@@ -108,6 +109,7 @@ internal fun raftImeBottomPx(density: Density): Int =
  */
 @Composable
 fun RaftToastHostImeBottomInset() {
+    if (!LocalRaftToastAvoidanceActive.current) return
     val nonImeBottom = WindowInsets.systemBars.union(WindowInsets.displayCutout)
     val ime = WindowInsets.ime
     val hostIme = LocalRaftHostImeInsets.current

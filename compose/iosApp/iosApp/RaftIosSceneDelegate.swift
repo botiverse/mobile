@@ -31,6 +31,7 @@ struct RaftIosRootView: View {
 
 final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
+    private var toastOverlayHost: RaftIosToastOverlayHost?
 
     /// Shell identity resolved for this scene. ContentView reaches it through
     /// the registry keyed by session.persistentIdentifier.
@@ -58,6 +59,12 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         // delegate owns window creation.
         if let windowScene = scene as? UIWindowScene {
             let window = RaftIosWindow(windowScene: windowScene)
+            // Register this scene's single window-level toast overlay BEFORE installing ContentView
+            // so the root RaftPageViewController binds to it on Frame 0 instead of mounting a
+            // per-page toast host (#proj-mobile:#351).
+            let toastHost = RaftIosToastOverlayHost(windowScene: windowScene, mainWindow: window)
+            self.toastOverlayHost = toastHost
+            RaftIosToastOverlayRegistry.register(scene: windowScene, host: toastHost)
             window.rootViewController = UIHostingController(rootView: RaftIosRootView())
             // Settings > Appearance > Theme: an explicit Light/Dark choice overrides the OS
             // style for the whole window (keyboards, system menus, the native tab bar);
@@ -119,10 +126,23 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
 
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        toastOverlayHost?.sceneDidBecomeActive()
+    }
+
+    func sceneWillResignActive(_ scene: UIScene) {
+        toastOverlayHost?.sceneWillResignActive()
+    }
+
     func sceneWillEnterForeground(_ scene: UIScene) {
+        toastOverlayHost?.sceneWillEnterForeground()
         RaftIosExternalShareLaunch.resumePendingIfNeeded(
             shellInstanceId: shellInstanceId(for: scene)
         )
+    }
+
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        toastOverlayHost?.sceneDidEnterBackground()
     }
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
@@ -205,6 +225,8 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {
+        RaftIosToastOverlayRegistry.unregister(session: scene.session)
+        toastOverlayHost = nil
         let context = RaftIosShellWindowRegistry.unregister(session: scene.session)
         guard let shellInstanceId = context?.shellInstanceId,
               shellInstanceId != RaftIosShellWindowContract.legacyShellInstanceId else {
@@ -322,7 +344,9 @@ enum RaftIosAppearanceHost {
                 guard let windowScene = scene as? UIWindowScene else { continue }
                 for window in windowScene.windows {
                     window.overrideUserInterfaceStyle = style
-                    window.backgroundColor = canvas
+                    if !(window is RaftIosToastOverlayWindow) {
+                        window.backgroundColor = canvas
+                    }
                 }
             }
             NotificationCenter.default.post(name: didChangeNotification, object: nil)

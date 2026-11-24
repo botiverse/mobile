@@ -108,6 +108,11 @@ callable build.raft.app.cmp.ios.RaftIosPage.*
 callable build.raft.app.cmp.ios.RaftIosPage.Companion.*
 function build.raft.app.cmp.ios.RaftIosPageListener.onDarkThemeResolved
 callable build.raft.app.cmp.ios.RaftIosPageListener.Companion.*
+callable build.raft.app.cmp.ios.RaftIosToastOverlay.*
+callable build.raft.app.cmp.ios.RaftIosToastOverlay.Companion.*
+function build.raft.app.cmp.ios.RaftIosToastOverlayListener.onToastBoundsChanged
+function build.raft.app.cmp.ios.RaftIosToastOverlayListener.onToastVisibilityChanged
+callable build.raft.app.cmp.ios.RaftIosToastOverlayListener.Companion.*
 callable build.raft.app.data.RaftAppAppearanceRuntime.*
 callable build.raft.app.data.RaftAppAppearanceRuntime.Companion.*
 callable build.raft.app.data.RaftAppLoginBridge.*
