@@ -68,13 +68,26 @@ internal fun Modifier.threadComposerImagePasteFocus(owner: Any): Modifier =
  * inserts at the selection and leaves the caret after it). Anything else, the user's own text
  * included, is an ordinary edit and is kept as typed.
  */
-internal fun threadComposerIsImagePastePlaceholderEdit(previous: TextFieldValue, changed: TextFieldValue): Boolean {
-    val start = previous.selection.min.coerceIn(0, previous.text.length)
-    val end = previous.selection.max.coerceIn(0, previous.text.length)
-    val expected = previous.text.replaceRange(start, end, ThreadComposerImagePastePlaceholder)
-    return changed.text == expected &&
-        changed.selection == TextRange(start + ThreadComposerImagePastePlaceholder.length)
+internal fun threadComposerIsImagePastePlaceholderEdit(
+    previousText: CharSequence,
+    previousSelection: TextRange,
+    changedText: CharSequence,
+    changedSelection: TextRange,
+): Boolean {
+    val start = previousSelection.min.coerceIn(0, previousText.length)
+    val end = previousSelection.max.coerceIn(0, previousText.length)
+    val expected = previousText.toString().replaceRange(start, end, ThreadComposerImagePastePlaceholder)
+    return changedText.toString() == expected &&
+        changedSelection == TextRange(start + ThreadComposerImagePastePlaceholder.length)
 }
+
+internal fun threadComposerIsImagePastePlaceholderEdit(previous: TextFieldValue, changed: TextFieldValue): Boolean =
+    threadComposerIsImagePastePlaceholderEdit(
+        previousText = previous.text,
+        previousSelection = previous.selection,
+        changedText = changed.text,
+        changedSelection = changed.selection,
+    )
 
 /** Which path asked for a press's one image paste ([ThreadComposerImagePasteRequests.claim]). */
 internal enum class ThreadComposerImagePasteRoute(val wire: String) {

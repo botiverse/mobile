@@ -3,8 +3,6 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -87,7 +85,7 @@ class SettingsFeedbackComposeScreenshotTest {
     @Composable
     private fun NewFeedbackPage(fixture: FormFixture) {
         val copy = settingsHandsFeedbackCopy(RaftFormat.byteLimit(settingsFeedbackImageMaxBytes()))
-        val value = TextFieldValue(fixture.message, selection = TextRange(fixture.message.length))
+        val editorOwner = remember(fixture.message) { ThreadComposerEditorOwner(seedText = fixture.message, seedAsTask = false) }
         SettingsDetailShell(title = settingsHandsFeedbackTitle(), subtitle = settingsHandsFeedbackSubtitle(), onBack = {}) {
             SettingsHandsFeedbackForm(
                 copy = copy,
@@ -106,8 +104,7 @@ class SettingsFeedbackComposeScreenshotTest {
             ) {
                 SettingsHandsFeedbackComposer(
                     instanceId = "settings-feedback-compose-screenshot",
-                    value = value,
-                    onValueChange = {},
+                    editorOwner = editorOwner,
                     placeholder = copy.placeholder,
                     enabled = !fixture.submitting,
                     submitting = fixture.submitting,

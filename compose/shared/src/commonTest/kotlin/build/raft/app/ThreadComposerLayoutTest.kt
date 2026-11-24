@@ -3,69 +3,44 @@ package build.raft.app
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.model.MemberKind
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.TextFieldValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ThreadComposerLayoutTest {
     @Test
-    fun legacyFirstCharacterAtRepairsCursorAndKeepsMemberTriggerActive() {
-        val repaired =
-            repairThreadComposerLegacyZeroSelection(
-                previous = TextFieldValue("", selection = TextRange.Zero),
-                incoming = TextFieldValue("@", selection = TextRange.Zero),
-            )
+    fun singleSourceTextFieldStateTracksFirstCharacterAtAndKeepsMemberTriggerActive() {
+        val owner = ThreadComposerEditorOwner(seedText = "", seedAsTask = false)
+        owner.textFieldState.edit {
+            replace(0, length, "@")
+            selection = TextRange(1)
+        }
 
-        assertEquals(TextRange(1), repaired.selection)
+        assertEquals(TextRange(1), owner.selection)
         assertEquals(
             RaftComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0),
-            threadComposerSuggestionTrigger(repaired.text, repaired.selection.start),
+            threadComposerSuggestionTrigger(owner.text, owner.selection.start),
         )
     }
 
     @Test
-    fun legacyZeroSelectionPreservesCursorMovesDeletionsCompositionAndUnprovenEdits() {
-        val cursorMove = TextFieldValue("@artin", selection = TextRange.Zero)
-        val deletion = TextFieldValue("artin", selection = TextRange.Zero)
-        val composing =
-            TextFieldValue(
-                text = "ni",
-                selection = TextRange.Zero,
-                composition = TextRange(0, 2),
-            )
-        val unprovenEdit = TextFieldValue("rewritten", selection = TextRange.Zero)
+    fun singleSourceTextFieldStatePreservesMidSentenceCaretAcrossProgrammaticMentionInsert() {
+        val owner = ThreadComposerEditorOwner(seedText = "hello world", seedAsTask = false)
+        owner.textFieldState.edit { selection = TextRange(6) }
 
-        assertSame(
-            cursorMove,
-            repairThreadComposerLegacyZeroSelection(
-                previous = TextFieldValue("@artin", selection = TextRange(6)),
-                incoming = cursorMove,
-            ),
-        )
-        assertSame(
-            deletion,
-            repairThreadComposerLegacyZeroSelection(
-                previous = TextFieldValue("@artin", selection = TextRange(1)),
-                incoming = deletion,
-            ),
-        )
-        assertSame(
-            composing,
-            repairThreadComposerLegacyZeroSelection(
-                previous = TextFieldValue("n", selection = TextRange(1), composition = TextRange(0, 1)),
-                incoming = composing,
-            ),
-        )
-        assertSame(
-            unprovenEdit,
-            repairThreadComposerLegacyZeroSelection(
-                previous = TextFieldValue("draft", selection = TextRange(2)),
-                incoming = unprovenEdit,
-            ),
-        )
+        val edit =
+            requireNotNull(
+                applyRaftComposerDirectMentionInsert(
+                    text = owner.text,
+                    selectionStart = owner.selection.start,
+                    selectionEnd = owner.selection.end,
+                    handle = "@artin",
+                )
+            )
+        assertTrue(owner.applyProgrammaticText(owner.editorSessionId, edit.text, cursor = edit.cursor))
+        assertEquals("hello @artin world", owner.text)
+        assertEquals(TextRange(13), owner.selection)
     }
 
     @Test

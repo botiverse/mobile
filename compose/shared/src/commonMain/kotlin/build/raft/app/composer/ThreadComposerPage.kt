@@ -69,13 +69,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -111,6 +111,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldState
+import build.raft.designsystem.components.toRaftTextFieldValue
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -217,7 +220,6 @@ private val ThreadComposerLeftActionGroupSpacing = ThreadComposerEmbeddedInset
 private val ThreadComposerRightActionGroupSpacing = ThreadComposerEmbeddedInset
 private const val ThreadComposerMentionActionNoticeDurationMillis = 1800L
 private const val ThreadComposerSuggestionQueryDebounceMillis = 24L
-private const val ThreadComposerNativeSnapshotTimeoutMillis = 1_000L
 // raft-ui 0.58.1 `ComposerSuggestionList` geometry: `max-h-60` root with `p-1`, opening
 // `mb-2` above the composer; `min-h-9 px-2.5 py-1 gap-2.5` options with a `gap-1.5`
 // title/meta content row; `px-2.5 pt-2 pb-1` caption group labels; 19dp compact avatars
@@ -778,7 +780,7 @@ internal enum class ThreadComposerEditorCommandOutcome {
     Applied,
     Stale,
     AlreadyHandled,
-    /** Held back while an IME composition is open; see [ThreadComposerControlledEditorOwner.applyDeferredCommands]. */
+    /** Held back while an IME composition is open; see [ThreadComposerEditorOwner.applyDeferredCommands]. */
     Deferred,
 }
 
@@ -864,51 +866,41 @@ internal fun dispatchThreadComposerHostKeyboardInset(
     return nextInset
 }
 
-/**
- * Kuikly 2.24's legacy text callback has no selection payload. When that callback arrives before
- * the complete editing-state callback, it represents the unknown selection as [TextRange.Zero].
- * Repair only the subset whose edit location is proven by the previously controlled selection:
- * a non-empty insertion that replaced exactly that range. The returned copy intentionally has a
- * new identity so Kuikly writes the repaired selection back to the native editor.
- */
-internal fun repairThreadComposerLegacyZeroSelection(
-    previous: TextFieldValue,
-    incoming: TextFieldValue,
-): TextFieldValue {
-    if (
-        incoming.selection != TextRange.Zero ||
-            incoming.text == previous.text ||
-            previous.composition != null ||
-            incoming.composition != null
-    ) {
-        return incoming
-    }
+internal data class ThreadComposerTextSnapshot(
+    val text: String,
+    val selection: TextRange,
+    val composition: TextRange?,
+)
 
-    val previousStart =
-        minOf(previous.selection.start, previous.selection.end).coerceIn(0, previous.text.length)
-    val previousEnd =
-        maxOf(previous.selection.start, previous.selection.end).coerceIn(previousStart, previous.text.length)
-    val unchangedPrefix = previous.text.substring(0, previousStart)
-    val unchangedSuffix = previous.text.substring(previousEnd)
-    if (!incoming.text.startsWith(unchangedPrefix) || !incoming.text.endsWith(unchangedSuffix)) {
-        return incoming
-    }
+private fun TextRange.coercedToLength(length: Int): TextRange =
+    TextRange(start.coerceIn(0, length), end.coerceIn(0, length))
 
-    val insertedLength = incoming.text.length - unchangedPrefix.length - unchangedSuffix.length
-    if (insertedLength <= 0) return incoming
-
-    return incoming.copy(selection = TextRange(previousStart + insertedLength))
+private fun textContentEquals(a: CharSequence, b: CharSequence): Boolean {
+    if (a.length != b.length) return false
+    for (i in a.indices) if (a[i] != b[i]) return false
+    return true
 }
 
-internal class ThreadComposerControlledEditorOwner(
+/**
+ * Single-source native [TextFieldState] owner for [ThreadComposerContent] and its feedback
+ * composer hosts.
+ *
+ * The native [BasicTextField] edits [textFieldState] directly with zero controlled
+ * `TextFieldValue` / `onValueChange` round-trip bridge and zero legacy zero-selection repair.
+ * Deliberate programmatic edits (Send clear, suggestion insert, draft restore, quote append)
+ * mutate [textFieldState] explicitly via [TextFieldState.edit], while draft persistence and
+ * autocomplete observe [textFieldState] strictly one-way.
+ */
+@Stable
+internal class ThreadComposerEditorOwner(
     seedText: String,
     seedAsTask: Boolean,
+    val textFieldState: TextFieldState =
+        TextFieldState(
+            initialText = seedText,
+            initialSelection = TextRange(seedText.length),
+        ),
 ) {
-    var value by mutableStateOf(
-        TextFieldValue(seedText, selection = TextRange(seedText.length)),
-        referentialEqualityPolicy(),
-    )
-        private set
     var asTask by mutableStateOf(seedAsTask)
         private set
     var handledCommandId by mutableStateOf(0)
@@ -916,33 +908,99 @@ internal class ThreadComposerControlledEditorOwner(
     var editorSessionId by mutableStateOf(1L)
         private set
 
+    /**
+     * Last text value already synced with the host draft store (initial seed, applied store
+     * command, or emitted `"change"`). Prevents one-way `snapshotFlow` observation from echoing
+     * store-originated commands back as user `"change"` events.
+     */
+    var lastPublishedText: String = textFieldState.text.toString()
+        private set
+
+    /**
+     * Last snapshot produced at mount or by a programmatic edit, so the one-way `snapshotFlow`
+     * observer distinguishes user typing / cursor movement from programmatic mutations.
+     */
+    var lastObservedSnapshot: ThreadComposerTextSnapshot = currentSnapshot()
+        private set
+
+    val text: String
+        get() = textFieldState.text.toString()
+
+    val selection: TextRange
+        get() = textFieldState.selection
+
+    val composition: TextRange?
+        get() = textFieldState.composition
+
+    val value: TextFieldValue
+        get() = textFieldState.toRaftTextFieldValue()
+
+    fun currentSnapshot(): ThreadComposerTextSnapshot =
+        ThreadComposerTextSnapshot(
+            text = textFieldState.text.toString(),
+            selection = textFieldState.selection,
+            composition = textFieldState.composition,
+        )
+
     fun isActiveSession(sourceSessionId: Long): Boolean =
         sourceSessionId == editorSessionId
-
-    fun acceptEditorValue(sourceSessionId: Long, next: TextFieldValue): Boolean {
-        if (!isActiveSession(sourceSessionId)) return false
-        value = next
-        return true
-    }
-
-    fun acceptNativeEditorValue(
-        sourceSessionId: Long,
-        incoming: TextFieldValue,
-    ): TextFieldValue? {
-        if (!isActiveSession(sourceSessionId)) return null
-        val accepted =
-            repairThreadComposerLegacyZeroSelection(
-                previous = value,
-                incoming = incoming,
-            )
-        value = accepted
-        return accepted
-    }
 
     fun acceptAsTask(sourceSessionId: Long, next: Boolean): Boolean {
         if (!isActiveSession(sourceSessionId)) return false
         asTask = next
         return true
+    }
+
+    fun markObserved(
+        snapshot: ThreadComposerTextSnapshot = currentSnapshot(),
+        publishedText: String? = null,
+    ) {
+        lastObservedSnapshot = snapshot
+        if (publishedText != null) {
+            lastPublishedText = publishedText
+        }
+    }
+
+    /**
+     * Deliberate programmatic edit of [textFieldState] (suggestion pick, mention insert, token
+     * commit, quote serialization, feedback clear/restore). Mutates [textFieldState] directly and
+     * places the caret at [cursor] without touching any controlled round-trip bridge.
+     */
+    fun applyProgrammaticText(
+        sourceSessionId: Long,
+        nextText: String,
+        cursor: Int = nextText.length,
+        publishAsSynced: Boolean = true,
+    ): Boolean {
+        if (!isActiveSession(sourceSessionId)) return false
+        val clampedCursor = cursor.coerceIn(0, nextText.length)
+        textFieldState.edit {
+            if (!textContentEquals(asCharSequence(), nextText)) {
+                replace(0, length, nextText)
+            }
+            selection = TextRange(clampedCursor)
+        }
+        val snapshot = currentSnapshot()
+        lastObservedSnapshot = snapshot
+        if (publishAsSynced) {
+            lastPublishedText = snapshot.text
+        }
+        return true
+    }
+
+    /**
+     * Action-boundary snapshot for Send: finishes an open IME composition without dropping
+     * composing characters or jumping the selection, and returns the committed [TextFieldValue].
+     */
+    fun finishCompositionForActionBoundary(): TextFieldValue {
+        val snapshot = textFieldState.toRaftTextFieldValue()
+        if (snapshot.composition != null) {
+            textFieldState.edit {
+                selection = snapshot.selection.coercedToLength(length)
+            }
+            lastObservedSnapshot = currentSnapshot()
+        }
+        return snapshot.copy(composition = null)
     }
 
     /**
@@ -954,15 +1012,16 @@ internal class ThreadComposerControlledEditorOwner(
 
     /** True when held commands can be applied now: some are held and no composition is open. */
     val hasDeferredCommandsReady: Boolean
-        get() = deferredCommands.isNotEmpty() && value.composition == null
+        get() = deferredCommands.isNotEmpty() && textFieldState.composition == null
 
     fun apply(command: ThreadComposerEditorCommand): ThreadComposerEditorCommandOutcome {
         if (command.id <= handledCommandId) return ThreadComposerEditorCommandOutcome.AlreadyHandled
         handledCommandId = command.id
-        if (!shouldApplyThreadComposerEditorCommand(value.text, asTask, command)) {
+        val currentText = textFieldState.text.toString()
+        if (!shouldApplyThreadComposerEditorCommand(currentText, asTask, command)) {
             return ThreadComposerEditorCommandOutcome.Stale
         }
-        val composing = value.composition != null
+        val composing = textFieldState.composition != null
         // Clear (Send) is immediate: the send already took the committed and composing text.
         if (composing && command.kind != ThreadComposerEditorCommandKind.Clear) {
             deferredCommands += command
@@ -992,23 +1051,55 @@ internal class ThreadComposerControlledEditorOwner(
         deferredCommands.clear()
         var applied = false
         for (command in held) {
+            val currentText = textFieldState.text.toString()
             val edit = command.edit
             val nextText =
                 when {
                     command.expectedAsTask != null && command.expectedAsTask != asTask -> null
-                    edit != null -> edit.applyTo(value.text)
-                    shouldApplyThreadComposerEditorCommand(value.text, asTask, command) -> command.text
+                    edit != null -> edit.applyTo(currentText)
+                    shouldApplyThreadComposerEditorCommand(currentText, asTask, command) -> command.text
                     else -> null
                 } ?: continue
             writeCommandText(command, nextText)
             applied = true
         }
+        if (!applied) {
+            // The caller reports staleEditorCommandIgnored with the live committed text, so mark
+            // it published to avoid a redundant trailing "change" event from snapshotFlow.
+            val snapshot = currentSnapshot()
+            markObserved(snapshot, publishedText = snapshot.text)
+        }
         return applied
     }
 
     private fun writeCommandText(command: ThreadComposerEditorCommand, nextText: String) {
-        value = TextFieldValue(nextText, selection = TextRange(nextText.length))
         asTask = if (command.kind == ThreadComposerEditorCommandKind.Clear) false else command.asTask
+        val currentText = textFieldState.text.toString()
+        val shouldMutateState =
+            if (command.kind == ThreadComposerEditorCommandKind.Clear) {
+                currentText.isNotEmpty() || textFieldState.selection != TextRange.Zero || textFieldState.composition != null
+            } else {
+                // Only touch TextFieldState when the text actually changes so a same-text command
+                // (e.g. asTask-only update or redundant hydrate) never bounces a mid-sentence caret.
+                nextText != currentText
+            }
+        if (shouldMutateState) {
+            val nextSelection =
+                if (command.kind == ThreadComposerEditorCommandKind.Clear) {
+                    TextRange.Zero
+                } else {
+                    TextRange(nextText.length)
+                }
+            textFieldState.edit {
+                if (!textContentEquals(asCharSequence(), nextText)) {
+                    replace(0, length, nextText)
+                }
+                selection = nextSelection
+            }
+        }
+        val snapshot = currentSnapshot()
+        lastObservedSnapshot = snapshot
+        lastPublishedText = snapshot.text
     }
 }
 
@@ -1022,21 +1113,21 @@ internal class ThreadComposerControlledEditorOwner(
 internal fun ThreadComposerEditorCommandEffects(
     instanceId: String,
     command: ThreadComposerEditorCommand?,
-    owner: ThreadComposerControlledEditorOwner,
+    owner: ThreadComposerEditorOwner,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
 ) {
     val currentOnEvent by rememberUpdatedState(onEvent)
     LaunchedEffect(instanceId, command?.id) {
         command ?: return@LaunchedEffect
         if (owner.apply(command) == ThreadComposerEditorCommandOutcome.Stale) {
-            currentOnEvent("staleEditorCommandIgnored", owner.value.text, owner.asTask, null)
+            currentOnEvent("staleEditorCommandIgnored", owner.text, owner.asTask, null)
         }
     }
     LaunchedEffect(instanceId, owner) {
         snapshotFlow { owner.hasDeferredCommandsReady }.collect { ready ->
             if (!ready) return@collect
             val applied = owner.applyDeferredCommands() ?: return@collect
-            currentOnEvent(if (applied) "change" else "staleEditorCommandIgnored", owner.value.text, owner.asTask, null)
+            currentOnEvent(if (applied) "change" else "staleEditorCommandIgnored", owner.text, owner.asTask, null)
         }
     }
 }
@@ -1052,63 +1143,6 @@ internal enum class ThreadComposerSendAdmission {
     Started,
     Deferred,
     Rejected,
-}
-
-/**
- * Owns the one in-flight native snapshot request. A timeout or unavailable editor consumes the
- * same opaque token as success, so a late callback cannot be mistaken for a later Send attempt.
- */
-internal class ThreadComposerSendSnapshotGate {
-    var pendingToken: Any? by mutableStateOf(null)
-        private set
-
-    val isPending: Boolean
-        get() = pendingToken != null
-
-    fun begin(): Any {
-        check(!isPending)
-        return Any().also { pendingToken = it }
-    }
-
-    fun finish(token: Any): Boolean {
-        if (pendingToken !== token) return false
-        pendingToken = null
-        return true
-    }
-}
-
-/**
- * Fences the one native callback that may already be queued for the same editing state captured
- * at Send. A genuinely newer edit has different text and must keep the existing stale-Clear
- * protection, so it is accepted and retires this fence immediately.
- */
-internal class ThreadComposerSubmittedEchoFence {
-    private var submitted: ThreadComposerSendRequest? = null
-
-    fun begin(request: ThreadComposerSendRequest) {
-        submitted = request
-    }
-
-    fun finishAdmission(admission: ThreadComposerSendAdmission) {
-        if (admission != ThreadComposerSendAdmission.Started) submitted = null
-    }
-
-    fun shouldIgnore(
-        sourceSessionId: Long,
-        next: TextFieldValue,
-    ): Boolean {
-        val baseline = submitted ?: return false
-        if (baseline.editorSessionId != sourceSessionId) {
-            submitted = null
-            return false
-        }
-        if (baseline.value.text == next.text) {
-            submitted = null
-            return true
-        }
-        submitted = null
-        return false
-    }
 }
 
 internal data class ThreadComposerInsertMentionRequest(
@@ -2511,7 +2545,7 @@ internal fun ThreadComposerContent(
     autofocusOnOpen: ComposerFocusOnOpen? = null,
 ) {
     val editorOwner = remember(state.instanceId) {
-        ThreadComposerControlledEditorOwner(state.seedText, state.seedAsTask)
+        ThreadComposerEditorOwner(state.seedText, state.seedAsTask)
     }
     ThreadComposerEditorCommandEffects(
         instanceId = state.instanceId,
@@ -2529,13 +2563,7 @@ internal fun ThreadComposerContent(
     ThreadComposerContentLeaf(
         surface = surface,
         state = state,
-        editorSessionId = editorOwner.editorSessionId,
-        editorValue = editorOwner.value,
-        onEditorValueChange = editorOwner::acceptEditorValue,
-        onNativeEditorValueChange = editorOwner::acceptNativeEditorValue,
-        isEditorSessionActive = editorOwner::isActiveSession,
-        editorAsTask = editorOwner.asTask,
-        onEditorAsTaskChange = editorOwner::acceptAsTask,
+        editorOwner = editorOwner,
         onEvent = onEvent,
         onSendRequest = onSendRequest,
         onKeyboardHeightChange = onKeyboardHeightChange,
@@ -2565,13 +2593,7 @@ internal fun ThreadComposerContent(
 internal fun ThreadComposerContentLeaf(
     surface: ThreadComposerSurface,
     state: ThreadComposerUiState,
-    editorSessionId: Long,
-    editorValue: TextFieldValue,
-    onEditorValueChange: (Long, TextFieldValue) -> Boolean,
-    onNativeEditorValueChange: (Long, TextFieldValue) -> TextFieldValue?,
-    isEditorSessionActive: (Long) -> Boolean,
-    editorAsTask: Boolean,
-    onEditorAsTaskChange: (Long, Boolean) -> Boolean,
+    editorOwner: ThreadComposerEditorOwner,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onSendRequest: ((ThreadComposerSendRequest) -> ThreadComposerSendAdmission)? = null,
     onKeyboardHeightChange: (Float) -> Unit = {},
@@ -2598,8 +2620,10 @@ internal fun ThreadComposerContentLeaf(
     // updates / suggestion list filtering are all under this; per-phase breakdown
     // can come later if this marker shows hot. bodyLength proxy uses seedText length.
     traceMarkdownSection(RaftComposerTraceNames.COMPOSER_RENDER, state.seedText.length) {
-    val fieldValue = editorValue
-    val text = fieldValue.text
+    val fieldState = editorOwner.textFieldState
+    val editorSessionId = editorOwner.editorSessionId
+    val editorAsTask = editorOwner.asTask
+    val text = fieldState.text.toString()
     // Quote replies v1 multi-quote interleaved composer (botiverse/slock #16027 / #16210), gated
     // behind `quote_reply_v0` via LocalThreadQuoteReplyHost.
     val quoteReplyHost = LocalThreadQuoteReplyHost.current
@@ -2607,7 +2631,7 @@ internal fun ThreadComposerContentLeaf(
     val quoteController =
         remember(state.instanceId) {
             ThreadComposerQuoteController(
-                initialDraft = fieldValue.text,
+                initialDraft = text,
                 initialEnabled = quoteReplyHost.enabled,
                 resolveQuoteMeta = { refId, excerpt ->
                     resolveQuoteMetaForDraft(
@@ -2625,7 +2649,7 @@ internal fun ThreadComposerContentLeaf(
         quoteController.resetBlocks()
     }
     quoteController.syncFromExternalDraft(
-        draft = fieldValue.text,
+        draft = text,
         isEnabled = quoteReplyHost.enabled,
         resolveQuoteMeta = { refId, excerpt ->
             resolveQuoteMetaForDraft(
@@ -2637,24 +2661,25 @@ internal fun ThreadComposerContentLeaf(
         },
     )
     val isSegmentedQuoteComposer = quoteReplyHost.enabled && quoteController.isSegmented
-    val activeFieldValue = if (isSegmentedQuoteComposer) quoteController.activeFieldValue() else fieldValue
-    val activeText = activeFieldValue.text
+    val activeFieldState =
+        if (isSegmentedQuoteComposer) {
+            quoteController.activeTextFieldState() ?: fieldState
+        } else {
+            fieldState
+        }
+    val activeText = activeFieldState.text.toString()
+    val activeSelection = activeFieldState.selection
+    val activeRawComposition = activeFieldState.composition
     // Task v2: never sends as a task, whatever a restored draft held.
     val asTask = editorAsTask && surface.sendsAsTask
-    val ownedNativeEditingStateReader =
-        remember(state.instanceId, editorSessionId) { RaftTextFieldNativeEditingStateReader() }
-    val nativeEditingStateReader = externalNativeEditingStateReader ?: ownedNativeEditingStateReader
-    val sendSnapshotGate =
-        remember(state.instanceId, editorSessionId) { ThreadComposerSendSnapshotGate() }
-    val submittedEchoFence = remember(state.instanceId) { ThreadComposerSubmittedEchoFence() }
     val currentOnEvent by rememberUpdatedState(onEvent)
     var focused by remember(state.instanceId) { mutableStateOf(state.suggestionsOpen) }
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
     var handledEditorSessionId by remember(state.instanceId) { mutableStateOf(editorSessionId) }
     var keyboardInsetDp by remember(state.instanceId) { mutableStateOf(0f) }
-    // Keep the native editor identity stable while a send clears the controlled value. The
-    // logical session still fences stale callbacks below, but recreating the FocusRequester makes
-    // the host text field lose first-responder status before the restore effect can run.
+    // Keep the native editor identity stable while a send clears the state. The logical session
+    // still fences stale callbacks below, but recreating the FocusRequester makes the host text
+    // field lose first-responder status before the restore effect can run.
     val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
     val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
     val focusManager = LocalFocusManager.current
@@ -2671,27 +2696,49 @@ internal fun ThreadComposerContentLeaf(
                 initialSuggestionsEnabled = state.suggestionsEnabled
             )
         }
-    val pendingSendSnapshotToken = sendSnapshotGate.pendingToken
-    LaunchedEffect(state.instanceId, editorSessionId, pendingSendSnapshotToken) {
-        val requestToken = pendingSendSnapshotToken ?: return@LaunchedEffect
-        delay(ThreadComposerNativeSnapshotTimeoutMillis)
-        if (sendSnapshotGate.finish(requestToken)) {
-            currentOnEvent("sendSnapshotUnavailable", "timeout", null, null)
-        }
-    }
     LaunchedEffect(state.instanceId, quoteController.duplicateFlashNonce) {
         if (quoteController.duplicateFlashBlockId == null) return@LaunchedEffect
         delay(1200L)
         quoteController.clearDuplicateFlash()
     }
-    val currentEditorSessionId by rememberUpdatedState(editorSessionId)
-    val currentPlainFieldValue by rememberUpdatedState(fieldValue)
     val currentAsTask by rememberUpdatedState(asTask)
+    // One-way observation of native TextFieldState edits (user typing, IME composing/commit,
+    // cursor movement, text paste) to drive draft persistence and editing-continuation suggestions
+    // without ever writing back into TextFieldState.
+    LaunchedEffect(state.instanceId, editorOwner) {
+        snapshotFlow {
+            if (quoteReplyHost.enabled && quoteController.isSegmented) {
+                null
+            } else {
+                editorOwner.currentSnapshot()
+            }
+        }.collect { snapshot ->
+            if (snapshot == null || snapshot == editorOwner.lastObservedSnapshot) return@collect
+            val previousText = editorOwner.lastPublishedText
+            editorOwner.markObserved(snapshot)
+            suggestionSelectionDispatcher.updateDraft(
+                text = snapshot.text,
+                selectionStart = snapshot.selection.start,
+                selectionEnd = snapshot.selection.end,
+                composition = snapshot.composition,
+            )
+            continueThreadComposerSuggestionsForEditing(
+                portalState = suggestionPortal,
+                owner = suggestionPortalOwner,
+                generation = suggestionPortalGeneration,
+                onFocusedChanged = { focused = it },
+            )
+            if (snapshot.text != previousText) {
+                editorOwner.markObserved(snapshot, publishedText = snapshot.text)
+                currentOnEvent("change", snapshot.text, currentAsTask, null)
+            }
+        }
+    }
     val pendingQuoteInsert = quoteReplyHost.pendingInsertRequest
     LaunchedEffect(state.instanceId, pendingQuoteInsert?.nonce) {
         val request = pendingQuoteInsert ?: return@LaunchedEffect
         if (quoteReplyHost.enabled) {
-            val (result, serialized) = quoteController.insertQuote(request.quote, currentPlainFieldValue)
+            val (result, serialized) = quoteController.insertQuote(request.quote, editorOwner.value)
             when (result) {
                 is InsertQuoteResult.Duplicate -> quoteReplyHost.reportFeedback(ThreadComposerQuoteFeedback.Duplicate)
                 is InsertQuoteResult.Limit ->
@@ -2700,8 +2747,12 @@ internal fun ThreadComposerContentLeaf(
                     )
                 is InsertQuoteResult.Inserted -> {
                     if (serialized != null) {
-                        val nextSerializedValue = TextFieldValue(serialized, selection = TextRange(serialized.length))
-                        onEditorValueChange(currentEditorSessionId, nextSerializedValue)
+                        editorOwner.applyProgrammaticText(
+                            sourceSessionId = editorOwner.editorSessionId,
+                            nextText = serialized,
+                            cursor = serialized.length,
+                            publishAsSynced = true,
+                        )
                         currentOnEvent("change", serialized, currentAsTask, null)
                     }
                 }
@@ -2711,10 +2762,10 @@ internal fun ThreadComposerContentLeaf(
     }
     SideEffect {
         suggestionSelectionDispatcher.updateDraft(
-            text = activeFieldValue.text,
-            selectionStart = activeFieldValue.selection.start,
-            selectionEnd = activeFieldValue.selection.end,
-            composition = activeFieldValue.composition,
+            text = activeText,
+            selectionStart = activeSelection.start,
+            selectionEnd = activeSelection.end,
+            composition = activeRawComposition,
         )
     }
     val suggestionAnchorRef = remember(state.instanceId) { RaftLiveRootAnchorRef(suggestionPortalOwner) }
@@ -2863,9 +2914,9 @@ internal fun ThreadComposerContentLeaf(
         focus = autofocusOnOpen,
         focusRequester = composerFocusRequester,
     )
-    val selectionStart = minOf(activeFieldValue.selection.start, activeFieldValue.selection.end).coerceIn(0, activeText.length)
-    val selectionEnd = maxOf(activeFieldValue.selection.start, activeFieldValue.selection.end).coerceIn(0, activeText.length)
-    val activeComposition = normalizeThreadComposerCompositionRange(activeFieldValue.composition, activeText.length)
+    val selectionStart = minOf(activeSelection.start, activeSelection.end).coerceIn(0, activeText.length)
+    val selectionEnd = maxOf(activeSelection.start, activeSelection.end).coerceIn(0, activeText.length)
+    val activeComposition = normalizeThreadComposerCompositionRange(activeRawComposition, activeText.length)
     val suggestionTrigger =
         remember(activeText, selectionStart, selectionEnd, activeComposition, state.suggestionsEnabled) {
             threadComposerSuggestionTrigger(
@@ -3066,7 +3117,6 @@ internal fun ThreadComposerContentLeaf(
     val hasReplyTextForSend = if (isSegmentedQuoteComposer) quoteController.hasReplyText else text.isNotBlank()
     val canSend =
         composerEnabled &&
-            !sendSnapshotGate.isPending &&
             state.composerMode != "sending" &&
             state.composerMode != "uploading" &&
             state.composerMode != "no_permission" &&
@@ -3090,21 +3140,34 @@ internal fun ThreadComposerContentLeaf(
     // suggestion owns Enter.
     val composerKeyboardOptions = KeyboardOptions(imeAction = threadComposerImeAction(composerUsesImeAction))
 
+    fun currentActiveFieldState(): TextFieldState =
+        if (quoteReplyHost.enabled && quoteController.isSegmented) {
+            quoteController.activeTextFieldState() ?: editorOwner.textFieldState
+        } else {
+            editorOwner.textFieldState
+        }
+
     fun emitChange(nextText: String = text, nextAsTask: Boolean = asTask) {
         onEvent("change", nextText, nextAsTask, null)
     }
 
     fun insertMentionAtCursor(handle: String): Boolean {
+        val segmentedNow = quoteReplyHost.enabled && quoteController.isSegmented
+        val liveState = currentActiveFieldState()
+        val liveText = liveState.text.toString()
+        val liveSelStart = minOf(liveState.selection.start, liveState.selection.end).coerceIn(0, liveText.length)
+        val liveSelEnd = maxOf(liveState.selection.start, liveState.selection.end).coerceIn(liveSelStart, liveText.length)
         val edit = applyRaftComposerDirectMentionInsert(
-            text = activeText,
-            selectionStart = selectionStart,
-            selectionEnd = selectionEnd,
+            text = liveText,
+            selectionStart = liveSelStart,
+            selectionEnd = liveSelEnd,
             handle = handle
         ) ?: return false
-        if (isSegmentedQuoteComposer) {
+        if (segmentedNow) {
             val serialized = quoteController.replaceActiveTextBlock(edit.text, edit.cursor)
-            val nextSerialized = TextFieldValue(serialized, selection = TextRange(serialized.length))
-            if (!onEditorValueChange(editorSessionId, nextSerialized)) return false
+            if (!editorOwner.applyProgrammaticText(editorOwner.editorSessionId, serialized, cursor = serialized.length, publishAsSynced = true)) {
+                return false
+            }
             suggestionSelectionDispatcher.updateDraft(
                 text = edit.text,
                 selectionStart = edit.cursor,
@@ -3113,20 +3176,20 @@ internal fun ThreadComposerContentLeaf(
             emitChange(nextText = serialized)
             return true
         }
-        val nextFieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
-        if (!onEditorValueChange(editorSessionId, nextFieldValue)) return false
+        if (!editorOwner.applyProgrammaticText(editorOwner.editorSessionId, edit.text, cursor = edit.cursor, publishAsSynced = true)) {
+            return false
+        }
         suggestionSelectionDispatcher.updateDraft(
-            text = nextFieldValue.text,
-            selectionStart = nextFieldValue.selection.start,
-            selectionEnd = nextFieldValue.selection.end
+            text = edit.text,
+            selectionStart = edit.cursor,
+            selectionEnd = edit.cursor
         )
         emitChange(nextText = edit.text)
         return true
     }
 
-    // Read by the mention effect after it waited out a composition: the field's latest value and
-    // an insert that works on it.
-    val latestFieldValue by rememberUpdatedState(activeFieldValue)
+    // Read by the mention effect after it waited out a composition: the field's live TextFieldState
+    // and an insert that works on it.
     val latestInsertMentionAtCursor by rememberUpdatedState<(String) -> Boolean> { handle -> insertMentionAtCursor(handle) }
     val currentOnInsertMentionConsumed by rememberUpdatedState(onInsertMentionConsumed)
     LaunchedEffect(state.instanceId, insertMentionRequest?.nonce) {
@@ -3143,13 +3206,13 @@ internal fun ThreadComposerContentLeaf(
         try {
             // An avatar mention mid-composition would end it and commit the raw marked text; insert
             // at the caret of the text the composition commits instead.
-            val composing = latestFieldValue.composition != null
+            val composing = currentActiveFieldState().composition != null
             ThreadComposerProgrammaticEditLog.record(
                 ThreadComposerProgrammaticEditKind.Mention,
                 composing = composing,
                 deferred = composing,
             )
-            if (composing) snapshotFlow { latestFieldValue.composition }.first { it == null }
+            if (composing) snapshotFlow { currentActiveFieldState().composition }.first { it == null }
             if (latestInsertMentionAtCursor(request.handle)) {
                 // After the text, as a picked suggestion: the draft keeps it while `@handle` is there.
                 request.mention?.let { mention ->
@@ -3240,13 +3303,12 @@ internal fun ThreadComposerContentLeaf(
             // Enter / Space on an open trigger commits the typed token now, composition included.
             ThreadComposerProgrammaticEditLog.record(
                 ThreadComposerProgrammaticEditKind.Token,
-                composing = activeFieldValue.composition != null,
+                composing = currentActiveFieldState().composition != null,
                 deferred = false,
             )
             if (isSegmentedQuoteComposer) {
                 val serialized = quoteController.replaceActiveTextBlock(edit.text, edit.cursor)
-                val nextSerialized = TextFieldValue(serialized, selection = TextRange(serialized.length))
-                if (!onEditorValueChange(editorSessionId, nextSerialized)) return@let
+                if (!editorOwner.applyProgrammaticText(editorSessionId, serialized, cursor = serialized.length, publishAsSynced = true)) return@let
                 suggestionSelectionDispatcher.updateDraft(
                     text = edit.text,
                     selectionStart = edit.cursor,
@@ -3262,12 +3324,11 @@ internal fun ThreadComposerContentLeaf(
                 emitChange(nextText = serialized)
                 return@let
             }
-            val nextFieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
-            if (!onEditorValueChange(editorSessionId, nextFieldValue)) return@let
+            if (!editorOwner.applyProgrammaticText(editorSessionId, edit.text, cursor = edit.cursor, publishAsSynced = true)) return@let
             suggestionSelectionDispatcher.updateDraft(
-                text = nextFieldValue.text,
-                selectionStart = nextFieldValue.selection.start,
-                selectionEnd = nextFieldValue.selection.end
+                text = edit.text,
+                selectionStart = edit.cursor,
+                selectionEnd = edit.cursor
             )
             suggestionPortalGeneration =
                 hideThreadComposerSuggestionsForEditingContinuation(
@@ -3281,60 +3342,65 @@ internal fun ThreadComposerContentLeaf(
     }
 
     fun sendComposerMessage(forceAsTask: Boolean = false) {
-        if (sendSnapshotGate.isPending) return
-        val sourceSessionId = editorSessionId
+        val sourceSessionId = editorOwner.editorSessionId
+        if (!editorOwner.isActiveSession(sourceSessionId)) return
         val effectiveAsTask = asTask || (forceAsTask && surface.sendsAsTask)
         val segmentedAtSend = isSegmentedQuoteComposer
-        val requestToken = sendSnapshotGate.begin()
-        nativeEditingStateReader.readCurrentValue { readResult ->
-            if (!sendSnapshotGate.finish(requestToken)) return@readCurrentValue
-            if (!isEditorSessionActive(sourceSessionId)) return@readCurrentValue
-            val nativeValue =
-                when (readResult) {
-                    is RaftTextFieldNativeEditingStateReadResult.Available -> readResult.value
-                    RaftTextFieldNativeEditingStateReadResult.Unavailable -> {
-                        if (segmentedAtSend) {
-                            quoteController.activeFieldValue()
-                        } else {
-                            onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)
-                            return@readCurrentValue
-                        }
-                    }
-                }
-            ThreadComposerProgrammaticEditLog.record(
-                ThreadComposerProgrammaticEditKind.SendSnapshot,
-                composing = nativeValue.composition != null,
-                deferred = false,
-            )
-            val (sendFieldValue, optimisticQuotes) =
-                if (segmentedAtSend) {
-                    val (serialized, quotes) = quoteController.buildSendPayload(activeBlockOverride = nativeValue)
-                    TextFieldValue(serialized, selection = TextRange(serialized.length)) to quotes
-                } else {
-                    nativeValue to null
-                }
-            if (!onEditorValueChange(sourceSessionId, sendFieldValue)) return@readCurrentValue
-            suggestionSelectionDispatcher.updateDraft(
-                text = if (segmentedAtSend) nativeValue.text else sendFieldValue.text,
-                selectionStart = if (segmentedAtSend) nativeValue.selection.start else sendFieldValue.selection.start,
-                selectionEnd = if (segmentedAtSend) nativeValue.selection.end else sendFieldValue.selection.end,
-                composition = if (segmentedAtSend) nativeValue.composition else sendFieldValue.composition,
-            )
-            val request =
-                ThreadComposerSendRequest(
-                    editorSessionId = sourceSessionId,
-                    value = sendFieldValue,
-                    asTask = effectiveAsTask,
-                    optimisticResolvedQuotes = optimisticQuotes,
+        val (sendFieldValue, optimisticQuotes) =
+            if (segmentedAtSend) {
+                val activeState = quoteController.activeTextFieldState()
+                val activeSnapshot = activeState?.toRaftTextFieldValue() ?: quoteController.activeFieldValue()
+                ThreadComposerProgrammaticEditLog.record(
+                    ThreadComposerProgrammaticEditKind.SendSnapshot,
+                    composing = activeSnapshot.composition != null,
+                    deferred = false,
                 )
-            submittedEchoFence.begin(request)
-            val admission =
-                onSendRequest?.invoke(request)
-                    ?: run {
-                        onEvent("send", sendFieldValue.text, effectiveAsTask, null)
-                        ThreadComposerSendAdmission.Rejected
+                if (activeState != null && activeSnapshot.composition != null) {
+                    activeState.edit {
+                        selection = activeSnapshot.selection.coercedToLength(length)
                     }
-            submittedEchoFence.finishAdmission(admission)
+                }
+                val committedActive = activeSnapshot.copy(composition = null)
+                val (serialized, quotes) = quoteController.buildSendPayload(activeBlockOverride = committedActive)
+                TextFieldValue(serialized, selection = TextRange(serialized.length)) to quotes
+            } else {
+                val rawComposition = editorOwner.composition
+                ThreadComposerProgrammaticEditLog.record(
+                    ThreadComposerProgrammaticEditKind.SendSnapshot,
+                    composing = rawComposition != null,
+                    deferred = false,
+                )
+                editorOwner.finishCompositionForActionBoundary() to null
+            }
+        if (segmentedAtSend) {
+            if (!editorOwner.applyProgrammaticText(
+                    sourceSessionId = sourceSessionId,
+                    nextText = sendFieldValue.text,
+                    cursor = sendFieldValue.selection.end,
+                    publishAsSynced = true,
+                )
+            ) {
+                return
+            }
+        }
+        val activeAfterSend = if (segmentedAtSend) quoteController.activeFieldValue() else sendFieldValue
+        suggestionSelectionDispatcher.updateDraft(
+            text = activeAfterSend.text,
+            selectionStart = activeAfterSend.selection.start,
+            selectionEnd = activeAfterSend.selection.end,
+            composition = null,
+        )
+        val request =
+            ThreadComposerSendRequest(
+                editorSessionId = sourceSessionId,
+                value = sendFieldValue,
+                asTask = effectiveAsTask,
+                optimisticResolvedQuotes = optimisticQuotes,
+            )
+        if (onSendRequest != null) {
+            onSendRequest.invoke(request)
+        } else {
+            onEvent("send", sendFieldValue.text, effectiveAsTask, null)
         }
     }
 
@@ -3346,7 +3412,7 @@ internal fun ThreadComposerContentLeaf(
                 memberCount = filteredMemberSuggestions.size,
                 channelCount = filteredChannelSuggestions.size,
                 canSend = canSend,
-                isImeComposing = threadComposerEnterDeferredByComposition(fromHardwareEnter, fieldValue.composition)
+                isImeComposing = threadComposerEnterDeferredByComposition(fromHardwareEnter, currentActiveFieldState().composition)
             )
         ) {
             ThreadComposerEnterAction.AcceptMemberSuggestion ->
@@ -3385,7 +3451,7 @@ internal fun ThreadComposerContentLeaf(
                 shift = shift,
                 panelState = shown.panelState,
                 rowCount = rowCount,
-                composing = latestFieldValue.composition != null,
+                composing = currentActiveFieldState().composition != null,
             )
         when (action) {
             ThreadComposerSuggestionKeyAction.None -> return false
@@ -3498,13 +3564,12 @@ internal fun ThreadComposerContentLeaf(
                 // the commit, so it is not held back.
                 ThreadComposerProgrammaticEditLog.record(
                     ThreadComposerProgrammaticEditKind.Suggestion,
-                    composing = latestFieldValue.composition != null,
+                    composing = currentActiveFieldState().composition != null,
                     deferred = false,
                 )
                 if (isSegmentedQuoteComposer) {
                     val serialized = quoteController.replaceActiveTextBlock(edit.text, edit.cursor)
-                    val nextSerialized = TextFieldValue(serialized, selection = TextRange(serialized.length))
-                    if (!onEditorValueChange(editorSessionId, nextSerialized)) return@onCommit
+                    if (!editorOwner.applyProgrammaticText(editorSessionId, serialized, cursor = serialized.length, publishAsSynced = true)) return@onCommit
                     suggestionSelectionDispatcher.updateDraft(
                         text = edit.text,
                         selectionStart = edit.cursor,
@@ -3514,12 +3579,11 @@ internal fun ThreadComposerContentLeaf(
                     edit.mention?.let { mention -> onEvent(ThreadComposerSelectMentionEvent, encodeThreadComposerMentionEvent(mention), asTask, null) }
                     return@onCommit
                 }
-                val nextFieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
-                if (!onEditorValueChange(editorSessionId, nextFieldValue)) return@onCommit
+                if (!editorOwner.applyProgrammaticText(editorSessionId, edit.text, cursor = edit.cursor, publishAsSynced = true)) return@onCommit
                 suggestionSelectionDispatcher.updateDraft(
-                    text = nextFieldValue.text,
-                    selectionStart = nextFieldValue.selection.start,
-                    selectionEnd = nextFieldValue.selection.end
+                    text = edit.text,
+                    selectionStart = edit.cursor,
+                    selectionEnd = edit.cursor
                 )
                 onEvent("change", edit.text, asTask, null)
                 // After the text: the draft keeps a mention only while its `@handle` is in the text.
@@ -3730,6 +3794,29 @@ internal fun ThreadComposerContentLeaf(
                             }
                         }
                         val imagePasteClipboard = LocalClipboard.current as? ThreadComposerImagePasteClipboard
+                        // Paste with only images on the clipboard: intercept the placeholder inside
+                        // InputTransformation so it is reverted atomically before ever committing
+                        // to TextFieldState, and open the images in the editor instead.
+                        val imagePasteInputTransformation =
+                            remember(imagePasteClipboard) {
+                                imagePasteClipboard?.let { clipboard ->
+                                    InputTransformation {
+                                        if (clipboard.consumePlaceholderPaste() &&
+                                            threadComposerIsImagePastePlaceholderEdit(
+                                                previousText = originalText,
+                                                previousSelection = originalSelection,
+                                                changedText = asCharSequence(),
+                                                changedSelection = selection,
+                                            )
+                                        ) {
+                                            revertAllChanges()
+                                            if (ThreadComposerImagePasteRequests.claim(ThreadComposerImagePasteRoute.Placeholder)) {
+                                                currentOnEvent(ThreadComposerPasteAttachmentsAction, null, null, null)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         if (isSegmentedQuoteComposer) {
                             ThreadComposerQuoteBlocks(
                                 controller = quoteController,
@@ -3744,12 +3831,13 @@ internal fun ThreadComposerContentLeaf(
                                         mode = composerSendKey,
                                         hardwareKeyboard = hardwareKeyboardConnected,
                                         softEnterSends = composerSendKeyEnabled,
-                                        isImeComposing = { latestFieldValue.composition != null },
+                                        isImeComposing = { currentActiveFieldState().composition != null },
                                         canSendAsTask = surface.showTaskButton && surface.sendsAsTask,
                                         onSend = { handleKeyboardSend(fromHardwareEnter = true) },
                                         onSendAsTask = { handleKeyboardSend(fromHardwareEnter = true, forceAsTask = true) },
                                     ),
-                                nativeEditingStateReader = nativeEditingStateReader,
+                                nativeEditingStateReader = externalNativeEditingStateReader,
+                                inputTransformation = imagePasteInputTransformation,
                                 suggestionKeyPresses = suggestionKeyPresses,
                                 onSuggestionKeyDown = { key, shift -> handleSuggestionKeyDown(key, shift) },
                                 onKeyboardHeightChange = { heightDp ->
@@ -3762,14 +3850,18 @@ internal fun ThreadComposerContentLeaf(
                                         keyboardInsetDp = nextInset
                                     }
                                 },
-                                onActiveTextChange = { _, nextValue, serialized ->
-                                    val nextSerialized = TextFieldValue(serialized, selection = TextRange(serialized.length))
-                                    onEditorValueChange(sourceSessionId, nextSerialized)
+                                onActiveTextChange = { _, activeState, serialized ->
+                                    editorOwner.applyProgrammaticText(
+                                        sourceSessionId = sourceSessionId,
+                                        nextText = serialized,
+                                        cursor = serialized.length,
+                                        publishAsSynced = true,
+                                    )
                                     suggestionSelectionDispatcher.updateDraft(
-                                        text = nextValue.text,
-                                        selectionStart = nextValue.selection.start,
-                                        selectionEnd = nextValue.selection.end,
-                                        composition = nextValue.composition,
+                                        text = activeState.text.toString(),
+                                        selectionStart = activeState.selection.start,
+                                        selectionEnd = activeState.selection.end,
+                                        composition = activeState.composition,
                                     )
                                     continueThreadComposerSuggestionsForEditing(
                                         portalState = suggestionPortal,
@@ -3782,7 +3874,7 @@ internal fun ThreadComposerContentLeaf(
                                 onActiveFocus = {
                                     acceptThreadComposerEditorSessionUiEvent(
                                         sourceSessionId = sourceSessionId,
-                                        isActiveSession = isEditorSessionActive,
+                                        isActiveSession = editorOwner::isActiveSession,
                                     ) {
                                         suggestionPortalGeneration =
                                             resumeThreadComposerSuggestionsForEditing(
@@ -3795,8 +3887,12 @@ internal fun ThreadComposerContentLeaf(
                                 },
                                 onActiveBlur = { _, collapsedSerialized ->
                                     if (collapsedSerialized != null) {
-                                        val nextSerialized = TextFieldValue(collapsedSerialized, selection = TextRange(collapsedSerialized.length))
-                                        onEditorValueChange(sourceSessionId, nextSerialized)
+                                        editorOwner.applyProgrammaticText(
+                                            sourceSessionId = sourceSessionId,
+                                            nextText = collapsedSerialized,
+                                            cursor = collapsedSerialized.length,
+                                            publishAsSynced = true,
+                                        )
                                         emitChange(nextText = collapsedSerialized)
                                     }
                                 },
@@ -3807,8 +3903,12 @@ internal fun ThreadComposerContentLeaf(
                                         } else {
                                             (focusOffset ?: serialized.length).coerceIn(0, serialized.length)
                                         }
-                                    val nextSerialized = TextFieldValue(serialized, selection = TextRange(cursorPos))
-                                    onEditorValueChange(sourceSessionId, nextSerialized)
+                                    editorOwner.applyProgrammaticText(
+                                        sourceSessionId = sourceSessionId,
+                                        nextText = serialized,
+                                        cursor = cursorPos,
+                                        publishAsSynced = true,
+                                    )
                                     emitChange(nextText = serialized)
                                     if (!quoteController.isSegmented) {
                                         runCatching { composerFocusRequester.requestFocus() }
@@ -3821,53 +3921,18 @@ internal fun ThreadComposerContentLeaf(
                             )
                         } else {
                         // Hebrew, Arabic: right to left from the first letter, skipping mentions (slock #15039).
-                        val composerDirection = remember(fieldValue.text) { raftTextDirection(fieldValue.text) }
+                        val composerDirection = remember(text) { raftTextDirection(text) }
                         val composerLayoutDirection =
                             composerDirection.toComposeLayoutDirection(LocalLayoutDirection.current)
                         CompositionLocalProvider(LocalLayoutDirection provides composerLayoutDirection) {
                         TextField(
-                            value = fieldValue,
+                            state = fieldState,
                             placeholder = localizedThreadComposerPlaceholder(state.placeholder),
                             autoFocus = false,
-                            onValueChange = onValueChange@ { next ->
-                                // Paste with only images on the clipboard: exactly the placeholder
-                                // that offered Paste, pasted over the selection. The text stays as it
-                                // was and the images open in the editor.
-                                if (imagePasteClipboard?.consumePlaceholderPaste() == true &&
-                                    threadComposerIsImagePastePlaceholderEdit(fieldValue, next)
-                                ) {
-                                    if (ThreadComposerImagePasteRequests.claim(ThreadComposerImagePasteRoute.Placeholder)) {
-                                        onEvent(ThreadComposerPasteAttachmentsAction, null, null, null)
-                                    }
-                                    return@onValueChange
-                                }
-                                if (submittedEchoFence.shouldIgnore(sourceSessionId, next)) {
-                                    return@onValueChange
-                                }
-                                val acceptedValue =
-                                    onNativeEditorValueChange(sourceSessionId, next)
-                                        ?: return@onValueChange
-                                val textChanged = acceptedValue.text != fieldValue.text
-                                suggestionSelectionDispatcher.updateDraft(
-                                    text = acceptedValue.text,
-                                    selectionStart = acceptedValue.selection.start,
-                                    selectionEnd = acceptedValue.selection.end,
-                                    composition = acceptedValue.composition
-                                )
-                                continueThreadComposerSuggestionsForEditing(
-                                    portalState = suggestionPortal,
-                                    owner = suggestionPortalOwner,
-                                    generation = suggestionPortalGeneration,
-                                    onFocusedChanged = { focused = it }
-                                )
-                                if (textChanged) {
-                                    emitChange(nextText = acceptedValue.text)
-                                }
-                            },
                             onFocus = onFocus@ {
                                 acceptThreadComposerEditorSessionUiEvent(
                                     sourceSessionId = sourceSessionId,
-                                    isActiveSession = isEditorSessionActive,
+                                    isActiveSession = editorOwner::isActiveSession,
                                 ) {
                                     suggestionPortalGeneration =
                                         resumeThreadComposerSuggestionsForEditing(
@@ -3881,7 +3946,7 @@ internal fun ThreadComposerContentLeaf(
                             onBlur = onBlur@ {
                                 acceptThreadComposerEditorSessionUiEvent(
                                     sourceSessionId = sourceSessionId,
-                                    isActiveSession = isEditorSessionActive,
+                                    isActiveSession = editorOwner::isActiveSession,
                                 ) {
                                     dismissThreadComposerSuggestionsForFocusLoss(
                                         portalState = suggestionPortal,
@@ -3895,6 +3960,7 @@ internal fun ThreadComposerContentLeaf(
                                     onEvent("blur", null, null, null)
                                 }
                             },
+                            enabled = composerEnabled,
                             maxLines = 4,
                             // Only the preference decides the line mode. A multi-line field
                             // suppresses the IME action key, so with "return key sends" off the
@@ -3914,11 +3980,13 @@ internal fun ThreadComposerContentLeaf(
                                     mode = composerSendKey,
                                     hardwareKeyboard = hardwareKeyboardConnected,
                                     softEnterSends = composerSendKeyEnabled,
-                                    isImeComposing = { latestFieldValue.composition != null },
+                                    isImeComposing = { currentActiveFieldState().composition != null },
                                     canSendAsTask = surface.showTaskButton && surface.sendsAsTask,
                                     onSend = { handleKeyboardSend(fromHardwareEnter = true) },
                                     onSendAsTask = { handleKeyboardSend(fromHardwareEnter = true, forceAsTask = true) },
                                 ),
+                            inputTransformation = imagePasteInputTransformation,
+                            traceName = "ThreadComposer",
                             // RaftType.Input uses the shared content size, same as message text.
                             textStyle = RaftType.Input.copy(
                                 color = if (composerEnabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled,
@@ -3941,7 +4009,7 @@ internal fun ThreadComposerContentLeaf(
                             placeholderColor = RaftColor.ForegroundHint,
                             cursorBrush = SolidColor(RaftColor.TextBlack),
                             systemNewlineAction = true,
-                            nativeEditingStateReader = nativeEditingStateReader,
+                            nativeEditingStateReader = externalNativeEditingStateReader,
                             // React mobile uses a one-line textarea; keep the toolbar as the touch target.
                             focusRequester = composerFocusRequester,
                             modifier = Modifier
@@ -4068,7 +4136,7 @@ internal fun ThreadComposerContentLeaf(
                                         modifier = Modifier
                                             // The whole label row is the checkbox (one target, checkbox role).
                                             .toggleable(value = asTask, enabled = composerEnabled, role = Role.Checkbox) { newValue ->
-                                                if (onEditorAsTaskChange(editorSessionId, newValue)) {
+                                                if (editorOwner.acceptAsTask(editorSessionId, newValue)) {
                                                     onEvent("toggleAsTask", null, newValue, null)
                                                 }
                                             }

@@ -6,7 +6,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertFalse
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ThreadComposerPayloadTest {
@@ -78,25 +77,25 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
-    fun nativeSendSnapshotUsesVisibleTextAndDropsItsDelayedEchoBeforeClear() {
-        val owner = ThreadComposerControlledEditorOwner(seedText = "pleas", seedAsTask = false)
+    fun singleSourceEditorStateSendsVisibleTextAndClearsOnMatchingCommand() {
+        val owner = ThreadComposerEditorOwner(seedText = "pleas", seedAsTask = false)
         val session = owner.editorSessionId
-        val visibleNativeValue = TextFieldValue("please", selection = TextRange(6))
-        val fence = ThreadComposerSubmittedEchoFence()
+        owner.textFieldState.edit {
+            replace(0, length, "please")
+            selection = TextRange(6)
+        }
 
-        assertTrue(owner.acceptEditorValue(session, visibleNativeValue))
+        val visibleValue = owner.finishCompositionForActionBoundary()
         val request =
             ThreadComposerSendRequest(
                 editorSessionId = session,
-                value = visibleNativeValue,
+                value = visibleValue,
                 asTask = false,
             )
-        fence.begin(request)
-        fence.finishAdmission(ThreadComposerSendAdmission.Started)
 
         assertEquals("please", request.value.text)
-        assertTrue(fence.shouldIgnore(session, visibleNativeValue.copy()))
-        assertFalse(fence.shouldIgnore(session, visibleNativeValue.copy()))
+        assertEquals(TextRange(6), request.value.selection)
+        assertNull(request.value.composition)
         assertEquals(
             ThreadComposerEditorCommandOutcome.Applied,
             owner.apply(
@@ -108,22 +107,19 @@ class ThreadComposerPayloadTest {
                 )
             ),
         )
-        assertEquals("", owner.value.text)
+        assertEquals("", owner.text)
+        assertEquals(TextRange.Zero, owner.selection)
     }
 
     @Test
-    fun nativeSendSnapshotStillPreservesGenuinePostSubmitTyping() {
-        val owner = ThreadComposerControlledEditorOwner(seedText = "please", seedAsTask = false)
-        val session = owner.editorSessionId
-        val submitted = TextFieldValue("please", selection = TextRange(6))
-        val newer = TextFieldValue("next draft", selection = TextRange(10))
-        val fence = ThreadComposerSubmittedEchoFence()
-        val request = ThreadComposerSendRequest(session, submitted, asTask = false)
+    fun singleSourceEditorStatePreservesGenuinePostSubmitTypingAgainstStaleClear() {
+        val owner = ThreadComposerEditorOwner(seedText = "please", seedAsTask = false)
+        val submitted = owner.value
+        owner.textFieldState.edit {
+            replace(0, length, "next draft")
+            selection = TextRange(10)
+        }
 
-        fence.begin(request)
-        fence.finishAdmission(ThreadComposerSendAdmission.Started)
-        assertFalse(fence.shouldIgnore(session, newer))
-        assertTrue(owner.acceptEditorValue(session, newer))
         assertEquals(
             ThreadComposerEditorCommandOutcome.Stale,
             owner.apply(
@@ -135,7 +131,73 @@ class ThreadComposerPayloadTest {
                 )
             ),
         )
-        assertSame(newer, owner.value)
+        assertEquals("next draft", owner.text)
+        assertEquals(TextRange(10), owner.selection)
+    }
+
+    @Test
+    fun sameTextReplaceCommandPreservesMidSentenceSelection() {
+        val owner = ThreadComposerEditorOwner(seedText = "hello world", seedAsTask = false)
+        owner.textFieldState.edit { selection = TextRange(5) }
+
+        assertEquals(
+            ThreadComposerEditorCommandOutcome.Applied,
+            owner.apply(
+                ThreadComposerEditorCommand(
+                    id = 1,
+                    kind = ThreadComposerEditorCommandKind.Replace,
+                    text = "hello world",
+                    asTask = true,
+                    expectedText = "hello world",
+                    expectedAsTask = false,
+                )
+            ),
+        )
+        assertEquals("hello world", owner.text)
+        assertEquals(TextRange(5), owner.selection)
+        assertTrue(owner.asTask)
+    }
+
+    @Test
+    fun programmaticReplacePlacesSelectionAtEndOnceAndPreservesLaterMidSentenceEdits() {
+        val owner = ThreadComposerEditorOwner(seedText = "", seedAsTask = false)
+        assertEquals(
+            ThreadComposerEditorCommandOutcome.Applied,
+            owner.apply(
+                ThreadComposerEditorCommand(
+                    id = 1,
+                    kind = ThreadComposerEditorCommandKind.Replace,
+                    text = "今天天气",
+                    asTask = false,
+                    expectedText = "",
+                    expectedAsTask = false,
+                )
+            ),
+        )
+        assertEquals("今天天气", owner.text)
+        assertEquals(TextRange(4), owner.selection)
+
+        // Re-applying the same command id is a no-op and never pulls a mid-sentence cursor back to end.
+        owner.textFieldState.edit {
+            selection = TextRange(2)
+            replace(2, 2, "好")
+            selection = TextRange(3)
+        }
+        assertEquals(
+            ThreadComposerEditorCommandOutcome.AlreadyHandled,
+            owner.apply(
+                ThreadComposerEditorCommand(
+                    id = 1,
+                    kind = ThreadComposerEditorCommandKind.Replace,
+                    text = "今天天气",
+                    asTask = false,
+                    expectedText = "",
+                    expectedAsTask = false,
+                )
+            ),
+        )
+        assertEquals("今天好天气", owner.text)
+        assertEquals(TextRange(3), owner.selection)
     }
 
     @Test
@@ -222,7 +284,7 @@ class ThreadComposerPayloadTest {
 
     @Test
     fun failureRestoreTargetsCurrentSessionAndRetiredSessionStaysRejected() {
-        val owner = ThreadComposerControlledEditorOwner(seedText = "sent", seedAsTask = true)
+        val owner = ThreadComposerEditorOwner(seedText = "sent", seedAsTask = true)
         val retiredSession = owner.editorSessionId
         assertEquals(
             ThreadComposerEditorCommandOutcome.Applied,
@@ -251,15 +313,16 @@ class ThreadComposerPayloadTest {
         )
 
         assertEquals(activeSession, owner.editorSessionId)
-        assertEquals("sent", owner.value.text)
+        assertEquals("sent", owner.text)
         assertTrue(owner.asTask)
         assertFalse(
-            owner.acceptEditorValue(
-                retiredSession,
-                TextFieldValue("old echo", selection = TextRange(8)),
+            owner.applyProgrammaticText(
+                sourceSessionId = retiredSession,
+                nextText = "old echo",
+                cursor = 8,
             )
         )
-        assertEquals("sent", owner.value.text)
+        assertEquals("sent", owner.text)
     }
 
     @Test

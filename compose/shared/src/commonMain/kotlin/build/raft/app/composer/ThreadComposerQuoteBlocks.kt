@@ -10,15 +10,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -37,7 +39,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.quoteChipExcerpt
 import build.raft.app.markdown.raftTextDirection
@@ -70,11 +71,12 @@ internal fun ThreadComposerQuoteBlocks(
     composerKeyboardOptions: KeyboardOptions,
     composerKeyboardActions: KeyboardActions,
     hardwareEnterConfig: RaftHardwareEnterConfig,
-    nativeEditingStateReader: RaftTextFieldNativeEditingStateReader,
+    nativeEditingStateReader: RaftTextFieldNativeEditingStateReader?,
+    inputTransformation: InputTransformation? = null,
     suggestionKeyPresses: ThreadComposerSuggestionKeyPresses,
     onSuggestionKeyDown: (Key, Boolean) -> Boolean,
     onKeyboardHeightChange: (Float) -> Unit,
-    onActiveTextChange: (blockId: String, nextValue: TextFieldValue, serialized: String) -> Unit,
+    onActiveTextChange: (blockId: String, state: TextFieldState, serialized: String) -> Unit,
     onActiveFocus: (blockId: String) -> Unit,
     onActiveBlur: (blockId: String, collapsedSerialized: String?) -> Unit,
     onSerializedCommit: (serialized: String, focusOffset: Int?) -> Unit,
@@ -196,6 +198,7 @@ internal fun ThreadComposerQuoteBlocks(
                                     )
                                 else -> placeholder
                             }
+                        val blockFieldState = controller.textFieldStateFor(block)
                         ComposerSegmentedTextBlockRow(
                             block = block,
                             blockIndex = index,
@@ -203,7 +206,7 @@ internal fun ThreadComposerQuoteBlocks(
                             isTrailing = isTrailing,
                             ariaLabel = ariaLabel,
                             placeholder = if (isTrailing) placeholder else "",
-                            value = controller.textFieldValueFor(block),
+                            fieldState = blockFieldState,
                             composerEnabled = composerEnabled,
                             effectiveImeActionRequested = effectiveImeActionRequested,
                             composerKeyboardOptions = composerKeyboardOptions,
@@ -211,13 +214,14 @@ internal fun ThreadComposerQuoteBlocks(
                             hardwareEnterConfig = hardwareEnterConfig,
                             focusRequester = focusRequesterFor(block.id),
                             nativeEditingStateReader = if (isPrimary) nativeEditingStateReader else null,
+                            inputTransformation = inputTransformation,
                             suggestionKeyPresses = suggestionKeyPresses,
                             onSuggestionKeyDown = onSuggestionKeyDown,
                             onKeyboardHeightChange = onKeyboardHeightChange,
                             onPasteAttachments = onPasteAttachments,
-                            onValueChange = { nextValue ->
-                                val serialized = controller.onTextBlockValueChange(block.id, nextValue)
-                                onActiveTextChange(block.id, nextValue, serialized)
+                            onTextChange = { nextText ->
+                                val serialized = controller.onTextBlockTextChanged(block.id, nextText)
+                                onActiveTextChange(block.id, blockFieldState, serialized)
                             },
                             onFocus = {
                                 controller.onTextBlockFocus(block.id)
@@ -337,7 +341,7 @@ private fun ComposerSegmentedTextBlockRow(
     isTrailing: Boolean,
     ariaLabel: String,
     placeholder: String,
-    value: TextFieldValue,
+    fieldState: TextFieldState,
     composerEnabled: Boolean,
     effectiveImeActionRequested: Boolean,
     composerKeyboardOptions: KeyboardOptions,
@@ -345,39 +349,49 @@ private fun ComposerSegmentedTextBlockRow(
     hardwareEnterConfig: RaftHardwareEnterConfig,
     focusRequester: FocusRequester,
     nativeEditingStateReader: RaftTextFieldNativeEditingStateReader?,
+    inputTransformation: InputTransformation?,
     suggestionKeyPresses: ThreadComposerSuggestionKeyPresses,
     onSuggestionKeyDown: (Key, Boolean) -> Boolean,
     onKeyboardHeightChange: (Float) -> Unit,
     onPasteAttachments: () -> Unit,
-    onValueChange: (TextFieldValue) -> Unit,
+    onTextChange: (String) -> Unit,
     onFocus: () -> Unit,
     onBlur: () -> Unit,
     onKeyDecision: (ThreadComposerQuoteKeyDecision) -> Boolean,
     currentBlocks: () -> List<ComposerBlock>,
     currentArmedQuoteId: () -> String?,
 ) {
-    val direction = remember(value.text) { raftTextDirection(value.text) }
+    val currentText = fieldState.text.toString()
+    val direction = remember(currentText) { raftTextDirection(currentText) }
     val layoutDirection = direction.toComposeLayoutDirection(LocalLayoutDirection.current)
     val quoteKeyPresses = remember(block.id) { ThreadComposerSuggestionKeyPresses() }
-    var latestValue by remember(block.id) { mutableStateOf(value) }
-    latestValue = value
+    val latestOnTextChange by rememberUpdatedState(onTextChange)
+    val latestCurrentBlocks by rememberUpdatedState(currentBlocks)
+    LaunchedEffect(block.id, fieldState) {
+        snapshotFlow { fieldState.text.toString() }.collect { nextText ->
+            val currentBlock =
+                latestCurrentBlocks().firstOrNull { it is ComposerBlock.Text && it.id == block.id } as? ComposerBlock.Text
+            if (currentBlock != null && nextText != currentBlock.text) {
+                latestOnTextChange(nextText)
+            }
+        }
+    }
 
     CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
         TextField(
-            value = value,
+            state = fieldState,
             placeholder = placeholder,
             autoFocus = false,
-            onValueChange = { next ->
-                latestValue = next
-                onValueChange(next)
-            },
             onFocus = onFocus,
             onBlur = onBlur,
+            enabled = composerEnabled,
             maxLines = 4,
             imeActionRequested = effectiveImeActionRequested,
             keyboardOptions = composerKeyboardOptions,
             keyboardActions = composerKeyboardActions,
             hardwareEnterConfig = hardwareEnterConfig,
+            inputTransformation = inputTransformation,
+            traceName = "ThreadComposerQuoteSegment",
             textStyle =
                 RaftType.Input.copy(
                     color = if (composerEnabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled,
@@ -407,20 +421,20 @@ private fun ComposerSegmentedTextBlockRow(
                     .onPreviewKeyEvent { event ->
                         when (event.type) {
                             KeyEventType.KeyDown -> {
-                                val current = latestValue
+                                val currentSelection = fieldState.selection
                                 val decision =
                                     threadComposerQuoteBlockKeyDecision(
                                         blocks = currentBlocks(),
                                         blockIndex = blockIndex,
                                         key = event.key,
-                                        isComposing = current.composition != null,
+                                        isComposing = fieldState.composition != null,
                                         shift = event.isShiftPressed,
                                         alt = event.isAltPressed,
                                         ctrl = event.isCtrlPressed,
                                         meta = event.isMetaPressed,
-                                        selectionStart = current.selection.start,
-                                        selectionEnd = current.selection.end,
-                                        textLength = current.text.length,
+                                        selectionStart = currentSelection.start,
+                                        selectionEnd = currentSelection.end,
+                                        textLength = fieldState.text.length,
                                         armedDeleteQuoteId = currentArmedQuoteId(),
                                     )
                                 val consumed = onKeyDecision(decision)

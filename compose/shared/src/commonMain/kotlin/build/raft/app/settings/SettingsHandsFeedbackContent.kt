@@ -70,8 +70,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
@@ -165,18 +163,16 @@ internal fun SharedHandsFeedbackContent(
     var lastPersistedDraft by lastPersistedDraftState
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     val composerSendKey = build.raft.app.data.RaftComposerSendKeyRuntime.observeSendKey()
-    var messageFieldValue by remember(accountId) {
-        mutableStateOf(
-            TextFieldValue(
-                text = restoredDraft.text,
-                selection = TextRange(restoredDraft.text.length)
-            )
+    val messageEditor = remember(accountId) {
+        ThreadComposerEditorOwner(
+            seedText = restoredDraft.text,
+            seedAsTask = false,
         )
     }
     val draftTextForPersistenceState =
         remember(accountId) { mutableStateOf(restoredDraft.text) }
     var draftTextForPersistence by draftTextForPersistenceState
-    val message = messageFieldValue.text
+    val message = messageEditor.text
     val attachmentsState =
         remember(accountId) { mutableStateOf(restoredDraft.attachments) }
     var attachments by attachmentsState
@@ -832,7 +828,12 @@ internal fun SharedHandsFeedbackContent(
             failedSubmitTraceId = traceId
             val nextRetryRequest = submittedRequest.copy(proxyAttempt = nextProxyAttempt).takeIf { failure.retryable }
             pendingRetryRequest = nextRetryRequest
-            messageFieldValue = TextFieldValue(submittedMessage, selection = TextRange(submittedMessage.length))
+            messageEditor.applyProgrammaticText(
+                sourceSessionId = messageEditor.editorSessionId,
+                nextText = submittedMessage,
+                cursor = submittedMessage.length,
+                publishAsSynced = true,
+            )
             draftTextForPersistence = submittedMessage
             attachments = submittedAttachments
             error = failure.composerStatus
@@ -867,7 +868,12 @@ internal fun SharedHandsFeedbackContent(
                         // Filed through the server, the page opens the ticket; the native form
                         // has no ticket page, so the banner says it went and keeps its reference.
                         if (filedTicketId == null) filedSubmission = result.data
-                        messageFieldValue = TextFieldValue("")
+                        messageEditor.applyProgrammaticText(
+                            sourceSessionId = messageEditor.editorSessionId,
+                            nextText = "",
+                            cursor = 0,
+                            publishAsSynced = true,
+                        )
                         draftTextForPersistence = ""
                         val emptyDraft = SettingsHandsFeedbackDraftSnapshot()
                         val draftReleased =
@@ -1070,9 +1076,7 @@ internal fun SharedHandsFeedbackContent(
     ) {
         SettingsHandsFeedbackComposer(
             instanceId = "settings-hands-feedback-composer-$accountId",
-            value = messageFieldValue,
-            onValueChange = { next -> messageFieldValue = next },
-            currentValue = { messageFieldValue },
+            editorOwner = messageEditor,
             placeholder = copy.placeholder,
             enabled = !busy,
             submitting = submitting,
@@ -1533,8 +1537,7 @@ internal const val SettingsHandsFeedbackNoticeTag = "settings_hands_feedback_not
 @Composable
 internal fun SettingsHandsFeedbackComposer(
     instanceId: String,
-    value: TextFieldValue,
-    onValueChange: (TextFieldValue) -> Unit,
+    editorOwner: ThreadComposerEditorOwner,
     placeholder: String,
     enabled: Boolean,
     submitting: Boolean,
@@ -1544,8 +1547,6 @@ internal fun SettingsHandsFeedbackComposer(
     composerSendKey: build.raft.app.data.RaftComposerSendKey = build.raft.app.data.RaftComposerSendKey.Default,
     onEvent: (action: String, value: String?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit = {},
-    /** The field's value now (a second native callback may come before the next recomposition). */
-    currentValue: () -> TextFieldValue = { value },
 ) {
     ThreadComposerContentLeaf(
         attachmentPreviewEnabled = true,
@@ -1558,7 +1559,7 @@ internal fun SettingsHandsFeedbackComposer(
         state =
             ThreadComposerUiState(
                 instanceId = instanceId,
-                seedText = value.text,
+                seedText = editorOwner.text,
                 placeholder = placeholder,
                 enabled = enabled,
                 attachmentActionsEnabled = attachmentActionsEnabled && enabled,
@@ -1573,23 +1574,7 @@ internal fun SettingsHandsFeedbackComposer(
                 suggestionsEnabled = false,
                 pendingAttachments = attachments
             ),
-        editorSessionId = 1L,
-        editorValue = value,
-        onEditorValueChange = { _, next ->
-            onValueChange(next)
-            true
-        },
-        onNativeEditorValueChange = { _, incoming ->
-            repairThreadComposerLegacyZeroSelection(
-                previous = currentValue(),
-                incoming = incoming,
-            ).also { accepted ->
-                onValueChange(accepted)
-            }
-        },
-        isEditorSessionActive = { true },
-        editorAsTask = false,
-        onEditorAsTaskChange = { _, _ -> true },
+        editorOwner = editorOwner,
         composerSendKeyEnabled = composerSendKeyEnabled,
         composerSendKey = composerSendKey,
         dismissKeyboardOnBlur = true,

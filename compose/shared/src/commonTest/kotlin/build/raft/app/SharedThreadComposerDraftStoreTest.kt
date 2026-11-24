@@ -124,15 +124,11 @@ class SharedThreadComposerDraftStoreTest {
                 draftKey = null,
             )
         )
-        val owner = ThreadComposerControlledEditorOwner(seedText = "", seedAsTask = false)
-        owner.acceptEditorValue(
-            owner.editorSessionId,
-            androidx.compose.ui.text.input.TextFieldValue(
-                text = "ni",
-                selection = androidx.compose.ui.text.TextRange(2),
-                composition = androidx.compose.ui.text.TextRange(0, 2),
-            )
-        )
+        val owner = ThreadComposerEditorOwner(seedText = "", seedAsTask = false)
+        owner.textFieldState.edit {
+            replace(0, length, "ni")
+            selection = androidx.compose.ui.text.TextRange(2)
+        }
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
@@ -145,7 +141,7 @@ class SharedThreadComposerDraftStoreTest {
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Change(
-                seedText = owner.value.text,
+                seedText = owner.text,
                 seedAsTask = owner.asTask,
             )
         )
@@ -153,7 +149,7 @@ class SharedThreadComposerDraftStoreTest {
 
         assertEquals("ni", store.state.value.seedText)
         assertEquals("ni", persistence.read(draftKey)?.text)
-        assertEquals(androidx.compose.ui.text.TextRange(0, 2), owner.value.composition)
+        assertEquals(androidx.compose.ui.text.TextRange(2), owner.selection)
     }
 
     @Test
