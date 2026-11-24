@@ -145,6 +145,9 @@ internal fun RaftAdaptiveListDetailSplit(
     // conversation"); [collapsed] is kept, so it hides again once something opens.
     val listCollapsed = dualPane && !listFillsRow && collapsed && hasSelection
     val split = dualPane && !listFillsRow && !listCollapsed
+    // #338 step 3: while only the conversation's composer fits above the keyboard, the list steps aside (still
+    // composed, its scroll kept) so the composer runs the window's width; back at once with the keyboard down.
+    val listAside = split && hasSelection && LocalRaftWideKeyboardComposerOnly.current
     // #337: whether the list gives way to the columns open right of the detail (raftSidebarGivesWay), told to the
     // host after each frame while the list stands beside the detail or is collapsed; false once it can't.
     val givesWayReport by rememberUpdatedState(onGivesWayChange)
@@ -188,6 +191,7 @@ internal fun RaftAdaptiveListDetailSplit(
                             else -> RaftPaneGridLeadingMode.Hidden
                         },
                     onCrowdsRowChange = onCrowdsRowChange,
+                    aside = listAside,
                 ) {
                     if (dualPane && !listCollapsed) {
                         RaftFocusRegionHost(region = RaftFocusRegion.ListPane, modifier = Modifier.fillMaxSize()) {
@@ -210,7 +214,7 @@ internal fun RaftAdaptiveListDetailSplit(
         RaftListPaneSeam(
             kind = kind,
             widths = widths,
-            split = split,
+            split = split && !listAside,
             active = active,
             listWidthDp = listWidthDp,
             listMaxDp = listMaxDp,

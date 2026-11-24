@@ -39,4 +39,33 @@ class RaftWideKeyboardChromeTest {
         // Keyboard down or not the wide shell: it stays.
         assertFalse(raftWideKeyboardHidesHead(null, headHeight = 48.dp))
     }
+
+    @Test
+    fun onlyTheComposerAboveTheKeyboardWhenItAndAFewRowsDontFit() {
+        // 914 x 411: 137 left, the composer alone, full width while typed in (Kirby 640ad7a2).
+        assertTrue(raftWideKeyboardComposerOnly(137.dp))
+        // Just short of the composer's 160 and 96 of messages.
+        assertTrue(raftWideKeyboardComposerOnly(255.dp))
+        assertFalse(raftWideKeyboardComposerOnly(256.dp))
+        // 960 x 600 with a 300 keyboard: 276 left, only the head steps aside; rail and list stay.
+        assertFalse(raftWideKeyboardComposerOnly(276.dp))
+        // Keyboard down or not the wide shell.
+        assertFalse(raftWideKeyboardComposerOnly(null))
+    }
+
+    @Test
+    fun theComposerFocusNoteKeepsTheLatestOwner() {
+        val note = RaftWideKeyboardComposerFocus()
+        val first = Any()
+        val second = Any()
+        assertFalse(note.focused)
+        note.report(first, true)
+        assertTrue(note.focused)
+        // Focus moves to another composer: the first losing it clears nothing.
+        note.report(second, true)
+        note.report(first, false)
+        assertTrue(note.focused)
+        note.report(second, false)
+        assertFalse(note.focused)
+    }
 }
