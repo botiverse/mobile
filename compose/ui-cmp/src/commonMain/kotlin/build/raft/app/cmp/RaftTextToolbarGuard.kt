@@ -22,11 +22,28 @@ import androidx.compose.ui.platform.TextToolbarStatus
  * change (the candidate bar changing the keyboard height, the composer growing) replays the request
  * and UIKit shows a lone "Select All".
  *
- * This guard (1) never forwards a menu with no items, hiding instead, and (2) reports Shown while
- * a menu it forwarded has not been hidden, so the field's hide reaches the platform toolbar.
+ * Second case (task #348, the Paste menu now and then at the top-left corner of the screen): while
+ * a field is not laid out or is being re-attached (keyboard opening, composer growing, switching
+ * conversations), or when the input view replays a remembered request on a geometry change, the
+ * rect CMP passes is empty: [Rect.Zero], or a zero-size point once a window offset is added. UIKit
+ * anchors the menu to that point, i.e. the top-left corner.
+ *
+ * This guard
+ * 1. never forwards a menu with no items, hiding instead;
+ * 2. reports Shown while a menu it forwarded has not been hidden, so the field's hide reaches the
+ *    platform toolbar;
+ * 3. never forwards an unusable rect ([isUsableMenuRect]: zero width and zero height, or not
+ *    finite). It uses the last usable rect it forwarded instead; with none, it hides. A caret rect
+ *    (zero width, non-zero height) is usable. [hide] forgets the last rect, so a later request
+ *    never reuses the position of an old field or an old keyboard height.
+ *
+ * Installed on iOS only (RaftCmpIos). Android text fields use the new text context menu
+ * (LocalTextContextMenuToolbarProvider), which anchors to the field's own layout and never calls
+ * [LocalTextToolbar], so this guard would not see those menus.
  */
 class RaftTextToolbarGuard(private val platform: TextToolbar) : TextToolbar {
     private var requested = false
+    private var lastUsableRect: Rect? = null
 
     override val status: TextToolbarStatus
         get() = if (requested) TextToolbarStatus.Shown else platform.status
@@ -42,8 +59,9 @@ class RaftTextToolbarGuard(private val platform: TextToolbar) : TextToolbar {
             hide()
             return
         }
+        val anchor = anchorFor(rect) ?: return hide()
         requested = true
-        platform.showMenu(rect, onCopyRequested, onPasteRequested, onCutRequested, onSelectAllRequested)
+        platform.showMenu(anchor, onCopyRequested, onPasteRequested, onCutRequested, onSelectAllRequested)
     }
 
     override fun showMenu(
@@ -61,15 +79,33 @@ class RaftTextToolbarGuard(private val platform: TextToolbar) : TextToolbar {
             hide()
             return
         }
+        val anchor = anchorFor(rect) ?: return hide()
         requested = true
-        platform.showMenu(rect, onCopyRequested, onPasteRequested, onCutRequested, onSelectAllRequested, onAutofillRequested)
+        platform.showMenu(anchor, onCopyRequested, onPasteRequested, onCutRequested, onSelectAllRequested, onAutofillRequested)
     }
 
     override fun hide() {
         requested = false
+        lastUsableRect = null
         platform.hide()
     }
+
+    /** The rect to show the menu at: [rect] when usable, else the last usable one, else null. */
+    private fun anchorFor(rect: Rect): Rect? {
+        if (isUsableMenuRect(rect)) {
+            lastUsableRect = rect
+            return rect
+        }
+        return lastUsableRect
+    }
 }
+
+/**
+ * Whether [rect] can anchor a text menu. A rect with neither width nor height (Rect.Zero, or a
+ * zero-size point from an unplaced field) cannot; a caret rect (zero width, real height) can.
+ */
+internal fun isUsableMenuRect(rect: Rect): Boolean =
+    rect.isFinite && (rect.width > 0f || rect.height > 0f)
 
 /** Provides [RaftTextToolbarGuard] around the current [LocalTextToolbar] to [content]. */
 @Composable
