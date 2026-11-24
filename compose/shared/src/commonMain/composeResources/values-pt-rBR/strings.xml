@@ -4804,6 +4804,12 @@
     <string name="thread_link_preview_refresh_failed">Não foi possível atualizar este cartão. Tente novamente.</string>
     <string name="thread_link_preview_action_changed">Este cartão mudou. Confira e tente novamente.</string>
     <string name="thread_link_preview_action_working">Processando…</string>
+    <string name="thread_link_preview_action_state_sent">Enviada. Aguardando o app.</string>
+    <string name="thread_link_preview_action_state_accepted">Aceita. O app está concluindo a ação.</string>
+    <string name="thread_link_preview_action_state_done">Concluída. Abra o app para ver o resultado.</string>
+    <string name="thread_link_preview_action_state_not_carried_out">A ação não foi executada.</string>
+    <string name="thread_link_preview_action_state_unconfirmed">O resultado ainda não foi confirmado.</string>
+    <string name="thread_link_preview_action_state_resolved_manually">Não foi possível confirmar o resultado.</string>
     <string name="thread_link_preview_unreviewed_run_title">Executar “%1$s”?</string>
     <string name="thread_link_preview_unreviewed_run_by">Executado por %1$s</string>
     <string name="thread_link_preview_action_confirm_from">De %1$s</string>

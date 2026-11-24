@@ -4638,6 +4638,12 @@
     <string name="thread_link_preview_refresh_failed">Couldn’t refresh this card. Try again.</string>
     <string name="thread_link_preview_action_changed">This card changed. Check it and try again.</string>
     <string name="thread_link_preview_action_working">Working…</string>
+    <string name="thread_link_preview_action_state_sent">Sent. Waiting for the app.</string>
+    <string name="thread_link_preview_action_state_accepted">Accepted. The app is finishing it.</string>
+    <string name="thread_link_preview_action_state_done">Done. Open the app to see the result.</string>
+    <string name="thread_link_preview_action_state_not_carried_out">The action was not carried out.</string>
+    <string name="thread_link_preview_action_state_unconfirmed">The result isn’t confirmed yet.</string>
+    <string name="thread_link_preview_action_state_resolved_manually">The result could not be confirmed.</string>
     <string name="thread_link_preview_unreviewed_run_title">Run “%1$s”?</string>
     <string name="thread_link_preview_unreviewed_run_by">Run by %1$s</string>
     <string name="thread_link_preview_action_confirm_from">From %1$s</string>

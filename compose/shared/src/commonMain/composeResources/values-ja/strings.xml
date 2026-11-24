@@ -4637,6 +4637,12 @@
     <string name="thread_link_preview_refresh_failed">このカードを更新できませんでした。もう一度お試しください。</string>
     <string name="thread_link_preview_action_changed">このカードの内容が変更されました。内容を確認してから、もう一度お試しください。</string>
     <string name="thread_link_preview_action_working">処理中…</string>
+    <string name="thread_link_preview_action_state_sent">送信しました。アプリの応答を待っています。</string>
+    <string name="thread_link_preview_action_state_accepted">アプリが受け付けました。処理を完了しています。</string>
+    <string name="thread_link_preview_action_state_done">完了しました。結果はアプリを開いて確認してください。</string>
+    <string name="thread_link_preview_action_state_not_carried_out">この操作は実行されませんでした。</string>
+    <string name="thread_link_preview_action_state_unconfirmed">結果はまだ確認されていません。</string>
+    <string name="thread_link_preview_action_state_resolved_manually">結果を確認できませんでした。</string>
     <string name="thread_link_preview_unreviewed_run_title">「%1$s」を実行しますか？</string>
     <string name="thread_link_preview_unreviewed_run_by">%1$s が実行します</string>
     <string name="thread_link_preview_action_confirm_from">%1$s から</string>

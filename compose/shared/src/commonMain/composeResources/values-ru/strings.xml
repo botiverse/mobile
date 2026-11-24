@@ -4779,6 +4779,12 @@
     <string name="thread_link_preview_refresh_failed">Не удалось обновить карточку. Попробуйте ещё раз.</string>
     <string name="thread_link_preview_action_changed">Карточка изменилась. Проверьте её и попробуйте ещё раз.</string>
     <string name="thread_link_preview_action_working">Выполнение…</string>
+    <string name="thread_link_preview_action_state_sent">Отправлено. Ожидаем ответа приложения.</string>
+    <string name="thread_link_preview_action_state_accepted">Принято. Приложение завершает действие.</string>
+    <string name="thread_link_preview_action_state_done">Готово. Откройте приложение, чтобы увидеть результат.</string>
+    <string name="thread_link_preview_action_state_not_carried_out">Действие не выполнено.</string>
+    <string name="thread_link_preview_action_state_unconfirmed">Результат ещё не подтверждён.</string>
+    <string name="thread_link_preview_action_state_resolved_manually">Не удалось подтвердить результат.</string>
     <string name="thread_link_preview_unreviewed_run_title">Выполнить «%1$s»?</string>
     <string name="thread_link_preview_unreviewed_run_by">Выполняет %1$s</string>
     <string name="thread_link_preview_action_confirm_from">От %1$s</string>
