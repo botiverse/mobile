@@ -507,6 +507,8 @@ jobs:
             :androidApp:compileDebugKotlin
             :androidApp:compileDebugUnitTestKotlin
             :ui-cmp:compileAndroidHostTest
+            :web-container:compileAndroidHostTest
+            :web-container:compileTestKotlinDesktop
             # App identity receipt: the store variants' merged manifests declare
             # AppIdentityReceiptProvider enabled + DUMP-protected (manifest merge only, no R8).
             :androidApp:verifyReleaseIdentityReceiptProvider
@@ -525,6 +527,8 @@ jobs:
             :shared:testDebugUnitTest
             :androidApp:testDebugUnitTest
             :ui-cmp:testAndroidHostTest
+            :web-container:testAndroidHostTest
+            :web-container:desktopTest
           )
           # Unit & Roborazzi tier (comment above):
           # - record_screenshots=true: record both golden sets with the full suite.
@@ -759,6 +763,8 @@ jobs:
             ${{ runner.temp }}/socketio-interop.log
             compose/ui-cmp/build/reports/tests/testDebugUnitTest/
             compose/ui-cmp/build/test-results/testDebugUnitTest/
+            compose/web-container/build/reports/tests/
+            compose/web-container/build/test-results/
             compose/shared/build/reports/tests/testDebugUnitTest/
             compose/shared/build/test-results/testDebugUnitTest/
             compose/androidApp/build/reports/tests/testDebugUnitTest/
@@ -1138,12 +1144,13 @@ jobs:
             :designsystem:compileKotlinIosSimulatorArm64
             :ui-cmp:compileKotlinIosSimulatorArm64
             :realtime-socket:compileKotlinIosSimulatorArm64
+            :web-container:compileKotlinIosSimulatorArm64
           )
           if [ "$IOS_TESTS" = true ]; then
-            tasks+=(:shared:compileTestKotlinIosSimulatorArm64 :realtime-socket:iosSimulatorArm64Test)
+            tasks+=(:shared:compileTestKotlinIosSimulatorArm64 :realtime-socket:iosSimulatorArm64Test :web-container:iosSimulatorArm64Test)
           fi
           if [ "$IOS_DEVICE_COMPILE" = true ]; then
-            tasks+=(:shared:compileKotlinIosArm64)
+            tasks+=(:shared:compileKotlinIosArm64 :web-container:compileKotlinIosArm64)
           fi
           ./gradlew "${tasks[@]}" \
             --no-daemon \

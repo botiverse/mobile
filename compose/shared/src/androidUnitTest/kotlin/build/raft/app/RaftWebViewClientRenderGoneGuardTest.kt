@@ -85,6 +85,10 @@ class RaftWebViewClientRenderGoneGuardTest {
                 // The startup warm-up: let go when its renderer dies.
                 "compose/androidApp/src/main/java/build/raft/app/shared/RaftAndroidWebViewWarmup.kt" to
                     RegisteredSite(sites = 1, handler = "RaftDetachedWebViewClient("),
+                // Standalone cross-platform web container module (:web-container): handles renderer
+                // process termination through WebContainerWatchdog circuit breaker and returns true.
+                "compose/web-container/src/androidMain/kotlin/build/raft/webcontainer/WebContainerHost.android.kt" to
+                    RegisteredSite(sites = 2, handler = "override fun onRenderProcessGone"),
             )
     }
 }
