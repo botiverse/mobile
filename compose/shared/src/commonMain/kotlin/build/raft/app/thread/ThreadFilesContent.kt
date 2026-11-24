@@ -418,7 +418,7 @@ internal fun threadFilesShouldRequestLoadMore(
 // AvatarListRow's card row): a `Card` (layer-card, 1dp line-hairline, container radius) with
 // `px-4 py-3`; the 56dp type visual and the name/meta column top-aligned with `gap-3`; the
 // actions centred at the end. Under the web's 560dp container breakpoint the two inline
-// actions collapse into one ghost `icon-sm` overflow button (EllipsisVertical).
+// actions collapse into one ghost `icon-md` overflow button (EllipsisVertical).
 @Composable
 private fun ThreadFileRow(
     item: RaftThreadFileItem,
@@ -734,7 +734,7 @@ internal fun RaftThreadFileItem.threadFileHasSourceTarget(): Boolean =
 internal fun RaftThreadFileItem.threadFileSourceFocusMessageId(): String? =
     messageId.takeIf { it.isNotBlank() }
 
-// Web `ChannelFileOverflowMenu`: a ghost `icon-sm` button (EllipsisVertical) opening a menu
+// Web `ChannelFileOverflowMenu`: a ghost `icon-md` button (EllipsisVertical) opening a menu
 // with Jump to Original Message and Download File. While the file is downloading the button
 // shows the spinner and the menu stays shut.
 @Composable
@@ -758,7 +758,7 @@ private fun ThreadFileOverflowMenu(
             ) {
                 RaftLucideIcon(
                     name = RaftLucideIconName.EllipsisVertical,
-                    // `size="icon-sm"` draws every glyph at 18dp, overriding the 14 the web passes.
+                    // `size="icon-md"` draws every glyph at 18dp, overriding the 14 the web passes.
                     modifier = Modifier.size(18.dp),
                     color = raftArgbHex(RaftColor.TextBlack)
                 )

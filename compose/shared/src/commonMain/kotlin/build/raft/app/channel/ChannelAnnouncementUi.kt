@@ -50,6 +50,7 @@ import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowChevron
 import build.raft.designsystem.components.RaftListRowGroup
@@ -558,7 +559,7 @@ private fun ChannelAnnouncementDetailsItemWithActions(
     onRemove: () -> Unit,
 ) {
     val colors = RaftTheme.colors
-    val actionsRoom = RaftTheme.controls.rowHeight ?: ChannelAnnouncementActionsRoom
+    val actionsRoom = ChannelAnnouncementActionsRoom
     var open by remember { mutableStateOf(false) }
     val actionsLabel = stringResource(Res.string.channel_announcement_details_actions)
     Box(Modifier.fillMaxWidth()) {
@@ -584,6 +585,8 @@ private fun ChannelAnnouncementDetailsItemWithActions(
                 tooltip = actionsLabel,
                 modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsActions),
                 variant = RaftButtonVariant.Ghost,
+                // Web `size="icon-sm"`: the row action, 28dp on every platform (raft-ui 0.103).
+                size = RaftIconButtonSize.Sm,
             ) {
                 RaftLucideIcon(RaftLucideIconName.Ellipsis, Modifier.size(16.dp), color = raftArgbHex(colors.foregroundMuted))
             }
@@ -611,8 +614,8 @@ private fun ChannelAnnouncementDetailsItemWithActions(
     }
 }
 
-/** Width of the ⋯ icon button reserved inside `trailing` immediately before the chevron. */
-private val ChannelAnnouncementActionsRoom = 32.dp
+/** Width of the ⋯ row action ([RaftIconButtonSize.Sm], 28dp) reserved inside `trailing` before the chevron. */
+private val ChannelAnnouncementActionsRoom = 28.dp
 
 /** End offset of ⋯: row end padding (16dp) + chevron (20dp) + trailing gap (6dp). */
 private val ChannelAnnouncementActionsEndOffset = 42.dp

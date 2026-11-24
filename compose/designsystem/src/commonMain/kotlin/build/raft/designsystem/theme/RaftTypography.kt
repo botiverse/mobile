@@ -87,7 +87,11 @@ data class RaftTypography(
     val callout: TextStyle,
     /** `text-footnote` 13/18: group headings (700), field labels (600), 32dp buttons. */
     val footnote: TextStyle,
-    /** `text-caption` 12/16 500: subtitles, status chips, help text, badges. */
+    /**
+     * `text-caption` 12/16 500: subtitles, status chips, help text, badges. A size, not a colour:
+     * a subtitle or data line is `foreground`, a meta line `foreground-hint`, and only helper text
+     * (why, for whom, how to recover) `foreground-muted` (raft-ui 0.103 Text / HelperText).
+     */
     val caption: TextStyle,
     /** `text-label` 11/13 600: tab bar labels, labeled rail. */
     val label: TextStyle,
