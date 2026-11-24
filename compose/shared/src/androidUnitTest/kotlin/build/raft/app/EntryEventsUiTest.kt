@@ -182,7 +182,7 @@ class EntryEventsUiTest {
         }
 
     @Test
-    fun agentDmHeaderLoungeToggleRecordsOpenLounge() =
+    fun agentDmUnderHeaderTabSwitchSwitchesToLoungeAndShowsPrivateAudienceSubtitle() =
         runRobolectricComposeUiTest {
             var openedLounge = 0
             val dmPayload =
@@ -199,6 +199,32 @@ class EntryEventsUiTest {
                     remember {
                         object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                     }
+                val switch =
+                    AgentLoungeConversationSwitch(
+                        activeSide = AgentLoungeConversationSide.Private,
+                        loungeUnread = AgentLoungeSwitchUnread(count = 3),
+                        onSelectLounge = {
+                            RaftProductEvents.conversationHeaderActionSelected(
+                                action = RaftConversationHeaderAction.OpenLounge,
+                                surface = RaftConversationHeaderSurface.Header,
+                                conversation = RaftConversationHeaderKind.Dm,
+                                compact = true,
+                            )
+                            openedLounge++
+                        },
+                        onSelectPrivate = {},
+                    )
+                val lounge =
+                    ThreadPageLounge(
+                        lounge = null,
+                        agentAvatarWireValue = null,
+                        cacheServerId = null,
+                        canUnarchive = false,
+                        unarchiving = false,
+                        onUnarchive = {},
+                        onOpenAgentProfile = null,
+                        conversationSwitch = switch,
+                    )
                 CompositionLocalProvider(
                     LocalActivity provides RaftPageActivity(pager),
                     LocalThreadHeaderMenuEventBus provides QuietEventBus,
@@ -222,25 +248,16 @@ class EntryEventsUiTest {
                                 onOpenSearch = {},
                                 onShowMembers = {},
                                 onShowSettings = {},
-                                lounge =
-                                    ThreadPageLounge(
-                                        lounge = null,
-                                        agentAvatarWireValue = null,
-                                        cacheServerId = null,
-                                        canUnarchive = false,
-                                        unarchiving = false,
-                                        onUnarchive = {},
-                                        onOpenAgentProfile = null,
-                                        onOpenDmAgentLounge = { openedLounge++ },
-                                        dmLoungeOpening = false,
-                                    ),
+                                lounge = lounge,
                             )
+                            AgentLoungeConversationTabStrip(switch = switch, wideWindow = false)
                         }
                     }
                 }
             }
 
-            onNodeWithTag(AgentLoungeTestTags.DmHeaderToggle).performClick()
+            onNodeWithText("Only you and Lagoon can see this.").fetchSemanticsNode()
+            onNodeWithTag(AgentLoungeTestTags.TabLounge).performClick()
             waitForIdle()
 
             assertEquals(1, openedLounge)

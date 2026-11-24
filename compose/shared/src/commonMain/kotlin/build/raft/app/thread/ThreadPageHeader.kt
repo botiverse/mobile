@@ -249,8 +249,19 @@ internal fun ThreadPageHeader(
     val headerLounge = lounge?.takeIf { it.lounge != null }
     val loungeHeader = headerLounge?.takeIf { headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel }
     val loungeTitle = headerLounge?.let { agentLoungeTitle(it.agentName) }
-    val dmLoungeToggle = lounge?.onOpenDmAgentLounge?.takeIf { headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage }
-    val loungeLabel = stringResource(Res.string.agent_lounge_label)
+    val loungeAudienceSubtitle =
+        when {
+            lounge?.conversationSwitch == null -> null
+            loungeHeader != null -> stringResource(Res.string.agent_lounge_audience_notice)
+            headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage -> {
+                val peerName =
+                    build.raft.app.data.loungeAgentDisplayName(
+                        headerDisplay.title.trim().removePrefix("@").takeUnless { it.isGenericThreadHeaderFallbackLabel() }
+                    ) ?: build.raft.app.data.loungeAgentDisplayName(lounge.agentName)
+                peerName?.let { stringResource(Res.string.agent_lounge_private_audience_notice, it) }
+            }
+            else -> null
+        }
     // Task v2 (web TaskConversationBar): a task conversation's search is the More menu's Search in Task.
     val taskConversation = payload.isTaskConversationSurface()
     val topSafeArea = if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp
@@ -269,6 +280,7 @@ internal fun ThreadPageHeader(
         }
     val headerSubtitle =
         when {
+            loungeAudienceSubtitle != null -> loungeAudienceSubtitle
             loungeHeader != null -> null
             headerLounge != null && headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread ->
                 replyThreadHeaderSubtitle(loungeTitle, replyThreadReplyCountLabel)
@@ -310,7 +322,6 @@ internal fun ThreadPageHeader(
                 headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread ||
                     taskConversation ||
                     payload.threadHeaderSearchAction() != null ||
-                    dmLoungeToggle != null ||
                     sideCardToggles?.cardsInHeader()?.isNotEmpty() == true ||
                     threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind) ||
                     payload.threadHeaderOpenInParentActionVisible()
@@ -375,8 +386,6 @@ internal fun ThreadPageHeader(
                                 onMarkThreadUnread = onMarkThreadUnread,
                                 onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
                                 sideCardToggles = sideCardToggles,
-                                dmLoungeToggle = dmLoungeToggle,
-                                loungeLabel = loungeLabel,
                                 onOpenTimeline = onOpenTimeline,
                                 onDeleteTask = taskConversationChrome?.onDeleteTask,
                             ),
@@ -391,7 +400,7 @@ internal fun ThreadPageHeader(
                     emptyList()
                 },
         )
-    // iOS native nav bar (web Task v2 head parity, #proj-mobile:#281): Search, Lounge (agent DM),
+    // iOS native nav bar (web Task v2 head parity, #proj-mobile:#281): Search,
     // Tasks, Files, Settings — folding from the last into ⋯ to fit, with no Members button
     // (Members lives in Settings / channel details, also reachable by tapping the channel title).
     val nativeSideActions =
@@ -413,8 +422,6 @@ internal fun ThreadPageHeader(
                         onMarkThreadUnread = onMarkThreadUnread,
                         onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
                         sideCardToggles = sideCardToggles,
-                        dmLoungeToggle = dmLoungeToggle,
-                        loungeLabel = loungeLabel,
                         onOpenTimeline = onOpenTimeline,
                         onDeleteTask = taskConversationChrome?.onDeleteTask,
                     ),
@@ -755,8 +762,6 @@ internal fun ThreadPageHeader(
                         threadHeaderConversationOwnActions(
                             searchLabel = searchLabel.takeIf { !taskConversation && !replyThreadMenu && payload.threadHeaderSearchAction() != null },
                             onOpenSearch = onOpenSearch,
-                            loungeLabel = loungeLabel.takeIf { dmLoungeToggle != null },
-                            onOpenLounge = dmLoungeToggle,
                             sideCardActions = sideCardOwnActions,
                             settingsLabel =
                                 settingsLabel.takeIf {
@@ -1038,14 +1043,12 @@ internal data class ThreadHeaderOwnActionSpec(
 
 /**
  * Web Task v2 conversation head button order (`useChannelHeadToggles.tsx`):
- * Search, Lounge (agent DM), Tasks, Files, Settings, then Open in Channel where applicable.
+ * Search, Tasks, Files, Settings, then Open in Channel where applicable.
  * No Members button (Members lives inside Settings / channel details, also reachable via title tap).
  */
 internal fun threadHeaderConversationOwnActions(
     searchLabel: String?,
     onOpenSearch: () -> Unit,
-    loungeLabel: String?,
-    onOpenLounge: (() -> Unit)?,
     sideCardActions: List<ThreadHeaderOwnActionSpec> = emptyList(),
     settingsLabel: String?,
     settingsOpen: Boolean,
@@ -1061,18 +1064,6 @@ internal fun threadHeaderConversationOwnActions(
                     label = searchLabel,
                     icon = RaftLucideIconName.Search,
                     onClick = onOpenSearch,
-                )
-            )
-        }
-        if (!loungeLabel.isNullOrBlank() && onOpenLounge != null) {
-            add(
-                ThreadHeaderOwnActionSpec(
-                    id = "lounge",
-                    label = loungeLabel,
-                    icon = RaftLucideIconName.Users,
-                    toggle = true,
-                    testTag = AgentLoungeTestTags.DmHeaderToggle,
-                    onClick = onOpenLounge,
                 )
             )
         }
@@ -1189,7 +1180,6 @@ internal fun threadHeaderSideColumnActionsForPayload(
     onMarkThreadUnread: (() -> Unit)? = null,
     onViewTaskInChannel: (() -> Unit)? = null,
     sideCardActions: List<ThreadHeaderOwnActionSpec> = emptyList(),
-    dmLoungeToggle: (() -> Unit)? = null,
     onOpenTimeline: (() -> Unit)? = null,
     onDeleteTask: (() -> Unit)? = null,
 ): List<RaftSideAction> {
@@ -1198,8 +1188,6 @@ internal fun threadHeaderSideColumnActionsForPayload(
         threadHeaderConversationOwnActions(
             searchLabel = labels.searchLabel.takeIf { !taskConversation && !replyThreadMenu && payload.threadHeaderSearchAction() != null },
             onOpenSearch = onOpenSearch,
-            loungeLabel = labels.loungeLabel.takeIf { dmLoungeToggle != null },
-            onOpenLounge = dmLoungeToggle,
             sideCardActions = sideCardActions,
             settingsLabel = labels.settingsLabel.takeIf { threadHeaderSettingsActionVisible(payload.showSettingsAction, surfaceKind) },
             settingsOpen = false,
@@ -1285,8 +1273,6 @@ private fun threadHeaderSideColumnActions(
     onMarkThreadUnread: (() -> Unit)?,
     onViewTaskInChannel: (() -> Unit)?,
     sideCardToggles: ThreadHeaderSideCardToggles? = null,
-    dmLoungeToggle: (() -> Unit)? = null,
-    loungeLabel: String = "",
     onOpenTimeline: (() -> Unit)? = null,
     /** Task v2: Delete task, the ⋯ menu's last row (web #14115); null for a reader who may not. */
     onDeleteTask: (() -> Unit)? = null,
@@ -1326,7 +1312,6 @@ private fun threadHeaderSideColumnActions(
                 searchInTaskLabel = stringResource(Res.string.task_conversation_search),
                 settingsLabel = stringResource(Res.string.settings_title),
                 viewInChannelLabel = stringResource(Res.string.task_conversation_view_in_channel),
-                loungeLabel = loungeLabel,
                 timelineLabel = stringResource(Res.string.thread_outline_list_title),
                 markUnreadLabel = stringResource(Res.string.home_action_mark_as_unread),
                 deleteTaskLabel = stringResource(Res.string.task_delete_action),
@@ -1345,7 +1330,6 @@ private fun threadHeaderSideColumnActions(
         onMarkThreadUnread = onMarkThreadUnread,
         onViewTaskInChannel = onViewTaskInChannel,
         sideCardActions = sideCardActions,
-        dmLoungeToggle = dmLoungeToggle,
         onOpenTimeline = onOpenTimeline,
         onDeleteTask = onDeleteTask,
     )

@@ -276,6 +276,8 @@ class RaftNativeNavBarBridgeTest {
                 openFilesLabel = "Open Files",
                 loungeLabel = "Lounge",
                 loungeTitleForAgent = { "$it's Lounge" },
+                loungeAudienceSubtitle = "Everyone in this server can see this. Only this agent replies.",
+                privateAudienceSubtitleForAgent = { "Only you and $it can see this." },
                 channelDetailsTitle = "Details",
                 membersTitle = "Members",
             )
@@ -286,13 +288,11 @@ class RaftNativeNavBarBridgeTest {
                 searchInTaskLabel = strings.searchInTaskLabel,
                 settingsLabel = strings.settingsLabel,
                 viewInChannelLabel = strings.viewInChannelLabel,
-                loungeLabel = strings.loungeLabel,
             )
 
         fun liveIdsFor(
             payload: RaftThreadScreenPayload,
             surfaceKind: String,
-            dmLoungeVisible: Boolean = false,
             taskHasViewInChannel: Boolean = false,
         ): List<String> {
             val taskConversation = payload.isTaskConversationSurface()
@@ -314,7 +314,6 @@ class RaftNativeNavBarBridgeTest {
                 labels = liveLabels,
                 onViewTaskInChannel = ({}).takeIf { taskConversation && taskHasViewInChannel },
                 sideCardActions = sideCardActions,
-                dmLoungeToggle = ({}).takeIf { dmLoungeVisible && surfaceKind == RaftThreadSurfaceKind.DirectMessage },
             ).toRaftNativeNavBarActions().map { it.id }
         }
 
@@ -388,34 +387,51 @@ class RaftNativeNavBarBridgeTest {
             buildThreadNativeNavBarPrefillHead(
                 payload = dmPayload,
                 directoryProjection = dmProjection,
-                dmLoungeToggleVisible = true,
+                loungeSwitchVisible = true,
                 resolvedDmPeerAvatarWireValue = "https://cdn.example/lagoon.png",
                 strings = strings,
             )
         assertEquals("Lagoon", dmLoungeOnHead.title)
+        assertEquals("Only you and Lagoon can see this.", dmLoungeOnHead.subtitle)
         assertEquals(
             RaftNativeNavBarTitleLeading.Avatar("Lagoon", "https://cdn.example/lagoon.png", RaftAvatarKind.Agent),
             dmLoungeOnHead.extras.leading,
         )
         assertEquals(
-            liveIdsFor(dmPayload, RaftThreadSurfaceKind.DirectMessage, dmLoungeVisible = true),
+            liveIdsFor(dmPayload, RaftThreadSurfaceKind.DirectMessage),
             dmLoungeOnHead.actions.map { it.id },
         )
-        assertTrue("lounge" in dmLoungeOnHead.actions.map { it.id })
+        assertTrue("lounge" !in dmLoungeOnHead.actions.map { it.id })
 
         val dmLoungeOffHead =
             buildThreadNativeNavBarPrefillHead(
                 payload = dmPayload,
                 directoryProjection = dmProjection,
-                dmLoungeToggleVisible = false,
+                loungeSwitchVisible = false,
                 resolvedDmPeerAvatarWireValue = "https://cdn.example/lagoon.png",
                 strings = strings,
             )
+        assertEquals(null, dmLoungeOffHead.subtitle)
         assertEquals(
-            liveIdsFor(dmPayload, RaftThreadSurfaceKind.DirectMessage, dmLoungeVisible = false),
+            liveIdsFor(dmPayload, RaftThreadSurfaceKind.DirectMessage),
             dmLoungeOffHead.actions.map { it.id },
         )
         assertTrue("lounge" !in dmLoungeOffHead.actions.map { it.id })
+
+        val loungeHead =
+            buildThreadNativeNavBarPrefillHead(
+                payload = channelPayload.copy(sourceThreadId = "lounge-1", streamChannelId = "lounge-1"),
+                pageLounge =
+                    build.raft.app.data.RaftAgentLounge(
+                        channelId = build.raft.app.model.ChannelId("lounge-1"),
+                        agentId = "agent-1",
+                        agentName = "Lagoon",
+                    ),
+                loungeSwitchVisible = true,
+                strings = strings,
+            )
+        assertEquals("Lagoon's Lounge", loungeHead.title)
+        assertEquals("Everyone in this server can see this. Only this agent replies.", loungeHead.subtitle)
 
         // 3. Reply thread
         val replyPayload =

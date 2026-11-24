@@ -1103,7 +1103,27 @@ private fun ThreadPageScreen(
         adaptiveCloseRequest = adaptiveCloseRequest,
         onBack = rootBack,
         onOpenThreadPayload = { nextPayload -> openStandaloneThreadPayload(nextPayload) },
-        onReplaceThreadPayload = {},
+        onReplaceThreadPayload = { nextPayload ->
+            if (adaptiveCloseRequest != null) {
+                openStandaloneThreadPayload(nextPayload)
+            } else {
+                val launchPayload = nextPayload.toWireThreadLaunchPayloadOrNull()
+                if (launchPayload == null) {
+                    failThreadOpen(ThreadOpenFailure.MissingIdentity, nextPayload)
+                } else {
+                    val pageData = launchPayload.toThreadPageData()
+                    pageData.optString("payload").takeIf { it.isNotBlank() }?.let { payloadText = it }
+                    pageData.optString("instanceId").takeIf { it.isNotBlank() }?.let { instanceId = it }
+                    val targetThreadId =
+                        nextPayload.streamChannelId?.takeIf { it.isNotBlank() }
+                            ?: nextPayload.sourceThreadId?.takeIf { it.isNotBlank() }
+                    if (targetThreadId != null) {
+                        sharedStores.sharedHomeStore(storeScope)
+                            ?.dispatch(SharedHomeIntent.SelectConversation(targetThreadId))
+                    }
+                }
+            }
+        },
         onOpenThreadPayloadWithoutAnimation = { nextPayload -> openStandaloneThreadPayload(nextPayload, animated = false) },
         // The Tasks tab's rule (taskPendingOpensAsPage), read when the task is opened: its page,
         // but on the wide layout, where false leaves the task to the conversation's own surface.
@@ -1923,12 +1943,17 @@ private fun SharedThreadRouteContentContent(
     var retainedRouteIdentity by remember {
         mutableStateOf(incomingRouteIdentity)
     }
+    val initialRouteIdentity =
+        if (retainedRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
+            retainedRouteIdentity
+        } else {
+            incomingRouteIdentity
+        }
     LaunchedEffect(incomingRouteIdentity) {
         if (!retainedRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
             retainedRouteIdentity = incomingRouteIdentity
         }
     }
-    val initialRouteIdentity = retainedRouteIdentity
     val threadViewModel: SharedThreadViewModel =
         viewModel(key = "shared-thread-${initialRouteIdentity.instanceKey}") {
             SharedThreadViewModel(
@@ -2825,19 +2850,70 @@ private fun SharedThreadRouteContentContent(
     var loadingSlotsBuilder: (@Composable () -> ThreadRouteScaffoldSlots)? = null
     var featureSlotsBuilder: (@Composable () -> ThreadRouteScaffoldSlots)? = null
     if (routeMountPlan == ThreadRouteMountPlan.LoadingShell) {
+        val loadingServerId = headerProjectionServerId?.value ?: currentSession?.currentServerId
+        val loadingServerRole = currentSession?.servers?.firstOrNull { it.id == loadingServerId }?.role
+        val loadingLoungeEnabled = rememberAgentLoungeEnabled(sharedStores.serverFeatureFlags, loadingServerId, loadingServerRole)
+        val loadingAssistantAnswers by
+            remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) }.answers.collectAsState()
+        val loadingPersonalAssistantIds =
+            remember(loadingAssistantAnswers) {
+                loadingAssistantAnswers.values.mapNotNull { it.assistant?.agentId }.toSet()
+            }
+        val loadingIsLoungeConversation = payload.surfaceKind == RaftThreadSurfaceKind.Channel && mutePageLounge != null
+        val loadingSwitchAgentId =
+            if (loadingIsLoungeConversation) {
+                mutePageLounge?.agentId
+            } else {
+                headerDisplayModel.dmAgentActivityMemberId() ?: payload.agentLoungeDmAgentId()
+            }
+        val loadingAppBot = rememberRaftMemberAppBot(loadingSwitchAgentId)
+        val loadingMemberProfile =
+            remember(serverMembersStore, loadingServerId, loadingSwitchAgentId) {
+                val sid = loadingServerId?.takeIf { it.isNotBlank() }
+                if (sid != null && loadingSwitchAgentId != null) {
+                    serverMembersStore?.memberProfile(ServerId(sid), loadingSwitchAgentId)
+                } else {
+                    null
+                }
+            }
+        val loadingShowSwitch =
+            shouldShowAgentLoungeConversationSwitch(
+                enabled = loadingLoungeEnabled,
+                surfaceKind = payload.surfaceKind,
+                isLoungeConversation = loadingIsLoungeConversation,
+                agentId = loadingSwitchAgentId,
+                personalAssistantAgentIds = loadingPersonalAssistantIds,
+                isAppBot = loadingAppBot != null,
+                isDeletedAgent = loadingMemberProfile?.agentDeletedAt?.isNotBlank() == true,
+            ) && loadingMemberProfile?.assistantPausedAt == null
+        val loadingSwitch =
+            if (loadingShowSwitch) {
+                AgentLoungeConversationSwitch(
+                    activeSide =
+                        if (loadingIsLoungeConversation) AgentLoungeConversationSide.Lounge else AgentLoungeConversationSide.Private,
+                    switching = true,
+                    onSelectLounge = {},
+                    onSelectPrivate = {},
+                )
+            } else {
+                null
+            }
         val loadingLounge =
-            mutePageLounge?.let { lounge ->
+            if (mutePageLounge != null || loadingSwitch != null) {
                 ThreadPageLounge(
-                    lounge = lounge,
-                    agentAvatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, lounge.agentId),
-                    cacheServerId = headerProjectionServerId?.value,
+                    lounge = mutePageLounge,
+                    agentAvatarWireValue =
+                        mutePageLounge?.let { rememberRaftMemberAvatarWireValue(memberAvatarResolver, it.agentId) },
+                    cacheServerId = loadingServerId,
                     canUnarchive = false,
                     unarchiving = false,
                     onUnarchive = {},
                     onOpenAgentProfile = null,
-                    onOpenDmAgentLounge = null,
-                    dmLoungeOpening = false,
+                    conversationSwitch = loadingSwitch,
+                    agentDisplayNameOverride = loadingMemberProfile?.displayName,
                 )
+            } else {
+                null
             }
         val loadingNowEpochMillis =
             payload.nowEpochMillis ?: kotlin.time.Clock.System.now().toEpochMilliseconds()
@@ -6650,9 +6726,18 @@ private fun SharedThreadRouteContentContent(
                     onMissingScope = { bridge.logWarn("thread_settings_page_open_skip reason=missing_scope") },
                 )
         }
-        // Agent Lounge v0: this page as (or inside) an agent's Lounge, and an agent DM's Lounge toggle.
+        // Agent Lounge v0: this page as (or inside) an agent's Lounge, and the under-header Lounge / Private switch.
         val loungeAssistantAnswers by
             remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) }.answers.collectAsState()
+        val buildLoungeConversationPayload: (ThreadLaunchConversationIdentity) -> RaftThreadScreenPayload? = { identity ->
+            buildAppShellThreadPayload(
+                conversation = identity,
+                timeContext = renderedPayload.toRaftTimeCapabilities().staticContext(),
+                alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
+                compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
+                onWarn = bridge::logWarn
+            )
+        }
         val threadLounge =
             rememberThreadPageLounge(
                 payload = renderedThread,
@@ -6667,20 +6752,22 @@ private fun SharedThreadRouteContentContent(
                         loungeAssistantAnswers.values.mapNotNull { it.assistant?.agentId }.toSet()
                     },
                 onOpenConversation = { identity ->
-                    buildAppShellThreadPayload(
-                        conversation = identity,
-                        timeContext = renderedPayload.toRaftTimeCapabilities().staticContext(),
-                        alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
-                        compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
-                        onWarn = bridge::logWarn
-                    )?.let(onOpenThreadPayload)
+                    buildLoungeConversationPayload(identity)?.let(onOpenThreadPayload)
                         ?: bridge.logWarn("agent_lounge_open_rejected reason=identity_unresolved")
+                },
+                onReplaceConversation = { identity ->
+                    buildLoungeConversationPayload(identity)?.let(onReplaceThreadPayload)
+                        ?: bridge.logWarn("agent_lounge_switch_rejected reason=identity_unresolved")
                 },
                 onOpenAgentProfile = { agentId ->
                     memberDetailIdentity(agentId, MemberKind.Agent, currentServerId)?.let { identity ->
                         onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity)
                     }
                 },
+                homeSnapshot = (sharedHomeState.content as? SharedHomeContentState.Content)?.snapshot,
+                sharedHomeStore = sharedHomeStore,
+                authStore = authStore,
+                serverMembersStore = serverMembersStore,
             )
         // Agent Lounge v0 (web slock #13880 `reopenRouteDm`): opening a closed Lounge, from any
         // entry point, takes it off `hiddenDmIds`, as opening a closed DM on the web does.

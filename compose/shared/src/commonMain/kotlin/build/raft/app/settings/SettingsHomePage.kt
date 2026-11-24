@@ -6561,6 +6561,12 @@ private fun RaftAppShellReadyContent(
                         PerformanceSceneEffect(bridge, "kuikly_home", active = active)
                         val workspace = adaptiveWorkspaceState
                         val selection = workspace?.selection
+                        val homeAssistantAnswers by
+                            remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) }.answers.collectAsState()
+                        val homePersonalAssistantAgentIds =
+                            remember(homeAssistantAnswers) {
+                                homeAssistantAnswers.values.mapNotNull { it.assistant?.agentId }.toSet()
+                            }
                         val homeListPane: @Composable (Boolean) -> Unit = { listActive ->
                             SharedHomeScreen(
                                 bridge = bridge,
@@ -6588,6 +6594,7 @@ private fun RaftAppShellReadyContent(
                                 searchAndActivityOnShellNav = appShellNavCarriesSearchAndActivity(navRailActive),
                                 agentLoungeEnabled = homeAgentLoungeEnabled,
                                 agentLoungeNetworkClient = appShellNetworkClient,
+                                personalAssistantAgentIds = homePersonalAssistantAgentIds,
                                 onIntent = { intent ->
                                     prewarmAdmissionGate.invalidate("home_intent:${intent::class.simpleName}")
                                     if (intent is SharedHomeIntent.SelectServer) {

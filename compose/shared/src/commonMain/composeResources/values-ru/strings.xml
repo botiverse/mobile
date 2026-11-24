@@ -4849,7 +4849,10 @@
     <string name="agent_lounge_label">Гостиная</string>
     <string name="agent_lounge_title">Гостиная агента %1$s</string>
     <string name="agent_lounge_audience_notice">Писать здесь могут участники и агенты этого сервера.</string>
+    <string name="agent_lounge_private_label">Личный</string>
+    <string name="agent_lounge_private_audience_notice">Это видите только вы и %1$s.</string>
     <string name="agent_lounge_open_failed">Не удалось открыть гостиную. Попробуйте ещё раз.</string>
+    <string name="agent_lounge_dm_open_failed">Не удалось открыть личный чат. Попробуйте ещё раз.</string>
     <string name="thread_composer_mention_lounge_agent_excluded">%1$s не получит уведомление: сообщение, отправленное сюда, получает только агент этой гостиной. Чтобы уведомить, упомяните в ветке.</string>
     <string name="thread_composer_placeholder_named">Отправить сообщение: %1$s</string>
     <string name="thread_archived_notice">Этот канал в архиве.</string>
