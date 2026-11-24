@@ -210,6 +210,20 @@ final class RaftIosWindowInsetsPublisher: NSObject {
         ]
     }
 
+    static func resolvedInsets(
+        page: UIEdgeInsets,
+        navigationController: UIEdgeInsets,
+        sideActionsShown: Bool
+    ) -> UIEdgeInsets {
+        guard sideActionsShown else { return page }
+        return UIEdgeInsets(
+            top: navigationController.top,
+            left: navigationController.left,
+            bottom: max(page.bottom, navigationController.bottom),
+            right: navigationController.right
+        )
+    }
+
     /// Whether a controller presented with [style] shows as a sheet over its presenter (and not
     /// full screen). `.automatic` resolves to a page sheet for the pages the router presents.
     static func isSheetStyle(_ style: UIModalPresentationStyle) -> Bool {
