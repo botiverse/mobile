@@ -26,7 +26,7 @@ case "${method} ${path}" in
     case "${data}" in
       *'"track":"internal"'*) echo '{"receipt_id":"pro-1","track":"internal","version_code":11800009,"revision":2}' ;;
       *'"track":"beta"'*) [ -n "${STUB_BETA_FAILS:-}" ] && { echo "409 changes in review" >&2; exit 1; }
-        echo '{"receipt_id":"pro-2","track":"beta","version_code":11800009,"revision":4}' ;;
+        echo "{\"receipt_id\":\"pro-2\",\"track\":\"${STUB_BETA_RESPONSE_TRACK:-beta}\",\"version_code\":11800009,\"revision\":4}" ;;
       *) echo "unexpected track: ${data}" >&2; exit 9 ;;
     esac ;;
   *) echo "unexpected call: ${method} ${path}" >&2; exit 9 ;;
@@ -52,6 +52,10 @@ grep 'play/promote' "${WORK}/log" | sed -n 2p | grep -q '"track":"beta","expecte
 grep 'play/promote' "${WORK}/log" | sed -n 2p | grep -q 'rollout' && fail "open testing sent a rollout percent"
 grep -q 'receipt pro-2' <<<"${out}" || fail "beta receipt not printed"
 grep -q 'release_id=rel-1' <<<"${out}" || fail "open testing: release id not printed"
+
+: >"${WORK}/log"
+out="$(STUB_BETA_RESPONSE_TRACK=open scripts/play_internal_promote.sh --open-testing build-1)" || fail "open testing with canonical 'open' track response exited $?"
+grep -q 'receipt pro-2' <<<"${out}" || fail "open testing ('open' response): receipt not printed"
 
 : >"${WORK}/log"
 err="$(STUB_BETA_FAILS=1 scripts/play_internal_promote.sh --open-testing build-1 2>&1 >/dev/null)" && fail "a failed beta step exited 0"

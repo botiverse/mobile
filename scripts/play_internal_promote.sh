@@ -73,5 +73,5 @@ if ! beta="$(api POST "/api/apps/$app/releases/$release_id/distributions/play/pr
   echo "Never cancel a review for a preview (docs/mobile-release-sop.md 7.3)." >&2
   exit 1
 fi
-jq -e '.track == "beta"' <<<"$beta" >/dev/null || { echo "Play promotion did not confirm the beta (open testing) track" >&2; jq . <<<"$beta" >&2; exit 1; }
+jq -e '.track == "beta" or .track == "open"' <<<"$beta" >/dev/null || { echo "Play promotion did not confirm the beta (open testing) track" >&2; jq . <<<"$beta" >&2; exit 1; }
 echo "Play open testing (beta): versionCode $(jq -r .version_code <<<"$beta"), receipt $(jq -r .receipt_id <<<"$beta")"
