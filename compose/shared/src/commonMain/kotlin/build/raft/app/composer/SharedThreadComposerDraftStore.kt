@@ -756,10 +756,14 @@ internal class SharedThreadComposerDraftPersistence(
     }
 
     fun readWithReplyFallback(key: String): Pair<String, SharedThreadComposerPersistedDraft>? = lock.withLock {
-        readUnlocked(key)?.let { draft -> return@withLock key to draft }
+        readWithReplyFallbackUnlocked(key)
+    }
+
+    private fun readWithReplyFallbackUnlocked(key: String): Pair<String, SharedThreadComposerPersistedDraft>? {
+        readUnlocked(key)?.let { draft -> return key to draft }
         val currentRecord = key.toSharedThreadComposerDraftRecord()?.takeUnless { it.isRootComposer }
-            ?: return@withLock null
-        activeDraftRecordsUnlocked()
+            ?: return null
+        return activeDraftRecordsUnlocked()
             .filter { record -> record.key != key && record.matchesReplyThreadIdentity(currentRecord) }
             .sortedBy { record -> record.key }
             .mapNotNull { record -> readUnlocked(record.key)?.let { draft -> record.key to draft } }
@@ -1060,9 +1064,9 @@ internal class SharedThreadComposerDraftPersistence(
     }
 
     /**
-     * Atomically merges an External Share handoff into the canonical conversation draft. The
-     * route contains only conversation identity; text and private file references enter through
-     * this store-owned persistence boundary before navigation.
+     * Atomically merges an External Share handoff into the canonical conversation or reply-thread
+     * draft. The route contains only conversation identity; text and private file references enter
+     * through this store-owned persistence boundary before navigation.
      */
     fun stageExternalShare(
         key: String,
@@ -1105,11 +1109,6 @@ internal class SharedThreadComposerDraftPersistence(
             ?: return ExternalShareComposerDraftStageResult.Rejected(
                 "external_share_composer_key_invalid"
             )
-        if (!record.isRootComposer) {
-            return ExternalShareComposerDraftStageResult.Rejected(
-                "external_share_reply_composer_not_supported"
-            )
-        }
         val normalizedAttachments = attachments.persistableThreadComposerDraftAttachments()
         val claimedWhileRetiring =
             normalizedAttachments.claimedLocalFileRefs() intersect lockEntry.retiringRefs
@@ -1134,7 +1133,9 @@ internal class SharedThreadComposerDraftPersistence(
                 "external_share_attachment_invalid"
             )
         }
-        val current = readUnlocked(key)
+        val existing = readWithReplyFallbackUnlocked(key)
+        val fallbackSourceKey = existing?.first?.takeIf { it != key }
+        val current = existing?.second
         val nextText =
             listOf(current?.text.orEmpty(), text.trim())
                 .filter(String::isNotBlank)
@@ -1147,15 +1148,17 @@ internal class SharedThreadComposerDraftPersistence(
         val nextSources =
             (current?.externalShareSources.orEmpty() + source)
                 .validExternalShareComposerSources()
+        val nextMentions =
+            current?.structuredMentions.orEmpty().visibleStructuredMentionsIn(nextText)
         if (nextText.isBlank() && nextAttachments.isEmpty()) {
             return ExternalShareComposerDraftStageResult.Rejected(
                 "external_share_composer_draft_empty"
             )
         }
-        val before = captureTransitionSnapshotUnlocked(setOf(key))
+        val before = captureTransitionSnapshotUnlocked(listOfNotNull(key, fallbackSourceKey))
         try {
             store.putString(textKey(key), nextText)
-            store.putString(asTaskKey(key), (current?.asTask == true).toString())
+            store.putString(asTaskKey(key), (record.isRootComposer && current?.asTask == true).toString())
             store.putString(
                 attachmentsKey(key),
                 nextAttachments.takeIf { it.isNotEmpty() }?.let { ComposerDraftJson.encodeToString(nextAttachments) }
@@ -1164,7 +1167,25 @@ internal class SharedThreadComposerDraftPersistence(
                 sourcesKey(key),
                 ComposerDraftJson.encodeToString(nextSources)
             )
+            store.putString(
+                mentionsKey(key),
+                nextMentions.takeIf { it.isNotEmpty() }?.let { ComposerDraftJson.encodeToString(it) }
+            )
+            store.putString(
+                editedAtKey(key),
+                if (current != null && current.text == nextText) {
+                    store.getString(editedAtKey(fallbackSourceKey ?: key))
+                } else {
+                    nowEpochMillis().toString()
+                }
+            )
             addActiveKey(key)
+            if (fallbackSourceKey != null) {
+                storageKeysForDraft(fallbackSourceKey).forEach { storageKey ->
+                    store.putString(storageKey, null)
+                }
+                removeActiveKey(fallbackSourceKey)
+            }
         } catch (error: Throwable) {
             runCatching { restoreTransitionSnapshotUnlocked(before) }
                 .onFailure { rollback -> error.addSuppressed(rollback) }
@@ -2257,10 +2278,21 @@ internal class SharedThreadComposerDraftPersistSlice(
             )
         val result = stateLock.withLock {
             persistenceWriteLock.withLock {
-                // External-share staging is a compound write: flush the latest ordinary draft first,
-                // then merge the handoff without allowing a debounced save to overwrite it between
-                // those two operations.
+                // External-share staging is a compound write: flush the latest ordinary draft first
+                // (including any reply-thread fallback key sharing the same parent identity), then
+                // merge the handoff without allowing a debounced save to overwrite it in between.
                 flushPendingWriteLocked(key)
+                persistence.recordForKey(key)
+                    ?.takeUnless { it.isRootComposer }
+                    ?.let { targetRecord ->
+                        pendingWritesByDraftKey.keys
+                            .filter { pendingKey ->
+                                pendingKey != key &&
+                                    persistence.recordForKey(pendingKey)?.matchesReplyThreadIdentity(targetRecord) == true
+                            }
+                            .sorted()
+                            .forEach(::flushPendingWriteLocked)
+                    }
                 persistence.stageExternalShare(key, text, attachments, source)
             }.also { result ->
                 if (result is ExternalShareComposerDraftStageResult.Staged) {

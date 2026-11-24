@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.ExternalShareIntent
+import build.raft.app.data.ExternalShareServerOption
 import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -137,5 +138,54 @@ class ExternalShareLaunchTest {
         assertEquals(ExternalShareLaunchRequest("opaque-token_2222222222"), taken?.request)
         // Consumed once.
         assertNull(inbox.take(second.id, shellInstanceId = "shell-a"))
+    }
+
+    @Test
+    fun authorityPreservesAndNormalizesServerAvatarAndPublicPageMetadata() {
+        val authority =
+            ExternalShareLaunchAuthority(
+                accountId = " account-a ",
+                serverId = " server-a ",
+                servers =
+                    listOf(
+                        ExternalShareServerOption(
+                            id = " server-a ",
+                            title = " Botiverse ",
+                            slug = " botiverse ",
+                            avatarUrl = " https://cdn.example/botiverse.png ",
+                            publicPageLive = true
+                        ),
+                        ExternalShareServerOption(
+                            id = "server-b",
+                            title = "   ",
+                            slug = "   ",
+                            avatarUrl = "   ",
+                            publicPageLive = false
+                        )
+                    )
+            )
+
+        val normalized = authority.normalizedOrNull() ?: error("expected normalized authority")
+        assertEquals("account-a", normalized.accountId)
+        assertEquals("server-a", normalized.serverId)
+        assertEquals(
+            listOf(
+                ExternalShareServerOption(
+                    id = "server-a",
+                    title = "Botiverse",
+                    slug = "botiverse",
+                    avatarUrl = "https://cdn.example/botiverse.png",
+                    publicPageLive = true
+                ),
+                ExternalShareServerOption(
+                    id = "server-b",
+                    title = "server-b",
+                    slug = null,
+                    avatarUrl = null,
+                    publicPageLive = false
+                )
+            ),
+            normalized.servers
+        )
     }
 }

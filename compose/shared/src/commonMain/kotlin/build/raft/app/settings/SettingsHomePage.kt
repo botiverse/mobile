@@ -7858,7 +7858,9 @@ private fun AppShellBannerAndExternalShareHosts(
                                 build.raft.app.data.ExternalShareServerOption(
                                     id = server.id,
                                     title = server.name,
-                                    slug = server.slug
+                                    slug = server.slug,
+                                    avatarUrl = server.avatarUrl,
+                                    publicPageLive = server.publicPageLive
                                 )
                             }
                     )

@@ -53,7 +53,9 @@ internal data class ExternalShareLaunchAuthority(
                 ExternalShareServerOption(
                     id = id,
                     title = server.title.trim().takeIf { it.isNotBlank() } ?: id,
-                    slug = server.slug?.trim()?.takeIf { it.isNotBlank() }
+                    slug = server.slug?.trim()?.takeIf { it.isNotBlank() },
+                    avatarUrl = server.avatarUrl?.trim()?.takeIf { it.isNotBlank() },
+                    publicPageLive = server.publicPageLive
                 )
             }.distinctBy { it.id }
         val requestedServer = serverId.trim()

@@ -848,6 +848,186 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun externalShareStagesDurableQueuedDraftIntoReplyThreadComposerAndClearsOnSend() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val replyDraftKey = "send=thread-5|parent=parent-5|mention=room-1"
+        val source = SharedThreadComposerExternalShareSource("token-reply", "account", "server")
+        val attachment =
+            externalShareAttachment(status = "queued").copy(
+                id = "external-share-token-reply-0",
+                externalShareToken = "token-reply"
+            )
+
+        assertEquals(
+            ExternalShareComposerDraftStageResult.Staged,
+            persistSlice.stageExternalShareDraft(
+                draftKey = replyDraftKey,
+                text = "Shared into thread",
+                attachments = listOf(attachment),
+                source = source
+            )
+        )
+
+        val projection = persistSlice.activeDraftRecordsState.value.toSharedThreadComposerDraftProjection()
+        assertTrue(projection.hasReplyDraft("parent-5"))
+        assertFalse(projection.hasRootDraft("thread-5"))
+
+        val restoredStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        restoredStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer =
+                    RaftThreadComposerPayload(
+                        instanceId = "composer-reply-share",
+                        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                        parentMessageId = "parent-5",
+                        mentionChannelId = "room-1",
+                        streamChannelId = "thread-5"
+                    ),
+                draftKey = replyDraftKey
+            )
+        )
+        assertEquals("Shared into thread", restoredStore.state.value.seedText)
+        assertFalse(restoredStore.state.value.seedAsTask)
+        assertEquals(listOf(attachment), restoredStore.state.value.uploadedAttachments)
+        assertEquals(listOf(source), restoredStore.state.value.externalShareSources)
+
+        // Removing the queued external-share attachment while clearing text drops the share source and draft.
+        restoredStore.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(attachment.id))
+        restoredStore.dispatch(SharedThreadComposerDraftIntent.Change(seedText = ""))
+        assertEquals(emptyList(), restoredStore.state.value.externalShareSources)
+        assertNull(persistence.read(replyDraftKey))
+
+        // Stage again and verify send clears the reply-thread draft completely.
+        assertEquals(
+            ExternalShareComposerDraftStageResult.Staged,
+            persistSlice.stageExternalShareDraft(
+                draftKey = replyDraftKey,
+                text = "Ready to send",
+                attachments = listOf(attachment),
+                source = source
+            )
+        )
+        val sendStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        sendStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "composer-reply-send"),
+                draftKey = replyDraftKey
+            )
+        )
+        assertEquals("Ready to send", sendStore.state.value.seedText)
+        sendStore.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        sendStore.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
+        assertNull(persistence.read(replyDraftKey))
+        assertFalse(persistSlice.activeDraftRecordsState.value.any { it.key == replyDraftKey })
+    }
+
+    @Test
+    fun externalShareReplyThreadStagingMergesExistingFallbackReplyDraft() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val fallbackKey = "send=room-1|parent=parent-5|mention=room-1"
+        val canonicalKey = "send=thread-5|parent=parent-5|mention=room-1"
+        val existingAttachment =
+            SharedThreadComposerAttachment(
+                id = "ready-1",
+                fileName = "existing.png",
+                status = "ready"
+            )
+        val existingMention =
+            build.raft.app.data.ThreadSendMessageMention(
+                type = "user",
+                id = "user-1",
+                name = "alice"
+            )
+        persistence.save(
+            key = fallbackKey,
+            text = "Hey @alice",
+            asTask = false,
+            uploadedAttachments = listOf(existingAttachment),
+            structuredMentions = listOf(existingMention)
+        )
+
+        val sharedAttachment = externalShareAttachment(status = "queued")
+        val source = SharedThreadComposerExternalShareSource("token", "account", "server")
+        assertEquals(
+            ExternalShareComposerDraftStageResult.Staged,
+            persistSlice.stageExternalShareDraft(
+                draftKey = canonicalKey,
+                text = "Attached link",
+                attachments = listOf(sharedAttachment),
+                source = source
+            )
+        )
+
+        assertNull(persistence.read(fallbackKey))
+        val merged = persistence.read(canonicalKey) ?: error("expected merged reply draft")
+        assertEquals("Hey @alice\n\nAttached link", merged.text)
+        assertFalse(merged.asTask)
+        assertEquals(listOf(existingAttachment, sharedAttachment), merged.uploadedAttachments)
+        assertEquals(listOf(source), merged.externalShareSources)
+        assertEquals(listOf(existingMention), merged.structuredMentions)
+        assertEquals(setOf(canonicalKey), persistSlice.activeDraftRecordsState.value.map { it.key }.toSet())
+    }
+
+    @Test
+    fun externalShareStagesDurableQueuedDraftIntoTaskConversationComposer() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val taskDraftKey = "send=task-conv-7|parent=_|mention=task-conv-7"
+        val source = SharedThreadComposerExternalShareSource("token-task", "account", "server")
+        val attachment =
+            externalShareAttachment(status = "queued").copy(
+                id = "external-share-token-task-0",
+                externalShareToken = "token-task"
+            )
+
+        assertEquals(
+            ExternalShareComposerDraftStageResult.Staged,
+            persistSlice.stageExternalShareDraft(
+                draftKey = taskDraftKey,
+                text = "Task context",
+                attachments = listOf(attachment),
+                source = source
+            )
+        )
+
+        val restoredStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        restoredStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "composer-task-share"),
+                draftKey = taskDraftKey
+            )
+        )
+        assertEquals("Task context", restoredStore.state.value.seedText)
+        assertEquals(listOf(attachment), restoredStore.state.value.uploadedAttachments)
+        assertEquals(listOf(source), restoredStore.state.value.externalShareSources)
+
+        restoredStore.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        restoredStore.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
+        assertNull(persistence.read(taskDraftKey))
+    }
+
+    @Test
+    fun interruptedReplyThreadExternalShareUploadRestoresAsQueuedAfterProcessDeath() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
+        val replyDraftKey = "send=thread-5|parent=parent-5|mention=room-1"
+        persistence.save(
+            key = replyDraftKey,
+            text = "Reply body",
+            asTask = false,
+            uploadedAttachments = listOf(externalShareAttachment(status = "uploading")),
+            externalShareSources = listOf(SharedThreadComposerExternalShareSource("token", "account", "server"))
+        )
+
+        val restored = persistence.read(replyDraftKey) ?: error("expected reply draft")
+
+        assertEquals("queued", restored.uploadedAttachments.single().status)
+        assertNull(restored.uploadedAttachments.single().uploadTransfer)
+        assertEquals("private://image", restored.uploadedAttachments.single().fileRef)
+    }
+
+    @Test
     fun interruptedExternalShareUploadRestoresAsQueuedAfterProcessDeath() {
         val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val draftKey = "send=channel-share|parent=_|mention=channel-share"

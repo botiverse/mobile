@@ -205,8 +205,20 @@ class ExternalShareStoreTest {
                 serverId = "server",
                 serverOptions =
                     listOf(
-                        ExternalShareServerOption("server", "Server A"),
-                        ExternalShareServerOption("server-b", "Server B")
+                        ExternalShareServerOption(
+                            id = "server",
+                            title = "Server A",
+                            slug = "server-a",
+                            avatarUrl = "https://cdn.example/a.png",
+                            publicPageLive = true
+                        ),
+                        ExternalShareServerOption(
+                            id = "server-b",
+                            title = "Server B",
+                            slug = "server-b",
+                            avatarUrl = "https://cdn.example/b.png",
+                            publicPageLive = false
+                        )
                     )
             )
         )
@@ -215,6 +227,8 @@ class ExternalShareStoreTest {
         val beforeConversations = store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.targets.isNotEmpty() }
         assertEquals(listOf("one"), beforeConversations.targets.map { it.id })
         assertEquals(emptyList(), beforeConversations.conversationTargets)
+        assertEquals(listOf("https://cdn.example/a.png", "https://cdn.example/b.png"), beforeConversations.serverOptions.map { it.avatarUrl })
+        assertEquals(listOf(true, false), beforeConversations.serverOptions.map { it.publicPageLive })
 
         val threadA = threadTarget("thread-a", serverId = "server")
         val taskA = taskTarget("task-a", serverId = "server")
@@ -222,11 +236,12 @@ class ExternalShareStoreTest {
         val withConversations = store.awaitState<ExternalShareState.SelectingTargets> { it.conversationTargets.size == 2 }
         assertEquals(listOf("thread-a", "task-a"), withConversations.conversationTargets.map { it.id })
 
-        // Switch server: old conversationTargets clear and refresh for the new server.
+        // Switch server: old conversationTargets clear and refresh for the new server, keeping server option metadata.
         store.dispatch(ExternalShareIntent.SelectServer("server-b"))
         val switched = store.awaitState<ExternalShareState.SelectingTargets> { it.serverId == "server-b" && !it.loading }
         assertEquals(listOf("two"), switched.targets.map { it.id })
         assertEquals(emptyList(), switched.conversationTargets)
+        assertEquals(listOf("https://cdn.example/a.png", "https://cdn.example/b.png"), switched.serverOptions.map { it.avatarUrl })
 
         val threadB = threadTarget("thread-b", serverId = "server-b")
         serverBGate.complete(listOf(threadB))
