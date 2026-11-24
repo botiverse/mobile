@@ -86,6 +86,7 @@ object RaftIosNativeNavFlag {
     val mappedPageNames: Set<String> =
         setOf(
             "compose_slock_app_shell",
+            "compose_app_shell_server_page",
             "compose_thread",
             "compose_thread_members",
             "compose_home_activity",

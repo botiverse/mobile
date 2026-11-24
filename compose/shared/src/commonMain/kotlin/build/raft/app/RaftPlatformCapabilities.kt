@@ -357,3 +357,12 @@ internal expect fun raftPlatformAppShellTabFadeThrough(): Boolean
  * shows instead is [iosBillingPresentation]. Android and the Compose desktop app keep the WebView.
  */
 internal expect fun raftPlatformFollowsAppStoreBillingRules(): Boolean
+
+/**
+ * Whether the phone server panel opens Members and Settings as pushed pages on the host's native
+ * navigation stack ([RAFT_APP_SHELL_SERVER_PAGE]) even without a cross-page [LocalRaftStackShellTabs]
+ * provider. iOS pushes each page onto its `UINavigationController` so Settings and Members get
+ * native push/pop transitions and interactive swipe-back; Android already pushes via
+ * [LocalRaftStackShellTabs] when its Navigation 3 stack is active.
+ */
+internal expect fun raftPlatformSupportsAppShellServerStackPage(): Boolean

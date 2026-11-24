@@ -112,6 +112,30 @@ internal fun buildNativeNavBarPrefillHead(
                 extras = RaftNativeNavBarTitleExtras(),
                 onBack = {},
             )
+        RAFT_APP_SHELL_SERVER_PAGE -> {
+            val resolvedStrings = strings ?: defaultNativeNavBarPrefillStrings()
+            val tab =
+                runCatching { JSONObject(pageDataJson).optString(RAFT_APP_SHELL_SERVER_PAGE_TAB) }
+                    .getOrNull()
+                    ?.let(::appShellServerStackPageTab)
+            val title =
+                when (tab) {
+                    AppShellServerTabKey -> resolvedStrings.settingsLabel
+                    "members" -> resolvedStrings.membersTitle
+                    else -> null
+                }
+            title?.let {
+                RaftNativeNavBarHead(
+                    title = it,
+                    subtitle = null,
+                    actions = emptyList(),
+                    extras = RaftNativeNavBarTitleExtras(),
+                    onBack = {},
+                    // Settings wires the 7-tap developer unlock onto its native title (`SettingsHubPage`).
+                    onTitleClick = ({}).takeIf { tab == AppShellServerTabKey },
+                )
+            }
+        }
         else -> null
     }
 
