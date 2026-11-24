@@ -59,18 +59,22 @@ class RaftSideActionHostTest {
             )
         val pushed = raftSideActionHostColumn(listOf(back), actions, "More")!!
         assertEquals(listOf("a", "b", "c", "d", "e"), pushed.actions.map { it.id }, "every action, listed order")
-        // Every page action shows (no cap of two since #wg-mobile-sync:#266); one ranked below zero is a ⋯ command.
+        // Up to four page actions show (two before #wg-mobile-sync:#266); one ranked below zero is a ⋯ command.
         assertEquals(listOf("b", "c", "d", "e"), pushed.visibleActionIds)
         assertEquals(listOf("a"), pushed.overflowActionIds)
         // A top-level page (no Back) follows the same rule.
         val topLevel = raftSideActionHostColumn(emptyList(), actions.take(3), "More")!!
         assertEquals(listOf("b", "c"), topLevel.visibleActionIds)
         assertEquals(listOf("a"), topLevel.overflowActionIds)
-        // With no ⋯ command nothing overflows (no ⋯), however many there are.
+        // At most four page actions; the fifth goes in the ⋯ (artin, #wg-mobile-sync:#266).
         val five = listOf(action("s"), action("t"), action("f"), action("m"), action("x"))
-        val all = raftSideActionHostColumn(listOf(back), five, "More")!!
-        assertEquals(listOf("s", "t", "f", "m", "x"), all.visibleActionIds)
-        assertEquals(emptyList(), all.overflowActionIds)
+        val capped = raftSideActionHostColumn(listOf(back), five, "More")!!
+        assertEquals(listOf("s", "t", "f", "m"), capped.visibleActionIds)
+        assertEquals(listOf("x"), capped.overflowActionIds)
+        // Four or fewer and no ⋯ command: nothing overflows (no ⋯).
+        val four = raftSideActionHostColumn(listOf(back), five.take(4), "More")!!
+        assertEquals(listOf("s", "t", "f", "m"), four.visibleActionIds)
+        assertEquals(emptyList(), four.overflowActionIds)
         val one = raftSideActionHostColumn(emptyList(), listOf(action("bell", "bell")), "More")!!
         assertEquals(listOf("bell"), one.visibleActionIds)
     }
