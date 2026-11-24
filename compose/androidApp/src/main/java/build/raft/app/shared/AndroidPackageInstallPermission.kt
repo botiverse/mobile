@@ -70,9 +70,9 @@ internal object AndroidPackageInstallPermission {
 
     /**
      * [AndroidUnknownSourcesSettingsPrompt] for an install that is not an attachment (Hands delta
-     * updates on Alpha and Preview; [gate] covers attachments): the same explanation, then Raft's
-     * switch. [beforeOpenSettings] runs just before the page opens, from the explanation's confirm,
-     * or at once when there is no window to explain in.
+     * updates on Alpha, Preview, and Main; [gate] covers attachments): the same explanation, then
+     * Raft's switch. [beforeOpenSettings] runs just before the page opens, from the explanation's
+     * confirm, or at once when there is no window to explain in.
      */
     fun requestUnknownSourcesSettings(
         context: Context,

@@ -1,5 +1,6 @@
 package build.raft.app.shared
 
+import build.hands.update.HandsUpdateStatus
 import build.hands.update.INSTALL_PERMISSION_REQUIRED
 import build.hands.update.models.UpdateCheckResponse
 import build.raft.app.data.RaftAppUpdatePermissionResumeRepository
@@ -9,12 +10,17 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal const val HANDS_DELTA_ALPHA_APPLICATION_ID = "build.raft.app.alpha"
 internal const val HANDS_DELTA_ALPHA_APP_SLUG = "raft-android-alpha-delta"
 internal const val HANDS_DELTA_ALPHA_CHANNEL = "alpha-delta"
-internal const val HANDS_DELTA_PREVIEW_APPLICATION_ID = "build.raft.app"
-internal const val HANDS_DELTA_PREVIEW_APP_SLUG = "raft-android"
+internal const val HANDS_DELTA_PRODUCTION_APPLICATION_ID = "build.raft.app"
+internal const val HANDS_DELTA_PRODUCTION_APP_SLUG = "raft-android"
+internal const val HANDS_DELTA_PREVIEW_APPLICATION_ID = HANDS_DELTA_PRODUCTION_APPLICATION_ID
+internal const val HANDS_DELTA_PREVIEW_APP_SLUG = HANDS_DELTA_PRODUCTION_APP_SLUG
 internal const val HANDS_DELTA_PREVIEW_CHANNEL = "preview"
+internal const val HANDS_DELTA_MAIN_CHANNEL = "main"
 internal const val HANDS_UPDATE_MODE_ALPHA_DELTA = "alpha_delta"
 internal const val HANDS_UPDATE_MODE_PREVIEW_DELTA = "preview_delta"
+internal const val HANDS_UPDATE_MODE_MAIN_DELTA = "main_delta"
 internal const val HANDS_UPDATE_MODE_FULL_APK = "full_apk"
+internal const val HANDS_DELTA_PROGRESS_TOKEN_PREFIX = "hands_sdk:"
 
 /** The bridge's Hands update actions a person starts: Settings' Check for update, and Install. */
 internal val HandsUpdateUserActions = setOf("handsUpdateCheck", "handsUpdateInstall")
@@ -75,8 +81,10 @@ internal fun handsDeltaUpdateMode(
     when {
         appSlug == HANDS_DELTA_ALPHA_APP_SLUG && channel == HANDS_DELTA_ALPHA_CHANNEL ->
             HANDS_UPDATE_MODE_ALPHA_DELTA
-        appSlug == HANDS_DELTA_PREVIEW_APP_SLUG && channel == HANDS_DELTA_PREVIEW_CHANNEL ->
+        appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_PREVIEW_CHANNEL ->
             HANDS_UPDATE_MODE_PREVIEW_DELTA
+        appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_MAIN_CHANNEL ->
+            HANDS_UPDATE_MODE_MAIN_DELTA
         else -> null
     }
 
@@ -137,12 +145,80 @@ internal fun handsDeltaUpdateAllowed(
             runtimePackageName == HANDS_DELTA_ALPHA_APPLICATION_ID &&
             appSlug == HANDS_DELTA_ALPHA_APP_SLUG &&
             channel == HANDS_DELTA_ALPHA_CHANNEL
-    val isExactPreview =
-        buildApplicationId == HANDS_DELTA_PREVIEW_APPLICATION_ID &&
-            runtimePackageName == HANDS_DELTA_PREVIEW_APPLICATION_ID &&
-            appSlug == HANDS_DELTA_PREVIEW_APP_SLUG &&
-            channel == HANDS_DELTA_PREVIEW_CHANNEL
-    return isExactAlpha || isExactPreview
+    val isExactRelease =
+        buildApplicationId == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
+            runtimePackageName == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
+            appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG &&
+            (channel == HANDS_DELTA_PREVIEW_CHANNEL || channel == HANDS_DELTA_MAIN_CHANNEL)
+    return isExactAlpha || isExactRelease
+}
+
+internal fun handsDeltaDownloadProgressToken(
+    updateRoute: HandsUpdateRoute,
+    state: SharedSettingsUpdateTransactionState,
+    targetVersionCode: Long?
+): String {
+    if (!updateRoute.deltaEnabled || state != SharedSettingsUpdateTransactionState.Downloading) {
+        return ""
+    }
+    return buildString {
+        append(HANDS_DELTA_PROGRESS_TOKEN_PREFIX)
+        append(updateRoute.appSlug)
+        append(':')
+        append(updateRoute.channel)
+        append(':')
+        append(targetVersionCode ?: 0L)
+    }
+}
+
+internal fun handsDeltaDownloadProgressTokenTargetVersionCode(token: String): Long? {
+    if (!token.startsWith(HANDS_DELTA_PROGRESS_TOKEN_PREFIX)) return null
+    return token.substringAfterLast(':').toLongOrNull()?.takeIf { it > 0L }
+}
+
+internal fun handsDeltaProgressPayload(
+    token: String,
+    status: HandsUpdateStatus
+): Map<String, Any>? {
+    if (!token.startsWith(HANDS_DELTA_PROGRESS_TOKEN_PREFIX)) return null
+    val expectedTarget = handsDeltaDownloadProgressTokenTargetVersionCode(token)
+    if (expectedTarget != null && status.targetVersionCode != null && status.targetVersionCode != expectedTarget) {
+        return null
+    }
+    val progress = status.progress
+    val downloadedBytes = progress?.downloadedBytes?.coerceAtLeast(0L) ?: 0L
+    val totalBytes = progress?.totalBytes?.takeIf { it > 0L } ?: -1L
+    return when (SharedSettingsUpdateTransactionState.fromWire(status.state.wireValue)) {
+        SharedSettingsUpdateTransactionState.Downloading ->
+            mapOf(
+                "status" to "ok",
+                "token" to token,
+                "phase" to if (progress?.paused == true) "paused" else "downloading",
+                "downloadedBytes" to downloadedBytes,
+                "totalBytes" to totalBytes
+            )
+        SharedSettingsUpdateTransactionState.ReadyToInstall,
+        SharedSettingsUpdateTransactionState.InstallerOpened,
+        SharedSettingsUpdateTransactionState.Installed ->
+            mapOf(
+                "status" to "ok",
+                "token" to token,
+                "phase" to "ready",
+                "downloadedBytes" to downloadedBytes,
+                "totalBytes" to totalBytes
+            )
+        SharedSettingsUpdateTransactionState.Failed,
+        SharedSettingsUpdateTransactionState.Stale ->
+            mapOf(
+                "status" to "ok",
+                "token" to token,
+                "phase" to "failed"
+            )
+        SharedSettingsUpdateTransactionState.Idle,
+        SharedSettingsUpdateTransactionState.Checking,
+        SharedSettingsUpdateTransactionState.Patching,
+        SharedSettingsUpdateTransactionState.Unknown -> null
+    }
 }
 
 internal fun handsUpdateLanguageTag(
@@ -251,7 +327,7 @@ internal fun handsUpdateBridgeDecision(
 /** Reported for a waiting update when the build does not declare REQUEST_INSTALL_PACKAGES. */
 internal const val HANDS_DELTA_INSTALL_UNSUPPORTED = "install_unsupported"
 
-/** How the Hands delta route (Alpha and Preview) shows its transaction. */
+/** How the Hands delta route (Alpha, Preview, and Main) shows its transaction. */
 internal enum class HandsDeltaInstallPresentation {
     /** The state's own status and detail. */
     AsReported,
@@ -272,8 +348,8 @@ internal data class HandsDeltaInstallPermissionDecision(
 )
 
 /**
- * The Hands delta route (Alpha and Preview) while Android may block installs from Raft. Since
- * hands-android-sdk 0.14
+ * The Hands delta route (Alpha, Preview, and Main) while Android may block installs from Raft.
+ * Since hands-android-sdk 0.14
  * an update downloaded or patched without that permission stops at READY_TO_INSTALL with
  * [INSTALL_PERMISSION_REQUIRED] and the SDK opens nothing; another `install()` only checks Hands
  * again. The code stays until the installer opens, so it is read against [canInstall]

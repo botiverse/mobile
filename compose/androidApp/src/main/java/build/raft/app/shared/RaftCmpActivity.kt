@@ -5489,9 +5489,14 @@ internal class RaftBridgeModule(
             val tracked = handsUpdateDownloads.values.firstOrNull { it.downloadId.toString() == token }
             val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
             scope.launch {
-                val progress = withContext(Dispatchers.IO) {
-                    runCatching { tracked?.progressPayload() }.getOrNull()
-                }
+                val progress =
+                        if (token.startsWith(HANDS_DELTA_PROGRESS_TOKEN_PREFIX)) {
+                            readHandsDeltaDownloadProgress(token)
+                        } else {
+                            withContext(Dispatchers.IO) {
+                                runCatching { tracked?.progressPayload() }.getOrNull()
+                            }
+                        }
                 callback?.invoke(progress ?: mapOf("status" to "unavailable"))
             }
             return
@@ -6410,7 +6415,7 @@ internal class RaftBridgeModule(
                 if (install) {
                     installHandsDeltaUpdate(checker, languageTag)
                 } else {
-                    checker.status()
+                    checker.statusUpdates().first()
                 }
         val currentVersionCode = status.installedVersionCode ?: BuildConfig.VERSION_CODE.toLong()
         val offerResult =
@@ -6528,6 +6533,12 @@ internal class RaftBridgeModule(
                         "latestVersionCode" to latestVersionCode,
                         "latestChangelog" to response?.latest?.changelog.orEmpty(),
                         "updateDownloadUrl" to response?.asset?.download_url.orEmpty(),
+                        "updateDownloadProgressToken" to
+                                handsDeltaDownloadProgressToken(
+                                        updateRoute = updateRoute,
+                                        state = decision.state,
+                                        targetVersionCode = decision.targetVersionCode
+                                ),
                         "updateDownloadSizesResolved" to offerResult.isSuccess,
                         "updateFullDownloadSizeBytes" to (displaySizes.fullSizeBytes ?: 0L),
                         "updatePatchDownloadSizeBytes" to (displaySizes.patchSizeBytes ?: 0L),
@@ -6582,11 +6593,11 @@ internal class RaftBridgeModule(
             }
 
     /**
-     * Install on the Hands delta route (Alpha and Preview). While Raft may not install apps the
-     * SDK (0.14+) opens nothing and another install() only checks Hands again
+     * Install on the Hands delta route (Alpha, Preview, and Main). While Raft may not install apps
+     * the SDK (0.14+) opens nothing and another install() only checks Hands again
      * ([handsDeltaInstallPermissionDecision]), so a waiting APK leads to the "Install unknown apps"
      * switch instead, and so does an install() whose patch finished inside the call. One tap at a
-     * time: a concurrent one only reads the status.
+     * time: a concurrent one only reads the live status.
      */
     private suspend fun installHandsDeltaUpdate(checker: UpdateChecker, languageTag: String): HandsUpdateStatus =
             handsDeltaUpdateCallOwner.runIfEligible(eligible = true) {
@@ -6602,7 +6613,26 @@ internal class RaftBridgeModule(
                     requestHandsDeltaInstallPermission(source = "install_result", status = installed)
                 }
                 installed
-            } ?: checker.status()
+            } ?: checker.statusUpdates().first()
+
+    private suspend fun readHandsDeltaDownloadProgress(token: String): Map<String, Any>? {
+        val updateRoute = handsUpdateRouteForRuntime(appContext)
+        if (!updateRoute.deltaEnabled) return null
+        val checker =
+                handsDeltaUpdateChecker(
+                        context = appContext,
+                        updateRoute = updateRoute,
+                        arch = handsUpdateArch(),
+                        deviceId = HandsDeviceId.get(appContext),
+                        languageTag =
+                                handsUpdateLanguageTag(
+                                        appLanguageTag = RaftHostStrings.appLocaleLanguageTag(),
+                                        systemLanguageTag = Locale.getDefault().toLanguageTag()
+                                )
+                )
+        val status = runCatching { checker.statusUpdates().first() }.getOrNull() ?: return null
+        return handsDeltaProgressPayload(token = token, status = status)
+    }
 
     private fun handsDeltaInstallPermission(
             status: HandsUpdateStatus,
@@ -9432,11 +9462,11 @@ internal class RaftBridgeModule(
         }
 
         /**
-         * Hands delta route (Alpha and Preview), on resume: Raft is back from the "Install unknown
-         * apps" switch it led to for a waiting update (requestHandsDeltaInstallPermission). Android
-         * restarts Raft when the switch changes, hence the stored marker. When Raft may install now,
-         * the waiting installer reopens once, with no new check or download; a denial clears the
-         * marker and opens nothing.
+         * Hands delta route (Alpha, Preview, and Main), on resume: Raft is back from the "Install
+         * unknown apps" switch it led to for a waiting update (requestHandsDeltaInstallPermission).
+         * Android restarts Raft when the switch changes, hence the stored marker. When Raft may
+         * install now, the waiting installer reopens once, with no new check or download; a denial
+         * clears the marker and opens nothing.
          */
         internal fun resumeHandsDeltaInstallAfterPermission(context: Context, scope: CoroutineScope) {
             val updateRoute = handsUpdateRouteForRuntime(context)
@@ -9447,7 +9477,7 @@ internal class RaftBridgeModule(
                             context = context,
                             updateRoute = updateRoute,
                             arch = handsUpdateArch(),
-                            deviceId = null,
+                            deviceId = HandsDeviceId.get(context),
                             languageTag = null
                     )
                 }
@@ -9481,15 +9511,15 @@ internal class RaftBridgeModule(
         private fun handsUpdateArch(): String? = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }
 
         /**
-         * The Hands delta route's [UpdateChecker] (Alpha and Preview). Every caller builds the same
-         * update authority (base URL, app, channel, product, platform, arch), so all of them see one
-         * transaction.
+         * The Hands delta route's [UpdateChecker] (Alpha, Preview, and Main). Every caller builds
+         * the same update authority (base URL, app, channel, product, platform, arch), so all of
+         * them see one transaction.
          */
         private fun handsDeltaUpdateChecker(
                 context: Context,
                 updateRoute: HandsUpdateRoute,
                 arch: String?,
-                deviceId: String?,
+                deviceId: String,
                 languageTag: String?
         ): UpdateChecker =
                 UpdateChecker(

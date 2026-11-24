@@ -756,17 +756,18 @@ android {
             )
             val handsAppSlug = raftBuildConfigString("SLOCK_HANDS_APP_SLUG", "raft-android")
             val handsChannel = raftBuildConfigString("SLOCK_HANDS_CHANNEL", "main")
-            val previewDeltaEnabled = handsAppSlug == "raft-android" && handsChannel == "preview"
-            buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", previewDeltaEnabled.toString())
+            val releaseDeltaEnabled =
+                handsAppSlug == "raft-android" && handsChannel in setOf("preview", "main")
+            buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", releaseDeltaEnabled.toString())
             buildConfigField(
                 "String",
                 "HANDS_DELTA_APP_SLUG",
-                if (previewDeltaEnabled) "\"raft-android\"" else "\"\""
+                if (releaseDeltaEnabled) "\"raft-android\"" else "\"\""
             )
             buildConfigField(
                 "String",
                 "HANDS_DELTA_CHANNEL",
-                if (previewDeltaEnabled) "\"preview\"" else "\"\""
+                if (releaseDeltaEnabled) "\"$handsChannel\"" else "\"\""
             )
         }
         create("play") {
