@@ -6,18 +6,36 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import build.raft.app.network.sync.CanonicalMessageV2TimelineGap
 import build.raft.app.resources.Res
+import build.raft.app.resources.StringDesc
 import build.raft.app.resources.desc
-import build.raft.app.resources.thread_offline_older_unavailable
-import build.raft.app.resources.thread_retry_older
-import build.raft.app.resources.thread_state_loading_older
-import build.raft.app.resources.thread_state_loading_older_replies
+import build.raft.app.resources.localized
+import build.raft.app.resources.thread_offline_gap_unavailable
+import build.raft.app.resources.thread_offline_gap_unavailable_replies
+import build.raft.app.resources.thread_retry_gap
+import build.raft.app.resources.thread_retry_gap_replies
+import build.raft.app.resources.thread_state_loading_gap
+import build.raft.app.resources.thread_state_loading_gap_replies
 import kotlinx.serialization.Serializable
-import org.jetbrains.compose.resources.stringResource
 
 internal const val ThreadFillTimelineGapAction: String = "fillTimelineGap"
+
+/**
+ * #proj-mobile:#358: grace window before showing an inline gap loading row while an initial
+ * stand-in refresh (`durableLastKnown && !mainLoadFailed`) is in flight. Unlike top-of-list
+ * history status rows (600 ms), inline gaps sit between two visible messages (often when loose
+ * realtime/resume rows land above a cached head segment), so ordinary slow opens and brief
+ * reconnects settle into the contiguous server timeline without flashing a mid-list spinner or
+ * reserving blank whitespace between messages.
+ */
+internal const val ThreadStandInInlineGapRevealDelayMs: Long = 2_000L
 
 /**
  * Message storage design 2026-10-27 (Phase 2d): derived inline gap between two stored messages
@@ -188,15 +206,93 @@ internal fun threadTimelineGapAboveMessage(
     }
 }
 
+internal sealed interface ThreadTimelineGapRowSpec {
+    val label: StringDesc
+
+    data class Loading(
+        override val label: StringDesc,
+        val revealDelayMs: Long,
+        val reserveSpaceBeforeReveal: Boolean,
+    ) : ThreadTimelineGapRowSpec
+
+    data class Retry(
+        override val label: StringDesc,
+    ) : ThreadTimelineGapRowSpec
+
+    data class Offline(
+        override val label: StringDesc,
+    ) : ThreadTimelineGapRowSpec
+}
+
+internal fun threadTimelineGapRowSpec(
+    gap: ThreadTimelineGap,
+    durableLastKnown: Boolean,
+    mainLoadFailed: Boolean,
+    replyThread: Boolean = false,
+    userInitiatedFill: Boolean = false,
+): ThreadTimelineGapRowSpec {
+    val loadingLabel =
+        if (replyThread) {
+            Res.string.thread_state_loading_gap_replies.desc()
+        } else {
+            Res.string.thread_state_loading_gap.desc()
+        }
+    val retryLabel =
+        if (replyThread) {
+            Res.string.thread_retry_gap_replies.desc()
+        } else {
+            Res.string.thread_retry_gap.desc()
+        }
+    val offlineLabel =
+        if (replyThread) {
+            Res.string.thread_offline_gap_unavailable_replies.desc()
+        } else {
+            Res.string.thread_offline_gap_unavailable.desc()
+        }
+    val onlineAutoFill = !durableLastKnown && !mainLoadFailed
+    return when {
+        gap.status == "loading" ->
+            ThreadTimelineGapRowSpec.Loading(
+                label = loadingLabel,
+                revealDelayMs =
+                    if (onlineAutoFill && !userInitiatedFill) {
+                        ThreadStandInLoadingRevealDelayMs
+                    } else {
+                        0L
+                    },
+                reserveSpaceBeforeReveal = false,
+            )
+        onlineAutoFill && gap.status == "idle" ->
+            ThreadTimelineGapRowSpec.Loading(
+                label = loadingLabel,
+                revealDelayMs = ThreadStandInLoadingRevealDelayMs,
+                reserveSpaceBeforeReveal = false,
+            )
+        durableLastKnown && !mainLoadFailed && gap.status == "idle" ->
+            ThreadTimelineGapRowSpec.Loading(
+                label = loadingLabel,
+                revealDelayMs = ThreadStandInInlineGapRevealDelayMs,
+                reserveSpaceBeforeReveal = false,
+            )
+        gap.status == "error" && (!durableLastKnown || !mainLoadFailed) ->
+            ThreadTimelineGapRowSpec.Retry(label = retryLabel)
+        else ->
+            ThreadTimelineGapRowSpec.Offline(label = offlineLabel)
+    }
+}
+
 /**
- * Q5 inline gap row (artin 2026-10-27): reuses the existing history loading/offline/retry chrome
- * with zero new copy or visual variants.
- * - Online (`!durableLastKnown && !mainLoadFailed`): auto-fetches on appearance and shows the
- *   existing loading spinner; shows Retry on failure.
- * - Offline (`durableLastKnown && mainLoadFailed`): shows the existing "older messages not
- *   available offline" hint (tappable to retry once connectivity returns).
+ * Q5 inline gap row (#proj-mobile:#240, #proj-mobile:#358): renders between two stored messages
+ * whose continuity is not yet proven, using dedicated missing-message / missing-reply copy rather
+ * than top-of-list "older messages" wording.
+ * - Online (`!durableLastKnown && !mainLoadFailed`): auto-fetches on appearance, stays collapsed
+ *   for [ThreadStandInLoadingRevealDelayMs] so fast fills do not flash, and shows Retry on failure.
+ * - Offline (`durableLastKnown && mainLoadFailed`): shows the offline missing-messages hint
+ *   (tappable to retry once connectivity returns, revealing the loading spinner immediately).
  * - Stand-in whose initial main load is still in flight (`durableLastKnown && !mainLoadFailed`):
- *   shows the loading spinner, matching [threadOlderMessagesStatusSpec].
+ *   stays collapsed (0 dp) for [ThreadStandInInlineGapRevealDelayMs] so ordinary slow opens and
+ *   brief reconnects settle into the contiguous server page without inserting blank space or a
+ *   mid-timeline spinner, then reveals the inline loading row if the refresh remains stalled.
  */
 @Composable
 internal fun ThreadTimelineGapRow(
@@ -206,42 +302,58 @@ internal fun ThreadTimelineGapRow(
     onFillGap: (ThreadTimelineGap) -> Unit,
     replyThread: Boolean = false,
 ) {
-    val onlineAutoFill = !durableLastKnown && !mainLoadFailed
-    if (onlineAutoFill && gap.status == "idle") {
-        LaunchedEffect(gap.key) {
-            onFillGap(gap)
-        }
-    }
-    when {
-        gap.status == "loading" || (onlineAutoFill && gap.status == "idle") || (durableLastKnown && !mainLoadFailed) ->
-            ThreadHistoryStatusRow(
-                ThreadHistoryStatusSpec(
-                    label =
-                        if (replyThread) {
-                            Res.string.thread_state_loading_older_replies.desc()
-                        } else {
-                            Res.string.thread_state_loading_older.desc()
-                        },
-                    loading = true,
-                )
-            )
-        gap.status == "error" && !durableLastKnown ->
-            ThreadInlineActionRow(
-                label = stringResource(Res.string.thread_retry_older),
-                onClick = { onFillGap(gap) },
-            )
-        else ->
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .raftClickable(onClick = { onFillGap(gap) }, role = null, tier = RaftHoverTier.Subtle)
-            ) {
-                ThreadHistoryStatusRow(
-                    ThreadHistoryStatusSpec(
-                        label = Res.string.thread_offline_older_unavailable.desc(),
-                    )
-                )
+    key(gap.key) {
+        val onlineAutoFill = !durableLastKnown && !mainLoadFailed
+        var userInitiatedFill by remember { mutableStateOf(false) }
+        LaunchedEffect(gap.status, onlineAutoFill) {
+            if (gap.status != "loading") {
+                userInitiatedFill = false
             }
+        }
+        if (onlineAutoFill && gap.status == "idle") {
+            LaunchedEffect(gap.key) {
+                onFillGap(gap)
+            }
+        }
+        val spec =
+            threadTimelineGapRowSpec(
+                gap = gap,
+                durableLastKnown = durableLastKnown,
+                mainLoadFailed = mainLoadFailed,
+                replyThread = replyThread,
+                userInitiatedFill = userInitiatedFill,
+            )
+        when (spec) {
+            is ThreadTimelineGapRowSpec.Loading ->
+                ThreadHistoryStatusRow(
+                    spec = ThreadHistoryStatusSpec(label = spec.label, loading = true),
+                    loadingRevealDelayMs = spec.revealDelayMs,
+                    reserveSpaceBeforeReveal = spec.reserveSpaceBeforeReveal,
+                )
+            is ThreadTimelineGapRowSpec.Retry ->
+                ThreadInlineActionRow(
+                    label = spec.label.localized(),
+                    onClick = {
+                        userInitiatedFill = true
+                        onFillGap(gap)
+                    },
+                )
+            is ThreadTimelineGapRowSpec.Offline ->
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .raftClickable(
+                                onClick = {
+                                    userInitiatedFill = true
+                                    onFillGap(gap)
+                                },
+                                role = null,
+                                tier = RaftHoverTier.Subtle,
+                            )
+                ) {
+                    ThreadHistoryStatusRow(ThreadHistoryStatusSpec(label = spec.label))
+                }
+        }
     }
 }
