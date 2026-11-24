@@ -310,6 +310,9 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     // iOS 26+: no system scroll edge effect (Reduce Transparency keyline under the status bar)
     // on Compose's internal scroll views.
     [RaftIosComposeScrollEdgeEffects hideInView:self.view];
+    // Attach the native UIMenu outside-tap pass-through guard directly to the live UIWindow
+    // (works on SwiftUI's default WindowGroup UIWindow as well as RaftIosWindow).
+    [RaftIosNativeMenuTouchGuardInstaller installIfNeededInWindow:self.view.window];
     if (self.raftNativeNavBarLayoutHook != nil) {
         self.raftNativeNavBarLayoutHook(@"layout");
     }
@@ -465,6 +468,7 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     [self raftPublishAdaptivePaneForCurrentBounds:@"appear"];
     [self raftPublishWindowInsets];
     [RaftIosComposeScrollEdgeEffects hideInView:self.view];
+    [RaftIosNativeMenuTouchGuardInstaller installIfNeededInWindow:self.view.window];
     [RaftIosTopBandDiagnostics notePageAppear];
     [RaftIosDisplayLinkJankTracker noteRoute:self.raftPageName operation:@"page_appear"];
     if (self.raftIsAppShellPage) {

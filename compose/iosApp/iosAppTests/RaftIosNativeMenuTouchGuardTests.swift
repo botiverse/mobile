@@ -318,4 +318,201 @@ final class RaftIosNativeMenuTouchGuardTests: XCTestCase {
         XCTAssertEqual(composeEnabledOnDifferentTimestamp, true)
         withExtendedLifetime((firstTouchToken, secondTouchToken)) {}
     }
+
+    func testInstallerAttachesGuardRecognizerOnceToPlainUiWindowAndLogsDiagnostic() {
+        let plainWindow = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        var diagnostics = [String]()
+        let previousLogger = RaftIosNativeMenuTouchGuard.diagnosticLogger
+        RaftIosNativeMenuTouchGuard.diagnosticLogger = { diagnostics.append($0) }
+        defer { RaftIosNativeMenuTouchGuard.diagnosticLogger = previousLogger }
+
+        XCTAssertFalse(RaftIosNativeMenuTouchGuardInstaller.installIfNeeded(in: nil))
+        XCTAssertTrue(RaftIosNativeMenuTouchGuardInstaller.installIfNeeded(in: plainWindow))
+        XCTAssertFalse(RaftIosNativeMenuTouchGuardInstaller.installIfNeeded(in: plainWindow))
+
+        let installedGuards = (plainWindow.gestureRecognizers ?? []).compactMap {
+            $0 as? RaftIosNativeMenuDismissalGuardRecognizer
+        }
+        XCTAssertEqual(installedGuards.count, 1)
+        XCTAssertEqual(diagnostics.count, 1)
+        XCTAssertTrue(diagnostics[0].contains("native_menu_guard_installed"))
+        XCTAssertTrue(diagnostics[0].contains("UIWindow"))
+    }
+
+    func testWindowGuardRecognizerSuppressesComposeOnPlainUiWindowAndRestoresCleanly() {
+        let frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let plainWindow = UIWindow(frame: frame)
+        let navView = UIView(frame: frame)
+        plainWindow.addSubview(navView)
+
+        let composeContainer = Self.composeContainerClass.init() as! UIView
+        composeContainer.frame = frame
+        navView.addSubview(composeContainer)
+
+        let overlayInput = Self.composeOverlayScrollClass.init() as! UIScrollView
+        overlayInput.frame = frame
+        composeContainer.addSubview(overlayInput)
+
+        let navBar = UINavigationBar(frame: CGRect(x: 0, y: 44, width: 390, height: 44))
+        navView.addSubview(navBar)
+
+        let composeTouches = Self.composeTouchesRecognizerClass.init() as! UIGestureRecognizer
+        overlayInput.addGestureRecognizer(composeTouches)
+
+        let disabledCompose = Self.composeTouchesRecognizerClass.init() as! UIGestureRecognizer
+        disabledCompose.isEnabled = false
+        overlayInput.addGestureRecognizer(disabledCompose)
+
+        let windowDismiss = UITapGestureRecognizer()
+        plainWindow.addGestureRecognizer(windowDismiss)
+
+        var pendingRestores = [() -> Void]()
+        var diagnostics = [String]()
+        let previousLogger = RaftIosNativeMenuTouchGuard.diagnosticLogger
+        RaftIosNativeMenuTouchGuard.diagnosticLogger = { diagnostics.append($0) }
+        defer { RaftIosNativeMenuTouchGuard.diagnosticLogger = previousLogger }
+
+        XCTAssertTrue(RaftIosNativeMenuTouchGuardInstaller.installIfNeeded(in: plainWindow))
+        guard let guardRecognizer = plainWindow.gestureRecognizers?.first(where: {
+            $0 is RaftIosNativeMenuDismissalGuardRecognizer
+        }) as? RaftIosNativeMenuDismissalGuardRecognizer else {
+            XCTFail("expected installed guard recognizer")
+            return
+        }
+        guardRecognizer.scheduleRestore = { block in pendingRestores.append(block) }
+
+        // Policy: never prevented by Compose, prevents Compose only, simultaneous with UIKit dismissal gate.
+        XCTAssertFalse(guardRecognizer.canBePrevented(by: composeTouches))
+        XCTAssertTrue(guardRecognizer.canPrevent(composeTouches))
+        XCTAssertFalse(guardRecognizer.canPrevent(windowDismiss))
+        XCTAssertFalse(guardRecognizer.gestureRecognizer(guardRecognizer, shouldRecognizeSimultaneouslyWith: composeTouches))
+        XCTAssertTrue(guardRecognizer.gestureRecognizer(guardRecognizer, shouldRecognizeSimultaneouslyWith: windowDismiss))
+        XCTAssertTrue(guardRecognizer.cancelsTouchesInView)
+
+        // Active menu on plain UIWindow -> outside tap on Compose is intercepted and suppresses Compose.
+        let (menuContainer, platter) = makeVisibleContextMenuContainer(frame: frame)
+        plainWindow.addSubview(menuContainer)
+
+        let outsideToken = NSObject()
+        let outsideId = ObjectIdentifier(outsideToken)
+        XCTAssertTrue(
+            guardRecognizer.handleShouldReceive(
+                touchId: outsideId,
+                view: overlayInput,
+                window: plainWindow,
+                touchRecognizers: [composeTouches, windowDismiss]
+            )
+        )
+        XCTAssertFalse(composeTouches.isEnabled, "Compose recognizer disabled before touchesBegan")
+        XCTAssertFalse(disabledCompose.isEnabled, "pre-disabled recognizer stays disabled")
+        XCTAssertTrue(windowDismiss.isEnabled, "UIKit dismissal recognizer stays enabled")
+        XCTAssertTrue(diagnostics.contains(where: { $0.contains("native_menu_guard_suppressed source=gesture") }))
+
+        guardRecognizer.handleTouchesBegan([
+            RaftIosWindowTouchSnapshot(
+                id: outsideId,
+                view: overlayInput,
+                phase: .began,
+                gestureRecognizers: [composeTouches, windowDismiss]
+            )
+        ])
+        XCTAssertEqual(guardRecognizer.state, .began)
+
+        // Menu dismisses before finger lifts; Compose stays suppressed through .ended.
+        menuContainer.removeFromSuperview()
+        guardRecognizer.handleTouchesFinished([
+            RaftIosWindowTouchSnapshot(
+                id: outsideId,
+                view: overlayInput,
+                phase: .ended,
+                gestureRecognizers: [composeTouches, windowDismiss]
+            )
+        ], cancelled: false)
+        XCTAssertEqual(guardRecognizer.state, .ended)
+        XCTAssertFalse(composeTouches.isEnabled, "Compose stays disabled until the ended event finishes")
+
+        // Next runloop tick restores Compose cleanly while keeping pre-disabled recognizers disabled.
+        let queued = pendingRestores
+        pendingRestores.removeAll()
+        queued.forEach { $0() }
+        XCTAssertTrue(composeTouches.isEnabled)
+        XCTAssertFalse(disabledCompose.isEnabled)
+        XCTAssertEqual(guardRecognizer.suppressedRecognizerCountForTesting, 0)
+
+        // Subsequent tap with menu closed is ignored by the guard so Compose handles it immediately.
+        let nextToken = NSObject()
+        XCTAssertFalse(
+            guardRecognizer.handleShouldReceive(
+                touchId: ObjectIdentifier(nextToken),
+                view: overlayInput,
+                window: plainWindow
+            )
+        )
+        XCTAssertTrue(composeTouches.isEnabled)
+
+        // Tap inside menu platter or native nav bar is never suppressed.
+        plainWindow.addSubview(menuContainer)
+        let platterToken = NSObject()
+        let navBarToken = NSObject()
+        XCTAssertFalse(
+            guardRecognizer.handleShouldReceive(
+                touchId: ObjectIdentifier(platterToken),
+                view: platter,
+                window: plainWindow
+            )
+        )
+        XCTAssertFalse(
+            guardRecognizer.handleShouldReceive(
+                touchId: ObjectIdentifier(navBarToken),
+                view: navBar,
+                window: plainWindow
+            )
+        )
+        XCTAssertTrue(composeTouches.isEnabled)
+
+        // Aborted shouldReceive (no touchesBegan) restores via failsafe on next runloop tick.
+        let abortedToken = NSObject()
+        XCTAssertTrue(
+            guardRecognizer.handleShouldReceive(
+                touchId: ObjectIdentifier(abortedToken),
+                view: overlayInput,
+                window: plainWindow
+            )
+        )
+        XCTAssertFalse(composeTouches.isEnabled)
+        let failsafe = pendingRestores
+        pendingRestores.removeAll()
+        failsafe.forEach { $0() }
+        XCTAssertTrue(composeTouches.isEnabled)
+
+        // Rapid second tap after menu dismissal restores immediately even before queued async restore runs.
+        let rapidDismissToken = NSObject()
+        let rapidDismissId = ObjectIdentifier(rapidDismissToken)
+        XCTAssertTrue(
+            guardRecognizer.handleShouldReceive(
+                touchId: rapidDismissId,
+                view: overlayInput,
+                window: plainWindow
+            )
+        )
+        guardRecognizer.handleTouchesBegan([
+            RaftIosWindowTouchSnapshot(id: rapidDismissId, view: overlayInput, phase: .began)
+        ])
+        menuContainer.removeFromSuperview()
+        guardRecognizer.handleTouchesFinished([
+            RaftIosWindowTouchSnapshot(id: rapidDismissId, view: overlayInput, phase: .ended)
+        ], cancelled: false)
+        XCTAssertFalse(composeTouches.isEnabled)
+        let rapidSecondToken = NSObject()
+        XCTAssertFalse(
+            guardRecognizer.handleShouldReceive(
+                touchId: ObjectIdentifier(rapidSecondToken),
+                view: overlayInput,
+                window: plainWindow
+            )
+        )
+        XCTAssertTrue(composeTouches.isEnabled, "rapid second tap restores Compose immediately")
+
+        withExtendedLifetime((outsideToken, nextToken, platterToken, navBarToken, abortedToken, rapidDismissToken, rapidSecondToken)) {}
+    }
 }
