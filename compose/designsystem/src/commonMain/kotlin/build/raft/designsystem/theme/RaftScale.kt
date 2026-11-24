@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftUiComponentTokens
 
 /**
@@ -223,9 +224,23 @@ data class RaftControlMetrics(
 
         /**
          * The touch context in a wide window: [Mobile] with the short head (raft-ui
-         * `header-height-short`, 48: the 44 controls with 2 above and below).
+         * `header-height-short`, 48) and its bar buttons at the frame item's 36 (web
+         * `size-icon-header`, which keeps 36 in the 48 head), their glyph at the rail's 20, so a
+         * head's buttons sit in it with 6 above and below as the top bar's items do, instead of a
+         * 44 button with 2.
          */
-        val MobileShortHead = Mobile.copy(headHeight = RaftUiComponentTokens.Touch.headerHeightShort)
+        val MobileShortHead: RaftControlMetrics = run {
+            val touch = RaftUiComponentTokens.Touch
+            val button = touch.frameItemHeight
+            val glyph = 20.dp
+            Mobile.copy(
+                headHeight = touch.headerHeightShort,
+                barButtonSize = button,
+                barIconSize = glyph,
+                barButtonRadius = RaftRadius.Control,
+                barEdgeInset = touch.pageInset - (button - glyph) / 2,
+            )
+        }
 
         /** The desktop context: a wide window with a mouse or trackpad (34dp controls). */
         val Desktop = of(RaftUiComponentTokens.Desktop)

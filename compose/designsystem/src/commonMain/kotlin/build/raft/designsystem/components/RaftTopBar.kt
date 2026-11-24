@@ -87,6 +87,16 @@ object RaftTopBarDefaults {
     val LeadingStartPadding: Dp = 9.dp
     val LeadingEndPadding: Dp = 8.dp
 
+    /**
+     * The leading padding that puts the workspace avatar ([RaftWorkspaceButton]) on the centre
+     * line of the app rail's items under it, [railWidth] the rail without its seam: 3 over the
+     * 56 rail, so the avatar and the rail's icons share one column; 0 over the 48 compact rail,
+     * where it would be −1.
+     */
+    fun leadingStartPaddingOverRail(railWidth: Dp): Dp =
+        (railWidth / 2 - RaftWorkspaceButtonDefaults.ContentInset - RaftWorkspaceButtonDefaults.AvatarSize / 2)
+            .coerceAtLeast(0.dp)
+
     /** The trailing region's padding: 8dp after the centre, 12dp on the outside. */
     val TrailingStartPadding: Dp = 8.dp
     val TrailingEndPadding: Dp = 12.dp
@@ -206,6 +216,12 @@ fun RaftTopBar(
      * moves in by it.
      */
     endInset: Dp = RaftTopBarDefaults.windowControlsEndInset(),
+    /**
+     * Before [leading]: [RaftTopBarDefaults.LeadingStartPadding], or over an app rail
+     * [RaftTopBarDefaults.leadingStartPaddingOverRail], so the workspace avatar lines up with
+     * the rail's icons.
+     */
+    leadingStartPadding: Dp = RaftTopBarDefaults.LeadingStartPadding,
 ) {
     val colors = RaftTheme.colors
     val density = LocalDensity.current
@@ -242,6 +258,7 @@ fun RaftTopBar(
                     center = center,
                     trailing = trailing,
                     leadingMinWidth = leadingMinWidth,
+                    leadingStartPadding = leadingStartPadding,
                 )
             } else {
                 Row(
@@ -260,7 +277,7 @@ fun RaftTopBar(
                     Row(
                         Modifier
                             .weight(1f)
-                            .padding(start = RaftTopBarDefaults.LeadingStartPadding, end = RaftTopBarDefaults.LeadingEndPadding),
+                            .padding(start = leadingStartPadding, end = RaftTopBarDefaults.LeadingEndPadding),
                         verticalAlignment = Alignment.CenterVertically,
                         content = leading,
                     )
@@ -290,12 +307,13 @@ private fun RaftTopBarWithCenterLeading(
     center: @Composable () -> Unit,
     trailing: @Composable RowScope.() -> Unit,
     leadingMinWidth: Dp,
+    leadingStartPadding: Dp,
 ) {
     Layout(
         modifier = modifier,
         content = {
             Row(
-                Modifier.padding(start = RaftTopBarDefaults.LeadingStartPadding, end = RaftTopBarDefaults.LeadingEndPadding),
+                Modifier.padding(start = leadingStartPadding, end = RaftTopBarDefaults.LeadingEndPadding),
                 verticalAlignment = Alignment.CenterVertically,
                 content = leading,
             )
@@ -317,7 +335,7 @@ private fun RaftTopBarWithCenterLeading(
         val side = (width - centerIdeal) / 2
         val arrows = centerLeadingM.measure(loose(width))
         val leadingFloor =
-            leadingMinWidth.roundToPx() + RaftTopBarDefaults.LeadingStartPadding.roundToPx() + RaftTopBarDefaults.LeadingEndPadding.roundToPx()
+            leadingMinWidth.roundToPx() + leadingStartPadding.roundToPx() + RaftTopBarDefaults.LeadingEndPadding.roundToPx()
         val centeredLeading = side - arrows.width
         val shift = (leadingFloor - centeredLeading).coerceIn(0, centerIdeal)
         val centerX = side + shift
