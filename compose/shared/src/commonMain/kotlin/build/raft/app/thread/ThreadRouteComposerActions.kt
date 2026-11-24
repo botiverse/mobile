@@ -66,6 +66,7 @@ internal class ThreadRouteComposerActions(
     val attachmentUploadFilesByLocalIdState: MutableState<Map<ThreadAttachmentUploadAttemptIdentity, PlatformFile>>,
     val externalShareSendRequestedState: MutableState<Boolean>,
     val externalShareExpectedAuthorityState: MutableState<build.raft.app.data.RaftExpectedAuthBinding?>,
+    val pendingOptimisticSendState: MutableState<ThreadComposerSendRequest?>,
     val composerImageActionCounterState: MutableState<Int>,
     val latestUploadComposerAttachmentFilesState: State<suspend (List<PlatformFile>, String?, Boolean, Map<String, String>) -> Boolean>,
     val currentComposerPayloadFn: () -> RaftThreadComposerPayload,
@@ -263,6 +264,37 @@ internal class ThreadRouteComposerActions(
         return true
     }
     fun handleComposerSendRequest(request: ThreadComposerSendRequest): ThreadComposerSendAdmission {
+        if (threadLimitLocked) {
+            bridge.log("thread_composer_action_blocked action=send reason=channel_limit_locked")
+            return ThreadComposerSendAdmission.Rejected
+        }
+        if (!renderSlice.writeActionsEnabled) {
+            if (
+                renderSlice.accessResolution == ThreadAccessResolution.Loading &&
+                !payload.channelArchived
+            ) {
+                composerDraftViewModel.dispatch(
+                    SharedThreadComposerDraftIntent.Change(
+                        seedText = request.value.text,
+                        seedAsTask = request.asTask,
+                    )
+                )
+                val hasSendableDraft =
+                    request.value.text.isNotBlank() ||
+                        composerDraftViewModel.state.value.uploadedAttachments.isNotEmpty()
+                if (!hasSendableDraft) {
+                    return ThreadComposerSendAdmission.Rejected
+                }
+                pendingOptimisticSendState.value = request
+                bridge.log(
+                    "thread_composer_send_deferred_for_access instanceId=${payload.instanceId} " +
+                        "surface=${payload.surfaceKind} textLen=${request.value.text.length}"
+                )
+                return ThreadComposerSendAdmission.Deferred
+            }
+            bridge.log("thread_composer_action_blocked action=send reason=read_only_access_fallback")
+            return ThreadComposerSendAdmission.Rejected
+        }
         if (externalShareSendRequested) {
             bridge.log("external_share_send_duplicate_drop reason=upload_chain_active")
             return ThreadComposerSendAdmission.Deferred
@@ -465,6 +497,17 @@ internal class ThreadRouteComposerActions(
 
     fun onComposerEvent(action: String, value: String?, asTask: Boolean?, attachmentId: String?): Unit =
         run ThreadPageContent@{
+                if (action == "send") {
+                    val currentDraftState = composerDraftViewModel.state.value
+                    handleComposerSendRequest(
+                        ThreadComposerSendRequest(
+                            editorSessionId = 0L,
+                            value = TextFieldValue(value ?: currentDraftState.seedText),
+                            asTask = asTask ?: currentDraftState.seedAsTask,
+                        )
+                    )
+                    return@ThreadPageContent
+                }
                 if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled && !threadLimitLocked, action)) {
                     bridge.log("thread_composer_action_blocked action=$action reason=${if (threadLimitLocked) "channel_limit_locked" else "read_only_access_fallback"}")
                     return@ThreadPageContent

@@ -14,6 +14,8 @@ import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.PendingMentionAction
 import build.raft.app.data.PendingMentionActionExecuteResult
+import build.raft.app.data.SharedMembersChannelSuggestionSlice
+import build.raft.app.data.SharedMembersMemberSuggestionSlice
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
@@ -931,7 +933,8 @@ internal fun formatMentionActionStatusNotice(
 internal fun RaftThreadComposerPayload.withThreadComposerDraftState(
     draftState: SharedThreadComposerDraftState,
     renderedPayload: RaftThreadScreenPayload,
-    resolvedAuxiliaryThreadId: String?
+    resolvedAuxiliaryThreadId: String?,
+    optimisticPendingAccess: Boolean = false,
 ): RaftThreadComposerPayload {
     val projectedPendingAttachments = pendingAttachments.map { attachment ->
         SharedThreadComposerAttachment(
@@ -1000,8 +1003,15 @@ internal fun RaftThreadComposerPayload.withThreadComposerDraftState(
         removingMentionActionIds = draftState.removingMentionActionIds.toList(),
         executingMentionActionIds = draftState.executingMentionActionIds.toList(),
         executingMentionActionStates = draftState.executingMentionActionStates,
-        streamChannelId = resolvedAuxiliaryThreadId,
-        enabled = renderedPayload.canSend && resolvedAuxiliaryThreadId != null
+        streamChannelId =
+            resolvedAuxiliaryThreadId
+                ?: if (optimisticPendingAccess) renderedPayload.optimisticComposerChannelId(null) else null,
+        enabled =
+            (renderedPayload.canSend || optimisticPendingAccess) &&
+                (
+                    resolvedAuxiliaryThreadId != null ||
+                        (optimisticPendingAccess && renderedPayload.optimisticComposerChannelId(null) != null)
+                )
     )
 }
 
@@ -1074,6 +1084,19 @@ internal fun ThreadRouteScaffold(
  */
 internal const val ThreadNativeNavBarPrefillPreserveTimeoutMs: Long = 1_500L
 
+internal class ThreadLoadingOptimisticComposerHost(
+    val accessResolution: ThreadAccessResolution,
+    val replyParentAuthority: ReplyParentAuthorityStatus,
+    val composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    val composerLocked: Boolean = false,
+    val externalFrozen: Boolean = false,
+    val movableComposer: (@Composable (ThreadComposerRouteArgs) -> Unit)? = null,
+    val composerSendKeyEnabled: Boolean = false,
+    val composerSendKey: build.raft.app.data.RaftComposerSendKey = build.raft.app.data.RaftComposerSendKey.Default,
+    val onSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission = { ThreadComposerSendAdmission.Rejected },
+    val onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit = { _, _, _, _ -> },
+)
+
 @Composable
 internal fun ThreadDeferredLoadingRouteContent(
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
@@ -1083,6 +1106,7 @@ internal fun ThreadDeferredLoadingRouteContent(
     onBack: () -> Unit,
     showLoadingIndicator: Boolean = true,
     lounge: ThreadPageLounge? = null,
+    optimisticComposerHost: ThreadLoadingOptimisticComposerHost? = null,
 ) {
     var preservePrefilledActions by remember(payload.instanceId) {
         androidx.compose.runtime.mutableStateOf(payload.status == "loading")
@@ -1096,6 +1120,37 @@ internal fun ThreadDeferredLoadingRouteContent(
         kotlinx.coroutines.delay(ThreadNativeNavBarPrefillPreserveTimeoutMs)
         preservePrefilledActions = false
     }
+    val loadingConversationLounge =
+        lounge?.lounge?.takeIf { payload.surfaceKind == RaftThreadSurfaceKind.Channel }
+    val loadingLoungeFooterKind =
+        agentLoungeFooterKind(
+            conversationLounge = loadingConversationLounge,
+            pageLounge = lounge?.lounge,
+        )
+    val loadingOptimisticChannelId = payload.optimisticComposerChannelId(null)
+    val showOptimisticComposer =
+        optimisticComposerHost != null &&
+            loadingOptimisticChannelId != null &&
+            threadShowsOptimisticComposer(
+                accessResolution = optimisticComposerHost.accessResolution,
+                payloadStatus = payload.status,
+                surfaceKind = payload.surfaceKind,
+                joined = payload.joined,
+                showComposer = payload.showComposer,
+                selectedTab = payload.selectedTab,
+                composerLocked = optimisticComposerHost.composerLocked,
+                channelArchived = lounge?.lounge == null && threadFooterShowsArchived(payload),
+                externalFrozen = optimisticComposerHost.externalFrozen,
+                loungeFooterActive = loadingLoungeFooterKind != null,
+                replyParentAuthority = optimisticComposerHost.replyParentAuthority,
+            )
+    val loadingRemovedAppBot =
+        rememberRaftMemberAppBot(displayModel.composerDmAgentPeerId())?.takeIf { it.removed }
+    val composerBottomSafeArea = raftBottomSafeAreaPadding()
+    val composerKeyboardInsetExcludesBottomSafeArea = raftKeyboardInsetExcludesBottomSafeArea()
+    val emptyMemberSuggestionsFlow = remember { MutableStateFlow(SharedMembersMemberSuggestionSlice()) }
+    val emptyChannelSuggestionsFlow = remember { MutableStateFlow(SharedMembersChannelSuggestionSlice()) }
+    val loadingAssistantPanelContext = LocalThreadAssistantPanelEmbed.current?.context
     scaffold(
         ThreadRouteScaffoldSlots(
             scaffoldPlan = ThreadRouteMountPlan.LoadingShell.toThreadRouteScaffoldPlan(),
@@ -1127,6 +1182,101 @@ internal fun ThreadDeferredLoadingRouteContent(
                 ) {
                     if (showLoadingIndicator) {
                         ThreadLoadingState()
+                    }
+                }
+                if (showOptimisticComposer && optimisticComposerHost != null && loadingOptimisticChannelId != null) {
+                    val loadingBaseComposerState =
+                        remember(
+                            payload.composer,
+                            payload.instanceId,
+                            displayModel.title,
+                            payload.surfaceKind,
+                            payload.sourceThreadId,
+                            payload.streamChannelId,
+                            payload.parentChannelId,
+                            payload.parentMessageId,
+                            payload.originParentMessageId,
+                            loadingOptimisticChannelId,
+                        ) {
+                            payload
+                                .resolveThreadComposer(displayName = displayModel.title)
+                                .copy(streamChannelId = loadingOptimisticChannelId, enabled = true)
+                        }
+                    val loadingComposerSurface =
+                        remember(
+                            loadingBaseComposerState,
+                            loadingOptimisticChannelId,
+                            payload.parentChannelId,
+                            displayModel.title,
+                            displayModel.subtitle,
+                            payload.surfaceKind,
+                            payload.parentSurfaceKind,
+                            loadingAssistantPanelContext,
+                        ) {
+                            loadingBaseComposerState
+                                .toThreadComposerSurface(
+                                    channelId = loadingOptimisticChannelId,
+                                    parentChannelId = payload.parentChannelId,
+                                    mentionChannelLabel = displayModel.threadComposerMentionScopeChannelLabel(),
+                                    memberSuggestionHeadersVisible = payload.threadComposerMemberSuggestionHeadersVisible(),
+                                )
+                                .withTaskV2()
+                                .copy(assistantContext = loadingAssistantPanelContext)
+                        }
+                    val loadingDraftKey =
+                        remember(loadingComposerSurface) { loadingComposerSurface.threadComposerDraftKey() }
+                    remember(
+                        optimisticComposerHost.composerDraftViewModel,
+                        loadingBaseComposerState.instanceId,
+                        loadingDraftKey,
+                    ) {
+                        ensureThreadComposerDraftStarted(
+                            composerDraftViewModel = optimisticComposerHost.composerDraftViewModel,
+                            composer = loadingBaseComposerState,
+                            draftKey = loadingDraftKey,
+                        )
+                    }
+                    val loadingTimelineSlice = remember(payload) { payload.toThreadTimelineSlice() }
+                    ThreadComposerDock(
+                        edgePadding = if (threadInSplitDetailPane()) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
+                        composerModifier =
+                            Modifier.raftThreadComposerLiveKeyboardPadding(
+                                bottomSafeArea = composerBottomSafeArea,
+                                keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
+                            ),
+                        keyboardLiftPx =
+                            rememberThreadComposerKeyboardLiftPx(
+                                bottomSafeArea = composerBottomSafeArea,
+                                keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
+                            ),
+                    ) {
+                        val args =
+                            ThreadComposerRouteArgs(
+                                baseComposerState = loadingBaseComposerState,
+                                removedAppBot = loadingRemovedAppBot,
+                                composerDraftViewModel = optimisticComposerHost.composerDraftViewModel,
+                                renderedPayload = payload,
+                                timelineSlice = loadingTimelineSlice,
+                                resolvedAuxiliaryThreadId = loadingOptimisticChannelId,
+                                surface = loadingComposerSurface,
+                                memberSuggestionsFlow = emptyMemberSuggestionsFlow,
+                                channelSuggestionsFlow = emptyChannelSuggestionsFlow,
+                                agentStatusResolver = EmptyRaftAgentStatusResolver,
+                                onEvent = optimisticComposerHost.onEvent,
+                                onDropFiles = { it.release() },
+                                onSendRequest = optimisticComposerHost.onSendRequest,
+                                composerSendKeyEnabled = optimisticComposerHost.composerSendKeyEnabled,
+                                composerSendKey = optimisticComposerHost.composerSendKey,
+                                onKeyboardHeightChange = {},
+                                adaptiveNativeEditingStateReader = LocalThreadAdaptiveNativeEditingReader.current,
+                                optimisticPendingAccess = true,
+                            )
+                        val movable = optimisticComposerHost.movableComposer
+                        if (movable != null) {
+                            movable(args)
+                        } else {
+                            ThreadComposerRouteFromArgs(args)
+                        }
                     }
                 }
             }
