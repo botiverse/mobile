@@ -81,6 +81,7 @@ internal suspend fun raftClearWebViewAuthStorage(
     origins: Set<String> = emptySet(),
 ) {
     RaftMobileWebPanelCoordinator.process.clearAll()
+    RaftSharedStoreRegistry.currentOrNull()?.invalidateInstalledAppOriginsCache()
     raftClearPlatformWebViewAuthStorage(origins)
 }
 

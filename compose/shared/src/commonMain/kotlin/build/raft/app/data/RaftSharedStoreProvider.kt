@@ -632,6 +632,92 @@ internal class RaftSharedStoreProvider private constructor(
     val appLinkPreviewStore: SharedAppLinkPreviewStore by appLinkPreviewStoreLazy
 
     /**
+     * Per-server in-memory cache of installed Raft App origins (`GET integrations/clients` +
+     * installed entries of `GET integrations/marketplace`, #proj-workspace:#356 Decision #9).
+     * Scoped by `(accountId, environmentKey, serverId)` and cleared on sign-out / account or
+     * environment switches / server-access loss.
+     */
+    private val installedAppOriginsCacheLazy = lazy {
+        val api =
+            build.raft.app.NetworkRaftBrowserSignInApi(
+                networkClient = networkClient,
+                resolveLogoUrl = { logo -> resolveAppLinkIconUrl(logo, apiEnvironmentStore.current().apiBaseUrl) },
+            )
+        build.raft.app.RaftInstalledAppOriginsCache(
+            fetchOrigins = api::fetchInstalledAppOrigins,
+            scope = RaftStoreThreading.newScope(),
+        )
+    }
+    internal val installedAppOriginsCache: build.raft.app.RaftInstalledAppOriginsCache by installedAppOriginsCacheLazy
+
+    internal fun currentInstalledAppAccountIdSync(): String? =
+        (currentAccountBindingOrNull()?.second ?: authStore.readCommittedSessionSnapshot()?.user?.id)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+
+    internal suspend fun resolveInstalledAppAccountId(): String? =
+        currentInstalledAppAccountIdSync()
+            ?: authStore.readSession()?.user?.id?.trim()?.takeIf { it.isNotEmpty() }
+
+    internal fun currentInstalledAppEnvironmentKey(): String {
+        val env = apiEnvironmentStore.current()
+        return "${env.webUrl}|${env.apiBaseUrl}"
+    }
+
+    internal fun currentInstalledAppScopeSync(serverId: String?): build.raft.app.RaftInstalledAppScope? {
+        val cleanServerId = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val accountId = currentInstalledAppAccountIdSync() ?: return null
+        return build.raft.app.RaftInstalledAppScope(
+            accountId = accountId,
+            environmentKey = currentInstalledAppEnvironmentKey(),
+            serverId = cleanServerId,
+        )
+    }
+
+    internal fun onInstalledAppAccountOrEnvironmentChanged(
+        accountId: String?,
+        environmentKey: String?,
+    ) {
+        if (installedAppOriginsCacheLazy.isInitialized()) {
+            installedAppOriginsCache.onAccountOrEnvironmentChanged(accountId, environmentKey)
+        }
+    }
+
+    internal fun invalidateInstalledAppOriginsCache() {
+        if (installedAppOriginsCacheLazy.isInitialized()) {
+            installedAppOriginsCache.clearAll()
+        }
+    }
+
+    internal fun threadInstalledAppOriginResolver(
+        accountId: String,
+        serverId: String,
+    ): build.raft.app.ThreadInstalledAppOriginResolver {
+        val cleanAccountId = accountId.trim()
+        val cleanServerId = serverId.trim()
+        return build.raft.app.ThreadInstalledAppOriginResolver(
+            lookupSync = { origin ->
+                val scope =
+                    build.raft.app.RaftInstalledAppScope(
+                        accountId = cleanAccountId,
+                        environmentKey = currentInstalledAppEnvironmentKey(),
+                        serverId = cleanServerId,
+                    )
+                installedAppOriginsCache.lookupSync(scope, origin)
+            },
+            lookupAsync = { origin ->
+                val scope =
+                    build.raft.app.RaftInstalledAppScope(
+                        accountId = cleanAccountId,
+                        environmentKey = currentInstalledAppEnvironmentKey(),
+                        serverId = cleanServerId,
+                    )
+                installedAppOriginsCache.lookup(scope, origin)
+            },
+        )
+    }
+
+    /**
      * Deploy-level client config of the current API environment (`GET /api/public/client-config`):
      * Raft's own app hosts, which Artifact links are recognised on. Read on app start and on every
      * environment change, cached per environment on disk.
@@ -821,6 +907,7 @@ internal class RaftSharedStoreProvider private constructor(
             clearViewerMemoryCaches = {
                 // App link previews and consent answers, and Artifact summaries: per viewer, session only.
                 if (appLinkPreviewStoreLazy.isInitialized()) appLinkPreviewStore.clearAll()
+                if (installedAppOriginsCacheLazy.isInitialized()) installedAppOriginsCache.clearAll()
                 if (artifactSummaryStoreLazy.isInitialized()) artifactSummaryStore.clearAll()
                 if (artifactScreenshotStoreLazy.isInitialized()) artifactScreenshotStore.clearAll()
                 artifactScreenshotDiskCache.clearAllAsync(threadSendScope)
@@ -2140,6 +2227,9 @@ internal class RaftSharedStoreProvider private constructor(
                 }
                 if (appLinkPreviewStoreLazy.isInitialized()) {
                     appLinkPreviewStore.dropServer(grant.serverId)
+                }
+                if (installedAppOriginsCacheLazy.isInitialized()) {
+                    installedAppOriginsCache.dropServer(grant.serverId)
                 }
                 val lostEnvironmentId = replyCacheAuthContext.value?.environmentId ?: apiEnvironmentStore.current().apiBaseUrl
                 if (artifactScreenshotStoreLazy.isInitialized()) {

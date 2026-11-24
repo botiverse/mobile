@@ -229,10 +229,18 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
                             ?: session?.currentServerSlug()
                     val webUrl = (settingsCapabilities.loadDeveloper() as? DataResult.Content)?.data?.webUrl
                     // A ticket of another app (the one list holds every app's) links to its own app.
-                    val ticketSource = store.state.value.detail?.takeIf { it.ticketId == ticketId }?.ticket?.source
+                    val currentState = store.state.value
+                    val ticket =
+                        currentState.detail?.takeIf { it.ticketId == ticketId }?.ticket
+                            ?: currentState.list.tickets.firstOrNull { it.id == ticketId }
+                    val ticketSource = ticket?.source
                     val link = settingsFeedbackTicketLink(webUrl, serverSlug, ticketId, ticketSource ?: platform)
                     bridge.log("settings_feedback_tickets_copy_link ticket=${ticketId.take(8)} ok=${link != null}")
-                    if (link != null) settingsCapabilities.bridgeCopyToClipboard(link) else bridge.toast(copyLinkFailedMessage)
+                    if (link != null) {
+                        settingsCapabilities.bridgeCopyToClipboard(settingsFeedbackTicketCopyText(link, ticket?.message))
+                    } else {
+                        bridge.toast(copyLinkFailedMessage)
+                    }
                 }
             }
         }
@@ -298,6 +306,67 @@ internal fun settingsFeedbackTicketLink(webUrl: String?, serverSlug: String?, ti
             else -> return null
         }
     return "${sharedSettingsResolvedWebBaseUrl(webUrl)}/s/$slug/settings/feedback/ticket/${id.encodeUriComponent()}$query"
+}
+
+/**
+ * Formats clipboard text for Copy Link on a feedback ticket (#proj-mobile:dcf007d7): a single-line,
+ * whitespace-normalized excerpt of [message] (truncated cleanly by Unicode code points so CJK and
+ * emoji never split surrogate pairs) followed by a newline and [link]. Blank/null [message] returns
+ * [link] unchanged.
+ */
+internal fun settingsFeedbackTicketCopyText(
+    link: String,
+    message: String?,
+    maxExcerptChars: Int = 80,
+): String {
+    if (maxExcerptChars <= 0) return link
+    val trimmed = message?.trim()?.takeIf { it.isNotEmpty() } ?: return link
+    val normalized =
+        buildString(trimmed.length) {
+            var inWhitespace = false
+            for (ch in trimmed) {
+                if (ch.isWhitespace()) {
+                    if (!inWhitespace) {
+                        append(' ')
+                        inWhitespace = true
+                    }
+                } else {
+                    append(ch)
+                    inWhitespace = false
+                }
+            }
+        }
+    if (normalized.isEmpty()) return link
+    val excerpt = truncateFeedbackExcerptCodePoints(normalized, maxExcerptChars)
+    return "$excerpt\n$link"
+}
+
+private fun truncateFeedbackExcerptCodePoints(
+    text: String,
+    maxCodePoints: Int,
+): String {
+    var codePoints = 0
+    var i = 0
+    var cutIndex = -1
+    val limitBeforeEllipsis = (maxCodePoints - 1).coerceAtLeast(0)
+    while (i < text.length) {
+        val step =
+            if (text[i].isHighSurrogate() && i + 1 < text.length && text[i + 1].isLowSurrogate()) {
+                2
+            } else {
+                1
+            }
+        if (codePoints == limitBeforeEllipsis) {
+            cutIndex = i
+        }
+        codePoints += 1
+        i += step
+        if (codePoints > maxCodePoints) {
+            val end = if (cutIndex >= 0) cutIndex else 0
+            return "${text.substring(0, end).trimEnd()}…"
+        }
+    }
+    return text
 }
 
 /** JavaScript `encodeURIComponent`: UTF-8, all but `A-Z a-z 0-9 - _ . ! ~ * ' ( )` escaped. */

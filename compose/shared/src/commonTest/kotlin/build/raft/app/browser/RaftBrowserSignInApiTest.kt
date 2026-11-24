@@ -298,27 +298,35 @@ class RaftBrowserSignInApiTest {
         val clientsBody =
             """
             [
-              {"id":"c1","name":"Local Tool","homepageUrl":"https://local.example.com/start","installStatus":null},
+              {"id":"c1","name":"Local Tool","homepageUrl":"https://local.example.com/start","logoUrl":"/api/logos/local.png","installStatus":null},
               {"id":"c2","name":"Suspended Own","homepageUrl":"https://suspended-own.example.com","installStatus":"suspended"}
             ]
             """.trimIndent()
         val marketplaceBody =
             """
             [
-              {"id":"m1","name":"Stamp","homepageUrl":"https://stamp.build/docs","installationId":"inst-1","installStatus":"active"},
+              {"id":"m1","name":"Stamp","homepageUrl":"https://stamp.build/docs","logoUrl":"https://api.raft.build/logos/stamp.webp","installationId":"inst-1","installStatus":"active"},
               {"id":"m2","name":"Uninstalled App","homepageUrl":"https://uninstalled.example.com","installationId":null,"installStatus":null},
               {"id":"m3","name":"Suspended Market","homepageUrl":"https://suspended-mkt.example.com","installationId":"inst-3","installStatus":"suspended"}
             ]
             """.trimIndent()
 
-        // Active server-local app matches by exact origin.
+        // Active server-local app matches by exact origin and carries logoUrl.
         assertEquals(
-            RaftInstalledAppOriginMatch(origin = "https://local.example.com", appName = "Local Tool"),
+            RaftInstalledAppOriginMatch(
+                origin = "https://local.example.com",
+                appName = "Local Tool",
+                logoUrl = "/api/logos/local.png",
+            ),
             matchInstalledAppHomepageOrigin("https://local.example.com", clientsBody, marketplaceBody),
         )
-        // Active installed marketplace app matches by exact origin.
+        // Active installed marketplace app matches by exact origin and carries logoUrl.
         assertEquals(
-            RaftInstalledAppOriginMatch(origin = "https://stamp.build", appName = "Stamp"),
+            RaftInstalledAppOriginMatch(
+                origin = "https://stamp.build",
+                appName = "Stamp",
+                logoUrl = "https://api.raft.build/logos/stamp.webp",
+            ),
             matchInstalledAppHomepageOrigin("https://stamp.build", clientsBody, marketplaceBody),
         )
         // Uninstalled marketplace app, suspended apps, and unrelated origins are rejected (fail closed).
@@ -328,7 +336,7 @@ class RaftBrowserSignInApiTest {
         assertNull(matchInstalledAppHomepageOrigin("https://evil.example.com", clientsBody, marketplaceBody))
         assertNull(matchInstalledAppHomepageOrigin("https://stamp.build", null, null))
 
-        // Verify NetworkRaftBrowserSignInApi calls both endpoints scoped to serverId.
+        // Verify NetworkRaftBrowserSignInApi calls both endpoints scoped to serverId and resolves relative logo URLs.
         val requestedPaths = mutableListOf<Pair<String, String?>>()
         val fakeClient =
             object : RaftNetworkClient {
@@ -348,14 +356,74 @@ class RaftBrowserSignInApiTest {
                     }
                 }
             }
-        val api = NetworkRaftBrowserSignInApi(fakeClient)
+        val api =
+            NetworkRaftBrowserSignInApi(
+                networkClient = fakeClient,
+                resolveLogoUrl = { logo ->
+                    if (logo.startsWith("/")) "https://api.raft.build$logo" else logo
+                },
+            )
+        val fetched = assertNotNull(api.fetchInstalledAppOrigins(serverId = "srv-1"))
+        assertTrue(fetched.complete)
         assertEquals(
-            RaftInstalledAppOriginMatch(origin = "https://stamp.build", appName = "Stamp"),
+            RaftInstalledAppOriginMatch(
+                origin = "https://local.example.com",
+                appName = "Local Tool",
+                logoUrl = "https://api.raft.build/api/logos/local.png",
+            ),
+            fetched.origins["https://local.example.com"],
+        )
+        assertEquals(
+            RaftInstalledAppOriginMatch(
+                origin = "https://stamp.build",
+                appName = "Stamp",
+                logoUrl = "https://api.raft.build/logos/stamp.webp",
+            ),
             api.findInstalledAppByOrigin(serverId = "srv-1", targetOrigin = "https://stamp.build"),
         )
         assertEquals(
             setOf("integrations/clients" to "srv-1", "integrations/marketplace" to "srv-1"),
             requestedPaths.toSet(),
         )
+    }
+
+    @Test
+    fun fetchInstalledAppOriginsMarksPartialFailureIncompleteAndTotalFailureNull() = runTest {
+        val marketplaceOnlyClient =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse =
+                    when (path) {
+                        "integrations/clients" -> HomeNetworkResponse(code = 500, bodyText = null)
+                        "integrations/marketplace" ->
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText = """[{"id":"m1","name":"Stamp","homepageUrl":"https://stamp.build","installationId":"inst-1","installStatus":"active"}]""",
+                            )
+                        else -> HomeNetworkResponse(code = 404, bodyText = null)
+                    }
+            }
+        val partial = assertNotNull(NetworkRaftBrowserSignInApi(marketplaceOnlyClient).fetchInstalledAppOrigins("srv-1"))
+        assertFalse(partial.complete)
+        assertEquals("Stamp", partial.origins["https://stamp.build"]?.appName)
+
+        val failingClient =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse = HomeNetworkResponse(code = 503, bodyText = null)
+            }
+        assertNull(NetworkRaftBrowserSignInApi(failingClient).fetchInstalledAppOrigins("srv-1"))
     }
 }

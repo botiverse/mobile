@@ -5,7 +5,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
@@ -297,7 +302,39 @@ internal class RaftLinkNavigator(
     private val raftHostsProvider: () -> Collection<String> = { emptySet() },
     private val debugBuild: Boolean = RaftCmpRouter.isDebugBuild,
     private val appEntryRegistry: RaftAppEntryRegistry = RaftAppEntryRegistry.process,
+    /**
+     * Optional synchronous lookup of verified installed Raft App origins on the current Server
+     * (#proj-workspace:#356 Decision #9). When non-null, ordinary external links matching an
+     * installed App open via [openAppEntry] (Layer 2 Default profile, bypassing [LinkOpenMode] and
+     * `MULTI_PROFILE`) after App Store 3.1.1, Artifact, server-join, and own-Raft checks.
+     */
+    private val lookupInstalledAppSync: ((origin: String) -> RaftInstalledAppSyncLookup)? = null,
+    /**
+     * Optional async lookup invoked when [lookupInstalledAppSync] reports [RaftInstalledAppSyncLookup.NotLoaded]
+     * (cold cache). Returning true means the lookup took ownership and will call either [onMatched]
+     * or [onFallback] once settled; returning false falls back immediately to ordinary external open.
+     */
+    private val lookupInstalledAppAsync: (
+        (
+            url: String,
+            candidateOrigin: String,
+            onMatched: (RaftInstalledAppOriginMatch, String) -> Unit,
+            onFallback: () -> Unit,
+        ) -> Boolean
+    )? = null,
+    /** Cancels any pending cold-cache installed-App lookup when a newer navigation starts. */
+    private val cancelPendingInstalledAppLookup: () -> Unit = {},
 ) {
+    /**
+     * Returns the candidate App entry scope origin for [url] when this platform supports the in-app
+     * browser and [url] is an external https (or debug loopback) origin outside Raft's own hosts.
+     */
+    internal fun candidateAppEntryScopeOrigin(url: String): String? {
+        if (!supportsInAppBrowser()) return null
+        val origin = raftAppEntryOriginOf(url) ?: return null
+        return raftAppEntryScopeOrigin(origin, url, raftHostsProvider(), debugBuild)
+    }
+
     /**
      * Opens an App entry (#proj-workspace:#356): checks iOS 3.1.1 first, then validates [request]'s
      * scope via [raftAppEntryScopeOrigin], mints a single-use token in [appEntryRegistry], and opens
@@ -308,6 +345,7 @@ internal class RaftLinkNavigator(
         rawUrl: String,
         request: RaftAppEntryRequest,
     ): RaftLinkOpenDecision {
+        cancelPendingInstalledAppLookup()
         val decision = resolveRaftLinkOpenDecision(rawUrl, LinkOpenMode.InAppBrowser)
         if (decision.target == RaftLinkOpenTarget.Rejected) {
             clearPendingWebPanelSource()
@@ -345,6 +383,7 @@ internal class RaftLinkNavigator(
         rawUrl: String,
         intent: RaftLinkOpenIntent = RaftLinkOpenIntent.Ordinary,
     ): RaftLinkOpenDecision {
+        cancelPendingInstalledAppLookup()
         val decision = resolveRaftLinkOpenDecision(rawUrl, modeProvider(), intent)
         // App Store Guideline 3.1.1: intercept billing, /servers/*/upgrade, and Stripe URLs before
         // any in-app WebView or SFSafariViewController path can open them on iOS.
@@ -381,7 +420,67 @@ internal class RaftLinkNavigator(
             clearPendingWebPanelSource()
             return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, decision.url)
         }
-        return when (decision.target) {
+        // Verified installed Raft App links in chat (e.g. https://stamp.build/...) open via Layer 2
+        // openAppEntry (Default profile, bypassing LinkOpenMode and Android MULTI_PROFILE).
+        if (
+            intent == RaftLinkOpenIntent.Ordinary &&
+            decision.target != RaftLinkOpenTarget.Rejected &&
+            lookupInstalledAppSync != null
+        ) {
+            val candidateOrigin = candidateAppEntryScopeOrigin(decision.url)
+            if (candidateOrigin != null) {
+                when (val sync = lookupInstalledAppSync.invoke(candidateOrigin)) {
+                    is RaftInstalledAppSyncLookup.Matched -> {
+                        if (sync.match.origin == candidateOrigin && sync.serverId.isNotBlank()) {
+                            return openAppEntry(
+                                decision.url,
+                                RaftAppEntryRequest(
+                                    scopeOrigin = sync.match.origin,
+                                    appName = sync.match.appName,
+                                    preferredServerId = sync.serverId,
+                                    appLogoUrl = sync.match.logoUrl,
+                                ),
+                            )
+                        }
+                    }
+                    RaftInstalledAppSyncLookup.NotLoaded -> {
+                        val dispatched =
+                            lookupInstalledAppAsync?.invoke(
+                                decision.url,
+                                candidateOrigin,
+                                { matched, serverId ->
+                                    if (matched.origin == candidateOrigin && serverId.isNotBlank()) {
+                                        openAppEntry(
+                                            decision.url,
+                                            RaftAppEntryRequest(
+                                                scopeOrigin = matched.origin,
+                                                appName = matched.appName,
+                                                preferredServerId = serverId,
+                                                appLogoUrl = matched.logoUrl,
+                                            ),
+                                        )
+                                    } else {
+                                        openOrdinaryExternal(decision, intent)
+                                    }
+                                },
+                                { openOrdinaryExternal(decision, intent) },
+                            ) == true
+                        if (dispatched) {
+                            return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppBrowser, decision.url)
+                        }
+                    }
+                    RaftInstalledAppSyncLookup.KnownNotInstalled -> Unit
+                }
+            }
+        }
+        return openOrdinaryExternal(decision, intent)
+    }
+
+    private fun openOrdinaryExternal(
+        decision: RaftLinkOpenDecision,
+        intent: RaftLinkOpenIntent,
+    ): RaftLinkOpenDecision =
+        when (decision.target) {
             RaftLinkOpenTarget.InAppBrowser -> {
                 // #proj-workspace:#397: Layer 3 third-party links require an isolated WebView storage
                 // partition. When unavailable (e.g. pre-Chromium 119 Android without MULTI_PROFILE),
@@ -393,9 +492,8 @@ internal class RaftLinkNavigator(
                     } else {
                         openExternalBrowser(decision.url)
                     }
-                    return RaftLinkOpenDecision(RaftLinkOpenTarget.ExternalBrowser, decision.url)
-                }
-                if (openInAppBrowser(decision.url)) {
+                    RaftLinkOpenDecision(RaftLinkOpenTarget.ExternalBrowser, decision.url)
+                } else if (openInAppBrowser(decision.url)) {
                     decision
                 } else {
                     clearPendingWebPanelSource()
@@ -424,7 +522,6 @@ internal class RaftLinkNavigator(
                 decision
             }
         }
-    }
 }
 
 /**
@@ -474,6 +571,8 @@ internal fun raftServerJoinLinkOpener(
 /**
  * [artifactConversationId]: the conversation an Artifact link tapped here is opened from
  * (`hostConversation`, [LocalRaftArtifactOpenConversation]); null where links are not a conversation's.
+ * [installedAppServerId]: when non-blank (conversation/thread navigators), warms the per-server
+ * installed Raft App origin cache and opens verified installed-App links via [RaftLinkNavigator.openAppEntry].
  */
 @Composable
 internal fun rememberRaftLinkNavigator(
@@ -482,6 +581,7 @@ internal fun rememberRaftLinkNavigator(
     routeScope: RaftInAppBrowserRouteScope = RaftInAppBrowserRouteScope.InheritShell,
     artifactConversationId: String? = null,
     useWebPanelHost: Boolean = true,
+    installedAppServerId: String? = null,
 ): RaftLinkNavigator {
     // Lazy: every page has a navigator (ProvideRaftLinkOpening), few of them open a link.
     val preferenceRepository =
@@ -497,7 +597,29 @@ internal fun rememberRaftLinkNavigator(
     val artifactStoreScope = LocalRaftArtifactOpenStoreScope.current
     val artifactConversation = raftArtifactViewerHostConversationOrNull(artifactConversationId)
     val webPanelHost = if (useWebPanelHost) LocalRaftMobileWebPanelHost.current else null
-    return remember(pager, bridge, preferenceRepository, routeScope, rejectedMessage, artifactStoreScope, artifactConversation, webPanelHost) {
+    val cleanInstalledAppServerId = installedAppServerId?.trim()?.takeIf { it.isNotEmpty() }
+    val installedAppCoroutineScope = rememberCoroutineScope()
+    val pendingInstalledAppGate =
+        remember(pager, cleanInstalledAppServerId) {
+            if (cleanInstalledAppServerId != null) RaftPendingInstalledAppLookupGate() else null
+        }
+    DisposableEffect(pendingInstalledAppGate) {
+        onDispose { pendingInstalledAppGate?.cancel() }
+    }
+    WarmInstalledAppOriginsEffect(bridge = bridge, serverId = cleanInstalledAppServerId)
+    return remember(
+        pager,
+        bridge,
+        preferenceRepository,
+        routeScope,
+        rejectedMessage,
+        artifactStoreScope,
+        artifactConversation,
+        webPanelHost,
+        cleanInstalledAppServerId,
+        installedAppCoroutineScope,
+        pendingInstalledAppGate,
+    ) {
         fun currentEnvironmentKey(): String {
             val env = RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current()
             return "${env.webUrl}|${env.apiBaseUrl}"
@@ -597,6 +719,88 @@ internal fun rememberRaftLinkNavigator(
                 val env = RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current()
                 raftBrowserRaftHosts(env.webUrl, env.apiBaseUrl)
             },
+            lookupInstalledAppSync =
+                cleanInstalledAppServerId?.let { serverId ->
+                    { candidateOrigin ->
+                        val sharedStores = RaftSharedStoreRegistry.get(bridge)
+                        val scope = sharedStores.currentInstalledAppScopeSync(serverId)
+                        if (scope == null) {
+                            RaftInstalledAppSyncLookup.NotLoaded
+                        } else {
+                            sharedStores.installedAppOriginsCache.lookupSync(scope, candidateOrigin)
+                        }
+                    }
+                },
+            lookupInstalledAppAsync =
+                if (cleanInstalledAppServerId != null && pendingInstalledAppGate != null) {
+                    { _, candidateOrigin, onMatched, onFallback ->
+                        val capturedSource = webPanelHost?.consumePendingSource()
+                        pendingInstalledAppGate.launchLatest(
+                            scope = installedAppCoroutineScope,
+                            load = {
+                                val sharedStores = RaftSharedStoreRegistry.get(bridge)
+                                val accountId = sharedStores.resolveInstalledAppAccountId()
+                                val scope =
+                                    accountId?.let { acct ->
+                                        RaftInstalledAppScope(
+                                            accountId = acct,
+                                            environmentKey = currentEnvironmentKey(),
+                                            serverId = cleanInstalledAppServerId,
+                                        )
+                                    }
+                                val matched =
+                                    if (scope != null) {
+                                        sharedStores.installedAppOriginsCache.lookup(
+                                            appScope = scope,
+                                            targetOrigin = candidateOrigin,
+                                        )
+                                    } else {
+                                        null
+                                    }
+                                scope to matched
+                            },
+                            onComplete = { (scope, matched) ->
+                                if (capturedSource != null) {
+                                    webPanelHost?.setPendingSource(capturedSource)
+                                }
+                                if (scope != null && matched != null && matched.origin == candidateOrigin) {
+                                    onMatched(matched, scope.serverId)
+                                } else {
+                                    onFallback()
+                                }
+                            },
+                        )
+                        true
+                    }
+                } else {
+                    null
+                },
+            cancelPendingInstalledAppLookup = { pendingInstalledAppGate?.cancel() },
+        )
+    }
+}
+
+@Composable
+private fun WarmInstalledAppOriginsEffect(
+    bridge: BridgeModule,
+    serverId: String?,
+) {
+    val cleanServerId = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return
+    if (!raftPlatformSupportsInAppBrowser()) return
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
+    val activeEnvironment by sharedStores.apiEnvironmentStore.state.collectAsState()
+    val environmentKey =
+        remember(activeEnvironment.webUrl, activeEnvironment.apiBaseUrl) {
+            "${activeEnvironment.webUrl}|${activeEnvironment.apiBaseUrl}"
+        }
+    LaunchedEffect(sharedStores, environmentKey, cleanServerId) {
+        val accountId = sharedStores.resolveInstalledAppAccountId() ?: return@LaunchedEffect
+        sharedStores.installedAppOriginsCache.warm(
+            RaftInstalledAppScope(
+                accountId = accountId,
+                environmentKey = environmentKey,
+                serverId = cleanServerId,
+            ),
         )
     }
 }
