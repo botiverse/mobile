@@ -9,8 +9,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * `X-Raft-Fetch-Reason` on `GET /channels/inbox`: the value set is web's `ListFetchReason`
- * (botiverse/slock packages/web/src/store/listFetchReason.ts), sent on first-page reads only.
+ * `X-Raft-Fetch-Reason` on `GET /channels/inbox`: first-page reads send the caller's
+ * `ListFetchReason` (botiverse/slock packages/web/src/store/listFetchReason.ts), and every
+ * `offset > 0` page sends `page` (slock #16583 / #triage:#618).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class InboxFetchReasonHeaderTest {
@@ -23,6 +24,8 @@ class InboxFetchReasonHeaderTest {
                 "realtime_fallback", "manual", "legacy_no_fields", "sync_unpatchable",
                 // Mobile-only until the server lists it (`mobile_inbox_inplace_v0` reconcile).
                 "inplace_reconcile",
+                // Pagination / continuation pages (`offset > 0`, slock #16583 / #triage:#618).
+                "page",
                 // `inbox_row_position_v1`: not a list read, the rows' own (`?ids=`, server ACTIVITY_ROW_FETCH_REASONS).
                 "position_reread",
                 // `inbox_row_position_v1`: the sampled audit read of one row (web `position_audit`).
@@ -48,7 +51,7 @@ class InboxFetchReasonHeaderTest {
     }
 
     @Test
-    fun readWithoutAReasonAndContinuationPagesSendNoHeader() = runTest {
+    fun readWithoutAReasonSendsNoHeaderAndOffsetPagesSendPage() = runTest {
         val network = RecordingInboxClient()
         val repository =
             RealInboxRepository(
@@ -58,12 +61,24 @@ class InboxFetchReasonHeaderTest {
             )
 
         repository.loadInitial(ServerId("server-1"))
-        withInboxFetchReason(InboxFetchReason.Manual) {
-            repository.loadMore(ServerId("server-1"), offset = 30)
+        repository.loadMore(ServerId("server-1"), offset = 30)
+        withInboxFetchReason(
+            InboxFetchReason.RealtimeFallback,
+            InboxRefreshTriggerCount(InboxRefreshTrigger.MessageNew, coalesced = 3)
+        ) {
+            repository.loadMore(ServerId("server-1"), offset = 100)
         }
         withInboxFetchReason(null) { repository.loadInitial(ServerId("server-1")) }
 
-        assertEquals(List(3) { emptyMap<String, String>() }, network.headers)
+        assertEquals(
+            listOf(
+                emptyMap(),
+                mapOf("X-Raft-Fetch-Reason" to "page"),
+                mapOf("X-Raft-Fetch-Reason" to "page"),
+                emptyMap(),
+            ),
+            network.headers
+        )
     }
 
     @Test
@@ -112,6 +127,72 @@ class InboxFetchReasonHeaderTest {
             assertEquals(expected, activityUnreadSummaryFetchReason(source), source)
         }
         assertNull(activityUnreadSummaryFetchReason("something_new"))
+    }
+
+    @Test
+    fun followedThreadsRequestsSendCallerReasonOrDefaultInitial() = runTest {
+        val network = RecordingFollowedThreadsClient()
+        val repository = RealConversationRepository(InMemoryRaftAuthSessionStore(sampleSession()), network)
+
+        repository.getFollowedThreads(ServerId("server-1"))
+        withInboxFetchReason(InboxFetchReason.Visibility) {
+            repository.getUnreadFollowedThreads(ServerId("server-1"))
+        }
+        withInboxFetchReason(
+            InboxFetchReason.RealtimeFallback,
+            InboxRefreshTriggerCount(InboxRefreshTrigger.ThreadReply, coalesced = 2)
+        ) {
+            repository.getFollowedThreads(ServerId("server-1"))
+        }
+        withInboxFetchReason(InboxFetchReason.Manual) {
+            repository.getThreadReplySummaries(
+                threadId = build.raft.app.model.ThreadId("channel-1"),
+                parentMessageIds = listOf(build.raft.app.model.MessageId("msg-1"))
+            )
+        }
+
+        assertEquals(
+            listOf(
+                mapOf("X-Raft-Fetch-Reason" to "initial"),
+                mapOf("X-Raft-Fetch-Reason" to "visibility"),
+                mapOf(
+                    "X-Raft-Fetch-Reason" to "realtime_fallback",
+                    "X-Raft-Fetch-Trigger" to "thread_reply",
+                    "X-Raft-Fetch-Coalesced" to "2"
+                ),
+                mapOf("X-Raft-Fetch-Reason" to "manual"),
+            ),
+            network.followedHeaders
+        )
+    }
+
+    private class RecordingFollowedThreadsClient : RaftNetworkClient {
+        val followedHeaders = mutableListOf<Map<String, String>>()
+
+        override suspend fun request(
+            priority: DataRequestPriority,
+            path: String,
+            method: String,
+            query: List<Pair<String, String>>,
+            serverIdOverride: ServerId?,
+            bodyText: String?
+        ): HomeNetworkResponse = requestWithHeaders(priority, path, emptyMap(), method, query, serverIdOverride, bodyText)
+
+        override suspend fun requestWithHeaders(
+            priority: DataRequestPriority,
+            path: String,
+            headers: Map<String, String>,
+            method: String,
+            query: List<Pair<String, String>>,
+            serverIdOverride: ServerId?,
+            bodyText: String?
+        ): HomeNetworkResponse {
+            if (path == "channels/threads/followed") {
+                followedHeaders += headers
+                return HomeNetworkResponse(200, """{"threads":[]}""")
+            }
+            return HomeNetworkResponse(200, """{"threads":[]}""")
+        }
     }
 
     private class RecordingInboxClient : RaftNetworkClient {

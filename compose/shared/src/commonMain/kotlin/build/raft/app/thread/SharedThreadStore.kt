@@ -11,6 +11,7 @@ import build.raft.app.data.leftMarkedUnread
 import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.markUnreadOutcome
 import build.raft.app.data.MessageMutationSummary
+import build.raft.app.data.InboxFetchReason
 import build.raft.app.data.MviStaleToken
 import build.raft.app.data.SharedForegroundLoadGate
 import build.raft.app.data.SharedForegroundThreadKey
@@ -20,6 +21,7 @@ import build.raft.app.data.ThreadPendingSendDrainer
 import build.raft.app.data.ThreadPendingSendJournal
 import build.raft.app.data.ThreadPendingSendJournalDrainStore
 import build.raft.app.data.ThreadMessagesPage
+import build.raft.app.data.withInboxFetchReason
 import build.raft.app.data.map
 import build.raft.app.data.realtime.isSyncHorizonReset
 import build.raft.app.data.realtime.RealtimeVisibleStreamGapPolicy
@@ -3539,12 +3541,13 @@ internal class SharedThreadStore(
 
     private fun launchSecondaryTimelineRefresh(
         routePayload: RaftThreadScreenPayload,
-        staleToken: MviStaleToken
+        staleToken: MviStaleToken,
+        fetchReason: InboxFetchReason = InboxFetchReason.Initial,
     ) {
         secondaryTimelineRefreshJob?.cancel()
         secondaryTimelineRefreshJob =
             scope.launch {
-                refreshSecondaryTimelineData(routePayload, staleToken)
+                refreshSecondaryTimelineData(routePayload, staleToken, fetchReason)
             }
     }
 
@@ -3565,7 +3568,8 @@ internal class SharedThreadStore(
 
     private suspend fun refreshSecondaryTimelineData(
         routePayload: RaftThreadScreenPayload,
-        staleToken: MviStaleToken
+        staleToken: MviStaleToken,
+        fetchReason: InboxFetchReason = InboxFetchReason.Initial,
     ) {
         val startedAt = TimeSource.Monotonic.markNow()
         val beforeFetch = _state.value.payload
@@ -3624,12 +3628,14 @@ internal class SharedThreadStore(
             } else {
                 val followedStartedAt = TimeSource.Monotonic.markNow()
                 val followedResult =
-                    dataSource.fetchFollowedThreadPayloadForContext(
-                        basePayload = beforeFetch,
-                        expectedContext = producerContext,
-                    ) { snapshot, observedAt ->
-                        replySummaries = snapshot
-                        replySummariesObservedAt = observedAt
+                    withInboxFetchReason(fetchReason) {
+                        dataSource.fetchFollowedThreadPayloadForContext(
+                            basePayload = beforeFetch,
+                            expectedContext = producerContext,
+                        ) { snapshot, observedAt ->
+                            replySummaries = snapshot
+                            replySummariesObservedAt = observedAt
+                        }
                     }
                 diagnosticsLogger?.invoke(
                     "thread_secondary_followed_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
@@ -4725,7 +4731,7 @@ internal class SharedThreadStore(
                 staleToken.isCurrent(routeStaleToken) &&
                 routeStillCurrent(existing, "thread_page", "older_secondary", applied)
             ) {
-                launchSecondaryTimelineRefresh(applied, staleToken)
+                launchSecondaryTimelineRefresh(applied, staleToken, fetchReason = InboxFetchReason.Manual)
                 launchDurableWindowExtension(existing, result.data, ThreadDurablePageDirection.Older, beforeSeq)
             }
         } finally {
@@ -5133,7 +5139,7 @@ internal class SharedThreadStore(
                 staleToken.isCurrent(routeStaleToken) &&
                 routeStillCurrent(existing, "thread_page", "gap_fill_secondary", appliedPayload)
             ) {
-                launchSecondaryTimelineRefresh(appliedPayload, staleToken)
+                launchSecondaryTimelineRefresh(appliedPayload, staleToken, fetchReason = InboxFetchReason.Manual)
                 launchDurableWindowExtension(existing, result.data, ThreadDurablePageDirection.Older, beforeSeq)
             }
         } finally {
@@ -6127,7 +6133,7 @@ internal class SharedThreadStore(
             "thread_secondary_backfill threadId=${initial.sourceThreadId.orEmpty()} " +
                 "trigger=${if (mergedNewArrivals) "resume_gap" else "resume"}"
         )
-        launchSecondaryTimelineRefresh(initial, staleToken)
+        launchSecondaryTimelineRefresh(initial, staleToken, fetchReason = InboxFetchReason.Visibility)
     }
 
     /**

@@ -1,10 +1,12 @@
 package build.raft.app
 
 import build.raft.app.data.DataResult
+import build.raft.app.data.InboxFetchReason
 import build.raft.app.data.RaftStaleReadRecovery
 import build.raft.app.data.ThreadListSnapshot
 import build.raft.app.data.isRwOverloadedError
 import build.raft.app.data.rwRetryAfterMillis
+import build.raft.app.data.withInboxFetchReason
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -40,7 +42,10 @@ internal class ThreadUnreadThreadParents(
     /** Ids asked for while a lookup was in flight: looked up right after it instead of dropped. */
     private val unreadThreadParentsQueued = LinkedHashSet<String>()
 
-    suspend fun resolve(threadChannelIds: Set<String>) {
+    suspend fun resolve(
+        threadChannelIds: Set<String>,
+        fetchReason: InboxFetchReason = InboxFetchReason.Initial,
+    ) {
         val routeIdentity = currentState().payload.resolveThreadRouteIdentity()
         val channelId = routeIdentity.timelineChannelId?.takeIf { routeIdentity.surfaceKind == RaftThreadSurfaceKind.Channel }
         if (channelId == null) {
@@ -64,7 +69,7 @@ internal class ThreadUnreadThreadParents(
         unreadThreadParentsInFlight = true
         unreadThreadParentsRequested += pending
         try {
-            val result = dataSource.fetchUnreadFollowedThreads()
+            val result = withInboxFetchReason(fetchReason) { dataSource.fetchUnreadFollowedThreads() }
             if (currentState().payload.resolveThreadRouteIdentity() != routeIdentity) {
                 diagnosticsLogger?.invoke("thread_unread_thread_parents_drop reason=route_changed")
                 unreadThreadParentsRecovery.reset()
@@ -119,7 +124,7 @@ internal class ThreadUnreadThreadParents(
             (result as? DataResult.Content)?.data?.staleRetryAfterMillis
                 ?: (result as? DataResult.Error)?.error?.rwRetryAfterMillis
         unreadThreadParentsRecovery.schedule(retryAfterMillis) {
-            resolve(ids)
+            resolve(ids, fetchReason = InboxFetchReason.Visibility)
             true
         }
     }

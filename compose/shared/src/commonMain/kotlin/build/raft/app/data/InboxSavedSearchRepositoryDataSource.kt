@@ -33,11 +33,17 @@ private suspend fun RaftNetworkClient.inbox(
     offset: Int,
     serverId: ServerId
 ): HomeNetworkResponse =
-    // Like web, only a first-page read (a reset) says why; a continuation page does not.
+    // First-page reads (offset == 0) carry the caller's reason; every offset > 0 page
+    // (LoadMore and loadCanonicalDepth continuation pages) sends `page` (slock #16583 / #triage:#618, web parity).
     requestWithHeaders(
         priority,
         "channels/inbox",
-        headers = if (offset == 0) currentInboxFetchReasonHeaders() else emptyMap(),
+        headers =
+            if (offset == 0) {
+                currentInboxFetchReasonHeaders()
+            } else {
+                mapOf(RaftFetchReasonHeader to InboxFetchReason.Page.wireValue)
+            },
         query = inboxRequestQuery(filter, limit, offset),
         serverIdOverride = serverId
     )

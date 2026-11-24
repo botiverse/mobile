@@ -2086,9 +2086,8 @@ internal class RaftSharedStoreProvider private constructor(
     }
 
     /**
-     * 1.30 web-aligned Activity in-place + per-row position path (#proj-mobile:#163, Tenny d229571c):
-     * default ON via `mobile_activity_inplace_v1` with emergency kill via `mobile_inbox_inplace_v0`
-     * `kill_switch` or explicit `mobile_activity_inplace_v1` off.
+     * 1.30 web-aligned Activity in-place + per-row position path (#proj-mobile:#163, Tenny cb559277):
+     * default ON via `mobile_activity_inplace_v1`, which is the sole 1.30 off-switch.
      */
     private fun inboxInPlaceEnabled(serverId: String): Boolean =
         serverFeatureFlags.isActivityInPlaceEnabled(ServerId(serverId))

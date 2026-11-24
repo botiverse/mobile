@@ -130,8 +130,7 @@ const val INBOX_ROW_POSITION_FEATURE_FLAG_KEY: String = "inbox_row_position_v1"
  * 1.30 web-aligned Activity in-place + per-row position path (#proj-mobile:#163, Tenny d229571c):
  * client default ON (in [SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS]), so `missing_flag` /
  * unresolved evaluates ON everywhere without a DB migration, while an explicit server rule,
- * `flag_disabled`, or `kill_switch` turns it off per server or globally. A global `kill_switch`
- * on [MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY] also acts as a day-0 emergency off-switch
+ * `flag_disabled`, or `kill_switch` turns it off per server or globally
  * ([SharedServerFeatureFlags.isActivityInPlaceEnabled]).
  */
 const val MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY: String = "mobile_activity_inplace_v1"
@@ -519,16 +518,13 @@ class SharedServerFeatureFlags(
         applyDiagnosticOverride(serverId, key, serverEffective(serverId, key))
 
     /**
-     * 1.30 web-aligned Activity in-place + per-row position gate (#proj-mobile:#163, Tenny d229571c):
+     * 1.30 web-aligned Activity in-place + per-row position gate (#proj-mobile:#163, Tenny cb559277):
      * ON by default across all servers via [MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY] (default-on
      * when unresolved or `missing_flag`), OFF when `mobile_activity_inplace_v1` explicitly evaluates
-     * false (`flag_disabled` / `kill_switch` / rule / local diagnostic override) OR when the legacy
-     * [MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY] carries an emergency `kill_switch` reason. An ordinary
-     * `default` false on `mobile_inbox_inplace_v0` does NOT disable 1.30.
+     * false (`flag_disabled` / `kill_switch` / rule / local diagnostic override).
      */
     internal fun isActivityInPlaceEnabled(serverId: ServerId): Boolean =
-        isEnabled(serverId, MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY) &&
-            snapshotFor(serverId).reasons[MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY] != FEATURE_FLAG_REASON_KILL_SWITCH
+        isEnabled(serverId, MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY)
 
     /**
      * An online evaluation from this process always decides. Before the first one lands (offline cold
