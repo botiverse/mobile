@@ -14,9 +14,11 @@ internal const val HANDS_DELTA_PRODUCTION_APPLICATION_ID = "build.raft.app"
 internal const val HANDS_DELTA_PRODUCTION_APP_SLUG = "raft-android"
 internal const val HANDS_DELTA_PREVIEW_APPLICATION_ID = HANDS_DELTA_PRODUCTION_APPLICATION_ID
 internal const val HANDS_DELTA_PREVIEW_APP_SLUG = HANDS_DELTA_PRODUCTION_APP_SLUG
+internal const val HANDS_DELTA_RELEASE_ALPHA_CHANNEL = "alpha"
 internal const val HANDS_DELTA_PREVIEW_CHANNEL = "preview"
 internal const val HANDS_DELTA_MAIN_CHANNEL = "main"
 internal const val HANDS_UPDATE_MODE_ALPHA_DELTA = "alpha_delta"
+internal const val HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA = "alpha_channel_delta"
 internal const val HANDS_UPDATE_MODE_PREVIEW_DELTA = "preview_delta"
 internal const val HANDS_UPDATE_MODE_MAIN_DELTA = "main_delta"
 internal const val HANDS_UPDATE_MODE_FULL_APK = "full_apk"
@@ -81,6 +83,8 @@ internal fun handsDeltaUpdateMode(
     when {
         appSlug == HANDS_DELTA_ALPHA_APP_SLUG && channel == HANDS_DELTA_ALPHA_CHANNEL ->
             HANDS_UPDATE_MODE_ALPHA_DELTA
+        appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_RELEASE_ALPHA_CHANNEL ->
+            HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA
         appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_PREVIEW_CHANNEL ->
             HANDS_UPDATE_MODE_PREVIEW_DELTA
         appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_MAIN_CHANNEL ->
@@ -149,7 +153,11 @@ internal fun handsDeltaUpdateAllowed(
         buildApplicationId == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
             runtimePackageName == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
             appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG &&
-            (channel == HANDS_DELTA_PREVIEW_CHANNEL || channel == HANDS_DELTA_MAIN_CHANNEL)
+            (
+                channel == HANDS_DELTA_RELEASE_ALPHA_CHANNEL ||
+                    channel == HANDS_DELTA_PREVIEW_CHANNEL ||
+                    channel == HANDS_DELTA_MAIN_CHANNEL
+                )
     return isExactAlpha || isExactRelease
 }
 

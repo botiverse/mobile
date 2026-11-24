@@ -149,13 +149,14 @@ on:
         type: string
         default: ""
       hands_channel:
-        description: "Hands channel: main | preview | nightly | debug"
+        description: "Hands channel: main | preview | alpha | nightly | debug"
         required: true
         type: choice
         default: "main"
         options:
           - main
           - preview
+          - alpha
           - nightly
           - debug
       android_variant:

@@ -757,7 +757,7 @@ android {
             val handsAppSlug = raftBuildConfigString("SLOCK_HANDS_APP_SLUG", "raft-android")
             val handsChannel = raftBuildConfigString("SLOCK_HANDS_CHANNEL", "main")
             val releaseDeltaEnabled =
-                handsAppSlug == "raft-android" && handsChannel in setOf("preview", "main")
+                handsAppSlug == "raft-android" && handsChannel in setOf("alpha", "preview", "main")
             buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", releaseDeltaEnabled.toString())
             buildConfigField(
                 "String",

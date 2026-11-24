@@ -122,6 +122,11 @@ class HandsDeltaUpdateGateTest {
         val isExactAlpha =
             BuildConfig.BUILD_TYPE == "alpha" &&
                 BuildConfig.APPLICATION_ID == HANDS_DELTA_ALPHA_APPLICATION_ID
+        val isExactAlphaChannelRelease =
+            BuildConfig.BUILD_TYPE == "release" &&
+                BuildConfig.APPLICATION_ID == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
+                BuildConfig.HANDS_APP_SLUG == HANDS_DELTA_PRODUCTION_APP_SLUG &&
+                BuildConfig.HANDS_CHANNEL == HANDS_DELTA_RELEASE_ALPHA_CHANNEL
         val isExactPreviewRelease =
             BuildConfig.BUILD_TYPE == "release" &&
                 BuildConfig.APPLICATION_ID == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
@@ -136,13 +141,17 @@ class HandsDeltaUpdateGateTest {
 
         assertEquals(!isPlay, BuildConfig.HANDS_APK_UPDATE_ENABLED)
         assertEquals(
-            isExactAlpha || isExactPreviewRelease || isExactMainRelease,
+            isExactAlpha || isExactAlphaChannelRelease || isExactPreviewRelease || isExactMainRelease,
             BuildConfig.HANDS_DELTA_UPDATE_ENABLED
         )
         when {
             isExactAlpha -> {
                 assertEquals(HANDS_DELTA_ALPHA_APP_SLUG, BuildConfig.HANDS_DELTA_APP_SLUG)
                 assertEquals(HANDS_DELTA_ALPHA_CHANNEL, BuildConfig.HANDS_DELTA_CHANNEL)
+            }
+            isExactAlphaChannelRelease -> {
+                assertEquals(HANDS_DELTA_PRODUCTION_APP_SLUG, BuildConfig.HANDS_DELTA_APP_SLUG)
+                assertEquals(HANDS_DELTA_RELEASE_ALPHA_CHANNEL, BuildConfig.HANDS_DELTA_CHANNEL)
             }
             isExactPreviewRelease -> {
                 assertEquals(HANDS_DELTA_PRODUCTION_APP_SLUG, BuildConfig.HANDS_DELTA_APP_SLUG)
@@ -167,7 +176,7 @@ class HandsDeltaUpdateGateTest {
                 appSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
                 channel = BuildConfig.HANDS_DELTA_CHANNEL
             )
-        assertEquals(isExactAlpha || isExactPreviewRelease || isExactMainRelease, allowed)
+        assertEquals(isExactAlpha || isExactAlphaChannelRelease || isExactPreviewRelease || isExactMainRelease, allowed)
 
         val route =
             resolveHandsUpdateRoute(
@@ -184,6 +193,16 @@ class HandsDeltaUpdateGateTest {
                         mode = HANDS_UPDATE_MODE_ALPHA_DELTA,
                         appSlug = HANDS_DELTA_ALPHA_APP_SLUG,
                         channel = HANDS_DELTA_ALPHA_CHANNEL,
+                        deltaEnabled = true
+                    ),
+                    route
+                )
+            isExactAlphaChannelRelease ->
+                assertEquals(
+                    HandsUpdateRoute(
+                        mode = HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA,
+                        appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                        channel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
                         deltaEnabled = true
                     ),
                     route
@@ -231,6 +250,16 @@ class HandsDeltaUpdateGateTest {
                 runtimePackageName = HANDS_DELTA_ALPHA_APPLICATION_ID,
                 appSlug = HANDS_DELTA_ALPHA_APP_SLUG,
                 channel = HANDS_DELTA_ALPHA_CHANNEL
+            )
+        )
+        assertTrue(
+            handsDeltaUpdateAllowed(
+                configuredEnabled = true,
+                apkUpdateEnabled = true,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL
             )
         )
         assertTrue(
