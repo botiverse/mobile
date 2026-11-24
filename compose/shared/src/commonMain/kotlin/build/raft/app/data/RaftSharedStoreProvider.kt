@@ -666,6 +666,25 @@ internal class RaftSharedStoreProvider private constructor(
     }
     val artifactSummaryStore: SharedArtifactSummaryStore by artifactSummaryStoreLazy
 
+    /**
+     * Workspace Artifacts: the reader's own Follow / Unfollow answers shared across Artifacts Home
+     * lists and message cards (`PUT`/`DELETE /api/artifacts/:id/subscription`, slock #16357).
+     */
+    private val artifactFollowStoreLazy = lazy {
+        val dashboardApi = NetworkRaftArtifactsDashboardApi(networkClient)
+        SharedArtifactFollowStore(
+            setFollowingRequest = { serverId, artifactId, following ->
+                dashboardApi.updateArtifactFollowing(serverId, artifactId, following)
+            },
+            onFollowUpdated = { serverId, artifactId, following ->
+                if (artifactSummaryStoreLazy.isInitialized()) {
+                    artifactSummaryStore.patchFollowing(serverId, artifactId, following)
+                }
+            },
+        )
+    }
+    internal val artifactFollowStore: SharedArtifactFollowStore by artifactFollowStoreLazy
+
     private val artifactScreenshotDiskCache: CoilArtifactScreenshotDiskCache by lazy {
         CoilArtifactScreenshotDiskCache(sharedPreferenceStore)
     }
@@ -824,6 +843,7 @@ internal class RaftSharedStoreProvider private constructor(
                 // App link previews and consent answers, and Artifact summaries: per viewer, session only.
                 if (appLinkPreviewStoreLazy.isInitialized()) appLinkPreviewStore.clearAll()
                 if (artifactSummaryStoreLazy.isInitialized()) artifactSummaryStore.clearAll()
+                if (artifactFollowStoreLazy.isInitialized()) artifactFollowStore.clearAll()
                 if (artifactScreenshotStoreLazy.isInitialized()) artifactScreenshotStore.clearAll()
                 artifactScreenshotDiskCache.clearAllAsync(threadSendScope)
                 // Quote replies' resolved quotes and composer quote metadata: per viewer, session only.
@@ -2139,6 +2159,9 @@ internal class RaftSharedStoreProvider private constructor(
                 // (using the shared disk cache instance so in-flight writes are fenced even before store init).
                 if (artifactSummaryStoreLazy.isInitialized()) {
                     artifactSummaryStore.dropServer(grant.serverId)
+                }
+                if (artifactFollowStoreLazy.isInitialized()) {
+                    artifactFollowStore.dropServer(grant.serverId)
                 }
                 if (appLinkPreviewStoreLazy.isInitialized()) {
                     appLinkPreviewStore.dropServer(grant.serverId)

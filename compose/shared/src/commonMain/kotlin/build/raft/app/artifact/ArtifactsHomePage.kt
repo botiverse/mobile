@@ -27,12 +27,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import build.raft.app.base.Utils
+import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.data.ArtifactOwnFollowEvent
 import build.raft.app.data.ArtifactsHomeEvent
 import build.raft.app.data.ArtifactsHomeFilterRepository
 import build.raft.app.data.ArtifactsHomeIntent
@@ -56,9 +58,12 @@ import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
+import build.raft.designsystem.components.LocalRaftToastHostState
+import build.raft.designsystem.components.RaftPaneGridExpand
 import coil3.compose.LocalPlatformContext
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /** The Artifacts home page (web route `/artifacts`, `ArtifactsDashboard`). */
@@ -96,6 +101,8 @@ internal class ArtifactsHomeViewModel(
     logger: (String) -> Unit,
     filterRepository: ArtifactsHomeFilterRepository,
     settledSeenRepository: ArtifactsHomeSettledSeenRepository,
+    ownFollowEvents: SharedFlow<ArtifactOwnFollowEvent>? = null,
+    onOwnFollowCommitted: (serverId: String, artifactId: String, following: Boolean) -> Unit = { _, _, _ -> },
 ) : ViewModel() {
     val store =
         SharedArtifactsHomeStore(
@@ -106,6 +113,8 @@ internal class ArtifactsHomeViewModel(
             logger = logger,
             filterRepository = filterRepository,
             settledSeenRepository = settledSeenRepository,
+            ownFollowEvents = ownFollowEvents,
+            onOwnFollowCommitted = onOwnFollowCommitted,
         )
     val state: StateFlow<ArtifactsHomeState> get() = store.state
 
@@ -151,6 +160,8 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
                 logger = { bridge.log(it) },
                 filterRepository = sharedStores.artifactsHomeFilterRepository,
                 settledSeenRepository = sharedStores.artifactsHomeSettledSeenRepository,
+                ownFollowEvents = sharedStores.artifactFollowStore.events,
+                onOwnFollowCommitted = { srv, id, following -> sharedStores.artifactFollowStore.reportOwnFollow(srv, id, following) },
             )
         }
     val state by viewModel.state.collectAsState()
@@ -211,7 +222,13 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
     val moreFailed = stringResource(Res.string.artifacts_dashboard_more_failed)
     val settleFailed = stringResource(Res.string.artifacts_settled_failed)
     val settleForbidden = stringResource(Res.string.artifacts_settled_forbidden)
+    val unfollowedToast = stringResource(Res.string.artifacts_follow_unfollowed)
+    val undoLabel = stringResource(Res.string.artifacts_follow_undo)
+    val followFailed = stringResource(Res.string.artifacts_follow_failed)
     val copiedMessage = stringResource(Res.string.common_copied)
+    val toastHost = LocalRaftToastHostState.current
+    val currentToastHost by rememberUpdatedState(toastHost)
+    val undoToastIds = remember { mutableMapOf<String, Long>() }
     LaunchedEffect(viewModel) {
         viewModel.store.events.collect { event ->
             when (event) {
@@ -221,44 +238,117 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
                     val message = if (event.forbidden) settleForbidden else settleFailed
                     event.error?.let { bridge.errorToast(message, it) } ?: bridge.toast(message)
                 }
+                is ArtifactsHomeEvent.Unfollowed -> {
+                    undoToastIds.remove(event.artifactId)?.let { currentToastHost?.dismiss(it) }
+                    val undo = { viewModel.store.dispatch(ArtifactsHomeIntent.SetFollowing(event.artifactId, true)) }
+                    val host = currentToastHost
+                    if (host != null) {
+                        undoToastIds[event.artifactId] = host.show(title = unfollowedToast, actionLabel = undoLabel, onAction = undo)
+                    } else {
+                        bridge.toastWithAction(unfollowedToast, undoLabel, undo)
+                    }
+                }
+                is ArtifactsHomeEvent.Followed -> {
+                    undoToastIds.remove(event.artifactId)?.let { currentToastHost?.dismiss(it) }
+                }
+                is ArtifactsHomeEvent.FollowFailed -> {
+                    event.error?.let { bridge.errorToast(followFailed, it) } ?: bridge.toast(followFailed)
+                }
             }
         }
     }
     val openArtifactWebPage = rememberRaftWebPageOpener()
     val webBaseUrl = remember(sharedStores) { standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore) }
-    // Not opened from a conversation: no `hostConversation` (the page's title stays plain).
-    val opener = rememberRaftArtifactOpener(conversationId = null) { openArtifactWebPage(artifactWebUrl(webBaseUrl, it)) }
-    RaftArtifactViewerPrewarm(enabled = pageVisible && !state.rows.isNullOrEmpty(), conversationId = null)
     val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
     val wide = LocalRaftSettingsWideDetail.current || windowWidth.value >= DualPaneMinimumWidthDp
+    var artifactPane by remember { mutableStateOf(RaftArtifactColumnPane()) }
+    val splitExpand = remember { RaftPaneGridExpand() }
+    var wasSplitOpen by remember { mutableStateOf(false) }
+    val shellHost = LocalRaftHost.current
+    // Server switch closes the previous server's split viewer column.
+    LaunchedEffect(serverId) {
+        if (artifactPane.isOpen) {
+            artifactPane = artifactPane.cleared()
+            splitExpand.restore()
+            wasSplitOpen = false
+        }
+    }
+    // Shrinking from wide split column to narrow promotes the open viewer onto the full-screen stack.
+    LaunchedEffect(wide, artifactPane.entry?.id) {
+        val openEntry = artifactPane.entry
+        if (!wide && openEntry != null) {
+            artifactPane = artifactPane.cleared()
+            splitExpand.restore()
+            wasSplitOpen = false
+            viewModel.store.dispatch(ArtifactsHomeIntent.ViewerOpened)
+            shellHost.navigator.openPage(openEntry.pageName, openEntry.pageData)
+        }
+    }
+    // Closing the split viewer on wide refreshes read state (while open beside the list, live activity refreshes stay active).
+    LaunchedEffect(wide, artifactPane.isOpen) {
+        if (!wide) return@LaunchedEffect
+        val openNow = artifactPane.isOpen
+        if (wasSplitOpen && !openNow) {
+            viewModel.store.dispatch(ArtifactsHomeIntent.ViewerClosed)
+        }
+        wasSplitOpen = openNow
+    }
     val screenshots = remember(sharedStores, serverId) { serverId?.let { sharedStores.artifactScreenshotStore.reader(it) } }
     // A flag resolved off (or a 403) is the off state; nothing is read.
     val shown = if (!flagPending && !flagEnabled) state.copy(status = ArtifactsHomeStatus.Off) else state
     CompositionLocalProvider(LocalArtifactScreenshotReader provides screenshots) {
-        ArtifactsHomeScreen(
-            state = shown,
-            view = prefs.view,
-            readerId = session.readerId,
-            serverName = session.serverName,
+        ArtifactsHomeSplitLayout(
             wide = wide,
-            onIntent = viewModel.store::dispatch,
-            onView = { view ->
-                prefs = prefsRepository.read().copy(view = view)
-                prefsRepository.write(prefs)
-            },
-            onOpen = { row ->
-                val target = ArtifactLinkTarget(row.summary.id)
-                viewModel.store.dispatch(ArtifactsHomeIntent.ViewerOpened)
-                opener.open(target, RaftArtifactViewerHeader.of(row.summary, target), "artifacts_home")
-            },
-            onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
-            onCopyLink = { row ->
-                bridge.copyToPasteboard(artifactWebUrl(webBaseUrl, ArtifactLinkTarget(row.summary.id)))
-                bridge.toast(copiedMessage)
-            },
-            cover = { row, dimmed -> ArtifactsHomeTileCover(row, dimmed) },
-            thumbnail = { row, dimmed -> ArtifactsHomeRowThumbnail(row, dimmed) },
-        )
+            artifact = { artifactPane },
+            onArtifactChange = { artifactPane = it },
+            active = pageVisible,
+            expand = splitExpand,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            // Composed inside ArtifactsHomeSplitLayout so LocalRaftArtifactOpenInColumn matches wide split vs full screen.
+            val opener =
+                rememberRaftArtifactOpener(
+                    conversationId = null,
+                    openPageOverride =
+                        if (wide) {
+                            { target, scopeOverride, conv ->
+                                val resolvedScope = sharedStores.currentNavigationStoreScope(scopeOverride ?: storeScope)
+                                val data = raftArtifactViewerPageData(target, conv).withRaftShellStoreScope(resolvedScope).toJsonObject()
+                                splitExpand.restore()
+                                artifactPane = artifactPane.open(RAFT_ARTIFACT_VIEWER_PAGE, data)
+                                true
+                            }
+                        } else {
+                            null
+                        },
+                ) { openArtifactWebPage(artifactWebUrl(webBaseUrl, it)) }
+            RaftArtifactViewerPrewarm(enabled = pageVisible && !state.rows.isNullOrEmpty(), conversationId = null)
+            ArtifactsHomeScreen(
+                state = shown,
+                view = prefs.view,
+                readerId = session.readerId,
+                serverName = session.serverName,
+                wide = wide,
+                onIntent = viewModel.store::dispatch,
+                onView = { view ->
+                    prefs = prefsRepository.read().copy(view = view)
+                    prefsRepository.write(prefs)
+                },
+                onOpen = { row ->
+                    val target = ArtifactLinkTarget(row.summary.id)
+                    if (!wide) viewModel.store.dispatch(ArtifactsHomeIntent.ViewerOpened)
+                    opener.open(target, RaftArtifactViewerHeader.of(row.summary, target), "artifacts_home")
+                },
+                onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
+                onCopyLink = { row ->
+                    bridge.copyToPasteboard(artifactWebUrl(webBaseUrl, ArtifactLinkTarget(row.summary.id)))
+                    bridge.toast(copiedMessage)
+                },
+                cover = { row, dimmed -> ArtifactsHomeTileCover(row, dimmed) },
+                thumbnail = { row, dimmed -> ArtifactsHomeRowThumbnail(row, dimmed) },
+                currentArtifactId = artifactPane.currentArtifactIdOrNull().takeIf { wide },
+            )
+        }
     }
 }
 

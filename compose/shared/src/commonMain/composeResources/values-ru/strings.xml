@@ -4482,6 +4482,11 @@
     <string name="message_card_allow_app">Разрешить %1$s</string>
     <string name="artifacts_menu_copy_link">Копировать ссылку</string>
     <string name="artifacts_menu_link_copied">Ссылка скопирована</string>
+    <string name="artifacts_menu_follow">Подписаться</string>
+    <string name="artifacts_menu_unfollow">Отписаться</string>
+    <string name="artifacts_follow_unfollowed">Вы отписались</string>
+    <string name="artifacts_follow_undo">Отменить</string>
+    <string name="artifacts_follow_failed">Не удалось изменить статус подписки. Попробуйте ещё раз.</string>
     <string name="artifacts_card_comments_one">1 комментарий</string>
     <string name="artifacts_card_comments_many">Комментариев: %1$d</string>
     <string name="artifacts_card_loading">Загрузка Artifact…</string>

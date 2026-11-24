@@ -4507,6 +4507,11 @@
     <string name="message_card_allow_app">%1$s 허용</string>
     <string name="artifacts_menu_copy_link">링크 복사</string>
     <string name="artifacts_menu_link_copied">링크를 복사했어요.</string>
+    <string name="artifacts_menu_follow">팔로우</string>
+    <string name="artifacts_menu_unfollow">팔로우 취소</string>
+    <string name="artifacts_follow_unfollowed">팔로우 취소됨</string>
+    <string name="artifacts_follow_undo">실행 취소</string>
+    <string name="artifacts_follow_failed">팔로우 상태를 바꾸지 못했어요. 다시 시도해 주세요.</string>
     <string name="artifacts_card_comments_one">댓글 1개</string>
     <string name="artifacts_card_comments_many">댓글 %1$d개</string>
     <string name="artifacts_card_loading">Artifact 불러오는 중</string>

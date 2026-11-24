@@ -119,6 +119,25 @@ class ThreadArtifactMessageRefsTest {
             ),
             items,
         )
+
+        val withUnfollow = artifactCardMenuItems(following = true, showFollow = true)
+        assertEquals(
+            listOf(ArtifactCardMenuAction.Open, ArtifactCardMenuAction.CopyLink, ArtifactCardMenuAction.Follow),
+            withUnfollow.map { it.action },
+        )
+        assertEquals(Res.string.artifacts_menu_unfollow, withUnfollow[2].label)
+        assertEquals(RaftLucideIconName.UnfollowArtifact, withUnfollow[2].icon)
+        assertFalse(withUnfollow[2].dividerBefore, "Follow/Unfollow shares the Copy link group without a separator")
+        assertTrue(withUnfollow[2].enabled)
+
+        val withPendingFollow = artifactCardMenuItems(following = false, showFollow = true, followPending = true)
+        assertEquals(Res.string.artifacts_menu_follow, withPendingFollow[2].label)
+        assertEquals(RaftLucideIconName.FollowArtifact, withPendingFollow[2].icon)
+        assertFalse(withPendingFollow[2].enabled)
+
+        // Unknown following state or showFollow = false omits the Follow item.
+        assertEquals(2, artifactCardMenuItems(following = null, showFollow = true).size)
+        assertEquals(2, artifactCardMenuItems(following = true, showFollow = false).size)
     }
 
     @Test
