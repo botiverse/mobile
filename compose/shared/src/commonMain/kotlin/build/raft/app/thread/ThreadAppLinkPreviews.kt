@@ -216,15 +216,21 @@ internal fun ThreadAppLinkPreviewScope(
     // The row as the store sees it: on screen or not, and whether the person is on it (link_card.changed).
     val presence = rememberThreadAppLinkRowPresence(host, messageId, body, batch)
     val cardActivity = remember(messageId) { ThreadAppLinkCardActivity() }
-    val state by host.store.state.collectAsState()
-    val view =
-        remember(state, host.viewerKey, messageId, body, host.conversationId, batch) {
-            state.messageView(
+    val mode = batch.read?.mode ?: APP_LINK_READ_MODE_V1
+    val viewId = batch.read?.view?.id
+    val viewFlow =
+        remember(host.store, host.viewerKey, messageId, body, host.conversationId, mode, viewId) {
+            host.store.messageViewFlow(host.viewerKey, messageId, body, host.conversationId, mode = mode, viewId = viewId)
+        }
+    val initialView =
+        remember(host.store, host.viewerKey, messageId, body, host.conversationId, mode, viewId) {
+            host.store.state.value.messageView(
                 host.viewerKey, messageId, body, host.conversationId, host.store.artifactHosts(),
-                mode = batch.read?.mode ?: APP_LINK_READ_MODE_V1,
-                viewId = batch.read?.view?.id,
+                mode = mode,
+                viewId = viewId,
             )
         }
+    val view by viewFlow.collectAsState(initial = initialView)
     LaunchedEffect(host.store, host.viewerKey, messageId, body, view.wantsRead, view.readSignature, batch, presence) {
         if (view.wantsRead) host.store.read(host.viewerKey, host.serverId, messageId, body, host.conversationId, batch.read, presence)
     }

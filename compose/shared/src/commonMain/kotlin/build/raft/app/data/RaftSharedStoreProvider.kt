@@ -4029,6 +4029,7 @@ internal class RaftSharedStoreProvider private constructor(
             val networkExecutor = createPlatformRaftHttpExecutor(networkWarningLogger)
             val networkReachabilityGates = RaftHostReachabilityGates()
             val networkInFlightGets = RaftInFlightGetDedupe()
+            val networkChannelDetailCoalescer = RaftChannelDetailGetCoalescer()
             val terminalAuthLossReporter: suspend (StoredAuthSession, String) -> Unit = { session, caller ->
                 authLossFunnel.report(
                     AuthLossSignal(
@@ -4054,7 +4055,8 @@ internal class RaftSharedStoreProvider private constructor(
                     platformFileResolver = platformFileResolver,
                     executor = networkExecutor,
                     reachabilityGates = networkReachabilityGates,
-                    inFlightGets = networkInFlightGets
+                    inFlightGets = networkInFlightGets,
+                    channelDetailCoalescer = networkChannelDetailCoalescer
                 )
             }
             val ownerScopedNetworkClientFactory: (RaftAuthSessionStore, String) -> RaftNetworkClient =
@@ -4074,7 +4076,8 @@ internal class RaftSharedStoreProvider private constructor(
                         platformFileResolver = platformFileResolver,
                         executor = networkExecutor,
                         reachabilityGates = networkReachabilityGates,
-                        inFlightGets = networkInFlightGets
+                        inFlightGets = networkInFlightGets,
+                        channelDetailCoalescer = networkChannelDetailCoalescer
                     )
                 }
             val networkClient = scopedNetworkClientFactory(authStore)

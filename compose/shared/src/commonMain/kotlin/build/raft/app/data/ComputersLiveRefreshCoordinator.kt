@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.data.realtime.RealtimeSocketEvents
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -57,6 +58,7 @@ internal class ComputersLiveRefreshCoordinator(
     private val syncChangesPullAllowed: (serverId: String) -> Boolean = { false },
     private val pullSyncChanges: suspend (serverId: String, trigger: String) -> Boolean = { _, _ -> false },
     private val windowMillis: Long = AgentProfileRefreshCoalescer.DEFAULT_WINDOW_MILLIS,
+    private val minRefreshIntervalMillis: Long = DEFAULT_MIN_REFRESH_INTERVAL_MILLIS,
     private val coalesceFreshWithin: Duration = RECENT_LIVE_STATUS_REFRESH_COALESCE_WINDOW,
     private val freshnessCoalesceWithin: Duration = RAFT_FRESHNESS_COALESCE_MILLIS.milliseconds,
     private val nowMillis: () -> Long = ::raftForegroundGateNowMillis,
@@ -65,10 +67,12 @@ internal class ComputersLiveRefreshCoordinator(
 ) {
     private val lock = SynchronizedObject()
 
-    // Realtime burst debounce + active flights per server.
+    // Realtime burst debounce + active flights + high-frequency status cooldown per server.
     private val pendingRealtime = mutableMapOf<String, Job>()
+    private val pendingRealtimeThrottled = mutableMapOf<String, Boolean>()
     private val activeRealtime = mutableMapOf<String, MutableSet<Job>>()
     private val latestRealtimeByServerId = mutableMapOf<String, PendingRealtime>()
+    private val lastRealtimeRefreshStartedAtByServerId = mutableMapOf<String, ComparableTimeMark>()
 
     // Freshness gates + active freshness jobs + external foreground flight tokens per server.
     private val freshnessGates = mutableMapOf<String, RaftFreshnessGate>()
@@ -93,23 +97,49 @@ internal class ComputersLiveRefreshCoordinator(
         val normalizedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return
         if (!hasLoadedOrObservedServer(normalizedServerId)) return
         val normalizedReason = reason.trim().ifBlank { "machines" }
+        val throttled = isThrottledRealtimeReason(normalizedReason)
+        var toCancel: Job? = null
         val toStart =
             synchronized(lock) {
                 val eventAt = timeSource.markNow()
-                if (pendingRealtime[normalizedServerId]?.isPendingOrActive() == true) {
+                val existing = pendingRealtime[normalizedServerId]
+                val existingActive = existing?.isPendingOrActive() == true
+                if (existingActive && (throttled || pendingRealtimeThrottled[normalizedServerId] != true)) {
                     latestRealtimeByServerId[normalizedServerId] = PendingRealtime(normalizedReason, eventAt)
                     null
                 } else {
+                    if (existingActive) {
+                        // An interactive upgrade push arrived while a high-frequency status event
+                        // was waiting out its cooldown: promote immediately to the prompt debounce.
+                        toCancel = existing
+                        pendingRealtime.remove(normalizedServerId)
+                        pendingRealtimeThrottled.remove(normalizedServerId)
+                    }
+                    val remainingCooldownMillis =
+                        if (throttled && minRefreshIntervalMillis > 0L) {
+                            val lastStarted = lastRealtimeRefreshStartedAtByServerId[normalizedServerId]
+                            if (lastStarted != null) {
+                                val elapsedMillis = (eventAt - lastStarted).inWholeMilliseconds.coerceAtLeast(0L)
+                                (minRefreshIntervalMillis - elapsedMillis).coerceAtLeast(0L)
+                            } else {
+                                0L
+                            }
+                        } else {
+                            0L
+                        }
+                    val delayMillis = maxOf(windowMillis, remainingCooldownMillis)
+                    val jobThrottled = throttled && remainingCooldownMillis > windowMillis
                     lateinit var scheduled: Job
                     scheduled =
                         scope.launch(start = CoroutineStart.LAZY) {
                             var pendingEvent: PendingRealtime? = null
                             var promotedToActive = false
                             try {
-                                delay(windowMillis)
+                                delay(delayMillis)
                                 synchronized(lock) {
                                     if (scheduled.isActive && pendingRealtime[normalizedServerId] === scheduled) {
                                         pendingRealtime.remove(normalizedServerId)
+                                        pendingRealtimeThrottled.remove(normalizedServerId)
                                         val recorded = latestRealtimeByServerId.remove(normalizedServerId)
                                         if (recorded != null) {
                                             pendingEvent = recorded
@@ -121,6 +151,18 @@ internal class ComputersLiveRefreshCoordinator(
                                 val target = pendingEvent ?: return@launch
                                 coroutineContext.ensureActive()
                                 if (!hasLoadedOrObservedServer(normalizedServerId)) return@launch
+                                val stillActive =
+                                    synchronized(lock) {
+                                        if (activeRealtime[normalizedServerId]?.contains(scheduled) == true) {
+                                            if (minRefreshIntervalMillis > 0L) {
+                                                lastRealtimeRefreshStartedAtByServerId[normalizedServerId] = timeSource.markNow()
+                                            }
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                if (!stillActive) return@launch
                                 logger("computers_realtime_refresh serverId=$normalizedServerId reason=${target.reason}")
                                 try {
                                     refreshMachines(
@@ -141,6 +183,7 @@ internal class ComputersLiveRefreshCoordinator(
                                 synchronized(lock) {
                                     if (pendingRealtime[normalizedServerId] === scheduled) {
                                         pendingRealtime.remove(normalizedServerId)
+                                        pendingRealtimeThrottled.remove(normalizedServerId)
                                         latestRealtimeByServerId.remove(normalizedServerId)
                                     }
                                     if (promotedToActive) {
@@ -158,12 +201,14 @@ internal class ComputersLiveRefreshCoordinator(
                     if (scheduled.isPendingOrActive()) {
                         latestRealtimeByServerId[normalizedServerId] = PendingRealtime(normalizedReason, eventAt)
                         pendingRealtime[normalizedServerId] = scheduled
+                        pendingRealtimeThrottled[normalizedServerId] = jobThrottled
                         scheduled
                     } else {
                         null
                     }
                 }
             }
+        toCancel?.cancel()
         toStart?.start()
     }
 
@@ -416,6 +461,8 @@ internal class ComputersLiveRefreshCoordinator(
         val jobsToCancel =
             synchronized(lock) {
                 latestRealtimeByServerId.remove(normalizedServerId)
+                pendingRealtimeThrottled.remove(normalizedServerId)
+                lastRealtimeRefreshStartedAtByServerId.remove(normalizedServerId)
                 lastForegroundBoundaryByServerId.remove(normalizedServerId)
                 pendingBoundaryByServerId.remove(normalizedServerId)
                 activeExternalTokens.remove(normalizedServerId)
@@ -433,6 +480,8 @@ internal class ComputersLiveRefreshCoordinator(
         val jobsToCancel =
             synchronized(lock) {
                 latestRealtimeByServerId.clear()
+                pendingRealtimeThrottled.clear()
+                lastRealtimeRefreshStartedAtByServerId.clear()
                 lastForegroundBoundaryByServerId.clear()
                 pendingBoundaryByServerId.clear()
                 activeExternalTokens.clear()
@@ -450,6 +499,11 @@ internal class ComputersLiveRefreshCoordinator(
         jobsToCancel.forEach { it.cancel() }
     }
 
+    private fun isThrottledRealtimeReason(reason: String): Boolean =
+        reason != RealtimeSocketEvents.ComputerUpgradeProgress &&
+            reason != RealtimeSocketEvents.ComputerUpgradeDone &&
+            reason != RealtimeSocketEvents.MachineUpgradeRequest
+
     private fun gateForLocked(serverId: String): RaftFreshnessGate =
         freshnessGates.getOrPut(serverId) {
             RaftFreshnessGate(
@@ -459,4 +513,8 @@ internal class ComputersLiveRefreshCoordinator(
         }
 
     private fun Job.isPendingOrActive(): Boolean = !isCompleted && !isCancelled
+
+    companion object {
+        const val DEFAULT_MIN_REFRESH_INTERVAL_MILLIS = 15_000L
+    }
 }
