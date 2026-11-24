@@ -232,23 +232,19 @@ internal class SharedThreadFreshnessLedger(
         }
     }
 
-    fun applyReplyCountFacts(
-        serverId: String,
-        threadId: String,
+    /**
+     * Runs [block] under the ledger lock with the accepted reply-count fact lookup of [key] for this
+     * environment and principal (by message id). The payload side is `applyReplyCountFacts` in thread/.
+     */
+    internal fun <R> withReplyCountFacts(
+        key: SharedThreadPayloadCacheKey,
         environmentId: String,
         principalId: String,
-        payload: RaftThreadScreenPayload
-    ): RaftThreadScreenPayload {
-        if (environmentId.isBlank() || principalId.isBlank()) return payload
-        return synchronized(lock) {
-            applyReplyCountFactsLocked(
-                key = SharedThreadPayloadCacheKey(serverId, threadId),
-                environmentId = environmentId,
-                principalId = principalId,
-                payload = payload
-            )
+        block: (acceptedFact: (messageId: String) -> SharedThreadReplyCountFact?) -> R
+    ): R =
+        synchronized(lock) {
+            block { messageId -> replyCountFacts[SharedThreadReplyCountKey(key, environmentId, principalId, messageId)] }
         }
-    }
 
     fun invalidateServer(serverId: String, cause: String = "server_invalidated") {
         synchronized(lock) {
@@ -410,39 +406,6 @@ internal class SharedThreadFreshnessLedger(
             messageFacts.clear()
             summaryFacts.clear()
             replyCountFacts.clear()
-        }
-    }
-
-    private fun applyReplyCountFactsLocked(
-        key: SharedThreadPayloadCacheKey,
-        environmentId: String,
-        principalId: String,
-        payload: RaftThreadScreenPayload
-    ): RaftThreadScreenPayload {
-        fun merge(message: RaftThreadMessageItem): RaftThreadMessageItem {
-            val factKey = SharedThreadReplyCountKey(key, environmentId, principalId, message.id)
-            val accepted = replyCountFacts[factKey] ?: return message
-            val nextThreadChannelId = accepted.threadChannelId ?: message.threadChannelId
-            val nextReplyCount = accepted.replyCount
-            return if (
-                nextThreadChannelId == message.threadChannelId &&
-                nextReplyCount == message.replyCount
-            ) {
-                message
-            } else {
-                message.copy(
-                    threadChannelId = nextThreadChannelId,
-                    replyCount = nextReplyCount
-                )
-            }
-        }
-
-        val nextOrigin = payload.originMessage?.let(::merge)
-        val nextMessages = payload.messages.map(::merge)
-        return if (nextOrigin == payload.originMessage && nextMessages == payload.messages) {
-            payload
-        } else {
-            payload.copy(originMessage = nextOrigin, messages = nextMessages)
         }
     }
 }

@@ -833,7 +833,8 @@ or helper scripts as a workaround for branch protection.
   human pixel-avatar URL check, data-layer platform capabilities, attachment download
   owner/hashing, reply cache scopes, upload attempt fence, conversation open resolver,
   thread route identity & launch payloads, send failure codes, access-lost predicate,
-  trace hex, and delegated label core merge); it
+  trace hex, delegated label core merge, thread freshness ledger, pane grid column kinds, the
+  launch payload to adaptive detail identity mapping, and the clipboard image source); it
   is the first step towards a separate `:shared-data` module, so a file in `core/` must not use
   anything from a feature folder. The
   top level holds the remaining cross-cutting app infrastructure (theme, platform,
