@@ -1286,7 +1286,7 @@ internal class SharedHomeStore(
         var increment = 0
         messages
             .distinctBy { it.id }
-            .filter { it.author.id != memberId }
+            .filter { it.author.id != memberId && it.countsUnread }
             .forEach { message ->
             val scopeId = message.channelId ?: ChannelId(message.threadId.value)
             val checkpoint = perReceiverStateVersionStore.readReadStateCheckpoint(serverId, memberId, scopeId)
@@ -6235,7 +6235,7 @@ private fun HomeSnapshot.withRealtimeAgentLoungeMessages(
         }
     val mentioned = unreadCandidates.any { message -> message.mentions.mentionsUser(currentMember.id.value) }
     val newer = rowSeq == null || latest.seq == null || latest.seq >= rowSeq
-    val increment = if (nonMemberChannelUnreadOff) 0 else unreadCandidates.size
+    val increment = if (nonMemberChannelUnreadOff) 0 else unreadCandidates.count { it.countsUnread }
     val nextLounge =
         lounge.copy(
             unreadCount = lounge.unreadCount + increment,
@@ -6335,8 +6335,9 @@ private fun ConversationSummary.withRealtimePreview(
                         (rowSeq == null || message.seq == null || message.seq > rowSeq)
                 }
         }
-    val unreadIncrement = unreadCandidates.size
-    // Web projects `hasMention` from the unread messages it holds: an unread one that mentions the user.
+    val unreadIncrement = unreadCandidates.count { it.countsUnread }
+    // Web projects `hasMention` from the live messages it holds: a mention lights `@` even on a
+    // history-only (`countsUnread == false`) notice (slock #16667).
     val mentioned = unreadCandidates.any { message -> message.mentions.mentionsUser(currentMemberId) }
     val withUnread =
         copy(

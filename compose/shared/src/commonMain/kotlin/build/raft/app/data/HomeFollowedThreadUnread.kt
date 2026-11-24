@@ -139,6 +139,9 @@ internal fun HomeSnapshot.decideLoungeThreadReplyMessage(
     val place = threadParentPlace(parentChannelId, context.parentChannelKind, loungeFeatureEnabled)
     if (place == HomeThreadParentPlace.Other) return HomeThreadReplyDecision.Ignore
     if (message.author.id == currentMember.id) return HomeThreadReplyDecision.Ignore
+    if (!message.countsUnread && !message.mentions.mentionsUser(currentMember.id.value)) {
+        return HomeThreadReplyDecision.Ignore
+    }
     if (
         threadId in openConversationIds ||
         (openParentMessageId != null && context.parentMessageId?.value == openParentMessageId)
@@ -164,7 +167,7 @@ internal fun HomeSnapshot.withLoungeThreadReplyMessage(message: Message): HomeSn
     val known = followedThreadUnread[threadId] ?: return this
     val next =
         known.copy(
-            unreadCount = known.unreadCount + 1,
+            unreadCount = if (message.countsUnread) known.unreadCount + 1 else known.unreadCount,
             hasMention = known.hasMention || message.mentions.mentionsUser(currentMember.id.value),
         )
     val nextLatestSeqs =
@@ -198,6 +201,10 @@ internal fun HomeSnapshot.decideThreadReply(
     val me = currentMember.id.value
     // The server never counts the user's own reply as unread; nothing to bump or reload.
     if (event.latestReply?.senderId == me) return HomeThreadReplyDecision.Ignore
+    // Notifications noise cut step 1a (slock #16667): history-only replies never add unread;
+    // a mention of the viewer can still light `@`.
+    val mentionsMe = event.latestReplyMentions.mentionsUser(me)
+    if (!event.latestReplyCountsUnread && !mentionsMe) return HomeThreadReplyDecision.Ignore
     // A thread currently open on screen (main detail or side pane) is being read live:
     // neither bump its unread nor schedule a summary reload that could race its read receipt.
     val threadId = event.threadChannelId.value
@@ -215,11 +222,18 @@ internal fun HomeSnapshot.decideThreadReply(
         if (pending != null && pending >= replySeq) return HomeThreadReplyDecision.Ignore
     }
     val known = followedThreadUnread[threadId] ?: return HomeThreadReplyDecision.Refresh
+    if (!event.latestReplyCountsUnread) {
+        return if (!known.hasMention && mentionsMe) {
+            HomeThreadReplyDecision.MentionOnly
+        } else {
+            HomeThreadReplyDecision.Ignore
+        }
+    }
     // `slock #16493` (`countedByItsMessage`): a Lounge thread's own `message:new` owns its live
     // unread count so an open Lounge that receives both frames never double-counts.
     val parentId = known.parentChannelId.value.takeIf { it.isNotBlank() } ?: event.parentChannelId?.value
     if (parentId != null && isKnownAgentLounge(parentId)) {
-        return if (!known.hasMention && event.latestReplyMentions.mentionsUser(me)) {
+        return if (!known.hasMention && mentionsMe) {
             HomeThreadReplyDecision.MentionOnly
         } else {
             HomeThreadReplyDecision.Ignore
@@ -239,7 +253,7 @@ internal fun HomeSnapshot.withFollowedThreadReply(event: ThreadUpdated): HomeSna
     val known = followedThreadUnread[threadId] ?: return this
     val next =
         known.copy(
-            unreadCount = known.unreadCount + 1,
+            unreadCount = if (event.latestReplyCountsUnread) known.unreadCount + 1 else known.unreadCount,
             hasMention = known.hasMention || event.latestReplyMentions.mentionsUser(currentMember.id.value)
         )
     val nextLatestSeqs =

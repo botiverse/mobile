@@ -265,6 +265,7 @@ internal fun Message.toActivityUnreadMessage(provenance: MessageSystemProvenance
         causalActorId = provenance?.causalActorId,
         systemSubtype = provenance?.systemSubtype,
         carriesSystemProvenance = provenance != null,
+        countsUnread = provenance?.countsUnread ?: if (!countsUnread) false else null,
         mentions = mentions.map { ActivityUnreadTarget(it.type, it.id) },
     )
 
