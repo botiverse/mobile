@@ -2,6 +2,9 @@ package build.raft.app.data
 
 import build.raft.app.runPortableCoroutineTest
 import build.raft.app.model.AgentCredentialHoldReason
+import build.raft.app.model.AgentDeliveryHold
+import build.raft.app.model.AgentDeliveryHoldReason
+import build.raft.app.model.AgentProviderLimitHoldKind
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
@@ -336,6 +339,62 @@ class AgentsApiTest {
             detailOf(""""activity":"online","activityDetail":"held notice","activityDetailKind":"idle","credentialHold":{"reason":"quota"}""").credentialHold,
             "an unknown reason is none",
         )
+    }
+
+    @Test
+    fun agentDetailAndRosterCarryDeliveryHoldAcrossAnyActivity() = runPortableCoroutineTest {
+        // GET /agents/:id and GET /agents (botiverse/slock #16333): `deliveryHold` rides any activity.
+        suspend fun detailOf(extra: String): AgentDetailSummary =
+            assertIs<DataResult.Content<AgentSummary>>(
+                RaftAgentsApiClient(
+                    RecordingAgentsApi(agentBody = """{"id":"agent-1","name":"held","runtime":"claude","model":"claude-sonnet-4-6","status":"active",$extra}""")
+                ).agent(MemberId("agent-1"))
+            ).data.toAgentDetailSummary()
+
+        val workingQuota =
+            detailOf(
+                """"activity":"working","activityDetail":"Running","activityDetailKind":"running_command","deliveryHold":{"reason":"provider_limit","detail":"quota_exhausted","untilMs":1794485000000,"since":1794484700000}"""
+            )
+        assertEquals(
+            AgentDeliveryHold(
+                reason = AgentDeliveryHoldReason.ProviderLimit,
+                providerLimitDetail = AgentProviderLimitHoldKind.QuotaExhausted,
+                untilMs = 1794485000000L,
+                since = 1794484700000L,
+            ),
+            workingQuota.deliveryHold,
+        )
+
+        val credHold =
+            detailOf(
+                """"activity":"online","activityDetail":"held notice","activityDetailKind":"idle","credentialHold":{"reason":"user_reauth"},"deliveryHold":{"reason":"credential_invalid","detail":"user_reauth","since":1794484700000}"""
+            )
+        assertEquals(AgentCredentialHoldReason.UserReauth, credHold.credentialHold)
+        assertEquals(
+            AgentDeliveryHold(
+                reason = AgentDeliveryHoldReason.CredentialInvalid,
+                credentialDetail = AgentCredentialHoldReason.UserReauth,
+                since = 1794484700000L,
+            ),
+            credHold.deliveryHold,
+        )
+
+        assertEquals(
+            null,
+            detailOf(""""activity":"working","activityDetail":"Running","deliveryHold":null""").deliveryHold,
+        )
+        assertEquals(
+            null,
+            detailOf(""""activity":"online","deliveryHold":"malformed"""").deliveryHold,
+            "unexpected wire shape does not break agent decoding",
+        )
+
+        // Roster parser (`GET /agents` -> MemberProfile.agentDeliveryHold)
+        val roster =
+            parseSharedAgentProfile(
+                """{"id":"agent-1","name":"held","runtime":"claude","model":"claude-sonnet-4-6","status":"active","activity":"working","deliveryHold":{"reason":"provider_limit","detail":"quota_exhausted","untilMs":1794485000000,"since":1794484700000}}"""
+            )
+        assertEquals(workingQuota.deliveryHold, roster?.agentDeliveryHold)
     }
 
     @Test

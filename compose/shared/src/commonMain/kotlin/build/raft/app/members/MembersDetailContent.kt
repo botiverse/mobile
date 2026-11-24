@@ -434,7 +434,10 @@ internal fun MembersDetailContent(
                     membersRemoteProfileAgentStatusIndicatorStateOrNull(
                         summaryStatus = detail?.summary?.status,
                         summaryActivity = detail?.summary?.activity,
-                        external = false
+                        external = false,
+                        runtime = detail?.summary?.runtime,
+                        model = detail?.summary?.model,
+                        deliveryHold = detail?.summary?.deliveryHold,
                     )
                 } else {
                     null

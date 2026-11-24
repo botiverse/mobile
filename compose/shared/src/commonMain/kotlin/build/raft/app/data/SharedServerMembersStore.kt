@@ -12,6 +12,7 @@ import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.composerMentionHandle
 import build.raft.app.model.ChannelExternalMemberProfile
 import build.raft.app.model.ChannelId
+import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentReadiness
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentToolStuck
@@ -395,6 +396,8 @@ data class SharedServerMemberStatus(
     val errorCode: AgentRuntimeErrorCode? = null,
     /** The agent's runtime id (profile `roleDescription` for agents); null for humans/unknown. */
     val runtime: String? = null,
+    /** The agent's configured model id (`MemberProfile.model`), for delivery-hold plan copy; null when unknown. */
+    val model: String? = null,
     /**
      * External agents carry no managed liveness; the indicator must render them
      * as external regardless of [status]/[presence]. Required (no default) so a
@@ -436,6 +439,8 @@ data class SharedServerMemberStatus(
     val machineName: String? = null,
     /** Server-composed agent readiness from `GET /api/agents` (already trimmed per viewer). */
     val readiness: AgentReadiness? = null,
+    /** The daemon holds this agent's deliveries on any activity or coarse state (botiverse/slock #16333). */
+    val deliveryHold: AgentDeliveryHold? = null,
 )
 
 /**
@@ -555,9 +560,11 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             .maxByOrNull { parseExternalAgentTimestampOrNull(it) ?: Long.MIN_VALUE }
     val memberMachineId = this?.agentComputerIdOrNull()
     val memberMachineName = this?.agentComputerNameOrNull()
+    val memberModel = this?.model?.trim()?.takeIf { it.isNotBlank() }
     val memberPaused = !this?.assistantPausedAt.isNullOrBlank()
     val keptSpawnFailureReason = this?.lastRuntimeErrorSpawnFailureReason?.trim()?.takeIf { it.isNotBlank() }
     val resolvedReadiness = if (authoritativeReadiness) this?.agentReadiness else null
+    val resolvedProfileDeliveryHold = if (authoritativeReadiness) this?.agentDeliveryHold else null
     if (
         presenceFact != null &&
         (
@@ -576,6 +583,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             toolStuck = presenceFact.toolStuck,
             errorCode = presenceFact.errorCode,
             runtime = this?.agentRuntimeOrNull(),
+            model = memberModel,
             // A presence fact never carries external-ness; it comes from the
             // authoritative profile and must survive every liveness update.
             external = this?.isExternal == true,
@@ -586,6 +594,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             machineId = memberMachineId,
             machineName = memberMachineName,
             readiness = resolvedReadiness,
+            deliveryHold = presenceFact.deliveryHold,
         )
     }
     if (this?.kind != MemberKind.Agent) return null
@@ -593,6 +602,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         status = agentStatus,
         presence = presence,
         runtime = agentRuntimeOrNull(),
+        model = memberModel,
         external = isExternal,
         lastSeenAt = resolvedLastSeenAt,
         lastRuntimeErrorSpawnFailureReason = keptSpawnFailureReason,
@@ -600,6 +610,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         machineId = memberMachineId,
         machineName = memberMachineName,
         readiness = resolvedReadiness,
+        deliveryHold = resolvedProfileDeliveryHold,
     )
 }
 
@@ -2068,6 +2079,7 @@ class SharedServerMembersStore internal constructor(
                         kind = MemberKind.Agent,
                         agentStatus = status,
                         statusLabel = status.label,
+                        deliveryHold = profile.agentDeliveryHold,
                         serverSeq = null
                     ),
                 writeGeneration = write.writeGeneration
@@ -3453,6 +3465,7 @@ class SharedServerMembersStore internal constructor(
                         kind = MemberKind.Agent,
                         agentStatus = status,
                         statusLabel = status.label,
+                        deliveryHold = profile.agentDeliveryHold,
                         serverSeq = null
                     )
             )
@@ -4400,7 +4413,11 @@ class SharedServerMembersStore internal constructor(
                     .filterServerRosterMembers(key)
                     .filterDeletedAgents(key)
                     .map { member ->
-                        if (member.agentReadiness == null) member else member.copy(agentReadiness = null)
+                        if (member.agentReadiness == null && member.agentDeliveryHold == null) {
+                            member
+                        } else {
+                            member.copy(agentReadiness = null, agentDeliveryHold = null)
+                        }
                     }
             if (members.isEmpty()) return@withLock false
             cacheProfiles(key, members, replaceReadiness = true)
@@ -4882,7 +4899,7 @@ private fun List<String>.rosterPresenceSample(): String =
 
 private fun MemberProfile.withoutVolatileStatus(): MemberProfile =
     if (kind == MemberKind.Agent) {
-        copy(presence = Presence.Offline, agentStatus = null, agentReadiness = null)
+        copy(presence = Presence.Offline, agentStatus = null, agentReadiness = null, agentDeliveryHold = null)
     } else {
         this
     }
@@ -4907,6 +4924,7 @@ private fun MemberProfile.mergeAuthoritativeProfile(
             servers = incoming.servers ?: servers,
             inViewerServer = incoming.inViewerServer ?: inViewerServer,
             agentReadiness = if (replaceReadiness) incoming.agentReadiness else incoming.agentReadiness ?: agentReadiness,
+            agentDeliveryHold = if (replaceReadiness) incoming.agentDeliveryHold else incoming.agentDeliveryHold ?: agentDeliveryHold,
         )
     val statusMerged =
         if (incoming.kind == MemberKind.Agent && incoming.agentStatus != null) {

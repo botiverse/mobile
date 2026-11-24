@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.model.isExternalAgent
 import build.raft.app.model.AgentCredentialHoldReason
+import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentWakeCrashLoop
@@ -874,6 +875,8 @@ internal data class AgentSummary(
     val toolStuck: AgentToolStuck? = null,
     /** Why the daemon holds the agent for an unusable sign-in, with [activityDetailKind] `idle`. */
     val credentialHold: AgentCredentialHoldReason? = null,
+    /** The daemon holds the agent's deliveries (`deliveryHold`, served with any activity, slock #16333). */
+    val deliveryHold: AgentDeliveryHold? = null,
     /** `modelLimits.defaultsReported`: true only when the server says so; false, null or absent is false. */
     val modelLimitsDefaultsReported: Boolean = false,
     val hostedRuntime: AgentHostedRuntimeSnapshot? = null,
@@ -935,6 +938,7 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         activityErrorCode = activityErrorCode,
         toolStuck = toolStuck,
         credentialHold = credentialHold,
+        deliveryHold = deliveryHold,
         modelLimitsDefaultsReported = modelLimitsDefaultsReported,
         runningRuntime = runningRuntime,
         runningModel = runningModel
@@ -1193,6 +1197,8 @@ private data class AgentWireDto(
     val toolStuck: ToolStuckDto? = null,
     /** Shared `CredentialHoldActivityDiagnostic`, sent with `activityDetailKind` `idle` (botiverse/slock #13276). */
     val credentialHold: CredentialHoldDto? = null,
+    /** Shared `DeliveryHoldActivityDiagnostic`, served with any activity (botiverse/slock #16333). */
+    val deliveryHold: JsonElement? = null,
     /**
      * botiverse/slock #13492 (`routes/agents.ts`): `{ defaultsReported }` on the detail, the list and the
      * PATCH answer of a Built-in custom gateway agent; absent elsewhere and from older servers, null in a
@@ -1319,6 +1325,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         activityErrorCode = AgentRuntimeErrorCode.fromWire(activityErrorCode).takeIf { resolvedActivity?.trim() == "error" },
         toolStuck = toolStuck.toAgentToolStuck(),
         credentialHold = credentialHold.toAgentCredentialHold(activityDetailKind),
+        deliveryHold = parseAgentDeliveryHold(deliveryHold),
         modelLimitsDefaultsReported = modelLimits?.defaultsReported == true,
         runningRuntime = currentProfile?.runtime?.trim()?.takeIf { it.isNotEmpty() },
         runningModel = currentProfile?.model?.trim()?.takeIf { it.isNotEmpty() }

@@ -4875,6 +4875,14 @@
     <string name="agent_status_credential_plan_model">El plan no incluye %1$s</string>
     <string name="agent_status_credential_plan_default_model">El plan no incluye este modelo</string>
     <string name="agent_status_credential_billing">Saldo del proveedor agotado</string>
+    <string name="agent_status_cant_respond">No puede responder: %1$s</string>
+    <string name="agent_status_cant_respond_short">No puede responder</string>
+    <string name="agent_status_delivery_hold_sign_in">El inicio de sesión de %1$s requiere atención</string>
+    <string name="agent_status_delivery_hold_credential">El inicio de sesión o el plan de %1$s requiere atención</string>
+    <string name="agent_status_delivery_hold_usage_limit">Límite de uso de %1$s alcanzado</string>
+    <string name="agent_status_delivery_hold_usage_limit_until">Límite de uso de %1$s alcanzado, hasta %2$s</string>
+    <string name="agent_status_delivery_hold_rate_limit">Límite de frecuencia de %1$s, reintentando pronto</string>
+    <string name="agent_status_delivery_hold_rate_limit_until">Límite de frecuencia de %1$s, reintentando %2$s</string>
     <string name="agent_status_computer_access_revoked">Acceso de la computadora revocado: mueve el agente a otra computadora (volver a conectarla añade una nueva)</string>
     <string name="agent_status_computer_update_required">La computadora requiere actualización</string>
     <string name="agent_status_computer_offline">Computadora sin conexión</string>

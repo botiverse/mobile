@@ -2,6 +2,9 @@ package build.raft.app.data
 
 import build.raft.app.MembersAgentLifecycleAction
 import build.raft.app.model.AgentCredentialHoldReason
+import build.raft.app.model.AgentDeliveryHold
+import build.raft.app.model.AgentDeliveryHoldReason
+import build.raft.app.model.AgentProviderLimitHoldKind
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
@@ -490,6 +493,46 @@ class SharedAgentDetailStoreTest {
         assertEquals(AgentCredentialHoldReason.Billing, s.state.value.detail?.summary?.credentialHold, "a coarse state keeps it")
         push(4L, AgentStatus.Online, null)
         assertNull(s.state.value.detail?.summary?.credentialHold, "the release's idle frame clears it")
+    }
+
+    @Test
+    fun deliveryHoldPersistsAcrossWorkingFramesAndUpdatesOnCoarseFrames() {
+        // Web deliveryHoldProjection.test.ts (botiverse/slock #16333): hold survives working frames,
+        // updates on coarse agent:activity_state, and drops with the first frame without it.
+        val signIn =
+            AgentDeliveryHold(
+                reason = AgentDeliveryHoldReason.CredentialInvalid,
+                credentialDetail = AgentCredentialHoldReason.UserReauth,
+                since = 1_000L,
+            )
+        val quota =
+            AgentDeliveryHold(
+                reason = AgentDeliveryHoldReason.ProviderLimit,
+                providerLimitDetail = AgentProviderLimitHoldKind.QuotaExhausted,
+                untilMs = 10_000L,
+                since = 1_000L,
+            )
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Online", activity = "Online")))
+        fun push(seq: Long, status: AgentStatus, detailKind: String?, hold: AgentDeliveryHold?, coarse: Boolean = false) =
+            s.dispatch(
+                SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                    event =
+                        activityEvent(status, detail = if (coarse) null else "Working", serverSeq = seq)
+                            .copy(detailKind = detailKind, deliveryHold = hold, coarseState = coarse),
+                    observedAtMillis = seq * 100L,
+                )
+            )
+
+        push(1L, AgentStatus.Online, "idle", signIn)
+        assertEquals(signIn, s.state.value.detail?.summary?.deliveryHold)
+        push(2L, AgentStatus.Working, "running_command", signIn)
+        assertEquals(signIn, s.state.value.detail?.summary?.deliveryHold, "a working frame keeps it")
+        push(3L, AgentStatus.Working, null, quota, coarse = true)
+        assertEquals(quota, s.state.value.detail?.summary?.deliveryHold, "coarse frame updates deliveryHold")
+        push(4L, AgentStatus.Working, "running_command", null)
+        assertNull(s.state.value.detail?.summary?.deliveryHold, "release clears it")
     }
 
     @Test

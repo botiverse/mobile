@@ -4875,6 +4875,14 @@
     <string name="agent_status_credential_plan_model">方案不包含 %1$s</string>
     <string name="agent_status_credential_plan_default_model">方案不包含這個模型</string>
     <string name="agent_status_credential_billing">服務商餘額已用完</string>
+    <string name="agent_status_cant_respond">無法回覆：%1$s</string>
+    <string name="agent_status_cant_respond_short">無法回覆</string>
+    <string name="agent_status_delivery_hold_sign_in">%1$s 的登入需要處理</string>
+    <string name="agent_status_delivery_hold_credential">%1$s 的登入或方案需要處理</string>
+    <string name="agent_status_delivery_hold_usage_limit">%1$s 用量已達上限</string>
+    <string name="agent_status_delivery_hold_usage_limit_until">%1$s 用量已達上限，%2$s 恢復</string>
+    <string name="agent_status_delivery_hold_rate_limit">%1$s 觸發限流，稍後重試</string>
+    <string name="agent_status_delivery_hold_rate_limit_until">%1$s 觸發限流，%2$s 重試</string>
     <string name="agent_status_computer_access_revoked">電腦的存取權已撤銷：請把 Agent 移到另一台電腦（重新加入會新增一台電腦）</string>
     <string name="agent_status_computer_update_required">電腦需要更新</string>
     <string name="agent_status_computer_offline">電腦離線</string>

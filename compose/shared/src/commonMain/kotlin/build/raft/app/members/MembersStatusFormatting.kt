@@ -6,7 +6,9 @@ import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.AgentCreatorSummary
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.normalizedAgentRuntimeStatus
+import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
@@ -73,18 +75,31 @@ internal fun MemberProfile.toFixtureRaftAgentStatusIndicatorState(
 internal fun membersRemoteProfileAgentStatusIndicatorStateOrNull(
     summaryStatus: String?,
     summaryActivity: String?,
-    external: Boolean = false
+    external: Boolean = false,
+    runtime: String? = null,
+    model: String? = null,
+    deliveryHold: AgentDeliveryHold? = null,
 ): RaftAgentStatusIndicatorState? {
     val status =
         normalizedAgentRuntimeStatus(
             activity = summaryActivity,
             lifecycleStatus = summaryStatus
         ) ?: return null
-    return raftAgentStatusIndicatorState(
-        status = status,
-        presence = status.presence,
-        external = external
-    )
+    val base =
+        raftAgentStatusIndicatorState(
+            status = status,
+            presence = status.presence,
+            external = external
+        ).copy(
+            runtime = runtime,
+            model = model,
+            deliveryHold = deliveryHold,
+        )
+    return if (deliveryHold != null && base.activeDeliveryHold(nowMs = defaultNowMillis()) != null) {
+        base.copy(color = RaftColor.AccentOrange)
+    } else {
+        base
+    }
 }
 
 internal val MemberProfile.detailHandle: String

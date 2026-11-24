@@ -11,6 +11,8 @@ import build.raft.app.data.NeutralAgentStatusLabel
 import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.data.truncateAgentToolLabel
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.model.AgentDeliveryHold
+import build.raft.app.model.AgentDeliveryHoldReason
 import build.raft.app.model.AgentReadiness
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentToolStuck
@@ -19,10 +21,15 @@ import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -43,6 +50,8 @@ internal data class RaftAgentStatusIndicatorState(
     val activityToolName: String? = null,
     /** The agent's runtime id (web `agent.runtime`); null when unknown. */
     val runtime: String? = null,
+    /** The agent's configured model id (web `agent.model`); null when unknown. */
+    val model: String? = null,
     /** Why automatic wakes are paused, with [detailKind] `wake_crash_loop_blocked`. */
     val wakeCrashLoop: AgentWakeCrashLoop? = null,
     /** The agent is stuck on one tool call (latest agent:activity frame); null when not. */
@@ -78,6 +87,8 @@ internal data class RaftAgentStatusIndicatorState(
     val agentDisplayName: String? = null,
     /** Server-composed readiness from `GET /api/agents` (already trimmed per viewer). */
     val readiness: AgentReadiness? = null,
+    /** The daemon holds this agent's deliveries on any activity or coarse state (botiverse/slock #16333). */
+    val deliveryHold: AgentDeliveryHold? = null,
 )
 
 /** React parity: external agents caption as "External" (agentStore.ts resolveAgentDisplayState). */
@@ -178,11 +189,43 @@ internal fun rememberRaftAgentStatusIndicatorState(
     // the 120s window without a new agent:seen.
     val liveNow = currentRaftTimeContextProvider?.current?.nowEpochMillis
     val base = status
-    return if (base?.external == true && base.lastSeenAt != null) {
-        val now = liveNow ?: defaultNowMillis()
-        base.copy(color = if (isExternalAgentSeenOnline(base.lastSeenAt, now)) RaftColor.AccentLime else RaftColor.AccentCyan)
-    } else {
-        base
+    val holdUntilMs =
+        base?.deliveryHold
+            ?.takeIf { it.reason == AgentDeliveryHoldReason.ProviderLimit }
+            ?.untilMs
+    var holdClockFloorMs by remember(memberId, holdUntilMs) { mutableStateOf(Long.MIN_VALUE) }
+    val nowForHold = maxOf(liveNow ?: defaultNowMillis(), holdClockFloorMs)
+    val holdWaitMs =
+        if (base != null && holdUntilMs != null && holdUntilMs > nowForHold) {
+            holdUntilMs - nowForHold
+        } else {
+            null
+        }
+    LaunchedEffect(memberId, holdUntilMs, holdWaitMs) {
+        if (holdWaitMs == null || holdWaitMs <= 0L) return@LaunchedEffect
+        delay(holdWaitMs)
+        holdClockFloorMs = maxOf(holdClockFloorMs, nowForHold + holdWaitMs)
+    }
+    return when {
+        base == null -> null
+        base.external && base.lastSeenAt != null -> {
+            val now = liveNow ?: defaultNowMillis()
+            base.copy(color = if (isExternalAgentSeenOnline(base.lastSeenAt, now)) RaftColor.AccentLime else RaftColor.AccentCyan)
+        }
+        base.deliveryHold != null -> {
+            val activeHold = base.activeDeliveryHold(nowMs = nowForHold)
+            val resolvedColor =
+                if (activeHold != null) {
+                    RaftColor.AccentOrange
+                } else {
+                    raftAgentManagedStatusColor(
+                        status = base.status,
+                        presence = if (base.likelyOnline) Presence.Active else base.status?.presence ?: Presence.Offline,
+                    )
+                }
+            if (resolvedColor == base.color) base else base.copy(color = resolvedColor)
+        }
+        else -> base
     }
 }
 
@@ -200,29 +243,65 @@ internal fun RaftAgentStatusIndicatorState.withoutActivityDetail(): RaftAgentSta
         toolStuck = null,
     )
 
-internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(): RaftAgentStatusIndicatorState =
-    raftAgentStatusIndicatorState(
-        status = status,
-        presence = presence,
-        statusLabel = statusLabel,
-        external = external,
-        lastSeenAt = lastSeenAt
-    ).copy(
-        detailKind = detailKind,
-        activityToolName = activityToolName,
-        runtime = runtime,
-        wakeCrashLoop = wakeCrashLoop,
-        toolStuck = toolStuck,
-        errorCode = errorCode,
-        likelyOnline = likelyOnline,
-        blocked = blocked,
-        spawnFailureReason = spawnFailureReason,
-        lastRuntimeErrorSpawnFailureReason = lastRuntimeErrorSpawnFailureReason,
-        paused = paused,
-        machineId = machineId,
-        machineName = machineName,
-        readiness = readiness,
-    )
+internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(
+    nowEpochMillis: Long? = null,
+): RaftAgentStatusIndicatorState {
+    val base =
+        raftAgentStatusIndicatorState(
+            status = status,
+            presence = presence,
+            statusLabel = statusLabel,
+            external = external,
+            lastSeenAt = lastSeenAt,
+            nowEpochMillis = nowEpochMillis,
+        ).copy(
+            detailKind = detailKind,
+            activityToolName = activityToolName,
+            runtime = runtime,
+            model = model,
+            wakeCrashLoop = wakeCrashLoop,
+            toolStuck = toolStuck,
+            errorCode = errorCode,
+            likelyOnline = likelyOnline,
+            blocked = blocked,
+            spawnFailureReason = spawnFailureReason,
+            lastRuntimeErrorSpawnFailureReason = lastRuntimeErrorSpawnFailureReason,
+            paused = paused,
+            machineId = machineId,
+            machineName = machineName,
+            readiness = readiness,
+            deliveryHold = deliveryHold,
+        )
+    // Web AgentActivityDot (botiverse/slock #16333): a held agent paints the error light on every
+    // avatar and in the @mention list while its hold is active (except offline/external/blocked/guessed).
+    val activeHold =
+        if (deliveryHold != null) {
+            base.activeDeliveryHold(nowMs = nowEpochMillis ?: defaultNowMillis())
+        } else {
+            null
+        }
+    return if (activeHold != null) base.copy(color = RaftColor.AccentOrange) else base
+}
+
+internal fun raftAgentManagedStatusColor(
+    status: AgentStatus?,
+    presence: Presence,
+): Color =
+    when (status) {
+        AgentStatus.Online -> RaftColor.AccentLime
+        AgentStatus.Working,
+        AgentStatus.Thinking -> RaftColor.BrandYellow
+        AgentStatus.Idle -> RaftColor.AccentLime
+        AgentStatus.Disconnected,
+        AgentStatus.Offline -> RaftColor.PresenceOffline
+        AgentStatus.Error -> RaftColor.AccentOrange
+        null ->
+            when (presence) {
+                Presence.Active -> RaftColor.AccentLime
+                Presence.Away -> RaftColor.BrandYellow
+                Presence.Offline -> RaftColor.PresenceOffline
+            }
+    }
 
 /**
  * [external] is required (no default): every producer must state it, so a
@@ -261,22 +340,7 @@ internal fun raftAgentStatusIndicatorState(
     }
     return RaftAgentStatusIndicatorState(
         status = status,
-        color =
-            when (status) {
-                AgentStatus.Online -> RaftColor.AccentLime
-                AgentStatus.Working,
-                AgentStatus.Thinking -> RaftColor.BrandYellow
-                AgentStatus.Idle -> RaftColor.AccentLime
-                AgentStatus.Disconnected,
-                AgentStatus.Offline -> RaftColor.PresenceOffline
-                AgentStatus.Error -> RaftColor.AccentOrange
-                null ->
-                    when (presence) {
-                        Presence.Active -> RaftColor.AccentLime
-                        Presence.Away -> RaftColor.BrandYellow
-                        Presence.Offline -> RaftColor.PresenceOffline
-                    }
-            },
+        color = raftAgentManagedStatusColor(status, presence),
         // Label derives from the same resolved status as color so a dot
         // can never disagree with the text beside it (React
         // resolveAgentDisplayState parity, #198/#73).

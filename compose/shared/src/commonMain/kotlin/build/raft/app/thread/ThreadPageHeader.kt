@@ -1638,6 +1638,37 @@ private fun ThreadDmAgentActivity(
         }
         return
     }
+    val deliveryHold = if (toolStuck == null) rememberAgentDeliveryHoldView(state) else null
+    if (deliveryHold != null) {
+        val wide = raftWindowWide()
+        val holdLabel = if (wide) deliveryHold.text else deliveryHold.shortText
+        Row(
+            modifier =
+                modifier
+                    .widthIn(max = ThreadHeaderDmAgentActivityMaxWidth)
+                    .semantics { contentDescription = deliveryHold.text },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+        ) {
+            RaftStatusIndicator(
+                color = RaftColor.AccentOrange,
+                size = ThreadHeaderDmAgentActivityDotSize,
+            )
+            Text(
+                text = holdLabel,
+                style =
+                    RaftType.Caption.copy(
+                        color = RaftColor.ForegroundHint,
+                        fontFamily = RaftMonoFamily
+                    ),
+                color = RaftColor.ForegroundHint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.testTag(AgentDeliveryHoldTestTags.DmHeaderStatus)
+            )
+        }
+        return
+    }
     val label = if (toolStuck != null) localizedAgentToolStuckText(toolStuck) else state.localizedMemberStatusLabel()
     val labelColor = if (toolStuck != null) RaftColor.WarningStrong else RaftColor.ForegroundHint
     Row(

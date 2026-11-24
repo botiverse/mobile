@@ -1110,6 +1110,11 @@ data class AgentDetailSummary(
      */
     val credentialHold: build.raft.app.model.AgentCredentialHoldReason? = null,
     /**
+     * The daemon holds this agent's deliveries on any activity (`deliveryHold`, botiverse/slock #16333);
+     * null when not held or from older servers/daemons.
+     */
+    val deliveryHold: build.raft.app.model.AgentDeliveryHold? = null,
+    /**
      * `modelLimits.defaultsReported` (botiverse/slock #13492): the agent's Computer reported that the
      * current session filled at least one limit of its Built-in custom gateway model with a Raft
      * default. Only true shows the warning; false, null and an old server's absent field show nothing.

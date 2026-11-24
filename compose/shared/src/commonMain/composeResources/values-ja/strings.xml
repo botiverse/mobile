@@ -5058,6 +5058,14 @@
     <string name="agent_status_credential_plan_model">プランに %1$s が含まれていません</string>
     <string name="agent_status_credential_plan_default_model">プランにこのモデルが含まれていません</string>
     <string name="agent_status_credential_billing">プロバイダーの残高がありません</string>
+    <string name="agent_status_cant_respond">応答できません：%1$s</string>
+    <string name="agent_status_cant_respond_short">応答できません</string>
+    <string name="agent_status_delivery_hold_sign_in">%1$s のログインの確認が必要です</string>
+    <string name="agent_status_delivery_hold_credential">%1$s のログインまたはプランの確認が必要です</string>
+    <string name="agent_status_delivery_hold_usage_limit">%1$s の使用量の上限に達しました</string>
+    <string name="agent_status_delivery_hold_usage_limit_until">%1$s の使用量の上限に達しました（%2$s まで）</string>
+    <string name="agent_status_delivery_hold_rate_limit">%1$s のレート制限中、まもなく再試行します</string>
+    <string name="agent_status_delivery_hold_rate_limit_until">%1$s のレート制限中、%2$s に再試行します</string>
     <string name="agent_status_computer_access_revoked">コンピューターのアクセスが取り消されました。エージェントを別のコンピューターに移動してください（再接続すると新しいコンピューターとして追加されます）</string>
     <string name="agent_status_computer_update_required">コンピューターのアップデートが必要</string>
     <string name="agent_status_computer_offline">コンピューターがオフライン</string>

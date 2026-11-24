@@ -8654,13 +8654,21 @@ private fun DirectMessageAvatar(
         } else {
             null
         }
+    val deliveryHold =
+        if (agentMemberId != null && holdingReadiness == null && signIn == null) {
+            rememberAgentDeliveryHoldView(status)
+        } else {
+            null
+        }
     RaftAvatarWithStatus(
         statusColor =
             when {
                 holdingReadiness != null -> holdingReadiness.dotColor()
                 signIn != null && status?.external != true -> RaftColor.AccentOrange
+                deliveryHold != null -> RaftColor.AccentOrange
                 else -> status?.color
             },
+        statusDescription = signIn?.detail ?: deliveryHold?.text,
         avatarSize = ChannelAvatarSize,
     ) {
         RaftAppAvatar(
@@ -8725,6 +8733,26 @@ private fun DirectMessageAgentMeta(
                 modifier
                     .testTag(AgentRuntimeSignInTestTags.SidebarShort)
                     .semantics { contentDescription = signIn.detail },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        return
+    }
+    val deliveryHold =
+        if (agentMemberId != null && status?.external != true) {
+            rememberAgentDeliveryHoldView(status)
+        } else {
+            null
+        }
+    if (deliveryHold != null) {
+        Text(
+            deliveryHold.shortText,
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = RaftMonoFamily),
+            color = if (selected) RaftColor.StickerInk else RaftColor.ForegroundHint,
+            modifier =
+                modifier
+                    .testTag(AgentDeliveryHoldTestTags.SidebarShort)
+                    .semantics { contentDescription = deliveryHold.text },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

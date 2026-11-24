@@ -5058,6 +5058,14 @@
     <string name="agent_status_credential_plan_model">套餐不包含 %1$s</string>
     <string name="agent_status_credential_plan_default_model">套餐不包含这个模型</string>
     <string name="agent_status_credential_billing">服务商余额已用完</string>
+    <string name="agent_status_cant_respond">无法回复：%1$s</string>
+    <string name="agent_status_cant_respond_short">无法回复</string>
+    <string name="agent_status_delivery_hold_sign_in">%1$s 的登录需要处理</string>
+    <string name="agent_status_delivery_hold_credential">%1$s 的登录或套餐需要处理</string>
+    <string name="agent_status_delivery_hold_usage_limit">%1$s 用量已达上限</string>
+    <string name="agent_status_delivery_hold_usage_limit_until">%1$s 用量已达上限，%2$s 恢复</string>
+    <string name="agent_status_delivery_hold_rate_limit">%1$s 触发限流，稍后重试</string>
+    <string name="agent_status_delivery_hold_rate_limit_until">%1$s 触发限流，%2$s 重试</string>
     <string name="agent_status_computer_access_revoked">Computer 访问权限已撤销：请把 Agent 移到另一台 Computer（重新加入会新增一台 Computer）</string>
     <string name="agent_status_computer_update_required">Computer 需要更新</string>
     <string name="agent_status_computer_offline">Computer 离线</string>

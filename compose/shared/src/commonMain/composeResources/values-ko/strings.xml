@@ -4875,6 +4875,14 @@
     <string name="agent_status_credential_plan_model">플랜에 %1$s이(가) 포함되어 있지 않아요</string>
     <string name="agent_status_credential_plan_default_model">플랜에 이 모델이 포함되어 있지 않아요</string>
     <string name="agent_status_credential_billing">제공업체 잔액이 소진됐어요</string>
+    <string name="agent_status_cant_respond">답할 수 없음: %1$s</string>
+    <string name="agent_status_cant_respond_short">답할 수 없음</string>
+    <string name="agent_status_delivery_hold_sign_in">%1$s 로그인을 확인해야 해요</string>
+    <string name="agent_status_delivery_hold_credential">%1$s 로그인 또는 플랜을 확인해야 해요</string>
+    <string name="agent_status_delivery_hold_usage_limit">%1$s 사용 한도에 도달했어요</string>
+    <string name="agent_status_delivery_hold_usage_limit_until">%1$s 사용 한도에 도달했어요(%2$s까지)</string>
+    <string name="agent_status_delivery_hold_rate_limit">%1$s 요청 제한, 곧 다시 시도해요</string>
+    <string name="agent_status_delivery_hold_rate_limit_until">%1$s 요청 제한, %2$s에 다시 시도해요</string>
     <string name="agent_status_computer_access_revoked">컴퓨터 접근 권한이 취소되었어요. 에이전트를 다른 컴퓨터로 옮겨 주세요(다시 연결하면 새 컴퓨터로 추가돼요)</string>
     <string name="agent_status_computer_update_required">컴퓨터 업데이트 필요</string>
     <string name="agent_status_computer_offline">컴퓨터 오프라인</string>
