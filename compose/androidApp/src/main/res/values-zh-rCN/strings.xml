@@ -37,7 +37,6 @@
     <string name="push_title_task_in_channel">#%1$s 中的任务</string>
     <string name="push_title_task_assigned">分配给你的任务</string>
     <string name="push_title_agent_action_required">%1$s 需要你处理</string>
-    <string name="push_title_agent_tool_stuck">%1$s 卡住了</string>
     <string name="push_title_reminder">提醒</string>
     <string name="push_title_agent_migration_review">确认把 %1$s 迁到云端</string>
     <string name="push_title_test">Raft 测试通知</string>
@@ -51,6 +50,12 @@
     <string name="push_body_sender_no_text">%1$s：（无文字）</string>
     <string name="push_body_agent_migration_review">%1$s 已暂停，等你确认。请在时限结束前查看要迁过来的文件。</string>
     <string name="push_body_test">如果你能看到这条通知，说明通知可以送达这台设备。</string>
+    <string name="push_title_app_permission_update">%1$s 在 %2$s 有一项更新待批准</string>
+    <string name="push_body_app_permission_update_sign_in">它请求新的登录权限。请批准更新，或卸载该应用。</string>
+    <string name="push_body_app_permission_update_data">它请求访问此服务器上更多的数据。请批准更新，或卸载该应用。</string>
+    <string name="push_body_app_permission_update_sign_in_data">它请求新的登录权限，以及访问此服务器上更多的数据。请批准更新，或卸载该应用。</string>
+    <string name="push_body_app_permission_update_card_button">它更改了卡片按钮调用的地址。请批准更新，或卸载该应用。</string>
+    <string name="push_body_app_permission_update_permissions_card_button">它请求新的权限，并更改了卡片按钮调用的地址。请批准更新，或卸载该应用。</string>
     <string name="notification_unread_dm_channel_description">未读私信通知。</string>
     <string name="notification_unread_dm_channel_name">私信</string>
     <string name="notification_unread_general_channel_description">Raft 的一般未读消息通知。</string>

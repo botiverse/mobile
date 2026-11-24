@@ -76,7 +76,6 @@
     <string name="push_title_task_in_channel">Task in #%1$s</string>
     <string name="push_title_task_assigned">Assigned to you</string>
     <string name="push_title_agent_action_required">%1$s needs your attention</string>
-    <string name="push_title_agent_tool_stuck">%1$s is stuck</string>
     <string name="push_title_reminder">Reminder</string>
     <string name="push_title_agent_migration_review">Confirm moving %1$s to the cloud</string>
     <string name="push_title_test">Raft test notification</string>
@@ -90,6 +89,13 @@
     <string name="push_body_sender_no_text">%1$s: (no text)</string>
     <string name="push_body_agent_migration_review">%1$s is paused until you confirm. Review which files come over before the window closes.</string>
     <string name="push_body_test">If you can read this, notifications reach this device.</string>
+    <!-- Banner copy keys of preview key set 4 (slock #16546, packages/shared/src/notificationCopy.ts). -->
+    <string name="push_title_app_permission_update">%1$s has an update to approve on %2$s</string>
+    <string name="push_body_app_permission_update_sign_in">It asks for new sign-in permissions. Approve the update or uninstall the App.</string>
+    <string name="push_body_app_permission_update_data">It asks for more access to data on this Server. Approve the update or uninstall the App.</string>
+    <string name="push_body_app_permission_update_sign_in_data">It asks for new sign-in permissions and more access to data on this Server. Approve the update or uninstall the App.</string>
+    <string name="push_body_app_permission_update_card_button">It changed the address its card buttons call. Approve the update or uninstall the App.</string>
+    <string name="push_body_app_permission_update_permissions_card_button">It asks for new permissions and changed the address its card buttons call. Approve the update or uninstall the App.</string>
     <string name="notification_unread_general_channel_name">Unread messages</string>
     <string name="notification_unread_general_channel_description">General unread Raft message notifications.</string>
     <string name="notification_unread_channel_channel_name">Channel unread messages</string>

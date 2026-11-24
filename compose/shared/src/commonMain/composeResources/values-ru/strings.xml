@@ -3359,6 +3359,8 @@
     <string name="settings_server_administration_subtitle">Администраторы, приглашения, ссылки-приглашения, соглашения</string>
     <string name="settings_im_bridges_title">Мосты с мессенджерами</string>
     <string name="settings_im_bridges_subtitle">Подключение Raft к внешним мессенджерам</string>
+    <string name="settings_app_authorizations_title">Авторизация приложений</string>
+    <string name="settings_app_authorizations_subtitle">Подключённые аккаунты и предпросмотр ссылок для приложений на этом сервере</string>
     <string name="settings_labs_title">Labs</string>
     <string name="settings_labs_section_label">Labs</string>
     <string name="settings_labs_unavailable_title">Настройки Labs недоступны</string>

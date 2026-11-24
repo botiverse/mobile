@@ -108,7 +108,7 @@ class RaftNotificationContractTest {
     }
 
     @Test
-    fun routesParseAllFiveTypes() {
+    fun routesParseAllSixTypes() {
         assertEquals(
             RaftNotificationRoute.Channel("s1", "c1", "m1"),
             parseRaftNotificationRoute("""{"type":"channel","serverId":"s1","channelId":"c1","messageId":"m1"}""")
@@ -128,6 +128,7 @@ class RaftNotificationContractTest {
             parseRaftNotificationRoute("""{"type":"task","serverId":"s1","parentChannelId":"c1","parentChannelType":"channel","taskId":"t1","messageId":null}""")
         )
         assertEquals(RaftNotificationRoute.Agent("s1", "a1"), parseRaftNotificationRoute("""{"type":"agent","serverId":"s1","agentId":"a1"}"""))
+        assertEquals(RaftNotificationRoute.App("s1", "app-42"), parseRaftNotificationRoute("""{"type":"app","serverId":"s1","appId":"app-42"}"""))
     }
 
     @Test
@@ -137,6 +138,8 @@ class RaftNotificationContractTest {
         assertNull(parseRaftNotificationRoute("not json"))
         assertNull(parseRaftNotificationRoute("""{"type":"channel","channelId":"c1"}"""), "serverId is required")
         assertNull(parseRaftNotificationRoute("""{"type":"thread","serverId":"s1","parentChannelId":"c1","parentMessageId":"pm"}"""))
+        assertNull(parseRaftNotificationRoute("""{"type":"app","serverId":"s1"}"""), "appId is required")
+        assertNull(parseRaftNotificationRoute("""{"type":"app","serverId":"s1","appId":""}"""), "appId must be non-blank")
         assertNull(parseRaftNotificationRoute("""{"type":"inbox","serverId":"s1"}"""))
     }
 
@@ -152,6 +155,7 @@ class RaftNotificationContractTest {
         assertEquals("d1", task["channelId"])
         assertEquals("t9", task["taskId"])
         assertEquals(mapOf("serverId" to "s2", "agentId" to "a1"), RaftNotificationRoute.Agent("s2", "a1").legacyOpenFields())
+        assertEquals(mapOf("serverId" to "s2", "appId" to "app-42"), RaftNotificationRoute.App("s2", "app-42").legacyOpenFields())
     }
 
     @Test

@@ -68,6 +68,7 @@ private val Appearance = on(SettingsNativeDetailPage.Appearance.key)
 private val Notifications = on(SettingsNativeDetailPage.Notifications.key)
 private val Theme = on(SettingsNativeDetailPage.Theme.key)
 private val ServerNotifications = on(SettingsNativeDetailPage.ServerNotifications.key)
+private val AppAuthorizations = on(SettingsDestinationAppAuthorizations)
 private val Server = on(SettingsNativeDetailPage.Server.key)
 private val Billing = on(SettingsDestinationBilling)
 private val Administration = on(SettingsDestinationAdministration)
@@ -228,6 +229,22 @@ internal val RaftSettingsSearchEntries: List<RaftSettingsSearchEntry> =
             "server-notifications",
             words(listOf("mute", "silence", "do not disturb"), listOf("静音这个服务器", "静音", "勿扰", "通知")),
             ServerNotifications,
+        ),
+        // Settings › App authorizations (slock #16572): every member of the server, guests too.
+        RaftSettingsSearchEntry(
+            "app-authorizations",
+            "app-authorizations",
+            mapOf(
+                "en" to listOf("authorized accounts", "connected accounts", "link previews", "apps", "oauth", "mcp"),
+                "zh-cn" to listOf("应用授权", "已授权账号", "连接的账号", "链接预览", "应用"),
+                "zh-tw" to listOf("應用程式授權", "已授權帳號", "已連結的帳號", "連結預覽", "應用程式"),
+                "ja" to listOf("アプリの認可", "認可済みアカウント", "リンクプレビュー", "接続済みアカウント"),
+                "ko" to listOf("앱 승인", "승인된 계정", "링크 미리보기", "연결된 계정"),
+                "es" to listOf("autorizaciones de apps", "cuentas autorizadas", "vistas previas de enlaces", "cuentas conectadas"),
+                "pt-br" to listOf("autorizações de apps", "contas autorizadas", "prévias de links", "contas conectadas"),
+                "ru" to listOf("авторизация приложений", "авторизованные аккаунты", "предпросмотр ссылок", "подключённые аккаунты"),
+            ),
+            AppAuthorizations,
         ),
         RaftSettingsSearchEntry(
             "server-name",

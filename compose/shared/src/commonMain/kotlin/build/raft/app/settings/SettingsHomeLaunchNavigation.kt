@@ -135,10 +135,25 @@ private fun JSONObject.legacyAppShellNotificationThreadLaunchRequest(): AppShell
 }
 
 private const val AppShellNotificationTargetKey = "slockNotificationTarget"
+private const val AppShellNotificationAppIdKey = "slockNotificationAppId"
 
 /** The server of a notification open that targets Activity (no conversation), else null. */
 internal fun JSONObject.appShellNotificationActivityServerId(): String? =
     takeIf { optString(AppShellNotificationTargetKey).trim() == "activity" }?.appShellNotificationServerId()
+
+/** A notification open that targets an installed App's detail (`{ type: "app" }`, slock #16546). */
+internal data class AppShellNotificationAppTarget(
+    val serverId: String,
+    val appId: String,
+)
+
+/** The server and installed App of a notification open targeting an App's detail, else null. */
+internal fun JSONObject.appShellNotificationAppTarget(): AppShellNotificationAppTarget? {
+    if (optString(AppShellNotificationTargetKey).trim() != "app") return null
+    val serverId = appShellNotificationServerId() ?: return null
+    val appId = optString(AppShellNotificationAppIdKey).trim().takeIf { it.isNotBlank() } ?: return null
+    return AppShellNotificationAppTarget(serverId = serverId, appId = appId)
+}
 
 private fun JSONObject.appShellNotificationServerId(): String? =
     optString(AppShellNotificationServerIdKey).trim().takeIf { it.isNotBlank() }

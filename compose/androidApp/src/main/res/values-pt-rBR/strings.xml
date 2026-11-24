@@ -73,7 +73,6 @@
     <string name="push_title_task_in_channel">Tarefa em #%1$s</string>
     <string name="push_title_task_assigned">Tarefa atribuída a você</string>
     <string name="push_title_agent_action_required">%1$s precisa da sua atenção</string>
-    <string name="push_title_agent_tool_stuck">%1$s está travado</string>
     <string name="push_title_reminder">Lembrete</string>
     <string name="push_title_agent_migration_review">Confirme a mudança de %1$s para a nuvem</string>
     <string name="push_title_test">Notificação de teste do Raft</string>
@@ -87,6 +86,12 @@
     <string name="push_body_sender_no_text">%1$s: (sem texto)</string>
     <string name="push_body_agent_migration_review">%1$s está pausado até você confirmar. Revise quais arquivos vão junto antes que o prazo termine.</string>
     <string name="push_body_test">Se você consegue ler isto, as notificações chegam a este dispositivo.</string>
+    <string name="push_title_app_permission_update">%1$s tem uma atualização para aprovar em %2$s</string>
+    <string name="push_body_app_permission_update_sign_in">Pede novas permissões de login. Aprove a atualização ou desinstale o app.</string>
+    <string name="push_body_app_permission_update_data">Pede mais acesso aos dados deste servidor. Aprove a atualização ou desinstale o app.</string>
+    <string name="push_body_app_permission_update_sign_in_data">Pede novas permissões de login e mais acesso aos dados deste servidor. Aprove a atualização ou desinstale o app.</string>
+    <string name="push_body_app_permission_update_card_button">Mudou o endereço que os botões do cartão chamam. Aprove a atualização ou desinstale o app.</string>
+    <string name="push_body_app_permission_update_permissions_card_button">Pede novas permissões e mudou o endereço que os botões do cartão chamam. Aprove a atualização ou desinstale o app.</string>
     <string name="notification_unread_general_channel_name">Mensagens não lidas</string>
     <string name="notification_unread_general_channel_description">Notificações gerais de mensagens não lidas do Raft.</string>
     <string name="notification_unread_channel_channel_name">Mensagens não lidas de canais</string>

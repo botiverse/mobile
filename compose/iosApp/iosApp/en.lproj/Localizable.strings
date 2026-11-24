@@ -40,3 +40,10 @@
 "push.body.sender_no_text" = "%1$@: (no text)";
 "push.body.agent_migration_review" = "%1$@ is paused until you confirm. Review which files come over before the window closes.";
 "push.body.test" = "If you can read this, notifications reach this device.";
+/* App permission update notices (preview key set 4, slock #16546). */
+"push.title.app_permission_update" = "%1$@ has an update to approve on %2$@";
+"push.body.app_permission_update.sign_in" = "It asks for new sign-in permissions. Approve the update or uninstall the App.";
+"push.body.app_permission_update.data" = "It asks for more access to data on this Server. Approve the update or uninstall the App.";
+"push.body.app_permission_update.sign_in_data" = "It asks for new sign-in permissions and more access to data on this Server. Approve the update or uninstall the App.";
+"push.body.app_permission_update.card_button" = "It changed the address its card buttons call. Approve the update or uninstall the App.";
+"push.body.app_permission_update.permissions_card_button" = "It asks for new permissions and changed the address its card buttons call. Approve the update or uninstall the App.";

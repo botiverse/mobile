@@ -163,11 +163,12 @@ internal fun settingsHomeRowKeys(
         SettingsDestinationStorage.takeIf { storage },
         SettingsNativeDetailPage.Theme.key.takeIf { hasThemeServer },
         SettingsNativeDetailPage.ServerNotifications.key.takeIf { hasThemeServer },
+        SettingsDestinationAppAuthorizations.takeIf { hasThemeServer },
         SettingsNativeDetailPage.Server.key,
         SettingsDestinationBilling.takeIf { billing },
         SettingsDestinationAdministration.takeIf { administration },
         SettingsDestinationImBridges.takeIf { imBridges },
-        SettingsDestinationConnectedApps.takeIf { !serverPanelPages || guest },
+        SettingsDestinationConnectedApps.takeIf { !serverPanelPages && !guest },
         SettingsDestinationComputers.takeUnless { serverPanelPages },
         SettingsDestinationLabs.takeIf { labs },
         SettingsNativeDetailPage.About.key,
@@ -261,6 +262,13 @@ internal fun appShellSettingsHomePayload(
                 title = stringResource(Res.string.settings_notifications_title),
                 subtitle = stringResource(Res.string.settings_server_notifications_subtitle, themeServerName),
                 iconName = RaftLucideIconName.BellDot,
+                section = onServerSection
+            ),
+            SettingsHomePageLinkPayload(
+                key = SettingsDestinationAppAuthorizations,
+                title = stringResource(Res.string.settings_app_authorizations_title),
+                subtitle = stringResource(Res.string.settings_app_authorizations_subtitle),
+                iconName = RaftLucideIconName.KeyRound,
                 section = onServerSection
             ),
             SettingsHomePageLinkPayload(

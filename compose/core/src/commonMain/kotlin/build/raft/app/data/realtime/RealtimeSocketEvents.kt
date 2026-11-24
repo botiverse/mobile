@@ -140,6 +140,13 @@ object RealtimeSocketEvents {
     const val JointInvitesChanged = GeneratedRealtimeContract.SocketEvent.JointInvitesChanged
 
     /**
+     * botiverse/slock `packages/shared/src/listChangedEvents.ts` `PERMISSION_UPDATES_CHANGED_EVENT`:
+     * `{ serverId }` to `server:<id>` whenever an installed App's pending permission updates or
+     * admin review state changes. Payload-free: owners/admins read `GET /integrations/permission-updates`.
+     */
+    const val PermissionUpdatesChanged = GeneratedRealtimeContract.SocketEvent.PermissionUpdatesChanged
+
+    /**
      * Interactive link card receipt hint (RFC 076 §6.8; botiverse/slock
      * `services/linkCardReceiptHints.ts`, shared `LINK_CARD_OPERATION_CHANGED_EVENT`):
      * `{ operation_id, receipt_revision }` to the viewer's `user:<id>:server:<id>` room whenever one of

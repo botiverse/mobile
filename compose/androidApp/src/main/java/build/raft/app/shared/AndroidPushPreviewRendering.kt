@@ -69,14 +69,14 @@ internal fun interface PushPreviewStrings {
 }
 
 /**
- * The banner copy keys of preview key set 3 (contract §1.5, slock `packages/shared/src/notificationCopy.ts`)
+ * The banner copy keys of preview key set 4 (contract §1.5, slock `packages/shared/src/notificationCopy.ts`)
  * and the string resource of each, `{0}` / `{1}` = `%1$s` / `%2$s`. Every key the server can send to a
  * registration of [build.raft.app.data.RAFT_ANDROID_PUSH_PREVIEW_KEY_SET] must be here (or in
  * [PushPreviewKeys]); AndroidNotificationCopyVectorTest pins the list to the slock catalogue.
  */
 internal object AndroidPushCopyKeys {
     /** The botiverse/slock commit whose notificationCopy.ts this table follows (scripts/check_notification_copy_vector.sh). */
-    const val SLOCK_SHA = "fbc091209976f3d22d58f0cc65e330599c45bccf"
+    const val SLOCK_SHA = "9bd45ecf815dc645b29e7c36fc182b0c7328fc4d"
 
     /** key -> (string resource, number of positional args). */
     val resources: Map<String, Pair<Int, Int>> =
@@ -104,7 +104,6 @@ internal object AndroidPushCopyKeys {
             "push.title.task_in_channel" to (R.string.push_title_task_in_channel to 1),
             "push.title.task_assigned" to (R.string.push_title_task_assigned to 0),
             "push.title.agent_action_required" to (R.string.push_title_agent_action_required to 1),
-            "push.title.agent_tool_stuck" to (R.string.push_title_agent_tool_stuck to 1),
             "push.title.reminder" to (R.string.push_title_reminder to 0),
             "push.title.agent_migration_review" to (R.string.push_title_agent_migration_review to 1),
             "push.title.test" to (R.string.push_title_test to 0),
@@ -119,7 +118,14 @@ internal object AndroidPushCopyKeys {
             "push.body.sender_attachments" to (R.string.push_body_sender_attachments to 2),
             "push.body.sender_no_text" to (R.string.push_body_sender_no_text to 1),
             "push.body.agent_migration_review" to (R.string.push_body_agent_migration_review to 1),
-            "push.body.test" to (R.string.push_body_test to 0)
+            "push.body.test" to (R.string.push_body_test to 0),
+            // App permission update notices (key set 4, slock #16546).
+            "push.title.app_permission_update" to (R.string.push_title_app_permission_update to 2),
+            "push.body.app_permission_update.sign_in" to (R.string.push_body_app_permission_update_sign_in to 0),
+            "push.body.app_permission_update.data" to (R.string.push_body_app_permission_update_data to 0),
+            "push.body.app_permission_update.sign_in_data" to (R.string.push_body_app_permission_update_sign_in_data to 0),
+            "push.body.app_permission_update.card_button" to (R.string.push_body_app_permission_update_card_button to 0),
+            "push.body.app_permission_update.permissions_card_button" to (R.string.push_body_app_permission_update_permissions_card_button to 0)
         )
 
     /** The generic task title: sender_only stands it in for a task title (content) this device redacts. */

@@ -80,6 +80,7 @@ internal val SettingsWideWebDetailKeys: Set<String> =
         SettingsDestinationBilling,
         SettingsDestinationAdministration,
         SettingsDestinationImBridges,
+        SettingsDestinationAppAuthorizations,
         SettingsDestinationConnectedApps,
         SettingsDestinationReleaseNotes,
     )
@@ -132,6 +133,7 @@ private fun settingsWideDetailPageWithoutAnchor(
         SettingsDestinationBilling -> settingsWideWebPage(SettingsWebViewSurface.Billing, storeScope)
         SettingsDestinationAdministration -> settingsWideWebPage(SettingsWebViewSurface.Administration, storeScope)
         SettingsDestinationImBridges -> settingsWideWebPage(SettingsWebViewSurface.ImBridges, storeScope)
+        SettingsDestinationAppAuthorizations -> settingsWideWebPage(SettingsWebViewSurface.AppAuthorizations, storeScope)
         SettingsDestinationConnectedApps -> settingsWideWebPage(SettingsWebViewSurface.Marketplace, storeScope)
         SettingsDestinationReleaseNotes -> settingsWideWebPage(SettingsWebViewSurface.ReleaseNotes, storeScope)
         SettingsDestinationAccount -> SETTINGS_ACCOUNT_PAGE to settingsStandalonePageData(SETTINGS_ACCOUNT_PAGE, storeScope)

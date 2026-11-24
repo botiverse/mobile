@@ -6,24 +6,27 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * artin 2026-11-05 (dm task #17): the phone Settings lists the web phone's rows. Computers and
- * Apps are pages on the server panel; Applications is a row only for a guest. The wide list keeps
- * both rows, next to the rail's Computers and Apps.
+ * artin 2026-11-05 (dm task #17) + botiverse/slock #16572: the phone Settings lists the web
+ * phone's rows. Computers and Apps are pages on the server panel, and a guest's own link previews
+ * live in Settings › App authorizations ("On {server}" group, visible to every member including
+ * guests). The wide list keeps Computers and Apps for non-guests beside the rail.
  */
 class SettingsHubServerPanelPagesTest {
     @Test
-    fun phoneHasNoComputersRowAndApplicationsOnlyForAGuest() {
+    fun phoneHasNoComputersOrApplicationsRowAndAppAuthorizationsForEveryone() {
         val member = settingsHomeRowKeys(hasThemeServer = true, serverPanelPages = true)
         assertFalse(SettingsDestinationComputers in member)
         assertFalse(SettingsDestinationConnectedApps in member)
+        assertTrue(SettingsDestinationAppAuthorizations in member)
         // The app's own row stays: Storage (the former Mobile page is part of Appearance).
         assertTrue(SettingsDestinationStorage in member)
 
         val guest =
             settingsHomeRowKeys(hasThemeServer = true, serverPanelPages = true, guest = true)
         assertFalse(SettingsDestinationComputers in guest)
-        assertEquals(guest.indexOf(SettingsDestinationAdministration) + 1, guest.indexOf(SettingsDestinationConnectedApps))
-        assertEquals(member, guest - SettingsDestinationConnectedApps)
+        assertFalse(SettingsDestinationConnectedApps in guest)
+        assertTrue(SettingsDestinationAppAuthorizations in guest)
+        assertEquals(member, guest)
     }
 
     @Test

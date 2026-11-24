@@ -40,3 +40,10 @@
 "push.body.sender_no_text" = "%1$@: (sin texto)";
 "push.body.agent_migration_review" = "%1$@ está en pausa hasta que confirmes. Revisa qué archivos se trasladan antes de que cierre el plazo.";
 "push.body.test" = "Si puedes leer esto, las notificaciones llegan a este dispositivo.";
+/* App permission update notices (preview key set 4, slock #16546). */
+"push.title.app_permission_update" = "%1$@ tiene una actualización por aprobar en %2$@";
+"push.body.app_permission_update.sign_in" = "Pide nuevos permisos de inicio de sesión. Aprueba la actualización o desinstala la app.";
+"push.body.app_permission_update.data" = "Pide más acceso a los datos de este servidor. Aprueba la actualización o desinstala la app.";
+"push.body.app_permission_update.sign_in_data" = "Pide nuevos permisos de inicio de sesión y más acceso a los datos de este servidor. Aprueba la actualización o desinstala la app.";
+"push.body.app_permission_update.card_button" = "Cambió la dirección a la que llaman sus botones de tarjeta. Aprueba la actualización o desinstala la app.";
+"push.body.app_permission_update.permissions_card_button" = "Pide nuevos permisos y cambió la dirección a la que llaman sus botones de tarjeta. Aprueba la actualización o desinstala la app.";

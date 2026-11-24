@@ -40,3 +40,10 @@
 "push.body.sender_no_text" = "%1$@: (텍스트 없음)";
 "push.body.agent_migration_review" = "확정하기 전까지 %1$@ 일시 중지 상태예요. 기간이 끝나기 전에 옮길 파일을 검토해 주세요.";
 "push.body.test" = "이 알림이 보인다면 이 기기로 알림이 전달되고 있어요.";
+/* App permission update notices (preview key set 4, slock #16546). */
+"push.title.app_permission_update" = "%1$@에 %2$@에서 승인할 업데이트가 있어요";
+"push.body.app_permission_update.sign_in" = "새 로그인 권한을 요청해요. 업데이트를 승인하거나 앱을 제거해 주세요.";
+"push.body.app_permission_update.data" = "이 서버의 데이터에 대한 더 많은 접근을 요청해요. 업데이트를 승인하거나 앱을 제거해 주세요.";
+"push.body.app_permission_update.sign_in_data" = "새 로그인 권한과 이 서버의 데이터에 대한 더 많은 접근을 요청해요. 업데이트를 승인하거나 앱을 제거해 주세요.";
+"push.body.app_permission_update.card_button" = "카드 버튼이 호출하는 주소가 바뀌었어요. 업데이트를 승인하거나 앱을 제거해 주세요.";
+"push.body.app_permission_update.permissions_card_button" = "새 권한을 요청하고, 카드 버튼이 호출하는 주소도 바뀌었어요. 업데이트를 승인하거나 앱을 제거해 주세요.";

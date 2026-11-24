@@ -372,7 +372,6 @@ class ServerEnumContractTest {
                 "machine:online" to "daemon-facing; mobile uses machine:status",
                 "message_display_prefs:updated" to "read on open (audit C1, follow-up)",
                 "notification:desktop" to "desktop app notifications",
-                "permission-updates:changed" to "permission page reads on open",
                 "reaction_viewer:updated" to "covered by message:updated",
                 "read_progress:detail_changed" to "web read-progress panel only",
                 "read_progress:updated" to "web read-progress panel only",

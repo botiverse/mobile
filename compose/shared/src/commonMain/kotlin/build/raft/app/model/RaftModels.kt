@@ -76,6 +76,12 @@ internal fun serverRoleCanViewBillingSettings(role: String?): Boolean = role.isS
  */
 internal fun serverRoleCanViewAdministrationSettings(role: String?): Boolean = role.isServerOwnerOrAdmin()
 
+/**
+ * Web `capabilities.manageIntegrations` (`serverPermissions.ts`): owners and admins manage Apps and
+ * review pending App permission updates (`GET /integrations/permission-updates`).
+ */
+internal fun serverRoleCanManageIntegrations(role: String?): Boolean = role.isServerOwnerOrAdmin()
+
 private fun String?.isServerOwnerOrAdmin(): Boolean =
     when (this?.trim()?.lowercase()) {
         "owner", "admin" -> true
@@ -1759,6 +1765,16 @@ data class ActivityChanged(
  */
 @Serializable
 data class JointInvitesChanged(
+    val serverId: ServerId,
+) : RealtimeEvent
+
+/**
+ * `permission-updates:changed` (botiverse/slock `listChangedEvents.ts`): installed App permission
+ * updates or admin review state on [serverId] changed (web `useAppPermissionUpdatesSummary` reads
+ * `GET /integrations/permission-updates` again).
+ */
+@Serializable
+data class PermissionUpdatesChanged(
     val serverId: ServerId,
 ) : RealtimeEvent
 

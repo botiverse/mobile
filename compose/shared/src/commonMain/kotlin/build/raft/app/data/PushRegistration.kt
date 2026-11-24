@@ -67,8 +67,9 @@ internal data class RaftPushRegistrationPayload(
     /** The OS notification permission: `granted`, `denied`, `provisional` or `unknown`. */
     val osPermission: String? = null,
     /**
-     * The newest preview localization key set this build ships (contract §3.1): 3 = every §1.5 key.
-     * APNs then carries `loc-key`s only from that set; any other key arrives as plain English text.
+     * The newest preview localization key set this build ships (contract §3.1): 4 = every §1.5 key
+     * including App permission update notices (slock #16546). APNs then carries `loc-key`s only
+     * from that set; any other key arrives as plain English text.
      */
     val previewKeySet: Int? = null
 ) {
@@ -78,20 +79,20 @@ internal data class RaftPushRegistrationPayload(
 }
 
 /**
- * The preview key set (slock docs/contracts/notifications.md §3.1) the iOS app ships: 3 = every
- * redacted-preview key (`push.preview.*`) and every banner key (`push.title.*`, `push.subtitle.*`,
- * `push.body.*`), all in each Localizable.strings of the app. iOS has no service extension and
- * shows an unknown `loc-key` verbatim, so a newer set waits until its keys are in every catalog.
+ * The preview key set (slock docs/contracts/notifications.md §3.1) the iOS app ships: 4 = every
+ * redacted-preview key (`push.preview.*`), every banner key (`push.title.*`, `push.subtitle.*`,
+ * `push.body.*`), and the App permission update keys (slock #16546), all in each Localizable.strings
+ * of the app. iOS has no service extension and shows an unknown `loc-key` verbatim, so a newer set
+ * waits until its keys are in every catalog.
  */
-internal const val RAFT_PUSH_PREVIEW_KEY_SET = 3
+internal const val RAFT_PUSH_PREVIEW_KEY_SET = 4
 
 /**
- * The preview key set the Android app ships: 3 = set 2 plus every banner key (`push.title.*`,
- * `push.subtitle.*`, `push.body.*`), all in its string resources (AndroidPushCopyKeys,
- * pinned to the slock catalogue by AndroidNotificationCopyVectorTest). FCM then sends the plain
- * title with the subtitle on its own.
+ * The preview key set the Android app ships: 4 = set 3 plus the App permission update keys
+ * (slock #16546), all in its string resources (AndroidPushCopyKeys, pinned to the slock catalogue
+ * by AndroidNotificationCopyVectorTest). FCM then sends the plain title with the subtitle on its own.
  */
-const val RAFT_ANDROID_PUSH_PREVIEW_KEY_SET = 3
+const val RAFT_ANDROID_PUSH_PREVIEW_KEY_SET = 4
 
 /**
  * What the device reports with its registration (contract §3.1). [legacyPreviewMode] is set only

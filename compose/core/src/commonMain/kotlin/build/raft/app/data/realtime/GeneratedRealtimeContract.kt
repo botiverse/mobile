@@ -127,6 +127,7 @@ object GeneratedRealtimeContract {
         const val NotificationPush = "notification:push"
         const val NotificationRetract = "notification:retract"
         const val JointInvitesChanged = "joint-invites:changed"
+        const val PermissionUpdatesChanged = "permission-updates:changed"
         const val LinkCardOperationChanged = "link_card.operation_changed"
         const val LinkCardChanged = "link_card.changed"
         const val ActorUpdated = "actor:updated"
@@ -191,6 +192,7 @@ object GeneratedRealtimeContract {
             NotificationPush,
             NotificationRetract,
             JointInvitesChanged,
+            PermissionUpdatesChanged,
             LinkCardOperationChanged,
             LinkCardChanged,
             ActorUpdated,

@@ -45,6 +45,7 @@ internal fun raftSettingsDestinationKeyForWebTab(webTab: String?): String? =
         "billing" -> SettingsDestinationBilling
         "administration", "moderation" -> SettingsDestinationAdministration
         "im-bridges" -> SettingsDestinationImBridges
+        "app-authorizations", "authorized-accounts" -> SettingsDestinationAppAuthorizations
         "applications", "integrations", "mcp", "mcp-servers" -> SettingsDestinationConnectedApps
         "computers" -> SettingsDestinationComputers
         "about" -> SettingsNativeDetailPage.About.key
@@ -148,5 +149,8 @@ internal fun raftSettingsLinkDestinationForRole(destinationKey: String?, role: S
         SettingsDestinationBilling -> destinationKey.takeIf { settingsHomeBillingVisible(role) } ?: SettingsDestinationAccount
         SettingsDestinationAdministration ->
             destinationKey.takeIf { settingsHomeAdministrationVisible(role) } ?: SettingsDestinationAccount
+        // slock #16572 MainLayout.tsx: a guest has no Apps page; an old Applications link opens App authorizations.
+        SettingsDestinationConnectedApps ->
+            if (role.equals("guest", ignoreCase = true)) SettingsDestinationAppAuthorizations else destinationKey
         else -> destinationKey
     }

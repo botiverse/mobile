@@ -46,4 +46,21 @@ class RaftNotificationTapTargetTest {
         assertEquals("dm-1", pageData.optString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID))
         assertFalse(pageData.has(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_TARGET))
     }
+
+    @Test
+    fun anAppRouteOpensTheInstalledAppDetailOnTheRoutesServer() {
+        val pageData =
+            requireNotNull(
+                RaftCmpActivity.buildNotificationTapAppShellPageData(
+                    JSONObject()
+                        .put("id", "app_permission_update:inst-1:abc")
+                        .put("serverId", "server-2")
+                        .put("category", "system_notice")
+                        .put("route", """{"type":"app","serverId":"server-3","appId":"app-42"}""")
+                )
+            )
+        assertEquals("server-3", pageData.optString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID))
+        assertEquals(RaftCmpActivity.NOTIFICATION_TARGET_APP, pageData.optString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_TARGET))
+        assertEquals("app-42", pageData.optString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_APP_ID))
+    }
 }

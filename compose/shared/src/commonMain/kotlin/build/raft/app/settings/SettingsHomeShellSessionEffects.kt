@@ -589,8 +589,10 @@ internal fun AppShellWindowNavigationEventEffects(
     eventBus: build.raft.app.data.RaftEventBusRelay,
     navigationIntake: RaftShellNavigationIntake,
     pendingNotificationActivityServerIdState: MutableState<String?>,
+    pendingNotificationAppTargetState: MutableState<AppShellNotificationAppTarget?>,
 ) {
     var pendingNotificationActivityServerId by pendingNotificationActivityServerIdState
+    var pendingNotificationAppTarget by pendingNotificationAppTargetState
     DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
         val subscription =
             eventBus.observe(build.raft.app.data.RaftDesktopShortcutContract.OpenEventName) { eventData ->
@@ -636,13 +638,20 @@ internal fun AppShellWindowNavigationEventEffects(
                 if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
                     return@observe
                 }
-                val activityServerId = eventData?.toKuiklyJson()?.appShellNotificationActivityServerId()
+                val notificationJson = eventData?.toKuiklyJson()
+                val appTarget = notificationJson?.appShellNotificationAppTarget()
+                if (appTarget != null) {
+                    bridge.log("notification_open_app source=system_notification targetServerId=${appTarget.serverId} appId=${appTarget.appId}")
+                    pendingNotificationAppTarget = appTarget
+                    return@observe
+                }
+                val activityServerId = notificationJson?.appShellNotificationActivityServerId()
                 if (activityServerId != null) {
                     bridge.log("notification_open_activity source=system_notification targetServerId=$activityServerId")
                     pendingNotificationActivityServerId = activityServerId
                     return@observe
                 }
-                val intent = eventData?.toKuiklyJson().appShellSystemNotificationNavigationIntent()
+                val intent = notificationJson.appShellSystemNotificationNavigationIntent()
                 if (intent == null) {
                     bridge.logWarn("window_navigation_drop source=system_notification reason=invalid_identity")
                     return@observe
@@ -1254,6 +1263,51 @@ internal fun AppShellJointInviteEffect(
             build.raft.app.data.RealtimeGuardedActiveThreadSink { eventServerId, event ->
                 if (event is build.raft.app.model.JointInvitesChanged && event.serverId.value == eventServerId) {
                     jointInviteStore.dispatch(build.raft.app.data.SharedJointInviteIntent.Changed(eventServerId))
+                }
+            }
+        appShellRealtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
+        onDispose { appShellRealtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
+    }
+}
+
+/**
+ * Loads `GET /integrations/permission-updates` for owners & admins on the current server and
+ * refreshes on `permission-updates:changed`, foreground/reconnect, and page visibility return
+ * (#proj-mobile:#345). Fails closed (no request, no dot) for members and guests.
+ */
+@Composable
+@NonRestartableComposable
+internal fun AppShellAppPermissionUpdatesEffect(
+    appShellRealtimeDomainEventOwner: build.raft.app.data.SharedRealtimeDomainEventOwner,
+    store: build.raft.app.data.SharedAppPermissionUpdatesStore,
+    serverId: String?,
+    canManageIntegrations: Boolean,
+    pageVisibleTick: Int,
+) {
+    LaunchedEffect(store, serverId, canManageIntegrations) {
+        store.load(serverId = serverId, canManageIntegrations = canManageIntegrations)
+    }
+    LaunchedEffect(store, pageVisibleTick) {
+        if (pageVisibleTick > 0) {
+            store.refresh()
+        }
+    }
+    LaunchedEffect(store) {
+        build.raft.app.data.RaftFreshnessSignal.events.collect { event ->
+            when (event.trigger) {
+                build.raft.app.data.RaftFreshnessTrigger.Reconnect ->
+                    event.serverId?.let(store::refresh)
+                build.raft.app.data.RaftFreshnessTrigger.Foreground,
+                build.raft.app.data.RaftFreshnessTrigger.NetworkRestored ->
+                    store.refresh()
+            }
+        }
+    }
+    DisposableEffect(appShellRealtimeDomainEventOwner, store) {
+        val sink =
+            build.raft.app.data.RealtimeGuardedActiveThreadSink { eventServerId, event ->
+                if (event is build.raft.app.model.PermissionUpdatesChanged && event.serverId.value == eventServerId) {
+                    store.onChanged(eventServerId)
                 }
             }
         appShellRealtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)

@@ -3359,6 +3359,8 @@
     <string name="settings_server_administration_subtitle">관리자, 초대, 참여 링크, 약관</string>
     <string name="settings_im_bridges_title">IM 브리지</string>
     <string name="settings_im_bridges_subtitle">Raft와 외부 메시징 서비스 간의 연결을 관리하세요</string>
+    <string name="settings_app_authorizations_title">앱 승인</string>
+    <string name="settings_app_authorizations_subtitle">이 서버의 앱에 연결한 계정과 링크 미리보기 설정</string>
     <string name="settings_labs_title">Labs</string>
     <string name="settings_labs_section_label">Labs</string>
     <string name="settings_labs_unavailable_title">Labs 설정을 사용할 수 없어요</string>

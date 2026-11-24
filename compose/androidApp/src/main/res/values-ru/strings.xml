@@ -75,7 +75,6 @@
     <string name="push_title_task_in_channel">Задача в канале #%1$s</string>
     <string name="push_title_task_assigned">Вам назначена задача</string>
     <string name="push_title_agent_action_required">%1$s: нужно ваше внимание</string>
-    <string name="push_title_agent_tool_stuck">Агент %1$s завис</string>
     <string name="push_title_reminder">Напоминание</string>
     <string name="push_title_agent_migration_review">Подтвердите перенос агента %1$s в облако</string>
     <string name="push_title_test">Тестовое уведомление Raft</string>
@@ -89,6 +88,12 @@
     <string name="push_body_sender_no_text">%1$s: (без текста)</string>
     <string name="push_body_agent_migration_review">Агент %1$s приостановлен до вашего подтверждения. Проверьте, какие файлы будут перенесены, пока не истёк срок.</string>
     <string name="push_body_test">Если вы это видите, уведомления доходят до этого устройства.</string>
+    <string name="push_title_app_permission_update">У %1$s есть обновление для одобрения в %2$s</string>
+    <string name="push_body_app_permission_update_sign_in">Приложение запрашивает новые разрешения на вход. Одобрите обновление или удалите приложение.</string>
+    <string name="push_body_app_permission_update_data">Приложение запрашивает больше доступа к данным этого сервера. Одобрите обновление или удалите приложение.</string>
+    <string name="push_body_app_permission_update_sign_in_data">Приложение запрашивает новые разрешения на вход и больше доступа к данным этого сервера. Одобрите обновление или удалите приложение.</string>
+    <string name="push_body_app_permission_update_card_button">Приложение изменило адрес, который вызывают его кнопки карточек. Одобрите обновление или удалите приложение.</string>
+    <string name="push_body_app_permission_update_permissions_card_button">Приложение запрашивает новые разрешения и изменило адрес, который вызывают его кнопки карточек. Одобрите обновление или удалите приложение.</string>
     <string name="notification_unread_general_channel_name">Непрочитанные сообщения</string>
     <string name="notification_unread_general_channel_description">Общие уведомления Raft о непрочитанных сообщениях.</string>
     <string name="notification_unread_channel_channel_name">Непрочитанные в каналах</string>

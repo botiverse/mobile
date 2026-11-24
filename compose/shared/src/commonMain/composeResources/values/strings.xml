@@ -3539,6 +3539,8 @@
     <string name="settings_server_administration_subtitle">Admins, invites, join links, agreements</string>
     <string name="settings_im_bridges_title">IM bridges</string>
     <string name="settings_im_bridges_subtitle">Manage connections between Raft and external messaging services</string>
+    <string name="settings_app_authorizations_title">App authorizations</string>
+    <string name="settings_app_authorizations_subtitle">Connected accounts and your link previews for Apps on this server</string>
     <string name="settings_labs_title">Labs</string>
     <string name="settings_labs_section_label">Labs</string>
     <string name="settings_labs_unavailable_title">Labs settings unavailable</string>

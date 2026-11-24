@@ -104,6 +104,7 @@
     "notificationPush": "notification:push",
     "notificationRetract": "notification:retract",
     "jointInvitesChanged": "joint-invites:changed",
+    "permissionUpdatesChanged": "permission-updates:changed",
     "linkCardOperationChanged": "link_card.operation_changed",
     "linkCardChanged": "link_card.changed",
     "actorUpdated": "actor:updated",
@@ -168,6 +169,7 @@
     "notificationPush",
     "notificationRetract",
     "jointInvitesChanged",
+    "permissionUpdatesChanged",
     "linkCardOperationChanged",
     "linkCardChanged",
     "actorUpdated",
@@ -216,7 +218,6 @@
     "object:changed": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet.",
     "object:unwatch": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet.",
     "object:watch": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet.",
-    "permission-updates:changed": "Permission updates panel is web-only; mobile has no consumer yet.",
     "seat-join-blocks:changed": "Seat join blocks are admin web only; mobile has no consumer yet."
   },
   "acknowledgedUnemittedServerWireEvents": {

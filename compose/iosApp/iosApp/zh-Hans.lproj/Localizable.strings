@@ -38,3 +38,10 @@
 "push.body.sender_no_text" = "%1$@：（无文字）";
 "push.body.agent_migration_review" = "%1$@ 已暂停，等你确认。请在时限结束前查看要迁过来的文件。";
 "push.body.test" = "如果你能看到这条通知，说明通知可以送达这台设备。";
+/* App permission update notices (preview key set 4, slock #16546). */
+"push.title.app_permission_update" = "%1$@ 在 %2$@ 有一项更新待批准";
+"push.body.app_permission_update.sign_in" = "它请求新的登录权限。请批准更新，或卸载该应用。";
+"push.body.app_permission_update.data" = "它请求访问此服务器上更多的数据。请批准更新，或卸载该应用。";
+"push.body.app_permission_update.sign_in_data" = "它请求新的登录权限，以及访问此服务器上更多的数据。请批准更新，或卸载该应用。";
+"push.body.app_permission_update.card_button" = "它更改了卡片按钮调用的地址。请批准更新，或卸载该应用。";
+"push.body.app_permission_update.permissions_card_button" = "它请求新的权限，并更改了卡片按钮调用的地址。请批准更新，或卸载该应用。";
