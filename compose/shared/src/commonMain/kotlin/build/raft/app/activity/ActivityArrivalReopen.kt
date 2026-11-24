@@ -45,7 +45,11 @@ internal fun activityArrivalReopenTarget(
     lastOpenedKey: String?,
 ): InboxItem? {
     if (!wide || somethingOpen || lastOpenedKey == null) return null
+    // Web `useThreadsInboxOpen.reopen`: an Artifact is never auto-reopened on arrival (loading its
+    // viewer advances its read position with no auto-read hold), while keeping its key as lastOpened
+    // prevents reopening an older conversation instead.
     return items.firstOrNull { it.key == lastOpenedKey }
+        ?.takeIf { it.kind != build.raft.app.model.InboxItemKind.Object }
 }
 
 /**

@@ -251,6 +251,7 @@ class RaftRailPlacesReplayTest {
                     selectedRow = store.snapshot().detailListSelectionId()
                 }
                 is RaftWideNavDetail.Member -> error("no member entries here")
+                is RaftWideNavDetail.Artifact -> error("no artifact entries here")
                 null ->
                     if (store.snapshot().workspace?.selection != null) {
                         store.update { it.closeDetailCompletely() }

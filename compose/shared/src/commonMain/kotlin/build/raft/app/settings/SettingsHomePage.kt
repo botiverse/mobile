@@ -2158,6 +2158,9 @@ private fun RaftAppShellReadyContent(
     val membersDetailSelection = remember(navigationStoreScope, readySession?.user?.id, readyServerId) {
         mutableStateOf<RaftMemberDetailPayload?>(null)
     }
+    // Wide Activity right-pane Artifact viewer state (kept beside membersDetailSelection so
+    // popMainRoute can dismiss an open Activity Artifact before leaving the tab).
+    val activityArtifactState = remember { ActivityWideArtifactState() }
     val latestReadySessionState = rememberUpdatedState(readySession)
     val latestReadySession by latestReadySessionState
     val latestAuthoritativeHomeStartAllowedState = rememberUpdatedState(authoritativeHomeStartAllowed)
@@ -2685,6 +2688,7 @@ private fun RaftAppShellReadyContent(
         if (opened != before?.workspace?.selection || before?.launchPayload == null) {
             installAdaptiveHandoffLease(opened, launchPayload)
         }
+        activityArtifactState.close()
         // Dual-pane detail does not push a native controller, so it must neither become
         // a Forward entry nor leave an older native-push branch reachable.
         conversationForwardHistory.clear()
@@ -3230,6 +3234,14 @@ private fun RaftAppShellReadyContent(
         }
         if (selectedTab == "members" && membersDetailSelection.value != null) {
             membersDetailSelection.value = null
+            return true
+        }
+        if (
+            desktopModeOnLargeScreen &&
+            retainedAppShellSelectedTab(selectedTab) == "activity" &&
+            railInlineSecondaryDestination == null &&
+            activityArtifactState.close()
+        ) {
             return true
         }
         // task #36: an open side thread closes first; the main detail stays.
@@ -4147,6 +4159,15 @@ private fun RaftAppShellReadyContent(
     // The wide layout's profile and Artifact columns (RaftWideSideColumns.kt, #189 steps 3-4): they belong to the
     // conversation picked, and reopen as pages when the window leaves the wide layout.
     val sideColumns = rememberRaftWideSideColumns(adaptiveWorkspaceState?.selection?.identity, navRailActive, tab = selectedTab)
+    val activitySurfaceSelected =
+        retainedAppShellSelectedTab(selectedTab) == "activity" && railInlineSecondaryDestination == null
+    ActivityWideArtifactLifecycleEffect(
+        state = activityArtifactState,
+        wide = navRailActive,
+        surfaceSelected = activitySurfaceSelected,
+        active = pageVisible && activitySurfaceSelected,
+        serverId = readyServerId,
+    )
     // stdrc 2026-10-21: Settings is the More tab's root on the phone bar and the pinned rail entry
     // on the wide layout; a selection made for the other layout moves to this layout's root.
     LaunchedEffect(selectedTab, navRailActive) {
@@ -4182,6 +4203,7 @@ private fun RaftAppShellReadyContent(
                 conversation = adaptiveWorkspaceState?.selection?.identity,
                 conversationRoute = adaptiveDetailLaunchPayload,
                 member = membersDetailSelection.value?.identity,
+                activityArtifact = activityArtifactState.currentTarget,
             )
         } else {
             null
@@ -4262,6 +4284,7 @@ private fun RaftAppShellReadyContent(
         }
         when (val detail = entry.detail) {
             is RaftWideNavDetail.Conversation -> {
+                activityArtifactState.close()
                 openLaunchPayloadInAdaptiveDetail(detail.route)
                 val session = adaptiveWorkspaceStore.snapshot()
                 if (session.workspace?.selection?.identity?.key != detail.identity.key) {
@@ -4273,6 +4296,21 @@ private fun RaftAppShellReadyContent(
                     tasksDetailColumnTaskId = tasksDetailColumnTaskIds.restored(detail.identity.key, tasksDetailColumnTaskId)
                 }
                 homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(session.detailListSelectionId()))
+            }
+            is RaftWideNavDetail.Artifact -> {
+                openActivityWideArtifactInShell(
+                    state = activityArtifactState,
+                    target = detail.target,
+                    scopeOverride = null,
+                    fallbackScope = navigationStoreScope,
+                    conversationId = null,
+                    sharedStores = sharedStores,
+                    adaptiveWorkspaceStore = adaptiveWorkspaceStore,
+                    releaseLease = ::releaseAdaptiveHandoffLease,
+                    clearSelectedConversation = {
+                        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+                    },
+                )
             }
             is RaftWideNavDetail.Member -> wideNavMemberOpenRequest = detail.identity
             null ->
@@ -4286,6 +4324,7 @@ private fun RaftAppShellReadyContent(
                     }
                     "settings" -> Unit
                     else -> {
+                        activityArtifactState.close()
                         val selection = adaptiveWorkspaceStore.snapshot().workspace?.selection ?: return
                         adaptiveWorkspaceStore.update { it.closeDetailCompletely() }
                         releaseAdaptiveHandoffLease(selection.generation)
@@ -6376,7 +6415,8 @@ private fun RaftAppShellReadyContent(
                             listKind: RaftListPaneKind,
                             fillListWhenNothingPicked: Boolean,
                             collapseColumn: RaftCollapsibleColumn?,
-                        ) -> Unit = { enabled, active, listPane, detailAccepted, defaultLandingEligible, listKind, fillListWhenNothingPicked, collapseColumn ->
+                            overrideDetailPane: (@Composable (Modifier) -> Unit)?,
+                        ) -> Unit = { enabled, active, listPane, detailAccepted, defaultLandingEligible, listKind, fillListWhenNothingPicked, collapseColumn, overrideDetailPane ->
                         val workspace = adaptiveWorkspaceState
                         val selection =
                             raftAdaptiveSelectionForReadyServer(
@@ -6384,8 +6424,13 @@ private fun RaftAppShellReadyContent(
                                 readyServerId = readyServerId,
                                 detailAccepted = detailAccepted,
                             )
+                        val hasSelection = overrideDetailPane != null || selection != null
                         val detailPane: @Composable (Modifier) -> Unit = { modifier ->
-                            adaptiveDetailPane(modifier, active, detailAccepted, true, defaultLandingEligible)
+                            if (overrideDetailPane != null) {
+                                overrideDetailPane(modifier)
+                            } else {
+                                adaptiveDetailPane(modifier, active, detailAccepted, true, defaultLandingEligible)
+                            }
                         }
                         if (enabled) {
                             // task #37 / artin task #20: per-kind list width and the split live in
@@ -6400,7 +6445,7 @@ private fun RaftAppShellReadyContent(
                                 widths = adaptiveListPaneWidths,
                                 dualPane = dualPane,
                                 active = active,
-                                hasSelection = selection != null,
+                                hasSelection = hasSelection,
                                 detailBottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
                                 listPane = listPane,
                                 detailPane = detailPane,
@@ -6415,8 +6460,8 @@ private fun RaftAppShellReadyContent(
                                         }
                                     },
                                 // Web: Activity's list with an item open is at most half the row, so the
-                                // conversation is never narrower than the list (stdrc).
-                                maxShare = 0.5f.takeIf { collapseColumn == RaftCollapsibleColumn.ActivityList && selection != null },
+                                // conversation or Artifact is never narrower than the list (stdrc).
+                                maxShare = 0.5f.takeIf { collapseColumn == RaftCollapsibleColumn.ActivityList && hasSelection },
                                 // #337: on a portrait tablet the list collapses while it would squeeze the
                                 // conversation under 360 beside the columns open right of it (not saved).
                                 onGivesWayChange =
@@ -6695,6 +6740,7 @@ private fun RaftAppShellReadyContent(
                             RaftListPaneKind.Sidebar,
                             false,
                             RaftCollapsibleColumn.Sidebar,
+                            null,
                         )
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
@@ -6722,6 +6768,7 @@ private fun RaftAppShellReadyContent(
                             routeVisibleTick = pageVisibleTick,
                             active = listActive,
                             onOpenMessage = { request ->
+                                activityArtifactState.close()
                                 openHomeMessageRequest(
                                     request = request,
                                     source = "activity_tab"
@@ -6734,7 +6781,29 @@ private fun RaftAppShellReadyContent(
                             shellScope = shellScope,
                             storeScope = navigationStoreScope,
                             externalSelectedThreadId =
-                                adaptiveWorkspaceState?.selection?.identity?.threadId,
+                                if (activityArtifactState.isOpen) null
+                                else adaptiveWorkspaceState?.selection?.identity?.threadId,
+                            externalSelectedArtifactId = activityArtifactState.currentArtifactId.takeIf { navRailActive },
+                            onOpenArtifact =
+                                if (navRailActive) {
+                                    { target, scopeOverride, conv ->
+                                        openActivityWideArtifactInShell(
+                                            state = activityArtifactState,
+                                            target = target,
+                                            scopeOverride = scopeOverride,
+                                            fallbackScope = navigationStoreScope,
+                                            conversationId = conv,
+                                            sharedStores = sharedStores,
+                                            adaptiveWorkspaceStore = adaptiveWorkspaceStore,
+                                            releaseLease = ::releaseAdaptiveHandoffLease,
+                                            clearSelectedConversation = {
+                                                homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+                                            },
+                                        )
+                                    }
+                                } else {
+                                    null
+                                },
                             // The two-pane layout owns the highlight: none once the detail closes.
                             externalSelectionOwned = navRailActive,
                             // Activity's own open, not Chat's conversation left in the slot (RaftRailPlaces.kt).
@@ -6750,6 +6819,18 @@ private fun RaftAppShellReadyContent(
                         // collapsed beside an open conversation; Back that closes the conversation
                         // brings the list back without reopening it.
                         val activityArrivalVisits = rememberActivityArrivalVisits(active)
+                        val activityArtifactDetail: (@Composable (Modifier) -> Unit)? =
+                            if (navRailActive && activityArtifactState.isOpen) {
+                                { detailModifier ->
+                                    RaftActivityArtifactDetailPane(
+                                        state = activityArtifactState,
+                                        active = active,
+                                        modifier = detailModifier,
+                                    )
+                                }
+                            } else {
+                                null
+                            }
                         adaptiveSplitListDetail(
                             desktopModeOnLargeScreen,
                             active,
@@ -6761,6 +6842,7 @@ private fun RaftAppShellReadyContent(
                             false,
                             // Collapsible like the sidebar, remembered on its own (web activityList).
                             RaftCollapsibleColumn.ActivityList,
+                            activityArtifactDetail,
                         )
                     }
                     // Members and Settings are server pages pushed from the server panel on the phone
@@ -7193,6 +7275,7 @@ private fun RaftAppShellReadyContent(
                             RaftListPaneKind.List,
                             true,
                             // Its list stays put (web: Search does not collapse).
+                            null,
                             null,
                         )
                     } else if (appShellRailInlinePage(railInlineSecondaryDestination, storeScope) != null) {

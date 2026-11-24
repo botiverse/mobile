@@ -63,6 +63,9 @@ internal sealed interface RaftWideNavDetail {
 
     /** A member or agent in the Members tab's detail pane. */
     data class Member(val identity: MemberDetailIdentity) : RaftWideNavDetail
+
+    /** An Artifact open in Activity's right detail pane (web `?artifact=<id>`). */
+    data class Artifact(val target: build.raft.app.data.ArtifactLinkTarget) : RaftWideNavDetail
 }
 
 /**
@@ -205,6 +208,7 @@ internal fun raftWideNavEntryOf(
     conversation: RaftAdaptiveDetailIdentity?,
     conversationRoute: WireThreadLaunchPayload?,
     member: MemberDetailIdentity?,
+    activityArtifact: build.raft.app.data.ArtifactLinkTarget? = null,
 ): RaftWideNavEntry? {
     val server = serverId?.trim()?.takeIf(String::isNotBlank) ?: return null
     val tab = retainedAppShellSelectedTab(selectedTab)
@@ -222,6 +226,7 @@ internal fun raftWideNavEntryOf(
     val detail =
         when {
             surface == "members" -> member?.let(RaftWideNavDetail::Member)
+            surface == "activity" && activityArtifact != null -> RaftWideNavDetail.Artifact(activityArtifact)
             sharedDetailShows && conversation != null && conversation.serverId == server && conversationRoute != null ->
                 RaftWideNavDetail.Conversation(conversation, conversationRoute.toRaftWideNavRoute())
             else -> null
