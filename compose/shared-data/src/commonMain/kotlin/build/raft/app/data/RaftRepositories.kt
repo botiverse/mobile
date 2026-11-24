@@ -1,0 +1,1217 @@
+package build.raft.app.data
+
+import build.raft.app.RaftCoreInternalApi
+
+import build.raft.app.model.*
+
+enum class DataRequestPriority {
+    Foreground,
+    Visible,
+    Background
+}
+
+/**
+ * Typed Settings data boundary used by shared Settings pages.
+ *
+ * Settings sections should flow through these typed snapshots/results or
+ * platform capabilities. Do not add UI-local raw JSON readers or standalone API
+ * docs for Billing/Server/Account fields; put non-obvious field mappings on
+ * the request/snapshot type that owns them.
+ */
+interface SettingsRepository {
+    suspend fun getAccount(): DataResult<AccountSettingsSnapshot>
+    suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot>
+    suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot>
+    suspend fun uploadAccountAvatar(request: AccountAvatarUploadRequest): DataResult<AccountSettingsSnapshot>
+    suspend fun startAccountProviderLink(request: AccountProviderLinkStartRequest): DataResult<AccountProviderLinkStartResult>
+    /** `DELETE /api/auth/identities/:provider` (web Disconnect); the content is the account read again. */
+    suspend fun disconnectAccountProvider(providerId: String): DataResult<AccountSettingsSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    /** `POST /api/auth/second-factor/step-up` (SecondFactorStepUpApi.kt): verify this sign-in for a refused action. */
+    suspend fun stepUpSecondFactor(answer: SecondFactorStepUpAnswer): SecondFactorStepUpResult =
+        SecondFactorStepUpResult.Failed(serverCode = "second_factor_step_up_unavailable")
+    /** `POST /api/auth/second-factor/passkeys/assertion/options` (SecondFactorPasskeyStepUpApi.kt). */
+    suspend fun secondFactorPasskeyAssertionOptions(rp: String?): SecondFactorPasskeyOptionsResult =
+        SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.Failed(serverCode = "second_factor_step_up_unavailable"))
+    /** `POST /api/auth/app-login/step-up/start` (AppWebStepUpApi.kt). */
+    suspend fun appWebStepUpStart(body: AppWebStepUpStartBody): AppWebStepUpStartResult = AppWebStepUpStartResult.Unavailable
+    /** `POST /api/auth/app-login/step-up/complete` (AppWebStepUpApi.kt). */
+    suspend fun appWebStepUpComplete(body: AppWebStepUpCompleteBody): AppWebStepUpCompleteResult =
+        AppWebStepUpCompleteResult.Failed(serverCode = "second_factor_step_up_unavailable")
+    /**
+     * `PATCH /api/auth/me` `{ shareUsageData }` (RFC-067 "Share usage data"); the content is the choice the
+     * server now holds, read back from the returned user.
+     */
+    suspend fun updateShareUsageData(enabled: Boolean): DataResult<AccountUsageDataSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    suspend fun getConnectedApps(): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun registerConnectedApp(
+        request: SettingsConnectedAppRegisterRequest
+    ): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun updateConnectedApp(
+        request: SettingsConnectedAppUpdateRequest
+    ): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun uploadConnectedAppLogo(
+        request: SettingsConnectedAppLogoUploadRequest
+    ): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun clearConnectedAppLogo(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun deleteConnectedApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun requestConnectedAppPublish(
+        request: SettingsConnectedAppPublishRequest
+    ): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun installMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun uninstallMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun getComputers(): DataResult<SettingsComputersSnapshot>
+    suspend fun getComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot>
+    suspend fun getComputerDetailForComputer(computer: SettingsComputerSnapshot): DataResult<SettingsComputerDetailSnapshot> =
+        getComputerDetail(computer.id)
+    suspend fun scanComputerWorkspaces(machineId: String): DataResult<List<SettingsComputerWorkspaceSnapshot>> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult>
+    /** `POST /api/auth/device/describe` (DeviceLoginApprovalApi.kt): a code a terminal shows, typed into Add Computer. */
+    suspend fun describeDeviceLogin(userCode: String): DataResult<DeviceLoginRequest> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    /** `POST /api/auth/device/approve`: approve [request] for [serverId] with describe's ticket. */
+    suspend fun approveDeviceLogin(request: DeviceLoginRequest, serverId: String): DataResult<Unit> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    /** `POST /api/auth/device/approve` with `approve: false`. */
+    suspend fun denyDeviceLogin(request: DeviceLoginRequest): DataResult<Unit> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot>
+    suspend fun updateComputerDescription(request: SettingsComputerDescriptionUpdateRequest): DataResult<SettingsComputerSnapshot>
+    suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult>
+    suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult>
+    /** `POST servers/:id/machines/:machineId/computer/restart` (managed Computers, online only). */
+    suspend fun restartComputer(machineId: String): DataResult<SettingsComputerRestartResult> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    /** `POST servers/:id/machines/:machineId/computer/upgrade` with the consented `targetVersion`. */
+    suspend fun upgradeComputer(request: SettingsComputerUpgradeRequest): DataResult<SettingsComputerUpgradeRequestSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    /** Computer owner v1: `PUT servers/:id/machines/:machineId/owner` (`ownerUserId` null = Public). */
+    suspend fun setComputerOwner(request: SettingsComputerOwnerRequest): DataResult<SettingsComputerActionResult> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    suspend fun getComputerRuntimeModels(
+        machineId: String,
+        runtime: String
+    ): DataResult<SettingsComputerRuntimeModelsSnapshot>
+    suspend fun deleteComputerWorkspace(request: SettingsComputerWorkspaceDeleteRequest): DataResult<SettingsComputerActionResult>
+    suspend fun getBilling(): DataResult<SettingsBillingSnapshot>
+    suspend fun getServerSettings(): DataResult<SettingsServerSnapshot>
+    suspend fun updateServerProfile(request: SettingsServerProfileUpdateRequest): DataResult<SettingsServerSnapshot>
+    suspend fun createServerInvite(request: SettingsServerInviteCreateRequest): DataResult<SettingsServerActionResult>
+    suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult>
+    suspend fun getAppearanceSettings(): DataResult<SettingsAppearanceSnapshot>
+    suspend fun updateAppearanceSettings(request: SettingsAppearanceUpdateRequest): DataResult<SettingsAppearanceSnapshot>
+    /**
+     * `PATCH /api/auth/me` `{ composerSendKey }` (botiverse/slock #13051 `composerSendKey.ts`):
+     * how the message box sends on Compose desktop and hardware keyboards (`"enter"` or `"mod_enter"`).
+     */
+    suspend fun updateComposerSendKey(sendKey: RaftComposerSendKey): DataResult<SettingsAppearanceSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot>
+    suspend fun getLanguageRegionSettings(): DataResult<SettingsLanguageRegionSnapshot>
+    suspend fun updateLanguageRegionPreference(
+        request: SettingsLanguageRegionPreferenceUpdateRequest
+    ): DataResult<SettingsLanguageRegionSnapshot>
+    /**
+     * Task #43: create a server join link with no expiry / no max-uses.
+     * Exposed on the main [SettingsRepository] interface (not just
+     * [SettingsServerActionRepository]) so callers that don't already
+     * have a `SettingsServerActionRepository` handle (e.g. the Members
+     * page data source) can call it through the single `SettingsRepository`
+     * instance. Returns the new link snapshot with its URL populated.
+     */
+    suspend fun createServerJoinLinkForInvite(
+        request: SettingsServerJoinLinkCreateRequest
+    ): DataResult<SettingsServerJoinLinkSnapshot>
+    /**
+     * Task #43: list server join links. The first entry is the canonical
+     * "anyone with this link can join" link the React `InviteHumanDialog`
+     * shows. The list endpoint is read-only; mutation goes through
+     * [createServerJoinLinkForInvite] / [revokeServerJoinLink] on
+     * [SettingsServerActionRepository].
+     */
+    suspend fun listServerJoinLinks(serverId: String): DataResult<List<SettingsServerJoinLinkSnapshot>>
+}
+
+interface SettingsServerActionRepository {
+    suspend fun revokeServerInvite(inviteId: String): DataResult<SettingsServerActionResult>
+    suspend fun createServerJoinLink(request: SettingsServerJoinLinkCreateRequest): DataResult<SettingsServerJoinLinkSnapshot>
+    suspend fun revokeServerJoinLink(linkId: String): DataResult<SettingsServerActionResult>
+    suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot>
+
+    suspend fun setServerNotificationMode(mode: ServerPushMode): DataResult<SettingsMobileSnapshot> =
+        when (mode) {
+            ServerPushMode.All -> setServerMute(false)
+            ServerPushMode.None -> setServerMute(true)
+            ServerPushMode.Mentions ->
+                DataResult.Error(ScreenError("settings_server_mentions_only_unavailable", retryable = false, traceId = null))
+        }
+}
+
+interface SettingsServerManagementRepository {
+    suspend fun updateServerAgreement(
+        request: SettingsServerAgreementUpdateRequest
+    ): DataResult<SettingsServerAgreementSnapshot>
+
+    suspend fun updateServerOnboarding(
+        request: SettingsServerOnboardingUpdateRequest
+    ): DataResult<SettingsServerOnboardingSnapshot>
+
+    suspend fun getServerTranslationSettings(): DataResult<SettingsServerTranslationSnapshot>
+    suspend fun updateServerTranslationSettings(
+        request: SettingsServerTranslationUpdateRequest
+    ): DataResult<SettingsServerTranslationSnapshot>
+
+    suspend fun getServerSidebarOrder(): DataResult<SettingsServerSidebarOrderSnapshot>
+    suspend fun updateServerSidebarOrder(
+        request: SettingsServerSidebarOrderUpdateRequest
+    ): DataResult<SettingsServerSidebarOrderSnapshot>
+    suspend fun getServerOrder(): DataResult<SettingsServerOrderSnapshot>
+    suspend fun updateServerOrder(
+        request: SettingsServerOrderUpdateRequest
+    ): DataResult<SettingsServerOrderSnapshot>
+
+    suspend fun updateServerMemberRole(
+        request: SettingsServerMemberRoleUpdateRequest
+    ): DataResult<SettingsServerActionResult>
+
+    suspend fun updateSystemChannelVisibility(
+        allChannelId: String,
+        hide: Boolean
+    ): DataResult<SettingsServerActionResult>
+
+    suspend fun restoreSystemChannel(): DataResult<SettingsServerActionResult>
+
+    suspend fun removeServerMember(
+        memberId: String,
+        revokeComputerIds: List<String> = emptyList(),
+    ): DataResult<SettingsServerActionResult>
+    suspend fun leaveServer(): DataResult<SettingsServerActionResult>
+
+    /**
+     * `PATCH /api/auth/me` `{ description }` (web HumanDetailPanel, botiverse/slock #15664):
+     * updates or clears (`null`) the signed-in person's profile description and returns any
+     * description link-visibility warnings.
+     */
+    suspend fun updateAccountDescription(description: String?): DataResult<AccountDescriptionUpdateResult> =
+        DataResult.Error(ScreenError("account_description_update_unsupported", retryable = false, traceId = null))
+}
+
+interface ConversationRepository {
+    suspend fun getConversationDetail(
+        channelId: ChannelId,
+        priority: DataRequestPriority = DataRequestPriority.Foreground,
+    ): DataResult<ConversationSummary> =
+        DataResult.Error(ScreenError(code = "conversation_detail_unavailable", retryable = true, traceId = null))
+
+    suspend fun getLatestChannelMessage(
+        channelId: ChannelId,
+        priority: DataRequestPriority = DataRequestPriority.Background,
+    ): DataResult<Message> =
+        DataResult.Empty(EmptyReason.NoMessages)
+
+    suspend fun getThread(
+        threadId: ThreadId,
+        includeFollowedSummaries: Boolean = false,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<ThreadSnapshot>
+    /**
+     * Message storage Phase 2b: [captureRawMessagePage] asks the implementation to also carry the page's raw
+     * `messages` array, server window and embedded reply counts ([ThreadSnapshot.rawMessagePage]) so the thread store
+     * can write its own page through to the durable partition. Implementations that cannot capture it ignore the flag.
+     */
+    suspend fun getThread(
+        threadId: ThreadId,
+        includeFollowedSummaries: Boolean = false,
+        limit: Int = DEFAULT_PAGE_LIMIT,
+        captureRawMessagePage: Boolean
+    ): DataResult<ThreadSnapshot> = getThread(threadId, includeFollowedSummaries, limit)
+    suspend fun getThreadReplySummaries(
+        threadId: ThreadId,
+        parentMessageIds: List<MessageId>
+    ): DataResult<ThreadReplySummariesSnapshot> =
+        DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList()))
+    suspend fun getReplyThread(
+        parentChannelId: ChannelId,
+        parentMessageId: MessageId,
+        includeFollowedSummaries: Boolean = false,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<ThreadSnapshot>
+    suspend fun getReplyThread(
+        parentChannelId: ChannelId,
+        parentMessageId: MessageId,
+        includeFollowedSummaries: Boolean = false,
+        limit: Int = DEFAULT_PAGE_LIMIT,
+        priority: DataRequestPriority
+    ): DataResult<ThreadSnapshot> =
+        getReplyThread(parentChannelId, parentMessageId, includeFollowedSummaries, limit)
+    /**
+     * Task #14b: [captureRawMessagePage] asks the implementation to also carry the reply page's raw
+     * `messages` array ([ThreadSnapshot.rawMessagePage]) so the Activity prewarm can persist it.
+     * Implementations that cannot capture it ignore the flag (nothing is persisted then).
+     */
+    suspend fun getReplyThread(
+        parentChannelId: ChannelId,
+        parentMessageId: MessageId,
+        includeFollowedSummaries: Boolean = false,
+        limit: Int = DEFAULT_PAGE_LIMIT,
+        priority: DataRequestPriority,
+        captureRawMessagePage: Boolean
+    ): DataResult<ThreadSnapshot> =
+        getReplyThread(parentChannelId, parentMessageId, includeFollowedSummaries, limit, priority)
+    suspend fun getMessageContext(messageId: MessageId, channelId: ChannelId? = null): DataResult<ThreadSnapshot>
+    suspend fun getMessageContext(
+        messageId: MessageId,
+        channelId: ChannelId? = null,
+        priority: DataRequestPriority
+    ): DataResult<ThreadSnapshot> = getMessageContext(messageId, channelId)
+    /**
+     * [getMessageContext] for a page that already knows which conversation it opens
+     * ([expectedConversationId], the route's own timeline id): the `channels/{id}` header detail is
+     * requested beside `messages/context` instead of after it, so a focused open (every Activity tap)
+     * waits for one round trip, not two in a row. When the context lands in another conversation the
+     * early detail is dropped and that conversation's detail is read afterwards, as before.
+     */
+    suspend fun getMessageContextInConversation(
+        messageId: MessageId,
+        channelId: ChannelId?,
+        expectedConversationId: ChannelId,
+        priority: DataRequestPriority = DataRequestPriority.Foreground,
+    ): DataResult<ThreadSnapshot> = getMessageContext(messageId, channelId, priority)
+    /**
+     * A message's context for resolving a reference (a `#channel:shortid` chip) before opening it:
+     * only `messages/context`, without [getMessageContext]'s follow-up `channels/{id}` request, whose
+     * header detail the opened page loads itself. One round trip instead of two while the chip waits.
+     */
+    suspend fun resolveMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> =
+        getMessageContext(messageId, channelId)
+    suspend fun loadOlderMessages(
+        threadId: ThreadId,
+        beforeSeq: Long,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<ThreadSnapshot>
+    suspend fun loadNewerMessages(
+        threadId: ThreadId,
+        afterSeq: Long,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<ThreadSnapshot>
+    suspend fun syncNewerMessages(
+        threadId: ThreadId,
+        sinceSeq: Long,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<ThreadSnapshot>
+    /**
+     * Task #168 step 1: the latest page of [threadId] (`messages/channel/{id}?limit=` with no cursor)
+     * for the gap catch-up, carrying the raw page for the durable window. Repositories that do not
+     * capture raw pages answer with their plain latest page.
+     */
+    suspend fun loadLatestMessages(
+        threadId: ThreadId,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<ThreadSnapshot> = getThread(threadId, includeFollowedSummaries = false, limit = limit)
+    suspend fun getChannelThreads(channelId: ChannelId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>
+    suspend fun getFollowedThreads(serverId: ServerId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>
+
+    /**
+     * The followed threads with unread replies, every channel (`threads/followed?unreadOnly=1`): the
+     * channel page's unread-thread pill resolves parents it has not loaded from here (web
+     * `useParentUnreadThreadsForJump`). An older server ignores `unreadOnly`; callers filter on
+     * `unreadCount` themselves.
+     */
+    suspend fun getUnreadFollowedThreads(
+        serverId: ServerId,
+        limit: Int = UNREAD_FOLLOWED_THREADS_LIMIT
+    ): DataResult<ThreadListSnapshot> = getFollowedThreads(serverId, limit)
+    suspend fun createOrOpenThread(channelId: ChannelId, parentMessageId: MessageId): DataResult<ThreadActionResult>
+    suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult>
+    suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult>
+
+    /**
+     * Task v2: follow a task's conversation (`POST /channels/threads/follow {threadChannelId}`,
+     * slock `routes/channels.ts`): it has no parent message, so the conversation names itself.
+     * Unfollow is [unfollowThread], keyed by the conversation id like a thread's.
+     */
+    suspend fun followTaskConversation(conversationChannelId: ChannelId): DataResult<ThreadActionResult> =
+        DataResult.Error(ScreenError(code = "task_conversation_follow_unsupported", retryable = false, traceId = null))
+
+    /**
+     * Task v2: the task and parent channel of a task conversation (`GET /channels/:id`, a
+     * `type: "task"` row). [DataResult.Empty] when the channel is not a task conversation.
+     */
+    suspend fun loadTaskConversationRef(conversationChannelId: ChannelId): DataResult<TaskConversationChannelRef> =
+        DataResult.Error(ScreenError(code = "task_conversation_ref_unsupported", retryable = false, traceId = null))
+
+    /**
+     * Task v2: a task conversation's header title (`#channel:#7 title`), read after its write
+     * authority so the composer does not wait for the task list. `null` when it cannot be read.
+     */
+    suspend fun loadTaskConversationTitle(conversationChannelId: ChannelId): String? = null
+    suspend fun markThreadDone(
+        threadChannelId: ChannelId,
+        frontier: InboxDoneFrontier = InboxDoneFrontier.Legacy
+    ): DataResult<ThreadActionResult>
+    suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult>
+    suspend fun getAttachmentUploadCapabilities(): DataResult<AttachmentUploadCapabilities> =
+        DataResult.Error(ScreenError(code = "attachment_upload_capabilities_unavailable", retryable = true, traceId = null))
+
+    /**
+     * Typed direct-session attachment operations.  These defaults deliberately fail closed so
+     * legacy/test repositories cannot accidentally be treated as an atomic Gallery uploader.
+     * The presigned URL carried by [AttachmentUploadSessionCreateResult] is process-local and
+     * must never be copied into a durable snapshot or diagnostic string.
+     */
+    suspend fun createAttachmentUploadSession(
+        request: AttachmentUploadSessionCreateRequest
+    ): DataResult<AttachmentUploadSessionCreateResult> =
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false, traceId = null))
+
+    suspend fun putAttachmentUploadBytes(
+        upload: AttachmentUploadSessionPut,
+        bytes: ByteArray,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
+    ): DataResult<Unit> =
+        DataResult.Error(ScreenError("attachment_upload_session_put_unavailable", retryable = false, traceId = null))
+
+    suspend fun putAttachmentUploadFile(
+        upload: AttachmentUploadSessionPut,
+        file: PlatformFile,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
+    ): DataResult<Unit> =
+        DataResult.Error(ScreenError("attachment_upload_session_put_unavailable", retryable = false, traceId = null))
+
+    /**
+     * Resolve a platform file's authoritative length before a direct-session create request.
+     * Implementations must reject ambiguous `fileRef` + in-memory byte inputs rather than silently
+     * choosing one source.
+     */
+    suspend fun prepareAttachmentUploadFile(
+        file: PlatformFile,
+    ): DataResult<PlatformFile> =
+        DataResult.Error(ScreenError("attachment_upload_file_prepare_unavailable", retryable = false, traceId = null))
+
+    suspend fun completeAttachmentUploadSession(
+        uploadId: String
+    ): DataResult<AttachmentUploadSessionCompleteResult> =
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false, traceId = null))
+
+    suspend fun cancelAttachmentUploadSession(
+        uploadId: String
+    ): DataResult<AttachmentUploadSessionView> =
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false, traceId = null))
+
+    suspend fun statusAttachmentUploadSession(
+        uploadId: String
+    ): DataResult<AttachmentUploadSessionView> =
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false, traceId = null))
+
+    suspend fun uploadAttachments(request: AttachmentUploadRequest): DataResult<AttachmentUploadResult>
+    suspend fun getAttachmentOpenTarget(
+        attachmentId: AttachmentId
+    ): DataResult<AttachmentOpenTarget>
+    suspend fun getChannelFiles(
+        channelId: ChannelId,
+        limit: Int = 50,
+        cursor: String? = null
+    ): DataResult<ChannelFilesSnapshot>
+    suspend fun sendMessage(
+        channelId: ChannelId,
+        body: String,
+        attachmentIds: List<AttachmentId> = emptyList(),
+        asTask: Boolean = false,
+        randomId: String? = null
+    ): DataResult<SendMessageResult>
+
+    suspend fun executePendingMentionActions(
+        action: String,
+        resolutionIds: List<String>
+    ): DataResult<List<PendingMentionActionExecuteResult>> =
+        DataResult.Error(ScreenError(code = "mention_actions_unavailable", retryable = false, traceId = null))
+}
+
+interface MemberRepository {
+    suspend fun getMembers(
+        priority: DataRequestPriority,
+        serverId: ServerId
+    ): DataResult<MemberSnapshot>
+
+    /**
+     * Members of [serverId] that are already in memory, or empty. Never touches the network and
+     * never starts a load: callers use it for best-effort enrichment on paths that must not wait
+     * for the (potentially very large) server member list, e.g. the forward pickers' empty query.
+     */
+    fun cachedMembers(serverId: ServerId): List<MemberProfile> = emptyList()
+
+    /**
+     * The agents of [serverId] alone (`GET /agents`, computer labels unresolved): the presence
+     * refetch of incremental sync (`mobile_sync_changes_v0`), where humans and machines come from
+     * the change log. Empty: nothing to apply.
+     */
+    suspend fun getServerAgents(
+        priority: DataRequestPriority,
+        serverId: ServerId
+    ): DataResult<List<MemberProfile>> = DataResult.Empty(EmptyReason.NoMembers)
+    suspend fun getMemberProfile(
+        priority: DataRequestPriority,
+        memberId: MemberId,
+        serverId: ServerId? = null
+    ): DataResult<MemberProfile>
+
+    /**
+     * A person's profile opened from [channelId] (a thread's parent), read in [serverId], the
+     * channel's server (web ProfilePanel `?channelId=`, botiverse/slock #14009): the answer's
+     * [MemberProfile.servers] names the person's servers in that channel.
+     */
+    suspend fun getMemberProfileInChannel(
+        priority: DataRequestPriority,
+        memberId: MemberId,
+        serverId: ServerId,
+        channelId: ChannelId
+    ): DataResult<MemberProfile> = getMemberProfile(priority, memberId, serverId)
+    suspend fun updateAgentProfile(
+        priority: DataRequestPriority,
+        request: AgentProfileUpdateRequest
+    ): DataResult<MemberProfile>
+    suspend fun uploadAgentAvatar(
+        priority: DataRequestPriority,
+        request: AgentAvatarUploadRequest
+    ): DataResult<MemberProfile>
+    suspend fun getAgentDetail(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentDetailSnapshot>
+    suspend fun getAgentDirectMessages(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentDmSnapshot>
+    suspend fun getAgentChannels(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentChannelSnapshot> = DataResult.Empty(EmptyReason.NoMembers)
+    suspend fun getAgentReminders(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentReminderSnapshot>
+    suspend fun getAgentActivity(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentActivitySnapshot>
+    suspend fun getAgentWorkspaces(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentWorkspaceSnapshot>
+    suspend fun getAgentWorkspaceTree(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentWorkspaceTreeSnapshot>
+    suspend fun getAgentWorkspaceChildren(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        dirPath: String
+    ): DataResult<AgentWorkspaceChildrenSnapshot>
+    suspend fun readAgentWorkspaceFile(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        path: String
+    ): DataResult<AgentWorkspaceFilePreviewSnapshot>
+    suspend fun getAgentSkills(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentSkillsSnapshot>
+    suspend fun getAgentAppLogins(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentAppLoginSnapshot> =
+        DataResult.Empty(EmptyReason.NoMembers)
+    /**
+     * Web AgentAppAccessTab's Revoke: one App grant of an agent (`POST
+     * /api/integrations/grants/:grantId/revoke`). A repository that can't send it has no answer.
+     */
+    suspend fun revokeAgentAppGrant(
+        priority: DataRequestPriority,
+        grantId: String
+    ): AgentAppGrantRevokeOutcome =
+        AgentAppGrantRevokeOutcome.NotRevoked(AgentAppGrantRevokeFailure.NoAnswer)
+    /** Web AgentAppAccessTab › App events: a page of the events apps sent to the agent. */
+    suspend fun getAgentAppEvents(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        clientId: String?,
+        before: String?
+    ): DataResult<AgentAppEventPage> =
+        DataResult.Empty(EmptyReason.NoMembers)
+    /** One app event with its payload. */
+    suspend fun getAgentAppEvent(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        eventId: String
+    ): DataResult<AgentAppEventDetail> =
+        DataResult.Empty(EmptyReason.NoMembers)
+    suspend fun startAgent(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentLifecycleActionResult>
+    suspend fun stopAgent(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentLifecycleActionResult>
+    suspend fun resetAgent(
+        priority: DataRequestPriority,
+        request: AgentResetRequest
+    ): DataResult<AgentLifecycleActionResult>
+    suspend fun deleteAgent(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        workspaceChoice: AgentArchiveWorkspaceChoice = AgentArchiveWorkspaceChoice.Keep
+    ): DataResult<AgentLifecycleActionResult>
+    suspend fun assignAgentMachine(
+        priority: DataRequestPriority,
+        request: AgentMachineAssignmentRequest
+    ): DataResult<AgentLifecycleActionResult>
+    suspend fun getChannelMembers(
+        priority: DataRequestPriority,
+        channelId: ChannelId
+    ): DataResult<ChannelMemberSnapshot>
+    suspend fun addChannelMember(
+        priority: DataRequestPriority,
+        request: AddChannelMemberRequest
+    ): DataResult<ChannelMemberActionResult>
+
+    /**
+     * Atomic batch add of channel members (task #352): mixed humans + agents in
+     * one request. Default implementation is unsupported so existing fakes keep
+     * compiling; RealMemberRepository overrides it.
+     */
+    suspend fun addChannelMembersBatch(
+        priority: DataRequestPriority,
+        request: AddChannelMembersBatchRequest
+    ): DataResult<AddChannelMembersBatchResult> =
+        DataResult.Error(ScreenError(code = "channel_member_batch_unsupported", traceId = null))
+    suspend fun removeChannelMember(
+        priority: DataRequestPriority,
+        request: RemoveChannelMemberRequest
+    ): DataResult<ChannelMemberActionResult>
+
+    /**
+     * Make a member a channel admin or a plain member again (web `useChannelMembers.changeMemberRole`,
+     * `PATCH /channels/:id/members/:user|agent/:memberId/role` `{ role }`). Default implementation is
+     * unsupported so existing fakes keep compiling; RealMemberRepository overrides it.
+     */
+    suspend fun changeChannelMemberRole(
+        priority: DataRequestPriority,
+        request: ChangeChannelMemberRoleRequest
+    ): DataResult<ChannelMemberRoleChangeResult> =
+        DataResult.Error(ScreenError(code = "channel_member_role_unsupported", traceId = null))
+}
+
+interface ChannelRepository {
+    suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot>
+    suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot>
+    /**
+     * [getChannels] with the archived channels too (`GET /channels?archived=include`): the
+     * composer's `#` list, which offers them like the web (MessageInput channel autocomplete).
+     */
+    suspend fun getChannelsIncludingArchived(serverId: ServerId): DataResult<ChannelSnapshot> = getChannels(serverId)
+    suspend fun getDirectMessages(serverId: ServerId): DataResult<DirectMessageSnapshot>
+    suspend fun openAgentDirectMessage(agentId: MemberId): DataResult<OpenDirectMessageResult>
+    suspend fun openUserDirectMessage(userId: MemberId): DataResult<OpenDirectMessageResult>
+    suspend fun createChannel(request: CreateChannelRequest): DataResult<CreateChannelResult>
+    suspend fun joinChannel(channelId: ChannelId): DataResult<ChannelJoinResult>
+    suspend fun leaveChannel(channelId: ChannelId): DataResult<ChannelLeaveResult>
+    suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult>
+    suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult>
+    suspend fun updateChannel(channelId: ChannelId, visibility: ChannelVisibility): DataResult<ChannelUpdateResult>
+    suspend fun updateChannelProfile(request: ChannelProfileUpdateRequest): DataResult<ChannelProfileUpdateResult>
+    suspend fun setChannelActivityMuted(channelId: ChannelId, muted: Boolean): DataResult<ChannelActivityMuteSettings>
+}
+
+enum class ChannelVisibility(val wireValue: String) {
+    Public("public"),
+    Private("private")
+}
+
+data class ChannelUpdateResult(val channelId: ChannelId)
+
+data class ChannelProfileUpdateRequest(
+    val channelId: ChannelId,
+    val name: String,
+    val description: String
+)
+
+data class ChannelProfileUpdateResult(
+    val channelId: ChannelId,
+    val name: String,
+    val description: String?
+)
+
+data class ChannelActivityMuteSettings(
+    val channelId: ChannelId,
+    val activityNotificationPreference: ChannelActivityNotificationPreference,
+    /**
+     * Server-authoritative per-(member, channel) notification-preferences
+     * version. Optimistic client predictions deliberately leave this null so
+     * only a response or realtime event can advance the durable version gate.
+     */
+    val prefsVersion: Long? = null
+) {
+    constructor(
+        channelId: ChannelId,
+        activityMuted: Boolean,
+        muteFromSeq: Long?,
+        activityMuteSupported: Boolean,
+        prefsVersion: Long? = null
+    ) : this(
+        channelId = channelId,
+        activityNotificationPreference =
+            ChannelActivityNotificationPreference(
+                activityMuted = activityMuted,
+                muteFromSeq = muteFromSeq,
+                activityMuteSupported = activityMuteSupported
+            ),
+        prefsVersion = prefsVersion
+    )
+
+    val activityMuted: Boolean
+        get() = activityNotificationPreference.activityMuted
+    val muteFromSeq: Long?
+        get() = activityNotificationPreference.muteFromSeq
+    val activityMuteSupported: Boolean
+        get() = activityNotificationPreference.activityMuteSupported
+}
+
+interface ReadReceiptRepository {
+    suspend fun getUnreadCounts(serverId: ServerId): DataResult<ChannelUnreadSnapshot>
+    suspend fun markChannelReadToSeq(channelId: ChannelId, seq: Long): DataResult<ReadReceiptResult>
+    suspend fun markChannelReadAll(channelId: ChannelId): DataResult<ReadReceiptResult>
+    suspend fun markChannelUnread(channelId: ChannelId): DataResult<ReadReceiptResult>
+    suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult>
+}
+
+interface InboxRepository {
+    suspend fun loadInitial(
+        serverId: ServerId,
+        filter: InboxFilter = InboxFilter.All,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<InboxSnapshot>
+
+    suspend fun loadMore(
+        serverId: ServerId,
+        filter: InboxFilter = InboxFilter.All,
+        offset: Int,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<InboxSnapshot>
+
+    suspend fun refresh(
+        serverId: ServerId,
+        filter: InboxFilter = InboxFilter.All,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<InboxSnapshot> = loadInitial(serverId, filter, limit)
+
+    suspend fun markDone(
+        channelId: ChannelId,
+        frontier: InboxDoneFrontier = InboxDoneFrontier.Legacy
+    ): DataResult<InboxDoneResult>
+
+    /**
+     * `inbox_row_position_v1`: re-reads only these Activity rows (`GET /channels/inbox?ids=`, at most
+     * [ActivityRowRereadIdsMax]; a channel/DM row's channel id, a thread/task row's thread channel id).
+     * The answer is `{ items }` only: the rows that still qualify for the All list, no totals. A
+     * repository without it answers an error and the store re-reads the list instead.
+     */
+    suspend fun loadRows(serverId: ServerId, rowIds: List<String>): DataResult<InboxSnapshot> =
+        DataResult.Error(ScreenError(code = "inbox_rows_unsupported", traceId = null))
+}
+
+interface SavedRepository {
+    suspend fun loadInitial(
+        serverId: ServerId,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<SavedSnapshot>
+
+    suspend fun loadMore(
+        serverId: ServerId,
+        offset: Int,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<SavedSnapshot>
+
+    suspend fun saveMessage(
+        serverId: ServerId,
+        messageId: MessageId
+    ): DataResult<SavedMessageMutationResult>
+
+    suspend fun unsaveMessage(
+        serverId: ServerId,
+        messageId: MessageId
+    ): DataResult<SavedMessageMutationResult>
+}
+
+interface SavedStatusRepository {
+    suspend fun checkSavedMessages(
+        serverId: ServerId,
+        messageIds: List<MessageId>
+    ): DataResult<SavedMessageStatusSnapshot>
+}
+
+interface SearchRepository {
+    suspend fun search(
+        serverId: ServerId,
+        query: String,
+        offset: Int = 0,
+        limit: Int = DEFAULT_PAGE_LIMIT,
+        options: SearchQueryOptions = SearchQueryOptions(),
+        /**
+         * The previous page's [SearchSnapshot.nextCursor]. Sent instead of [offset] only when
+         * [searchWalkCursorApplies] (a query with sort=recent), as on the web.
+         */
+        cursor: String? = null
+    ): DataResult<SearchSnapshot>
+}
+
+data class SearchQueryOptions(
+    val sort: SearchSort = SearchSort.Relevance,
+    /**
+     * At most one sender, like the web (`MessageSearchPage` `senderId` param): the server reads
+     * `senderId` only as a single string and drops a repeated one.
+     */
+    val senderId: String? = null,
+    val scopes: List<SearchScope> = emptyList(),
+    val channelId: ChannelId? = null,
+    val afterIso: String? = null,
+    val beforeIso: String? = null
+)
+
+fun SearchQueryOptions.hasMeaningfulFilter(): Boolean =
+    !senderId.isNullOrBlank() ||
+        scopes.isNotEmpty() ||
+        (channelId?.value?.isNotBlank() == true) ||
+        !afterIso.isNullOrBlank() ||
+        !beforeIso.isNullOrBlank()
+
+/**
+ * The server's walk cursor pages only a text query with sort=recent (routes/messages.ts rejects a
+ * cursor otherwise); every other search pages by offset.
+ */
+fun searchWalkCursorApplies(query: String, sort: SearchSort): Boolean =
+    query.isNotBlank() && sort == SearchSort.Recent
+
+enum class SearchScope(val key: String, val label: String) {
+    Mentioned("mentioned", "@ Me"),
+    Humans("humans", "Humans"),
+    Agents("agents", "Agents")
+}
+
+@RaftCoreInternalApi fun List<SearchScope>.exclusiveSenderTypeWireValue(): String? {
+    val hasHumans = SearchScope.Humans in this
+    val hasAgents = SearchScope.Agents in this
+    if (hasHumans == hasAgents) return null
+    return if (hasHumans) "user" else "agent"
+}
+
+enum class SearchSort {
+    Relevance,
+    Recent;
+
+    val wireValue: String?
+        get() =
+            when (this) {
+                Relevance -> null
+                Recent -> "recent"
+            }
+}
+
+interface RealtimeRepository {
+    suspend fun connect(serverId: ServerId, lastSeq: Long = 0): DataResult<Unit>
+    fun disconnect()
+    fun joinChannel(channelId: ChannelId)
+    fun leaveChannel(channelId: ChannelId)
+    fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription
+}
+
+fun interface RealtimeSubscription {
+    fun close()
+}
+
+data class TaskFilter(
+    val statuses: Set<TaskStatus> = emptySet()
+)
+
+/**
+ * The Activity filters, in the order the segmented control shows them. [wireValue] is the
+ * `GET /channels/inbox` `filter`; [scopeWireValue] its `scope`, when the filter is a scope.
+ */
+enum class InboxFilter(val wireValue: String, val scopeWireValue: String? = null) {
+    All("all"),
+    Unread("unread"),
+    Mentions("mentions"),
+
+    /**
+     * web Pinned (slock #10785): a scope over All, not a read filter. The server resolves the
+     * sidebar pins: pinned channels and DMs with their threads and tasks, unfollowed threads
+     * included as in All (`filter=all&scope=pinned`, routes/channels.ts `parseInboxScopeParam`).
+     */
+    Pinned("all", scopeWireValue = "pinned"),
+
+    /**
+     * web Saved: a scope over All, after Pinned. The server lists the threads followed through a
+     * saved message (saving a message follows its thread): `filter=all&scope=saved`.
+     */
+    Saved("all", scopeWireValue = "saved"),
+
+    /**
+     * web Artifacts: a scope over All, after Saved. Only Artifact rows (object rows, no
+     * conversations): `filter=all&scope=artifacts`, the server's app scope (routes/channels.ts
+     * `parseInboxScopeParam`, `getObjectKindInboxItems`), none for a search or a channel.
+     */
+    Artifacts("all", scopeWireValue = "artifacts"),
+}
+
+/**
+ * All and its scopes (Pinned, Saved, Artifacts) list unfollowed, not-Done threads too; the read
+ * filters don't (web: the unfollowed rows are fetched per scope, under the All read filter; Artifacts
+ * lists no threads at all).
+ */
+@RaftCoreInternalApi val InboxFilter.listsUnfollowedActivityThreads: Boolean
+    get() =
+        this == InboxFilter.All || this == InboxFilter.Pinned || this == InboxFilter.Saved ||
+            this == InboxFilter.Artifacts
+
+const val DEFAULT_PAGE_LIMIT = 30
+
+/** Server `FOLLOWED_THREADS_MAX_LIMIT` (routes/channels.ts). */
+const val UNREAD_FOLLOWED_THREADS_LIMIT = 200
+
+data class AccountProfileUpdateRequest(
+    val displayName: String,
+    val handle: String,
+    val email: String
+)
+
+data class AccountPasswordChangeRequest(
+    val currentPassword: String,
+    val newPassword: String
+)
+
+data class AccountAvatarUploadRequest(
+    val file: PlatformFile
+)
+
+data class AccountProviderLinkStartRequest(
+    val providerId: String,
+    val returnTo: String = ""
+)
+
+data class AccountProviderLinkStartResult(
+    val providerId: String,
+    /** Null means the platform-owned mobile OAuth flow started successfully. */
+    val url: String?
+)
+
+/** `DELETE /api/auth/identities/:provider` response: whether it unlinked, and what is still linked. */
+data class AccountProviderUnlinkResult(
+    val unlinked: Boolean,
+    val linkedProviderIds: List<String>,
+    val passwordConfigured: Boolean
+)
+
+data class SettingsConnectedAppRegisterRequest(
+    val name: String,
+    val clientId: String? = null,
+    val description: String? = null,
+    val homepageUrl: String? = null,
+    val returnUrl: String? = null,
+    val agentManifestUrl: String? = null
+)
+
+data class SettingsConnectedAppUpdateRequest(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val homepageUrl: String? = null,
+    val returnUrl: String? = null,
+    val agentManifestUrl: String? = null
+)
+
+data class SettingsConnectedAppLogoUploadRequest(
+    val id: String,
+    val file: PlatformFile
+)
+
+data class SettingsConnectedAppPublishRequest(
+    val id: String,
+    val category: String,
+    val dataAccessSummary: String? = null
+)
+
+data class SettingsServerProfileUpdateRequest(
+    val name: String? = null,
+    val hideHumansFromMembers: Boolean? = null
+)
+
+data class SettingsServerInviteCreateRequest(
+    val email: String,
+    /** `member` | `guest` (server `POST /servers/:id/invites`); null lets the server default to member. */
+    val role: String? = null
+)
+
+data class SettingsServerDeleteRequest(
+    val confirmationName: String
+)
+
+data class SettingsServerJoinLinkCreateRequest(
+    val expiresAt: String? = null,
+    val maxUses: Int? = null
+)
+
+data class SettingsServerAgreementUpdateRequest(
+    val enabled: Boolean,
+    val title: String,
+    val bodyMarkdown: String
+)
+
+data class SettingsServerOnboardingUpdateRequest(
+    val setupModalReminderOptOut: Boolean? = null,
+    val onboardingAgentId: String? = null,
+    val clearOnboardingAgent: Boolean = false,
+    val agentAllChannelGreetingEnabled: Boolean? = null
+)
+
+data class SettingsServerTranslationUpdateRequest(
+    val translationEnabled: Boolean
+)
+
+data class SettingsServerSidebarOrderUpdateRequest(
+    val channelOrder: List<String>? = null,
+    val agentOrder: List<String>? = null,
+    val dmOrder: List<String>? = null,
+    val channelSortMode: String? = null,
+    val jointChannelSortMode: String? = null,
+    val dmSortMode: String? = null,
+    val pinnedSortMode: String? = null,
+    val pinned: List<SettingsServerSidebarPinnedItem>? = null,
+    val pinnedChannelIds: List<String>? = null,
+    val pinnedAgentIds: List<String>? = null,
+    val pinnedOrder: List<String>? = null,
+    val hiddenDmIds: List<String>? = null,
+    val channelPanelTabOrder: List<String>? = null,
+    val agentPanelTabOrder: List<String>? = null,
+    // task #512: custom-section fields. The server requires sectionsVersion
+    // (OCC) whenever any of customSections/sectionOrder/sectionPlacements is
+    // present; it answers a stale version with 409 SIDEBAR_SECTIONS_VERSION_CONFLICT.
+    val customSections: List<SettingsServerSidebarCustomSection>? = null,
+    val sectionOrder: List<String>? = null,
+    val sectionPlacements: List<SettingsServerSidebarSectionPlacement>? = null,
+    val sectionsVersion: Long? = null
+)
+
+data class SettingsServerOrderSnapshot(
+    val serverOrder: List<String> = emptyList()
+)
+
+data class SettingsServerOrderUpdateRequest(
+    val serverOrder: List<String>
+)
+
+data class SettingsServerMemberRoleUpdateRequest(
+    val memberId: String,
+    val role: String
+)
+
+data class SettingsServerActionResult(
+    val success: Boolean,
+    val message: String? = null
+)
+
+data class SettingsComputerRegisterRequest(
+    val name: String
+)
+
+data class SettingsComputerRenameRequest(
+    val machineId: String,
+    val name: String
+)
+
+data class SettingsComputerDescriptionUpdateRequest(
+    val machineId: String,
+    val description: String
+)
+
+data class SettingsComputerWorkspaceDeleteRequest(
+    val machineId: String,
+    val directoryName: String
+)
+
+data class SettingsComputerRegistrationResult(
+    val machine: SettingsComputerSnapshot,
+    val apiKey: String? = null,
+    val apiKeyPrefix: String
+)
+
+data class SettingsComputerKeyRotationResult(
+    val machineId: String,
+    val apiKeyPrefix: String
+)
+
+data class SettingsComputerRuntimeModelsSnapshot(
+    val machineId: String,
+    val runtime: String,
+    val models: List<String>,
+    val defaultModel: String? = null
+)
+
+/** A web Upgrade click: the policy's exact target, as `POST …/computer/upgrade` requires it. */
+data class SettingsComputerUpgradeRequest(
+    val machineId: String,
+    val targetVersion: String
+)
+
+/** Computer owner v1: who Raft records as the Computer's owner; [ownerUserId] null makes it Public. */
+data class SettingsComputerOwnerRequest(
+    val machineId: String,
+    val ownerUserId: String?
+)
+
+/** A restart the server relayed (or queued); [requestId] correlates the `computer:restart:done` frame. */
+data class SettingsComputerRestartResult(
+    val machineId: String,
+    val requestId: String? = null,
+    val queued: Boolean = false
+)
+
+data class SettingsComputerActionResult(
+    val machineId: String,
+    val success: Boolean,
+    val action: String,
+    val directoryName: String? = null
+)
+
+data class CreateChannelRequest(
+    val name: String,
+    val description: String? = null,
+    val visibility: String = "public",
+    val agentMemberIds: List<String> = emptyList(),
+    val userMemberIds: List<String> = emptyList()
+)
+
+data class AddChannelMemberRequest(
+    val channelId: ChannelId,
+    val memberId: MemberId,
+    val kind: MemberKind
+)
+
+/**
+ * Atomic batch add of channel members (task #352, Web #7209).
+ *
+ * One request carries BOTH humans and agents (server dedupes, validates the
+ * whole batch, then writes; a later failure rolls back earlier members, so there
+ * is no partial success). This is the preferred path for multi-select add;
+ * [AddChannelMemberRequest] remains for single adds.
+ */
+data class AddChannelMembersBatchRequest(
+    val channelId: ChannelId,
+    val userIds: List<MemberId>,
+    val agentIds: List<MemberId>
+)
+
+/**
+ * Result of an atomic batch add. [addedUserIds]/[addedAgentIds] were newly added;
+ * [alreadyMemberUserIds]/[alreadyMemberAgentIds] were requested but already
+ * members. Re-sending the same batch is idempotent: `added` is empty and
+ * everything requested shows up under `alreadyMembers`.
+ */
+data class AddChannelMembersBatchResult(
+    val addedUserIds: List<String>,
+    val addedAgentIds: List<String>,
+    val alreadyMemberUserIds: List<String>,
+    val alreadyMemberAgentIds: List<String>
+) {
+    /** True when nothing was newly added (idempotent re-send): still a success. */
+    val addedNothing: Boolean get() = addedUserIds.isEmpty() && addedAgentIds.isEmpty()
+}
+
+data class RemoveChannelMemberRequest(
+    val channelId: ChannelId,
+    val memberId: MemberId,
+    val kind: MemberKind
+)
+
+/** A channel role a member can be given (slock `ChannelRole`): the wire value is the `role` body field. */
+enum class ChannelMemberRole(val wireValue: String) {
+    Admin("admin"),
+    Member("member"),
+}
+
+/**
+ * `PATCH /channels/:id/members/:targetType/:memberId/role` (botiverse/slock
+ * packages/server/src/routes/channels.ts): [kind] picks the `user` / `agent` path segment,
+ * [role] is the body's `role`.
+ */
+data class ChangeChannelMemberRoleRequest(
+    val channelId: ChannelId,
+    val memberId: MemberId,
+    val kind: MemberKind,
+    val role: ChannelMemberRole,
+)
+
+/**
+ * The answer of a role change (slock `changeChannelMembershipRole`): [changed] is false when the
+ * member already held [channelRole]; both are successes.
+ */
+data class ChannelMemberRoleChangeResult(
+    val channelId: ChannelId,
+    val memberId: MemberId,
+    val changed: Boolean,
+    val channelRole: String?,
+)
+
+data class AgentProfileUpdateRequest(
+    val agentId: MemberId,
+    val displayName: String,
+    val description: String?,
+    val avatarUrl: String? = null,
+    val includeAvatarUrl: Boolean = false,
+    val serverRole: String? = null,
+    val includeServerRole: Boolean = false,
+    /** With [runtimeFormV2] only: how the agent picks the runtime change up. */
+    val runtimeResetMode: AgentResetMode? = null,
+    /**
+     * Runtime form v2 edit (the only runtime editor): `formDefinitionRef {protocolVersion:2}` +
+     * `formValues`. A blank writeOnly field (sent as "") means "keep the stored value".
+     */
+    val runtimeFormV2: build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody? = null
+)
+
+data class AgentAvatarUploadRequest(
+    val agentId: MemberId,
+    val file: PlatformFile
+)
+
+enum class AgentResetMode(val wireValue: String) {
+    Session("session"),
+    Restart("restart"),
+    Full("full")
+}
+
+data class AgentResetRequest(
+    val agentId: MemberId,
+    val mode: AgentResetMode
+)
+
+data class AgentMachineAssignmentRequest(
+    val agentId: MemberId,
+    val machineId: String?
+)
+
+data class AgentLifecycleActionResult(
+    val agentId: MemberId,
+    val success: Boolean,
+    val action: String,
+    val resetMode: AgentResetMode? = null,
+    val machineId: String? = null
+)
+
+data class ChannelMemberActionResult(
+    val channelId: ChannelId,
+    val memberId: MemberId,
+    val member: MemberProfile? = null,
+    val added: Boolean = true
+)

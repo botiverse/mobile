@@ -95,12 +95,12 @@ class WorkspaceTerminologyResourceTest {
         val workingDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
         val candidates =
             listOf(
-                workingDirectory.resolve("src/commonMain/composeResources"),
-                workingDirectory.resolve("shared/src/commonMain/composeResources"),
-                workingDirectory.resolve("compose/shared/src/commonMain/composeResources")
+                workingDirectory.resolve("../shared-data/src/commonMain/composeResources").normalize(),
+                workingDirectory.resolve("shared-data/src/commonMain/composeResources"),
+                workingDirectory.resolve("compose/shared-data/src/commonMain/composeResources")
             )
         return candidates.firstOrNull(Files::isDirectory)
-            ?: error("Unable to locate shared composeResources from $workingDirectory")
+            ?: error("Unable to locate shared-data composeResources from $workingDirectory")
     }
 
     private companion object {

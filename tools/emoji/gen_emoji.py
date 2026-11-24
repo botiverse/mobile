@@ -47,7 +47,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 MANIFEST = HERE / "manifest.json"
-OUTPUT = REPO / "compose/shared/src/commonMain/kotlin/build/raft/app/emoji/RaftEmojiData.g.kt"
+OUTPUT = REPO / "compose/shared-data/src/commonMain/kotlin/build/raft/app/emoji/RaftEmojiData.g.kt"
 
 # emoji-picker-react `Categories` order without `suggested` (the app's own recents) and
 # `custom` (Web passes no custom emoji).
@@ -237,7 +237,9 @@ def render(manifest: dict) -> str:
         "",
         "package build.raft.app.emoji",
         "",
-        "internal object RaftEmojiData {",
+        "import build.raft.app.RaftCoreInternalApi",
+        "",
+        "@RaftCoreInternalApi object RaftEmojiData {",
         f"    const val PickerVersion: String = {kotlin_string(manifest['emojiPickerReactVersion'])}",
         f"    const val CldrVersion: String = {kotlin_string(manifest['cldrVersion'])}",
         f"    const val EmojiCount: Int = {stats['total']}",

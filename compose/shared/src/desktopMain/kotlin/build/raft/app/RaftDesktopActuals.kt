@@ -35,22 +35,6 @@ internal actual suspend fun raftPlatformCompleteQaBootstrapRouteReady(authDataSo
 
 internal actual fun raftPlatformTextMotion(): TextMotion? = null
 
-internal actual fun raftPlatformLog(
-    level: RaftLogLevel,
-    tag: String,
-    message: String,
-    timestampMillis: Long,
-    hint: RaftPlatformLogHint,
-) {
-    if (level == RaftLogLevel.Debug && System.getProperty("raft.desktop.debugLogs") != "true") return
-    val stream = if (level == RaftLogLevel.Error || level == RaftLogLevel.Warn) System.err else System.out
-    stream.println("${level.wireValue.uppercase()} $tag: $message")
-    // The packaged app's stdout goes nowhere: the log file is what a bug report can attach.
-    RaftDesktopFileLog.write(level.wireValue, tag, message)
-}
-
-internal actual suspend fun flushRaftPlatformDiagnosticsDownstream(): Boolean = true
-
 /** Selectable text without a native text view: Compose's own selection. */
 @Composable
 actual fun RaftNativeSelectableText(

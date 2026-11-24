@@ -180,6 +180,7 @@ rootProject.name = "compose"
 include(":androidApp")
 include(":core")
 include(":realtime-socket")
+include(":shared-data")
 include(":shared")
 include(":designsystem")
 include(":ui-cmp")

@@ -145,9 +145,10 @@ internal fun evaluateAgentMigrateCardAccess(
         return AgentMigrateCardAccess(false, null)
     }
     val viewer = viewerUserId?.trim()?.takeIf { it.isNotEmpty() }
+    val assistantOwner = agent.assistantOwnerUserId
     val canMigrate =
-        if (!agent.assistantOwnerUserId.isNullOrBlank()) {
-            viewer != null && agent.assistantOwnerUserId.trim().equals(viewer, ignoreCase = true)
+        if (!assistantOwner.isNullOrBlank()) {
+            viewer != null && assistantOwner.trim().equals(viewer, ignoreCase = true)
         } else {
             serverRoleCanMigrateAgents(viewerServerRole) ||
                 (viewer != null && agent.agentCreatorUserId?.trim()?.equals(viewer, ignoreCase = true) == true)

@@ -272,7 +272,7 @@ internal fun SharedThreadComposerDraftRecord.resolveRaftDraftPlace(
         answer.type in RaftDraftTopLevelChannelTypes ->
             RaftDraftPlaceResolution.Placed(RaftDraftPlace.Conversation(conversation, directMessage = false))
         answer.type == "thread" && answer.parentChannelId != null && answer.parentMessageId != null ->
-            RaftDraftPlaceResolution.Placed(RaftDraftPlace.Thread(answer.parentChannelId, answer.parentMessageId, conversation))
+            RaftDraftPlaceResolution.Placed(RaftDraftPlace.Thread(requireNotNull(answer.parentChannelId), requireNotNull(answer.parentMessageId), conversation))
         else -> RaftDraftPlaceResolution.NotHere
     }
 }

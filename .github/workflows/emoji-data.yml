@@ -7,7 +7,7 @@ on:
   pull_request:
     paths:
       - "tools/emoji/**"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/emoji/RaftEmojiData.g.kt"
+      - "compose/shared-data/src/commonMain/kotlin/build/raft/app/emoji/RaftEmojiData.g.kt"
       - ".github/workflows/emoji-data.yml"
   push:
     branches:

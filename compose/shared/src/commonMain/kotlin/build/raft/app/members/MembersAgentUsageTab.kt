@@ -461,10 +461,11 @@ private fun AgentUsagePeriodSelect(
             view.day != null -> "pick"
             else -> view.range.days.toString()
         }
+    val viewDay = view.day
     val shownValue =
         when {
-            view.day == today -> todayLabel
-            view.day != null -> agentUsageFormattedDayName(view.day)
+            viewDay == today -> todayLabel
+            viewDay != null -> agentUsageFormattedDayName(viewDay)
             view.range == AgentUsageRange.Days7 -> days7Label
             view.range == AgentUsageRange.Days14 -> days14Label
             else -> days30Label
@@ -519,7 +520,8 @@ private fun AgentUsageFreshness(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val firstDay = figures.days.firstOrNull()?.day ?: today
-    val showSince = figures.since != null && firstDay < figures.since
+    val sinceDay = figures.since
+    val showSince = sinceDay != null && firstDay < sinceDay
     if (pickedPast && !showSince) return
     Column(
         horizontalAlignment = Alignment.End,
@@ -535,9 +537,9 @@ private fun AgentUsageFreshness(
                 textAlign = TextAlign.End,
             )
         }
-        if (showSince && figures.since != null) {
+        if (showSince && sinceDay != null) {
             RaftText(
-                text = stringResource(Res.string.agent_usage_since, agentUsageFormattedDayName(figures.since)),
+                text = stringResource(Res.string.agent_usage_since, agentUsageFormattedDayName(sinceDay)),
                 style = typography.monoMeta,
                 color = colors.foregroundHint,
                 maxLines = 1,
@@ -594,9 +596,10 @@ private fun AgentUsageHeadline(
                     color = raftArgbHex(colors.foregroundMuted),
                 )
                 val changeText = formatAgentUsageChange(change)
+                val baseDay = figures.baseDay
                 val label =
-                    if (picked && figures.baseDay != null) {
-                        stringResource(Res.string.agent_usage_vs_day, changeText, agentUsageFormattedDayName(figures.baseDay))
+                    if (picked && baseDay != null) {
+                        stringResource(Res.string.agent_usage_vs_day, changeText, agentUsageFormattedDayName(baseDay))
                     } else {
                         stringResource(Res.string.agent_usage_vs_prior, changeText)
                     }
@@ -713,9 +716,10 @@ private fun AgentUsageTokenTypesSection(figures: AgentUsageFigures) {
         }
         AgentUsageFactRow(term = { KindTerm(AgentUsageSeriesKey.Output) }, testTag = AgentUsageTestTags.Output) {
             AmountWithShare(sums.output)
-            if (sums.reasoning != null && !figures.noData) {
+            val reasoningTokens = sums.reasoning
+            if (reasoningTokens != null && !figures.noData) {
                 RaftText(
-                    text = stringResource(Res.string.agent_usage_reasoning, formatAgentUsageTokens(sums.reasoning)),
+                    text = stringResource(Res.string.agent_usage_reasoning, formatAgentUsageTokens(reasoningTokens)),
                     style = typography.caption,
                     color = colors.foregroundHint,
                     modifier = Modifier.padding(top = 2.dp).testTag(AgentUsageTestTags.Reasoning),
@@ -885,11 +889,9 @@ private fun AgentUsageModelsSection(figures: AgentUsageFigures) {
                 )
                 RaftText(
                     text =
-                        if (model.tokens == null) {
-                            dash
-                        } else {
-                            formatAgentUsagePercent(if (modelsTotal > 0L) model.tokens.toDouble() / modelsTotal.toDouble() else 0.0, maxFractionDigits = 0)
-                        },
+                        model.tokens?.let { modelTokens ->
+                            formatAgentUsagePercent(if (modelsTotal > 0L) modelTokens.toDouble() / modelsTotal.toDouble() else 0.0, maxFractionDigits = 0)
+                        } ?: dash,
                     style = typography.monoMeta.copy(fontFeatureSettings = "tnum"),
                     color = colors.foreground,
                     textAlign = TextAlign.End,

@@ -1,0 +1,179 @@
+package build.raft.app.data
+
+import build.raft.app.RaftCoreInternalApi
+
+import build.raft.app.raftLogInfo
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+/**
+ * Return URIs the browser login may hand back to. Must match the server's allowlist
+ * (slock `appLoginService.ts`): release builds and the Compose desktop app (`:desktopApp`) use
+ * `raft`, the internal channels their own scheme.
+ */
+val APP_LOGIN_RETURN_URIS: Set<String> =
+    setOf(
+        "raft://login/callback",
+        "raft-alpha://login/callback",
+        "raft-beta://login/callback",
+        "raft-debug://login/callback",
+    )
+
+/** One browser login callback: a [requestId] plus exactly one of [code] or [error]. */
+data class AppLoginCallback(
+    val returnUri: String,
+    val requestId: String,
+    val code: String,
+    val error: String,
+)
+
+/**
+ * Strict parse of `<scheme>://login/callback?requestId=…&code=…` (or `error=…`), on every
+ * host: no fragment, only `requestId` / `code` / `error`, no duplicates or empty values, and
+ * exactly `requestId` plus one of `code` / `error`. Anything else is not a login callback.
+ */
+fun parseAppLoginCallback(uri: String?): AppLoginCallback? {
+    if (uri == null || '#' in uri) return null
+    val returnUri = APP_LOGIN_RETURN_URIS.firstOrNull { uri.startsWith("$it?") } ?: return null
+    val values = linkedMapOf<String, String>()
+    for (pair in uri.substring(returnUri.length + 1).split('&')) {
+        val separator = pair.indexOf('=')
+        if (separator < 1) return null
+        val name = percentDecodeStrict(pair.substring(0, separator)) ?: return null
+        val value = percentDecodeStrict(pair.substring(separator + 1)) ?: return null
+        if (name !in APP_LOGIN_CALLBACK_PARAMS || name in values || value.isEmpty()) return null
+        values[name] = value
+    }
+    if (values.size != 2 || "requestId" !in values || ("code" in values) == ("error" in values)) return null
+    return AppLoginCallback(
+        returnUri = returnUri,
+        requestId = values.getValue("requestId"),
+        code = values["code"].orEmpty(),
+        error = values["error"].orEmpty(),
+    )
+}
+
+private val APP_LOGIN_CALLBACK_PARAMS = setOf("requestId", "code", "error")
+
+/** `decodeURIComponent`: `%XX` as UTF-8, `+` kept literal; malformed escapes or invalid UTF-8 → null. */
+@RaftCoreInternalApi fun percentDecodeStrict(raw: String): String? {
+    if ('%' !in raw) return raw
+    val bytes = ArrayList<Byte>(raw.length)
+    var index = 0
+    while (index < raw.length) {
+        val char = raw[index]
+        if (char == '%') {
+            if (index + 2 > raw.lastIndex) return null
+            val hex = raw.substring(index + 1, index + 3)
+            val byte = hex.toIntOrNull(16) ?: return null
+            bytes += byte.toByte()
+            index += 3
+        } else {
+            raw.substring(index, index + 1).encodeToByteArray().forEach { bytes += it }
+            index += 1
+        }
+    }
+    return runCatching { bytes.toByteArray().decodeToString(throwOnInvalidSequence = true) }.getOrNull()
+}
+
+/**
+ * Hosts hand a browser login callback here (Android `MainActivity`, iOS `onOpenURL` / the web auth
+ * session). The exchange runs in the background; the login page observes
+ * [RaftWebLoginCompletion]. On a cold start the shared store registry may not exist yet, so the
+ * callback is retried briefly in memory (the pending request itself survives on disk).
+ */
+object RaftAppLoginBridge {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Parses [uri]; false (and nothing started) when it is not a well-formed login callback. */
+    fun completeCallbackUri(uri: String?): Boolean {
+        val callback = parseAppLoginCallback(uri) ?: return false
+        // The web step-up's callback (same URI, its own request): never a browser login.
+        if (uri != null && RaftAppWebStepUp.offerCallback(callback, uri)) return true
+        return completeCallback(callback.returnUri, callback.requestId, callback.code, callback.error)
+    }
+
+    /**
+     * The host's browser sheet closed without a callback (iOS `ASWebAuthenticationSession` cancel):
+     * the sign-in page stops showing "Signing in…". A callback that already arrived wins.
+     */
+    fun reportBrowserClosed() {
+        raftLogInfo("SlockAppLogin", "app_login_browser_closed")
+        completionMarker.browserClosed()
+    }
+
+    private val completionMarker = AppLoginCompletionMarker(publishWithTrace = RaftWebLoginCompletion::publish)
+
+    fun completeCallback(returnUri: String, requestId: String, code: String, error: String): Boolean {
+        if (returnUri !in APP_LOGIN_RETURN_URIS || requestId.isBlank() || code.isBlank() == error.isBlank()) {
+            return false
+        }
+        // Marked at once (the exchange below takes a network round trip) so the sign-in page,
+        // coming back to the foreground, knows a callback is on its way.
+        completionMarker.callbackAccepted()
+        scope.launch {
+            repeat(APP_LOGIN_CALLBACK_RETRIES) { attempt ->
+                val outcome =
+                    runCatchingPreservingCancellation { RaftAppLogin.completeWithOutcome(returnUri, requestId, code, error) }
+                        .onFailure { raftLogInfo("SlockAppLogin", "app_login_callback_threw type=${it::class.simpleName}") }
+                        .getOrElse { AppLoginCompletionOutcome("login_error", errorTraceId = null) }
+                if (outcome.status != "retry") {
+                    raftLogInfo("SlockAppLogin", "app_login_callback_result result=${outcome.status} attempt=$attempt")
+                    completionMarker.callbackFinished(outcome.status, outcome.errorTraceId)
+                    return@launch
+                }
+                delay(APP_LOGIN_CALLBACK_RETRY_DELAY_MS)
+            }
+            raftLogInfo("SlockAppLogin", "app_login_callback_result result=login_error reason=retries_exhausted")
+            completionMarker.callbackFinished("login_error", errorTraceId = null)
+        }
+        return true
+    }
+}
+
+/**
+ * What accepted callbacks write to [RaftWebLoginCompletion]. A duplicate callback (the web's
+ * "back to app" tapped twice) must never undo an earlier one's result: "callback received" is
+ * written only over nothing or "browser closed", and an ignored callback clears that marker only
+ * when no other accepted callback is still being exchanged.
+ */
+@RaftCoreInternalApi class AppLoginCompletionMarker(
+    private val status: () -> String? = { RaftWebLoginCompletion.status.value },
+    private val publish: (String) -> Unit = { RaftWebLoginCompletion.publish(it) },
+    private val clear: () -> Unit = RaftWebLoginCompletion::clear,
+    private val publishWithTrace: ((String, String?) -> Unit)? = null,
+) : SynchronizedObject() {
+    private var inFlight = 0
+
+    fun callbackAccepted() = synchronized(this) {
+        inFlight += 1
+        val current = status()
+        if (current == null || current == APP_LOGIN_BROWSER_CLOSED) publishStatus(APP_LOGIN_CALLBACK_RECEIVED, null)
+    }
+
+    /** [result] is [AppLoginCoordinator.complete]'s (never "retry"). */
+    fun callbackFinished(result: String, errorTraceId: String? = null) = synchronized(this) {
+        inFlight = (inFlight - 1).coerceAtLeast(0)
+        if (result != "ignored") {
+            publishStatus(result, errorTraceId)
+        } else if (inFlight == 0 && status() == APP_LOGIN_CALLBACK_RECEIVED) {
+            clear()
+        }
+    }
+
+    fun browserClosed() = synchronized(this) {
+        if (status() == null) publishStatus(APP_LOGIN_BROWSER_CLOSED, null)
+    }
+
+    private fun publishStatus(value: String, errorTraceId: String?) {
+        publishWithTrace?.invoke(value, errorTraceId) ?: publish(value)
+    }
+}
+
+private const val APP_LOGIN_CALLBACK_RETRIES = 50
+private const val APP_LOGIN_CALLBACK_RETRY_DELAY_MS = 100L

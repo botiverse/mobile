@@ -64,18 +64,20 @@ internal data class AgentMigrationRetryRows(val failedAttempt: String?, val this
 internal fun agentMigrationRetryRows(notice: AgentMigrationNotice): AgentMigrationRetryRows {
     val comparison = notice.retryComparison ?: return AgentMigrationRetryRows(null, null)
     val failure = comparison.previousFailure
+    val failureEntries = failure?.entries
+    val failureBytes = failure?.bytes
     val failedAttempt =
         when {
-            failure?.entries != null ->
+            failureEntries != null ->
                 stringResource(
-                    if (failure.entries == 1L) Res.string.agent_migration_retry_files_one else Res.string.agent_migration_retry_files_other,
-                    agentMigrationCount(failure.entries),
+                    if (failureEntries == 1L) Res.string.agent_migration_retry_files_one else Res.string.agent_migration_retry_files_other,
+                    agentMigrationCount(failureEntries),
                 )
-            failure?.bytes != null ->
+            failureBytes != null ->
                 if (failure.bytesIsLowerBound) {
-                    stringResource(Res.string.agent_migration_retry_at_least, formatAgentMigrationSize(failure.bytes))
+                    stringResource(Res.string.agent_migration_retry_at_least, formatAgentMigrationSize(failureBytes))
                 } else {
-                    formatAgentMigrationSize(failure.bytes)
+                    formatAgentMigrationSize(failureBytes)
                 }
             else -> null
         }

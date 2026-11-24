@@ -50,7 +50,7 @@ change_keeps_ios() {
       return 0
     fi
     case "$path" in
-      compose/iosApp/*|compose/shared/src/iosMain/*|compose/shared/src/nativeMain/*|compose/shared/src/nativeInterop/*|compose/core/src/iosMain/*|compose/realtime-socket/src/iosMain/*|compose/ui-cmp/src/iosMain/*|compose/web-container/src/iosMain/*|*/iosTest/*)
+      compose/iosApp/*|compose/shared/src/iosMain/*|compose/shared/src/nativeMain/*|compose/shared/src/nativeInterop/*|compose/shared-data/src/iosMain/*|compose/shared-data/src/nativeMain/*|compose/core/src/iosMain/*|compose/realtime-socket/src/iosMain/*|compose/ui-cmp/src/iosMain/*|compose/web-container/src/iosMain/*|*/iosTest/*)
         return 0
         ;;
     esac
@@ -125,13 +125,13 @@ change_touches_build_or_deps() {
 # A platform-only path selects only that platform.
 classify_relevant_path() {
   case "$1" in
-    compose/androidApp/*|compose/shared/src/androidMain/*|compose/shared/src/androidUnitTest/*|compose/shared/src/androidInstrumentedTest/*)
+    compose/androidApp/*|compose/shared/src/androidMain/*|compose/shared/src/androidUnitTest/*|compose/shared/src/androidInstrumentedTest/*|compose/shared-data/src/androidMain/*)
       run_android=true
       ;;
-    compose/iosApp/*|compose/shared/src/iosMain/*|compose/shared/src/iosTest/*)
+    compose/iosApp/*|compose/shared/src/iosMain/*|compose/shared/src/iosTest/*|compose/shared-data/src/iosMain/*)
       run_ios=true
       ;;
-    compose/shared/src/nativeMain/*|compose/shared/src/nativeInterop/*)
+    compose/shared/src/nativeMain/*|compose/shared/src/nativeInterop/*|compose/shared-data/src/nativeMain/*)
       run_ios=true
       ;;
     compose/*)

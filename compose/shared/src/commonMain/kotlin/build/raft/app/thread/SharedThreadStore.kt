@@ -3996,7 +3996,7 @@ internal class SharedThreadStore(
                     val sessionServerId = currentSession?.currentServerId
                     val owner = visiblePayloadOwnerScopeId
                     if (!sessionServerId.isNullOrBlank() && !currentUserId.isNullOrBlank() &&
-                        owner != null && owner == readStateOwner && (event.serverId == null || event.serverId.value == sessionServerId)) {
+                        owner != null && owner == readStateOwner && (event.serverId == null || event.serverId?.value == sessionServerId)) {
                         readStateProjection.observe(currentPayload, owner, event.scopes)
                         val emitted = reducePayloadPatch(cachePayload = true) { payload ->
                             readStateProjection.project(payload, owner)
@@ -4634,7 +4634,7 @@ internal class SharedThreadStore(
      */
     private fun resolvePendingMarkUnread(event: PerReceiverReadStateChanged, sessionServerId: String?) {
         val channelId = pendingMarkUnreadChannelId ?: return
-        if (event.serverId != null && !sessionServerId.isNullOrBlank() && event.serverId.value != sessionServerId) return
+        if (event.serverId != null && !sessionServerId.isNullOrBlank() && event.serverId?.value != sessionServerId) return
         val scope = event.scopes.lastOrNull { it.scopeId.value == channelId } ?: return
         pendingMarkUnreadChannelId = null
         val marked = scope.leftMarkedUnread()

@@ -290,19 +290,22 @@ private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionC
             )
         }
         // web: the client key and the new owner by name, not the stored ids.
-        "integration:recover_app_owner" ->
-            if (clientKey.isNullOrBlank() || targetAgent.isNullOrBlank()) {
+        "integration:recover_app_owner" -> {
+            val recoverClientKey = clientKey
+            val recoverTargetAgent = targetAgent
+            if (recoverClientKey.isNullOrBlank() || recoverTargetAgent.isNullOrBlank()) {
                 genericActionCardProperties()
             } else {
                 listOf(
-                    ThreadActionCardProperty(stringResource(Res.string.thread_action_card_field_client_key), clientKey, mono = true),
+                    ThreadActionCardProperty(stringResource(Res.string.thread_action_card_field_client_key), recoverClientKey, mono = true),
                     ThreadActionCardProperty(
                         stringResource(Res.string.thread_action_card_field_recovery_owner),
-                        "@${names.displayName(ThreadActionCardEntityKind.Agent, targetAgent, unknownAgent).removePrefix("@")}",
+                        "@${names.displayName(ThreadActionCardEntityKind.Agent, recoverTargetAgent, unknownAgent).removePrefix("@")}",
                         mono = true
                     ),
                 )
             }
+        }
         else -> genericActionCardProperties()
     }
 }

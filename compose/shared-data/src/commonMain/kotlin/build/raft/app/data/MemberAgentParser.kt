@@ -1,0 +1,1348 @@
+package build.raft.app.data
+
+import build.raft.app.RaftCoreInternalApi
+
+import build.raft.app.reportProjectionRowDropped
+import build.raft.app.strictProjectionDiagnosticsLogger
+import build.raft.app.toRaftAvatarLabel
+import build.raft.app.model.isExternalAgent
+import build.raft.app.model.AgentActivitySubagentLineage
+import build.raft.app.model.AgentReadiness
+import build.raft.app.model.AgentReadinessFact
+import build.raft.app.model.AgentReadinessResource
+import build.raft.app.model.AgentReasoningSetting
+import build.raft.app.model.AgentStatus
+import build.raft.app.model.AgentProfile
+import build.raft.app.model.AvatarReference
+import build.raft.app.model.ChannelExternalMemberProfile
+import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.MemberGuestChannelRef
+import build.raft.app.model.MemberServerRef
+import build.raft.app.model.Presence
+import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+
+private val memberAgentJson = Json {
+    ignoreUnknownKeys = true
+    coerceInputValues = true
+}
+
+@Serializable
+private data class WireServerMember(
+    val userId: String,
+    val serverId: String? = null,
+    val serverName: String? = null,
+    val serverSlug: String? = null,
+    val email: String? = null,
+    val name: String,
+    val displayName: String? = null,
+    val description: String? = null,
+    val gravatarHash: String? = null,
+    val avatarUrl: String? = null,
+    val role: String? = null,
+    val joinedAt: String? = null,
+    val membershipStatus: String? = null,
+    val createdAgents: List<WireAgent> = emptyList(),
+    /**
+     * `?channelId=` reads only (botiverse/slock packages/server/src/routes/servers.ts
+     * `GET /:id/members/:memberId/profile`, `resolveProfileChannelServers`): the person's servers
+     * in that channel, `[]` when its roster lists them through none. Absent otherwise.
+     */
+    val servers: List<WireMemberServer>? = null,
+    /** slock shared `GuestChannelField`: a Guest's bound channel, for a viewer who may read it. */
+    val guestChannel: WireGuestChannel? = null,
+)
+
+/** `channelService.VisibleGuestChannel`: `{ id, name }`. */
+@Serializable
+private data class WireGuestChannel(
+    val id: String,
+    val name: String = "",
+)
+
+/** `channelService.ChannelMemberServer`: `{ id, name, slug, avatarUrl }`. */
+@Serializable
+private data class WireMemberServer(
+    val id: String,
+    val name: String? = null,
+    val slug: String? = null,
+    val avatarUrl: String? = null,
+)
+
+@Serializable
+private data class WireChannelMembers(
+    val humans: List<WireChannelHuman> = emptyList(),
+    val agents: List<WireAgent> = emptyList(),
+    val externalMembers: List<WireChannelExternalMember> = emptyList(),
+)
+
+@Serializable
+private data class WireChannelHuman(
+    val id: String,
+    val serverId: String? = null,
+    val serverName: String? = null,
+    val serverSlug: String? = null,
+    val name: String,
+    val displayName: String? = null,
+    val description: String? = null,
+    val gravatarHash: String? = null,
+    val avatarUrl: String? = null,
+    val role: String? = null,
+    val effectiveChannelRole: String? = null,
+    val channelRole: String? = null,
+    val channelAdminBasis: String? = null,
+    val canChangeChannelRole: Boolean? = null,
+    val serverRole: String? = null,
+    /** Joint rosters only (`ChannelMembers.humans`): every server the person takes part through. */
+    val servers: List<WireMemberServer>? = null,
+    /** Joint rosters only: whether the person is a member of the viewed server (authoritative over [serverId]). */
+    val inViewerServer: Boolean? = null,
+    /** Joint rosters only (`buildChannelMembersView`, joint authority): may the viewer remove them. */
+    val canRemoveFromChannel: Boolean? = null,
+)
+
+@Serializable
+private data class WireChannelExternalMember(
+    val id: String,
+    val provider: String? = null,
+    val displayName: String? = null,
+    val handles: List<String> = emptyList(),
+    val actorKind: String? = null,
+    val avatarUrl: String? = null,
+    val lastSeenAt: String? = null,
+    val workspaceName: String? = null,
+)
+
+@Serializable
+private data class WireAgent(
+    val id: String,
+    val serverId: String? = null,
+    val serverName: String? = null,
+    val serverSlug: String? = null,
+    val userId: String? = null,
+    val name: String,
+    val displayName: String? = null,
+    val description: String? = null,
+    val avatarUrl: String? = null,
+    val status: String = "inactive",
+    val runtime: String? = null,
+    val external: Boolean? = null,
+    val serverRole: String? = null,
+    val effectiveChannelRole: String? = null,
+    val channelRole: String? = null,
+    val channelAdminBasis: String? = null,
+    val canChangeChannelRole: Boolean? = null,
+    /** Joint rosters only (`ChannelMembers.agents`): whether the agent is the viewed server's. */
+    val inViewerServer: Boolean? = null,
+    /** Joint rosters only (`buildChannelMembersView`, joint authority): may the viewer remove it. */
+    val canRemoveFromChannel: Boolean? = null,
+    val model: String? = null,
+    val reasoningEffort: String? = null,
+    /**
+     * The hydrated `RuntimeConfig`, for viewers who may edit the agent (`withAgentProjection`;
+     * `stripEnvVars` leaves it out for everyone else). Only its version, runtime and level are read
+     * ([toAgentReasoningSetting]), leniently: a shape this client can't read leaves the row to its
+     * own fields instead of dropping it.
+     */
+    val runtimeConfig: JsonElement? = null,
+    val executionMode: String? = null,
+    val computerId: String? = null,
+    val computerName: String? = null,
+    val computerHostname: String? = null,
+    val daemonVersion: String? = null,
+    val creatorType: String? = null,
+    val creatorId: String? = null,
+    val machineId: String? = null,
+    val activity: String? = null,
+    val activityKind: String? = null,
+    val activityDetail: String? = null,
+    val deletedAt: String? = null,
+    /**
+     * External agents only (server sends it on `GET /agents` when
+     * `runtime === "external"`): ISO-8601 `lastSeenAt` — the credential's
+     * last use. Drives the online window; realtime `agent:seen` supersedes it.
+     */
+    val lastSeenAt: String? = null,
+    /** slock `agents.managedByAppInstallId` (app-managed bot); null/absent for ordinary agents and guest projections. */
+    val managedByAppInstallId: String? = null,
+    /**
+     * App Bots only (botiverse/slock #11273): the owning App, joined install -> OAuth client on
+     * `GET /agents` and `GET /agents/:id` for non-guests; `null` when the join found no row.
+     */
+    val managedByApp: WireManagedByApp? = null,
+    /**
+     * App Bots only (botiverse/slock #11295): `false` while the Bot is removed from this server.
+     * The directory keeps it so its old messages still resolve; absent on ordinary agents.
+     */
+    val inMemberLists: Boolean? = null,
+    val runtimeProfile: WireAgentRuntimeProfileSummary? = null,
+    val createdAgents: List<WireAgentCreatedSummary> = emptyList(),
+    /**
+     * Personal assistants only (botiverse/slock #10654): when a server owner or admin paused it, as
+     * an ISO-8601 string; `null` while not paused, absent for other agents. `GET /agents` and
+     * `GET /agents/:id` send it to everyone who sees the agent (`services/assistantLifecycleService.ts`
+     * `projectAssistantPause`).
+     */
+    val assistantPausedAt: String? = null,
+    /**
+     * Who paused it, `{ id, name }`: sent with [assistantPausedAt] to the viewers allowed to know
+     * (web `AssistantPaused` `PausedBy`); absent or null otherwise.
+     */
+    val assistantPausedBy: WireAssistantPausedBy? = null,
+    /** Personal assistants only (slock `agents.assistantOwnerUserId` on `GET /agents`): the owner; null otherwise. */
+    val assistantOwnerUserId: String? = null,
+    /** Raftbench service agent (`routes/agents.ts` `raftbenchService`); false for ordinary agents. */
+    val raftbenchService: Boolean = false,
+    /**
+     * `GET /agents` only (botiverse/slock #13575 `agentBlockedReason`): why the server runs the agent
+     * nowhere: `computer_access_revoked` (its Computer's key was revoked) or
+     * `computer_version_unsupported`; null otherwise. Additive: an unknown value is kept raw.
+     */
+    val blockedReason: String? = null,
+    /** Bounded public projection marker (`"channel_summary"`, `routes/agents.ts`). */
+    val profileProjection: String? = null,
+    /** `GET /agents` `lastRuntimeError` (slock #15273/#15282): carries `spawnFailureReason` for sign-in status. */
+    val lastRuntimeError: WireAgentLastRuntimeError? = null,
+    /**
+     * `GET /agents` composed `readiness` (botiverse/slock `f43f9245` `routes/agents.ts`): kept raw
+     * as [JsonElement] and parsed defensively in [parseWireAgentReadiness] so additive fields or
+     * unexpected shapes never fail decoding the agent roster.
+     */
+    val readiness: JsonElement? = null,
+    /** `GET /agents` `deliveryHold` (botiverse/slock #16333): parsed defensively via [parseAgentDeliveryHold]. */
+    val deliveryHold: JsonElement? = null,
+)
+
+@Serializable
+private data class WireAgentLastRuntimeError(
+    val spawnFailureReason: String? = null,
+)
+
+/** slock `projectAssistantPause` `assistantPausedBy`: `{ id, name }`. */
+@Serializable
+private data class WireAssistantPausedBy(
+    val id: String? = null,
+    val name: String? = null,
+)
+
+/** slock `routes/agents.ts` `managedByApp`: `{ clientId, name, logoUrl, description, botStatusText }`. */
+@Serializable
+private data class WireManagedByApp(
+    val clientId: String? = null,
+    val name: String? = null,
+    val logoUrl: String? = null,
+    val description: String? = null,
+    val botStatusText: String? = null,
+)
+
+@Serializable
+private data class WireAgentCreatedSummary(
+    val id: String,
+    val name: String,
+    val displayName: String? = null,
+    val avatarUrl: String? = null,
+    val runtime: String? = null,
+    val status: String = "inactive",
+)
+
+@Serializable
+private data class WireAgentRuntimeProfileSummary(
+    val current: WireAgentRuntimeProfileSnapshot? = null,
+    val migrationStatus: String? = null,
+    val pending: JsonElement? = null,
+)
+
+@Serializable
+private data class WireAgentRuntimeProfileSnapshot(
+    val machineId: String? = null,
+    val machineName: String? = null,
+    val daemonVersion: String? = null,
+    val runtime: String? = null,
+    val model: String? = null,
+    val reasoningEffort: String? = null,
+    val executionMode: String? = null,
+    val workspaceRef: JsonElement? = null,
+    val workspacePathRef: JsonElement? = null,
+)
+
+fun parseSharedServerMemberSnapshot(
+    bodyText: String,
+    server: ServerSummary,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): MemberSnapshot? = runCatching {
+    MemberSnapshot(
+        server = server,
+        // Null (an error, not an empty roster) when the server sent rows and none could be read.
+        members = (decodeServerMembers(bodyText, diagnostics) ?: return@runCatching null)
+            .filter { member -> member.belongsToServerRoster(server.id) }
+            .map { it.withSourceServer(server.id, server.name, server.slug) }
+            .distinctBy { it.id.value },
+    )
+}.getOrNull()
+
+fun parseSharedSettingsAgentsAsMembers(
+    bodyText: String,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): List<MemberProfile>? = runCatching {
+    (decodeAgents(bodyText, diagnostics) ?: return@runCatching null)
+        .distinctBy { it.id.value }
+}.getOrNull()
+
+/**
+ * One `GET /api/servers/:id/members` item, as an incremental-sync `server_member` row carries it
+ * (botiverse/slock 0d030e341 routes/sync.ts: the list builder's own item). Null when the row does
+ * not decode or names another server's roster.
+ */
+fun parseSharedServerMemberRow(row: JsonObject, server: ServerSummary): MemberProfile? = runCatching {
+    memberAgentJson.decodeFromJsonElement(WireServerMember.serializer(), row).toMemberProfile()
+}.getOrNull()
+    ?.takeIf { it.belongsToServerRoster(server.id) }
+    ?.withSourceServer(server.id, server.name, server.slug)
+
+/** The outcome of one incremental-sync `agent` row (a `GET /api/agents` item). */
+sealed interface SharedSyncedAgentRow {
+    data class Member(val profile: MemberProfile) : SharedSyncedAgentRow
+
+    /** The list filters deleted agents out; a row of one is a delete. */
+    data object Deleted : SharedSyncedAgentRow
+
+    data object Malformed : SharedSyncedAgentRow
+}
+
+fun parseSharedAgentRow(row: JsonObject): SharedSyncedAgentRow {
+    val wire =
+        runCatching { memberAgentJson.decodeFromJsonElement(WireAgent.serializer(), row) }.getOrNull()
+            ?: return SharedSyncedAgentRow.Malformed
+    if (wire.isDeletedAgent) return SharedSyncedAgentRow.Deleted
+    return runCatching { SharedSyncedAgentRow.Member(wire.toMemberProfile()) }.getOrDefault(SharedSyncedAgentRow.Malformed)
+}
+
+fun parseSharedSettingsAgentMachineNames(bodyText: String): Map<String, String>? =
+    parseSharedSettingsComputers(bodyText)?.computers?.associate { it.id to it.name }
+
+fun parseSharedAgentProfile(bodyText: String): MemberProfile? = runCatching {
+    memberAgentJson.decodeFromString(WireAgent.serializer(), bodyText).toMemberProfile()
+}.getOrNull()
+
+fun parseSharedMemberProfile(bodyText: String): MemberProfile? = runCatching {
+    memberAgentJson.decodeFromString(WireServerMember.serializer(), bodyText).toMemberProfile()
+}.getOrNull()
+
+fun parseSharedAgentDirectMessages(
+    bodyText: String,
+    agentId: MemberId,
+): AgentDmSnapshot? = runCatching {
+    AgentDmSnapshot(
+        agentId = agentId,
+        directMessages = memberAgentJson.decodeFromString(
+            ListSerializer(WireAgentDmSummary.serializer()),
+            bodyText,
+        ).map { it.toDomain() },
+    )
+}.getOrNull()
+
+fun parseSharedAgentChannels(
+    bodyText: String,
+    agentId: MemberId,
+): AgentChannelSnapshot? = runCatching {
+    AgentChannelSnapshot(
+        agentId = agentId,
+        channels = memberAgentJson.decodeFromString(
+            ListSerializer(WireAgentChannelMembership.serializer()),
+            bodyText,
+        ).map { it.toDomain() },
+    )
+}.getOrNull()
+
+@Serializable
+private data class WireAgentDmSummary(
+    val id: String,
+    val peerId: String? = null,
+    val peerName: String,
+    val peerDisplayName: String? = null,
+    val peerAvatarUrl: String? = null,
+    val lastMessageAt: String? = null,
+    val lastMessagePreview: String? = null,
+)
+
+private fun WireAgentDmSummary.toDomain(): AgentDmSummary =
+    AgentDmSummary(
+        id = id,
+        peerId = peerId,
+        peerName = peerDisplayName?.takeIf { it.isNotBlank() } ?: peerName,
+        peerAvatarUrl = peerAvatarUrl,
+        lastMessageAt = lastMessageAt,
+        lastMessagePreview = lastMessagePreview,
+    )
+
+@Serializable
+private data class WireAgentChannelMembership(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val type: String = "channel",
+    val createdAt: String? = null,
+    val archivedAt: String? = null,
+    val activityMuted: Boolean = false,
+    val muteFromSeq: Long? = null,
+)
+
+private fun WireAgentChannelMembership.toDomain(): AgentChannelSummary =
+    AgentChannelSummary(
+        id = id,
+        name = name,
+        description = description,
+        type = type,
+        createdAt = createdAt,
+        archivedAt = archivedAt,
+        activityMuted = activityMuted,
+        muteFromSeq = muteFromSeq,
+    )
+
+@Serializable
+private data class WireAgentRemindersResponse(
+    val reminders: List<WireAgentReminder> = emptyList(),
+)
+
+@Serializable
+private data class WireAgentReminder(
+    val reminderId: String,
+    val ownerAgentId: String,
+    val msgRef: String? = null,
+    val msgPermalink: String? = null,
+    val title: String,
+    val fireAt: String,
+    val firedAt: String? = null,
+    val createdAt: String? = null,
+    val status: String? = null,
+    val recurrence: WireReminderRecurrence? = null,
+)
+
+@Serializable
+private data class WireReminderRecurrence(
+    val kind: String,
+    val description: String,
+)
+
+fun parseSharedAgentReminders(
+    bodyText: String,
+    agentId: MemberId,
+): AgentReminderSnapshot? = runCatching {
+    AgentReminderSnapshot(
+        agentId = agentId,
+        reminders = memberAgentJson.decodeFromString(WireAgentRemindersResponse.serializer(), bodyText)
+            .reminders
+            .map { it.toDomain() },
+    )
+}.getOrNull()
+
+private fun WireAgentReminder.toDomain(): AgentReminderSummary =
+    AgentReminderSummary(
+        id = reminderId,
+        title = title,
+        fireAt = fireAt,
+        recurrenceDescription = recurrence?.description,
+        messageRef = msgRef,
+        messagePermalink = msgPermalink,
+        ownerAgentId = ownerAgentId,
+        status = status,
+    )
+
+@Serializable
+private data class WireActivityLogEntry(
+    val timestamp: Long,
+    val entry: WireActivityEntry,
+)
+
+@Serializable
+private data class WireActivityEntry(
+    val kind: String,
+    val activity: String? = null,
+    val activityKind: String? = null,
+    val detail: String? = null,
+    val detailKind: String? = null,
+    /**
+     * Any shape: a `turn_summary` row carries an object (slock `ActivityTurnSummary`), and reading it
+     * as a string failed the whole response, so the Raw log opened empty (#proj-mobile:#148).
+     */
+    val summary: JsonElement? = null,
+    val toolName: String? = null,
+    val toolInput: JsonElement? = null,
+    val name: String? = null,
+    val message: String? = null,
+    val title: String? = null,
+    val text: String? = null,
+    val callId: String? = null,
+    val subagent: WireSubagentLineage? = null,
+)
+
+private val WireActivityEntry.resolvedActivity: String?
+    get() = activityKind?.takeIf { it.isNotBlank() } ?: activity
+
+/** slock `SubagentLineage.subagent` (packages/shared/src/index.ts); `reportChars` is not read. */
+@Serializable
+private data class WireSubagentLineage(
+    val parentToolUseId: String? = null,
+    val subagentType: String? = null,
+    val model: String? = null,
+    val taskId: String? = null,
+    val phase: String? = null,
+    val outcome: String? = null,
+)
+
+private fun WireSubagentLineage.toDomain(): AgentActivitySubagentLineage =
+    AgentActivitySubagentLineage(
+        parentToolUseId = parentToolUseId?.takeIf { it.isNotBlank() },
+        subagentType = subagentType?.takeIf { it.isNotBlank() },
+        model = model?.takeIf { it.isNotBlank() },
+        taskId = taskId?.takeIf { it.isNotBlank() },
+        phase = phase?.takeIf { it.isNotBlank() },
+        outcome = outcome?.takeIf { it.isNotBlank() },
+    )
+
+/**
+ * `GET /agents/:id/activity-log`: a bare array of `{ timestamp, entry }` rows, oldest first. Null only
+ * when the body is not an array. Each row is read on its own: one row this client cannot read is left
+ * out (and counted in [AgentActivitySnapshot.droppedRowCount]), never the whole log.
+ */
+fun parseSharedAgentActivity(
+    bodyText: String,
+    agentId: MemberId,
+): AgentActivitySnapshot? {
+    val rawRows = runCatching { memberAgentJson.decodeFromString(ListSerializer(JsonElement.serializer()), bodyText) }
+        .getOrNull() ?: return null
+    val rows = rawRows.mapNotNull { raw ->
+        runCatching { memberAgentJson.decodeFromJsonElement(WireActivityLogEntry.serializer(), raw) }.getOrNull()
+    }
+    return AgentActivitySnapshot(
+        agentId = agentId,
+        activity = rows
+            .withActivityRowKeys()
+            .mapNotNull { (row, rowKey) -> row.toDomain(rowKey) },
+        droppedRowCount = rawRows.size - rows.size,
+    )
+}
+
+/**
+ * Each log row's key, from the row itself: its content's hash and which repeat of identical content at
+ * that time it is. Never its position in the response: `activity-log` returns the latest window, so a
+ * position shifts every time the window slides, and an id built from it renamed every row on each
+ * reload (the Activity list then rebuilt all rows and lost its place, and merges kept both copies).
+ */
+private fun List<WireActivityLogEntry>.withActivityRowKeys(): List<Pair<WireActivityLogEntry, String>> {
+    val seen = HashMap<String, Int>()
+    return map { row ->
+        val content = "${row.entry.kind}:${row.entry.toString().activityContentHash()}"
+        val atTime = "${row.timestamp}:$content"
+        val repeat = seen[atTime] ?: 0
+        seen[atTime] = repeat + 1
+        row to "$content:$repeat"
+    }
+}
+
+private fun String.activityContentHash(): String {
+    var hash = 0
+    for (char in this) hash = hash * 31 + char.code
+    return hash.toUInt().toString(16)
+}
+
+private fun WireActivityLogEntry.toDomain(rowKey: String): AgentActivityEntry? =
+    when (entry.kind) {
+        "thinking" ->
+            trajectoryEntry(
+                rowKey = rowKey,
+                type = "thinking",
+                title = "Thinking",
+                body = entry.text,
+                isSubagent = entry.subagent != null,
+                subagentType = entry.subagent?.subagentType?.takeIf { it.isNotBlank() },
+                expandable = true
+            )
+        "tool_start" -> {
+            val toolName = entry.toolName.orEmpty()
+            if (toolName.shouldHideToolStartInActivityLog()) {
+                null
+            } else {
+                val input = entry.toolInput.toToolInputPreview()
+                trajectoryEntry(
+                    rowKey = rowKey,
+                    type = "tool_start",
+                    title = toolName.toToolLogLabel(),
+                    body = input,
+                    details = listOfNotNull(
+                        toolName.takeIf { it.isNotBlank() }?.let { "Tool" to it },
+                        input?.let { "Input" to it },
+                    ),
+                    toolName = toolName.takeIf { it.isNotBlank() },
+                    toolInput = input,
+                    callId = entry.callId?.takeIf { it.isNotBlank() },
+                    isSubagent = entry.subagent != null,
+                    subagentType = entry.subagent?.subagentType?.takeIf { it.isNotBlank() }
+                )
+            }
+        }
+        "text" ->
+            trajectoryEntry(
+                rowKey = rowKey,
+                type = "text",
+                title = "Output",
+                body = entry.text,
+                isSubagent = entry.subagent != null,
+                subagentType = entry.subagent?.subagentType?.takeIf { it.isNotBlank() },
+                expandable = true
+            )
+        "slock_action" ->
+            trajectoryEntry(
+                rowKey = rowKey,
+                type = "slock_action",
+                title = entry.title?.takeIf { it.isNotBlank() } ?: "Raft action",
+                body = entry.text ?: entry.message,
+                expandable = true,
+                refTextEnabled = true
+            )
+        "system" ->
+            trajectoryEntry(
+                rowKey = rowKey,
+                type = "system",
+                title = entry.title?.takeIf { it.isNotBlank() } ?: "System",
+                body = entry.text ?: entry.message,
+                isSubagent = entry.subagent != null,
+                subagentType = entry.subagent?.subagentType?.takeIf { it.isNotBlank() },
+                expandable = true,
+                refTextEnabled = true
+            )
+        "compaction_started" ->
+            trajectoryEntry(
+                rowKey = rowKey,
+                type = "compaction_started",
+                title = "Context Compaction Started"
+            )
+        "compaction_finished" ->
+            trajectoryEntry(
+                rowKey = rowKey,
+                type = "compaction_finished",
+                title = "Context Compaction Finished"
+            )
+        // Web RawActivityLog renders nothing for a finished turn's summary: the Overview reads those.
+        "turn_summary" -> null
+        "status", "agent_status" -> {
+            val resolvedActivity = entry.resolvedActivity
+            val display = resolveTrajectoryStatusDisplay(
+                activity = resolvedActivity,
+                detail = entry.detail.orEmpty(),
+                detailKind = entry.detailKind,
+            )
+            trajectoryEntry(
+                rowKey = rowKey,
+                type = "status",
+                title = display.first,
+                body = display.second.takeIf { it.isNotBlank() },
+                statusActivity = resolvedActivity,
+                statusDetail = entry.detail,
+                statusDetailKind = entry.detailKind,
+                isSubagent = entry.subagent != null,
+                subagentType = entry.subagent?.subagentType?.takeIf { it.isNotBlank() },
+                refTextEnabled = true
+            )
+        }
+        else ->
+            trajectoryEntry(
+                rowKey = rowKey,
+                type = entry.kind,
+                title = (entry.summary as? JsonPrimitive)?.takeIf { it.isString }?.content
+                    ?: entry.resolvedActivity?.toAgentActivityTitle() ?: entry.kind.toAgentActivityTitle(),
+                body = entry.detail ?: entry.message ?: entry.text ?: entry.toolName ?: entry.name,
+                details = listOfNotNull(
+                    (entry.detail ?: entry.message ?: entry.text)?.let { "Detail" to it },
+                    entry.toolName?.let { "Tool" to it },
+                ),
+            )
+    }
+
+private fun WireActivityLogEntry.trajectoryEntry(
+    rowKey: String,
+    type: String,
+    title: String,
+    body: String? = null,
+    details: List<Pair<String, String>> = body?.let { listOf("Detail" to it) } ?: emptyList(),
+    toolName: String? = null,
+    toolInput: String? = null,
+    statusActivity: String? = null,
+    statusDetail: String? = null,
+    statusDetailKind: String? = null,
+    callId: String? = null,
+    isSubagent: Boolean = false,
+    subagentType: String? = null,
+    expandable: Boolean = false,
+    refTextEnabled: Boolean = false
+): AgentActivityEntry =
+    AgentActivityEntry(
+        id = "$timestamp:$rowKey",
+        type = type,
+        title = title,
+        body = body?.sanitizeActivityText(),
+        timestamp = timestamp.toString(),
+        details = details.map { (label, value) -> label to value.sanitizeActivityText() },
+        toolName = toolName,
+        toolInput = toolInput?.sanitizeActivityText(),
+        statusActivity = statusActivity,
+        statusDetail = statusDetail,
+        statusDetailKind = statusDetailKind,
+        isSubagent = isSubagent,
+        subagentType = subagentType,
+        expandable = expandable,
+        refTextEnabled = refTextEnabled,
+        callId = callId,
+        subagent = entry.subagent?.toDomain()
+    )
+
+fun parseSharedCurrentAgentActivityEntries(
+    bodyText: String,
+    agentId: MemberId,
+): List<AgentActivityEntry>? = runCatching {
+    memberAgentJson.decodeFromString(ListSerializer(WireAgent.serializer()), bodyText)
+        .filter { it.id == agentId.value }
+        .mapNotNull { it.toCurrentActivityEntry() }
+}.getOrNull()
+
+private val WireAgent.resolvedActivity: String?
+    get() = activityKind?.takeIf { it.isNotBlank() } ?: activity
+
+private fun WireAgent.toCurrentActivityEntry(): AgentActivityEntry? {
+    return currentAgentActivityEntry(
+        agentId = MemberId(id),
+        activity = resolvedActivity,
+        status = status,
+        activityDetail = activityDetail
+    )
+}
+
+@RaftCoreInternalApi fun currentAgentActivityEntry(
+    agentId: MemberId,
+    activity: String?,
+    status: String?,
+    activityDetail: String?
+): AgentActivityEntry? {
+    val type = activity ?: status
+    val normalized = normalizedAgentRuntimeStatus(activity = activity, lifecycleStatus = status) ?: return null
+    if (normalized == AgentStatus.Offline) return null
+    val detail = activityDetail?.takeIf { it.isNotBlank() } ?: normalized.label
+    return AgentActivityEntry(
+        id = "current:${agentId.value}:$type:$detail",
+        type = "status",
+        title = resolveTrajectoryStatusDisplay(type, detail).first,
+        body = detail,
+        statusActivity = type,
+        statusDetail = detail,
+        refTextEnabled = true
+    )
+}
+
+data class SharedAgentWorkspaceLookup(
+    val computerId: String?,
+    val computerName: String?,
+    val directWorkspaces: List<SettingsComputerWorkspaceSnapshot> = emptyList(),
+    val fallbackWorkspaces: List<SettingsComputerWorkspaceSnapshot> = emptyList(),
+)
+
+fun parseSharedAgentWorkspaceLookup(
+    bodyText: String,
+    agentId: MemberId,
+): SharedAgentWorkspaceLookup? = runCatching {
+    val agent = memberAgentJson.decodeFromString(ListSerializer(WireAgent.serializer()), bodyText)
+        .firstOrNull { it.id == agentId.value }
+    agent?.let {
+        SharedAgentWorkspaceLookup(
+            computerId = firstNonBlank(it.computerId, it.machineId, it.runtimeProfile?.current?.machineId),
+            computerName = firstNonBlank(it.computerName, it.computerHostname, it.runtimeProfile?.current?.machineName),
+            directWorkspaces = listOfNotNull(it.runtimeProfile?.current?.toWorkspaceSnapshot()),
+            fallbackWorkspaces = emptyList(),
+        )
+    }
+}.getOrNull()
+
+private fun WireAgentRuntimeProfileSnapshot.toWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot? =
+    workspaceRef.toWorkspaceSnapshot() ?: workspacePathRef.toWorkspaceSnapshot()
+
+private fun JsonElement?.toWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot? =
+    when (this) {
+        is JsonObject -> {
+            val path = stringValue("path") ?: return null
+            val label = stringValue("label") ?: path.substringAfterLast('/').ifBlank { path }
+            SettingsComputerWorkspaceSnapshot(
+                id = path,
+                name = label,
+                path = path,
+            )
+        }
+        is JsonPrimitive -> {
+            val path = contentOrNull?.takeIf { it.isNotBlank() } ?: return null
+            SettingsComputerWorkspaceSnapshot(
+                id = path,
+                name = path.substringAfterLast('/').ifBlank { path },
+                path = path,
+            )
+        }
+        else -> null
+    }
+
+private fun JsonObject.stringValue(key: String): String? =
+    (this[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+
+private fun JsonObject.longValue(key: String): Long? {
+    val raw = (this[key] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull?.trim() ?: return null
+    return raw.toLongOrNull() ?: raw.toDoubleOrNull()?.takeIf { it.isFinite() }?.toLong()
+}
+
+private fun parseWireAgentReadiness(element: JsonElement?): AgentReadiness? {
+    val obj = element as? JsonObject ?: return null
+    val state = obj.stringValue("state")?.lowercase() ?: return null
+    val primaryObj = obj["primary"] as? JsonObject
+    val primary =
+        primaryObj?.let { fact ->
+            val code = fact.stringValue("code") ?: return@let null
+            val resourceObj = fact["resource"] as? JsonObject
+            val resource =
+                resourceObj?.stringValue("kind")?.let { kind ->
+                    AgentReadinessResource(
+                        kind = kind,
+                        runtime = resourceObj.stringValue("runtime"),
+                        key = resourceObj.stringValue("key"),
+                        window = resourceObj.stringValue("window"),
+                        model = resourceObj.stringValue("model"),
+                        agentId = resourceObj.stringValue("agentId"),
+                    )
+                }
+            val paramsObj = fact["params"] as? JsonObject
+            val managedByDesktop = (paramsObj?.get("managedByDesktop") as? JsonPrimitive)?.booleanOrNull
+            AgentReadinessFact(
+                resource = resource,
+                code = code,
+                behaviour = fact.stringValue("behaviour")?.lowercase(),
+                since = fact.longValue("since"),
+                until = fact.longValue("until"),
+                managedByDesktop = managedByDesktop,
+            )
+        }
+    return AgentReadiness(
+        state = state,
+        primary = primary,
+        scope = obj.stringValue("scope")?.lowercase(),
+        actor = obj.stringValue("actor")?.lowercase(),
+        actorName = obj.stringValue("actorName"),
+        action = obj.stringValue("action")?.lowercase(),
+    )
+}
+
+@Serializable
+private data class WireAgentSkillsResponse(
+    val global: List<WireSkillInfo> = emptyList(),
+    val workspace: List<WireSkillInfo> = emptyList(),
+)
+
+@Serializable
+private data class WireSkillInfo(
+    val name: String,
+    val displayName: String,
+    val description: String,
+    val userInvocable: Boolean = true,
+    val sourcePath: String? = null,
+)
+
+fun parseSharedAgentSkillsSnapshot(
+    bodyText: String,
+    agentId: MemberId,
+): AgentSkillsSnapshot? = runCatching {
+    val decoded = memberAgentJson.decodeFromString(WireAgentSkillsResponse.serializer(), bodyText)
+    // Web AgentSkills: with any skill at all both sub-sections show (an empty one says so);
+    // with none, the section is its header alone.
+    val hasSkills = decoded.global.isNotEmpty() || decoded.workspace.isNotEmpty()
+    AgentSkillsSnapshot(
+        agentId = agentId,
+        groups =
+            if (hasSkills) {
+                listOf(decoded.global.toSkillGroup("Global"), decoded.workspace.toSkillGroup("Workspace"))
+            } else {
+                emptyList()
+            },
+    )
+}.getOrNull()
+
+private fun List<WireSkillInfo>.toSkillGroup(title: String): AgentSkillGroup =
+    AgentSkillGroup(
+        title = title,
+        count = size,
+        // Web `groupByPath`: `skill.sourcePath || "unknown"`.
+        paths = groupBy { it.sourcePath?.takeIf { path -> path.isNotBlank() } ?: "unknown" }
+            .map { (path, skills) ->
+                AgentSkillPathGroup(
+                    path = path,
+                    count = skills.size,
+                    skills = skills.map {
+                        AgentSkillSummary(
+                            name = it.displayName.takeIf { display -> display.isNotBlank() } ?: it.name,
+                            detail = it.description.takeIf { description -> description.isNotBlank() },
+                            command = it.name.takeIf { name -> it.userInvocable && name.isNotBlank() },
+                        )
+                    },
+                )
+            },
+    )
+
+fun parseSharedChannelMemberSnapshot(
+    bodyText: String,
+    channelId: ChannelId,
+): ChannelMemberSnapshot? = runCatching {
+    val decoded = memberAgentJson.decodeFromString(WireChannelMembers.serializer(), bodyText)
+    ChannelMemberSnapshot(
+        channelId = channelId,
+        members = (decoded.humans.map { it.toMemberProfile() } + decoded.agents.map { it.toMemberProfile() })
+            .distinctBy { it.id.value },
+        externalMembers = decoded.externalMembers.map { it.toModel() },
+        canAddMembers = false,
+        liveActivityAgentIds =
+            decoded.agents
+                // Only activity that resolves to a runtime status: the lifecycle word
+                // `active` (or an unknown value) writes no fact, so it must not count.
+                .filter { normalizedAgentRuntimeStatus(activity = it.resolvedActivity, lifecycleStatus = null) != null }
+                .mapNotNull { it.id.trim().takeIf(String::isNotBlank) }
+                .toSet(),
+    )
+}.getOrNull()
+
+private fun WireChannelExternalMember.toModel(): ChannelExternalMemberProfile {
+    val label = displayName?.takeIf { it.isNotBlank() } ?: handles.firstOrNull()?.let { "@$it" } ?: id
+    return ChannelExternalMemberProfile(
+        id = id,
+        provider = provider?.takeIf { it.isNotBlank() },
+        displayName = label,
+        handles = handles.filter { it.isNotBlank() },
+        actorKind = actorKind?.takeIf { it.isNotBlank() },
+        avatarUrl = avatarUrl,
+        avatarLabel = label.toRaftAvatarLabel(),
+        lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
+        workspaceName = workspaceName?.trim()?.takeIf { it.isNotBlank() },
+    )
+}
+
+/** Server roster rows, decoded one by one; null when rows came and none could be read. */
+private fun decodeServerMembers(bodyText: String, diagnostics: (String) -> Unit): List<MemberProfile>? =
+    decodeRosterRows(
+        bodyText = bodyText,
+        listKeys = ServerMemberListKeys,
+        serializer = WireServerMember.serializer(),
+        source = "server_members",
+        diagnostics = diagnostics,
+    )?.map { it.toMemberProfile() }
+
+/** Agent rows, decoded one by one; null when rows came and none could be read. */
+private fun decodeAgents(bodyText: String, diagnostics: (String) -> Unit): List<MemberProfile>? =
+    decodeRosterRows(
+        bodyText = bodyText,
+        listKeys = AgentListKeys,
+        serializer = WireAgent.serializer(),
+        source = "settings_agents",
+        diagnostics = diagnostics,
+    )
+        ?.filterNot { it.isDeletedAgent }
+        ?.map { it.toMemberProfile() }
+
+private val ServerMemberListKeys = listOf("members", "items", "results")
+private val AgentListKeys = listOf("agents", "items", "results")
+
+/**
+ * The roster's rows in any of the shapes the parser always accepted (a bare array; `{members|agents,
+ * items, results}`; `{data: [...]}`; `{data: {...}}`; one bare row), decoded **per row**: a row that
+ * doesn't decode is skipped and logged (`projection_value_rejected … field=row`) instead of
+ * emptying the whole roster. Returns null — an error, never an empty roster — when the server sent
+ * rows and not one of them decoded.
+ */
+private fun <T> decodeRosterRows(
+    bodyText: String,
+    listKeys: List<String>,
+    serializer: KSerializer<T>,
+    source: String,
+    diagnostics: (String) -> Unit,
+): List<T>? {
+    val root = memberAgentJson.parseToJsonElement(bodyText)
+    fun JsonObject.listedRows(): List<JsonElement>? {
+        val lists = listKeys.mapNotNull { key -> this[key] as? JsonArray }
+        return if (lists.isEmpty()) null else lists.flatten()
+    }
+    val rows: List<JsonElement> =
+        when (root) {
+            is JsonArray -> root
+            is JsonObject -> {
+                val listed = root.listedRows()
+                when {
+                    listed != null && listed.isNotEmpty() -> listed
+                    root["data"] is JsonArray -> root["data"] as JsonArray
+                    root["data"] is JsonObject -> (root["data"] as JsonObject).listedRows().orEmpty()
+                    listed != null || root.isEmpty() || "data" in root -> emptyList()
+                    else -> listOf(root)
+                }
+            }
+            else -> return null
+        }
+    val decoded =
+        rows.mapIndexedNotNull { index, row ->
+            runCatching { memberAgentJson.decodeFromJsonElement(serializer, row) }
+                .getOrNull()
+                .also { if (it == null) reportProjectionRowDropped(source, "decode_failed", index, diagnostics) }
+        }
+    if (rows.isNotEmpty() && decoded.isEmpty()) {
+        diagnostics("roster_decode_failed source=$source rows=${rows.size}")
+        return null
+    }
+    return decoded
+}
+
+fun parseSharedChannelMemberActionResult(
+    bodyText: String,
+    channelId: ChannelId,
+    memberId: MemberId,
+    added: Boolean,
+): ChannelMemberActionResult? = runCatching {
+    val decoded = memberAgentJson.decodeFromString(WireChannelMemberActionResponse.serializer(), bodyText)
+    if (decoded.ok) {
+        ChannelMemberActionResult(channelId = channelId, memberId = memberId, member = null, added = added)
+    } else {
+        null
+    }
+}.getOrNull()
+
+@Serializable
+private data class WireChannelMemberActionResponse(
+    val ok: Boolean,
+)
+
+private fun WireServerMember.toMemberProfile(): MemberProfile {
+    val label = displayName?.takeIf { it.isNotBlank() } ?: name
+    return MemberProfile(
+        id = MemberId(userId),
+        displayName = label,
+        handle = name,
+        kind = MemberKind.Human,
+        serverId = serverId.toServerIdOrNull(),
+        serverName = serverName?.takeIf { it.isNotBlank() },
+        serverSlug = serverSlug?.takeIf { it.isNotBlank() },
+        description = description,
+        roleDescription = role?.toSettingsLabel(),
+        serverRole = role?.normalizedServerRoleOrNull(),
+        email = email?.takeIf { it.isNotBlank() },
+        gravatarHash = gravatarHash?.takeIf { it.isNotBlank() },
+        avatar = AvatarReference.fromWireValue(avatarUrl),
+        avatarLabel = label.toRaftAvatarLabel(),
+        presence = Presence.Offline,
+        joinedAt = joinedAt,
+        membershipStatus = membershipStatus?.takeIf { it.isNotBlank() }
+            ?: joinedAt?.let { "active" },
+        createdAgents = createdAgents.filterNot { it.isDeletedAgent }.map { it.toAgentProfile() },
+        servers = servers?.map { it.toMemberServerRef() },
+        guestChannel = guestChannel?.let { MemberGuestChannelRef(id = it.id, name = it.name) },
+    )
+}
+
+private fun WireChannelHuman.toMemberProfile(): MemberProfile {
+    val label = displayName?.takeIf { it.isNotBlank() } ?: name
+    return MemberProfile(
+        id = MemberId(id),
+        displayName = label,
+        handle = name,
+        kind = MemberKind.Human,
+        serverId = serverId.toServerIdOrNull(),
+        serverName = serverName?.takeIf { it.isNotBlank() },
+        serverSlug = serverSlug?.takeIf { it.isNotBlank() },
+        description = description,
+        roleDescription = (role ?: serverRole)?.toSettingsLabel(),
+        serverRole = (serverRole ?: role)?.normalizedServerRoleOrNull(),
+        effectiveChannelRole = effectiveChannelRole?.takeIf { it.isNotBlank() },
+        channelRole = channelRole?.takeIf { it.isNotBlank() },
+        channelAdminBasis = channelAdminBasis?.takeIf { it.isNotBlank() },
+        canChangeChannelRole = canChangeChannelRole,
+        gravatarHash = gravatarHash?.takeIf { it.isNotBlank() },
+        avatar = AvatarReference.fromWireValue(avatarUrl),
+        avatarLabel = label.toRaftAvatarLabel(),
+        presence = Presence.Offline,
+        servers = servers?.map { it.toMemberServerRef() },
+        inViewerServer = inViewerServer,
+        canRemoveFromChannel = canRemoveFromChannel,
+    )
+}
+
+private fun WireAgent.toMemberProfile(): MemberProfile {
+    val label = displayName?.takeIf { it.isNotBlank() } ?: name
+    val agentStatus = normalizedAgentRuntimeStatus(activity = resolvedActivity, lifecycleStatus = status)
+    return MemberProfile(
+        id = MemberId(id),
+        displayName = label,
+        handle = name,
+        kind = MemberKind.Agent,
+        serverId = serverId.toServerIdOrNull(),
+        serverName = serverName?.takeIf { it.isNotBlank() },
+        serverSlug = serverSlug?.takeIf { it.isNotBlank() },
+        description = description,
+        roleDescription = runtime,
+        isExternal = isExternalAgent(external, runtime),
+        serverRole = serverRole?.normalizedServerRoleOrNull(),
+        effectiveChannelRole = effectiveChannelRole?.takeIf { it.isNotBlank() },
+        channelRole = channelRole?.takeIf { it.isNotBlank() },
+        channelAdminBasis = channelAdminBasis?.takeIf { it.isNotBlank() },
+        canChangeChannelRole = canChangeChannelRole,
+        inViewerServer = inViewerServer,
+        canRemoveFromChannel = canRemoveFromChannel,
+        avatar = AvatarReference.fromWireValue(avatarUrl),
+        avatarLabel = label.toRaftAvatarLabel(),
+        presence =
+            if (deletedAt.isNullOrBlank()) {
+                agentStatus?.presence ?: Presence.Offline
+            } else {
+                Presence.Offline
+            },
+        agentStatus = agentStatus,
+        agentLifecycleStatus = status.trim().lowercase().takeIf { it.isNotBlank() },
+        agentBlockedReason = blockedReason?.trim()?.takeIf { it.isNotBlank() },
+        lastRuntimeErrorSpawnFailureReason = lastRuntimeError?.spawnFailureReason?.trim()?.takeIf { it.isNotBlank() },
+        agentReadiness = parseWireAgentReadiness(readiness),
+        agentDeliveryHold = parseAgentDeliveryHold(deliveryHold),
+        membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
+        agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
+        lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
+        assistantPausedAt = assistantPausedAt?.takeIf { it.isNotBlank() },
+        assistantPausedByName =
+            assistantPausedBy?.name?.trim()?.takeIf { it.isNotEmpty() && !assistantPausedAt.isNullOrBlank() },
+        assistantOwnerUserId = assistantOwnerUserId?.trim()?.takeIf { it.isNotEmpty() },
+        raftbenchService = raftbenchService,
+        managedByAppInstallId = managedByAppInstallId?.takeIf { it.isNotBlank() },
+        agentCreatorUserId = creatorId?.trim()?.takeIf { it.isNotEmpty() && creatorType == "user" },
+        managedByAppClientId = managedByApp?.clientId?.trim()?.takeIf { it.isNotBlank() },
+        managedByAppName = managedByApp?.name?.takeIf { it.isNotBlank() },
+        managedByAppLogoUrl = managedByApp?.logoUrl?.trim()?.takeIf { it.isNotBlank() },
+        managedByAppBotStatusText = managedByApp?.botStatusText?.trim()?.takeIf { it.isNotBlank() },
+        profileProjection = profileProjection?.trim()?.takeIf { it.isNotBlank() },
+        inMemberLists = inMemberLists,
+        model = firstNonBlank(model, runtimeProfile?.current?.model),
+        agentReasoning = toAgentReasoningSetting(),
+        permissionBadges = listOfNotNull(
+            runtime?.takeIf { it.isNotBlank() },
+            firstNonBlank(computerName, computerHostname, runtimeProfile?.current?.machineName)
+                ?.let { "computer:$it" },
+            firstNonBlank(computerId, machineId, runtimeProfile?.current?.machineId)
+                ?.let { "computer-id:$it" },
+        ),
+    )
+}
+
+/**
+ * The agent's runtime and reasoning effort as its profile reads them ([hydrateAgentReasoningSetting]).
+ * A `runtimeConfig` that is not an object of readable fields counts as one of another version.
+ */
+private fun WireAgent.toAgentReasoningSetting(): AgentReasoningSetting {
+    val config =
+        when (val raw = runtimeConfig) {
+            null, JsonNull -> null
+            is JsonObject ->
+                runCatching { memberAgentJson.decodeFromJsonElement(AgentRuntimeConfigReasoningFields.serializer(), raw) }
+                    .getOrDefault(AgentRuntimeConfigReasoningFields())
+            else -> AgentRuntimeConfigReasoningFields()
+        }
+    return hydrateAgentReasoningSetting(config, runtime, reasoningEffort)
+}
+
+private fun WireMemberServer.toMemberServerRef(): MemberServerRef =
+    MemberServerRef(
+        id = id,
+        name = name.orEmpty(),
+        slug = slug.orEmpty(),
+        avatarUrl = avatarUrl?.trim()?.takeIf { it.isNotEmpty() },
+    )
+
+private fun String?.toServerIdOrNull(): ServerId? =
+    this?.takeIf { it.isNotBlank() }?.let(::ServerId)
+
+private fun String?.normalizedServerRoleOrNull(): String? =
+    this?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+
+private fun MemberProfile.belongsToServerRoster(serverId: ServerId): Boolean {
+    val sourceServerId = this.serverId?.value?.trim().orEmpty()
+    return sourceServerId.isEmpty() || sourceServerId == serverId.value.trim()
+}
+
+private fun MemberProfile.withSourceServer(
+    serverId: ServerId,
+    serverName: String,
+    serverSlug: String?
+): MemberProfile =
+    copy(
+        serverId = this.serverId ?: serverId,
+        serverName = this.serverName ?: serverName.takeIf { it.isNotBlank() },
+        serverSlug = this.serverSlug ?: serverSlug?.takeIf { it.isNotBlank() }
+    )
+
+private fun WireAgent.toAgentProfile(): AgentProfile {
+    val label = displayName?.takeIf { it.isNotBlank() } ?: name
+    val agentStatus = normalizedAgentRuntimeStatus(activity = resolvedActivity, lifecycleStatus = status)
+    return AgentProfile(
+        id = MemberId(id),
+        userId = userId ?: id,
+        displayName = label,
+        handle = name,
+        description = description,
+        roleDescription = runtime,
+        avatar = AvatarReference.fromWireValue(avatarUrl),
+        avatarLabel = label.toRaftAvatarLabel(),
+        presence = agentStatus?.presence ?: Presence.Offline,
+        agentStatus = agentStatus,
+        statusLabel = agentStatus?.label,
+        runtime = runtime,
+        isExternal = isExternalAgent(external, runtime),
+        model = model,
+        reasoning = reasoningEffort,
+        permissionBadges = listOfNotNull(
+            runtime?.takeIf { it.isNotBlank() },
+            firstNonBlank(computerName, computerHostname, runtimeProfile?.current?.machineName)
+                ?.let { "computer:$it" },
+            firstNonBlank(computerId, machineId, runtimeProfile?.current?.machineId)
+                ?.let { "computer-id:$it" },
+        ),
+    )
+}
+
+// task #135: liveness may only come from a runtime `activity` fact. The wire
+// `status` field is the ACCOUNT lifecycle ("active" = not archived/stopped) —
+// it stays "active" while the agent's machine is offline, so mapping it to a
+private val WireAgent.isDeletedAgent: Boolean
+    get() = !deletedAt.isNullOrBlank()
+
+private fun resolveTrajectoryStatusDisplay(
+    activity: String?,
+    detail: String,
+    detailKind: String? = null,
+): Pair<String, String> {
+    if (activity == "working" && (detailKind == "starting" || detail == "Starting…")) {
+        return "Starting" to ""
+    }
+    if (activity == "online") {
+        val lifecycleTitle = when (detailKind) {
+            "computer_started" -> "Started"
+            "computer_restarted" -> "Restarted"
+            "computer_upgraded" -> "Upgraded"
+            else -> null
+        }
+        if (lifecycleTitle != null) return lifecycleTitle to detail
+    }
+    if (activity == "error" && detailKind == "computer_operation_failed") {
+        return "Computer operation failed" to detail
+    }
+    if (activity == "offline") {
+        val primary =
+            when {
+                detailKind == "stopped" -> "Stopped"
+                detailKind == "machine_disconnected" -> "Disconnected"
+                // botiverse/slock #12892: Claude Code refused to start as root (web reads it as Crashed).
+                detailKind == "runtime_crashed" || detailKind == AgentActivityDetailKindClaudeRootPrivileges -> "Crashed"
+                detail == "Stopped" -> "Stopped"
+                detail == "Machine disconnected" -> "Disconnected"
+                detail.startsWith("Crashed") -> "Crashed"
+                else -> "Offline"
+            }
+        val secondary = when {
+            primary == "Crashed" -> detail.removePrefix("Crashed").trim().removeSurrounding("(", ")")
+            primary == "Stopped" && detail.isNotBlank() && detail != "Stopped" -> detail
+            else -> ""
+        }
+        return primary to secondary
+    }
+    val primary =
+        when (activity) {
+            "online" -> "Idle"
+            "thinking" -> "Thinking"
+            "working" -> "Working"
+            "error" -> "Error"
+            else -> activity?.toAgentActivityTitle() ?: "Status"
+        }
+    return primary to detail
+}
+
+/**
+ * Web `shouldHideToolStartInActivityLog`, and as before any namespaced `send_message`
+ * (`mcp__slock__send_message`): a send says nothing its message doesn't.
+ */
+private fun String.shouldHideToolStartInActivityLog(): Boolean =
+    agentToolStartHiddenInActivityLog(trim()) ||
+        trim().substringAfterLast("__").substringAfterLast("/").substringAfterLast(".") == "send_message"
+
+/** Web `getToolLogLabel` ([agentToolLogLabel]); a nameless call keeps a generic title. */
+private fun String.toToolLogLabel(): String =
+    agentToolLogLabel(trim()).ifBlank { "Agent activity" }
+
+private fun JsonElement?.toToolInputPreview(): String? {
+    if (this == null || this is JsonNull) return null
+    val raw =
+        when (this) {
+            is JsonPrimitive -> contentOrNull.orEmpty()
+            is JsonObject -> {
+                val keys =
+                    keys
+                        .filterNot { it.isSensitiveActivityKey() }
+                        .take(4)
+                        .joinToString(", ")
+                if (keys.isBlank()) "Structured input" else "Structured input: $keys"
+            }
+            else -> "Structured input"
+        }
+    return raw.sanitizeActivityText().takeIf { it.isNotBlank() }
+}
+
+private fun String.isSensitiveActivityKey(): Boolean {
+    val lower = lowercase()
+    return lower == "authorization" ||
+        lower == "cookie" ||
+        lower.contains("token") ||
+        lower.contains("password") ||
+        lower.contains("secret") ||
+        lower.contains("credential")
+}
+
+private fun String.sanitizeActivityText(): String {
+    val trimmed = trim()
+    if (trimmed.isBlank()) return ""
+    val lower = trimmed.lowercase()
+    val credentialLike =
+        "authorization" in lower ||
+            "bearer " in lower ||
+            "cookie" in lower ||
+            "access_token" in lower ||
+            "refresh_token" in lower ||
+            "password" in lower ||
+            "sk_agent_" in lower ||
+            "sk_machine_" in lower
+    if (credentialLike) return "[redacted]"
+    return if (trimmed.length > 1200) trimmed.take(1200) + "…" else trimmed
+}
+
+private fun firstNonBlank(vararg values: String?): String? =
+    values.firstOrNull { !it.isNullOrBlank() }
+
+private fun String.toSettingsLabel(): String =
+    replace("_", " ")
+        .replace("-", " ")
+        .replace(".", " ")
+        .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+private fun String.toAgentActivityTitle(): String =
+    toSettingsLabel().ifBlank { "Agent activity" }

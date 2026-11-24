@@ -80,10 +80,12 @@ class ProPricingUiTest {
             ScreenLoadState.Content(
                 proBase.copy(
                     summary =
-                        proBase.summary?.copy(
-                            pricing = ProPricing.PersonV2,
-                            usage = proBase.summary.usage?.copy(humans = 3, agents = 12, universalSeats = 3.0),
-                        )
+                        proBase.summary?.let { s ->
+                            s.copy(
+                                pricing = ProPricing.PersonV2,
+                                usage = s.usage?.copy(humans = 3, agents = 12, universalSeats = 3.0),
+                            )
+                        }
                 )
             )
         setContent {

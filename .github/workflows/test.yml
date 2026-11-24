@@ -521,7 +521,7 @@ jobs:
             tasks+=(:designsystem:compileTestKotlinDesktop)
           fi
           test_tasks=(
-            :shared:verifySqlDelightMigration
+            :shared-data:verifySqlDelightMigration
             :core:testAndroidHostTest
             :realtime-socket:testAndroidHostTest
             :shared:testDebugUnitTest

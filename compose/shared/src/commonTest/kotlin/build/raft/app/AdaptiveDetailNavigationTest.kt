@@ -24,7 +24,7 @@ class AdaptiveDetailNavigationTest {
     }
 
     private fun SharedAdaptiveWorkspaceSession.source(): RaftAdaptiveDetailCloseRequest =
-        RaftAdaptiveDetailCloseRequest("shell", workspace!!.selection!!.identity.key, workspace.selection!!.generation)
+        RaftAdaptiveDetailCloseRequest("shell", workspace!!.selection!!.identity.key, workspace!!.selection!!.generation)
 
     @Test fun returningToTheShellOnAPhoneClearsTheViewedConversation() {
         // A pushed conversation page closed: nothing in the shell is being viewed, so Home must count
@@ -59,9 +59,9 @@ class AdaptiveDetailNavigationTest {
             val tapped = before.withOpenedDetail(otherId, other)
             assertEquals(otherId, tapped.workspace!!.selection!!.identity)
             assertEquals(other, tapped.launchPayload)
-            assertTrue(tapped.workspace.selection!!.generation > before.workspace!!.selection!!.generation)
+            assertTrue(tapped.workspace!!.selection!!.generation > before.workspace!!.selection!!.generation)
             // The user's pick is never a default landing, so a later compact window keeps it.
-            assertFalse(tapped.workspace.selectionIsDefaultLanding)
+            assertFalse(tapped.workspace!!.selectionIsDefaultLanding)
             assertEquals(otherId, tapped.window(compact).workspace!!.selection!!.identity)
         }
 
@@ -92,7 +92,7 @@ class AdaptiveDetailNavigationTest {
         assertEquals(channel, restored.launchPayload)
         assertFalse(restored.hasVisibleDetailBackHistory())
         assertEquals("channel", restored.detailListSelectionId())
-        assertTrue(restored.workspace!!.selection!!.generation > opened.workspace.selection!!.generation)
+        assertTrue(restored.workspace!!.selection!!.generation > opened.workspace!!.selection!!.generation)
         assertEquals(restored, restored.backFromDetail(opened.source()))
         assertNull(restored.backFromDetail(restored.source()).workspace!!.selection)
     }
@@ -105,9 +105,9 @@ class AdaptiveDetailNavigationTest {
         val replyIdentity = reply.toRaftAdaptiveDetailIdentity("server")!!
         val opened = live.withOpenedDetail(replyIdentity, reply)
         assertTrue(opened.workspace!!.parentVisible)
-        assertEquals(replyIdentity, opened.workspace.selection!!.identity)
+        assertEquals(replyIdentity, opened.workspace!!.selection!!.identity)
         assertEquals(reply, opened.launchPayload)
-        assertEquals(RaftAdaptiveWorkspacePresentation.Split, opened.workspace.presentation)
+        assertEquals(RaftAdaptiveWorkspacePresentation.Split, opened.workspace!!.presentation)
         // A compact pane cannot host the detail: the session is left untouched.
         val compact = live.copy(
             workspace = reduceRaftAdaptiveWorkspace(
@@ -141,7 +141,7 @@ class AdaptiveDetailNavigationTest {
         assertNull(closed.launchPayload)
         assertNull(closed.detailHistory)
         assertFalse(closed.hasVisibleDetailBackHistory())
-        assertTrue(closed.workspace.generationCursor > opened.workspace!!.generationCursor)
+        assertTrue(closed.workspace!!.generationCursor > opened.workspace!!.generationCursor)
         assertEquals(closed, closed.closeDetailCompletely())
     }
 
@@ -151,7 +151,7 @@ class AdaptiveDetailNavigationTest {
         assertFalse(shouldOpenWithinAdaptiveDetail(root.source(), root.workspace, false, "server"))
         assertFalse(shouldOpenWithinAdaptiveDetail(null, root.workspace, true, "server"))
         assertFalse(shouldOpenWithinAdaptiveDetail(root.source(), root.workspace, true, "other"))
-        val compact = root.workspace!!.copy(pane = root.workspace.pane.copy(layout = RaftAdaptivePaneLayout.Compact))
+        val compact = root.workspace!!.let { it.copy(pane = it.pane.copy(layout = RaftAdaptivePaneLayout.Compact)) }
         assertFalse(shouldOpenWithinAdaptiveDetail(root.source(), compact, true, "server"))
     }
 
@@ -161,7 +161,7 @@ class AdaptiveDetailNavigationTest {
             assertEquals(root, root.navigateDetail(source, reply, "server"))
         }
         assertEquals(root, root.navigateDetail(root.source(), reply, "other-server"))
-        val compact = root.copy(workspace = root.workspace!!.copy(pane = root.workspace.pane.copy(layout = RaftAdaptivePaneLayout.Compact)))
+        val compact = root.copy(workspace = root.workspace!!.let { it.copy(pane = it.pane.copy(layout = RaftAdaptivePaneLayout.Compact)) })
         assertEquals(compact, compact.navigateDetail(compact.source(), reply, "server"))
     }
 
@@ -169,7 +169,7 @@ class AdaptiveDetailNavigationTest {
         val store = SharedAdaptiveWorkspaceStore()
         store.update { session() }
         val opened = store.update { it.navigateDetail(it.source(), reply, "server") }
-        val compact = store.update { it.copy(workspace = it.workspace!!.copy(pane = it.workspace.pane.copy(layout = RaftAdaptivePaneLayout.Compact))) }
+        val compact = store.update { it.copy(workspace = it.workspace!!.let { w -> w.copy(pane = w.pane.copy(layout = RaftAdaptivePaneLayout.Compact)) }) }
         assertEquals(channel, compact.backFromDetail(compact.source()).launchPayload)
         store.update { opened }
         val switched = store.update { it.copy(workspace = reduceRaftAdaptiveWorkspace(it.workspace!!,

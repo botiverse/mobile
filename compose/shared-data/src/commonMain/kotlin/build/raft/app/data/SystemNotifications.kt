@@ -1,0 +1,344 @@
+package build.raft.app.data
+
+import build.raft.app.RaftCoreInternalApi
+
+import build.raft.app.shownAuthorName
+import build.raft.app.markdown.markdownToPreviewText
+import build.raft.app.markdown.RaftMarkdownPreviewNotificationLength
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.NotificationPushReceived
+import build.raft.app.model.Message
+import build.raft.app.toRaftSurfaceKind
+import kotlin.concurrent.Volatile
+
+data class NotificationPreferenceSnapshot(
+    val enabled: Boolean,
+    val foregroundKeepAliveEnabled: Boolean = false,
+)
+
+const val NOTIFICATION_ENABLED_PREFERENCE_KEY = "notifications:enabled"
+const val NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY = "notifications:foreground_keep_alive_enabled"
+
+interface NotificationPreferenceStore {
+    fun readNotificationEnabledSync(): Boolean
+    fun readForegroundKeepAliveEnabledSync(): Boolean
+    suspend fun readNotificationEnabled(): Boolean
+    suspend fun readForegroundKeepAliveEnabled(): Boolean
+    suspend fun saveNotificationEnabled(enabled: Boolean)
+    suspend fun saveForegroundKeepAliveEnabled(enabled: Boolean)
+}
+
+class KeyValueNotificationPreferenceStore(
+    private val store: SharedPreferenceStore
+) : NotificationPreferenceStore {
+    override fun readNotificationEnabledSync(): Boolean =
+        store.getBoolean(KEY_NOTIFICATION_ENABLED, defaultValue = true)
+
+    override fun readForegroundKeepAliveEnabledSync(): Boolean =
+        store.getBoolean(KEY_FOREGROUND_KEEP_ALIVE_ENABLED, defaultValue = false)
+
+    override suspend fun readNotificationEnabled(): Boolean =
+        readNotificationEnabledSync()
+
+    override suspend fun readForegroundKeepAliveEnabled(): Boolean =
+        readForegroundKeepAliveEnabledSync()
+
+    override suspend fun saveNotificationEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_NOTIFICATION_ENABLED, enabled)
+    }
+
+    override suspend fun saveForegroundKeepAliveEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_FOREGROUND_KEEP_ALIVE_ENABLED, enabled)
+    }
+
+    private companion object {
+        const val KEY_NOTIFICATION_ENABLED = NOTIFICATION_ENABLED_PREFERENCE_KEY
+        const val KEY_FOREGROUND_KEEP_ALIVE_ENABLED = NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
+    }
+}
+
+interface NotificationPreferenceRepository {
+    suspend fun getNotificationPreference(): NotificationPreferenceSnapshot
+    suspend fun setNotificationEnabled(enabled: Boolean): NotificationPreferenceSnapshot
+    suspend fun setForegroundKeepAliveEnabled(enabled: Boolean): NotificationPreferenceSnapshot
+}
+
+class PersistentNotificationPreferenceRepository(
+    private val store: NotificationPreferenceStore
+) : NotificationPreferenceRepository {
+    override suspend fun getNotificationPreference(): NotificationPreferenceSnapshot =
+        NotificationPreferenceSnapshot(
+            enabled = store.readNotificationEnabled(),
+            foregroundKeepAliveEnabled = store.readForegroundKeepAliveEnabled(),
+        )
+
+    override suspend fun setNotificationEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
+        val changed = store.readNotificationEnabled() != enabled
+        store.saveNotificationEnabled(enabled)
+        // The switch is the registration's alertsEnabled (slock docs/contracts/notifications.md §3.1):
+        // the server stops alerting this device when it is off, so off really means off for FCM/APNs.
+        if (changed) RaftPushRegistrationLifecycle.onDeviceStateChanged()
+        return getNotificationPreference()
+    }
+
+    override suspend fun setForegroundKeepAliveEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
+        store.saveForegroundKeepAliveEnabled(enabled)
+        return getNotificationPreference()
+    }
+}
+
+data class SystemNotificationActionResult(
+    val status: SystemNotificationActionStatus,
+    val code: String = status.name.lowercase(),
+    val message: String = ""
+) {
+    val ok: Boolean
+        get() = status == SystemNotificationActionStatus.Ok || status == SystemNotificationActionStatus.Requested
+}
+
+enum class SystemNotificationActionStatus {
+    Ok,
+    Requested,
+    PermissionDenied,
+    NotificationsDisabled,
+    ChannelBlocked,
+    Unsupported,
+    Error
+}
+
+enum class SystemUnreadNotificationCategory(val wireValue: String) {
+    GeneralUnread("general_unread"),
+    ChannelUnread("channel_unread"),
+    DirectMessage("direct_message"),
+    Mention("mention")
+}
+
+data class SystemUnreadNotificationRequest(
+    val serverId: String,
+    val messageId: String,
+    val threadId: String,
+    val channelId: String?,
+    val parentChannelId: String?,
+    val parentMessageId: String?,
+    val conversationKind: ConversationKind?,
+    val category: SystemUnreadNotificationCategory,
+    val title: String,
+    val body: String,
+    val notificationKey: String,
+    /**
+     * Who sent the message, without any message text. The Android poster uses it to redact a locally
+     * built request for this device's push preview choice (sender_only shows only this name).
+     */
+    val senderName: String? = null,
+    /** The message mentions the current user; picks the "mentioned you" wording when redacted. */
+    val mentioned: Boolean = false,
+    /**
+     * Unified contract fields (slock docs/contracts/notifications.md §4.1), null for a request built
+     * locally from a message: the real `category` (picks the Android channel), the `groupKey` and
+     * message `seq` a retraction matches, the account sound setting ([silent]) and the click target.
+     */
+    val contractCategory: String? = null,
+    val groupKey: String? = null,
+    val seq: Long? = null,
+    val silent: Boolean = false,
+    val routeJson: String? = null,
+    /**
+     * Banner copy (contract §1.5): the context line, still joined into [title] by the socket (the
+     * poster strips it), and the localization keys of title / subtitle / body.
+     */
+    val subtitle: String? = null,
+    val localization: RaftNotificationLocalization? = null,
+    val serverName: String? = null
+)
+
+data class SystemUnreadNotificationServerGateResult(
+    val shouldPost: Boolean,
+    val code: String
+)
+
+/**
+ * A notification needs the server it belongs to (its tap switches there first). Any of the member's
+ * servers is shown, not only the selected one (slock docs/contracts/notifications.md §4.5): the
+ * server already decided this notification is due.
+ */
+fun systemUnreadNotificationServerGate(notificationServerId: String?): SystemUnreadNotificationServerGateResult {
+    val notificationServer = notificationServerId?.trim().takeIf { !it.isNullOrBlank() }
+    return if (notificationServer == null) {
+        SystemUnreadNotificationServerGateResult(shouldPost = false, code = "server_missing")
+    } else {
+        SystemUnreadNotificationServerGateResult(shouldPost = true, code = "allowed")
+    }
+}
+
+fun shouldShowSystemInboxNotification(
+    messageAuthorId: String?,
+    currentMemberId: String?,
+    isVisibleThread: Boolean,
+    isAppInForeground: Boolean = false
+): Boolean {
+    if (isAppInForeground) return false
+    if (!messageAuthorId.isNullOrBlank() && messageAuthorId == currentMemberId) return false
+    if (isVisibleThread) return false
+    return true
+}
+
+fun buildSystemUnreadNotificationRequest(
+    serverId: String,
+    message: Message,
+    currentMemberId: String?,
+    isVisibleThread: Boolean,
+    conversationName: String?,
+    conversationKind: ConversationKind?,
+    currentMemberHandle: String? = null,
+    isAppInForeground: Boolean = false
+): SystemUnreadNotificationRequest? {
+    if (
+        !shouldShowSystemInboxNotification(
+            messageAuthorId = message.author.id.value,
+            currentMemberId = currentMemberId,
+            isVisibleThread = isVisibleThread,
+            isAppInForeground = isAppInForeground
+        )
+    ) {
+        return null
+    }
+    val sender = message.shownAuthorName().ifBlank { message.author.handle.ifBlank { "Someone" } }
+    // RFC 086: a card this client draws with acting buttons never shows the reason stored for older clients.
+    val preview = markdownToPreviewText(messageNotificationText(message.body, message.metadata), RaftMarkdownPreviewNotificationLength).ifBlank { "Sent a new message." }
+    // A DM is never "mentioned you" (slock docs/contracts/notifications.md §1.5): every DM is for you.
+    val mentioned =
+        conversationKind != ConversationKind.DirectMessage &&
+            currentMemberHandle
+                ?.trim()
+                ?.removePrefix("@")
+                ?.takeIf { it.isNotBlank() }
+                ?.let { handle ->
+                    message.body.contains("@$handle", ignoreCase = true) ||
+                        message.body.contains(handle, ignoreCase = true)
+                } == true
+    val category =
+        when {
+            conversationKind == ConversationKind.DirectMessage -> SystemUnreadNotificationCategory.DirectMessage
+            mentioned -> SystemUnreadNotificationCategory.Mention
+            conversationKind == ConversationKind.Channel || conversationKind == ConversationKind.Thread ->
+                SystemUnreadNotificationCategory.ChannelUnread
+            else -> SystemUnreadNotificationCategory.GeneralUnread
+        }
+    val title =
+        when (category) {
+            SystemUnreadNotificationCategory.DirectMessage -> sender
+            SystemUnreadNotificationCategory.ChannelUnread,
+            SystemUnreadNotificationCategory.Mention ->
+                conversationName
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { name -> if (name.startsWith("#")) name else "#$name" }
+                    ?: "Raft"
+            SystemUnreadNotificationCategory.GeneralUnread -> "Raft"
+        }
+    val body =
+        when (category) {
+            SystemUnreadNotificationCategory.DirectMessage -> preview
+            else -> "$sender: $preview"
+        }
+    val channelId = message.threadChannelId?.value ?: message.channelId?.value
+    val threadId = channelId ?: message.threadId.value
+    val messageId = message.id.value
+    val parentMessageId = message.parentMessageId?.value
+    val parentChannelId =
+        if (parentMessageId.isNullOrBlank()) {
+            null
+        } else {
+            message.channelId?.value ?: channelId
+        }
+    return SystemUnreadNotificationRequest(
+        serverId = serverId,
+        messageId = messageId,
+        threadId = threadId,
+        channelId = channelId,
+        parentChannelId = parentChannelId,
+        parentMessageId = parentMessageId,
+        conversationKind = conversationKind,
+        category = category,
+        title = title,
+        body = body,
+        senderName = sender,
+        mentioned = mentioned,
+        // Message ids are canonical across host/peer joint projections. The
+        // local route stays in the request, while the tray identity deliberately
+        // does not include Server/channel so two projected deliveries replace
+        // one fact instead of producing duplicate system notifications.
+        notificationKey = "unread:message:$messageId"
+    )
+}
+
+/**
+ * task #459: tray request from the server-qualified notification stream
+ * (`notification:push`, server PR #4233). Sender exclusion, mention/scope
+ * qualification and mute are already decided server-side; the local policy
+ * left is foreground/visible-thread suppression (the caller's decision). Every
+ * server's notification is posted (the unified contract retired the
+ * current-server gate).
+ */
+fun buildSystemUnreadNotificationRequestFromPush(
+    push: NotificationPushReceived,
+    isVisibleThread: Boolean,
+    isAppInForeground: Boolean
+): SystemUnreadNotificationRequest? {
+    if (isAppInForeground || isVisibleThread) return null
+    val category =
+        when (push.kind) {
+            ConversationKind.DirectMessage -> SystemUnreadNotificationCategory.DirectMessage
+            ConversationKind.Channel,
+            ConversationKind.Joint,
+            ConversationKind.Thread -> SystemUnreadNotificationCategory.ChannelUnread
+            else -> SystemUnreadNotificationCategory.GeneralUnread
+        }
+    val streamChannelId = (push.threadId ?: push.channelId)?.value
+    return SystemUnreadNotificationRequest(
+        serverId = push.serverId.value,
+        messageId = push.messageId.value,
+        threadId = streamChannelId ?: push.messageId.value,
+        channelId = streamChannelId,
+        parentChannelId = push.parentChannelId?.value,
+        parentMessageId = push.parentMessageId?.value,
+        conversationKind = push.kind,
+        category = category,
+        title = push.title.ifBlank { "Raft" },
+        body = push.body.ifBlank { "Sent a new message." },
+        notificationKey = "unread:message:${push.messageId.value}",
+        senderName = push.senderName?.trim()?.takeIf { it.isNotEmpty() },
+        mentioned = push.mentioned == true && push.kind != ConversationKind.DirectMessage,
+        contractCategory = push.category,
+        groupKey = push.groupKey ?: push.conversationId?.let { raftNotificationGroupKey(push.serverId.value, it) },
+        seq = push.seq,
+        silent = push.silent == true,
+        routeJson = push.routeJson,
+        subtitle = push.subtitle,
+        localization = push.localization,
+        serverName = push.serverName?.trim()?.takeIf { it.isNotEmpty() }
+    )
+}
+
+fun SystemUnreadNotificationRequest.conversationKindWireValue(): String? =
+    conversationKind?.toRaftSurfaceKind()
+
+/**
+ * The conversation [channelId] of [serverId] was read in the app (opened, scrolled to its end or
+ * marked read: every path goes through the process read receipt coordinator), so the platform can
+ * drop the system notification it posted for that conversation's unread messages.
+ */
+fun interface RaftConversationReadListener {
+    fun onConversationRead(serverId: String, channelId: String)
+}
+
+/** Installed by the platform host (androidApp); while null, nothing is told about reads. */
+object RaftConversationReadHost {
+    @Volatile
+    var listener: RaftConversationReadListener? = null
+
+    @RaftCoreInternalApi fun conversationRead(serverId: String, channelId: String) {
+        val listener = listener ?: return
+        runCatching { listener.onConversationRead(serverId, channelId) }
+    }
+}

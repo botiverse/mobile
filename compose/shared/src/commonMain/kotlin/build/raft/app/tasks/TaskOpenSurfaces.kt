@@ -366,7 +366,8 @@ internal class TaskOpenSurfaceFlow(
         val current = surface ?: return null
         if (fresh == null || fresh.id != current.task.id || fresh == current.task || handingOff) return null
         val shownRevision = current.task.revision
-        if (fresh.revision != null && shownRevision != null && fresh.revision < shownRevision) return null
+        val freshRevision = fresh.revision
+        if (freshRevision != null && shownRevision != null && freshRevision < shownRevision) return null
         return when (val next = fresh.taskOpenSurface()) {
             null -> {
                 if (sending) return null

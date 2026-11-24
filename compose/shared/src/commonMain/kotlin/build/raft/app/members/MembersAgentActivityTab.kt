@@ -515,10 +515,11 @@ private fun membersActivityRowMemoryLimitText(activity: AgentActivityEntry): Mem
     }
     if (activity.type == "system" && isAgentBackgroundOomActivityTitle(activity.title)) {
         val parsed = parseAgentBackgroundOomActivityText(activity.body)
+        val memoryLimit = parsed?.memoryLimit
         val body = when {
             parsed == null -> activity.body.orEmpty()
-            parsed.memoryLimit != null ->
-                stringResource(Res.string.agent_activity_log_background_oom_detail_with_limit, parsed.memoryLimit)
+            memoryLimit != null ->
+                stringResource(Res.string.agent_activity_log_background_oom_detail_with_limit, memoryLimit)
             else -> stringResource(Res.string.agent_activity_log_background_oom_detail)
         }
         return MembersActivityRowText(stringResource(Res.string.agent_activity_log_background_oom_title), body)

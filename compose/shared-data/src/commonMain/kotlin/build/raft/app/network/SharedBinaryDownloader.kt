@@ -1,0 +1,520 @@
+package build.raft.app.network
+
+import build.raft.app.RaftCoreInternalApi
+
+import build.raft.app.raftLogInfo
+import build.raft.app.raftLogWarn
+import kotlinx.coroutines.CancellationException
+import kotlin.time.TimeSource
+
+private const val SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS = 60_000L
+
+data class SharedDownloadedBytes(
+    val bytes: ByteArray,
+    val contentType: String?,
+    val cacheControl: String? = null,
+    val eTag: String? = null,
+    val lastModified: String? = null,
+    val ageSeconds: Long? = null,
+)
+
+@RaftCoreInternalApi sealed interface SharedBinaryConditionalBytesResult {
+    data class Modified(val downloaded: SharedDownloadedBytes) : SharedBinaryConditionalBytesResult
+
+    data class NotModified(
+        val cacheControl: String?,
+        val eTag: String?,
+        val lastModified: String?,
+        val ageSeconds: Long?,
+    ) : SharedBinaryConditionalBytesResult
+}
+
+data class SharedBinaryConditionalValidators(
+    val eTag: String? = null,
+    val lastModified: String? = null
+) {
+    init {
+        require(eTag == null || (eTag.isNotBlank() && eTag == eTag.trim()))
+        require(lastModified == null || (lastModified.isNotBlank() && lastModified == lastModified.trim()))
+        require(eTag != null || lastModified != null)
+    }
+}
+
+sealed interface SharedBinaryConditionalDownloadResult {
+    val statusCode: Int
+    val eTag: String?
+    val lastModified: String?
+
+    data class Modified(
+        override val statusCode: Int,
+        val contentType: String?,
+        override val eTag: String?,
+        override val lastModified: String?
+    ) : SharedBinaryConditionalDownloadResult {
+        init {
+            require(statusCode in 200..299)
+        }
+    }
+
+    data class NotModified(
+        override val eTag: String?,
+        override val lastModified: String?
+    ) : SharedBinaryConditionalDownloadResult {
+        override val statusCode: Int = 304
+    }
+}
+
+/**
+ * Typed HTTP failure for [SharedBinaryDownloader.downloadConditional].
+ *
+ * Ordinary [SharedBinaryDownloader.download] and [SharedBinaryDownloader.fetchBytes] retain their
+ * existing exception contract. The status is exposed only so mounted avatar policy can distinguish
+ * authoritative 404/410 retirement from temporary HTTP failures without parsing diagnostics text.
+ */
+class SharedBinaryConditionalHttpException @RaftCoreInternalApi constructor(
+    val statusCode: Int,
+    message: String
+) : IllegalStateException(message) {
+    init {
+        require(statusCode in 100..599 && statusCode !in 200..299 && statusCode != 304)
+    }
+}
+
+fun interface BinaryDownloadDiagnosticsLogger {
+    fun record(tag: String, message: String)
+}
+
+/**
+ * The downloader's logger until a host installs its own: the shared platform log, which reaches the
+ * diagnostics JSONL on every platform. iOS never installed one, so its downloads (and the truncated-body
+ * `network_error`) left no line in a Hands bundle (Hands 1b6dd022). Failures and cancels log as warnings.
+ */
+@RaftCoreInternalApi val SharedPlatformBinaryDownloadLogger =
+    BinaryDownloadDiagnosticsLogger { tag, message ->
+        if ("status=failed" in message || "status=canceled" in message) {
+            raftLogWarn(tag, message)
+        } else {
+            raftLogInfo(tag, message)
+        }
+    }
+
+/**
+ * Binary downloads (images, avatars, attachments) on the app's Ktor client, Visible lane
+ * (artin 2026-10-23; NetworkKMM before). [download] streams the body chunk by chunk ([raftStreamingGet])
+ * so the whole payload is never held in memory, and the total comes from Content-Length, so progress
+ * is determinate whenever the server sends it.
+ */
+object SharedBinaryDownloader {
+    private const val DIAGNOSTICS_TAG = "SlockBinaryDownload"
+
+    private var diagnosticsLogger: BinaryDownloadDiagnosticsLogger = SharedPlatformBinaryDownloadLogger
+
+    /** Replaces the default shared-log logger; null restores it. */
+    fun setDiagnosticsLogger(logger: BinaryDownloadDiagnosticsLogger?) {
+        diagnosticsLogger = logger ?: SharedPlatformBinaryDownloadLogger
+    }
+
+    suspend fun fetchBytes(url: String): SharedDownloadedBytes {
+        val chunks = mutableListOf<ByteArray>()
+        var totalBytes = 0
+        val headers =
+            streamDownloadHeaders(
+                url = url,
+                operation = "fetch_bytes",
+                failurePrefix = "Download failed",
+                onStart = {},
+                onChunk = { bytes, _, _ ->
+                    totalBytes += bytes.size
+                    chunks += bytes.copyOf()
+                }
+            )
+        return SharedDownloadedBytes(
+            bytes = combineDownloadedChunks(chunks, totalBytes),
+            contentType = headers.firstHeaderValue("Content-Type")?.substringBefore(';')?.trim()?.takeIf { it.isNotBlank() },
+            cacheControl = headers.joinedHeaderValues("Cache-Control"),
+            eTag = headers.firstHeaderValue("ETag"),
+            lastModified = headers.firstHeaderValue("Last-Modified"),
+            ageSeconds = headers.firstHeaderValue("Age")?.toLongOrNull()?.takeIf { it >= 0L },
+        )
+    }
+
+    /**
+     * #proj-mobile:#293: conditional byte fetch for Coil's HTTP image cache. Sends `If-None-Match`
+     * / `If-Modified-Since` when [validators] are present and returns [SharedBinaryConditionalBytesResult.NotModified]
+     * on HTTP 304 without downloading a body, or [SharedBinaryConditionalBytesResult.Modified] with
+     * response cache headers (`Cache-Control`, `ETag`, `Last-Modified`, `Age`) on 2xx.
+     */
+    @RaftCoreInternalApi suspend fun fetchBytesConditional(
+        url: String,
+        validators: SharedBinaryConditionalValidators?
+    ): SharedBinaryConditionalBytesResult {
+        if (validators == null) {
+            return SharedBinaryConditionalBytesResult.Modified(fetchBytes(url))
+        }
+        val operation = "conditional_fetch_bytes"
+        val failurePrefix = "Conditional download failed"
+        val chunks = mutableListOf<ByteArray>()
+        var totalBytes = 0
+        var downloadedBytes = 0L
+        var expectedBytes: Long? = null
+        val startedAt = TimeSource.Monotonic.markNow()
+        val urlSummary = binaryDownloadUrlDiagnostics(url)
+        recordDiagnostics("operation=$operation status=start $urlSummary")
+        val response =
+            runDownload(operation, startedAt, urlSummary, { downloadedBytes }, { expectedBytes }) {
+                raftStreamingGet(
+                    url = url,
+                    requestHeaders = sharedBinaryConditionalHeaders(validators),
+                    priority = RaftRequestPriority.Visible,
+                    connectTimeoutMillis = RAFT_KTOR_CONNECT_TIMEOUT_MILLIS,
+                    socketTimeoutMillis = null,
+                    totalTimeoutMillis = SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS,
+                    onResponseStart = { statusCode, contentLength, _ ->
+                        expectedBytes = contentLength?.takeIf { it > 0L }
+                        recordDiagnostics(
+                            "operation=$operation status=response_start http=$statusCode " +
+                                "expectedBytes=${expectedBytes ?: "unknown"} $urlSummary"
+                        )
+                        statusCode in 200..299
+                    },
+                    onChunk = { chunk ->
+                        downloadedBytes += chunk.size.toLong()
+                        totalBytes += chunk.size
+                        chunks += chunk.copyOf()
+                    }
+                )
+            }
+        val headers = response.headers
+        val cacheControl = headers.joinedHeaderValues("Cache-Control")
+        val eTag = headers.firstHeaderValue("ETag")
+        val lastModified = headers.firstHeaderValue("Last-Modified")
+        val ageSeconds = headers.firstHeaderValue("Age")?.toLongOrNull()?.takeIf { it >= 0L }
+        return when (response.statusCode) {
+            304 -> {
+                recordDiagnostics(
+                    "operation=$operation status=complete http=304 downloadedBytes=0 " +
+                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} $urlSummary"
+                )
+                SharedBinaryConditionalBytesResult.NotModified(
+                    cacheControl = cacheControl,
+                    eTag = eTag,
+                    lastModified = lastModified,
+                    ageSeconds = ageSeconds,
+                )
+            }
+            in 200..299 -> {
+                val contentType = headers.firstHeaderValue("Content-Type")?.substringBefore(';')?.trim()?.takeIf { it.isNotBlank() }
+                recordDiagnostics(
+                    "operation=$operation status=complete http=${response.statusCode} " +
+                        "downloadedBytes=$downloadedBytes expectedBytes=${expectedBytes ?: "unknown"} " +
+                        "contentType=${contentType ?: "unknown"} " +
+                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} $urlSummary"
+                )
+                SharedBinaryConditionalBytesResult.Modified(
+                    SharedDownloadedBytes(
+                        bytes = combineDownloadedChunks(chunks, totalBytes),
+                        contentType = contentType,
+                        cacheControl = cacheControl,
+                        eTag = eTag,
+                        lastModified = lastModified,
+                        ageSeconds = ageSeconds,
+                    )
+                )
+            }
+            else -> {
+                recordDiagnostics(
+                    "operation=$operation status=failed http=${response.statusCode} " +
+                        "downloadedBytes=$downloadedBytes expectedBytes=${expectedBytes ?: "unknown"} " +
+                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} errorKind=none message=none $urlSummary"
+                )
+                throw sharedBinaryConditionalFailure(
+                    statusCode = response.statusCode,
+                    failurePrefix = failurePrefix,
+                    safeErrorMessage = "none"
+                )
+            }
+        }
+    }
+
+    suspend fun download(
+        url: String,
+        onStart: (totalBytes: Long?) -> Unit,
+        beforeRead: () -> Unit = {},
+        onChunk: (bytes: ByteArray, downloadedBytes: Long, totalBytes: Long?) -> Unit
+    ): String? =
+        streamDownload(
+            url = url,
+            operation = "download_stream",
+            failurePrefix = "Attachment download failed",
+            onStart = onStart,
+            beforeRead = beforeRead,
+            onChunk = onChunk
+        )
+
+    /**
+     * Streams one typed conditional request through the same client as ordinary downloads. A 304
+     * is body-less and explicit; redirects and every other non-2xx status retain failure semantics.
+     */
+    suspend fun downloadConditional(
+        url: String,
+        validators: SharedBinaryConditionalValidators?,
+        onStart: (totalBytes: Long?) -> Unit,
+        beforeRead: () -> Unit = {},
+        onChunk: (bytes: ByteArray, downloadedBytes: Long, totalBytes: Long?) -> Unit
+    ): SharedBinaryConditionalDownloadResult {
+        val operation = "conditional_download_stream"
+        val failurePrefix = "Conditional download failed"
+        var responseStatus = 0
+        var downloadedBytes = 0L
+        var totalBytes: Long? = null
+        val startedAt = TimeSource.Monotonic.markNow()
+        val urlSummary = binaryDownloadUrlDiagnostics(url)
+        recordDiagnostics("operation=$operation status=start $urlSummary")
+        val response =
+            runDownload(operation, startedAt, urlSummary, { downloadedBytes }, { totalBytes }) {
+                raftStreamingGet(
+                    url = url,
+                    requestHeaders = sharedBinaryConditionalHeaders(validators),
+                    priority = RaftRequestPriority.Visible,
+                    connectTimeoutMillis = RAFT_KTOR_CONNECT_TIMEOUT_MILLIS,
+                    socketTimeoutMillis = null,
+                    totalTimeoutMillis = SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS,
+                    onResponseStart = { statusCode, contentLength, _ ->
+                        responseStatus = statusCode
+                        totalBytes = contentLength?.takeIf { it > 0L }
+                        recordDiagnostics(
+                            "operation=$operation status=response_start http=$statusCode " +
+                                "expectedBytes=${totalBytes ?: "unknown"} $urlSummary"
+                        )
+                        val modified = statusCode in 200..299
+                        if (modified) onStart(totalBytes)
+                        modified
+                    },
+                    onChunk = { chunk ->
+                        beforeRead()
+                        downloadedBytes += chunk.size.toLong()
+                        onChunk(chunk, downloadedBytes, totalBytes)
+                    }
+                )
+            }
+        val result = sharedBinaryConditionalResult(statusCode = response.statusCode, headers = response.headers)
+        if (result == null) {
+            recordDiagnostics(
+                "operation=$operation status=failed http=${response.statusCode} " +
+                    "downloadedBytes=$downloadedBytes expectedBytes=${totalBytes ?: "unknown"} " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} errorKind=none message=none $urlSummary"
+            )
+            throw sharedBinaryConditionalFailure(
+                statusCode = response.statusCode,
+                failurePrefix = failurePrefix,
+                safeErrorMessage = "none"
+            )
+        }
+        recordDiagnostics(
+            "operation=$operation status=complete http=${result.statusCode} " +
+                "downloadedBytes=$downloadedBytes expectedBytes=${totalBytes ?: "unknown"} " +
+                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} $urlSummary"
+        )
+        return result
+    }
+
+    private suspend fun streamDownload(
+        url: String,
+        operation: String,
+        failurePrefix: String,
+        onStart: (totalBytes: Long?) -> Unit,
+        beforeRead: () -> Unit = {},
+        onChunk: (bytes: ByteArray, downloadedBytes: Long, totalBytes: Long?) -> Unit
+    ): String? =
+        streamDownloadHeaders(
+            url = url,
+            operation = operation,
+            failurePrefix = failurePrefix,
+            onStart = onStart,
+            beforeRead = beforeRead,
+            onChunk = onChunk
+        ).firstHeaderValue("Content-Type")?.substringBefore(';')?.trim()?.takeIf { it.isNotBlank() }
+
+    private suspend fun streamDownloadHeaders(
+        url: String,
+        operation: String,
+        failurePrefix: String,
+        onStart: (totalBytes: Long?) -> Unit,
+        beforeRead: () -> Unit = {},
+        onChunk: (bytes: ByteArray, downloadedBytes: Long, totalBytes: Long?) -> Unit
+    ): Map<String, List<String>> {
+        // Chunks are delivered straight off the transport without buffering the whole payload.
+        var downloadedBytes = 0L
+        var totalBytes: Long? = null
+        val startedAt = TimeSource.Monotonic.markNow()
+        val urlSummary = binaryDownloadUrlDiagnostics(url)
+        recordDiagnostics("operation=$operation status=start $urlSummary")
+        val response =
+            runDownload(operation, startedAt, urlSummary, { downloadedBytes }, { totalBytes }) {
+                raftStreamingGet(
+                    url = url,
+                    requestHeaders = mapOf("Accept" to "*/*"),
+                    priority = RaftRequestPriority.Visible,
+                    connectTimeoutMillis = RAFT_KTOR_CONNECT_TIMEOUT_MILLIS,
+                    socketTimeoutMillis = null,
+                    totalTimeoutMillis = SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS,
+                    onResponseStart = { statusCode, contentLength, _ ->
+                        totalBytes = contentLength?.takeIf { it > 0L }
+                        recordDiagnostics(
+                            "operation=$operation status=response_start http=$statusCode " +
+                                "expectedBytes=${totalBytes ?: "unknown"} $urlSummary"
+                        )
+                        val ok = statusCode in 200..299
+                        if (ok) onStart(totalBytes)
+                        ok
+                    },
+                    onChunk = { chunk ->
+                        beforeRead()
+                        downloadedBytes += chunk.size.toLong()
+                        onChunk(chunk, downloadedBytes, totalBytes)
+                    }
+                )
+            }
+        val status = response.statusCode
+        if (status !in 200..299) {
+            recordDiagnostics(
+                "operation=$operation status=failed http=$status " +
+                    "downloadedBytes=$downloadedBytes expectedBytes=${totalBytes ?: "unknown"} " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} errorKind=none message=none $urlSummary"
+            )
+            throw IllegalStateException("$failurePrefix: HTTP $status")
+        }
+        val contentType = response.headers.firstHeaderValue("Content-Type")?.substringBefore(';')?.trim()?.takeIf { it.isNotBlank() }
+        recordDiagnostics(
+            "operation=$operation status=complete http=$status " +
+                "downloadedBytes=$downloadedBytes expectedBytes=${totalBytes ?: "unknown"} " +
+                "contentType=${contentType ?: "unknown"} " +
+                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} $urlSummary"
+        )
+        return response.headers
+    }
+
+    /**
+     * Runs one transfer: a cancelled caller logs `status=canceled` and rethrows; a transport failure
+     * logs its kind and becomes the same `HTTP 0` IllegalStateException the NetworkKMM path threw.
+     */
+    private suspend fun runDownload(
+        operation: String,
+        startedAt: TimeSource.Monotonic.ValueTimeMark,
+        urlSummary: String,
+        downloadedBytes: () -> Long,
+        totalBytes: () -> Long?,
+        block: suspend () -> RaftStreamingGetResponse,
+    ): RaftStreamingGetResponse =
+        try {
+            block()
+        } catch (error: Throwable) {
+            val kind = classifyRaftKtorFailure(error)
+            if (error is CancellationException && kind == RaftTransportFailureKind.CANCELLED) {
+                recordDiagnostics(
+                    "operation=$operation status=canceled downloadedBytes=${downloadedBytes()} " +
+                        "expectedBytes=${totalBytes() ?: "unknown"} " +
+                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} $urlSummary"
+                )
+                throw error
+            }
+            val safeMessage = error.message?.toSafeDiagnosticsToken() ?: "none"
+            recordDiagnostics(
+                "operation=$operation status=failed http=0 downloadedBytes=${downloadedBytes()} " +
+                    "expectedBytes=${totalBytes() ?: "unknown"} " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                    "errorKind=${kind.name} message=$safeMessage $urlSummary"
+            )
+            throw IllegalStateException("Download failed: HTTP 0 (${kind.errorToken}: $safeMessage)", error)
+        }
+
+    private fun recordDiagnostics(message: String) {
+        diagnosticsLogger.record(DIAGNOSTICS_TAG, message)
+    }
+
+}
+
+@RaftCoreInternalApi fun sharedBinaryConditionalHeaders(validators: SharedBinaryConditionalValidators?): Map<String, String> =
+    buildMap {
+        put("Accept", "*/*")
+        validators?.eTag?.let { put("If-None-Match", it) }
+        validators?.lastModified?.let { put("If-Modified-Since", it) }
+    }
+
+@RaftCoreInternalApi fun sharedBinaryConditionalResult(
+    statusCode: Int,
+    headers: Map<String, List<String>>
+): SharedBinaryConditionalDownloadResult? {
+    val eTag = headers.firstHeaderValue("ETag")
+    val lastModified = headers.firstHeaderValue("Last-Modified")
+    return when (statusCode) {
+        304 -> SharedBinaryConditionalDownloadResult.NotModified(eTag, lastModified)
+        in 200..299 ->
+            SharedBinaryConditionalDownloadResult.Modified(
+                statusCode = statusCode,
+                contentType =
+                    headers.firstHeaderValue("Content-Type")
+                        ?.substringBefore(';')
+                        ?.trim()
+                        ?.takeIf(String::isNotBlank),
+                eTag = eTag,
+                lastModified = lastModified
+            )
+        else -> null
+    }
+}
+
+@RaftCoreInternalApi fun sharedBinaryConditionalFailure(
+    statusCode: Int?,
+    failurePrefix: String,
+    safeErrorMessage: String
+): IllegalStateException {
+    val message =
+        "$failurePrefix: HTTP ${statusCode ?: 0}" +
+            safeErrorMessage.takeUnless { it == "none" }?.let { " ($it)" }.orEmpty()
+    return statusCode
+        ?.takeIf { it in 100..599 && it !in 200..299 && it != 304 }
+        ?.let { SharedBinaryConditionalHttpException(it, message) }
+        ?: IllegalStateException(message)
+}
+
+private fun Map<String, List<String>>.firstHeaderValue(name: String): String? =
+    entries.firstOrNull { (headerName, _) -> headerName.equals(name, ignoreCase = true) }
+        ?.value
+        ?.firstOrNull()
+        ?.trim()
+        ?.takeIf(String::isNotBlank)
+
+private fun Map<String, List<String>>.joinedHeaderValues(name: String): String? =
+    entries
+        .filter { (headerName, _) -> headerName.equals(name, ignoreCase = true) }
+        .flatMap { (_, values) -> values }
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .takeIf { it.isNotEmpty() }
+        ?.joinToString(", ")
+
+@RaftCoreInternalApi fun combineDownloadedChunks(chunks: List<ByteArray>, totalBytes: Int): ByteArray {
+    val output = ByteArray(totalBytes)
+    var offset = 0
+    chunks.forEach { chunk ->
+        chunk.copyInto(output, destinationOffset = offset)
+        offset += chunk.size
+    }
+    return output
+}
+
+fun binaryDownloadUrlDiagnostics(rawUrl: String): String {
+    val trimmed = rawUrl.trim()
+    val scheme = trimmed.substringBefore("://", missingDelimiterValue = "").lowercase()
+    val afterScheme = trimmed.substringAfter("://", missingDelimiterValue = trimmed)
+    val hostPort = afterScheme.substringBefore('/').substringBefore('?').substringBefore('#')
+    val host = hostPort.substringBefore(':').takeIf { it.isNotBlank() } ?: "none"
+    val pathWithPrefix =
+        afterScheme.substringAfter('/', missingDelimiterValue = "")
+            .substringBefore('?')
+            .substringBefore('#')
+    val normalizedPath = pathWithPrefix.takeIf { it.isNotBlank() }?.let { "/$it" } ?: "/"
+    return "scheme=${scheme.ifBlank { "unknown" }} host=${host.toSafeDiagnosticsToken()} " +
+        "pathHash=${normalizedPath.hashCode().toString(16)} urlHash=${trimmed.hashCode().toString(16)}"
+}

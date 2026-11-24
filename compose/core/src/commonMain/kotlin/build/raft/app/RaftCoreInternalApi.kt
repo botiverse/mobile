@@ -14,6 +14,7 @@ package build.raft.app
     AnnotationTarget.CLASS,
     AnnotationTarget.FUNCTION,
     AnnotationTarget.PROPERTY,
+    AnnotationTarget.PROPERTY_SETTER,
     AnnotationTarget.CONSTRUCTOR,
     AnnotationTarget.TYPEALIAS,
 )

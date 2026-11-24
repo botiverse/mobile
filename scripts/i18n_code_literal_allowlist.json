@@ -232,195 +232,195 @@
       "reason": "composer visual-fixture payload: threadComposerVisualFixture() runs only inside ThreadComposerScreen(), which is hosted solely by src/visualFixtures VisualFixturePages.kt (absent from release builds)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/BridgeAuth.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/BridgeAuth.kt",
       "literal": "## Raft feedback\n\n<!-- Describe what happened here. -->",
       "reason": "default body of SettingsDiagnosticsFeedbackDraft; never read: prepareDiagnosticsFeedback() has no Kotlin caller and diagnosticsComposerMessage() ignores message"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/DataSnapshots.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/DataSnapshots.kt",
       "literal": "Default browser",
       "reason": "default SettingsMobileSnapshot.linkOpenMode option label; Settings > Appearance renders the options from settings_mobile_link_open_mode_* and reads only selectedKey/available"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/DataSnapshots.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/DataSnapshots.kt",
       "literal": "In-app browser",
       "reason": "default SettingsMobileSnapshot.linkOpenMode option label; Settings > Appearance renders the options from settings_mobile_link_open_mode_* and reads only selectedKey/available"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/ForwardMessageTargetRepository.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/ForwardMessageTargetRepository.kt",
       "literal": "Recent DM",
       "reason": "fallback ForwardMessageTarget.subtitle; never rendered: forward picker rows show the title only and nothing reads RaftForwardTargetPickerItem.subtitle"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/ForwardMessageTargetRepository.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/ForwardMessageTargetRepository.kt",
       "literal": "Joined channel",
       "count": 2,
       "reason": "fallback ForwardMessageTarget.subtitle; never rendered: forward picker rows show the title only and nothing reads RaftForwardTargetPickerItem.subtitle"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/ForwardMessageTargetRepository.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/ForwardMessageTargetRepository.kt",
       "literal": "Public channel",
       "reason": "fallback ForwardMessageTarget.subtitle; never rendered: forward picker rows show the title only and nothing reads RaftForwardTargetPickerItem.subtitle"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/HomeDataSource.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/HomeDataSource.kt",
       "literal": "App update available",
       "reason": "legacy English SharedHomeNotification.title; titleDesc is always set and toHomeNotificationItem() renders titleDesc?.localized() ?: title"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/HomeDataSource.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/HomeDataSource.kt",
       "literal": "Update available for $names",
       "reason": "legacy English SharedHomeNotification.title; titleDesc (home_notification_machine_outdated_title_one/_many) is always set and wins in toHomeNotificationItem()"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
       "literal": "Thinking",
       "reason": "English row identifier; Agent profile > Activity translates thinking rows by type (membersActivityTrajectoryTitle -> member_activity_log_thinking)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
       "literal": "Output",
       "reason": "English row identifier; Agent profile > Activity translates text rows by type (membersActivityTrajectoryTitle -> member_activity_log_output)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
       "literal": "Raft action",
       "reason": "English fallback title kept as row identifier; Agent profile > Activity maps it to member_activity_log_raft_action (membersActivityFixedTitleRes)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
       "literal": "System",
       "reason": "English fallback title kept as row identifier; Agent profile > Activity maps it to activity_list_system_sender (membersActivityFixedTitleRes)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
       "literal": "Context Compaction Started",
       "reason": "English row identifier; Agent profile > Activity translates compaction rows by type (member_activity_log_compaction_started)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
       "literal": "Context Compaction Finished",
       "reason": "English row identifier; Agent profile > Activity translates compaction rows by type (member_activity_log_compaction_finished)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/RaftDesktopShortcut.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/RaftDesktopShortcut.kt",
       "literal": "#channel",
       "count": 2,
       "reason": "unreachable fallback: title is \"#\"+name and never blank, so ifBlank never runs"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsParser.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SettingsParser.kt",
       "literal": "Invite created for $it",
       "reason": "SettingsServerActionResult.message is never read: SharedSettingsStore reloads the server snapshot and SharedInviteHumanDialog only checks success"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
       "literal": "Plan Downgraded",
       "reason": "unrendered SettingsBillingSnapshot.notices copy; the billing page (SettingsBillingViewOnly) reads only summary/serverPlan/planDowngradedAt and builds text from resources"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
       "literal": "Final Trial Period",
       "reason": "unrendered SettingsBillingSnapshot.notices copy; the billing page (SettingsBillingViewOnly) reads only summary/serverPlan/planDowngradedAt and builds text from resources"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
       "literal": "Founder Plan",
       "reason": "unrendered SettingsBillingSnapshot.notices copy; the billing page (SettingsBillingViewOnly) reads only summary/serverPlan/planDowngradedAt and builds text from resources"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
       "literal": "Cancellation Scheduled",
       "reason": "unrendered SettingsBillingSnapshot.notices copy; the billing page (SettingsBillingViewOnly) reads only summary/serverPlan/planDowngradedAt and builds text from resources"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
       "literal": "Billing portal",
       "reason": "unrendered SettingsBillingSnapshot.actions label; no screen reads billing actions (SettingsBillingViewOnly uses summary/serverPlan)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
       "literal": "Cancel subscription",
       "reason": "unrendered SettingsBillingSnapshot.actions label; no screen reads billing actions (SettingsBillingViewOnly uses summary/serverPlan)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
       "literal": "Cancellation scheduled",
       "reason": "unrendered SettingsBillingSnapshot.actions label; no screen reads billing actions (SettingsBillingViewOnly uses summary/serverPlan)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
       "literal": "Billing Status",
       "reason": "unrendered SettingsServerSnapshot.usageRows; no UI reads usageRows"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
       "literal": "Current Period End",
       "reason": "unrendered SettingsServerSnapshot.usageRows; no UI reads usageRows"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
       "literal": "Cancel At Period End",
       "reason": "unrendered SettingsServerSnapshot.usageRows; no UI reads usageRows"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
       "literal": "Stripe Configured",
       "reason": "unrendered SettingsServerSnapshot.usageRows; no UI reads usageRows"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedActivityStore.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SharedActivityStore.kt",
       "literal": "activity",
       "reason": "surface tag for stale-read recovery diagnostics log lines"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedApiEnvironmentStore.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SharedApiEnvironmentStore.kt",
       "literal": "Custom",
       "count": 2,
       "reason": "custom API environment label default; shown only on hidden developer surfaces (Settings > Developer via 7 taps, sign-in About via 5 taps on the logo)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedApiEnvironmentStore.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SharedApiEnvironmentStore.kt",
       "literal": "Production",
       "reason": "API environment preset label; shown only on hidden developer surfaces (Developer > API Environment via 7 taps, sign-in About via 5 taps on the logo)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedApiEnvironmentStore.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SharedApiEnvironmentStore.kt",
       "literal": "Staging",
       "reason": "API environment preset label; shown on hidden developer surfaces and in the floating environment badge that appears only when the app points at Raft staging"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedSettingsStore.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SharedSettingsStore.kt",
       "literal": "Settings",
       "reason": "default title of SharedSettingsHomeSnapshot; the snapshot is only checked for load state, never rendered"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
       "literal": "Thinking",
       "reason": "English row identifier; Agent profile > Activity translates thinking rows by type (member_activity_log_thinking)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
       "literal": "Output",
       "reason": "English row identifier; Agent profile > Activity translates text rows by type (member_activity_log_output)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
       "literal": "Raft action",
       "reason": "English fallback title kept as row identifier; Agent profile > Activity maps it to member_activity_log_raft_action"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
       "literal": "System",
       "reason": "English fallback title kept as row identifier; Agent profile > Activity maps it to activity_list_system_sender"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
       "literal": "Context Compaction Started",
       "reason": "English row identifier; Agent profile > Activity translates compaction rows by type (member_activity_log_compaction_started)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
       "literal": "Context Compaction Finished",
       "reason": "English row identifier; Agent profile > Activity translates compaction rows by type (member_activity_log_compaction_finished)"
     },
@@ -588,17 +588,17 @@
       "reason": "internal Members smoke fixture (membersSmokePayload / ComposeMembersSmokePage), opened only from the developer Route launcher behind the hidden Developer menu"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/network/AttachmentDownloadCoordinator.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/network/AttachmentDownloadCoordinator.kt",
       "literal": "Missing download request field",
       "reason": "download coordinator result message; hosts forward it but the UI maps status/errorKind to localized copy and only logs it"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/network/AttachmentDownloadCoordinator.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/network/AttachmentDownloadCoordinator.kt",
       "literal": "Download cancelled",
       "reason": "download coordinator cancel message; never rendered (cancel is silent or uses the localized 'download stopped' copy)"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/network/AttachmentDownloadCoordinator.kt",
+      "path": "compose/shared-data/src/commonMain/kotlin/build/raft/app/network/AttachmentDownloadCoordinator.kt",
       "literal": "Download failed: HTTP ${statusCode ?: 0}",
       "reason": "download coordinator failure message; never rendered, the UI maps status/errorKind to localized copy"
     },

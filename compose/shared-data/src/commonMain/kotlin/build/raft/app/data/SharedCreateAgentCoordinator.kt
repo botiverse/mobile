@@ -1,0 +1,243 @@
+package build.raft.app.data
+
+import build.raft.app.RaftCoreInternalApi
+
+import build.raft.app.SharedCreateAgentMachineOption
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
+import build.raft.app.SharedCreateAgentRuntimeModelCatalog
+import build.raft.app.SharedCreateAgentRuntimeModelOption
+import build.raft.app.model.RUNTIME_MODELS
+import build.raft.app.model.ServerId
+import build.raft.app.model.canonicalizeRuntimeModelPresentation
+
+/**
+ * KMP-side coordinator for the create-agent flow shared between the Members
+ * page and the Thread action-card surface.
+ *
+ * Per @artin 2026-06-17 #members专修 msg=f1db7897: "应该抽象一个统一的". The
+ * previous shape had:
+ *   - `SharedMembersDataSource.createAgent` for the Members page agents "+"
+ *   - `SharedThreadStore.commitAgentCreateActionCardInternal` for Thread
+ *     action cards
+ * Both built the same `CreateAgentBody` and called `agentsApi.createAgent`
+ * with the same shape. This coordinator is the single point that owns the
+ * create-agent body construction + API call + result mapping; both surfaces
+ * now go through it.
+ *
+ * Input shape (`CreateAgentRequest`) is a data-layer-defined struct, NOT
+ * the UI `SharedCreateAgentDialogSubmit`. Callers convert the dialog submit
+ * to a `CreateAgentRequest` at the UI/store boundary; this keeps the data
+ * layer free of UI types.
+ *
+ * The coordinator is `internal` because it is a pure KMP implementation
+ * detail. The host (native) does not wire this directly — Composable code
+ * builds it via `SharedCreateAgentCoordinator(agentsApiClient, computersApiClient)`.
+ */
+@RaftCoreInternalApi data class CreateAgentRequest(
+    val name: String,
+    val description: String?,
+    val machineId: String?,
+    val external: Boolean,
+    val avatarUrl: String? = null,
+    /** Runtime form v2 create (the server assembles the runtimeConfig); null only for an external agent. */
+    val runtimeFormV2: RuntimeFormV2SubmitBody? = null,
+    /** Cloud agent ([external] too); [hostedModel] null means the provider's default. */
+    val hostedProvider: String? = null,
+    val hostedModel: String? = null
+)
+
+@RaftCoreInternalApi class SharedCreateAgentCoordinator(
+    private val agentsApiClient: RaftAgentsApiClient,
+    private val computersApiClient: RaftComputersApiClient,
+    private val logger: (String) -> Unit = {},
+    private val onLiveModelDetect: (ServerId) -> Unit = { serverId ->
+        RaftDataStoreRegistry.currentOrNull()?.refreshServerModelLabelCatalogAfterLiveDetect(serverId.value)
+    }
+) {
+    suspend fun createAgent(request: CreateAgentRequest): DataResult<AgentSummary> {
+        val v2 = request.runtimeFormV2
+        val body =
+            if (v2 != null) {
+                // The server assembles the runtimeConfig from the field values.
+                buildCreateAgentV2Body(
+                    CreateAgentBody(
+                        name = request.name,
+                        description = request.description,
+                        runtime = v2.runtimeId,
+                        machineId = request.machineId,
+                        avatarUrl = request.avatarUrl
+                    ),
+                    v2
+                )
+            } else {
+                // External or cloud agent: no Computer and no runtime form.
+                buildCreateAgentBody(
+                    CreateAgentBody(
+                        name = request.name,
+                        description = request.description,
+                        machineId = request.machineId,
+                        avatarUrl = request.avatarUrl,
+                        external = request.external.takeIf { it },
+                        provider = request.hostedProvider,
+                        hostedModel = request.hostedModel
+                    )
+                )
+            }
+        val created = if (v2 != null) agentsApiClient.createAgentV2(body) else agentsApiClient.createAgent(body)
+        return when (val result = created) {
+            is DataResult.Content -> DataResult.Content(result.data)
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> {
+                logger("create_agent_failed code=${result.error.code}")
+                result
+            }
+            is DataResult.NoPermission -> {
+                logger("create_agent_no_permission")
+                result
+            }
+        }
+    }
+
+    suspend fun loadMachines(serverId: String): DataResult<List<SharedCreateAgentMachineOption>> {
+        return when (val result = computersApiClient.machines(ServerId(serverId))) {
+            is DataResult.Content -> {
+                val opts = result.data.machines.map { m ->
+                    SharedCreateAgentMachineOption(
+                        id = m.id,
+                        name = m.name,
+                        status = when (m.status) {
+                            ComputerStatus.Online -> "online"
+                            ComputerStatus.Offline -> "offline"
+                            ComputerStatus.Unknown -> "unknown"
+                        },
+                        runtimes = m.runtimes,
+                        attachedByCurrentUser = m.attachedByCurrentUser,
+                        creatorId = m.creator?.id,
+                        usageFactsKnown = true
+                    )
+                }
+                DataResult.Content(opts)
+            }
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> {
+                logger("load_machines_failed code=${result.error.code}")
+                result
+            }
+            is DataResult.NoPermission -> {
+                logger("load_machines_no_permission")
+                result
+            }
+        }
+    }
+
+    suspend fun loadRuntimeModels(
+        serverId: String,
+        machineId: String,
+        runtime: String
+    ): DataResult<SharedCreateAgentRuntimeModelCatalog> {
+        val normalizedServerId = serverId.trim()
+        val normalizedMachineId = machineId.trim()
+        val normalizedRuntime = runtime.trim()
+        if (normalizedServerId.isBlank() || normalizedMachineId.isBlank() || normalizedRuntime.isBlank()) {
+            return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        }
+        return when (
+            val result =
+                computersApiClient.runtimeModels(
+                    ServerId(normalizedServerId),
+                    normalizedMachineId,
+                    normalizedRuntime
+                )
+        ) {
+            is DataResult.Content -> {
+                // Web `useRuntimeModels` (slock #15780): live detect upserted fresh labels into the
+                // server's model-label catalog, so refresh our copy if we already hold one.
+                onLiveModelDetect(ServerId(normalizedServerId))
+                // Live detection wins; the catalog's list (`modelsSource: fallback`) only fills missing labels.
+                val fallbackById =
+                    (RaftRuntimeCatalogNames.entry(normalizedRuntime, normalizedServerId)?.models ?: RUNTIME_MODELS[normalizedRuntime])
+                        .orEmpty()
+                        .associateBy { it.id }
+                val presentation =
+                    canonicalizeRuntimeModelPresentation(
+                        runtimeId = normalizedRuntime,
+                        models = result.data.models,
+                        machineDefault = result.data.defaultModel
+                    )
+                val options =
+                    presentation.models.map { model ->
+                        val fallback = fallbackById[model.id]
+                        // Web `resolveModelInfo` (slock #15162): a live entry that lists its efforts
+                        // wins even when the list is empty (the model takes none); else the catalog's.
+                        val reasoning = if (model.supportedReasoningEfforts != null) model else fallback ?: model
+                        SharedCreateAgentRuntimeModelOption(
+                            id = model.id,
+                            label = model.label.takeIf { it.isNotBlank() } ?: fallback?.label ?: model.id,
+                            verified = model.verified ?: fallback?.verified,
+                            supportedReasoningEfforts = reasoning.supportedReasoningEfforts,
+                            defaultReasoningEffort = reasoning.defaultReasoningEffort
+                        )
+                    }
+                DataResult.Content(
+                    SharedCreateAgentRuntimeModelCatalog(
+                        models = options,
+                        defaultModel = presentation.defaultModel
+                    )
+                )
+            }
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> {
+                logger("load_runtime_models_failed machineId=$normalizedMachineId runtime=$normalizedRuntime code=${result.error.code}")
+                result
+            }
+            is DataResult.NoPermission -> {
+                logger("load_runtime_models_no_permission machineId=$normalizedMachineId runtime=$normalizedRuntime")
+                result
+            }
+        }
+    }
+}
+
+@RaftCoreInternalApi const val AGENT_CREATE_NAME_TAKEN = "agent_create_name_taken"
+
+/**
+ * task #193 honest-states fallback: an unmapped create error must always show
+ * a real, non-empty reason. Preference order: the server's raw error text,
+ * then the localized generic sentence. Machine codes stay in diagnostics and
+ * never leak into visible fallback copy.
+ */
+@RaftCoreInternalApi fun createAgentFallbackErrorText(error: ScreenError, genericPrefix: String): String =
+    error.serverMessage?.takeIf { it.isNotBlank() } ?: genericPrefix
+
+/** The server's code for an agent create past the plan's agents (shared `AGENT_LIMIT_REACHED_CODE`). */
+@RaftCoreInternalApi const val AGENT_CREATE_LIMIT_REACHED = "agent_limit_reached"
+
+/**
+ * The create-agent failure text. The server words a refused create past the plan's agents as
+ * "Agent limit reached (5/5 on Free plan). Upgrade for more."; where the app offers no upgrade
+ * (iOS view-only Billing) it is [limitReachedNeutral] instead, a statement with no call to upgrade.
+ */
+/** Whether [error] is a create refused past the plan's agents ([AGENT_CREATE_LIMIT_REACHED]). */
+@RaftCoreInternalApi fun isCreateAgentLimitError(error: ScreenError): Boolean =
+    error.code == AGENT_CREATE_LIMIT_REACHED || error.serverMessage?.contains("Upgrade for more") == true
+
+@RaftCoreInternalApi fun createAgentErrorText(
+    error: ScreenError,
+    genericPrefix: String,
+    limitReachedNeutral: String,
+    offersUpgrade: Boolean,
+): String =
+    if (!offersUpgrade && isCreateAgentLimitError(error)) {
+        limitReachedNeutral
+    } else {
+        createAgentFallbackErrorText(error, genericPrefix)
+    }
+@RaftCoreInternalApi val CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES =
+    setOf(
+        "form_definition_ref_required",
+        "stale_form_schema",
+        "unsupported_form_protocol",
+        "unknown_form_runtime",
+        "unknown_form_ref_field"
+    )
+

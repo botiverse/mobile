@@ -715,7 +715,7 @@ private fun MembersAgentActivityTurnSection(
                     onOpenMessage = onOpenMessage,
                 )
             turn.lastReplyMessageId != null -> {
-                val messageId = turn.lastReplyMessageId
+                val messageId = requireNotNull(turn.lastReplyMessageId)
                 // Idempotent: the store loads each reply id once (a failed one again on the next view).
                 LaunchedEffect(messageId) { onIntent(AgentActivityOverviewIntent.LoadReply(messageId)) }
                 MembersAgentActivityLastReply(
@@ -1282,8 +1282,9 @@ internal fun membersActivityOverviewCompactTriggerText(trigger: AgentActivityTur
             val display = trigger.display
             val dmName = (display as? AgentActivityTurnTrigger.Display.Dm)?.let { it.senderName ?: it.peerName }
             val channelSender = (display as? AgentActivityTurnTrigger.Display.Channel)?.senderName
+            val appEvent = trigger.appEvent
             when {
-                trigger.appEvent != null -> trigger.appEvent.appName
+                appEvent != null -> appEvent.appName
                 dmName != null -> stringResource(Res.string.member_recent_activity_trigger_dm, "@$dmName")
                 display is AgentActivityTurnTrigger.Display.Channel && channelSender != null ->
                     stringResource(Res.string.member_recent_activity_trigger_in_channel, "@$channelSender", display.channelName)

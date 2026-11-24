@@ -174,8 +174,9 @@ internal fun artifactKindFactParts(summary: ArtifactSummary): List<ArtifactFactP
     if (kind == ArtifactKind.Html || kind == ArtifactKind.Markdown) return emptyList()
     val parts = mutableListOf<ArtifactFactPart>()
     if (kind == ArtifactKind.Text) facts.lines?.let { parts += ArtifactFactPart.Lines(it) }
-    if (kind == ArtifactKind.Csv && facts.rows != null) {
-        parts += facts.columns?.let { ArtifactFactPart.RowsColumns(facts.rows, it) } ?: ArtifactFactPart.Rows(facts.rows)
+    val csvRows = facts.rows
+    if (kind == ArtifactKind.Csv && csvRows != null) {
+        parts += facts.columns?.let { ArtifactFactPart.RowsColumns(csvRows, it) } ?: ArtifactFactPart.Rows(csvRows)
     }
     if (kind == ArtifactKind.Csv && facts.columnNames.isNotEmpty()) parts += ArtifactFactPart.ColumnNames(facts.columnNames)
     if (kind == ArtifactKind.Image && (facts.width ?: 0) != 0 && (facts.height ?: 0) != 0) {

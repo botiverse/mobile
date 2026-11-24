@@ -845,18 +845,20 @@ private data class InboxPreviewSenderIdentity(
 )
 
 private fun InboxItem.previewSenderIdentityOrNull(): InboxPreviewSenderIdentity? {
+    val latestKind = latestActivitySenderKind
     val latestId = latestActivitySenderId?.trim()?.takeIf(String::isNotEmpty)
-    if (latestActivitySenderKind != null && latestId != null) {
+    if (latestKind != null && latestId != null) {
         return InboxPreviewSenderIdentity(
-            kind = latestActivitySenderKind,
+            kind = latestKind,
             memberId = latestId,
             avatarWireValue = latestActivitySenderAvatarWireValue
         )
     }
+    val lastKind = lastMessageSenderKind
     val lastId = lastMessageSenderId?.trim()?.takeIf(String::isNotEmpty)
-    if (lastMessageSenderKind != null && lastId != null) {
+    if (lastKind != null && lastId != null) {
         return InboxPreviewSenderIdentity(
-            kind = lastMessageSenderKind,
+            kind = lastKind,
             memberId = lastId,
             avatarWireValue = lastMessageSenderAvatarWireValue
         )

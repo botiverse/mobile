@@ -43,9 +43,9 @@ class Violation(Exception):
 
 IOS_MOBILE_OAUTH_HOST = "compose/iosApp/iosApp/RaftIosMobileOAuthHost.swift"
 IOS_MOBILE_OAUTH_SHARED = (
-    "compose/shared/src/commonMain/kotlin/build/raft/app/data/IosMobileOAuth.kt"
+    "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/IosMobileOAuth.kt"
 )
-AUTH_DATA_SOURCE = "compose/shared/src/commonMain/kotlin/build/raft/app/data/AuthDataSource.kt"
+AUTH_DATA_SOURCE = "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/AuthDataSource.kt"
 IOS_ENTITLEMENTS = "compose/iosApp/iosApp/iosApp.entitlements"
 IOS_XCODE_PROJECT = "compose/iosApp/iosApp.xcodeproj/project.pbxproj"
 
@@ -285,7 +285,7 @@ RUN_BLOCKING_ALLOWLIST = (
         "queued on the auth-session lock yet (see the comment at the call site)",
     ),
     (
-        "compose/shared/src/jvmCommonMain/kotlin/build/raft/app/data/realtime/SessionRealtimeRepository.kt",
+        "compose/shared-data/src/jvmCommonMain/kotlin/build/raft/app/data/realtime/SessionRealtimeRepository.kt",
         "runBlocking {",
         "Socket.IO auth-refresh provider; runs only on the dedicated slock-realtime-auth-refresh thread",
     ),
@@ -296,25 +296,25 @@ RUN_BLOCKING_ALLOWLIST = (
         "never main, and takes no app lock",
     ),
     (
-        "compose/shared/src/commonMain/kotlin/build/raft/app/data/RaftSqlDatabase.kt",
+        "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/RaftSqlDatabase.kt",
         "runBlocking {",
         "inside SQLDelight's thread-confined transaction callback, entered via runOffStoreDispatcher; "
         "the block is synchronous SQL",
     ),
     (
-        "compose/shared/src/commonMain/kotlin/build/raft/app/resources/RaftStringDesc.kt",
+        "compose/shared-data/src/commonMain/kotlin/build/raft/app/resources/RaftStringDesc.kt",
         "runBlocking { getString(environment, stringRes) }",
         "Compose resources string lookup, as CMP's own stringResource does; cached catalog read, "
         "no app lock",
     ),
     (
-        "compose/shared/src/commonMain/kotlin/build/raft/app/resources/RaftStringDesc.kt",
+        "compose/shared-data/src/commonMain/kotlin/build/raft/app/resources/RaftStringDesc.kt",
         "runBlocking { getString(environment, stringRes, *resolvedArgs.toTypedArray()) }",
         "Compose resources formatted string lookup, as CMP's own stringResource does; cached "
         "catalog read, no app lock",
     ),
     (
-        "compose/shared/src/commonMain/kotlin/build/raft/app/resources/RaftStringDesc.kt",
+        "compose/shared-data/src/commonMain/kotlin/build/raft/app/resources/RaftStringDesc.kt",
         "runBlocking { Res.readBytes(",
         "bundled plural-forms file read once per language, the same synchronous resource read as the "
         "string lookups above; no app lock",
@@ -566,6 +566,7 @@ LABEL_FACING_STATUS_BINDINGS = (
 TOP_LEVEL_SNAPSHOT_STATE_ROOTS = (
     "compose/core/src/commonMain/kotlin",
     "compose/designsystem/src/commonMain/kotlin",
+    "compose/shared-data/src/commonMain/kotlin",
     "compose/shared/src/commonMain/kotlin",
     "compose/ui-cmp/src/commonMain/kotlin",
 )

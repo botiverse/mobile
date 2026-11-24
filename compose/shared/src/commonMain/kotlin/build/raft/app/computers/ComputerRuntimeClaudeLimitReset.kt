@@ -201,7 +201,10 @@ internal fun claudeLimitResetRefusal(
 
 /** Web `limitResetRequestOutcomeUnknown`: a timeout, a server error, no answer (or one that could not be read). */
 internal val RuntimeLimitResetRefusal.outcomeUnknown: Boolean
-    get() = status == null || status == 408 || status >= 500 || code == "malformed_response"
+    get() {
+        val codeStatus = status
+        return codeStatus == null || codeStatus == 408 || codeStatus >= 500 || code == "malformed_response"
+    }
 
 /** Web `limitResetRequestErrorMessageId`: why a limit-reset request itself failed. */
 internal fun RuntimeLimitResetRefusal.claudeRequestError(): ComputerRuntimeClaudeLimitResetText {

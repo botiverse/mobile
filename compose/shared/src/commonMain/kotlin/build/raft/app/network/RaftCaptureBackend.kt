@@ -12,7 +12,11 @@ package build.raft.app.network
  * one that answers from fixture data in-process: nothing leaves the device.
  */
 object RaftCaptureBackend {
-    internal var executorFactory: (() -> RaftHttpExecutor)? = null
+    internal var executorFactory: (() -> RaftHttpExecutor)?
+        get() = RaftHttpExecutorOverrides.executorFactory
+        set(value) {
+            RaftHttpExecutorOverrides.executorFactory = value
+        }
 
     /** True once installed. */
     val active: Boolean get() = executorFactory != null

@@ -40,7 +40,7 @@ VISUAL_KT = ROOT / "compose/shared/src/visualFixtures/kotlin/build/raft/app/Runt
 VISUAL_CASES = "visual-cases.v3.json"
 # Characters per embedded chunk: at most 3 bytes each in a class file's modified UTF-8, under its 65535.
 VISUAL_CHUNK_CHARS = 20000
-CONTRACT_KT = ROOT / "compose/shared/src/commonMain/kotlin/build/raft/app/data/runtimeform/v2/RuntimeFormV2.kt"
+CONTRACT_KT = ROOT / "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/runtimeform/v2/RuntimeFormV2.kt"
 FIXTURES = [
     ("BUILTIN_V2_FORM_JSON", "builtin.form.json"),
     ("BUILTIN_V2_EDIT_JSON", "builtin.edit.json"),

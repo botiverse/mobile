@@ -40,6 +40,10 @@ DEFAULT_ROOTS = (
     Path("compose/core/src/iosMain/kotlin"),
     Path("compose/ui-cmp/src/commonMain/kotlin"),
     Path("compose/ui-cmp/src/iosMain/kotlin"),
+    Path("compose/shared-data/src/commonMain/kotlin"),
+    Path("compose/shared-data/src/androidMain/kotlin"),
+    Path("compose/shared-data/src/iosMain/kotlin"),
+    Path("compose/shared-data/src/nativeMain/kotlin"),
     Path("compose/shared/src/commonMain/kotlin"),
     Path("compose/shared/src/androidMain/kotlin"),
     Path("compose/shared/src/iosMain/kotlin"),
@@ -48,7 +52,7 @@ DEFAULT_ROOTS = (
     Path("compose/androidApp/src/main/java"),
 )
 DEFAULT_ALLOWLIST = Path("scripts/i18n_code_literal_allowlist.json")
-DEFAULT_MR_BASE = Path("compose/shared/src/commonMain/composeResources/values/strings.xml")
+DEFAULT_MR_BASE = Path("compose/shared-data/src/commonMain/composeResources/values/strings.xml")
 
 ASCII_LETTER_RE = re.compile(r"[A-Za-z]")
 LOCALIZED_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
