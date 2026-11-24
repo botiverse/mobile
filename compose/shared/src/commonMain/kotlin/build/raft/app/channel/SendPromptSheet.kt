@@ -410,7 +410,7 @@ internal fun SendPromptDialog(
             RaftText(
                 text = stringResource(Res.string.send_prompt_no_agents),
                 style = typography.body,
-                color = colors.foregroundMuted,
+                color = colors.foreground,
                 modifier = Modifier.testTag(SendPromptNoAgentsTestTag),
             )
         }
@@ -772,7 +772,7 @@ private fun SendPromptDmLookBack(
                                 RaftText(
                                     text = stringResource(Res.string.send_prompt_first_message),
                                     style = typography.callout,
-                                    color = colors.foregroundMuted,
+                                    color = colors.foreground,
                                 )
                             }
                         }

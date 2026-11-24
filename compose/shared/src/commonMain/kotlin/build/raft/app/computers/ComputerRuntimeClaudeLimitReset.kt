@@ -536,7 +536,7 @@ internal fun ComputerRuntimeClaudeLimitResetsDialog(
                     RaftText(
                         stringResource(Res.string.settings_computers_runtime_usage_claude_reset_reading),
                         style = typography.subhead,
-                        color = colors.foregroundMuted,
+                        color = colors.foreground,
                     )
                 }
             }
@@ -548,7 +548,7 @@ internal fun ComputerRuntimeClaudeLimitResetsDialog(
                 RaftText(
                     stringResource(Res.string.settings_computers_runtime_usage_claude_reset_legacy_view_only),
                     style = typography.subhead,
-                    color = colors.foregroundMuted,
+                    color = colors.foreground,
                 )
             }
             if (rows.isNotEmpty()) {
@@ -634,7 +634,7 @@ internal fun ComputerRuntimeClaudeLimitResetConfirmDialog(
                 color = RaftTheme.colors.foregroundMuted,
             )
             if (detail != null) {
-                RaftText(detail, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
+                RaftText(detail, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foreground)
             }
             state.error?.let { error ->
                 RaftBanner(description = state.serverMessage ?: error.text(), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)

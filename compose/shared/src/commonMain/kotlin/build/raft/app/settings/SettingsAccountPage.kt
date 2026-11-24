@@ -1299,7 +1299,7 @@ private fun SettingsDisconnectProviderDialog(
                 RaftText(
                     stringResource(Res.string.settings_account_password_required_message, label),
                     style = RaftTheme.typography.subhead,
-                    color = RaftTheme.colors.foregroundMuted
+                    color = RaftTheme.colors.foreground
                 )
             } else {
                 RaftBanner(
@@ -1403,7 +1403,7 @@ internal fun SettingsLogoutConfirmDialog(
             )
         }
     ) {
-        RaftText(payload.logoutConfirmMessage, style = RaftTheme.typography.subhead, color = RaftTheme.colors.foregroundMuted)
+        RaftText(payload.logoutConfirmMessage, style = RaftTheme.typography.subhead, color = RaftTheme.colors.foreground)
     }
 }
 

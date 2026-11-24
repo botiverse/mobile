@@ -766,7 +766,7 @@ private fun ThreadAppLinkConsentDestination(app: AppLinkPromptApp, url: String, 
             text = raftAppLinkKeepEnd(domain, 40),
             modifier = Modifier.weight(1f),
             style = RaftTheme.typography.footnote,
-            color = colors.foregroundMuted,
+            color = colors.foreground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

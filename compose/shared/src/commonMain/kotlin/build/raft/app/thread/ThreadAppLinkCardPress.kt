@@ -823,7 +823,7 @@ internal class ThreadAppLinkCardPress(
                         )
                     }
                     description?.body?.let {
-                        RaftText(text = it, style = RaftTheme.typography.callout, color = RaftTheme.colors.foregroundMuted)
+                        RaftText(text = it, style = RaftTheme.typography.callout, color = RaftTheme.colors.foreground)
                     }
                 }
                 description?.rows?.forEach { (label, value) ->

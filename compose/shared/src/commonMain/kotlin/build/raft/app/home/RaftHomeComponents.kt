@@ -1391,13 +1391,13 @@ internal fun HomeTitlebarErrorVisualScreen() {
     )
 }
 
-/** Web's board labels: `px-3 text-xs font-medium uppercase text-foreground-muted`. */
+/** A design board's state label (`px-3 text-xs font-medium uppercase`), in ink: a label, not helper text (raft-ui 0.103). */
 @Composable
 private fun HomeTitlebarDesignLabel(text: String) {
     RaftText(
         text = text,
         style = RaftTheme.typography.caption,
-        color = RaftTheme.colors.foregroundMuted,
+        color = RaftTheme.colors.foreground,
         modifier = Modifier.padding(horizontal = 12.dp)
     )
 }

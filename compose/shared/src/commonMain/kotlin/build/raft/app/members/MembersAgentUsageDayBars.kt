@@ -365,7 +365,7 @@ internal fun MembersAgentUsageDayBars(
                         RaftText(
                             text = kindLabels.getValue(kind),
                             style = typography.caption,
-                            color = colors.foregroundMuted,
+                            color = colors.foreground,
                             maxLines = 1,
                         )
                     }

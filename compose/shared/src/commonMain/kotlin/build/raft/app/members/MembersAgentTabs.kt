@@ -281,7 +281,7 @@ private fun MembersAgentSkillRow(skill: AgentSkillSummary) {
                 RaftText(
                     text = detail,
                     style = typography.caption,
-                    color = colors.foregroundMuted,
+                    color = colors.foreground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
@@ -292,7 +292,7 @@ private fun MembersAgentSkillRow(skill: AgentSkillSummary) {
             RaftText(
                 text = detail,
                 style = typography.caption,
-                color = colors.foregroundMuted,
+                color = colors.foreground,
                 modifier = Modifier.padding(start = 22.dp, top = RaftAppSpacing.Xs)
             )
         }
@@ -529,7 +529,7 @@ private fun MembersAgentReminderCard(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     // web AgentRemindersSection `ReminderCard`: a non-interactive raft-ui SurfaceListItem with the
-    // title (`text-subhead font-semibold`), then `mt-1` when it fires (`text-caption` muted,
+    // title (`text-subhead font-semibold`), then `mt-1` when it fires (`text-caption` in ink,
     // relative, then the date in Space Mono), then its recurrence and the message it points at.
     RaftCard(modifier = Modifier.fillMaxWidth(), variant = RaftCardVariant.Inset) {
         Column(
@@ -560,7 +560,7 @@ private fun MembersAgentReminderCard(
                     RaftText(
                         text = reminder.fireAt.membersReminderRelativeTime(timeContext),
                         style = typography.caption,
-                        color = colors.foregroundMuted,
+                        color = colors.foreground,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

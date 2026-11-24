@@ -455,7 +455,7 @@ internal fun MembersAgentIssueReportReceiptDialog(
                             stringResource(Res.string.member_report_issue_success_hint)
                         },
                     style = typography.callout,
-                    color = colors.foregroundMuted,
+                    color = colors.foreground,
                     textAlign = TextAlign.Center
                 )
             }

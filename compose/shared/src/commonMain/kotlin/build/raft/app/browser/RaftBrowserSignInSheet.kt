@@ -508,7 +508,7 @@ private fun RaftBrowserSignInServerSection(
             RaftText(
                 text = stringResource(Res.string.in_app_browser_sign_in_choose_server),
                 style = RaftTheme.typography.footnote,
-                color = RaftTheme.colors.foregroundMuted,
+                color = RaftTheme.colors.foreground,
             )
         }
     }
@@ -524,7 +524,7 @@ private fun RaftBrowserSignInScopeSection(scopes: List<String>) {
         RaftText(
             text = stringResource(Res.string.in_app_browser_sign_in_requested_access),
             style = RaftTheme.typography.caption,
-            color = RaftTheme.colors.foregroundMuted,
+            color = RaftTheme.colors.foreground,
         )
         for (scope in scopes) {
             val copy = raftBrowserSignInScopeCopy(scope) ?: continue

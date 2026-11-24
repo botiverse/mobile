@@ -965,7 +965,7 @@ private fun MembersAgentActivityProblemLine(problem: AgentActivityTurnProblem, t
             modifier = Modifier.size(14.dp),
             color = raftArgbHex(if (problem.countsAsProblem) colors.warningStrong else colors.foregroundHint),
         )
-        RaftText(text = text, style = RaftTheme.typography.caption, color = colors.foregroundMuted)
+        RaftText(text = text, style = RaftTheme.typography.caption, color = colors.foreground)
     }
 }
 

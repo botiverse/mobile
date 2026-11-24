@@ -184,7 +184,7 @@ internal fun ComputerRuntimeInstallStatus(controller: ComputerRuntimeInstallCont
                 stringResource(Res.string.settings_computers_runtime_install_running_status, state.runtimeName),
                 modifier = Modifier.fillMaxWidth().testTag(COMPUTER_RUNTIME_OPERATION_OUTCOME_TAG),
                 style = RaftTheme.typography.caption,
-                color = RaftTheme.colors.foregroundMuted,
+                color = RaftTheme.colors.foreground,
             )
         is ComputerRuntimeInstallState.Confirm, is ComputerRuntimeInstallState.Manual ->
             ComputerRuntimeInstallDialog(
@@ -268,7 +268,7 @@ internal fun ComputerRuntimeInstallDialog(
                     RaftText(
                         stringResource(Res.string.settings_computers_runtime_install_manual_steps, computerName),
                         style = typography.subhead,
-                        color = colors.foregroundMuted,
+                        color = colors.foreground,
                     )
                 }
                 RaftCodeBlock(text = steps.joinToString("\n"), modifier = Modifier.testTag(COMPUTER_RUNTIME_INSTALL_STEPS_TAG))

@@ -288,7 +288,7 @@ private fun AddComputerWaitingStep(
             stringResource(Res.string.settings_computers_own_computer_hint),
             modifier = Modifier.testTag(AddComputerOwnComputerHintTag),
             style = RaftTheme.typography.callout,
-            color = RaftTheme.colors.foregroundMuted,
+            color = RaftTheme.colors.foreground,
         )
         AddComputerCommandGuide(state, onCopy = { onIntent(SharedSettingsIntent.CopyComputerCommand(it)) })
     }
@@ -369,7 +369,7 @@ private fun AddComputerCommandGuide(state: AddComputerDialogState, onCopy: (Stri
                 else -> stringResource(Res.string.settings_computers_mac_linux_computer_description)
             },
             style = RaftTheme.typography.footnote,
-            color = RaftTheme.colors.foregroundMuted,
+            color = RaftTheme.colors.foreground,
         )
         if (commands == null) {
             AddComputerCommandPlaceholder(stringResource(Res.string.settings_computers_generate_fresh_connect))
@@ -399,7 +399,7 @@ private fun AddComputerCommandGuide(state: AddComputerDialogState, onCopy: (Stri
                     RaftText(
                         stringResource(Res.string.settings_computers_connect_only_description),
                         style = RaftTheme.typography.footnote,
-                        color = RaftTheme.colors.foregroundMuted,
+                        color = RaftTheme.colors.foreground,
                     )
                     AddComputerCommandRow(commands.setup, onCopy)
                 }

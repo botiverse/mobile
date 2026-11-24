@@ -284,7 +284,7 @@ internal fun MembersAgentUsageTabBody(
                 RaftText(
                     text = cacheReadsLabel,
                     style = typography.caption,
-                    color = colors.foregroundMuted,
+                    color = colors.foreground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -583,7 +583,7 @@ private fun AgentUsageHeadline(
                 RaftText(
                     text = dash,
                     style = typography.caption,
-                    color = colors.foregroundMuted,
+                    color = colors.foreground,
                     maxLines = 1,
                 )
             } else {
@@ -603,7 +603,7 @@ private fun AgentUsageHeadline(
                 RaftText(
                     text = label,
                     style = typography.caption,
-                    color = colors.foregroundMuted,
+                    color = colors.foreground,
                     maxLines = 1,
                 )
             }
