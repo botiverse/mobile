@@ -15,11 +15,14 @@ import org.intellij.markdown.parser.sequentialparsers.TokensCache
  * it reads as math rather than as money:
  *  - the opening `$` is not followed by whitespace or the end of the text;
  *  - the closing `$` is not preceded by whitespace and not followed by a digit;
- *  - it stays on one line.
- * So `$x^2$` is math, while `$5 到 $10` and `$5,$10` stay text. A dollar run
- * that does not close is part of the math, and the search goes on. `\$` lexes
- * as escaped text, never as a dollar run. Block math (`$$` on its own lines)
- * is a block, see `MathFenceProvider`.
+ *  - it stays on one line;
+ *  - its content does not contain CJK text without a LaTeX command (a backslash
+ *    followed by an ASCII letter; botiverse/slock #16343).
+ * So `$x^2$` and `$\text{速度}=v$` are math, while `$5 到 $10`, `$5,$10` and
+ * `「US $10」，只写「$」` stay text. A dollar run that does not close is part of
+ * the math, and the search goes on. `\$` lexes as escaped text, never as a
+ * dollar run. Block math (`$$` on its own lines) is a block, see
+ * `MathFenceProvider`.
  *
  * Every node is always [GFMElementTypes.INLINE_MATH]; the stock parser made
  * `$$…$$` a BLOCK_MATH inside the paragraph.
@@ -52,16 +55,41 @@ class MathParser : SequentialParser {
         // A single `$` opens only when text follows it at once.
         if (single && isWhitespaceOrEnd(tokens, opening.end)) return null
 
+        // Whether the content so far has CJK text, and whether it has a command (`\` + ASCII letter).
+        var sawCjk = false
+        var sawCommand = false
+        var lastWasBackslash = false
+        var scanned = opening.end
+
         var iterator = opening.advance()
         while (iterator.type != null) {
             // Single-dollar math stays on one line.
             if (single && containsLineEnding(tokens, iterator.start, iterator.end)) return null
+            if (single) {
+                while (scanned < iterator.start) {
+                    val char = tokens.getRawCharAt(scanned++)
+                    if (isCjk(char)) sawCjk = true
+                    if (lastWasBackslash && isAsciiLetter(char)) sawCommand = true
+                    lastWasBackslash = char == '\\'
+                }
+            }
             if (iterator.type == GFMTokenTypes.DOLLAR && iterator.length == sizeOpen) {
-                // A single closing `$` must hug the math and not start a number.
+                // A single closing `$` must hug the math and not start a number, and
+                // CJK prose without a command between the dollars is not math.
                 if (!single ||
-                    (!isWhitespaceOrEnd(tokens, iterator.start - 1) && !isAsciiDigit(tokens.getRawCharAt(iterator.end)))
+                    (!isWhitespaceOrEnd(tokens, iterator.start - 1) &&
+                        !isAsciiDigit(tokens.getRawCharAt(iterator.end)) &&
+                        (!sawCjk || sawCommand))
                 ) {
                     return iterator
+                }
+            }
+            if (single) {
+                while (scanned < iterator.end) {
+                    val char = tokens.getRawCharAt(scanned++)
+                    if (isCjk(char)) sawCjk = true
+                    if (lastWasBackslash && isAsciiLetter(char)) sawCommand = true
+                    lastWasBackslash = char == '\\'
                 }
             }
             iterator = iterator.advance()
@@ -79,6 +107,23 @@ class MathParser : SequentialParser {
     }
 
     private fun isAsciiDigit(char: Char): Boolean = char in '0'..'9'
+
+    private fun isAsciiLetter(char: Char): Boolean = char in 'A'..'Z' || char in 'a'..'z'
+
+    /**
+     * CJK ideographs, kana, Hangul and their punctuation, plus full-width forms (`，`, `（`),
+     * matching `isCjk` in web `packages/shared/src/markdownMath.ts` (botiverse/slock #16343).
+     */
+    private fun isCjk(char: Char): Boolean {
+        val code = char.code
+        return code in 0x2E80..0x9FFF ||
+            code in 0xAC00..0xD7AF ||
+            code in 0xF900..0xFAFF ||
+            code in 0xFE30..0xFE4F ||
+            code in 0xFF00..0xFFEF ||
+            // UTF-16 high surrogates of U+20000–U+3134F (the CJK extension planes).
+            code in 0xD840..0xD884
+    }
 
     private fun containsLineEnding(tokens: TokensCache, start: Int, end: Int): Boolean {
         for (index in start until end) {

@@ -52,6 +52,14 @@ class MarkdownMathRenderTest {
         }
     }
 
+    @Test
+    fun cjkProseBetweenDollarsRendersAsPlainTextWithNoMathPlaceholder() {
+        val body = "页上写的是「US \$10」，但升级弹窗里只写「\$」。"
+        val annotated = render(body)
+        assertEquals(body, annotated.text)
+        assertTrue(annotated.raftMarkdownInlineContentIds().isEmpty())
+    }
+
     /** The paragraph as the message renderer builds it. */
     private fun render(body: String): AnnotatedString {
         val parserContent = MarkdownParserContent.from(body).parserContent
