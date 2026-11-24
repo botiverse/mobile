@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import build.raft.app.model.TaskStatus
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -34,6 +35,41 @@ import org.robolectric.annotation.GraphicsMode
 class RaftTaskChipPaddingLayoutTest {
     @Test @Config(sdk = [35])
     fun chipBoxHoldsLabelPlusPaddingOnAndroid15() = assertChipsPadded()
+
+    @Test @Config(sdk = [35])
+    fun qualifiedTaskChipsStayWholeOnOneLineInsteadOfSplittingAtHyphenOrColon() {
+        val style = raftMarkdownTaskChipStyle(TaskStatus.InProgress)
+        listOf("#wg-mobile-sync:#276", "dm:@artin:#170", "lounge:@agent:#7").forEach { label ->
+            val sentence =
+                buildAnnotatedString {
+                    append("Please check progress on ")
+                    withRaftInlineChipGaps(style.box) {
+                        appendRaftMarkdownTaskChip(style, label, spacerAsPlaceholder = raftPlatformInlineSpacerIsPlaceholder())
+                    }
+                    append(" today")
+                }
+            assertEquals("Please check progress on $label today", sentence.raftTextWithoutInlineGaps())
+
+            val chipBox = sentence.raftInlineBoxRanges().single()
+            val prefixWidth =
+                layout(
+                    buildAnnotatedString { append("Please check progress on ") },
+                    width = 5000f,
+                ).getLineWidth(0)
+            val fullChipWidth = measure(style, label, spacerAsPlaceholder = raftPlatformInlineSpacerIsPlaceholder()).first
+            // Pick a width where the prefix fits plus half the chip, forcing a wrap: the whole
+            // task chip must move to line 2 instead of splitting after `-` or `:`.
+            val forcedWrapWidth = maxOf(prefixWidth + fullChipWidth * 0.45f, fullChipWidth + 40f)
+            val paragraph = layout(sentence, width = forcedWrapWidth)
+            val firstLine = paragraph.getLineForOffset(chipBox.start)
+            val lastLine = paragraph.getLineForOffset(chipBox.end - 1)
+            assertEquals(
+                firstLine,
+                lastLine,
+                "task chip $label split across lines $firstLine..$lastLine at width=$forcedWrapWidth",
+            )
+        }
+    }
 
     private fun assertChipsPadded() {
         listOf<TaskStatus?>(null, TaskStatus.Done, TaskStatus.InReview).forEach { status ->
@@ -75,7 +111,7 @@ class RaftTaskChipPaddingLayoutTest {
         return (right - left) to bare
     }
 
-    private fun layout(text: AnnotatedString): Paragraph {
+    private fun layout(text: AnnotatedString, width: Float = 5000f): Paragraph {
         val ids = text.raftMarkdownInlineContentIds()
         val content = raftInlineGapInlineContent(ids)
         val placeholders =
@@ -85,7 +121,7 @@ class RaftTaskChipPaddingLayoutTest {
         return Paragraph(
             text = text.text,
             style = TextStyle(fontSize = 16.sp),
-            width = 5000f,
+            width = width,
             density = Density(DENSITY),
             fontFamilyResolver = createFontFamilyResolver(RuntimeEnvironment.getApplication()),
             spanStyles = text.spanStyles,

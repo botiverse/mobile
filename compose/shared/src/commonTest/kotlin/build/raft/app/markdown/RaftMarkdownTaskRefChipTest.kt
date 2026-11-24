@@ -68,6 +68,33 @@ class RaftMarkdownTaskRefChipTest {
     }
 
     @Test
+    fun qualifiedTaskChipLabelsGlueHyphensAndColonsAndCopyCleanly() {
+        val style = raftMarkdownTaskChipStyle(TaskStatus.InProgress)
+        val cases =
+            listOf(
+                "#wg-mobile-sync:#276" to "#wg-\u2060mobile-\u2060sync:\u2060#276",
+                "dm:@artin:#170" to "dm:\u2060@artin:\u2060#170",
+                "lounge:@agent:#7" to "lounge:\u2060@agent:\u2060#7",
+            )
+        listOf(false, true).forEach { spacerAsPlaceholder ->
+            cases.forEach { (label, gluedLabel) ->
+                val annotated =
+                    buildAnnotatedString {
+                        withRaftInlineChipGaps(style.box) {
+                            appendRaftMarkdownTaskChip(style, label, spacerAsPlaceholder = spacerAsPlaceholder)
+                        }
+                    }
+                val box = annotated.raftInlineBoxRanges().single()
+                val expectedBoxText =
+                    if (spacerAsPlaceholder) "\uFFFC\u2060$gluedLabel\u2060\uFFFC" else "\u2060$gluedLabel\u2060"
+                assertEquals(expectedBoxText, annotated.text.substring(box.start, box.end))
+                assertEquals(label, annotated.raftTextWithoutInlineGaps())
+                assertEquals(label, annotated.text.raftCopyText())
+            }
+        }
+    }
+
+    @Test
     fun revisionChangesWhenAReferencedStatusOrThemeChanges() {
         val actions =
             listOf(

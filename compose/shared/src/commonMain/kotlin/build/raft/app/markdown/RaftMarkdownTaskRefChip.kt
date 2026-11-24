@@ -281,7 +281,9 @@ internal fun AnnotatedString.Builder.appendRaftMarkdownTaskChip(
     withRaftInlineBox(style.box) {
         withStyle(SpanStyle(fontSize = RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM.em)) {
             appendRaftInlineSpacer(style.leadingGap, leading = true, mark = style.pixel?.toInlineMark(), asPlaceholder = spacerAsPlaceholder)
-            withStyle(style.textSpanStyle()) { append(label) }
+            // One box on the web (`inline-flex whitespace-nowrap`): keep qualified task labels
+            // (`#wg-mobile-sync:#276`, `dm:@artin:#170`) intact instead of breaking after `-` or `:`.
+            withStyle(style.textSpanStyle()) { append(label.withRaftInlineChipGlue()) }
             trailing()
             appendRaftInlineSpacer(style.trailingGap, leading = false, asPlaceholder = spacerAsPlaceholder)
         }

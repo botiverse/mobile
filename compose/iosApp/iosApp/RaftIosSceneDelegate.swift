@@ -57,7 +57,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         // With a custom scene delegate the App's WindowGroup is inert; the
         // delegate owns window creation.
         if let windowScene = scene as? UIWindowScene {
-            let window = UIWindow(windowScene: windowScene)
+            let window = RaftIosWindow(windowScene: windowScene)
             window.rootViewController = UIHostingController(rootView: RaftIosRootView())
             // Settings > Appearance > Theme: an explicit Light/Dark choice overrides the OS
             // style for the whole window (keyboards, system menus, the native tab bar);

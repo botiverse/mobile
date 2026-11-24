@@ -685,6 +685,32 @@ private fun DrawScope.drawRaftInlineMark(
     }
 }
 
+/** Subtle horizontal breathing room on a broken inner edge when an inline chip wraps across lines. */
+internal val RaftInlineBoxSplitEdgePadding = 3.dp
+
+/**
+ * Horizontal edges (`left` to `right`, in px) of one painted inline box segment.
+ *
+ * Single-line boxes (`isFirst && isLast`) use [paddingStartPx] and [paddingEndPx] verbatim.
+ * When an inline chip (outer margin > 0) is wider than the line and legitimately wraps across
+ * lines, its broken inner edge gets [splitEdgePaddingPx] so the rounded box/border never sits
+ * flush against the clipped glyph. Inline code (outer margin 0) passes `0f` and keeps flush
+ * sliced edges across wrapped lines.
+ */
+internal fun raftInlineBoxSegmentHorizontalBounds(
+    segmentLeft: Float,
+    segmentRight: Float,
+    isFirst: Boolean,
+    isLast: Boolean,
+    paddingStartPx: Float,
+    paddingEndPx: Float,
+    splitEdgePaddingPx: Float,
+): Pair<Float, Float> {
+    val left = segmentLeft - if (isFirst) paddingStartPx else splitEdgePaddingPx
+    val right = segmentRight + if (isLast) paddingEndPx else splitEdgePaddingPx
+    return left to right
+}
+
 private fun DrawScope.drawRaftInlineBoxSegment(
     result: TextLayoutResult,
     decorations: RaftInlineDecorations,
@@ -695,8 +721,18 @@ private fun DrawScope.drawRaftInlineBoxSegment(
     val baseline = result.getLineBaseline(segment.line)
     val glyphTop = baseline - fontSizePx * RaftInlineGlyphAscentEm
     val glyphBottom = baseline + fontSizePx * RaftInlineGlyphDescentEm
-    val left = segment.left - if (segment.isFirst) style.paddingStart.toPx() else 0f
-    val right = segment.right + if (segment.isLast) style.paddingEnd.toPx() else 0f
+    val hasChipMargin = style.marginStart > 0.dp || style.marginEnd > 0.dp
+    val splitEdgePaddingPx = if (hasChipMargin) RaftInlineBoxSplitEdgePadding.toPx() else 0f
+    val (left, right) =
+        raftInlineBoxSegmentHorizontalBounds(
+            segmentLeft = segment.left,
+            segmentRight = segment.right,
+            isFirst = segment.isFirst,
+            isLast = segment.isLast,
+            paddingStartPx = style.paddingStart.toPx(),
+            paddingEndPx = style.paddingEnd.toPx(),
+            splitEdgePaddingPx = splitEdgePaddingPx,
+        )
     val top = glyphTop - style.paddingTop.toPx()
     val bottom = glyphBottom + style.paddingBottom.toPx()
     val width = right - left
