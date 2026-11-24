@@ -89,7 +89,7 @@ private const val PREF_SERVER_SCOPE = "server_scope"
 private const val PREF_STREAMING = "chat_streaming"
 
 // IP-allowlisted cloud-phone gateway: zero credentials in APK/git; upstream rotates server-side
-private const val DEFAULT_CLOUD_GATEWAY_URL = "https://tunnel-intelligence-giants-ordering.trycloudflare.com"
+private const val DEFAULT_CLOUD_GATEWAY_URL = "https://cables-operates-jennifer-pendant.trycloudflare.com"
 private const val DEFAULT_CLOUD_GATEWAY_TOKEN = "cloud-phone-ip-gated"
 private const val DEFAULT_CLOUD_SCOPE = "android-playground"
 
