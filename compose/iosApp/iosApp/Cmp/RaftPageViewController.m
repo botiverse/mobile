@@ -319,10 +319,52 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self raftLogFilePreviewLifecycleStage:@"will_appear" animated:@(animated)];
+    [self raftTrackNavTransitionIfNeededAnimated:animated];
     // PROTOTYPE: a native-bar page shows the real bar (animated with the push / pop); every other
     // page keeps it hidden and draws its own head, as before.
     [self.navigationController setNavigationBarHidden:![self raftShowsNativeNavBar]
                                              animated:self.raftUsesNativeNavBar ? animated : NO];
+}
+
+- (void)raftTrackNavTransitionIfNeededAnimated:(BOOL)animated {
+    if (!animated) {
+        return;
+    }
+    id<UIViewControllerTransitionCoordinator> coordinator = self.transitionCoordinator;
+    if (coordinator == nil) {
+        return;
+    }
+    UIViewController *fromController =
+        [coordinator viewControllerForKey:UITransitionContextFromViewControllerKey];
+    UIViewController *toController =
+        [coordinator viewControllerForKey:UITransitionContextToViewControllerKey];
+    if (toController != self ||
+        ![fromController isKindOfClass:RaftPageViewController.class] ||
+        ![toController isKindOfClass:RaftPageViewController.class]) {
+        return;
+    }
+    NSString *navKind = nil;
+    if (self.isMovingToParentViewController) {
+        navKind = @"push";
+    } else if (fromController.isMovingFromParentViewController) {
+        navKind = @"pop";
+    } else {
+        return;
+    }
+    RaftPageViewController *fromPageController = (RaftPageViewController *)fromController;
+    uint64_t token = [RaftIosDisplayLinkJankTracker
+        beginNavTransitionWithKind:navKind
+                          fromPage:fromPageController.raftPageName ?: @""
+                            toPage:self.raftPageName ?: @""
+                       interactive:coordinator.isInteractive];
+    if (token == 0) {
+        return;
+    }
+    [coordinator animateAlongsideTransition:nil
+                                 completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        NSString *outcome = context.isCancelled ? @"cancelled" : @"completed";
+        [RaftIosDisplayLinkJankTracker endNavTransitionWithToken:token outcome:outcome];
+    }];
 }
 
 /// PROTOTYPE: the real bar shows for a native-bar page while one of its heads publishes. It also

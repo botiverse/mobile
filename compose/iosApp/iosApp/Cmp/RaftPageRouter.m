@@ -89,9 +89,12 @@ static BOOL RaftRouterBool(id value) {
                     return;
                 }
             }
+            BOOL animated = !openWithoutAnimation;
+            if (animated) {
+                [RaftIosDisplayLinkJankTracker noteNavTransitionRequested];
+            }
             UIViewController *renderViewController = [RaftPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
             [viewControllers replaceObjectAtIndex:targetIndex withObject:renderViewController];
-            BOOL animated = !openWithoutAnimation;
             [navigationController setViewControllers:viewControllers animated:animated];
         } else {
             // task #151: not the page on top again, and not over a transition still running (a
@@ -105,6 +108,9 @@ static BOOL RaftRouterBool(id value) {
                 UINavigationController *strongNavigationController = weakNavigationController;
                 if (!strongNavigationController) {
                     return nil;
+                }
+                if (animated) {
+                    [RaftIosDisplayLinkJankTracker noteNavTransitionRequested];
                 }
                 UIViewController *renderViewController =
                     [RaftPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
@@ -123,6 +129,7 @@ static BOOL RaftRouterBool(id value) {
 - (void)closePage:(UIViewController *)controller {
     UINavigationController *navigationController = controller.navigationController;
     if (navigationController && navigationController.viewControllers.count > 1) {
+        [RaftIosDisplayLinkJankTracker noteNavTransitionRequested];
         [navigationController popViewControllerAnimated:YES];
         return;
     }

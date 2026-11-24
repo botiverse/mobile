@@ -459,7 +459,7 @@ final class RaftIosDisplayLinkJankEngine {
         return Int64(histogram.count - 1)
     }
 
-    private static func formatOneDecimal(_ value: Double) -> String {
+    static func formatOneDecimal(_ value: Double) -> String {
         guard value.isFinite else { return "0.0" }
         let clamped = min(max(0.0, value), 1_000_000.0)
         let tenths = Int64((clamped * 10.0).rounded())
@@ -568,36 +568,58 @@ final class SystemRaftIosDisplayLinkDriver: RaftIosDisplayLinkDriver {
     typealias ApplicationStateProvider = () -> UIApplication.State
     typealias NowProvider = () -> Double
     typealias MaxFpsProvider = () -> Int
+    typealias MetadataProvider = () -> String?
 
     static let shared = RaftIosDisplayLinkJankTracker()
 
     private let engine: RaftIosDisplayLinkJankEngine
+    private let scrollTracker: RaftIosScrollFrameSessionTracker
+    private let resumeTracker: RaftIosResumeFrameSessionTracker
+    private let navTransitionTracker: RaftIosNavTransitionSessionTracker
     private let notificationCenter: NotificationCenter
     private let applicationState: ApplicationStateProvider
     private let nowProvider: NowProvider
     private let maxFpsProvider: MaxFpsProvider
+    private let deviceModelProvider: MetadataProvider
+    private let osVersionProvider: MetadataProvider
     private let driver: RaftIosDisplayLinkDriver
 
+    private var cachedDeviceModel: String?
+    private var hasCachedDeviceModel = false
+    private var cachedOsVersion: String?
+    private var hasCachedOsVersion = false
+    private var activePageName: String?
     private var logSink: LogSink?
+    private var traceSink: RaftIosFrameMetricsTraceSink?
     private var installed = false
     private var observerTokens: [NSObjectProtocol] = []
 
     init(
         config: RaftIosDisplayLinkJankConfig = .default,
+        sessionConfig: RaftIosFrameMetricsSessionConfig = .default,
         notificationCenter: NotificationCenter = .default,
         applicationState: @escaping ApplicationStateProvider = { UIApplication.shared.applicationState },
         nowProvider: @escaping NowProvider = { CACurrentMediaTime() },
         maxFpsProvider: @escaping MaxFpsProvider = { SystemRaftIosDisplayLinkDriver.currentMaxFramesPerSecond() },
+        deviceModelProvider: @escaping MetadataProvider = { RaftIosFrameMetricsDeviceInfo.hardwareDeviceModel() },
+        osVersionProvider: @escaping MetadataProvider = { RaftIosFrameMetricsDeviceInfo.systemOsVersion() },
         driver: RaftIosDisplayLinkDriver = SystemRaftIosDisplayLinkDriver(),
-        logSink: LogSink? = nil
+        logSink: LogSink? = nil,
+        traceSink: RaftIosFrameMetricsTraceSink? = nil
     ) {
         self.engine = RaftIosDisplayLinkJankEngine(config: config)
+        self.scrollTracker = RaftIosScrollFrameSessionTracker(config: sessionConfig)
+        self.resumeTracker = RaftIosResumeFrameSessionTracker(config: sessionConfig)
+        self.navTransitionTracker = RaftIosNavTransitionSessionTracker(config: sessionConfig)
         self.notificationCenter = notificationCenter
         self.applicationState = applicationState
         self.nowProvider = nowProvider
         self.maxFpsProvider = maxFpsProvider
+        self.deviceModelProvider = deviceModelProvider
+        self.osVersionProvider = osVersionProvider
         self.driver = driver
         self.logSink = logSink
+        self.traceSink = traceSink
         super.init()
     }
 
@@ -615,8 +637,11 @@ final class SystemRaftIosDisplayLinkDriver: RaftIosDisplayLinkDriver {
     }
 
     /// Installs the process-wide tracker once (called from `RaftIosSceneDelegate` on connect).
-    static func install(logSink: @escaping LogSink) {
-        shared.install(logSink: logSink)
+    static func install(
+        logSink: @escaping LogSink,
+        traceSink: RaftIosFrameMetricsTraceSink? = nil
+    ) {
+        shared.install(logSink: logSink, traceSink: traceSink)
     }
 
     @objc(noteRoute:operation:)
@@ -639,11 +664,43 @@ final class SystemRaftIosDisplayLinkDriver: RaftIosDisplayLinkDriver {
         shared.notePerformanceMarker(route: route, phase: phase)
     }
 
-    func install(logSink: LogSink? = nil) {
+    @objc(noteScrollChangedWithList:scrolling:)
+    static func noteScrollChanged(list: String, scrolling: Bool) {
+        shared.noteScrollChanged(list: list, scrolling: scrolling)
+    }
+
+    @objc(noteNavTransitionRequested)
+    static func noteNavTransitionRequested() {
+        shared.noteNavTransitionRequested()
+    }
+
+    @objc(beginNavTransitionWithKind:fromPage:toPage:interactive:)
+    @discardableResult
+    static func beginNavTransition(
+        kind: String,
+        fromPage: String,
+        toPage: String,
+        interactive: Bool = false
+    ) -> UInt64 {
+        shared.beginNavTransition(kind: kind, fromPage: fromPage, toPage: toPage, interactive: interactive)
+    }
+
+    @objc(endNavTransitionWithToken:outcome:)
+    static func endNavTransition(token: UInt64, outcome: String) {
+        shared.endNavTransition(token: token, outcome: outcome)
+    }
+
+    func install(
+        logSink: LogSink? = nil,
+        traceSink: RaftIosFrameMetricsTraceSink? = nil
+    ) {
         runOnMain { [weak self] in
             guard let self = self else { return }
             if let logSink = logSink {
                 self.logSink = logSink
+            }
+            if let traceSink = traceSink {
+                self.traceSink = traceSink
             }
             guard !self.installed else { return }
             self.installed = true
@@ -655,7 +712,7 @@ final class SystemRaftIosDisplayLinkDriver: RaftIosDisplayLinkDriver {
                     queue: nil
                 ) { [weak self] _ in
                     self?.runOnMain {
-                        self?.handlePause(reason: "resign_active")
+                        self?.handleWillResignActive()
                     }
                 },
                 self.notificationCenter.addObserver(
@@ -664,7 +721,7 @@ final class SystemRaftIosDisplayLinkDriver: RaftIosDisplayLinkDriver {
                     queue: nil
                 ) { [weak self] _ in
                     self?.runOnMain {
-                        self?.handlePause(reason: "enter_background")
+                        self?.handleDidEnterBackground()
                     }
                 },
                 self.notificationCenter.addObserver(
@@ -673,7 +730,7 @@ final class SystemRaftIosDisplayLinkDriver: RaftIosDisplayLinkDriver {
                     queue: nil
                 ) { [weak self] _ in
                     self?.runOnMain {
-                        self?.handleResume()
+                        self?.handleWillEnterForeground()
                     }
                 },
                 self.notificationCenter.addObserver(
@@ -682,14 +739,14 @@ final class SystemRaftIosDisplayLinkDriver: RaftIosDisplayLinkDriver {
                     queue: nil
                 ) { [weak self] _ in
                     self?.runOnMain {
-                        self?.handleResume()
+                        self?.handleDidBecomeActive()
                     }
                 },
             ]
 
             self.emit(self.engine.makeEnabledRecord(maxFramesPerSecond: self.maxFpsProvider()))
             if self.applicationState() == .active {
-                self.handleResume()
+                self.handleResumeDriver()
             }
         }
     }
@@ -702,12 +759,18 @@ final class SystemRaftIosDisplayLinkDriver: RaftIosDisplayLinkDriver {
             self.observerTokens.removeAll()
             self.driver.stop()
             self.engine.discardFrameAnchor()
+            self.scrollTracker.reset()
+            self.resumeTracker.reset()
+            self.navTransitionTracker.reset()
         }
     }
 
     func noteRoute(_ route: String?, operation: String? = nil) {
         runOnMain { [weak self] in
             guard let self = self else { return }
+            if let rawRoute = route?.trimmingCharacters(in: .whitespacesAndNewlines), !rawRoute.isEmpty {
+                self.activePageName = RaftIosDisplayLinkJankEngine.sanitizeIdentifier(rawRoute, fallback: "unknown")
+            }
             if let summary = self.engine.updateContext(route: route, operation: operation, now: self.nowProvider()) {
                 self.emit(summary)
             }
@@ -748,7 +811,93 @@ final class SystemRaftIosDisplayLinkDriver: RaftIosDisplayLinkDriver {
         }
     }
 
-    private func handleResume() {
+    func noteScrollChanged(list: String, scrolling: Bool) {
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            guard self.installed else { return }
+            if let emission = self.scrollTracker.onScrollChanged(
+                list: list,
+                scrolling: scrolling,
+                page: self.currentTracePageName,
+                isForegroundActive: self.driver.isRunning,
+                now: self.nowProvider(),
+                maxFramesPerSecond: self.maxFpsProvider(),
+                deviceModel: self.resolvedDeviceModel(),
+                osVersion: self.resolvedOsVersion()
+            ) {
+                self.emitScrollEmission(emission)
+            }
+        }
+    }
+
+    func noteNavTransitionRequested() {
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            guard self.installed else { return }
+            self.navTransitionTracker.noteNavigateRequested(now: self.nowProvider())
+        }
+    }
+
+    @discardableResult
+    func beginNavTransition(
+        kind: String,
+        fromPage: String,
+        toPage: String,
+        interactive: Bool = false
+    ) -> UInt64 {
+        guard Thread.isMainThread, installed, driver.isRunning else { return 0 }
+        let result = navTransitionTracker.beginTransition(
+            kind: kind,
+            fromPage: fromPage,
+            toPage: toPage,
+            interactive: interactive,
+            now: nowProvider(),
+            maxFramesPerSecond: maxFpsProvider(),
+            deviceModel: resolvedDeviceModel(),
+            osVersion: resolvedOsVersion()
+        )
+        if let interrupted = result.interrupted {
+            emitNavTransitionEmission(interrupted)
+        }
+        return result.token
+    }
+
+    func endNavTransition(token: UInt64, outcome: String) {
+        runOnMain { [weak self] in
+            guard let self = self else { return }
+            if let emission = self.navTransitionTracker.endTransition(
+                token: token,
+                outcome: outcome,
+                now: self.nowProvider(),
+                deviceModel: self.resolvedDeviceModel(),
+                osVersion: self.resolvedOsVersion()
+            ) {
+                self.emitNavTransitionEmission(emission)
+            }
+        }
+    }
+
+    private var currentTracePageName: String {
+        activePageName ?? engine.route
+    }
+
+    private func resolvedDeviceModel() -> String? {
+        if !hasCachedDeviceModel {
+            cachedDeviceModel = deviceModelProvider()
+            hasCachedDeviceModel = true
+        }
+        return cachedDeviceModel
+    }
+
+    private func resolvedOsVersion() -> String? {
+        if !hasCachedOsVersion {
+            cachedOsVersion = osVersionProvider()
+            hasCachedOsVersion = true
+        }
+        return cachedOsVersion
+    }
+
+    private func handleResumeDriver() {
         dispatchPrecondition(condition: .onQueue(.main))
         guard installed, !driver.isRunning else { return }
         engine.discardFrameAnchor()
@@ -757,11 +906,90 @@ final class SystemRaftIosDisplayLinkDriver: RaftIosDisplayLinkDriver {
         }
     }
 
-    private func handlePause(reason: String) {
+    private func handleWillEnterForeground() {
         dispatchPrecondition(condition: .onQueue(.main))
+        resumeTracker.onWillEnterForeground(now: nowProvider())
+        handleResumeDriver()
+    }
+
+    private func handleDidBecomeActive() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        handleResumeDriver()
+        guard installed else { return }
+        if let superseded = resumeTracker.onDidBecomeActive(
+            page: currentTracePageName,
+            now: nowProvider(),
+            maxFramesPerSecond: maxFpsProvider(),
+            deviceModel: resolvedDeviceModel(),
+            osVersion: resolvedOsVersion()
+        ) {
+            emitResumeEmission(superseded)
+        }
+    }
+
+    private func handleWillResignActive() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let now = nowProvider()
+        let deviceModel = resolvedDeviceModel()
+        let osVersion = resolvedOsVersion()
         driver.stop()
-        if let summary = engine.pause(reason: reason, now: nowProvider()) {
+        if let summary = engine.pause(reason: "resign_active", now: now) {
             emit(summary)
+        }
+        for emission in scrollTracker.onPause(
+            page: currentTracePageName,
+            now: now,
+            deviceModel: deviceModel,
+            osVersion: osVersion
+        ) {
+            emitScrollEmission(emission)
+        }
+        if let navEmission = navTransitionTracker.onPause(
+            now: now,
+            deviceModel: deviceModel,
+            osVersion: osVersion
+        ) {
+            emitNavTransitionEmission(navEmission)
+        }
+        if let resumeEmission = resumeTracker.onWillResignActive(
+            now: now,
+            deviceModel: deviceModel,
+            osVersion: osVersion
+        ) {
+            emitResumeEmission(resumeEmission)
+        }
+    }
+
+    private func handleDidEnterBackground() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let now = nowProvider()
+        let deviceModel = resolvedDeviceModel()
+        let osVersion = resolvedOsVersion()
+        driver.stop()
+        if let summary = engine.pause(reason: "enter_background", now: now) {
+            emit(summary)
+        }
+        for emission in scrollTracker.onPause(
+            page: currentTracePageName,
+            now: now,
+            deviceModel: deviceModel,
+            osVersion: osVersion
+        ) {
+            emitScrollEmission(emission)
+        }
+        if let navEmission = navTransitionTracker.onPause(
+            now: now,
+            deviceModel: deviceModel,
+            osVersion: osVersion
+        ) {
+            emitNavTransitionEmission(navEmission)
+        }
+        if let resumeEmission = resumeTracker.onDidEnterBackground(
+            now: now,
+            deviceModel: deviceModel,
+            osVersion: osVersion
+        ) {
+            emitResumeEmission(resumeEmission)
         }
     }
 
@@ -771,10 +999,49 @@ final class SystemRaftIosDisplayLinkDriver: RaftIosDisplayLinkDriver {
         for record in records {
             emit(record)
         }
+        scrollTracker.onFrame(sample)
+        if resumeTracker.isTrackingResume {
+            if let resumeEmission = resumeTracker.onFrame(
+                sample,
+                deviceModel: resolvedDeviceModel(),
+                osVersion: resolvedOsVersion()
+            ) {
+                emitResumeEmission(resumeEmission)
+            }
+        }
+        if navTransitionTracker.isTrackingTransition {
+            if let navEmission = navTransitionTracker.onFrame(
+                sample,
+                deviceModel: resolvedDeviceModel(),
+                osVersion: resolvedOsVersion()
+            ) {
+                emitNavTransitionEmission(navEmission)
+            }
+        }
     }
 
     private func emit(_ record: RaftIosDisplayLinkJankLogRecord) {
         logSink?(record.level, record.tag, record.message)
+    }
+
+    private func emitScrollEmission(_ emission: RaftIosScrollSessionEmission) {
+        emit(emission.logRecord)
+        if let payload = emission.tracePayload {
+            traceSink?.reportScroll(payload)
+        }
+        if let flushPayload = emission.skippedFlushPayload {
+            traceSink?.reportScrollSkippedFlush(flushPayload)
+        }
+    }
+
+    private func emitResumeEmission(_ emission: RaftIosResumeSessionEmission) {
+        emit(emission.logRecord)
+        traceSink?.reportResume(emission.tracePayload)
+    }
+
+    private func emitNavTransitionEmission(_ emission: RaftIosNavTransitionSessionEmission) {
+        emit(emission.logRecord)
+        traceSink?.reportNavTransition(emission.tracePayload)
     }
 
     private func runOnMain(_ work: @escaping () -> Void) {
