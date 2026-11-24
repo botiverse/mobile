@@ -3,7 +3,9 @@ package build.raft.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -11,10 +13,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -26,21 +31,40 @@ import build.raft.app.data.AgentLoungeApi
 import build.raft.app.data.AgentLoungeOpenResult
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeDirectMessageRow
+import build.raft.app.data.HomeFollowedThreadUnread
+import build.raft.app.data.HomeStandaloneLoungeRow
 import build.raft.app.data.RaftAgentLounge
 import build.raft.app.data.RaftAgentLounges
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftConversationHeaderAction
+import build.raft.app.data.RaftConversationHeaderKind
+import build.raft.app.data.RaftConversationHeaderSurface
 import build.raft.app.data.RaftNetworkClient
+import build.raft.app.data.RaftProductEvents
+import build.raft.app.data.RealChannelRepository
+import build.raft.app.data.SharedHomeContentState
+import build.raft.app.data.SharedHomeState
+import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.SharedServerFeatureFlags
+import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.agentLoungeEnabled
+import build.raft.app.data.agentLoungeOpenFailureTraceId
+import build.raft.app.data.agentLoungeSidebarEntry
 import build.raft.app.data.loungeAgentDisplayName
 import build.raft.app.data.rememberServerFeatureLatched
+import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftReadOnlyComposer
+import build.raft.designsystem.components.RaftSegment
+import build.raft.designsystem.components.RaftSegmentedControl
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.app.data.agentLoungeOpenFailureTraceId
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -61,7 +85,212 @@ internal object AgentLoungeTestTags {
     const val ArchivedNotice = "lounge-archived-notice"
     const val UnarchiveAction = "lounge-unarchive-action"
     const val ProfileAction = "agent-profile-inline-lounge"
-    const val DmHeaderToggle = "agent-dm-open-lounge"
+    const val TabStrip = "lounge-conversation-tab-strip"
+    const val TabLounge = "lounge-tab-lounge"
+    const val TabPrivate = "lounge-tab-private"
+}
+
+/** Which side of an agent's paired conversation (Lounge vs Private DM) is currently shown. */
+internal enum class AgentLoungeConversationSide {
+    Lounge,
+    Private,
+}
+
+/** Unread indicator shown on the inactive side of the under-header Lounge / Private tab strip. */
+internal data class AgentLoungeSwitchUnread(
+    val count: Int = 0,
+    val dot: Boolean = false,
+)
+
+/**
+ * State and actions for the under-header two-tab switch (`Lounge | Private`) on an eligible agent
+ * Lounge or agent DM conversation page.
+ */
+internal class AgentLoungeConversationSwitch(
+    val activeSide: AgentLoungeConversationSide,
+    val loungeUnread: AgentLoungeSwitchUnread = AgentLoungeSwitchUnread(),
+    val privateUnread: AgentLoungeSwitchUnread = AgentLoungeSwitchUnread(),
+    val switching: Boolean = false,
+    val onSelectLounge: () -> Unit,
+    val onSelectPrivate: () -> Unit,
+)
+
+/**
+ * Whether the under-header Lounge / Private switch shows for this conversation: behind
+ * `agent_lounge_v0` (and not a Guest), only on top-level agent Lounge channels or eligible agent
+ * DMs — never on reply threads, regular channels, human DMs, task conversations, personal
+ * assistants, App Bots, or deleted agents.
+ */
+internal fun shouldShowAgentLoungeConversationSwitch(
+    enabled: Boolean,
+    surfaceKind: String,
+    isLoungeConversation: Boolean,
+    agentId: String?,
+    personalAssistantAgentIds: Set<String>,
+    isAppBot: Boolean = false,
+    isDeletedAgent: Boolean = false,
+): Boolean {
+    if (!enabled) return false
+    val cleanAgentId = agentId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    if (cleanAgentId in personalAssistantAgentIds || isAppBot || isDeletedAgent) return false
+    return when (surfaceKind) {
+        RaftThreadSurfaceKind.Channel -> isLoungeConversation
+        RaftThreadSurfaceKind.DirectMessage -> true
+        else -> false
+    }
+}
+
+/**
+ * Unread badge for the opposite side of [activeSide] on the under-header tab strip (web #15991):
+ * muted sides show nothing, numeric unread counts win over the quiet dot, and live followed-thread
+ * unread drives the Lounge side once unread enrichment is available.
+ */
+internal fun agentLoungeSwitchUnread(
+    activeSide: AgentLoungeConversationSide,
+    agentId: String,
+    directMessages: List<HomeDirectMessageRow>,
+    standaloneLounges: List<HomeStandaloneLoungeRow> = emptyList(),
+    knownLounges: Map<String, RaftAgentLounge> = emptyMap(),
+    markedUnreadIds: Set<String> = emptySet(),
+    followedThreadUnread: Map<String, HomeFollowedThreadUnread> = emptyMap(),
+    useLiveFollowedThreadUnread: Boolean = false,
+): Pair<AgentLoungeSwitchUnread, AgentLoungeSwitchUnread> {
+    val cleanAgentId = agentId.trim()
+    if (cleanAgentId.isEmpty()) return AgentLoungeSwitchUnread() to AgentLoungeSwitchUnread()
+    val agentDm =
+        directMessages.firstOrNull {
+            it.directMessagePeerType.equals("agent", ignoreCase = true) &&
+                it.presenceMemberId?.value == cleanAgentId
+        }
+    val privateUnread =
+        if (activeSide == AgentLoungeConversationSide.Private || agentDm == null || agentDm.activityMuted) {
+            AgentLoungeSwitchUnread()
+        } else if (agentDm.unreadCount > 0) {
+            AgentLoungeSwitchUnread(count = agentDm.unreadCount)
+        } else if (agentDm.threadId.value in markedUnreadIds) {
+            AgentLoungeSwitchUnread(dot = true)
+        } else {
+            AgentLoungeSwitchUnread()
+        }
+    val loungeUnread =
+        if (activeSide == AgentLoungeConversationSide.Lounge) {
+            AgentLoungeSwitchUnread()
+        } else {
+            val standalone = standaloneLounges.firstOrNull { it.agentId == cleanAgentId }
+            val summary = agentDm?.lounge ?: standalone?.lounge
+            val known =
+                knownLounges.values.firstOrNull { it.agentId == cleanAgentId }
+                    ?: summary?.let { knownLounges[it.channelId.value] }
+            if (known?.activityMuted == true) {
+                AgentLoungeSwitchUnread()
+            } else {
+                val targetChannelId = (known?.channelId ?: summary?.channelId)?.value
+                val livePair =
+                    if (useLiveFollowedThreadUnread && targetChannelId != null) {
+                        var count = 0
+                        var mention = false
+                        for (thread in followedThreadUnread.values) {
+                            if (thread.unreadCount > 0 && thread.parentChannelId.value == targetChannelId) {
+                                count += thread.unreadCount
+                                if (thread.hasMention) mention = true
+                            }
+                        }
+                        count to mention
+                    } else {
+                        null
+                    }
+                val entry =
+                    agentLoungeSidebarEntry(
+                        summary = summary,
+                        known = known,
+                        followedThreadUnreadCount = if (useLiveFollowedThreadUnread) (livePair?.first ?: 0) else null,
+                        followedThreadHasMention = if (useLiveFollowedThreadUnread) (livePair?.second == true) else null,
+                    )
+                val channelId = entry?.channelId?.value ?: targetChannelId
+                val markedUnread = channelId != null && channelId in markedUnreadIds
+                when {
+                    entry != null && entry.unreadCount > 0 -> AgentLoungeSwitchUnread(count = entry.unreadCount)
+                    entry != null && entry.mentioned -> AgentLoungeSwitchUnread(dot = true)
+                    markedUnread -> AgentLoungeSwitchUnread(dot = true)
+                    else -> AgentLoungeSwitchUnread()
+                }
+            }
+        }
+    return loungeUnread to privateUnread
+}
+
+/** Formatted Space Mono badge for a [RaftSegment] (`"1"`..`"99+"`, `"•"` for dot-only, else null). */
+internal fun formatAgentLoungeSwitchBadge(unread: AgentLoungeSwitchUnread): String? =
+    when {
+        unread.count > 0 -> formatHomeSidebarBadgeCount(unread.count)
+        unread.dot -> "•"
+        else -> null
+    }
+
+/**
+ * Under-header 2-tab switch (`Lounge | Private`) sitting directly below the conversation header,
+ * switching in place between an agent's public Lounge and private 1-on-1 DM.
+ */
+@Composable
+internal fun AgentLoungeConversationTabStrip(
+    switch: AgentLoungeConversationSwitch,
+    modifier: Modifier = Modifier,
+    wideWindow: Boolean = raftWindowWide(),
+) {
+    val colors = RaftTheme.colors
+    val loungeLabel = stringResource(Res.string.agent_lounge_label)
+    val privateLabel = stringResource(Res.string.agent_lounge_private_label)
+    val loungeBadge = formatAgentLoungeSwitchBadge(switch.loungeUnread)
+    val privateBadge = formatAgentLoungeSwitchBadge(switch.privateUnread)
+    Column(
+        modifier = modifier.fillMaxWidth().background(colors.layerCanvas).testTag(AgentLoungeTestTags.TabStrip),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .raftSafeAreaHorizontalPadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            RaftSegmentedControl(
+                modifier = if (wideWindow) Modifier else Modifier.fillMaxWidth(),
+            ) {
+                val segmentModifier = if (wideWindow) Modifier else Modifier.weight(1f)
+                RaftSegment(
+                    text = loungeLabel,
+                    selected = switch.activeSide == AgentLoungeConversationSide.Lounge,
+                    onClick = {
+                        if (switch.activeSide != AgentLoungeConversationSide.Lounge && !switch.switching) {
+                            switch.onSelectLounge()
+                        }
+                    },
+                    modifier = segmentModifier.testTag(AgentLoungeTestTags.TabLounge),
+                    count = loungeBadge,
+                    enabled = !switch.switching || switch.activeSide == AgentLoungeConversationSide.Lounge,
+                    icon = { RaftContentLucideIcon(RaftLucideIconName.Users, size = 16.dp) },
+                )
+                RaftSegment(
+                    text = privateLabel,
+                    selected = switch.activeSide == AgentLoungeConversationSide.Private,
+                    onClick = {
+                        if (switch.activeSide != AgentLoungeConversationSide.Private && !switch.switching) {
+                            switch.onSelectPrivate()
+                        }
+                    },
+                    modifier = segmentModifier.testTag(AgentLoungeTestTags.TabPrivate),
+                    count = privateBadge,
+                    enabled = !switch.switching || switch.activeSide == AgentLoungeConversationSide.Private,
+                    icon = { RaftContentLucideIcon(RaftLucideIconName.Lock, size = 16.dp) },
+                )
+            }
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(colors.lineSeam.compositeOver(colors.layerCanvas)),
+        )
+    }
 }
 
 /**
@@ -299,8 +528,9 @@ internal fun rememberAgentLoungeOpener(
 }
 
 /**
- * What a conversation page needs to draw itself as (or inside) an agent's Lounge, and the agent
- * DM header's Lounge toggle. Built by the route ([rememberThreadPageLounge]); null pieces are off.
+ * What a conversation page needs to draw itself as (or inside) an agent's Lounge, and the
+ * under-header Lounge / Private tab switch. Built by the route ([rememberThreadPageLounge]); null
+ * pieces are off.
  */
 internal class ThreadPageLounge(
     /** The Lounge this conversation is (a channel page) or is in (a reply thread); null elsewhere. */
@@ -314,9 +544,8 @@ internal class ThreadPageLounge(
     val onUnarchive: () -> Unit,
     /** The Lounge face's tap: the agent's profile. */
     val onOpenAgentProfile: (() -> Unit)?,
-    /** An agent DM's header: open that agent's Lounge; null hides the toggle. */
-    val onOpenDmAgentLounge: (() -> Unit)?,
-    val dmLoungeOpening: Boolean,
+    /** Under-header `Lounge | Private` tab switch; null when not shown. */
+    val conversationSwitch: AgentLoungeConversationSwitch? = null,
     /**
      * An archived (non-Lounge) channel's banner Unarchive, or its reply thread's. Built here, beside
      * the Lounge's, because the route's page lambda is at the JVM's capture limit.
@@ -324,9 +553,11 @@ internal class ThreadPageLounge(
     val archivedChannel: ThreadPageArchivedChannel? = null,
     /** Lounges are on for this reader (the server's flag, not a Guest): `lounge:@agent…` refs may chip. */
     val loungesEnabled: Boolean = false,
+    /** Resolved display name for the Lounge's agent when known from the member directory. */
+    val agentDisplayNameOverride: String? = null,
 ) {
     val agentName: String
-        get() = lounge?.displayAgentName.orEmpty()
+        get() = loungeAgentDisplayName(agentDisplayNameOverride) ?: lounge?.displayAgentName.orEmpty()
 }
 
 /** The channel id a conversation page shows: its own (channel) or its parent's (reply thread). */
@@ -374,19 +605,171 @@ internal fun rememberThreadPageLounge(
     personalAssistantAgentIds: Set<String>,
     onOpenConversation: (ThreadLaunchConversationIdentity) -> Unit,
     onOpenAgentProfile: (agentId: String) -> Unit,
+    /** Replaces the active conversation in place (for the under-header Lounge / Private switch). */
+    onReplaceConversation: (ThreadLaunchConversationIdentity) -> Unit = onOpenConversation,
+    homeSnapshot: build.raft.app.data.HomeSnapshot? = null,
+    sharedHomeStore: SharedHomeStore? = null,
+    authStore: RaftAuthSessionStore? = null,
+    serverMembersStore: SharedServerMembersStore? = null,
 ): ThreadPageLounge {
     val lounge = rememberAgentLounge(serverId, payload.agentLoungeLookupChannelId())
-    val avatar = rememberRaftMemberAvatarWireValue(memberAvatarResolver, lounge?.agentId ?: payload.agentLoungeDmAgentId())
+    val allKnownLounges by RaftAgentLounges.lounges.collectAsState()
+    val serverKnownLounges = serverId?.let { allKnownLounges[it] }.orEmpty()
+    val dmAgentId = payload.agentLoungeDmAgentId()
+    val isLoungeConversation = payload.surfaceKind == RaftThreadSurfaceKind.Channel && lounge != null
+    val targetAgentId = if (isLoungeConversation) lounge?.agentId else dmAgentId
+    val avatar = rememberRaftMemberAvatarWireValue(memberAvatarResolver, lounge?.agentId ?: dmAgentId)
     val enabled = rememberAgentLoungeEnabled(flags, serverId, serverRole)
     val opener = rememberAgentLoungeOpener(bridge, storeScope)
     val opening by opener.opening.collectAsState()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    var unarchiving by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var unarchiving by remember { mutableStateOf(false) }
+    var openingPrivateDm by remember(serverId, targetAgentId) { mutableStateOf(false) }
     val errorStrings = localizedErrorPresentationStrings()
-    val dmAgentId = payload.agentLoungeDmAgentId()
-    val dmAgentName = payload.title.trim().removePrefix("@")
+    val dmOpenFailedMessage = stringResource(Res.string.agent_lounge_dm_open_failed)
+    val latestDmOpenFailedMessage by rememberUpdatedState(dmOpenFailedMessage)
+    val wideWindow = raftWindowWide()
+    val targetAppBot = rememberRaftMemberAppBot(targetAgentId)
+    val cleanServerId = serverId?.takeIf { it.isNotBlank() }
+    val targetMemberProfile =
+        remember(serverMembersStore, cleanServerId, targetAgentId) {
+            if (cleanServerId != null && targetAgentId != null) {
+                serverMembersStore?.memberProfile(ServerId(cleanServerId), targetAgentId)
+            } else {
+                null
+            }
+        }
+    val dmAgentName =
+        loungeAgentDisplayName(targetMemberProfile?.displayName)
+            ?: loungeAgentDisplayName(lounge?.displayAgentName)
+            ?: loungeAgentDisplayName(payload.title.trim().removePrefix("@"))
+    val showConversationSwitch =
+        shouldShowAgentLoungeConversationSwitch(
+            enabled = enabled,
+            surfaceKind = payload.surfaceKind,
+            isLoungeConversation = isLoungeConversation,
+            agentId = targetAgentId,
+            personalAssistantAgentIds = personalAssistantAgentIds,
+            isAppBot = targetAppBot != null,
+            isDeletedAgent = targetMemberProfile?.agentDeletedAt?.isNotBlank() == true,
+        ) && targetMemberProfile?.assistantPausedAt == null
+    val conversationSwitch =
+        if (showConversationSwitch && targetAgentId != null) {
+            val activeSide =
+                if (isLoungeConversation) AgentLoungeConversationSide.Lounge else AgentLoungeConversationSide.Private
+            val snapshotForServer =
+                homeSnapshot?.takeIf { cleanServerId == null || it.server.id.value == cleanServerId }
+            val (loungeUnread, privateUnread) =
+                remember(
+                    activeSide,
+                    targetAgentId,
+                    snapshotForServer,
+                    serverKnownLounges,
+                ) {
+                    agentLoungeSwitchUnread(
+                        activeSide = activeSide,
+                        agentId = targetAgentId,
+                        directMessages = snapshotForServer?.directMessages.orEmpty(),
+                        standaloneLounges = snapshotForServer?.standaloneLounges.orEmpty(),
+                        knownLounges = serverKnownLounges,
+                        markedUnreadIds = snapshotForServer?.markedUnreadIds.orEmpty(),
+                        followedThreadUnread = snapshotForServer?.followedThreadUnread.orEmpty(),
+                        useLiveFollowedThreadUnread = snapshotForServer?.unreadEnrichmentAvailable == true,
+                    )
+                }
+            AgentLoungeConversationSwitch(
+                activeSide = activeSide,
+                loungeUnread = loungeUnread,
+                privateUnread = privateUnread,
+                switching = openingPrivateDm || targetAgentId in opening,
+                onSelectLounge = {
+                    RaftProductEvents.conversationHeaderActionSelected(
+                        action = RaftConversationHeaderAction.OpenLounge,
+                        surface = RaftConversationHeaderSurface.Header,
+                        conversation = RaftConversationHeaderKind.Dm,
+                        compact = !wideWindow,
+                    )
+                    val directMessages = snapshotForServer?.directMessages.orEmpty()
+                    val knownLoungeId =
+                        serverKnownLounges.values.firstOrNull { it.agentId == targetAgentId }?.channelId?.value
+                            ?: directMessages
+                                .firstOrNull {
+                                    it.directMessagePeerType.equals("agent", ignoreCase = true) &&
+                                        it.presenceMemberId?.value == targetAgentId
+                                }
+                                ?.lounge
+                                ?.channelId
+                                ?.value
+                    val immediateIdentity =
+                        knownLoungeId?.let { id ->
+                            agentLoungeConversationIdentityOrNull(cleanServerId, id, directMessages)
+                        }
+                    if (immediateIdentity != null) {
+                        onReplaceConversation(immediateIdentity)
+                    } else {
+                        opener.open(cleanServerId, targetAgentId, dmAgentName) { opened ->
+                            onReplaceConversation(opened.conversationIdentity())
+                        }
+                    }
+                },
+                onSelectPrivate = {
+                    val existingDm =
+                        snapshotForServer?.directMessages?.firstOrNull {
+                            it.directMessagePeerType.equals("agent", ignoreCase = true) &&
+                                it.presenceMemberId?.value == targetAgentId
+                        }
+                    if (existingDm != null) {
+                        onReplaceConversation(existingDm.toThreadLaunchConversationIdentity())
+                    } else if (!openingPrivateDm && authStore != null && cleanServerId != null) {
+                        openingPrivateDm = true
+                        scope.launch {
+                            val result =
+                                try {
+                                    val stores = build.raft.app.data.RaftSharedStoreRegistry.get(bridge)
+                                    val member =
+                                        targetMemberProfile
+                                            ?: MemberProfile(
+                                                id = MemberId(targetAgentId),
+                                                kind = MemberKind.Agent,
+                                                displayName = dmAgentName.orEmpty(),
+                                                handle = dmAgentName.orEmpty(),
+                                                serverId = ServerId(cleanServerId),
+                                            )
+                                    openMemberDirectMessage(
+                                        member = member,
+                                        authStore = authStore,
+                                        channelRepository =
+                                            RealChannelRepository(
+                                                sessionStore = authStore,
+                                                networkClient = stores.networkClient(storeScope),
+                                            ),
+                                        sharedHomeStore = sharedHomeStore,
+                                    )
+                                } finally {
+                                    openingPrivateDm = false
+                                }
+                            when (result) {
+                                is DataResult.Content ->
+                                    onReplaceConversation(result.data.conversation.toThreadLaunchConversationIdentity())
+                                is DataResult.Error ->
+                                    bridge.errorToast(latestDmOpenFailedMessage, result.error.traceId)
+                                is DataResult.NoPermission ->
+                                    bridge.errorToast(latestDmOpenFailedMessage, result.blocker.traceId)
+                                is DataResult.Empty ->
+                                    bridge.errorToast(latestDmOpenFailedMessage, null)
+                                null -> Unit
+                            }
+                        }
+                    } else if (!openingPrivateDm) {
+                        bridge.errorToast(latestDmOpenFailedMessage, null)
+                    }
+                },
+            )
+        } else {
+            null
+        }
     val roleMayArchive = build.raft.app.model.serverPermissionsForRole(serverRole).canManageSettings
-    var channelUnarchiving by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var channelUnarchiving by remember { mutableStateOf(false) }
     val archivedChannel =
         if (lounge == null && threadFooterShowsArchived(payload)) {
             ThreadPageArchivedChannel(
@@ -395,7 +778,6 @@ internal fun rememberThreadPageLounge(
                 onUnarchive = { onUnarchived ->
                     // A reply thread's Unarchive restores its parent channel.
                     val target = payload.agentLoungeLookupChannelId()
-                    val cleanServerId = serverId?.takeIf { it.isNotBlank() }
                     if (target != null && cleanServerId != null && !channelUnarchiving) {
                         channelUnarchiving = true
                         scope.launch {
@@ -438,7 +820,6 @@ internal fun rememberThreadPageLounge(
         unarchiving = unarchiving,
         onUnarchive = {
             val target = lounge
-            val cleanServerId = serverId?.takeIf { it.isNotBlank() }
             if (target != null && cleanServerId != null && !unarchiving) {
                 unarchiving = true
                 scope.launch {
@@ -460,17 +841,8 @@ internal fun rememberThreadPageLounge(
             }
         },
         onOpenAgentProfile = lounge?.let { { onOpenAgentProfile(it.agentId) } },
-        onOpenDmAgentLounge =
-            dmAgentId
-                ?.takeIf { enabled && it !in personalAssistantAgentIds }
-                ?.let { agentId ->
-                    {
-                        opener.open(serverId, agentId, dmAgentName.ifBlank { null }) { opened ->
-                            onOpenConversation(opened.conversationIdentity())
-                        }
-                    }
-                },
-        dmLoungeOpening = dmAgentId != null && dmAgentId in opening,
+        conversationSwitch = conversationSwitch,
+        agentDisplayNameOverride = targetMemberProfile?.displayName,
     )
 }
 

@@ -476,8 +476,22 @@ data class RaftHomeConversationItem(
      * Agent Lounge v0: set when this row is an agent's Lounge (web `AgentLoungeRow`), its own row
      * in Direct Messages or Pinned ([homeSidebarAgentLoungeItems]); null for every other row.
      */
-    val agentLounge: RaftHomeAgentLoungeRow? = null
+    val agentLounge: RaftHomeAgentLoungeRow? = null,
+    /**
+     * Agent Lounge v0 (#15990): the agent's Lounge merged into this agent DM row so the agent
+     * appears once in the sidebar (combined unread / @ / recency; selected while either side is
+     * open; mark-read and close act on both). Null when not merged.
+     */
+    val mergedAgentLounge: RaftHomeAgentLoungeRow? = null,
+    /** True when tapping this merged agent DM row opens the agent's Lounge (creating on first click). */
+    val opensAgentLoungeOnClick: Boolean = false,
 )
+
+/** Whether this sidebar row matches [selectedConversationId] (including a merged Agent Lounge). */
+internal fun RaftHomeConversationItem.matchesSidebarSelection(selectedConversationId: String?): Boolean {
+    if (selectedConversationId.isNullOrBlank()) return false
+    return id == selectedConversationId || mergedAgentLounge?.channelId == selectedConversationId
+}
 
 /** What a Lounge's sidebar row knows beyond a Home row: its agent and whether you joined it. */
 @Serializable
@@ -2355,7 +2369,11 @@ private fun RaftStructuralHomeShellContent(
         directMessages
             .filter { it.id !in customPlacedConversationIds && it.id !in pinnedShownConversationIds }
             .orderedBySidebarIds(dmOrder)
-            .filter { dm -> dm.id !in hiddenDmIdSet || dm.homeConversationBadgeProjection().hasUnread }
+            .filter { dm ->
+                val mergedLoungeId = dm.mergedAgentLounge?.channelId
+                val hidden = dm.id in hiddenDmIdSet && (mergedLoungeId == null || mergedLoungeId in hiddenDmIdSet)
+                !hidden || dm.homeConversationBadgeProjection().hasUnread || dm.mentioned
+            }
             .sortedForSidebar(directMessageSortMode) { it.name }
     }
     // Agent Lounge v0: the Lounges' own rows, sorted with the DMs (after them in Manual order).
@@ -2995,7 +3013,7 @@ private fun RaftStructuralHomeShellContent(
                                                 // #211 React parity (revised by @artin 23:38): pinned copy and
                                                 // original-section copy of the same conversation both
                                                 // render Selected when their conversationId matches.
-                                                val pinnedSelected = pinned != null && sidebarSelection.conversationId == pinned.id
+                                                val pinnedSelected = pinned != null && pinned.matchesSidebarSelection(sidebarSelection.conversationId)
                                                 val pinnedMenuOpen =
                                                     if (pinned != null) {
                                                         activePinMenuConversationId == pinned.id && activeMenuSection == RaftHomeSortSection.Pinned
@@ -3068,6 +3086,7 @@ private fun RaftStructuralHomeShellContent(
                                                         muted = pinned?.activityMuted == true,
                                                         unreadCount = pinned?.unreadCount ?: 0,
                                                         markedUnread = pinned?.markedUnread == true,
+                                                        mentioned = pinned?.mentioned == true,
                                                         selected = pinnedSelected,
                                                         menuOpen = pinnedMenuOpen,
                                                         onClick =
@@ -3385,7 +3404,7 @@ private fun RaftStructuralHomeShellContent(
                                         if (directMessagesExpanded) {
                                             items(directMessageSectionRows.size, key = { index -> directMessageLazyKeys[index] }) { index ->
                                                 val dm = directMessageSectionRows[index]
-                                                val dmSelected = sidebarSelection.conversationId == dm.id
+                                                val dmSelected = dm.matchesSidebarSelection(sidebarSelection.conversationId)
                                                 if (dm.agentLounge != null) {
                                                     // Agent Lounge v0: the Lounge's own row, its menu a DM row's.
                                                     HomeSidebarAgentLoungeRow(
@@ -3425,6 +3444,7 @@ private fun RaftStructuralHomeShellContent(
                                                     muted = dm.activityMuted,
                                                     unreadCount = dm.unreadCount,
                                                     markedUnread = dm.markedUnread,
+                                                    mentioned = dm.mentioned,
                                                     selected = dmSelected,
                                                     menuOpen = activePinMenuConversationId == dm.id && activeMenuSection == RaftHomeSortSection.DirectMessages,
                                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(dm.id) }) else null,
@@ -3510,7 +3530,7 @@ private fun RaftStructuralHomeShellContent(
                                             ) { index ->
                                                 val item = sectionRows.items[index]
                                                 val customRowKey = "custom:${customSection.id}:${item.id}"
-                                                val customSelected = sidebarSelection.conversationId == item.id
+                                                val customSelected = item.matchesSidebarSelection(sidebarSelection.conversationId)
                                                 val customMenuOpen = activePinMenuConversationId == item.id && activeMenuSection == null
                                                 val customLongPress: (RaftPopoverAnchor) -> Unit = { anchor ->
                                                     RaftProductEvents.sidebarActionSelected(
@@ -3539,6 +3559,7 @@ private fun RaftStructuralHomeShellContent(
                                                         muted = item.activityMuted,
                                                         unreadCount = item.unreadCount,
                                                         markedUnread = item.markedUnread,
+                                                        mentioned = item.mentioned,
                                                         selected = customSelected,
                                                         menuOpen = customMenuOpen,
                                                         onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(item.id) }) else null,
@@ -4584,6 +4605,7 @@ internal fun raftHomeConversationMenuItems(
         val readConversation = markAllReadEnabled && conversation.joined && !activeIsDirectMessage
         val hasUnread =
             conversation.homeConversationBadgeProjection().hasUnread ||
+                conversation.mentioned ||
                 (readConversation && conversation.followedThreadUnreadCount > 0)
         add(
             RaftBaseMenuItem(
@@ -5102,11 +5124,17 @@ internal fun homeConversationSectionForSelection(
             RaftHomeConversationSection.Channel
         }
     }
-    return if (directMessages.any { it.id == selectedChannelId }) {
-        RaftHomeConversationSection.DirectMessage
-    } else {
-        null
+    val matchedDm = directMessages.firstOrNull { it.matchesSidebarSelection(selectedChannelId) }
+    if (matchedDm != null) {
+        if (
+            matchedDm.id in pinnedChannelIds ||
+                matchedDm.presenceMemberId?.takeIf { it.isNotBlank() }?.let { it in pinnedChannelIds } == true
+        ) {
+            return RaftHomeConversationSection.Pinned
+        }
+        return RaftHomeConversationSection.DirectMessage
     }
+    return null
 }
 
 internal fun RaftHomeConversationItem.homeChannelKind(): String =
@@ -8568,6 +8596,7 @@ internal fun HomeSidebarDirectMessageRow(
     muted: Boolean = false,
     unreadCount: Int = 0,
     markedUnread: Boolean = false,
+    mentioned: Boolean = false,
     hasDraft: Boolean = false,
     interactionIdentity: String = "dm:${memberId.orEmpty()}:$name",
     menuOpen: Boolean = false,
@@ -8577,7 +8606,12 @@ internal fun HomeSidebarDirectMessageRow(
     val isAgent = peerType?.equals("agent", ignoreCase = true) == true
     val badge =
         homeConversationBadgeProjection(
-            HomeConversationBadgeInput(unreadCount = unreadCount, muted = muted, markedUnread = markedUnread)
+            HomeConversationBadgeInput(
+                unreadCount = unreadCount,
+                muted = muted,
+                markedUnread = markedUnread,
+                mentionPierced = mentioned,
+            )
         )
     val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, memberId)
     val avatarPending =
@@ -8601,8 +8635,10 @@ internal fun HomeSidebarDirectMessageRow(
             hasDraft = hasDraft,
             isAgent = agentMemberId != null,
             isAppBot = appBot != null,
-            markedUnread = badge.markedUnreadDot
+            markedUnread = badge.markedUnreadDot,
+            mentioned = mentioned,
         )
+    val mentionDescription = if (mentioned) stringResource(Res.string.activity_list_mentioned_you) else null
     val markedUnreadDescription =
         if (badge.markedUnreadDot) stringResource(Res.string.home_sidebar_marked_unread) else null
     val mutedIcon = homeConversationMutedIndicatorIcon(muted)
@@ -8614,7 +8650,7 @@ internal fun HomeSidebarDirectMessageRow(
             modifier = modifier.then(longClick.anchorModifier),
             onClick = onClick,
             selected = selected,
-            tone = homeConversationRowTone(muted = muted, joined = true, selected = selected, loudUnread = badge.hasUnread),
+            tone = homeConversationRowTone(muted = muted, joined = true, selected = selected, loudUnread = badge.hasUnread || mentioned),
             subtitle = description?.takeIf { it.isNotBlank() },
             onLongClick = longClick.onLongClick,
             onLongClickLabel = longClick.onLongClick?.let { stringResource(Res.string.home_sidebar_row_menu_action) },
@@ -8651,6 +8687,11 @@ internal fun HomeSidebarDirectMessageRow(
                     {
                         trailingSlots.forEach { slot ->
                             when (slot) {
+                                RaftHomeDmTrailingSlot.Mention ->
+                                    RaftMentionMarker(
+                                        modifier = Modifier.testTag(AgentLoungeTestTags.SidebarMention),
+                                        contentDescription = mentionDescription,
+                                    )
                                 RaftHomeDmTrailingSlot.UnreadBadge ->
                                     when (badge.tone) {
                                         HomeSidebarBadgeTone.Loud -> RaftSidebarItemMarks(unreadCount = unreadCount, countDescription = null)

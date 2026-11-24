@@ -188,4 +188,187 @@ class AgentLoungeRulesTest {
         val ordinary = excluded.copy(reason = "not in channel", availableActions = listOf("notify"))
         assertTrue(ordinary.supportsMentionAction("notify"))
     }
+
+    @Test
+    fun underHeaderConversationSwitchVisibilityFollowsSurfaceAndEligibilityRules() {
+        assertTrue(
+            shouldShowAgentLoungeConversationSwitch(
+                enabled = true,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                isLoungeConversation = true,
+                agentId = "agent-bugen",
+                personalAssistantAgentIds = emptySet(),
+            ),
+            "top-level Agent Lounge shows switch",
+        )
+        assertTrue(
+            shouldShowAgentLoungeConversationSwitch(
+                enabled = true,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                isLoungeConversation = false,
+                agentId = "agent-bugen",
+                personalAssistantAgentIds = emptySet(),
+            ),
+            "eligible Agent DM shows switch",
+        )
+        assertFalse(
+            shouldShowAgentLoungeConversationSwitch(
+                enabled = false,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                isLoungeConversation = false,
+                agentId = "agent-bugen",
+                personalAssistantAgentIds = emptySet(),
+            ),
+            "flag off / Guest hides switch",
+        )
+        assertFalse(
+            shouldShowAgentLoungeConversationSwitch(
+                enabled = true,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                isLoungeConversation = false,
+                agentId = "agent-bugen",
+                personalAssistantAgentIds = emptySet(),
+            ),
+            "regular channel hides switch",
+        )
+        assertFalse(
+            shouldShowAgentLoungeConversationSwitch(
+                enabled = true,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                isLoungeConversation = true,
+                agentId = "agent-bugen",
+                personalAssistantAgentIds = emptySet(),
+            ),
+            "reply thread hides switch",
+        )
+        assertFalse(
+            shouldShowAgentLoungeConversationSwitch(
+                enabled = true,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                isLoungeConversation = false,
+                agentId = null,
+                personalAssistantAgentIds = emptySet(),
+            ),
+            "human DM hides switch",
+        )
+        assertFalse(
+            shouldShowAgentLoungeConversationSwitch(
+                enabled = true,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                isLoungeConversation = false,
+                agentId = "agent-assistant",
+                personalAssistantAgentIds = setOf("agent-assistant"),
+            ),
+            "personal assistant hides switch",
+        )
+        assertFalse(
+            shouldShowAgentLoungeConversationSwitch(
+                enabled = true,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                isLoungeConversation = false,
+                agentId = "agent-bot",
+                personalAssistantAgentIds = emptySet(),
+                isAppBot = true,
+            ),
+            "App Bot hides switch",
+        )
+        assertFalse(
+            shouldShowAgentLoungeConversationSwitch(
+                enabled = true,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                isLoungeConversation = false,
+                agentId = "agent-deleted",
+                personalAssistantAgentIds = emptySet(),
+                isDeletedAgent = true,
+            ),
+            "deleted agent hides switch",
+        )
+    }
+
+    @Test
+    fun underHeaderSwitchOtherSideUnreadRespectsMuteMarkedUnreadAndLiveFollowedThreads() {
+        val dmWithUnread =
+            agentDm(AgentLoungeSummary(ChannelId("lounge-bugen"), joined = true, unreadCount = 4, mentionCount = 1, listed = true))
+                .copy(unreadCount = 2)
+        // On Lounge -> shows DM unread count; Lounge side is active (empty).
+        val onLounge =
+            agentLoungeSwitchUnread(
+                activeSide = AgentLoungeConversationSide.Lounge,
+                agentId = "agent-bugen",
+                directMessages = listOf(dmWithUnread),
+            )
+        assertEquals(AgentLoungeSwitchUnread() to AgentLoungeSwitchUnread(count = 2), onLounge)
+        assertEquals("2", formatAgentLoungeSwitchBadge(onLounge.second))
+
+        // Muted DM -> 0 unread on Private tab.
+        val mutedDm =
+            agentLoungeSwitchUnread(
+                activeSide = AgentLoungeConversationSide.Lounge,
+                agentId = "agent-bugen",
+                directMessages =
+                    listOf(
+                        dmWithUnread.copy(
+                            activityNotificationPreference =
+                                build.raft.app.model.ChannelActivityNotificationPreference(
+                                    activityMuted = true,
+                                    activityMuteSupported = true,
+                                ),
+                        ),
+                    ),
+            )
+        assertEquals(AgentLoungeSwitchUnread(), mutedDm.second)
+
+        // DM marked unread with 0 count -> dot.
+        val markedDm =
+            agentLoungeSwitchUnread(
+                activeSide = AgentLoungeConversationSide.Lounge,
+                agentId = "agent-bugen",
+                directMessages = listOf(dmWithUnread.copy(unreadCount = 0)),
+                markedUnreadIds = setOf("dm-bugen"),
+            )
+        assertEquals(AgentLoungeSwitchUnread(dot = true), markedDm.second)
+        assertEquals("•", formatAgentLoungeSwitchBadge(markedDm.second))
+
+        // On Private DM -> shows Lounge unread count; Private side is active (empty).
+        val onPrivate =
+            agentLoungeSwitchUnread(
+                activeSide = AgentLoungeConversationSide.Private,
+                agentId = "agent-bugen",
+                directMessages = listOf(dmWithUnread),
+            )
+        assertEquals(AgentLoungeSwitchUnread(count = 4) to AgentLoungeSwitchUnread(), onPrivate)
+
+        // Muted Lounge -> 0 unread on Lounge tab.
+        val mutedLoungeKnown =
+            lounge.copy(
+                activityNotificationPreference =
+                    build.raft.app.model.ChannelActivityNotificationPreference(activityMuted = true, activityMuteSupported = true),
+            )
+        val mutedLounge =
+            agentLoungeSwitchUnread(
+                activeSide = AgentLoungeConversationSide.Private,
+                agentId = "agent-bugen",
+                directMessages = listOf(dmWithUnread),
+                knownLounges = mapOf("lounge-bugen" to mutedLoungeKnown),
+            )
+        assertEquals(AgentLoungeSwitchUnread(), mutedLounge.first)
+
+        // Live followed-thread unread drives non-member Lounge count when unread enrichment is live.
+        val liveFollowed =
+            agentLoungeSwitchUnread(
+                activeSide = AgentLoungeConversationSide.Private,
+                agentId = "agent-bugen",
+                directMessages =
+                    listOf(
+                        agentDm(AgentLoungeSummary(ChannelId("lounge-bugen"), joined = false, unreadCount = 9, listed = true)),
+                    ),
+                followedThreadUnread =
+                    mapOf(
+                        "t-1" to build.raft.app.data.HomeFollowedThreadUnread(ChannelId("lounge-bugen"), unreadCount = 3, hasMention = true),
+                    ),
+                useLiveFollowedThreadUnread = true,
+            )
+        assertEquals(AgentLoungeSwitchUnread(count = 3), liveFollowed.first)
+        assertEquals("99+", formatAgentLoungeSwitchBadge(AgentLoungeSwitchUnread(count = 120)))
+    }
 }

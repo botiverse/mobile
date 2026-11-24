@@ -286,10 +286,12 @@ internal fun SharedHomeScreen(
     serverSwitcherInTopBar: Boolean = false,
     /** The phone bottom bar is on screen: the list drops its Search / Activity rows. */
     searchAndActivityOnShellNav: Boolean = false,
-    /** Server flag `agent_lounge_v0` and not a Guest: the Lounges get their own sidebar rows. */
+    /** Server flag `agent_lounge_v0` and not a Guest: agent sidebar rows merge with Lounges. */
     agentLoungeEnabled: Boolean = false,
-    /** Loads a listed Lounge's own row (mute, recency) the client never loaded; null: none loaded. */
+    /** Loads a listed Lounge's own row (mute, recency) and creates Lounges on first click; null: off. */
     agentLoungeNetworkClient: build.raft.app.data.RaftNetworkClient? = null,
+    /** Personal assistant agent IDs for this server (never merged with a Lounge). */
+    personalAssistantAgentIds: Set<String> = emptySet(),
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
     onAppUpdateOpen: (() -> Unit)? = null,
@@ -711,6 +713,100 @@ internal fun SharedHomeScreen(
                         conversationRowProjector.project(conversation)
                     }
                 }
+            val serverMemberProfiles by produceState(
+                initialValue = serverMembersStore?.currentServerMembers(snapshot.server.id).orEmpty(),
+                serverMembersStore,
+                snapshot.server.id,
+            ) {
+                val store = serverMembersStore ?: return@produceState
+                store.state.collect {
+                    value = store.currentServerMembers(snapshot.server.id)
+                }
+            }
+            val appBotAgentIds =
+                remember(serverMemberProfiles) {
+                    serverMemberProfiles
+                        .filter { it.kind == build.raft.app.model.MemberKind.Agent && it.appBotIdentityOrNull() != null }
+                        .mapTo(HashSet()) { it.id.value }
+                }
+            val deletedAgentIds =
+                remember(serverMemberProfiles) {
+                    serverMemberProfiles
+                        .filter {
+                            it.kind == build.raft.app.model.MemberKind.Agent &&
+                                (it.agentDeletedAt?.isNotBlank() == true || it.assistantPausedAt != null)
+                        }
+                        .mapTo(HashSet()) { it.id.value }
+                }
+            val mergedPinnedChannelIds =
+                remember(snapshot.sidebarOrder?.pinnedChannelIds, snapshot.sidebarOrder?.pinned) {
+                    buildSet {
+                        addAll(snapshot.sidebarOrder?.pinnedChannelIds.orEmpty())
+                        snapshot.sidebarOrder?.pinned.orEmpty().forEach { item ->
+                            if (item.kind.equals("channel", ignoreCase = true) && item.id.isNotBlank()) {
+                                add(item.id.trim())
+                            }
+                        }
+                    }
+                }
+            val mergedPinnedAgentIds =
+                remember(snapshot.sidebarOrder?.pinnedAgentIds, snapshot.sidebarOrder?.pinned) {
+                    buildSet {
+                        addAll(snapshot.sidebarOrder?.pinnedAgentIds.orEmpty())
+                        snapshot.sidebarOrder?.pinned.orEmpty().forEach { item ->
+                            if (item.kind.equals("agent", ignoreCase = true) && item.id.isNotBlank()) {
+                                add(item.id.trim())
+                            }
+                        }
+                    }
+                }
+            val mergedAgentConversations =
+                remember(
+                    agentLoungeEnabled,
+                    directMessageItems,
+                    agentLoungeItems,
+                    snapshot.directMessages,
+                    serverKnownAgentLounges,
+                    snapshot.markedUnreadIds,
+                    mergedPinnedChannelIds,
+                    mergedPinnedAgentIds,
+                    personalAssistantAgentIds,
+                    appBotAgentIds,
+                    deletedAgentIds,
+                ) {
+                    homeSidebarMergeAgentLounges(
+                        enabled = agentLoungeEnabled,
+                        directMessages = directMessageItems,
+                        agentLounges = agentLoungeItems,
+                        rawDirectMessages = snapshot.directMessages,
+                        knownLounges = serverKnownAgentLounges,
+                        markedUnreadIds = snapshot.markedUnreadIds,
+                        pinnedChannelIds = mergedPinnedChannelIds,
+                        pinnedAgentIds = mergedPinnedAgentIds,
+                        personalAssistantAgentIds = personalAssistantAgentIds,
+                        appBotAgentIds = appBotAgentIds,
+                        deletedAgentIds = deletedAgentIds,
+                    )
+                }
+            val mergedDirectMessageItems = mergedAgentConversations.directMessages
+            val remainingAgentLoungeItems = mergedAgentConversations.agentLounges
+            val mergedDirectMessagesById =
+                remember(mergedDirectMessageItems) {
+                    mergedDirectMessageItems.associateBy { it.id }
+                }
+            val loungeOpenFailedMessage = stringResource(Res.string.agent_lounge_open_failed)
+            val latestLoungeOpenFailedMessage by rememberUpdatedState(loungeOpenFailedMessage)
+            val homeLoungeOpener =
+                remember(agentLoungeNetworkClient, agentLoungeLoadScope, bridge) {
+                    agentLoungeNetworkClient?.let { client ->
+                        AgentLoungeOpener(
+                            scope = agentLoungeLoadScope,
+                            networkClient = client,
+                            openFailedMessage = { latestLoungeOpenFailedMessage },
+                            onError = { message, traceId -> bridge.errorToast(message, traceId) },
+                        )
+                    }
+                }
             val channelDraftIds =
                 remember(channelItems) {
                     channelItems.filter { it.hasDraft }.map { it.id }
@@ -760,7 +856,7 @@ internal fun SharedHomeScreen(
                     if (conversationKindFilter == ConversationKind.Channel) {
                         emptyList()
                     } else {
-                        directMessageItems
+                        mergedDirectMessageItems
                     },
                 selectedChannelId = selectedConversationId,
                 inboxUnreadCount = homeActivityUnreadCount,
@@ -803,7 +899,7 @@ internal fun SharedHomeScreen(
                     if (conversationKindFilter == ConversationKind.Channel) {
                         emptyList()
                     } else {
-                        agentLoungeItems
+                        remainingAgentLoungeItems
                     },
                 customSections = snapshot.sidebarOrder?.customSections.orEmpty(),
                 sectionOrder = snapshot.sidebarOrder?.sectionOrder.orEmpty(),
@@ -894,22 +990,62 @@ internal fun SharedHomeScreen(
                     secondFactorRecovery.refresh()
                 },
                 onChannelClick = { threadId ->
-                    val conversation = conversationsByThreadId[threadId]
-                    // Agent Lounge v0: a Lounge's sub-row opens a conversation no list holds.
-                    val loungeIdentity =
-                        if (conversation == null) {
-                            agentLoungeConversationIdentityOrNull(snapshot.server.id.value, threadId, snapshot.directMessages)
+                    val mergedDm = mergedDirectMessagesById[threadId]
+                    val hiddenIds = snapshot.sidebarOrder?.hiddenDmIds.orEmpty()
+                    if (mergedDm?.opensAgentLoungeOnClick == true) {
+                        val mergedLoungeId = mergedDm.mergedAgentLounge?.channelId
+                        val immediateLoungeIdentity =
+                            mergedLoungeId?.let { loungeId ->
+                                agentLoungeConversationIdentityOrNull(
+                                    snapshot.server.id.value,
+                                    loungeId,
+                                    snapshot.directMessages,
+                                )
+                            }
+                        if (immediateLoungeIdentity != null && mergedLoungeId != null) {
+                            if (mergedDm.id in hiddenIds) {
+                                onIntent(SharedHomeIntent.ReopenClosedConversation(mergedDm.id))
+                            }
+                            onOpenConversation(immediateLoungeIdentity)
+                            onIntent(SharedHomeIntent.SelectConversation(mergedLoungeId))
                         } else {
-                            null
+                            val agentId = mergedDm.presenceMemberId?.takeIf { it.isNotBlank() }
+                            if (agentId != null && homeLoungeOpener != null) {
+                                homeLoungeOpener.open(snapshot.server.id.value, agentId, mergedDm.name) { opened ->
+                                    if (mergedDm.id in hiddenIds) {
+                                        onIntent(SharedHomeIntent.ReopenClosedConversation(mergedDm.id))
+                                    }
+                                    onOpenConversation(opened.conversationIdentity())
+                                    onIntent(SharedHomeIntent.SelectConversation(opened.channel.threadId.value))
+                                }
+                            } else {
+                                val fallbackConversation = conversationsByThreadId[threadId]
+                                if (fallbackConversation != null) {
+                                    onOpenConversation(fallbackConversation.toThreadLaunchConversationIdentity())
+                                    onIntent(SharedHomeIntent.SelectConversation(threadId))
+                                } else {
+                                    bridge.toast(conversationUnavailableMessage)
+                                }
+                            }
                         }
-                    if (loungeIdentity != null) {
-                        onOpenConversation(loungeIdentity)
-                        onIntent(SharedHomeIntent.SelectConversation(threadId))
-                    } else if (conversation == null) {
-                        bridge.toast(conversationUnavailableMessage)
                     } else {
-                        onOpenConversation(conversation.toThreadLaunchConversationIdentity())
-                        onIntent(SharedHomeIntent.SelectConversation(threadId))
+                        val conversation = conversationsByThreadId[threadId]
+                        // Agent Lounge v0: a standalone or pinned-only Lounge opens a conversation no list holds.
+                        val loungeIdentity =
+                            if (conversation == null) {
+                                agentLoungeConversationIdentityOrNull(snapshot.server.id.value, threadId, snapshot.directMessages)
+                            } else {
+                                null
+                            }
+                        if (loungeIdentity != null) {
+                            onOpenConversation(loungeIdentity)
+                            onIntent(SharedHomeIntent.SelectConversation(threadId))
+                        } else if (conversation == null) {
+                            bridge.toast(conversationUnavailableMessage)
+                        } else {
+                            onOpenConversation(conversation.toThreadLaunchConversationIdentity())
+                            onIntent(SharedHomeIntent.SelectConversation(threadId))
+                        }
                     }
                 },
                 onPinnedMemberClick = { identity ->
@@ -984,22 +1120,29 @@ internal fun SharedHomeScreen(
                     onIntent(SharedHomeIntent.TogglePinned(conversationId))
                 },
                 onReadToggle = { conversationId, markUnread ->
-                    onIntent(
-                        if (markUnread) {
-                            SharedHomeIntent.MarkUnread(conversationId)
-                        } else {
-                            SharedHomeIntent.MarkRead(conversationId)
+                    if (markUnread) {
+                        onIntent(SharedHomeIntent.MarkUnread(conversationId))
+                    } else {
+                        onIntent(SharedHomeIntent.MarkRead(conversationId))
+                        mergedDirectMessagesById[conversationId]?.mergedAgentLounge?.channelId?.let { loungeId ->
+                            onIntent(SharedHomeIntent.MarkConversationReadAll(loungeId))
                         }
-                    )
+                    }
                 },
                 onMarkConversationReadAll = { conversationId ->
                     onIntent(SharedHomeIntent.MarkConversationReadAll(conversationId))
+                    mergedDirectMessagesById[conversationId]?.mergedAgentLounge?.channelId?.let { loungeId ->
+                        onIntent(SharedHomeIntent.MarkConversationReadAll(loungeId))
+                    }
                 },
                 onChannelActivityMuteToggle = { conversationId, muted ->
                     onIntent(SharedHomeIntent.SetChannelActivityMuted(conversationId, muted))
                 },
                 onCloseDirectMessage = { conversationId ->
                     onIntent(SharedHomeIntent.CloseDirectMessage(conversationId))
+                    mergedDirectMessagesById[conversationId]?.mergedAgentLounge?.channelId?.let { loungeId ->
+                        onIntent(SharedHomeIntent.CloseDirectMessage(loungeId))
+                    }
                 },
                 onArchiveChannel = { conversationId ->
                     onIntent(SharedHomeIntent.ArchiveChannel(conversationId))

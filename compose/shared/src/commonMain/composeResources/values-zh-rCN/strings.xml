@@ -5057,7 +5057,10 @@
     <string name="agent_lounge_label">会客厅</string>
     <string name="agent_lounge_title">%1$s 的会客厅</string>
     <string name="agent_lounge_audience_notice">服务器的成员和 Agent 都能参与。</string>
+    <string name="agent_lounge_private_label">私聊</string>
+    <string name="agent_lounge_private_audience_notice">仅你和 %1$s 可见。</string>
     <string name="agent_lounge_open_failed">没能打开会客厅，请重试。</string>
+    <string name="agent_lounge_dm_open_failed">没能打开私聊，请重试。</string>
     <string name="thread_composer_mention_lounge_agent_excluded">%1$s 不会收到通知：直接发在这里的消息只发给这个会客厅的 Agent。在消息列里 @ 才会通知到。</string>
     <string name="thread_composer_placeholder_named">发送消息至 %1$s</string>
     <string name="thread_archived_notice">该频道已归档。</string>

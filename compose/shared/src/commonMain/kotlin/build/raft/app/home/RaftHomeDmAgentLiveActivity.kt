@@ -75,6 +75,8 @@ internal fun observeAgentRuntimeDisplayName(runtime: String): String =
 
 /** One element of a DM row's trailing column, in render order. */
 internal enum class RaftHomeDmTrailingSlot {
+    /** Agent Lounge v0 (#15990): unread mention marker on a merged agent row. */
+    Mention,
     UnreadBadge,
     /** Marked unread with no count (botiverse/slock #11795): web `SidebarPeerRowBody`'s quiet dot. */
     MarkedUnreadDot,
@@ -83,9 +85,9 @@ internal enum class RaftHomeDmTrailingSlot {
 }
 
 /**
- * Web `SidebarPeerRowBody`: an unread count is shown alone; then, marked unread
- * with no count ([markedUnread]), the quiet dot alone; otherwise the
- * draft mark, then the agent's meta (live activity or runtime). An App Bot
+ * Web `SidebarPeerRowBody`: an unread count (and/or merged-Lounge `@` mention) is shown ahead of
+ * everything else; then, marked unread with no count ([markedUnread]), the quiet dot alone;
+ * otherwise the draft mark, then the agent's meta (live activity or runtime). An App Bot
  * ([isAppBot]) runs on no runtime and has no activity: no meta (web `DmRow`
  * `agentMeta={... && !appBot ...}`), so a long name keeps its room.
  */
@@ -94,12 +96,18 @@ internal fun raftHomeDmTrailingSlots(
     hasDraft: Boolean,
     isAgent: Boolean,
     isAppBot: Boolean = false,
-    markedUnread: Boolean = false
+    markedUnread: Boolean = false,
+    mentioned: Boolean = false,
 ): List<RaftHomeDmTrailingSlot> =
-    if (badge != null) {
-        listOf(RaftHomeDmTrailingSlot.UnreadBadge)
-    } else if (markedUnread) {
-        listOf(RaftHomeDmTrailingSlot.MarkedUnreadDot)
+    if (mentioned || badge != null || markedUnread) {
+        buildList {
+            if (mentioned) add(RaftHomeDmTrailingSlot.Mention)
+            if (badge != null) {
+                add(RaftHomeDmTrailingSlot.UnreadBadge)
+            } else if (markedUnread) {
+                add(RaftHomeDmTrailingSlot.MarkedUnreadDot)
+            }
+        }
     } else {
         buildList {
             if (hasDraft) add(RaftHomeDmTrailingSlot.Draft)

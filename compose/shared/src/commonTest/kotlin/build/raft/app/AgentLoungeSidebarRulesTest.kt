@@ -259,4 +259,202 @@ class AgentLoungeSidebarRulesTest {
         // A mention with no count still reads as unread (Mark All as Read clears it).
         assertEquals("mark-all-read", entries(loungeItem("lounge-bugen", "Bugen's Lounge", null, mentioned = true), false, true).first().first)
     }
+
+    @Test
+    fun sidebarMergeCollapsesEligibleAgentDmAndLoungeIntoOneRowWithCombinedUnreadAndSelection() {
+        val rawDm =
+            agentDm(
+                "bugen",
+                AgentLoungeSummary(ChannelId("lounge-bugen"), joined = true, unreadCount = 3, mentionCount = 1, listed = true),
+            )
+        val dmRow =
+            RaftHomeConversationItem(
+                id = "dm-bugen",
+                name = "Bugen",
+                kind = "dm",
+                peerType = "agent",
+                presenceMemberId = "agent-bugen",
+                unreadCount = 2,
+                lastMessageAt = "2026-11-10T09:00:00.000Z",
+            )
+        val loungeRow =
+            RaftHomeConversationItem(
+                id = "lounge-bugen",
+                name = "Bugen's Lounge",
+                kind = "channel",
+                unreadCount = 3,
+                mentioned = true,
+                lastMessageAt = "2026-11-10T11:30:00.000Z",
+                presenceMemberId = "agent-bugen",
+                agentLounge = RaftHomeAgentLoungeRow("lounge-bugen", unreadCount = 3, mentioned = true, agentId = "agent-bugen", agentName = "Bugen", joined = true),
+            )
+        val standaloneLounge =
+            RaftHomeConversationItem(
+                id = "lounge-solo",
+                name = "Solo's Lounge",
+                kind = "channel",
+                unreadCount = 1,
+                presenceMemberId = "agent-solo",
+                agentLounge = RaftHomeAgentLoungeRow("lounge-solo", unreadCount = 1, mentioned = false, agentId = "agent-solo", agentName = "Solo", joined = true),
+            )
+        val humanDm =
+            RaftHomeConversationItem(
+                id = "dm-alice",
+                name = "Alice",
+                kind = "dm",
+                peerType = "human",
+                presenceMemberId = "user-alice",
+            )
+        val assistantDm =
+            RaftHomeConversationItem(
+                id = "dm-assist",
+                name = "Assistant",
+                kind = "dm",
+                peerType = "agent",
+                presenceMemberId = "agent-assist",
+            )
+        val appBotDm =
+            RaftHomeConversationItem(
+                id = "dm-bot",
+                name = "BuildBot",
+                kind = "dm",
+                peerType = "agent",
+                presenceMemberId = "agent-bot",
+            )
+        val deletedAgentDm =
+            RaftHomeConversationItem(
+                id = "dm-gone",
+                name = "OldAgent",
+                kind = "dm",
+                peerType = "agent",
+                presenceMemberId = "agent-gone",
+            )
+
+        val merged =
+            homeSidebarMergeAgentLounges(
+                enabled = true,
+                directMessages = listOf(dmRow, humanDm, assistantDm, appBotDm, deletedAgentDm),
+                agentLounges = listOf(loungeRow, standaloneLounge),
+                rawDirectMessages = listOf(rawDm),
+                knownLounges = emptyMap(),
+                markedUnreadIds = setOf("lounge-bugen"),
+                personalAssistantAgentIds = setOf("agent-assist"),
+                appBotAgentIds = setOf("agent-bot"),
+                deletedAgentIds = setOf("agent-gone"),
+            )
+
+        // Standalone Lounge stays separate; merged agent Lounge is suppressed.
+        assertEquals(listOf("lounge-solo"), merged.agentLounges.map { it.id })
+        val mergedBugen = merged.directMessages.first { it.id == "dm-bugen" }
+        assertEquals(5, mergedBugen.unreadCount, "DM 2 + Lounge 3")
+        assertTrue(mergedBugen.mentioned, "inherits Lounge mention")
+        assertTrue(mergedBugen.markedUnread, "inherits Lounge marked-unread")
+        assertEquals("2026-11-10T11:30:00.000Z", mergedBugen.lastMessageAt, "newer Lounge timestamp wins")
+        assertEquals("lounge-bugen", mergedBugen.mergedAgentLounge?.channelId)
+        assertTrue(mergedBugen.opensAgentLoungeOnClick)
+        assertTrue(mergedBugen.matchesSidebarSelection("dm-bugen"))
+        assertTrue(mergedBugen.matchesSidebarSelection("lounge-bugen"))
+        assertEquals(
+            RaftHomeConversationSection.DirectMessage,
+            homeConversationSectionForSelection("lounge-bugen", emptyList(), merged.directMessages),
+        )
+        // Non-eligible DMs remain unmerged.
+        assertFalse(merged.directMessages.first { it.id == "dm-alice" }.opensAgentLoungeOnClick)
+        assertFalse(merged.directMessages.first { it.id == "dm-assist" }.opensAgentLoungeOnClick)
+        assertFalse(merged.directMessages.first { it.id == "dm-bot" }.opensAgentLoungeOnClick)
+        assertFalse(merged.directMessages.first { it.id == "dm-gone" }.opensAgentLoungeOnClick)
+
+        // Flag off leaves everything unmerged.
+        val disabled =
+            homeSidebarMergeAgentLounges(
+                enabled = false,
+                directMessages = listOf(dmRow),
+                agentLounges = listOf(loungeRow),
+                rawDirectMessages = listOf(rawDm),
+                knownLounges = emptyMap(),
+                markedUnreadIds = emptySet(),
+            )
+        assertEquals(listOf(dmRow), disabled.directMessages)
+        assertEquals(listOf(loungeRow), disabled.agentLounges)
+    }
+
+    @Test
+    fun sidebarMergeRespectsMutedLoungeAndPinnedEdgeCases() {
+        val rawDm = agentDm("bugen", AgentLoungeSummary(ChannelId("lounge-bugen"), joined = true, unreadCount = 4, mentionCount = 1, listed = true))
+        val dmRow =
+            RaftHomeConversationItem(
+                id = "dm-bugen",
+                name = "Bugen",
+                kind = "dm",
+                peerType = "agent",
+                presenceMemberId = "agent-bugen",
+                unreadCount = 1,
+            )
+        val loungeRow =
+            RaftHomeConversationItem(
+                id = "lounge-bugen",
+                name = "Bugen's Lounge",
+                kind = "channel",
+                unreadCount = 4,
+                mentioned = true,
+                activityMuted = true,
+                presenceMemberId = "agent-bugen",
+                agentLounge = RaftHomeAgentLoungeRow("lounge-bugen", unreadCount = 4, mentioned = true, agentId = "agent-bugen", agentName = "Bugen", joined = true),
+            )
+        // Muted Lounge contributes 0 unread and no mention.
+        val mutedMerged =
+            homeSidebarMergeAgentLounges(
+                enabled = true,
+                directMessages = listOf(dmRow),
+                agentLounges = listOf(loungeRow),
+                rawDirectMessages = listOf(rawDm),
+                knownLounges = emptyMap(),
+                markedUnreadIds = emptySet(),
+            )
+        assertEquals(1, mutedMerged.directMessages.single().unreadCount)
+        assertFalse(mutedMerged.directMessages.single().mentioned)
+        assertTrue(mutedMerged.agentLounges.isEmpty())
+
+        // Both DM and Lounge pinned -> suppress duplicate Lounge row, single merged row highlights in Pinned.
+        val bothPinned =
+            homeSidebarMergeAgentLounges(
+                enabled = true,
+                directMessages = listOf(dmRow),
+                agentLounges = listOf(loungeRow.copy(activityMuted = false)),
+                rawDirectMessages = listOf(rawDm),
+                knownLounges = emptyMap(),
+                markedUnreadIds = emptySet(),
+                pinnedChannelIds = setOf("lounge-bugen"),
+                pinnedAgentIds = setOf("agent-bugen"),
+            )
+        assertTrue(bothPinned.agentLounges.isEmpty(), "no duplicate Lounge when DM is also pinned")
+        assertEquals(5, bothPinned.directMessages.single().unreadCount)
+        assertEquals(
+            RaftHomeConversationSection.Pinned,
+            homeConversationSectionForSelection("lounge-bugen", emptyList(), bothPinned.directMessages, setOf("agent-bugen")),
+        )
+
+        // Only Lounge pinned (DM not pinned) -> keep pinned Lounge separate without double-counting unread on DM.
+        val onlyLoungePinned =
+            homeSidebarMergeAgentLounges(
+                enabled = true,
+                directMessages = listOf(dmRow),
+                agentLounges = listOf(loungeRow.copy(activityMuted = false)),
+                rawDirectMessages = listOf(rawDm),
+                knownLounges = emptyMap(),
+                markedUnreadIds = emptySet(),
+                pinnedChannelIds = setOf("lounge-bugen"),
+                pinnedAgentIds = emptySet(),
+            )
+        assertEquals(listOf("lounge-bugen"), onlyLoungePinned.agentLounges.map { it.id })
+        assertEquals(1, onlyLoungePinned.directMessages.single().unreadCount, "DM does not double-count pinned Lounge unread")
+        assertEquals(
+            listOf(RaftHomeDmTrailingSlot.Mention, RaftHomeDmTrailingSlot.UnreadBadge),
+            raftHomeDmTrailingSlots(badge = "5", hasDraft = true, isAgent = true, mentioned = true),
+        )
+        assertEquals(
+            listOf(RaftHomeDmTrailingSlot.Mention),
+            raftHomeDmTrailingSlots(badge = null, hasDraft = true, isAgent = true, mentioned = true),
+        )
+    }
 }

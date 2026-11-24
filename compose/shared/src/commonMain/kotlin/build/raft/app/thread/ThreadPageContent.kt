@@ -1282,8 +1282,13 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                         },
                 )
             }
-            // Agent Lounge v0: who is here, always on top of the conversation (web lounge-audience-notice).
-            if (conversationLounge != null) {
+            // Agent Lounge v0: under-header tab strip switches between Lounge and Private DM in place.
+            val loungeSwitch =
+                data.lounge?.conversationSwitch?.takeIf { LocalThreadAssistantPanelEmbed.current == null }
+            if (loungeSwitch != null) {
+                AgentLoungeConversationTabStrip(switch = loungeSwitch)
+            } else if (conversationLounge != null) {
+                // Fallback audience banner when the under-header switch is unavailable.
                 AgentLoungeAudienceNotice(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
             // A conversion to an external channel under way: before the announcement, which stays next

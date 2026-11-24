@@ -31,8 +31,6 @@ class ThreadConversationHeadActionsTest {
             threadHeaderConversationOwnActions(
                 searchLabel = "Search",
                 onOpenSearch = {},
-                loungeLabel = null,
-                onOpenLounge = null,
                 sideCardActions = sideCards,
                 settingsLabel = "Channel Details",
                 settingsOpen = false,
@@ -69,7 +67,7 @@ class ThreadConversationHeadActionsTest {
     }
 
     @Test
-    fun agentDmLoungeSitsBetweenSearchAndSideCardsAndIosNativeBarFoldsFromLastWithoutMembers() {
+    fun dmHeadOmitsLegacyLoungeButtonAndIosNativeBarFoldsFromLastWithoutMembers() {
         val sideCards =
             listOf(
                 ThreadHeaderOwnActionSpec(
@@ -91,8 +89,6 @@ class ThreadConversationHeadActionsTest {
             threadHeaderConversationOwnActions(
                 searchLabel = "Search",
                 onOpenSearch = {},
-                loungeLabel = "Lounge",
-                onOpenLounge = {},
                 sideCardActions = sideCards,
                 settingsLabel = "Details",
                 settingsOpen = false,
@@ -101,20 +97,29 @@ class ThreadConversationHeadActionsTest {
                 onOpenInChannel = {},
             )
         assertEquals(
-            listOf("thread-search", "lounge", "thread-side-card-tasks", "thread-side-card-files", "thread-settings"),
+            listOf("thread-search", "thread-side-card-tasks", "thread-side-card-files", "thread-settings"),
             dmActions.map { it.id },
         )
 
-        // 360dp phone with 5 DM head buttons folds Files and Settings into ⋯ while keeping Search, Lounge, Tasks.
-        val shownNarrowDm =
+        // Without the legacy Lounge button, all 4 DM head buttons fit on a 360dp phone.
+        val shownPhoneDm =
             threadHeaderShownOwnActions(
                 widthDp = 360f,
                 leadOverheadDp = 112f,
                 ownCount = dmActions.size,
                 actionSizeDp = 44f,
             )
-        assertEquals(3, shownNarrowDm)
-        assertEquals(listOf("thread-search", "lounge", "thread-side-card-tasks"), dmActions.take(shownNarrowDm).map { it.id })
+        assertEquals(4, shownPhoneDm)
+        // Narrow 320dp phone folds Files and Settings into ⋯ while keeping Search and Tasks.
+        val shownNarrowDm =
+            threadHeaderShownOwnActions(
+                widthDp = 320f,
+                leadOverheadDp = 112f,
+                ownCount = dmActions.size,
+                actionSizeDp = 44f,
+            )
+        assertEquals(2, shownNarrowDm)
+        assertEquals(listOf("thread-search", "thread-side-card-tasks"), dmActions.take(shownNarrowDm).map { it.id })
         assertEquals(listOf("thread-side-card-files", "thread-settings"), dmActions.drop(shownNarrowDm).map { it.id })
 
         // iOS native nav bar keeps the first two (Search, Tasks for a channel) on the bar and folds

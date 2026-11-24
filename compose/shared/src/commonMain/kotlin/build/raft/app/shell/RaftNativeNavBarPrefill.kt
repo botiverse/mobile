@@ -12,9 +12,12 @@ import build.raft.app.data.agentLoungeEnabled
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import build.raft.app.resources.Res
+import build.raft.app.resources.agent_lounge_audience_notice
 import build.raft.app.resources.agent_lounge_label
+import build.raft.app.resources.agent_lounge_private_audience_notice
 import build.raft.app.resources.channel_details_title
 import build.raft.app.resources.desc
+import build.raft.app.resources.format
 import build.raft.app.resources.resolve
 import build.raft.app.resources.settings_title
 import build.raft.app.resources.task_conversation_search
@@ -63,6 +66,8 @@ internal data class RaftNativeNavBarPrefillStrings(
     val loungeLabel: String,
     /** "{Name}'s Lounge", the bare "Lounge" for a null name ([agentLoungeTitleNow]). */
     val loungeTitleForAgent: (String?) -> String,
+    val loungeAudienceSubtitle: String = "",
+    val privateAudienceSubtitleForAgent: (String) -> String = { "" },
     val channelDetailsTitle: String,
     val membersTitle: String,
 )
@@ -81,6 +86,10 @@ private fun defaultNativeNavBarPrefillStrings(): RaftNativeNavBarPrefillStrings 
         openFilesLabel = Res.string.thread_side_card_files_open.desc().resolve(),
         loungeLabel = Res.string.agent_lounge_label.desc().resolve(),
         loungeTitleForAgent = ::agentLoungeTitleNow,
+        loungeAudienceSubtitle = Res.string.agent_lounge_audience_notice.desc().resolve(),
+        privateAudienceSubtitleForAgent = { name ->
+            Res.string.agent_lounge_private_audience_notice.format(name).resolve()
+        },
         channelDetailsTitle = Res.string.channel_details_title.desc().resolve(),
         membersTitle = Res.string.thread_members_heading.desc().resolve(),
     )
@@ -202,14 +211,29 @@ private fun buildThreadNativeNavBarPrefillFromPageData(
             ?.value
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
-    val dmLoungeToggleVisible =
-        if (dmAgentId != null && sharedStores != null && serverId != null) {
+    val switchAgentId =
+        if (payload.surfaceKind == RaftThreadSurfaceKind.Channel && pageLounge != null) {
+            pageLounge.agentId
+        } else {
+            dmAgentId
+        }
+    val loungeSwitchVisible =
+        if (switchAgentId != null && sharedStores != null && serverId != null) {
             val flagEnabled = sharedStores.serverFeatureFlags.isEnabled(serverId, AGENT_LOUNGE_FEATURE_FLAG_KEY)
             val personalAssistantAgentIds =
                 sharedStores.myAssistantStore(storeScope).answers.value.values
                     .mapNotNull { it.assistant?.agentId }
                     .toSet()
-            agentLoungeEnabled(flagEnabled, homeServer?.role) && dmAgentId !in personalAssistantAgentIds
+            val memberProfile = scopedMembersStore?.memberProfile(serverId, switchAgentId)
+            shouldShowAgentLoungeConversationSwitch(
+                enabled = agentLoungeEnabled(flagEnabled, homeServer?.role),
+                surfaceKind = payload.surfaceKind,
+                isLoungeConversation = payload.surfaceKind == RaftThreadSurfaceKind.Channel && pageLounge != null,
+                agentId = switchAgentId,
+                personalAssistantAgentIds = personalAssistantAgentIds,
+                isAppBot = memberProfile?.appBotIdentityOrNull() != null,
+                isDeletedAgent = memberProfile?.agentDeletedAt?.isNotBlank() == true,
+            ) && memberProfile?.assistantPausedAt == null
         } else {
             false
         }
@@ -228,7 +252,7 @@ private fun buildThreadNativeNavBarPrefillFromPageData(
         serverPublicPageLive = serverPublicPageLive,
         pageLounge = pageLounge,
         loungeAgentAvatarWireValue = loungeAgentAvatarWireValue,
-        dmLoungeToggleVisible = dmLoungeToggleVisible,
+        loungeSwitchVisible = loungeSwitchVisible,
         resolvedDmPeerAvatarWireValue = dmPeerAvatarWireValue,
         strings = strings,
     )
@@ -241,7 +265,7 @@ internal fun buildThreadNativeNavBarPrefillHead(
     serverPublicPageLive: Boolean = false,
     pageLounge: RaftAgentLounge? = null,
     loungeAgentAvatarWireValue: String? = null,
-    dmLoungeToggleVisible: Boolean = false,
+    loungeSwitchVisible: Boolean = false,
     resolvedDmPeerAvatarWireValue: String? = null,
     strings: RaftNativeNavBarPrefillStrings? = null,
 ): RaftNativeNavBarHead {
@@ -270,8 +294,22 @@ internal fun buildThreadNativeNavBarPrefillHead(
                 localizedDirectMessage = resolvedStrings.directMessageTitle,
             )
         }
+    val loungeAudienceSubtitle =
+        when {
+            !loungeSwitchVisible -> null
+            loungeHeader != null -> resolvedStrings.loungeAudienceSubtitle.takeIf { it.isNotBlank() }
+            headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage -> {
+                val peerName =
+                    build.raft.app.data.loungeAgentDisplayName(
+                        headerDisplay.title.trim().removePrefix("@").takeUnless { it.isGenericThreadHeaderFallbackLabel() }
+                    )
+                peerName?.let { resolvedStrings.privateAudienceSubtitleForAgent(it).takeIf(String::isNotBlank) }
+            }
+            else -> null
+        }
     val subtitle =
         when {
+            loungeAudienceSubtitle != null -> loungeAudienceSubtitle
             loungeHeader != null -> null
             pageLounge != null && headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread -> loungeTitle
             else -> headerDisplay.subtitle?.takeIf { it.isNotBlank() }
@@ -311,12 +349,6 @@ internal fun buildThreadNativeNavBarPrefillHead(
         } else {
             emptyList()
         }
-    val dmLoungeToggle: (() -> Unit)? =
-        if (dmLoungeToggleVisible && headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
-            {}
-        } else {
-            null
-        }
     val taskViewInChannel: (() -> Unit)? =
         if (taskConversation && (payload.parentChannelId?.isNotBlank() == true || payload.threadHeaderOpenInParentActionVisible())) {
             {}
@@ -335,11 +367,9 @@ internal fun buildThreadNativeNavBarPrefillHead(
                     searchInTaskLabel = resolvedStrings.searchInTaskLabel,
                     settingsLabel = resolvedStrings.settingsLabel,
                     viewInChannelLabel = resolvedStrings.viewInChannelLabel,
-                    loungeLabel = resolvedStrings.loungeLabel,
                 ),
             onViewTaskInChannel = taskViewInChannel,
             sideCardActions = sideCardActions,
-            dmLoungeToggle = dmLoungeToggle,
         ).toRaftNativeNavBarActions()
     return RaftNativeNavBarHead(
         title = title,

@@ -4874,7 +4874,10 @@
     <string name="agent_lounge_label">Lounge</string>
     <string name="agent_lounge_title">Lounge de %1$s</string>
     <string name="agent_lounge_audience_notice">Os membros e os agentes deste servidor podem participar.</string>
+    <string name="agent_lounge_private_label">Privado</string>
+    <string name="agent_lounge_private_audience_notice">Somente você e %1$s podem ver isto.</string>
     <string name="agent_lounge_open_failed">Não foi possível abrir o Lounge. Tente novamente.</string>
+    <string name="agent_lounge_dm_open_failed">Não foi possível abrir a conversa privada. Tente novamente.</string>
     <string name="thread_composer_mention_lounge_agent_excluded">%1$s não vai receber a notificação: uma mensagem publicada aqui vai só para o agente deste Lounge. Para notificar, faça a menção em uma thread.</string>
     <string name="thread_composer_placeholder_named">Mensagem para %1$s</string>
     <string name="thread_archived_notice">Este canal está arquivado.</string>

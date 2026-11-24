@@ -6,6 +6,7 @@ import build.raft.app.data.HomeStandaloneLoungeRow
 import build.raft.app.data.RaftAgentLounge
 import build.raft.app.data.agentLoungeSidebarEntry
 import build.raft.app.data.loungeAgentDisplayName
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 
 /*
  * Agent Lounge v0: a Lounge's own row in the Home sidebar (web slock #13875 / #13876 / #13880:
@@ -155,4 +156,132 @@ internal fun homeSidebarDirectMessageSectionRows(
         return uniqueDirectMessages + uniqueLounges.sortedForSidebar(RaftSidebarSortMode.Recent) { it.name }
     }
     return (uniqueDirectMessages + uniqueLounges).sortedForSidebar(mode) { it.name }
+}
+
+/**
+ * Output of [homeSidebarMergeAgentLounges]: [directMessages] with eligible agent DM rows merged
+ * with their Lounge, and [agentLounges] holding only unmerged standalone / pinned-only Lounges.
+ */
+internal data class HomeSidebarMergedAgentConversations(
+    val directMessages: List<RaftHomeConversationItem>,
+    val agentLounges: List<RaftHomeConversationItem>,
+)
+
+/**
+ * Agent Lounge v0 sidebar merge (web slock #15990): collapse an eligible agent's DM row and Lounge
+ * row into a single sidebar row so the agent appears once in Direct Messages (or Pinned / Custom
+ * Section).
+ *
+ * - Combined unread = DM unread + (0 if Lounge muted else Lounge unread); combined `@` mention,
+ *   combined marked-unread state, and latest activity timestamp across both sides.
+ * - Clicking the merged row opens the Lounge ([RaftHomeConversationItem.opensAgentLoungeOnClick]).
+ * - Selection highlights the row while either the DM or the Lounge channel is open
+ *   ([RaftHomeConversationItem.mergedAgentLounge]).
+ * - Duplicate separate Lounge rows are suppressed unless ONLY the Lounge is pinned while its agent
+ *   DM is NOT pinned (preserving an explicit Lounge pin without double-counting unread on the DM).
+ * - Standalone Lounges (no DM row), personal assistants, App Bots, deleted agents, human DMs, and
+ *   flag-off / Guest viewers keep their existing unmerged behavior.
+ */
+internal fun homeSidebarMergeAgentLounges(
+    enabled: Boolean,
+    directMessages: List<RaftHomeConversationItem>,
+    agentLounges: List<RaftHomeConversationItem>,
+    rawDirectMessages: List<HomeDirectMessageRow>,
+    knownLounges: Map<String, RaftAgentLounge>,
+    markedUnreadIds: Set<String>,
+    pinnedChannelIds: Set<String> = emptySet(),
+    pinnedAgentIds: Set<String> = emptySet(),
+    personalAssistantAgentIds: Set<String> = emptySet(),
+    appBotAgentIds: Set<String> = emptySet(),
+    deletedAgentIds: Set<String> = emptySet(),
+): HomeSidebarMergedAgentConversations {
+    if (!enabled) {
+        return HomeSidebarMergedAgentConversations(directMessages, agentLounges)
+    }
+    val loungeItemByAgentId =
+        buildMap<String, RaftHomeConversationItem> {
+            agentLounges.forEach { lounge ->
+                val agentId = lounge.agentLounge?.agentId ?: lounge.presenceMemberId
+                if (!agentId.isNullOrBlank() && !containsKey(agentId)) {
+                    put(agentId, lounge)
+                }
+            }
+        }
+    val knownByAgentId =
+        buildMap<String, RaftAgentLounge> {
+            knownLounges.values.forEach { lounge ->
+                if (lounge.agentId.isNotBlank() && !containsKey(lounge.agentId)) {
+                    put(lounge.agentId, lounge)
+                }
+            }
+        }
+    val rawDmById = rawDirectMessages.associateBy { it.threadId.value }
+    val suppressedLoungeIds = HashSet<String>()
+    val mergedDirectMessages =
+        directMessages.map { dm ->
+            val agentId = dm.presenceMemberId?.trim()?.takeIf { it.isNotEmpty() }
+            val eligible =
+                dm.peerType.equals("agent", ignoreCase = true) &&
+                    agentId != null &&
+                    agentId !in personalAssistantAgentIds &&
+                    agentId !in appBotAgentIds &&
+                    agentId !in deletedAgentIds
+            if (!eligible || agentId == null) return@map dm
+            val loungeItem = loungeItemByAgentId[agentId]
+            val rawSummary = rawDmById[dm.id]?.lounge
+            val known = knownByAgentId[agentId] ?: rawSummary?.let { knownLounges[it.channelId.value] }
+            val loungeChannelId = loungeItem?.id ?: known?.channelId?.value ?: rawSummary?.channelId?.value
+            val dmIsPinned = dm.id in pinnedChannelIds || agentId in pinnedAgentIds
+            val loungeIsPinned = loungeChannelId != null && loungeChannelId in pinnedChannelIds
+            val keepPinnedLoungeSeparate = loungeItem != null && loungeIsPinned && !dmIsPinned
+            val absorbLounge = !keepPinnedLoungeSeparate
+            if (loungeItem != null && absorbLounge) {
+                suppressedLoungeIds += loungeItem.id
+            }
+            val loungeMuted = known?.activityMuted == true || loungeItem?.activityMuted == true
+            val loungeUnread = if (absorbLounge && !loungeMuted) (loungeItem?.unreadCount ?: 0) else 0
+            val loungeMentioned = absorbLounge && !loungeMuted && (loungeItem?.mentioned == true)
+            val loungeMarkedUnread = absorbLounge && loungeChannelId != null && loungeChannelId in markedUnreadIds
+            val loungeLastMessageAt = if (absorbLounge) (loungeItem?.lastMessageAt ?: known?.lastMessageAt) else null
+            val mergedLoungeRow =
+                if (absorbLounge && loungeChannelId != null) {
+                    RaftHomeAgentLoungeRow(
+                        channelId = loungeChannelId,
+                        unreadCount = loungeItem?.unreadCount ?: 0,
+                        mentioned = loungeItem?.mentioned == true,
+                        agentId = agentId,
+                        agentName = dm.name,
+                        joined = loungeItem?.agentLounge?.joined == true || known?.joined == true || rawSummary?.joined == true,
+                    )
+                } else {
+                    null
+                }
+            dm.copy(
+                unreadCount = dm.unreadCount + loungeUnread,
+                mentioned = dm.mentioned || loungeMentioned,
+                markedUnread = dm.markedUnread || loungeMarkedUnread,
+                lastMessageAt = newerSidebarTimestamp(dm.lastMessageAt, loungeLastMessageAt),
+                mergedAgentLounge = mergedLoungeRow,
+                opensAgentLoungeOnClick = true,
+            )
+        }
+    val remainingLounges = agentLounges.filterNot { it.id in suppressedLoungeIds }
+    return HomeSidebarMergedAgentConversations(
+        directMessages = mergedDirectMessages,
+        agentLounges = remainingLounges,
+    )
+}
+
+private fun newerSidebarTimestamp(first: String?, second: String?): String? {
+    val a = first?.takeIf { it.isNotBlank() }
+    val b = second?.takeIf { it.isNotBlank() }
+    if (a == null) return b
+    if (b == null) return a
+    val aMs = parseRaftTimestampEpochMillisOrNull(a)
+    val bMs = parseRaftTimestampEpochMillisOrNull(b)
+    return when {
+        aMs != null && bMs != null -> if (bMs > aMs) b else a
+        bMs != null -> b
+        else -> a
+    }
 }
