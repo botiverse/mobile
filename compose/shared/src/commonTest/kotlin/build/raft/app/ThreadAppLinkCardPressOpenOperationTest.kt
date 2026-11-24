@@ -127,7 +127,7 @@ class ThreadAppLinkCardPressOpenOperationTest {
         // Execute returned "accepted": button must stay loading, siblings disabled, duplicate presses ignored.
         assertEquals(1, executes)
         assertEquals(1, rereads)
-        assertEquals(listOf("应用已接受，正在完成。" to RaftToastIntent.Info), toasts)
+        assertEquals(listOf<Pair<String, RaftToastIntent?>>("应用已接受，正在完成。" to RaftToastIntent.Info), toasts)
         assertTrue(press.busy, "press stays busy while operation is open")
 
         val approveBtnWhileOpen = assertNotNull(press.button(approve, approveAction))
@@ -155,7 +155,7 @@ class ThreadAppLinkCardPressOpenOperationTest {
         assertEquals(1, statusCalls)
         assertEquals(2, rereads, "terminal receipt immediately rereads the card")
         assertEquals(
-            listOf(
+            listOf<Pair<String, RaftToastIntent?>>(
                 "应用已接受，正在完成。" to RaftToastIntent.Info,
                 "Stamp: Approved" to RaftToastIntent.Success,
             ),
@@ -288,7 +288,7 @@ class ThreadAppLinkCardPressOpenOperationTest {
         assertEquals(2, statusCalls)
         assertEquals(2, rereads)
         assertEquals(
-            listOf(
+            listOf<Pair<String, RaftToastIntent?>>(
                 "应用已接受，正在完成。" to RaftToastIntent.Info,
                 "操作没有执行。" to RaftToastIntent.Warning,
             ),
