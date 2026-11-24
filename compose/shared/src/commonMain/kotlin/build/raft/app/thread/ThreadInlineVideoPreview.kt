@@ -374,6 +374,8 @@ private fun ThreadInlineVideoFailureAction(
     val pressed by source.collectIsPressedAsState()
     val ink = if (pressed) ThreadInlineVideoInk else ThreadInlineVideoMutedInk
     Row(
+        // raw-click: draws its own press (white, underlined) on the black video box, as raft-ui
+        // MessageVideoPreviewFailureAction; a paper overlay would not read on black.
         modifier = Modifier.clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onClick),
         horizontalArrangement = Arrangement.spacedBy(RaftSpacing.Xs),
         verticalAlignment = Alignment.CenterVertically

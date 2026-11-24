@@ -948,6 +948,8 @@ private fun SettingsProfileAvatar(
             Modifier
                 // raft-ui Avatar lg (web AvatarSlot "profile-tile"): 51dp.
                 .size(51.dp)
+                // raw-click: an avatar face; the app's press wash draws over it, where raftClickable's
+                // overlay would sit behind the opaque avatar.
                 .clickable(enabled = payload.canUploadAvatar && !payload.avatarInProgress) { onEvent("uploadAvatar", null) },
         contentAlignment = Alignment.Center
     ) {

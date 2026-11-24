@@ -96,6 +96,8 @@ internal fun RaftAppRailServerTile(
                 Modifier
                     .size(itemSize)
                     .raftPointerHover(source)
+                    // raw-click: the tile draws its own state overlay over the face (ink-sticker tier, held
+                    // while its menu is open) from this source; raftClickable's would sit behind it.
                     .clickable(
                         interactionSource = source,
                         indication = null,

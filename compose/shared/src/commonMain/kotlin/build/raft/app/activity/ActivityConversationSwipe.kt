@@ -2102,6 +2102,8 @@ private fun ActivitySwipeButtonCell(
             .width(with(density) { widthPx.toDp() })
             .fillMaxHeight()
             .background(background)
+            // raw-click: a swipe layer's action, uncovered by the finger's drag on a touch screen; its solid
+            // colour is the feedback (mock v1), a hover or press overlay would tint the status colour.
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onTap(button) },
         contentAlignment = if (narrow) Alignment.Center else innerAlignment,
     ) {

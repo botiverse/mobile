@@ -868,7 +868,7 @@ private fun ThreadOutlineSheetRow(
             .fillMaxWidth()
             .heightIn(min = 44.dp)
             .background(if (pressed) colors.brandSoft else colors.layerPopover, RoundedCornerShape(RaftRadius.Control))
-            // Raw clickable on purpose: the press state is the `brand-soft` fill above, as on the
+            // raw-click: the press state is the `brand-soft` fill above, as on the
             // card's rows; raftClickable would lay fill-medium over it.
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .testTag(threadOutlineSheetRowTestTag(item.id))

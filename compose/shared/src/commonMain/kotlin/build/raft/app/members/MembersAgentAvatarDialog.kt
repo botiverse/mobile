@@ -243,6 +243,8 @@ internal fun MembersAgentAvatarEditTrigger(
         modifier =
             Modifier
                 .semantics { contentDescription = label }
+                // raw-click: draws its own veil over the avatar (layer-backdrop + pencil) while pressed;
+                // raftClickable's overlay would sit behind the opaque avatar.
                 .clickable(
                     interactionSource = interaction,
                     indication = null,

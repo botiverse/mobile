@@ -501,6 +501,8 @@ internal fun RaftAssistantOtterLayout(
                                         scaleX = wake.scale
                                         scaleY = wake.scale
                                     }
+                                    // raw-click: the mascot; web AssistantOtter's button has no hover or press fill, a
+                                    // state overlay would draw a box round the otter.
                                     .clickable(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null,

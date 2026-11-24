@@ -3075,6 +3075,8 @@ internal fun Modifier.activityRowGestures(
             )
     return anchored.raftGesturePointerInput(gestureOwner) { owner ->
         var gesture: RaftGestureSession<ActivityRowGestureCallbacks>? = null
+        // raw-click: gesture-owner row (tap, 500ms long press for the menu, press state) that survives
+        // lazy-slot reuse; raftClickable can't hold the owner token.
         detectTapGestures(
             // Preserve the authority that owned DOWN for this gesture. The semantic owner token
             // cancels a lazy-slot replacement, while ordinary recomposition does not tear down a

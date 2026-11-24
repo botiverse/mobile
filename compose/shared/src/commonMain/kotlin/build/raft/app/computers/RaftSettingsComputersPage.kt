@@ -2673,6 +2673,8 @@ private fun RaftComputerCardAgentSlot(
         modifier =
             Modifier
                 .then(if (dimmed) Modifier.raftGrayscale(outset = 6.dp) else Modifier)
+                // raw-click: an avatar face; the app's press wash draws over it, where raftClickable's
+                // overlay would sit behind the opaque avatar.
                 .clickable(role = Role.Button, onClickLabel = agent.name, onClick = onClick)
                 .semantics { contentDescription = agent.name },
     ) {

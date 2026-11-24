@@ -1320,7 +1320,7 @@ private fun SharedHomeSearchHistoryTag(
                         Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .clickable(onClick = onSelect)
+                            .clickable(onClick = onSelect) // raw-click: the 44dp edit target, see above
                             .semantics { contentDescription = query },
                 )
                 Box(
@@ -1328,7 +1328,7 @@ private fun SharedHomeSearchHistoryTag(
                         Modifier
                             .width(44.dp)
                             .fillMaxHeight()
-                            .clickable(onClick = onRemove)
+                            .clickable(onClick = onRemove) // raw-click: the 44dp edit target, see above
                             .semantics { contentDescription = removeLabel.orEmpty() },
                 )
             }

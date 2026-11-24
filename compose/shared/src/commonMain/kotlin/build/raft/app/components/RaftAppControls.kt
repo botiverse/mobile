@@ -178,6 +178,8 @@ internal fun RaftAnchoredMetaChip(
                     if (interactive) {
                         Modifier
                             .raftPointerHover(interactionSource)
+                            // raw-click: the chip draws its own press fill (sticker-pressed / fill-pressed over its
+                            // colour, above) from this interaction source.
                             .clickable(
                                 interactionSource = interactionSource,
                                 indication = null,

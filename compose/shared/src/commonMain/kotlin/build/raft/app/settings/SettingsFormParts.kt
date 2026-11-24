@@ -417,6 +417,8 @@ private fun SharedSettingsRow(
             if (copyable) {
                 Modifier.raftGesturePointerInput(gestureOwner, row.copyValue, row.enabled) { owner ->
                     var gesture: RaftGestureSession<SharedSettingsRowGestureCallbacks>? = null
+                    // raw-click: gesture-owner row (tap, long press copies the value) that survives lazy-slot
+                    // reuse; raftClickable can't hold the owner token.
                     detectTapGestures(
                         onPress = {
                             gesture = owner.beginGesture()

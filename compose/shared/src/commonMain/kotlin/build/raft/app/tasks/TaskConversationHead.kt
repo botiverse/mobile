@@ -1205,6 +1205,8 @@ private fun TaskHeadToggleTarget(label: String, expanded: Boolean, onToggle: () 
     Box(
         Modifier
             .minimumInteractiveComponentSize()
+            // raw-click: a 48dp target round a small text label; a press overlay would fill the whole
+            // target past the label.
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button, onClick = onToggle)
             .semantics(mergeDescendants = true) {
                 contentDescription = label
