@@ -164,12 +164,12 @@ private suspend fun RaftNetworkClient.followedThreads(
     serverId: ServerId? = null,
     unreadOnly: Boolean = false,
     cursor: String? = null,
-    defaultReason: InboxFetchReason = InboxFetchReason.Initial,
 ): HomeNetworkResponse =
     // Server records `GET /api/channels/threads/followed` under `activity.list.fetch`
     // (`list=followed_threads`) using the same `X-Raft-Fetch-Reason` / `ACTIVITY_LIST_FETCH_REASONS`
     // enum as inbox (botiverse/slock routes/channels.ts:1988, #proj-mobile:#163): cursor pages send
-    // `page`, first pages send the caller's reason (or [defaultReason] when none is in context).
+    // `page`, first pages send the caller's reason (no header if unlabelled, matching web so missed
+    // call sites surface as `unknown` instead of inflating `initial`).
     requestWithHeaders(
         priority,
         "channels/threads/followed",
@@ -177,9 +177,7 @@ private suspend fun RaftNetworkClient.followedThreads(
             if (cursor != null) {
                 mapOf(RaftFetchReasonHeader to InboxFetchReason.Page.wireValue)
             } else {
-                currentInboxFetchReasonHeaders().ifEmpty {
-                    mapOf(RaftFetchReasonHeader to defaultReason.wireValue)
-                }
+                currentInboxFetchReasonHeaders()
             },
         query =
             buildList {
@@ -201,12 +199,11 @@ private suspend fun RaftNetworkClient.followedThreadsWithRwOverloadRetry(
     serverId: ServerId? = null,
     unreadOnly: Boolean = false,
     cursor: String? = null,
-    defaultReason: InboxFetchReason = InboxFetchReason.Initial,
 ): HomeNetworkResponse {
-    val first = followedThreads(priority, limit, serverId, unreadOnly, cursor, defaultReason)
+    val first = followedThreads(priority, limit, serverId, unreadOnly, cursor)
     val retryDelayMillis = first.rwOverloadRetryDelayMillis() ?: return first
     kotlinx.coroutines.delay(retryDelayMillis)
-    return followedThreads(priority, limit, serverId, unreadOnly, cursor, defaultReason)
+    return followedThreads(priority, limit, serverId, unreadOnly, cursor)
 }
 
 private suspend fun RaftNetworkClient.createOrOpenThread(

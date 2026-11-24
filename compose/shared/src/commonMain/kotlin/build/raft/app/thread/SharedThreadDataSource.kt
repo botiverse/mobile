@@ -13,6 +13,8 @@ import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeSnapshotLookup
+import build.raft.app.data.InboxFetchReason
+import build.raft.app.data.withInboxFetchReason
 import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AttachmentUploadRequest
@@ -4706,12 +4708,14 @@ internal class SharedThreadDataSource(
                     "thread_page_size source=initial_repository server=${session.currentServerId.orEmpty()} " +
                         "pageSize=$pageSize"
                 )
-                repository.getThread(
-                    threadId = threadId,
-                    includeFollowedSummaries = includeFollowedSummaries,
-                    limit = pageSize,
-                    captureRawMessagePage = onEnteredPage != null
-                )
+                withInboxFetchReason(if (includeFollowedSummaries) InboxFetchReason.Initial else null) {
+                    repository.getThread(
+                        threadId = threadId,
+                        includeFollowedSummaries = includeFollowedSummaries,
+                        limit = pageSize,
+                        captureRawMessagePage = onEnteredPage != null
+                    )
+                }
             }
         val initialData = initialResult as? DataResult.Content
         // Message storage Phase 2b: the page this request fetched is the durable write (with the channel detail the
