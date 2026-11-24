@@ -2198,12 +2198,6 @@ internal class SharedThreadStore(
                                     acceptedReplies,
                                     currentPayload,
                                 )
-                            val canonicalAccessFromResultKnown =
-                                when (result) {
-                                    is DataResult.Content -> nextPayload.canonicalAccessKnown
-                                    is DataResult.Empty -> !currentPayload.isTaskConversationSurface()
-                                    else -> true
-                                }
                             val projectedPayload =
                                 currentPayload
                                     .withThreadContentProjectionFrom(commitNextPayload)
@@ -2230,6 +2224,18 @@ internal class SharedThreadStore(
                                         homeLookupComplete = currentState.initialHomeAccessLookupComplete,
                                         homeAccessCandidate = currentState.initialHomeAccessCandidate,
                                     )
+                            // A reply thread's canonical stream carries synthetic `type = "thread"`
+                            // details (`canonicalAccessKnown = false`) because write authority
+                            // belongs to its parent channel in Home. Loading the reply stream
+                            // still proves canonical read access for the reply surface.
+                            val canonicalAccessFromResultKnown =
+                                when (result) {
+                                    is DataResult.Content ->
+                                        nextPayload.canonicalAccessKnown ||
+                                            projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread
+                                    is DataResult.Empty -> !projectedPayload.isTaskConversationSurface()
+                                    else -> true
+                                }
                             val canonicalAccessResolved =
                                 currentState.canonicalAccessResolved ||
                                     (resolvingInitialAccess && result.resolvesCanonicalConversationAccess() && canonicalAccessFromResultKnown)
@@ -6266,7 +6272,7 @@ internal class SharedThreadStore(
         dataSource.withCurrentReplyCacheProvenance(expectedProvenance) {
             val current = _state.value
             if (
-                !current.writeActionsEnabled ||
+                !current.canAdmitLocalSend() ||
                 expectedProvenance.threadPayloadOwnerScopeId == null ||
                 !current.payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)
             ) {

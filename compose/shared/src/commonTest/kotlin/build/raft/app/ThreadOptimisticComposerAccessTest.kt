@@ -549,4 +549,229 @@ class ThreadOptimisticComposerAccessTest {
         ensureThreadComposerDraftStarted(viewModel, composer, draftKey)
         assertEquals("in progress", viewModel.state.value.seedText)
     }
+
+    @Test
+    fun optimisticSendWhileLoadingAdmitsKnownSendTargetAndDefersOnlyWhenStreamIdMissing() {
+        val knownReplyPayload =
+            replyThreadInitialAccessPayload().copy(
+                status = "content",
+                joined = false,
+                canSend = false,
+            )
+        val loadingKnownReply =
+            SharedThreadState(
+                payload = knownReplyPayload,
+                accessResolution = ThreadAccessResolution.Loading,
+                replyParentAuthority = ReplyParentAuthorityStatus.Resolving,
+                writeActionsEnabled = false,
+            )
+        assertTrue(loadingKnownReply.allowsOptimisticSendWhileAccessLoading(sendChannelId = "thread-m1"))
+        assertTrue(loadingKnownReply.canAdmitLocalSend())
+        assertFalse(
+            loadingKnownReply.allowsOptimisticSendWhileAccessLoading(sendChannelId = "channel-1"),
+            "must refuse mismatched parent channel id for reply thread",
+        )
+        assertFalse(loadingKnownReply.allowsOptimisticSendWhileAccessLoading(sendChannelId = "thread-m1", limitLocked = true))
+        assertFalse(loadingKnownReply.canAdmitLocalSend(limitLocked = true))
+
+        // Early positive parent hint while still Loading remains directly sendable.
+        val writableHintReply = loadingKnownReply.copy(replyParentAuthority = ReplyParentAuthorityStatus.Writable)
+        assertTrue(writableHintReply.allowsOptimisticSendWhileAccessLoading(sendChannelId = "thread-m1"))
+        assertTrue(writableHintReply.canAdmitLocalSend())
+
+        // Brand-new reply thread with no server streamChannelId yet: cannot send directly (must not
+        // post to parentChannelId), but CAN defer until the stream channel id resolves.
+        val brandNewReply =
+            SharedThreadState(
+                payload = unresolvedReplyThreadAccessPayload().copy(status = "empty", joined = false, canSend = false),
+                accessResolution = ThreadAccessResolution.Loading,
+                replyParentAuthority = ReplyParentAuthorityStatus.Resolving,
+                writeActionsEnabled = false,
+            )
+        assertFalse(brandNewReply.allowsOptimisticSendWhileAccessLoading(sendChannelId = null))
+        assertFalse(brandNewReply.canAdmitLocalSend())
+        assertTrue(brandNewReply.canDeferOptimisticSendWhileAccessLoading())
+
+        // Known-denied / deleted / undetermined-after-lookup reply parent must neither send nor defer.
+        for (blockedAuthority in listOf(
+            ReplyParentAuthorityStatus.Denied,
+            ReplyParentAuthorityStatus.ParentDeleted,
+            ReplyParentAuthorityStatus.Unknown,
+        )) {
+            val blocked = loadingKnownReply.copy(replyParentAuthority = blockedAuthority)
+            assertFalse(blocked.allowsOptimisticSendWhileAccessLoading(sendChannelId = "thread-m1"), "authority=$blockedAuthority")
+            assertFalse(blocked.canDeferOptimisticSendWhileAccessLoading(), "authority=$blockedAuthority")
+            assertFalse(blocked.canAdmitLocalSend(), "authority=$blockedAuthority")
+        }
+
+        // Joined Channel / DM during Loading sends directly; known-unjoined Channel does not.
+        val joinedChannelLoading =
+            SharedThreadState(
+                payload = basePayload().copy(status = "content", joined = true, canSend = true),
+                accessResolution = ThreadAccessResolution.Loading,
+                writeActionsEnabled = false,
+            )
+        assertTrue(joinedChannelLoading.allowsOptimisticSendWhileAccessLoading(sendChannelId = "channel-1"))
+        assertTrue(joinedChannelLoading.canAdmitLocalSend())
+
+        val unjoinedChannelLoading =
+            joinedChannelLoading.copy(payload = joinedChannelLoading.payload.copy(joined = false, canSend = false))
+        assertFalse(unjoinedChannelLoading.allowsOptimisticSendWhileAccessLoading(sendChannelId = "channel-1"))
+        assertFalse(unjoinedChannelLoading.canDeferOptimisticSendWhileAccessLoading())
+        assertFalse(unjoinedChannelLoading.canAdmitLocalSend())
+
+        // Archived, error, NoPermission, Error, and Resolved read-only states remain fail-closed.
+        val archivedLoading = joinedChannelLoading.copy(payload = joinedChannelLoading.payload.copy(channelArchived = true))
+        assertFalse(archivedLoading.allowsOptimisticSendWhileAccessLoading(sendChannelId = "channel-1"))
+        assertFalse(archivedLoading.canDeferOptimisticSendWhileAccessLoading())
+        assertFalse(archivedLoading.canAdmitLocalSend())
+
+        val noPermission = loadingKnownReply.copy(accessResolution = ThreadAccessResolution.NoPermission)
+        assertFalse(noPermission.allowsOptimisticSendWhileAccessLoading(sendChannelId = "thread-m1"))
+        assertFalse(noPermission.canAdmitLocalSend())
+
+        val errorAccess = loadingKnownReply.copy(accessResolution = ThreadAccessResolution.Error)
+        assertFalse(errorAccess.allowsOptimisticSendWhileAccessLoading(sendChannelId = "thread-m1"))
+        assertFalse(errorAccess.canAdmitLocalSend())
+
+        val resolvedReadOnly =
+            loadingKnownReply.copy(
+                accessResolution = ThreadAccessResolution.Resolved,
+                replyParentAuthority = ReplyParentAuthorityStatus.Unknown,
+                writeActionsEnabled = false,
+            )
+        assertFalse(resolvedReadOnly.allowsOptimisticSendWhileAccessLoading(sendChannelId = "thread-m1"))
+        assertFalse(resolvedReadOnly.canAdmitLocalSend())
+    }
+
+    @Test
+    fun replyThreadAdmitsLocalSendDuringLoadingWhileHomeLookupIsSuspendedAndSurfacesServerFailure() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val route = replyThreadInitialAccessPayload().copy(joined = false, canSend = false)
+        val homeStarted = CompletableDeferred<Unit>()
+        val releaseHome = CompletableDeferred<Unit>()
+        val lookupDeadline = CompletableDeferred<Unit>()
+        val joinedHome = replyThreadAccessHomeSnapshot(joined = true, canSend = true)
+        val repository =
+            ReplyThreadAccessConversationRepositoryRecorder(
+                replyResult = DataResult.Content(replyThreadAccessSnapshot(body = "existing reply")),
+            )
+        val dataSource =
+            testSharedThreadDataSource(
+                storeScope = backgroundScope,
+                networkApi = ReplyThreadAccessNetworkApi,
+                sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository = repository,
+                channelRepository =
+                    FakeChannelRepository(
+                        channelsResult = {
+                            homeStarted.complete(Unit)
+                            releaseHome.await()
+                            DataResult.Content(
+                                ChannelSnapshot(
+                                    server = joinedHome.server,
+                                    channels = joinedHome.channels,
+                                )
+                            )
+                        },
+                        homeResult = {
+                            homeStarted.complete(Unit)
+                            releaseHome.await()
+                            DataResult.Content(joinedHome)
+                        },
+                    ),
+            )
+        dataSource.cachePayloadForTest(
+            contentPayloadForRoute(route, "cached reply", channelId = "thread-m1").copy(
+                joined = false,
+                canSend = false,
+                composer = route.composer.copy(enabled = false),
+            )
+        )
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                initialAccessLookupDeadline = { lookupDeadline.await() },
+            )
+        store.dispatch(SharedThreadIntent.Start(route))
+        advanceTimeBy(50)
+        runCurrent()
+
+        val loadingState = store.state.value
+        assertTrue(homeStarted.isCompleted, "Home lookup should still be suspended")
+        assertEquals("content", loadingState.payload.status, "state=$loadingState")
+        assertEquals(ThreadAccessResolution.Loading, loadingState.accessResolution, "state=$loadingState")
+        assertFalse(loadingState.writeActionsEnabled, "state=$loadingState")
+        assertFalse(loadingState.payload.canSend, "state=$loadingState")
+        assertTrue(
+            loadingState.allowsOptimisticSendWhileAccessLoading(sendChannelId = "thread-m1"),
+            "state=$loadingState",
+        )
+
+        // Sending while Home lookup is still suspended must capture send authority and admit the
+        // optimistic local message immediately instead of stalling in a client-side timeout.
+        val mountedProvenance = requireNotNull(dataSource.currentReplyCacheProvenance())
+        val authority =
+            dataSource.captureThreadLocalSendAuthority(
+                state = loadingState,
+                mountedOwnerProvenance = mountedProvenance,
+            )
+        assertTrue(authority != null, "expected send authority while Loading with known streamChannelId; state=$loadingState")
+        val localId = "${ThreadTransientLocalSendIdPrefix}loading-reply-1"
+        val pendingMessage =
+            RaftThreadMessageItem(
+                id = localId,
+                authorId = "u1",
+                authorName = "Artin",
+                isOwn = true,
+                body = "sent while loading",
+                threadChannelId = "thread-m1",
+                deliveryState = ThreadMessageDeliverySending,
+                pendingSendContext =
+                    RaftThreadPendingSendContext(
+                        channelId = "thread-m1",
+                        body = "sent while loading",
+                        asTask = false,
+                        attachmentIds = emptyList(),
+                        attachments = emptyList(),
+                        mentionChannelId = "channel-1",
+                        parentMessageId = "m1",
+                        streamChannelId = "thread-m1",
+                        memberScopedMentions = false,
+                        randomId = "random-loading-reply-1",
+                    ),
+            )
+        assertTrue(
+            store.admitLocalSend(
+                message = pendingMessage,
+                expectedProvenance = authority.provenance,
+                expectedRoute = authority.route,
+            ),
+            "admitLocalSend must succeed during Loading when concrete reply stream id is known",
+        )
+        assertTrue(
+            store.state.value.payload.messages.any { it.id == localId && it.deliveryState == ThreadMessageDeliverySending },
+            "optimistic local send must appear immediately on timeline; state=${store.state.value}",
+        )
+
+        // If the server responds 403 (user not joined / forbidden), failure surfaces cleanly on the
+        // local row without losing text.
+        store.accept(
+            SharedThreadIntent.ApplyLocalSendFailure(
+                messageId = localId,
+                errorCode = "http_403",
+                errorMessage = "Join this channel to send messages",
+                expectedProvenance = authority.provenance,
+                expectedRoute = authority.route,
+                randomId = "random-loading-reply-1",
+            )
+        )
+        val failedRow = store.state.value.payload.messages.first { it.id == localId }
+        assertEquals(ThreadMessageDeliveryFailed, failedRow.deliveryState)
+        assertEquals("http_403", failedRow.pendingSendErrorCode)
+        assertEquals("Join this channel to send messages", failedRow.pendingSendErrorMessage)
+        scope.cancel()
+    }
 }
