@@ -146,9 +146,14 @@ internal class ThreadRouteComposerActions(
         val attachmentIds = currentComposer.pendingAttachments.readyThreadAttachmentIdsForSend()
         val hasBlockingAttachmentUpload = currentComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()
         val hasFailedAttachmentUpload = currentComposer.pendingAttachments.hasFailedThreadAttachmentUpload()
+        val allowOptimisticLoadingSend =
+            threadViewModel.state.value.allowsOptimisticSendWhileAccessLoading(
+                sendChannelId = threadId,
+                limitLocked = threadLimitLocked,
+            )
         val gateBlockReason =
             when {
-                !payload.canSend -> "payload_can_send_false"
+                !payload.canSend && !allowOptimisticLoadingSend -> "payload_can_send_false"
                 threadId == null -> "missing_send_channel"
                 hasFailedAttachmentUpload -> "attachment_upload_failed"
                 hasBlockingAttachmentUpload -> "attachment_upload_in_progress"
@@ -268,11 +273,14 @@ internal class ThreadRouteComposerActions(
             bridge.log("thread_composer_action_blocked action=send reason=channel_limit_locked")
             return ThreadComposerSendAdmission.Rejected
         }
-        if (!renderSlice.writeActionsEnabled) {
-            if (
-                renderSlice.accessResolution == ThreadAccessResolution.Loading &&
-                !payload.channelArchived
-            ) {
+        val currentThreadState = threadViewModel.state.value
+        val allowOptimisticLoadingSend =
+            currentThreadState.allowsOptimisticSendWhileAccessLoading(
+                sendChannelId = composerSurface.sendChannelId,
+                limitLocked = threadLimitLocked,
+            )
+        if (!renderSlice.writeActionsEnabled && !allowOptimisticLoadingSend) {
+            if (currentThreadState.canDeferOptimisticSendWhileAccessLoading(limitLocked = threadLimitLocked)) {
                 composerDraftViewModel.dispatch(
                     SharedThreadComposerDraftIntent.Change(
                         seedText = request.value.text,
@@ -288,7 +296,8 @@ internal class ThreadRouteComposerActions(
                 pendingOptimisticSendState.value = request
                 bridge.log(
                     "thread_composer_send_deferred_for_access instanceId=${payload.instanceId} " +
-                        "surface=${payload.surfaceKind} textLen=${request.value.text.length}"
+                        "surface=${payload.surfaceKind} textLen=${request.value.text.length} " +
+                        "sendChannelId=${composerSurface.sendChannelId.orEmpty()}"
                 )
                 return ThreadComposerSendAdmission.Deferred
             }

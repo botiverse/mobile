@@ -5114,13 +5114,42 @@ private fun SharedThreadRouteContentContent(
         pendingOptimisticSend,
         renderSlice.accessResolution,
         renderSlice.writeActionsEnabled,
+        renderSlice.replyParentAuthority,
         threadLimitLocked,
         renderedThread.channelArchived,
         renderedThread.joined,
         renderedThread.canSend,
+        composerSurface.sendChannelId,
     ) {
         val pending = pendingOptimisticSend ?: return@LaunchedEffect
-        if (renderSlice.accessResolution == ThreadAccessResolution.Loading) {
+        val currentThreadState = threadViewModel.state.value
+        val canFlushNow =
+            !threadLimitLocked &&
+                (
+                    (
+                        renderSlice.accessResolution == ThreadAccessResolution.Resolved &&
+                            renderSlice.writeActionsEnabled &&
+                            !renderedThread.channelArchived &&
+                            renderedThread.joined &&
+                            renderedThread.canSend
+                    ) ||
+                        currentThreadState.allowsOptimisticSendWhileAccessLoading(
+                            sendChannelId = composerSurface.sendChannelId,
+                            limitLocked = threadLimitLocked,
+                        )
+                )
+        if (canFlushNow) {
+            pendingOptimisticSendState.value = null
+            val latestDraft = composerDraftViewModel.state.value
+            val resolvedRequest =
+                pending.copy(
+                    value = TextFieldValue(latestDraft.seedText),
+                    asTask = latestDraft.seedAsTask,
+                )
+            latestHandleComposerSendRequest(resolvedRequest)
+            return@LaunchedEffect
+        }
+        if (currentThreadState.canDeferOptimisticSendWhileAccessLoading(limitLocked = threadLimitLocked)) {
             delay(10_000L)
             if (pendingOptimisticSendState.value === pending) {
                 pendingOptimisticSendState.value = null
@@ -5129,30 +5158,13 @@ private fun SharedThreadRouteContentContent(
             return@LaunchedEffect
         }
         pendingOptimisticSendState.value = null
-        if (
-            renderSlice.accessResolution == ThreadAccessResolution.Resolved &&
-            renderSlice.writeActionsEnabled &&
-            !threadLimitLocked &&
-            !renderedThread.channelArchived &&
-            renderedThread.joined &&
-            renderedThread.canSend
-        ) {
-            val latestDraft = composerDraftViewModel.state.value
-            val resolvedRequest =
-                pending.copy(
-                    value = TextFieldValue(latestDraft.seedText),
-                    asTask = latestDraft.seedAsTask,
-                )
-            latestHandleComposerSendRequest(resolvedRequest)
-        } else {
-            bridge.log(
-                "thread_composer_deferred_send_aborted " +
-                    "accessResolution=${renderSlice.accessResolution.name} " +
-                    "writeActions=${renderSlice.writeActionsEnabled} " +
-                    "limitLocked=$threadLimitLocked archived=${renderedThread.channelArchived} " +
-                    "joined=${renderedThread.joined} canSend=${renderedThread.canSend}"
-            )
-        }
+        bridge.log(
+            "thread_composer_deferred_send_aborted " +
+                "accessResolution=${renderSlice.accessResolution.name} " +
+                "writeActions=${renderSlice.writeActionsEnabled} " +
+                "limitLocked=$threadLimitLocked archived=${renderedThread.channelArchived} " +
+                "joined=${renderedThread.joined} canSend=${renderedThread.canSend}"
+        )
     }
     LaunchedEffect(composerDraftViewModel, threadInstanceKey) {
         composerDraftViewModel.state.collect { draftState ->

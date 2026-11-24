@@ -472,11 +472,65 @@ internal data class ThreadLocalSendAuthority(
     val route: ThreadRouteIdentity
 )
 
+/**
+ * Whether a user-initiated send may go straight to the server while [SharedThreadState.accessResolution]
+ * is still [ThreadAccessResolution.Loading] (e.g. Home directory lookup slow/in-flight on VPN or warm
+ * open), letting the server act as the write-permission authority instead of deferring into a
+ * client-side timeout.
+ *
+ * Admits only when there is no known blocker (not limit-locked, not archived, not error/no_permission,
+ * not a known-denied/undetermined-after-lookup reply parent, and not a known-unjoined non-reply route)
+ * AND the route already carries a concrete send target (`route.timelineChannelId != null`, which
+ * excludes brand-new reply threads whose stream channel has not been created yet).
+ */
+internal fun SharedThreadState.allowsOptimisticSendWhileAccessLoading(
+    sendChannelId: String? = null,
+    limitLocked: Boolean = false,
+): Boolean {
+    if (!canDeferOptimisticSendWhileAccessLoading(limitLocked = limitLocked)) return false
+    val route = payload.resolveThreadRouteIdentity()
+    if (!route.hasCompleteReplyIdentity) return false
+    val targetChannelId = route.timelineChannelId ?: return false
+    if (sendChannelId != null && sendChannelId != targetChannelId) return false
+    return true
+}
+
+/**
+ * Whether a send tapped during [ThreadAccessResolution.Loading] is eligible to wait briefly in the
+ * single-flight optimistic-send slot when no concrete `timelineChannelId` exists yet (for example, a
+ * brand-new reply thread waiting for the server to create/resolve its stream channel id).
+ */
+internal fun SharedThreadState.canDeferOptimisticSendWhileAccessLoading(
+    limitLocked: Boolean = false,
+): Boolean {
+    if (limitLocked) return false
+    if (accessResolution != ThreadAccessResolution.Loading) return false
+    if (payload.channelArchived) return false
+    if (payload.status == "error" || payload.status == "no_permission") return false
+    if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
+        if (
+            replyParentAuthority != ReplyParentAuthorityStatus.Resolving &&
+            replyParentAuthority != ReplyParentAuthorityStatus.Writable
+        ) {
+            return false
+        }
+    } else if (!payload.joined) {
+        return false
+    }
+    return true
+}
+
+internal fun SharedThreadState.canAdmitLocalSend(limitLocked: Boolean = false): Boolean {
+    if (limitLocked) return false
+    if (writeActionsEnabled) return true
+    return allowsOptimisticSendWhileAccessLoading(sendChannelId = null, limitLocked = false)
+}
+
 internal fun SharedThreadDataSource.captureThreadLocalSendAuthority(
     state: SharedThreadState,
     mountedOwnerProvenance: ReplyCacheProvenance?
 ): ThreadLocalSendAuthority? {
-    if (!state.writeActionsEnabled) return null
+    if (!state.canAdmitLocalSend()) return null
     val provenance = mountedOwnerProvenance ?: return null
     if (provenance.threadPayloadOwnerScopeId == null) return null
     if (!isCurrentReplyCacheProvenance(provenance)) return null

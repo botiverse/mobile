@@ -816,4 +816,304 @@ class SharedThreadMembershipResumeRegressionTest {
         )
         scope.cancel()
     }
+
+    @Test
+    fun coldReplyThreadLoadedViaGetThreadWithSyntheticMembershipUnknownUnlocksWrites() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val route = replyThreadInitialAccessPayload()
+        val joinedHome = replyThreadAccessHomeSnapshot(joined = true, canSend = true)
+        val releaseThread = CompletableDeferred<Unit>()
+        val repository =
+            ReplyThreadAccessConversationRepositoryRecorder(
+                replyResult = DataResult.Error(ScreenError(code = "unexpected_get_reply_thread", retryable = false)),
+                threadResult = DataResult.Content(syntheticGetThreadReplySnapshot(body = "first reply")),
+                releaseThread = releaseThread,
+            )
+        val dataSource =
+            testSharedThreadDataSource(
+                storeScope = backgroundScope,
+                networkApi = ReplyThreadAccessNetworkApi,
+                sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository = repository,
+                channelRepository =
+                    FakeChannelRepository(
+                        channelsResult = {
+                            DataResult.Content(
+                                ChannelSnapshot(
+                                    server = joinedHome.server,
+                                    channels = joinedHome.channels,
+                                )
+                            )
+                        },
+                        homeResult = { DataResult.Content(joinedHome) },
+                    ),
+            )
+        seedKnownReplyThreadStream(dataSource)
+
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.dispatch(SharedThreadIntent.Start(route))
+        advanceTimeBy(50)
+        runCurrent()
+
+        assertTrue(repository.threadStarted.isCompleted, "known threadChannelId must load via getThread")
+        assertTrue(repository.replyRequests.isEmpty(), "must not fall back to getReplyThread: ${repository.replyRequests}")
+        assertEquals("loading", store.state.value.payload.status, "state=${store.state.value}")
+
+        // Early positive parent directory hint while the reply thread is still loading.
+        store.dispatch(
+            SharedThreadIntent.ApplyParentDirectoryHint(
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                present = true,
+                joined = true,
+                canSend = true,
+                authoritative = true,
+            )
+        )
+        runCurrent()
+
+        releaseThread.complete(Unit)
+        advanceTimeBy(1_500)
+        runCurrent()
+
+        val state = store.state.value
+        assertEquals(ThreadAccessResolution.Resolved, state.accessResolution, "state=$state")
+        assertTrue(state.canonicalAccessResolved, "reply stream load must resolve canonical access; state=$state")
+        assertEquals(ReplyParentAuthorityStatus.Writable, state.replyParentAuthority, "state=$state")
+        assertTrue(state.writeActionsEnabled, "writes must unlock once reply stream and parent authority resolve; state=$state")
+        assertTrue(state.payload.joined, "state=$state")
+        assertTrue(state.payload.canSend, "state=$state")
+        assertTrue(state.payload.composer.enabled, "state=$state")
+        assertEquals(listOf("first reply"), state.payload.messages.map { it.body }, "state=$state")
+        scope.cancel()
+    }
+
+    @Test
+    fun coldReplyThreadViaGetThreadWithUnjoinedParentResolvesToJoinCtaInsteadOfLoading() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val route = replyThreadInitialAccessPayload()
+        val unjoinedHome = replyThreadAccessHomeSnapshot(joined = false, canSend = false)
+        val repository =
+            ReplyThreadAccessConversationRepositoryRecorder(
+                replyResult = DataResult.Error(ScreenError(code = "unexpected_get_reply_thread", retryable = false)),
+                threadResult = DataResult.Content(syntheticGetThreadReplySnapshot(body = "public reply")),
+            )
+        val dataSource =
+            testSharedThreadDataSource(
+                storeScope = backgroundScope,
+                networkApi = ReplyThreadAccessNetworkApi,
+                sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository = repository,
+                channelRepository =
+                    FakeChannelRepository(
+                        channelsResult = {
+                            DataResult.Content(
+                                ChannelSnapshot(
+                                    server = unjoinedHome.server,
+                                    channels = unjoinedHome.channels,
+                                )
+                            )
+                        },
+                        homeResult = { DataResult.Content(unjoinedHome) },
+                    ),
+            )
+        seedKnownReplyThreadStream(dataSource)
+
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.dispatch(SharedThreadIntent.Start(route))
+        advanceTimeBy(1_500)
+        runCurrent()
+
+        assertTrue(repository.threadStarted.isCompleted, "known threadChannelId must load via getThread")
+        assertTrue(repository.replyRequests.isEmpty(), "must not fall back to getReplyThread: ${repository.replyRequests}")
+
+        val state = store.state.value
+        assertEquals(ThreadAccessResolution.Resolved, state.accessResolution, "unjoined reply thread must not stay Loading; state=$state")
+        assertTrue(state.canonicalAccessResolved, "state=$state")
+        assertEquals(ReplyParentAuthorityStatus.Denied, state.replyParentAuthority, "state=$state")
+        assertFalse(state.payload.joined, "state=$state")
+        assertFalse(state.payload.canSend, "state=$state")
+        assertFalse(state.payload.composer.enabled, "state=$state")
+        assertTrue(threadFooterShowsJoin(state.payload.joined, conversationLounge = null), "Join CTA must be shown; state=$state")
+        scope.cancel()
+    }
+
+    @Test
+    fun coldEmptyReplyThreadViaGetThreadWithSyntheticMembershipUnknownResolvesWrites() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val route = replyThreadInitialAccessPayload()
+        val joinedHome = replyThreadAccessHomeSnapshot(joined = true, canSend = true)
+        val emptySnapshot =
+            syntheticGetThreadReplySnapshot(body = "unused").copy(
+                messages = emptyList(),
+            )
+        val repository =
+            ReplyThreadAccessConversationRepositoryRecorder(
+                replyResult = DataResult.Error(ScreenError(code = "unexpected_get_reply_thread", retryable = false)),
+                threadResult = DataResult.Content(emptySnapshot),
+            )
+        val dataSource =
+            testSharedThreadDataSource(
+                storeScope = backgroundScope,
+                networkApi = ReplyThreadAccessNetworkApi,
+                sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository = repository,
+                channelRepository =
+                    FakeChannelRepository(
+                        channelsResult = {
+                            DataResult.Content(
+                                ChannelSnapshot(
+                                    server = joinedHome.server,
+                                    channels = joinedHome.channels,
+                                )
+                            )
+                        },
+                        homeResult = { DataResult.Content(joinedHome) },
+                    ),
+            )
+        seedKnownReplyThreadStream(dataSource)
+
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.dispatch(SharedThreadIntent.Start(route))
+        advanceTimeBy(1_500)
+        runCurrent()
+
+        assertTrue(repository.threadStarted.isCompleted, "known threadChannelId must load via getThread")
+        assertTrue(repository.replyRequests.isEmpty(), "must not fall back to getReplyThread: ${repository.replyRequests}")
+
+        val state = store.state.value
+        assertEquals("empty", state.payload.status, "empty reply thread must project status=empty; state=$state")
+        assertEquals(ThreadAccessResolution.Resolved, state.accessResolution, "state=$state")
+        assertTrue(state.canonicalAccessResolved, "state=$state")
+        assertEquals(ReplyParentAuthorityStatus.Writable, state.replyParentAuthority, "state=$state")
+        assertTrue(state.writeActionsEnabled, "empty reply thread with joined parent must unlock writes; state=$state")
+        assertTrue(state.payload.joined, "state=$state")
+        assertTrue(state.payload.canSend, "state=$state")
+        assertTrue(state.payload.composer.enabled, "state=$state")
+        scope.cancel()
+    }
+
+    @Test
+    fun coldReplyThreadViaGetThreadResolvingBeforeHomeLookupCompletesUnlocksWhenHomeLands() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val route = replyThreadInitialAccessPayload()
+        val joinedHome = replyThreadAccessHomeSnapshot(joined = true, canSend = true)
+        val homeStarted = CompletableDeferred<Unit>()
+        val releaseHome = CompletableDeferred<Unit>()
+        val lookupDeadline = CompletableDeferred<Unit>()
+        val repository =
+            ReplyThreadAccessConversationRepositoryRecorder(
+                replyResult = DataResult.Error(ScreenError(code = "unexpected_get_reply_thread", retryable = false)),
+                threadResult = DataResult.Content(syntheticGetThreadReplySnapshot(body = "fast reply")),
+            )
+        val dataSource =
+            testSharedThreadDataSource(
+                storeScope = backgroundScope,
+                networkApi = ReplyThreadAccessNetworkApi,
+                sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository = repository,
+                channelRepository =
+                    FakeChannelRepository(
+                        channelsResult = {
+                            homeStarted.complete(Unit)
+                            releaseHome.await()
+                            DataResult.Content(
+                                ChannelSnapshot(
+                                    server = joinedHome.server,
+                                    channels = joinedHome.channels,
+                                )
+                            )
+                        },
+                        homeResult = {
+                            homeStarted.complete(Unit)
+                            releaseHome.await()
+                            DataResult.Content(joinedHome)
+                        },
+                    ),
+            )
+        seedKnownReplyThreadStream(dataSource)
+
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                initialAccessLookupDeadline = { lookupDeadline.await() },
+            )
+        store.dispatch(SharedThreadIntent.Start(route))
+        advanceTimeBy(50)
+        runCurrent()
+
+        assertTrue(homeStarted.isCompleted, "expected Home parent lookup to be in flight")
+        assertTrue(repository.threadStarted.isCompleted, "known threadChannelId must load via getThread")
+        assertTrue(repository.replyRequests.isEmpty(), "must not fall back to getReplyThread: ${repository.replyRequests}")
+
+        val beforeHome = store.state.value
+        assertEquals(ThreadAccessResolution.Loading, beforeHome.accessResolution, "must wait for parent Home lookup; state=$beforeHome")
+        assertTrue(beforeHome.canonicalAccessResolved, "getThread must already mark canonicalAccessResolved=true; state=$beforeHome")
+        assertFalse(beforeHome.initialHomeAccessLookupComplete, "state=$beforeHome")
+        assertFalse(beforeHome.writeActionsEnabled, "writes must remain locked until Home lookup lands; state=$beforeHome")
+
+        releaseHome.complete(Unit)
+        runCurrent()
+
+        val afterHome = store.state.value
+        assertEquals(ThreadAccessResolution.Resolved, afterHome.accessResolution, "state=$afterHome")
+        assertTrue(afterHome.canonicalAccessResolved, "state=$afterHome")
+        assertTrue(afterHome.initialHomeAccessLookupComplete, "state=$afterHome")
+        assertEquals(ReplyParentAuthorityStatus.Writable, afterHome.replyParentAuthority, "state=$afterHome")
+        assertTrue(afterHome.writeActionsEnabled, "positive Home lookup must unlock writes; state=$afterHome")
+        assertTrue(afterHome.payload.joined, "state=$afterHome")
+        assertTrue(afterHome.payload.canSend, "state=$afterHome")
+        assertTrue(afterHome.payload.composer.enabled, "state=$afterHome")
+        scope.cancel()
+    }
+
+    private fun syntheticGetThreadReplySnapshot(body: String): build.raft.app.data.ThreadSnapshot {
+        val base = replyThreadAccessSnapshot(body = body, joined = false, canSend = false)
+        val syntheticThreadConversation =
+            base.conversation.copy(
+                kind = ConversationKind.Thread,
+                channelType = "thread",
+                joined = false,
+                membershipKnown = false,
+                permissions = ConversationPermissions(canRead = true, canSend = false, canAttach = false, canCreateTask = false),
+            )
+        return base.copy(
+            conversation = syntheticThreadConversation,
+            canonicalConversationDetail = syntheticThreadConversation,
+        )
+    }
+
+    private suspend fun seedKnownReplyThreadStream(
+        dataSource: SharedThreadDataSource,
+        parentChannelId: String = "channel-1",
+        parentMessageId: String = "m1",
+        threadChannelId: String = "thread-m1",
+    ) {
+        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        val remembered =
+            dataSource.rememberReplyParentCandidate(
+                provenance = provenance,
+                serverId = provenance.serverId,
+                parentChannelId = parentChannelId,
+                parentMessage =
+                    RaftThreadMessageItem(
+                        id = parentMessageId,
+                        authorId = "u1",
+                        authorName = "Artin",
+                        authorKind = "human",
+                        seq = 1,
+                        body = "parent body",
+                        threadChannelId = threadChannelId,
+                        replyCount = 1,
+                    ),
+                threadChannelId = threadChannelId,
+                replyCount = 1,
+            )
+        assertTrue(remembered, "expected reply parent candidate to seed known threadChannelId")
+    }
 }
