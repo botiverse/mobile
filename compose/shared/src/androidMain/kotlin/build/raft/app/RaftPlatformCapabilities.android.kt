@@ -15,8 +15,6 @@ import build.raft.app.data.PlatformFile
 import build.raft.app.data.RaftAndroidSqlDatabaseContext
 import build.raft.app.network.RAFT_ANDROID_TABLET_SMALLEST_WIDTH_DP
 
-internal actual fun raftPlatformIsiOSAppOnMac(): Boolean = false
-
 internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle =
     RaftPullToRefreshStyle.Material
 
@@ -32,8 +30,6 @@ internal actual fun raftPlatformThreadImeProgrammaticViewportPolicy():
 
 internal actual fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode =
     AppShellChildPagePrewarmMode.Canary
-
-internal actual fun raftPlatformSupportsMultiShellHost(): Boolean = true
 
 /**
  * Process-level cache for [PackageManager.FEATURE_SENSOR_HINGE_ANGLE]. Hardware feature support
@@ -79,17 +75,11 @@ internal actual fun raftPlatformLargeScreenPossible(): Boolean {
     return RaftAndroidHingeSensorCache.hasHingeAngle(context)
 }
 
-internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = false
-
-internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = false
-
 internal actual fun raftPlatformMessageTextPointerSelectable(): Boolean = false
 
 internal actual fun raftPlatformHasFinePointer(): Boolean = false
 
 internal actual fun raftPlatformShortcutsUseCommand(): Boolean = false
-
-internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = true
 
 internal actual fun raftPlatformSupportsEmbeddedOwnWebView(): Boolean = true
 

@@ -1278,38 +1278,17 @@ internal sealed interface MembersAgentWorkspaceTreeState {
     data object Empty : MembersAgentWorkspaceTreeState
 }
 
-internal enum class MembersAgentLifecycleAction(
-    val actionKey: String,
-    val label: String,
-    val iconName: RaftLucideIconName,
-    val successLabel: String,
-    val destructive: Boolean = false
-) {
-    Start("start", "Start", RaftLucideIconName.Play, "Started"),
-    Stop("stop", "Stop", RaftLucideIconName.Square, "Stopped"),
-    Restart("restart", "Restart", RaftLucideIconName.RotateCw, "Restarted"),
-    ResetSession("reset_session", "Reset session", RaftLucideIconName.RefreshCw, "Session reset"),
-    ResetFull("reset_full", "Full reset", RaftLucideIconName.Eraser, "Full reset"),
-    // task #515: the action is the web "archive" (former delete). Enum labels are
-    // non-localized fallbacks; user-visible text comes from MR strings.
-    Delete("delete", "Archive Agent", RaftLucideIconName.Archive, "Archived", destructive = true),
-    UnassignMachine("assign_machine", "Unassign machine", RaftLucideIconName.MonitorX, "Machine unassigned");
-
-    val resetMode: AgentResetMode?
-        get() =
-            when (this) {
-                Restart -> AgentResetMode.Restart
-                ResetSession -> AgentResetMode.Session
-                ResetFull -> AgentResetMode.Full
-                Start,
-                Stop,
-                Delete,
-                UnassignMachine -> null
-            }
-
-    val requiresConfirmation: Boolean
-        get() = this != Start
-}
+internal val MembersAgentLifecycleAction.iconName: RaftLucideIconName
+    get() =
+        when (this) {
+            MembersAgentLifecycleAction.Start -> RaftLucideIconName.Play
+            MembersAgentLifecycleAction.Stop -> RaftLucideIconName.Square
+            MembersAgentLifecycleAction.Restart -> RaftLucideIconName.RotateCw
+            MembersAgentLifecycleAction.ResetSession -> RaftLucideIconName.RefreshCw
+            MembersAgentLifecycleAction.ResetFull -> RaftLucideIconName.Eraser
+            MembersAgentLifecycleAction.Delete -> RaftLucideIconName.Archive
+            MembersAgentLifecycleAction.UnassignMachine -> RaftLucideIconName.MonitorX
+        }
 
 @Composable
 internal fun MembersAgentLifecycleAction.localizedLabel(): String =

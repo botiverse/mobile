@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.data.ThreadSendMessageMention
 import build.raft.app.markdown.raftMarkdownWithoutQuotes
-import build.raft.app.model.ChannelExternalMemberProfile
 
 /** `mentions[].type` of a Slack participant (slock `StructuredMentionInput`). */
 internal const val ComposerStructuredMentionExternalType = "external"
@@ -49,22 +48,6 @@ private fun String.isStructuredMentionUuid(): Boolean =
             }
         }
 
-/**
- * The `@` token a Slack participant is mentioned by, exactly as web `MessageInput.tsx` builds it: the
- * first non-blank Slack handle (else the display name without spaces), every character outside
- * Raft's handle alphabet (`[\p{L}\p{N}_-]`) replaced by `-`, at most 128 characters (the server's
- * `parseStructuredMentions` limit). Null when nothing usable is left.
- */
-internal fun ChannelExternalMemberProfile.composerMentionHandle(): String? {
-    val raw = handles.firstOrNull { it.trim().isNotEmpty() } ?: displayName.filterNot { it.isWhitespace() }
-    val handle = buildString {
-        raw.forEachCodePoint { codePoint ->
-            if (codePoint.isRaftHandleCodePoint()) appendCodePoint(codePoint) else append('-')
-        }
-    }
-    return handle.takeIf { it.isNotEmpty() && it.length <= 128 }
-}
-
 /** The structured mentions whose `@handle` is still visible in [text] (rule: never send an @ that is not in the text). */
 internal fun List<ThreadSendMessageMention>.visibleStructuredMentionsIn(text: String): List<ThreadSendMessageMention> =
     if (isEmpty()) this else filter { mention -> composerStructuredMentionStillAppears(text, mention.name) }.distinct()
@@ -100,7 +83,7 @@ internal fun composerStructuredMentionStillAppears(source: String, handle: Strin
         val end = at + token.length
         if (end >= text.length) return true
         // slock regex: `@handle(?!(?!CJK)[\p{L}\p{N}_-])`.
-        val next = text.codePointAtCompat(end)
+        val next = text.raftCodePointAtCompat(end)
         if (!next.isRaftHandleCodePoint() || next.isCjkSuffixStart()) return true
         from = at + 1
     }
@@ -112,7 +95,7 @@ private val BareUrlRegex = Regex("""https?://[^\s<>]+""")
 
 private fun String.isRaftHandle(): Boolean {
     var ok = true
-    forEachCodePoint { if (!it.isRaftHandleCodePoint()) ok = false }
+    forEachRaftCodePoint { if (!it.isRaftHandleCodePoint()) ok = false }
     return ok
 }
 
@@ -173,31 +156,4 @@ private fun String.withoutInlineCode(): String {
         }
     }
     return out.toString()
-}
-
-private inline fun String.forEachCodePoint(action: (Int) -> Unit) {
-    var index = 0
-    while (index < length) {
-        val codePoint = codePointAtCompat(index)
-        action(codePoint)
-        index += if (codePoint >= 0x10000) 2 else 1
-    }
-}
-
-private fun String.codePointAtCompat(index: Int): Int {
-    val high = this[index]
-    if (high.isHighSurrogate() && index + 1 < length && this[index + 1].isLowSurrogate()) {
-        return 0x10000 + ((high.code - 0xD800) shl 10) + (this[index + 1].code - 0xDC00)
-    }
-    return high.code
-}
-
-private fun StringBuilder.appendCodePoint(codePoint: Int) {
-    if (codePoint < 0x10000) {
-        append(codePoint.toChar())
-    } else {
-        val offset = codePoint - 0x10000
-        append((0xD800 + (offset shr 10)).toChar())
-        append((0xDC00 + (offset and 0x3FF)).toChar())
-    }
 }

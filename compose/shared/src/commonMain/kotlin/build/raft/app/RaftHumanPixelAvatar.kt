@@ -20,16 +20,10 @@ package build.raft.app
  */
 internal const val RAFT_HUMAN_PIXEL_AVATAR_SLOCK_SHA = "853c6998bcef45df5c25e63b1035e2388608721d"
 
-internal const val RAFT_HUMAN_PIXEL_AVATAR_SCHEME = "pixel-human:"
-internal const val RAFT_HUMAN_PIXEL_AVATAR_RECIPE_VERSION = "v1"
 private const val Prefix = RAFT_HUMAN_PIXEL_AVATAR_SCHEME + RAFT_HUMAN_PIXEL_AVATAR_RECIPE_VERSION + ":"
 
 /** The marker of an avatar the Server picked (a new account's random one), after every field. */
-private const val AutoSuffix = "/auto"
-
-/** Longest value a reader looks at; a real recipe is far shorter. */
-private const val MaxValueLength = 128
-private val ValuePattern = Regex("^pixel-human:v[0-9]{1,3}:[a-z0-9.]*(?:/auto)?$")
+private const val AutoSuffix = RaftHumanPixelAvatarAutoSuffix
 
 /** A recipe field, in wire order. Append only. */
 internal enum class RaftHumanPixelAvatarField(
@@ -127,13 +121,6 @@ internal fun serializeRaftHumanPixelAvatarRecipe(recipe: RaftHumanPixelAvatarRec
  * True when [value] is a built pixel avatar (any version, any fields): a short value of the
  * `pixel-human:` scheme in its own alphabet. Exact, like the web: no trimming.
  */
-internal fun isRaftHumanPixelAvatarUrl(value: String?): Boolean =
-    value != null && value.length <= MaxValueLength && ValuePattern.matches(value)
-
-/** True when the avatar is one the Server picked, not one the person built. */
-internal fun isAutoRaftHumanPixelAvatarUrl(value: String?): Boolean =
-    isRaftHumanPixelAvatarUrl(value) && value!!.endsWith(AutoSuffix)
-
 /** The v1 fields of a value of this version, or null for another version. */
 private fun v1Parts(value: String): List<String>? {
     if (!value.startsWith(Prefix)) return null
