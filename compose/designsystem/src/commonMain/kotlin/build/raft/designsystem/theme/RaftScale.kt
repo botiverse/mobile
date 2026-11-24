@@ -71,9 +71,18 @@ enum class RaftPointerInput {
 fun raftComponentTokens(scale: RaftScale, pointerInput: RaftPointerInput): RaftUiComponentTokens.Values =
     RaftUiComponentTokens.of(wide = scale == RaftScale.Wide, fine = pointerInput == RaftPointerInput.Fine)
 
-/** The control metrics for a window of [scale] used by [pointerInput] ([raftComponentTokens]). */
+/**
+ * The control metrics for a window of [scale] used by [pointerInput] ([raftComponentTokens]). With a finger, a wide
+ * window ([RaftScale.Wide]: a tablet, an unfolded Duo, a phone held sideways at 744 and up) takes the short head
+ * ([RaftControlMetrics.MobileShortHead], 48): the screen has room for more of the content, not for taller heads
+ * (artin, #wg-mobile-sync:#265). The bar buttons keep their size.
+ */
 fun raftControlMetrics(scale: RaftScale, pointerInput: RaftPointerInput): RaftControlMetrics =
-    if (raftComponentTokens(scale, pointerInput) == RaftUiComponentTokens.Desktop) RaftControlMetrics.Desktop else RaftControlMetrics.Mobile
+    when {
+        raftComponentTokens(scale, pointerInput) == RaftUiComponentTokens.Desktop -> RaftControlMetrics.Desktop
+        scale == RaftScale.Wide -> RaftControlMetrics.MobileShortHead
+        else -> RaftControlMetrics.Mobile
+    }
 
 /**
  * The control metrics: raft-ui's component tokens ([RaftUiComponentTokens], generated from its
@@ -212,6 +221,12 @@ data class RaftControlMetrics(
         /** The touch context: a phone, and a touch screen at any width (44dp controls). */
         val Mobile = of(RaftUiComponentTokens.Touch)
 
+        /**
+         * The touch context in a wide window: [Mobile] with the short head (raft-ui
+         * `header-height-short`, 48: the 44 controls with 2 above and below).
+         */
+        val MobileShortHead = Mobile.copy(headHeight = RaftUiComponentTokens.Touch.headerHeightShort)
+
         /** The desktop context: a wide window with a mouse or trackpad (34dp controls). */
         val Desktop = of(RaftUiComponentTokens.Desktop)
     }
@@ -332,3 +347,4 @@ internal fun raftAutoScale(): RaftScale {
  * platform has no better guess (desktop), which keeps [RaftScale.Compact].
  */
 internal expect fun raftPlatformUnmeasuredWindowWidth(): Dp?
+
