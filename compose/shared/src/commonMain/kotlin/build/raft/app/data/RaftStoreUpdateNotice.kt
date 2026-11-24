@@ -174,6 +174,8 @@ internal fun raftStoreUpdateCheckSnapshot(
                         latestVersionCode = latest.build,
                         latestVersionLabel = raftVersionNameOfBuildNumber(latest.build).orEmpty(),
                         downloadUrl = url,
+                        updatePriority = latest.updatePriority,
+                        stalenessDays = latest.stalenessDays,
                     )
             }
         }

@@ -288,6 +288,7 @@ internal class BridgeSettingsPlatformCapabilities(
             // A store install: the person asked, so ask the store now and open it when it has a newer build.
             val store = openStoreUpdate(force = true)
             if (store != null) {
+                RaftAppUpdates.coordinator.publishSnapshot(store)
                 val developer = loadDeveloper()
                 if (developer is DataResult.Content) return DataResult.Content(developer.data.copy(updateCheck = store))
             }
@@ -295,13 +296,23 @@ internal class BridgeSettingsPlatformCapabilities(
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_hands_update_check_failed" }))
         }
-        return DataResult.Content(response.toDeveloperSnapshot())
+        val snapshot = response.toDeveloperSnapshot()
+        RaftAppUpdates.coordinator.publishSnapshot(snapshot.updateCheck)
+        return DataResult.Content(snapshot)
     }
 
     override suspend fun checkHandsUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> {
         val hands = handsUpdateAction("handsUpdateStatus")
-        if (hands.isHandsUpdateSupported()) return hands
-        return storeUpdateSnapshot(force = false)?.let { DataResult.Content(it) } ?: hands
+        val result =
+            if (hands.isHandsUpdateSupported()) {
+                hands
+            } else {
+                storeUpdateSnapshot(force = false)?.let { DataResult.Content(it) } ?: hands
+            }
+        if (result is DataResult.Content) {
+            RaftAppUpdates.coordinator.publishSnapshot(result.data)
+        }
+        return result
     }
 
     /**
@@ -347,8 +358,16 @@ internal class BridgeSettingsPlatformCapabilities(
 
     override suspend fun installHandsUpdateForToken(token: String): DataResult<SharedSettingsUpdateCheckSnapshot> {
         val hands = handsUpdateAction("handsUpdateInstall", token)
-        if (hands.isHandsUpdateSupported()) return hands
-        return openStoreUpdate(force = false)?.let { DataResult.Content(it) } ?: hands
+        val result =
+            if (hands.isHandsUpdateSupported()) {
+                hands
+            } else {
+                openStoreUpdate(force = false)?.let { DataResult.Content(it) } ?: hands
+            }
+        if (result is DataResult.Content) {
+            RaftAppUpdates.coordinator.publishSnapshot(result.data)
+        }
+        return result
     }
 
     override suspend fun prefetchReleaseNotes(url: String): DataResult<Unit> {
@@ -986,7 +1005,10 @@ internal fun JsonObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
                 fullDownloadSizeBytes = optLong("updateFullDownloadSizeBytes", 0L).coerceAtLeast(0L),
                 patchDownloadSizeBytes = optLong("updatePatchDownloadSizeBytes", 0L).coerceAtLeast(0L),
                 checkedAtLabel = optString("updateCheckedAtLabel"),
-                errorCode = optString("updateCheckErrorCode")
+                errorCode = optString("updateCheckErrorCode"),
+                forceUpdate = optBoolean("updateForceUpdate", false),
+                updatePriority = optInt("updatePriority", 0),
+                stalenessDays = optLong("updateStalenessDays", -1L).takeIf { it >= 0L }?.toInt()
             ),
         options = options.ifEmpty { sharedSettingsDefaultApiEnvironmentOptions() },
         feedback = optString("feedback").takeIf { it.isNotBlank() }

@@ -269,7 +269,10 @@ data class SharedSettingsUpdateCheckSnapshot(
      * and the install channel answered instead ([raftStoreUpdateCheckSnapshot]); blank for Hands.
      * A store update opens the store page ([downloadUrl]) instead of downloading.
      */
-    val storeChannel: String = ""
+    val storeChannel: String = "",
+    val forceUpdate: Boolean = false,
+    val updatePriority: Int = 0,
+    val stalenessDays: Int? = null
 )
 
 enum class SharedSettingsUpdateTransactionState(val wireValue: String) {
@@ -280,6 +283,7 @@ enum class SharedSettingsUpdateTransactionState(val wireValue: String) {
     Downloading("downloading"),
     ReadyToInstall("ready_to_install"),
     InstallerOpened("installer_opened"),
+    ReadyToRestart("ready_to_restart"),
     Failed("failed"),
     Stale("stale"),
     Installed("installed");

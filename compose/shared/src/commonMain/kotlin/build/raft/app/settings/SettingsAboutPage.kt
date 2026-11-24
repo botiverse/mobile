@@ -478,7 +478,8 @@ internal fun settingsAboutUpdateStatus(
             copy.permissionRequired
         updateCheck.transactionState == SharedSettingsUpdateTransactionState.Checking -> copy.checking
         updateCheck.transactionState == SharedSettingsUpdateTransactionState.ReadyToInstall ||
-            updateCheck.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened -> copy.install
+            updateCheck.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened ||
+            updateCheck.transactionState == SharedSettingsUpdateTransactionState.ReadyToRestart -> copy.install
         updateCheck.transactionState == SharedSettingsUpdateTransactionState.Installed -> copy.installed
         updateCheck.transactionState == SharedSettingsUpdateTransactionState.Failed ||
             updateCheck.transactionState == SharedSettingsUpdateTransactionState.Stale -> copy.retry

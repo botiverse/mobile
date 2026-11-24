@@ -207,6 +207,7 @@ internal fun handsDeltaProgressPayload(
             )
         SharedSettingsUpdateTransactionState.ReadyToInstall,
         SharedSettingsUpdateTransactionState.InstallerOpened,
+        SharedSettingsUpdateTransactionState.ReadyToRestart,
         SharedSettingsUpdateTransactionState.Installed ->
             mapOf(
                 "status" to "ok",
@@ -481,7 +482,8 @@ private fun SharedSettingsUpdateTransactionState.hasInFlightTarget(): Boolean =
         SharedSettingsUpdateTransactionState.Patching,
         SharedSettingsUpdateTransactionState.Downloading,
         SharedSettingsUpdateTransactionState.ReadyToInstall,
-        SharedSettingsUpdateTransactionState.InstallerOpened -> true
+        SharedSettingsUpdateTransactionState.InstallerOpened,
+        SharedSettingsUpdateTransactionState.ReadyToRestart -> true
         SharedSettingsUpdateTransactionState.Unknown,
         SharedSettingsUpdateTransactionState.Idle,
         SharedSettingsUpdateTransactionState.Failed,

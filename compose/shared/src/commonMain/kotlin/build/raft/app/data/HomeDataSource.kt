@@ -492,7 +492,8 @@ private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionLabel()
         SharedSettingsUpdateTransactionState.Patching,
         SharedSettingsUpdateTransactionState.Downloading -> "Downloading"
         SharedSettingsUpdateTransactionState.ReadyToInstall,
-        SharedSettingsUpdateTransactionState.InstallerOpened -> "Install"
+        SharedSettingsUpdateTransactionState.InstallerOpened,
+        SharedSettingsUpdateTransactionState.ReadyToRestart -> "Install"
         SharedSettingsUpdateTransactionState.Installed -> "Installed"
         SharedSettingsUpdateTransactionState.Idle,
         SharedSettingsUpdateTransactionState.Failed,

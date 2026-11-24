@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.data.DataResult
 import build.raft.app.data.RaftAppUpdateEvents
+import build.raft.app.data.RaftAppUpdates
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedSettingsUpdateTransactionState
@@ -106,7 +107,9 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
                 do {
                     val result = environment.settingsCapabilities.checkHandsUpdateStatus()
                     val projection = result.toAppUpdateResultProjection(snapshot, unavailableMessage, errorStrings)
-                    snapshot = projection.snapshot?.withLocalDownloadTerminal(progress)
+                    val resolvedSnapshot = projection.snapshot?.withLocalDownloadTerminal(progress)
+                    snapshot = resolvedSnapshot
+                    resolvedSnapshot?.let { RaftAppUpdates.coordinator.publishSnapshot(it) }
                     errorMessage = if (snapshot?.errorCode == "settings_hands_update_download_failed") downloadFailedMessage else projection.errorMessage
                 } while (refreshGate.completeAndShouldContinue())
             } finally {
@@ -134,7 +137,9 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
             progress = observed
             transfer = meter.observe(observed)
             if (!observed.active) {
-                snapshot = snapshot?.withLocalDownloadTerminal(observed)
+                val terminalSnapshot = snapshot?.withLocalDownloadTerminal(observed)
+                snapshot = terminalSnapshot
+                terminalSnapshot?.let { RaftAppUpdates.coordinator.publishSnapshot(it) }
                 errorMessage = if (observed.phase == "failed") downloadFailedMessage else null
                 refresh()
                 break
@@ -182,6 +187,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
                         val result = environment.settingsCapabilities.installHandsUpdateForToken(snapshot?.downloadProgressToken.orEmpty())
                         val projection = result.toAppUpdateResultProjection(snapshot, unavailableMessage, errorStrings)
                         snapshot = projection.snapshot
+                        projection.snapshot?.let { RaftAppUpdates.coordinator.publishSnapshot(it) }
                         errorMessage = projection.errorMessage
                     } finally {
                         actionRunning = false
@@ -583,6 +589,7 @@ internal fun appUpdatePrimaryActionLabel(
         snapshot.transactionState == SharedSettingsUpdateTransactionState.Downloading -> downloadingLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.ReadyToInstall -> installLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened -> installLabel
+        snapshot.transactionState == SharedSettingsUpdateTransactionState.ReadyToRestart -> installLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.Failed -> downloadLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.Stale -> downloadLabel
         snapshot.transactionState == SharedSettingsUpdateTransactionState.Installed -> installedLabel
@@ -623,7 +630,8 @@ internal fun appUpdatePrimaryActionEnabled(
         SharedSettingsUpdateTransactionState.Stale ->
             snapshot.transactionRetryable
         SharedSettingsUpdateTransactionState.ReadyToInstall,
-        SharedSettingsUpdateTransactionState.InstallerOpened -> true
+        SharedSettingsUpdateTransactionState.InstallerOpened,
+        SharedSettingsUpdateTransactionState.ReadyToRestart -> true
         SharedSettingsUpdateTransactionState.Checking,
         SharedSettingsUpdateTransactionState.Patching,
         SharedSettingsUpdateTransactionState.Downloading,
@@ -642,7 +650,8 @@ internal fun appUpdatePrimaryActionIcon(
     when {
         snapshot == null && errorMessage != null -> RaftLucideIconName.RefreshCw
         snapshot?.transactionState == SharedSettingsUpdateTransactionState.ReadyToInstall ||
-            snapshot?.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened ->
+            snapshot?.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened ||
+            snapshot?.transactionState == SharedSettingsUpdateTransactionState.ReadyToRestart ->
             RaftLucideIconName.PackageCheck
         snapshot?.transactionState == SharedSettingsUpdateTransactionState.Installed ->
             RaftLucideIconName.CircleCheckBig
@@ -673,6 +682,7 @@ internal fun appUpdateCanSkipVersion(snapshot: SharedSettingsUpdateCheckSnapshot
         SharedSettingsUpdateTransactionState.Downloading,
         SharedSettingsUpdateTransactionState.ReadyToInstall,
         SharedSettingsUpdateTransactionState.InstallerOpened,
+        SharedSettingsUpdateTransactionState.ReadyToRestart,
         SharedSettingsUpdateTransactionState.Installed -> false
     }
 }
