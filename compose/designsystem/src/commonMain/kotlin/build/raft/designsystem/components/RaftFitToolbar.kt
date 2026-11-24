@@ -301,6 +301,8 @@ fun RaftFitToolbar(
                 val stroke = RaftStroke.Hairline.toPx()
                 drawRect(seam, topLeft = Offset(0f, size.height - stroke), size = Size(size.width, stroke))
             }
+            // The bottom line runs edge to edge; the controls keep clear of the horizontal safe area (phone landscape).
+            .raftSafeAreaHorizontalPadding()
             .clipToBounds()
             .padding(start = horizontalPadding, end = horizontalPadding, top = airTop, bottom = airBottom + RaftStroke.Hairline)
             // The slot is the row of controls inside the air, as the web measures it.

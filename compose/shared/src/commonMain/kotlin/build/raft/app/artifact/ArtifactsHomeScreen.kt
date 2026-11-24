@@ -248,7 +248,7 @@ private fun ArtifactsHomeToolbar(
     val viewSwitch = artifactsHomeViewSwitch(view, onView)
     val clearLabel = stringResource(Res.string.artifacts_dashboard_clear_filters)
 
-    Box(Modifier.fillMaxWidth().background(RaftTheme.colors.layerCanvas).raftSafeAreaHorizontalPadding().testTag(ArtifactsHomeTags.Toolbar)) {
+    Box(Modifier.fillMaxWidth().background(RaftTheme.colors.layerCanvas).testTag(ArtifactsHomeTags.Toolbar)) {
         RaftFitToolbar(
             search =
                 RaftFitToolbarSearch(

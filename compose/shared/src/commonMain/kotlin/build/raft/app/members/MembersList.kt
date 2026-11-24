@@ -727,7 +727,6 @@ private fun MembersToolbar(
         if (query.isNotEmpty()) onQuery("") else searchOpen = false
     }
     RaftFitToolbar(
-        modifier = Modifier.raftSafeAreaHorizontalPadding(),
         scope =
             RaftFitToolbarScope(
                 options = tabs.map { RaftFitToolbarOption(key = it.name, label = labels.getValue(it), count = counts[it]) },
