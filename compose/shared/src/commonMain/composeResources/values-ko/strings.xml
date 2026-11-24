@@ -1253,7 +1253,6 @@
     <string name="thread_state_refreshing_original">원본 메시지 새로고침 중…</string>
     <string name="thread_error_refresh_original">새로고침하지 못했어요: %1$s</string>
     <string name="thread_comments_title">댓글</string>
-    <string name="thread_comments_header">댓글 · %1$s</string>
     <string name="thread_comments_composer_placeholder">%1$s에 댓글 남기기…</string>
     <string name="thread_comments_empty_hint">여기에 남긴 댓글은 %1$s에 연결돼요. 일반적인 논의는 스레드에서 답글로 남겨 주세요.</string>
     <string name="thread_comments_filter_all">전체</string>

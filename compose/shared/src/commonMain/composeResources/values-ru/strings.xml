@@ -1253,7 +1253,6 @@
     <string name="thread_state_refreshing_original">Обновление исходного сообщения…</string>
     <string name="thread_error_refresh_original">Не удалось обновить: %1$s</string>
     <string name="thread_comments_title">Комментарии</string>
-    <string name="thread_comments_header">Комментарии · %1$s</string>
     <string name="thread_comments_composer_placeholder">Комментарий к файлу %1$s…</string>
     <string name="thread_comments_empty_hint">Комментарии здесь привязаны к файлу %1$s. Для общего обсуждения ответьте в ветке.</string>
     <string name="thread_comments_filter_all">Все</string>

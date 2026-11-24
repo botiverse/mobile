@@ -1253,7 +1253,6 @@
     <string name="thread_state_refreshing_original">Actualizando el mensaje original…</string>
     <string name="thread_error_refresh_original">No se pudo actualizar: %1$s</string>
     <string name="thread_comments_title">Comentarios</string>
-    <string name="thread_comments_header">Comentarios · %1$s</string>
     <string name="thread_comments_composer_placeholder">Comenta sobre %1$s…</string>
     <string name="thread_comments_empty_hint">Los comentarios aquí están vinculados a %1$s. Para una conversación general, responde en el hilo.</string>
     <string name="thread_comments_filter_all">Todas</string>

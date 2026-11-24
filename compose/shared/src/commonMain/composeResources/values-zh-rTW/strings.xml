@@ -1253,7 +1253,6 @@
     <string name="thread_state_refreshing_original">正在重新整理原始訊息…</string>
     <string name="thread_error_refresh_original">重新整理失敗：%1$s</string>
     <string name="thread_comments_title">留言</string>
-    <string name="thread_comments_header">留言 · %1$s</string>
     <string name="thread_comments_composer_placeholder">對 %1$s 留言…</string>
     <string name="thread_comments_empty_hint">這裡的留言只會連結到 %1$s。一般討論請在討論串中回覆。</string>
     <string name="thread_comments_filter_all">全部</string>
