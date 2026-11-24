@@ -1042,6 +1042,9 @@
     <string name="channel_details_slack_dialog_title">Подключить #%1$s к Slack</string>
     <string name="channel_details_slack_dialog_lead">Свяжите этот канал с одним каналом Slack. Сообщения из одного появятся в обоих.</string>
     <string name="channel_details_slack_failed">Не удалось подключить канал Slack. Попробуйте ещё раз.</string>
+    <string name="channel_details_other_servers_title">Подключить свои серверы</string>
+    <string name="channel_details_other_servers_not_connected">Не подключён</string>
+    <string name="channel_details_other_servers_connect">Подключить</string>
     <string name="channel_settings_visitor_visible_title">Виден посетителям</string>
     <string name="channel_settings_visitor_visible_description">Кто угодно может читать его сообщения и ответы на публичной странице этого сервера без входа в аккаунт.</string>
     <string name="channel_settings_visitor_visible_save_failed">Не удалось изменить, могут ли посетители видеть этот канал.</string>
@@ -3993,6 +3996,11 @@
     <string name="joint_member_connect_toast_connecting_many">Подключаем %1$s. Серверы появятся в разделе «Подключённые серверы», когда всё будет готово.</string>
     <string name="joint_member_connect_toast_connecting_one">Подключаем %1$s. Сервер появится в разделе «Подключённые серверы», когда всё будет готово.</string>
     <string name="joint_member_connect_visibility">В %1$s люди, которые уже есть в этом канале, видят его оттуда; остальных нужно добавить.</string>
+    <string name="joint_member_connect_guest_entry_why">Вы гость в этом канале и не можете добавлять участников напрямую. Подключите свой сервер к этому каналу, и агенты и коллеги с вашего сервера смогут присоединиться.</string>
+    <string name="joint_member_connect_guest_create_server">Создать сервер и подключить</string>
+    <string name="joint_member_connect_row_ask_approvers">Попросите %1$s подключить сервер</string>
+    <string name="joint_member_connect_list_or_two">%1$s или %2$s</string>
+    <string name="joint_member_connect_list_or_end">%1$s или %2$s</string>
     <string name="joint_invite_notification_title">Приглашение в канал #%1$s</string>
     <string name="joint_invite_notification_body">Сервер %1$s пригласил этот сервер во внешний канал.</string>
     <string name="joint_invite_notification_accept">Принять</string>
@@ -5379,10 +5387,10 @@
     <string name="channel_external_invite_status_already_in_channel">Уже в этом канале · без приглашения</string>
     <string name="channel_external_invite_status_member_in_channel">Уже в этом канале</string>
     <string name="channel_external_invite_invite_to_connect">Пригласить подключить свой сервер</string>
-    <string name="channel_external_invite_status_guest_elsewhere">Гость в канале %1$s · пригласить нельзя</string>
-    <string name="channel_external_invite_status_guest_elsewhere_unnamed">Гость в другом канале · пригласить нельзя</string>
-    <string name="channel_external_invite_status_guest_elsewhere_hint">На сервере %1$s гость может состоять только в одном канале. Чтобы пригласить этого человека сюда, сначала удалите его из канала %2$s.</string>
-    <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">На сервере %1$s гость может состоять только в одном канале. Чтобы пригласить этого человека сюда, сначала удалите его из другого канала.</string>
+    <string name="channel_external_invite_status_guest_elsewhere">Гость в канале %1$s · будет приглашён подключить сервер</string>
+    <string name="channel_external_invite_status_guest_elsewhere_unnamed">Гость в другом канале · будет приглашён подключить сервер</string>
+    <string name="channel_external_invite_status_guest_elsewhere_hint">На сервере %1$s гость может состоять только в одном канале, поэтому присоединиться сюда как гость этот человек не может. По этому приглашению он сможет присоединиться, подключив свой сервер или создав новый.</string>
+    <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">На сервере %1$s гость может состоять только в одном канале, поэтому присоединиться сюда как гость этот человек не может. По этому приглашению он сможет присоединиться, подключив свой сервер или создав новый.</string>
     <string name="channel_external_invite_status_duplicate">Указан несколько раз · отправим одно приглашение</string>
     <string name="channel_external_invite_status_invalid">Некорректный адрес · без приглашения</string>
     <string name="channel_external_invite_commit">Пригласить</string>

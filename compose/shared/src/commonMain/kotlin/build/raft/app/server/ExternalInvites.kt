@@ -238,16 +238,32 @@ internal data class ExternalInviteReviewRow(
     val connectInvite: Boolean = false,
 ) {
     val invites: Boolean
-        get() = status == ExternalInviteReviewStatus.WillInvite || status == ExternalInviteReviewStatus.WillAdd
+        get() =
+            status == ExternalInviteReviewStatus.WillInvite ||
+                status == ExternalInviteReviewStatus.GuestElsewhere ||
+                status == ExternalInviteReviewStatus.GuestElsewhereUnnamed ||
+                status == ExternalInviteReviewStatus.WillAdd
 }
 
 /**
- * Web `reviewRows`: who gets an invite, who is added (members of the server), then who doesn't and
- * why. Three copies of one address read as one duplicate note.
+ * Web `reviewRows` (slock #16294): who gets an invite (`valid` and `guestsElsewhere`, invited to
+ * connect or create a server), who is added (members of the server), then who doesn't and why.
+ * Three copies of one address read as one duplicate note.
  */
 internal fun externalInviteReviewRows(preview: ExternalInvitePreview): List<ExternalInviteReviewRow> {
     val rows = mutableListOf<ExternalInviteReviewRow>()
     preview.valid.forEach { rows += ExternalInviteReviewRow("valid:$it", it, ExternalInviteReviewStatus.WillInvite) }
+    // A Guest of another channel is invited too, but can join only by connecting (or creating) a
+    // server: a Guest belongs to one channel. The channel is named only when the server did.
+    preview.guestsElsewhere.forEach { guest ->
+        val channelName = guest.channelName?.takeIf(String::isNotBlank)
+        rows +=
+            if (channelName != null) {
+                ExternalInviteReviewRow("guest:${guest.email}", guest.email, ExternalInviteReviewStatus.GuestElsewhere, "#$channelName")
+            } else {
+                ExternalInviteReviewRow("guest:${guest.email}", guest.email, ExternalInviteReviewStatus.GuestElsewhereUnnamed)
+            }
+    }
     preview.alreadyMembers.forEach { rows += ExternalInviteReviewRow("member:$it", it, ExternalInviteReviewStatus.WillAdd, connectInvite = true) }
     preview.duplicates.distinct().forEach { rows += ExternalInviteReviewRow("duplicate:$it", it, ExternalInviteReviewStatus.Duplicate) }
     preview.alreadyPending.forEach { rows += ExternalInviteReviewRow("pending:$it", it, ExternalInviteReviewStatus.AlreadyInvited) }
@@ -260,15 +276,6 @@ internal fun externalInviteReviewRows(preview: ExternalInvitePreview): List<Exte
                 ExternalInviteReviewRow("in-channel:$it", it, ExternalInviteReviewStatus.MemberInChannel, connectInvite = true)
             } else {
                 ExternalInviteReviewRow("in-channel:$it", it, ExternalInviteReviewStatus.AlreadyInChannel)
-            }
-    }
-    preview.guestsElsewhere.forEach { guest ->
-        val channelName = guest.channelName?.takeIf(String::isNotBlank)
-        rows +=
-            if (channelName != null) {
-                ExternalInviteReviewRow("guest:${guest.email}", guest.email, ExternalInviteReviewStatus.GuestElsewhere, "#$channelName")
-            } else {
-                ExternalInviteReviewRow("guest:${guest.email}", guest.email, ExternalInviteReviewStatus.GuestElsewhereUnnamed)
             }
     }
     preview.invalid.forEachIndexed { index, entry ->
@@ -353,17 +360,22 @@ internal data class ExternalInviteDialogState(
     /** The checked servers still offered, in the list's order: what the confirm connects (web `chosenServers`). */
     val chosenServers: List<InviteConnectableServer> get() = servers.filter { it.id in serverIds && !it.atLimit }
 
-    val inviteCount: Int get() = preview?.valid?.size ?: 0
+    /** Invites to people outside the server: `valid` plus Guests of another channel (slock #16294). */
+    val outsiderEmails: List<String>
+        get() = preview?.let { it.valid + it.guestsElsewhere.map { guest -> guest.email } }.orEmpty()
+
+    val inviteCount: Int get() = outsiderEmails.size
 
     /** The server's members already in the channel whose "Invite to connect" is checked: only an invite to send. */
     val inChannelInvites: List<String> get() = preview?.alreadyInChannelMembers.orEmpty().filterNot { it in noConnectInvite }
 
     /**
-     * What the send carries (web `ExternalInviteSteps` confirm): the invites, the server's members
-     * it adds to the channel, and those already in it who are invited to connect (not added again).
+     * What the send carries (web `ExternalInviteSteps` confirm, slock #16294): the invites (Guests
+     * of another channel among them), the server's members it adds to the channel, and those
+     * already in it who are invited to connect (not added again).
      */
     val sendAddresses: List<String>
-        get() = preview?.let { it.valid + it.alreadyMembers + inChannelInvites }.orEmpty()
+        get() = preview?.let { outsiderEmails + it.alreadyMembers + inChannelInvites }.orEmpty()
 
     /** The server's members among [sendAddresses] who are also sent an invite to connect. */
     val connectMemberEmails: List<String>
@@ -419,8 +431,10 @@ internal sealed interface ExternalInvitesEffect {
 }
 
 /**
- * Web `holdsExternalSlot` for the members page's channel: a Guest or an open external invite
- * (`hasExternalRelation`), or a joint channel (its servers aren't on the row: taken to be).
+ * Web `holdsExternalSlot` (`externalChannelSlot.ts`, slock #16295): a Guest (`hasExternalRelation`)
+ * or a joint channel (its servers aren't on the row: taken to be). The server no longer counts open
+ * invites toward the Free plan's 1 external channel, though `hasExternalRelation` on the client
+ * does not distinguish an open invite from a Guest.
  */
 internal fun ExternalInviteChannel.holdsExternalSlot(): Boolean =
     !archived && (type == "joint" || (hasExternalRelation && (type == "channel" || type == "private")))

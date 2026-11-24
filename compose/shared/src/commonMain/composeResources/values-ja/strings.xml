@@ -1042,6 +1042,9 @@
     <string name="channel_details_slack_dialog_title">#%1$s を Slack に接続</string>
     <string name="channel_details_slack_dialog_lead">このチャンネルを Slack のチャンネル 1 つと連携します。どちらかに投稿された内容は両方に表示されます。</string>
     <string name="channel_details_slack_failed">Slack チャンネルに接続できませんでした。もう一度お試しください。</string>
+    <string name="channel_details_other_servers_title">所属しているサーバーを接続</string>
+    <string name="channel_details_other_servers_not_connected">未接続</string>
+    <string name="channel_details_other_servers_connect">接続</string>
     <string name="channel_settings_visitor_visible_title">訪問者に表示</string>
     <string name="channel_settings_visitor_visible_description">ログインしなくても、誰でもこのサーバーの公開ページでこのチャンネルのメッセージと返信を閲覧できます。</string>
     <string name="channel_settings_visitor_visible_save_failed">このチャンネルを訪問者に表示するかどうかを変更できませんでした。</string>
@@ -4172,6 +4175,11 @@
     <string name="joint_member_connect_toast_connecting_many">%1$s を接続しています。完了すると「接続済みのサーバー」に表示されます。</string>
     <string name="joint_member_connect_toast_connecting_one">%1$s を接続しています。完了すると「接続済みのサーバー」に表示されます。</string>
     <string name="joint_member_connect_visibility">%1$s では、すでにこのチャンネルにいる人はそこからチャンネルを見られます。それ以外の人は追加する必要があります。</string>
+    <string name="joint_member_connect_guest_entry_why">このチャンネルにはゲストとして参加しているため、メンバーを直接追加できません。サーバーをこのチャンネルに接続すると、サーバー内のエージェントやチームメンバーが参加できます。</string>
+    <string name="joint_member_connect_guest_create_server">サーバーを作成して接続</string>
+    <string name="joint_member_connect_row_ask_approvers">%1$s に接続を依頼</string>
+    <string name="joint_member_connect_list_or_two">%1$sまたは%2$s</string>
+    <string name="joint_member_connect_list_or_end">%1$s、または%2$s</string>
     <string name="joint_invite_notification_title">#%1$s への参加招待</string>
     <string name="joint_invite_notification_body">%1$s がこのサーバーを外部チャンネルに招待しました。</string>
     <string name="joint_invite_notification_accept">承諾</string>
@@ -5562,10 +5570,10 @@
     <string name="channel_external_invite_status_already_in_channel">このチャンネルに参加済み · 招待は送信されません</string>
     <string name="channel_external_invite_status_member_in_channel">このチャンネルに参加済み</string>
     <string name="channel_external_invite_invite_to_connect">サーバー接続に招待</string>
-    <string name="channel_external_invite_status_guest_elsewhere">%1$s のゲスト · 招待できません</string>
-    <string name="channel_external_invite_status_guest_elsewhere_unnamed">別のチャンネルのゲスト · 招待できません</string>
-    <string name="channel_external_invite_status_guest_elsewhere_hint">%1$s では、ゲストが参加できるチャンネルは 1 つだけです。このチャンネルに招待するには、先に %2$s から削除してください。</string>
-    <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">%1$s では、ゲストが参加できるチャンネルは 1 つだけです。このチャンネルに招待するには、先に参加中の別のチャンネルから削除してください。</string>
+    <string name="channel_external_invite_status_guest_elsewhere">%1$s のゲスト · サーバーの接続に招待します</string>
+    <string name="channel_external_invite_status_guest_elsewhere_unnamed">別のチャンネルのゲスト · サーバーの接続に招待します</string>
+    <string name="channel_external_invite_status_guest_elsewhere_hint">%1$s では、ゲストが参加できるチャンネルは 1 つだけなので、ゲストとしてここに参加することはできません。この招待から、所属するサーバーを接続するか、新しくサーバーを作成して参加できます。</string>
+    <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">%1$s では、ゲストが参加できるチャンネルは 1 つだけなので、ゲストとしてここに参加することはできません。この招待から、所属するサーバーを接続するか、新しくサーバーを作成して参加できます。</string>
     <string name="channel_external_invite_status_duplicate">重複しています · 招待は 1 回だけ送信されます</string>
     <string name="channel_external_invite_status_invalid">無効なメールアドレス · 招待は送信されません</string>
     <string name="channel_external_invite_commit">招待</string>

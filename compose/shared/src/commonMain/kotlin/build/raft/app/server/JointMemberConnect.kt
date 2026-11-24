@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.JointChannelRole
 import build.raft.app.data.JointChannelServer
+import build.raft.app.data.MemberAskServer
 import build.raft.app.data.MemberConnectServerLimit
 import build.raft.app.data.ResolvedServerRefusal
 import build.raft.app.data.ServerConnectOutcome
@@ -109,6 +110,56 @@ internal fun memberConnectRows(channel: MemberConnectChannel?, account: MemberCo
             )
         }
         .sortedWith(compareBy<MemberConnectRow> { it.state.ordinal }.thenBy { it.server.name.lowercase() })
+}
+
+/**
+ * Web `useGuestConnectEntry` + `useGuestConnectDialog` (slock #16375/#16389): a Guest of the host
+ * server bound to this channel (private non-#all, or host's joint channel) gets a "Connect your
+ * servers" entry in place of Add member, even when they own no servers yet (so they can create one
+ * or see `askServers`). Hidden while a conversion to an external channel is under way.
+ */
+internal fun memberConnectGuestEntryAvailable(
+    channel: MemberConnectChannel?,
+    account: MemberConnectAccount?,
+    jointRole: JointChannelRole?,
+    conversionInProgress: Boolean = false,
+): Boolean {
+    if (conversionInProgress || channel == null || account == null) return false
+    if (account.currentServerRole != "guest") return false
+    if (!channel.takesMemberServers()) return false
+    // A Guest is bound to the host's copy: only there is this the host.
+    if (channel.isJoint && jointRole != JointChannelRole.Host) return false
+    return true
+}
+
+/**
+ * Merges [rows] (derived from the account's servers) with any member-only [askServers] returned by
+ * `GET channels/:id/connect-my-servers` (slock #16361) that are not already represented in [rows].
+ */
+internal fun memberConnectDisplayRows(
+    rows: List<MemberConnectRow>,
+    askServers: List<MemberAskServer>,
+): List<MemberConnectRow> {
+    if (askServers.isEmpty()) return rows
+    val existingIds = rows.mapTo(HashSet()) { it.server.id }
+    val extras =
+        askServers
+            .filter { it.id !in existingIds }
+            .map { server ->
+                MemberConnectRow(
+                    server =
+                        MemberConnectServer(
+                            id = server.id,
+                            name = server.name.ifBlank { server.slug },
+                            slug = server.slug,
+                            avatarUrl = server.avatarUrl,
+                            role = "member",
+                        ),
+                    state = MemberConnectRowState.NotAdmin,
+                )
+            }
+            .sortedBy { it.server.name.lowercase() }
+    return if (extras.isEmpty()) rows else rows + extras
 }
 
 /** What a refusal says (each one a web message id; the page resolves it with its values). */
@@ -288,6 +339,46 @@ internal fun resolveMemberConnectRequestLine(
         }
     }
 
+/**
+ * Resolves a `POST channels/:id/connect-new-server` refusal (web `ConnectNewServerForm.tsx`
+ * `refusalMessageId`, slock #16353/#16375): this flow's whole-request codes first
+ * (`memberConnectRequestError`), else the approver/connect refusal codes with no target server
+ * (`approverErrorMessage(err, null)` — a new server has no external channel limit of its own, so
+ * `free_external_limit` / `joint_free_server_limit` name the host), routed through
+ * [resolveServerRefusal].
+ */
+internal fun resolveMemberConnectNewServerLine(
+    status: Int?,
+    code: String?,
+    error: String?,
+    traceId: String?,
+): MemberConnectLine.Request =
+    when (
+        val resolved =
+            resolveServerRefusal(
+                ServerRefusalInput(status = status, code = code, serverMessage = error, traceId = traceId),
+                knownCode = { normalizedCode, st -> memberConnectNewServerKnownCode(st, normalizedCode) },
+            )
+    ) {
+        is ResolvedServerRefusal.KnownCode -> MemberConnectLine.Request(resolved.known)
+        is ResolvedServerRefusal.ServerWords -> MemberConnectLine.Request(MemberConnectMessage.Generic, serverWords = resolved.message)
+        is ResolvedServerRefusal.Infrastructure -> MemberConnectLine.Request(MemberConnectMessage.Generic)
+        is ResolvedServerRefusal.Generic -> MemberConnectLine.Request(memberConnectRequestFallback(status).message)
+    }
+
+private fun memberConnectNewServerKnownCode(status: Int?, normalizedCode: String?): MemberConnectMessage? {
+    val request = memberConnectRequestKnownCode(status, normalizedCode)
+    if (request != null && request.message != MemberConnectMessage.Generic) return request.message
+    return when {
+        normalizedCode == "free_external_limit" || normalizedCode == "joint_free_server_limit" -> MemberConnectMessage.HostLimit
+        normalizedCode == "channel_archived" -> MemberConnectMessage.Archived
+        normalizedCode == "channel_name_taken" -> MemberConnectMessage.ChannelNameTaken
+        normalizedCode != null && normalizedCode in APPROVER_REFUSAL_MESSAGES -> APPROVER_REFUSAL_MESSAGES.getValue(normalizedCode)
+        status == 429 -> MemberConnectMessage.TooManyAttempts
+        else -> null
+    }
+}
+
 /** One line of the sheet's warning banner. */
 internal sealed interface MemberConnectLine {
     /** Web `channel.memberConnect.partial.connected`: these did go through. */
@@ -301,6 +392,9 @@ internal sealed interface MemberConnectLine {
 
     /** The whole request refused; [serverWords] as on [Refused]. */
     data class Request(val message: MemberConnectMessage, val serverWords: String? = null) : MemberConnectLine
+
+    /** Web `externalInvite.newServer.kept`: `connect-new-server` created the server before connect failed. */
+    data class NewServerKept(val serverName: String) : MemberConnectLine
 }
 
 /** [MemberConnectLine.Refused] for one chosen server's refusal routed through [resolveServerRefusal]. */
@@ -326,6 +420,22 @@ internal fun memberConnectRefusedLine(outcome: ServerConnectOutcome.Refused): Me
             MemberConnectLine.Refused(serverId = outcome.serverId, message = MemberConnectMessage.Generic)
     }
 
+/**
+ * "Create a server and connect" step inside Connect your servers (web `ConnectNewServerForm`,
+ * slock #16353/#16375).
+ */
+internal data class MemberConnectNewServerFormState(
+    val name: String = "",
+    val slug: String = "",
+    val slugTouched: Boolean = false,
+    val fieldErrors: NewServerFieldErrors = NewServerFieldErrors(),
+    val busy: Boolean = false,
+    /** True once the server was created and then connecting failed: the caller keeps the new server. */
+    val kept: Boolean = false,
+    val lines: List<MemberConnectLine> = emptyList(),
+    val traceId: String? = null,
+)
+
 /** The open Connect your servers sheet (web ConnectYourServersDialog's state). */
 internal data class MemberConnectSheet(
     /** Chosen servers, in the order chosen. */
@@ -342,7 +452,16 @@ internal data class MemberConnectSheet(
     val closed: Boolean = false,
     /** Per-server Free external-channel limit state from `GET channels/:id/connect-my-servers`. */
     val limits: Map<String, MemberConnectServerLimit> = emptyMap(),
-)
+    /** Member-only servers from `GET channels/:id/connect-my-servers` (`askServers`, slock #16361). */
+    val askServers: List<MemberAskServer> = emptyList(),
+    /** Opened from a Guest's Connect your servers entry (slock #16375): shows Guest helper line + Create a server and connect. */
+    val guestEntry: Boolean = false,
+    /** Non-null while showing the "Create a server and connect" form step. */
+    val newServer: MemberConnectNewServerFormState? = null,
+) {
+    /** True while either the server-list submit or the create-new-server request is in flight. */
+    val anyBusy: Boolean get() = busy || newServer?.busy == true
+}
 
 /**
  * Who connected a row, while the app runs (web `markConnectedByYou` / `useConnectedByYou`): the

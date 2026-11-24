@@ -1042,6 +1042,9 @@
     <string name="channel_details_slack_dialog_title">#%1$s을(를) Slack에 연결</string>
     <string name="channel_details_slack_dialog_lead">이 채널을 Slack 채널 하나와 연결합니다. 어느 쪽에 올린 내용이든 양쪽에 표시됩니다.</string>
     <string name="channel_details_slack_failed">Slack 채널을 연결하지 못했습니다. 다시 시도해 주세요.</string>
+    <string name="channel_details_other_servers_title">내 서버 연결</string>
+    <string name="channel_details_other_servers_not_connected">연결 안 됨</string>
+    <string name="channel_details_other_servers_connect">연결</string>
     <string name="channel_settings_visitor_visible_title">방문자에게 표시</string>
     <string name="channel_settings_visitor_visible_description">로그인하지 않아도 누구나 이 서버의 공개 페이지에서 이 채널의 메시지와 답글을 읽을 수 있어요.</string>
     <string name="channel_settings_visitor_visible_save_failed">이 채널을 방문자에게 표시할지 바꾸지 못했어요.</string>
@@ -3993,6 +3996,11 @@
     <string name="joint_member_connect_toast_connecting_many">%1$s을(를) 연결하고 있어요. 완료되면 연결된 서버에 표시돼요.</string>
     <string name="joint_member_connect_toast_connecting_one">%1$s을(를) 연결하고 있어요. 완료되면 연결된 서버에 표시돼요.</string>
     <string name="joint_member_connect_visibility">%1$s에서는 이미 이 채널에 있는 사람이 그곳에서 채널을 볼 수 있어요. 다른 사람은 추가해야 해요.</string>
+    <string name="joint_member_connect_guest_entry_why">이 채널의 게스트라서 멤버를 직접 추가할 수 없어요. 내 서버를 이 채널에 연결하면 서버의 에이전트와 팀원이 참여할 수 있어요.</string>
+    <string name="joint_member_connect_guest_create_server">서버를 만들고 연결</string>
+    <string name="joint_member_connect_row_ask_approvers">%1$s님에게 연결을 요청하세요</string>
+    <string name="joint_member_connect_list_or_two">%1$s 또는 %2$s</string>
+    <string name="joint_member_connect_list_or_end">%1$s 또는 %2$s</string>
     <string name="joint_invite_notification_title">#%1$s 참여 초대</string>
     <string name="joint_invite_notification_body">%1$s에서 이 서버를 외부 채널에 초대했어요.</string>
     <string name="joint_invite_notification_accept">수락</string>
@@ -5379,10 +5387,10 @@
     <string name="channel_external_invite_status_already_in_channel">이미 이 채널에 있음 · 초대하지 않음</string>
     <string name="channel_external_invite_status_member_in_channel">이미 이 채널에 있음</string>
     <string name="channel_external_invite_invite_to_connect">서버 연결 초대</string>
-    <string name="channel_external_invite_status_guest_elsewhere">%1$s의 게스트 · 초대할 수 없음</string>
-    <string name="channel_external_invite_status_guest_elsewhere_unnamed">다른 채널의 게스트 · 초대할 수 없음</string>
-    <string name="channel_external_invite_status_guest_elsewhere_hint">게스트는 %1$s 서버에서 채널 하나에만 참여할 수 있어요. 이 채널에 초대하려면 먼저 %2$s에서 내보내 주세요.</string>
-    <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">게스트는 %1$s 서버에서 채널 하나에만 참여할 수 있어요. 이 채널에 초대하려면 먼저 참여 중인 다른 채널에서 내보내 주세요.</string>
+    <string name="channel_external_invite_status_guest_elsewhere">%1$s의 게스트 · 서버 연결로 초대함</string>
+    <string name="channel_external_invite_status_guest_elsewhere_unnamed">다른 채널의 게스트 · 서버 연결로 초대함</string>
+    <string name="channel_external_invite_status_guest_elsewhere_hint">게스트는 %1$s 서버에서 채널 하나에만 참여할 수 있어서 이 채널에는 게스트로 참여할 수 없어요. 이 초대로 자신이 속한 서버를 연결하거나 새 서버를 만들어 참여할 수 있어요.</string>
+    <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">게스트는 %1$s 서버에서 채널 하나에만 참여할 수 있어서 이 채널에는 게스트로 참여할 수 없어요. 이 초대로 자신이 속한 서버를 연결하거나 새 서버를 만들어 참여할 수 있어요.</string>
     <string name="channel_external_invite_status_duplicate">여러 번 입력됨 · 한 번만 초대</string>
     <string name="channel_external_invite_status_invalid">유효하지 않은 이메일 · 초대하지 않음</string>
     <string name="channel_external_invite_commit">초대</string>

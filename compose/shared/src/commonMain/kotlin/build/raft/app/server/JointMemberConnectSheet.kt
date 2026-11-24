@@ -37,10 +37,13 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftDialogSheet
 import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMultiChoiceList
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 
@@ -50,6 +53,12 @@ internal const val JointMemberConnectSheetTag = "joint-member-connect-sheet"
 internal const val JointMemberConnectErrorTag = "joint-member-connect-error"
 internal const val JointMemberConnectConsequenceTag = "joint-member-connect-consequence"
 internal const val JointMemberConnectGuestTag = "joint-member-connect-guest"
+internal const val JointMemberConnectGuestEntryTag = "member-connect-guest-entry"
+internal const val JointMemberConnectCreateServerTag = "member-connect-create-server"
+internal const val JointMemberConnectNewServerFormTag = "member-connect-new-server"
+internal const val JointMemberConnectNewServerErrorTag = "member-connect-new-server-error"
+internal const val JointMemberConnectNewServerNameTag = "member-connect-new-server-name"
+internal const val JointMemberConnectNewServerSlugTag = "member-connect-new-server-slug"
 internal const val JointMemberConnectUpgradeTag = "member-connect-upgrade"
 internal const val JointMemberConnectAskOwnerTag = "member-connect-ask-owner"
 
@@ -96,6 +105,16 @@ internal fun jointMemberConnectNames(names: List<String>): String {
     return memberRemovalImpactJoin(names, { a, b -> fill(two, a, b) }, { a, b -> fill(more, a, b) }, { a, b -> fill(end, a, b) })
 }
 
+/** Disjunction join of [names] (e.g. "Tom or Lena") for `askServers` approver hints (slock #16361). */
+@Composable
+internal fun jointMemberConnectOrNames(names: List<String>): String {
+    val two = stringResource(Res.string.joint_member_connect_list_or_two, "\u0001", "\u0002")
+    val more = stringResource(Res.string.member_removal_impact_list_more, "\u0001", "\u0002")
+    val end = stringResource(Res.string.joint_member_connect_list_or_end, "\u0001", "\u0002")
+    fun fill(template: String, a: String, b: String) = template.replace("\u0001", a).replace("\u0002", b)
+    return memberRemovalImpactJoin(names, { a, b -> fill(two, a, b) }, { a, b -> fill(more, a, b) }, { a, b -> fill(end, a, b) })
+}
+
 /** A refusal as the sheet says it: values {target} (server name), {channel} (with #), {host}, {max}. */
 @Composable
 internal fun jointMemberConnectMessage(message: MemberConnectMessage, target: String, channel: String, host: String): String =
@@ -127,10 +146,9 @@ internal fun jointMemberConnectMessage(message: MemberConnectMessage, target: St
 /**
  * Web ConnectYourServersDialog (`narrow="sheet"`, a phone dialog sheet): the viewer's servers,
  * the ones they own or administer and that aren't in the channel chosen with a checkbox, the
- * rest listed with why not. The line under the title says they connect now with no host
- * approval; under the list, what people in those servers see and, for a private channel, that it
- * becomes shared and the servers connected see its earlier messages (#13888). The commit is in
- * the sheet's head. A refusal stays in the sheet as a warning banner with the answer's trace ID.
+ * rest listed with why not (including `askServers` approver names, slock #16361). From a Guest's
+ * Connect your servers entry (`sheet.guestEntry`, slock #16375), the Guest helper line leads and
+ * "Create a server and connect" opens the new-server form in the same sheet.
  */
 @Composable
 internal fun JointMemberConnectSheet(
@@ -140,13 +158,60 @@ internal fun JointMemberConnectSheet(
     onSubmit: () -> Unit,
     onUpgradeServer: (serverId: String) -> Unit = {},
     offersUpgrade: Boolean = settingsBillingOffersUpgrade(),
+    onOpenCreateServer: () -> Unit = {},
+    onCloseCreateServer: () -> Unit = {},
+    onNewServerNameChange: (String) -> Unit = {},
+    onNewServerSlugChange: (String) -> Unit = {},
+    onSubmitNewServer: () -> Unit = {},
 ) {
     val sheet = state.memberConnectSheet ?: return
-    val rows = state.memberConnectRows
     val channelName = state.connections?.channelName?.removePrefix("#").orEmpty()
     val channel = "#$channelName"
     val host = state.memberConnectHostName
+    val newServer = sheet.newServer
+    if (newServer != null) {
+        JointMemberConnectNewServerSheet(
+            form = newServer,
+            channel = channel,
+            host = host,
+            onDismiss = onDismiss,
+            onBack = onCloseCreateServer,
+            onNameChange = onNewServerNameChange,
+            onSlugChange = onNewServerSlugChange,
+            onSubmit = onSubmitNewServer,
+        )
+        return
+    }
+    JointMemberConnectListSheet(
+        state = state,
+        sheet = sheet,
+        channel = channel,
+        host = host,
+        onDismiss = onDismiss,
+        onSelectionChange = onSelectionChange,
+        onSubmit = onSubmit,
+        onUpgradeServer = onUpgradeServer,
+        offersUpgrade = offersUpgrade,
+        onOpenCreateServer = onOpenCreateServer,
+    )
+}
+
+@Composable
+private fun JointMemberConnectListSheet(
+    state: JointChannelConnectionsState,
+    sheet: MemberConnectSheet,
+    channel: String,
+    host: String,
+    onDismiss: () -> Unit,
+    onSelectionChange: (Set<String>) -> Unit,
+    onSubmit: () -> Unit,
+    onUpgradeServer: (serverId: String) -> Unit,
+    offersUpgrade: Boolean,
+    onOpenCreateServer: () -> Unit,
+) {
+    val rows = state.memberConnectDisplayRows
     val nameOf = rows.associate { it.server.id to it.server.name.ifBlank { it.server.slug } }
+    val askByServerId = sheet.askServers.associateBy { it.id }
     var query by remember { mutableStateOf("") }
     val selectedNames = sheet.selected.mapNotNull { nameOf[it] }
     val connectedNow = stringResource(Res.string.joint_member_connect_row_connected_now)
@@ -164,6 +229,12 @@ internal fun JointMemberConnectSheet(
             val serverDisplayName = server.name.ifBlank { server.slug }
             val limit = state.memberConnectLimit(row)
             val atLimit = limit?.atLimit == true
+            val approverNames =
+                askByServerId[server.id]
+                    ?.approvers
+                    ?.map { it.name.trim() }
+                    ?.filter(String::isNotBlank)
+                    .orEmpty()
             val reason =
                 when {
                     server.id in sheet.done -> connectedNow
@@ -172,7 +243,15 @@ internal fun JointMemberConnectSheet(
                         when (state.memberConnectRowState(row)) {
                             MemberConnectRowState.Eligible -> if (server.role == "owner") owner else admin
                             MemberConnectRowState.Connected -> alreadyConnected
-                            MemberConnectRowState.NotAdmin -> notAdmin
+                            MemberConnectRowState.NotAdmin ->
+                                if (approverNames.isNotEmpty()) {
+                                    stringResource(
+                                        Res.string.joint_member_connect_row_ask_approvers,
+                                        jointMemberConnectOrNames(approverNames),
+                                    )
+                                } else {
+                                    notAdmin
+                                }
                         }
                 }
             val description =
@@ -241,37 +320,28 @@ internal fun JointMemberConnectSheet(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                if (sheet.guestEntry) {
+                    RaftText(
+                        stringResource(Res.string.joint_member_connect_guest_entry_why),
+                        modifier = Modifier.testTag(JointMemberConnectGuestEntryTag),
+                        style = RaftTheme.typography.callout,
+                        color = RaftTheme.colors.foregroundMuted,
+                    )
+                }
                 RaftText(
                     stringResource(Res.string.joint_member_connect_description, host),
                     style = RaftTheme.typography.callout,
                     color = RaftTheme.colors.foregroundMuted,
                 )
                 if (sheet.lines.isNotEmpty()) {
-                    val text =
-                        sheet.lines.map { line ->
-                            when (line) {
-                                is MemberConnectLine.Connected -> {
-                                    val names = jointMemberConnectNames(line.serverIds.map { nameOf[it].orEmpty() })
-                                    if (line.serverIds.size == 1) {
-                                        stringResource(Res.string.joint_member_connect_partial_one, names)
-                                    } else {
-                                        stringResource(Res.string.joint_member_connect_partial_many, names)
-                                    }
-                                }
-                                is MemberConnectLine.Refused ->
-                                    line.serverWords ?: jointMemberConnectMessage(line.message, nameOf[line.serverId].orEmpty(), channel, host)
-                                is MemberConnectLine.Request -> line.serverWords ?: jointMemberConnectMessage(line.message, "", channel, host)
-                            }
-                        }
-                    Column(Modifier.fillMaxWidth().testTag(JointMemberConnectErrorTag), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        RaftBanner(
-                            description = text.joinToString("\n"),
-                            status = RaftBannerStatus.Warning,
-                            size = RaftBannerSize.Sm,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        RaftTraceIdNote(sheet.traceId)
-                    }
+                    JointMemberConnectLinesBanner(
+                        lines = sheet.lines,
+                        traceId = sheet.traceId,
+                        nameOf = nameOf,
+                        channel = channel,
+                        host = host,
+                        tag = JointMemberConnectErrorTag,
+                    )
                 }
                 RaftMultiChoiceList(
                     items = items,
@@ -312,8 +382,147 @@ internal fun JointMemberConnectSheet(
                         }
                     }
                 }
+                if (sheet.guestEntry) {
+                    RaftButton(
+                        text = stringResource(Res.string.joint_member_connect_guest_create_server),
+                        onClick = onOpenCreateServer,
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftButtonSize.Md,
+                        enabled = !sheet.busy && !sheet.closed,
+                        modifier = Modifier.testTag(JointMemberConnectCreateServerTag),
+                    )
+                }
             }
         }
+    }
+}
+
+/**
+ * Web `ConnectNewServerForm` (slock #16353/#16375): name & slug fields inside the same sheet,
+ * submitting `POST channels/:id/connect-new-server`.
+ */
+@Composable
+private fun JointMemberConnectNewServerSheet(
+    form: MemberConnectNewServerFormState,
+    channel: String,
+    host: String,
+    onDismiss: () -> Unit,
+    onBack: () -> Unit,
+    onNameChange: (String) -> Unit,
+    onSlugChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+) {
+    val editable = !form.busy && !form.kept
+    RaftDesignSystemTheme {
+        RaftDialogSheet(
+            onDismissRequest = { if (!form.busy) onDismiss() },
+            title = stringResource(Res.string.external_invite_new_server_title),
+            commitLabel =
+                if (form.busy) {
+                    stringResource(Res.string.external_invite_new_server_creating)
+                } else {
+                    stringResource(Res.string.external_invite_new_server_commit)
+                },
+            onCommit = onSubmit,
+            commitEnabled = editable,
+            commitLoading = form.busy,
+            closeLabel = stringResource(Res.string.common_close),
+            cancelLabel = stringResource(Res.string.external_invite_back),
+            closeEnabled = !form.busy,
+            onBack = onBack,
+            backLabel = stringResource(Res.string.external_invite_back),
+            modifier = Modifier.testTag(JointMemberConnectNewServerFormTag),
+        ) {
+            Column(
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                RaftText(
+                    stringResource(Res.string.external_invite_new_server_description, channel, host),
+                    style = RaftTheme.typography.callout,
+                    color = RaftTheme.colors.foregroundMuted,
+                )
+                if (form.lines.isNotEmpty()) {
+                    JointMemberConnectLinesBanner(
+                        lines = form.lines,
+                        traceId = form.traceId,
+                        nameOf = emptyMap(),
+                        channel = channel,
+                        host = host,
+                        tag = JointMemberConnectNewServerErrorTag,
+                        defaultTarget = form.name.trim(),
+                    )
+                }
+                RaftField(
+                    label = stringResource(Res.string.external_invite_new_server_name_label),
+                    error = form.fieldErrors.name?.let { newServerFieldErrorText(it) },
+                ) {
+                    RaftTextField(
+                        value = form.name,
+                        onValueChange = onNameChange,
+                        modifier = Modifier.fillMaxWidth().testTag(JointMemberConnectNewServerNameTag),
+                        placeholder = stringResource(Res.string.external_invite_new_server_name_placeholder),
+                        keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
+                        enabled = editable,
+                        invalid = form.fieldErrors.name != null,
+                    )
+                }
+                RaftField(
+                    label = stringResource(Res.string.external_invite_new_server_slug_label),
+                    description = stringResource(Res.string.external_invite_new_server_slug_help),
+                    error = form.fieldErrors.slug?.let { newServerFieldErrorText(it) },
+                ) {
+                    RaftTextField(
+                        value = form.slug,
+                        onValueChange = onSlugChange,
+                        modifier = Modifier.fillMaxWidth().testTag(JointMemberConnectNewServerSlugTag),
+                        keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
+                        enabled = editable,
+                        invalid = form.fieldErrors.slug != null,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun JointMemberConnectLinesBanner(
+    lines: List<MemberConnectLine>,
+    traceId: String?,
+    nameOf: Map<String, String>,
+    channel: String,
+    host: String,
+    tag: String,
+    defaultTarget: String = "",
+) {
+    val text =
+        lines.map { line ->
+            when (line) {
+                is MemberConnectLine.Connected -> {
+                    val names = jointMemberConnectNames(line.serverIds.map { nameOf[it].orEmpty() })
+                    if (line.serverIds.size == 1) {
+                        stringResource(Res.string.joint_member_connect_partial_one, names)
+                    } else {
+                        stringResource(Res.string.joint_member_connect_partial_many, names)
+                    }
+                }
+                is MemberConnectLine.Refused ->
+                    line.serverWords ?: jointMemberConnectMessage(line.message, nameOf[line.serverId].orEmpty(), channel, host)
+                is MemberConnectLine.Request ->
+                    line.serverWords ?: jointMemberConnectMessage(line.message, defaultTarget, channel, host)
+                is MemberConnectLine.NewServerKept ->
+                    stringResource(Res.string.external_invite_new_server_kept, line.serverName)
+            }
+        }
+    Column(Modifier.fillMaxWidth().testTag(tag), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftBanner(
+            description = text.joinToString("\n"),
+            status = RaftBannerStatus.Warning,
+            size = RaftBannerSize.Sm,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        RaftTraceIdNote(traceId)
     }
 }
 

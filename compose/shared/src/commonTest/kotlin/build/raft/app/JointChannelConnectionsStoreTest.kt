@@ -267,6 +267,7 @@ internal class FakeJointConnectionsDataSource(
     }
 
     var memberConnectLimits: Map<String, build.raft.app.data.MemberConnectServerLimit> = emptyMap()
+    var memberConnectAskServers: List<build.raft.app.data.MemberAskServer> = emptyList()
     var memberConnectLimitsGate: CompletableDeferred<Unit>? = null
     var memberConnectLimitsCalls = 0
 
@@ -274,5 +275,28 @@ internal class FakeJointConnectionsDataSource(
         memberConnectLimitsCalls += 1
         memberConnectLimitsGate?.await()
         return memberConnectLimits
+    }
+
+    override suspend fun listMemberConnectOptions(): build.raft.app.data.MemberConnectOptions =
+        build.raft.app.data.MemberConnectOptions(
+            limits = listMemberConnectLimits(),
+            askServers = memberConnectAskServers,
+        )
+
+    var connectNewServerResult: DataResult<build.raft.app.data.MemberConnectNewServerResponse> =
+        DataResult.Content(
+            build.raft.app.data.MemberConnectNewServerResponse.Answered(
+                serverId = "srv-new",
+                servers = listOf(build.raft.app.data.ServerConnectOutcome.Connected("srv-new", "ch-new")),
+                traceId = null,
+            )
+        )
+    var connectNewServerGate: CompletableDeferred<Unit>? = null
+    val connectNewServerCalls = mutableListOf<Pair<String, String>>()
+
+    override suspend fun connectNewServer(name: String, slug: String): DataResult<build.raft.app.data.MemberConnectNewServerResponse> {
+        connectNewServerCalls += name to slug
+        connectNewServerGate?.await()
+        return connectNewServerResult
     }
 }

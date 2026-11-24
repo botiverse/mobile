@@ -662,7 +662,7 @@ private fun externalInviteReviewStatusText(row: ExternalInviteReviewRow, serverN
         ExternalInviteReviewStatus.MemberInChannel -> stringResource(Res.string.channel_external_invite_status_member_in_channel)
         ExternalInviteReviewStatus.GuestElsewhere ->
             stringResource(Res.string.channel_external_invite_status_guest_elsewhere, row.channel.orEmpty()) + "\n" +
-                stringResource(Res.string.channel_external_invite_status_guest_elsewhere_hint, serverName, row.channel.orEmpty())
+                stringResource(Res.string.channel_external_invite_status_guest_elsewhere_hint, serverName)
         ExternalInviteReviewStatus.GuestElsewhereUnnamed ->
             stringResource(Res.string.channel_external_invite_status_guest_elsewhere_unnamed) + "\n" +
                 stringResource(Res.string.channel_external_invite_status_guest_elsewhere_unnamed_hint, serverName)

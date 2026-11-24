@@ -170,18 +170,65 @@ class ExternalInvitesStoreTest {
         assertEquals(
             listOf(
                 ExternalInviteReviewStatus.WillInvite,
+                ExternalInviteReviewStatus.GuestElsewhere,
+                ExternalInviteReviewStatus.GuestElsewhereUnnamed,
                 ExternalInviteReviewStatus.WillAdd,
                 ExternalInviteReviewStatus.Duplicate,
                 ExternalInviteReviewStatus.AlreadyInvited,
                 ExternalInviteReviewStatus.AlreadyInChannel,
-                ExternalInviteReviewStatus.GuestElsewhere,
-                ExternalInviteReviewStatus.GuestElsewhereUnnamed,
                 ExternalInviteReviewStatus.Invalid,
             ),
             rows.map { it.status },
         )
         assertEquals("#vendor", rows.first { it.status == ExternalInviteReviewStatus.GuestElsewhere }.channel)
-        assertEquals(listOf(true, true), rows.take(2).map { it.invites })
+        assertEquals(listOf(true, true, true, true, false), rows.take(5).map { it.invites })
+    }
+
+    @Test
+    fun guestsElsewhereAreInvitedIncludedInSlotsAndExcludedFromConnectMemberEmails() = runTest {
+        val source = FakeExternalInvitesDataSource()
+        source.previewAnswer =
+            DataResult.Content(
+                ExternalInviteAnswer.Ok(
+                    ExternalInvitePreview(
+                        valid = listOf("new@example.com"),
+                        guestsElsewhere = listOf(ExternalInviteGuestElsewhere("g@example.com", "vendor")),
+                        alreadyMembers = listOf("m@example.com"),
+                        slotsLeft = 1,
+                    )
+                )
+            )
+        val store = ExternalInvitesStore(this, source)
+        store.dispatch(ExternalInvitesIntent.OpenDialog())
+        store.dispatch(ExternalInvitesIntent.SetText("new@example.com g@example.com m@example.com"))
+        store.dispatch(ExternalInvitesIntent.Next)
+        runCurrent()
+        // 1 valid + 1 guestElsewhere = 2 outsiders > 1 slot left -> overSlots == 1, blocked from sending.
+        val over = assertNotNull(store.state.value.dialog)
+        assertEquals(2, over.inviteCount)
+        assertEquals(3, over.actionCount)
+        assertEquals(1, over.overSlots)
+
+        // With 2 slots left, guestsElsewhere are sent alongside valid and alreadyMembers, and NOT in connectMemberEmails.
+        source.previewAnswer =
+            DataResult.Content(
+                ExternalInviteAnswer.Ok(
+                    ExternalInvitePreview(
+                        valid = listOf("new@example.com"),
+                        guestsElsewhere = listOf(ExternalInviteGuestElsewhere("g@example.com", "vendor")),
+                        alreadyMembers = listOf("m@example.com"),
+                        slotsLeft = 2,
+                    )
+                )
+            )
+        store.dispatch(ExternalInvitesIntent.Back)
+        store.dispatch(ExternalInvitesIntent.Next)
+        runCurrent()
+        assertEquals(0, store.state.value.dialog?.overSlots)
+        store.dispatch(ExternalInvitesIntent.Send(makePrivate = false))
+        runCurrent()
+        assertEquals(listOf(listOf("new@example.com", "g@example.com", "m@example.com") to false), source.sendCalls)
+        assertEquals(listOf(listOf("m@example.com")), source.connectMemberCalls)
     }
 
     @Test

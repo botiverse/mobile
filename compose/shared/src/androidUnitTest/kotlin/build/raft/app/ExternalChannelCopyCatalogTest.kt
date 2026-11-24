@@ -189,6 +189,23 @@ class ExternalChannelCopyCatalogTest {
             "upgrade_dialog_limit_joint_host_limit",
             "upgrade_dialog_limit_joint_read_only",
             "upgrade_dialog_limit_joint_over_limit",
+            "upgrade_dialog_external_limit_hint_invite",
+        )
+
+    private val requiredGuestConnectAndPrivateRowKeys =
+        listOf(
+            "channel_details_other_servers_title",
+            "channel_details_other_servers_not_connected",
+            "channel_details_other_servers_connect",
+            "joint_member_connect_guest_entry_why",
+            "joint_member_connect_guest_create_server",
+            "joint_member_connect_row_ask_approvers",
+            "joint_member_connect_list_or_two",
+            "joint_member_connect_list_or_end",
+            "channel_external_invite_status_guest_elsewhere",
+            "channel_external_invite_status_guest_elsewhere_unnamed",
+            "channel_external_invite_status_guest_elsewhere_hint",
+            "channel_external_invite_status_guest_elsewhere_unnamed_hint",
         )
 
     private val requiredFreezeKeys =
@@ -226,6 +243,9 @@ class ExternalChannelCopyCatalogTest {
         allLocales.forEach { locale ->
             val catalog = catalog(locale)
             requiredFreezeKeys.forEach { key ->
+                assertFalse(catalog[key].isNullOrBlank(), "$locale missing $key")
+            }
+            requiredGuestConnectAndPrivateRowKeys.forEach { key ->
                 assertFalse(catalog[key].isNullOrBlank(), "$locale missing $key")
             }
             retiredUpgradeJointKeys.forEach { retiredKey ->

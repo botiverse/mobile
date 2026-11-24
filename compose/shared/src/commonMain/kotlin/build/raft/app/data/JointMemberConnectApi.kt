@@ -60,7 +60,25 @@ private data class WireServerConnectOutcome(
 private data class WireMemberConnectResponse(val servers: List<WireServerConnectOutcome>)
 
 @Serializable
-private data class WireMemberConnectErrorBody(val error: String? = null, val code: String? = null)
+private data class WireMemberConnectErrorBody(
+    val error: String? = null,
+    val code: String? = null,
+    val limitSide: String? = null,
+    val limitServerId: String? = null,
+    val serverId: String? = null,
+)
+
+@Serializable
+internal data class MemberConnectNewServerRequestBody(val name: String, val slug: String)
+
+internal fun buildSharedMemberConnectNewServerBody(name: String, slug: String): String =
+    memberConnectJson.encodeToString(MemberConnectNewServerRequestBody.serializer(), MemberConnectNewServerRequestBody(name, slug))
+
+@Serializable
+private data class WireMemberConnectNewServerResponse(
+    val serverId: String = "",
+    val servers: List<WireServerConnectOutcome> = emptyList(),
+)
 
 @Serializable
 private data class WireMemberConnectOwnerRef(
@@ -78,11 +96,21 @@ private data class WireMemberConnectableServer(
 )
 
 @Serializable
-private data class WireMemberConnectableServersResponse(
-    val servers: List<WireMemberConnectableServer>,
+private data class WireMemberAskServer(
+    val id: String = "",
+    val name: String = "",
+    val slug: String = "",
+    val avatarUrl: String? = null,
+    val approvers: List<WireMemberConnectOwnerRef> = emptyList(),
 )
 
-/** Billing owner of an at-limit server returned by `GET channels/:id/connect-my-servers`. */
+@Serializable
+private data class WireMemberConnectableServersResponse(
+    val servers: List<WireMemberConnectableServer>,
+    val askServers: List<WireMemberAskServer> = emptyList(),
+)
+
+/** Billing owner or approver returned by `GET channels/:id/connect-my-servers`. */
 data class MemberConnectOwnerRef(
     val id: String,
     val name: String = "",
@@ -98,47 +126,86 @@ data class MemberConnectServerLimit(
 )
 
 /**
+ * A server the member only belongs to (cannot connect directly); its owners or admins can
+ * (`GET channels/:id/connect-my-servers` `askServers`, slock #16361).
+ */
+data class MemberAskServer(
+    val id: String,
+    val name: String,
+    val slug: String = "",
+    val avatarUrl: String? = null,
+    val approvers: List<MemberConnectOwnerRef> = emptyList(),
+)
+
+/** Both lists returned by `GET channels/:id/connect-my-servers` (slock #16361). */
+data class MemberConnectOptions(
+    val limits: Map<String, MemberConnectServerLimit> = emptyMap(),
+    val askServers: List<MemberAskServer> = emptyList(),
+)
+
+private fun List<WireMemberConnectOwnerRef>.toDomainOwnerRefs(): List<MemberConnectOwnerRef> =
+    mapNotNull { ref ->
+        val refId = ref.id.trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
+        MemberConnectOwnerRef(
+            id = refId,
+            name = ref.name.trim(),
+            avatarUrl = ref.avatarUrl?.trim()?.takeIf(String::isNotBlank),
+        )
+    }
+
+/**
+ * Parses `GET channels/:id/connect-my-servers` (`{ servers: [...], askServers?: [...] }`,
+ * slock #16361), returning null on malformed payloads and dropping entries with blank server IDs.
+ */
+internal fun parseSharedMemberConnectOptions(bodyText: String): MemberConnectOptions? =
+    runCatching {
+        val parsed = memberConnectJson.decodeFromString(WireMemberConnectableServersResponse.serializer(), bodyText)
+        val limits =
+            buildMap {
+                parsed.servers.forEach { row ->
+                    val id = row.id.trim().takeIf(String::isNotBlank) ?: return@forEach
+                    put(
+                        id,
+                        MemberConnectServerLimit(
+                            serverId = id,
+                            atLimit = row.atLimit,
+                            canUpgrade = row.canUpgrade,
+                            owners = row.owners.toDomainOwnerRefs(),
+                        ),
+                    )
+                }
+            }
+        val askServers =
+            parsed.askServers.mapNotNull { row ->
+                val id = row.id.trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
+                MemberAskServer(
+                    id = id,
+                    name = row.name.trim(),
+                    slug = row.slug.trim(),
+                    avatarUrl = row.avatarUrl?.trim()?.takeIf(String::isNotBlank),
+                    approvers = row.approvers.toDomainOwnerRefs(),
+                )
+            }
+        MemberConnectOptions(limits = limits, askServers = askServers)
+    }.getOrNull()
+
+/**
  * Parses `GET channels/:id/connect-my-servers` (`{ servers: [{ id, atLimit, canUpgrade, owners }] }`),
  * returning null on malformed payloads and dropping entries with blank server IDs.
  */
 internal fun parseSharedMemberConnectLimits(bodyText: String): Map<String, MemberConnectServerLimit>? =
-    runCatching {
-        val parsed = memberConnectJson.decodeFromString(WireMemberConnectableServersResponse.serializer(), bodyText)
-        buildMap {
-            parsed.servers.forEach { row ->
-                val id = row.id.trim().takeIf(String::isNotBlank) ?: return@forEach
-                val owners =
-                    row.owners.mapNotNull { owner ->
-                        val ownerId = owner.id.trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
-                        MemberConnectOwnerRef(
-                            id = ownerId,
-                            name = owner.name.trim(),
-                            avatarUrl = owner.avatarUrl?.trim()?.takeIf(String::isNotBlank),
-                        )
-                    }
-                put(
-                    id,
-                    MemberConnectServerLimit(
-                        serverId = id,
-                        atLimit = row.atLimit,
-                        canUpgrade = row.canUpgrade,
-                        owners = owners,
-                    ),
-                )
-            }
-        }
-    }.getOrNull()
+    parseSharedMemberConnectOptions(bodyText)?.limits
 
 /**
- * Web `useMemberConnectLimits`: `GET channels/:id/connect-my-servers` to discover which eligible
- * servers are already at Free's 1-external-channel limit. Older servers may return 404; any
- * non-2xx or parse/transport error silently degrades to an empty map (Connect still handles
- * server-side limit refusals).
+ * `GET channels/:id/connect-my-servers`: per-server Free external-channel limits (`servers`) and
+ * member-only servers whose owners/admins can connect (`askServers`, slock #16361). Older servers
+ * may return 404 or omit `askServers`; any non-2xx or parse/transport error silently degrades to
+ * empty options.
  */
-internal suspend fun RaftNetworkClient.listMemberConnectLimits(
+internal suspend fun RaftNetworkClient.listMemberConnectOptions(
     channelId: ChannelId,
     warningLogger: (String) -> Unit = {},
-): Map<String, MemberConnectServerLimit> {
+): MemberConnectOptions {
     val response =
         try {
             request(
@@ -150,13 +217,22 @@ internal suspend fun RaftNetworkClient.listMemberConnectLimits(
             throw cancellation
         } catch (exception: Exception) {
             warningLogger("request_failed source=member_connect_limits exception=${exception::class.simpleName}")
-            return emptyMap()
+            return MemberConnectOptions()
         }
-    if (!response.isSuccessful) return emptyMap()
-    return parseSharedMemberConnectLimits(response.bodyText.orEmpty()).also { parsed ->
+    if (!response.isSuccessful) return MemberConnectOptions()
+    return parseSharedMemberConnectOptions(response.bodyText.orEmpty()).also { parsed ->
         if (parsed == null) warningLogger("parse_failed source=member_connect_limits status=${response.code}")
-    }.orEmpty()
+    } ?: MemberConnectOptions()
 }
+
+/**
+ * Web `useMemberConnectLimits`: `GET channels/:id/connect-my-servers` to discover which eligible
+ * servers are already at Free's 1-external-channel limit.
+ */
+internal suspend fun RaftNetworkClient.listMemberConnectLimits(
+    channelId: ChannelId,
+    warningLogger: (String) -> Unit = {},
+): Map<String, MemberConnectServerLimit> = listMemberConnectOptions(channelId, warningLogger).limits
 
 /** One chosen server's answer (web `ServerConnectOutcome`). */
 sealed interface ServerConnectOutcome {
@@ -256,4 +332,106 @@ internal suspend fun RaftNetworkClient.connectMyServers(
     val body = parseSharedMemberConnectError(response.bodyText ?: response.errorBodyText)
     if (response.code == 401) return authSessionRequiredResult(body?.second)
     return DataResult.Content(MemberConnectResponse.Refused(response.code, body?.first, body?.second, response.traceId))
+}
+
+/**
+ * What `POST channels/:id/connect-new-server` answered (botiverse/slock #16353,
+ * `routes/channels.ts` `channelRouter.post("/:id/connect-new-server")`).
+ *
+ * Once the new server exists, every refusal (including 500) carries [Refused.serverId] so the
+ * caller knows they keep the created server.
+ */
+sealed interface MemberConnectNewServerResponse {
+    /** 200 `{ serverId, servers: ServerConnectOutcome[] }`. */
+    data class Answered(
+        val serverId: String,
+        val servers: List<ServerConnectOutcome>,
+        val traceId: String?,
+    ) : MemberConnectNewServerResponse
+
+    /** Non-2xx (other than 401): status, code, error, limit fields, and optional [serverId] when kept. */
+    data class Refused(
+        val status: Int,
+        val code: String?,
+        val error: String?,
+        val limitSide: String? = null,
+        val limitServerId: String? = null,
+        val serverId: String? = null,
+        val traceId: String?,
+    ) : MemberConnectNewServerResponse
+}
+
+/** Parses 200 `{ serverId, servers }` from `POST channels/:id/connect-new-server`; null if malformed. */
+internal fun parseSharedMemberConnectNewServerResponse(bodyText: String): Pair<String, List<ServerConnectOutcome>>? =
+    runCatching {
+        val parsed = memberConnectJson.decodeFromString(WireMemberConnectNewServerResponse.serializer(), bodyText)
+        val id = parsed.serverId.trim().takeIf(String::isNotBlank) ?: return@runCatching null
+        id to parsed.servers.mapNotNull { it.toDomain() }
+    }.getOrNull()
+
+/** Parses a refused `POST channels/:id/connect-new-server` error body, preserving `serverId` when kept. */
+internal fun parseSharedMemberConnectNewServerError(
+    status: Int,
+    bodyText: String?,
+    traceId: String?,
+): MemberConnectNewServerResponse.Refused {
+    val parsed =
+        bodyText?.takeIf(String::isNotBlank)?.let { body ->
+            runCatching { memberConnectJson.decodeFromString(WireMemberConnectErrorBody.serializer(), body) }.getOrNull()
+        }
+    fun String?.clean() = this?.trim()?.takeIf(String::isNotBlank)
+    return MemberConnectNewServerResponse.Refused(
+        status = status,
+        code = parsed?.code.clean(),
+        error = parsed?.error.clean(),
+        limitSide = parsed?.limitSide.clean(),
+        limitServerId = parsed?.limitServerId.clean(),
+        serverId = parsed?.serverId.clean(),
+        traceId = traceId,
+    )
+}
+
+/**
+ * `POST channels/:id/connect-new-server` (slock #16353): creates a new server owned by the caller
+ * and connects it to the channel without approval. Network failures and 401 stay [DataResult]
+ * errors; every other answer is a [MemberConnectNewServerResponse].
+ */
+internal suspend fun RaftNetworkClient.connectNewServer(
+    channelId: ChannelId,
+    name: String,
+    slug: String,
+    warningLogger: (String) -> Unit = {},
+): DataResult<MemberConnectNewServerResponse> {
+    val response =
+        try {
+            request(
+                priority = DataRequestPriority.Foreground,
+                path = "channels/${channelId.value}/connect-new-server",
+                method = "POST",
+                bodyText = buildSharedMemberConnectNewServerBody(name, slug),
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (exception: Exception) {
+            warningLogger("request_failed source=member_connect_new_server exception=${exception::class.simpleName}")
+            return DataResult.Error(ScreenError(code = "network_unavailable", retryable = true))
+        }
+    if (response.isSuccessful) {
+        val parsed = parseSharedMemberConnectNewServerResponse(response.bodyText.orEmpty())
+        if (parsed == null) {
+            warningLogger("parse_failed source=member_connect_new_server status=${response.code}")
+            return DataResult.Content(
+                MemberConnectNewServerResponse.Refused(
+                    status = response.code,
+                    code = null,
+                    error = null,
+                    traceId = response.traceId,
+                )
+            )
+        }
+        return DataResult.Content(MemberConnectNewServerResponse.Answered(parsed.first, parsed.second, response.traceId))
+    }
+    val refused = parseSharedMemberConnectNewServerError(response.code, response.bodyText ?: response.errorBodyText, response.traceId)
+    if (response.code == 401) return authSessionRequiredResult(refused.error)
+    return DataResult.Content(refused)
 }

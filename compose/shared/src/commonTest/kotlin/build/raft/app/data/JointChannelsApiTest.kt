@@ -244,6 +244,36 @@ class JointChannelsApiTest {
         assertNull(jointInviteRateLimitMinutes(null))
     }
 
+    @Test
+    fun conversionInProgressParsesPendingCommandAndActiveOrFailedJob() {
+        assertFalse(assertNotNullValue(parseSharedJointChannelConnections(HOST_PROJECTION)).conversionInProgress)
+        val pendingCmd =
+            assertNotNullValue(
+                parseSharedJointChannelConnections(
+                    """{"id":"ch-1","name":"secret","type":"private","joined":true,"conversionCommand":{"id":"cmd-1","kind":"start","status":"pending"}}"""
+                )
+            )
+        assertTrue(pendingCmd.conversionInProgress)
+        listOf("pending", "running", "failed").forEach { status ->
+            val jobRow =
+                assertNotNullValue(
+                    parseSharedJointChannelConnections(
+                        """{"id":"ch-1","name":"secret","type":"private","joined":true,"conversionJob":{"id":"j1","status":"$status"}}"""
+                    )
+                )
+            assertTrue(jobRow.conversionInProgress, "status=$status")
+        }
+        listOf("completed", "cancelled").forEach { status ->
+            val settled =
+                assertNotNullValue(
+                    parseSharedJointChannelConnections(
+                        """{"id":"ch-1","name":"secret","type":"private","joined":true,"conversionJob":{"id":"j1","status":"$status"}}"""
+                    )
+                )
+            assertFalse(settled.conversionInProgress, "status=$status")
+        }
+    }
+
     private fun <T> assertNotNullValue(value: T?): T {
         kotlin.test.assertNotNull(value)
         return value

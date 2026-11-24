@@ -157,10 +157,12 @@ class ChannelSettingsPageTest {
 
     @Test
     fun privateMemberConnectNeedsAPrivateChannelTheViewerIsInAndAServerToConnect() {
-        // Web EditChannelDialog showPrivateConnectSection: private, not archived, memberConnect.available.
+        // Web EditChannelDialog showPrivateConnectRow (slock #16395/#16454): private, not archived, not converting, memberConnect.available.
         val account = memberTestAccount()
         val private = row(name = "partners", type = "private")
         assertTrue(channelSettingsOffersPrivateMemberConnect(private, account = account))
+        // Hidden while a conversion to an external channel is under way.
+        assertFalse(channelSettingsOffersPrivateMemberConnect(private, account = account, conversionInProgress = true))
         // Only a private channel: not a public one, not a joint one (its own Connected servers section).
         assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "partners"), account = account))
         assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "partners", type = "joint"), account = account))
@@ -172,6 +174,42 @@ class ChannelSettingsPageTest {
         assertFalse(channelSettingsOffersPrivateMemberConnect(private, account = null))
         val memberOnly = account.copy(servers = account.servers.filter { it.role != "owner" && it.role != "admin" || it.slug == "community" || it.id == account.currentServerId })
         assertFalse(channelSettingsOffersPrivateMemberConnect(private, account = memberOnly))
+
+        // Channel settings section shows when Connect your servers is the only row (e.g. plain member of a private channel).
+        assertTrue(
+            channelDetailsHasChannelSettings(
+                ChannelSettingsUiModel(
+                    channel = private,
+                    memberSlice = SharedServerChannelMembersSlice(channelId = "c"),
+                    pinned = false,
+                    muted = false,
+                    permissions = channelSettingsPermissions(private, canManage = false),
+                    writeActionsEnabled = true,
+                    canStopAllAgents = false,
+                    privateMemberConnect = true,
+                )
+            )
+        )
+    }
+
+    @Test
+    fun guestMemberConnectRequiresAGuestWhoCannotAddMembersAndNoConversion() {
+        val guestAccount = memberTestAccount().copy(currentServerRole = "guest", servers = listOf(MemberConnectServer("srv-cur", "Current Co", "current-co", null, "guest")))
+        val private = row(name = "partners", type = "private")
+        val hostJoint = row(name = "partners", type = "joint", jointRole = "host")
+        val participantJoint = row(name = "partners", type = "joint", jointRole = "participant")
+
+        assertTrue(channelSettingsOffersGuestMemberConnect(private, canAddMembers = false, account = guestAccount))
+        assertTrue(channelSettingsOffersGuestMemberConnect(hostJoint, canAddMembers = false, account = guestAccount))
+        // Participant copy, public channel, #all, archived, unjoined, non-guest, canAddMembers, or converting -> hidden.
+        assertFalse(channelSettingsOffersGuestMemberConnect(participantJoint, canAddMembers = false, account = guestAccount))
+        assertFalse(channelSettingsOffersGuestMemberConnect(row(name = "partners"), canAddMembers = false, account = guestAccount))
+        assertFalse(channelSettingsOffersGuestMemberConnect(row(name = "all", type = "private"), canAddMembers = false, account = guestAccount))
+        assertFalse(channelSettingsOffersGuestMemberConnect(row(name = "partners", type = "private", archived = true), canAddMembers = false, account = guestAccount))
+        assertFalse(channelSettingsOffersGuestMemberConnect(row(name = "partners", type = "private", joined = false), canAddMembers = false, account = guestAccount))
+        assertFalse(channelSettingsOffersGuestMemberConnect(private, canAddMembers = true, account = guestAccount))
+        assertFalse(channelSettingsOffersGuestMemberConnect(private, canAddMembers = false, account = guestAccount, conversionInProgress = true))
+        assertFalse(channelSettingsOffersGuestMemberConnect(private, canAddMembers = false, account = memberTestAccount()))
     }
 
     @Test

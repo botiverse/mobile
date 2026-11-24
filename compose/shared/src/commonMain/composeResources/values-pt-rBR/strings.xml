@@ -1042,6 +1042,9 @@
     <string name="channel_details_slack_dialog_title">Conectar #%1$s ao Slack</string>
     <string name="channel_details_slack_dialog_lead">Pareie este canal com um canal do Slack. O que for postado em um aparece nos dois.</string>
     <string name="channel_details_slack_failed">O canal do Slack não foi conectado. Tente de novo.</string>
+    <string name="channel_details_other_servers_title">Conectar seus servidores</string>
+    <string name="channel_details_other_servers_not_connected">Não conectado</string>
+    <string name="channel_details_other_servers_connect">Conectar</string>
     <string name="channel_settings_visitor_visible_title">Visível para visitantes</string>
     <string name="channel_settings_visitor_visible_description">Qualquer pessoa pode ler as mensagens e respostas dele na página pública deste servidor, sem fazer login.</string>
     <string name="channel_settings_visitor_visible_save_failed">Não foi possível alterar se os visitantes podem ver este canal.</string>
@@ -3993,6 +3996,11 @@
     <string name="joint_member_connect_toast_connecting_many">Conectando %1$s. Eles aparecem em Servidores conectados quando terminar.</string>
     <string name="joint_member_connect_toast_connecting_one">Conectando %1$s. Ele aparece em Servidores conectados quando terminar.</string>
     <string name="joint_member_connect_visibility">Em %1$s, quem já está neste canal pode vê-lo de lá; os demais precisam ser adicionados.</string>
+    <string name="joint_member_connect_guest_entry_why">Você é convidado neste canal, então não pode adicionar membros diretamente. Conecte seu servidor a este canal e os agentes e colegas do seu servidor poderão entrar.</string>
+    <string name="joint_member_connect_guest_create_server">Criar um servidor e conectar</string>
+    <string name="joint_member_connect_row_ask_approvers">Peça a %1$s para conectar</string>
+    <string name="joint_member_connect_list_or_two">%1$s ou %2$s</string>
+    <string name="joint_member_connect_list_or_end">%1$s ou %2$s</string>
     <string name="joint_invite_notification_title">Convite para entrar em #%1$s</string>
     <string name="joint_invite_notification_body">%1$s convidou este servidor para um canal externo.</string>
     <string name="joint_invite_notification_accept">Aceitar</string>
@@ -5379,10 +5387,10 @@
     <string name="channel_external_invite_status_already_in_channel">Já está neste canal · sem convite</string>
     <string name="channel_external_invite_status_member_in_channel">Já está neste canal</string>
     <string name="channel_external_invite_invite_to_connect">Convidar para conectar o próprio servidor</string>
-    <string name="channel_external_invite_status_guest_elsewhere">Convidado em %1$s · não pode receber convite</string>
-    <string name="channel_external_invite_status_guest_elsewhere_unnamed">Convidado em outro canal · não pode receber convite</string>
-    <string name="channel_external_invite_status_guest_elsewhere_hint">Em %1$s, cada convidado só pode estar em um canal. Para convidar essa pessoa para cá, remova-a de %2$s primeiro.</string>
-    <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">Em %1$s, cada convidado só pode estar em um canal. Para convidar essa pessoa para cá, remova-a primeiro do outro canal em que ela está.</string>
+    <string name="channel_external_invite_status_guest_elsewhere">Convidado em %1$s · receberá convite para conectar um servidor</string>
+    <string name="channel_external_invite_status_guest_elsewhere_unnamed">Convidado em outro canal · receberá convite para conectar um servidor</string>
+    <string name="channel_external_invite_status_guest_elsewhere_hint">Em %1$s, cada convidado só pode estar em um canal, então essa pessoa não pode entrar aqui como convidado. Com este convite, ela pode entrar conectando um servidor do qual participa ou criando um.</string>
+    <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">Em %1$s, cada convidado só pode estar em um canal, então essa pessoa não pode entrar aqui como convidado. Com este convite, ela pode entrar conectando um servidor do qual participa ou criando um.</string>
     <string name="channel_external_invite_status_duplicate">Aparece mais de uma vez · um único convite</string>
     <string name="channel_external_invite_status_invalid">E-mail inválido · sem convite</string>
     <string name="channel_external_invite_commit">Convidar</string>

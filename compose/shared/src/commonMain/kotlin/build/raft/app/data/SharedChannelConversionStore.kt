@@ -89,6 +89,14 @@ data class ChannelConversionSlice(
                         it.status == RaftChannelConversionJobStatus.Failed)
             }
 
+    /**
+     * Web `useChannelConversionInProgress` (slock #16389): true while a conversion command is
+     * pending/in-flight or a conversion job is pending, running, or failed. Connect entries stay
+     * hidden until the conversion settles.
+     */
+    val isConversionInProgress: Boolean
+        get() = busy != null || conversion.commandPending || shownJob != null
+
     /** A job under way (pending or running). */
     val runningJob: RaftChannelConversionJob?
         get() = shownJob?.takeIf { it.status != RaftChannelConversionJobStatus.Failed }

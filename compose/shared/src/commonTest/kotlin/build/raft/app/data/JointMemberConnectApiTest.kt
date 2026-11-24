@@ -148,6 +148,99 @@ class JointMemberConnectApiTest {
         assertNull(parseSharedMemberConnectLimits("""{"notServers":[]}"""))
     }
 
+    @Test
+    fun memberConnectOptionsParseAskServersWithApproversAndTolerateOlderServers() = runTest {
+        val body =
+            """
+            {"servers":[
+              {"id":"srv-free","name":"Free Co","slug":"free-co","atLimit":true,"canUpgrade":true,"owners":[]}
+            ],
+            "askServers":[
+              {"id":"srv-ask","name":"Acme Labs","slug":"acme-labs","avatarUrl":"https://cdn/acme.png",
+               "approvers":[{"id":"u1","name":"Tom"},{"id":"u2","name":"Lena"},{"id":" ","name":"Blank"}]},
+              {"id":" ","name":"Blank Server","slug":"blank","approvers":[{"id":"u3","name":"Skip"}]}
+            ]}
+            """.trimIndent()
+        val okClient = RecordingJointNetworkClient { _, _ -> HomeNetworkResponse(200, body) }
+        val options = okClient.listMemberConnectOptions(ChannelId("ch-1"))
+        assertEquals(setOf("srv-free"), options.limits.keys)
+        assertEquals(
+            listOf(
+                MemberAskServer(
+                    id = "srv-ask",
+                    name = "Acme Labs",
+                    slug = "acme-labs",
+                    avatarUrl = "https://cdn/acme.png",
+                    approvers =
+                        listOf(
+                            MemberConnectOwnerRef(id = "u1", name = "Tom"),
+                            MemberConnectOwnerRef(id = "u2", name = "Lena"),
+                        ),
+                )
+            ),
+            options.askServers,
+        )
+
+        val olderClient = RecordingJointNetworkClient { _, _ -> HomeNetworkResponse(200, """{"servers":[]}""") }
+        assertEquals(MemberConnectOptions(), olderClient.listMemberConnectOptions(ChannelId("ch-1")))
+
+        val failClient = RecordingJointNetworkClient { _, _ -> HomeNetworkResponse(500, """{"error":"boom"}""") }
+        assertEquals(MemberConnectOptions(), failClient.listMemberConnectOptions(ChannelId("ch-1")))
+    }
+
+    @Test
+    fun connectNewServerPostsNameAndSlugAndParsesAnsweredRefusedAndAuth() = runTest {
+        assertEquals("""{"name":"Kirby Lab","slug":"kirby-lab"}""", buildSharedMemberConnectNewServerBody("Kirby Lab", "kirby-lab"))
+
+        val okClient =
+            RecordingJointNetworkClient { _, _ ->
+                HomeNetworkResponse(
+                    code = 200,
+                    bodyText = """{"serverId":"srv-new","servers":[{"serverId":"srv-new","state":"connecting"}]}""",
+                    responseHeaders = mapOf("X-Trace-Id" to listOf(TRACE)),
+                )
+            }
+        val answered =
+            assertIs<MemberConnectNewServerResponse.Answered>(
+                assertIs<DataResult.Content<MemberConnectNewServerResponse>>(
+                    okClient.connectNewServer(ChannelId("ch-priv"), "Kirby Lab", "kirby-lab")
+                ).data
+            )
+        assertEquals("srv-new", answered.serverId)
+        assertEquals(listOf(ServerConnectOutcome.Connecting("srv-new")), answered.servers)
+        assertEquals(TRACE, answered.traceId)
+        val call = okClient.calls.single()
+        assertEquals("POST", call.method)
+        assertEquals("channels/ch-priv/connect-new-server", call.path)
+        assertEquals(DataRequestPriority.Foreground, call.priority)
+        assertEquals("""{"name":"Kirby Lab","slug":"kirby-lab"}""", call.body)
+
+        val keptClient =
+            RecordingJointNetworkClient { _, _ ->
+                HomeNetworkResponse(
+                    code = 409,
+                    bodyText = null,
+                    errorBodyText = """{"code":"free_external_limit","error":"Host at limit","limitSide":"host","limitServerId":"srv-host","serverId":"srv-created"}""",
+                    responseHeaders = mapOf("X-Trace-Id" to listOf(TRACE)),
+                )
+            }
+        val refused =
+            assertIs<MemberConnectNewServerResponse.Refused>(
+                assertIs<DataResult.Content<MemberConnectNewServerResponse>>(
+                    keptClient.connectNewServer(ChannelId("ch-priv"), "Kirby Lab", "kirby-lab")
+                ).data
+            )
+        assertEquals(409, refused.status)
+        assertEquals("free_external_limit", refused.code)
+        assertEquals("host", refused.limitSide)
+        assertEquals("srv-host", refused.limitServerId)
+        assertEquals("srv-created", refused.serverId)
+        assertEquals(TRACE, refused.traceId)
+
+        val authClient = RecordingJointNetworkClient { _, _ -> HomeNetworkResponse(401, null, errorBodyText = """{"error":"Unauthorized"}""") }
+        assertEquals("auth_required", assertIs<DataResult.NoPermission>(authClient.connectNewServer(ChannelId("c"), "A", "a")).blocker.code)
+    }
+
     private companion object {
         const val TRACE = "0123456789abcdef0123456789abcdef"
 
