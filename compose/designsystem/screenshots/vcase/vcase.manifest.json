@@ -507,6 +507,15 @@
       "divergences": []
     },
     {
+      "id": "ds.hover.raft-clickable",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/RaftClickableCases.kt:44",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
       "id": "ds.hover.tabs",
       "kind": "component",
       "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/HoverCases.kt:126",
