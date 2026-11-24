@@ -126,6 +126,12 @@ data class RaftControlMetrics(
      */
     val rowHeight: Dp?,
     /**
+     * A sidebar row in a wide window (raft-ui SidebarItem at `md`: `h-(--row-height)` in
+     * `text-subhead` 500): 38 with a finger (`--row-height` on a touch screen), 34 under a fine
+     * pointer. Null on a phone, where a row is at least 44 in `text-body` 600 (`max-md:min-h-11`).
+     */
+    val sidebarRowHeight: Dp?,
+    /**
      * A head: a page's top bar, a panel's head, a dialog sheet's head, a folded pane, a drawer's
      * head (raft-ui `--shell-header-height`). 56 with a finger; 44 under a fine pointer (sizing
      * v12, raft-ui 0.65 desktop density), where a 56 head wastes a mouse's precision.
@@ -207,6 +213,7 @@ data class RaftControlMetrics(
                 embeddedSize = tokens.controlEmbeddedSize,
                 controlRadius = tokens.controlRadius,
                 rowHeight = if (desktop) tokens.rowHeight else null,
+                sidebarRowHeight = if (desktop) tokens.rowHeight else null,
                 headHeight = tokens.headerHeight,
                 barButtonSize = tokens.barButtonSize,
                 barIconSize = barIconSize,
@@ -248,6 +255,7 @@ data class RaftControlMetrics(
                 barButtonRadius = RaftRadius.Control,
                 barEdgeInset = touch.pageInset - (button - glyph) / 2,
                 headAvatar = RaftAvatarSize.Sm,
+                sidebarRowHeight = touch.rowHeight,
             )
         }
 
