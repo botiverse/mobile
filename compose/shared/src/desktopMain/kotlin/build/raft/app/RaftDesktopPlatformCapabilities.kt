@@ -150,3 +150,5 @@ internal actual fun raftPlatformTabPagerSwipeEnabled(): Boolean = false
 internal actual fun raftPlatformAppShellTabFadeThrough(): Boolean = false
 
 internal actual fun raftPlatformFollowsAppStoreBillingRules(): Boolean = false
+
+internal actual fun raftPlatformSupportsAppShellServerStackPage(): Boolean = false

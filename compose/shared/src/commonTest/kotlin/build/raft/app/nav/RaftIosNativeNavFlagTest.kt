@@ -49,4 +49,11 @@ class RaftIosNativeNavFlagTest {
         iPhone()
         assertFalse(RaftIosNativeNavFlag.launchDecision { error("no store yet") })
     }
+
+    @Test
+    fun pushedAppShellServerStackPageIsMappedForNativeNavBar() {
+        assertTrue(RaftIosNativeNavFlag.isMappedPage("compose_app_shell_server_page"))
+        assertTrue(RaftIosNativeNavFlag.pageUsesNativeNavBar(enabled = true, pageName = "compose_app_shell_server_page"))
+        assertFalse(RaftIosNativeNavFlag.pageUsesNativeNavBar(enabled = false, pageName = "compose_app_shell_server_page"))
+    }
 }

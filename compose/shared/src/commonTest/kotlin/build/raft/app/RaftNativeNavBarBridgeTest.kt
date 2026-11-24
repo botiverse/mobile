@@ -499,12 +499,36 @@ class RaftNativeNavBarBridgeTest {
             taskLoadingFallbackHead.actions.map { it.id },
         )
 
-        // 5. Pushed Members and Channel Details pages
+        // 5. Pushed Members, Channel Details, and App Shell Server Stack (Settings / Members) pages
         val membersHead = buildNativeNavBarPrefillHead(THREAD_MEMBERS_PAGE, "{}", strings = strings)
         assertEquals("Members", membersHead?.title)
         assertEquals(emptyList(), membersHead?.actions)
         val detailsHead = buildNativeNavBarPrefillHead(CHANNEL_SETTINGS_PAGE, "{}", strings = strings)
         assertEquals("Details", detailsHead?.title)
         assertEquals(emptyList(), detailsHead?.actions)
+        val serverSettingsHead =
+            buildNativeNavBarPrefillHead(
+                RAFT_APP_SHELL_SERVER_PAGE,
+                appShellServerStackPageData(AppShellServerTabKey, shellId = "shell-1").toString(),
+                strings = strings,
+            )
+        assertEquals("Settings", serverSettingsHead?.title)
+        assertEquals(emptyList(), serverSettingsHead?.actions)
+        assertTrue(serverSettingsHead?.onBack != null)
+        assertTrue(serverSettingsHead?.onTitleClick != null)
+        val serverMembersHead =
+            buildNativeNavBarPrefillHead(
+                RAFT_APP_SHELL_SERVER_PAGE,
+                appShellServerStackPageData("members", shellId = "shell-1").toString(),
+                strings = strings,
+            )
+        assertEquals("Members", serverMembersHead?.title)
+        assertEquals(emptyList(), serverMembersHead?.actions)
+        assertTrue(serverMembersHead?.onBack != null)
+        assertEquals(null, serverMembersHead?.onTitleClick)
+        assertEquals(
+            null,
+            buildNativeNavBarPrefillHead(RAFT_APP_SHELL_SERVER_PAGE, """{"tab":"unknown"}""", strings = strings),
+        )
     }
 }

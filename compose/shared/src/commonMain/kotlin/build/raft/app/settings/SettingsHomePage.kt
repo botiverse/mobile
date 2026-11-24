@@ -218,6 +218,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -348,6 +349,7 @@ internal class AppShellChildTabEntry(
     // entry. Render slots therefore fail closed to the shell renderer (which itself falls back
     // to home content for unknown keys) instead of throwing on getValue.
     private val fallbackRenderer: AppShellChildTabRenderer = initialRenderer
+    var serverStackRenderer: AppShellChildTabRenderer by mutableStateOf(initialRenderer)
     var modalHostState: RaftUnifiedDialogHostState? by mutableStateOf(initialModalHostState)
 
     fun rendererFor(tab: String): AppShellChildTabRenderer =
@@ -364,6 +366,9 @@ internal class AppShellChildTabEntry(
         parentVisible: Boolean = true,
         parentStarted: Boolean = parentVisible,
     ) {
+        // Pushed server stack pages (Settings / Members on iOS) read the shell's latest renderer
+        // even while the shell itself is covered (`CREATED`), matching Android's `RaftStackShellTabs`.
+        this.serverStackRenderer = renderer
         // Update the selected tab's renderer while STARTED (including pop-back slide so fresh data
         // paints on Frame 1) or when the selected tab changed (deep link); skip only when covered
         // (`CREATED`) on the same tab so hidden recompositions do not churn child tabs.
@@ -383,6 +388,8 @@ private data class AppShellChildTabRegistration(
 
 internal object AppShellChildTabRegistry {
     private val entries = mutableMapOf<String, AppShellChildTabEntry>()
+    private val revisionFlow = MutableStateFlow(0L)
+    val revision: StateFlow<Long> = revisionFlow
     private var nextDebugId = 0
 
     fun createEntryId(): Int {
@@ -390,12 +397,16 @@ internal object AppShellChildTabRegistry {
         return nextDebugId
     }
 
-    fun register(shellId: String, entry: AppShellChildTabEntry): AppShellChildTabEntry? =
-        entries.put(shellId, entry)
+    fun register(shellId: String, entry: AppShellChildTabEntry): AppShellChildTabEntry? {
+        val replaced = entries.put(shellId, entry)
+        revisionFlow.value += 1L
+        return replaced
+    }
 
     fun unregister(shellId: String, entry: AppShellChildTabEntry): Boolean {
         return if (entries[shellId] === entry) {
             entries.remove(shellId)
+            revisionFlow.value += 1L
             true
         } else {
             false
@@ -4840,7 +4851,7 @@ private fun RaftAppShellReadyContent(
                 )
                 if (appShellServerPagePushes(stackShellTabs != null, navRailActive)) {
                     serverTabFocusOnPageReturn = true
-                    pager.openAppShellServerStackPage("members")
+                    pager.openAppShellServerStackPage("members", shellId = childTabShellId.takeIf { stackShellTabs == null })
                 } else {
                     selectAppShellTab("members", directChildSwitch = true, source = AppShellTabSwitchSource.User)
                     retainedAppShellTabs = retainedAppShellTabs + "members"
@@ -4872,7 +4883,7 @@ private fun RaftAppShellReadyContent(
                 )
                 if (appShellServerPagePushes(stackShellTabs != null, navRailActive)) {
                     serverTabFocusOnPageReturn = true
-                    pager.openAppShellServerStackPage(settingsKey)
+                    pager.openAppShellServerStackPage(settingsKey, shellId = childTabShellId.takeIf { stackShellTabs == null })
                 } else {
                     selectAppShellTab(settingsKey, directChildSwitch = true, source = AppShellTabSwitchSource.User)
                     retainedAppShellTabs = retainedAppShellTabs + settingsKey
@@ -4963,7 +4974,10 @@ private fun RaftAppShellReadyContent(
         } else if (key != null) {
             openSettingsRowAt(key, anchor)
         } else if (appShellServerPagePushes(stackShellTabs != null, navRailActive)) {
-            pager.openAppShellServerStackPage(AppShellServerTabKey)
+            pager.openAppShellServerStackPage(
+                AppShellServerTabKey,
+                shellId = childTabShellId.takeIf { stackShellTabs == null },
+            )
         } else {
             selectAppShellTab(AppShellServerTabKey, directChildSwitch = true, source = AppShellTabSwitchSource.User)
             retainedAppShellTabs = retainedAppShellTabs + AppShellServerTabKey
@@ -6710,7 +6724,7 @@ private fun RaftAppShellReadyContent(
                             },
                             timeContext = threadTimeContext,
                             bottomContentPadding =
-                                if (stackPageClose != null) shellScope.contentBottomInset(false) else appShellBottomContentInset,
+                                if (stackPageClose != null) raftBottomSafeAreaPadding() + RaftAppSpacing.Lg else appShellBottomContentInset,
                             scrollToTopRequest = tabScrollToTopRequests.members,
                             initialListState = membersListState,
                             onListStateSnapshot = {
@@ -6865,7 +6879,7 @@ private fun RaftAppShellReadyContent(
                             imBridgesEnabled = imBridgesEnabled,
                             labsEnabled = labsEnabled,
                             bottomContentPadding =
-                                if (stackPageClose != null) shellScope.contentBottomInset(false) else appShellBottomContentInset,
+                                if (stackPageClose != null) raftBottomSafeAreaPadding() + RaftAppSpacing.Lg else appShellBottomContentInset,
                             scrollToTopRequest = tabScrollToTopRequests.more,
                             search =
                                 SettingsSearchHost(
@@ -6922,6 +6936,7 @@ private fun RaftAppShellReadyContent(
                             searchBottomContentPadding = appShellBottomContentInset,
                         )
                     }
+                    val shellRuntimeUsageAccess = LocalMembersRuntimeAccountUsageAccess.current
                     val childTabRenderer: AppShellChildTabRenderer = { tab, active ->
                         val homeSummary = sharedHomeContentRenderSummary(homeState.content)
                         LaunchedEffect(tab, active, currentChildTab, readyServerId, homeSummary, homeState.homeRealtimeDirty) {
@@ -6935,6 +6950,7 @@ private fun RaftAppShellReadyContent(
                             LocalRaftTimeContextProvider provides hostThreadTimeContextProvider,
                             // Each child tab runs in a RaftChildPage without serialized shell scope in pageData.
                             LocalRaftArtifactOpenStoreScope provides storeScope,
+                            LocalMembersRuntimeAccountUsageAccess provides shellRuntimeUsageAccess,
                         ) {
                             when (tab) {
                                 "home" -> homeTabContent(active)
