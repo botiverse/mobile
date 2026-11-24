@@ -506,8 +506,14 @@ private fun rememberThreadLinkNavigator(
     pager: Pager,
     bridge: build.raft.app.base.BridgeModule,
     payload: RaftThreadScreenPayload,
+    serverId: String?,
 ): RaftLinkNavigator =
-    rememberRaftLinkNavigator(pager, bridge, artifactConversationId = payload.artifactOpenConversationId())
+    rememberRaftLinkNavigator(
+        pager = pager,
+        bridge = bridge,
+        artifactConversationId = payload.artifactOpenConversationId(),
+        installedAppServerId = serverId,
+    )
 
 private fun RaftThreadScreenPayload.threadRenderDiagnosticsSource(): String =
     threadRenderDiagnosticsSource(toThreadTimelineSlice())
@@ -3811,7 +3817,7 @@ private fun SharedThreadRouteContentContent(
             enabled = renderSlice.writeActionsEnabled && !threadLimitLocked,
             preserveSettingsAccess = renderSlice.writeActionsEnabled && threadLimitLocked,
         )
-    val linkNavigator = rememberThreadLinkNavigator(pager, bridge, renderedThread)
+    val linkNavigator = rememberThreadLinkNavigator(pager, bridge, renderedThread, currentServerId)
     val threadViewerIsGuest = currentSession.threadViewerIsGuest(headerProjectionServerId?.value)
     val threadForwardSourceAvailable = renderedPayload.threadForwardSourceChannelId() != null
     val renderedTimelineSlice =
@@ -6030,6 +6036,7 @@ private fun SharedThreadRouteContentContent(
                             ),
                         // The batched link-card read (App link cards v2).
                         batchedRead = true,
+                        installedAppOrigins = sharedStores.threadInstalledAppOriginResolver(viewerId, serverId),
                     )
                 }
             }

@@ -320,4 +320,175 @@ class RaftLinkNavigationTest {
             opened,
         )
     }
+
+    @Test
+    fun ordinaryLinkMatchingInstalledAppPromotesToAppEntryEvenWithoutMultiProfileAndInSystemBrowserMode() {
+        val opened = mutableListOf<String>()
+        val registry = RaftAppEntryRegistry(newToken = { "tok-stamp" })
+        val stampMatch =
+            RaftInstalledAppOriginMatch(
+                origin = "https://stamp.build",
+                appName = "Stamp",
+                logoUrl = "https://api.raft.build/logos/stamp.webp",
+            )
+        val navigator =
+            RaftLinkNavigator(
+                modeProvider = { LinkOpenMode.SystemBrowser },
+                openInAppBrowser = { opened += "in_app:$it"; true },
+                openExternalBrowser = { opened += "external:$it" },
+                onRejected = { opened += "rejected:$it" },
+                openInAppBrowserWithEntryRequest = { url, token, req ->
+                    opened += "entry:$url|$token|${req.scopeOrigin}|${req.appName}|${req.preferredServerId}|${req.appLogoUrl}"
+                    true
+                },
+                supportsInAppBrowser = { true },
+                supportsIsolatedWebViewProfile = { false },
+                raftHostsProvider = { setOf("app.raft.build", "api.raft.build") },
+                debugBuild = false,
+                appEntryRegistry = registry,
+                lookupInstalledAppSync = { origin ->
+                    if (origin == "https://stamp.build") {
+                        RaftInstalledAppSyncLookup.Matched(stampMatch, "srv-1")
+                    } else {
+                        RaftInstalledAppSyncLookup.KnownNotInstalled
+                    }
+                },
+            )
+
+        // Installed Raft App link promotes to Layer 2 openAppEntry even in SystemBrowser mode and without MULTI_PROFILE.
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.InAppBrowser, "https://stamp.build/s/raft/github/botiverse/mobile/pull/1"),
+            navigator.open("https://stamp.build/s/raft/github/botiverse/mobile/pull/1"),
+        )
+        // Non-App third-party link still fails closed to ExternalBrowser.
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.ExternalBrowser, "https://github.com/botiverse/mobile/pull/1"),
+            navigator.open("https://github.com/botiverse/mobile/pull/1"),
+        )
+        // Explicit ForceExternal ("Open in browser") never promotes to openAppEntry.
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.ExternalBrowser, "https://stamp.build/s/raft/github/botiverse/mobile/pull/1"),
+            navigator.open("https://stamp.build/s/raft/github/botiverse/mobile/pull/1", RaftLinkOpenIntent.ForceExternal),
+        )
+        assertEquals(
+            listOf(
+                "entry:https://stamp.build/s/raft/github/botiverse/mobile/pull/1|tok-stamp|https://stamp.build|Stamp|srv-1|https://api.raft.build/logos/stamp.webp",
+                "external:https://github.com/botiverse/mobile/pull/1",
+                "external:https://stamp.build/s/raft/github/botiverse/mobile/pull/1",
+            ),
+            opened,
+        )
+    }
+
+    @Test
+    fun installedAppLookupRespectsPrecedenceOfAppStoreArtifactJoinOwnLinkAndRaftHosts() {
+        val opened = mutableListOf<String>()
+        var lookupCalls = 0
+        val navigator =
+            RaftLinkNavigator(
+                modeProvider = { LinkOpenMode.InAppBrowser },
+                openInAppBrowser = { opened += "in_app:$it"; true },
+                openExternalBrowser = { opened += "external:$it" },
+                onRejected = { opened += "rejected:$it" },
+                openArtifactAddress = { url ->
+                    if (url.contains("/artifacts/")) {
+                        opened += "artifact:$url"
+                        true
+                    } else {
+                        false
+                    }
+                },
+                openServerJoinLink = { url ->
+                    if (url.contains("/join/")) {
+                        opened += "join:$url"
+                        true
+                    } else {
+                        false
+                    }
+                },
+                openOwnLink = { url ->
+                    if (url.contains("/c/")) {
+                        opened += "own:$url"
+                        true
+                    } else {
+                        false
+                    }
+                },
+                isAppStoreRestrictedPurchaseUrl = { it.startsWith("https://checkout.stripe.com/") },
+                supportsInAppBrowser = { true },
+                supportsIsolatedWebViewProfile = { true },
+                raftHostsProvider = { setOf("app.raft.build", "api.raft.build") },
+                debugBuild = false,
+                lookupInstalledAppSync = {
+                    lookupCalls += 1
+                    RaftInstalledAppSyncLookup.Matched(RaftInstalledAppOriginMatch(it, "Spoof"), "srv-1")
+                },
+            )
+
+        navigator.open("https://checkout.stripe.com/pay/1")
+        navigator.open("https://app.raft.build/artifacts/art-1")
+        navigator.open("https://app.raft.build/join/tok-1")
+        navigator.open("https://app.raft.build/s/hq/c/chan-1")
+        navigator.open("https://app.raft.build/about")
+        navigator.open("mailto:hi@raft.build")
+
+        assertEquals(0, lookupCalls)
+        assertEquals(
+            listOf(
+                "rejected:RouteUnavailable",
+                "artifact:https://app.raft.build/artifacts/art-1",
+                "join:https://app.raft.build/join/tok-1",
+                "own:https://app.raft.build/s/hq/c/chan-1",
+                "in_app:https://app.raft.build/about",
+                "external:mailto:hi@raft.build",
+            ),
+            opened,
+        )
+    }
+
+    @Test
+    fun coldCacheAsyncLookupPromotesMatchedInstalledAppAndFallsBackOnMiss() {
+        val opened = mutableListOf<String>()
+        val registry = RaftAppEntryRegistry(newToken = { "tok-async" })
+        var pendingOnMatched: ((RaftInstalledAppOriginMatch, String) -> Unit)? = null
+        var pendingOnFallback: (() -> Unit)? = null
+        val navigator =
+            RaftLinkNavigator(
+                modeProvider = { LinkOpenMode.InAppBrowser },
+                openInAppBrowser = { opened += "in_app:$it"; true },
+                openExternalBrowser = { opened += "external:$it" },
+                onRejected = { opened += "rejected:$it" },
+                openInAppBrowserWithEntryRequest = { url, token, req ->
+                    opened += "entry:$url|$token|${req.scopeOrigin}|${req.appName}"
+                    true
+                },
+                supportsInAppBrowser = { true },
+                supportsIsolatedWebViewProfile = { false },
+                raftHostsProvider = { setOf("app.raft.build") },
+                debugBuild = false,
+                appEntryRegistry = registry,
+                lookupInstalledAppSync = { RaftInstalledAppSyncLookup.NotLoaded },
+                lookupInstalledAppAsync = { _, _, onMatched, onFallback ->
+                    pendingOnMatched = onMatched
+                    pendingOnFallback = onFallback
+                    true
+                },
+            )
+
+        // Matched async lookup opens via openAppEntry.
+        navigator.open("https://stamp.build/pulls/42")
+        pendingOnMatched?.invoke(RaftInstalledAppOriginMatch("https://stamp.build", "Stamp"), "srv-1")
+
+        // Unmatched async lookup falls back to ordinary Layer 3 / ExternalBrowser (fail closed without MULTI_PROFILE).
+        navigator.open("https://example.org/docs")
+        pendingOnFallback?.invoke()
+
+        assertEquals(
+            listOf(
+                "entry:https://stamp.build/pulls/42|tok-async|https://stamp.build|Stamp",
+                "external:https://example.org/docs",
+            ),
+            opened,
+        )
+    }
 }

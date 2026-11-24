@@ -233,8 +233,10 @@ internal fun RaftMobileWebPanelOverlay(
     val environmentKey = remember(activeEnvironment.webUrl, activeEnvironment.apiBaseUrl) {
         "${activeEnvironment.webUrl}|${activeEnvironment.apiBaseUrl}"
     }
-    LaunchedEffect(host, authSnapshot.session?.user?.id, environmentKey) {
-        host.updateAccountAndEnvironment(authSnapshot.session?.user?.id, environmentKey)
+    LaunchedEffect(host, sharedStores, authSnapshot.session?.user?.id, environmentKey) {
+        val accountId = authSnapshot.session?.user?.id
+        host.updateAccountAndEnvironment(accountId, environmentKey)
+        sharedStores.onInstalledAppAccountOrEnvironmentChanged(accountId, environmentKey)
     }
 
     if (ownedSession == null) return

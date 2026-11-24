@@ -183,9 +183,15 @@ class SettingsWebViewExternalLinksTest {
                 verifyInstalledAppOrigin = { serverId, origin ->
                     assertEquals("srv-1", serverId)
                     assertEquals("https://stamp.build", origin)
-                    RaftInstalledAppOriginMatch(origin = "https://stamp.build", appName = "Stamp")
+                    RaftInstalledAppOriginMatch(
+                        origin = "https://stamp.build",
+                        appName = "Stamp",
+                        logoUrl = "https://api.raft.build/logos/stamp.webp",
+                    )
                 },
-                openAppEntry = { url, req -> opened += "entry:$url|${req.scopeOrigin}|${req.appName}|${req.preferredServerId}" },
+                openAppEntry = { url, req ->
+                    opened += "entry:$url|${req.scopeOrigin}|${req.appName}|${req.preferredServerId}|${req.appLogoUrl}"
+                },
                 openExternal = { opened += "external:$it" },
             )
         assertEquals("entry", entryResult)
@@ -233,7 +239,7 @@ class SettingsWebViewExternalLinksTest {
 
         assertEquals(
             listOf(
-                "entry:https://stamp.build/home|https://stamp.build|Stamp|srv-1",
+                "entry:https://stamp.build/home|https://stamp.build|Stamp|srv-1|https://api.raft.build/logos/stamp.webp",
                 "external:https://stamp.build/home",
                 "external:https://stamp.build/home",
                 "external:https://stamp.build/home",
