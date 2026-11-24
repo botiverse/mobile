@@ -4323,7 +4323,7 @@ private fun ThreadMessagesListContent(
                             onFillGap = { target ->
                                 onThreadEvent(ThreadFillTimelineGapAction, target.key, null, null)
                             },
-                            replyThread = renderPayload.replyThreadSurface || renderPayload.taskConversationSurface,
+                            replyThread = renderPayload.replyThreadSurface,
                         )
                     }
                     dateDividerDay?.let { day ->
