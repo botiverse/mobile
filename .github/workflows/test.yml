@@ -97,6 +97,7 @@ jobs:
       android_unit_scope: ${{ steps.plan.outputs.android_unit_scope }}
       run_designsystem_tests: ${{ steps.plan.outputs.run_designsystem_tests }}
       run_roborazzi: ${{ steps.plan.outputs.run_roborazzi }}
+      changed_status_b64: ${{ steps.plan.outputs.changed_status_b64 }}
       reason: ${{ steps.plan.outputs.reason }}
     steps:
       # Full history for the PR merge-base / push before..after diffs below, but
@@ -141,6 +142,9 @@ jobs:
 
       - name: Self-test the execution tier planner
         run: scripts/ci/test_plan_test_tier.sh
+
+      - name: Self-test the changed-file test selector
+        run: python3 -I scripts/ci/select_changed_tests.py --self-test
 
       - name: Self-test the queue-tested reuse check
         run: python3 -I scripts/ci/check_queue_tested.py --self-test
@@ -197,7 +201,9 @@ jobs:
         run: |
           set -euo pipefail
           changed="$RUNNER_TEMP/test-changed-paths.txt"
+          changed_status="$RUNNER_TEMP/test-changed-status.txt"
           : > "$changed"
+          : > "$changed_status"
           write_changed_paths() {
             local base="$1"
             local head="$2"
@@ -217,10 +223,14 @@ jobs:
               if ! git diff --name-only --no-renames "$range" > "$changed"; then
                 printf '%s\n' '__CI_CHANGED_PATHS_UNKNOWN__' > "$changed"
               fi
+              if ! git diff --name-status --no-renames "$range" > "$changed_status"; then
+                : > "$changed_status"
+              fi
             else
               # The planner treats this impossible repository path as a
               # fail-closed request for every platform.
               printf '%s\n' '__CI_CHANGED_PATHS_UNKNOWN__' > "$changed"
+              : > "$changed_status"
             fi
           }
           case "$EVENT_NAME" in
@@ -253,6 +263,15 @@ jobs:
           esac
           scripts/ci/plan_test_tier.sh "$EVENT_NAME" "$changed" "$FULL_CI" "$REF_NAME" "$DISPATCH_SCOPE" \
             "$XCODE_APP_PATH" "$PREMERGE_BASE_REF" "$QUEUE_TESTED" "$RECORD_SCREENSHOTS" | tee -a "$GITHUB_OUTPUT"
+          # Pass base64-encoded changed-status lines to the Android job on ordinary PRs (<= 200 files)
+          # so select_changed_tests.py can select impacted unit test classes without extra git fetches.
+          # Empty on non-PR events or oversized diffs -> Android job fails closed to the full jvm tier.
+          changed_status_b64=""
+          if test "$EVENT_NAME" = pull_request && test -s "$changed_status" && \
+              test "$(wc -l < "$changed_status")" -le 200; then
+            changed_status_b64="$(base64 < "$changed_status" | tr -d '\n')"
+          fi
+          printf 'changed_status_b64=%s\n' "$changed_status_b64" >> "$GITHUB_OUTPUT"
 
   android:
     name: Android compile & tests
@@ -467,12 +486,53 @@ jobs:
       # - Connected-test APKs (BUILD_CONNECTED_APKS above): built here so the emulator jobs below
       #   install the exact APKs without a second Gradle/Kotlin build. The visual fixture gives the
       #   regression a deterministic empty Thread composer.
+      # On ordinary PRs (`android_unit_scope=jvm`, no connected APKs, no screenshot recording),
+      # narrow unit test execution to test classes impacted by changed files + the always-run smoke
+      # set (`scripts/ci/always_run_smoke_tests.txt`), and skip untouched leaf/upstream module test
+      # tasks. Strictly fail-closed to `mode=full` on any global/build/resource/deletion/wide-hub diff.
+      - name: Select changed Android JVM unit tests
+        id: test_selection
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ANDROID_UNIT_SCOPE: ${{ needs.plan.outputs.android_unit_scope }}
+          RECORD_SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.record_screenshots }}
+          CHANGED_STATUS_B64: ${{ needs.plan.outputs.changed_status_b64 }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = pull_request ] && \
+             [ "$ANDROID_UNIT_SCOPE" = jvm ] && \
+             [ "$BUILD_CONNECTED_APKS" != true ] && \
+             [ "$RECORD_SCREENSHOTS" != true ] && \
+             [ -n "$CHANGED_STATUS_B64" ]; then
+            python3 -I scripts/ci/select_changed_tests.py \
+              --changed-status-b64 "$CHANGED_STATUS_B64" \
+              --output-dir "$RUNNER_TEMP/test-selection" \
+              --github-output "$GITHUB_OUTPUT"
+          else
+            cat >> "$GITHUB_OUTPUT" <<'EOF'
+          selection_mode=full
+          selection_reason=tier-runs-full-suite
+          include_classes_file=
+          run_core_tests=true
+          run_realtime_socket_tests=true
+          run_ui_cmp_tests=true
+          run_web_container_tests=true
+          run_shared_tests=true
+          run_android_app_tests=true
+          need_socketio_server=true
+          selected_shared_count=0
+          selected_android_app_count=0
+          EOF
+            echo "select_changed_tests: mode=full reason=tier-runs-full-suite"
+          fi
+
       # :realtime-socket's conformance suite (RaftSocketIoInteropTest) talks to a real socket.io
       # 4.8.3 server: two instances (non-default heartbeat / maxPayload; connection state recovery with
       # per-message deflate). Started here, used by :realtime-socket:testAndroidHostTest below. A third
       # (Raft realtime behaviour) serves the realtime client's interop suite on the common client
       # (SocketIoRealtimeClientInteropTest in :androidApp:testDebugUnitTest).
       - name: Start the socket.io interop server
+        if: ${{ steps.test_selection.outputs.need_socketio_server != 'false' }}
         working-directory: scripts/socketio-interop
         run: |
           set -euo pipefail
@@ -494,42 +554,82 @@ jobs:
           ANDROID_UNIT_SCOPE: ${{ needs.plan.outputs.android_unit_scope }}
           RUN_DESIGNSYSTEM_TESTS: ${{ needs.plan.outputs.run_designsystem_tests }}
           RUN_ROBORAZZI: ${{ needs.plan.outputs.run_roborazzi }}
+          SELECTION_MODE: ${{ steps.test_selection.outputs.selection_mode }}
+          SELECTION_REASON: ${{ steps.test_selection.outputs.selection_reason }}
+          INCLUDE_CLASSES_FILE: ${{ steps.test_selection.outputs.include_classes_file }}
+          RUN_CORE_TESTS: ${{ steps.test_selection.outputs.run_core_tests }}
+          RUN_REALTIME_SOCKET_TESTS: ${{ steps.test_selection.outputs.run_realtime_socket_tests }}
+          RUN_UI_CMP_TESTS: ${{ steps.test_selection.outputs.run_ui_cmp_tests }}
+          RUN_WEB_CONTAINER_TESTS: ${{ steps.test_selection.outputs.run_web_container_tests }}
+          RUN_SHARED_TESTS: ${{ steps.test_selection.outputs.run_shared_tests }}
+          RUN_ANDROID_APP_TESTS: ${{ steps.test_selection.outputs.run_android_app_tests }}
         run: |
           set -euo pipefail
           tasks=(
             # Fails unless the Android classpaths resolve the patched foundation AAR
             # (compose/build.gradle.kts; every Android preBuild of :androidApp and :shared runs it too).
             :verifyComposeFoundationPatch
-            :core:compileAndroidHostTest
-            :realtime-socket:compileAndroidHostTest
             :shared:compileDebugKotlinAndroid
-            :shared:compileDebugUnitTestKotlinAndroid
             :androidApp:compileDebugKotlin
-            :androidApp:compileDebugUnitTestKotlin
-            :ui-cmp:compileAndroidHostTest
-            :web-container:compileAndroidHostTest
-            :web-container:compileTestKotlinDesktop
             # App identity receipt: the store variants' merged manifests declare
             # AppIdentityReceiptProvider enabled + DUMP-protected (manifest merge only, no R8).
             :androidApp:verifyReleaseIdentityReceiptProvider
             :androidApp:verifyPlayIdentityReceiptProvider
           )
+          test_tasks=(
+            :shared-data:verifySqlDelightMigration
+          )
+          if [ "$SELECTION_MODE" = selected ]; then
+            if [ "$RUN_CORE_TESTS" = true ]; then
+              tasks+=(:core:compileAndroidHostTest)
+              test_tasks+=(:core:testAndroidHostTest)
+            fi
+            if [ "$RUN_REALTIME_SOCKET_TESTS" = true ]; then
+              tasks+=(:realtime-socket:compileAndroidHostTest)
+              test_tasks+=(:realtime-socket:testAndroidHostTest)
+            fi
+            if [ "$RUN_UI_CMP_TESTS" = true ]; then
+              tasks+=(:ui-cmp:compileAndroidHostTest)
+              test_tasks+=(:ui-cmp:testAndroidHostTest)
+            fi
+            if [ "$RUN_WEB_CONTAINER_TESTS" = true ]; then
+              tasks+=(:web-container:compileAndroidHostTest :web-container:compileTestKotlinDesktop)
+              test_tasks+=(:web-container:testAndroidHostTest :web-container:desktopTest)
+            fi
+            if [ "$RUN_SHARED_TESTS" = true ]; then
+              tasks+=(:shared:compileDebugUnitTestKotlinAndroid)
+              test_tasks+=(:shared:testDebugUnitTest)
+            fi
+            if [ "$RUN_ANDROID_APP_TESTS" = true ]; then
+              tasks+=(:androidApp:compileDebugUnitTestKotlin)
+              test_tasks+=(:androidApp:testDebugUnitTest)
+            fi
+          else
+            tasks+=(
+              :core:compileAndroidHostTest
+              :realtime-socket:compileAndroidHostTest
+              :shared:compileDebugUnitTestKotlinAndroid
+              :androidApp:compileDebugUnitTestKotlin
+              :ui-cmp:compileAndroidHostTest
+              :web-container:compileAndroidHostTest
+              :web-container:compileTestKotlinDesktop
+            )
+            test_tasks+=(
+              :core:testAndroidHostTest
+              :realtime-socket:testAndroidHostTest
+              :shared:testDebugUnitTest
+              :androidApp:testDebugUnitTest
+              :ui-cmp:testAndroidHostTest
+              :web-container:testAndroidHostTest
+              :web-container:desktopTest
+            )
+          fi
           # Compile :designsystem's desktopTest source set only when its desktop tests will run
           # (touches compose/designsystem/, full tier, or record_screenshots); non-designsystem
           # ordinary PRs skip desktop Skiko/Roborazzi test compilation.
           if [ "$RECORD_SCREENSHOTS" = true ] || [ "$ANDROID_UNIT_SCOPE" != jvm ] || [ "$RUN_DESIGNSYSTEM_TESTS" != false ]; then
             tasks+=(:designsystem:compileTestKotlinDesktop)
           fi
-          test_tasks=(
-            :shared-data:verifySqlDelightMigration
-            :core:testAndroidHostTest
-            :realtime-socket:testAndroidHostTest
-            :shared:testDebugUnitTest
-            :androidApp:testDebugUnitTest
-            :ui-cmp:testAndroidHostTest
-            :web-container:testAndroidHostTest
-            :web-container:desktopTest
-          )
           # Unit & Roborazzi tier (comment above):
           # - record_screenshots=true: record both golden sets with the full suite.
           # - run_roborazzi=true: verify both golden sets with the full suite.
@@ -545,12 +645,15 @@ jobs:
             unit_tier+=(-Praft.unitTest.skipScreenshots=true)
             if [ "$ANDROID_UNIT_SCOPE" = jvm ]; then
               unit_tier+=(-Praft.unitTest.skipRobolectric=true)
+              if [ "$SELECTION_MODE" = selected ] && [ -n "$INCLUDE_CLASSES_FILE" ]; then
+                unit_tier+=("-Praft.unitTest.includeClassesFile=${INCLUDE_CLASSES_FILE}")
+              fi
             fi
             if [ "$RUN_DESIGNSYSTEM_TESTS" != false ]; then
               test_tasks+=(:designsystem:desktopTest)
             fi
           fi
-          echo "Android unit tier: ${ANDROID_UNIT_SCOPE} (design system tests: ${RUN_DESIGNSYSTEM_TESTS}, roborazzi: ${RUN_ROBORAZZI}) ${unit_tier[*]}"
+          echo "Android unit tier: ${ANDROID_UNIT_SCOPE} (selection: ${SELECTION_MODE}/${SELECTION_REASON}, design system tests: ${RUN_DESIGNSYSTEM_TESTS}, roborazzi: ${RUN_ROBORAZZI}) ${unit_tier[*]}"
           if [ "$BUILD_CONNECTED_APKS" != true ] && [ "$ANDROID_UNIT_SCOPE" = jvm ] && [ "$RECORD_SCREENSHOTS" != true ]; then
             # Ordinary PR tier (no connected APKs, no Robolectric/Roborazzi forks): run compile
             # and plain JVM tests in one Gradle invocation to skip a second cold JVM boot and
@@ -620,6 +723,8 @@ jobs:
         env:
           ANDROID_UNIT_SCOPE: ${{ needs.plan.outputs.android_unit_scope }}
           RUN_ROBORAZZI: ${{ needs.plan.outputs.run_roborazzi }}
+          SELECTION_MODE: ${{ steps.test_selection.outputs.selection_mode }}
+          SELECTION_REASON: ${{ steps.test_selection.outputs.selection_reason }}
         run: |
           python3 - <<'PY'
           import os, pathlib, xml.etree.ElementTree as ET
@@ -634,7 +739,13 @@ jobs:
               if suites:
                   count = lambda key: sum(int(suite.get(key, "0")) for suite in suites)
                   rows.append(f"| :{results.parts[1]}:{results.name} | {len(suites)} | {count('tests')} | {count('skipped')} | {count('failures') + count('errors')} |")
-          lines = [f"### Android unit tests ({os.environ['ANDROID_UNIT_SCOPE']} tier, roborazzi={os.environ['RUN_ROBORAZZI']})", "", "| Task | Classes | Tests | Skipped | Failed |", "| --- | ---: | ---: | ---: | ---: |", *rows]
+          lines = [
+              f"### Android unit tests ({os.environ['ANDROID_UNIT_SCOPE']} tier, selection={os.environ['SELECTION_MODE']} ({os.environ['SELECTION_REASON']}), roborazzi={os.environ['RUN_ROBORAZZI']})",
+              "",
+              "| Task | Classes | Tests | Skipped | Failed |",
+              "| --- | ---: | ---: | ---: | ---: |",
+              *rows,
+          ]
           print("\n".join(lines))
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
               summary.write("\n".join(lines) + "\n")

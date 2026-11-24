@@ -684,3 +684,66 @@ if (raftSkipScreenshots) {
         }
     }
 }
+
+// PR CI changed-file unit test selection (dm:@artin:#159): on ordinary PRs
+// (`android_unit_scope=jvm`), test.yml runs `scripts/ci/select_changed_tests.py` and passes
+// `-Praft.unitTest.includeClassesFile=<path>` listing `:<project>:<fqcn>` entries for impacted
+// test classes plus the always-run smoke set (`scripts/ci/always_run_smoke_tests.txt`).
+// Gradle intersects `includeTestsMatching` with `excludeTestsMatching`, so `skipRobolectric`
+// and `skipScreenshots` continue to exclude Robolectric and screenshot classes cleanly.
+// Unset on local runs, post-merge main/release pushes, nightly, merge queue, and full-tier PRs.
+val raftUnitTestIncludeClassesFile =
+    providers.gradleProperty("raft.unitTest.includeClassesFile")
+        .orNull
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+
+if (raftUnitTestIncludeClassesFile != null) {
+    val roborazziTask = gradle.startParameter.taskNames.firstOrNull { name ->
+        val simple = name.substringAfterLast(':')
+        simple.startsWith("verifyRoborazzi") ||
+            simple.startsWith("recordRoborazzi") ||
+            simple.startsWith("compareRoborazzi")
+    }
+    if (roborazziTask != null) {
+        throw GradleException(
+            "raft.unitTest.includeClassesFile cannot be combined with Roborazzi task $roborazziTask"
+        )
+    }
+    val includeFile = file(raftUnitTestIncludeClassesFile)
+    if (!includeFile.isFile) {
+        throw GradleException("raft.unitTest.includeClassesFile does not exist: ${includeFile.absolutePath}")
+    }
+    val classesByProject = linkedMapOf<String, MutableList<String>>()
+    includeFile.readLines()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith("#") }
+        .forEach { line ->
+            val sep = line.indexOf(':', startIndex = 1)
+            if (!line.startsWith(":") || sep <= 1 || sep == line.lastIndex) {
+                throw GradleException("Invalid raft.unitTest.includeClassesFile entry (expected :project:fqcn): $line")
+            }
+            val projectPath = line.substring(0, sep)
+            val fqcn = line.substring(sep + 1)
+            classesByProject.getOrPut(projectPath) { mutableListOf() }.add(fqcn)
+        }
+    classesByProject.forEach { (projectPath, classes) ->
+        if (classes.isEmpty()) return@forEach
+        project(projectPath) {
+            afterEvaluate {
+                logger.lifecycle(
+                    "raft.unitTest.includeClassesFile: $projectPath unit tests include ${classes.size} selected classes"
+                )
+                tasks.withType(org.gradle.api.tasks.testing.Test::class.java)
+                    .matching { it.name.endsWith("UnitTest") }
+                    .configureEach {
+                        filter {
+                            classes.forEach { includeTestsMatching(it) }
+                            isFailOnNoMatchingTests = false
+                        }
+                        failOnNoDiscoveredTests.set(false)
+                    }
+            }
+        }
+    }
+}

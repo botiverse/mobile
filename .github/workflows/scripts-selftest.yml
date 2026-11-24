@@ -51,6 +51,7 @@ jobs:
         run: |
           scripts/ci/test_version_code.sh
           scripts/ci/test_source_app_version.sh
+          python3 -I scripts/ci/select_changed_tests.py --self-test
           python3 -I scripts/ci/check_ios_profile_entitlements.py --self-test
           python3 -I scripts/ci/configure_ios_share_extension.py --self-test
           scripts/test_resolve_git_revision.sh
