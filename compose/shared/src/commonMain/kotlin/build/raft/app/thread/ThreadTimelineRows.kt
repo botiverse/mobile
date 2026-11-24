@@ -211,36 +211,23 @@ internal fun ThreadInlineActionRow(
 internal fun ThreadHistoryStatusRow(
     spec: ThreadHistoryStatusSpec,
     loadingRevealDelayMs: Long = ThreadStandInLoadingRevealDelayMs,
-    spinnerStillStep: Int? = null,
-    reserveSpaceBeforeReveal: Boolean = true,
+    spinnerStillStep: Int? = null
 ) {
-    // A load that answers within the delay replaces the frame without the spinner ever showing;
-    // top-of-list headers keep their height (`reserveSpaceBeforeReveal = true`) so revealing them
-    // moves nothing, whereas inline mid-timeline gaps collapse until revealed so transient
-    // stand-in refreshes never leave blank whitespace between two messages.
-    // Latch reveal monotonically for each `spec.loading` cycle so a subsequent delay change
-    // (e.g. 2000 ms -> 600 ms or 0 ms -> 600 ms) never collapses an already-visible spinner.
-    var loadingRevealed by remember(spec.loading) {
-        mutableStateOf(!spec.loading || loadingRevealDelayMs <= 0L)
-    }
-    val revealed = loadingRevealed || !spec.loading || loadingRevealDelayMs <= 0L
+    // A load that answers within the delay replaces the frame without the spinner ever showing; the
+    // row keeps its height meanwhile, so revealing it moves nothing.
+    var loadingRevealed by remember(spec.loading) { mutableStateOf(!spec.loading || loadingRevealDelayMs <= 0L) }
     if (!loadingRevealed) {
-        LaunchedEffect(spec.loading, loadingRevealDelayMs) {
-            if (loadingRevealDelayMs > 0L) {
-                delay(loadingRevealDelayMs)
-            }
+        LaunchedEffect(Unit) {
+            delay(loadingRevealDelayMs)
             loadingRevealed = true
         }
-    }
-    if (!revealed && !reserveSpaceBeforeReveal) {
-        return
     }
     Column(
         modifier =
             Modifier.fillMaxWidth()
                 .raftSafeAreaHorizontalPadding()
                 .padding(horizontal = RaftAppSpacing.Md, vertical = 8.dp)
-                .alpha(if (revealed) 1f else 0f),
+                .alpha(if (loadingRevealed) 1f else 0f),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Row(
