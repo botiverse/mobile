@@ -1340,6 +1340,8 @@ private fun AnnotatedString.Builder.appendRaftRichTextTaskChipToken(
         ) {
             appendRaftMarkdownTaskChip(style, label) {
                 if (token.active && token.trailingIndicator.isEmpty()) {
+                    // A word joiner keeps the label and the spinner on one line.
+                    append(RaftMarkdownTaskChipWordJoiner)
                     append(" ")
                     appendInlineContent(raftMarkdownActionSpinnerInlineId(action.id), "\uFFFC")
                 }

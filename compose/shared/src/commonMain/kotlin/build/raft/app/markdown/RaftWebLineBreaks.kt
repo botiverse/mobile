@@ -52,15 +52,16 @@ private fun ASTNode.raftInsideTable(): Boolean {
 }
 
 /**
- * A reference chip (`#channel`, `#对话流专修:661a12bf`, `@Some One`) is one box on the web
- * (`inline-flex … truncate`), so it never breaks inside. A word joiner goes only where the native
- * breakers (Minikin, Skia) could break the label: around a space, after a `/` or a `-`, and
- * between two characters where one is CJK. Never inside a grapheme cluster (a surrogate pair, a
- * ZWJ sequence, a variation selector or a combining mark), so emoji stay whole. A label with none
- * of these stays as it is. Copy and accessibility drop the joiners ([raftCopyText]).
+ * A reference or task chip (`#channel`, `#wg-mobile-sync:#276`, `#对话流专修:661a12bf`, `@Some One`)
+ * is one box on the web (`inline-flex … truncate`), so it never breaks inside. A word joiner goes
+ * only where the native breakers (Minikin, Skia) could break the label: around a space, after a
+ * `/`, `-`, or `:` (UAX #14 breaks after `:` before `#`, `@`, or digits), and between two
+ * characters where one is CJK. Never inside a grapheme cluster (a surrogate pair, a ZWJ sequence,
+ * a variation selector or a combining mark), so emoji stay whole. A label with none of these stays
+ * as it is. Copy and accessibility drop the joiners ([raftCopyText]).
  */
 internal fun String.withRaftInlineChipGlue(): String {
-    if (none { it == ' ' || it == '/' || it == '-' || it.code >= RaftCjkFirst }) return this
+    if (none { it == ' ' || it == '/' || it == '-' || it == ':' || it.code >= RaftCjkFirst }) return this
     val result = StringBuilder(length + 8)
     var index = 0
     while (index < length) {
@@ -83,7 +84,7 @@ private fun raftChipBreakBetween(before: Int, after: Int): Boolean {
     if (after.isRaftClusterExtender() || before == RaftZeroWidthJoiner) return false
     return when {
         before == ' '.code || after == ' '.code -> true
-        before == '/'.code || before == '-'.code -> true
+        before == '/'.code || before == '-'.code || before == ':'.code -> true
         else -> before.isRaftCjk() || after.isRaftCjk()
     }
 }
