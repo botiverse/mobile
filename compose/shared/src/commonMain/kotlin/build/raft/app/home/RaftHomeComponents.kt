@@ -645,18 +645,6 @@ enum class RaftHomeSidebarTopSelection {
 }
 
 @Serializable
-enum class RaftSidebarSortMode(val wireValue: String) {
-    Manual("manual"),
-    Recent("recent"),
-    Az("az");
-
-    companion object {
-        fun fromWireValue(value: String?): RaftSidebarSortMode =
-            entries.firstOrNull { it.wireValue == value?.trim()?.lowercase() } ?: Manual
-    }
-}
-
-@Serializable
 data class RaftHomeShellLabels(
     val search: String = "Search",
     val inbox: String = "Activity",

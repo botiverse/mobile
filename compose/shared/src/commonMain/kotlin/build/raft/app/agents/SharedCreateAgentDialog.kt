@@ -334,20 +334,6 @@ private fun randomCreateAgentAvatarWireValue(): String {
     return "pixel:$key"
 }
 
-internal data class SharedCreateAgentMachineOption(
-    val id: String,
-    val name: String,
-    val status: String,
-    val runtimes: List<String> = emptyList(),
-    /** For the quota lines ([build.raft.app.data.canViewMachineRuntimeAccountUsage]). */
-    val attachedByCurrentUser: Boolean = false,
-    val creatorId: String? = null,
-    /** False when the option came without the machine list (route params): the server decides. */
-    val usageFactsKnown: Boolean = false,
-    /** The viewer's own Computer (attached or owned, [build.raft.app.data.raftIsMyComputer]): the default prefers it. */
-    val mine: Boolean = false
-)
-
 /** Each computer's quota line: the usage of [runtimeId] (the runtime being picked) on it. */
 @Composable
 internal fun rememberCreateAgentMachineQuotaLines(
@@ -363,20 +349,6 @@ internal fun createAgentMachineChoiceOptions(
     quotaLines: Map<String, String>
 ): List<RaftComboboxOption<String>> =
     items.map { item -> RaftComboboxOption(item.id, item.label, description = quotaLines[item.id], enabled = item.enabled) }
-
-internal data class SharedCreateAgentRuntimeModelOption(
-    val id: String,
-    val label: String,
-    val verified: String? = null,
-    /** Null: not reported; empty: the model takes no reasoning effort ([RuntimeModelInfo]). */
-    val supportedReasoningEfforts: List<String>? = null,
-    val defaultReasoningEffort: String? = null
-)
-
-internal data class SharedCreateAgentRuntimeModelCatalog(
-    val models: List<SharedCreateAgentRuntimeModelOption>,
-    val defaultModel: String? = null
-)
 
 internal data class CreateAgentDropdownItem(
     val id: String,
