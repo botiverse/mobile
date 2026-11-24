@@ -192,6 +192,7 @@
     "AGENT_ACTIVITY_STATE_EVENT": "agent:activity_state",
     "AGENT_ARCHIVE_UPDATED_EVENT": "agent:archive:updated",
     "AGENT_TYPING_SOCKET_EVENT": "agent:typing",
+    "COMPUTER_UPGRADE_PREFETCH_EVENT": "computer.upgrade.prefetch",
     "DESKTOP_INPUT_PRESENCE_EVENT": "desktop:input-presence",
     "FEEDBACK_REPORT_SESSION_RECORD_EVENT": "feedback_report:session_record",
     "JOINT_INVITES_CHANGED_EVENT": "joint-invites:changed",
@@ -212,6 +213,7 @@
   },
   "unconsumedSlockEvents": {
     "agent:archive:updated": "Agent archive view is web-only; mobile has no consumer yet.",
+    "computer.upgrade.prefetch": "Daemon-only diagnostic event for Computer upgrade prefetching; not a realtime UI event consumed by mobile.",
     "desktop:input-presence": "Raft Desktop only (client-emitted input presence).",
     "feedback_report:session_record": "Web feedback reporter only.",
     "notification:desktop": "Platform-scoped to clientKind desktop sockets and sent with an ack (emitDesktopNotificationWithAck); the desktop client adopts it in realtime unification phase 2.",

@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "group": "build.hands",
   "artifact": "hands-android-sdk",
-  "version": "0.14.3",
+  "version": "0.14.4",
   "sourceRepo": "https://github.com/botiverse/hands",
-  "sourceCommit": "00ffd4aef5d970ab61b5a9d81e4cf4b554b053a3",
+  "sourceCommit": "fc0f8917d2f2c2121792482b6ddcb6e865dd7f69",
   "sourceTag": "",
-  "publishRunId": "44876411838",
-  "nativeSymbolsArtifactId": "14696550441",
-  "aarSha256": "59bf59cf4fb92e4c4a8f416f0a2cb48d3cd505880df149b557077d0037685784",
-  "nativeSymbolsSha256": "8d9773f14f1cf28236953bf883cf8390b61b5ad280e84a023b2ee34c03506415"
+  "publishRunId": "45398261314",
+  "nativeSymbolsArtifactId": "14922701245",
+  "aarSha256": "f2ef095b1a0f3296e810e481f6c1fe665ef7281ad9229a1a9eab59d0f7f9914b",
+  "nativeSymbolsSha256": "689d77a724a69760305ea9c7b49c1865f98421736512877788738925ded9be33"
 }
