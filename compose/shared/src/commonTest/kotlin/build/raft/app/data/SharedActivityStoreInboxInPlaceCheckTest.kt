@@ -274,6 +274,73 @@ class SharedActivityStoreInboxInPlaceCheckTest {
         val mentioned = f.store.state.value.items.single { it.key == threadRow.key }
         assertEquals(2, mentioned.unreadCount)
         assertEquals(true to MessageId("s-27"), mentioned.hasMention to mentioned.firstMentionMessageId)
+
+        // slock #16667: history-only notice (countsUnread=false) does not bump unread, while a
+        // personal mention still lights `@` on channel and thread rows alike.
+        f.store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message("s-28", channelId = "thread-1", authorId = "system", seq = 28L).copy(
+                        messageType = MessageType.System,
+                        countsUnread = false,
+                    ),
+                    systemProvenance = MessageSystemProvenance("channel.agent_membership", "user", "user-2", countsUnread = false)
+                )
+            )
+        )
+        assertEquals(2, unread())
+
+        f.store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message("s-29", channelId = "thread-1", authorId = "system", seq = 29L).copy(
+                        messageType = MessageType.System,
+                        countsUnread = true,
+                    ),
+                    systemProvenance = MessageSystemProvenance("channel.agent_membership", "user", "user-2", countsUnread = true)
+                )
+            )
+        )
+        assertEquals(3, unread())
+    }
+
+    @Test
+    fun aChannelHistoryOnlySystemMessageAddsNoUnreadWhileMentionStillLightsAt() = runTest {
+        val f = loadedStore(listOf(listOf(otherRow, channelRow)))
+
+        // countsUnread=false without mention: moves row preview/seq, leaves unread at 0 and hasMention false.
+        f.store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message("c-11", channelId = "channel-1", authorId = "system", seq = 11L).copy(
+                        messageType = MessageType.System,
+                        countsUnread = false,
+                    ),
+                    systemProvenance = MessageSystemProvenance("channel.agent_membership", "user", "user-2", countsUnread = false)
+                )
+            )
+        )
+        val afterNotice = f.store.state.value.items.single { it.key == channelRow.key }
+        assertEquals(0, afterNotice.unreadCount)
+        assertEquals(false, afterNotice.hasMention)
+
+        // countsUnread=false with a personal mention of user-1: still 0 unread, but lights `@`.
+        f.store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message("c-12", channelId = "channel-1", authorId = "system", seq = 12L).copy(
+                        messageType = MessageType.System,
+                        countsUnread = false,
+                        mentions = listOf(MessageMention(type = "user", id = "user-1")),
+                    ),
+                    systemProvenance = MessageSystemProvenance("channel.agent_membership", "user", "user-2", countsUnread = false)
+                )
+            )
+        )
+        val afterMention = f.store.state.value.items.single { it.key == channelRow.key }
+        assertEquals(0, afterMention.unreadCount)
+        assertEquals(true, afterMention.hasMention)
+        assertEquals(MessageId("c-12"), afterMention.firstMentionMessageId)
     }
 
     @Test

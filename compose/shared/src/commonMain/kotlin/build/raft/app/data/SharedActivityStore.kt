@@ -137,11 +137,10 @@ private data class InPlaceLiveUnread(val counts: Boolean, val mention: Boolean)
  * The followed-thread unread rule (slock infra/risingwave/sql/070-followed-thread-stats-v3.sql,
  * web `UNCOUNTED_THREAD_SYSTEM_SUBTYPES`): these system lines never count on a thread row.
  */
-private val UncountedThreadSystemSubtypes = setOf("channel.self_unfollow_thread", "task.deleted_summary")
-
 /**
- * Web `threadSystemMessageCounts` (slock #14247): a system message counts on a thread row as the
- * server counts it: not when the reader caused it, nor one of [UncountedThreadSystemSubtypes], and
+ * Web `threadSystemMessageCounts` (slock #14247 / #16667): a system message counts on a thread row
+ * as the server counts it: not when the reader caused it, nor when [messageCountsAsUnreadActivity]
+ * is false (history-only `countsUnread == false` or [ActivityUncountedSystemSubtypes]), and
  * never on a task conversation's row (its count is chat replies only). Without its provenance
  * ([provenance] null: the frame carried no `systemSubtype`, e.g. a `thread:updated` reply) it
  * cannot be judged and does not count; the re-read brings the server's count.
@@ -149,15 +148,17 @@ private val UncountedThreadSystemSubtypes = setOf("channel.self_unfollow_thread"
 private fun threadSystemMessageCounts(row: InboxItem, provenance: MessageSystemProvenance?, principalId: String): Boolean {
     if (row.isTaskConversation) return false
     if (provenance == null) return false
-    if (provenance.systemSubtype != null && provenance.systemSubtype in UncountedThreadSystemSubtypes) return false
+    if (!messageCountsAsUnreadActivity(provenance.countsUnread, provenance.systemSubtype)) return false
     return !(provenance.causalActorType == "user" && provenance.causalActorId == principalId)
 }
 
 /**
  * Web `liveActivityUnread` + `liveUnreadFields`: a live message counts unless it is the reader's
- * own, it lands in the conversation open on screen, or the row is an unfollowed thread (the server
- * counts none for it); a system line on a thread row counts only as [threadSystemMessageCounts]
- * says. Null: cannot tell here (a thread row or reply without a seq), the row is re-read.
+ * own, it lands in the conversation open on screen, it is marked history-only (`countsUnread ==
+ * false`, slock #16667), or the row is an unfollowed thread (the server counts none for it); a
+ * system line on a thread row counts only as [threadSystemMessageCounts] says. A mention of the
+ * reader still lights `@` even when `countsUnread == false`. Null: cannot tell here (a thread row
+ * or reply without a seq), the row is re-read.
  */
 private fun InPlaceUnreadContext.unreadFor(
     row: InboxItem,
@@ -172,8 +173,11 @@ private fun InPlaceUnreadContext.unreadFor(
         message.author.id.value != principalId &&
             !isActiveActivityConversation(streamChannelId, activeConversationId, snapshot) &&
             !row.isUnfollowedActivityThread
+    val countsUnread = message.countsUnread && provenance?.countsUnread != false
     val counts =
-        live && !(thread && message.messageType == MessageType.System && !threadSystemMessageCounts(row, provenance, principalId))
+        live &&
+            countsUnread &&
+            !(thread && message.messageType == MessageType.System && !threadSystemMessageCounts(row, provenance, principalId))
     return InPlaceLiveUnread(counts = counts, mention = live && message.mentions.mentionsUser(principalId))
 }
 
@@ -225,6 +229,7 @@ private fun ReplyPreview.toActivityLiveMessage(event: ThreadUpdated): Message {
         mentions = event.latestReplyMentions,
         delegatedBy = event.latestReplyDelegatedBy,
         deletedAt = if (event.latestReplyRetracted) event.lastReplyAt ?: createdAt else null,
+        countsUnread = event.latestReplyCountsUnread,
     )
 }
 
@@ -1868,7 +1873,8 @@ class SharedActivityStore internal constructor(
         val keptSeq = kept.latestActivitySeq ?: return false
         if (compareActivitySeq(seq, keptSeq) <= 0) return false
         val context = InPlaceUnreadContext(principalId, readOnArrivalConversationId(intent.activeConversationId, snapshot))
-        if (context.unreadFor(kept, message, snapshot, (event as? MessageNew)?.systemProvenance)?.counts != true) return false
+        val unread = context.unreadFor(kept, message, snapshot, (event as? MessageNew)?.systemProvenance)
+        if (unread == null || (!unread.counts && !unread.mention)) return false
         val patch =
             if (event is ThreadUpdated) applyThreadUpdatedInPlace(event, intent, context) else applyMessageNewPatch(message, intent, context)
         val revived = _state.value
@@ -7757,6 +7763,7 @@ private fun InboxSnapshot.unreadIncrementForMessage(
     if (sharedRule != null) {
         if (!sharedRule(message)) return 0
     } else {
+        if (!message.countsUnread) return 0
         if (message.author.id.value == currentUserId) return 0
         if (isActiveActivityConversation(channelId.value, activeConversationId, this)) return 0
         if (items.any { item ->

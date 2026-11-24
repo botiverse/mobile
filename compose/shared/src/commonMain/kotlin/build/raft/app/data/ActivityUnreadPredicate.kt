@@ -17,6 +17,17 @@ package build.raft.app.data
 /** System subtypes never unread for anyone. Web `ACTIVITY_UNCOUNTED_SYSTEM_SUBTYPES`. */
 internal val ActivityUncountedSystemSubtypes: Set<String> = setOf("channel.self_unfollow_thread", "task.deleted_summary")
 
+/**
+ * Receiver-independent unread activity predicate (slock #16667 `messageCountsAsUnreadActivity`):
+ * false when `messages.counts_unread` is explicitly `false` (history-only / skip notice) or when
+ * [systemSubtype] is one of the legacy uncounted noise subtypes. Absent `countsUnread` (`null`)
+ * counts as true for older servers.
+ */
+internal fun messageCountsAsUnreadActivity(countsUnread: Boolean?, systemSubtype: String?): Boolean {
+    if (countsUnread == false) return false
+    return systemSubtype == null || systemSubtype !in ActivityUncountedSystemSubtypes
+}
+
 /** Who reads the Activity: [type] `user` or `agent`. Web `ActivityUnreadViewer`. */
 internal data class ActivityUnreadViewer(val type: String, val id: String)
 
@@ -38,6 +49,8 @@ internal data class ActivityUnreadMessage(
     val causalActorId: String? = null,
     val systemSubtype: String? = null,
     val carriesSystemProvenance: Boolean = true,
+    /** `messages.counts_unread`; false: history only (`messageCountsAsUnreadActivity`). Absent on older events. */
+    val countsUnread: Boolean? = null,
     val mentions: List<ActivityUnreadTarget> = emptyList(),
 )
 
@@ -87,10 +100,11 @@ internal fun activityLiveUnread(
 }
 
 private fun countsForViewer(message: ActivityUnreadMessage, viewer: ActivityUnreadViewer, scope: ActivityUnreadScope): Boolean? {
-    if (scope.rowKind == ActivityUnreadRowKind.Task) return message.messageType == null || message.messageType == "chat"
+    if (scope.rowKind == ActivityUnreadRowKind.Task) return (message.messageType == null || message.messageType == "chat") && message.countsUnread != false
     if (scope.activityMuted && scope.rowKind != ActivityUnreadRowKind.Thread) return false
+    if (message.countsUnread == false) return false
     if (message.messageType != "system") return true
     if (!message.carriesSystemProvenance) return null
     if (message.causalActorType == viewer.type && message.causalActorId == viewer.id) return false
-    return message.systemSubtype == null || message.systemSubtype !in ActivityUncountedSystemSubtypes
+    return messageCountsAsUnreadActivity(message.countsUnread, message.systemSubtype)
 }

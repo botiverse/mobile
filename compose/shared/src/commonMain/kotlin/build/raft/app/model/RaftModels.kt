@@ -823,6 +823,13 @@ data class Message(
      * sync log), so they are read on their own ([build.raft.app.data.SharedResolvedQuotesStore]).
      */
     val resolvedQuotes: Map<String, ResolvedInlineQuote>? = null,
+    /**
+     * Notifications noise cut step 1a (slock #16667 `messages.counts_unread`): false on
+     * history-only / skip system notices that stay in history without counting as unread or
+     * bumping badges (a personal mention of the viewer still lights `@`). Absent on older
+     * servers and cached rows, which default to `true`.
+     */
+    val countsUnread: Boolean = true,
 )
 
 /**
@@ -1172,11 +1179,12 @@ data class MessageNew(
     @Transient val systemProvenance: MessageSystemProvenance? = null,
 ) : RealtimeEvent
 
-/** Wire `systemSubtype` / `causalActorType` / `causalActorId` of a `message:new` frame (each may be null). */
+/** Wire `systemSubtype` / `causalActorType` / `causalActorId` / `countsUnread` of a `message:new` frame (each may be null). */
 data class MessageSystemProvenance(
     val systemSubtype: String?,
     val causalActorType: String?,
     val causalActorId: String?,
+    val countsUnread: Boolean? = null,
 )
 
 @Serializable
@@ -1280,6 +1288,8 @@ data class ThreadUpdated(
     val latestReplyDelegatedBy: MessageDelegatedBy? = null,
     /** RFC 077 PR 2b: `latestReply.deletedAt` present on the reply. */
     val latestReplyRetracted: Boolean = false,
+    /** Notifications noise cut step 1a (slock #16667): `latestReply.countsUnread`; absent defaults to true. */
+    val latestReplyCountsUnread: Boolean = true,
 ) : RealtimeEvent
 
 @Serializable

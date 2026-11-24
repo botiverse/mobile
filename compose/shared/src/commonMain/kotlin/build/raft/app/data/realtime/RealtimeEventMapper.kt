@@ -659,6 +659,8 @@ private data class MessageWireDto(
     val delegatedBy: WireDelegatedBy? = null,
     /** RFC 077 PR 2b: set when the owner retracted the message; `content` is then the placeholder. */
     val deletedAt: String? = null,
+    /** Notifications noise cut step 1a (slock #16667): `false` for history-only / skip notices; absent on older servers. */
+    val countsUnread: Boolean? = null,
 )
 
 /** One `mentions[]` entry: `{ type: "user" | "agent" | "external"; id; name; displayName? }`. */
@@ -838,6 +840,7 @@ private data class ThreadLatestReplyDto(
     val conversationContext: ConversationContextWireDto? = null,
     val delegatedBy: WireDelegatedBy? = null,
     val deletedAt: String? = null,
+    val countsUnread: Boolean? = null,
 )
 
 @Serializable
@@ -1435,6 +1438,7 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         delegatedBy = delegatedBy.toMessageDelegatedBy(authorKind),
         deletedAt = deletedAt?.takeIf { it.isNotBlank() },
         mentions = mentions.toDomainMentions(),
+        countsUnread = countsUnread != false,
     )
 }
 
@@ -1472,10 +1476,12 @@ internal fun ConversationContextWireDto.toDomain(): MessageConversationContext? 
 private fun JsonObject.systemProvenanceOrNull(): MessageSystemProvenance? {
     if (!containsKey("systemSubtype")) return null
     fun text(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
+    val countsUnread = (get("countsUnread") as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toBooleanStrictOrNull()
     return MessageSystemProvenance(
         systemSubtype = text("systemSubtype"),
         causalActorType = text("causalActorType"),
         causalActorId = text("causalActorId"),
+        countsUnread = countsUnread,
     )
 }
 
@@ -1582,6 +1588,7 @@ private fun ThreadUpdatedDto.toDomain(): ThreadUpdated? {
                 reply.delegatedBy.toMessageDelegatedBy(senderKind)
             },
         latestReplyRetracted = !latestReply?.deletedAt.isNullOrBlank(),
+        latestReplyCountsUnread = latestReply?.countsUnread != false,
     )
 }
 
