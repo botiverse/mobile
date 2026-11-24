@@ -53,6 +53,26 @@ class ChannelAnnouncementApiTest {
     }
 
     @Test
+    fun jointChannelOffReadsAnnouncementUnavailableReasonOnReadAndUpdate() {
+        assertEquals(
+            ChannelAnnouncementRead(null, unavailable = ChannelAnnouncementUnavailableReason.JointServerOff),
+            parseSharedChannelAnnouncementRead("""{ "announcement": null, "announcementUnavailable": "joint_server_off" }"""),
+        )
+        assertEquals(
+            ChannelAnnouncementRead(null, unavailable = null),
+            parseSharedChannelAnnouncementRead("""{ "announcement": null, "announcementUnavailable": "future_unknown_reason" }"""),
+        )
+        val channel = ChannelId("ch-joint")
+        assertEquals(
+            ChannelAnnouncementRead(null, unavailable = ChannelAnnouncementUnavailableReason.JointServerOff),
+            parseSharedChannelAnnouncementUpdate(
+                """{ "id": "ch-joint", "name": "joint", "type": "joint", "announcement": null, "announcementUnavailable": "joint_server_off" }""",
+                channel,
+            ),
+        )
+    }
+
+    @Test
     fun anHtmlPageHasNoExcerptAndAnOlderServerSendsNone() {
         assertNull(parseSharedChannelAnnouncementRead("""{ "announcement": ${forPerson(seen = true, note = "null", excerpt = "null")} }""")!!.announcement!!.excerpt)
         val older = parseSharedChannelAnnouncementRead("""{ "announcement": ${forPerson(seen = true, note = "null", excerpt = null)} }""")!!.announcement!!

@@ -156,6 +156,7 @@ private fun MembersAgentSubagentRow(
     val lastTool = group.lastToolName
     val facts = listOfNotNull(
         if (group.title != null) group.subagentType else null,
+        group.model,
         membersSubagentSteps(group),
         if (running && lastTool != null) {
             stringResource(Res.string.member_activity_subagents_now, localizedAgentToolLogLabel(lastTool))
@@ -306,6 +307,7 @@ internal fun MembersAgentSubagentDetail(
                         direction = RaftDescriptionListDirection.Horizontal,
                     ) {
                         group.subagentType?.let { Item(term = stringResource(Res.string.member_activity_subagents_detail_type), value = it) }
+                        group.model?.let { Item(term = stringResource(Res.string.member_activity_subagents_detail_model), value = it) }
                         Item(
                             term = stringResource(Res.string.member_activity_subagents_detail_started),
                             value = formatRaftTimestampClockWithSeconds(group.startedAtMillis, timeContext.localOffsetMinutes, timeContext.timeFormat),

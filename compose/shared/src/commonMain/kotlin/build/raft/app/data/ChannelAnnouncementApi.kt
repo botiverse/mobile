@@ -43,6 +43,27 @@ import kotlinx.serialization.json.contentOrNull
 /** Channel types that may have an announcement (`channelTypeSupportsAnnouncement`): never a DM, thread or task. */
 fun channelTypeSupportsAnnouncement(type: String?): Boolean = type == "channel" || type == "private" || type == "joint"
 
+/**
+ * Why a channel can't have an announcement now, beside `announcement: null` as
+ * `announcementUnavailable` (botiverse/slock #16305): `joint_server_off`, a joint channel a
+ * sharing server has announcements (or the artifacts app) off on. Absent when it can have one,
+ * and from older servers; unknown values read as null.
+ */
+const val CHANNEL_ANNOUNCEMENT_UNAVAILABLE_JOINT_SERVER_OFF: String = "joint_server_off"
+
+/** The refusal code of a set while announcements are off for this server or a sharing server (slock #16305). */
+const val CHANNEL_ANNOUNCEMENT_DISABLED_CODE: String = "channel_announcement_disabled"
+
+enum class ChannelAnnouncementUnavailableReason(val wireValue: String) {
+    JointServerOff(CHANNEL_ANNOUNCEMENT_UNAVAILABLE_JOINT_SERVER_OFF),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): ChannelAnnouncementUnavailableReason? =
+            entries.firstOrNull { it.wireValue == value }
+    }
+}
+
 /** Who made a version, or a change (`{ type: "user" | "agent", id, name }`). */
 data class RaftChannelAnnouncementActor(
     val type: RaftChannelAnnouncementActorType,
@@ -98,20 +119,23 @@ internal data class ChannelAnnouncementForPersonWireDto(
     val excerpt: String? = null,
 )
 
-/** `GET /api/channels/:id/announcement`: `{ announcement }`, null for none. */
+/** `GET /api/channels/:id/announcement`: `{ announcement, announcementUnavailable? }`, null for none. */
 @Serializable
 internal data class ChannelAnnouncementReadWireDto(
     val announcement: ChannelAnnouncementForPersonWireDto? = null,
+    val announcementUnavailable: String? = null,
 )
 
 /**
- * The `PATCH /api/channels/:id` answer, read for its `announcement` only (the rest of the channel
- * row is the channel repository's): the person's announcement after the change, null for none.
+ * The `PATCH /api/channels/:id` answer, read for its `announcement` and `announcementUnavailable`
+ * (the rest of the channel row is the channel repository's): the person's announcement after the
+ * change, null for none.
  */
 @Serializable
 internal data class ChannelAnnouncementChannelWireDto(
     val id: String,
     val announcement: ChannelAnnouncementForPersonWireDto? = null,
+    val announcementUnavailable: String? = null,
 )
 
 /** `PATCH /api/channels/:id` body: `{ announcement: "<artifact id>" }` to set or replace, `{ announcement: null }` to remove. */
@@ -135,8 +159,11 @@ private val channelAnnouncementJson = Json {
     encodeDefaults = true
 }
 
-/** The announcement a read answered; [announcement] null: the channel has none. */
-data class ChannelAnnouncementRead(val announcement: RaftChannelAnnouncement?)
+/** The announcement a read answered; [announcement] null: the channel has none. [unavailable] says why none can be pinned now. */
+data class ChannelAnnouncementRead(
+    val announcement: RaftChannelAnnouncement?,
+    val unavailable: ChannelAnnouncementUnavailableReason? = null,
+)
 
 /**
  * Which announcement a channel row names (web `channelRowAnnouncementKey`, botiverse/slock #16289):
@@ -183,8 +210,9 @@ fun parseSharedChannelAnnouncementRead(bodyText: String?): ChannelAnnouncementRe
         bodyText?.let {
             runCatching { channelAnnouncementJson.decodeFromString(ChannelAnnouncementReadWireDto.serializer(), it) }.getOrNull()
         } ?: return null
-    val announcement = wire.announcement ?: return ChannelAnnouncementRead(null)
-    return announcement.toDomainOrNull()?.let(::ChannelAnnouncementRead)
+    val unavailable = ChannelAnnouncementUnavailableReason.fromWire(wire.announcementUnavailable)
+    val announcement = wire.announcement ?: return ChannelAnnouncementRead(null, unavailable)
+    return announcement.toDomainOrNull()?.let { ChannelAnnouncementRead(it, unavailable) }
 }
 
 /**
@@ -198,8 +226,9 @@ fun parseSharedChannelAnnouncementUpdate(bodyText: String?, channelId: ChannelId
             runCatching { channelAnnouncementJson.decodeFromString(ChannelAnnouncementChannelWireDto.serializer(), it) }.getOrNull()
         } ?: return null
     if (wire.id != channelId.value) return null
-    val announcement = wire.announcement ?: return ChannelAnnouncementRead(null)
-    return announcement.toDomainOrNull()?.let(::ChannelAnnouncementRead)
+    val unavailable = ChannelAnnouncementUnavailableReason.fromWire(wire.announcementUnavailable)
+    val announcement = wire.announcement ?: return ChannelAnnouncementRead(null, unavailable)
+    return announcement.toDomainOrNull()?.let { ChannelAnnouncementRead(it, unavailable) }
 }
 
 /** The PATCH body that sets or replaces ([artifactId]) or removes (null) the announcement. */

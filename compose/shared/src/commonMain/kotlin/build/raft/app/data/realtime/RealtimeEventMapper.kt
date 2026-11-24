@@ -2079,6 +2079,7 @@ private fun JsonObject.subagentLineage(): AgentActivitySubagentLineage? {
     return AgentActivitySubagentLineage(
         parentToolUseId = field("parentToolUseId"),
         subagentType = field("subagentType"),
+        model = field("model"),
         taskId = field("taskId"),
         phase = field("phase"),
         outcome = field("outcome")

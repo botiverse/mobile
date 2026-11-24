@@ -381,11 +381,12 @@ internal fun ChannelSettingsAnnouncementSection(
             (summaryAnswers[target.key] as? ArtifactSummaryAnswer.Ok)?.summary?.kind
         } ?: ArtifactKind.Markdown
 
+    val unavailable = slice.unavailable != null
     ChannelAnnouncementDetailsRow(
         slice = slice,
         canEdit = canEdit,
         onOpen = { slice.announcement?.let(open) },
-        onSet = { step = ChannelAnnouncementStep.Pick(replacing = false) },
+        onSet = { if (!unavailable) step = ChannelAnnouncementStep.Pick(replacing = false) },
         onReplace = { step = ChannelAnnouncementStep.Pick(replacing = true) },
         onRemove = { step = ChannelAnnouncementStep.ConfirmRemove },
         modifier = modifier,
@@ -395,24 +396,26 @@ internal fun ChannelSettingsAnnouncementSection(
     when (val current = step) {
         ChannelAnnouncementStep.Idle -> Unit
         is ChannelAnnouncementStep.Pick ->
-            ChannelAnnouncementPickerRoute(
-                sharedStores = sharedStores,
-                storeScope = storeScope,
-                key = key,
-                channelName = name,
-                currentId = slice.announcement?.artifactId,
-                replacing = current.replacing,
-                running = running,
-                error = error.takeIf { !current.replacing },
-                onConfirm = { choice ->
-                    if (current.replacing) {
-                        step = ChannelAnnouncementStep.ConfirmReplace(choice.artifactId, choice.title)
-                    } else {
-                        store.dispatch(ChannelAnnouncementIntent.Change(key, choice.artifactId))
-                    }
-                },
-                onDismiss = close,
-            )
+            if (!unavailable) {
+                ChannelAnnouncementPickerRoute(
+                    sharedStores = sharedStores,
+                    storeScope = storeScope,
+                    key = key,
+                    channelName = name,
+                    currentId = slice.announcement?.artifactId,
+                    replacing = current.replacing,
+                    running = running,
+                    error = error.takeIf { !current.replacing },
+                    onConfirm = { choice ->
+                        if (current.replacing) {
+                            step = ChannelAnnouncementStep.ConfirmReplace(choice.artifactId, choice.title)
+                        } else {
+                            store.dispatch(ChannelAnnouncementIntent.Change(key, choice.artifactId))
+                        }
+                    },
+                    onDismiss = close,
+                )
+            }
         is ChannelAnnouncementStep.ConfirmReplace ->
             ChannelAnnouncementConfirmDialog(
                 title = stringResource(Res.string.channel_announcement_replace_title),

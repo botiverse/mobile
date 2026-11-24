@@ -246,4 +246,37 @@ class ThreadActionCardsTest {
         assertEquals("2d9f6c1e-4b7a-4c3e-8a9b-6e5f4d3c2b1a", card.targetAgent)
         assertEquals(card.targetAgent, actionCardFromMessageMetadata(card.toMessageMetadata())?.targetAgent)
     }
+
+    @Test
+    fun agentCreateCardPreservesSuggestedEnvVarsAndRequesterAgentIdAcrossProjection() {
+        val wire =
+            json.decodeFromString<WireActionCardMetadata>(
+                """
+                {
+                  "kind":"action-card",
+                  "state":"prepared",
+                  "requesterAgentId":"agent-proposer-1",
+                  "action":{
+                    "type":"agent:create",
+                    "name":"ci-helper",
+                    "suggestedRuntime":"codex",
+                    "suggestedEnvVars":{
+                      "NODE_ENV":"production",
+                      "CODEX_HOME":"/shared/codex"
+                    }
+                  }
+                }
+                """.trimIndent()
+            )
+        val card = assertNotNull(wire.toThreadActionCard())
+        assertEquals("agent-proposer-1", card.requesterAgentId)
+        assertEquals(
+            linkedMapOf("NODE_ENV" to "production", "CODEX_HOME" to "/shared/codex"),
+            card.suggestedEnvVars,
+        )
+
+        val projected = assertNotNull(actionCardFromMessageMetadata(card.toMessageMetadata()))
+        assertEquals("agent-proposer-1", projected.requesterAgentId)
+        assertEquals(card.suggestedEnvVars, projected.suggestedEnvVars)
+    }
 }

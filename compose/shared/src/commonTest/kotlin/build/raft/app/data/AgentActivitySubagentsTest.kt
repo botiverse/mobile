@@ -256,4 +256,52 @@ class AgentActivitySubagentsTest {
         assertEquals(true, agentToolStartHiddenInActivityLog("mcp__chat__send_message"))
         assertEquals(false, agentToolStartHiddenInActivityLog("check_messages"))
     }
+
+    @Test
+    fun subagentModelIsParsedFromRestAndLiveFramesPreservesLatestAndFormatsRawLogBadge() {
+        val sub = """"parentToolUseId":"toolu_m","subagentType":"Explore""""
+        val rows =
+            log(
+                0 to """{"kind":"tool_start","toolName":"Agent","toolInput":"Audit API","callId":"toolu_m"}""",
+                1 to """{"kind":"status","activity":"working","detail":"Subagent started","detailKind":"subagent_activity","subagent":{$sub,"taskId":"task-m","phase":"started","model":"claude-haiku-4-5-20251001"}}""",
+                2 to """{"kind":"text","text":"working","subagent":{$sub,"model":"claude-sonnet-4-6"}}""",
+                3 to """{"kind":"status","activity":"working","detail":"Subagent completed","detailKind":"subagent_activity","subagent":{$sub,"taskId":"task-m","phase":"notification","outcome":"done"}}""",
+            )
+        val group = groupAgentActivitySubagents(rows).single()
+        assertEquals("claude-sonnet-4-6", group.model, "latest reported model wins and survives rows without model")
+        assertEquals("Explore · claude-haiku-4-5-20251001", build.raft.app.membersActivitySubagentBadgeDetail(rows[1]))
+
+        val modelOnlyRow =
+            log(
+                0 to """{"kind":"text","text":"hi","subagent":{"parentToolUseId":"toolu_o","model":"gpt-5.4-mini"}}""",
+            ).single()
+        assertEquals("gpt-5.4-mini", build.raft.app.membersActivitySubagentBadgeDetail(modelOnlyRow))
+
+        val unreportedGroup =
+            groupAgentActivitySubagents(
+                log(
+                    0 to """{"kind":"status","activity":"working","detail":"Subagent started","detailKind":"subagent_activity","subagent":{"parentToolUseId":"toolu_none","subagentType":"Plan","phase":"started"}}""",
+                )
+            ).single()
+        assertNull(unreportedGroup.model)
+
+        val liveEvent =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentActivity,
+                """
+                {
+                  "agentId": "agent-1",
+                  "activity": "working",
+                  "entries": [
+                    {
+                      "kind": "status", "activity": "working", "detail": "Subagent started", "detailKind": "subagent_activity",
+                      "subagent": { "parentToolUseId": "toolu_live", "subagentType": "Explore", "taskId": "task-live", "phase": "started", "model": "claude-haiku-4-5-20251001" }
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            )
+        val liveRows = assertIs<MemberPresenceUpdated>(liveEvent).activityEntries
+        assertEquals("claude-haiku-4-5-20251001", liveRows.single().subagent?.model)
+    }
 }

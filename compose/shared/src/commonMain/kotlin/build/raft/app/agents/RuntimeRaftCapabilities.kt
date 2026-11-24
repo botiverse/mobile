@@ -193,3 +193,29 @@ internal fun RuntimeCapabilityHintText(hint: RuntimeCapabilityHint?, modifier: M
 }
 
 internal const val RuntimeCapabilityHintTag = "runtime_capability_hint"
+
+private val AntigravityOrchestratorModelIdRegex = Regex("^gemini-pro-orchestrator(?:$|-)")
+private val AntigravityOrchestratorLabelRegex = Regex("^orchestrator(?:\\s*\\(|$)")
+
+/**
+ * Whether a model id (or typed display label) selects Antigravity's dual-model Orchestrator
+ * (`gemini-pro-orchestrator`, `-neon`, `-argon`, `-g1-pro`, or typed `"Orchestrator (...)"`).
+ * Web parity: `isAntigravityOrchestratorModel` in `packages/web/src/utils/runtimeCapabilityHint.ts`
+ * (botiverse/slock #16311).
+ */
+internal fun isAntigravityOrchestratorModel(modelId: String): Boolean {
+    val normalized = modelId.trim().lowercase()
+    return AntigravityOrchestratorModelIdRegex.containsMatchIn(normalized) ||
+        AntigravityOrchestratorLabelRegex.containsMatchIn(normalized)
+}
+
+/**
+ * Model-specific hint for a runtime's Model field, or null when the selected model has no extra
+ * Raft-specific caveat (web `runtimeModelHintId`, botiverse/slock #16311).
+ */
+internal fun runtimeModelHint(runtimeId: String?, modelId: String): StringResource? =
+    if (runtimeId == "antigravity" && isAntigravityOrchestratorModel(modelId)) {
+        Res.string.runtime_model_hint_antigravity_orchestrator
+    } else {
+        null
+    }

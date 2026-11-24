@@ -22,6 +22,7 @@ import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ChannelAnnouncementChangeKind
 import build.raft.app.data.ChannelAnnouncementNotice
 import build.raft.app.data.ChannelAnnouncementSlice
+import build.raft.app.data.ChannelAnnouncementUnavailableReason
 import build.raft.app.data.RaftChannelAnnouncement
 import build.raft.app.data.RaftChannelAnnouncementActor
 import build.raft.app.data.RaftChannelAnnouncementActorType
@@ -228,5 +229,54 @@ class ChannelAnnouncementUiTest {
             }
             onNodeWithText("Martin pinned Release rules for 1.9").assertExists()
             onNodeWithText("Someone unpinned the channel’s pinned content").assertExists()
+        }
+
+    /** slock #16305: joint channel with another server's pinning off explains why nothing can be pinned and offers no Pin button. */
+    @Test
+    fun aManagerInAJointChannelWithPinningOffSeesWhyAndNoPinButton() =
+        runRobolectricComposeUiTest {
+            show {
+                ChannelAnnouncementDetailsRow(
+                    slice =
+                        ChannelAnnouncementSlice(
+                            read = true,
+                            announcement = null,
+                            unavailable = ChannelAnnouncementUnavailableReason.JointServerOff,
+                        ),
+                    canEdit = true,
+                    onOpen = {},
+                    onSet = {},
+                    onReplace = {},
+                    onRemove = {},
+                )
+            }
+            onNodeWithText("Pinned content").assertExists()
+            onNodeWithTag(ChannelAnnouncementTestTags.DetailsUnavailable).assertExists()
+            onNodeWithText("Nothing pinned").assertExists()
+            onNodeWithText("Another server sharing this channel has turned off pinning, so you can't pin here.").assertExists()
+            onNodeWithTag(ChannelAnnouncementTestTags.DetailsSet).assertDoesNotExist()
+        }
+
+    @Test
+    fun aMemberWhoCannotPinSeesNoAnnouncementSectionWhenJointPinningIsOff() =
+        runRobolectricComposeUiTest {
+            show {
+                ChannelAnnouncementDetailsRow(
+                    slice =
+                        ChannelAnnouncementSlice(
+                            read = true,
+                            announcement = null,
+                            unavailable = ChannelAnnouncementUnavailableReason.JointServerOff,
+                        ),
+                    canEdit = false,
+                    onOpen = {},
+                    onSet = {},
+                    onReplace = {},
+                    onRemove = {},
+                )
+            }
+            onNodeWithText("Pinned content").assertDoesNotExist()
+            onNodeWithTag(ChannelAnnouncementTestTags.DetailsUnavailable).assertDoesNotExist()
+            onNodeWithTag(ChannelAnnouncementTestTags.DetailsSet).assertDoesNotExist()
         }
 }

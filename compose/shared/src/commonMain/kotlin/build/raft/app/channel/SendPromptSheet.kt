@@ -1,14 +1,22 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -22,20 +30,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.ConversationRepository
 import build.raft.app.data.DataRequestPriority
@@ -56,22 +65,29 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MessageType
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.resources.*
-import build.raft.designsystem.components.LocalRaftFieldState
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
-import build.raft.designsystem.components.RaftButton
-import build.raft.designsystem.components.RaftButtonSize
-import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftCloseButton
+import build.raft.designsystem.components.RaftDialogSheetDefaults
 import build.raft.designsystem.components.RaftDropdownMenu
-import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftMenuItem
-import build.raft.designsystem.components.RaftSelectTrigger
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonVariant
-import build.raft.designsystem.components.RaftTextarea
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftTextLinkVariant
+import build.raft.designsystem.components.RaftWindowDialog
+import build.raft.designsystem.components.RaftWindowDialogProperties
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.raftDialogSheetCentered
+import build.raft.designsystem.components.rememberRaftStableWindowInsets
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -81,13 +97,24 @@ import kotlinx.coroutines.launch
 internal const val SendPromptDialogHostRoute = "send_prompt"
 internal const val SendPromptDialogTestTag = "send-prompt-dialog"
 internal const val SendPromptNoAgentsTestTag = "send-prompt-no-agents"
+internal const val SendPromptCloseButtonTestTag = "send-prompt-close"
 internal const val SendPromptAgentTriggerTestTag = "send-prompt-agent"
+internal const val SendPromptAgentDescriptionTestTag = "send-prompt-agent-description"
 internal const val SendPromptPreviewTestTag = "send-prompt-preview"
-internal const val SendPromptMessageFieldTestTag = "send-prompt-message"
-internal const val SendPromptSendButtonTestTag = "send-prompt-send"
+internal const val SendPromptPreviewFailedTestTag = "send-prompt-preview-failed"
+internal const val SendPromptFirstMessageTestTag = "send-prompt-first-message"
+internal const val SendPromptRecentNoticeTestTag = "send-prompt-recent-notice"
+internal const val SendPromptShowMoreTestTag = "send-prompt-show-more"
+internal const val SendPromptComposerTestTag = "send-prompt-composer"
 internal const val SendPromptErrorBannerTestTag = "send-prompt-error"
 
 private const val SendPromptPreviewLimit = 5
+private const val SendPromptPreviewClampLines = 3
+private val SendPromptDesktopMaxWidth = 960.dp
+private val SendPromptDesktopMaxHeight = 900.dp
+private val SendPromptMessageAvatarSize = 35.dp
+private val SendPromptMessageAvatarGap = 12.dp
+private val SendPromptPickerMenuWidth = 300.dp
 
 internal data class ActiveSendPromptRequest(
     val serverId: String,
@@ -122,10 +149,10 @@ internal class AppShellSendPromptHostState {
 }
 
 /**
- * AppShell host for [SendPromptDialog] (1.29 parity with botiverse/slock #16226).
+ * AppShell host for [SendPromptDialog] (parity with botiverse/slock #16226 & #16396).
  *
- * Waits for the server's first agent list before mounting the sheet so default agent selection
- * sees the live roster, binds the sheet to the server it opened for, loads the last 5 messages
+ * Waits for the server's first agent list before mounting the dialog so default agent selection
+ * sees the live roster, binds the dialog to the server it opened for, loads the last 5 messages
  * of the picked agent's DM read-only, opens/creates the DM and sends the prompt on commit, then
  * navigates into that DM.
  */
@@ -240,6 +267,7 @@ internal fun AppShellSendPromptHost(
                 onLog("send_prompt_closed outcome=$outcome edited=$edited changed_agent=$changedAgent")
             },
             onClose = { hostState.dismiss() },
+            requestKey = request.requestId.toString(),
         )
     }
 }
@@ -247,7 +275,7 @@ internal fun AppShellSendPromptHost(
 private suspend fun loadSendPromptDmPreview(
     conversationRepository: ConversationRepository,
     channelId: ChannelId,
-): List<SendPromptPreviewMessage> =
+): SendPromptDmPreviewResult =
     when (
         val result =
             conversationRepository.loadLatestMessages(
@@ -256,20 +284,31 @@ private suspend fun loadSendPromptDmPreview(
             )
     ) {
         is DataResult.Content ->
-            result.data.messages.takeLast(SendPromptPreviewLimit).map { message ->
-                SendPromptPreviewMessage(
-                    id = message.id.value,
-                    senderName = message.author.displayName.ifBlank { message.author.handle },
-                    content = message.body,
-                )
-            }
-        else -> emptyList()
+            SendPromptDmPreviewResult.Loaded(
+                result.data.messages.takeLast(SendPromptPreviewLimit).map { message ->
+                    SendPromptPreviewMessage(
+                        id = message.id.value,
+                        senderName = message.author.displayName.ifBlank { message.author.handle },
+                        content = message.body,
+                        senderId = message.author.id.value,
+                        senderKind = message.author.kind,
+                        senderAvatarWireValue = message.author.avatar?.wireValue,
+                        senderAvatarLabel = message.author.avatarLabel,
+                        createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(message.timestampLabel),
+                        timestampLabel = message.timestampLabel,
+                        isSystem = message.messageType == MessageType.System,
+                    )
+                }
+            )
+        else -> SendPromptDmPreviewResult.Failed
     }
 
 /**
- * Send-to-agent sheet / dialog (matches web `SendPromptDialog.tsx`, botiverse/slock #16226):
- * picks the suggested agent once on open, previews the last 5 messages of that agent's DM
- * read-only, lets the viewer edit the prefilled prompt, and sends it into the agent's DM.
+ * Send-to-agent dialog drawn as the DM with the agent (matches web `SendPromptDialog.tsx`,
+ * botiverse/slock #16396): the agent's avatar, name and description form the head (which opens
+ * the picker to switch agent, suggested first), above the last 5 DM messages read-only (grouped,
+ * date dividers, long messages clamped to 3 lines with Show more) and the real chat composer
+ * prefilled with the prompt (compact, plain text, no attachments, no As task).
  */
 @Composable
 internal fun SendPromptDialog(
@@ -279,13 +318,14 @@ internal fun SendPromptDialog(
     officialOnboardingAgentId: String?,
     recentAgentIds: List<String>,
     dmChannelByAgent: Map<String, ChannelId>,
-    loadPreview: suspend (ChannelId) -> List<SendPromptPreviewMessage>,
+    loadPreview: suspend (ChannelId) -> SendPromptDmPreviewResult,
     onSend: suspend (MemberProfile, String) -> Boolean,
     onClose: () -> Unit,
     onOpened: (SendPromptDefaultAgentKind) -> Unit = {},
     onClosed: (outcome: String, edited: Boolean, changedAgent: Boolean) -> Unit = { _, _, _ -> },
+    requestKey: String = "default",
 ) {
-    // Suggested agent is locked once when the sheet opens: later DM activity does not move the pick.
+    // The suggestion and picker order are locked once when the dialog opens: later DM activity does not move them.
     val suggested = remember {
         defaultSendPromptAgent(
             recipients = recipients,
@@ -293,20 +333,30 @@ internal fun SendPromptDialog(
             recentAgentIds = recentAgentIds,
         )
     }
-    var selectedAgentId by remember { mutableStateOf<String?>(null) }
-    val pickedAgent = remember(recipients, selectedAgentId, suggested) {
-        val targetId = selectedAgentId ?: suggested.agent?.id?.value
-        recipients.firstOrNull { it.id.value == targetId } ?: recipients.firstOrNull()
+    val orderedIds = remember {
+        orderSendPromptAgents(
+            recipients = recipients,
+            suggestedId = suggested.agent?.id?.value,
+            recentAgentIds = recentAgentIds,
+        ).map { it.id.value }
     }
-    var messageText by remember { mutableStateOf(prompt) }
+    val ordered = remember(recipients, orderedIds) {
+        val byId = recipients.associateBy { it.id.value }
+        val listed = orderedIds.mapNotNull(byId::get)
+        val listedSet = orderedIds.toSet()
+        listed + recipients.filter { it.id.value !in listedSet }
+    }
+    var selectedAgentId by remember { mutableStateOf<String?>(null) }
+    val pickedAgent = remember(ordered, selectedAgentId, suggested) {
+        val targetId = selectedAgentId ?: suggested.agent?.id?.value
+        ordered.firstOrNull { it.id.value == targetId } ?: ordered.firstOrNull()
+    }
+    var draftText by remember(requestKey, prompt) { mutableStateOf(prompt) }
     var sending by remember { mutableStateOf(false) }
     var sendFailed by remember { mutableStateOf(false) }
     var closedRecorded by remember { mutableStateOf(false) }
 
-    val edited = messageText != prompt
-    val changedAgent = selectedAgentId != null && selectedAgentId != suggested.agent?.id?.value
-    val draft = messageText.trim()
-    val canSend = !sending && draft.isNotEmpty() && pickedAgent != null
+    val changedAgent = pickedAgent != null && pickedAgent.id.value != suggested.agent?.id?.value
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(suggested) {
@@ -317,25 +367,27 @@ internal fun SendPromptDialog(
         if (sending) return
         if (!closedRecorded) {
             closedRecorded = true
-            onClosed("cancelled", edited, changedAgent)
+            onClosed("cancelled", draftText != prompt, changedAgent)
         }
         onClose()
     }
 
-    fun submit() {
+    fun submit(rawText: String) {
         val target = pickedAgent ?: return
-        if (!canSend) return
+        val trimmed = rawText.trim()
+        if (sending || trimmed.isEmpty()) return
         sending = true
         sendFailed = false
         scope.launch {
             val succeeded =
-                runCatchingPreservingCancellation { onSend(target, draft) }
+                runCatchingPreservingCancellation { onSend(target, trimmed) }
                     .getOrDefault(false)
             if (succeeded) {
                 if (!closedRecorded) {
                     closedRecorded = true
-                    onClosed("sent", edited, changedAgent)
+                    onClosed("sent", trimmed != prompt.trim(), changedAgent)
                 }
+                onClose()
             } else {
                 sendFailed = true
                 sending = false
@@ -346,11 +398,11 @@ internal fun SendPromptDialog(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
 
-    if (recipients.isEmpty()) {
+    if (recipients.isEmpty() || pickedAgent == null) {
         RaftUnifiedDialog(
             title = stringResource(Res.string.send_prompt_heading),
             onDismiss = ::cancel,
-            presentation = RaftDialogPresentation.Sheet,
+            presentation = RaftDialogPresentation.Centered,
             hostRoute = SendPromptDialogHostRoute,
             contentPadding = RaftAppSpacing.Md,
             contentSpacing = RaftAppSpacing.Md,
@@ -361,178 +413,275 @@ internal fun SendPromptDialog(
                 color = colors.foregroundMuted,
                 modifier = Modifier.testTag(SendPromptNoAgentsTestTag),
             )
-            RaftDialogFooter {
-                RaftButton(
-                    text = stringResource(Res.string.common_cancel),
-                    onClick = ::cancel,
-                    variant = RaftButtonVariant.Ghost,
-                    size = RaftButtonSize.Lg,
-                )
-            }
         }
         return
     }
 
-    val pickedDmChannelId = pickedAgent?.id?.value?.let(dmChannelByAgent::get)
-    var previewState by remember { mutableStateOf<Pair<ChannelId?, List<SendPromptPreviewMessage>?>>(null to emptyList()) }
+    val pickedDmChannelId = pickedAgent.id.value.let(dmChannelByAgent::get)
+    var previewState by remember {
+        mutableStateOf<Pair<ChannelId?, SendPromptDmPreviewResult>>(
+            null to SendPromptDmPreviewResult.Loaded(emptyList())
+        )
+    }
     LaunchedEffect(pickedDmChannelId) {
         if (pickedDmChannelId == null) {
-            previewState = null to emptyList()
+            previewState = null to SendPromptDmPreviewResult.Loaded(emptyList())
             return@LaunchedEffect
         }
-        previewState = pickedDmChannelId to null
+        previewState = pickedDmChannelId to SendPromptDmPreviewResult.Loading
         val loaded =
             runCatchingPreservingCancellation { loadPreview(pickedDmChannelId) }
-                .getOrDefault(emptyList())
+                .getOrElse { SendPromptDmPreviewResult.Failed }
         previewState = pickedDmChannelId to loaded
     }
-    val previewMessages: List<SendPromptPreviewMessage>? =
-        if (pickedDmChannelId == null) {
-            emptyList()
-        } else if (previewState.first == pickedDmChannelId) {
-            previewState.second
-        } else {
-            null
+    val previewResult: SendPromptDmPreviewResult =
+        when {
+            pickedDmChannelId == null -> SendPromptDmPreviewResult.Loaded(emptyList())
+            previewState.first == pickedDmChannelId -> previewState.second
+            else -> SendPromptDmPreviewResult.Loading
         }
 
-    val sendLabel = stringResource(if (sending) Res.string.invite_human_sending else Res.string.send_prompt_send)
+    SendPromptDmWindow(
+        pickedAgent = pickedAgent,
+        orderedAgents = ordered,
+        serverId = serverId,
+        prompt = prompt,
+        requestKey = requestKey,
+        sending = sending,
+        sendFailed = sendFailed,
+        previewResult = previewResult,
+        onPickAgent = { picked -> selectedAgentId = picked.id.value },
+        onDraftChange = { draftText = it },
+        onSubmit = ::submit,
+        onCancel = ::cancel,
+    )
+}
+
+@Composable
+private fun SendPromptDmWindow(
+    pickedAgent: MemberProfile,
+    orderedAgents: List<MemberProfile>,
+    serverId: String,
+    prompt: String,
+    requestKey: String,
+    sending: Boolean,
+    sendFailed: Boolean,
+    previewResult: SendPromptDmPreviewResult,
+    onPickAgent: (MemberProfile) -> Unit,
+    onDraftChange: (String) -> Unit,
+    onSubmit: (String) -> Unit,
+    onCancel: () -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val scrim = RaftTheme.scrim
     val previewLabel = stringResource(Res.string.send_prompt_preview_label)
+    val agentName = sendPromptAgentLabel(pickedAgent)
 
-    RaftUnifiedDialog(
-        title = stringResource(Res.string.send_prompt_heading),
-        onDismiss = ::cancel,
-        dismissEnabled = !sending,
-        dismissOnOutsideTap = false,
-        keyboardAvoidanceEnabled = true,
-        hostRoute = SendPromptDialogHostRoute,
-        contentPadding = RaftAppSpacing.Md,
-        contentSpacing = RaftAppSpacing.Md,
-        presentation = RaftDialogPresentation.Sheet,
-        commitLabel = sendLabel,
-        onCommit = ::submit,
-        commitEnabled = canSend,
-        commitLoading = sending,
-        modifier = Modifier.testTag(SendPromptDialogTestTag),
+    RaftWindowDialog(
+        onDismissRequest = onCancel,
+        properties = RaftWindowDialogProperties(dismissOnBackPress = !sending, drawScrim = false),
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
-        ) {
-            RaftText(
-                text = stringResource(Res.string.send_prompt_description),
-                style = typography.callout,
-                color = colors.foregroundMuted,
-            )
-            if (sendFailed) {
-                RaftBanner(
-                    description = stringResource(Res.string.send_prompt_failed),
-                    status = RaftBannerStatus.Warning,
-                    modifier = Modifier.testTag(SendPromptErrorBannerTestTag),
-                )
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val centered = raftDialogSheetCentered(maxWidth)
+            val frameContent: @Composable () -> Unit = {
+                Column(Modifier.fillMaxSize().background(colors.layerPopover)) {
+                    SendPromptDialogHead(
+                        centered = centered,
+                        picked = pickedAgent,
+                        orderedAgents = orderedAgents,
+                        serverId = serverId,
+                        enabled = !sending,
+                        onPick = onPickAgent,
+                        onClose = onCancel,
+                    )
+                    Box(Modifier.fillMaxWidth().weight(1f)) {
+                        key(pickedAgent.id.value) {
+                            SendPromptDmLookBack(
+                                agent = pickedAgent,
+                                serverId = serverId,
+                                previewResult = previewResult,
+                                previewLabel = previewLabel,
+                            )
+                        }
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(20.dp)
+                                .background(
+                                    Brush.verticalGradient(listOf(Color.Transparent, colors.layerPopover))
+                                )
+                        )
+                    }
+                    SendPromptComposerFooter(
+                        agentName = agentName,
+                        prompt = prompt,
+                        requestKey = requestKey,
+                        sending = sending,
+                        sendFailed = sendFailed,
+                        onDraftChange = onDraftChange,
+                        onSubmit = onSubmit,
+                    )
+                }
             }
-            RaftField(
-                label = stringResource(Res.string.send_prompt_to),
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !sending,
-            ) {
-                SendPromptAgentPicker(
-                    selected = pickedAgent,
-                    recipients = recipients,
-                    serverId = serverId,
-                    enabled = !sending,
-                    onPick = { picked -> selectedAgentId = picked.id.value },
-                )
+            if (centered) {
+                // Desktop / tablet: Create-task frame (960 wide, min(86vh, 900) tall), no outside-tap dismiss.
+                val dialogHeight = minOf(maxHeight * 0.86f, SendPromptDesktopMaxHeight)
+                Box(
+                    modifier = Modifier.fillMaxSize().background(scrim).padding(16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .widthIn(max = SendPromptDesktopMaxWidth)
+                                .fillMaxWidth()
+                                .height(dialogHeight)
+                                .raftLookOverlaySurface(radius = RaftAppRadius.Dialog)
+                                .testTag(SendPromptDialogTestTag),
+                    ) {
+                        frameContent()
+                    }
+                }
+            } else {
+                // Phone: full-screen sheet matching the DM surface.
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(colors.layerPopover)
+                            .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing))
+                            .testTag(SendPromptDialogTestTag),
+                ) {
+                    frameContent()
+                }
             }
-            SendPromptDmPreviewBox(
-                previewMessages = previewMessages,
-                previewLabel = previewLabel,
-            )
-            RaftField(
-                label = stringResource(Res.string.send_prompt_message_label),
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !sending,
-            ) {
-                RaftTextarea(
-                    value = messageText,
-                    onValueChange = { messageText = it },
-                    modifier = Modifier.fillMaxWidth().testTag(SendPromptMessageFieldTestTag),
-                    enabled = !sending,
-                    minHeight = 120.dp,
-                    maxHeight = 200.dp,
-                )
-            }
-        }
-        RaftDialogFooter {
-            RaftButton(
-                text = stringResource(Res.string.common_cancel),
-                onClick = ::cancel,
-                enabled = !sending,
-                variant = RaftButtonVariant.Ghost,
-                size = RaftButtonSize.Lg,
-            )
-            RaftButton(
-                text = sendLabel,
-                onClick = ::submit,
-                enabled = canSend,
-                loading = sending,
-                variant = RaftButtonVariant.Primary,
-                size = RaftButtonSize.Lg,
-                modifier = Modifier.testTag(SendPromptSendButtonTestTag),
-            )
         }
     }
 }
 
 @Composable
-private fun SendPromptAgentPicker(
-    selected: MemberProfile?,
-    recipients: List<MemberProfile>,
+private fun SendPromptDialogHead(
+    centered: Boolean,
+    picked: MemberProfile,
+    orderedAgents: List<MemberProfile>,
     serverId: String,
     enabled: Boolean,
     onPick: (MemberProfile) -> Unit,
+    onClose: () -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    var triggerWidthPx by remember { mutableStateOf(0) }
-    val density = LocalDensity.current
-    val triggerFocus = remember { FocusRequester() }
-    val fieldState = LocalRaftFieldState.current
-
-    Box(modifier = Modifier.fillMaxWidth()) {
-        RaftSelectTrigger(
-            value = selected?.let(::sendPromptAgentLabel),
-            onClick = { expanded = true },
+    val colors = RaftTheme.colors
+    val closeLabel = stringResource(Res.string.common_close)
+    Column(Modifier.fillMaxWidth().background(colors.layerPopover)) {
+        Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .height(RaftDialogSheetDefaults.HeadHeight)
+                    .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (!centered) {
+                RaftCloseButton(
+                    onClick = onClose,
+                    label = closeLabel,
+                    enabled = enabled,
+                    modifier = Modifier.testTag(SendPromptCloseButtonTestTag),
+                )
+            }
+            SendPromptAgentHeadPicker(
+                picked = picked,
+                agents = orderedAgents,
+                serverId = serverId,
+                enabled = enabled,
+                onPick = onPick,
+                modifier = Modifier.weight(1f),
+            )
+            if (centered) {
+                RaftCloseButton(
+                    onClick = onClose,
+                    label = closeLabel,
+                    enabled = enabled,
+                    modifier = Modifier.testTag(SendPromptCloseButtonTestTag),
+                )
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam))
+    }
+}
+
+@Composable
+private fun SendPromptAgentHeadPicker(
+    picked: MemberProfile,
+    agents: List<MemberProfile>,
+    serverId: String,
+    enabled: Boolean,
+    onPick: (MemberProfile) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val triggerFocus = remember { FocusRequester() }
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val name = sendPromptAgentLabel(picked)
+    val description = picked.description?.trim()?.takeIf(String::isNotEmpty)
+    val switchLabel = stringResource(Res.string.send_prompt_switch_agent, name)
+
+    Box(modifier = modifier) {
+        Row(
+            modifier =
+                Modifier
                     .focusRequester(triggerFocus)
-                    .onSizeChanged { triggerWidthPx = it.width }
+                    .raftClickable(
+                        enabled = enabled,
+                        role = Role.Button,
+                        shape = RoundedCornerShape(RaftRadius.Control),
+                        onClick = { expanded = true },
+                    )
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .semantics { contentDescription = switchLabel }
                     .testTag(SendPromptAgentTriggerTestTag),
-            enabled = enabled,
-            label = fieldState.label,
-            expanded = expanded,
-            onCollapse = { expanded = false },
-            leadingIcon =
-                selected?.let { agent ->
-                    {
-                        SendPromptAgentAvatar(agent = agent, serverId = serverId)
-                    }
-                },
-        )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SendPromptAgentAvatar(agent = picked, serverId = serverId, size = 24.dp)
+            RaftText(
+                text = name,
+                style = typography.title.copy(fontWeight = FontWeight.Bold),
+                color = colors.foreground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (description != null) {
+                RaftText(
+                    text = description,
+                    style = typography.callout,
+                    color = colors.foregroundMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false).testTag(SendPromptAgentDescriptionTestTag),
+                )
+            }
+            RaftGlyphIcon(
+                glyph = RaftGlyph.ChevronDown,
+                size = 16.dp,
+                color = colors.foregroundHint,
+            )
+        }
         RaftDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            width = maxOf(220.dp, with(density) { triggerWidthPx.toDp() }),
-            offset = 4.dp,
+            width = SendPromptPickerMenuWidth,
+            offset = 6.dp,
             returnFocusTo = triggerFocus,
         ) {
-            recipients.forEach { agent ->
-                val roleLabel = sendPromptAgentRoleLabel(agent.serverRole)
+            agents.forEach { agent ->
                 RaftMenuItem(
                     text = sendPromptAgentLabel(agent),
-                    description = roleLabel,
-                    checked = agent.id == selected?.id,
+                    checked = agent.id == picked.id,
                     leadingIcon = {
-                        SendPromptAgentAvatar(agent = agent, serverId = serverId)
+                        SendPromptAgentAvatar(agent = agent, serverId = serverId, size = 18.dp)
                     },
                     onClick = {
                         expanded = false
@@ -549,12 +698,13 @@ private fun SendPromptAgentPicker(
 private fun SendPromptAgentAvatar(
     agent: MemberProfile,
     serverId: String,
+    size: Dp,
 ) {
     RaftAppAvatar(
         kind = RaftAvatarKind.Agent,
         avatarWireValue = agent.avatar?.wireValue,
         label = agent.avatarLabel,
-        avatarSize = 16.dp,
+        avatarSize = size,
         borderWidth = 0.dp,
         cacheSubject = agent.raftAvatarCacheSubject(),
         cacheServerId = serverId,
@@ -562,75 +712,279 @@ private fun SendPromptAgentAvatar(
 }
 
 @Composable
-private fun SendPromptDmPreviewBox(
-    previewMessages: List<SendPromptPreviewMessage>?,
+private fun SendPromptDmLookBack(
+    agent: MemberProfile,
+    serverId: String,
+    previewResult: SendPromptDmPreviewResult,
     previewLabel: String,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val shape = RoundedCornerShape(RaftRadius.Control)
     val scrollState = rememberScrollState()
+    val timeContext = currentRaftTimeContext(null)
 
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(max = 192.dp)
-                .background(colors.fillMuted.copy(alpha = 0.4f), shape)
-                .border(RaftStroke.Hairline, colors.lineHairline, shape)
-                .verticalScroll(scrollState)
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .semantics { contentDescription = previewLabel }
-                .testTag(SendPromptPreviewTestTag),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        when {
-            previewMessages == null -> {
-                RaftSkeleton(
-                    modifier = Modifier.fillMaxWidth().height(20.dp),
-                    variant = RaftSkeletonVariant.Line,
-                )
-            }
-            previewMessages.isEmpty() -> {
-                RaftText(
-                    text = stringResource(Res.string.send_prompt_first_message),
-                    style = typography.callout,
-                    color = colors.foregroundMuted,
-                )
-            }
-            else -> {
-                previewMessages.forEach { message ->
-                    val line =
-                        buildAnnotatedString {
-                            if (message.senderName.isNotBlank()) {
-                                withStyle(SpanStyle(fontWeight = FontWeight.Medium, color = colors.foreground)) {
-                                    append(message.senderName)
-                                    append(": ")
-                                }
-                            }
-                            append(message.content)
-                        }
+    LaunchedEffect(previewResult) {
+        if (previewResult is SendPromptDmPreviewResult.Loaded && previewResult.messages.isNotEmpty()) {
+            scrollState.scrollTo(scrollState.maxValue)
+        }
+    }
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .heightIn(min = maxHeight)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .semantics { contentDescription = previewLabel }
+                    .testTag(SendPromptPreviewTestTag),
+            verticalArrangement = Arrangement.Bottom,
+        ) {
+            when (previewResult) {
+                SendPromptDmPreviewResult.Loading -> {
+                    RaftSkeleton(
+                        modifier = Modifier.fillMaxWidth().height(20.dp),
+                        variant = RaftSkeletonVariant.Line,
+                    )
+                }
+                SendPromptDmPreviewResult.Failed -> {
                     RaftText(
-                        text = line,
+                        text = stringResource(Res.string.send_prompt_preview_failed),
                         style = typography.callout,
                         color = colors.foreground,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.testTag(SendPromptPreviewFailedTestTag),
                     )
+                }
+                is SendPromptDmPreviewResult.Loaded -> {
+                    if (previewResult.messages.isEmpty()) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().testTag(SendPromptFirstMessageTestTag),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            SendPromptAgentAvatar(agent = agent, serverId = serverId, size = 56.dp)
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                RaftText(
+                                    text = sendPromptAgentLabel(agent),
+                                    style = typography.headline.copy(fontWeight = FontWeight.Bold),
+                                    color = colors.foreground,
+                                )
+                                RaftText(
+                                    text = stringResource(Res.string.send_prompt_first_message),
+                                    style = typography.callout,
+                                    color = colors.foregroundMuted,
+                                )
+                            }
+                        }
+                    } else {
+                        val rows = remember(previewResult.messages, timeContext) {
+                            computeSendPromptPreviewGrouping(previewResult.messages, timeContext)
+                        }
+                        val noticeText =
+                            if (previewResult.messages.size == 1) {
+                                stringResource(Res.string.send_prompt_recent_messages_one)
+                            } else {
+                                stringResource(Res.string.send_prompt_recent_messages_other, previewResult.messages.size)
+                            }
+                        RaftText(
+                            text = noticeText,
+                            style = typography.callout,
+                            color = colors.foregroundMuted,
+                            modifier = Modifier.padding(bottom = 8.dp).testTag(SendPromptRecentNoticeTestTag),
+                        )
+                        rows.forEach { row ->
+                            key(row.message.id) {
+                                if (row.showDayDivider && row.day != null) {
+                                    ThreadDateDivider(row.day.localizedLabel())
+                                }
+                                SendPromptPreviewMessageRow(
+                                    row = row,
+                                    serverId = serverId,
+                                    timeContext = timeContext,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-internal fun sendPromptAgentLabel(agent: MemberProfile): String =
-    agent.displayName.ifBlank { agent.handle }
+@Composable
+private fun SendPromptPreviewMessageRow(
+    row: SendPromptPreviewRowState,
+    serverId: String,
+    timeContext: RaftTimeContext?,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val message = row.message
+    val messageTimeFormat = rememberRaftMessageTimeFormat()
+    val clockLabel =
+        remember(message.timestampLabel, timeContext, messageTimeFormat) {
+            if (message.timestampLabel.isBlank()) {
+                null
+            } else {
+                raftMessageTimeLabel(message.timestampLabel, timeContext, messageTimeFormat)
+            }
+        }
+
+    if (message.isSystem) {
+        RaftText(
+            text = message.content,
+            style = typography.callout,
+            color = colors.foregroundMuted,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        )
+        return
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = if (row.showHeader) 10.dp else 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(SendPromptMessageAvatarGap),
+    ) {
+        if (row.showHeader) {
+            RaftAppAvatar(
+                kind = raftAvatarKind(message.senderKind),
+                avatarWireValue = message.senderAvatarWireValue,
+                label = message.senderAvatarLabel,
+                avatarSize = SendPromptMessageAvatarSize,
+                borderWidth = 0.dp,
+                cacheServerId = serverId,
+            )
+        } else {
+            Spacer(Modifier.width(SendPromptMessageAvatarSize))
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (row.showHeader) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    RaftText(
+                        text = message.senderName,
+                        style = typography.body.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (!clockLabel.isNullOrBlank()) {
+                        RaftText(
+                            text = clockLabel,
+                            style = typography.monoMeta,
+                            color = colors.foregroundHint,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+            SendPromptClampedMessageBody(messageId = message.id, content = message.content)
+        }
+    }
+}
 
 @Composable
-private fun sendPromptAgentRoleLabel(serverRole: String?): String? =
-    when (serverRole?.trim()?.lowercase()) {
-        "owner" -> stringResource(Res.string.member_role_owner)
-        "admin" -> stringResource(Res.string.member_role_admin)
-        "member" -> stringResource(Res.string.member_role_member)
-        else -> null
+private fun SendPromptClampedMessageBody(
+    messageId: String,
+    content: String,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    var expanded by remember(messageId) { mutableStateOf(false) }
+    var visualOverflow by remember(messageId, content) { mutableStateOf(false) }
+    val explicitLineOverflow = remember(content) { content.lineSequence().count() > SendPromptPreviewClampLines }
+    val canToggle = expanded || visualOverflow || explicitLineOverflow
+
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        RaftText(
+            text = content,
+            style = typography.body,
+            color = colors.foreground,
+            maxLines = if (expanded) Int.MAX_VALUE else SendPromptPreviewClampLines,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { layout ->
+                if (!expanded && layout.hasVisualOverflow) {
+                    visualOverflow = true
+                }
+            },
+        )
+        if (canToggle) {
+            RaftTextLink(
+                text = stringResource(if (expanded) Res.string.member_label_show_less else Res.string.member_label_show_more),
+                onClick = { expanded = !expanded },
+                variant = RaftTextLinkVariant.Muted,
+                style = typography.callout,
+                modifier = Modifier.testTag(SendPromptShowMoreTestTag),
+            )
+        }
     }
+}
+
+@Composable
+private fun SendPromptComposerFooter(
+    agentName: String,
+    prompt: String,
+    requestKey: String,
+    sending: Boolean,
+    sendFailed: Boolean,
+    onDraftChange: (String) -> Unit,
+    onSubmit: (String) -> Unit,
+) {
+    val colors = RaftTheme.colors
+    Column(modifier = Modifier.fillMaxWidth().background(colors.layerPopover)) {
+        if (sendFailed) {
+            RaftBanner(
+                description = stringResource(Res.string.send_prompt_failed),
+                status = RaftBannerStatus.Warning,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .testTag(SendPromptErrorBannerTestTag),
+            )
+        }
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .testTag(SendPromptComposerTestTag),
+        ) {
+            ThreadComposerContent(
+                payload =
+                    RaftThreadComposerPayload(
+                        instanceId = "send-prompt:$requestKey",
+                        seedText = prompt,
+                        placeholder = stringResource(Res.string.thread_composer_placeholder_named, agentName),
+                        enabled = !sending,
+                        attachmentActionsEnabled = false,
+                        originalImageOptionEnabled = false,
+                        showAsTaskToggle = false,
+                        composerMode = if (sending) "sending" else "idle",
+                    ),
+                onEvent = { action, value, _, _ ->
+                    if (action == "change" && value != null) {
+                        onDraftChange(value)
+                    }
+                },
+                onSendRequest = { request ->
+                    val text = request.value.text
+                    if (sending || text.isBlank()) {
+                        ThreadComposerSendAdmission.Rejected
+                    } else {
+                        onSubmit(text)
+                        // Keep text in composer until the dialog closes so a failed send preserves edits.
+                        ThreadComposerSendAdmission.Deferred
+                    }
+                },
+                attachmentReorderEnabled = false,
+                attachmentPreviewEnabled = false,
+            )
+        }
+    }
+}
+
+internal fun sendPromptAgentLabel(agent: MemberProfile): String =
+    agent.displayName.ifBlank { agent.handle }

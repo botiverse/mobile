@@ -88,6 +88,7 @@ internal object ChannelAnnouncementTestTags {
     const val DetailsMetaName = "channel-settings-announcement-meta-name"
     const val DetailsMetaTime = "channel-settings-announcement-meta-time"
     const val DetailsEmpty = "channel-settings-announcement-empty"
+    const val DetailsUnavailable = "channel-settings-announcement-unavailable"
     const val DetailsSet = "channel-settings-announcement-set"
     const val DetailsReplace = "channel-settings-announcement-replace"
     const val DetailsRemove = "channel-settings-announcement-remove"
@@ -520,6 +521,18 @@ internal fun ChannelAnnouncementDetailsRow(
                         trailing = { RaftListRowChevron() },
                     )
                 }
+            } else if (slice.unavailable != null) {
+                // Web PinnedUnavailableRow (slock #16305): joint channel where a sharing server has
+                // pinning off — show why instead of offering Pin an Artifact.
+                RaftListRow(
+                    title = stringResource(Res.string.channel_announcement_details_empty_title),
+                    modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsUnavailable),
+                    variant = RaftListRowVariant.Plain,
+                    tone = RaftRowTone.Muted,
+                    titleMaxLines = Int.MAX_VALUE,
+                    description = stringResource(Res.string.channel_announcement_details_unavailable_joint),
+                    wrapDescription = true,
+                )
             } else {
                 RaftListRow(
                     title = stringResource(Res.string.channel_announcement_details_empty_title),

@@ -282,6 +282,77 @@ class SendPromptTest {
     }
 
     @Test
+    fun orderSendPromptAgentsListsSuggestedFirstThenRecentThenListedOrder() {
+        val all = listOf(agent("a"), agent("b", serverRole = "admin"), agent("c"), agent("cindy"))
+        assertEquals(
+            listOf("cindy", "c", "b", "a"),
+            orderSendPromptAgents(all, suggestedId = "cindy", recentAgentIds = listOf("c", "b")).map { it.id.value },
+        )
+        assertEquals(
+            listOf("b", "c", "a", "cindy"),
+            orderSendPromptAgents(all, suggestedId = "b", recentAgentIds = listOf("b", "c")).map { it.id.value },
+        )
+        assertEquals(
+            listOf("a", "b", "c", "cindy"),
+            orderSendPromptAgents(all, suggestedId = null, recentAgentIds = emptyList()).map { it.id.value },
+        )
+    }
+
+    @Test
+    fun previewGroupingMarksDayDividersAndGroupsSameSenderMessages() {
+        val day1a = 1_795_000_000_000L
+        val day1b = day1a + 60_000L
+        val day2 = day1a + 24 * 60 * 60_000L
+        val messages =
+            listOf(
+                SendPromptPreviewMessage(
+                    id = "m1",
+                    senderName = "Cindy",
+                    content = "First",
+                    senderId = "agent-cindy",
+                    senderKind = MemberKind.Agent,
+                    createdAtEpochMillis = day1a,
+                ),
+                SendPromptPreviewMessage(
+                    id = "m2",
+                    senderName = "Cindy",
+                    content = "Second same day",
+                    senderId = "agent-cindy",
+                    senderKind = MemberKind.Agent,
+                    createdAtEpochMillis = day1b,
+                ),
+                SendPromptPreviewMessage(
+                    id = "m3",
+                    senderName = "System",
+                    content = "Joined",
+                    senderId = "sys",
+                    senderKind = MemberKind.System,
+                    createdAtEpochMillis = day1b + 1000L,
+                    isSystem = true,
+                ),
+                SendPromptPreviewMessage(
+                    id = "m4",
+                    senderName = "Cindy",
+                    content = "After system",
+                    senderId = "agent-cindy",
+                    senderKind = MemberKind.Agent,
+                    createdAtEpochMillis = day1b + 2000L,
+                ),
+                SendPromptPreviewMessage(
+                    id = "m5",
+                    senderName = "Cindy",
+                    content = "Next day",
+                    senderId = "agent-cindy",
+                    senderKind = MemberKind.Agent,
+                    createdAtEpochMillis = day2,
+                ),
+            )
+        val rows = computeSendPromptPreviewGrouping(messages)
+        assertEquals(listOf(true, false, false, false, true), rows.map { it.showDayDivider })
+        assertEquals(listOf(true, false, false, true, true), rows.map { it.showHeader })
+    }
+
+    @Test
     fun recentAgentIdsAndDmMapFollowLastMessageAtDescending() {
         val dms =
             listOf(

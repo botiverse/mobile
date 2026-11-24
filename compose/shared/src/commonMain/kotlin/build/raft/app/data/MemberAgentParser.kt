@@ -496,6 +496,7 @@ private val WireActivityEntry.resolvedActivity: String?
 private data class WireSubagentLineage(
     val parentToolUseId: String? = null,
     val subagentType: String? = null,
+    val model: String? = null,
     val taskId: String? = null,
     val phase: String? = null,
     val outcome: String? = null,
@@ -505,6 +506,7 @@ private fun WireSubagentLineage.toDomain(): AgentActivitySubagentLineage =
     AgentActivitySubagentLineage(
         parentToolUseId = parentToolUseId?.takeIf { it.isNotBlank() },
         subagentType = subagentType?.takeIf { it.isNotBlank() },
+        model = model?.takeIf { it.isNotBlank() },
         taskId = taskId?.takeIf { it.isNotBlank() },
         phase = phase?.takeIf { it.isNotBlank() },
         outcome = outcome?.takeIf { it.isNotBlank() },

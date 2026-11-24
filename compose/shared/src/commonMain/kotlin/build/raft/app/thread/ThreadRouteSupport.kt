@@ -79,6 +79,7 @@ internal fun ThreadCreateAgentActionDialogHost(
     createAgentFormStore: SharedCreateAgentFormStore?,
     computerServerId: String?,
     computerServerResolved: Boolean,
+    suggestedEnvVarsProposer: String? = null,
     onAuthRequired: (String?) -> Boolean,
     onAddComputer: (() -> Unit)?,
     onDismiss: () -> Unit,
@@ -131,6 +132,8 @@ internal fun ThreadCreateAgentActionDialogHost(
         suggestedComputer = dialogState.card.suggestedComputer,
         requiredComputer = dialogState.card.requiredComputer,
         suggestedRuntime = dialogState.card.suggestedRuntime,
+        suggestedEnvVars = dialogState.card.suggestedEnvVars,
+        suggestedEnvVarsProposer = suggestedEnvVarsProposer,
         machines = computerPickerSlice.machines,
         machinesLoading =
             computersStore != null &&
