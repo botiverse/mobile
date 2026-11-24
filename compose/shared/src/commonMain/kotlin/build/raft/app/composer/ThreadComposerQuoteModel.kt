@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -7,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import build.raft.designsystem.components.toRaftTextFieldValue
 import build.raft.app.data.InlineQuoteComposeSegment
 import build.raft.app.data.MAX_INLINE_QUOTES_PER_MESSAGE
 import build.raft.app.data.MessageQuoteSegment
@@ -795,11 +797,13 @@ internal class ThreadComposerQuoteController(
         private set
 
     private var focusNonceCounter: Int = 0
-    private var valuesByBlockId by mutableStateOf<Map<String, TextFieldValue>>(
-        blocks.filterIsInstance<ComposerBlock.Text>().associate { block ->
-            block.id to TextFieldValue(block.text, selection = TextRange(block.text.length))
+    private val textFieldStatesByBlockId = linkedMapOf<String, TextFieldState>().apply {
+        for (block in blocks) {
+            if (block is ComposerBlock.Text) {
+                put(block.id, TextFieldState(block.text, initialSelection = TextRange(block.text.length)))
+            }
         }
-    )
+    }
 
     val quoteCount: Int
         get() = if (enabled) countComposerQuotes(blocks) else 0
@@ -808,26 +812,28 @@ internal class ThreadComposerQuoteController(
         get() = quoteCount > 0
 
     val hasReplyText: Boolean
-        get() = hasComposerReplyText(blocks)
+        get() = hasComposerReplyText(blocksWithLiveTextStates())
 
-    fun textFieldValueFor(block: ComposerBlock.Text): TextFieldValue {
-        val stored = valuesByBlockId[block.id]
-        return if (stored != null && stored.text == block.text) {
-            stored
-        } else {
-            TextFieldValue(block.text, selection = TextRange(block.text.length))
+    fun textFieldStateFor(block: ComposerBlock.Text): TextFieldState =
+        textFieldStatesByBlockId.getOrPut(block.id) {
+            TextFieldState(block.text, initialSelection = TextRange(block.text.length))
         }
-    }
 
-    fun activeFieldValue(): TextFieldValue {
+    fun activeTextFieldState(): TextFieldState? {
         val active =
             blocks.firstOrNull { it is ComposerBlock.Text && it.id == activeTextBlockId } as? ComposerBlock.Text
                 ?: blocks.lastOrNull { it is ComposerBlock.Text } as? ComposerBlock.Text
-                ?: return TextFieldValue("")
-        return textFieldValueFor(active)
+                ?: return null
+        return textFieldStateFor(active)
     }
 
-    fun activeTextValue(): String = activeFieldValue().text
+    fun textFieldValueFor(block: ComposerBlock.Text): TextFieldValue =
+        textFieldStateFor(block).toRaftTextFieldValue()
+
+    fun activeFieldValue(): TextFieldValue =
+        activeTextFieldState()?.toRaftTextFieldValue() ?: TextFieldValue("")
+
+    fun activeTextValue(): String = activeTextFieldState()?.text?.toString().orEmpty()
 
     /**
      * Synchronize with an external draft change (channel switch, restored draft, Clear after Send,
@@ -858,10 +864,13 @@ internal class ThreadComposerQuoteController(
             }
         blocks = parsed
         activeTextBlockId = defaultActiveTextBlockId(parsed)
-        valuesByBlockId =
-            parsed.filterIsInstance<ComposerBlock.Text>().associate { block ->
-                block.id to TextFieldValue(block.text, selection = TextRange(block.text.length))
+        textFieldStatesByBlockId.clear()
+        for (block in parsed) {
+            if (block is ComposerBlock.Text) {
+                textFieldStatesByBlockId[block.id] =
+                    TextFieldState(block.text, initialSelection = TextRange(block.text.length))
             }
+        }
     }
 
     fun resetBlocks() {
@@ -872,7 +881,8 @@ internal class ThreadComposerQuoteController(
         lastCommittedSerialized = ""
         armedDeleteQuoteId = null
         duplicateFlashBlockId = null
-        valuesByBlockId = mapOf(id to TextFieldValue(""))
+        textFieldStatesByBlockId.clear()
+        textFieldStatesByBlockId[id] = TextFieldState("", initialSelection = TextRange.Zero)
     }
 
     fun disarmQuote() {
@@ -892,13 +902,12 @@ internal class ThreadComposerQuoteController(
         armedDeleteQuoteId = null
     }
 
-    /** Updates one segmented text block; returns the newly serialized draft string. */
-    fun onTextBlockValueChange(blockId: String, value: TextFieldValue): String {
+    /** Updates one segmented text block from one-way user observation; returns the newly serialized draft string. */
+    fun onTextBlockTextChanged(blockId: String, nextText: String): String {
         activeTextBlockId = blockId
         armedDeleteQuoteId = null
-        valuesByBlockId = valuesByBlockId + (blockId to value)
-        val next = updateTextBlock(blocks, blockId, value.text)
-        return commitBlocks(next, preferredActiveId = blockId)
+        val next = updateTextBlock(blocks, blockId, nextText)
+        return commitBlocks(next, preferredActiveId = blockId, userEditedBlockId = blockId)
     }
 
     /** Collapses an empty non-trailing explicit gap on blur; returns serialized draft if changed, else null. */
@@ -915,10 +924,19 @@ internal class ThreadComposerQuoteController(
             blocks.firstOrNull { it is ComposerBlock.Text && it.id == activeTextBlockId }?.id
                 ?: defaultActiveTextBlockId(blocks)
         val clamped = nextCursor.coerceIn(0, nextText.length)
-        valuesByBlockId = valuesByBlockId + (blockId to TextFieldValue(nextText, selection = TextRange(clamped)))
+        val targetState =
+            textFieldStatesByBlockId.getOrPut(blockId) {
+                TextFieldState(nextText, initialSelection = TextRange(clamped))
+            }
+        targetState.edit {
+            if (asCharSequence().toString() != nextText) {
+                replace(0, length, nextText)
+            }
+            selection = TextRange(clamped)
+        }
         armedDeleteQuoteId = null
         val next = updateTextBlock(blocks, blockId, nextText)
-        return commitBlocks(next, preferredActiveId = blockId)
+        return commitBlocks(next, preferredActiveId = blockId, userEditedBlockId = blockId)
     }
 
     /**
@@ -933,7 +951,7 @@ internal class ThreadComposerQuoteController(
         val alreadySegmented = countComposerQuotes(blocks) > 0
         val baseBlocks =
             if (alreadySegmented) {
-                blocks
+                blocksWithLiveTextStates()
             } else {
                 createTextOnlyBlocks(livePlainFieldValue.text)
             }
@@ -945,8 +963,7 @@ internal class ThreadComposerQuoteController(
             }
         val targetOffset =
             if (alreadySegmented) {
-                val activeVal = valuesByBlockId[targetBlockId]
-                activeVal?.let { minOf(it.selection.start, it.selection.end) }
+                textFieldStatesByBlockId[targetBlockId]?.selection?.let { minOf(it.start, it.end) }
             } else {
                 minOf(livePlainFieldValue.selection.start, livePlainFieldValue.selection.end)
             }
@@ -982,7 +999,7 @@ internal class ThreadComposerQuoteController(
     /** Removes a quote chip, merges surrounding text, and returns `(serializedDraft, focusOffset)`. */
     fun removeQuote(quoteBlockId: String): Pair<String, Int> {
         armedDeleteQuoteId = null
-        val mutation = removeQuoteBlock(blocks, quoteBlockId)
+        val mutation = removeQuoteBlock(blocksWithLiveTextStates(), quoteBlockId)
         val serialized =
             commitBlocks(
                 nextBlocks = mutation.blocks,
@@ -997,7 +1014,7 @@ internal class ThreadComposerQuoteController(
     /** Inserts an explicit reply text block below a stacked quote chip and focuses it. */
     fun insertGapAfterQuote(quoteBlockId: String): String {
         armedDeleteQuoteId = null
-        val mutation = insertTextGapAfterQuote(blocks, quoteBlockId)
+        val mutation = insertTextGapAfterQuote(blocksWithLiveTextStates(), quoteBlockId)
         return commitBlocks(
             nextBlocks = mutation.blocks,
             preferredActiveId = mutation.focusBlockId,
@@ -1010,7 +1027,7 @@ internal class ThreadComposerQuoteController(
     /** Inserts an explicit intro text block before `blocks[quoteIndex]` and focuses it. */
     fun insertGapBeforeIndex(quoteIndex: Int): String {
         armedDeleteQuoteId = null
-        val mutation = insertTextGapBeforeIndex(blocks, quoteIndex)
+        val mutation = insertTextGapBeforeIndex(blocksWithLiveTextStates(), quoteIndex)
         return commitBlocks(
             nextBlocks = mutation.blocks,
             preferredActiveId = mutation.focusBlockId,
@@ -1023,7 +1040,7 @@ internal class ThreadComposerQuoteController(
     /** Collapses an empty non-trailing interleaved/intro text block without touching adjacent quotes. */
     fun removeEmptyTextBlock(textBlockId: String): String {
         armedDeleteQuoteId = null
-        val mutation = build.raft.app.removeEmptyTextBlock(blocks, textBlockId)
+        val mutation = build.raft.app.removeEmptyTextBlock(blocksWithLiveTextStates(), textBlockId)
         return commitBlocks(
             nextBlocks = mutation.blocks,
             preferredActiveId = mutation.focusBlockId,
@@ -1035,11 +1052,12 @@ internal class ThreadComposerQuoteController(
 
     fun requestFocusBlock(blockId: String, offset: Int, raiseKeyboard: Boolean = false) {
         val textBlock = blocks.firstOrNull { it is ComposerBlock.Text && it.id == blockId } as? ComposerBlock.Text
-        val clamped = offset.coerceIn(0, textBlock?.text?.length ?: 0)
+        val liveState = textBlock?.let { textFieldStateFor(it) }
+        val textLength = liveState?.text?.length ?: textBlock?.text?.length ?: 0
+        val clamped = offset.coerceIn(0, textLength)
         activeTextBlockId = blockId
-        if (textBlock != null) {
-            valuesByBlockId =
-                valuesByBlockId + (blockId to TextFieldValue(textBlock.text, selection = TextRange(clamped)))
+        liveState?.edit {
+            selection = TextRange(clamped)
         }
         focusNonceCounter += 1
         pendingFocusRequest =
@@ -1058,22 +1076,33 @@ internal class ThreadComposerQuoteController(
     }
 
     /**
-     * Merges [activeBlockOverride] (from the native IME snapshot reader) into the active text
-     * block and returns `(serializedWireMarkdown, optimisticResolvedQuotes)`.
+     * Merges live [TextFieldState] contents (and optional [activeBlockOverride]) across all text
+     * blocks and returns `(serializedWireMarkdown, optimisticResolvedQuotes)`.
      */
     fun buildSendPayload(
         activeBlockOverride: TextFieldValue? = null,
     ): Pair<String, Map<String, ResolvedInlineQuote>?> {
+        val liveBlocks = blocksWithLiveTextStates()
         val merged =
             if (activeBlockOverride != null) {
-                updateTextBlock(blocks, activeTextBlockId, activeBlockOverride.text)
+                updateTextBlock(liveBlocks, activeTextBlockId, activeBlockOverride.text)
             } else {
-                blocks
+                liveBlocks
             }
         val serialized = serializeComposerBlocks(merged)
         val optimistic = buildOptimisticResolvedQuotesFromBlocks(merged)
         return serialized to optimistic
     }
+
+    private fun blocksWithLiveTextStates(): List<ComposerBlock> =
+        blocks.map { block ->
+            if (block is ComposerBlock.Text) {
+                val live = textFieldStatesByBlockId[block.id]?.text?.toString()
+                if (live != null && live != block.text) block.copy(text = live) else block
+            } else {
+                block
+            }
+        }
 
     private fun commitBlocks(
         nextBlocks: List<ComposerBlock>,
@@ -1081,6 +1110,7 @@ internal class ThreadComposerQuoteController(
         focusOffsetOverride: Int? = null,
         requestFocus: Boolean = false,
         raiseKeyboard: Boolean = false,
+        userEditedBlockId: String? = null,
     ): String {
         val nextCount = countComposerQuotes(nextBlocks)
         val serialized =
@@ -1094,26 +1124,51 @@ internal class ThreadComposerQuoteController(
                 ?: activeTextBlockId.takeIf { id -> nextBlocks.any { it is ComposerBlock.Text && it.id == id } }
                 ?: defaultActiveTextBlockId(nextBlocks)
 
-        val nextValues = LinkedHashMap<String, TextFieldValue>()
+        val validTextIds = HashSet<String>()
         for (block in nextBlocks) {
             if (block !is ComposerBlock.Text) continue
-            val existing = valuesByBlockId[block.id]
-            nextValues[block.id] =
-                when {
-                    block.id == nextActiveId && focusOffsetOverride != null -> {
-                        val clamped = focusOffsetOverride.coerceIn(0, block.text.length)
-                        TextFieldValue(block.text, selection = TextRange(clamped))
-                    }
-                    existing != null && existing.text == block.text -> existing
-                    else -> TextFieldValue(block.text, selection = TextRange(block.text.length))
+            validTextIds += block.id
+            val existing = textFieldStatesByBlockId[block.id]
+            when {
+                block.id == userEditedBlockId && existing != null -> Unit
+                existing == null -> {
+                    val initialCursor =
+                        if (block.id == nextActiveId && focusOffsetOverride != null) {
+                            focusOffsetOverride.coerceIn(0, block.text.length)
+                        } else {
+                            block.text.length
+                        }
+                    textFieldStatesByBlockId[block.id] =
+                        TextFieldState(block.text, initialSelection = TextRange(initialCursor))
                 }
+                block.id == nextActiveId && focusOffsetOverride != null -> {
+                    val clamped = focusOffsetOverride.coerceIn(0, block.text.length)
+                    existing.edit {
+                        if (asCharSequence().toString() != block.text) {
+                            replace(0, length, block.text)
+                        }
+                        selection = TextRange(clamped)
+                    }
+                }
+                existing.text.toString() != block.text -> {
+                    existing.edit {
+                        replace(0, length, block.text)
+                        selection = TextRange(block.text.length)
+                    }
+                }
+            }
+        }
+        val iterator = textFieldStatesByBlockId.keys.iterator()
+        while (iterator.hasNext()) {
+            if (iterator.next() !in validTextIds) {
+                iterator.remove()
+            }
         }
         blocks = nextBlocks
         activeTextBlockId = nextActiveId
-        valuesByBlockId = nextValues
         lastCommittedSerialized = serialized
         if (requestFocus) {
-            val activeText = nextValues[nextActiveId]?.text.orEmpty()
+            val activeText = textFieldStatesByBlockId[nextActiveId]?.text?.toString().orEmpty()
             val clamped = (focusOffsetOverride ?: activeText.length).coerceIn(0, activeText.length)
             focusNonceCounter += 1
             pendingFocusRequest =

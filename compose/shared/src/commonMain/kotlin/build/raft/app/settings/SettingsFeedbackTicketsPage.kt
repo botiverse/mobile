@@ -35,9 +35,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.base.Utils
@@ -1348,11 +1346,16 @@ private fun SettingsFeedbackThreadReplyComposer(
     onSend: () -> Unit,
     bottomContentPadding: androidx.compose.ui.unit.Dp,
 ) {
-    var fieldValue by remember { mutableStateOf(TextFieldValue(draft, selection = TextRange(draft.length))) }
+    val editorOwner = remember { ThreadComposerEditorOwner(seedText = draft, seedAsTask = false) }
     // A failed send puts its text back into an empty field.
     LaunchedEffect(error) {
-        if (error != null && fieldValue.text.isBlank() && draft.isNotBlank()) {
-            fieldValue = TextFieldValue(draft, selection = TextRange(draft.length))
+        if (error != null && editorOwner.text.isBlank() && draft.isNotBlank()) {
+            editorOwner.applyProgrammaticText(
+                sourceSessionId = editorOwner.editorSessionId,
+                nextText = draft,
+                cursor = draft.length,
+                publishAsSynced = true,
+            )
         }
     }
     Column(Modifier.fillMaxWidth().background(RaftColor.SurfaceWhite)) {
@@ -1372,31 +1375,22 @@ private fun SettingsFeedbackThreadReplyComposer(
                     statusLabel = error,
                     suggestionsEnabled = false,
                 ),
-            editorSessionId = 1L,
-            editorValue = fieldValue,
-            onEditorValueChange = { _, next ->
-                fieldValue = next
-                onChange(next.text)
-                true
-            },
-            onNativeEditorValueChange = { _, incoming ->
-                repairThreadComposerLegacyZeroSelection(previous = fieldValue, incoming = incoming).also { accepted ->
-                    fieldValue = accepted
-                    onChange(accepted.text)
-                }
-            },
-            isEditorSessionActive = { true },
-            editorAsTask = false,
-            onEditorAsTaskChange = { _, _ -> true },
+            editorOwner = editorOwner,
             dismissKeyboardOnBlur = true,
             onEvent = { action, value, _, _ ->
                 when (action) {
                     "change" -> onChange(value.orEmpty())
                     "send" -> {
-                        if (fieldValue.text.isNotBlank() && !sending) {
-                            onChange(fieldValue.text)
+                        val textToSend = value ?: editorOwner.text
+                        if (textToSend.isNotBlank() && !sending) {
+                            onChange(textToSend)
                             onSend()
-                            fieldValue = TextFieldValue("")
+                            editorOwner.applyProgrammaticText(
+                                sourceSessionId = editorOwner.editorSessionId,
+                                nextText = "",
+                                cursor = 0,
+                                publishAsSynced = true,
+                            )
                         }
                     }
                 }

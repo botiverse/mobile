@@ -60,8 +60,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.TextFieldDecorator
 import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.then
 import build.raft.designsystem.components.raftTextFieldLineLimits
 import build.raft.designsystem.components.rememberRaftTextFieldState
 import build.raft.designsystem.components.rememberRaftTextInputTraceTransformation
@@ -2178,6 +2180,116 @@ internal fun TextField(
     }
 }
 
+/**
+ * Single-source native [TextFieldState] editor without any controlled `value` / `onValueChange`
+ * reconciliation bridge. Callers mutate [state] directly via `state.edit { ... }` for deliberate
+ * programmatic changes and observe `state.text` / `state.selection` / `state.composition` one-way.
+ */
+@Composable
+internal fun TextField(
+    state: TextFieldState,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    autoFocus: Boolean = false,
+    onBlur: () -> Unit = {},
+    onFocus: () -> Unit = {},
+    keyboardHeightChange: (KeyboardParams) -> Unit = {},
+    enabled: Boolean = true,
+    readOnly: Boolean = false,
+    textStyle: TextStyle = TextStyle.Default,
+    placeholderColor: Color? = null,
+    cursorBrush: Brush = SolidColor(if (RaftAppThemeState.isDark) RaftColor.TextBlack else Color.Black), // raft-color: light legacy cursor
+    maxLines: Int = Int.MAX_VALUE,
+    onTextLayout: (TextLayoutResult) -> Unit = {},
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    focusRequester: FocusRequester = remember { FocusRequester() },
+    systemNewlineAction: Boolean = false,
+    imeActionRequested: Boolean = true,
+    participatesInGlobalFocusDismiss: Boolean = true,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    contentAlignment: Alignment = Alignment.CenterStart,
+    nativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
+    hardwareEnterConfig: RaftHardwareEnterConfig? = null,
+    inputTransformation: InputTransformation? = null,
+    traceName: String = "TextField",
+) {
+    val nativeEditingStateBindingOwner = remember { Any() }
+    val currentOnTextLayout by rememberUpdatedState(onTextLayout)
+    DisposableEffect(nativeEditingStateReader, nativeEditingStateBindingOwner) {
+        onDispose { nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner) }
+    }
+
+    val resolvedKeyboardOptions =
+        raftResolvedKeyboardOptions(keyboardOptions, raftTextFieldSingleLine(maxLines), imeActionRequested)
+    val updatedModifier = modifier
+        .raftAppEditorBehavior(
+            singleLine = raftTextFieldSingleLine(maxLines),
+            resolvedKeyboardOptions = resolvedKeyboardOptions,
+            keyboardActions = keyboardActions,
+            keyboardHeightChange = keyboardHeightChange,
+            focusRequester = focusRequester,
+            onFocus = onFocus,
+            onBlur = onBlur,
+            participatesInGlobalFocusDismiss = participatesInGlobalFocusDismiss,
+            hardwareEnterConfig = hardwareEnterConfig,
+        )
+    if (nativeEditingStateReader != null) {
+        SideEffect {
+            nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
+                callback(
+                    RaftTextFieldNativeEditorRead(
+                        state = state.toRaftTextFieldValue().toRaftTextInputState().raftWithFinishedComposition(),
+                        editorNativeRef = -1,
+                    )
+                )
+            }
+        }
+    }
+    val resolvedTextStyle = raftTextFieldResolvedTextStyle(textStyle)
+    // Focused: cursor and selection drags (and single-line scrolling) keep the drag from the
+    // host's full-page back swipe.
+    val keepsBackSwipe = remember { mutableStateOf(false) }
+    RaftAppStateTextField(
+        state = state,
+        modifier = updatedModifier
+            .raftKeepsBackSwipe(keepsBackSwipe.value)
+            .onFocusChanged { keepsBackSwipe.value = it.isFocused },
+        textStyle = resolvedTextStyle,
+        maxLines = maxLines,
+        onTextLayout = currentOnTextLayout,
+        keyboardOptions = resolvedKeyboardOptions,
+        keyboardActions = keyboardActions,
+        cursorBrush = cursorBrush,
+        enabled = enabled,
+        readOnly = readOnly,
+        visualTransformation = visualTransformation,
+        inputTransformation = inputTransformation,
+        traceName = traceName,
+        decorator = { innerTextField ->
+            Box(contentAlignment = contentAlignment) {
+                if (state.text.isEmpty() && placeholder.isNotEmpty()) {
+                    Text(
+                        text = placeholder,
+                        style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
+                        color = placeholderColor ?: resolvedTextStyle.color,
+                        maxLines = maxLines,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                innerTextField()
+            }
+        }
+    )
+
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) {
+            delay(100)
+            focusRequester.requestFocus()
+        }
+    }
+}
+
 
 /**
  * The app editor's state-based BasicTextField: the value-based options of [TextField] mapped to
@@ -2198,14 +2310,23 @@ private fun RaftAppStateTextField(
     readOnly: Boolean,
     visualTransformation: VisualTransformation,
     decorator: TextFieldDecorator,
+    inputTransformation: InputTransformation? = null,
+    traceName: String = "TextField",
 ) {
     val outputTransformation = remember(visualTransformation) { visualTransformation.toRaftOutputTransformation() }
+    val traceTransformation = rememberRaftTextInputTraceTransformation(traceName)
+    val effectiveInputTransformation =
+        when {
+            inputTransformation != null && traceTransformation != null -> inputTransformation.then(traceTransformation)
+            inputTransformation != null -> inputTransformation
+            else -> traceTransformation
+        }
     BasicTextField(
         state = state,
         modifier = modifier,
         enabled = enabled,
         readOnly = readOnly,
-        inputTransformation = rememberRaftTextInputTraceTransformation("TextField"),
+        inputTransformation = effectiveInputTransformation,
         textStyle = textStyle,
         keyboardOptions = keyboardOptions,
         onKeyboardAction = keyboardActions.toRaftKeyboardActionHandler(keyboardOptions.imeAction),
