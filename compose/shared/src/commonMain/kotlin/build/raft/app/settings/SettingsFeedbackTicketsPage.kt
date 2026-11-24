@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -446,6 +447,7 @@ internal fun SettingsFeedbackTicketsScreen(
     privacyMode: RaftPrivacyMode = RaftPrivacyMode.Off,
 ) {
     val detail = state.detail
+    val listState = remember(state.list.filter) { LazyListState() }
     var closeDialogOpen by remember(detail?.ticketId) { mutableStateOf(false) }
     val openCloseDialog = {
         actions.onClearCloseError()
@@ -502,6 +504,7 @@ internal fun SettingsFeedbackTicketsScreen(
                 ownClient = ownClient,
                 showAgentHint = state.showAgentHint,
                 newFeedbackBlocked = settingsFeedbackNewFeedbackNotice(privacyMode),
+                listState = listState,
             )
         } else {
             FeedbackTicketDetail(detail, timeContext, actions, replyComposer, bottomContentPadding, ownClient = ownClient, onOpenCloseDialog = openCloseDialog)
@@ -595,6 +598,7 @@ private fun FeedbackTicketList(
     showAgentHint: Boolean = false,
     /** Why New Feedback is not offered (privacy mode on or unknown); null offers it. */
     newFeedbackBlocked: String? = null,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     Column(Modifier.fillMaxSize()) {
         newFeedbackBlocked?.let { reason ->
@@ -648,7 +652,6 @@ private fun FeedbackTicketList(
             onRefresh = actions.onRefresh,
             modifier = Modifier.weight(1f).fillMaxWidth(),
         ) {
-            val listState = rememberLazyListState()
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize().testTag(SettingsFeedbackTicketsListTag),

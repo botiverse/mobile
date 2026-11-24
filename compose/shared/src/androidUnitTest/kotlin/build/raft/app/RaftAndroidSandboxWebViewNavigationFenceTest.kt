@@ -189,4 +189,31 @@ class RaftAndroidSandboxWebViewNavigationFenceTest {
         assertEquals(listOf(routedUrl), blocked, "must not fire onNavigationBlocked twice for same navigation")
         assertFalse(observedUrls.any { it == routedUrl })
     }
+
+    @Test
+    fun caughtSignInNavigationSwallowsSpuriousPageStartedAndErrorCallbacks() {
+        val authorizeUrl = "https://api.raft.build/api/oauth/authorize?client_id=raft-billing-admin"
+        val observedUrls = mutableListOf<String>()
+        val loadFailures = mutableListOf<String>()
+        events.catchesMainFrameNavigation = { ask -> ask.url == authorizeUrl }
+        events.routesMainFrameNavigation = { candidate -> candidate.startsWith("https://api.raft.build/") }
+        events.onNavigationStateChange = { state -> observedUrls += state.url }
+        events.onLoadFailure = { reason -> loadFailures += reason }
+        val webView = host(allowNavigation = true)
+        observedUrls.clear()
+        blocked.clear()
+        loadFailures.clear()
+
+        // Step 1: shouldOverrideUrlLoading catches the OAuth authorize redirect for native Log in with Raft.
+        assertTrue(webView.overrides(authorizeUrl))
+
+        // Step 2: Vendor WebViews (e.g. Huawei WebView 114) may still emit onPageStarted / onReceivedError
+        // for the cancelled redirect. Neither may pollute currentUrl, open external browser, or fail the page.
+        shadowOf(webView).webViewClient.onPageStarted(webView, authorizeUrl, null)
+        shadowOf(webView).webViewClient.onReceivedError(webView, request(authorizeUrl, mainFrame = true), null)
+
+        assertEquals(emptyList<String>(), blocked, "caught authorize must not fall through to external browser")
+        assertEquals(emptyList<String>(), loadFailures, "cancelled authorize must not surface load error")
+        assertFalse(observedUrls.any { it == authorizeUrl }, "cancelled authorize must not overwrite currentUrl")
+    }
 }
