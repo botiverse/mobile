@@ -5509,7 +5509,7 @@ internal class RaftBridgeModule(
                 // otherwise it answers "nothing new" without a request. A person's own Check for
                 // update (handsUpdateCheck) and Install always go.
                 if (!handsUpdateRequestAllowed(action, RaftServicesPrivacyGate.allowsAutomatic())) {
-                    RaftAppLog.record("SlockHandsUpdate", "check_skipped action=$action reason=privacy_mode")
+                    RaftAppLog.infoAlways("SlockHandsUpdate", "check_skipped action=$action reason=privacy_mode")
                     callback?.invoke(handsUpdateStatusWithoutCheck())
                     return@launch
                 }
@@ -5541,7 +5541,7 @@ internal class RaftBridgeModule(
                                     }
                                 }
                                 .getOrElse { throwable ->
-                                    RaftAppLog.record(
+                                    RaftAppLog.infoAlways(
                                             "SlockHandsUpdate",
                                             "check_failed action=$action base=${BuildConfig.HANDS_BASE_URL} " +
                                                     "error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
@@ -6352,7 +6352,7 @@ internal class RaftBridgeModule(
         val updateAvailable = response.requireUpdate() != null
         val displaySizes =
                 response.handsUpdateDisplaySizes(deltaEnabled = false)
-        RaftAppLog.record(
+        RaftAppLog.infoAlways(
                 "SlockHandsUpdate",
                 "check status=ok mode=${updateRoute.mode} " +
                         "action=${if (install) "install" else "status"} " +
@@ -6435,7 +6435,7 @@ internal class RaftBridgeModule(
                 }
         val response = offerResult.getOrNull()
         offerResult.exceptionOrNull()?.let { error ->
-            RaftAppLog.record(
+            RaftAppLog.infoAlways(
                     "SlockHandsUpdate",
                     "offer_check_failed action=${if (install) "install" else "status"} " +
                             "state=${status.state.wireValue} error=${error.javaClass.simpleName}"
@@ -6505,7 +6505,7 @@ internal class RaftBridgeModule(
                 } else {
                     "No Hands update available on ${updateRoute.channel}."
                 }
-        RaftAppLog.record(
+        RaftAppLog.infoAlways(
                 "SlockHandsUpdate",
                 "check status=ok mode=${updateRoute.mode} action=${if (install) "install" else "status"} " +
                         "slug=${updateRoute.appSlug} channel=${updateRoute.channel} device_id=$deviceId " +
@@ -6697,7 +6697,7 @@ internal class RaftBridgeModule(
                     }
                 }
                 .getOrElse { error ->
-                    RaftAppLog.record(
+                    RaftAppLog.infoAlways(
                             "SlockHandsUpdate",
                             "install_failed slug=${BuildConfig.HANDS_APP_SLUG} latest=${response.latest?.version_code ?: 0} " +
                                     "error=${error.javaClass.simpleName} message=${error.message ?: "-"}"
@@ -6763,7 +6763,7 @@ internal class RaftBridgeModule(
                                     val status = handsDownloadStatus(downloadManager, completedId)
                                     if (status == DownloadManager.STATUS_SUCCESSFUL) {
                                         handsUpdateDownloads[key]?.completed = true
-                                        RaftAppLog.record(
+                                        RaftAppLog.infoAlways(
                                                 "SlockHandsUpdate",
                                                 "download_ready downloadId=$completedId latest=${latest.version_code}"
                                         )
@@ -6776,7 +6776,7 @@ internal class RaftBridgeModule(
                                         }
                                     } else {
                                         handsUpdateDownloads[key]?.failed = true
-                                        RaftAppLog.record(
+                                        RaftAppLog.infoAlways(
                                                 "SlockHandsUpdate",
                                                 "download_failed downloadId=$completedId status=$status"
                                         )
@@ -6786,7 +6786,7 @@ internal class RaftBridgeModule(
                                     throw cancelled
                                 } catch (throwable: Throwable) {
                                     handsUpdateDownloads[key]?.failed = true
-                                    RaftAppLog.record(
+                                    RaftAppLog.infoAlways(
                                             "SlockHandsUpdate",
                                             "download_complete_failed downloadId=$completedId error=${throwable.javaClass.simpleName}"
                                     )
@@ -6864,7 +6864,7 @@ internal class RaftBridgeModule(
                 handsUpdateDownloads[key]
                         ?: run {
                             if (handsUpdateDownloads.isNotEmpty()) {
-                                RaftAppLog.record(
+                                RaftAppLog.infoAlways(
                                         "SlockHandsUpdate",
                                         "download_state_miss key=$key tracked=${handsUpdateDownloads.size}"
                                 )
@@ -6879,7 +6879,7 @@ internal class RaftBridgeModule(
     }
 
     private fun HandsUpdateDownload.toDownloadingInstallResult(response: UpdateCheckResponse): HandsInstallResult {
-        RaftAppLog.record(
+        RaftAppLog.infoAlways(
                 "SlockHandsUpdate",
                 "download_queued slug=${BuildConfig.HANDS_APP_SLUG} latest=${response.latest?.version_code ?: 0} assetSize=${response.asset?.size_bytes ?: 0} downloadId=$downloadId"
         )
@@ -9536,7 +9536,7 @@ internal class RaftBridgeModule(
                         languageTag = languageTag,
                         eventListener =
                                 HandsUpdateEventListener { event ->
-                                    RaftAppLog.record(
+                                    RaftAppLog.infoAlways(
                                             "SlockHandsUpdate",
                                             handsUpdateEventLogLine(
                                                     name = event.name,
@@ -9564,7 +9564,7 @@ internal class RaftBridgeModule(
                             channel = BuildConfig.HANDS_DELTA_CHANNEL
                     )
             if (BuildConfig.HANDS_DELTA_UPDATE_ENABLED && !allowed) {
-                RaftAppLog.record(
+                RaftAppLog.infoAlways(
                         "SlockHandsUpdate",
                         "hands_delta_gate_denied buildApplicationId=${BuildConfig.APPLICATION_ID} " +
                                 "runtimePackageName=${context.packageName} " +
@@ -9601,7 +9601,7 @@ internal class RaftBridgeModule(
             if (!canRequestPackageInstalls(context)) {
                 pendingHandsAutoInstallKey = download.key
                 openUnknownAppSourcesSettings(context)
-                RaftAppLog.record(
+                RaftAppLog.infoAlways(
                         "SlockHandsUpdate",
                         "install_permission_required source=$source key=${download.key} downloadId=${download.downloadId}"
                 )
@@ -9614,7 +9614,7 @@ internal class RaftBridgeModule(
                         HANDS_INSTALL_OPENED
                     }
                     .getOrElse { error ->
-                        RaftAppLog.record(
+                        RaftAppLog.infoAlways(
                                 "SlockHandsUpdate",
                                 "install_intent_failed source=$source key=${download.key} downloadId=${download.downloadId} error=${error.javaClass.simpleName}"
                         )
@@ -9639,7 +9639,7 @@ internal class RaftBridgeModule(
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (error: Throwable) {
-                        RaftAppLog.record(
+                        RaftAppLog.infoAlways(
                                 "SlockHandsUpdate",
                                 "install_permission_check_failed downloadId=${download.downloadId} error=${error.javaClass.simpleName}"
                         )
@@ -9650,7 +9650,7 @@ internal class RaftBridgeModule(
                 withContext(Dispatchers.Main) {
                     openUnknownAppSourcesSettings(context)
                 }
-                RaftAppLog.record(
+                RaftAppLog.infoAlways(
                         "SlockHandsUpdate",
                         "install_permission_required source=$source key=${download.key} downloadId=${download.downloadId}"
                 )
@@ -9670,7 +9670,7 @@ internal class RaftBridgeModule(
                 withContext(Dispatchers.Main) {
                     context.startActivity(installIntent)
                 }
-                RaftAppLog.record(
+                RaftAppLog.infoAlways(
                         "SlockHandsUpdate",
                         "install_intent_opened downloadId=${download.downloadId} uriScheme=${installIntent.data?.scheme.orEmpty()}"
                 )
@@ -9679,7 +9679,7 @@ internal class RaftBridgeModule(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
-                RaftAppLog.record(
+                RaftAppLog.infoAlways(
                         "SlockHandsUpdate",
                         "install_intent_failed source=$source key=${download.key} downloadId=${download.downloadId} error=${error.javaClass.simpleName}"
                 )
@@ -9716,7 +9716,7 @@ internal class RaftBridgeModule(
         ) {
             val installIntent = buildDownloadedHandsApkInstallIntent(context, downloadManager, downloadId, fileName)
             context.startActivity(installIntent)
-            RaftAppLog.record(
+            RaftAppLog.infoAlways(
                     "SlockHandsUpdate",
                     "install_intent_opened downloadId=$downloadId uriScheme=${installIntent.data?.scheme.orEmpty()}"
             )

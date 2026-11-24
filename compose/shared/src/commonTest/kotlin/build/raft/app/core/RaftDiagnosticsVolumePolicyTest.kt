@@ -104,6 +104,7 @@ class RaftDiagnosticsVolumePolicyTest {
             assertTrue(policy.admit("info", "SlockWebView", "page_finished url=https://x.raft.build/a n=$i", i.toLong(), false).persist)
             assertTrue(policy.admit("info", "SlockArtifactViewer", "artifact_viewer_open id=$i", i.toLong(), false).persist)
             assertTrue(policy.admit("info", "SlockNavTransitionFrames", "nav_transition_frames kind=push n=$i", i.toLong(), false).persist)
+            assertTrue(policy.admit("info", "SlockHandsUpdate", "update_event name=patch_started state=patching n=$i", i.toLong(), false).persist)
         }
         assertTrue(policy.drain(100L).isEmpty())
     }

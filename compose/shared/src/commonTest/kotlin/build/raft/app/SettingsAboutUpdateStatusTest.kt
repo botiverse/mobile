@@ -28,6 +28,30 @@ class SettingsAboutUpdateStatusTest {
     @Test
     fun informativeStatesAreLocalized() {
         assertEquals("检查中", status(SharedSettingsUpdateCheckSnapshot(supported = true, statusLabel = "Current"), busy = true))
+        assertEquals(
+            "准备中",
+            status(
+                SharedSettingsUpdateCheckSnapshot(
+                    supported = true,
+                    transactionState = SharedSettingsUpdateTransactionState.Patching,
+                    statusLabel = "Preparing",
+                    updateAvailable = true
+                ),
+                busy = true
+            )
+        )
+        assertEquals(
+            "下载中",
+            status(
+                SharedSettingsUpdateCheckSnapshot(
+                    supported = true,
+                    transactionState = SharedSettingsUpdateTransactionState.Downloading,
+                    statusLabel = "Downloading",
+                    updateAvailable = true
+                ),
+                busy = true
+            )
+        )
         assertEquals("有可用更新", status(SharedSettingsUpdateCheckSnapshot(supported = true, statusLabel = "Update available", updateAvailable = true)))
         assertEquals("下载中", status(SharedSettingsUpdateCheckSnapshot(supported = true, statusLabel = "Downloading", updateAvailable = true)))
         assertEquals("安装", status(SharedSettingsUpdateCheckSnapshot(supported = true, statusLabel = "Install", updateAvailable = true)))

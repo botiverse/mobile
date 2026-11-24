@@ -10,6 +10,7 @@ import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.base.Utils
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
+import build.raft.app.data.RaftAppUpdateEvents
 import build.raft.app.data.RaftNotificationPreferenceEvents
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
@@ -126,6 +127,9 @@ internal fun SettingsNativeDetailScreen() {
     val notificationEvents = remember(sharedStores.eventBus) {
         RaftNotificationPreferenceEvents(sharedStores.eventBus)
     }
+    val appUpdateEvents = remember(sharedStores.eventBus) {
+        RaftAppUpdateEvents(sharedStores.eventBus)
+    }
 
     // Followed, not read once: the wide Settings pane stays beside the server rail, so a server
     // switch must re-point the server-scoped parts (the store reloads their content itself).
@@ -143,6 +147,17 @@ internal fun SettingsNativeDetailScreen() {
                 notificationPreferenceSnapshot = snapshot
             }
         onDispose { subscription.close() }
+    }
+    DisposableEffect(appUpdateEvents, route.page) {
+        if (route.page != SettingsNativeDetailPage.About) {
+            onDispose {}
+        } else {
+            val subscription =
+                appUpdateEvents.addStatusListener {
+                    settingsViewModel.dispatch(SharedSettingsIntent.RefreshHandsUpdateStatus)
+                }
+            onDispose { appUpdateEvents.removeStatusListener(subscription) }
+        }
     }
     SettingsServerNotificationRealtimeEffect(
         owner = remember(sharedStores, environment.storeScope) {

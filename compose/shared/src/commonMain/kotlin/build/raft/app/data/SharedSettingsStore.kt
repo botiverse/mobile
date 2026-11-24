@@ -656,6 +656,8 @@ sealed interface SharedSettingsIntent {
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
     data class SaveApiEnvironment(val request: SharedSettingsApiEnvironmentRequest) : SharedSettingsIntent
     data object CheckHandsUpdate : SharedSettingsIntent
+    /** Live status refresh triggered by host Hands update events while an install/patch is in flight. */
+    data object RefreshHandsUpdateStatus : SharedSettingsIntent
     data class CompleteStorageClear(
         val target: String,
         val ok: Boolean,
@@ -3153,6 +3155,18 @@ class SharedSettingsStore(
                         .applyDeveloperActionResult(DEVELOPER_ACTION_HANDS_UPDATE_CHECK)
                 }
             }
+            SharedSettingsIntent.RefreshHandsUpdateStatus -> {
+                val updateResult = dataSource.checkHandsUpdateStatus()
+                if (updateResult is DataResult.Content) {
+                    val currentDeveloper = (_state.value.developer as? ScreenLoadState.Content)?.data
+                    if (currentDeveloper != null) {
+                        _state.value =
+                            _state.value.copy(
+                                developer = ScreenLoadState.Content(currentDeveloper.copy(updateCheck = updateResult.data))
+                            )
+                    }
+                }
+            }
             is SharedSettingsIntent.CompleteStorageClear ->
                 completeStorageClear(intent)
             SharedSettingsIntent.CopyDiagnostics ->
@@ -4823,6 +4837,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
             SharedSettingsIntent.CheckHandsUpdate,
+            SharedSettingsIntent.RefreshHandsUpdateStatus,
             is SharedSettingsIntent.CompleteStorageClear,
             SharedSettingsIntent.CopyDiagnostics,
             SharedSettingsIntent.ShareDiagnostics,
