@@ -6346,6 +6346,17 @@ private fun RaftAppShellReadyContent(
                                 // Web: Activity's list with an item open is at most half the row, so the
                                 // conversation is never narrower than the list (stdrc).
                                 maxShare = 0.5f.takeIf { collapseColumn == RaftCollapsibleColumn.ActivityList && selection != null },
+                                // #337: on a portrait tablet the list collapses while it would squeeze the
+                                // conversation under 360 beside the columns open right of it (not saved).
+                                onGivesWayChange =
+                                    collapseColumn?.let { column ->
+                                        { givesWay ->
+                                            if (givesWay != sidebarCollapse.isGivingWay(column)) {
+                                                sidebarCollapse.setGivingWay(column, givesWay)
+                                                bridge.log("app_shell_sidebar_gives_way column=$column givesWay=$givesWay")
+                                            }
+                                        }
+                                    },
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 log = { bridge.log(it) },
                             )

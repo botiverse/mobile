@@ -4,6 +4,7 @@ import androidx.compose.ui.input.key.Key
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RaftCollapsibleColumn
+import build.raft.designsystem.theme.RaftPointerInput
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -81,5 +82,63 @@ class RaftSidebarCollapseTest {
         assertFalse(shortcut(ctrl = true, apple = false, keyDown = false))
         assertEquals("⌘\\", raftSidebarToggleShortcutLabel(apple = true))
         assertEquals("Ctrl+\\", raftSidebarToggleShortcutLabel(apple = false))
+    }
+
+    @Test
+    fun aSidebarGivingWayIsHiddenUnsavedAndComesBackWithTheRoom() {
+        val values = InMemoryRaftKeyValueStore()
+        val state = RaftSidebarCollapseState(KeyValueChatLayoutPreferenceStore(values))
+        state.setGivingWay(RaftCollapsibleColumn.Sidebar, true)
+        assertTrue(state.isHidden(RaftCollapsibleColumn.Sidebar), "Tasks opened on a portrait iPad: the sidebar collapses")
+        assertFalse(state.isHidden(RaftCollapsibleColumn.ActivityList))
+        assertNull(values.getString("mobile:sidebar_hidden"), "giving way is never saved")
+        state.setGivingWay(RaftCollapsibleColumn.Sidebar, false)
+        assertFalse(state.isHidden(RaftCollapsibleColumn.Sidebar), "Tasks closed: the sidebar is back")
+    }
+
+    @Test
+    fun thePersonBringingTheSidebarBackKeepsItUntilTheRowHasRoom() {
+        val values = InMemoryRaftKeyValueStore()
+        val state = RaftSidebarCollapseState(KeyValueChatLayoutPreferenceStore(values))
+        state.setGivingWay(RaftCollapsibleColumn.Sidebar, true)
+        // The rail's Expand Sidebar (or the shortcut): shown, the row clipping, as they asked.
+        state.toggle(RaftCollapsibleColumn.Sidebar)
+        assertFalse(state.isHidden(RaftCollapsibleColumn.Sidebar))
+        assertNull(values.getString("mobile:sidebar_hidden"))
+        // Still crowded (the plan reports it after every frame): it stays shown.
+        state.setGivingWay(RaftCollapsibleColumn.Sidebar, true)
+        assertFalse(state.isHidden(RaftCollapsibleColumn.Sidebar))
+        // Collapsing it again is the person's own choice, saved as ever.
+        state.toggle(RaftCollapsibleColumn.Sidebar)
+        assertTrue(state.isHidden(RaftCollapsibleColumn.Sidebar))
+        assertEquals("true", values.getString("mobile:sidebar_hidden"))
+        state.setHidden(RaftCollapsibleColumn.Sidebar, false)
+        // Once the row had room, the next crowded row collapses it again.
+        state.setGivingWay(RaftCollapsibleColumn.Sidebar, false)
+        state.setGivingWay(RaftCollapsibleColumn.Sidebar, true)
+        assertTrue(state.isHidden(RaftCollapsibleColumn.Sidebar))
+    }
+
+    @Test
+    fun aSidebarTheyCollapsedStaysCollapsedWhenTheRowHasRoomAgain() {
+        val state = RaftSidebarCollapseState(KeyValueChatLayoutPreferenceStore(InMemoryRaftKeyValueStore()))
+        state.setHidden(RaftCollapsibleColumn.Sidebar, true)
+        state.setGivingWay(RaftCollapsibleColumn.Sidebar, true)
+        state.setGivingWay(RaftCollapsibleColumn.Sidebar, false)
+        assertTrue(state.isHidden(RaftCollapsibleColumn.Sidebar))
+    }
+
+    @Test
+    fun onlyAPortraitTouchTabletUnder1280GivesWay() {
+        // iPad Air / iPad 10th gen upright, iPad mini upright, a 12.9" iPad Pro upright.
+        assertTrue(raftSidebarGivesWay(RaftPointerInput.Touch, 820f, 1180f, crowdsRow = true))
+        assertTrue(raftSidebarGivesWay(RaftPointerInput.Touch, 744f, 1133f, crowdsRow = true))
+        assertTrue(raftSidebarGivesWay(RaftPointerInput.Touch, 1024f, 1366f, crowdsRow = true))
+        // The row has room: nothing to do.
+        assertFalse(raftSidebarGivesWay(RaftPointerInput.Touch, 820f, 1180f, crowdsRow = false))
+        // Landscape, a mouse or trackpad, a wide portrait screen: web's row as it is.
+        assertFalse(raftSidebarGivesWay(RaftPointerInput.Touch, 1180f, 820f, crowdsRow = true))
+        assertFalse(raftSidebarGivesWay(RaftPointerInput.Fine, 820f, 1180f, crowdsRow = true))
+        assertFalse(raftSidebarGivesWay(RaftPointerInput.Touch, 1280f, 1600f, crowdsRow = true))
     }
 }
