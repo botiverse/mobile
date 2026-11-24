@@ -69,6 +69,8 @@ internal class SharedRaftNetworkClient(
     private val ssoRequiredSignal: RaftSsoRequiredSignal = RaftSsoRequiredSignal.Process,
     // Identical GETs started together share one request (fb-52cc0499); shared like the reachability gates.
     private val inFlightGets: RaftInFlightGetDedupe = RaftInFlightGetDedupe(),
+    // Plain `GET channels/<uuid>` single-flight + short TTL coalescer (Hands 5abe9394); shared process-wide.
+    private val channelDetailCoalescer: RaftChannelDetailGetCoalescer = RaftChannelDetailGetCoalescer(),
 ) : RaftNetworkClient, AuthorityBoundRaftNetworkClient, ProgressiveAttachmentNetworkClient {
     private fun authMiddleware(authBaseUrl: String = currentBaseUrl()): RaftNetworkAuthMiddleware =
         RaftNetworkAuthMiddleware(
@@ -178,9 +180,69 @@ internal class SharedRaftNetworkClient(
         }
         val session = sessionStore.readSession()
         val baseUrl = expectedAuthority?.environmentId?.normalizedEnvironmentId() ?: currentBaseUrl()
+        val normalizedBaseUrl = baseUrl.normalizedEnvironmentId()
         if (!method.equals("GET", ignoreCase = true) || bodyText != null) {
-            // A write closes this account's GETs already in flight to later joiners (read-after-write).
-            return inFlightGets.write(RaftInFlightGetDedupe.WriteScope(baseUrl, session?.user?.id), send)
+            // A write closes this account's GETs already in flight to later joiners (read-after-write),
+            // and any non-GET targeting `channels/<uuid>` (or `channels/...`) immediately evicts and
+            // invalidates the short-TTL channel detail coalescer.
+            val writeScope = RaftInFlightGetDedupe.WriteScope(baseUrl, session?.user?.id)
+            val mutatedChannelId = extractMutatedChannelId(path)
+            return when {
+                mutatedChannelId != null ->
+                    channelDetailCoalescer.writeChannel(normalizedBaseUrl, session?.user?.id, mutatedChannelId) {
+                        inFlightGets.write(writeScope, send)
+                    }
+                isChannelRoutePath(path) ->
+                    channelDetailCoalescer.writeAllChannels(normalizedBaseUrl, session?.user?.id) {
+                        inFlightGets.write(writeScope, send)
+                    }
+                else -> inFlightGets.write(writeScope, send)
+            }
+        }
+        val nonObservabilityHeaders =
+            extraHeaders.entries
+                .filter { it.key !in RaftFetchObservabilityHeaders }
+                .map { it.key to it.value }
+                .sortedBy { it.first }
+        val hasOnlyObservabilityHeaders =
+            extraHeaders.keys.all { it in RaftFetchObservabilityHeaders || it == RaftFetchReasonHeader }
+        val plainChannelId =
+            if (query.isEmpty() && hasOnlyObservabilityHeaders) {
+                extractPlainChannelDetailId(path)
+            } else {
+                null
+            }
+        if (plainChannelId != null && session != null && session.accessToken.isNotBlank()) {
+            val effectiveServerId = (serverIdOverride?.value ?: session.currentServerId)?.trim().orEmpty()
+            val sessionUserId = session.user.id.trim()
+            val liveBaseUrl = currentBaseUrl()
+            val authorityValid =
+                expectedAuthority == null ||
+                    (
+                        expectedAuthority.matchesCurrentEnvironment(liveBaseUrl) &&
+                            session.matchesExpectedAuthority(expectedAuthority, effectiveServerId, liveBaseUrl)
+                        )
+            if (authorityValid && effectiveServerId.isNotEmpty() && sessionUserId.isNotEmpty()) {
+                val channelKey =
+                    RaftChannelDetailGetCoalescer.Key(
+                        baseUrl = normalizedBaseUrl,
+                        sessionUserId = sessionUserId,
+                        sessionIdentity = session.accessToken,
+                        serverId = effectiveServerId,
+                        channelId = plainChannelId,
+                    )
+                val response = channelDetailCoalescer.run(channelKey, send)
+                if (expectedAuthority != null) {
+                    val postBaseUrl = currentBaseUrl()
+                    val postSession = sessionStore.readSession()
+                    val postServerId = (serverIdOverride?.value ?: postSession?.currentServerId)?.trim().orEmpty()
+                    val stillValid =
+                        expectedAuthority.matchesCurrentEnvironment(postBaseUrl) &&
+                            postSession?.matchesExpectedAuthorityIdentity(expectedAuthority, postServerId, postBaseUrl) == true
+                    if (!stillValid) return routeEnvironmentChangedResponse()
+                }
+                return response
+            }
         }
         val key =
             RaftInFlightGetDedupe.Key(
@@ -189,11 +251,7 @@ internal class SharedRaftNetworkClient(
                 query = query,
                 serverIdOverride = serverIdOverride?.value,
                 // A read's trigger label never splits a shared request (observability only).
-                headers =
-                    extraHeaders.entries
-                        .filter { it.key !in RaftFetchObservabilityHeaders }
-                        .map { it.key to it.value }
-                        .sortedBy { it.first },
+                headers = nonObservabilityHeaders,
                 authority = expectedAuthority,
                 sessionUserId = session?.user?.id,
                 sessionServerId = session?.currentServerId,
