@@ -142,4 +142,51 @@ class RaftAndroidSandboxWebViewNavigationFenceTest {
         shadowOf(webView).webViewClient.onPageFinished(webView, "https://example.test/s/workspace/settings/billing")
         assertEquals(sentinel, shadowOf(webView).lastEvaluatedJavascript)
     }
+
+    @Test
+    fun unconditionalStopInsideNavigationStateChangeNeverRecurses() {
+        val states = mutableListOf<RaftWebViewNavigationState>()
+        events.onNavigationStateChange = { state ->
+            states += state
+            // Reproduce the exact 31d6124b / ce9054d1 trigger: synchronously stopping on every callback.
+            if (state.url.startsWith("https://api.raft.build/")) {
+                controller.stop()
+            }
+        }
+        val webView = host(allowNavigation = true)
+        states.clear()
+
+        shadowOf(webView).webViewClient.onPageStarted(
+            webView,
+            "https://api.raft.build/api/oauth/authorize?client_id=billing",
+            null,
+        )
+
+        assertTrue(states.size in 1..2, "expected bounded navigation callbacks, got ${states.size}")
+        assertFalse(states.last().isLoading)
+    }
+
+    @Test
+    fun onPageStartedInterceptsRoutedNavigationAndDeduplicatesRecentOverride() {
+        val routedUrl = "https://api.raft.build/api/oauth/authorize?client_id=billing"
+        val observedUrls = mutableListOf<String>()
+        events.routesMainFrameNavigation = { candidate -> candidate.startsWith("https://api.raft.build/") }
+        events.onNavigationStateChange = { state -> observedUrls += state.url }
+        val webView = host(allowNavigation = true)
+        observedUrls.clear()
+        blocked.clear()
+
+        // Case 1: WebView fires onPageStarted directly without prior shouldOverrideUrlLoading (e.g. POST/redirect).
+        shadowOf(webView).webViewClient.onPageStarted(webView, routedUrl, null)
+        assertEquals(listOf(routedUrl), blocked)
+        assertFalse(observedUrls.any { it == routedUrl }, "routed URL must not overwrite currentUrl")
+
+        // Case 2: WebView fires shouldOverrideUrlLoading followed immediately by onPageStarted for the same URL.
+        blocked.clear()
+        observedUrls.clear()
+        assertTrue(webView.overrides(routedUrl))
+        shadowOf(webView).webViewClient.onPageStarted(webView, routedUrl, null)
+        assertEquals(listOf(routedUrl), blocked, "must not fire onNavigationBlocked twice for same navigation")
+        assertFalse(observedUrls.any { it == routedUrl })
+    }
 }
