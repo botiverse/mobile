@@ -87,7 +87,7 @@ class SharedServerFeatureFlagsTest {
             assertFalse(disabled.isActivityInPlaceEnabled(server), "v1 off ($reason) disables path")
         }
 
-        // Emergency day-0 global kill on legacy mobile_inbox_inplace_v0 (reason == kill_switch) turns it OFF.
+        // Legacy mobile_inbox_inplace_v0 kill_switch does NOT disable 1.30: mobile_activity_inplace_v1 is the sole off-switch.
         val legacyKilled =
             SharedServerFeatureFlags(
                 FakeApi(
@@ -100,7 +100,7 @@ class SharedServerFeatureFlagsTest {
                 )
             )
         legacyKilled.prefetch(server)
-        assertFalse(legacyKilled.isActivityInPlaceEnabled(server), "legacy kill_switch disables 1.30 path")
+        assertTrue(legacyKilled.isActivityInPlaceEnabled(server), "legacy v0 kill_switch does not disable 1.30 path")
 
         // Local diagnostic override can force mobile_activity_inplace_v1 OFF.
         val overridden =

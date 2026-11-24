@@ -23,10 +23,11 @@ internal const val RaftFetchCoalescedHeader = "X-Raft-Fetch-Coalesced"
 internal const val RaftFetchCoalescedCap = 1000
 
 /**
- * Why the app read the Activity list (`GET /api/channels/inbox`, first page). The wire values are
- * exactly web's `ListFetchReason` (botiverse/slock packages/web/src/store/listFetchReason.ts); the
- * server records these and files anything else under `other`. Only the header is new: which reads
- * happen, and when, is unchanged.
+ * Why the app read the Activity list (`GET /api/channels/inbox`). The wire values are
+ * web's `ListFetchReason` (botiverse/slock packages/web/src/store/listFetchReason.ts, server
+ * `ACTIVITY_LIST_FETCH_REASONS`), plus `page` for every `offset > 0` page (slock #16583 /
+ * #triage:#618); the server records these and files anything else under `other`. Only the header is
+ * new: which reads happen, and when, is unchanged.
  */
 enum class InboxFetchReason(val wireValue: String) {
     /** First load: app start, opening Activity, switching server. */
@@ -51,6 +52,12 @@ enum class InboxFetchReason(val wireValue: String) {
      * now: a server without it in `ACTIVITY_LIST_FETCH_REASONS` files it under `other`.
      */
     InPlaceReconcile("inplace_reconcile"),
+    /**
+     * Continuation / pagination page (`offset > 0`, both user `LoadMore` and `loadCanonicalDepth`
+     * tail pages; botiverse/slock #16583 / #triage:#618, web parity). Sent without a trigger header
+     * so whole-list reloads are counted cleanly as `fetch_kind=list AND fetch_reason != 'page'`.
+     */
+    Page("page"),
     /**
      * `inbox_row_position_v1`: not a list read. The per-row position rule re-reads only the rows it
      * cannot judge (`GET /channels/inbox?ids=`), web `position_reread` (server
