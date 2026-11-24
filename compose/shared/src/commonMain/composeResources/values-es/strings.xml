@@ -4804,6 +4804,12 @@
     <string name="thread_link_preview_refresh_failed">No se pudo actualizar esta tarjeta. Inténtalo de nuevo.</string>
     <string name="thread_link_preview_action_changed">Esta tarjeta cambió. Revísala e inténtalo de nuevo.</string>
     <string name="thread_link_preview_action_working">Procesando…</string>
+    <string name="thread_link_preview_action_state_sent">Se envió. Esperando a la app.</string>
+    <string name="thread_link_preview_action_state_accepted">La app aceptó la acción y la está completando.</string>
+    <string name="thread_link_preview_action_state_done">Listo. Abre la app para ver el resultado.</string>
+    <string name="thread_link_preview_action_state_not_carried_out">La acción no se llevó a cabo.</string>
+    <string name="thread_link_preview_action_state_unconfirmed">El resultado aún no está confirmado.</string>
+    <string name="thread_link_preview_action_state_resolved_manually">No se pudo confirmar el resultado.</string>
     <string name="thread_link_preview_unreviewed_run_title">¿Ejecutar “%1$s”?</string>
     <string name="thread_link_preview_unreviewed_run_by">Lo ejecuta %1$s</string>
     <string name="thread_link_preview_action_confirm_from">De %1$s</string>

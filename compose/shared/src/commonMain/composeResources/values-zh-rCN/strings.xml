@@ -4637,6 +4637,12 @@
     <string name="thread_link_preview_refresh_failed">无法刷新此卡片，请重试。</string>
     <string name="thread_link_preview_action_changed">卡片内容已更新，请确认后重试。</string>
     <string name="thread_link_preview_action_working">处理中…</string>
+    <string name="thread_link_preview_action_state_sent">已发送，正在等待应用。</string>
+    <string name="thread_link_preview_action_state_accepted">应用已接受，正在完成。</string>
+    <string name="thread_link_preview_action_state_done">已完成。打开应用查看结果。</string>
+    <string name="thread_link_preview_action_state_not_carried_out">操作没有执行。</string>
+    <string name="thread_link_preview_action_state_unconfirmed">结果尚未确认。</string>
+    <string name="thread_link_preview_action_state_resolved_manually">无法确认结果。</string>
     <string name="thread_link_preview_unreviewed_run_title">执行「%1$s」？</string>
     <string name="thread_link_preview_unreviewed_run_by">由 %1$s 执行</string>
     <string name="thread_link_preview_action_confirm_from">来自 %1$s</string>

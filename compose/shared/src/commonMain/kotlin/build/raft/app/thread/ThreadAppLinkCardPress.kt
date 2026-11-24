@@ -40,12 +40,13 @@ import build.raft.designsystem.components.RaftToastIntent
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -118,9 +119,35 @@ internal fun rememberThreadAppLinkCardPress(
     val appSays = stringResource(Res.string.thread_link_preview_action_app_says)
     val appSaysUnnamed = stringResource(Res.string.thread_link_preview_action_app_says_unnamed)
     val working = stringResource(Res.string.thread_link_preview_action_working)
+    val stateSent = stringResource(Res.string.thread_link_preview_action_state_sent)
+    val stateAccepted = stringResource(Res.string.thread_link_preview_action_state_accepted)
+    val stateDone = stringResource(Res.string.thread_link_preview_action_state_done)
+    val stateNotCarriedOut = stringResource(Res.string.thread_link_preview_action_state_not_carried_out)
+    val stateUnconfirmed = stringResource(Res.string.thread_link_preview_action_state_unconfirmed)
+    val stateResolvedManually = stringResource(Res.string.thread_link_preview_action_state_resolved_manually)
     val press =
         remember(key, actions) {
-            ThreadAppLinkCardPress(card, actions, scope, failed, undo, refreshFailed, changed, workingLabel = working) { app, text ->
+            ThreadAppLinkCardPress(
+                card = card,
+                actions = actions,
+                scope = scope,
+                failedText = failed,
+                undoLabel = undo,
+                refreshFailedText = refreshFailed,
+                changedText = changed,
+                workingLabel = working,
+                stateHintText = { state ->
+                    appLinkStateHintText(
+                        state = state,
+                        sent = stateSent,
+                        accepted = stateAccepted,
+                        done = stateDone,
+                        notCarriedOut = stateNotCarriedOut,
+                        unconfirmed = stateUnconfirmed,
+                        resolvedManually = stateResolvedManually,
+                    )
+                },
+            ) { app, text ->
                 if (app.isBlank()) appSaysUnnamed.replace("%1\$s", text) else appSays.replace("%1\$s", app).replace("%2\$s", text)
             }
         }
@@ -170,10 +197,12 @@ internal class ThreadAppLinkCardPress(
      * state never says a task status such as In progress (slock #14958). Null: the theme's Loading.
      */
     private val workingLabel: String? = null,
+    /** Localized Raft hint per operation state (web `STATE_HINTS` in `linkCardToasts.ts`); null falls back to server `hint`. */
+    private val stateHintText: (state: String) -> String? = { null },
     /** "{App}: {text}" (web `message.appLink.action.appSays`): the App's own words, shown as the App's. */
     private val appSaysText: (app: String, text: String) -> String = { app, text -> if (app.isBlank()) text else "$app: $text" },
 ) {
-    /** The action whose prepare or execute is on its way. */
+    /** The action whose prepare, execute, or post-execute reread is on its way. */
     private var running by mutableStateOf<String?>(null)
 
     /** The action whose undo window is counting down. */
@@ -198,11 +227,17 @@ internal class ThreadAppLinkCardPress(
     /** The confirmation waiting on the person, or null. */
     internal val confirmation: PendingConfirmation? get() = confirming
 
-    /** An open operation is being followed: its end reads the card again. */
-    private var following by mutableStateOf(false)
+    /**
+     * The action whose open operation (`sent` / `accepted`) is still being followed until it
+     * reaches a terminal receipt and the card is read again (web `state.operation`).
+     */
+    private var pendingOperationActionId by mutableStateOf<String?>(null)
+
+    private val inFlightActionId: String? get() = running ?: pendingOperationActionId
+    private val interactionLocked: Boolean get() = running != null || undoing != null || pendingOperationActionId != null
 
     /** A button of this card is at work (sending, counting down its Undo, or following its operation): that work reads the card again. */
-    internal val busy: Boolean get() = running != null || undoing != null || following
+    internal val busy: Boolean get() = interactionLocked
 
     /** Cancel (or dismiss) the confirmation: nothing is sent. */
     internal fun dismissConfirmation() {
@@ -220,6 +255,7 @@ internal class ThreadAppLinkCardPress(
         if (pending.prepared == null) {
             startUndoWindow(host, pending.actionId, pending.handle, pending.undoWindowMs, pending.requestId)
         } else {
+            running = pending.actionId
             scope.launch { run(host, pending.actionId, pending.handle, pending.prepared, pending.requestId) }
         }
     }
@@ -251,8 +287,8 @@ internal class ThreadAppLinkCardPress(
             // Undo is a plain button.
             frameless = counting || button.variant == RaftLinkCardButtonVariant.Ghost,
             disabledReason = button.disabledReason,
-            enabled = counting || (running == null && undoing == null),
-            loading = running == id,
+            enabled = counting || !interactionLocked,
+            loading = inFlightActionId == id,
             loadingLabel = workingLabel,
         )
     }
@@ -266,7 +302,7 @@ internal class ThreadAppLinkCardPress(
             onClick = { refresh() },
             frameless = button.variant == RaftLinkCardButtonVariant.Ghost,
             disabledReason = button.disabledReason,
-            enabled = running == null && undoing == null,
+            enabled = !interactionLocked,
             loading = running == ReadBusyKey,
             loadingLabel = workingLabel,
         )
@@ -274,7 +310,7 @@ internal class ThreadAppLinkCardPress(
 
     private fun refresh() {
         val host = actions ?: return
-        if (running != null || undoing != null) return
+        if (interactionLocked || confirming != null) return
         running = ReadBusyKey
         scope.launch {
             val read =
@@ -295,7 +331,7 @@ internal class ThreadAppLinkCardPress(
 
     private fun press(id: String, label: String, action: RaftLinkCardButtonAction.Execute, handle: String) {
         val host = actions ?: return
-        if (running != null || undoing != null || confirming != null) return
+        if (interactionLocked || confirming != null) return
         val held = host.held
         val readAt = card.readAtMillis
         if (held == null || (readAt != null && host.nowMillis() - readAt <= APP_LINK_HANDLE_FRESH_MILLIS)) {
@@ -352,8 +388,20 @@ internal class ThreadAppLinkCardPress(
 
     private suspend fun run(host: ThreadAppLinkCardActionHost, id: String, handle: String, prepared: AppLinkPrepared?, requestId: String) {
         running = id
-        val executed =
-            try {
+        // Subscribe to operation hints BEFORE execute() goes out so a fast `link_card.operation_changed`
+        // push arriving during execute() or the initial reread is buffered rather than dropped.
+        val hints = if (host.status != null) host.operationHints else null
+        val hintChannel = hints?.let { Channel<RaftLinkCardOperationHint>(capacity = Channel.UNLIMITED) }
+        val hintCollector =
+            if (hints != null && hintChannel != null) {
+                scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                    hints.collect { hintChannel.trySend(it) }
+                }
+            } else {
+                null
+            }
+        try {
+            val executed =
                 when (val answer = host.execute(handle, requestId, prepared)) {
                     is AppLinkActionResult.Ok -> answer.value
                     is AppLinkActionResult.Failed -> {
@@ -361,71 +409,116 @@ internal class ThreadAppLinkCardPress(
                         null
                     }
                 }
-            } finally {
-                running = null
+            if (executed == null) return
+            // Finished at once: the App's own words when it sent some (`execute.toast.v1`), else Raft's
+            // localized hint for the state; either in the tone Raft gives the state (web `showAppToast`).
+            val appToast = executed.appToast?.takeIf { !executed.isOpen }
+            val text = appToast?.let { appSaysText(card.app.name.trim(), it) } ?: stateHintText(executed.state) ?: executed.hint
+            text?.let { host.toastWithIntent(it, appLinkToastIntent(executed.tone ?: appLinkStateToastTone(executed.state))) }
+            if (!executed.isOpen) {
+                // Keep `running = id` through the post-execute reread so the pressed button never
+                // flashes back to an idle stale state before the refreshed card renders.
+                host.reread(card.url)
+                return
             }
-        if (executed == null) return
-        // Finished at once: the App's own words when it sent some (`execute.toast.v1`), else Raft's hint;
-        // either in the tone Raft gives the state, never the App's (web `showAppToast`).
-        val appToast = executed.appToast?.takeIf { !executed.isOpen }
-        val text = appToast?.let { appSaysText(card.app.name.trim(), it) } ?: executed.hint
-        text?.let { host.toastWithIntent(it, appLinkToastIntent(executed.tone)) }
-        host.reread(card.url)
-        // The App may not have finished: follow the operation's receipt hints while the card is shown
-        // (a long-running operation), and read the card again as the operation would be polled.
-        if (executed.isOpen) {
-            follow(host, executed)
-            following = true
+            // Open operation (`sent` / `accepted`): hand off to `pendingOperationActionId` before
+            // clearing `running` so the pressed button stays loading and sibling execute/read
+            // buttons remain disabled without any gap until completion + reread.
+            pendingOperationActionId = id
+            running = null
             try {
-                for (wait in RereadWaitsMs) {
-                    delay(wait)
-                    host.reread(card.url)
-                }
+                host.reread(card.url)
+                followOpenOperation(host, executed, hintChannel)
             } finally {
-                following = false
+                pendingOperationActionId = null
             }
+        } finally {
+            hintCollector?.cancel()
+            hintChannel?.close()
+            if (running == id) running = null
         }
     }
 
     /**
-     * Follows an open operation as the web does on a receipt hint (`onOperationChanged` →
-     * `readStatus` → `applyReceipt`): a hint newer than the receipt shown reads the status; a new
-     * receipt toasts the App's words (a finished operation's, when Raft's gates passed) or else Raft's
-     * hint for a changed state; a finished operation, or one no longer the viewer's, reads the card
-     * again and ends the following. Lives as long as the card's press (the card on screen).
+     * Follows an open operation until it reaches a terminal receipt or closes (web `linkCardExecute.tsx`
+     * `follow` + `onOperationChanged` + `readStatus`): combines live `link_card.operation_changed`
+     * socket hints with bounded `POST /link-cards/status` polling so completion finishes immediately
+     * when pushed and still settles promptly if a hint is missed. As soon as a terminal receipt or
+     * `Closed` arrives, rereads the card and ends the pending state immediately instead of waiting
+     * out the remaining schedule.
      */
-    private fun follow(host: ThreadAppLinkCardActionHost, executed: AppLinkExecuted) {
-        val status = host.status ?: return
-        val hints = host.operationHints ?: return
+    private suspend fun followOpenOperation(
+        host: ThreadAppLinkCardActionHost,
+        executed: AppLinkExecuted,
+        hintChannel: Channel<RaftLinkCardOperationHint>?,
+    ) {
+        val status = host.status
+        if (status == null) {
+            for (wait in RereadWaitsMs) {
+                delay(wait)
+                host.reread(card.url)
+            }
+            return
+        }
         val operationId = executed.operationId
         var shownRevision = 0L
         var shownState = executed.state
-        scope.launch {
-            // `first` ends the collection once the operation is finished or no longer followed.
-            hints.filter { it.operationId == operationId }.first { hint ->
-                if (hint.receiptRevision <= shownRevision) return@first false
-                when (val answer = status(operationId)) {
-                    is AppLinkOperationStatus.Receipt -> {
-                        if (answer.receiptRevision > shownRevision) {
-                            val appToast = answer.appToast?.takeIf { answer.isTerminal }
-                            val text =
-                                appToast?.let { appSaysText(card.app.name.trim(), it) }
-                                    ?: answer.hint?.takeIf { answer.state != shownState }
-                            text?.let { host.toastWithIntent(it, appLinkToastIntent(answer.tone)) }
-                            shownRevision = answer.receiptRevision
-                            shownState = answer.state
-                        }
-                        if (answer.isTerminal) host.reread(card.url)
-                        answer.isTerminal
-                    }
-                    is AppLinkOperationStatus.Closed -> {
-                        if (answer.reread) host.reread(card.url)
-                        true
-                    }
-                    AppLinkOperationStatus.Open -> false
-                }
+
+        fun drainNewerHint(): Boolean {
+            hintChannel ?: return false
+            var matched = false
+            while (true) {
+                val hint = hintChannel.tryReceive().getOrNull() ?: break
+                if (hint.operationId == operationId && hint.receiptRevision > shownRevision) matched = true
             }
+            return matched
         }
+
+        suspend fun checkStatus(): Boolean =
+            when (val answer = status(operationId)) {
+                is AppLinkOperationStatus.Receipt -> {
+                    if (answer.receiptRevision > shownRevision) {
+                        val appToast = answer.appToast?.takeIf { answer.isTerminal }
+                        val text =
+                            appToast?.let { appSaysText(card.app.name.trim(), it) }
+                                ?: if (answer.state != shownState) (stateHintText(answer.state) ?: answer.hint) else null
+                        text?.let { host.toastWithIntent(it, appLinkToastIntent(answer.tone ?: appLinkStateToastTone(answer.state))) }
+                        shownRevision = answer.receiptRevision
+                        shownState = answer.state
+                    }
+                    if (answer.isTerminal) {
+                        host.reread(card.url)
+                        true
+                    } else {
+                        false
+                    }
+                }
+                is AppLinkOperationStatus.Closed -> {
+                    if (answer.reread) host.reread(card.url)
+                    true
+                }
+                AppLinkOperationStatus.Open -> false
+            }
+
+        // Check right away if a hint already arrived while execute() or the initial reread was running.
+        if (drainNewerHint() && checkStatus()) return
+
+        for (waitMs in StatusPollStepsMs) {
+            if (hintChannel != null) {
+                withTimeoutOrNull(waitMs) {
+                    while (true) {
+                        val hint = hintChannel.receive()
+                        if (hint.operationId == operationId && hint.receiptRevision > shownRevision) break
+                    }
+                }
+                drainNewerHint()
+            } else {
+                delay(waitMs)
+            }
+            if (checkStatus()) return
+        }
+        // Bounded follow window ended without a terminal receipt: read the card once more before unlocking.
+        host.reread(card.url)
     }
 
     private suspend fun failure(host: ThreadAppLinkCardActionHost, failed: AppLinkActionResult.Failed) {
@@ -513,9 +606,39 @@ internal class ThreadAppLinkCardPress(
 
         /** What [running] holds while a `read` button reads: no action_id has a ":" (web `READ_BUSY_KEY`). */
         const val ReadBusyKey = ":read"
-        val RereadWaitsMs = listOf(2000L, 5000L, 15000L)
+        val StatusPollStepsMs = listOf(1000L, 2000L, 5000L, 15_000L, 30_000L)
+        val RereadWaitsMs = listOf(2000L, 5000L, 15_000L)
     }
 }
+
+/** Localized Raft hint for an operation [state] (web `STATE_HINTS` in `linkCardToasts.ts`). */
+internal fun appLinkStateHintText(
+    state: String,
+    sent: String,
+    accepted: String,
+    done: String,
+    notCarriedOut: String,
+    unconfirmed: String,
+    resolvedManually: String,
+): String? =
+    when (state) {
+        "sent" -> sent
+        "accepted" -> accepted
+        "done" -> done
+        "refused", "failed_not_sent" -> notCarriedOut
+        "unknown", "needs_reconciliation" -> unconfirmed
+        "resolved_manually" -> resolvedManually
+        else -> null
+    }
+
+/** Default toast tone Raft assigns to each operation [state] (web `STATE_HINTS`). */
+internal fun appLinkStateToastTone(state: String): String? =
+    when (state) {
+        "sent", "accepted", "resolved_manually" -> "info"
+        "done" -> "success"
+        "refused", "failed_not_sent", "unknown", "needs_reconciliation" -> "warning"
+        else -> null
+    }
 
 /** [ThreadAppLinkCardPress.Confirmation]'s dialog (web `data-link-card-confirm`). */
 internal const val AppLinkConfirmDialogTestTag = "link-card-confirm"

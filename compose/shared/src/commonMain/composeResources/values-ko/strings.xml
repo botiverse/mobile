@@ -4804,6 +4804,12 @@
     <string name="thread_link_preview_refresh_failed">이 카드를 새로고침하지 못했어요. 다시 시도해 주세요.</string>
     <string name="thread_link_preview_action_changed">카드 내용이 바뀌었어요. 확인한 후 다시 시도해 주세요.</string>
     <string name="thread_link_preview_action_working">처리 중…</string>
+    <string name="thread_link_preview_action_state_sent">보냈어요. 앱의 응답을 기다리고 있어요.</string>
+    <string name="thread_link_preview_action_state_accepted">앱이 요청을 받았어요. 마무리하는 중이에요.</string>
+    <string name="thread_link_preview_action_state_done">완료했어요. 앱을 열어 결과를 확인하세요.</string>
+    <string name="thread_link_preview_action_state_not_carried_out">작업이 실행되지 않았어요.</string>
+    <string name="thread_link_preview_action_state_unconfirmed">아직 결과가 확인되지 않았어요.</string>
+    <string name="thread_link_preview_action_state_resolved_manually">결과를 확인하지 못했어요.</string>
     <string name="thread_link_preview_unreviewed_run_title">‘%1$s’ 작업을 실행할까요?</string>
     <string name="thread_link_preview_unreviewed_run_by">%1$s에서 실행해요</string>
     <string name="thread_link_preview_action_confirm_from">%1$s에서 보냄</string>

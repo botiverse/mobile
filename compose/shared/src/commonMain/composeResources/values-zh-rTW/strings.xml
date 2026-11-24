@@ -4804,6 +4804,12 @@
     <string name="thread_link_preview_refresh_failed">無法重新整理此卡片，請再試一次。</string>
     <string name="thread_link_preview_action_changed">此卡片內容已變更，請確認後再試一次。</string>
     <string name="thread_link_preview_action_working">處理中…</string>
+    <string name="thread_link_preview_action_state_sent">已傳送，正在等待應用程式回應。</string>
+    <string name="thread_link_preview_action_state_accepted">應用程式已接受，正在完成處理。</string>
+    <string name="thread_link_preview_action_state_done">已完成。請開啟應用程式查看結果。</string>
+    <string name="thread_link_preview_action_state_not_carried_out">此操作未執行。</string>
+    <string name="thread_link_preview_action_state_unconfirmed">結果尚未確認。</string>
+    <string name="thread_link_preview_action_state_resolved_manually">無法確認結果。</string>
     <string name="thread_link_preview_unreviewed_run_title">執行「%1$s」？</string>
     <string name="thread_link_preview_unreviewed_run_by">由 %1$s 執行</string>
     <string name="thread_link_preview_action_confirm_from">來自 %1$s</string>
