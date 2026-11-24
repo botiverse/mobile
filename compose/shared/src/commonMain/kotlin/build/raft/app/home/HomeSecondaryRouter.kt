@@ -342,7 +342,10 @@ internal fun HomeSecondaryRouterContent(
         sceneName = retainedDestination?.let(::homeSecondaryPerformanceRoute) ?: "kuikly_home_secondary",
         active = true
     )
-    CompositionLocalProvider(LocalRaftTimeContextProvider provides environment.timeContextProvider) {
+    CompositionLocalProvider(
+        LocalRaftTimeContextProvider provides environment.timeContextProvider,
+        LocalRaftArtifactOpenStoreScope provides environment.storeScope,
+    ) {
         when (retainedDestination) {
             HomeDestinationActivity -> HomeActivityRouterContent(environment, routeVisibleTick)
             HomeDestinationSearch ->
@@ -1085,7 +1088,11 @@ private fun HomeSearchRouterContent(
     val openArtifactWebPage = rememberRaftWebPageOpener()
     val artifactsWebBaseUrl = remember(sharedStores) { standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore) }
     // The Artifacts home page's opener: the in-app viewer, not opened from a conversation.
-    val artifactOpener = rememberRaftArtifactOpener(conversationId = null) { openArtifactWebPage(artifactWebUrl(artifactsWebBaseUrl, it)) }
+    val artifactOpener =
+        rememberRaftArtifactOpener(
+            conversationId = null,
+            storeScope = environment.storeScope,
+        ) { openArtifactWebPage(artifactWebUrl(artifactsWebBaseUrl, it)) }
     val chrome = homeSearchPageChrome(tabRoot = environment.tabRoot, railInline = environment.inlineOnClose != null)
     SharedHomeSearchPanel(
         state = searchSavedState.search,
