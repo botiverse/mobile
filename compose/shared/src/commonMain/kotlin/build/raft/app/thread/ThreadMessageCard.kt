@@ -1279,6 +1279,7 @@ private fun ThreadMessageCardContent(
                     if (shareSelectionActive) {
                         Modifier
                             .weight(1f)
+                            // raw-click: message rows keep their own tap, long press and selection
                             .clickable(onClick = onToggleShareSelection)
                     } else {
                         Modifier.weight(1f)

@@ -1,10 +1,10 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftClickable
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -390,7 +389,7 @@ private fun RaftScreenshotFeedbackPromptPill(
                         .testTag(RaftScreenshotFeedbackPromptActionTag)
                         .weight(1f, fill = false)
                         .clip(RoundedCornerShape(RaftRadius.Control))
-                        .clickable(role = Role.Button, onClick = onTap)
+                        .raftClickable(onClick = onTap, shape = RoundedCornerShape(RaftRadius.Control))
                         .padding(vertical = 4.dp, horizontal = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

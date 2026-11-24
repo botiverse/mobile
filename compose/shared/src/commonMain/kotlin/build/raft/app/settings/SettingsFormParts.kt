@@ -440,6 +440,7 @@ private fun SharedSettingsRow(
                     )
                 }
             } else if (row.hiddenTap && !row.enabled) {
+                // raw-click: hidden tap on a disabled row (the developer entry); shows no affordance
                 Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                     onAction(row.key, row.value.takeIf { it.isNotBlank() })
                 }

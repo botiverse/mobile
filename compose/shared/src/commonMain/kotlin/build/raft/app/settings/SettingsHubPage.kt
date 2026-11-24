@@ -397,6 +397,7 @@ internal fun SettingsHomeContent(
     }
     val headerModifier =
         if (onHeaderClick != null) {
+            // raw-click: hidden shortcut, Settings' 7-tap developer entry on the head; not a control
             Modifier.clickable(role = Role.Button, onClick = onHeaderClick)
         } else {
             Modifier

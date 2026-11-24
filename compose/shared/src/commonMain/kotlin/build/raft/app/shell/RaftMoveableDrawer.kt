@@ -151,6 +151,7 @@ internal fun RaftMoveableDrawer(
                     Modifier
                         .fillMaxSize()
                         .background(scrimColor.copy(alpha = scrimColor.alpha * progress))
+                        // raw-click: scrim, a tap outside only dismisses; not a control
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -167,6 +168,7 @@ internal fun RaftMoveableDrawer(
                 .fillMaxHeight()
                 .offset { IntOffset((widthPx * (state.progress - 1f)).roundToInt(), 0) }
                 // Swallow taps that land on empty drawer areas so they never reach the content.
+                // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
                 .pointerInput(Unit) { detectTapGestures { } }
         ) {
             drawerContent()

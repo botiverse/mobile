@@ -434,6 +434,7 @@ internal fun Modifier.threadMessageLongPressActions(
             pointerSessionKey = pointerSessionKey,
             gestureOwner = gestureOwner
         ) {
+            // raw-click: message rows keep their own tap, long press and selection
             detectTapGestures(
                 onPress = { downPosition ->
                     val compositionLease =

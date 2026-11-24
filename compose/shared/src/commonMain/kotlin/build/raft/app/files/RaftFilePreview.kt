@@ -5688,6 +5688,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                             .raftCaptureRef(onRef = onCaptureRef, render = renderFullResolution)
                             .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor, penWidth, cropAspect, spaceHeld) {
                         if (tool == RaftComposerImageEditorTool.Crop || spaceHeld) return@pointerInput
+                        // raw-click: image editor canvas, a tap draws / places at the point; not a control
                         detectTapGestures { position ->
                             if (saving || editorFinishing) return@detectTapGestures
                             latestTimingTracker.onFirstGesture(tool, "tap")?.let { latestTimingLog?.invoke(it) }
@@ -10208,6 +10209,7 @@ private fun RaftFilePreviewVideoProgressBar(
                 .then(
                     if (onSeek != null) {
                         Modifier.pointerInput(totalTimeMs, onSeek, widthPx) {
+                            // raw-click: seek bar, a tap seeks to the point; not a control
                             detectTapGestures(
                                 onTap = { offset ->
                                     val target = raftFilePreviewVideoSeekTimeFromTap(

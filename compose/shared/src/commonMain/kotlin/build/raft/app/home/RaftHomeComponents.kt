@@ -3658,6 +3658,7 @@ private fun RaftStructuralHomeShellContent(
                                         start = HomeServerSwitcherMenuInset,
                                         end = HomeServerSwitcherMenuInset
                                     )
+                                    // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
                                     .clickable(onClick = {})
                         )
                     }
@@ -5959,6 +5960,7 @@ private fun HomeServerIdentityCluster(
                 .then(
                     if (onBlankClick != null) {
                         // Blank header space: an affordance-less tap target, so no press wash.
+                        // raw-click: blank header space, an affordance-less tap target; not a control
                         Modifier.clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -6543,6 +6545,7 @@ private fun HomeServerDrawerPanel(
                     .height(maxHeight)
                     .background(RaftColor.Canvas)
                     .border(RaftAppStroke.Thin, RaftColor.BorderSeam)
+                    // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
                     .clickable(onClick = {})
                     .raftKeepsBackSwipe()
                     .pointerInput(onDismiss) {

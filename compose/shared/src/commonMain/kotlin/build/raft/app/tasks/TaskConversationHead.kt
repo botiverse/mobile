@@ -18,7 +18,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import build.raft.designsystem.components.raftClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -849,7 +848,6 @@ private fun TaskHeadAssigneeValue(
     val unassigned = stringResource(Res.string.tasks_assignee_unassigned)
     val shape = RoundedCornerShape(RaftRadius.Control)
     val triggerSource = remember { MutableInteractionSource() }
-    val triggerPressed by triggerSource.collectIsPressedAsState()
     val avatarSource = remember { MutableInteractionSource() }
     if (assignee == null) {
         val text = fallbackName ?: unassigned
@@ -862,8 +860,7 @@ private fun TaskHeadAssigneeValue(
                 .hangStart(6.dp)
                 .raftTouchTarget(enabled = true, interactionSource = triggerSource, onClick = onOpenAssignee)
                 .clip(shape)
-                .then(if (triggerPressed) Modifier.background(colors.fillMedium, shape) else Modifier)
-                .clickable(interactionSource = triggerSource, indication = null, role = Role.Button, onClick = onOpenAssignee)
+                .raftClickable(onClick = onOpenAssignee, shape = shape, interactionSource = triggerSource)
                 .padding(horizontal = 6.dp, vertical = 1.dp)
                 .widthIn(max = 200.dp)
                 .testTag(TaskHeadAssigneeTestTag),
@@ -955,8 +952,7 @@ private fun TaskHeadAssigneeValue(
                 Modifier
                     .raftTouchTarget(enabled = true, interactionSource = triggerSource, onClick = onOpenAssignee, expandStart = false)
                     .clip(shape)
-                    .then(if (triggerPressed) Modifier.background(colors.fillMedium, shape) else Modifier)
-                    .clickable(interactionSource = triggerSource, indication = null, role = Role.Button, onClick = onOpenAssignee)
+                    .raftClickable(onClick = onOpenAssignee, shape = shape, interactionSource = triggerSource)
                     .padding(vertical = 1.dp)
                     .widthIn(max = 180.dp)
                     .testTag(TaskHeadAssigneeTestTag),
@@ -1034,7 +1030,7 @@ internal fun TaskHeadStatusMenuRows(bar: TaskConversationHeaderBarModel, onPick:
 
 /**
  * A fact that leads somewhere (web: a `rounded-control` button whose padding hangs outward, its
- * text on the facts' baseline, an arrow at the end): press shows `fill-pressed`.
+ * text on the facts' baseline, an arrow at the end): hover and press through [raftClickable].
  */
 @Composable
 private fun TaskHeadLinkValue(
@@ -1045,7 +1041,6 @@ private fun TaskHeadLinkValue(
     val colors = RaftTheme.colors
     val source = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(RaftRadius.Control)
-    val pressed by source.collectIsPressedAsState()
     Row(
         Modifier
             // No 48dp box: it would make this fact taller than the others on its line, so it sat
@@ -1053,10 +1048,9 @@ private fun TaskHeadLinkValue(
             // The padding hangs outward and shrinks layout width: the text starts where a plain fact's does.
             .hangStart(6.dp)
             .clip(shape)
-            .then(if (pressed) Modifier.background(colors.fillMedium, shape) else Modifier)
             .then(
                 if (onClick != null) {
-                    Modifier.clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onClick)
+                    Modifier.raftClickable(onClick = onClick, shape = shape, interactionSource = source)
                 } else {
                     Modifier
                 }

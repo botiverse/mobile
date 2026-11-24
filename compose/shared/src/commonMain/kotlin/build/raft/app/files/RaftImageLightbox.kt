@@ -338,6 +338,7 @@ internal fun RaftImageLightboxContent(
                     }
                     .focusable()
                     // A click on the backdrop (around the pages, under the bar) closes.
+                    // raw-click: backdrop, a tap closes the viewer; not a control
                     .pointerInput(Unit) { detectTapGestures { currentOnDismiss() } }
         ) {
             HorizontalPager(

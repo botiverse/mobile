@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 import build.raft.app.resources.*
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.TweenSpec
@@ -305,6 +307,7 @@ internal fun RaftWorkingNowPanel(
         val colors = RaftTheme.colors
         val typography = RaftTheme.typography
         RaftPopoverSurface(
+            // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
             modifier = Modifier.clickable { },
             width = RaftWorkingNowWidth,
             contentPadding = PaddingValues(0.dp),
@@ -363,7 +366,7 @@ private fun RaftWorkingNowRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clickable { onOpenAgent(item.agentId) }
+                .raftClickable(onClick = { onOpenAgent(item.agentId) }, role = null, tier = RaftHoverTier.Subtle)
                 // `flex items-start gap-3 px-4 py-2`
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),

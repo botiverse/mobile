@@ -316,6 +316,7 @@ internal fun ThreadAppLinkCardPopoverFrame(
                     .graphicsLayer { alpha = if (measured == Size.Zero) 0f else 1f }
                     // A tap on the card is not a tap outside it.
                     .raftNativeDispatchCapture()
+                    // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
                     .pointerInput(Unit) { detectTapGestures {} },
             )
         }

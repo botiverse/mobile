@@ -198,6 +198,7 @@ private fun FollowerNoticeView(
         Column(
             Modifier.fillMaxWidth().background(surface, shape)
                 .border(1.dp, Color.White.copy(alpha = 0.2f), shape) // raft-color: edge on fixed dark toast
+                // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
                 .raftNativeDispatchCapture().clickable { }.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -364,6 +365,7 @@ internal fun ThreadAgentFollowersPanel(
     val typography = RaftTheme.typography
     // raft-ui Popover (`w-72 p-0`): the popover layer, a seam ring, the float shadow.
     RaftPopoverSurface(
+        // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
         modifier = Modifier.clickable { },
         width = width,
         contentPadding = PaddingValues(0.dp),

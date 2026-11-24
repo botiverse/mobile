@@ -256,6 +256,7 @@ internal fun ThreadMessageAvatar(
                 .raftPointerHover(interactionSource)
                 .raftGesturePointerInput(gestureOwner) { owner ->
                     var gesture: RaftGestureSession<ThreadMessageAvatarGestureCallbacks>? = null
+                    // raw-click: the avatar emits its own hover and press (raftPointerHover + PressInteraction into RaftAvatarTrigger) and owns tap + long press
                     detectTapGestures(
                         onPress = { position ->
                             gesture = owner.beginGesture()

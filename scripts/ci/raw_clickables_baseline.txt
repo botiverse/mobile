@@ -1,0 +1,25 @@
+# Raw clickable / combinedClickable / detectTapGestures sites in compose/shared/src/commonMain that
+# predate scripts/ci/check_raw_clickables.py (#wg-mobile-sync:#268). `<count> <path>` per file.
+# Migrate them to Modifier.raftClickable or a DS component, or mark a real non-click gesture
+# `// raw-click: <reason>`, then regenerate: python3 scripts/ci/check_raw_clickables.py --write-baseline
+# Total: 22 site(s) in 20 file(s).
+1 compose/shared/src/commonMain/kotlin/build/raft/app/activity/ActivityConversationSwipe.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/assistant/RaftAssistantOtter.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/auth/AuthComponents.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/components/RaftAppControls.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/computers/RaftSettingsComputersPage.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/home/RaftHomeComponents.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/home/SharedInboxPanel.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentAvatarDialog.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsAccountPage.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsFormParts.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeSaved.kt
+2 compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeSearchPanel.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/shell/RaftDuoInnerRail.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/tasks/SharedTasksPage.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/tasks/TaskConversationHead.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadInlineVideoPreview.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadOutline.kt
+2 compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPageHeader.kt
+1 compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadReactions.kt
