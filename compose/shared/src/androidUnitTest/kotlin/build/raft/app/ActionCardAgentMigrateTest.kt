@@ -9,23 +9,23 @@ import build.raft.app.data.ActionCardSpecEntityKind
 import build.raft.app.data.ActionCardSpecFieldValue
 import build.raft.app.data.ActionCardSpecIntent
 import build.raft.app.data.ActionCardSpecTextTone
+import build.raft.app.data.AgentMigrateActionCardType
 import build.raft.app.data.CardStack
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
+import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.parseActionCardSpec
 import build.raft.app.data.stripActionCardSpec
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
  * The `agent:migrate` card as botiverse/slock v1.21.64 (0d4ec9fd) builds it
  * ([ActionCardSpecFixtures.AGENT_MIGRATE_V9]): "Requested by {agent}" when another agent prepared
  * it (#14223), the agent's Current computer before the Suggested one (#14226), and Move agent
- * (`open` migrate_agent, #14018), which this App strips to "Open in web" (no migration dialog for
- * a card). The generic renderer draws all of it; nothing card-specific is needed.
+ * (`open` migrate_agent, #14018), which this App handles natively (#proj-mobile:#356) instead of
+ * falling back to "Open in web".
  */
 class ActionCardAgentMigrateTest {
     private val card = ActionCardSpecFixtures.cardFromJson(ActionCardSpecFixtures.AGENT_MIGRATE_V9)
@@ -59,16 +59,28 @@ class ActionCardAgentMigrateTest {
     }
 
     @Test
-    fun moveAgentReadsAsTheMigrateIntentAndTheAppOpensItInWeb() {
+    fun moveAgentReadsAsTheMigrateIntentAndTheAppHandlesItNatively() {
         val move = card.spec.elements.getValue("migrateAgent") as ActionCardSpecButton
         assertEquals(ActionCardSpecAction.Open(ActionCardSpecIntent.MigrateAgent), move.action)
         assertTrue(ActionCardSpecIntent.MigrateAgent.capability in ACTION_CARD_SPEC_CAPABILITIES)
-        assertFalse(ActionCardSpecIntent.MigrateAgent.capability in RAFT_APP_ACTION_CARD_CAPABILITIES)
-        assertNull(ActionCardSpecIntent.MigrateAgent.typedActionType())
+        assertTrue(ActionCardSpecIntent.MigrateAgent.capability in RAFT_APP_ACTION_CARD_CAPABILITIES)
+        assertEquals(AgentMigrateActionCardType, ActionCardSpecIntent.MigrateAgent.typedActionType())
         val read = parseActionCardSpec(Json.parseToJsonElement(ActionCardSpecFixtures.AGENT_MIGRATE_V9))!!
         val forApp = stripActionCardSpec(read, RAFT_APP_ACTION_CARD_CAPABILITIES)!!
-        assertEquals(ActionCardSpecAction.OpenInWeb, (forApp.spec.elements.getValue("migrateAgent") as ActionCardSpecButton).action)
-        // Everything else stays as the server built it.
-        assertEquals(read.spec.elements - "migrateAgent", forApp.spec.elements - "migrateAgent")
+        assertEquals(
+            ActionCardSpecAction.Open(ActionCardSpecIntent.MigrateAgent),
+            (forApp.spec.elements.getValue("migrateAgent") as ActionCardSpecButton).action,
+        )
+        assertEquals(read.spec.elements, forApp.spec.elements)
+        val migrateCard = ThreadActionCard(type = AgentMigrateActionCardType, agentId = "agent-1")
+        assertEquals(
+            ThreadActionCardSpecPress.Typed,
+            threadActionCardSpecPress(migrateCard, forApp, "migrateAgent"),
+        )
+        val wrongTypeCard = ThreadActionCard(type = "agent:create")
+        assertEquals(
+            ThreadActionCardSpecPress.OpenInWeb,
+            threadActionCardSpecPress(wrongTypeCard, forApp, "migrateAgent"),
+        )
     }
 }

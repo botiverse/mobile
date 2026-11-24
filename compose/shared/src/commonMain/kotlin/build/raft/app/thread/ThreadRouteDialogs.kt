@@ -42,6 +42,7 @@ internal class ThreadRouteDialogStates(
     val attachmentCommentsDialogState: MutableState<ThreadAttachmentCommentsDialogState?>,
     val installAppDialogState: State<ThreadInstallAppActionDialogState?>,
     val createAgentDialogState: MutableState<ThreadCreateAgentActionDialogState?>,
+    val migrateAgentDialogState: MutableState<ThreadMigrateAgentActionDialogState?>,
     val createAgentComputerServerId: State<String?>,
     val createAgentComputerServerResolved: State<Boolean>,
     val pendingActionCardIds: MutableState<Set<String>>,
@@ -102,6 +103,7 @@ internal fun ThreadRouteDialogs(
     var attachmentCommentsDialogState by states.attachmentCommentsDialogState
     val installAppDialogState by states.installAppDialogState
     var createAgentDialogState by states.createAgentDialogState
+    var migrateAgentDialogState by states.migrateAgentDialogState
     val createAgentComputerServerId by states.createAgentComputerServerId
     val createAgentComputerServerResolved by states.createAgentComputerServerResolved
     var pendingActionCardIds by states.pendingActionCardIds
@@ -359,6 +361,53 @@ internal fun ThreadRouteDialogs(
                     }
                 }
             }
+        )
+    }
+    migrateAgentDialogState?.let { dialogState ->
+        val liveMigrateCard =
+            renderedTimelineSlice.threadActionMessage(dialogState.messageId, linkedTasksProjection)?.threadActionCard()
+        ThreadMigrateAgentActionDialogHost(
+            dialogState = dialogState,
+            liveCard = liveMigrateCard,
+            data = data,
+            serverId = currentServerId,
+            serverMembersEntry = threadServerMembersEntry,
+            onOpenUpgrade = { pager.openRaftUpgradeDialog(RaftUpgradeGate.AgentMigration, storeScope) },
+            onOpenBilling = { pager.openSettingsBillingPage(storeScope) },
+            onDismiss = { migrateAgentDialogState = null },
+            onMigrationStarted = { messageId, card, agentId, targetMachineId, placedWithoutSource ->
+                pendingActionCardIds = pendingActionCardIds + messageId
+                coroutineScope.launch {
+                    try {
+                        when (
+                            val result =
+                                dataSource.markAgentMigrationActionCardExecuted(
+                                    messageId = messageId,
+                                    card = card,
+                                    agentId = agentId,
+                                    targetMachineId = targetMachineId,
+                                )
+                        ) {
+                            is DataResult.Content ->
+                                threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, result.data))
+                            is DataResult.NoPermission -> {
+                                if (!routeAuthRequired(result)) {
+                                    bridge.logWarn("action_card_agent_migrate_mark_executed_denied code=${result.blocker.code}")
+                                }
+                            }
+                            is DataResult.Error ->
+                                bridge.logWarn("action_card_agent_migrate_mark_executed_failed code=${result.error.code}")
+                            is DataResult.Empty ->
+                                bridge.logWarn("action_card_agent_migrate_mark_executed_empty")
+                        }
+                        if (placedWithoutSource && threadMembersServerId != null) {
+                            serverMembersStore?.refreshMembers(threadMembersServerId, build.raft.app.data.DataRequestPriority.Foreground)
+                        }
+                    } finally {
+                        pendingActionCardIds = pendingActionCardIds - messageId
+                    }
+                }
+            },
         )
     }
 }

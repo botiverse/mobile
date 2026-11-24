@@ -1239,7 +1239,8 @@ internal fun MemberDetailPageContent(
                                                 { pager.openAgentMigrationLogPage(provider.storeScope, agentId = member.id.value) }
                                             } else {
                                                 null
-                                            }
+                                            },
+                                        onInfoToast = bridge::toast
                                     )
                                 },
                             appAccess =

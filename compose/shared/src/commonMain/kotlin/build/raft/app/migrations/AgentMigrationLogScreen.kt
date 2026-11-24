@@ -647,7 +647,7 @@ private fun AgentMigrationLogTable(
                     )
                 1 -> AgentMigrationLogAgent(entry.agentId, names)
                 2 -> AgentMigrationLogRoute(entry, names)
-                3 -> AgentMigrationLogOutcomeBadge(entry.outcome)
+                3 -> AgentMigrationLogOutcomeBadge(entry.outcome, entry.cannotRespond)
                 else ->
                     RaftText(
                         agentMigrationLogDuration(entry.durationSeconds),
@@ -739,20 +739,30 @@ private fun agentMigrationLogOutcomeLabel(outcome: AgentMigrationLogOutcome): St
         },
     )
 
-/** Web `OutcomeBadge` with `all`: every row of the table says its result. */
+/** Web `OutcomeBadge` (slock #16567): every row says its result; completed + cannotRespond warns. */
 @Composable
-internal fun AgentMigrationLogOutcomeBadge(outcome: AgentMigrationLogOutcome) {
+internal fun AgentMigrationLogOutcomeBadge(
+    outcome: AgentMigrationLogOutcome,
+    cannotRespond: build.raft.app.data.AgentMigrationCannotRespondReason? = null,
+) {
+    val cannotRespondBadge = outcome == AgentMigrationLogOutcome.Completed && cannotRespond != null
     RaftBadge(
-        text = agentMigrationLogOutcomeLabel(outcome),
+        text =
+            if (cannotRespondBadge) {
+                stringResource(Res.string.agent_migration_log_outcome_cannot_respond)
+            } else {
+                agentMigrationLogOutcomeLabel(outcome)
+            },
         appearance = RaftBadgeAppearance.Soft,
         variant =
-            when (outcome) {
-                AgentMigrationLogOutcome.Completed -> RaftBadgeVariant.Success
-                AgentMigrationLogOutcome.Failed -> RaftBadgeVariant.Warning
-                AgentMigrationLogOutcome.Canceled -> RaftBadgeVariant.Muted
-                AgentMigrationLogOutcome.InProgress -> RaftBadgeVariant.Information
+            when {
+                cannotRespondBadge -> RaftBadgeVariant.Warning
+                outcome == AgentMigrationLogOutcome.Completed -> RaftBadgeVariant.Success
+                outcome == AgentMigrationLogOutcome.Failed -> RaftBadgeVariant.Warning
+                outcome == AgentMigrationLogOutcome.Canceled -> RaftBadgeVariant.Muted
+                else -> RaftBadgeVariant.Information
             },
-        icon = if (outcome == AgentMigrationLogOutcome.Failed) ({ RaftSlotIcon(RaftLucideIconName.TriangleAlert) }) else null,
+        icon = if (cannotRespondBadge || outcome == AgentMigrationLogOutcome.Failed) ({ RaftSlotIcon(RaftLucideIconName.TriangleAlert) }) else null,
     )
 }
 

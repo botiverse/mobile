@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.resources.*
 import org.jetbrains.compose.resources.StringResource
 import build.raft.app.data.ActionCardCloseOutcome
+import build.raft.app.data.AgentMigrateActionCardType
 import build.raft.app.data.PlanTrialActionCardType
 import build.raft.app.data.ProPricing
 import build.raft.app.data.ActionCardExecuteOutcome
@@ -177,7 +178,8 @@ internal fun ActionCardSpecIntent.typedActionType(): String? =
         // A done feedback card's "View in Settings" (S0.3): Settings › Feedback on the ticket.
         ActionCardSpecIntent.FeedbackTicket -> FeedbackSubmitActionCardType
         ActionCardSpecIntent.AddSeats -> SeatsAddActionCardType
-        ActionCardSpecIntent.UpgradeDialog, ActionCardSpecIntent.MigrateAgent -> null
+        ActionCardSpecIntent.MigrateAgent -> AgentMigrateActionCardType
+        ActionCardSpecIntent.UpgradeDialog -> null
     }
 
 /** The store's refusal for a card that ended ([threadActionCardCommitBlockedByEnd]); nothing ran. */

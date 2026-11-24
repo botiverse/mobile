@@ -1094,6 +1094,7 @@
     <string name="thread_action_card_blocked_target_server">%1$s 서버의 멤버만 이 카드를 사용할 수 있어요.</string>
     <string name="thread_action_card_runs_on_server">%1$s 서버에서 실행</string>
     <string name="thread_action_card_blocked_source_workspace">이 카드는 기록용 사본이에요. 원래 워크스페이스에서만 이 액션을 실행할 수 있어요.</string>
+    <string name="thread_action_card_blocked_need_migrate_agents">%1$s을(를) 만든 사람이나 에이전트 마이그레이션 권한이 있는 사람만 할 수 있어요.</string>
     <string name="thread_action_card_field_description">설명</string>
     <string name="thread_action_card_field_humans">사람</string>
     <string name="thread_action_card_field_agents">에이전트</string>
@@ -4380,6 +4381,19 @@
     <string name="agent_migration_error_status_failed">마이그레이션 상태를 불러오지 못했어요. 새로고침한 뒤 다시 시도해 주세요.</string>
     <string name="agent_migration_error_target_runtime_detection_pending">대상 컴퓨터가 아직 런타임을 감지하고 있어요. 잠시 후 다시 시도해 주세요.</string>
     <string name="agent_migration_error_target_runtime_detection_incomplete">대상 컴퓨터의 마지막 런타임 감지에서 %1$s 감지가 완료되지 않았어요. 컴퓨터 페이지에서 ‘런타임 다시 감지’를 실행한 뒤 다시 시도해 주세요.</string>
+    <string name="agent_migration_error_target_runtime_needs_login">%2$s에 %1$s 로그인이 되어 있지 않아 옮겨도 에이전트가 답할 수 없어요. 먼저 그 컴퓨터에서 로그인하거나, 다른 컴퓨터를 고르거나, 그래도 옮길 수 있어요.</string>
+    <string name="agent_migration_error_target_runtime_credential_invalid">%2$s의 %1$s 로그인이 거부되어 옮겨도 에이전트가 답할 수 없어요. 그 컴퓨터에서 다시 로그인하거나, 다른 컴퓨터를 고르거나, 그래도 옮길 수 있어요.</string>
+    <string name="agent_migration_error_target_runtime_usage_limit">%2$s의 %1$s 계정이 사용 한도에 도달해 초기화될 때까지 에이전트가 답할 수 없어요. 다른 컴퓨터를 고르거나 그래도 옮길 수 있어요.</string>
+    <string name="agent_migration_error_target_runtime_not_ready">지금은 %2$s에서 %1$s을(를) 실행할 수 없어 에이전트가 답할 수 없어요. 컴퓨터 소유자에게 확인을 요청하거나, 다른 컴퓨터를 고르거나, 그래도 옮길 수 있어요.</string>
+    <string name="agent_migration_move_anyway">그래도 옮기기</string>
+    <string name="agent_migration_preflight_unverified">%2$s에 %1$s 로그인이 되어 있는지 확인하지 못했어요. 옮긴 뒤 에이전트가 답하지 않으면 그 컴퓨터에서 로그인해 주세요.</string>
+    <string name="agent_migration_cannot_respond_title">옮겼지만 응답할 수 없음</string>
+    <string name="agent_migration_cannot_respond_needs_login">%1$s(으)로 옮겼지만 에이전트가 그곳에서 답할 수 없어요. 그 컴퓨터에 런타임 로그인이 되어 있지 않아요.</string>
+    <string name="agent_migration_cannot_respond_credential_invalid">%1$s(으)로 옮겼지만 에이전트가 그곳에서 답할 수 없어요. 그 컴퓨터의 런타임 로그인이 거부되었어요.</string>
+    <string name="agent_migration_cannot_respond_usage_limit">%1$s(으)로 옮겼지만 에이전트가 그곳에서 답할 수 없어요. 런타임 계정이 사용 한도에 도달했어요.</string>
+    <string name="agent_migration_cannot_respond_first_turn_failed">%1$s(으)로 옮겼지만 그곳에서의 첫 턴이 실패했어요. 오류는 에이전트 상태에서 볼 수 있어요.</string>
+    <string name="agent_migration_cannot_respond_not_ready">%1$s(으)로 옮겼지만 지금은 에이전트가 그곳에서 답할 수 없어요. 그 컴퓨터의 소유자에게 확인을 요청하세요.</string>
+    <string name="agent_migration_log_outcome_cannot_respond">옮겼지만 응답할 수 없음</string>
     <string name="agent_migration_error_transport_lost">전송 중에 두 컴퓨터 간의 연결이 끊겼어요. 두 컴퓨터가 모두 온라인인지 확인한 뒤 다시 시도해 주세요.</string>
     <string name="agent_migration_error_transport_lost_event">전송 중에 두 컴퓨터 간의 연결이 끊겼어요.</string>
     <string name="agent_migration_error_transport_lost_at">전송 중이던 %1$s에 두 컴퓨터 간의 연결이 끊겼어요.</string>

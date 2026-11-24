@@ -88,6 +88,7 @@ internal class ThreadRouteEventHandler(
     val markdownRefOpenStore: ThreadMarkdownRefOpenStore,
     val textSelectionMessageState: MutableState<RaftThreadMessageItem?>,
     val createAgentDialogStateHolder: MutableState<ThreadCreateAgentActionDialogState?>,
+    val migrateAgentDialogStateHolder: MutableState<ThreadMigrateAgentActionDialogState?>,
     val markdownTaskOpenRequestGate: MarkdownTaskNumberOpenRequestGate,
     val labels: ThreadRouteLabels,
     val taskChannelId: ChannelId?,
@@ -122,6 +123,7 @@ internal class ThreadRouteEventHandler(
     var pendingThreadFollowMessageIds by pendingThreadFollowMessageIdsState
     var textSelectionMessage by textSelectionMessageState
     var createAgentDialogState by createAgentDialogStateHolder
+    var migrateAgentDialogState by migrateAgentDialogStateHolder
     val actionCardSuccessLabels = labels.actionCardSuccessLabels
     val actionCardFailureLabels = labels.actionCardFailureLabels
     val genericActionCardSuccessLabel = labels.genericActionCardSuccessLabel

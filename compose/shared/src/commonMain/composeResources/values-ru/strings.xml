@@ -1094,6 +1094,7 @@
     <string name="thread_action_card_blocked_target_server">Этой карточкой могут пользоваться только участники сервера %1$s.</string>
     <string name="thread_action_card_runs_on_server">Выполняется на сервере %1$s</string>
     <string name="thread_action_card_blocked_source_workspace">Это копия из истории. Выполнить это действие можно только в исходном рабочем пространстве.</string>
+    <string name="thread_action_card_blocked_need_migrate_agents">Это может сделать только создатель агента %1$s или тот, у кого есть разрешение на перенос агентов.</string>
     <string name="thread_action_card_field_description">Описание</string>
     <string name="thread_action_card_field_humans">Люди</string>
     <string name="thread_action_card_field_agents">Агенты</string>
@@ -4380,6 +4381,19 @@
     <string name="agent_migration_error_status_failed">Не удалось загрузить статус переноса. Обновите страницу и попробуйте ещё раз.</string>
     <string name="agent_migration_error_target_runtime_detection_pending">Целевой компьютер ещё определяет доступные среды выполнения. Попробуйте чуть позже.</string>
     <string name="agent_migration_error_target_runtime_detection_incomplete">Последний поиск сред выполнения на целевом компьютере не завершился. Не проверены: %1$s. Повторите поиск на странице компьютера и попробуйте ещё раз.</string>
+    <string name="agent_migration_error_target_runtime_needs_login">На компьютере %2$s не выполнен вход в %1$s, поэтому агент не сможет там отвечать. Сначала войдите на этом компьютере, выберите другой компьютер или всё равно перенесите.</string>
+    <string name="agent_migration_error_target_runtime_credential_invalid">Вход в %1$s на компьютере %2$s был отклонён, поэтому агент не сможет там отвечать. Войдите на этом компьютере заново, выберите другой компьютер или всё равно перенесите.</string>
+    <string name="agent_migration_error_target_runtime_usage_limit">Аккаунт %1$s на компьютере %2$s достиг лимита использования, поэтому агент не сможет там отвечать до его сброса. Выберите другой компьютер или всё равно перенесите.</string>
+    <string name="agent_migration_error_target_runtime_not_ready">%1$s сейчас не может работать на компьютере %2$s, поэтому агент не сможет там отвечать. Попросите владельца компьютера проверить его, выберите другой компьютер или всё равно перенесите.</string>
+    <string name="agent_migration_move_anyway">Всё равно перенести</string>
+    <string name="agent_migration_preflight_unverified">Не удалось проверить, выполнен ли вход в %1$s на компьютере %2$s. Если после переноса агент не отвечает, войдите на этом компьютере.</string>
+    <string name="agent_migration_cannot_respond_title">Перенесён, не может отвечать</string>
+    <string name="agent_migration_cannot_respond_needs_login">Агент перенесён на %1$s, но не может там отвечать: на этом компьютере не выполнен вход в его среду выполнения.</string>
+    <string name="agent_migration_cannot_respond_credential_invalid">Агент перенесён на %1$s, но не может там отвечать: вход в его среду выполнения на этом компьютере был отклонён.</string>
+    <string name="agent_migration_cannot_respond_usage_limit">Агент перенесён на %1$s, но не может там отвечать: аккаунт его среды выполнения достиг лимита использования.</string>
+    <string name="agent_migration_cannot_respond_first_turn_failed">Агент перенесён на %1$s, но его первый ход там завершился ошибкой. Ошибка видна в статусе агента.</string>
+    <string name="agent_migration_cannot_respond_not_ready">Агент перенесён на %1$s, но сейчас не может там отвечать. Попросите владельца этого компьютера проверить его.</string>
+    <string name="agent_migration_log_outcome_cannot_respond">Перенесён, не может отвечать</string>
     <string name="agent_migration_error_transport_lost">Во время передачи данных соединение между компьютерами прервалось. Убедитесь, что оба компьютера в сети, и попробуйте ещё раз.</string>
     <string name="agent_migration_error_transport_lost_event">Во время передачи данных соединение между компьютерами прервалось.</string>
     <string name="agent_migration_error_transport_lost_at">Во время передачи данных соединение между компьютерами прервалось (%1$s).</string>

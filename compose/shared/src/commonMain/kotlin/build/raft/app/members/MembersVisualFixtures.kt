@@ -633,7 +633,11 @@ private object MembersVisualFixtureMigrationDataSource : AgentMigrationDataSourc
         priority: DataRequestPriority
     ): DataResult<AgentMigrationStatusSnapshot> = DataResult.Content(AgentMigrationStatusSnapshot(migration = null))
 
-    override suspend fun startMigration(agentId: MemberId, target: AgentMigrationTarget): DataResult<AgentMigrationStartResult> =
+    override suspend fun startMigration(
+        agentId: MemberId,
+        target: AgentMigrationTarget,
+        preflightOverride: Boolean
+    ): DataResult<AgentMigrationStartResult> =
         DataResult.Error(refused)
 
     override suspend fun cancelMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit> =

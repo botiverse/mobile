@@ -14,6 +14,7 @@ import build.raft.app.data.isActionCardExpiredRefusal
 import build.raft.app.data.markedExpired
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.isSupportedCommitAction
+import build.raft.app.data.isAgentMigrateAction
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.isInstallMarketplaceAppAction
 import build.raft.app.model.ConversationKind
@@ -105,6 +106,14 @@ internal fun ThreadRouteEventHandler.handleCommitActionCard(itemId: String): Uni
                                 errorCode = null
                         )
                         createAgentDialogState = dialogState
+                        return@ThreadPageContent
+                    }
+                    if (actionCard.isAgentMigrateAction()) {
+                        migrateAgentDialogState =
+                            ThreadMigrateAgentActionDialogState(
+                                messageId = itemId,
+                                card = actionCard,
+                            )
                         return@ThreadPageContent
                     }
                     pendingActionCardIds = pendingActionCardIds + itemId

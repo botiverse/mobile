@@ -1072,3 +1072,30 @@ internal fun buildMarkChannelMembersActionExecutedBody(
             expectedConfirmationVersion = expectedConfirmationVersion,
         )
     )
+
+/** Body of POST /api/actions/:messageId/mark-executed for `agent:migrate` (`kind: "agent-migration"`). */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+internal data class MarkAgentMigrationActionExecutedBody(
+    val result: AgentMigrationActionCardResultBody,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val expectedConfirmationVersion: Int? = null,
+)
+
+@Serializable
+internal data class AgentMigrationActionCardResultBody(
+    val kind: String = "agent-migration",
+    val agentId: String,
+    val targetMachineId: String,
+)
+
+internal fun buildMarkAgentMigrationActionExecutedBody(
+    agentId: String,
+    targetMachineId: String,
+    expectedConfirmationVersion: Int? = null,
+): String =
+    integrationsActionsPushJson.encodeToString(
+        MarkAgentMigrationActionExecutedBody(
+            result = AgentMigrationActionCardResultBody(agentId = agentId, targetMachineId = targetMachineId),
+            expectedConfirmationVersion = expectedConfirmationVersion,
+        )
+    )

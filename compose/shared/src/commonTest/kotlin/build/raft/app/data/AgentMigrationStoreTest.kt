@@ -5,6 +5,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -97,10 +98,109 @@ class AgentMigrationStoreTest {
     @Test
     fun startBodiesMatchTheWebDialog() {
         val computer = Json.parseToJsonElement(agentMigrationStartRequestBody(AgentMigrationTarget.Computer("m-target"))).jsonObject
-        assertEquals(setOf("targetComputer"), computer.keys)
+        assertEquals(setOf("targetComputer", "preflight"), computer.keys)
+        assertEquals("m-target", computer.getValue("targetComputer").jsonPrimitive.content)
+        assertEquals("v1", computer.getValue("preflight").jsonPrimitive.content)
+
+        val computerOverride =
+            Json.parseToJsonElement(agentMigrationStartRequestBody(AgentMigrationTarget.Computer("m-target"), preflightOverride = true)).jsonObject
+        assertEquals(setOf("targetComputer", "preflight", "preflightOverride"), computerOverride.keys)
+        assertEquals("v1", computerOverride.getValue("preflight").jsonPrimitive.content)
+        assertTrue(computerOverride.getValue("preflightOverride").jsonPrimitive.boolean)
+
         val cloud = Json.parseToJsonElement(agentMigrationStartRequestBody(AgentMigrationTarget.Cloud)).jsonObject
+        assertEquals(setOf("target"), cloud.keys)
         assertEquals("hosted", cloud.getValue("target").jsonObject.getValue("kind").jsonPrimitive.content)
         assertEquals(setOf("kind"), cloud.getValue("target").jsonObject.keys)
+    }
+
+    @Test
+    fun preflightRefusalSetsNotReadyTargetAndMoveAnywaySendsOverride() = runTest {
+        val network = ScriptedAgentControlsNetworkClient()
+        network.respond("GET", statusPath, 200, """{"migration":null}""")
+        network.respond("GET", "billing/subscription", 200, """{"plan":"pro","subscription":null,"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}""")
+        network.respond(
+            "POST",
+            "agents/${agentId.value}/migrate",
+            409,
+            """{"error":"The agent's runtime is not signed in on the target computer","code":"TARGET_RUNTIME_NOT_READY","details":{"side":"target","runtime":"claude","computerName":"Target","preflight":{"kind":"needs_login"}}}"""
+        )
+        val store = AgentMigrationStore(RaftAgentControlsApi(network), backgroundScope)
+        store.dispatch(AgentMigrationIntent.Watch(agentId))
+        runCurrent()
+
+        store.dispatch(AgentMigrationIntent.Start(AgentMigrationTarget.Computer("m-target")))
+        runCurrent()
+
+        assertEquals("m-target", store.state.value.notReadyTargetId)
+        assertEquals(AgentMigrationErrorCodes.TargetRuntimeNotReady, store.state.value.startError?.code)
+        assertEquals(
+            MigrationTargetRuntimeNotReady("claude", "Target", MigrationTargetRuntimeNotReadyKind.NeedsLogin),
+            store.state.value.startError?.targetRuntimeNotReady,
+        )
+        val firstPost = Json.parseToJsonElement(network.requests.last { it.method == "POST" }.bodyText!!).jsonObject
+        assertEquals("v1", firstPost.getValue("preflight").jsonPrimitive.content)
+        assertFalse("preflightOverride" in firstPost)
+
+        network.respond(
+            "POST",
+            "agents/${agentId.value}/migrate",
+            200,
+            """{"migrationRef":"$migrateRef","state":"provisioning","sourceMachineId":"m-source","targetMachineId":"m-target","preflight":{"kind":"needs_login"}}"""
+        )
+        network.respond("GET", statusPath, 200, notice("provisioning"))
+        store.dispatch(AgentMigrationIntent.Start(AgentMigrationTarget.Computer("m-target"), preflightOverride = true))
+        runCurrent()
+
+        val secondPost = Json.parseToJsonElement(network.requests.last { it.method == "POST" }.bodyText!!).jsonObject
+        assertEquals("v1", secondPost.getValue("preflight").jsonPrimitive.content)
+        assertTrue(secondPost.getValue("preflightOverride").jsonPrimitive.boolean)
+        assertNull(store.state.value.notReadyTargetId)
+        assertNull(store.state.value.startError)
+        assertEquals(AgentMigrationEffect.Started, store.state.value.effect)
+        assertEquals("m-target", store.state.value.lastStartResult?.targetMachineId)
+        assertEquals("needs_login", store.state.value.lastStartResult?.preflightKind)
+    }
+
+    @Test
+    fun unverifiedPreflightIsPreservedOnStartResultAndPrepareStartSkipsPolling() = runTest {
+        val network = ScriptedAgentControlsNetworkClient()
+        network.respond("GET", "billing/subscription", 200, """{"plan":"pro","subscription":null,"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}""")
+        network.respond(
+            "POST",
+            "agents/${agentId.value}/migrate",
+            200,
+            """{"migrationRef":"$migrateRef","state":"provisioning","sourceMachineId":"m-source","targetMachineId":"m-target","preflight":{"kind":"unverified"}}"""
+        )
+        val store = AgentMigrationStore(RaftAgentControlsApi(network), backgroundScope)
+        store.dispatch(AgentMigrationIntent.PrepareStart(agentId))
+        runCurrent()
+
+        assertTrue(network.requests.none { it.path == statusPath }, "PrepareStart does not poll GET /migration")
+        assertEquals("pro", store.state.value.billingPlan)
+
+        store.dispatch(AgentMigrationIntent.Start(AgentMigrationTarget.Computer("m-target")))
+        runCurrent()
+
+        assertEquals(AgentMigrationEffect.Started, store.state.value.effect)
+        assertEquals("unverified", store.state.value.lastStartResult?.preflightKind)
+        assertEquals("m-target", store.state.value.lastStartResult?.targetMachineId)
+        assertTrue(network.requests.none { it.path == statusPath })
+    }
+
+    @Test
+    fun parsesCannotRespondReasonsOnCompletedMigrationStatus() {
+        for (reason in AgentMigrationCannotRespondReason.entries) {
+            val parsed =
+                parseSharedAgentMigrationStatus(
+                    notice("completed", extra = ""","cannotRespond":"${reason.wire}"""")
+                )!!.migration!!
+            assertEquals(reason, parsed.cannotRespondReason)
+        }
+        val none = parseSharedAgentMigrationStatus(notice("completed", extra = ""","cannotRespond":null"""))!!.migration!!
+        assertNull(none.cannotRespondReason)
+        val unknown = parseSharedAgentMigrationStatus(notice("completed", extra = ""","cannotRespond":"future_reason""""))!!.migration!!
+        assertNull(unknown.cannotRespondReason)
     }
 
     @Test
@@ -165,7 +265,10 @@ class AgentMigrationStoreTest {
         // access was revoked, so nothing is brought over and there is no migration to follow.
         val placed =
             """{"outcome":"placed_without_source","migrationRef":null,"state":"completed","sourceMachineId":"m-source","targetMachineId":"m-target"}"""
-        assertEquals(AgentMigrationStartResult(migrationRef = null, placedWithoutSource = true), parseSharedAgentMigrationStart(placed))
+        assertEquals(
+            AgentMigrationStartResult(migrationRef = null, placedWithoutSource = true, targetMachineId = "m-target"),
+            parseSharedAgentMigrationStart(placed),
+        )
         assertEquals(
             AgentMigrationStartResult(migrationRef = migrateRef),
             parseSharedAgentMigrationStart("""{"migrationRef":"$migrateRef","state":"provisioning"}""")

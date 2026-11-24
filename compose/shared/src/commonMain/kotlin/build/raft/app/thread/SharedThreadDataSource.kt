@@ -2548,6 +2548,13 @@ internal class SharedThreadDataSource(
         submit: SharedCreateAgentDialogSubmit
     ): DataResult<ThreadActionCard> = actionCardCommands.commitAgentCreateActionCardFromDialog(messageId, card, submit)
 
+    suspend fun markAgentMigrationActionCardExecuted(
+        messageId: String,
+        card: ThreadActionCard,
+        agentId: String,
+        targetMachineId: String,
+    ): DataResult<ThreadActionCard> = actionCardCommands.markAgentMigrationActionCardExecuted(messageId, card, agentId, targetMachineId)
+
     suspend fun commitThreadActionCard(
         payload: RaftThreadScreenPayload,
         messageId: String,

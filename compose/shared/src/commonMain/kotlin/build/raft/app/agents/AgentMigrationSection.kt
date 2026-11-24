@@ -58,6 +58,7 @@ import build.raft.app.data.MigrationFailureComputers
 import build.raft.app.data.migrationFailurePresentation
 import build.raft.app.data.RaftProGateDecision
 import build.raft.app.data.canCancel
+import build.raft.app.data.cannotRespondReason
 import build.raft.app.data.endedComputerMigration
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.isAborted
@@ -159,6 +160,8 @@ internal class AgentMigrationSectionInputs(
     val computerAgents: AgentMigrationComputerAgents? = null,
     /** The server's migration log, opened on this agent (owners and admins); null shows no link. */
     val onOpenMigrationLog: (() -> Unit)? = null,
+    /** Info toast for non-blocking notices such as an unverified target preflight (slock #16567). */
+    val onInfoToast: ((String) -> Unit)? = null,
 ) {
     /** Web `hostedAvailable && !placesWithoutSource`: a move to the cloud uploads from a source. */
     val offersHosted: Boolean
@@ -174,6 +177,9 @@ internal object AgentMigrationSectionTestTags {
 
     /** Web `agent-last-migration-dismiss`. */
     const val Dismiss = "agent-last-migration-dismiss"
+
+    /** Warning banner when a completed move's agent cannot respond on the target (slock #16567). */
+    const val CannotRespondBanner = "agent-migration-cannot-respond-banner"
 }
 
 /** The target option for the cloud; never a machine id (web `HOSTED_TARGET_CHOICE`). */
@@ -272,6 +278,17 @@ internal fun AgentMigrationSection(
                         modifier = Modifier.padding(top = AgentMigrationBlockGap)
                     )
                 }
+                val cannotRespond = if (ended == AgentMigrationEnding.Completed && !notice.isHosted) notice.cannotRespondReason else null
+                if (cannotRespond != null) {
+                    val target = agentMigrationTargetLabel(inputs, notice)
+                    RaftBanner(
+                        title = stringResource(Res.string.agent_migration_cannot_respond_title),
+                        description = agentMigrationCannotRespondMessage(cannotRespond, target),
+                        status = RaftBannerStatus.Warning,
+                        size = RaftBannerSize.Sm,
+                        modifier = Modifier.padding(top = AgentMigrationBlockGap).testTag(AgentMigrationSectionTestTags.CannotRespondBanner)
+                    )
+                }
             }
             // Running moves, moves to the cloud and unsettled cancels keep the progress block.
             if (notice != null && ended == null) {
@@ -340,9 +357,23 @@ internal fun AgentMigrationSection(
         }
     }
 
+    val preflightUnverifiedTemplate =
+        stringResource(
+            Res.string.agent_migration_preflight_unverified,
+            AgentMigrationPreflightRuntimeToken,
+            AgentMigrationPreflightComputerToken
+        )
     LaunchedEffect(state.effect) {
         when (state.effect) {
-            AgentMigrationEffect.Started -> showStartDialog = false
+            AgentMigrationEffect.Started -> {
+                showStartDialog = false
+                val startResult = state.lastStartResult
+                if (startResult?.preflightKind == "unverified") {
+                    val targetName = inputs.computers.firstOrNull { it.id == startResult.targetMachineId }?.name
+                    formatAgentMigrationPreflightUnverified(preflightUnverifiedTemplate, inputs.agentRuntime, targetName)
+                        ?.let { inputs.onInfoToast?.invoke(it) }
+                }
+            }
             AgentMigrationEffect.ProRequired -> {
                 showStartDialog = false
                 askToUpgrade()
@@ -361,7 +392,9 @@ internal fun AgentMigrationSection(
             state = state,
             inputs = inputs,
             initialTarget = startDialogTarget,
-            onStart = { inputs.onIntent(AgentMigrationIntent.Start(it)) },
+            onStart = { target, preflightOverride ->
+                inputs.onIntent(AgentMigrationIntent.Start(target, preflightOverride = preflightOverride))
+            },
             onDismiss = { if (!state.starting) showStartDialog = false }
         )
     }
@@ -678,14 +711,24 @@ private fun agentMigrationNoticeCopy(notice: AgentMigrationNotice, inputs: Agent
             } else {
                 status(stringResource(Res.string.agent_migration_detail_migration_starting, source, target))
             }
-        "completed" ->
-            status(
-                if (notice.isHosted) {
-                    stringResource(Res.string.agent_migration_hosted_completed)
-                } else {
-                    stringResource(Res.string.agent_migration_detail_migration_completed, source, target)
-                }
-            )
+        "completed" -> {
+            val cannotRespond = notice.cannotRespondReason
+            if (cannotRespond != null && !notice.isHosted) {
+                AgentMigrationNoticeCopy(
+                    stringResource(Res.string.agent_migration_cannot_respond_title),
+                    null,
+                    agentMigrationCannotRespondMessage(cannotRespond, target)
+                )
+            } else {
+                status(
+                    if (notice.isHosted) {
+                        stringResource(Res.string.agent_migration_hosted_completed)
+                    } else {
+                        stringResource(Res.string.agent_migration_detail_migration_completed, source, target)
+                    }
+                )
+            }
+        }
         else -> status(stringResource(Res.string.agent_migration_error_code, notice.state))
     }
 }
@@ -810,6 +853,7 @@ private fun AgentMigrationProgressPanel(
         return
     }
     val failed = notice.failedLook()
+    val cannotRespond = notice.isCompleted && !notice.isHosted && notice.cannotRespondReason != null
     val attention = notice.needsAttention()
     val target = agentMigrationTargetLabel(inputs, notice)
     val header =
@@ -838,16 +882,16 @@ private fun AgentMigrationProgressPanel(
         RaftText(text = header, style = typography.subhead.copy(fontWeight = FontWeight.SemiBold), color = colors.foreground)
         AgentMigrationProgressSteps(notice)
         // Problems keep the warning banner; normal progress is plain text.
-        if (attention) {
+        if (attention || cannotRespond) {
             RaftBanner(
-                title = copy.title.takeIf { failed || notice.isCancelRequested },
+                title = copy.title.takeIf { failed || notice.isCancelRequested || cannotRespond },
                 description = agentMigrationNoticeText(copy, boldPlacement = true),
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm
             )
             copy.technicalCode?.takeIf { notice.isFailed }?.let { AgentMigrationTechnicalDetails(it) }
             // The reference is for support, so it only appears when something needs attention.
-            AgentMigrationReference(notice, inputs)
+            if (attention) AgentMigrationReference(notice, inputs)
         } else {
             Column {
                 copy.title?.takeIf { notice.isCancelRequested }?.let {
@@ -1082,11 +1126,11 @@ internal fun agentMigrationResolvedTarget(
  * the one commit button at the end of its head; on a tablet the centred dialog.
  */
 @Composable
-private fun AgentMigrationStartDialog(
+internal fun AgentMigrationStartDialog(
     state: AgentMigrationState,
     inputs: AgentMigrationSectionInputs,
     initialTarget: String?,
-    onStart: (AgentMigrationTarget) -> Unit,
+    onStart: (AgentMigrationTarget, Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     val targets = remember(inputs.computers, inputs.sourceMachineId) { agentMigrationTargets(inputs) }
@@ -1094,15 +1138,21 @@ private fun AgentMigrationStartDialog(
         mutableStateOf(targets.firstOrNull { it.online && it.id == initialTarget }?.id ?: targets.firstOrNull { it.online }?.id)
     }
     val selected = agentMigrationResolvedTarget(choice, targets, inputs.offersHosted)
+    // #proj-raft-computer:#135 (slock #16567): the refused target offers "Move anyway" and sends
+    // `preflightOverride: true`; switching to another target resets the button and asks fresh.
+    val moveAnyway = selected != null && selected != HOSTED_TARGET_CHOICE && state.notReadyTargetId == selected
     // Read here: the sheet's content is hosted outside the page, where the local does not reach.
     val usage = LocalMembersRuntimeAccountUsageAccess.current
     RaftDialogSheet(
         onDismissRequest = { if (!state.starting) onDismiss() },
         title = agentMigrationStartDialogTitle(inputs),
-        commitLabel = agentMigrationStartCommitLabel(state, inputs, selected),
+        commitLabel = agentMigrationStartCommitLabel(state, inputs, selected, moveAnyway = moveAnyway),
         onCommit = {
             val target = selected ?: return@RaftDialogSheet
-            onStart(if (target == HOSTED_TARGET_CHOICE) AgentMigrationTarget.Cloud else AgentMigrationTarget.Computer(target))
+            onStart(
+                if (target == HOSTED_TARGET_CHOICE) AgentMigrationTarget.Cloud else AgentMigrationTarget.Computer(target),
+                moveAnyway
+            )
         },
         commitEnabled = !state.starting && selected != null,
         // Migrating pauses the agent but can be undone (migrate back): raft-ui button.md
@@ -1123,10 +1173,16 @@ internal fun agentMigrationStartDialogTitle(inputs: AgentMigrationSectionInputs)
     )
 
 @Composable
-internal fun agentMigrationStartCommitLabel(state: AgentMigrationState, inputs: AgentMigrationSectionInputs, selected: String?): String =
+internal fun agentMigrationStartCommitLabel(
+    state: AgentMigrationState,
+    inputs: AgentMigrationSectionInputs,
+    selected: String?,
+    moveAnyway: Boolean = false
+): String =
     stringResource(
         when {
             state.starting -> Res.string.agent_migration_detail_starting
+            moveAnyway -> Res.string.agent_migration_move_anyway
             selected == HOSTED_TARGET_CHOICE -> Res.string.agent_migration_hosted_start
             // Title "Move Agent" offers both destinations, so the button keeps one.
             inputs.offersHosted -> Res.string.agent_migration_detail_start_migration
@@ -1222,7 +1278,8 @@ internal fun ColumnScope.AgentMigrationStartForm(
             }
         }
         state.startError?.let { error ->
-            AgentMigrationActionErrorBanner(error, MigrationErrorContext.Start)
+            val selectedTargetName = targets.firstOrNull { it.id == selected }?.name
+            AgentMigrationActionErrorBanner(error, MigrationErrorContext.Start, targetComputerName = selectedTargetName)
         }
     }
 }

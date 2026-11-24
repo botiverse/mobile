@@ -1094,6 +1094,7 @@
     <string name="thread_action_card_blocked_target_server">Só membros de %1$s podem usar este cartão.</string>
     <string name="thread_action_card_runs_on_server">Será executada em %1$s</string>
     <string name="thread_action_card_blocked_source_workspace">Esta é uma cópia do histórico. Somente o espaço de trabalho de origem pode executar esta ação.</string>
+    <string name="thread_action_card_blocked_need_migrate_agents">Só quem criou %1$s ou alguém com permissão para migrar agentes pode fazer isso.</string>
     <string name="thread_action_card_field_description">Descrição</string>
     <string name="thread_action_card_field_humans">Pessoas</string>
     <string name="thread_action_card_field_agents">Agentes</string>
@@ -4380,6 +4381,19 @@
     <string name="agent_migration_error_status_failed">Não foi possível carregar o status da migração. Atualize a página e tente novamente.</string>
     <string name="agent_migration_error_target_runtime_detection_pending">O computador de destino ainda está detectando os runtimes. Tente novamente em instantes.</string>
     <string name="agent_migration_error_target_runtime_detection_incomplete">A última detecção de runtimes do computador de destino não foi concluída para %1$s. Detecte os runtimes novamente na página do computador e tente outra vez.</string>
+    <string name="agent_migration_error_target_runtime_needs_login">%1$s não está conectado em %2$s, então o agente não conseguiria responder lá. Entre nesse computador primeiro, escolha outro computador ou migre mesmo assim.</string>
+    <string name="agent_migration_error_target_runtime_credential_invalid">O login do %1$s em %2$s foi recusado, então o agente não conseguiria responder lá. Entre de novo nesse computador, escolha outro computador ou migre mesmo assim.</string>
+    <string name="agent_migration_error_target_runtime_usage_limit">A conta do %1$s em %2$s atingiu o limite de uso, então o agente não conseguiria responder lá até ele ser redefinido. Escolha outro computador ou migre mesmo assim.</string>
+    <string name="agent_migration_error_target_runtime_not_ready">O %1$s não pode ser executado em %2$s agora, então o agente não conseguiria responder lá. Peça ao dono do computador para verificar, escolha outro computador ou migre mesmo assim.</string>
+    <string name="agent_migration_move_anyway">Migrar mesmo assim</string>
+    <string name="agent_migration_preflight_unverified">Não foi possível verificar se o %1$s está conectado em %2$s. Se o agente não responder depois da migração, entre nesse computador.</string>
+    <string name="agent_migration_cannot_respond_title">Migrado, não pode responder</string>
+    <string name="agent_migration_cannot_respond_needs_login">Migrado para %1$s, mas o agente não consegue responder lá: o runtime dele não está conectado nesse computador.</string>
+    <string name="agent_migration_cannot_respond_credential_invalid">Migrado para %1$s, mas o agente não consegue responder lá: o login do runtime nesse computador foi recusado.</string>
+    <string name="agent_migration_cannot_respond_usage_limit">Migrado para %1$s, mas o agente não consegue responder lá: a conta do runtime atingiu o limite de uso.</string>
+    <string name="agent_migration_cannot_respond_first_turn_failed">Migrado para %1$s, mas o primeiro turno dele lá falhou. O status do agente mostra o erro.</string>
+    <string name="agent_migration_cannot_respond_not_ready">Migrado para %1$s, mas o agente não consegue responder lá agora. Peça ao dono desse computador para verificar.</string>
+    <string name="agent_migration_log_outcome_cannot_respond">Migrado, não pode responder</string>
     <string name="agent_migration_error_transport_lost">A conexão entre os dois computadores caiu durante a transferência. Verifique se os dois estão online e tente novamente.</string>
     <string name="agent_migration_error_transport_lost_event">A conexão entre os dois computadores caiu durante a transferência.</string>
     <string name="agent_migration_error_transport_lost_at">A conexão entre os dois computadores caiu em %1$s, durante a transferência.</string>

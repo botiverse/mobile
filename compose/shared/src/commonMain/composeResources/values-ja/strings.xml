@@ -1094,6 +1094,7 @@
     <string name="thread_action_card_blocked_target_server">このカードを使えるのは %1$s のメンバーだけです。</string>
     <string name="thread_action_card_runs_on_server">%1$s で実行</string>
     <string name="thread_action_card_blocked_source_workspace">これは履歴として残されたコピーです。この操作は元のワークスペースでのみ実行できます。</string>
+    <string name="thread_action_card_blocked_need_migrate_agents">この操作を実行できるのは、%1$s の作成者か、エージェントを移行する権限を持つメンバーのみです。</string>
     <string name="thread_action_card_field_description">説明</string>
     <string name="thread_action_card_field_humans">人間</string>
     <string name="thread_action_card_field_agents">エージェント</string>
@@ -4559,6 +4560,19 @@
     <string name="agent_migration_error_status_failed">移行の状態を読み込めませんでした。更新して、もう一度お試しください。</string>
     <string name="agent_migration_error_target_runtime_detection_pending">移行先のコンピューターはまだランタイムを検出中です。しばらくしてから、もう一度お試しください。</string>
     <string name="agent_migration_error_target_runtime_detection_incomplete">移行先のコンピューターで前回実行したランタイム検出が、%1$s について完了しませんでした。コンピューターのページでランタイムを再スキャンしてから、もう一度お試しください。</string>
+    <string name="agent_migration_error_target_runtime_needs_login">%2$s で %1$s にログインしていないため、移行してもエージェントは返信できません。そのコンピューターで先にログインするか、別のコンピューターを選ぶか、このまま移行してください。</string>
+    <string name="agent_migration_error_target_runtime_credential_invalid">%2$s の %1$s のログインが拒否されたため、移行してもエージェントは返信できません。そのコンピューターでログインし直すか、別のコンピューターを選ぶか、このまま移行してください。</string>
+    <string name="agent_migration_error_target_runtime_usage_limit">%2$s の %1$s アカウントは使用量の上限に達しているため、リセットされるまでエージェントは返信できません。別のコンピューターを選ぶか、このまま移行してください。</string>
+    <string name="agent_migration_error_target_runtime_not_ready">%2$s では今 %1$s を実行できないため、エージェントは返信できません。コンピューターのオーナーに確認を依頼するか、別のコンピューターを選ぶか、このまま移行してください。</string>
+    <string name="agent_migration_move_anyway">このまま移行</string>
+    <string name="agent_migration_preflight_unverified">%2$s で %1$s にログインしているか確認できませんでした。移行後にエージェントが返信しない場合は、そのコンピューターでログインしてください。</string>
+    <string name="agent_migration_cannot_respond_title">移行済み、応答できません</string>
+    <string name="agent_migration_cannot_respond_needs_login">%1$s に移行しましたが、エージェントはそこで返信できません。そのコンピューターでランタイムにログインしていません。</string>
+    <string name="agent_migration_cannot_respond_credential_invalid">%1$s に移行しましたが、エージェントはそこで返信できません。そのコンピューターでのランタイムのログインが拒否されました。</string>
+    <string name="agent_migration_cannot_respond_usage_limit">%1$s に移行しましたが、エージェントはそこで返信できません。ランタイムのアカウントが使用量の上限に達しています。</string>
+    <string name="agent_migration_cannot_respond_first_turn_failed">%1$s に移行しましたが、そこでの最初のターンが失敗しました。エラーはエージェントのステータスで確認できます。</string>
+    <string name="agent_migration_cannot_respond_not_ready">%1$s に移行しましたが、エージェントは今そこで返信できません。そのコンピューターのオーナーに確認を依頼してください。</string>
+    <string name="agent_migration_log_outcome_cannot_respond">移行済み、応答できません</string>
     <string name="agent_migration_error_transport_lost">転送中に 2 台のコンピューター間の接続が切断されました。両方のコンピューターがオンラインであることを確認してから、もう一度お試しください。</string>
     <string name="agent_migration_error_transport_lost_event">転送中に 2 台のコンピューター間の接続が切断されました。</string>
     <string name="agent_migration_error_transport_lost_at">%1$s、転送中に 2 台のコンピューター間の接続が切断されました。</string>

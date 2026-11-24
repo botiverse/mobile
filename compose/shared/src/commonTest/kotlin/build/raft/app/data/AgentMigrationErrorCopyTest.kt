@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -133,5 +134,57 @@ class AgentMigrationErrorCopyTest {
         val result = migrationFailurePresentation(failed(failureReason = "HOSTED_AGENT_NOT_CREATED", targetKind = "hosted"), computers)
         assertEquals(MigrationText(MigrationCopy.StillOnSource, listOf("armbian-gx")), result.placement)
         assertEquals(listOf(MigrationText(MigrationCopy.HostedAgentNotCreated, listOf("armbian-gx"))), result.messageParts)
+    }
+
+    @Test
+    fun targetRuntimeNotReadyParsesAndFormatsEveryPreflightKind() {
+        val expectedCopy =
+            mapOf(
+                MigrationTargetRuntimeNotReadyKind.NeedsLogin to MigrationCopy.ErrorTargetRuntimeNeedsLogin,
+                MigrationTargetRuntimeNotReadyKind.CredentialInvalid to MigrationCopy.ErrorTargetRuntimeCredentialInvalid,
+                MigrationTargetRuntimeNotReadyKind.UsageLimit to MigrationCopy.ErrorTargetRuntimeUsageLimit,
+                MigrationTargetRuntimeNotReadyKind.NotReady to MigrationCopy.ErrorTargetRuntimeNotReady,
+            )
+        for ((kind, copy) in expectedCopy) {
+            val details =
+                Json.parseToJsonElement(
+                    """{"side":"target","runtime":"claude","computerName":"Target","preflight":{"kind":"${kind.wire}"}}"""
+                )
+            val parsed = parseMigrationTargetRuntimeNotReady(details)!!
+            assertEquals(MigrationTargetRuntimeNotReady("claude", "Target", kind), parsed)
+            assertEquals(parsed, parseMigrationTargetRuntimeNotReadyFromFields(migrationTargetRuntimeNotReadyFields(parsed)))
+            val presentation =
+                migrationErrorPresentation(
+                    MigrationErrorInput(
+                        code = "TARGET_RUNTIME_NOT_READY",
+                        context = MigrationErrorContext.Start,
+                        targetRuntimeNotReady = parsed,
+                        runtimeDisplayName = { if (it == "claude") "Claude Code" else it },
+                    )
+                )
+            assertEquals(listOf(MigrationText(copy, listOf("Claude Code", "Target"))), presentation.messageParts)
+            assertEquals("TARGET_RUNTIME_NOT_READY", presentation.technicalCode)
+        }
+        // Rejects unsafe runtime id or unknown preflight kind.
+        assertNull(
+            parseMigrationTargetRuntimeNotReady(
+                Json.parseToJsonElement("""{"runtime":"../bad","computerName":"Target","preflight":{"kind":"needs_login"}}""")
+            )
+        )
+        assertNull(
+            parseMigrationTargetRuntimeNotReady(
+                Json.parseToJsonElement("""{"runtime":"claude","computerName":"Target","preflight":{"kind":"unverified"}}""")
+            )
+        )
+        // Missing details falls back cleanly to not_ready with targetComputerName.
+        val fallback =
+            migrationErrorPresentation(
+                MigrationErrorInput(
+                    code = "TARGET_RUNTIME_NOT_READY",
+                    context = MigrationErrorContext.Start,
+                    targetComputerName = "Target",
+                )
+            )
+        assertEquals(listOf(MigrationText(MigrationCopy.ErrorTargetRuntimeNotReady, listOf("", "Target"))), fallback.messageParts)
     }
 }

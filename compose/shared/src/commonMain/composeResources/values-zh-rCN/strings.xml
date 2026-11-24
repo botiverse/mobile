@@ -1094,6 +1094,7 @@
     <string name="thread_action_card_blocked_target_server">只有 %1$s 的成员可以使用这张卡片。</string>
     <string name="thread_action_card_runs_on_server">将在 %1$s 上执行</string>
     <string name="thread_action_card_blocked_source_workspace">这是历史操作卡片，只能在来源工作空间执行。</string>
+    <string name="thread_action_card_blocked_need_migrate_agents">只有 %1$s 的创建者或有迁移 Agent 权限的人可以操作。</string>
     <string name="thread_action_card_field_description">描述</string>
     <string name="thread_action_card_field_humans">人类</string>
     <string name="thread_action_card_field_agents">Agent</string>
@@ -4559,6 +4560,19 @@
     <string name="agent_migration_error_status_failed">无法加载迁移状态。请刷新后重试。</string>
     <string name="agent_migration_error_target_runtime_detection_pending">目标计算机正在检测运行时，请稍后重试。</string>
     <string name="agent_migration_error_target_runtime_detection_incomplete">目标计算机上一次运行时检测没有完成 %1$s 的检测。请在该计算机页面重新检测运行时后重试。</string>
+    <string name="agent_migration_error_target_runtime_needs_login">%2$s 上没有登录 %1$s，agent 迁过去也无法回复。请先在那台计算机上登录，或者换一台计算机，也可以仍然迁移。</string>
+    <string name="agent_migration_error_target_runtime_credential_invalid">%2$s 上的 %1$s 登录被拒绝，agent 迁过去也无法回复。请在那台计算机上重新登录，或者换一台计算机，也可以仍然迁移。</string>
+    <string name="agent_migration_error_target_runtime_usage_limit">%2$s 上的 %1$s 账号已达到用量上限，重置前 agent 迁过去也无法回复。请换一台计算机，也可以仍然迁移。</string>
+    <string name="agent_migration_error_target_runtime_not_ready">%1$s 现在无法在 %2$s 上运行，agent 迁过去也无法回复。请让这台计算机的所有者检查一下，或换一台计算机，也可以仍然迁移。</string>
+    <string name="agent_migration_move_anyway">仍然迁移</string>
+    <string name="agent_migration_preflight_unverified">无法确认 %2$s 上是否已登录 %1$s。如果迁移后 agent 没有回复，请在那台计算机上登录。</string>
+    <string name="agent_migration_cannot_respond_title">已迁移，无法响应</string>
+    <string name="agent_migration_cannot_respond_needs_login">已迁移到 %1$s，但 agent 在那里无法回复：那台计算机上没有登录它的运行时。</string>
+    <string name="agent_migration_cannot_respond_credential_invalid">已迁移到 %1$s，但 agent 在那里无法回复：那台计算机上的运行时登录被拒绝。</string>
+    <string name="agent_migration_cannot_respond_usage_limit">已迁移到 %1$s，但 agent 在那里无法回复：它的运行时账号已达到用量上限。</string>
+    <string name="agent_migration_cannot_respond_first_turn_failed">已迁移到 %1$s，但它在那里的第一轮失败了。agent 的状态里有错误信息。</string>
+    <string name="agent_migration_cannot_respond_not_ready">已迁移到 %1$s，但 agent 现在在那里无法回复。请让这台计算机的所有者检查一下。</string>
+    <string name="agent_migration_log_outcome_cannot_respond">已迁移，无法响应</string>
     <string name="agent_migration_error_transport_lost">两台计算机之间的连接在传输过程中断开了。请确认两台计算机都在线，然后重试。</string>
     <string name="agent_migration_error_transport_lost_event">两台计算机之间的连接在传输过程中断开了。</string>
     <string name="agent_migration_error_transport_lost_at">两台计算机之间的连接在 %1$s 断开了，当时正在传输。</string>
