@@ -78,7 +78,7 @@ expect_reason() {
   fi
 }
 
-# expect_android <name> <expected "android_unit_scope run_designsystem_tests"> -- planner args
+# expect_android <name> <expected "android_unit_scope run_designsystem_tests run_roborazzi"> -- planner args
 expect_android() {
   local name="$1" want="$2"
   shift 3
@@ -88,7 +88,7 @@ expect_android() {
     failures=$((failures + 1))
     return
   fi
-  got="$(printf '%s\n' "$out" | awk -F= '/^android_unit_scope=/{u=$2} /^run_designsystem_tests=/{d=$2} END{print u, d}')"
+  got="$(printf '%s\n' "$out" | awk -F= '/^android_unit_scope=/{u=$2} /^run_designsystem_tests=/{d=$2} /^run_roborazzi=/{r=$2} END{print u, d, r}')"
   if test "$got" != "$want"; then
     echo "FAIL $name: want android unit tier '$want', got '$got'"
     failures=$((failures + 1))
@@ -174,42 +174,50 @@ expect_reason "premerge reason common"  "workflow_dispatch-premerge:no-ios"     
 expect_reason "premerge reason release" "workflow_dispatch-premerge:release-full" -- workflow_dispatch "$common" false feature premerge "" release/1.20.0
 expect_reason "premerge reason unknown" "workflow_dispatch-premerge:diff-unavailable-fail-closed" -- workflow_dispatch "$unknown" false feature premerge "" main
 
-# Android unit tier (artin 2026-11-22: PRs run only a little, like slock). jvm
-# = compile everything, plain JVM unit tests only (no Robolectric, no :shared
-# goldens); the design system's tests only when compose/designsystem/ changed
-# or the diff is unknown. all = the whole suite and both golden sets. none = no
-# Android job. 9th arg: the record_screenshots dispatch input.
-#                                          scope designsystem
-expect_android "pr commonMain"             "jvm false"  -- pull_request "$common" false feature
-expect_android "pr android-only"           "jvm false"  -- pull_request "$android_only" false feature
-expect_android "pr designsystem"           "jvm true"   -- pull_request "$designsystem" false feature
-expect_android "pr designsystem + shared"  "jvm true"   -- pull_request "$designsystem_mixed" false feature
-expect_android "pr ci-control"             "jvm false"  -- pull_request "$ci_control" false feature
-expect_android "pr version catalog bump"   "all true"   -- pull_request "$deps_bump" false feature
-expect_android "pr module build script"   "all true"   -- pull_request "$module_build" false feature
-expect_android "pr third_party + shared"   "all true"   -- pull_request "$third_party_patch" false feature
-expect_android "pr diff unknown"           "jvm true"   -- pull_request "$unknown" false feature
-expect_android "pr docs-only (no Android)" "none false" -- pull_request "$docs" false feature
-expect_android "pr look-alike branch"      "jvm false"  -- pull_request "$common" false feature/stamp-mq/x
-expect_android "pr full-ci"                "all true"   -- pull_request "$common" true feature
-expect_android "queue candidate"           "all true"   -- pull_request "$common" false stamp-mq/b1
-expect_android "queue candidate docs-only" "all true"   -- pull_request "$docs" false stamp-mq/b1
-expect_android "merge_group"               "all true"   -- merge_group "$empty" false gh-readonly-queue/main/x
-expect_android "main push commonMain"      "all true"   -- push "$common" false main
-expect_android "main push android-only"    "all true"   -- push "$android_only" false main
-expect_android "main push iosMain"         "none false" -- push "$ios_main" false main
-expect_android "main push queue reuse"     "none false" -- push "$common" false main "" "" "" true
-expect_android "release push"              "all true"   -- push "$docs" false release-1.20
-expect_android "schedule"                  "all true"   -- schedule "$empty" false main
-expect_android "dispatch scope=pr"         "jvm true"   -- workflow_dispatch "$empty" false feature pr
-expect_android "dispatch scope=pr record"  "all true"   -- workflow_dispatch "$empty" false feature pr "" "" false true
-expect_android "dispatch scope=full"       "all true"   -- workflow_dispatch "$empty" false feature full
-expect_android "dispatch scope=full record" "all true"  -- workflow_dispatch "$empty" false feature full "" "" false true
-expect_android "dispatch scope=ios"        "none false" -- workflow_dispatch "$empty" false feature ios
-expect_android "dispatch scope=ios record" "none false" -- workflow_dispatch "$empty" false feature ios "" "" false true
-expect_android "premerge commonMain"       "none false" -- workflow_dispatch "$common" false feature premerge "" main
-expect_android "premerge diff unknown"     "jvm true"   -- workflow_dispatch "$unknown" false feature premerge "" main
-expect_android "premerge release/ base"    "all true"   -- workflow_dispatch "$android_only" false feature premerge "" release/1.20.0
+# Android unit & Roborazzi tier (artin 2026-11-22 & 2026-11-24, #proj-mobile:#340).
+# - jvm = compile everything, plain JVM unit tests only (no Robolectric); the
+#   design system's non-screenshot unit & Compose UI logic tests only when
+#   compose/designsystem/ changed or the diff is unknown.
+# - run_roborazzi=false on all ordinary PRs (including designsystem and
+#   build/deps PRs), scope=pr, and main premerge with unknown diff: Roborazzi
+#   / vcase screenshot golden verification runs only post-merge (main,
+#   release-*), on the nightly schedule, merge queue, full-ci PRs, scope=full,
+#   premerge into a release base, and record_screenshots=true.
+# - all = the whole non-screenshot suite (and both golden sets when
+#   run_roborazzi=true). none = no Android job.
+# 9th arg: the record_screenshots dispatch input.
+#                                          scope designsystem roborazzi
+expect_android "pr commonMain"             "jvm false false"  -- pull_request "$common" false feature
+expect_android "pr android-only"           "jvm false false"  -- pull_request "$android_only" false feature
+expect_android "pr designsystem"           "jvm true false"   -- pull_request "$designsystem" false feature
+expect_android "pr designsystem + shared"  "jvm true false"   -- pull_request "$designsystem_mixed" false feature
+expect_android "pr ci-control"             "jvm false false"  -- pull_request "$ci_control" false feature
+expect_android "pr version catalog bump"   "all true false"   -- pull_request "$deps_bump" false feature
+expect_android "pr module build script"    "all true false"   -- pull_request "$module_build" false feature
+expect_android "pr third_party + shared"   "all true false"   -- pull_request "$third_party_patch" false feature
+expect_android "pr diff unknown"           "jvm true false"   -- pull_request "$unknown" false feature
+expect_android "pr docs-only (no Android)" "none false false" -- pull_request "$docs" false feature
+expect_android "pr look-alike branch"      "jvm false false"  -- pull_request "$common" false feature/stamp-mq/x
+expect_android "pr full-ci"                "all true true"    -- pull_request "$common" true feature
+expect_android "queue candidate"           "all true true"    -- pull_request "$common" false stamp-mq/b1
+expect_android "queue candidate docs-only" "all true true"    -- pull_request "$docs" false stamp-mq/b1
+expect_android "merge_group"               "all true true"    -- merge_group "$empty" false gh-readonly-queue/main/x
+expect_android "main push commonMain"      "all true true"    -- push "$common" false main
+expect_android "main push designsystem"    "all true true"    -- push "$designsystem" false main
+expect_android "main push android-only"    "all true true"    -- push "$android_only" false main
+expect_android "main push iosMain"         "none false false" -- push "$ios_main" false main
+expect_android "main push queue reuse"     "none false false" -- push "$common" false main "" "" "" true
+expect_android "release push"              "all true true"    -- push "$docs" false release-1.20
+expect_android "schedule"                  "all true true"    -- schedule "$empty" false main
+expect_android "dispatch scope=pr"         "jvm true false"   -- workflow_dispatch "$empty" false feature pr
+expect_android "dispatch scope=pr record"  "all true true"    -- workflow_dispatch "$empty" false feature pr "" "" false true
+expect_android "dispatch scope=full"       "all true true"    -- workflow_dispatch "$empty" false feature full
+expect_android "dispatch scope=full record" "all true true"   -- workflow_dispatch "$empty" false feature full "" "" false true
+expect_android "dispatch scope=ios"        "none false false" -- workflow_dispatch "$empty" false feature ios
+expect_android "dispatch scope=ios record" "none false false" -- workflow_dispatch "$empty" false feature ios "" "" false true
+expect_android "premerge commonMain"       "none false false" -- workflow_dispatch "$common" false feature premerge "" main
+expect_android "premerge diff unknown"     "jvm true false"   -- workflow_dispatch "$unknown" false feature premerge "" main
+expect_android "premerge release/ base"    "all true true"    -- workflow_dispatch "$android_only" false feature premerge "" release/1.20.0
 
 expect_reject "dispatch empty scope"          -- workflow_dispatch "$empty" false feature ""
 expect_reject "dispatch unknown scope"        -- workflow_dispatch "$empty" false feature nightly

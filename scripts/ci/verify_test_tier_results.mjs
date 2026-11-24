@@ -23,6 +23,7 @@ export function verifyTierResults(needs) {
   const runIosXcode270 = requireBoolean(outputs.run_ios_xcode270, "run_ios_xcode270");
   const runIosXcode271 = requireBoolean(outputs.run_ios_xcode271, "run_ios_xcode271");
   const runIosTests = requireBoolean(outputs.run_ios_tests, "run_ios_tests");
+  const runRoborazzi = requireBoolean(outputs.run_roborazzi, "run_roborazzi");
   const runDeviceSuite = requireBoolean(outputs.run_device_suite, "run_device_suite");
   // Stamp merge queue (2026-11-19). queueCandidate: Stamp's managed draft PR; Stamp accepts the
   // run only when every job succeeded, so the emulator jobs the plan does not select run as
@@ -55,6 +56,7 @@ export function verifyTierResults(needs) {
   // or 27.1 alone (Stamp merge queue batch).
   if (runIos && !runIosXcode270 && !runIosXcode271) throw new Error("iOS run without an iOS lane");
   if (runIosTests && !runIos) throw new Error("iOS tests require iOS");
+  if (runRoborazzi && !runAndroid) throw new Error("Roborazzi requires Android");
 
   // The `ios` job is a matrix over ios_lanes, and needs.ios.result is success only when every
   // leg succeeded. Pin the lane list to the booleans so a planned 27.1 lane cannot be dropped
@@ -96,6 +98,7 @@ export function verifyTierResults(needs) {
     run_ios_xcode271: runIosXcode271,
     ios_lanes: iosLanes,
     run_ios_tests: runIosTests,
+    run_roborazzi: runRoborazzi,
     run_device_suite: runDeviceSuite,
     attachment_api_levels: attachmentLevels,
     queue_candidate: queueCandidate,
@@ -104,7 +107,7 @@ export function verifyTierResults(needs) {
   };
 }
 
-function fixture({ android, ios, iosXcode270 = ios, iosXcode271 = false, iosTests = false, deviceSuite, attachmentLevels, queueCandidate = false, queueReuse = false }) {
+function fixture({ android, ios, iosXcode270 = ios, iosXcode271 = false, iosTests = false, roborazzi = false, deviceSuite, attachmentLevels, queueCandidate = false, queueReuse = false }) {
   const levels = attachmentLevels ?? [];
   const lanes = [...(iosXcode270 ? [IOS_DEFAULT_LANE] : []), ...(iosXcode271 ? [IOS_XCODE271_LANE] : [])];
   const needs = {
@@ -117,6 +120,7 @@ function fixture({ android, ios, iosXcode270 = ios, iosXcode271 = false, iosTest
         run_ios_xcode271: String(iosXcode271),
         ios_lanes: JSON.stringify(lanes),
         run_ios_tests: String(iosTests),
+        run_roborazzi: String(roborazzi),
         run_device_suite: String(deviceSuite),
         attachment_api_levels: JSON.stringify(levels),
         queue_candidate: String(queueCandidate),
@@ -145,13 +149,15 @@ function expectFailure(needs, message) {
 function selfTest() {
   const none = { android: false, ios: false, deviceSuite: false, attachmentLevels: [] };
   verifyTierResults(fixture(none));
-  verifyTierResults(fixture({ ...none, android: true }));
+  // ordinary PR Android tier (no Roborazzi) and post-merge main push (with Roborazzi)
+  verifyTierResults(fixture({ ...none, android: true, roborazzi: false }));
+  verifyTierResults(fixture({ ...none, android: true, roborazzi: true }));
   verifyTierResults(fixture({ ...none, ios: true }));
-  verifyTierResults(fixture({ ...none, android: true, ios: true }));
-  // release-* push: both iOS lanes, no device suite
-  verifyTierResults(fixture({ ...none, android: true, ios: true, iosXcode271: true, iosTests: true }));
-  // Stamp merge queue candidate: Android + the Xcode 27.1 lane alone, emulator jobs as no-ops
-  const queue = { ...none, android: true, ios: true, iosXcode270: false, iosXcode271: true, queueCandidate: true };
+  verifyTierResults(fixture({ ...none, android: true, ios: true, roborazzi: true }));
+  // release-* push: both iOS lanes, Roborazzi on, no device suite
+  verifyTierResults(fixture({ ...none, android: true, ios: true, iosXcode271: true, iosTests: true, roborazzi: true }));
+  // Stamp merge queue candidate: Android + Roborazzi + the Xcode 27.1 lane alone, emulator jobs as no-ops
+  const queue = { ...none, android: true, ios: true, iosXcode270: false, iosXcode271: true, roborazzi: true, queueCandidate: true };
   verifyTierResults(fixture(queue));
   // queue candidate touching iOS test sources: + iOS tests
   verifyTierResults(fixture({ ...queue, iosTests: true }));
@@ -159,12 +165,12 @@ function selfTest() {
   verifyTierResults(fixture({ ...none, queueReuse: true }));
   // main push touching iOS test sources: iOS compile + tests
   verifyTierResults(fixture({ ...none, ios: true, iosTests: true }));
-  // full-ci PR: device suite + API31 only, Xcode 27.0 iOS lane only
-  verifyTierResults(fixture({ android: true, ios: true, deviceSuite: true, attachmentLevels: [31], iosTests: true }));
-  // scope=full dispatch: full device suite + all attachment legs, Xcode 27.0 iOS lane only
-  verifyTierResults(fixture({ android: true, ios: true, iosTests: true, deviceSuite: true, attachmentLevels: [29, 31, 34] }));
-  // nightly: full device suite + all attachment legs, both iOS lanes
-  verifyTierResults(fixture({ android: true, ios: true, iosXcode271: true, iosTests: true, deviceSuite: true, attachmentLevels: [29, 31, 34] }));
+  // full-ci PR: Roborazzi + device suite + API31 only, Xcode 27.0 iOS lane only
+  verifyTierResults(fixture({ android: true, ios: true, roborazzi: true, deviceSuite: true, attachmentLevels: [31], iosTests: true }));
+  // scope=full dispatch: Roborazzi + full device suite + all attachment legs, Xcode 27.0 iOS lane only
+  verifyTierResults(fixture({ android: true, ios: true, iosTests: true, roborazzi: true, deviceSuite: true, attachmentLevels: [29, 31, 34] }));
+  // nightly: Roborazzi + full device suite + all attachment legs, both iOS lanes
+  verifyTierResults(fixture({ android: true, ios: true, iosXcode271: true, iosTests: true, roborazzi: true, deviceSuite: true, attachmentLevels: [29, 31, 34] }));
 
   // fixture() and the expectation table must not share one formula: a self-test whose fixture
   // is generated by the rule under test cannot fail on a wrong rule (#2294). Pin the iOS-only
@@ -282,6 +288,18 @@ function selfTest() {
   const badIosTestsFlag = fixture({ ...none, ios: true });
   badIosTestsFlag.plan.outputs.run_ios_tests = "yes";
   expectFailure(badIosTestsFlag, "non-boolean run_ios_tests");
+
+  const roborazziWithoutAndroid = fixture({ ...none, ios: true });
+  roborazziWithoutAndroid.plan.outputs.run_roborazzi = "true";
+  expectFailure(roborazziWithoutAndroid, "Roborazzi without Android");
+
+  const missingRoborazziFlag = fixture({ ...none, android: true });
+  delete missingRoborazziFlag.plan.outputs.run_roborazzi;
+  expectFailure(missingRoborazziFlag, "missing run_roborazzi");
+
+  const badRoborazziFlag = fixture({ ...none, android: true });
+  badRoborazziFlag.plan.outputs.run_roborazzi = "yes";
+  expectFailure(badRoborazziFlag, "non-boolean run_roborazzi");
 
   const badLevels = fixture({ ...none, android: true, attachmentLevels: [31] });
   badLevels.plan.outputs.attachment_api_levels = "not-json";
