@@ -21,6 +21,7 @@ import build.raft.app.model.MemberServerRef
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -506,6 +507,92 @@ internal fun raftComposerImagePickerFilesAreStrictImages(files: List<PlatformFil
                 mimeType = file.mimeType.orEmpty(),
             )
         }
+/**
+ * Synchronously ensures [composerDraftViewModel] has started the exact `(instanceId, draftKey)`
+ * session before [ThreadComposerRoute] renders its first frame. [SharedThreadComposerDraftStore]'s
+ * `Start` reduction and persistence read are synchronous in memory, so calling this during
+ * composition (guarded by an O(1) identity equality check) eliminates the Frame-1 blank
+ * placeholder flash while staying idempotent across recompositions.
+ */
+internal fun ensureThreadComposerDraftStarted(
+    composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    composer: RaftThreadComposerPayload,
+    draftKey: String?,
+) {
+    val normalizedDraftKey = draftKey?.takeIf { it.isNotBlank() }
+    val current = composerDraftViewModel.state.value
+    if (current.instanceId == composer.instanceId && current.draftKey == normalizedDraftKey) {
+        return
+    }
+    composerDraftViewModel.dispatch(
+        SharedThreadComposerDraftIntent.Start(
+            composer = composer,
+            draftKey = normalizedDraftKey,
+        )
+    )
+}
+
+internal class ThreadComposerRouteArgs(
+    val baseComposerState: RaftThreadComposerPayload,
+    val composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    val renderedPayload: RaftThreadScreenPayload,
+    val timelineSlice: ThreadTimelineSlice,
+    val resolvedAuxiliaryThreadId: String?,
+    val surface: ThreadComposerSurface,
+    val memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
+    val channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
+    val agentStatusResolver: RaftAgentStatusResolver,
+    val onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    val onDropFiles: (ThreadComposerFileDrop) -> Unit,
+    val onSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
+    val insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
+    val onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
+    val onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
+    val composerSendKeyEnabled: Boolean = false,
+    val composerSendKey: build.raft.app.data.RaftComposerSendKey = build.raft.app.data.RaftComposerSendKey.Default,
+    val onKeyboardHeightChange: (Float) -> Unit = {},
+    val adaptiveNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
+    val removedAppBot: RaftAppBotIdentity? = null,
+    val autofocusOnOpen: ComposerFocusOnOpen? = null,
+    val optimisticPendingAccess: Boolean = false,
+)
+
+/**
+ * Route-scoped movable composer instance shared between the cold LoadingShell and FeatureSurfaces
+ * so transitioning from LoadingShell to FeatureSurfaces keeps the live editor mounted without
+ * dropping focus, keyboard state, or typed draft.
+ */
+internal val LocalThreadMovableComposer =
+    compositionLocalOf<(@Composable (ThreadComposerRouteArgs) -> Unit)?> { null }
+
+@Composable
+internal fun ThreadComposerRouteFromArgs(args: ThreadComposerRouteArgs) {
+    ThreadComposerRoute(
+        baseComposerState = args.baseComposerState,
+        composerDraftViewModel = args.composerDraftViewModel,
+        renderedPayload = args.renderedPayload,
+        timelineSlice = args.timelineSlice,
+        resolvedAuxiliaryThreadId = args.resolvedAuxiliaryThreadId,
+        surface = args.surface,
+        memberSuggestionsFlow = args.memberSuggestionsFlow,
+        channelSuggestionsFlow = args.channelSuggestionsFlow,
+        agentStatusResolver = args.agentStatusResolver,
+        onEvent = args.onEvent,
+        onDropFiles = args.onDropFiles,
+        onSendRequest = args.onSendRequest,
+        insertMentionRequest = args.insertMentionRequest,
+        onInsertMentionConsumed = args.onInsertMentionConsumed,
+        onSuggestionDemandChanged = args.onSuggestionDemandChanged,
+        composerSendKeyEnabled = args.composerSendKeyEnabled,
+        composerSendKey = args.composerSendKey,
+        onKeyboardHeightChange = args.onKeyboardHeightChange,
+        adaptiveNativeEditingStateReader = args.adaptiveNativeEditingStateReader,
+        removedAppBot = args.removedAppBot,
+        autofocusOnOpen = args.autofocusOnOpen,
+        optimisticPendingAccess = args.optimisticPendingAccess,
+    )
+}
+
 @Composable
 internal fun ThreadComposerRoute(
     baseComposerState: RaftThreadComposerPayload,
@@ -532,6 +619,8 @@ internal fun ThreadComposerRoute(
     removedAppBot: RaftAppBotIdentity? = null,
     /** Focus the composer when the conversation opens (ComposerAutofocusPolicy.kt). */
     autofocusOnOpen: ComposerFocusOnOpen? = null,
+    /** True while rendering optimistically before access resolution finishes. */
+    optimisticPendingAccess: Boolean = false,
 ) {
     if (removedAppBot != null) {
         // The editor never mounts, so the saved draft stays in the store untouched.
@@ -559,11 +648,18 @@ internal fun ThreadComposerRoute(
         return
     }
     val composerState =
-        remember(baseComposerState, composerDraftState, renderedPayload.canSend, resolvedAuxiliaryThreadId) {
+        remember(
+            baseComposerState,
+            composerDraftState,
+            renderedPayload.canSend,
+            resolvedAuxiliaryThreadId,
+            optimisticPendingAccess,
+        ) {
             baseComposerState.withThreadComposerDraftState(
                 draftState = composerDraftState,
                 renderedPayload = renderedPayload,
-                resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId
+                resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
+                optimisticPendingAccess = optimisticPendingAccess,
             )
         }
     val composerUiState = composerState.toThreadComposerUiState()

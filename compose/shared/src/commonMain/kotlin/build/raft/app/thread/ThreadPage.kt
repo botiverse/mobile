@@ -197,6 +197,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -894,6 +895,10 @@ private fun ThreadPageScreen(
                 homeSnapshotLookupProvider =
                     sharedHomeStore?.let { store ->
                         { serverId -> store.awaitSnapshotLookupFor(serverId, ThreadHomeSnapshotAwaitTimeoutMs) }
+                    },
+                immediateHomeSnapshotLookupProvider =
+                    sharedHomeStore?.let { store ->
+                        { serverId -> store.snapshotLookupFor(serverId) }
                     },
                 channelProfileUpdateSink = { result ->
                     sharedHomeStore?.accept(
@@ -2741,6 +2746,22 @@ private fun SharedThreadRouteContentContent(
             }
         onDispose { canonicalFinalLifecycleEffects?.dispose(handle) }
     }
+    // Hoist the route's draft ViewModel, pending optimistic send slot, and movable composer above
+    // LoadingShell so cold opens render the real optimistic composer on Frame 1 and move the live
+    // editor into FeatureSurfaces without losing focus, keyboard, or typed draft.
+    val composerDraftViewModel: SharedThreadComposerDraftViewModel =
+        viewModel(key = "shared-thread-composer-$threadInstanceKey") {
+            SharedThreadComposerDraftViewModel(persistSlices = listOf(composerDraftPersistSlice))
+        }
+    FlushComposerDraftOnLeave(composerDraftViewModel, threadInstanceKey)
+    val pendingOptimisticSendState =
+        remember(threadInstanceKey) { mutableStateOf<ThreadComposerSendRequest?>(null) }
+    val movableThreadComposer =
+        remember(threadInstanceKey) {
+            movableContentOf<ThreadComposerRouteArgs> { args ->
+                ThreadComposerRouteFromArgs(args)
+            }
+        }
     // Loading still returns before feature-owner construction, but the one movable
     // scaffold instance keeps the route root/header composition when its lightweight
     // body is replaced by the feature body after canonical access resolves.
@@ -2765,6 +2786,25 @@ private fun SharedThreadRouteContentContent(
                     dmLoungeOpening = false,
                 )
             }
+        val loadingNowEpochMillis =
+            payload.nowEpochMillis ?: kotlin.time.Clock.System.now().toEpochMilliseconds()
+        val loadingExternalFreezeState =
+            externalFreezeState(
+                surfaceKind = payload.surfaceKind,
+                parentChannelId = payload.parentChannelId,
+                lookupIds = conversationDirectoryLookupIds,
+                projections = billingDirectoryProjections,
+                nowEpochMillis = loadingNowEpochMillis,
+            )
+        val loadingJointBillingNotice =
+            jointBillingNoticeState(
+                surfaceKind = payload.surfaceKind,
+                parentChannelId = payload.parentChannelId,
+                lookupIds = conversationDirectoryLookupIds,
+                projections = billingDirectoryProjections,
+                nowEpochMillis = loadingNowEpochMillis,
+            )
+        val loadingSendKey = build.raft.app.data.RaftComposerSendKeyRuntime.observeSendKey()
         ThreadDeferredLoadingRouteContent(
             scaffold = movableThreadRouteScaffold,
             payload = payload,
@@ -2773,6 +2813,96 @@ private fun SharedThreadRouteContentContent(
             onBack = onBack,
             showLoadingIndicator = timelineSlice.loadingIndicatorRevealed,
             lounge = loadingLounge,
+            optimisticComposerHost =
+                ThreadLoadingOptimisticComposerHost(
+                    accessResolution = renderSlice.accessResolution,
+                    replyParentAuthority = renderSlice.replyParentAuthority,
+                    composerDraftViewModel = composerDraftViewModel,
+                    composerLocked = threadLimitLocksWrites(loadingJointBillingNotice, loadingExternalFreezeState),
+                    externalFrozen = loadingExternalFreezeState == ExternalFreezeState.Active,
+                    movableComposer = movableThreadComposer,
+                    composerSendKey = loadingSendKey,
+                    onSendRequest = { request ->
+                        composerDraftViewModel.dispatch(
+                            SharedThreadComposerDraftIntent.Change(
+                                seedText = request.value.text,
+                                seedAsTask = request.asTask,
+                            )
+                        )
+                        val hasSendableDraft =
+                            request.value.text.isNotBlank() ||
+                                composerDraftViewModel.state.value.uploadedAttachments.isNotEmpty()
+                        if (hasSendableDraft) {
+                            pendingOptimisticSendState.value = request
+                            bridge.log(
+                                "thread_composer_send_deferred_for_access stage=loading_shell " +
+                                    "instanceId=${payload.instanceId} textLen=${request.value.text.length}"
+                            )
+                            ThreadComposerSendAdmission.Deferred
+                        } else {
+                            ThreadComposerSendAdmission.Rejected
+                        }
+                    },
+                    onEvent = { action, value, asTask, _ ->
+                        when (action) {
+                            "change", "staleEditorCommandIgnored" ->
+                                composerDraftViewModel.dispatch(
+                                    SharedThreadComposerDraftIntent.Change(
+                                        seedText = value,
+                                        seedAsTask = asTask,
+                                    )
+                                )
+                            "toggleAsTask" ->
+                                composerDraftViewModel.dispatch(
+                                    SharedThreadComposerDraftIntent.Change(seedAsTask = asTask)
+                                )
+                            "send" -> {
+                                val currentDraft = composerDraftViewModel.state.value
+                                val sendText = value ?: currentDraft.seedText
+                                val sendAsTask = asTask ?: currentDraft.seedAsTask
+                                composerDraftViewModel.dispatch(
+                                    SharedThreadComposerDraftIntent.Change(
+                                        seedText = sendText,
+                                        seedAsTask = sendAsTask,
+                                    )
+                                )
+                                if (sendText.isNotBlank() || currentDraft.uploadedAttachments.isNotEmpty()) {
+                                    pendingOptimisticSendState.value =
+                                        ThreadComposerSendRequest(
+                                            editorSessionId = 0L,
+                                            value = TextFieldValue(sendText),
+                                            asTask = sendAsTask,
+                                        )
+                                    bridge.log(
+                                        "thread_composer_send_deferred_for_access stage=loading_shell " +
+                                            "instanceId=${payload.instanceId} textLen=${sendText.length}"
+                                    )
+                                }
+                            }
+                            "dismissMention" ->
+                                value?.takeIf { it.isNotBlank() }?.let { resolutionId ->
+                                    composerDraftViewModel.dispatch(
+                                        SharedThreadComposerDraftIntent.DismissMentionAction(resolutionId)
+                                    )
+                                }
+                            "dismissMentionNotice" ->
+                                composerDraftViewModel.dispatch(
+                                    SharedThreadComposerDraftIntent.ClearMentionActionNotice
+                                )
+                            ThreadComposerDismissUnresolvedMentionsEvent ->
+                                composerDraftViewModel.dispatch(
+                                    SharedThreadComposerDraftIntent.DismissUnresolvedMentions
+                                )
+                            else -> {
+                                if (threadComposerEventRequiresWriteAccess(action)) {
+                                    bridge.log(
+                                        "thread_composer_action_blocked action=$action reason=loading_shell_access_pending"
+                                    )
+                                }
+                            }
+                        }
+                    },
+                ),
         )
         return
     }
@@ -3735,11 +3865,6 @@ private fun SharedThreadRouteContentContent(
             ?: emptyChannelSuggestionsFlow
     }
     val filesViewModel = rememberThreadFilesViewModel(featureOwnerMountPlan.mountFilesOwner, threadInstanceKey, dataSource, bridge, sharedStores)
-    val composerDraftViewModel: SharedThreadComposerDraftViewModel =
-        viewModel(key = "shared-thread-composer-$threadInstanceKey") {
-            SharedThreadComposerDraftViewModel(persistSlices = listOf(composerDraftPersistSlice))
-        }
-    FlushComposerDraftOnLeave(composerDraftViewModel, threadInstanceKey)
     // dm #119: an open keyboard goes down before the image picker / editor opens and comes back
     // when the user is back at the composer (ThreadComposerKeyboardHandoff.kt).
     val composerKeyboardHandoff =
@@ -4057,27 +4182,6 @@ private fun SharedThreadRouteContentContent(
         }
     }
 
-    LaunchedEffect(composerDraftViewModel, threadInstanceKey, resolvedAuxiliaryThreadId) {
-        val composer =
-            renderedPayload
-                .resolveThreadComposer(displayName = headerDisplayModel.title)
-                .copy(streamChannelId = resolvedAuxiliaryThreadId)
-        val draftKey =
-            composer
-                .toThreadComposerSurface(
-                    channelId = resolvedAuxiliaryThreadId.orEmpty(),
-                    parentChannelId = renderedPayload.parentChannelId,
-                    memberSuggestionHeadersVisible = renderedPayload.threadComposerMemberSuggestionHeadersVisible()
-                )
-                .threadComposerDraftKey()
-        composerDraftViewModel.dispatch(
-            SharedThreadComposerDraftIntent.Start(
-                composer = composer,
-                draftKey = draftKey
-            )
-        )
-    }
-
     val latestThreadFeatureRealtimeEventHandler by rememberUpdatedState<suspend (String, RealtimeEvent) -> Unit>(
         { serverId, event ->
             if (event is TaskUpdated) {
@@ -4207,6 +4311,17 @@ private fun SharedThreadRouteContentContent(
                 memberSuggestionHeadersVisible = renderedPayload.threadComposerMemberSuggestionHeadersVisible()
             ).withTaskV2().copy(assistantContext = assistantPanelContext)
         }
+    // Synchronously start the draft session before ThreadPageContent renders its first frame so
+    // ThreadComposerRoute mounts the real editor on Frame 1 instead of flashing the resting-height
+    // placeholder until a post-Frame-1 LaunchedEffect runs.
+    val composerDraftKey = remember(composerSurface) { composerSurface.threadComposerDraftKey() }
+    remember(composerDraftViewModel, scopedBaseComposerState.instanceId, composerDraftKey) {
+        ensureThreadComposerDraftStarted(
+            composerDraftViewModel = composerDraftViewModel,
+            composer = scopedBaseComposerState,
+            draftKey = composerDraftKey,
+        )
+    }
     fun currentComposerPayload(): RaftThreadComposerPayload =
         scopedBaseComposerState.withThreadComposerDraftState(
             draftState = composerDraftViewModel.state.value,
@@ -4967,6 +5082,7 @@ private fun SharedThreadRouteContentContent(
             attachmentUploadFilesByLocalIdState = attachmentUploadFilesByLocalIdState,
             externalShareSendRequestedState = externalShareSendRequestedState,
             externalShareExpectedAuthorityState = externalShareExpectedAuthorityState,
+            pendingOptimisticSendState = pendingOptimisticSendState,
             composerImageActionCounterState = composerImageActionCounterState,
             latestUploadComposerAttachmentFilesState = latestUploadComposerAttachmentFilesState,
             currentComposerPayloadFn = { currentComposerPayload() },
@@ -4984,6 +5100,54 @@ private fun SharedThreadRouteContentContent(
     val latestPerformComposerSend by rememberUpdatedState<() -> Boolean> { performComposerSend() }
     fun handleComposerSendRequest(request: ThreadComposerSendRequest): ThreadComposerSendAdmission =
         threadRouteComposerActions.handleComposerSendRequest(request)
+    val latestHandleComposerSendRequest by rememberUpdatedState<(ThreadComposerSendRequest) -> ThreadComposerSendAdmission> { req ->
+        handleComposerSendRequest(req)
+    }
+    val pendingOptimisticSend = pendingOptimisticSendState.value
+    LaunchedEffect(
+        pendingOptimisticSend,
+        renderSlice.accessResolution,
+        renderSlice.writeActionsEnabled,
+        threadLimitLocked,
+        renderedThread.channelArchived,
+        renderedThread.joined,
+        renderedThread.canSend,
+    ) {
+        val pending = pendingOptimisticSend ?: return@LaunchedEffect
+        if (renderSlice.accessResolution == ThreadAccessResolution.Loading) {
+            delay(10_000L)
+            if (pendingOptimisticSendState.value === pending) {
+                pendingOptimisticSendState.value = null
+                bridge.log("thread_composer_deferred_send_aborted reason=access_timeout")
+            }
+            return@LaunchedEffect
+        }
+        pendingOptimisticSendState.value = null
+        if (
+            renderSlice.accessResolution == ThreadAccessResolution.Resolved &&
+            renderSlice.writeActionsEnabled &&
+            !threadLimitLocked &&
+            !renderedThread.channelArchived &&
+            renderedThread.joined &&
+            renderedThread.canSend
+        ) {
+            val latestDraft = composerDraftViewModel.state.value
+            val resolvedRequest =
+                pending.copy(
+                    value = TextFieldValue(latestDraft.seedText),
+                    asTask = latestDraft.seedAsTask,
+                )
+            latestHandleComposerSendRequest(resolvedRequest)
+        } else {
+            bridge.log(
+                "thread_composer_deferred_send_aborted " +
+                    "accessResolution=${renderSlice.accessResolution.name} " +
+                    "writeActions=${renderSlice.writeActionsEnabled} " +
+                    "limitLocked=$threadLimitLocked archived=${renderedThread.channelArchived} " +
+                    "joined=${renderedThread.joined} canSend=${renderedThread.canSend}"
+            )
+        }
+    }
     LaunchedEffect(composerDraftViewModel, threadInstanceKey) {
         composerDraftViewModel.state.collect { draftState ->
             if (!externalShareSendRequested) return@collect
@@ -5968,6 +6132,7 @@ private fun SharedThreadRouteContentContent(
             )
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
+                LocalThreadMovableComposer provides movableThreadComposer,
                 LocalThreadQuoteReplyHost provides quoteReplyHost,
                 LocalRaftViewerServerLogos provides viewerServerLogos,
                 LocalRaftChannelJointServers provides channelJointServers,
@@ -6696,13 +6861,7 @@ private fun SharedThreadRouteContentContent(
                 }
             },
             onThreadEvent = ThreadEventHandler(dispatch = threadRouteEventHandler::handle),
-            onComposerSendRequest = sendRequest@ { request ->
-                if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled && !threadLimitLocked, "send")) {
-                    bridge.log("thread_composer_action_blocked action=send reason=${if (threadLimitLocked) "channel_limit_locked" else "read_only_access_fallback"}")
-                    return@sendRequest ThreadComposerSendAdmission.Rejected
-                }
-                handleComposerSendRequest(request)
-            },
+            onComposerSendRequest = { request -> handleComposerSendRequest(request) },
             onComposerDropFiles = { drop ->
                 // Files dragged onto the composer (web MessageInput handleDrop): the web's folder
                 // notice, then the host reads them as a File pick and the picker's admission

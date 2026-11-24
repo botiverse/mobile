@@ -734,5 +734,56 @@ internal fun RaftThreadScreenPayload.isThreadPrimaryFooterReady(
         timelineSlice.status in ThreadResolvedContentStatuses &&
         !shouldRenderThreadEarlyLoadingShell(timelineSlice)
 
+/**
+ * Whether a conversation whose primary footer is not yet resolved ([isThreadPrimaryFooterReady] is
+ * false — e.g. warm/durable frame while access refreshes, or cold loading shell) should show the
+ * optimistic first-frame composer instead of an empty blank placeholder.
+ *
+ * Admits only when there is NO known blocker: no access/load error, not permission-denied, not
+ * limit-locked/frozen, not archived, not in an Agent Lounge footer state, on the Chat tab, with
+ * composer enabled on the route surface, and not already known to be unjoined (reply threads whose
+ * parent authority is still [ReplyParentAuthorityStatus.Resolving] are admitted optimistically
+ * because cached/route reply payloads start with `joined = false` until parent authority resolves).
+ */
+internal fun threadShowsOptimisticComposer(
+    accessResolution: ThreadAccessResolution,
+    payloadStatus: String,
+    surfaceKind: String,
+    joined: Boolean,
+    showComposer: Boolean,
+    selectedTab: String?,
+    composerLocked: Boolean,
+    channelArchived: Boolean = false,
+    externalFrozen: Boolean = false,
+    loungeFooterActive: Boolean = false,
+    replyParentAuthority: ReplyParentAuthorityStatus = ReplyParentAuthorityStatus.Resolving,
+): Boolean {
+    if (accessResolution == ThreadAccessResolution.Error || accessResolution == ThreadAccessResolution.NoPermission) {
+        return false
+    }
+    if (payloadStatus == "error" || payloadStatus == "no_permission") return false
+    if (composerLocked || channelArchived || externalFrozen || loungeFooterActive) return false
+    if (!showComposer) return false
+    if (RaftThreadTab.fromWireValue(selectedTab) != RaftThreadTab.Chat) return false
+    return joined ||
+        (surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+            replyParentAuthority == ReplyParentAuthorityStatus.Resolving)
+}
+
+/**
+ * Channel id used to key the composer's draft and surface during optimistic pre-resolution.
+ * Matches [RaftThreadScreenPayload.resolvedAuxiliaryThreadId] whenever available; during a cold
+ * reply-thread load (`status == "loading"`) where `resolvedAuxiliaryThreadId()` returns null,
+ * falls back to the route's known `timelineChannelId` (e.g. opened from Activity or reply badge),
+ * or to `parentChannelId` (matching `readWithReplyFallback` so any draft typed before the server
+ * assigns a reply stream id migrates automatically).
+ */
+internal fun RaftThreadScreenPayload.optimisticComposerChannelId(
+    resolvedAuxiliaryThreadId: String? = resolvedAuxiliaryThreadId(),
+): String? =
+    resolvedAuxiliaryThreadId?.takeIf { it.isNotBlank() }
+        ?: resolveThreadRouteIdentity().timelineChannelId?.takeIf { it.isNotBlank() }
+        ?: parentChannelId?.takeIf { surfaceKind == RaftThreadSurfaceKind.ReplyThread && it.isNotBlank() }
+
 internal fun shouldDeliverToActiveThreadRealtimeSignal(event: RealtimeEvent): Boolean =
     RealtimeRoutePolicy.shouldForwardToActiveThread(event) || event is Heartbeat

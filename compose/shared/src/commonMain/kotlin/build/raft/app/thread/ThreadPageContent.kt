@@ -1266,39 +1266,134 @@ private fun ThreadPageContentContent(
             } else {
                 threadTabContent()
             }
-            if (!primaryFooterReady) {
-                // Join and the composer mount only with the resolved render-slice emission. A
-                // cached timeline is shown before that (access still refreshing), so while a
-                // composer is still expected its dock keeps the composer's resting height:
-                // the bottom-pinned list is laid out at its final height on the first frame
-                // instead of jumping up when the composer mounts (Compose 版 open jitter).
-                if (
-                    threadReservesPendingComposerSlot(
+            val loungeFooterKind = agentLoungeFooterKind(conversationLounge, pageLounge)
+            val archivedFooterActive = pageLounge == null && threadFooterShowsArchived(payload)
+            val optimisticComposerActive =
+                !primaryFooterReady &&
+                    threadShowsOptimisticComposer(
                         accessResolution = accessResolution,
                         payloadStatus = payload.status,
+                        surfaceKind = payload.surfaceKind,
                         joined = payload.joined,
                         showComposer = payload.showComposer,
                         selectedTab = selectedTab.wireValue,
-                        composerLocked = threadLimitLocked
+                        composerLocked = threadLimitLocked,
+                        channelArchived = archivedFooterActive,
+                        externalFrozen = externalFreezeState == ExternalFreezeState.Active,
+                        loungeFooterActive = loungeFooterKind != null,
+                        replyParentAuthority = replyParentAuthority,
                     )
+            val renderComposerDock =
+                optimisticComposerActive ||
+                    (
+                        primaryFooterReady &&
+                            writeActionsEnabled &&
+                            !shareSelectionActive &&
+                            loungeFooterKind == null &&
+                            !archivedFooterActive &&
+                            externalFreezeState != ExternalFreezeState.Active &&
+                            !threadFooterShowsJoin(payload.joined, conversationLounge) &&
+                            showComposerForSelectedTab
+                        )
+            if (renderComposerDock) {
+                // Unified composer branch for BOTH optimistic pre-resolution (accessResolution ==
+                // Loading) and resolved writable state. Keeping one single branch guarantees that
+                // Loading -> Resolved NEVER unmounts/remounts ThreadComposerRoute, NEVER drops
+                // focus/keyboard/draft, and has ZERO layout jump.
+                if (
+                    primaryFooterReady &&
+                    externalFreezeState is ExternalFreezeState.Upcoming &&
+                    payload.surfaceKind == RaftThreadSurfaceKind.Channel &&
+                    !payload.isTaskConversationSurface() &&
+                    selectedTab == RaftThreadTab.Chat
                 ) {
-                    ThreadComposerDock(
-                        edgePadding = if (threadInSplitDetailPane()) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
-                        composerModifier =
-                            Modifier.raftThreadComposerLiveKeyboardPadding(
-                                bottomSafeArea = composerBottomSafeArea,
-                                keyboardInsetExcludesBottomSafeArea =
-                                    composerKeyboardInsetExcludesBottomSafeArea
-                            ),
-                        keyboardLiftPx =
-                            rememberThreadComposerKeyboardLiftPx(
-                                bottomSafeArea = composerBottomSafeArea,
-                                keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
-                            ),
+                    ThreadExternalFreezeNoticeBanner(
+                        deadlineIso = externalFreezeState.deadlineIso,
+                        plan = billingServerPlan,
+                        role = billingServerRole,
+                        onOpenUpgrade = {
+                            onThreadEvent(
+                                ThreadOpenUpgradeEvent,
+                                RaftUpgradeGate.ExternalChannelFrozen.wire,
+                                externalFreezeState.deadlineIso,
+                                null,
+                            )
+                        },
+                    )
+                }
+                ThreadComposerDock(
+                    edgePadding = if (threadInSplitDetailPane()) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
+                    // Bottom padding follows WindowInsets.ime in the layout phase of the
+                    // same frame; composerKeyboardInsetDp (two frames late) only feeds the
+                    // page's decision state (see RaftThreadImeLayout.kt).
+                    composerModifier =
+                        Modifier.raftThreadComposerLiveKeyboardPadding(
+                            bottomSafeArea = composerBottomSafeArea,
+                            keyboardInsetExcludesBottomSafeArea =
+                                composerKeyboardInsetExcludesBottomSafeArea
+                        ).then(
+                            // Task v2: focus in the composer puts the pulled-down head back up.
+                            data.taskConversationHead?.let { taskHead ->
+                                Modifier.onFocusChanged { if (it.hasFocus) taskHead.closeFloat() }
+                            } ?: Modifier
+                        ),
+                    keyboardLiftPx =
+                        rememberThreadComposerKeyboardLiftPx(
+                            bottomSafeArea = composerBottomSafeArea,
+                            keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
+                        ),
+                ) {
+                    CompositionLocalProvider(
+                        LocalThreadComposerSuggestionPortal provides composerSuggestionPortal,
+                        LocalAgentLoungeComposerName provides conversationLounge?.let { agentLoungeTitle(it.displayAgentName) },
                     ) {
-                        ThreadComposerRestingHeightPlaceholder(composerSurface)
+                        val composerRouteArgs =
+                            ThreadComposerRouteArgs(
+                                baseComposerState = baseComposerState,
+                                removedAppBot = composerRemovedAppBot,
+                                composerDraftViewModel = composerDraftViewModel,
+                                renderedPayload = payload,
+                                timelineSlice = timelineSlice,
+                                resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
+                                surface = composerSurface,
+                                memberSuggestionsFlow = memberSuggestionsFlow,
+                                channelSuggestionsFlow = channelSuggestionsFlow,
+                                agentStatusResolver = agentStatusResolver,
+                                onEvent = onComposerEvent,
+                                onDropFiles = onComposerDropFiles,
+                                onSendRequest = onComposerSendRequest,
+                                insertMentionRequest = insertMentionRequest,
+                                onInsertMentionConsumed = { request ->
+                                    if (insertMentionRequest?.nonce == request.nonce) {
+                                        insertMentionRequest = null
+                                    }
+                                },
+                                onSuggestionDemandChanged = onSuggestionDemandChanged,
+                                composerSendKeyEnabled = composerSendKeyEnabled,
+                                composerSendKey = composerSendKey,
+                                onKeyboardHeightChange = { nextInset ->
+                                    if (nextInset != composerKeyboardInsetDp) {
+                                        composerKeyboardInsetDp = nextInset
+                                        onComposerKeyboardInsetChanged(nextInset)
+                                    }
+                                },
+                                adaptiveNativeEditingStateReader =
+                                    LocalThreadAdaptiveNativeEditingReader.current,
+                                autofocusOnOpen = composerAutofocusOnOpen,
+                                optimisticPendingAccess = optimisticComposerActive,
+                            )
+                        val movableComposer = LocalThreadMovableComposer.current
+                        if (movableComposer != null) {
+                            movableComposer(composerRouteArgs)
+                        } else {
+                            ThreadComposerRouteFromArgs(composerRouteArgs)
+                        }
                     }
                 }
+            } else if (!primaryFooterReady) {
+                // Footer not ready and optimistic composer is suppressed (known error, no_permission,
+                // archived, frozen, unjoined, lounge footer, or non-Chat tab).
+                Unit
             } else if (
                 !writeActionsEnabled &&
                 payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
@@ -1340,17 +1435,17 @@ private fun ThreadPageContentContent(
                         )
                     }
                 }
-            } else if (agentLoungeFooterKind(conversationLounge, pageLounge) != null) {
+            } else if (loungeFooterKind != null) {
                 // Agent Lounge v0: an archived Lounge says so (Unarchive only for a viewer whose server
                 // role may archive channels), and one you may only read has the read-only composer;
                 // never a Join.
                 ThreadFooterNoticeDock(bottomSafeArea = composerBottomSafeArea) {
                     AgentLoungeFooter(
-                        kind = agentLoungeFooterKind(conversationLounge, pageLounge),
+                        kind = loungeFooterKind,
                         inputs = data.lounge,
                     )
                 }
-            } else if (pageLounge == null && threadFooterShowsArchived(payload)) {
+            } else if (archivedFooterActive) {
                 // Web ChatPanel `isArchived`: the archived banner in place of the composer or the
                 // Join button, for members and non-members alike (the server refuses every write).
                 val archived = data.lounge?.archivedChannel
@@ -1527,88 +1622,6 @@ private fun ThreadPageContentContent(
                     joining = ThreadChannelJoinsInFlight.observeIsJoining(payload.joinChannelTargetId()),
                     bottomSafeArea = composerBottomSafeArea,
                 )
-            } else if (showComposerForSelectedTab) {
-                if (
-                    externalFreezeState is ExternalFreezeState.Upcoming &&
-                    payload.surfaceKind == RaftThreadSurfaceKind.Channel &&
-                    !payload.isTaskConversationSurface() &&
-                    selectedTab == RaftThreadTab.Chat
-                ) {
-                    ThreadExternalFreezeNoticeBanner(
-                        deadlineIso = externalFreezeState.deadlineIso,
-                        plan = billingServerPlan,
-                        role = billingServerRole,
-                        onOpenUpgrade = {
-                            onThreadEvent(
-                                ThreadOpenUpgradeEvent,
-                                RaftUpgradeGate.ExternalChannelFrozen.wire,
-                                externalFreezeState.deadlineIso,
-                                null,
-                            )
-                        },
-                    )
-                }
-                ThreadComposerDock(
-                    edgePadding = if (threadInSplitDetailPane()) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
-                    // Bottom padding follows WindowInsets.ime in the layout phase of the
-                    // same frame; composerKeyboardInsetDp (two frames late) only feeds the
-                    // page's decision state (see RaftThreadImeLayout.kt).
-                    composerModifier =
-                        Modifier.raftThreadComposerLiveKeyboardPadding(
-                            bottomSafeArea = composerBottomSafeArea,
-                            keyboardInsetExcludesBottomSafeArea =
-                                composerKeyboardInsetExcludesBottomSafeArea
-                        ).then(
-                            // Task v2: focus in the composer puts the pulled-down head back up.
-                            data.taskConversationHead?.let { taskHead ->
-                                Modifier.onFocusChanged { if (it.hasFocus) taskHead.closeFloat() }
-                            } ?: Modifier
-                        ),
-                    keyboardLiftPx =
-                        rememberThreadComposerKeyboardLiftPx(
-                            bottomSafeArea = composerBottomSafeArea,
-                            keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
-                        ),
-                ) {
-                    CompositionLocalProvider(
-                        LocalThreadComposerSuggestionPortal provides composerSuggestionPortal,
-                        LocalAgentLoungeComposerName provides conversationLounge?.let { agentLoungeTitle(it.displayAgentName) },
-                    ) {
-                        ThreadComposerRoute(
-                            baseComposerState = baseComposerState,
-                            removedAppBot = composerRemovedAppBot,
-                            composerDraftViewModel = composerDraftViewModel,
-                            renderedPayload = payload,
-                            timelineSlice = timelineSlice,
-                            resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
-                            surface = composerSurface,
-                            memberSuggestionsFlow = memberSuggestionsFlow,
-                            channelSuggestionsFlow = channelSuggestionsFlow,
-                            agentStatusResolver = agentStatusResolver,
-                            onEvent = onComposerEvent,
-                            onDropFiles = onComposerDropFiles,
-                            onSendRequest = onComposerSendRequest,
-                            insertMentionRequest = insertMentionRequest,
-                            onInsertMentionConsumed = { request ->
-                                if (insertMentionRequest?.nonce == request.nonce) {
-                                    insertMentionRequest = null
-                                }
-                            },
-                            onSuggestionDemandChanged = onSuggestionDemandChanged,
-                            composerSendKeyEnabled = composerSendKeyEnabled,
-                            composerSendKey = composerSendKey,
-                            onKeyboardHeightChange = { nextInset ->
-                                if (nextInset != composerKeyboardInsetDp) {
-                                    composerKeyboardInsetDp = nextInset
-                                    onComposerKeyboardInsetChanged(nextInset)
-                                }
-                            },
-                            adaptiveNativeEditingStateReader =
-                                LocalThreadAdaptiveNativeEditingReader.current,
-                            autofocusOnOpen = composerAutofocusOnOpen,
-                        )
-                    }
-                }
             }
             },
             overlays = {

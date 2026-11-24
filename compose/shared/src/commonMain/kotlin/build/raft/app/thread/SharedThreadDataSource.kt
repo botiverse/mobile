@@ -149,6 +149,7 @@ internal class SharedThreadDataSource(
     private val channelRepository: ChannelRepository? = null,
     private val homeSnapshotProvider: (suspend (ServerId) -> HomeSnapshot?)? = null,
     private val homeSnapshotLookupProvider: (suspend (ServerId) -> HomeSnapshotLookup?)? = null,
+    private val immediateHomeSnapshotLookupProvider: ((ServerId) -> HomeSnapshotLookup?)? = null,
     private val channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
     private val messageStore: SharedThreadMessageStore? = null,
     // REQUIRED: the cache environment is an identity dimension of every reply cache. There is no
@@ -293,6 +294,7 @@ internal class SharedThreadDataSource(
         channelRepository: ChannelRepository? = null,
         homeSnapshotProvider: (suspend (ServerId) -> HomeSnapshot?)? = null,
         homeSnapshotLookupProvider: (suspend (ServerId) -> HomeSnapshotLookup?)? = null,
+        immediateHomeSnapshotLookupProvider: ((ServerId) -> HomeSnapshotLookup?)? = null,
         channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
         messageStore: SharedThreadMessageStore? = null,
         cacheEnvironmentIdProvider: () -> String,
@@ -331,6 +333,7 @@ internal class SharedThreadDataSource(
         channelRepository = channelRepository,
         homeSnapshotProvider = homeSnapshotProvider,
         homeSnapshotLookupProvider = homeSnapshotLookupProvider,
+        immediateHomeSnapshotLookupProvider = immediateHomeSnapshotLookupProvider,
         channelProfileUpdateSink = channelProfileUpdateSink,
         messageStore = messageStore,
         cacheEnvironmentIdProvider = cacheEnvironmentIdProvider,
@@ -1783,6 +1786,36 @@ internal class SharedThreadDataSource(
         payload: RaftThreadScreenPayload
     ): ThreadHomeContextResolution {
         val session = readSession() ?: return ThreadHomeContextResolution(payload = payload)
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        if (serverId != null) {
+            immediateHomeSnapshotLookupProvider?.invoke(serverId)
+                ?.takeIf { lookup ->
+                    lookup.snapshot.server.id == serverId &&
+                        lookup.snapshot.currentMember.id.value == session.user.id
+                }
+                ?.let { lookup ->
+                    val home = lookup.snapshot
+                    val accessFallback = resolveConversationAccessFallback(payload, home)
+                    // A non-authoritative in-memory Home snapshot may grant fast positive write
+                    // access in 0ms without blocking on an in-flight Home refresh (e.g.
+                    // homeRealtimeDirty on slow networks). Negative/archived/missing rows fall
+                    // through to the bounded authoritative wait below.
+                    if (
+                        accessFallback != null &&
+                        accessFallback.joined &&
+                        accessFallback.permissions.canSend &&
+                        !accessFallback.archived
+                    ) {
+                        return ThreadHomeContextResolution(
+                            payload =
+                                payload
+                                    .withConversationAccessFallback(accessFallback)
+                                    .withKnownMarkdownChannelNames(home),
+                            accessCandidate = accessFallback
+                        )
+                    }
+                }
+        }
         val home = currentHomeSnapshot(session) ?: return ThreadHomeContextResolution(payload = payload)
         val accessFallback = resolveConversationAccessFallback(payload, home)
         return ThreadHomeContextResolution(
@@ -1819,16 +1852,91 @@ internal class SharedThreadDataSource(
     private suspend fun taskConversationAccessResolution(
         payload: RaftThreadScreenPayload
     ): ThreadHomeContextResolution {
-        val base = homeConversationContextResolution(payload)
-        if (base.accessCandidate != null) return base
         val conversationId =
             listOfNotNull(payload.streamChannelId, payload.sourceThreadId)
                 .firstOrNull { it.isNotBlank() }
-                ?: return base
-        val ref = (loadTaskConversationRef(ChannelId(conversationId)) as? DataResult.Content)?.data
-        if (ref == null || ref.conversationChannelId.value != conversationId) return base
-        val session = readSession() ?: return base
-        val home = currentHomeSnapshot(session) ?: return base
+        val session = readSession()
+        val serverId = session?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        val immediateHome =
+            if (session != null && serverId != null) {
+                immediateHomeSnapshotLookupProvider?.invoke(serverId)
+                    ?.takeIf { lookup ->
+                        lookup.snapshot.server.id == serverId &&
+                            lookup.snapshot.currentMember.id.value == session.user.id
+                    }
+                    ?.snapshot
+            } else {
+                null
+            }
+        var loadedRef: TaskConversationChannelRef? = null
+        var refAttempted = false
+        if (immediateHome != null) {
+            val ownCandidate = resolveConversationAccessFallback(payload, immediateHome)
+            if (
+                ownCandidate != null &&
+                ownCandidate.joined &&
+                ownCandidate.permissions.canSend &&
+                !ownCandidate.archived
+            ) {
+                return ThreadHomeContextResolution(
+                    payload =
+                        payload
+                            .withConversationAccessFallback(ownCandidate)
+                            .withKnownMarkdownChannelNames(immediateHome),
+                    accessCandidate = ownCandidate,
+                )
+            }
+            if (conversationId != null) {
+                refAttempted = true
+                loadedRef =
+                    (loadTaskConversationRef(ChannelId(conversationId)) as? DataResult.Content)
+                        ?.data
+                        ?.takeIf { it.conversationChannelId.value == conversationId }
+                val immediateParent =
+                    loadedRef?.let { ref ->
+                        immediateHome.toSharedConversationDirectoryState()
+                            .resolve(ref.parentChannelId.value)
+                            ?.toConversationAccessCandidate()
+                    }
+                if (
+                    immediateParent != null &&
+                    immediateParent.joined &&
+                    immediateParent.permissions.canSend &&
+                    !immediateParent.archived
+                ) {
+                    diagnosticsLogger(
+                        "thread_initial_task_access conversationId=$conversationId " +
+                            "parentChannelId=${loadedRef?.parentChannelId?.value.orEmpty()} parentRow=true writable=true"
+                    )
+                    return ThreadHomeContextResolution(
+                        payload = payload.withKnownMarkdownChannelNames(immediateHome),
+                        accessCandidate =
+                            ConversationAccessCandidate(
+                                ids = setOf(conversationId),
+                                conversationKind = ConversationKind.Task,
+                                surfaceKind = payload.surfaceKind,
+                                joined = true,
+                                archived = false,
+                                permissions = immediateParent.permissions.copy(canCreateTask = false),
+                            )
+                    )
+                }
+            }
+        }
+        val base = homeConversationContextResolution(payload)
+        if (base.accessCandidate != null) return base
+        if (conversationId == null) return base
+        val ref =
+            if (refAttempted) {
+                loadedRef
+            } else {
+                (loadTaskConversationRef(ChannelId(conversationId)) as? DataResult.Content)
+                    ?.data
+                    ?.takeIf { it.conversationChannelId.value == conversationId }
+            }
+        if (ref == null) return base
+        val currentSession = session ?: readSession() ?: return base
+        val home = currentHomeSnapshot(currentSession) ?: return base
         val parent =
             home.toSharedConversationDirectoryState()
                 .resolve(ref.parentChannelId.value)
@@ -1876,6 +1984,37 @@ internal class SharedThreadDataSource(
                     requiresBackgroundHomeContextHydration = true,
                 )
 
+        // Check the in-memory Home snapshot immediately (0ms, non-suspending) before awaiting any
+        // in-flight Home refresh. A positive writable non-archived row (or an authoritative row)
+        // resolves right away; a non-authoritative missing/negative/archived row falls through to
+        // the bounded authoritative lookup below so a stale cache never locks the thread into Join.
+        immediateHomeSnapshotLookupProvider?.invoke(serverId)
+            ?.takeIf { lookup ->
+                lookup.snapshot.server.id == serverId &&
+                    lookup.snapshot.currentMember.id.value == resolutionScope.provenance.principalId
+            }
+            ?.let { lookup ->
+                val home = lookup.snapshot
+                val candidate =
+                    payload.exactReplyParentAccessCandidate(
+                        serverId = serverId,
+                        parentId = parentId,
+                        parentKind = parentKind,
+                        conversations = home.channels + home.directMessages,
+                    ) ?: return@let
+                val positiveWritable =
+                    candidate.joined && candidate.permissions.canSend && !candidate.archived
+                if (!positiveWritable && !lookup.authoritative) {
+                    return@let
+                }
+                val ownerCurrent = replyAccessResolutionOwnerStillCurrent(resolutionScope)
+                return ThreadHomeContextResolution(
+                    payload = payload.withKnownMarkdownChannelNames(home),
+                    accessCandidate = candidate,
+                    ownerCurrent = ownerCurrent,
+                )
+            }
+
         resolveHomeSnapshotLookup(serverId)
             ?.takeIf { lookup ->
                 lookup.snapshot.server.id == serverId &&
@@ -1892,9 +2031,9 @@ internal class SharedThreadDataSource(
                     ) ?: return@let
                 // A non-authoritative Home snapshot (durable identity cache or refresh-pending)
                 // may grant fast positive write access, but must never short-circuit a negative
-                // (unjoined or non-writable) parent row and lock the thread into Join without
-                // checking the network directory.
-                if (!lookup.authoritative && (!candidate.joined || !candidate.permissions.canSend)) {
+                // (unjoined, non-writable, or archived) parent row and lock the thread into Join
+                // without checking the network directory.
+                if (!lookup.authoritative && (!candidate.joined || !candidate.permissions.canSend || candidate.archived)) {
                     return@let
                 }
                 val ownerCurrent = replyAccessResolutionOwnerStillCurrent(resolutionScope)
