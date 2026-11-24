@@ -201,11 +201,13 @@ class ComputerRuntimeClaudeLimitResetTest {
         val scope = CoroutineScope(coroutineContext + Job())
         val owner = RuntimeLimitResetTest.OWNER
         val store = SharedRuntimeAccountUsageStore(RaftComputersApiClient(api), currentIdentity = { owner }, clock = { 0L })
+        // 30s after 2026-11-19T03:00:00Z so opening the card reads once without triggering a stale auto-check (#16501).
         val controller =
             ComputerRuntimeUsageController(
                 key = RuntimeAccountUsageKey(owner, "s1", "m1", RuntimeAccountUsageProvider.Claude),
                 store = store,
                 scope = scope,
+                nowMillis = { 1_795_057_230_000L },
             )
         controller.claudeLimitResetFlagOn = true
         try {

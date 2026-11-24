@@ -4560,9 +4560,17 @@ private fun RaftRackUsagePreviewCard(
     trigger: @Composable (onClick: (() -> Unit)?) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val nowMillis = rememberRuntimeUsageNowMillis()
     val controller =
         remember(key, access.store) {
-            ComputerRuntimeUsageController(key = key, store = access.store, scope = scope, log = access.log, onIdentityChanged = access.onIdentityChanged)
+            ComputerRuntimeUsageController(
+                key = key,
+                store = access.store,
+                scope = scope,
+                log = access.log,
+                onIdentityChanged = access.onIdentityChanged,
+                nowMillis = nowMillis,
+            )
         }
     DisposableEffect(controller) { onDispose { controller.cancel() } }
     BindClaudeLimitResetFlag(controller, access.serverFeatureFlags)
