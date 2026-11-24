@@ -92,22 +92,234 @@ class AndroidSystemKillReportTest {
         }
     }
 
+    @Test
+    fun samsungSpegExitWithoutUserInteractionIsSkippedAndNeverConsumesBudget() {
+        // Hands e8a3a789: Samsung SM-A235F post-install SPEG profile generation (`importance=100`,
+        // `reason=other`, `status=0`, no telemetry, no startup marker).
+        val exitAt = 400_000L
+        assertEquals(
+            SystemKillDecision.SkipOemPrestart,
+            classifySystemKill(
+                reasonCode = ApplicationExitInfo.REASON_OTHER,
+                importance = foreground,
+                telemetry = null,
+                exitTimestampMillis = exitAt,
+                status = 0,
+                description = "stop build.raft.app due to SPEG",
+                startup = null,
+            ),
+        )
+        // Even if hidden SpegDisplay briefly starts an Activity and takes a foreground sample,
+        // no user interaction was ever recorded (`lastInteractionAtMillis == -1`).
+        val spegHiddenDisplayTelemetry =
+            snapshot(pid = 1, start = 398_000L, foreground = true).copy(
+                sampledAtMillis = 399_000L,
+                lastInteractionAtMillis = -1L,
+            )
+        val spegStartup =
+            StartupPhaseRecord(
+                pid = 1,
+                processStartMillis = 398_000L,
+                processName = mainProcess,
+                phase = RaftStartupPhaseMarker.Phase.ActivityCreated,
+                phaseAtMillis = 398_500L,
+                firstActivityAtMillis = 398_500L,
+                firstActivityAfterStartMs = 500L,
+            )
+        assertEquals(
+            SystemKillDecision.SkipOemPrestart,
+            classifySystemKill(
+                reasonCode = ApplicationExitInfo.REASON_OTHER,
+                importance = foreground,
+                telemetry = spegHiddenDisplayTelemetry,
+                exitTimestampMillis = exitAt,
+                status = 0,
+                description = "stop build.raft.app due to SPEG",
+                startup = spegStartup,
+            ),
+        )
+        // Fail-open: any recorded user interaction, non-zero status, or non-OTHER reason stays reportable.
+        val interactiveTelemetry = spegHiddenDisplayTelemetry.copy(lastInteractionAtMillis = 399_500L)
+        assertEquals(
+            SystemKillDecision.Report,
+            classifySystemKill(
+                reasonCode = ApplicationExitInfo.REASON_OTHER,
+                importance = foreground,
+                telemetry = interactiveTelemetry,
+                exitTimestampMillis = exitAt,
+                status = 0,
+                description = "stop build.raft.app due to SPEG",
+                startup = spegStartup,
+            ),
+        )
+        assertEquals(
+            SystemKillDecision.Report,
+            classifySystemKill(
+                reasonCode = ApplicationExitInfo.REASON_OTHER,
+                importance = foreground,
+                telemetry = null,
+                exitTimestampMillis = exitAt,
+                status = 9,
+                description = "stop build.raft.app due to SPEG",
+            ),
+        )
+        assertEquals(
+            SystemKillDecision.Report,
+            classifySystemKill(
+                reasonCode = ApplicationExitInfo.REASON_SIGNALED,
+                importance = foreground,
+                telemetry = null,
+                exitTimestampMillis = exitAt,
+                status = 9,
+                description = "stop build.raft.app due to SPEG",
+            ),
+        )
+        assertEquals(
+            SystemKillDecision.ReportNativeCrash,
+            classifySystemKill(
+                reasonCode = ApplicationExitInfo.REASON_CRASH_NATIVE,
+                importance = foreground,
+                telemetry = null,
+                exitTimestampMillis = exitAt,
+                status = 11,
+                description = "stop build.raft.app due to SPEG",
+            ),
+        )
+        // In planning, SPEG is skipped cleanly without spending the visible per-launch cap.
+        val spegExit = exit(pid = 11, at = 1_200L, description = "stop build.raft.app due to SPEG")
+        val realExit = exit(pid = 12, at = 1_300L, description = null)
+        val planned = plan(listOf(spegExit, realExit), perLaunchCap = 1, dailyCap = 1)
+        assertEquals(listOf(SystemKillDecision.SkipOemPrestart, SystemKillDecision.Report), planned.map { it.decision })
+        assertEquals(listOf(SystemKillAction.Skip, SystemKillAction.Submit), planned.map { it.action })
+        val (watermark, above) = advanceSystemKillWatermark(0L, planned, setOf(planned[0].key))
+        assertEquals(1_200L, watermark)
+        assertTrue(above.isEmpty())
+    }
+
+    @Test
+    fun xiaomiPreStartCachedKillIsSkippedOnlyBeforeActivityAndForegroundEvidence() {
+        // Hands 2fae4a30: Xiaomi `PreStartCachedKill` (`importance=100`, `reason=other`, `status=0`,
+        // startup reached `application_created`, initial `Application.onCreate` telemetry snapshot
+        // with `foreground=false`, `sampledAtMillis=-1`, `lastInteractionAtMillis=-1`).
+        val exitAt = 400_000L
+        val prestartTelemetry =
+            snapshot(pid = 9686, start = exitAt - 48L, foreground = false).copy(
+                foregroundChangedAtMillis = exitAt - 13L,
+                sampledAtMillis = -1L,
+                lastInteractionAtMillis = -1L,
+            )
+        val appCreatedStartup =
+            StartupPhaseRecord(
+                pid = 9686,
+                processStartMillis = exitAt - 48L,
+                processName = mainProcess,
+                phase = RaftStartupPhaseMarker.Phase.ApplicationCreated,
+                phaseAtMillis = exitAt - 21L,
+            )
+        val prestartExit = exit(pid = 9686, at = exitAt, description = "PreStartCachedKill")
+        val skippedPlan =
+            plan(
+                exits = listOf(prestartExit),
+                snapshots = listOf(prestartTelemetry),
+                startupRecords = listOf(appCreatedStartup),
+            )
+        assertEquals(1, skippedPlan.size)
+        assertEquals(SystemKillDecision.SkipOemPrestart, skippedPlan[0].decision)
+        assertEquals(SystemKillAction.Skip, skippedPlan[0].action)
+
+        // Fail-open when Activity was reached in startup record, even without telemetry.
+        val activityStartup =
+            appCreatedStartup.copy(
+                phase = RaftStartupPhaseMarker.Phase.ActivityCreated,
+                firstActivityAtMillis = exitAt - 10L,
+                firstActivityAfterStartMs = 38L,
+            )
+        val activityPlan =
+            plan(
+                exits = listOf(prestartExit),
+                snapshots = listOf(prestartTelemetry),
+                startupRecords = listOf(activityStartup),
+            )
+        assertEquals(SystemKillDecision.Report, activityPlan[0].decision)
+        assertEquals(SystemKillAction.Submit, activityPlan[0].action)
+
+        // Fail-open when telemetry ever entered foreground, took a sample, or saw user interaction.
+        assertEquals(
+            SystemKillDecision.Report,
+            classifySystemKill(
+                reasonCode = ApplicationExitInfo.REASON_OTHER,
+                importance = foreground,
+                telemetry = prestartTelemetry.copy(foreground = true),
+                exitTimestampMillis = exitAt,
+                status = 0,
+                description = "PreStartCachedKill",
+                startup = appCreatedStartup,
+            ),
+        )
+        assertEquals(
+            SystemKillDecision.ReportBackground,
+            classifySystemKill(
+                reasonCode = ApplicationExitInfo.REASON_OTHER,
+                importance = cached,
+                telemetry = prestartTelemetry.copy(sampledAtMillis = exitAt - 300_000L),
+                exitTimestampMillis = exitAt,
+                status = 0,
+                description = "PreStartCachedKill",
+                startup = appCreatedStartup,
+            ),
+        )
+        assertEquals(
+            SystemKillDecision.Report,
+            classifySystemKill(
+                reasonCode = ApplicationExitInfo.REASON_OTHER,
+                importance = foreground,
+                telemetry = prestartTelemetry.copy(lastInteractionAtMillis = exitAt - 10_000L),
+                exitTimestampMillis = exitAt,
+                status = 0,
+                description = "PreStartCachedKill",
+                startup = appCreatedStartup,
+            ),
+        )
+    }
+
+    @Test
+    fun genericOrPartialOtherDescriptionsAreNeverFilteredAsOemPrestart() {
+        val exitAt = 400_000L
+        for (description in listOf(null, "", "   ", "other", "killed by lmkd", "stop build.raft.app due to SPEGgy", "MyPreStartCachedKill")) {
+            assertEquals(
+                "description=$description",
+                SystemKillDecision.Report,
+                classifySystemKill(
+                    reasonCode = ApplicationExitInfo.REASON_OTHER,
+                    importance = foreground,
+                    telemetry = null,
+                    exitTimestampMillis = exitAt,
+                    status = 0,
+                    description = description,
+                ),
+            )
+        }
+    }
+
     private fun exit(
         pid: Int,
         at: Long,
         reason: Int = ApplicationExitInfo.REASON_OTHER,
         importance: Int = foreground,
         processName: String = mainProcess,
+        status: Int = 0,
+        description: String? = null,
     ) = SystemKillExit(
         pid,
         at,
         reason,
-        status = 0,
+        status = status,
         importance = importance,
         pssKb = 0L,
         rssKb = 0L,
         build = stamp,
         processName = processName,
+        description = description,
     )
 
     private val mainProcess = "build.raft.app"
@@ -144,7 +356,19 @@ class AndroidSystemKillReportTest {
         now: Long = 1_000_000L,
         perLaunchCap: Int = 3,
         dailyCap: Int = 5,
-    ) = planSystemKillReports(exits, snapshots, cutoff, watermark, recent, now, perLaunchCap, dailyCap, mainProcess)
+        startupRecords: List<StartupPhaseRecord> = emptyList(),
+    ) = planSystemKillReports(
+        exits = exits,
+        snapshots = snapshots,
+        cutoffMillis = cutoff,
+        watermarkMillis = watermark,
+        recentReportMillis = recent,
+        nowMillis = now,
+        perLaunchCap = perLaunchCap,
+        dailyCap = dailyCap,
+        mainProcessName = mainProcess,
+        startupRecords = startupRecords,
+    )
 
     /** One version-source case: what the exit, its process record and this install say. */
     private data class VersionCase(

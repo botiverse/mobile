@@ -57,6 +57,11 @@ internal enum class SystemKillDecision(val label: String, val report: Boolean) {
      * vanish when it dies, and WebView renderer deaths already reach `onRenderProcessGone`.
      */
     SkipSecondaryProcess("secondary_process", false),
+    /**
+     * A known non-interactive OEM pre-launch or post-install maintenance kill (Samsung
+     * `due to SPEG` profile generation or Xiaomi `PreStartCachedKill`), not a user-visible kill.
+     */
+    SkipOemPrestart("oem_prestart", false),
 }
 
 private val UserInitiatedReasons =
@@ -233,9 +238,10 @@ internal fun systemKillBudget(exit: SystemKillExit, telemetry: MemoryTelemetrySn
  * added after API 35. On a device that does not explain its kills (the Huawei in Hands
  * fb-52cc0499 recorded `reason=other`) any of them can be the "app vanished" users describe.
  *
- * Every system kill is sent; this only says whether it was a foreground or a background one (the
- * decision label in the local log; the ticket carries the raw fields and the evidence separately,
- * see [systemKillExtras]):
+ * Every system kill is sent except known non-interactive OEM pre-launch / post-install maintenance
+ * kills ([SystemKillDecision.SkipOemPrestart], see [isNonInteractiveOemPrestartExit]); this only
+ * says whether a reportable kill was a foreground or a background one (the decision label in the
+ * local log; the ticket carries the raw fields and the evidence separately, see [systemKillExtras]):
  * - foreground ([SystemKillDecision.Report]) when the exit record says importance foreground
  *   (100) or visible (200), whatever the app's telemetry says or how old it is (the app may have
  *   come back to the foreground after its last snapshot was written); or when the app's telemetry
@@ -254,16 +260,69 @@ internal fun classifySystemKill(
     telemetry: MemoryTelemetrySnapshot?,
     exitTimestampMillis: Long,
     status: Int = 0,
+    description: String? = null,
+    startup: StartupPhaseRecord? = null,
 ): SystemKillDecision =
     when {
         reasonCode in UserInitiatedReasons -> SystemKillDecision.SkipUserInitiated
         reasonCode in PackageChangeReasons -> SystemKillDecision.SkipPackageChange
         reasonCode in ReportedElsewhereReasons -> SystemKillDecision.SkipReportedElsewhere
         isNativeCrashExit(reasonCode, status) -> SystemKillDecision.ReportNativeCrash
+        isNonInteractiveOemPrestartExit(reasonCode, status, description, telemetry, startup) ->
+            SystemKillDecision.SkipOemPrestart
         importance in VisibleImportances -> SystemKillDecision.Report
         recentForegroundEvidence(telemetry, exitTimestampMillis) != null -> SystemKillDecision.Report
         else -> SystemKillDecision.ReportBackground
     }
+
+private val SamsungSpegDescriptionPattern =
+    Regex("""\bdue to speg\b""", RegexOption.IGNORE_CASE)
+
+private val XiaomiPreStartCachedKillDescriptionPattern =
+    Regex("""\bprestartcachedkill\b""", RegexOption.IGNORE_CASE)
+
+/**
+ * Whether an exit is a known non-interactive OEM pre-launch or post-install maintenance kill that
+ * never interrupted the user:
+ * - Samsung SPEG (`REASON_OTHER`, `status == 0`, description containing `due to SPEG`, e.g. Hands
+ *   `e8a3a789`: `"stop build.raft.app due to SPEG"`): One UI runs the app on a hidden `SpegDisplay`
+ *   virtual display to collect an ART profile and stops it. Because the hidden display may briefly
+ *   start an Activity (setting `importance=100` or taking a foreground sample), this requires only
+ *   that the process recorded no user interaction ([MemoryTelemetrySnapshot.lastInteractionAtMillis]).
+ * - Xiaomi `PreStartCachedKill` (`REASON_OTHER`, `status == 0`, description matching
+ *   `PreStartCachedKill`, e.g. Hands `2fae4a30`): MIUI/HyperOS speculatively pre-starts the process
+ *   up to `Application.onCreate` and kills it before any Activity is created. This requires no
+ *   Activity reached or sticky service restart ([startup]) and no foreground, sample, or interaction
+ *   evidence in [telemetry].
+ *
+ * Fail-open: any other reason, non-zero status, blank/unmatched description, or recorded user
+ * interaction keeps the exit reportable.
+ */
+internal fun isNonInteractiveOemPrestartExit(
+    reasonCode: Int,
+    status: Int,
+    description: String?,
+    telemetry: MemoryTelemetrySnapshot?,
+    startup: StartupPhaseRecord? = null,
+): Boolean {
+    if (reasonCode != ApplicationExitInfo.REASON_OTHER || status != 0) return false
+    val trimmed = description?.trim().orEmpty()
+    if (trimmed.isEmpty()) return false
+    if (telemetry != null && telemetry.lastInteractionAtMillis >= 0L) return false
+    if (SamsungSpegDescriptionPattern.containsMatchIn(trimmed)) return true
+    if (XiaomiPreStartCachedKillDescriptionPattern.containsMatchIn(trimmed)) {
+        val reachedActivityOrSticky =
+            startup != null &&
+                (startup.phase.ordinal >= RaftStartupPhaseMarker.Phase.ActivityCreated.ordinal ||
+                    startup.firstActivityAtMillis >= 0L ||
+                    startup.firstActivityAfterStartMs >= 0L ||
+                    startup.stickyServiceRestart)
+        val sawForeground =
+            telemetry != null && (telemetry.foreground || telemetry.sampledAtMillis >= 0L)
+        return !reachedActivityOrSticky && !sawForeground
+    }
+    return false
+}
 
 /** The fields of one [ApplicationExitInfo] the report uses; a plain value so planning is testable. */
 internal data class SystemKillExit(
@@ -433,6 +492,7 @@ internal fun planSystemKillReports(
     review: SystemKillBudgetLimit = SystemKillBudgetLimit(perLaunchCap, dailyCap),
     background: SystemKillBudgetLimit = SystemKillBudgetLimit(perLaunchCap, dailyCap),
     handledAboveWatermark: Set<SystemKillExitKey> = emptySet(),
+    startupRecords: List<StartupPhaseRecord> = emptyList(),
 ): List<SystemKillPlanItem> {
     val floor = maxOf(cutoffMillis, watermarkMillis)
     val classified =
@@ -442,12 +502,21 @@ internal fun planSystemKillReports(
             .sortedBy { it.timestampMillis }
             .map { exit ->
                 val telemetry = MemoryTelemetryRing.match(snapshots, exit.pid, exit.timestampMillis)
+                val startup = startupRecordForExit(startupRecords, exit.pid, exit.timestampMillis)
                 val decision =
                     // An exit without a process name is kept: nothing says it was another process.
                     if (mainProcessName != null && exit.processName.isNotEmpty() && exit.processName != mainProcessName) {
                         SystemKillDecision.SkipSecondaryProcess
                     } else {
-                        classifySystemKill(exit.reasonCode, exit.importance, telemetry, exit.timestampMillis, exit.status)
+                        classifySystemKill(
+                            reasonCode = exit.reasonCode,
+                            importance = exit.importance,
+                            telemetry = telemetry,
+                            exitTimestampMillis = exit.timestampMillis,
+                            status = exit.status,
+                            description = exit.description,
+                            startup = startup,
+                        )
                     }
                 SystemKillPlanItem(exit, decision, SystemKillAction.Skip, telemetry, systemKillBudget(exit, telemetry))
             }
@@ -1833,6 +1902,7 @@ internal object AndroidSystemKillReporter {
                     review = remaining.getValue(SystemKillBudget.Review),
                     background = remaining.getValue(SystemKillBudget.Background),
                     handledAboveWatermark = progress.handledAboveWatermark,
+                    startupRecords = startupRecords,
                 )
             },
             buildReport = { item ->
