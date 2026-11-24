@@ -252,7 +252,7 @@ internal fun appShellSettingsHomePayload(
             SettingsHomePageLinkPayload(
                 key = SettingsNativeDetailPage.Theme.key,
                 title = stringResource(Res.string.settings_theme_title),
-                subtitle = stringResource(Res.string.settings_server_theme_description, themeServerName),
+                subtitle = stringResource(Res.string.settings_server_theme_description),
                 iconName = RaftLucideIconName.Palette,
                 section = onServerSection
             ),

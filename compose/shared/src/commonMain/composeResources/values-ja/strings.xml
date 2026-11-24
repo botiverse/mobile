@@ -185,7 +185,7 @@
     <string name="settings_account_session">セッション</string>
     <string name="settings_account_logout">ログアウト</string>
     <string name="settings_account_logout_action">ログアウト</string>
-    <string name="settings_account_logout_detail">このデバイスからログアウトします。アカウントとデータはそのまま残り、いつでも再ログインできます。</string>
+    <string name="settings_account_logout_detail">このデバイスからのみログアウトします。</string>
     <string name="settings_account_logout_confirm_title">ログアウトしますか？</string>
     <string name="settings_account_logout_confirm">このデバイスからログアウトしますか？アカウントとデータは保持され、いつでも再ログインできます。</string>
     <string name="settings_account_logout_signing_out">ログアウト中…</string>
@@ -500,7 +500,7 @@
     <string name="settings_appearance_mode_system">システム</string>
     <string name="settings_theme_title">テーマ</string>
     <string name="settings_theme_group_mode">ライトとダーク</string>
-    <string name="settings_server_theme_description">%1$s での見た目です。あなたにだけ見えます。</string>
+    <string name="settings_server_theme_description">あなたにだけ見えます。</string>
     <string name="settings_server_theme_group_basics">基本</string>
     <string name="settings_server_theme_group_avatars">アバターシリーズ</string>
     <string name="settings_server_theme_default">デフォルト</string>
@@ -1092,7 +1092,6 @@
     <string name="thread_action_card_reconfirm">再確認</string>
     <string name="thread_action_card_reconfirm_failed">再確認に失敗しました</string>
     <string name="thread_action_card_blocked_target_server">このカードを使えるのは %1$s のメンバーだけです。</string>
-    <string name="thread_action_card_runs_on_server">%1$s で実行</string>
     <string name="thread_action_card_blocked_source_workspace">これは履歴として残されたコピーです。この操作は元のワークスペースでのみ実行できます。</string>
     <string name="thread_action_card_blocked_need_migrate_agents">この操作を実行できるのは、%1$s の作成者か、エージェントを移行する権限を持つメンバーのみです。</string>
     <string name="thread_action_card_field_description">説明</string>
@@ -2701,7 +2700,6 @@
     <string name="settings_appearance_message_font_size_small">小</string>
     <string name="settings_appearance_message_font_size_medium">中</string>
     <string name="settings_appearance_message_font_size_large">大</string>
-    <string name="settings_appearance_saved_on_device">このデバイスに保存されます。</string>
     <string name="settings_appearance_live_agent_activity_title">エージェントのライブアクティビティ</string>
     <string name="settings_appearance_live_agent_activity_description">作業中のエージェントとその作業内容を、ウィンドウ上部とホームバーに表示します。</string>
     <string name="layout_working_now_title">作業中</string>
@@ -2723,7 +2721,6 @@
     <string name="settings_appearance_preview_sender">オンボーディングアシスタント</string>
     <string name="settings_appearance_preview_message">@Joy #proj-uiux 新しいデザイン、すごくいいですね。今 `git pull` してローカルで試しています。</string>
     <string name="settings_mobile_link_open_mode_title">Web リンクの開き方</string>
-    <string name="settings_mobile_link_open_mode_detail">Web リンクをデフォルトブラウザで開くか、Raft 内で開くかを選択します。</string>
     <string name="settings_mobile_link_open_mode_system_browser">デフォルトブラウザ</string>
     <string name="settings_mobile_link_open_mode_in_app_browser">アプリ内ブラウザ</string>
     <string name="in_app_browser_title">ブラウザ</string>
@@ -2847,7 +2844,6 @@
     <string name="settings_computers_empty_detail">コンピューターを接続すると、ここからエージェントを実行できます。</string>
     <string name="settings_computers_error_load_agents">エージェントを読み込めませんでした</string>
     <string name="settings_computers_empty_agents">このコンピューターのエージェントはまだありません</string>
-    <string name="settings_computers_error_load_workspaces">ワークスペースを読み込めませんでした</string>
     <string name="settings_computers_empty_workspaces">ワークスペースディレクトリはまだありません</string>
     <string name="settings_computers_error_offline">このコンピューターはオフラインです。デーモンがサーバーに接続されていないため、現在ワークスペースとエージェントを読み込めません。</string>
     <string name="settings_computers_error_replica">このコンピューターは別のサーバーレプリカから提供されています。しばらくしてから、もう一度お試しください。</string>
@@ -3002,10 +2998,6 @@
     <string name="settings_computers_action_select">選択</string>
     <string name="settings_computers_action_create">作成</string>
     <string name="settings_computers_section_workspaces">エージェントのワークスペース</string>
-    <string name="settings_computers_action_scan">スキャン</string>
-    <string name="settings_computers_action_rescan">再スキャン</string>
-    <string name="settings_computers_action_scanning">スキャン中</string>
-    <string name="settings_computers_workspace_scan_title">「スキャン」をクリックして、このコンピューター上のワークスペースディレクトリを確認します。</string>
     <string name="settings_computers_workspace_scan_detail">必要に応じてスキャンし、このコンピューターのワークスペースディレクトリを確認します。</string>
     <string name="settings_computers_section_actions">アクション</string>
     <string name="settings_computers_delete_title">コンピューターを削除</string>
@@ -3081,11 +3073,7 @@
     <string name="settings_computers_runtime_usage_later">後ほど</string>
     <string name="settings_computers_runtime_usage_metadata">%1$sに更新</string>
     <string name="settings_computers_runtime_usage_recently">先ほど</string>
-    <string name="settings_computers_runtime_usage_refresh_unconfirmed">更新をリクエストしましたが、変化は確認されていません</string>
-    <string name="settings_computers_runtime_usage_refresh_timeout">更新がタイムアウトしました</string>
-    <string name="settings_computers_runtime_usage_refresh_cooldown_countdown">約 %1$d 秒後に再度更新できます</string>
     <string name="settings_computers_runtime_usage_computer_offline">コンピューターがオフライン</string>
-    <string name="settings_computers_runtime_usage_refresh">更新</string>
     <string name="settings_computers_runtime_usage_attention">使用量に要注意</string>
     <string name="settings_computers_runtime_usage_healthy">使用量は正常</string>
     <string name="settings_computers_runtime_usage_limit_resets_left_one">リセット残り %1$d 回</string>
@@ -3170,9 +3158,9 @@
     <string name="settings_computers_runtime_auth_sign_out_action">ログアウト</string>
     <string name="settings_computers_runtime_auth_upgrade_required">このコンピューターをアップグレードすると、ここからログインできます</string>
     <string name="settings_computers_runtime_auth_dsh_credentials">DeepSeek Harness はここではログインしません。このコンピューターで設定された API キーを使います。dsh 自身の設定に保存したキー（dsh は認証情報ファイルが所有者のみ読み取り可能、モード 600 であることを求めます）か、コンピューターの環境またはエージェントの「環境変数」にある DEEPSEEK_API_KEY です。保存したキーが優先されます。</string>
-    <string name="settings_computers_runtime_auth_unavailable_not_installed">コンピューターにこのランタイムのコマンドラインツールをインストールしてから、コンピューターのページで「ランタイムを再スキャン」を使ってください。</string>
+    <string name="settings_computers_runtime_auth_unavailable_not_installed">コンピューターにこのランタイムのコマンドラインツールをインストールしてください。Raft Computer は 1 時間以内に自動で再確認します。すぐに反映するには、そのマシンで Raft Computer を再起動してください。</string>
     <string name="settings_computers_runtime_auth_unavailable_install_on">macOS または Linux の場合：</string>
-    <string name="settings_computers_runtime_auth_unavailable_version_unsupported">コンピューター上のこのランタイムのコマンドラインツールを更新してから、コンピューターのページで「ランタイムを再スキャン」を使ってください。</string>
+    <string name="settings_computers_runtime_auth_unavailable_version_unsupported">コンピューター上のこのランタイムのコマンドラインツールを更新してください。Raft Computer は 1 時間以内に自動で再確認します。すぐに反映するには、そのマシンで Raft Computer を再起動してください。</string>
     <string name="settings_computers_runtime_auth_unavailable_unsupported_installation">このランタイムには、コンピューター上で直接ログインしてください。</string>
     <string name="settings_computers_runtime_auth_not_attached">このコンピューターには接続者がいないため、ここからランタイムにログインできません</string>
     <string name="settings_computers_runtime_auth_this_computer">このコンピューター</string>
@@ -3329,7 +3317,7 @@
     <string name="settings_computers_runtime_auth_pi_paste_address_hint">ログイン後、ブラウザーは開けないページに移動します。アドレスバーのアドレス全体をここに貼り付けてください。</string>
     <string name="settings_computers_runtime_auth_pi_paste_code_hint">ログイン後、ページに abc…#xyz のようなコードが表示されます。すべて貼り付けてください。</string>
     <string name="settings_computers_runtime_auth_pi_error_busy">このコンピューターでは別の Pi のログイン（このプロバイダーまたは別のプロバイダー）が進行中です。完了するかキャンセルしてから、もう一度お試しください。</string>
-    <string name="settings_computers_runtime_auth_opencode_version_unsupported">コンピューターの OpenCode を 2.x にアップグレードしてから、コンピューターのページで「ランタイムを再スキャン」を使ってください。</string>
+    <string name="settings_computers_runtime_auth_opencode_version_unsupported">コンピューターの OpenCode を 2.x にアップグレードしてください。Raft Computer は 1 時間以内に自動で再確認します。すぐに反映するには、そのマシンで Raft Computer を再起動してください。</string>
     <string name="settings_computers_runtime_auth_opencode_flow_link">プロバイダーのページでログイン</string>
     <string name="settings_computers_runtime_auth_opencode_method_label">%1$s · %2$s</string>
     <string name="settings_computers_runtime_auth_opencode_key_refused">OpenCode はこれをキーとして使えません。環境変数やファイルへの参照ではなく、キーそのものを貼り付けてください。</string>
@@ -3425,7 +3413,6 @@
     <string name="settings_computers_rack_sort_used_desc">使用量の多い順</string>
     <string name="settings_computers_rack_sort_used_asc">使用量の少ない順</string>
     <string name="settings_computers_rack_no_match_title">一致する Computer はありません</string>
-    <string name="settings_computers_rack_no_match_description">別の語で検索するか、フィルターをクリアしてください。</string>
     <string name="settings_computers_disk_low">ディスク不足</string>
     <string name="settings_computers_disk_low_detail">空き %1$s / 合計 %2$s</string>
     <string name="settings_computers_rack_resource_detail">空き %1$s / 合計 %2$s</string>
@@ -4088,7 +4075,7 @@
     <string name="invite_human_update_replaces_hint">更新すると現在のリンクが置き換えられ、古いリンクは使用できなくなります。</string>
     <string name="invite_human_used_of">%1$d/%2$d 回使用済み</string>
     <string name="invite_human_expires_on">有効期限：%1$s</string>
-    <string name="invite_human_send_link_hint">このリンクをチームメイトに送ると、サーバーに参加してもらえます。</string>
+    <string name="invite_human_send_link_hint">リンクを知っている人は誰でもこのサーバーに参加できます。</string>
     <string name="invite_human_send_invites">招待</string>
     <string name="invite_human_sending">送信中…</string>
     <string name="invite_human_enter_email_or_copy_link">メールアドレスを 1 件以上入力するか、上の招待リンクをコピーしてください。</string>
@@ -4277,7 +4264,6 @@
     <string name="agent_migration_log_stats_computers">コンピューター</string>
     <string name="agent_migration_log_stats_filtered_of">全 %1$s 件から絞り込み</string>
     <string name="agent_migration_log_empty_filtered_title">一致する移行はありません</string>
-    <string name="agent_migration_log_empty_filtered_body">条件を変えるか、クリアしてください。</string>
     <string name="agent_migration_log_empty_none_title">まだ移行はありません</string>
     <string name="agent_migration_log_empty_none_body">エージェントがコンピューター間を移行すると、ここにルートが表示されます。</string>
     <string name="agent_migration_log_load_failed">移行記録を読み込めませんでした。</string>
@@ -5752,14 +5738,14 @@
     <string name="external_agent_create_existing">既存のエージェント</string>
     <string name="external_agent_create_sdk">自分で作る</string>
     <string name="external_agent_create_existing_hint">Muse、Dots、Hermes など。コマンドラインツールを渡して、Raft 上であなたのエージェントと一緒に働けるようにします。</string>
-    <string name="external_agent_create_sdk_hint">Raft SDK で自分のエージェントを作り、Raft につなぎます。</string>
+    <string name="external_agent_create_sdk_hint">Raft SDK を使います。</string>
     <string name="external_agent_create_next">次へ</string>
     <string name="external_agent_create_failed">Raft はエージェントを作成できませんでした。もう一度お試しください。</string>
     <string name="external_agent_create_setup_title">%1$s をセットアップ</string>
     <string name="external_agent_create_waiting">%1$s の接続を待っています…</string>
     <string name="external_agent_create_waiting_hint">%1$s がログインすると自動で更新されます。</string>
     <string name="external_agent_create_online">%1$s はオンラインです</string>
-    <string name="external_agent_create_online_hint">%1$s が Raft にログインしました。この画面は閉じてかまいません。</string>
+    <string name="external_agent_create_online_hint">この画面は閉じてかまいません。</string>
     <string name="external_agent_create_switch_to_sdk">SDK で作る方法に切り替える</string>
     <string name="external_agent_create_switch_to_existing">既存のエージェントを使う方法に切り替える</string>
     <string name="external_agent_create_step1_existing">1. このプロンプトをエージェントに送る</string>
@@ -5790,7 +5776,6 @@
     <string name="external_agent_card_no_credential_hint">エージェント認証情報がまだありません。下で作成して %1$s に渡してください。</string>
     <string name="external_agent_card_online">オンライン</string>
     <string name="external_agent_card_online_active">%1$s にアクティブ</string>
-    <string name="external_agent_card_online_hint">Raft にログイン済みです。</string>
     <string name="external_agent_card_offline">オフライン</string>
     <string name="external_agent_card_offline_last_seen">オフライン · 最終オンライン %1$s</string>
     <string name="external_agent_card_offline_hint">接続は続いています。メッセージは戻るまで待機します。</string>
@@ -6195,4 +6180,31 @@
     <string name="agent_create_proposed_config_dir_value">%1$s の値</string>
     <string name="member_activity_subagents_detail_model">モデル</string>
     <string name="runtime_model_hint_antigravity_orchestrator">作業途中の新しいメッセージは応答前にプランナーモデルへ戻されるため、単一モデルより返信が遅くなることがあります。</string>
+    <string name="status_line_retry">再試行</string>
+    <string name="status_line_recheck">再確認</string>
+    <string name="status_line_checking">確認中…</string>
+    <string name="status_line_refreshing">更新中…</string>
+    <string name="settings_computers_runtime_detection_pending">ランタイムを検出中…以下は前回確認されたリストです。</string>
+    <string name="settings_computers_runtime_detection_incomplete">ランタイムの検出が完了しませんでした（%1$s）。未確認：%2$s。これらは前回確認時の状態を表示しています。</string>
+    <string name="settings_computers_runtime_detection_incomplete_none">ランタイムの検出が完了しませんでした（%1$s）。以下は前回確認されたリストです。</string>
+    <string name="settings_computers_runtime_detection_reason_deadline">タイムアウト</string>
+    <string name="settings_computers_runtime_detection_reason_child_failed">検出プロセスが失敗</string>
+    <string name="settings_computers_runtime_detection_reason_cancelled">キャンセル</string>
+    <string name="settings_computers_runtime_detection_rescan_not_allowed">このコンピューターの作成者または「コンピューターの編集」権限を持つメンバーに再試行を依頼してください。</string>
+    <string name="settings_computers_runtime_detection_rescan_failed_request_failed">検出リクエストを送信できませんでした。</string>
+    <string name="settings_computers_runtime_detection_rescan_failed_generic">検出リクエストが失敗しました。</string>
+    <string name="settings_computers_runtime_detection_rescan_failed_offline">コンピューターがオフラインのため、検出できません。</string>
+    <string name="settings_computers_runtime_detection_rescan_failed_no_result">検出結果が届きませんでした。</string>
+    <string name="settings_computers_runtime_usage_updated_computer_offline">コンピューターがオフライン · %1$sに更新</string>
+    <string name="settings_computers_runtime_usage_updated_check_timed_out">%1$sに更新 · 今回の確認はタイムアウトしました</string>
+    <string name="settings_computers_runtime_usage_updated_check_failed">%1$sに更新 · 今回の確認に失敗しました</string>
+    <string name="settings_computers_runtime_usage_check_timed_out">今回の確認はタイムアウトしました</string>
+    <string name="settings_computers_runtime_usage_check_failed">今回の確認に失敗しました</string>
+    <string name="settings_computers_workspaces_refresh">更新</string>
+    <string name="settings_computers_workspaces_refresh_label">ワークスペースを更新</string>
+    <string name="settings_computers_workspaces_prompt_refresh">右上の「更新」を選ぶと、このコンピューター上のワークスペースディレクトリを読み込みます。</string>
+    <string name="settings_computers_workspaces_prompt_pull">下に引っ張ると、このコンピューター上のワークスペースディレクトリを読み込みます。</string>
+    <string name="settings_computers_workspaces_scan_failed">このコンピューター上のワークスペースを読み込めませんでした。</string>
+    <string name="channel_settings_slack_reading_channels">Slack チャンネルを読み込んでいます…</string>
+    <string name="channel_settings_slack_channels_read_failed">Slack チャンネルを読み込めませんでした。</string>
 </resources>

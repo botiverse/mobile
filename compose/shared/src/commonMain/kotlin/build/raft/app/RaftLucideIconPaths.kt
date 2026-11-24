@@ -592,6 +592,17 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M18 9h.01"),
                     ),
                 )
+            RaftLucideIconName.DoorOpen ->
+                RaftLucideIconSpec(
+                    "door-open",
+                    listOf(
+                        RaftLucidePathSpec("M11 20H2"),
+                        RaftLucidePathSpec("M11 4.562v16.157a1 1 0 0 0 1.242.97L19 20V5.562a2 2 0 0 0-1.515-1.94l-4-1A2 2 0 0 0 11 4.561z"),
+                        RaftLucidePathSpec("M11 4H8a2 2 0 0 0-2 2v14"),
+                        RaftLucidePathSpec("M14 12h.01"),
+                        RaftLucidePathSpec("M22 20h-3"),
+                    ),
+                )
             RaftLucideIconName.Download ->
                 RaftLucideIconSpec(
                     "download",

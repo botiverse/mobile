@@ -107,7 +107,7 @@ class RuntimeUsageCardParityTest {
             val read = shown(controller)
             assertEquals("2026-11-07T10:02:00.000Z", read.snapshot.collectedAt, "the signed-in reading replaces the signed-out one")
             assertEquals(RuntimeAccountUsageHealth.Ok, read.snapshot.accounts.single().health)
-            assertEquals(ComputerRuntimeUsageRefreshStatus.Idle, controller.refresh)
+            assertEquals(ComputerRuntimeUsageCheckState.Idle, controller.checkState)
             assertEquals(4, api.calls.count { it.startsWith("GET") && it.contains("runtime-account-usage") })
         }
     }
@@ -118,7 +118,14 @@ class RuntimeUsageCardParityTest {
         val scope = CoroutineScope(coroutineContext + Job())
         val owner = RuntimeLimitResetTest.OWNER
         val store = SharedRuntimeAccountUsageStore(RaftComputersApiClient(api), currentIdentity = { owner }, clock = { 0L })
-        val controller = ComputerRuntimeUsageController(key = RuntimeAccountUsageKey(owner, "s1", "m1", RuntimeAccountUsageProvider.Codex), store = store, scope = scope)
+        // 30s after 2026-11-07T10:00:00Z so opening the card reads once without an immediate stale auto-check.
+        val controller =
+            ComputerRuntimeUsageController(
+                key = RuntimeAccountUsageKey(owner, "s1", "m1", RuntimeAccountUsageProvider.Codex),
+                store = store,
+                scope = scope,
+                nowMillis = { 1_794_045_630_000L },
+            )
         try {
             block(controller)
         } finally {

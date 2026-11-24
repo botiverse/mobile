@@ -374,30 +374,38 @@ internal class SharedRuntimeAccountUsageStore(
         reason: RuntimeAccountUsageRefreshReason
     ): RuntimeAccountUsageRefreshLoad {
         if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeAccountUsageRefreshLoad.Superseded
-        val (deferred, owner) =
+        val (deferred, owner, startedAt) =
             mutex.withLock {
-                refreshesInFlight[key]?.let { return@withLock it to false }
+                refreshesInFlight[key]?.let { return@withLock Triple(it, false, 0L) }
                 val started = refreshStartedAt[key]
                 if (started != null && clock.nowEpochMillis() - started < refreshCooldownMillis) {
                     return RuntimeAccountUsageRefreshLoad.Done(
                         RuntimeAccountUsageRefresh(accepted = false, state = RuntimeAccountUsageRefreshState.Cooldown)
                     )
                 }
-                refreshStartedAt[key] = clock.nowEpochMillis()
+                val now = clock.nowEpochMillis()
+                refreshStartedAt[key] = now
                 val created = CompletableDeferred<RuntimeAccountUsageRefreshLoad>()
                 refreshesInFlight[key] = created
-                created to true
+                Triple(created, true, now)
             }
         if (!owner) return deferred.await()
         val result =
             try {
                 fetchRefresh(key, reason)
-            } catch (error: Throwable) {
+            } catch (cancellation: CancellationException) {
                 withContext(NonCancellable) {
-                    mutex.withLock { if (refreshesInFlight[key] === deferred) refreshesInFlight.remove(key) }
+                    mutex.withLock {
+                        // #587 site 6 (slock #16501): a refresh that brought back no reading gives its
+                        // 2-minute client window back so Retry asks again immediately.
+                        if (refreshStartedAt[key] == startedAt) refreshStartedAt.remove(key)
+                        if (refreshesInFlight[key] === deferred) refreshesInFlight.remove(key)
+                    }
                 }
-                deferred.completeExceptionally(error)
-                throw error
+                deferred.cancel(cancellation)
+                throw cancellation
+            } catch (_: Throwable) {
+                RuntimeAccountUsageRefreshLoad.Failed("runtime_account_usage_refresh_network")
             }
         withContext(NonCancellable) {
             mutex.withLock {
@@ -409,6 +417,13 @@ internal class SharedRuntimeAccountUsageStore(
                             RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Available(stale = false, snapshot = snapshot)),
                             clock.nowEpochMillis() + cacheMillis
                         )
+                }
+                val giveWindowBack =
+                    result !is RuntimeAccountUsageRefreshLoad.Done ||
+                        refreshed?.state == RuntimeAccountUsageRefreshState.Timeout ||
+                        refreshed?.state == RuntimeAccountUsageRefreshState.ComputerOffline
+                if (giveWindowBack && refreshStartedAt[key] == startedAt) {
+                    refreshStartedAt.remove(key)
                 }
                 if (refreshesInFlight[key] === deferred) refreshesInFlight.remove(key)
             }

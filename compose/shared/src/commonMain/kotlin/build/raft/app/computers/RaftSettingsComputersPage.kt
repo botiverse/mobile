@@ -14,6 +14,7 @@ import build.raft.app.data.ComputerHandoverState
 import build.raft.app.data.ComputerLoginStepAction
 import build.raft.app.data.ComputerProcJobSnapshot
 import build.raft.app.data.ComputerProcJobStopResult
+import build.raft.app.data.ComputerRuntimeRescanResult
 import build.raft.app.data.DataResult
 import build.raft.app.data.NetworkComputerHandoverRepository
 import build.raft.app.data.RaftAgentCreateEntry
@@ -132,6 +133,7 @@ import build.raft.app.data.SharedSettingsEffect
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.isRefreshing
+import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.MemberId
@@ -143,10 +145,12 @@ import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftCardVariant
 import build.raft.designsystem.components.RaftSkeleton
@@ -1031,9 +1035,7 @@ private fun RaftComputersRackBody(
                                     if (attentionOnly) Res.string.settings_computers_rack_no_attention_title else Res.string.settings_computers_rack_no_match_title
                                 ),
                             description =
-                                stringResource(
-                                    if (attentionOnly) Res.string.settings_computers_rack_no_attention_description else Res.string.settings_computers_rack_no_match_description
-                                ),
+                                if (attentionOnly) stringResource(Res.string.settings_computers_rack_no_attention_description) else null,
                             modifier = Modifier.raftSafeAreaHorizontalPadding(),
                             icon = { RaftComputersIcon(RaftLucideIconName.SearchX, size = 36.dp) },
                             actions = {
@@ -2898,13 +2900,34 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
             storeScope = environment.storeScope,
             openSetupGuide = { agent -> openAgentProfile(agent.id.value) },
         )
+    val rescanServerId = target.serverId ?: currentServerId
+    val rescanComputersApi =
+        remember(sharedStores, environment.storeScope) {
+            RaftComputersApiClient(RaftComputersNetworkApi(sharedStores.networkClient(environment.storeScope)))
+        }
+    val phonePullWorkspaces = raftPlatformPullToRefreshStyle() != RaftPullToRefreshStyle.None && !raftWindowWide()
+    val workspacesScanning =
+        settingsState.actionState?.let {
+            it.action == COMPUTER_ACTION_SCAN_WORKSPACES && it.itemId == target.machineId && it.inProgress
+        } == true
     SettingsDetailShell(
         title = (model as? RaftComputerDetailModel.Content)?.computer?.name
             ?: stringResource(Res.string.settings_computers_detail_computer),
         subtitle = "",
         onBack = ::closePage,
     ) {
-        RaftStorePullToRefreshBox(refreshing = refreshing, onRefresh = ::refresh, modifier = Modifier.fillMaxSize()) {
+        RaftStorePullToRefreshBox(
+            refreshing = refreshing || (phonePullWorkspaces && workspacesScanning),
+            onRefresh = {
+                refresh()
+                // #587 site 7 (slock #16502): on a phone, pulling the Computer page also reads
+                // Agent workspaces when the Computer is online; in-flight scans dedupe in the store.
+                if (phonePullWorkspaces && (model as? RaftComputerDetailModel.Content)?.snapshot?.computer?.online == true) {
+                    settingsViewModel.dispatch(SharedSettingsIntent.ScanComputerWorkspaces(target.machineId))
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+        ) {
         RaftComputersTheme {
             RaftSettingsComputerDetailContent(
                 model = model,
@@ -2918,6 +2941,10 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                 runtimeCatalog = runtimeCatalog,
                 ownerMembers = ownerMembersEntry?.members.orEmpty(),
                 onOpenAgent = { agent -> openAgentProfile(agent.id) },
+                onRescanRuntimes =
+                    rescanServerId?.let { sid ->
+                        { rescanComputersApi.rescanMachineRuntimes(ServerId(sid), target.machineId) }
+                    },
                 bulkAgentActions = bulkAgentActions,
                 onBulkAgentsChanged = {
                     createAgentOwner?.let { owner ->
@@ -3045,6 +3072,8 @@ internal fun RaftSettingsComputerDetailContent(
     onDesignateHandover: (suspend (String) -> DataResult<ComputerHandoverState>)? = null,
     /** Cancels or declines a pending handover (`DELETE …/handover`); null hides Cancel/Decline. */
     onCancelHandover: (suspend () -> DataResult<ComputerHandoverState>)? = null,
+    /** Retries runtime detection on the Computer (`POST …/runtimes/rescan`, slock #16477); null hides Retry. */
+    onRescanRuntimes: (suspend () -> ComputerRuntimeRescanResult)? = null,
 ) {
     build.raft.app.data.EnsureServerModelLabelCatalog(serverId)
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
@@ -3095,6 +3124,7 @@ internal fun RaftSettingsComputerDetailContent(
                     handoverState = handoverState,
                     onDesignateHandover = onDesignateHandover,
                     onCancelHandover = onCancelHandover,
+                    onRescanRuntimes = onRescanRuntimes,
                 )
         }
     }
@@ -3124,6 +3154,7 @@ private fun RaftComputerDetailBody(
     handoverState: ComputerHandoverState? = null,
     onDesignateHandover: (suspend (String) -> DataResult<ComputerHandoverState>)? = null,
     onCancelHandover: (suspend () -> DataResult<ComputerHandoverState>)? = null,
+    onRescanRuntimes: (suspend () -> ComputerRuntimeRescanResult)? = null,
 ) {
     val computer = model.computer
     val snapshot = model.snapshot
@@ -3209,8 +3240,13 @@ private fun RaftComputerDetailBody(
         }
         refreshErrorCode?.let { code -> item(key = "refresh-error") { RaftComputersRefreshErrorBanner(code) } }
         currentAction
-            // The owner's failures are the dialog's line and Make it mine's toast (web).
-            ?.takeIf { !it.inProgress && it.hasComputerActionError() && it.action != COMPUTER_ACTION_OWNER }
+            // Owner failures show in the dialog/toast; workspace scan failures show in the workspaces banner (slock #16502).
+            ?.takeIf {
+                !it.inProgress &&
+                    it.hasComputerActionError() &&
+                    it.action != COMPUTER_ACTION_OWNER &&
+                    it.action != COMPUTER_ACTION_SCAN_WORKSPACES
+            }
             ?.let { failed ->
                 item(key = "action-error") { RaftComputerActionErrorBanner(failed) }
             }
@@ -3276,6 +3312,15 @@ private fun RaftComputerDetailBody(
                                 null
                             }
                         val install = rememberComputerRuntimeInstallController(installAccess, machineId, readNow = showAllRuntimes)
+                        // #587 site 4 (slock #16477): pending or incomplete runtime detection above the chips.
+                        ComputerRuntimeDetectionLine(
+                            machineId = machineId,
+                            online = computer.online,
+                            detection = snapshot.computer.runtimeDetection,
+                            canRescan = canEdit,
+                            runtimeCatalog = runtimeCatalog,
+                            onRescan = onRescanRuntimes,
+                        )
                         // Usage runtimes open their account usage (web RuntimeAccountUsageGateChip).
                         ComputerRuntimeUsageChips(
                             chips.filter { showAllRuntimes || it.availability != RaftComputerRuntimeAvailability.NotInstalled },
@@ -4102,54 +4147,93 @@ private fun RaftComputerAgentAvatar(agent: SettingsComputerAgentSnapshot) {
     )
 }
 
+internal const val COMPUTER_WORKSPACES_REFRESH_TAG = "computer-workspaces-refresh"
+internal const val COMPUTER_WORKSPACES_ERROR_TAG = "computer-workspaces-error"
+internal const val COMPUTER_WORKSPACES_RETRY_TAG = "computer-workspaces-retry"
+
+/**
+ * Web `WorkspacesSection` (`#587 site 7`, slock `#16502`): read by hand, never on open.
+ * On desktop/wide screens a ghost Refresh icon button sits right of the heading; on phones
+ * pull-to-refresh on the Computer page reads them and the prompt says to pull. A failed scan shows
+ * a warning banner with Retry above any kept list.
+ */
 @Composable
-private fun RaftComputerWorkspacesSection(
+internal fun RaftComputerWorkspacesSection(
     snapshot: SettingsComputerDetailSnapshot,
     scanning: Boolean,
     onScan: () -> Unit,
+    phonePullToRefresh: Boolean = raftPlatformPullToRefreshStyle() != RaftPullToRefreshStyle.None && !raftWindowWide(),
 ) {
     RaftSection(
         title = stringResource(Res.string.settings_computers_section_workspaces),
         // Web WorkspacesSection: a FolderOpen before the heading.
         icon = { RaftComputersIcon(RaftLucideIconName.FolderOpen, size = 14.dp) },
         count = snapshot.workspaces.size.takeIf { snapshot.workspacesScanned && it > 0 }?.toString(),
-        // Web `SectionHeader action`: a small outline Scan / Rescan button at the end of the heading.
-        action = {
-            RaftButton(
-                text =
-                    if (snapshot.workspacesScanned) {
-                        stringResource(Res.string.settings_computers_action_rescan)
-                    } else {
-                        stringResource(Res.string.settings_computers_action_scan)
-                    },
-                onClick = onScan,
-                loading = scanning,
-                loadingLabel = stringResource(Res.string.settings_computers_action_scanning),
-                leadingIcon = { RaftComputersIcon(RaftLucideIconName.RefreshCw) },
-            )
-        },
-    ) {
-        val error = snapshot.workspacesError
-        when {
-            !snapshot.workspacesScanned ->
-                // Web shows the scan prompt only while no scan is running.
-                if (!scanning) {
-                    RaftComputersEmptyNote(stringResource(Res.string.settings_computers_workspace_scan_title))
-                } else {
-                    Unit
-                }
-            error != null ->
-                RaftComputersInlineNotice(
-                    title = stringResource(Res.string.settings_computers_error_load_workspaces),
-                    detail = raftComputerErrorCodeMessage(error.computerErrorCode, error.screenError, error.permissionBlocker),
-                )
-            snapshot.workspaces.isEmpty() -> RaftComputersEmptyNote(stringResource(Res.string.settings_computers_empty_workspaces))
-            else ->
-                RaftListRowGroup(Modifier.fillMaxWidth()) {
-                    snapshot.workspaces.forEachIndexed { index, workspace ->
-                        RaftComputerWorkspaceRow(workspace, divider = index > 0)
+        action =
+            if (phonePullToRefresh) {
+                null
+            } else {
+                {
+                    RaftIconButton(
+                        onClick = onScan,
+                        modifier = Modifier.testTag(COMPUTER_WORKSPACES_REFRESH_TAG),
+                        tooltip = stringResource(Res.string.settings_computers_workspaces_refresh),
+                        contentDescription = stringResource(Res.string.settings_computers_workspaces_refresh_label),
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftIconButtonSize.Md,
+                        loading = scanning,
+                        loadingLabel = stringResource(Res.string.status_line_refreshing),
+                    ) {
+                        RaftComputersIcon(RaftLucideIconName.RefreshCw)
                     }
                 }
+            },
+    ) {
+        val error = snapshot.workspacesError
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (error != null) {
+                RaftBanner(
+                    description = stringResource(Res.string.settings_computers_workspaces_scan_failed),
+                    status = RaftBannerStatus.Warning,
+                    size = RaftBannerSize.Sm,
+                    modifier = Modifier.testTag(COMPUTER_WORKSPACES_ERROR_TAG),
+                    action = {
+                        RaftButton(
+                            text = stringResource(Res.string.status_line_retry),
+                            onClick = onScan,
+                            modifier = Modifier.testTag(COMPUTER_WORKSPACES_RETRY_TAG),
+                            variant = RaftButtonVariant.Ghost,
+                            size = RaftButtonSize.Md,
+                            loading = scanning,
+                            loadingLabel = stringResource(Res.string.status_line_refreshing),
+                        )
+                    },
+                )
+            }
+            when {
+                !snapshot.workspacesScanned ->
+                    if (scanning && error == null) {
+                        RaftComputersEmptyNote(stringResource(Res.string.status_line_refreshing))
+                    } else if (error == null) {
+                        RaftComputersEmptyNote(
+                            stringResource(
+                                if (phonePullToRefresh) {
+                                    Res.string.settings_computers_workspaces_prompt_pull
+                                } else {
+                                    Res.string.settings_computers_workspaces_prompt_refresh
+                                }
+                            )
+                        )
+                    }
+                snapshot.workspaces.isEmpty() ->
+                    RaftComputersEmptyNote(stringResource(Res.string.settings_computers_empty_workspaces))
+                else ->
+                    RaftListRowGroup(Modifier.fillMaxWidth()) {
+                        snapshot.workspaces.forEachIndexed { index, workspace ->
+                            RaftComputerWorkspaceRow(workspace, divider = index > 0)
+                        }
+                    }
+            }
         }
     }
 }

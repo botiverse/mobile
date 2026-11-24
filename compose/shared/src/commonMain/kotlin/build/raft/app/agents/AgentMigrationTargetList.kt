@@ -275,7 +275,7 @@ private fun agentMigrationTargetUsageState(machineId: String, quota: RuntimeQuot
     if (machineId !in quota.keys) return null
     val load = quota.loads[machineId]
     if (load is RuntimeAccountUsageLoad.Forbidden) return null
-    return ComputerRuntimeUsageSheetState(load = load, loading = load == null, refresh = ComputerRuntimeUsageRefreshStatus.Idle, cooldownLeftMillis = 0L)
+    return ComputerRuntimeUsageSheetState(load = load, loading = load == null)
 }
 
 /** The details sheet without its window, for screenshots. */

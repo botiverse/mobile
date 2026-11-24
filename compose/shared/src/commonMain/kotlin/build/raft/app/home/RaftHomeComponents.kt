@@ -4655,13 +4655,13 @@ internal fun raftHomeConversationMenuItems(
                     )
                 )
             }
-            // botiverse/slock #16225 (menu order v4): Leave is its own group after Archive.
+            // botiverse/slock #16225 (menu order v4), #16350 (DoorOpen): Leave is its own group after Archive.
             if (activeCanLeave) {
                 add(
                     RaftBaseMenuItem(
                         id = "leave-channel",
                         label = labels.leaveChannel,
-                        icon = RaftLucideIconName.LogOut,
+                        icon = RaftLucideIconName.DoorOpen,
                         dividerBefore = true
                     )
                 )

@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.ServerId
 import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.model.RuntimeModelInfo
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -75,6 +76,9 @@ interface RaftComputersApi {
     suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse
     suspend fun rotateMachineKey(serverId: ServerId, machineId: String): HomeNetworkResponse
     suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse
+    /** `POST servers/:id/machines/:machineId/runtimes/rescan` (slock #16477). */
+    suspend fun rescanMachineRuntimes(serverId: ServerId, machineId: String): HomeNetworkResponse =
+        error("rescanMachineRuntimes is not implemented")
     suspend fun runtimeOptions(serverId: ServerId, machineId: String): HomeNetworkResponse =
         error("runtimeOptions is not implemented")
     /** `GET agents/:id/runtime-options`: the runtimes this agent may switch to (`existing_agent` rows). */
@@ -313,6 +317,14 @@ internal class RaftComputersNetworkApi(
         networkClient.request(
             priority = DataRequestPriority.Visible,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/workspaces",
+            serverIdOverride = serverId
+        )
+
+    override suspend fun rescanMachineRuntimes(serverId: ServerId, machineId: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "servers/${serverId.value}/machines/${machineId.trim()}/runtimes/rescan",
+            method = "POST",
             serverIdOverride = serverId
         )
 
@@ -660,6 +672,29 @@ internal class RaftComputersApiClient(
                 orphanCount = wire.count { it.status == "orphan" }
             )
         }
+
+    /**
+     * `POST servers/:id/machines/:machineId/runtimes/rescan` (slock #16477, #587 site 4).
+     * Maps HTTP outcomes to [ComputerRuntimeRescanResult]: 2xx -> Accepted, 403 -> Forbidden,
+     * 409 -> Offline, code <= 0 / network error -> NotSent, any other HTTP error -> Failed.
+     */
+    suspend fun rescanMachineRuntimes(serverId: ServerId, machineId: String): ComputerRuntimeRescanResult {
+        val response =
+            try {
+                transport.rescanMachineRuntimes(serverId, machineId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                return ComputerRuntimeRescanResult.NotSent
+            }
+        return when {
+            response.isSuccessful -> ComputerRuntimeRescanResult.Accepted
+            response.code == 403 -> ComputerRuntimeRescanResult.Forbidden
+            response.code == 409 -> ComputerRuntimeRescanResult.Offline
+            response.code <= 0 -> ComputerRuntimeRescanResult.NotSent
+            else -> ComputerRuntimeRescanResult.Failed
+        }
+    }
 
     suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): DataResult<ComputerRuntimeModelsSummary> =
         transport.runtimeModels(serverId, machineId, runtime).mapComputersBody(
@@ -1104,6 +1139,8 @@ internal data class ComputerSummary(
     val upgradeScopeRefused: Boolean = false,
     /** Server `runtimeVersions`: runtime id -> the CLI version the Computer detected ("2.1.59 (Claude Code)"). */
     val runtimeVersions: Map<String, String> = emptyMap(),
+    /** Server `runtimeDetection` (slock #16477): explicit detection status; null when absent. */
+    val runtimeDetection: SettingsComputerRuntimeDetection? = null,
     /** `machines.userId`: the user who registered the machine (server's "machine creator" authority). */
     val creatorUserId: String? = null,
     /** True when the requester attached the Computer backing this machine (false for raw daemons). */
@@ -1399,6 +1436,8 @@ private data class ComputerDto(
     // services/machineReadModel.ts `runtimeVersions: Record<string, string>` (runtime id -> the version
     // string the Computer's `ready` reported, e.g. "2.1.59 (Claude Code)"); the usage sheet's version line.
     val runtimeVersions: Map<String, String> = emptyMap(),
+    // services/machineReadModel.ts `runtimeDetection: MachineRuntimeDetection | null` (slock #16477).
+    val runtimeDetection: ComputerRuntimeDetectionDto? = null,
     val description: String? = null,
     val lastHeartbeat: String? = null,
     val createdAt: String? = null,
@@ -1447,6 +1486,33 @@ private data class ComputerDto(
     // this machine on connect below the Computer version floor; null/absent otherwise.
     val versionRefusedAt: String? = null
 )
+
+/** Outcome of `POST /servers/:id/machines/:machineId/runtimes/rescan` (slock #16477). */
+internal enum class ComputerRuntimeRescanResult {
+    Accepted,
+    Forbidden,
+    Offline,
+    NotSent,
+    Failed,
+}
+
+@Serializable
+private data class ComputerRuntimeDetectionDto(
+    val status: String? = null,
+    val unfinishedRuntimes: List<String> = emptyList(),
+    val reason: String? = null,
+    val updatedAtMs: Long? = null,
+) {
+    fun toSnapshot(): SettingsComputerRuntimeDetection? {
+        val parsedStatus = SettingsComputerRuntimeDetectionStatus.fromWire(status) ?: return null
+        return SettingsComputerRuntimeDetection(
+            status = parsedStatus,
+            unfinishedRuntimes = unfinishedRuntimes.map(String::trim).filter(String::isNotEmpty),
+            reason = SettingsComputerRuntimeDetectionReason.fromWire(reason),
+            updatedAtMs = updatedAtMs,
+        )
+    }
+}
 
 /**
  * slock packages/shared/src/computerRevocation.ts `ComputerRevocation`:
@@ -1748,6 +1814,7 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
             runtimeVersions.mapNotNull { (runtime, version) ->
                 version.trim().takeIf { runtime.isNotBlank() && it.isNotEmpty() }?.let { runtime to it }
             }.toMap(),
+        runtimeDetection = runtimeDetection?.toSnapshot(),
         creatorUserId = userId?.trim()?.takeIf { it.isNotBlank() },
         attachedByCurrentUser = computerAttachedByCurrentUser,
         controlledByCurrentUser = controlledByCurrentUser,

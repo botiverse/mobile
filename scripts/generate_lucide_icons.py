@@ -117,6 +117,7 @@ LUCIDE_ICONS = [
     "credit-card",
     "crop",
     "dices",
+    "door-open",
     "download",
     "ellipsis",
     "ellipsis-vertical",

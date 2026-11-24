@@ -301,7 +301,7 @@ private fun ExternalSetupAlert(text: String) {
 private fun ExternalSetupStatusLine(
     presence: RaftPresence,
     title: String,
-    hint: String,
+    hint: String?,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(RaftRadius.Control)
@@ -316,7 +316,9 @@ private fun ExternalSetupStatusLine(
         RaftStatusDot(presence = presence, modifier = Modifier.padding(top = 6.dp))
         Column(Modifier.weight(1f)) {
             RaftText(title, style = RaftTheme.typography.body.copy(fontWeight = FontWeight.SemiBold), color = RaftTheme.colors.foreground)
-            RaftText(hint, style = RaftTheme.typography.callout, color = RaftTheme.colors.foregroundMuted)
+            hint?.takeIf { it.isNotBlank() }?.let { line ->
+                RaftText(line, style = RaftTheme.typography.callout, color = RaftTheme.colors.foregroundMuted)
+            }
         }
         trailing?.invoke()
     }
@@ -717,7 +719,9 @@ internal fun RaftCreateExternalAgentDialog(host: RaftExternalAgentCreateHost, on
             ExternalSetupStatusLine(
                 presence = if (connected) RaftPresence.Online else RaftPresence.Error,
                 title = stringResource(if (connected) Res.string.external_agent_create_online else Res.string.external_agent_create_waiting, agentName),
-                hint = stringResource(if (connected) Res.string.external_agent_create_online_hint else Res.string.external_agent_create_waiting_hint, agentName),
+                hint =
+                    if (connected) stringResource(Res.string.external_agent_create_online_hint)
+                    else stringResource(Res.string.external_agent_create_waiting_hint, agentName),
             )
             if (!connected) {
                 ExternalSetupSteps(
@@ -930,9 +934,10 @@ internal fun MembersExternalAgentConnectionCard(
             val (title, hint) =
                 when (state) {
                     ExternalConnectionState.Online ->
+                        // Web ExternalAgentConnectionCard (#16271): online with no activity yet shows no hint.
                         stringResource(Res.string.external_agent_card_online) to
                             if (lastActiveLabel.isNotBlank()) stringResource(Res.string.external_agent_card_online_active, lastActiveLabel)
-                            else stringResource(Res.string.external_agent_card_online_hint)
+                            else null
                     ExternalConnectionState.Offline ->
                         (
                             if (lastSeenLabel.isNotBlank()) stringResource(Res.string.external_agent_card_offline_last_seen, lastSeenLabel)

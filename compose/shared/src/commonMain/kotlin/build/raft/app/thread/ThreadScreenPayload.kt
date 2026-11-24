@@ -90,6 +90,14 @@ internal data class RaftThreadScreenPayload(
     val focusedMessageId: String? = null,
     val focusedMessageRequestNonce: Int = 0,
     /**
+     * Web #16398 (bug #555): the focused message's context load returned a final not-found
+     * (`message_not_found` / 404, not `history_limited`) and fell back quietly to the latest
+     * messages / replies. Tells [withRouteContext] and [SharedThreadStore] not to re-apply the
+     * stale route's [focusedMessageId]. Page-local, never stored.
+     */
+    @Transient
+    val focusedTargetMissing: Boolean = false,
+    /**
      * Bumped by [SharedThreadIntent.FocusHistoryStart]: the list scrolls to where the shown history
      * starts (the history paywall card). Page-local, never stored.
      */

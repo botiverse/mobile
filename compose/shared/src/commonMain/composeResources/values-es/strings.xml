@@ -185,7 +185,7 @@
     <string name="settings_account_session">Sesión</string>
     <string name="settings_account_logout">Cerrar sesión</string>
     <string name="settings_account_logout_action">Cerrar sesión</string>
-    <string name="settings_account_logout_detail">Cierra la sesión en este dispositivo. Tu cuenta y tus datos se conservan; puedes volver a iniciar sesión en cualquier momento.</string>
+    <string name="settings_account_logout_detail">Solo en este dispositivo.</string>
     <string name="settings_account_logout_confirm_title">¿Cerrar sesión?</string>
     <string name="settings_account_logout_confirm">¿Cerrar sesión en este dispositivo? Tu cuenta y tus datos se conservan; puedes volver a iniciar sesión en cualquier momento.</string>
     <string name="settings_account_logout_signing_out">Cerrando sesión…</string>
@@ -500,7 +500,7 @@
     <string name="settings_appearance_mode_system">Sistema</string>
     <string name="settings_theme_title">Tema</string>
     <string name="settings_theme_group_mode">Claro y oscuro</string>
-    <string name="settings_server_theme_description">Cómo ves %1$s. Solo tú lo ves.</string>
+    <string name="settings_server_theme_description">Solo tú lo ves.</string>
     <string name="settings_server_theme_group_basics">Básicos</string>
     <string name="settings_server_theme_group_avatars">Serie de avatares</string>
     <string name="settings_server_theme_default">Predeterminado</string>
@@ -1092,7 +1092,6 @@
     <string name="thread_action_card_reconfirm">Volver a confirmar</string>
     <string name="thread_action_card_reconfirm_failed">No se pudo volver a confirmar</string>
     <string name="thread_action_card_blocked_target_server">Solo los miembros de %1$s pueden usar esta tarjeta.</string>
-    <string name="thread_action_card_runs_on_server">Se ejecuta en %1$s</string>
     <string name="thread_action_card_blocked_source_workspace">Esta es una copia del historial. Solo el espacio de trabajo de origen puede ejecutar esta acción.</string>
     <string name="thread_action_card_blocked_need_migrate_agents">Solo quien creó a %1$s o alguien con permiso para migrar agentes puede hacer esto.</string>
     <string name="thread_action_card_field_description">Descripción</string>
@@ -2698,7 +2697,6 @@
     <string name="settings_appearance_message_font_size_small">Pequeño</string>
     <string name="settings_appearance_message_font_size_medium">Mediano</string>
     <string name="settings_appearance_message_font_size_large">Grande</string>
-    <string name="settings_appearance_saved_on_device">Se guarda en este dispositivo.</string>
     <string name="settings_appearance_live_agent_activity_title">Actividad de agentes en tiempo real</string>
     <string name="settings_appearance_live_agent_activity_description">Muestra qué agentes están trabajando y qué están haciendo, en la parte superior de la ventana y en la barra de Inicio.</string>
     <string name="layout_working_now_title">Trabajando ahora</string>
@@ -2720,7 +2718,6 @@
     <string name="settings_appearance_preview_sender">Asistente de bienvenida</string>
     <string name="settings_appearance_preview_message">@Joy #proj-uiux me encanta el nuevo diseño; voy a hacer un `git pull` para probarlo en local.</string>
     <string name="settings_mobile_link_open_mode_title">Abrir enlaces web</string>
-    <string name="settings_mobile_link_open_mode_detail">Elige si los enlaces web se abren en el navegador predeterminado o dentro de Raft.</string>
     <string name="settings_mobile_link_open_mode_system_browser">Navegador predeterminado</string>
     <string name="settings_mobile_link_open_mode_in_app_browser">Navegador integrado</string>
     <string name="in_app_browser_title">Navegador</string>
@@ -2844,7 +2841,6 @@
     <string name="settings_computers_empty_detail">Conecta una computadora para ejecutar agentes desde aquí.</string>
     <string name="settings_computers_error_load_agents">No se pudieron cargar los agentes</string>
     <string name="settings_computers_empty_agents">Aún no hay agentes en esta computadora</string>
-    <string name="settings_computers_error_load_workspaces">No se pudieron cargar los espacios de trabajo</string>
     <string name="settings_computers_empty_workspaces">Aún no hay directorios de espacios de trabajo</string>
     <string name="settings_computers_error_offline">Esta computadora está sin conexión. El daemon no está conectado al servidor, así que no se pueden cargar los espacios de trabajo ni los agentes en este momento.</string>
     <string name="settings_computers_error_replica">Otra réplica del servidor está atendiendo a esta computadora. Inténtalo de nuevo en un momento.</string>
@@ -2999,10 +2995,6 @@
     <string name="settings_computers_action_select">Seleccionar</string>
     <string name="settings_computers_action_create">Crear</string>
     <string name="settings_computers_section_workspaces">Espacios de trabajo de agentes</string>
-    <string name="settings_computers_action_scan">Escanear</string>
-    <string name="settings_computers_action_rescan">Volver a escanear</string>
-    <string name="settings_computers_action_scanning">Escaneando</string>
-    <string name="settings_computers_workspace_scan_title">Haz clic en Escanear para buscar directorios de espacios de trabajo en esta computadora.</string>
     <string name="settings_computers_workspace_scan_detail">Escanea cuando lo necesites para revisar los directorios de espacios de trabajo de esta computadora.</string>
     <string name="settings_computers_section_actions">Acciones</string>
     <string name="settings_computers_delete_title">Eliminar computadora</string>
@@ -3078,11 +3070,7 @@
     <string name="settings_computers_runtime_usage_later">más tarde</string>
     <string name="settings_computers_runtime_usage_metadata">Actualizado %1$s</string>
     <string name="settings_computers_runtime_usage_recently">recientemente</string>
-    <string name="settings_computers_runtime_usage_refresh_unconfirmed">Se envió la actualización, pero no se detectaron cambios</string>
-    <string name="settings_computers_runtime_usage_refresh_timeout">Se agotó el tiempo de actualización</string>
-    <string name="settings_computers_runtime_usage_refresh_cooldown_countdown">Podrás actualizar de nuevo en ~%1$d s</string>
     <string name="settings_computers_runtime_usage_computer_offline">Computadora sin conexión</string>
-    <string name="settings_computers_runtime_usage_refresh">Actualizar</string>
     <string name="settings_computers_runtime_usage_attention">El uso requiere atención</string>
     <string name="settings_computers_runtime_usage_healthy">Uso normal</string>
     <string name="settings_computers_runtime_usage_limit_resets_left_one">%1$d restablecimiento restante</string>
@@ -3246,7 +3234,6 @@
     <string name="settings_computers_rack_sort_used_desc">Más usados primero</string>
     <string name="settings_computers_rack_sort_used_asc">Menos usados primero</string>
     <string name="settings_computers_rack_no_match_title">Ninguna computadora coincide</string>
-    <string name="settings_computers_rack_no_match_description">Prueba otra búsqueda o quita los filtros.</string>
     <string name="settings_computers_disk_low">Poco espacio</string>
     <string name="settings_computers_disk_low_detail">%1$s libres de %2$s</string>
     <string name="settings_computers_rack_resource_detail">%1$s libres de %2$s</string>
@@ -3909,7 +3896,7 @@
     <string name="invite_human_update_replaces_hint">Al actualizar se reemplaza el enlace actual y el anterior deja de funcionar.</string>
     <string name="invite_human_used_of">Usos: %1$d/%2$d</string>
     <string name="invite_human_expires_on">Vence el %1$s</string>
-    <string name="invite_human_send_link_hint">Envía este enlace a tu equipo para que se una al servidor.</string>
+    <string name="invite_human_send_link_hint">Cualquiera con el enlace puede unirse a este servidor.</string>
     <string name="invite_human_send_invites">Invitar</string>
     <string name="invite_human_sending">Enviando…</string>
     <string name="invite_human_enter_email_or_copy_link">Escribe al menos un correo electrónico o copia el enlace de invitación de arriba.</string>
@@ -4098,7 +4085,6 @@
     <string name="agent_migration_log_stats_computers">Computadoras</string>
     <string name="agent_migration_log_stats_filtered_of">filtradas de %1$s</string>
     <string name="agent_migration_log_empty_filtered_title">Ninguna migración coincide</string>
-    <string name="agent_migration_log_empty_filtered_body">Cambia los filtros o bórralos.</string>
     <string name="agent_migration_log_empty_none_title">Aún no hay migraciones</string>
     <string name="agent_migration_log_empty_none_body">Cuando los agentes se muevan entre computadoras, sus rutas aparecerán aquí.</string>
     <string name="agent_migration_log_load_failed">No se pudo cargar el registro de migraciones.</string>
@@ -5569,14 +5555,14 @@
     <string name="external_agent_create_existing">Agente existente</string>
     <string name="external_agent_create_sdk">Crear uno propio</string>
     <string name="external_agent_create_existing_hint">Muse, Dots, Hermes y más. Dale una herramienta de línea de comandos para trabajar con tus agentes en Raft.</string>
-    <string name="external_agent_create_sdk_hint">Crea tu propio agente con el Raft SDK y súmalo a Raft.</string>
+    <string name="external_agent_create_sdk_hint">Usa el Raft SDK.</string>
     <string name="external_agent_create_next">Siguiente</string>
     <string name="external_agent_create_failed">Raft no pudo crear el agente. Inténtalo de nuevo.</string>
     <string name="external_agent_create_setup_title">Configurar %1$s</string>
     <string name="external_agent_create_waiting">Esperando a que %1$s se conecte…</string>
     <string name="external_agent_create_waiting_hint">Esto se actualiza solo cuando %1$s inicia sesión.</string>
     <string name="external_agent_create_online">%1$s está en línea</string>
-    <string name="external_agent_create_online_hint">%1$s inició sesión en Raft. Ya puedes cerrar esta ventana.</string>
+    <string name="external_agent_create_online_hint">Ya puedes cerrar esta ventana.</string>
     <string name="external_agent_create_switch_to_sdk">Crearlo con el SDK en su lugar</string>
     <string name="external_agent_create_switch_to_existing">Usar un agente existente en su lugar</string>
     <string name="external_agent_create_step1_existing">1. Envía este prompt a tu agente</string>
@@ -5607,7 +5593,6 @@
     <string name="external_agent_card_no_credential_hint">Todavía no tiene una credencial de agente. Crea una abajo y dásela a %1$s.</string>
     <string name="external_agent_card_online">En línea</string>
     <string name="external_agent_card_online_active">Activo %1$s</string>
-    <string name="external_agent_card_online_hint">Sesión iniciada en Raft.</string>
     <string name="external_agent_card_offline">Sin conexión</string>
     <string name="external_agent_card_offline_last_seen">Sin conexión · última vez en línea %1$s</string>
     <string name="external_agent_card_offline_hint">Sigue conectado. Los mensajes esperarán hasta que vuelva.</string>
@@ -5642,9 +5627,9 @@
     <string name="settings_computers_runtime_auth_sign_out_action">Cerrar sesión</string>
     <string name="settings_computers_runtime_auth_upgrade_required">Actualiza esta computadora para iniciar sesión desde aquí</string>
     <string name="settings_computers_runtime_auth_dsh_credentials">DeepSeek Harness no inicia sesión desde aquí. Usa la clave de API configurada para él en esta computadora: una guardada en los ajustes de dsh (dsh exige que su archivo de credenciales solo lo pueda leer su propietario, modo 600), o DEEPSEEK_API_KEY en el entorno de la computadora o en las Variables de entorno de un agente. Una clave guardada tiene prioridad.</string>
-    <string name="settings_computers_runtime_auth_unavailable_not_installed">Instala la herramienta de línea de comandos de este runtime en la computadora y luego usa “Volver a escanear runtimes” en la página de la computadora.</string>
+    <string name="settings_computers_runtime_auth_unavailable_not_installed">Instala la herramienta de línea de comandos de este runtime en la computadora. Raft Computer vuelve a comprobarlo en menos de una hora; para detectar el cambio al instante, reinicia Raft Computer en esa máquina.</string>
     <string name="settings_computers_runtime_auth_unavailable_install_on">En macOS o Linux:</string>
-    <string name="settings_computers_runtime_auth_unavailable_version_unsupported">Actualiza la herramienta de línea de comandos de este runtime en la computadora y luego usa “Volver a escanear runtimes” en la página de la computadora.</string>
+    <string name="settings_computers_runtime_auth_unavailable_version_unsupported">Actualiza la herramienta de línea de comandos de este runtime en la computadora. Raft Computer vuelve a comprobarlo en menos de una hora; para detectar el cambio al instante, reinicia Raft Computer en esa máquina.</string>
     <string name="settings_computers_runtime_auth_unavailable_unsupported_installation">Inicia sesión en este runtime directamente en la computadora.</string>
     <string name="settings_computers_runtime_auth_not_attached">Nadie figura como quien vinculó esta computadora, así que no se puede iniciar sesión en sus runtimes desde aquí</string>
     <string name="settings_computers_runtime_auth_this_computer">esta computadora</string>
@@ -5972,7 +5957,7 @@
     <string name="settings_computers_runtime_auth_pi_paste_address_hint">Después de iniciar sesión, tu navegador llega a una página que no carga. Pega aquí la dirección completa de la barra de direcciones.</string>
     <string name="settings_computers_runtime_auth_pi_paste_code_hint">Después de iniciar sesión, la página muestra un código como abc…#xyz. Pégalo completo.</string>
     <string name="settings_computers_runtime_auth_pi_error_busy">Ya hay otro inicio de sesión de Pi en curso en esta computadora, para este u otro proveedor. Termínalo o cancélalo y vuelve a intentarlo.</string>
-    <string name="settings_computers_runtime_auth_opencode_version_unsupported">Actualiza OpenCode a 2.x en la computadora y luego usa “Volver a escanear runtimes” en la página de la computadora.</string>
+    <string name="settings_computers_runtime_auth_opencode_version_unsupported">Actualiza OpenCode a 2.x en la computadora. Raft Computer vuelve a comprobarlo en menos de una hora; para detectar el cambio al instante, reinicia Raft Computer en esa máquina.</string>
     <string name="settings_computers_runtime_auth_opencode_flow_link">Inicia sesión en la página del proveedor</string>
     <string name="settings_computers_runtime_auth_opencode_method_label">%1$s · %2$s</string>
     <string name="settings_computers_runtime_auth_opencode_key_refused">OpenCode no puede usar esto como clave. Pega la clave tal cual, no una referencia a una variable de entorno o a un archivo.</string>
@@ -6194,4 +6179,31 @@
     <string name="agent_create_proposed_config_dir_value">Valor de %1$s</string>
     <string name="member_activity_subagents_detail_model">Modelo</string>
     <string name="runtime_model_hint_antigravity_orchestrator">Los mensajes a mitad de tarea vuelven primero al modelo planificador antes de responder, por lo que las respuestas mientras trabaja pueden ser más lentas que con un solo modelo.</string>
+    <string name="status_line_retry">Reintentar</string>
+    <string name="status_line_recheck">Volver a comprobar</string>
+    <string name="status_line_checking">Comprobando…</string>
+    <string name="status_line_refreshing">Actualizando…</string>
+    <string name="settings_computers_runtime_detection_pending">Detectando runtimes… La lista de abajo es la última confirmada.</string>
+    <string name="settings_computers_runtime_detection_incomplete">La detección de runtimes no terminó (%1$s). Sin comprobar: %2$s. Se muestra su último estado conocido.</string>
+    <string name="settings_computers_runtime_detection_incomplete_none">La detección de runtimes no terminó (%1$s). La lista de abajo es la última confirmada.</string>
+    <string name="settings_computers_runtime_detection_reason_deadline">se agotó el tiempo de espera</string>
+    <string name="settings_computers_runtime_detection_reason_child_failed">falló el proceso de detección</string>
+    <string name="settings_computers_runtime_detection_reason_cancelled">se canceló</string>
+    <string name="settings_computers_runtime_detection_rescan_not_allowed">Pide a quien creó la computadora o a alguien con el permiso “Editar computadoras” que lo reintente.</string>
+    <string name="settings_computers_runtime_detection_rescan_failed_request_failed">No se pudo enviar la solicitud de detección.</string>
+    <string name="settings_computers_runtime_detection_rescan_failed_generic">La solicitud de detección falló.</string>
+    <string name="settings_computers_runtime_detection_rescan_failed_offline">La computadora está sin conexión, así que no puede detectar.</string>
+    <string name="settings_computers_runtime_detection_rescan_failed_no_result">No llegó ningún resultado de la detección.</string>
+    <string name="settings_computers_runtime_usage_updated_computer_offline">Computadora sin conexión · Actualizado %1$s</string>
+    <string name="settings_computers_runtime_usage_updated_check_timed_out">Actualizado %1$s · Esta comprobación agotó el tiempo</string>
+    <string name="settings_computers_runtime_usage_updated_check_failed">Actualizado %1$s · Esta comprobación falló</string>
+    <string name="settings_computers_runtime_usage_check_timed_out">Esta comprobación agotó el tiempo</string>
+    <string name="settings_computers_runtime_usage_check_failed">Esta comprobación falló</string>
+    <string name="settings_computers_workspaces_refresh">Actualizar</string>
+    <string name="settings_computers_workspaces_refresh_label">Actualizar espacios de trabajo</string>
+    <string name="settings_computers_workspaces_prompt_refresh">Selecciona Actualizar, arriba a la derecha, para leer los directorios de espacios de trabajo de esta computadora.</string>
+    <string name="settings_computers_workspaces_prompt_pull">Desliza hacia abajo para leer los directorios de espacios de trabajo de esta computadora.</string>
+    <string name="settings_computers_workspaces_scan_failed">No se pudieron leer los espacios de trabajo de esta computadora.</string>
+    <string name="channel_settings_slack_reading_channels">Leyendo los canales de Slack…</string>
+    <string name="channel_settings_slack_channels_read_failed">No se pudieron leer los canales de Slack.</string>
 </resources>

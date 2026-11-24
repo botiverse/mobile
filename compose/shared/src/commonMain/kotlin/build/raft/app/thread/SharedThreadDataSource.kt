@@ -3159,16 +3159,21 @@ internal class SharedThreadDataSource(
                 if (!isCurrentReplyCacheProvenance(resolutionScope.provenance)) {
                     return@prewarm staleReplyCacheProvenanceResult()
                 }
-                fetchFocusedInitialThreadPayloadFromRepository(
-                    session = session,
-                    basePayload = basePayload,
-                    routeThreadId = ThreadId(key.threadChannelId),
-                    accessFallback = null,
-                    replyResolutionScope = resolutionScope,
-                    requestPriority = DataRequestPriority.Background,
-                )
+                when (
+                    val outcome =
+                        fetchFocusedInitialThreadPayloadFromRepository(
+                            session = session,
+                            basePayload = basePayload,
+                            routeThreadId = ThreadId(key.threadChannelId),
+                            accessFallback = null,
+                            replyResolutionScope = resolutionScope,
+                            requestPriority = DataRequestPriority.Background,
+                        )
+                ) {
+                    is FocusedInitialContextOutcome.Loaded -> outcome.result
                     // The context answered for another conversation (or not at all): nothing to warm.
-                    ?: DataResult.Error(ScreenError(code = "thread_prewarm_context_mismatch", retryable = false))
+                    else -> DataResult.Error(ScreenError(code = "thread_prewarm_context_mismatch", retryable = false))
+                }
             }
         diagnosticsLogger(
             "thread_conversation_prewarm_result threadId=${key.threadChannelId} surface=$surfaceKind " +
@@ -4681,9 +4686,9 @@ internal class SharedThreadDataSource(
         onFocusedContextPage: ((SharedThreadDurableContextPage) -> Unit)? = null,
         onEnteredPage: ((ThreadDurableEnteredPage) -> Unit)? = null
     ): DataResult<RaftThreadScreenPayload> {
-        val focusedContext =
+        val focusedContextOutcome =
             if (includeFollowedSummaries) {
-                null
+                FocusedInitialContextOutcome.NotAttemptedOrTransient
             } else {
                 fetchFocusedInitialThreadPayloadFromRepository(
                     session = session,
@@ -4694,9 +4699,16 @@ internal class SharedThreadDataSource(
                     onFocusedContextPage = onFocusedContextPage
                 )
             }
-        if (focusedContext != null) {
-            return focusedContext
+        if (focusedContextOutcome is FocusedInitialContextOutcome.Loaded) {
+            return focusedContextOutcome.result
         }
+        val focusMissing = focusedContextOutcome is FocusedInitialContextOutcome.TargetMissing
+        val fallbackBase =
+            if (focusMissing) {
+                basePayload.copy(focusedMessageId = null, focusedMessageRequestNonce = 0)
+            } else {
+                basePayload
+            }
         val initialResult =
             fetchThreadSnapshotFromRepository(
                 fallbackCode = "thread_network",
@@ -4740,26 +4752,34 @@ internal class SharedThreadDataSource(
         // disagrees with the canonical route parent pair, we don't show it.
         return when {
             initialData != null &&
-                basePayload.hasUntrustedReplyThreadStreamHint() &&
-                !initialData.data.parentPairMatchesRoute(basePayload) ->
+                fallbackBase.hasUntrustedReplyThreadStreamHint() &&
+                !initialData.data.parentPairMatchesRoute(fallbackBase) ->
                 fetchResolvedReplyThreadSnapshot(
                     session = session,
-                    basePayload = basePayload,
+                    basePayload = fallbackBase,
                     replyResolutionScope = replyResolutionScope
                 ).map { (resolvedBase, snapshot) ->
-                    snapshot
+                    (snapshot
                         ?.withReplyParentMessageFromContext(resolvedBase, replyResolutionScope = replyResolutionScope)
                         ?.toRaftThreadPayload(resolvedBase, session.user.id)
-                        ?: resolvedBase.toEmptyReplyThreadPayload()
+                        ?: resolvedBase.toEmptyReplyThreadPayload())
+                        .let { if (focusMissing) it.copy(focusedTargetMissing = true) else it }
                 }
             initialData != null ->
                 DataResult.Content(
                     initialData.data
-                        .withReplyParentMessageFromContext(basePayload, replyResolutionScope = replyResolutionScope)
-                        .toRaftThreadPayload(basePayload, session.user.id)
+                        .withReplyParentMessageFromContext(fallbackBase, replyResolutionScope = replyResolutionScope)
+                        .toRaftThreadPayload(fallbackBase, session.user.id)
+                        .let { if (focusMissing) it.copy(focusedTargetMissing = true) else it }
                 )
             else -> initialResult as DataResult<RaftThreadScreenPayload>
         }
+    }
+
+    private sealed interface FocusedInitialContextOutcome {
+        data class Loaded(val result: DataResult<RaftThreadScreenPayload>) : FocusedInitialContextOutcome
+        data class TargetMissing(val cause: String) : FocusedInitialContextOutcome
+        data object NotAttemptedOrTransient : FocusedInitialContextOutcome
     }
 
     private suspend fun fetchFocusedInitialThreadPayloadFromRepository(
@@ -4771,8 +4791,9 @@ internal class SharedThreadDataSource(
         onFocusedContextPage: ((SharedThreadDurableContextPage) -> Unit)? = null,
         /** artin #111: the Activity conversation prewarm asks at Background; every open stays Foreground. */
         requestPriority: DataRequestPriority = DataRequestPriority.Foreground,
-    ): DataResult<RaftThreadScreenPayload>? {
-        val focusedMessageId = basePayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return null
+    ): FocusedInitialContextOutcome {
+        val focusedMessageId = basePayload.focusedMessageId?.takeIf { it.isNotBlank() }
+            ?: return FocusedInitialContextOutcome.NotAttemptedOrTransient
         val replyParentMessageId =
             basePayload.parentMessageId?.takeIf { it.isNotBlank() }
                 ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
@@ -4780,7 +4801,7 @@ internal class SharedThreadDataSource(
             // The parent message lives in the parent channel, not the thread stream: requesting
             // `messages/context/<parentMessageId>?channelId=<threadChannelId>` always 404s. Fall
             // through to `resolveReplyParentMessageFromStore` + `getThread` while keeping focus.
-            return null
+            return FocusedInitialContextOutcome.NotAttemptedOrTransient
         }
         val focusedContextChannelId = basePayload.focusedMessageContextChannelIdOrNull()
         // Phase 3b: read before the request: a horizonReset during it voids the page's head claim.
@@ -4799,9 +4820,24 @@ internal class SharedThreadDataSource(
                     priority = requestPriority,
                 )
             }
-        val context = (contextResult as? DataResult.Content)?.data ?: return null
+        val context =
+            when (contextResult) {
+                is DataResult.Content -> contextResult.data
+                is DataResult.Error -> {
+                    if (isFinalFocusedMessageNotFoundError(contextResult.error)) {
+                        val cause = contextResult.error.serverCode ?: contextResult.error.code
+                        diagnosticsLogger(
+                            "thread_focused_context_missing scope=${routeThreadId.value} " +
+                                "anchor=$focusedMessageId cause=$cause quiet=true"
+                        )
+                        return FocusedInitialContextOutcome.TargetMissing(cause)
+                    }
+                    return FocusedInitialContextOutcome.NotAttemptedOrTransient
+                }
+                else -> return FocusedInitialContextOutcome.NotAttemptedOrTransient
+            }
         if (!context.matchesFocusedThreadRoute(routeThreadId, focusedMessageId)) {
-            return null
+            return FocusedInitialContextOutcome.NotAttemptedOrTransient
         }
         // Task #14 part C: the context page is a fact source too — hand it to the durable writer (the
         // caller decides when; the writer decides whether it joins the stored window).
@@ -4828,14 +4864,16 @@ internal class SharedThreadDataSource(
                 )
             }
         }
-        return DataResult.Content(
-            context
-                .withCachedReplyParentMessage(
-                    basePayload = basePayload,
-                    messageStoreScopeId = replyResolutionScope.messageStoreScopeId
-                )
-                .withConversationAccessFallback(accessFallback)
-                .toRaftThreadPayload(basePayload, session.user.id)
+        return FocusedInitialContextOutcome.Loaded(
+            DataResult.Content(
+                context
+                    .withCachedReplyParentMessage(
+                        basePayload = basePayload,
+                        messageStoreScopeId = replyResolutionScope.messageStoreScopeId
+                    )
+                    .withConversationAccessFallback(accessFallback)
+                    .toRaftThreadPayload(basePayload, session.user.id)
+            )
         )
     }
 
@@ -4950,9 +4988,9 @@ internal class SharedThreadDataSource(
         val routeThreadId =
             basePayload.streamChannelId?.takeIf { it.isNotBlank() }?.let(::ThreadId)
                 ?: basePayload.sourceThreadId?.takeIf { it.isNotBlank() }?.let(::ThreadId)
-        val focusedContext =
+        val focusedContextOutcome =
             if (includeFollowedSummaries || routeThreadId == null) {
-                null
+                FocusedInitialContextOutcome.NotAttemptedOrTransient
             } else {
                 fetchFocusedInitialThreadPayloadFromRepository(
                     session = session,
@@ -4963,9 +5001,16 @@ internal class SharedThreadDataSource(
                     onFocusedContextPage = onFocusedContextPage
                 )
             }
-        if (focusedContext != null) {
-            return@coroutineScope focusedContext
+        if (focusedContextOutcome is FocusedInitialContextOutcome.Loaded) {
+            return@coroutineScope focusedContextOutcome.result
         }
+        val focusMissing = focusedContextOutcome is FocusedInitialContextOutcome.TargetMissing
+        val effectiveBase =
+            if (focusMissing) {
+                basePayload.copy(focusedMessageId = null, focusedMessageRequestNonce = 0)
+            } else {
+                basePayload
+            }
         val parentContextStartedAt = TimeSource.Monotonic.markNow()
         val parentContextDeferred =
             async {
@@ -5080,9 +5125,9 @@ internal class SharedThreadDataSource(
                         ?: basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
                 val resolvedBase =
                     if (resolvedThreadId == null) {
-                        basePayload
+                        effectiveBase
                     } else {
-                        basePayload.copy(
+                        effectiveBase.copy(
                             sourceThreadId = resolvedThreadId,
                             streamChannelId = resolvedThreadId
                         )
@@ -5122,6 +5167,7 @@ internal class SharedThreadDataSource(
                             replyResolutionScope = replyResolutionScope
                         )
                         .toRaftThreadPayload(originResolvedBase, session.user.id)
+                        .let { if (focusMissing) it.copy(focusedTargetMissing = true) else it }
                 DataResult.Content(
                     if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread && payload.messages.isEmpty()) {
                         payload.toEmptyReplyThreadPayload()

@@ -14,6 +14,7 @@ import build.raft.app.model.ServerId
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -2202,6 +2203,10 @@ class SharedSettingsStore(
     private var shareUsageDataMutation: ShareUsageDataMutation? = null
     private var composerSendKeyMutationGeneration: Long = 0L
     private var composerSendKeyMutation: ComposerSendKeyMutation? = null
+    /** #587 site 7 (slock #16502): last scanned workspaces per (serverId, machineId) for the session. */
+    private val scannedWorkspacesByKey = mutableMapOf<Pair<String, String>, List<SettingsComputerWorkspaceSnapshot>>()
+    /** #587 site 7 (slock #16502): in-flight workspace scan per (serverId, machineId) so a second click/pull joins it. */
+    private val workspaceScansInFlight = mutableMapOf<Pair<String, String>, CompletableDeferred<Unit>>()
 
     init {
         authOwnerObservationJob =
@@ -2494,12 +2499,7 @@ class SharedSettingsStore(
             SharedSettingsIntent.RefreshComputers ->
                 whileRefreshing(SharedSettingsDestination.Computers) { refreshComputers() }
             SharedSettingsIntent.CatchUpComputers -> catchUpComputers()
-            is SharedSettingsIntent.ScanComputerWorkspaces -> {
-                runAction(COMPUTER_ACTION_SCAN_WORKSPACES, intent.machineId) {
-                    dataSource.scanComputerWorkspaces(intent.machineId)
-                        .applyComputerWorkspacesActionResult(intent.machineId)
-                }
-            }
+            is SharedSettingsIntent.ScanComputerWorkspaces -> scanComputerWorkspaces(intent.machineId)
             SharedSettingsIntent.Logout ->
                 _state.value =
                     _state.value.copy(
@@ -3200,13 +3200,14 @@ class SharedSettingsStore(
             }
             SharedSettingsDestination.ComputerDetail -> {
                 val machineId = _state.value.route.itemId.orEmpty()
+                val serverKey = dataSource.currentServerIdForComputers().orEmpty()
                 val cached =
-                    if (forceComputers || machineId.isBlank()) null else dataSource.cachedComputerDetail(machineId)
+                    if (forceComputers || machineId.isBlank()) null else dataSource.cachedComputerDetail(machineId)?.withRememberedWorkspaces(serverKey)
                 if (cached == null) {
                     loadComputerDetail(machineId, forceComputers = forceComputers)
                 } else {
                     cached.applyToState(destination) { copy(computerDetail = it) }
-                    val fresh = dataSource.loadComputerDetail(machineId, forceComputers = true)
+                    val fresh = dataSource.loadComputerDetail(machineId, forceComputers = true).withRememberedWorkspaces(serverKey)
                     fresh.applyToState(destination) { copy(computerDetail = it) }
                     if (fresh is DataResult.Content) computerDetailValidatedAt = machineId to nowMillis()
                     // The machine was deleted or access was lost: its cached page was forgotten.
@@ -3317,9 +3318,65 @@ class SharedSettingsStore(
                 )
             return
         }
-        val result = dataSource.loadComputerDetail(machineId, forceComputers = forceComputers)
+        val serverKey = dataSource.currentServerIdForComputers().orEmpty()
+        val result = dataSource.loadComputerDetail(machineId, forceComputers = forceComputers).withRememberedWorkspaces(serverKey)
         result.applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
         if (result is DataResult.Content) computerDetailValidatedAt = machineId to nowMillis()
+    }
+
+    private fun DataResult<SettingsComputerDetailSnapshot>.withRememberedWorkspaces(
+        serverKey: String,
+    ): DataResult<SettingsComputerDetailSnapshot> {
+        if (this !is DataResult.Content || data.workspacesScanned) return this
+        val currentDetail = (_state.value.computerDetail as? ScreenLoadState.Content)?.data
+        val sameMachine = currentDetail?.computer?.id == data.computer.id
+        val remembered = scannedWorkspacesByKey[serverKey to data.computer.id]
+        return when {
+            remembered != null ->
+                DataResult.Content(
+                    data.copy(
+                        workspaces = remembered,
+                        workspacesScanned = true,
+                        workspacesError = if (sameMachine) currentDetail?.workspacesError else null,
+                    )
+                )
+            sameMachine && currentDetail?.workspacesScanned == true ->
+                DataResult.Content(
+                    data.copy(
+                        workspaces = currentDetail.workspaces,
+                        workspacesScanned = true,
+                        workspacesError = currentDetail.workspacesError,
+                    )
+                )
+            sameMachine && currentDetail?.workspacesError != null ->
+                DataResult.Content(data.copy(workspacesError = currentDetail.workspacesError))
+            else -> this
+        }
+    }
+
+    private suspend fun scanComputerWorkspaces(machineId: String) {
+        val serverKey = dataSource.currentServerIdForComputers().orEmpty()
+        val key = serverKey to machineId
+        workspaceScansInFlight[key]?.let { existing ->
+            existing.await()
+            return
+        }
+        val gate = CompletableDeferred<Unit>()
+        workspaceScansInFlight[key] = gate
+        _state.value =
+            _state.value.copy(
+                actionState = SharedSettingsActionState(COMPUTER_ACTION_SCAN_WORKSPACES, machineId, inProgress = true)
+            )
+        try {
+            val result = dataSource.scanComputerWorkspaces(machineId)
+            val currentServerKey = dataSource.currentServerIdForComputers().orEmpty()
+            if (currentServerKey == serverKey) {
+                result.applyComputerWorkspacesActionResult(machineId, serverKey)
+            }
+        } finally {
+            if (workspaceScansInFlight[key] === gate) workspaceScansInFlight.remove(key)
+            gate.complete(Unit)
+        }
     }
 
     private suspend fun loadAboutWithUpdateStatus() {
@@ -3440,8 +3497,10 @@ class SharedSettingsStore(
                     SharedSettingsDestination.ComputerDetail -> {
                         val openId = _state.value.route.itemId.orEmpty()
                         if (openId.isNotBlank() && openId in machineIds) {
+                            val serverKey = dataSource.currentServerIdForComputers().orEmpty()
                             dataSource
                                 .loadComputerDetail(openId, forceComputers = true)
+                                .withRememberedWorkspaces(serverKey)
                                 .applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
                         }
                     }
@@ -4139,6 +4198,7 @@ class SharedSettingsStore(
 
     private suspend fun onAuthSessionEvent(event: AuthSessionEvent) {
         if (event is AuthSessionEvent.TokensRotated) return
+        scannedWorkspacesByKey.clear()
         val mutation = serverNotificationModeMutation ?: return
         val currentOwnerResult =
             runCatchingPreservingCancellation { dataSource.currentMobileSettingsOwnerKey() }
@@ -4473,7 +4533,16 @@ class SharedSettingsStore(
             )
     }
 
-    private fun DataResult<List<SettingsComputerWorkspaceSnapshot>>.applyComputerWorkspacesActionResult(machineId: String) {
+    private fun DataResult<List<SettingsComputerWorkspaceSnapshot>>.applyComputerWorkspacesActionResult(
+        machineId: String,
+        serverKey: String,
+    ) {
+        when (this) {
+            is DataResult.Content -> scannedWorkspacesByKey[serverKey to machineId] = data
+            is DataResult.Empty -> scannedWorkspacesByKey[serverKey to machineId] = emptyList()
+            is DataResult.Error,
+            is DataResult.NoPermission -> Unit
+        }
         val current = (_state.value.computerDetail as? ScreenLoadState.Content)?.data
         if (current == null || current.computer.id != machineId) {
             _state.value =
@@ -4487,6 +4556,8 @@ class SharedSettingsStore(
                 )
             return
         }
+        // #587 site 7 (slock #16502): a failed scan keeps any list already shown and does not mark
+        // an unscanned computer as scanned; the warning banner renders above it with Retry.
         val nextDetail =
             when (this) {
                 is DataResult.Content ->
@@ -4503,7 +4574,6 @@ class SharedSettingsStore(
                     )
                 is DataResult.Error ->
                     current.copy(
-                        workspacesScanned = true,
                         workspacesError =
                             SettingsSectionErrorSnapshot(
                                 code = error.code,
@@ -4513,7 +4583,6 @@ class SharedSettingsStore(
                     )
                 is DataResult.NoPermission ->
                     current.copy(
-                        workspacesScanned = true,
                         workspacesError =
                             SettingsSectionErrorSnapshot(
                                 code = blocker.code,

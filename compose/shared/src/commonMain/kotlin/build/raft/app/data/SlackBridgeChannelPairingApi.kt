@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -172,6 +173,34 @@ internal fun encodeSlackBridgeFlagEvaluate(serverId: ServerId): String =
 internal const val SLACK_BRIDGE_PREFLIGHT_FAILED = "slack_bridge_preflight_failed"
 internal const val SLACK_BRIDGE_BINDING_UNAVAILABLE = "slack_bridge_binding_coordinates_unavailable"
 
+/**
+ * #587 sites 10 & 11 (slock #16506): each `GET slack-bridge/provisioning` makes the server call
+ * Slack on the bot's shared quota. Share one 1-minute floor across the app session so opening the
+ * Slack channel menu or returning to foreground reads at most once per minute.
+ */
+internal const val SLACK_BRIDGE_READ_FLOOR_MILLIS: Long = 60_000L
+
+/** Upper bound on one Slack channel list read so a hung request fails instead of locking Retry. */
+internal const val SLACK_BRIDGE_CHECK_TIMEOUT_MILLIS: Long = 30_000L
+
+internal object SlackBridgeReadFloor {
+    @Volatile
+    private var lastReadAtMillis: Long? = null
+
+    fun waitRemainingMillis(nowMillis: Long = defaultNowMillis()): Long {
+        val last = lastReadAtMillis ?: return 0L
+        return (last + SLACK_BRIDGE_READ_FLOOR_MILLIS - nowMillis).coerceAtLeast(0L)
+    }
+
+    fun noteRead(nowMillis: Long = defaultNowMillis()) {
+        lastReadAtMillis = nowMillis
+    }
+
+    internal fun resetForTest() {
+        lastReadAtMillis = null
+    }
+}
+
 internal class SlackBridgeChannelPairingRepository(
     private val networkClient: RaftNetworkClient,
     private val serverId: ServerId,
@@ -182,6 +211,18 @@ internal class SlackBridgeChannelPairingRepository(
         val snapshot = (load() as? DataResult.Content)?.data ?: return null
         return snapshot.toChannelSlackBridgeState(channelId.value, visibility)
     }
+
+    /**
+     * Reads `GET slack-bridge/provisioning` directly and returns its [DataResult] so callers
+     * (`ChannelSlackBridgeReadController`, slock #16506) can distinguish success vs failure.
+     */
+    suspend fun refreshState(channelId: ChannelId, visibility: String): DataResult<ChannelSlackBridgeState?> =
+        when (val loaded = load()) {
+            is DataResult.Content -> DataResult.Content(loaded.data.toChannelSlackBridgeState(channelId.value, visibility))
+            is DataResult.Error -> loaded
+            is DataResult.NoPermission -> loaded
+            is DataResult.Empty -> loaded
+        }
 
     /**
      * Web `applyChannelSlackBridgeSelection` on a fresh snapshot: nothing when the pick is
@@ -242,8 +283,10 @@ internal class SlackBridgeChannelPairingRepository(
         return response.bodyText?.let(::parseSlackBridgeFlagEnabled) == true
     }
 
-    private suspend fun load(): DataResult<SlackBridgeSnapshotWire> =
-        mutate("GET", "slack-bridge/provisioning", priority = DataRequestPriority.Visible) { null }
+    private suspend fun load(): DataResult<SlackBridgeSnapshotWire> {
+        SlackBridgeReadFloor.noteRead()
+        return mutate("GET", "slack-bridge/provisioning", priority = DataRequestPriority.Visible) { null }
+    }
 
     private suspend fun mutate(
         method: String,

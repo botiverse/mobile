@@ -185,7 +185,7 @@
     <string name="settings_account_session">세션</string>
     <string name="settings_account_logout">로그아웃</string>
     <string name="settings_account_logout_action">로그아웃</string>
-    <string name="settings_account_logout_detail">이 기기에서 로그아웃해요. 계정과 데이터는 그대로 남아 있고, 언제든 다시 로그인할 수 있어요.</string>
+    <string name="settings_account_logout_detail">이 기기에서만 로그아웃해요.</string>
     <string name="settings_account_logout_confirm_title">로그아웃할까요?</string>
     <string name="settings_account_logout_confirm">이 기기에서 로그아웃할까요? 계정과 데이터는 그대로 남아 있고, 언제든 다시 로그인할 수 있어요.</string>
     <string name="settings_account_logout_signing_out">로그아웃 중…</string>
@@ -500,7 +500,7 @@
     <string name="settings_appearance_mode_system">시스템</string>
     <string name="settings_theme_title">테마</string>
     <string name="settings_theme_group_mode">라이트와 다크</string>
-    <string name="settings_server_theme_description">%1$s에서 보이는 모습이에요. 나에게만 보여요.</string>
+    <string name="settings_server_theme_description">나에게만 보여요.</string>
     <string name="settings_server_theme_group_basics">기본</string>
     <string name="settings_server_theme_group_avatars">아바타 시리즈</string>
     <string name="settings_server_theme_default">기본값</string>
@@ -1092,7 +1092,6 @@
     <string name="thread_action_card_reconfirm">다시 확인</string>
     <string name="thread_action_card_reconfirm_failed">다시 확인하지 못했어요</string>
     <string name="thread_action_card_blocked_target_server">%1$s 서버의 멤버만 이 카드를 사용할 수 있어요.</string>
-    <string name="thread_action_card_runs_on_server">%1$s 서버에서 실행</string>
     <string name="thread_action_card_blocked_source_workspace">이 카드는 기록용 사본이에요. 원래 워크스페이스에서만 이 액션을 실행할 수 있어요.</string>
     <string name="thread_action_card_blocked_need_migrate_agents">%1$s을(를) 만든 사람이나 에이전트 마이그레이션 권한이 있는 사람만 할 수 있어요.</string>
     <string name="thread_action_card_field_description">설명</string>
@@ -2698,7 +2697,6 @@
     <string name="settings_appearance_message_font_size_small">작게</string>
     <string name="settings_appearance_message_font_size_medium">보통</string>
     <string name="settings_appearance_message_font_size_large">크게</string>
-    <string name="settings_appearance_saved_on_device">이 기기에 저장돼요.</string>
     <string name="settings_appearance_live_agent_activity_title">실시간 에이전트 활동</string>
     <string name="settings_appearance_live_agent_activity_description">어떤 에이전트가 일하고 있고 무엇을 하는지 창 상단과 홈 바에 표시해요.</string>
     <string name="layout_working_now_title">작업 중</string>
@@ -2720,7 +2718,6 @@
     <string name="settings_appearance_preview_sender">온보딩 도우미</string>
     <string name="settings_appearance_preview_message">@Joy #proj-uiux 새 디자인 정말 좋네요 — 지금 `git pull` 해서 로컬에서 써 볼게요.</string>
     <string name="settings_mobile_link_open_mode_title">웹 링크 열기</string>
-    <string name="settings_mobile_link_open_mode_detail">웹 링크를 기본 브라우저에서 열지, Raft 안에서 열지 선택하세요.</string>
     <string name="settings_mobile_link_open_mode_system_browser">기본 브라우저</string>
     <string name="settings_mobile_link_open_mode_in_app_browser">인앱 브라우저</string>
     <string name="in_app_browser_title">브라우저</string>
@@ -2844,7 +2841,6 @@
     <string name="settings_computers_empty_detail">컴퓨터를 연결하면 여기에서 에이전트를 실행할 수 있어요.</string>
     <string name="settings_computers_error_load_agents">에이전트를 불러오지 못했어요</string>
     <string name="settings_computers_empty_agents">이 컴퓨터에는 아직 에이전트가 없어요</string>
-    <string name="settings_computers_error_load_workspaces">워크스페이스를 불러오지 못했어요</string>
     <string name="settings_computers_empty_workspaces">아직 워크스페이스 디렉터리가 없어요</string>
     <string name="settings_computers_error_offline">이 컴퓨터는 오프라인이에요. 데몬이 서버에 연결되어 있지 않아서 지금은 워크스페이스와 에이전트를 불러올 수 없어요.</string>
     <string name="settings_computers_error_replica">이 컴퓨터는 다른 서버 복제본에서 처리하고 있어요. 잠시 후 다시 시도해 주세요.</string>
@@ -2999,10 +2995,6 @@
     <string name="settings_computers_action_select">선택</string>
     <string name="settings_computers_action_create">만들기</string>
     <string name="settings_computers_section_workspaces">에이전트 워크스페이스</string>
-    <string name="settings_computers_action_scan">스캔</string>
-    <string name="settings_computers_action_rescan">다시 스캔</string>
-    <string name="settings_computers_action_scanning">스캔 중</string>
-    <string name="settings_computers_workspace_scan_title">스캔을 눌러 이 컴퓨터에 있는 워크스페이스 디렉터리를 확인하세요.</string>
     <string name="settings_computers_workspace_scan_detail">필요할 때 스캔해 이 컴퓨터의 워크스페이스 디렉터리를 확인하세요.</string>
     <string name="settings_computers_section_actions">관리</string>
     <string name="settings_computers_delete_title">컴퓨터 삭제</string>
@@ -3078,11 +3070,7 @@
     <string name="settings_computers_runtime_usage_later">나중에</string>
     <string name="settings_computers_runtime_usage_metadata">%1$s 업데이트됨</string>
     <string name="settings_computers_runtime_usage_recently">최근</string>
-    <string name="settings_computers_runtime_usage_refresh_unconfirmed">새로고침을 요청했지만 변경 사항이 확인되지 않았어요</string>
-    <string name="settings_computers_runtime_usage_refresh_timeout">새로고침 시간이 초과되었어요</string>
-    <string name="settings_computers_runtime_usage_refresh_cooldown_countdown">약 %1$d초 후 다시 새로고침 가능</string>
     <string name="settings_computers_runtime_usage_computer_offline">컴퓨터 오프라인</string>
-    <string name="settings_computers_runtime_usage_refresh">새로고침</string>
     <string name="settings_computers_runtime_usage_attention">사용량 확인 필요</string>
     <string name="settings_computers_runtime_usage_healthy">사용량 정상</string>
     <string name="settings_computers_runtime_usage_limit_resets_left_one">초기화 %1$d회 남음</string>
@@ -3246,7 +3234,6 @@
     <string name="settings_computers_rack_sort_used_desc">사용량 많은 순</string>
     <string name="settings_computers_rack_sort_used_asc">사용량 적은 순</string>
     <string name="settings_computers_rack_no_match_title">일치하는 Computer가 없습니다</string>
-    <string name="settings_computers_rack_no_match_description">다른 검색어를 쓰거나 필터를 지우세요.</string>
     <string name="settings_computers_disk_low">디스크 부족</string>
     <string name="settings_computers_disk_low_detail">%2$s 중 %1$s 남음</string>
     <string name="settings_computers_rack_resource_detail">%2$s 중 %1$s 남음</string>
@@ -3909,7 +3896,7 @@
     <string name="invite_human_update_replaces_hint">업데이트하면 현재 링크가 새 링크로 바뀌고, 이전 링크는 더 이상 작동하지 않아요.</string>
     <string name="invite_human_used_of">사용 %1$d/%2$d</string>
     <string name="invite_human_expires_on">%1$s에 만료</string>
-    <string name="invite_human_send_link_hint">이 링크를 팀원에게 보내면 서버에 참여할 수 있어요.</string>
+    <string name="invite_human_send_link_hint">링크가 있는 사람은 누구나 이 서버에 참여할 수 있어요.</string>
     <string name="invite_human_send_invites">초대</string>
     <string name="invite_human_sending">보내는 중…</string>
     <string name="invite_human_enter_email_or_copy_link">이메일을 하나 이상 입력하거나 위의 초대 링크를 복사해 주세요.</string>
@@ -4098,7 +4085,6 @@
     <string name="agent_migration_log_stats_computers">컴퓨터</string>
     <string name="agent_migration_log_stats_filtered_of">전체 %1$s건 중 필터 결과</string>
     <string name="agent_migration_log_empty_filtered_title">조건에 맞는 마이그레이션이 없어요</string>
-    <string name="agent_migration_log_empty_filtered_body">필터를 바꾸거나 지우세요.</string>
     <string name="agent_migration_log_empty_none_title">아직 마이그레이션이 없어요</string>
     <string name="agent_migration_log_empty_none_body">에이전트가 컴퓨터 사이를 옮기면 경로가 여기에 나타나요.</string>
     <string name="agent_migration_log_load_failed">마이그레이션 기록을 불러오지 못했어요.</string>
@@ -5569,14 +5555,14 @@
     <string name="external_agent_create_existing">기존 에이전트</string>
     <string name="external_agent_create_sdk">직접 만들기</string>
     <string name="external_agent_create_existing_hint">Muse, Dots, Hermes 등. 명령줄 도구를 주면 Raft에서 내 에이전트들과 함께 일할 수 있어요.</string>
-    <string name="external_agent_create_sdk_hint">Raft SDK로 나만의 에이전트를 만들어 Raft에 연결해요.</string>
+    <string name="external_agent_create_sdk_hint">Raft SDK를 사용해요.</string>
     <string name="external_agent_create_next">다음</string>
     <string name="external_agent_create_failed">Raft가 에이전트를 만들지 못했어요. 다시 시도해 주세요.</string>
     <string name="external_agent_create_setup_title">%1$s 설정</string>
     <string name="external_agent_create_waiting">%1$s 연결 대기 중…</string>
     <string name="external_agent_create_waiting_hint">%1$s 에이전트가 로그인하면 이 화면이 자동으로 업데이트돼요.</string>
     <string name="external_agent_create_online">%1$s 에이전트가 온라인이에요</string>
-    <string name="external_agent_create_online_hint">%1$s 에이전트가 Raft에 로그인했어요. 이제 닫아도 돼요.</string>
+    <string name="external_agent_create_online_hint">이제 닫아도 돼요.</string>
     <string name="external_agent_create_switch_to_sdk">대신 SDK로 만들기</string>
     <string name="external_agent_create_switch_to_existing">대신 기존 에이전트 사용</string>
     <string name="external_agent_create_step1_existing">1. 이 프롬프트를 에이전트에게 보내기</string>
@@ -5607,7 +5593,6 @@
     <string name="external_agent_card_no_credential_hint">아직 에이전트 자격 증명이 없어요. 아래에서 만들어 %1$s 에이전트에게 전달해 주세요.</string>
     <string name="external_agent_card_online">온라인</string>
     <string name="external_agent_card_online_active">%1$s 활동</string>
-    <string name="external_agent_card_online_hint">Raft에 로그인되어 있어요.</string>
     <string name="external_agent_card_offline">오프라인</string>
     <string name="external_agent_card_offline_last_seen">오프라인 · 마지막 접속 %1$s</string>
     <string name="external_agent_card_offline_hint">연결은 유지되고 있어요. 메시지는 돌아올 때까지 기다려요.</string>
@@ -5642,9 +5627,9 @@
     <string name="settings_computers_runtime_auth_sign_out_action">로그아웃</string>
     <string name="settings_computers_runtime_auth_upgrade_required">이 컴퓨터를 업그레이드하면 여기서 로그인할 수 있어요</string>
     <string name="settings_computers_runtime_auth_dsh_credentials">DeepSeek Harness는 여기서 로그인하지 않습니다. 이 컴퓨터에 설정된 API 키를 사용합니다. dsh 자체 설정에 저장한 키(dsh는 자격 증명 파일을 소유자만 읽을 수 있어야 합니다. 권한 600) 또는 컴퓨터 환경이나 에이전트의 ‘환경 변수’에 있는 DEEPSEEK_API_KEY입니다. 저장한 키가 우선합니다.</string>
-    <string name="settings_computers_runtime_auth_unavailable_not_installed">컴퓨터에 이 런타임의 명령줄 도구를 설치한 다음, 컴퓨터 페이지에서 ‘런타임 다시 감지’를 사용하세요.</string>
+    <string name="settings_computers_runtime_auth_unavailable_not_installed">컴퓨터에 이 런타임의 명령줄 도구를 설치하세요. Raft Computer가 1시간 안에 자동으로 다시 확인해요. 바로 반영하려면 그 컴퓨터에서 Raft Computer를 다시 시작하세요.</string>
     <string name="settings_computers_runtime_auth_unavailable_install_on">macOS 또는 Linux에서:</string>
-    <string name="settings_computers_runtime_auth_unavailable_version_unsupported">컴퓨터에서 이 런타임의 명령줄 도구를 업데이트한 다음, 컴퓨터 페이지에서 ‘런타임 다시 감지’를 사용하세요.</string>
+    <string name="settings_computers_runtime_auth_unavailable_version_unsupported">컴퓨터에서 이 런타임의 명령줄 도구를 업데이트하세요. Raft Computer가 1시간 안에 자동으로 다시 확인해요. 바로 반영하려면 그 컴퓨터에서 Raft Computer를 다시 시작하세요.</string>
     <string name="settings_computers_runtime_auth_unavailable_unsupported_installation">이 런타임은 컴퓨터에서 직접 로그인하세요.</string>
     <string name="settings_computers_runtime_auth_not_attached">이 컴퓨터를 연결한 사람이 없어서 여기서 런타임에 로그인할 수 없어요</string>
     <string name="settings_computers_runtime_auth_this_computer">이 컴퓨터</string>
@@ -5972,7 +5957,7 @@
     <string name="settings_computers_runtime_auth_pi_paste_address_hint">로그인 후 브라우저가 열리지 않는 페이지로 이동해요. 주소창의 전체 주소를 여기에 붙여넣으세요.</string>
     <string name="settings_computers_runtime_auth_pi_paste_code_hint">로그인 후 페이지에 abc…#xyz 같은 코드가 표시돼요. 전부 붙여넣으세요.</string>
     <string name="settings_computers_runtime_auth_pi_error_busy">이 컴퓨터에서 다른 Pi 로그인(이 제공자 또는 다른 제공자)이 진행 중이에요. 끝내거나 취소한 뒤 다시 시도하세요.</string>
-    <string name="settings_computers_runtime_auth_opencode_version_unsupported">컴퓨터의 OpenCode를 2.x로 업그레이드한 다음, 컴퓨터 페이지에서 ‘런타임 다시 감지’를 사용하세요.</string>
+    <string name="settings_computers_runtime_auth_opencode_version_unsupported">컴퓨터의 OpenCode를 2.x로 업그레이드하세요. Raft Computer가 1시간 안에 자동으로 다시 확인해요. 바로 반영하려면 그 컴퓨터에서 Raft Computer를 다시 시작하세요.</string>
     <string name="settings_computers_runtime_auth_opencode_flow_link">제공자 페이지에서 로그인</string>
     <string name="settings_computers_runtime_auth_opencode_method_label">%1$s · %2$s</string>
     <string name="settings_computers_runtime_auth_opencode_key_refused">OpenCode는 이것을 키로 쓸 수 없어요. 환경 변수나 파일 참조가 아닌 키 자체를 붙여넣으세요.</string>
@@ -6194,4 +6179,31 @@
     <string name="agent_create_proposed_config_dir_value">%1$s 값</string>
     <string name="member_activity_subagents_detail_model">모델</string>
     <string name="runtime_model_hint_antigravity_orchestrator">작업 도중 새 메시지가 오면 응답 전에 플래너 모델로 넘어가므로 단일 모델보다 응답이 느려질 수 있어요.</string>
+    <string name="status_line_retry">다시 시도</string>
+    <string name="status_line_recheck">다시 확인</string>
+    <string name="status_line_checking">확인 중…</string>
+    <string name="status_line_refreshing">새로고침 중…</string>
+    <string name="settings_computers_runtime_detection_pending">런타임 감지 중… 아래 목록은 마지막으로 확인된 목록이에요.</string>
+    <string name="settings_computers_runtime_detection_incomplete">런타임 감지를 완료하지 못했어요 (%1$s). 확인하지 못한 런타임: %2$s. 마지막으로 알려진 상태를 표시하고 있어요.</string>
+    <string name="settings_computers_runtime_detection_incomplete_none">런타임 감지를 완료하지 못했어요 (%1$s). 아래 목록은 마지막으로 확인된 목록이에요.</string>
+    <string name="settings_computers_runtime_detection_reason_deadline">시간 초과</string>
+    <string name="settings_computers_runtime_detection_reason_child_failed">감지 프로세스 실패</string>
+    <string name="settings_computers_runtime_detection_reason_cancelled">취소됨</string>
+    <string name="settings_computers_runtime_detection_rescan_not_allowed">컴퓨터를 만든 사람이나 ‘컴퓨터 편집’ 권한이 있는 사람에게 다시 시도해 달라고 요청하세요.</string>
+    <string name="settings_computers_runtime_detection_rescan_failed_request_failed">감지 요청을 보내지 못했어요.</string>
+    <string name="settings_computers_runtime_detection_rescan_failed_generic">감지 요청이 실패했어요.</string>
+    <string name="settings_computers_runtime_detection_rescan_failed_offline">컴퓨터가 오프라인이라 감지할 수 없어요.</string>
+    <string name="settings_computers_runtime_detection_rescan_failed_no_result">감지 결과를 받지 못했어요.</string>
+    <string name="settings_computers_runtime_usage_updated_computer_offline">컴퓨터 오프라인 · %1$s 업데이트됨</string>
+    <string name="settings_computers_runtime_usage_updated_check_timed_out">%1$s 업데이트됨 · 이번 확인 시간이 초과되었어요</string>
+    <string name="settings_computers_runtime_usage_updated_check_failed">%1$s 업데이트됨 · 이번 확인에 실패했어요</string>
+    <string name="settings_computers_runtime_usage_check_timed_out">이번 확인 시간이 초과되었어요</string>
+    <string name="settings_computers_runtime_usage_check_failed">이번 확인에 실패했어요</string>
+    <string name="settings_computers_workspaces_refresh">새로고침</string>
+    <string name="settings_computers_workspaces_refresh_label">워크스페이스 새로고침</string>
+    <string name="settings_computers_workspaces_prompt_refresh">오른쪽 위의 새로고침을 눌러 이 컴퓨터에 있는 워크스페이스 디렉터리를 읽어 오세요.</string>
+    <string name="settings_computers_workspaces_prompt_pull">아래로 당겨 이 컴퓨터에 있는 워크스페이스 디렉터리를 읽어 오세요.</string>
+    <string name="settings_computers_workspaces_scan_failed">이 컴퓨터의 워크스페이스를 읽지 못했어요.</string>
+    <string name="channel_settings_slack_reading_channels">Slack 채널을 읽는 중…</string>
+    <string name="channel_settings_slack_channels_read_failed">Slack 채널을 읽지 못했어요.</string>
 </resources>

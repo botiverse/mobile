@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +19,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -32,6 +35,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.Dp
+import build.raft.app.data.RUNTIME_ACCOUNT_USAGE_REFRESH_COOLDOWN_MILLIS
+import build.raft.app.data.RaftProcessForegroundGate
 import build.raft.app.data.RuntimeAccountUsageBadge
 import build.raft.app.data.RuntimeAccountUsageUnsupportedReason
 import build.raft.app.data.RuntimePlanHeading
@@ -310,21 +315,50 @@ internal fun rememberShellRuntimeAccountUsageAccess(): MembersRuntimeAccountUsag
     }
 }
 
-/** Web `SurfaceRefreshState` without `idle`'s neighbours that need no copy of their own. */
-internal enum class ComputerRuntimeUsageRefreshStatus {
+/**
+ * Web `SurfaceCheckState` (#587 site 6, slock #16501): the manual Check again state.
+ * - `Checking`: Check again spins until the Computer answers or times out.
+ * - `Timeout` / `Failed`: the old numbers stay, the "Updated …" line says so, Retry.
+ * - `ComputerOffline`: no button.
+ */
+internal enum class ComputerRuntimeUsageCheckState {
     Idle,
-    Requesting,
-    Requested,
-    Unconfirmed,
+    Checking,
     Timeout,
-    Cooldown,
+    Failed,
     ComputerOffline,
 }
 
 /**
- * One chip's usage: the read, the refresh and the follow-up reads after a refresh the Computer
- * answers later (web `RuntimeAccountUsageChip`). Remembered per [key]; a new key is a new
- * controller, so nothing read for one subject is ever shown for another.
+ * Web `usageCheckDue` (#587 site 6, slock #16501): a snapshot younger than the 2-minute refresh
+ * window needs no check, so the card offers no Check again button. Older, stale, or missing, a
+ * check is due: the card checks on its own when opened or when returning to foreground, and offers
+ * Check again.
+ */
+internal fun computerRuntimeUsageCheckDue(load: RuntimeAccountUsageLoad?, nowMillis: Long): Boolean {
+    if (load == null || load is RuntimeAccountUsageLoad.Forbidden || load is RuntimeAccountUsageLoad.Superseded) return false
+    if (load is RuntimeAccountUsageLoad.Failed) return true
+    val read = (load as RuntimeAccountUsageLoad.Loaded).read
+    return when (read) {
+        RuntimeAccountUsageRead.Unsupported -> false
+        RuntimeAccountUsageRead.Missing -> true
+        is RuntimeAccountUsageRead.Available -> {
+            if (read.stale) return true
+            val collectedAtMillis = read.snapshot.collectedAt?.let { parseRaftTimestampEpochMillisOrNull(it, 0) }
+            collectedAtMillis == null || nowMillis - collectedAtMillis >= RUNTIME_ACCOUNT_USAGE_REFRESH_COOLDOWN_MILLIS
+        }
+    }
+}
+
+private fun RuntimeAccountUsageLoad?.availableCollectedAt(): String? =
+    ((this as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available)?.snapshot?.collectedAt
+
+/**
+ * One chip's usage: the cached read, the card's own automatic check when opened or returning to
+ * foreground with a reading over 2 minutes old (`stale_or_missing`: no spinner, quiet follow-up
+ * reads), and the manual Check again (`manual`: spins until the Computer answers or times out)
+ * (web `useRuntimeUsageCard`, slock #16501). Remembered per [key]; a new key is a new controller,
+ * so nothing read for one subject is ever shown for another.
  */
 internal class ComputerRuntimeUsageController(
     private val key: RuntimeAccountUsageKey,
@@ -334,15 +368,19 @@ internal class ComputerRuntimeUsageController(
     private val onIdentityChanged: () -> Unit = {},
     private val followUpDelayMillis: Long = COMPUTER_RUNTIME_USAGE_FOLLOW_UP_DELAY_MILLIS,
     private val followUpAttempts: Int = COMPUTER_RUNTIME_USAGE_FOLLOW_UP_ATTEMPTS,
-    private val signInFollowUpAttempts: Int = COMPUTER_RUNTIME_USAGE_SIGN_IN_FOLLOW_UP_ATTEMPTS,
+    private val nowMillis: () -> Long = ::defaultNowMillis,
 ) {
     var load by mutableStateOf<RuntimeAccountUsageLoad?>(null)
         private set
     var loading by mutableStateOf(false)
         private set
-    var refresh by mutableStateOf(ComputerRuntimeUsageRefreshStatus.Idle)
+    var checkState by mutableStateOf(ComputerRuntimeUsageCheckState.Idle)
         private set
-    var cooldownLeftMillis by mutableStateOf(0L)
+    /** Increments on each manual Check again answer, flashing the "Updated …" line. */
+    var answerFlash by mutableIntStateOf(0)
+        private set
+    /** Ticked every 10 s while open so "Updated …" and [computerRuntimeUsageCheckDue] advance. */
+    var clockTick by mutableIntStateOf(0)
         private set
 
     /** Who may act on this Computer's runtimes (web `RuntimeAuthView`); null until read, or when refused. */
@@ -402,36 +440,143 @@ internal class ComputerRuntimeUsageController(
 
     private var followUp: Job? = null
 
-    /** The first read; a stale or missing snapshot asks the Computer for a new one in the background. */
+    /**
+     * Initial mount read for the chip dot only (web #16501): never fires `stale_or_missing` on
+     * mount for every chip on the page — only for a card someone actually opened ([onOpen]).
+     */
     suspend fun start() {
-        val read = (read(force = false) as? RuntimeAccountUsageLoad.Loaded)?.read ?: return
-        if (read == RuntimeAccountUsageRead.Missing || (read as? RuntimeAccountUsageRead.Available)?.stale == true) {
-            handleRefresh(store.refresh(key, RuntimeAccountUsageRefreshReason.StaleOrMissing), manual = false)
-        }
+        read(force = false)
     }
 
     /**
-     * Opening the sheet reads again (from the 60 s cache when it is fresh), and reads who may act
-     * on the Computer's runtimes (30 s cache) for the limit-reset action, as the web card does.
+     * Opening the card/sheet reads from the cache (and auto-checks with `stale_or_missing` if the
+     * snapshot is over 2 minutes old, stale, or missing) and reads who may act on the Computer's
+     * runtimes (30 s cache) for the limit-reset action, as web `useRuntimeUsageCard` does.
      */
     fun onOpen() {
-        scope.launch { read(force = false) }
+        scope.launch { autoCheck() }
         scope.launch { authView = store.runtimeAuthView(key) }
     }
 
-    fun refreshNow() {
-        // Web `handleRefresh`: a refresh replaces what the last limit reset said.
-        limitResetNote = null
-        claudeLimitResetNote = null
-        startManualRefresh()
+    /** App returned to foreground while the card/sheet is open: check if due (#587 site 6). */
+    fun onForegroundReturn() {
+        scope.launch { autoCheck() }
     }
 
-    private fun startManualRefresh() {
-        if (refresh == ComputerRuntimeUsageRefreshStatus.Requesting) return
-        refresh = ComputerRuntimeUsageRefreshStatus.Requesting
+    /** Advances the open card's 10 s clock so relative time and Check again eligibility update. */
+    fun tickClock() {
+        clockTick += 1
+    }
+
+    /**
+     * Web `autoCheck` (#587 site 6): reads the cache and, if the reading is over 2 minutes old,
+     * stale, or missing (and no manual check is running), sends one `stale_or_missing` refresh
+     * without spinning. Quiet follow-up reads pick up the new reading from the server cache.
+     */
+    internal suspend fun autoCheck() {
+        val next = read(force = false)
+        if (next !is RuntimeAccountUsageLoad.Loaded) return
+        if (checkState == ComputerRuntimeUsageCheckState.Checking || !computerRuntimeUsageCheckDue(next, nowMillis())) return
+        val replacing = next.availableCollectedAt()
+        val result = store.refresh(key, RuntimeAccountUsageRefreshReason.StaleOrMissing)
+        log("computer_runtime_usage_refresh provider=${key.provider.wire} manual=false result=${result.diagnosticsLabel()}")
+        if (checkState == ComputerRuntimeUsageCheckState.Checking) return
+        when (result) {
+            is RuntimeAccountUsageRefreshLoad.Done -> {
+                val answer = result.refresh
+                when (answer.state) {
+                    RuntimeAccountUsageRefreshState.Fresh -> {
+                        val snapshot = answer.snapshot
+                        if (snapshot != null) {
+                            applyNewSnapshot(snapshot)
+                        }
+                    }
+                    RuntimeAccountUsageRefreshState.ComputerOffline ->
+                        checkState = ComputerRuntimeUsageCheckState.ComputerOffline
+                    RuntimeAccountUsageRefreshState.Requested,
+                    RuntimeAccountUsageRefreshState.Cooldown -> {
+                        if (answer.state == RuntimeAccountUsageRefreshState.Requested &&
+                            checkState == ComputerRuntimeUsageCheckState.ComputerOffline
+                        ) {
+                            checkState = ComputerRuntimeUsageCheckState.Idle
+                        }
+                        startFollowUpReads(replacing = replacing, manual = false)
+                    }
+                    RuntimeAccountUsageRefreshState.Timeout,
+                    RuntimeAccountUsageRefreshState.Unsupported -> Unit
+                }
+            }
+            RuntimeAccountUsageRefreshLoad.Forbidden -> {
+                load = RuntimeAccountUsageLoad.Forbidden
+                checkState = ComputerRuntimeUsageCheckState.Idle
+            }
+            // A background check nobody asked for that failed: card stays as it was, Check again offered.
+            is RuntimeAccountUsageRefreshLoad.Failed -> Unit
+            RuntimeAccountUsageRefreshLoad.Superseded -> {
+                load = null
+                checkState = ComputerRuntimeUsageCheckState.Idle
+                onIdentityChanged()
+            }
+        }
+    }
+
+    /** Manual Check again / Retry (`manual`, web `handleRefresh`). */
+    fun refreshNow() {
+        // Web `handleRefresh`: a check replaces what the last limit reset said.
+        limitResetNote = null
+        claudeLimitResetNote = null
+        startManualCheck()
+    }
+
+    /** Raft's own read failed with nothing shown: invalidate and check as opening the card does. */
+    fun retryRead() {
         scope.launch {
-            handleRefresh(store.refresh(key, RuntimeAccountUsageRefreshReason.Manual), manual = true)
-            updateCooldown()
+            store.invalidate(key)
+            autoCheck()
+        }
+    }
+
+    private fun startManualCheck() {
+        if (checkState == ComputerRuntimeUsageCheckState.Checking) return
+        val replacing = load.availableCollectedAt()
+        followUp?.cancel()
+        checkState = ComputerRuntimeUsageCheckState.Checking
+        scope.launch {
+            val result = store.refresh(key, RuntimeAccountUsageRefreshReason.Manual)
+            log("computer_runtime_usage_refresh provider=${key.provider.wire} manual=true result=${result.diagnosticsLabel()}")
+            when (result) {
+                is RuntimeAccountUsageRefreshLoad.Done -> {
+                    val answer = result.refresh
+                    when (answer.state) {
+                        RuntimeAccountUsageRefreshState.Fresh -> {
+                            val snapshot = answer.snapshot
+                            if (snapshot != null) {
+                                load = RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Available(stale = false, snapshot = snapshot))
+                                checkState = ComputerRuntimeUsageCheckState.Idle
+                                answerFlash += 1
+                            } else {
+                                checkState = ComputerRuntimeUsageCheckState.Timeout
+                            }
+                        }
+                        RuntimeAccountUsageRefreshState.Timeout -> checkState = ComputerRuntimeUsageCheckState.Timeout
+                        RuntimeAccountUsageRefreshState.ComputerOffline -> checkState = ComputerRuntimeUsageCheckState.ComputerOffline
+                        RuntimeAccountUsageRefreshState.Unsupported -> checkState = ComputerRuntimeUsageCheckState.Idle
+                        // A check already running (server cooldown) or older server `requested`: wait for it.
+                        RuntimeAccountUsageRefreshState.Requested,
+                        RuntimeAccountUsageRefreshState.Cooldown -> startFollowUpReads(replacing = replacing, manual = true)
+                    }
+                }
+                RuntimeAccountUsageRefreshLoad.Forbidden -> {
+                    load = RuntimeAccountUsageLoad.Forbidden
+                    checkState = ComputerRuntimeUsageCheckState.Idle
+                }
+                is RuntimeAccountUsageRefreshLoad.Failed -> checkState = ComputerRuntimeUsageCheckState.Failed
+                RuntimeAccountUsageRefreshLoad.Superseded -> {
+                    load = null
+                    checkState = ComputerRuntimeUsageCheckState.Idle
+                    onIdentityChanged()
+                }
+            }
         }
     }
 
@@ -505,9 +650,9 @@ internal class ComputerRuntimeUsageController(
         if (snapshot != null) {
             followUp?.cancel()
             load = RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Available(stale = false, snapshot = snapshot))
-            refresh = ComputerRuntimeUsageRefreshStatus.Idle
+            checkState = ComputerRuntimeUsageCheckState.Idle
         } else {
-            startManualRefresh()
+            startManualCheck()
         }
     }
 
@@ -606,7 +751,7 @@ internal class ComputerRuntimeUsageController(
                                 if (open || step.usageChanged) claudeLimitResetNote = step.text
                                 if (open) claudeLimitResetsDialog = null
                                 // Never redeemed after it: the older program's read was the command. The usage says what is left.
-                                if (step.usageChanged) startManualRefresh()
+                                if (step.usageChanged) startManualCheck()
                             }
                             is ComputerRuntimeClaudeLimitResetReadStep.Confirm -> if (open) openClaudeLimitResetConfirm(step.status)
                             // Nothing chosen for the person: Use stays off until they pick a kind.
@@ -728,107 +873,84 @@ internal class ComputerRuntimeUsageController(
                     if (snapshot != null) {
                         followUp?.cancel()
                         load = RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Available(stale = false, snapshot = snapshot))
-                        refresh = ComputerRuntimeUsageRefreshStatus.Idle
+                        checkState = ComputerRuntimeUsageCheckState.Idle
                     } else {
-                        startManualRefresh()
+                        startManualCheck()
                     }
                 }
             }
         }
     }
 
-    suspend fun updateCooldown() {
-        cooldownLeftMillis = store.refreshCooldownRemainingMillis(key)
-    }
-
     fun cancel() {
         followUp?.cancel()
+        if (checkState == ComputerRuntimeUsageCheckState.Checking) {
+            checkState = ComputerRuntimeUsageCheckState.Idle
+        }
+    }
+
+    private fun applyNewSnapshot(snapshot: RuntimeAccountUsageSnapshot) {
+        val previous = load.availableCollectedAt()
+        load = RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Available(stale = false, snapshot = snapshot))
+        if (snapshot.collectedAt != previous &&
+            (checkState == ComputerRuntimeUsageCheckState.Timeout ||
+                checkState == ComputerRuntimeUsageCheckState.Failed ||
+                checkState == ComputerRuntimeUsageCheckState.ComputerOffline)
+        ) {
+            checkState = ComputerRuntimeUsageCheckState.Idle
+        }
     }
 
     private suspend fun read(force: Boolean): RuntimeAccountUsageLoad {
         loading = true
+        val previousCollectedAt = load.availableCollectedAt()
         val result = store.read(key, force = force)
         log("computer_runtime_usage_read provider=${key.provider.wire} force=$force result=${result.diagnosticsLabel()}")
         // Web keeps what it showed when a later read fails; a 403 or a new identity does not.
         val keepShown = result is RuntimeAccountUsageLoad.Failed && load is RuntimeAccountUsageLoad.Loaded
-        if (!keepShown) result.shownRuntimeAccountUsage()?.let { load = it }
+        if (!keepShown) {
+            result.shownRuntimeAccountUsage()?.let { shown ->
+                // A newer reading, however it came, clears a prior timed-out, failed, or offline outcome.
+                val nextCollectedAt = shown.availableCollectedAt()
+                if (nextCollectedAt != null &&
+                    nextCollectedAt != previousCollectedAt &&
+                    (checkState == ComputerRuntimeUsageCheckState.Timeout ||
+                        checkState == ComputerRuntimeUsageCheckState.Failed ||
+                        checkState == ComputerRuntimeUsageCheckState.ComputerOffline)
+                ) {
+                    checkState = ComputerRuntimeUsageCheckState.Idle
+                }
+                load = shown
+            }
+        }
         loading = false
         if (result is RuntimeAccountUsageLoad.Superseded) {
             load = null
+            checkState = ComputerRuntimeUsageCheckState.Idle
             onIdentityChanged()
         }
         return result
     }
 
-    private fun handleRefresh(result: RuntimeAccountUsageRefreshLoad, manual: Boolean) {
-        log("computer_runtime_usage_refresh provider=${key.provider.wire} manual=$manual result=${result.diagnosticsLabel()}")
-        when (result) {
-            is RuntimeAccountUsageRefreshLoad.Done -> {
-                val answer = result.refresh
-                when (answer.state) {
-                    RuntimeAccountUsageRefreshState.Fresh -> {
-                        val snapshot = answer.snapshot
-                        if (snapshot != null) {
-                            load = RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Available(stale = false, snapshot = snapshot))
-                            refresh = ComputerRuntimeUsageRefreshStatus.Idle
-                        } else {
-                            refresh = ComputerRuntimeUsageRefreshStatus.Unconfirmed
-                        }
-                        return
-                    }
-                    RuntimeAccountUsageRefreshState.Requested -> refresh = ComputerRuntimeUsageRefreshStatus.Requested
-                    RuntimeAccountUsageRefreshState.Cooldown -> refresh = ComputerRuntimeUsageRefreshStatus.Cooldown
-                    RuntimeAccountUsageRefreshState.ComputerOffline -> refresh = ComputerRuntimeUsageRefreshStatus.ComputerOffline
-                    RuntimeAccountUsageRefreshState.Timeout -> refresh = ComputerRuntimeUsageRefreshStatus.Timeout
-                    // slock #14667: this Computer reads no usage for it; nothing to say or to wait for.
-                    RuntimeAccountUsageRefreshState.Unsupported -> {
-                        refresh = ComputerRuntimeUsageRefreshStatus.Idle
-                        return
-                    }
-                }
-                if (answer.accepted || answer.state == RuntimeAccountUsageRefreshState.Cooldown) startFollowUpReads()
-            }
-            RuntimeAccountUsageRefreshLoad.Forbidden -> {
-                load = RuntimeAccountUsageLoad.Forbidden
-                refresh = ComputerRuntimeUsageRefreshStatus.Idle
-            }
-            // Web: a refresh that throws reads as "Computer offline".
-            is RuntimeAccountUsageRefreshLoad.Failed -> refresh = ComputerRuntimeUsageRefreshStatus.ComputerOffline
-            RuntimeAccountUsageRefreshLoad.Superseded -> {
-                load = null
-                refresh = ComputerRuntimeUsageRefreshStatus.Idle
-                onIdentityChanged()
-            }
-        }
+    /**
+     * A sign-in on this card just succeeded (web `handleSignedIn`, slock #15786 / #16501): read
+     * again until a snapshot newer than the one shown lands. Never cuts short an active manual
+     * Check again wait.
+     */
+    fun readAfterSignIn() {
+        if (checkState == ComputerRuntimeUsageCheckState.Checking) return
+        val replacing = load.availableCollectedAt()
+        log("computer_runtime_usage_read_after_sign_in provider=${key.provider.wire}")
+        startFollowUpReads(replacing = replacing, manual = false)
     }
 
     /**
-     * A sign-in on this card just succeeded (web `startFollowUpReads(afterSignIn)`, slock #15786): the
-     * server asks the Computer for fresh usage, so read again until a fresh snapshot other than the one
-     * shown lands, for about as long as the server's relay waits on a slow read, and end quietly
-     * either way (nobody pressed Refresh).
+     * Web `startFollowUpReads` (#587 site 6, slock #16501): re-reads the server's cache up to the
+     * 25 s relay budget until a snapshot newer than [replacing] lands. A failed read counts as one
+     * more try (never left spinning). [manual] ends in Timeout if nothing lands and flashes on
+     * success; non-manual (auto-check / sign-in) ends quietly.
      */
-    fun readAfterSignIn() {
-        val replacing = ((load as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available)?.snapshot?.collectedAt
-        log("computer_runtime_usage_read_after_sign_in provider=${key.provider.wire}")
-        followUp?.cancel()
-        followUp =
-            scope.launch {
-                repeat(signInFollowUpAttempts) {
-                    delay(followUpDelayMillis)
-                    store.invalidate(key)
-                    val next = (read(force = true) as? RuntimeAccountUsageLoad.Loaded)?.read
-                    if (next is RuntimeAccountUsageRead.Available && !next.stale && next.snapshot.collectedAt != replacing) {
-                        refresh = ComputerRuntimeUsageRefreshStatus.Idle
-                        return@launch
-                    }
-                }
-                refresh = ComputerRuntimeUsageRefreshStatus.Idle
-            }
-    }
-
-    /** Web `startFollowUpReads`: re-read until the snapshot is fresh, then give up as unconfirmed. */
-    private fun startFollowUpReads() {
+    private fun startFollowUpReads(replacing: String?, manual: Boolean) {
         followUp?.cancel()
         followUp =
             scope.launch {
@@ -836,21 +958,24 @@ internal class ComputerRuntimeUsageController(
                     delay(followUpDelayMillis)
                     store.invalidate(key)
                     val next = (read(force = true) as? RuntimeAccountUsageLoad.Loaded)?.read
-                    if (next is RuntimeAccountUsageRead.Available && !next.stale) {
-                        refresh = ComputerRuntimeUsageRefreshStatus.Idle
+                    if (next is RuntimeAccountUsageRead.Available && next.snapshot.collectedAt != replacing) {
+                        if (manual) {
+                            checkState = ComputerRuntimeUsageCheckState.Idle
+                            answerFlash += 1
+                        }
                         return@launch
                     }
                 }
-                refresh = ComputerRuntimeUsageRefreshStatus.Unconfirmed
+                if (manual) checkState = ComputerRuntimeUsageCheckState.Timeout
             }
     }
 }
 
 internal const val COMPUTER_RUNTIME_USAGE_FOLLOW_UP_DELAY_MILLIS: Long = 1_200L
-internal const val COMPUTER_RUNTIME_USAGE_FOLLOW_UP_ATTEMPTS: Int = 8
-
-/** Web `SIGN_IN_MAX_READ_ATTEMPTS`: after a sign-in, about the server's relay budget for a usage read (25 s). */
-internal const val COMPUTER_RUNTIME_USAGE_SIGN_IN_FOLLOW_UP_ATTEMPTS: Int = 21
+/** Web `FOLLOW_UP_MAX_READ_ATTEMPTS`: about the server's relay budget for a usage read (25 s). */
+internal const val COMPUTER_RUNTIME_USAGE_FOLLOW_UP_ATTEMPTS: Int = 21
+/** Web `CARD_CLOCK_MS`: how often an open card redraws "Updated …" and Check again eligibility. */
+internal const val COMPUTER_RUNTIME_USAGE_CARD_CLOCK_MILLIS: Long = 10_000L
 
 /**
  * Binds a card's sign-in to its usage (web `RuntimeSignInDialog onSignedIn={handleSignedIn}`, slock
@@ -1053,14 +1178,23 @@ internal fun ComputerRuntimeUsageSheetHost(
     val auth = runtimeId?.let { rememberComputerRuntimeAuthController(access, key.machineId, it, readNow = true) }
     LaunchedEffect(controller) {
         controller.onOpen()
-        // The cooldown clock ticks only while the app is in front (a hidden activity keeps its composition).
-        repeatWhileProcessForeground(intervalMillis = 1_000L, runImmediatelyOnStart = true) {
-            controller.updateCooldown()
+        // #587 site 6 (slock #16501): check on foreground return while the sheet is open.
+        launch {
+            var wasForeground = RaftProcessForegroundGate.foreground.value
+            RaftProcessForegroundGate.foreground.collect { foreground ->
+                if (!wasForeground && foreground) controller.onForegroundReturn()
+                wasForeground = foreground
+            }
+        }
+        // The open card's 10 s clock: "Updated …" moves on and Check again appears once 2 min old.
+        repeatWhileProcessForeground(intervalMillis = COMPUTER_RUNTIME_USAGE_CARD_CLOCK_MILLIS, runImmediatelyOnStart = false) {
+            controller.tickClock()
         }
     }
     // A sign-in from this sheet reads its usage again at once (slock #15786).
     BindSignedInUsageRead(controller, auth)
     val timeContext = currentRaftTimeContextProvider?.current
+    val nowMillis = currentRaftTimeContext(timeContext)?.nowEpochMillis ?: defaultNowMillis()
     val authState = auth?.cardState
     // A child dialog (sign-in, sign-out, limit reset) takes over from the sheet so two modal
     // windows never stack over the host Activity across an external browser return.
@@ -1072,9 +1206,10 @@ internal fun ComputerRuntimeUsageSheetHost(
     if (!childDialogOpen) {
         ComputerRuntimeUsageSheet(
             runtimeLabel = runtimeLabel,
-            state = controller.sheetState(runtimeVersion),
+            state = controller.sheetState(runtimeVersion, nowMillis),
             timeContext = timeContext,
             onRefresh = controller::refreshNow,
+            onRetryRead = controller::retryRead,
             onUseLimitReset = controller::openLimitReset,
             onDismiss = onDismiss,
             auth = authState,
@@ -1106,18 +1241,26 @@ internal fun BindClaudeLimitResetFlag(controller: ComputerRuntimeUsageController
 }
 
 /** What the controller shows, for the sheet or the card. */
-internal fun ComputerRuntimeUsageController.sheetState(runtimeVersion: String?): ComputerRuntimeUsageSheetState =
-    ComputerRuntimeUsageSheetState(
+internal fun ComputerRuntimeUsageController.sheetState(
+    runtimeVersion: String?,
+    nowMillis: Long = defaultNowMillis(),
+): ComputerRuntimeUsageSheetState {
+    // Subscribe to the 10 s clock tick so due & relative times recompute while the card stays open.
+    @Suppress("UNUSED_VARIABLE")
+    val tick = clockTick
+    return ComputerRuntimeUsageSheetState(
         load = load,
         loading = loading,
-        refresh = refresh,
-        cooldownLeftMillis = cooldownLeftMillis,
+        checkState = checkState,
+        checkDue = computerRuntimeUsageCheckDue(load, nowMillis),
+        answerFlash = answerFlash,
         runtimeVersion = runtimeVersion,
         limitReset = limitResetOffer,
         limitResetNote = limitResetNote,
         claudeLimitReset = claudeLimitResetOffer,
         claudeLimitResetNote = claudeLimitResetNote,
     )
+}
 
 /** The controller's open "Use a limit reset?" confirm, if any. */
 @Composable
@@ -1169,8 +1312,11 @@ internal val ComputerRuntimeUsageSheetState.showsAccount: Boolean
 internal data class ComputerRuntimeUsageSheetState(
     val load: RuntimeAccountUsageLoad?,
     val loading: Boolean,
-    val refresh: ComputerRuntimeUsageRefreshStatus,
-    val cooldownLeftMillis: Long,
+    val checkState: ComputerRuntimeUsageCheckState = ComputerRuntimeUsageCheckState.Idle,
+    /** Snapshot is over 2 minutes old, stale, or missing (`usageCheckDue`): Check again is offered. */
+    val checkDue: Boolean = false,
+    /** Increments on each manual Check again answer so the "Updated …" line flashes. */
+    val answerFlash: Int = 0,
     /** The runtime CLI version the Computer reported (web `runtimeVersion`); null: no version line. */
     val runtimeVersion: String? = null,
     /** "Use a reset" (slock #13504); null when there is no reset to offer or the viewer may not act. */
@@ -1193,6 +1339,7 @@ private fun ComputerRuntimeUsageSheet(
     state: ComputerRuntimeUsageSheetState,
     timeContext: RaftTimeContext?,
     onRefresh: () -> Unit,
+    onRetryRead: () -> Unit = onRefresh,
     onUseLimitReset: () -> Unit,
     onDismiss: () -> Unit,
     auth: ComputerRuntimeAuthCardState? = null,
@@ -1224,6 +1371,7 @@ private fun ComputerRuntimeUsageSheet(
                 showsUsage = !signedOut,
                 auth = auth,
                 onRefresh = onRefresh,
+                onRetryRead = onRetryRead,
                 onUseLimitReset = onUseLimitReset,
                 onClaudeLimitReset = onClaudeLimitReset,
                 onSignIn = onSignIn,
@@ -1266,6 +1414,7 @@ internal fun ComputerRuntimeUsageSheetSurface(
                 showsUsage = true,
                 auth = auth,
                 onRefresh = {},
+                onRetryRead = {},
                 onUseLimitReset = {},
                 onClaudeLimitReset = {},
                 onSignIn = {},
@@ -1278,28 +1427,51 @@ internal fun ComputerRuntimeUsageSheetSurface(
 }
 
 /**
- * Web `statusText`: only a state worth saying, under the usage: what the last limit reset did, a
- * refresh refused or unanswered, or the Computer offline. One in flight says nothing (Refresh's
- * spinner shows it), and neither does a quiet card.
+ * Web `statusText` (#587 site 6, slock #16501): only what the last limit reset did, said once.
+ * How a manual check ended is said in the "Updated …" line.
  */
 @Composable
 private fun computerRuntimeUsageStatusText(state: ComputerRuntimeUsageSheetState): String? =
     when {
         state.claudeLimitResetNote != null -> state.claudeLimitResetNote.text()
         state.limitResetNote != null -> state.limitResetNote.text()
-        state.refresh == ComputerRuntimeUsageRefreshStatus.Unconfirmed -> stringResource(Res.string.settings_computers_runtime_usage_refresh_unconfirmed)
-        state.refresh == ComputerRuntimeUsageRefreshStatus.Timeout -> stringResource(Res.string.settings_computers_runtime_usage_refresh_timeout)
-        state.cooldownLeftMillis > 0L ->
-            stringResource(Res.string.settings_computers_runtime_usage_refresh_cooldown_countdown, ((state.cooldownLeftMillis + 999L) / 1_000L).toInt())
-        state.refresh == ComputerRuntimeUsageRefreshStatus.ComputerOffline -> stringResource(Res.string.settings_computers_runtime_usage_computer_offline)
         else -> null
+    }
+
+/** Web `updatedLine`: the "Updated …" line combined with any check outcome or offline status. */
+@Composable
+private fun computerRuntimeUsageUpdatedLine(checkState: ComputerRuntimeUsageCheckState, updated: String): String =
+    when (checkState) {
+        ComputerRuntimeUsageCheckState.ComputerOffline ->
+            stringResource(Res.string.settings_computers_runtime_usage_updated_computer_offline, updated)
+        ComputerRuntimeUsageCheckState.Timeout ->
+            stringResource(Res.string.settings_computers_runtime_usage_updated_check_timed_out, updated)
+        ComputerRuntimeUsageCheckState.Failed ->
+            stringResource(Res.string.settings_computers_runtime_usage_updated_check_failed, updated)
+        ComputerRuntimeUsageCheckState.Idle,
+        ComputerRuntimeUsageCheckState.Checking ->
+            stringResource(Res.string.settings_computers_runtime_usage_metadata, updated)
+    }
+
+/** Web `checkOutcomeText`: the same, with no snapshot to date. */
+@Composable
+private fun computerRuntimeUsageCheckOutcomeText(checkState: ComputerRuntimeUsageCheckState): String? =
+    when (checkState) {
+        ComputerRuntimeUsageCheckState.ComputerOffline ->
+            stringResource(Res.string.settings_computers_runtime_usage_computer_offline)
+        ComputerRuntimeUsageCheckState.Timeout ->
+            stringResource(Res.string.settings_computers_runtime_usage_check_timed_out)
+        ComputerRuntimeUsageCheckState.Failed ->
+            stringResource(Res.string.settings_computers_runtime_usage_check_failed)
+        ComputerRuntimeUsageCheckState.Idle,
+        ComputerRuntimeUsageCheckState.Checking -> null
     }
 
 /**
  * Web `RuntimeUsageContents`: the usage block (also the agent move dialog's). Nothing read yet says so;
  * otherwise an out-of-date notice over the sunken accounts, each account, and "Updated …" ([metadata]
- * in its place) with [footerAction] (Refresh) beside it. [accountMenu] and [accountActions] go with
- * the Computer's own account. [inset] is the side padding (16 in a card, 0 in a sheet or a dialog).
+ * in its place) with [footerAction] (Check again / Retry) beside it. [accountMenu] and [accountActions]
+ * go with the Computer's own account. [inset] is the side padding (16 in a card, 0 in a sheet or a dialog).
  */
 @Composable
 internal fun ComputerRuntimeUsageContents(
@@ -1313,15 +1485,26 @@ internal fun ComputerRuntimeUsageContents(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
+    val outcome = computerRuntimeUsageCheckOutcomeText(state.checkState)
     val bare: @Composable (@Composable () -> Unit) -> Unit = { body ->
         body()
-        if (footerAction != null) {
+        if (footerAction != null || outcome != null) {
             RaftSeparator()
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = inset, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, if (outcome != null) Alignment.Start else Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
-            ) { footerAction() }
+            ) {
+                if (outcome != null) {
+                    RaftText(
+                        outcome,
+                        modifier = Modifier.weight(1f).padding(vertical = 2.dp).testTag(COMPUTER_RUNTIME_USAGE_UPDATED_TAG),
+                        style = typography.caption,
+                        color = colors.foregroundHint,
+                    )
+                }
+                footerAction?.invoke()
+            }
         }
     }
     val load = state.load
@@ -1387,8 +1570,18 @@ internal fun ComputerRuntimeUsageContents(
                     }
                 }
                 RaftSeparator()
+                val flashAlpha = remember(state.answerFlash) { Animatable(if (state.answerFlash > 0) 1f else 0f) }
+                LaunchedEffect(state.answerFlash) {
+                    if (state.answerFlash > 0) {
+                        flashAlpha.snapTo(1f)
+                        flashAlpha.animateTo(0f, animationSpec = tween(durationMillis = 700))
+                    }
+                }
+                val flashBackground =
+                    if (flashAlpha.value > 0f) colors.brandSoft.copy(alpha = colors.brandSoft.alpha * flashAlpha.value)
+                    else androidx.compose.ui.graphics.Color.Transparent
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = inset, vertical = 6.dp),
+                    Modifier.fillMaxWidth().background(flashBackground).padding(horizontal = inset, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -1398,8 +1591,8 @@ internal fun ComputerRuntimeUsageContents(
                             ?.takeIf { it.isNotEmpty() }
                             ?: stringResource(Res.string.settings_computers_runtime_usage_recently)
                     RaftText(
-                        metadata ?: stringResource(Res.string.settings_computers_runtime_usage_metadata, updated),
-                        modifier = Modifier.weight(1f).padding(vertical = 2.dp),
+                        metadata ?: computerRuntimeUsageUpdatedLine(state.checkState, updated),
+                        modifier = Modifier.weight(1f).padding(vertical = 2.dp).testTag(COMPUTER_RUNTIME_USAGE_UPDATED_TAG),
                         style = typography.caption,
                         color = colors.foregroundHint,
                     )
@@ -1675,6 +1868,7 @@ internal const val COMPUTER_RUNTIME_ACCOUNT_UNSUPPORTED_REASON_TAG = "runtime-ac
 internal const val COMPUTER_RUNTIME_ACCOUNT_FACTS_TAG = "runtime-account-facts"
 internal const val COMPUTER_RUNTIME_ACCOUNT_MENU_TAG = "runtime-account-menu"
 internal const val COMPUTER_RUNTIME_USAGE_REFRESH_TAG = "runtime-usage-refresh"
+internal const val COMPUTER_RUNTIME_USAGE_UPDATED_TAG = "runtime-usage-updated"
 internal const val COMPUTER_RUNTIME_USAGE_ACTIONS_TAG = "runtime-usage-actions"
 internal const val COMPUTER_RUNTIME_LIMIT_CALLOUT_TAG = "runtime-limit-callout"
 
@@ -1729,14 +1923,22 @@ internal fun ComputerRuntimeUsagePreviewCard(
 ) {
     var sheetOpen by remember { mutableStateOf(false) }
     val timeContext = currentRaftTimeContextProvider?.current
+    val nowMillis = currentRaftTimeContext(timeContext)?.nowEpochMillis ?: defaultNowMillis()
     if (state.isOpen || sheetOpen) {
         LaunchedEffect(controller, auth) {
             controller?.onOpen()
             // Web `openNow`: the sign-in state is read again with the usage.
             auth?.controller?.read()
             if (controller != null) {
-                repeatWhileProcessForeground(intervalMillis = 1_000L, runImmediatelyOnStart = true) {
-                    controller.updateCooldown()
+                launch {
+                    var wasForeground = RaftProcessForegroundGate.foreground.value
+                    RaftProcessForegroundGate.foreground.collect { foreground ->
+                        if (!wasForeground && foreground) controller.onForegroundReturn()
+                        wasForeground = foreground
+                    }
+                }
+                repeatWhileProcessForeground(intervalMillis = COMPUTER_RUNTIME_USAGE_CARD_CLOCK_MILLIS, runImmediatelyOnStart = false) {
+                    controller.tickClock()
                 }
             }
         }
@@ -1780,9 +1982,10 @@ internal fun ComputerRuntimeUsagePreviewCard(
             if (controller != null) {
                 ComputerRuntimeUsageCard(
                     runtimeLabel = runtimeLabel,
-                    state = controller.sheetState(runtimeVersion),
+                    state = controller.sheetState(runtimeVersion, nowMillis),
                     timeContext = timeContext,
                     onRefresh = controller::refreshNow,
+                    onRetryRead = controller::retryRead,
                     onClose = state::dismiss,
                     onUseLimitReset = {
                         state.dismiss()
@@ -1824,9 +2027,10 @@ internal fun ComputerRuntimeUsagePreviewCard(
         if (controller != null) {
             ComputerRuntimeUsageSheet(
                 runtimeLabel = runtimeLabel,
-                state = controller.sheetState(runtimeVersion),
+                state = controller.sheetState(runtimeVersion, nowMillis),
                 timeContext = timeContext,
                 onRefresh = controller::refreshNow,
+                onRetryRead = controller::retryRead,
                 onUseLimitReset = {
                     closeSheet()
                     controller.openLimitReset()
@@ -2090,6 +2294,7 @@ internal fun ComputerRuntimeUsageCard(
     timeContext: RaftTimeContext?,
     onRefresh: () -> Unit,
     onClose: (() -> Unit)?,
+    onRetryRead: () -> Unit = onRefresh,
     onUseLimitReset: () -> Unit = {},
     /** The runtime's sign-in (web `SurfaceAuth`); null shows usage alone. */
     auth: ComputerRuntimeAuthCardState? = null,
@@ -2121,6 +2326,7 @@ internal fun ComputerRuntimeUsageCard(
         showsUsage = true,
         auth = auth,
         onRefresh = onRefresh,
+        onRetryRead = onRetryRead,
         onUseLimitReset = onUseLimitReset,
         onClaudeLimitReset = onClaudeLimitReset,
         onSignIn = onSignIn,
@@ -2132,8 +2338,8 @@ internal fun ComputerRuntimeUsageCard(
 
 /**
  * Web `Surface` under its head: with usage, the usage block (its own account's menu and actions in
- * it), the actions that have no account to sit under, what the last refresh or reset did, and who
- * may see it; without (signed out), the sign-in alone. [head] goes first (a sheet's lines under its title).
+ * it), the actions that have no account to sit under, what the last reset did, and who may see it;
+ * without (signed out), the sign-in alone. [head] goes first (a sheet's lines under its title).
  */
 @Composable
 private fun ComputerRuntimeUsageSurfaceContent(
@@ -2143,6 +2349,7 @@ private fun ComputerRuntimeUsageSurfaceContent(
     showsUsage: Boolean,
     auth: ComputerRuntimeAuthCardState?,
     onRefresh: () -> Unit,
+    onRetryRead: () -> Unit,
     onUseLimitReset: () -> Unit,
     onClaudeLimitReset: () -> Unit,
     onSignIn: () -> Unit,
@@ -2173,13 +2380,20 @@ private fun ComputerRuntimeUsageSurfaceContent(
             onClaudeLimitReset = onClaudeLimitReset,
         )
     }
+    val readFailed = state.load is RuntimeAccountUsageLoad.Failed
+    val showsCheck = computerRuntimeUsageShowsCheckButton(state)
     ComputerRuntimeUsageContents(
         state = state,
         timeContext = timeContext,
         inset = inset,
         accountMenu = if (signOutInMenu) ({ ComputerRuntimeAccountMenu(onSignOut, onAccountMenuOpen) }) else null,
         accountActions = if (usageShowsAccount && hasAccountActions) accountActions else null,
-        footerAction = { ComputerRuntimeUsageRefreshButton(state, onRefresh) },
+        footerAction =
+            if (showsCheck) {
+                { ComputerRuntimeUsageCheckButton(state, readFailed, onCheck = onRefresh, onRetryRead = onRetryRead) }
+            } else {
+                null
+            },
     )
     // No own account drawn (nothing read yet): the limit and sign-in actions under the usage.
     val loose = !usageShowsAccount && hasAccountActions
@@ -2273,20 +2487,41 @@ private fun ComputerRuntimeAccountMenu(onSignOut: () -> Unit, onOpen: () -> Unit
     }
 }
 
-/** Web `refreshButton`: a ghost Refresh beside "Updated …", the pixel spinner while a read is awaited. */
+/**
+ * Web `showsCheck` (#587 site 6, slock #16501): one ghost button at the end of "Updated …", only
+ * while it means something. A snapshot under 2 minutes old has none; an offline Computer has none.
+ */
+internal fun computerRuntimeUsageShowsCheckButton(state: ComputerRuntimeUsageSheetState): Boolean {
+    val readFailed = state.load is RuntimeAccountUsageLoad.Failed
+    return state.checkState == ComputerRuntimeUsageCheckState.Checking ||
+        ((!state.loading || state.load != null) &&
+            state.checkState != ComputerRuntimeUsageCheckState.ComputerOffline &&
+            (readFailed ||
+                state.checkState == ComputerRuntimeUsageCheckState.Timeout ||
+                state.checkState == ComputerRuntimeUsageCheckState.Failed ||
+                state.checkDue))
+}
+
+/** Web `checkButton` (#587 site 6, slock #16501): ghost Md Check again / Retry with in-place spinner. */
 @Composable
-private fun ComputerRuntimeUsageRefreshButton(state: ComputerRuntimeUsageSheetState, onRefresh: () -> Unit) {
-    val waiting = state.refresh == ComputerRuntimeUsageRefreshStatus.Requesting || state.refresh == ComputerRuntimeUsageRefreshStatus.Requested
+private fun ComputerRuntimeUsageCheckButton(
+    state: ComputerRuntimeUsageSheetState,
+    readFailed: Boolean,
+    onCheck: () -> Unit,
+    onRetryRead: () -> Unit,
+) {
+    val isRetry =
+        readFailed ||
+            state.checkState == ComputerRuntimeUsageCheckState.Timeout ||
+            state.checkState == ComputerRuntimeUsageCheckState.Failed
     RaftButton(
-        text = stringResource(Res.string.settings_computers_runtime_usage_refresh),
-        onClick = onRefresh,
+        text = stringResource(if (isRetry) Res.string.status_line_retry else Res.string.status_line_recheck),
+        onClick = if (readFailed) onRetryRead else onCheck,
         modifier = Modifier.testTag(COMPUTER_RUNTIME_USAGE_REFRESH_TAG),
         variant = RaftButtonVariant.Ghost,
         size = RaftButtonSize.Md,
-        enabled = state.refresh != ComputerRuntimeUsageRefreshStatus.Requesting && state.cooldownLeftMillis <= 0L,
-        leadingIcon = {
-            if (waiting) RaftSpinner(size = RaftSpinnerSize.Xs) else RaftComputersIcon(RaftLucideIconName.RefreshCw)
-        },
+        loading = state.checkState == ComputerRuntimeUsageCheckState.Checking,
+        loadingLabel = stringResource(Res.string.status_line_checking),
     )
 }
 
