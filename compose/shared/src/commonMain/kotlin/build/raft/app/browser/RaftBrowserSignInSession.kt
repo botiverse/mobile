@@ -160,6 +160,9 @@ internal class RaftBrowserSignInSession(
     private val scope: CoroutineScope,
     private val authorizeOriginProvider: () -> String?,
     private val webUrlProvider: () -> String?,
+    private val setupOriginProvider: () -> String? = {
+        webUrlProvider()?.let { raftAuthorizeOrigin(it, allowLoopback = false) }
+    },
     private val raftHostsProvider: () -> Collection<String>,
     private val featureEnabledProvider: () -> Boolean,
     private val accountProvider: () -> RaftBrowserSignInAccountContext?,
@@ -208,13 +211,17 @@ internal class RaftBrowserSignInSession(
 
     /**
      * Synchronous main-frame navigation catch called from WebView before routing, fencing, and
-     * `Raft-Host` re-issue. Returns true iff this navigation was Raft's authorize endpoint while the
-     * feature flag is on (cancelling the navigation so Raft never loads inside the in-app browser).
+     * `Raft-Host` re-issue. Returns true iff this navigation was Raft's authorize endpoint or
+     * direct setup page while the feature flag is on (cancelling the navigation so Raft never loads
+     * inside the in-app browser).
      */
     fun onMainFrameNavigation(ask: RaftWebViewMainFrameCatchAsk): Boolean {
         if (closed || !featureEnabledProvider()) return false
         val raftHosts = raftHostsProvider()
-        val request = raftAuthorizeRequest(ask.url, authorizeOriginProvider(), raftHosts) ?: return false
+        val request: RaftBrowserSignInEntry =
+            raftAuthorizeRequest(ask.url, authorizeOriginProvider(), raftHosts)
+                ?: raftSetupEntryRequest(ask.url, setupOriginProvider(), raftHosts)
+                ?: return false
 
         val account = accountProvider()
         if (account == null) {
@@ -222,7 +229,7 @@ internal class RaftBrowserSignInSession(
             return true
         }
         val webUrl = webUrlProvider()?.trim()?.takeIf { it.isNotEmpty() }
-        if (webUrl == null) {
+        if (request is RaftAuthorizeRequest && webUrl == null) {
             decline(RaftBrowserSignInDropReason.NoWebOrigin, ask.url, request.logClientId)
             return true
         }
@@ -422,20 +429,27 @@ internal class RaftBrowserSignInSession(
 
     private suspend fun runAuthorizePipeline(
         currentPending: PendingRequest,
-        request: RaftAuthorizeRequest,
-        webUrl: String,
+        request: RaftBrowserSignInEntry,
+        webUrl: String?,
     ) {
-        val response =
-            try {
-                fetchAuthorize(request.fetchUrl)
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (_: Throwable) {
-                null
+        val answer: RaftSetupAnswer? =
+            when (request) {
+                is RaftAuthorizeRequest -> {
+                    val response =
+                        try {
+                            fetchAuthorize(request.fetchUrl)
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (_: Throwable) {
+                            null
+                        }
+                    if (!isPendingLive(currentPending)) return
+                    webUrl?.let { raftSetupAnswer(response, it, request, raftHostsProvider()) }
+                }
+                is RaftSetupEntryRequest -> {
+                    RaftSetupAnswer(setupSearch = request.setupSearch, returnUrl = request.redirectUri)
+                }
             }
-        if (!isPendingLive(currentPending)) return
-
-        val answer = raftSetupAnswer(response, webUrl, request, raftHostsProvider())
         if (answer == null) {
             refusePending(currentPending, RaftBrowserSignInDropReason.ServerRefused)
             return

@@ -32,7 +32,7 @@ internal object RaftAndroidWebViewKeepAlive {
     private val handler by lazy { Handler(Looper.getMainLooper()) }
     private val expire = Runnable { drop("expired") }
 
-    /** The view parked under [key] (now owned by the caller), or null. A view under another key is destroyed. */
+    /** The view parked under [key] (now owned by the caller), or null. A view under another key or failed load is destroyed. */
     fun take(
         key: String,
         hostContext: Context,
@@ -46,11 +46,13 @@ internal object RaftAndroidWebViewKeepAlive {
         parked = null
         if (
             view.isDestroyed ||
+            view.mainFrameLoadFailed ||
             view.keepAliveKey != key ||
             view.storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty
         ) {
+            val reason = if (view.mainFrameLoadFailed) "load_error" else "other_key"
             view.destroy()
-            raftLogInfo(LOG_TAG, "keep_alive result=dropped reason=other_key")
+            raftLogInfo(LOG_TAG, "keep_alive result=dropped reason=$reason")
             return null
         }
         view.attachFromKeepAlive(hostContext, events)
@@ -58,13 +60,21 @@ internal object RaftAndroidWebViewKeepAlive {
         return view
     }
 
-    /** Parks [view] when it has a key; false when the caller must destroy it. */
+    /** Parks [view] when it has a key and has not failed its main-frame load; false when the caller must destroy it. */
     fun park(view: RaftAndroidSandboxWebView): Boolean {
         if (
             view.isDestroyed ||
+            view.mainFrameLoadFailed ||
             view.keepAliveKey == null ||
             view.storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty
         ) {
+            if (parked === view) {
+                handler.removeCallbacks(expire)
+                parked = null
+            }
+            if (view.mainFrameLoadFailed) {
+                raftLogInfo(LOG_TAG, "keep_alive result=refused reason=load_error")
+            }
             return false
         }
         val previous = parked
@@ -81,8 +91,9 @@ internal object RaftAndroidWebViewKeepAlive {
         val key = config.keepAliveKey ?: return
         if (config.effectiveStoragePartition == RaftWebViewStoragePartition.IsolatedThirdParty) return
         dropIfOtherThemeMode()
+        dropIfLoadFailed()
         val current = parked
-        if (current != null && !current.isDestroyed && current.keepAliveKey == key) return
+        if (current != null && !current.isDestroyed && !current.mainFrameLoadFailed && current.keepAliveKey == key) return
         // Built on the page's (Activity) context, whose theme carries the app's light/dark mode
         // (the application context's does not on API 29-30); park() switches it to the
         // application context at once, so no Activity is held.
@@ -93,19 +104,42 @@ internal object RaftAndroidWebViewKeepAlive {
                 initialStoragePartition = config.effectiveStoragePartition,
             )
         view.applyConfig(config)
-        park(view)
-        raftLogInfo(LOG_TAG, "keep_alive result=prewarmed")
+        if (park(view)) {
+            raftLogInfo(LOG_TAG, "keep_alive result=prewarmed")
+        } else {
+            view.destroy()
+        }
     }
 
     fun kept(key: String): RaftAndroidSandboxWebView? {
         dropIfOtherThemeMode()
-        return parked?.takeIf { !it.isDestroyed && it.keepAliveKey == key }
+        dropIfLoadFailed()
+        return parked?.takeIf { !it.isDestroyed && !it.mainFrameLoadFailed && it.keepAliveKey == key }
     }
 
     /** Drops the parked view when the app's light/dark mode changed since it was built. */
     private fun dropIfOtherThemeMode() {
         val view = parked ?: return
         if (view.builtDark != RaftAppThemeState.isDark) drop("theme_mode_changed")
+    }
+
+    /** Drops the parked view when its main-frame load failed while parked or before reuse. */
+    private fun dropIfLoadFailed() {
+        val view = parked ?: return
+        if (view.mainFrameLoadFailed) drop("load_error")
+    }
+
+    /** Drops and destroys [view] if it is currently the parked keep-alive view. */
+    fun dropIfSame(view: RaftAndroidSandboxWebView, reason: String) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            handler.post { dropIfSame(view, reason) }
+            return
+        }
+        if (parked !== view) return
+        handler.removeCallbacks(expire)
+        parked = null
+        view.destroy()
+        raftLogInfo(LOG_TAG, "keep_alive result=dropped reason=$reason")
     }
 
     fun drop(reason: String) {

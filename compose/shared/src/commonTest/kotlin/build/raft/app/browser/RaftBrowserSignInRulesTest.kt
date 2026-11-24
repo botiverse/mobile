@@ -50,6 +50,8 @@ class RaftBrowserSignInRulesTest {
 
     private fun match(url: String, origin: String? = api): RaftAuthorizeRequest? = raftAuthorizeRequest(url, origin, raftHosts)
 
+    private fun entry(url: String, origin: String? = web): RaftSetupEntryRequest? = raftSetupEntryRequest(url, origin, raftHosts)
+
     private fun authorizeRequest(): RaftAuthorizeRequest = assertNotNull(match("$api/api/oauth/authorize?$query"))
 
     private fun answer(status: Int, location: String?): RaftSetupAnswer? =
@@ -567,5 +569,176 @@ class RaftBrowserSignInRulesTest {
         assertNull(raftSignInInvalidScopeUrl("OAUTH_SCOPE_NOT_APPROVED", null, null, "s"))
         assertNull(raftSignInInvalidScopeUrl("OAUTH_SCOPE_NOT_APPROVED", "", null, "s"))
         assertNull(raftSignInInvalidScopeUrl("OAUTH_SCOPE_NOT_APPROVED", "javascript:alert(1)", null, "s"))
+    }
+
+    @Test
+    fun setupEntryMatchesThreeSetupPathsOnWebOriginInEitherCaseAndOneTrailingSlash() {
+        val returnWithQuery = "https://deck.example/callback?tenant=7"
+        val returnEncoded = "https%3A%2F%2Fdeck.example%2Fcallback%3Ftenant%3D7"
+        listOf(
+            "/login-with-raft/setup",
+            "/login-with-slock/setup",
+            "/login-with-slock-human/setup",
+            "/Login-With-Raft/Setup",
+            "/LOGIN-WITH-SLOCK/SETUP/",
+            "/login-with-slock-human/setup/",
+        ).forEach { path ->
+            assertEquals(
+                RaftSetupEntryRequest(
+                    setupSearch = "?client_id=deck&return_to=$returnEncoded",
+                    redirectUri = returnWithQuery,
+                    logClientId = "deck",
+                    state = null,
+                ),
+                entry("$web$path?client_id=deck&return_to=$returnEncoded"),
+                path,
+            )
+        }
+        listOf(
+            "$web/login-with-raft/setup//?client_id=deck&return_to=$returnEncoded",
+            "$web/login-with-raft/setups?client_id=deck&return_to=$returnEncoded",
+            "$web/login-with-raft?client_id=deck&return_to=$returnEncoded",
+            "$web/x/login-with-raft/setup?client_id=deck&return_to=$returnEncoded",
+            "$web/login-with-slockx/setup?client_id=deck&return_to=$returnEncoded",
+            "$web/login-with-raft/setup%2F?client_id=deck&return_to=$returnEncoded",
+            "$api/login-with-raft/setup?client_id=deck&return_to=$returnEncoded",
+            "https://app.raft.build.evil.example/login-with-raft/setup?client_id=deck&return_to=$returnEncoded",
+            "https://app.raft.build:8443/login-with-raft/setup?client_id=deck&return_to=$returnEncoded",
+            "https://user:pw@app.raft.build/login-with-raft/setup?client_id=deck&return_to=$returnEncoded",
+            "http://app.raft.build/login-with-raft/setup?client_id=deck&return_to=$returnEncoded",
+            "https://app-aws-staging.botiverse.dev/login-with-raft/setup?client_id=deck&return_to=$returnEncoded",
+            "https://deck.example/login-with-raft/setup?client_id=deck&return_to=$returnEncoded",
+        ).forEach { bad -> assertNull(entry(bad), bad) }
+        assertNull(entry("$web/login-with-raft/setup?client_id=deck&return_to=$returnEncoded", origin = null))
+        assertNull(match("$web/login-with-slock/setup?client_id=deck&redirect_uri=$returnEncoded"))
+        assertNull(entry("$api/api/oauth/authorize?$query", origin = api))
+    }
+
+    @Test
+    fun setupEntryBuildsAllowListedSetupSearchDroppingFlowNonceAndPkce() {
+        val returnWithQuery = "https://deck.example/callback?tenant=7"
+        val returnEncoded = "https%3A%2F%2Fdeck.example%2Fcallback%3Ftenant%3D7"
+        val url =
+            "$web/login-with-raft/setup?flow=oidc&nonce=n1&code_challenge=abc&code_challenge_method=S256" +
+                "&response_type=code&prompt=none&server=launch&state=s1&scope=openid+profile" +
+                "&return_to=$returnEncoded&client_id=deck&utm=x"
+        val got = assertNotNull(entry(url))
+        assertEquals(
+            "?client_id=deck&return_to=$returnEncoded&scope=openid%20profile&state=s1&server=launch",
+            got.setupSearch,
+        )
+        assertEquals(returnWithQuery, got.redirectUri)
+        assertEquals("s1", got.state)
+        val parsed = assertNotNull(RaftBrowserQuery.parse(got.setupSearch))
+        assertEquals(listOf("client_id", "return_to", "scope", "state", "server"), parsed.pairs.map { it.name })
+        assertNull(parsed.first("flow"))
+        assertNull(parsed.first("nonce"))
+        assertNull(parsed.first("code_challenge"))
+        assertNull(parsed.first("code_challenge_method"))
+        assertNull(parsed.first("prompt"))
+        // A fragment on the setup page's own URL is ignored and never read into setupSearch or state.
+        val withOuterFragment = assertNotNull(entry("$web/login-with-raft/setup?client_id=deck&return_to=$returnEncoded#state=x"))
+        assertEquals("?client_id=deck&return_to=$returnEncoded", withOuterFragment.setupSearch)
+        assertNull(withOuterFragment.state)
+    }
+
+    @Test
+    fun setupEntryUsesRedirectUriWhenReturnToAbsentAndRequiresAgreementWhenBothPresent() {
+        val returnEncoded = "https%3A%2F%2Fdeck.example%2Fcallback%3Ftenant%3D7"
+        val base = "$web/login-with-slock/setup?client_id=deck"
+        assertEquals("?client_id=deck&return_to=$returnEncoded", entry("$base&redirect_uri=$returnEncoded")?.setupSearch)
+        assertEquals(
+            "?client_id=deck&return_to=$returnEncoded",
+            entry("$base&return_to=$returnEncoded&redirect_uri=$returnEncoded")?.setupSearch,
+        )
+        assertNull(entry("$base&return_to=$returnEncoded&redirect_uri=https%3A%2F%2Fdeck.example%2Fother"))
+        assertNull(entry("$base&return_to=$returnEncoded&redirect_uri=$returnEncoded&redirect_uri=$returnEncoded"))
+        // Stricter than the web fallback: empty return_to is refused even when redirect_uri is present.
+        assertNull(entry("$base&return_to=&redirect_uri=$returnEncoded"))
+        assertNull(entry("$base&return_to="))
+    }
+
+    @Test
+    fun setupEntryTrimsReturnAddressAndPreservesExactValueForRegistrationComparison() {
+        val returnWithQuery = "https://deck.example/callback?tenant=7"
+        val returnEncoded = "https%3A%2F%2Fdeck.example%2Fcallback%3Ftenant%3D7"
+        val padded = "%20%20$returnEncoded%09%20"
+        val base = "$web/login-with-raft/setup?client_id=deck"
+        listOf("&return_to=$padded", "&redirect_uri=$padded", "&return_to=$padded&redirect_uri=$returnEncoded").forEach { suffix ->
+            val got = assertNotNull(entry("$base$suffix"), suffix)
+            assertEquals("?client_id=deck&return_to=$returnEncoded", got.setupSearch, suffix)
+            assertEquals(returnWithQuery, RaftBrowserQuery.parse(got.setupSearch)?.first("return_to"), suffix)
+            assertEquals(returnWithQuery, got.redirectUri, suffix)
+        }
+        // Not rewritten by the URL parser inside setupSearch: registered address is compared char-for-char.
+        val mixedCase = assertNotNull(entry("$base&return_to=https%3A%2F%2FDeck.example"))
+        assertEquals("https://Deck.example", RaftBrowserQuery.parse(mixedCase.setupSearch)?.first("return_to"))
+        assertEquals("https://deck.example/", mixedCase.redirectUri)
+    }
+
+    @Test
+    fun setupEntryDecodesParameterNamesAndRejectsMissingOrDuplicateParams() {
+        val returnEncoded = "https%3A%2F%2Fdeck.example%2Fcallback%3Ftenant%3D7"
+        val valid = "$web/login-with-raft/setup?client_id=deck&return_to=$returnEncoded"
+        assertNull(entry("$valid&client%5Fid=evil"), "client%5Fid is a second client_id")
+        assertNull(entry("$valid&return%5Fto=$returnEncoded"), "return%5Fto is a second return_to")
+        assertEquals("?client_id=deck&return_to=$returnEncoded", entry("$valid&%66low=oidc&%6Eonce=n1")?.setupSearch)
+        assertEquals("?client_id=deck&return_to=$returnEncoded&state=s1", entry("$valid&%73tate=s1")?.setupSearch)
+
+        val base = "$web/login-with-raft/setup?"
+        listOf(
+            "return_to=$returnEncoded",
+            "client_id=&return_to=$returnEncoded",
+            "client_id=%20&return_to=$returnEncoded",
+            "client_id=deck&client_id=deck&return_to=$returnEncoded",
+            "client_id=deck&client_id=evil&return_to=$returnEncoded",
+            "client_id=deck",
+            "client_id=deck&return_to=$returnEncoded&return_to=$returnEncoded",
+            "client_id=deck&redirect_uri=$returnEncoded&redirect_uri=$returnEncoded",
+            "client_id=deck&return_to=$returnEncoded&scope=openid&scope=profile",
+            "client_id=deck&return_to=$returnEncoded&state=a&state=b",
+            "client_id=deck&return_to=$returnEncoded&server=a&server=b",
+            "client_id=deck&return_to=$returnEncoded&x=%zz",
+            "client_id=deck&return_to=$returnEncoded&x=${"a".repeat(RAFT_BROWSER_MAX_URL_LENGTH)}",
+        ).forEach { q -> assertNull(entry("$base$q"), q) }
+    }
+
+    @Test
+    fun setupEntryRefusesFragmentsRaftHostsUnsafeReturnAddressesAndUnpackagedLoopback() {
+        val returnEncoded = "https%3A%2F%2Fdeck.example%2Fcallback%3Ftenant%3D7"
+        listOf(
+            "https%3A%2F%2Fapp.raft.build%2Fcallback",
+            "https%3A%2F%2Fapi.raft.build%2Fcallback",
+            "https%3A%2F%2Fapp.raft.build.%2Fcallback",
+            "https%3A%2F%2Fdeck.example%2Fcallback%23frag",
+            "https%3A%2F%2Fdeck.example%2Fcallback%23",
+            "javascript%3Aalert(1)",
+            "file%3A%2F%2F%2Fetc%2Fpasswd",
+            "https%3A%2F%2Fuser%3Apw%40deck.example%2Fcallback",
+            "not%20a%20url",
+            "",
+        ).forEach { badReturn ->
+            assertNull(entry("$web/login-with-raft/setup?client_id=deck&return_to=$badReturn"), "return_to=$badReturn")
+            assertNull(entry("$web/login-with-raft/setup?client_id=deck&redirect_uri=$badReturn"), "redirect_uri=$badReturn")
+        }
+        assertNull(entry("$web/login-with-raft/setup?client_id=a%20b%3Cc%3E&return_to=$returnEncoded")?.logClientId)
+        assertEquals("a b", entry("$web/login-with-raft/setup?client_id=deck&return_to=$returnEncoded&state=a%20b")?.state)
+        assertEquals("", entry("$web/login-with-raft/setup?client_id=deck&return_to=$returnEncoded&state=")?.state)
+        assertNull(entry("$web/login-with-raft/setup?client_id=deck&return_to=$returnEncoded")?.state)
+        assertEquals(
+            "https://deck.example/callback?tenant=7",
+            raftSetupEntryRequest(
+                "http://localhost:5173/login-with-raft/setup?client_id=deck&return_to=$returnEncoded",
+                raftAuthorizeOrigin("http://localhost:5173", allowLoopback = true),
+                setOf("localhost"),
+            )?.redirectUri,
+        )
+        assertNull(
+            raftSetupEntryRequest(
+                "http://localhost:5173/login-with-raft/setup?client_id=deck&return_to=$returnEncoded",
+                raftAuthorizeOrigin("http://localhost:5173", allowLoopback = false),
+                setOf("localhost"),
+            ),
+        )
     }
 }

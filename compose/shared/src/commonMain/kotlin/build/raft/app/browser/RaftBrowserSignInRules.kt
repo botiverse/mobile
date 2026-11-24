@@ -10,7 +10,10 @@ import build.raft.app.links.RaftHttpUrl
  * decide (packages/web/src/features/desktopBrowserSignIn, features/login-with-raft/loginErrors.ts,
  * packages/shared/src/oauthRedirect.ts). In the order a request meets them:
  * 1. raftAuthorizeRequest: is the navigation Raft's authorize endpoint on this environment's API
- *    origin ([raftAuthorizeOrigin]), with one return address the page could be sent to?
+ *    origin ([raftAuthorizeOrigin]), with one return address the page could be sent to? Or
+ *    raftSetupEntryRequest: is it the setup page itself, opened directly on this environment's web
+ *    app origin (no authorize fetch: the sheet's query is built from an allow-list, and step 3 is
+ *    skipped)?
  * 2. raftSignInAskRefusal: may it ask, from this document, through these addresses, while the person
  *    is looking at the page?
  * 3. raftSetupAnswer: did Raft's server accept it, for the return address the page named? Then
@@ -75,6 +78,24 @@ internal fun raftAuthorizeOrigin(apiBaseUrl: String, allowLoopback: Boolean): St
     return url.origin.takeIf { allowLoopback && url.host in RaftBrowserDebugLoopbackHosts }
 }
 
+/**
+ * The Login with Raft setup page's public address and its two older names, as the web app routes
+ * them (slock packages/web App.tsx; React Router: letters in either case, one trailing slash or
+ * none). An App may send a person there directly, with no authorize request first.
+ */
+private val RaftSetupEntryPath = Regex("/login-with-(?:raft|slock|slock-human)/setup/?", RegexOption.IGNORE_CASE)
+private val RaftSetupEntryOptionalParams = listOf("scope", "state", "server")
+
+/** Common contract of [RaftAuthorizeRequest] and [RaftSetupEntryRequest]. */
+internal sealed interface RaftBrowserSignInEntry {
+    /** The request's normalized return address: site checks and result validation read it. */
+    val redirectUri: String
+    /** The request's `client_id` when a log line may carry it, else null. For logs only. */
+    val logClientId: String?
+    /** The request's one `state` as the page wrote it, else null: echoed with a denial. */
+    val state: String?
+}
+
 /** A navigation to Raft's authorize endpoint (slock desktop `RaftAuthorizeRequest`). */
 internal data class RaftAuthorizeRequest(
     /** What the app asks the server: the API origin, the path as the page wrote it, its query. No fragment or credentials. */
@@ -83,12 +104,12 @@ internal data class RaftAuthorizeRequest(
      * The request's one `redirect_uri`, trimmed and written as [raftBrowserUrlOf] reads it: an http(s)
      * address without credentials or a fragment, not on a Raft host.
      */
-    val redirectUri: String,
+    override val redirectUri: String,
     /** The request's `client_id` when a log line may carry it, else null. For logs only. */
-    val logClientId: String?,
+    override val logClientId: String?,
     /** The request's one `state` as the page wrote it, else null (none, or more than one): echoed with a denial. */
-    val state: String?,
-)
+    override val state: String?,
+) : RaftBrowserSignInEntry
 
 /**
  * The navigation to [url] as a request to Raft's authorize endpoint, or null (slock desktop
@@ -117,6 +138,89 @@ internal fun raftAuthorizeRequest(
         state = query.all("state").singleOrNull(),
     )
 }
+
+/**
+ * A navigation opened directly at Raft's setup page (`/login-with-raft/setup`,
+ * `/login-with-slock/setup`, `/login-with-slock-human/setup`; slock desktop `RaftSetupEntryRequest`).
+ * No authorize request is made: [setupSearch] is built from an allow-list of the page's parameters
+ * only (`client_id`, `return_to`, and optional `scope`, `state`, `server`), never `flow`, `nonce`,
+ * or PKCE parameters.
+ */
+internal data class RaftSetupEntryRequest(
+    /** Query fed to [raftSignInSetupRequest] (leading `?`), built strictly from the allow-list. */
+    val setupSearch: String,
+    /** The request's return address, normalized as [RaftAuthorizeRequest.redirectUri]. */
+    override val redirectUri: String,
+    /** The request's `client_id` when a log line may carry it, else null. For logs only. */
+    override val logClientId: String?,
+    /** The request's one `state` as the page wrote it, else null (none given): echoed with a denial. */
+    override val state: String?,
+) : RaftBrowserSignInEntry
+
+/**
+ * The navigation to [url] as a request opened at the setup page itself on [setupOrigin], or null
+ * (slock desktop `raftSetupEntryRequest`). No authorize request is made: [RaftSetupEntryRequest.setupSearch]
+ * is built from an allow-list (`client_id`, `return_to`, and optional `scope`, `state`, `server`).
+ *
+ * It matches only when:
+ * - the origin is exactly [setupOrigin] ([raftAuthorizeOrigin]'s rule applied to the web app
+ *   origin), with no credentials, and the path is one of the three setup routes (either case, one
+ *   trailing slash or none);
+ * - `client_id` is given exactly once and not blank;
+ * - the return address is given exactly once (`return_to`, or where absent `redirect_uri`; both
+ *   given is refused unless each is given once with the same trimmed value; empty `return_to=` is
+ *   refused with or without `redirect_uri`), trimmed, loadable, not on a Raft host, and with no
+ *   fragment. The sheet receives the trimmed value (not the URL-parser-rewritten href) so
+ *   character-for-character comparison against the App's registered return address stays intact;
+ * - `scope`, `state`, and `server` are given at most once each; anything else is dropped.
+ */
+internal fun raftSetupEntryRequest(
+    url: String,
+    setupOrigin: String?,
+    raftHosts: Collection<String>,
+): RaftSetupEntryRequest? {
+    if (setupOrigin == null) return null
+    val parsed = raftBrowserUrlOf(url) ?: return null
+    if (parsed.origin != setupOrigin || parsed.userInfo != null || !isRaftSetupEntryPath(parsed.path)) return null
+    val query = RaftBrowserQuery.parse(parsed.query) ?: return null
+    val rawClientId = query.all("client_id").singleOrNull() ?: return null
+    val clientId = rawClientId.trim()
+    if (clientId.isEmpty()) return null
+    val returnTos = query.all("return_to")
+    val redirectUris = query.all("redirect_uri")
+    val returnTo =
+        if (returnTos.isEmpty()) {
+            redirectUris.singleOrNull()?.trim() ?: return null
+        } else {
+            if (returnTos.size != 1 || redirectUris.size > 1) return null
+            val candidate = returnTos[0].trim()
+            if (redirectUris.size == 1 && redirectUris[0].trim() != candidate) return null
+            candidate
+        }
+    val redirectUri = raftSignInReturnAddress(returnTo, raftHosts) ?: return null
+    val setupPairs = ArrayList<Pair<String, String>>(5)
+    setupPairs += "client_id" to rawClientId
+    setupPairs += "return_to" to returnTo
+    var state: String? = null
+    for (name in RaftSetupEntryOptionalParams) {
+        val values = query.all(name)
+        if (values.size > 1) return null
+        if (values.size == 1) {
+            setupPairs += name to values[0]
+            if (name == "state") state = values[0]
+        }
+    }
+    val setupSearch = "?" + setupPairs.joinToString("&") { (name, value) -> raftSignInQueryPair(name, value) }
+    return RaftSetupEntryRequest(
+        setupSearch = setupSearch,
+        redirectUri = redirectUri,
+        logClientId = clientId.takeIf { RaftLoggableClientId.matches(it) },
+        state = state,
+    )
+}
+
+private fun isRaftSetupEntryPath(path: String): Boolean =
+    path.none { it.code >= 0x80 } && RaftSetupEntryPath.matches(path)
 
 private fun isRaftAuthorizePath(path: String): Boolean {
     // The WHATWG parser percent-encodes any other character: such a path is never the endpoint.
