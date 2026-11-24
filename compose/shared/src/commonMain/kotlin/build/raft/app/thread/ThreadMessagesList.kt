@@ -1407,6 +1407,12 @@ private fun ThreadMessagesListContent(
         remember(renderPayload.messages, renderPayload.timelineGaps) {
             threadSystemMessageFolds(renderPayload.messages, renderPayload.timelineGaps)
         }
+    // Task hand-off cards (web useThreadTimelineRows `handoffTimeline`, botiverse/slock #15631):
+    // who held the task before each hand-off and whether it goes back.
+    val taskHandoffTimelineById =
+        remember(renderPayload.messages) {
+            threadTaskHandoffTimeline(renderPayload.messages)
+        }
     var expandedSystemMessageGroups by remember(threadInstanceKey) { mutableStateOf(emptySet<String>()) }
     // A jump or a search match on a message folded into a closed group opens the group, so the
     // target is a drawn row (web lands on the group's row). Only state: the focus anchor effect
@@ -4379,10 +4385,15 @@ private fun ThreadMessagesListContent(
                                         message = displayMessage,
                                         timestampValue = message.timestampLabel,
                                         timeline = renderPayload.messages,
+                                        handoffTimeline = taskHandoffTimelineById[message.id],
                                         serverSlug = currentServerSlug,
                                         onOpenUrl = onOpenMarkdownUrl,
                                         onExpand = { requestRowExpandReveal(message.id) },
                                         handoffReasonMarkdown = handoffReasonMarkdown,
+                                        messageBodyTextStyle = messageBodyTextStyle,
+                                        memberAvatarResolver = memberAvatarResolver,
+                                        memberModelLabelResolver = memberModelLabelResolver,
+                                        onOpenMember = onOpenMember,
                                     )
                                 }
                             }
@@ -4391,10 +4402,15 @@ private fun ThreadMessagesListContent(
                                 message = displayMessage,
                                 timestampValue = message.timestampLabel,
                                 timeline = renderPayload.messages,
+                                handoffTimeline = taskHandoffTimelineById[message.id],
                                 serverSlug = currentServerSlug,
                                 onOpenUrl = onOpenMarkdownUrl,
                                 onExpand = { requestRowExpandReveal(message.id) },
                                 handoffReasonMarkdown = handoffReasonMarkdown,
+                                messageBodyTextStyle = messageBodyTextStyle,
+                                memberAvatarResolver = memberAvatarResolver,
+                                memberModelLabelResolver = memberModelLabelResolver,
+                                onOpenMember = onOpenMember,
                             )
                         } else {
                             val translationUi =

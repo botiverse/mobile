@@ -1660,7 +1660,14 @@ private fun ThreadPageContentContent(
                 val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
                 val actionCard = if (contentExtrasVisible) remember(message.id, message.metadata) { message.threadActionCard() } else null
                 if (isSystemMessage && actionCard == null) {
-                    ThreadSystemMessageRow(message = displayMessage, timestampValue = message.timestampLabel)
+                    ThreadSystemMessageRow(
+                        message = displayMessage,
+                        timestampValue = message.timestampLabel,
+                        timeline = timelineSlice.messages,
+                        messageBodyTextStyle = messageBodyTextStyle,
+                        memberAvatarResolver = memberAvatarResolver,
+                        memberModelLabelResolver = memberModelLabelResolver,
+                    )
                 } else {
                     ThreadShareImageMessageRow(
                         message = displayMessage,
