@@ -32,8 +32,8 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The wide shell with the rail's Collapse / Expand Sidebar (web SidebarToggleRailItem) heading the
  * footer: Home's sidebar shown (PanelLeftClose), then collapsed (PanelLeftOpen) with the
- * conversation taking the width beside the rail and the strip where the list was, which keeps
- * Expand sidebar in sight. Fixed fixture rows; verify / record as [RaftRobolectricScreenshot].
+ * conversation taking the whole width beside the rail. Fixed fixture rows; verify / record as
+ * [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -94,7 +94,7 @@ class SidebarCollapseScreenshotTest {
                                     listPane = { FixtureSidebar() },
                                     detailPane = { modifier -> FixtureConversation(modifier) },
                                     collapsed = hidden,
-                                    // As Home's: the rail's toggle collapses this column, so Expand sidebar stands where it was.
+                                    // As Home's: the rail's toggle collapses this column; the detail takes the full width beside the rail.
                                     onCollapsedChange = {},
                                 )
                             }
