@@ -15,6 +15,14 @@ packages/ui/src/size-tokens.test.ts), over the app's and the design system's mai
   (`if (pointerInput == RaftPointerInput.Fine) ...`, `RaftScale.Wide`): the token already switches
   between touch, a mouse and a desktop.
 
+- A page head in compose/shared (a size whose name says it belongs to a head: `Head`, `Header`,
+  `TopBar`, `TitleBar`, `AppBar`) reads its head tokens even when its name is the app's own: a
+  head height that is a `header-height` / `header-height-short` value reads
+  `RaftTheme.controls.headHeight` (the token for the context), a head button size that is a
+  `bar-button-size` value `RaftTheme.controls.barButtonSize`, a head icon that is a
+  `control-icon-size` value `RaftTheme.controls.barIconSize` (#wg-mobile-sync:#268). The design
+  system already reads them through `RaftTheme.controls`.
+
 Either one is allowed on a line right under (or ending in) an `// app-only: <reason>` comment,
 which says why the app needs its own value, or `// not a token: <reason>` for a size that only
 shares a token's name and value (the Web writes it as a number too).
@@ -44,6 +52,15 @@ HAND_COPIES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\b44\.dp\s+else\s+49\.dp\b|\b49\.dp\s+else\s+44\.dp\b"), "list-toolbar.height (RaftTheme.sizes.listToolbarHeight)"),
     (re.compile(r"\bContentHeight\s*:\s*Dp\s*=\s*52\.dp"), "mobile-nav.height"),
     (re.compile(r"\bMinBottomPadding\s*:\s*Dp\s*=\s*8\.dp"), "mobile-nav.inset-bottom-min"),
+]
+
+APP_ROOT = "compose/shared/src/commonMain/kotlin"
+HEAD_NAME = re.compile(r"(Head|Header|TopBar|TitleBar|AppBar)(?!ing)")
+# (what the name ends in, the tokens whose values it may not copy, what to read instead)
+HEAD_PARTS: list[tuple[re.Pattern[str], tuple[str, ...], str]] = [
+    (re.compile(r"Height$"), ("headerHeight", "headerHeightShort"), "RaftTheme.controls.headHeight"),
+    (re.compile(r"(Action|Button)(Size|Width)$"), ("barButtonSize",), "RaftTheme.controls.barButtonSize"),
+    (re.compile(r"(Action|Button)?IconSize$"), ("controlIconSize",), "RaftTheme.controls.barIconSize"),
 ]
 
 PICKS_BY_CONTEXT = re.compile(r"RaftPointerInput\.(Fine|Touch)|RaftScale\.(Wide|Compact)")
@@ -101,9 +118,22 @@ def violations(rel: str, text: str, tokens: dict[str, set[float]]) -> list[str]:
         for match in DP_DECL.finditer(code):
             name, value = match.group(1), float(match.group(2))
             lowered = name[:1].lower() + name[1:]
+            named = False
             for token, values in tokens.items():
                 if (lowered == token or lowered.endswith(token[:1].upper() + token[1:])) and value in values and value != 0:
+                    named = True
                     problems.append(f"{rel}:{i + 1}: `{name}` = {match.group(2)}.dp copies the `{token}` token; read it (RaftTheme.sizes.{token})")
+            if not named and rel.startswith(APP_ROOT) and HEAD_NAME.search(name):
+                for ending, head_tokens, read in HEAD_PARTS:
+                    if not ending.search(name):
+                        continue
+                    hit = [token for token in head_tokens if value in tokens.get(token, set())]
+                    if hit and value != 0:
+                        problems.append(
+                            f"{rel}:{i + 1}: page head size `{name}` = {match.group(2)}.dp is a `{hit[0]}` value; read {read} "
+                            "(or say why: `// app-only: <reason>` / `// not a token: <reason>`)"
+                        )
+                    break
         if READS_TOKEN.search(code) and PICKS_BY_CONTEXT.search(code):
             problems.append(f"{rel}:{i + 1}: reads a component token and picks by the pointer or the window too; the token already switches (or say why: `// app-only: <reason>`)")
     return problems
@@ -140,6 +170,17 @@ def self_test() -> None:
     assert not violations("a.kt", '    val label = "OptionHeight = 36.dp"', tokens), "a string"
     assert not violations("a.kt", "    // not a token: web `stack-y-6`\n    val ListSectionGap = 34.dp", {"sectionGap": {34.0}}), "not a token"
     assert not violations("a.kt", "    RaftUiComponentTokens.of(wide = scale == RaftScale.Wide, fine = true)", tokens), "the context pick itself"
+    heads = {"headerHeight": {44.0, 56.0}, "headerHeightShort": {40.0, 48.0}, "barButtonSize": {28.0, 44.0}, "controlIconSize": {18.0, 22.0}}
+    app = APP_ROOT + "/x/Page.kt"
+    assert violations(app, "private val TaskHeadHeight = 48.dp", heads), "a page head's height"
+    assert violations(app, "private val PageHeaderMinHeight: Dp = 56.dp", heads), "a page head's min height"
+    assert violations(app, "private val ThreadHeaderActionSize = 44.dp", heads), "a head button"
+    assert violations(app, "private val PageHeaderIconSize = 22.dp", heads), "a head icon"
+    assert not violations(app, "private val TaskHeadHeight = 52.dp", heads), "not a head value"
+    assert not violations(app, "private val SectionHeadingHeight = 48.dp", heads), "a heading is not a head"
+    assert not violations(app, "private val TaskHeadHeight = RaftTheme.controls.headHeight", heads)
+    assert not violations(app, "// not a token: web `min-h-10`\nprivate val CommentsHeaderMinHeight = 40.dp", heads), "not a token"
+    assert not violations("compose/designsystem/src/commonMain/kotlin/a.kt", "private val TaskHeadHeight = 48.dp", heads), "app code only"
     print("check_component_sizes self-test: ok")
 
 
