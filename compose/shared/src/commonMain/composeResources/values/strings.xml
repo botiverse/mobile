@@ -6216,4 +6216,22 @@
     <string name="settings_computers_workspaces_scan_failed">Couldn't read the workspaces on this computer.</string>
     <string name="channel_settings_slack_reading_channels">Reading Slack channels…</string>
     <string name="channel_settings_slack_channels_read_failed">Couldn't read Slack channels.</string>
+    <string name="app_update_remind_later">Remind me later</string>
+    <string name="app_update_restart_to_update">Restart to update</string>
+    <string name="app_update_top_bar_tooltip_update">Update Raft to %1$s</string>
+    <string name="app_update_top_bar_tooltip_install">Install Raft %1$s</string>
+    <string name="app_update_top_bar_tooltip_restart">Restart to update Raft to %1$s</string>
+    <string name="app_update_strong_dialog_title_available">Update Raft to %1$s</string>
+    <string name="app_update_strong_dialog_title_ready">Update %1$s is ready</string>
+    <string name="app_update_strong_dialog_title_ready_generic">Update is ready</string>
+    <string name="app_update_strong_dialog_body_ready_to_restart">The update has finished downloading. Restart Raft to finish updating.</string>
+    <string name="app_update_strong_dialog_body_ready_to_install">The update is downloaded and ready to install.</string>
+    <string name="app_update_strong_dialog_body_important">This update includes important fixes and improvements. Update soon to keep Raft running smoothly.</string>
+    <string name="app_update_strong_dialog_body_behind">Your version of Raft is several releases behind. Update to get the latest features and fixes.</string>
+    <string name="app_update_strong_dialog_body_waiting">A newer version of Raft has been available for a few days. Update now for the latest improvements.</string>
+    <string name="app_update_strong_dialog_action_update_now">Update now</string>
+    <string name="app_update_strong_dialog_action_install_now">Install now</string>
+    <string name="app_update_strong_dialog_action_later">Later (24h)</string>
+    <string name="app_update_post_update_banner_title">Updated to %1$s</string>
+    <string name="app_update_post_update_banner_action">What's new</string>
 </resources>

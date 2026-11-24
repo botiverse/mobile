@@ -271,6 +271,7 @@ internal data class SettingsAboutPayloadCopy(
     val downloading: String = "Downloading",
     val installing: String = "Installing",
     val install: String = "Install",
+    val restartToUpdate: String = "Restart to update",
     val installed: String = "Installed",
     val retry: String = "Retry",
     val permissionRequired: String = "Permission Required",
@@ -306,6 +307,7 @@ private fun settingsAboutPayloadCopy(): SettingsAboutPayloadCopy {
         downloading = stringResource(Res.string.app_update_downloading),
         installing = stringResource(Res.string.app_update_installing),
         install = stringResource(Res.string.app_update_install),
+        restartToUpdate = stringResource(Res.string.app_update_restart_to_update),
         installed = stringResource(Res.string.app_update_installed),
         retry = stringResource(Res.string.app_update_retry),
         permissionRequired = stringResource(Res.string.settings_state_permission_required),
@@ -477,9 +479,9 @@ internal fun settingsAboutUpdateStatus(
         updateCheck.errorCode == "install_permission_required" || label == "permission required" ->
             copy.permissionRequired
         updateCheck.transactionState == SharedSettingsUpdateTransactionState.Checking -> copy.checking
+        updateCheck.transactionState == SharedSettingsUpdateTransactionState.ReadyToRestart -> copy.restartToUpdate
         updateCheck.transactionState == SharedSettingsUpdateTransactionState.ReadyToInstall ||
-            updateCheck.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened ||
-            updateCheck.transactionState == SharedSettingsUpdateTransactionState.ReadyToRestart -> copy.install
+            updateCheck.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened -> copy.install
         updateCheck.transactionState == SharedSettingsUpdateTransactionState.Installed -> copy.installed
         updateCheck.transactionState == SharedSettingsUpdateTransactionState.Failed ||
             updateCheck.transactionState == SharedSettingsUpdateTransactionState.Stale -> copy.retry

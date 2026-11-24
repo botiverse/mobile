@@ -2,7 +2,10 @@ package build.raft.app
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
+import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.RAFT_APP_UPDATE_SNOOZE_DURATION_MS
+import build.raft.app.data.RaftAppUpdatePromptStore
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedSettingsUpdateTransactionState
@@ -127,6 +130,40 @@ class AppUpdatePageTest {
             )
         assertFalse(version160.withSkippedAppUpdateVersionApplied(1_060_000L).updateAvailable)
         assertTrue(version160.withSkippedAppUpdateVersionApplied(1_061_000L).updateAvailable)
+        // Ready-to-complete states stay visible even if previously snoozed so user can finish updating.
+        assertTrue(
+            version160
+                .copy(transactionState = SharedSettingsUpdateTransactionState.ReadyToInstall)
+                .withSkippedAppUpdateVersionApplied(1_060_000L)
+                .updateAvailable
+        )
+        assertTrue(
+            version160
+                .copy(transactionState = SharedSettingsUpdateTransactionState.ReadyToRestart)
+                .withSkippedAppUpdateVersionApplied(1_060_000L)
+                .updateAvailable
+        )
+    }
+
+    @Test
+    fun remindLaterSnoozePersistsFor24HoursAndAutomaticallyReappearsAfterExpiry() {
+        val store = InMemoryRaftKeyValueStore()
+        // Seed a legacy permanent skip key to confirm snoozing clears it.
+        store.putString(RaftAppUpdatePromptStore.LegacySkippedVersionCodeKey, "1060000")
+        val t0 = 1_700_000_000_000L
+
+        saveSkippedAppUpdateVersionCode(versionCode = 1_060_000L, store = store, nowMs = t0)
+
+        assertEquals(null, store.getString(RaftAppUpdatePromptStore.LegacySkippedVersionCodeKey))
+        assertEquals(1_060_000L, skippedAppUpdateVersionCode(store = store, nowMs = t0 + 1_000L))
+        assertEquals(
+            1_060_000L,
+            skippedAppUpdateVersionCode(store = store, nowMs = t0 + RAFT_APP_UPDATE_SNOOZE_DURATION_MS - 1L),
+        )
+        assertEquals(
+            0L,
+            skippedAppUpdateVersionCode(store = store, nowMs = t0 + RAFT_APP_UPDATE_SNOOZE_DURATION_MS),
+        )
     }
 
     @Test
@@ -152,10 +189,25 @@ class AppUpdatePageTest {
         assertEquals("Downloading", labels[SharedSettingsUpdateTransactionState.Downloading])
         assertEquals("Install", labels[SharedSettingsUpdateTransactionState.ReadyToInstall])
         assertEquals("Install", labels[SharedSettingsUpdateTransactionState.InstallerOpened])
-        assertEquals("Install", labels[SharedSettingsUpdateTransactionState.ReadyToRestart])
+        assertEquals("Restart to update", labels[SharedSettingsUpdateTransactionState.ReadyToRestart])
         assertEquals("Download", labels[SharedSettingsUpdateTransactionState.Failed])
         assertEquals("Download", labels[SharedSettingsUpdateTransactionState.Stale])
         assertEquals("Installed", labels[SharedSettingsUpdateTransactionState.Installed])
+
+        // Google Play Flexible downloaded update also resolves to Restart to update (not generic Update).
+        assertEquals(
+            "Restart to update",
+            appUpdatePrimaryActionLabel(
+                snapshot =
+                    SharedSettingsUpdateCheckSnapshot(
+                        supported = true,
+                        updateAvailable = true,
+                        storeChannel = "google_play",
+                        transactionState = SharedSettingsUpdateTransactionState.ReadyToRestart,
+                    ),
+                actionRunning = false,
+            )
+        )
     }
 
     @Test

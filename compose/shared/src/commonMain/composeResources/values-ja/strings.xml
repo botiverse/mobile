@@ -6215,4 +6215,22 @@
     <string name="settings_computers_workspaces_scan_failed">このコンピューター上のワークスペースを読み込めませんでした。</string>
     <string name="channel_settings_slack_reading_channels">Slack チャンネルを読み込んでいます…</string>
     <string name="channel_settings_slack_channels_read_failed">Slack チャンネルを読み込めませんでした。</string>
+    <string name="app_update_remind_later">24時間後に再通知</string>
+    <string name="app_update_restart_to_update">再起動してアップデート</string>
+    <string name="app_update_top_bar_tooltip_update">Raft を %1$s にアップデート</string>
+    <string name="app_update_top_bar_tooltip_install">Raft %1$s をインストール</string>
+    <string name="app_update_top_bar_tooltip_restart">再起動して Raft を %1$s にアップデート</string>
+    <string name="app_update_strong_dialog_title_available">Raft を %1$s にアップデート</string>
+    <string name="app_update_strong_dialog_title_ready">アップデート %1$s の準備ができました</string>
+    <string name="app_update_strong_dialog_title_ready_generic">アップデートの準備ができました</string>
+    <string name="app_update_strong_dialog_body_ready_to_restart">アップデートのダウンロードが完了しました。Raft を再起動してアップデートを完了してください。</string>
+    <string name="app_update_strong_dialog_body_ready_to_install">アップデートのダウンロードが完了し、インストールできる状態です。</string>
+    <string name="app_update_strong_dialog_body_important">このアップデートには重要な修正と改善が含まれています。快適に使い続けるため、お早めにアップデートしてください。</string>
+    <string name="app_update_strong_dialog_body_behind">お使いの Raft は複数のバージョン遅れています。最新の機能と修正を利用するためアップデートしてください。</string>
+    <string name="app_update_strong_dialog_body_waiting">新しいバージョンの Raft が数日前から公開されています。今すぐアップデートして最新の改善をご利用ください。</string>
+    <string name="app_update_strong_dialog_action_update_now">今すぐアップデート</string>
+    <string name="app_update_strong_dialog_action_install_now">今すぐインストール</string>
+    <string name="app_update_strong_dialog_action_later">後で（24時間）</string>
+    <string name="app_update_post_update_banner_title">%1$s にアップデートしました</string>
+    <string name="app_update_post_update_banner_action">更新内容</string>
 </resources>

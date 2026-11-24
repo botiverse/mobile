@@ -20,7 +20,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The More list attention dots and the app update download block (its progress bar and
- * Skip This Version link): the places that moved to the design system's status dot,
+ * Remind Me Later link): the places that moved to the design system's status dot,
  * progress bar and text link. Light and dark; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)

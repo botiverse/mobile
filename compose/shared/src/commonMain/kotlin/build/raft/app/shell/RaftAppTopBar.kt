@@ -1,6 +1,10 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
@@ -9,10 +13,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
@@ -20,9 +29,13 @@ import build.raft.app.components.RaftPublicPageGlobe
 import build.raft.designsystem.components.RaftAvatarAttentionLight
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftSearchTrigger
+import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.components.RaftTopBar
 import build.raft.designsystem.components.RaftTopBarDefaults
 import build.raft.designsystem.components.RaftWorkspaceButton
@@ -68,6 +81,8 @@ internal fun RaftAppShellTopBar(
     history: RaftAppShellTopBarHistory? = null,
     /** The search field's shortcut hint (⌘K / Ctrl+K, web SearchTriggerShortcut); null draws none. */
     searchShortcut: String? = null,
+    /** L1 app-update button immediately before WorkingNowSummary and the bell (web TopBarUpdateButton); null draws none. */
+    updateAction: RaftAppTopBarUpdateAction? = null,
 ) {
     val unreadDescription = stringResource(Res.string.tab_activity_unread_dot)
     val otherUnreadDescription = stringResource(Res.string.home_server_switcher_other_unread)
@@ -165,6 +180,12 @@ internal fun RaftAppShellTopBar(
             // The theme's pixel art on the bar's end shows from a 1024dp window, as on the web.
             windowWidth = windowWidth,
             trailing = {
+                if (updateAction != null) {
+                    RaftAppTopBarUpdateButton(
+                        action = updateAction,
+                        compact = windowWidth < RaftAppTopBarUpdateCompactThreshold,
+                    )
+                }
                 // Who is working, before the bell (Web TopBarGlobalActions: WorkingNowSummary
                 // `count` on the frame, `h-9`); takes no space while nobody is.
                 RaftWorkingNowSummary(height = RaftWorkingNowTopBarHeight)
@@ -182,6 +203,79 @@ internal fun RaftAppShellTopBar(
         )
     }
 }
+
+internal const val RAFT_TOP_BAR_UPDATE_BUTTON_TAG = "raft_top_bar_update_button"
+internal const val RAFT_TOP_BAR_UPDATE_DOT_TAG = "raft_top_bar_update_dot"
+
+/**
+ * The wide top bar's L1 app-update action (web `TopBarUpdateButton`): shown immediately before
+ * [RaftWorkingNowSummary] and [RaftAppTopBarNotificationBell].
+ */
+internal data class RaftAppTopBarUpdateAction(
+    val label: String,
+    val tooltip: String,
+    val onClick: () -> Unit,
+)
+
+/**
+ * Ink-outline frame button carrying a pink attention pixel on its top-right corner, matching web
+ * `TopBarUpdateButton.tsx` (never solid pink — preserves "one pink per screen: composer Send").
+ * Collapses to a square icon-only button when [compact] (`windowWidth < 920dp`).
+ */
+@Composable
+internal fun RaftAppTopBarUpdateButton(
+    action: RaftAppTopBarUpdateAction,
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val itemSize = RaftTopBarDefaults.itemSize
+    Box(modifier = modifier) {
+        RaftTooltip(text = action.tooltip) {
+            if (compact) {
+                RaftIconButton(
+                    onClick = action.onClick,
+                    tooltip = null,
+                    contentDescription = action.tooltip,
+                    variant = RaftButtonVariant.Default,
+                    size = RaftIconButtonSize.Md,
+                    modifier = Modifier.size(itemSize).testTag(RAFT_TOP_BAR_UPDATE_BUTTON_TAG),
+                ) {
+                    RaftContentLucideIcon(RaftLucideIconName.CircleArrowUp, size = RaftAppTopBarUpdateCompactGlyph)
+                }
+            } else {
+                RaftButton(
+                    text = action.label,
+                    onClick = action.onClick,
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Md,
+                    modifier =
+                        Modifier
+                            .height(itemSize)
+                            .testTag(RAFT_TOP_BAR_UPDATE_BUTTON_TAG)
+                            .semantics { contentDescription = action.tooltip },
+                    leadingIcon = {
+                        RaftContentLucideIcon(RaftLucideIconName.CircleArrowUp, size = RaftAppTopBarUpdateGlyph)
+                    },
+                )
+            }
+        }
+        RaftStatusIndicator(
+            color = RaftColor.AccentPink,
+            size = RaftStatusIndicatorTokens.ServerUnreadSize,
+            modifier =
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = RaftAppTopBarUpdateDotOffset, y = -RaftAppTopBarUpdateDotOffset)
+                    .testTag(RAFT_TOP_BAR_UPDATE_DOT_TAG)
+                    .clearAndSetSemantics {},
+        )
+    }
+}
+
+private val RaftAppTopBarUpdateCompactThreshold = 920.dp
+private val RaftAppTopBarUpdateDotOffset = 4.dp
+private val RaftAppTopBarUpdateGlyph = 16.dp
+private val RaftAppTopBarUpdateCompactGlyph = 18.dp
 
 /**
  * The top bar's history arrows (see [RaftWideNavHistory]): what they can do now and what a click

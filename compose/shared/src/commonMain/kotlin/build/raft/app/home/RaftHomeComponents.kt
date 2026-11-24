@@ -1801,6 +1801,7 @@ internal class RaftStructuralHomeShellCallbacks(
     val diagnosticsLogger: (String) -> Unit = {},
     val onPinMenuDismiss: () -> Unit = {},
     val onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
+    val onOpenReleaseNotes: ((String) -> Unit)? = null,
 )
 
 @Composable
@@ -1930,6 +1931,7 @@ internal fun RaftStructuralHomeShell(
     listPositionServerId: String = currentServerId,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
+    onOpenReleaseNotes: ((String) -> Unit)? = null,
     active: Boolean = true
 ) {
     // task #336: thin delegation to the payload-based implementation keeps every call site
@@ -2052,6 +2054,7 @@ internal fun RaftStructuralHomeShell(
                 diagnosticsLogger = diagnosticsLogger,
                 onPinMenuDismiss = onPinMenuDismiss,
                 onListPositionSnapshot = onListPositionSnapshot,
+                onOpenReleaseNotes = onOpenReleaseNotes,
             ),
         bottomContentPadding = bottomContentPadding,
         listPositionServerId = listPositionServerId,
@@ -2176,6 +2179,7 @@ private fun RaftStructuralHomeShellContent(
     val diagnosticsLogger = callbacks.diagnosticsLogger
     val onPinMenuDismiss = callbacks.onPinMenuDismiss
     val onListPositionSnapshot = callbacks.onListPositionSnapshot
+    val onOpenReleaseNotes = callbacks.onOpenReleaseNotes
     var channelsExpanded by remember { mutableStateOf(true) }
     var jointChannelsExpanded by remember { mutableStateOf(true) }
     var directMessagesExpanded by remember { mutableStateOf(true) }
@@ -2762,11 +2766,20 @@ private fun RaftStructuralHomeShellContent(
                 if (unreadStale && unreadUnavailable) {
                     RaftReadWarehouseUnavailableNotice(stringResource(Res.string.home_unread_unavailable_notice))
                 }
-                appUpdateBanner?.let { update ->
-                    HomeAppUpdateBanner(
-                        notification = update,
-                        onClick = { onNotificationView(update) }
-                    )
+                // Wide layouts with a drawn top bar surface the L1 update entry in the top-right
+                // TopBarUpdateButton across all tabs; skip duplicating it in Home's sidebar.
+                val showHomeSidebarUpdateBanner =
+                    shouldShowHomeSidebarAppUpdateBanner(underAppShellTopBar = raftUnderAppShellTopBar())
+                if (showHomeSidebarUpdateBanner) {
+                    appUpdateBanner?.let { update ->
+                        HomeAppUpdateBanner(
+                            notification = update,
+                            onClick = { onNotificationView(update) }
+                        )
+                    }
+                }
+                if ((!showHomeSidebarUpdateBanner || appUpdateBanner == null) && onOpenReleaseNotes != null) {
+                    HomePostUpdateWhatsNewBannerHost(onOpenReleaseNotes = onOpenReleaseNotes)
                 }
                 BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     val targetHomeBeyondBoundsItemCount =
@@ -6188,6 +6201,16 @@ internal fun List<RaftHomeNotificationItem>.homeAppUpdateBannerNotification(): R
 internal fun List<RaftHomeNotificationItem>.nonAppUpdateHomeNotifications(): List<RaftHomeNotificationItem> =
     visibleHomeNotifications().filterNot { it.id == APP_UPDATE_HOME_NOTIFICATION_ID }
 
+internal const val HOME_APP_UPDATE_BANNER_TAG = "home_app_update_banner"
+
+/**
+ * Wide layouts with a drawn top bar own the L1 app-update trigger in [RaftAppTopBarUpdateButton]
+ * across all tabs; Home's sidebar only renders [HomeAppUpdateBanner] on narrow/phone layouts and
+ * wide layouts without a top bar (e.g. Duo inner screen where `drawn == false`).
+ */
+internal fun shouldShowHomeSidebarAppUpdateBanner(underAppShellTopBar: Boolean): Boolean =
+    !underAppShellTopBar
+
 @Composable
 internal fun HomeAppUpdateBanner(
     notification: RaftHomeNotificationItem,
@@ -6197,6 +6220,7 @@ internal fun HomeAppUpdateBanner(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .testTag(HOME_APP_UPDATE_BANNER_TAG)
                 .background(RaftColor.FillMuted)
                 .raftClickable(onClick = onClick, tier = RaftHoverTier.Subtle)
                 .padding(horizontal = 16.dp, vertical = 8.dp),

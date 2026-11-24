@@ -5625,6 +5625,22 @@ private fun RaftAppShellReadyContent(
                                         navigateWideHistory(RaftWideNavDirection.Forward, source = "top_bar")
                                     },
                                 ),
+                            updateAction =
+                                rememberAppShellTopBarUpdateAction(
+                                    onOpenUpdatePage = { pager.openAppUpdatePage(storeScope) },
+                                    onCompleteRestart = { updateSnapshot ->
+                                        triggerAppShellUpdateRestartOrOpenPage(
+                                            snapshot = updateSnapshot,
+                                            scope = appShellCoroutineScope,
+                                            settingsCapabilities = settingsCapabilities,
+                                            onOpenUpdatePage = { pager.openAppUpdatePage(storeScope) },
+                                        )
+                                    },
+                                    onBeforeAction = {
+                                        appShellTopBar.bellOpen.value = false
+                                        serverMenuState.dismiss()
+                                    },
+                                ),
                         )
                     }
                 } else {
@@ -6614,6 +6630,9 @@ private fun RaftAppShellReadyContent(
                                 onAppUpdateOpen = {
                                     pager.openAppUpdatePage(storeScope)
                                 },
+                                onOpenReleaseNotes = { versionCode ->
+                                    pager.openReleaseNotesPage(versionCode = versionCode, storeScope = storeScope)
+                                },
                                 externalFocusLossDismissEpoch = homeFocusLossDismissEpoch,
                                 selectedConversationId =
                                     if (desktopModeOnLargeScreen) adaptiveWorkspaceSession.detailListSelectionId()
@@ -7473,6 +7492,23 @@ private fun RaftAppShellReadyContent(
                             }
                         }
                     },
+                )
+                AppShellUpdatePromptHost(
+                    pageVisible = pageVisible,
+                    userDialogActive = createChannelDialogOpen || sendPromptHostState.activeRequest != null,
+                    announcementStore = announcementStore,
+                    announcementModalShown = announcementModalShown,
+                    onOpenUpdatePage = { pager.openAppUpdatePage(storeScope) },
+                    onCompleteRestart = { updateSnapshot ->
+                        triggerAppShellUpdateRestartOrOpenPage(
+                            snapshot = updateSnapshot,
+                            scope = appShellCoroutineScope,
+                            settingsCapabilities = settingsCapabilities,
+                            onOpenUpdatePage = { pager.openAppUpdatePage(storeScope) },
+                        )
+                    },
+                    onSnoozed = { appUpdateEvents.notifyStatusChanged() },
+                    minBuildGateDecision = minBuildGateDecision,
                 )
                 AppShellSendPromptHost(
                     hostState = sendPromptHostState,

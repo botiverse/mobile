@@ -6214,4 +6214,22 @@
     <string name="settings_computers_workspaces_scan_failed">이 컴퓨터의 워크스페이스를 읽지 못했어요.</string>
     <string name="channel_settings_slack_reading_channels">Slack 채널을 읽는 중…</string>
     <string name="channel_settings_slack_channels_read_failed">Slack 채널을 읽지 못했어요.</string>
+    <string name="app_update_remind_later">24시간 후 다시 알림</string>
+    <string name="app_update_restart_to_update">다시 시작하여 업데이트</string>
+    <string name="app_update_top_bar_tooltip_update">Raft를 %1$s 버전으로 업데이트</string>
+    <string name="app_update_top_bar_tooltip_install">Raft %1$s 설치</string>
+    <string name="app_update_top_bar_tooltip_restart">다시 시작하여 Raft를 %1$s 버전으로 업데이트</string>
+    <string name="app_update_strong_dialog_title_available">Raft를 %1$s 버전으로 업데이트</string>
+    <string name="app_update_strong_dialog_title_ready">%1$s 업데이트 준비 완료</string>
+    <string name="app_update_strong_dialog_title_ready_generic">업데이트 준비 완료</string>
+    <string name="app_update_strong_dialog_body_ready_to_restart">업데이트 다운로드가 완료되었어요. Raft를 다시 시작해 업데이트를 완료하세요.</string>
+    <string name="app_update_strong_dialog_body_ready_to_install">업데이트가 다운로드되어 바로 설치할 수 있어요.</string>
+    <string name="app_update_strong_dialog_body_important">이번 업데이트에는 중요한 수정과 개선 사항이 포함되어 있어요. 원활한 사용을 위해 곧 업데이트해 주세요.</string>
+    <string name="app_update_strong_dialog_body_behind">사용 중인 Raft가 여러 버전 뒤처져 있어요. 최신 기능과 수정 사항을 받으려면 업데이트하세요.</string>
+    <string name="app_update_strong_dialog_body_waiting">새 버전의 Raft가 며칠째 대기 중이에요. 지금 업데이트해 최신 개선 사항을 이용해 보세요.</string>
+    <string name="app_update_strong_dialog_action_update_now">지금 업데이트</string>
+    <string name="app_update_strong_dialog_action_install_now">지금 설치</string>
+    <string name="app_update_strong_dialog_action_later">나중에 (24시간)</string>
+    <string name="app_update_post_update_banner_title">%1$s 버전으로 업데이트됨</string>
+    <string name="app_update_post_update_banner_action">새로운 기능</string>
 </resources>
