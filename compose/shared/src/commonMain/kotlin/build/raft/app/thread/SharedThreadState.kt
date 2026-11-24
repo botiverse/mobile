@@ -110,14 +110,6 @@ internal fun DataResult<*>.isChannelAccessDenial(): Boolean =
 private val ChannelAccessDenial403Messages = setOf("Access denied", "You do not have access to this channel")
 private val ChannelAccessDenial404Messages = setOf("Channel not found or not visible", "Channel not found")
 
-internal fun DataResult<*>.isConversationAccessLost(): Boolean =
-    when (this) {
-        is DataResult.NoPermission ->
-            !blocker.isAuthSessionBlocker() && !blocker.serverMessage.isEdgeBlockedMarker()
-        is DataResult.Error -> error.code == "http_404"
-        else -> false
-    }
-
 internal enum class ThreadAccessResolution {
     Loading,
     Resolved,
