@@ -6051,4 +6051,8 @@
     <string name="send_prompt_send">傳送</string>
     <string name="send_prompt_failed">沒有送出，請再試一次。</string>
     <string name="send_prompt_no_agents">這個伺服器上還沒有你能傳訊息的 agent。</string>
+    <string name="settings_appearance_assistant_section">助理</string>
+    <string name="settings_appearance_assistant_otter_description">%1$s 趴在輸入框上，點一下就能打開。關掉後，所有頁面、所有裝置上都不再顯示，%1$s 的私訊照常能用。</string>
+    <string name="settings_appearance_assistant_panel_link_title">更多 %1$s 設定</string>
+    <string name="settings_appearance_assistant_panel_link_description">權限、補充指令和微信在 %1$s 的個人資料面板裡，就在它的聊天旁邊。</string>
 </resources>

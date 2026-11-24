@@ -178,7 +178,7 @@ internal fun SettingsNativeDetailScreen() {
         }
     }
 
-    // "Changed by your assistant" on Language & region, Theme and Notifications: the current server's audit.
+    // "Changed by your assistant" on Language & region, Appearance, Theme and Notifications: the current server's audit.
     val assistantChangesServerId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
     val assistantChangesSource =
         remember(sharedStores, environment.storeScope, assistantChangesServerId) {
@@ -188,6 +188,26 @@ internal fun SettingsNativeDetailScreen() {
                     api = RaftAssistantSettingChangesNetworkApi(sharedStores.networkClient(environment.storeScope)),
                 )
             }
+        }
+    // Settings › Appearance › Assistant (web `AssistantOtterSettingsSection`).
+    val appearanceAssistantUserId = session?.user?.id?.trim()?.takeIf { it.isNotBlank() }
+    val appearanceAssistantRole = session?.currentServerSummary()?.role
+    val appearanceAssistantSource =
+        if (route.page == SettingsNativeDetailPage.Appearance) {
+            remember(sharedStores, environment.storeScope, assistantChangesServerId, appearanceAssistantUserId, appearanceAssistantRole) {
+                SettingsAppearanceAssistantSource(
+                    store = sharedStores.myAssistantStore(environment.storeScope),
+                    featureFlags = sharedStores.serverFeatureFlags,
+                    serverId = assistantChangesServerId,
+                    userId = appearanceAssistantUserId,
+                    serverRole = appearanceAssistantRole,
+                    onOpenAssistantSettings = { agentId ->
+                        pager.openAssistantSettings(environment.storeScope, assistantChangesServerId, agentId)
+                    },
+                )
+            }
+        } else {
+            null
         }
 
     // A Settings search result opened this page at a setting: its row is brought into view and located.
@@ -244,6 +264,7 @@ internal fun SettingsNativeDetailScreen() {
         onOpenArchivedAgent = { agentId, workspace ->
             pager.openSettingsArchivedAgent(agentId, session?.currentServerId, workspace, environment.storeScope, bridge::logWarn)
         },
+        appearanceAssistantSource = appearanceAssistantSource,
     )
     }
     }
@@ -330,6 +351,8 @@ internal fun SettingsNativeDetailPageContent(
     onOpenArchivedChannel: (ArchivedChannel) -> Unit = {},
     /** Server's archived agent row (workspace false) or its View workspace (true): opens the agent. */
     onOpenArchivedAgent: (agentId: String, workspace: Boolean) -> Unit = { _, _ -> },
+    /** Viewer's personal assistant binding for Settings › Appearance (web `AssistantOtterSettingsSection`). */
+    appearanceAssistantSource: SettingsAppearanceAssistantSource? = null,
     onLogout: () -> Unit
 ) {
     val diagnosticsSnapshot =
@@ -607,6 +630,7 @@ internal fun SettingsNativeDetailPageContent(
                     preferenceVisibility = appPreferenceVisibility,
                     themeServerName = session?.settingsThemeServer()?.name,
                     onOpenTheme = onOpenThemePage,
+                    assistantSource = appearanceAssistantSource,
                 )
             SettingsNativeDetailPage.Theme -> {
                 val serverTheme =

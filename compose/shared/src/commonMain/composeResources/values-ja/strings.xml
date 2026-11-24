@@ -6052,4 +6052,8 @@
     <string name="send_prompt_send">送信</string>
     <string name="send_prompt_failed">送信できませんでした。もう一度お試しください。</string>
     <string name="send_prompt_no_agents">このサーバーにはメッセージを送れるエージェントがまだいません。</string>
+    <string name="settings_appearance_assistant_section">アシスタント</string>
+    <string name="settings_appearance_assistant_otter_description">%1$s はメッセージ入力欄の上にいて、押すとすぐ開けます。オフにすると、すべてのページとすべてのデバイスで表示されなくなります。%1$s の DM はそのまま使えます。</string>
+    <string name="settings_appearance_assistant_panel_link_title">%1$s のその他の設定</string>
+    <string name="settings_appearance_assistant_panel_link_description">権限、追加の指示、WeChat は %1$s のプロフィール（チャットの横）にあります。</string>
 </resources>

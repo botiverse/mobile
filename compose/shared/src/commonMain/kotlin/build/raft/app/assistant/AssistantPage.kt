@@ -314,13 +314,14 @@ private fun androidx.compose.foundation.layout.ColumnScope.AssistantPageDm(
 }
 
 /**
- * The head's gear (web AssistantSettingsButton): the assistant's profile on its Profile tab, where
- * its owner's Assistant section is (permissions, the otter, extra instructions, WeChat, Delete).
+ * Opens the assistant's profile on its Profile tab (web `AssistantSettingsButton` and Settings ›
+ * Appearance › "More {name} settings"), where its owner's Assistant section lives (permissions,
+ * the otter, extra instructions, WeChat, Delete).
  */
-private fun Pager.openAssistantSettings(storeScope: RaftShellStoreScope, serverId: String?, agentId: String) {
+internal fun Pager.openAssistantSettings(storeScope: RaftShellStoreScope, serverId: String?, agentId: String) {
     val pageData =
         RaftMembersPayload(instanceId = "assistant-settings", initialAgentTab = MembersAgentDetailTab.Profile.name.lowercase())
-            .toMemberDetailPageData(MemberDetailIdentity(MemberId(agentId), MemberKind.Agent, serverId?.let(::ServerId)))
+            .toMemberDetailPageData(MemberDetailIdentity(MemberId(agentId), MemberKind.Agent, serverId?.takeIf(String::isNotBlank)?.let(::ServerId)))
     if (pageData == null) {
         Utils.bridgeModule(pagerId).log("assistant_settings_open_skip reason=invalid_agent")
         return

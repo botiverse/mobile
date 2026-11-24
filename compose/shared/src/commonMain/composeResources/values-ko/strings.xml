@@ -6051,4 +6051,8 @@
     <string name="send_prompt_send">보내기</string>
     <string name="send_prompt_failed">보내지 못했어요. 다시 시도해 주세요.</string>
     <string name="send_prompt_no_agents">이 서버에는 아직 메시지를 보낼 수 있는 에이전트가 없어요.</string>
+    <string name="settings_appearance_assistant_section">어시스턴트</string>
+    <string name="settings_appearance_assistant_otter_description">%1$s은(는) 메시지 입력창 위에 있어서 누르면 바로 열려요. 끄면 모든 페이지와 모든 기기에서 보이지 않아요. %1$s의 DM은 그대로 쓸 수 있어요.</string>
+    <string name="settings_appearance_assistant_panel_link_title">%1$s 설정 더 보기</string>
+    <string name="settings_appearance_assistant_panel_link_description">권한, 추가 지시, WeChat은 채팅 옆 %1$s의 프로필에 있어요.</string>
 </resources>

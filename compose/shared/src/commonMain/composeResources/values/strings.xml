@@ -6053,4 +6053,8 @@
     <string name="send_prompt_send">Send</string>
     <string name="send_prompt_failed">Couldn't send. Try again.</string>
     <string name="send_prompt_no_agents">There are no agents on this server you can message yet.</string>
+    <string name="settings_appearance_assistant_section">Assistant</string>
+    <string name="settings_appearance_assistant_otter_description">%1$s rests on your message box, ready to open with a press. Turn this off to hide it on every page and every device. %1$s's DM still works.</string>
+    <string name="settings_appearance_assistant_panel_link_title">More %1$s settings</string>
+    <string name="settings_appearance_assistant_panel_link_description">Permissions, extra instructions and WeChat are in %1$s's profile, next to its chat.</string>
 </resources>

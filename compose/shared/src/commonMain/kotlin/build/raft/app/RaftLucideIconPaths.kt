@@ -1923,6 +1923,16 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M 6.0 3.0 H 9.0 A 1.0 1.0 0 0 1 10.0 4.0 V 20.0 A 1.0 1.0 0 0 1 9.0 21.0 H 6.0 A 1.0 1.0 0 0 1 5.0 20.0 V 4.0 A 1.0 1.0 0 0 1 6.0 3.0 Z"),
                     ),
                 )
+            RaftLucideIconName.PawPrint ->
+                RaftLucideIconSpec(
+                    "paw-print",
+                    listOf(
+                        RaftLucidePathSpec("M 9.0 4.0 A 2.0 2.0 0 1 0 13.0 4.0 A 2.0 2.0 0 1 0 9.0 4.0 Z"),
+                        RaftLucidePathSpec("M 16.0 8.0 A 2.0 2.0 0 1 0 20.0 8.0 A 2.0 2.0 0 1 0 16.0 8.0 Z"),
+                        RaftLucidePathSpec("M 18.0 16.0 A 2.0 2.0 0 1 0 22.0 16.0 A 2.0 2.0 0 1 0 18.0 16.0 Z"),
+                        RaftLucidePathSpec("M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.045Q6.52 17.48 4.46 16.84A3.5 3.5 0 0 1 5.5 10Z"),
+                    ),
+                )
             RaftLucideIconName.Pencil ->
                 RaftLucideIconSpec(
                     "pencil",
