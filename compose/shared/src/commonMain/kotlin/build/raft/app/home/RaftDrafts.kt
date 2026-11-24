@@ -147,8 +147,18 @@ internal data class RaftDraftDirectory(
     val channelSymbols: Map<String, String> = emptyMap(),
     val tasks: List<TaskSummary> = emptyList(),
 ) {
+    private val channelsByJointChannelId: Map<String, HomeChannelRow> =
+        channels.values
+            .mapNotNull { row ->
+                row.jointChannelId?.trim()?.takeIf { it.isNotBlank() }?.let { jointId -> jointId to row }
+            }
+            .toMap()
+
     fun conversationRow(channelId: String?): HomeConversationRow? =
         channelId?.let { id -> directMessages[id] ?: channels[id] }
+
+    fun jointChannelRow(jointChannelId: String?): HomeChannelRow? =
+        jointChannelId?.trim()?.takeIf { it.isNotBlank() }?.let(channelsByJointChannelId::get)
 
     fun taskForConversation(conversationChannelId: String): TaskSummary? =
         tasks.firstOrNull { it.conversationChannelId?.value == conversationChannelId }
@@ -197,15 +207,36 @@ internal fun SharedThreadComposerDraftRecord.resolveRaftDraftPlace(
     val parentMessage = parentMessageId?.takeIf { it.isNotBlank() }
     if (parentMessage != null) {
         // A reply: `mention` is the thread's parent channel, `send` its stream (the parent itself
-        // before the thread has a reply).
-        val parentChannel = mentionChannelId?.takeIf { it.isNotBlank() } ?: return RaftDraftPlaceResolution.NotHere
+        // before the thread has a reply). A joint channel's reply thread shares one draft across
+        // participating servers, so if the draft was saved on a sibling server we place it onto
+        // this server's local projection of the same joint channel (with threadChannelId = null so
+        // opening resolves this server's local thread projection).
+        val parentChannel = mentionChannelId?.takeIf { it.isNotBlank() }
+        if (parentChannel != null && directory.conversationRow(parentChannel) != null) {
+            return RaftDraftPlaceResolution.Placed(
+                RaftDraftPlace.Thread(
+                    parentChannelId = parentChannel,
+                    parentMessageId = parentMessage,
+                    threadChannelId = sendChannelId.takeIf { it.isNotBlank() && it != parentChannel },
+                )
+            )
+        }
+        directory.jointChannelRow(jointChannelId)?.let { localJoint ->
+            return RaftDraftPlaceResolution.Placed(
+                RaftDraftPlace.Thread(
+                    parentChannelId = localJoint.channelId.value,
+                    parentMessageId = parentMessage,
+                    threadChannelId = null,
+                )
+            )
+        }
+        if (parentChannel == null) return RaftDraftPlaceResolution.NotHere
         val thread =
             RaftDraftPlace.Thread(
                 parentChannelId = parentChannel,
                 parentMessageId = parentMessage,
                 threadChannelId = sendChannelId.takeIf { it.isNotBlank() && it != parentChannel },
             )
-        if (directory.conversationRow(parentChannel) != null) return RaftDraftPlaceResolution.Placed(thread)
         if (parentChannel !in lookups) return RaftDraftPlaceResolution.NeedsLookup(parentChannel)
         val answer = lookups[parentChannel] ?: return RaftDraftPlaceResolution.NotHere
         return if (answer.type in RaftDraftTopLevelChannelTypes || answer.type == "dm") {
@@ -220,6 +251,11 @@ internal fun SharedThreadComposerDraftRecord.resolveRaftDraftPlace(
     }
     directory.channels[conversation]?.let {
         return RaftDraftPlaceResolution.Placed(RaftDraftPlace.Conversation(conversation, directMessage = false))
+    }
+    directory.jointChannelRow(jointChannelId)?.let { localJoint ->
+        return RaftDraftPlaceResolution.Placed(
+            RaftDraftPlace.Conversation(localJoint.channelId.value, directMessage = false)
+        )
     }
     directory.taskForConversation(conversation)?.let { task ->
         return RaftDraftPlaceResolution.Placed(
@@ -298,8 +334,19 @@ internal fun raftDraftListing(
             RaftDraftPlaceResolution.NotHere -> Unit
         }
     }
-    return RaftDraftListing(entries = entries.sortedWith(RaftDraftEntryOrder), lookupChannelIds = lookupIds)
+    val deduplicated =
+        entries
+            .sortedWith(RaftDraftEntryOrder)
+            .distinctBy { entry -> entry.place.canonicalDraftListIdentity() }
+    return RaftDraftListing(entries = deduplicated, lookupChannelIds = lookupIds)
 }
+
+private fun RaftDraftPlace.canonicalDraftListIdentity(): String =
+    when (this) {
+        is RaftDraftPlace.Conversation -> "conv:$directMessage:$channelId"
+        is RaftDraftPlace.Thread -> "thread:$parentChannelId:$parentMessageId"
+        is RaftDraftPlace.Task -> "task:$conversationChannelId"
+    }
 
 private val RaftDraftEntryOrder =
     Comparator<RaftDraftEntry> { a, b ->
@@ -523,7 +570,8 @@ internal fun RaftDraftEntry.toHomeMessageOpenRequest(
                     ),
                     conversationDirectory,
                 )
-        is RaftDraftPlace.Thread ->
+        is RaftDraftPlace.Thread -> {
+            val parentRow = directory.conversationRow(place.parentChannelId)
             resolveRaftDraftOpenRequest(
                 serverId,
                 ConversationOpenSourceMessageIdentity(
@@ -534,10 +582,12 @@ internal fun RaftDraftEntry.toHomeMessageOpenRequest(
                     parentChannelId = place.parentChannelId,
                     parentMessageId = place.parentMessageId,
                     conversationKind = ConversationKind.Thread,
-                    parentConversationKind = directory.conversationRow(place.parentChannelId)?.kind,
+                    parentConversationKind = parentRow?.kind,
+                    jointChannelId = parentRow?.jointChannelId,
                 ),
                 conversationDirectory,
             )
+        }
     }
 
 private fun resolveRaftDraftOpenRequest(

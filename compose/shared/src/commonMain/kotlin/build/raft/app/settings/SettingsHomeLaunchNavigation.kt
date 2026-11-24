@@ -698,6 +698,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
                 RaftThreadSurfaceKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
                 else -> routeIdentity.channelKind
             },
+        jointChannelId = conversation.jointChannelId?.takeIf { it.isNotBlank() },
         threadId =
             when (surfaceKind) {
                 RaftThreadSurfaceKind.ReplyThread,

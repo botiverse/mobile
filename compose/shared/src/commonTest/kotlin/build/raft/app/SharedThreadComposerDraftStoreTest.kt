@@ -1092,6 +1092,496 @@ class SharedThreadComposerDraftStoreTest {
         assertTrue(queued.canOpenComposerAttachmentPreview(composerEnabled = true))
     }
 
+    @Test
+    fun jointChannelRootDraftIsSingleSharedAcrossServersAndClearsOnSendOrBlank() {
+        val storage = InMemoryRaftKeyValueStore()
+        var now = 10_000L
+        val persistence = SharedThreadComposerDraftPersistence(storage, nowEpochMillis = { now })
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val serverAKey =
+            ThreadComposerSurface(
+                kind = RaftThreadSurfaceKind.Channel,
+                channelId = "chan-a",
+                jointChannelId = "joint-1",
+            ).threadComposerDraftKey()
+        val serverBKey =
+            ThreadComposerSurface(
+                kind = RaftThreadSurfaceKind.Channel,
+                channelId = "chan-b",
+                jointChannelId = "joint-1",
+            ).threadComposerDraftKey()
+        assertEquals("send=chan-a|parent=_|mention=chan-a|joint=joint-1", serverAKey)
+        assertEquals("send=chan-b|parent=_|mention=chan-b|joint=joint-1", serverBKey)
+        // Non-joint channel keeps the exact legacy 3-part key.
+        assertEquals(
+            "send=plain-chan|parent=_|mention=plain-chan",
+            ThreadComposerSurface(kind = RaftThreadSurfaceKind.Channel, channelId = "plain-chan").threadComposerDraftKey(),
+        )
+
+        val mention = build.raft.app.data.ThreadSendMessageMention(type = "agent", id = "agent-1", name = "Reef")
+        val uploaded =
+            SharedThreadComposerAttachment(
+                id = "att-1",
+                fileName = "spec.pdf",
+                sizeLabel = "12 KB",
+                mimeType = "application/pdf",
+                status = "ready",
+            )
+
+        val storeA = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        storeA.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "composer-a"),
+                draftKey = serverAKey,
+            )
+        )
+        storeA.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "hi @Reef", seedAsTask = true))
+        storeA.dispatch(SharedThreadComposerDraftIntent.SelectMention(mention))
+        storeA.dispatch(SharedThreadComposerDraftIntent.AddUploadedAttachments(listOf(uploaded)))
+
+        assertEquals(1, persistence.draftListings().size)
+        assertEquals(10_000L, persistence.draftListings().single().editedAtEpochMillis)
+
+        // Opening the same joint channel on Server B loads & migrates the single draft, preserving editedAt.
+        now = 25_000L
+        val storeB = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        storeB.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "composer-b"),
+                draftKey = serverBKey,
+            )
+        )
+        assertEquals("hi @Reef", storeB.state.value.seedText)
+        assertTrue(storeB.state.value.seedAsTask)
+        assertEquals(listOf(mention), storeB.state.value.structuredMentions)
+        assertEquals(listOf(uploaded), storeB.state.value.uploadedAttachments)
+        assertEquals(1, persistence.draftListings().size)
+        assertEquals(serverBKey, persistence.draftListings().single().record.key)
+        assertEquals(10_000L, persistence.draftListings().single().editedAtEpochMillis)
+        assertNull(persistence.read(requireNotNull(serverAKey)))
+
+        // Editing on Server B updates the single shared draft; Server A sees the edit.
+        now = 30_000L
+        storeB.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "updated on B @Reef"))
+        assertEquals(30_000L, persistence.draftListings().single().editedAtEpochMillis)
+
+        val reopenedA = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        reopenedA.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "composer-a-2"),
+                draftKey = serverAKey,
+            )
+        )
+        assertEquals("updated on B @Reef", reopenedA.state.value.seedText)
+        assertEquals(1, persistence.draftListings().size)
+
+        // Sending on Server A clears the shared draft on both servers (including any stale sibling key).
+        persistence.save(requireNotNull(serverBKey), text = "stale duplicate", asTask = false)
+        reopenedA.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        reopenedA.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
+        assertEquals(emptyList(), persistence.draftListings())
+        assertTrue(persistSlice.activeDraftRecordsState.value.isEmpty())
+
+        // Clearing to blank on Server B also clears any sibling key.
+        persistence.save(requireNotNull(serverAKey), text = "to clear", asTask = false)
+        val clearStoreB = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        clearStoreB.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "composer-b-clear"),
+                draftKey = serverBKey,
+            )
+        )
+        assertEquals("to clear", clearStoreB.state.value.seedText)
+        clearStoreB.dispatch(SharedThreadComposerDraftIntent.Change(seedText = ""))
+        assertEquals(emptyList(), persistence.draftListings())
+        assertTrue(persistSlice.activeDraftRecordsState.value.isEmpty())
+    }
+
+    @Test
+    fun jointReplyThreadDraftSharesAcrossServersWithoutCrossChannelLeak() {
+        val storage = InMemoryRaftKeyValueStore()
+        val persistence = SharedThreadComposerDraftPersistence(storage)
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+
+        val serverAReplyKey = "send=thread-a|parent=msg-1|mention=chan-a|joint=joint-1"
+        val serverBReplyBeforeCreateKey = "send=chan-b|parent=msg-1|mention=chan-b|joint=joint-1"
+        val serverBReplyKey = "send=thread-b|parent=msg-1|mention=chan-b|joint=joint-1"
+        val otherJointReplyKey = "send=thread-c|parent=msg-1|mention=chan-c|joint=joint-2"
+        val rootJointKey = "send=chan-b|parent=_|mention=chan-b|joint=joint-1"
+
+        persistence.save(serverAReplyKey, text = "joint reply draft", asTask = false)
+
+        // Different joint channel must never inherit this reply draft.
+        val otherStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        otherStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "other-joint", parentMessageId = "msg-1"),
+                draftKey = otherJointReplyKey,
+            )
+        )
+        assertEquals("", otherStore.state.value.seedText)
+
+        // Root joint channel must never inherit a reply thread draft.
+        val rootStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        rootStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "root-joint"),
+                draftKey = rootJointKey,
+            )
+        )
+        assertEquals("", rootStore.state.value.seedText)
+
+        // Server B opens the reply thread (even before Server B has a local thread projection).
+        val storeB = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        storeB.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "reply-b", parentMessageId = "msg-1"),
+                draftKey = serverBReplyBeforeCreateKey,
+            )
+        )
+        assertEquals("joint reply draft", storeB.state.value.seedText)
+        assertEquals(1, persistence.draftListings().size)
+        assertEquals(serverBReplyBeforeCreateKey, persistence.draftListings().single().record.key)
+
+        // Once Server B resolves its local thread projection, it seamlessly carries over.
+        storeB.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "reply-b", parentMessageId = "msg-1"),
+                draftKey = serverBReplyKey,
+            )
+        )
+        assertEquals("joint reply draft", storeB.state.value.seedText)
+        assertEquals(1, persistence.draftListings().size)
+        assertEquals(serverBReplyKey, persistence.draftListings().single().record.key)
+    }
+
+    @Test
+    fun pendingDebouncedWriteOnServerAFlushesWhenServerBOpensSameJointChannel() {
+        val storage = InMemoryRaftKeyValueStore()
+        val persistence = SharedThreadComposerDraftPersistence(storage)
+        val scheduler = FakeThreadComposerDraftPersistenceScheduler()
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler)
+
+        val keyA = "send=chan-a|parent=_|mention=chan-a|joint=joint-1"
+        val keyB = "send=chan-b|parent=_|mention=chan-b|joint=joint-1"
+
+        val storeA = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        storeA.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "composer-a"),
+                draftKey = keyA,
+            )
+        )
+        storeA.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "typed right before switching"))
+        // Not flushed yet: still pending in scheduler.
+        assertNull(persistence.read(keyA))
+
+        // Switch immediately to Server B before debounce runs.
+        val storeB = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        storeB.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "composer-b"),
+                draftKey = keyB,
+            )
+        )
+        assertEquals("typed right before switching", storeB.state.value.seedText)
+        assertEquals("typed right before switching", persistence.read(keyB)?.text)
+        assertNull(persistence.read(keyA))
+    }
+
+    @Test
+    fun legacyThreePartJointKeyUpgradesCleanlyToFourPartKeyOnSameServer() {
+        val storage = InMemoryRaftKeyValueStore()
+        val persistence = SharedThreadComposerDraftPersistence(storage)
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+
+        val legacyKey = "send=chan-a|parent=_|mention=chan-a"
+        val upgradedKey = "send=chan-a|parent=_|mention=chan-a|joint=joint-1"
+        persistence.save(legacyKey, text = "pre-upgrade draft", asTask = false)
+
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "composer-upgrade"),
+                draftKey = upgradedKey,
+            )
+        )
+        assertEquals("pre-upgrade draft", store.state.value.seedText)
+        assertEquals(1, persistence.draftListings().size)
+        assertEquals(upgradedKey, persistence.draftListings().single().record.key)
+    }
+
+    @Test
+    fun draftProjectionMatchesSiblingServerJointChannelInSidebarAndActivity() {
+        val records =
+            setOf(
+                SharedThreadComposerDraftRecord(
+                    key = "send=chan-a|parent=_|mention=chan-a|joint=joint-1",
+                    sendChannelId = "chan-a",
+                    mentionChannelId = "chan-a",
+                    jointChannelId = "joint-1",
+                )
+            )
+        val serverBDirectory =
+            build.raft.app.data.SharedConversationDirectoryState(
+                projectionsByCanonicalId =
+                    mapOf(
+                        "chan-b" to
+                            build.raft.app.data.SharedConversationDirectoryProjection(
+                                serverId = "server-b",
+                                canonicalChannelId = "chan-b",
+                                aliases = setOf("chan-b"),
+                                conversationKind = build.raft.app.model.ConversationKind.Joint,
+                                surfaceKind = RaftThreadSurfaceKind.Channel,
+                                channelKind = "joint",
+                                title = "shared-room",
+                                jointChannelId = "joint-1",
+                            ),
+                        "other-b" to
+                            build.raft.app.data.SharedConversationDirectoryProjection(
+                                serverId = "server-b",
+                                canonicalChannelId = "other-b",
+                                aliases = setOf("other-b"),
+                                conversationKind = build.raft.app.model.ConversationKind.Joint,
+                                surfaceKind = RaftThreadSurfaceKind.Channel,
+                                channelKind = "joint",
+                                title = "other-room",
+                                jointChannelId = "joint-2",
+                            ),
+                    )
+            )
+        val directProjection = records.toSharedThreadComposerDraftProjection()
+        assertTrue(directProjection.hasRootDraft("chan-b", jointChannelId = "joint-1"))
+        assertFalse(directProjection.hasRootDraft("other-b", jointChannelId = "joint-2"))
+
+        val directoryProjection = records.toSharedThreadComposerDraftProjection(serverBDirectory)
+        assertTrue(directoryProjection.hasRootDraft("chan-b"))
+        assertFalse(directoryProjection.hasRootDraft("other-b"))
+        val activityItem =
+            InboxItem(
+                key = "chan-b",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("chan-b"),
+                channelName = "shared-room",
+            ).withComposerDraftProjection(directoryProjection)
+        assertTrue(activityItem.hasDraft)
+    }
+
+    @Test
+    fun threadComposerJointChannelIdResolvesForRootAndReplyThread() {
+        val parentProj =
+            build.raft.app.data.SharedConversationDirectoryProjection(
+                serverId = "s2",
+                canonicalChannelId = "chan-b",
+                aliases = setOf("chan-b"),
+                conversationKind = build.raft.app.model.ConversationKind.Joint,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = "joint",
+                title = "shared-room",
+                jointChannelId = "joint-1",
+            )
+        val replyPayload =
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                parentChannelId = "chan-b",
+                parentMessageId = "msg-1",
+            )
+        assertEquals(
+            "joint-1",
+            threadComposerJointChannelId(
+                payload = replyPayload,
+                lookupIds = listOf("thread-b", "chan-b"),
+                projections = mapOf("chan-b" to parentProj),
+            ),
+        )
+        val dmPayload = RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.DirectMessage, jointChannelId = "joint-1")
+        assertNull(
+            threadComposerJointChannelId(
+                payload = dmPayload,
+                lookupIds = listOf("dm-1"),
+                projections = mapOf("dm-1" to parentProj),
+            ),
+        )
+        val taskPayload =
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = RaftTaskConversationChannelKind,
+                parentChannelId = "chan-b",
+                jointChannelId = "joint-1",
+            )
+        assertNull(
+            threadComposerJointChannelId(
+                payload = taskPayload,
+                lookupIds = listOf("task-conv-1", "chan-b"),
+                projections = mapOf("chan-b" to parentProj),
+                stableHeaderProjection = parentProj,
+            ),
+        )
+    }
+
+    @Test
+    fun commentHostAndDmLoadingPayloadsClearJointChannelId() {
+        val jointPayload =
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = "joint",
+                sourceThreadId = "chan-joint",
+                streamChannelId = "chan-joint",
+                jointChannelId = "joint-42",
+            )
+        val nonJointChannelRef =
+            RaftThreadMessageCommentRef(
+                attachmentId = "att-1",
+                filename = "doc.md",
+                hostMessageId = "msg-10",
+                hostSource =
+                    RaftThreadMessageCommentHostSource(
+                        type = RaftThreadSurfaceKind.Channel,
+                        routeKind = RaftThreadSurfaceKind.Channel,
+                        channelId = "chan-general",
+                    ),
+            )
+        val nonJointChannelPayload = requireNotNull(jointPayload.commentHostLoadingPayload(nonJointChannelRef))
+        assertNull(nonJointChannelPayload.jointChannelId)
+        assertEquals(RaftThreadSurfaceKind.Channel, nonJointChannelPayload.channelKind)
+
+        val replyRef =
+            RaftThreadMessageCommentRef(
+                attachmentId = "att-1",
+                filename = "doc.md",
+                hostMessageId = "msg-10",
+                hostSource =
+                    RaftThreadMessageCommentHostSource(
+                        type = RaftThreadSurfaceKind.ReplyThread,
+                        routeKind = RaftThreadSurfaceKind.Channel,
+                        channelId = "chan-general",
+                        parentMessageId = "msg-parent",
+                        threadChannelId = "thread-general",
+                    ),
+            )
+        val replyFromComment = requireNotNull(jointPayload.commentHostLoadingPayload(replyRef))
+        assertNull(replyFromComment.jointChannelId)
+
+        val dmPayload =
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                channelKind = "dm",
+                sourceThreadId = "dm-1",
+                streamChannelId = "dm-1",
+                jointChannelId = "joint-42",
+            )
+        val dmReply = dmPayload.replyThreadLoadingPayload(parentMessageId = "msg-dm", parentChannelId = "dm-1", threadChannelId = null)
+        assertNull(dmReply.jointChannelId)
+        val backToDm = dmReply.copy(jointChannelId = "joint-42").parentMessageContextLoadingPayload("msg-dm")
+        assertNull(backToDm.jointChannelId)
+    }
+
+    @Test
+    fun jointChannelDuplicateSiblingStartKeepsStrictlyNewerSiblingInsteadOfOverwriting() {
+        val storage = InMemoryRaftKeyValueStore()
+        var now = 100L
+        val persistence = SharedThreadComposerDraftPersistence(storage, nowEpochMillis = { now })
+        val keyA = "send=chan-a|parent=_|mention=chan-a|joint=joint-1"
+        val keyB = "send=chan-b|parent=_|mention=chan-b|joint=joint-1"
+
+        persistence.save(key = keyA, text = "older on A", asTask = false)
+        now = 200L
+        persistence.save(key = keyB, text = "newer on B", asTask = false)
+
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "composer-a"),
+                draftKey = keyA,
+            )
+        )
+        assertEquals("newer on B", store.state.value.seedText)
+        assertEquals(200L, persistence.readEditedAtEpochMillis(keyA))
+        assertNull(persistence.read(keyB))
+        assertEquals(listOf(keyA), persistence.activeDraftRecords().map { it.key })
+
+        // Reverse case: current key is strictly newer than sibling -> keep current and clean stale sibling.
+        now = 300L
+        persistence.save(key = keyA, text = "newest on A", asTask = false)
+        now = 250L
+        persistence.save(key = keyB, text = "stale on B", asTask = false)
+        val storeNewerCurrent = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        storeNewerCurrent.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "composer-a-newer"),
+                draftKey = keyA,
+            )
+        )
+        assertEquals("newest on A", storeNewerCurrent.state.value.seedText)
+        assertEquals(300L, persistence.readEditedAtEpochMillis(keyA))
+        assertNull(persistence.read(keyB))
+    }
+
+    @Test
+    fun externalShareCrossServerNoticeNamesTargetServerAndPreservesDraft() {
+        val session =
+            build.raft.app.data.StoredAuthSession(
+                user = build.raft.app.data.StoredAuthUser(id = "user-1", email = "alice@example.com", name = "Alice"),
+                accessToken = "tok",
+                refreshToken = "ref",
+                selectedServerId = "server-b",
+                servers =
+                    listOf(
+                        build.raft.app.data.StoredAuthServer(id = "server-a", name = "Alpha Server"),
+                        build.raft.app.data.StoredAuthServer(id = "server-b", name = "Beta Server"),
+                    ),
+            )
+        val sources =
+            listOf(
+                SharedThreadComposerExternalShareSource(
+                    token = "share-1",
+                    accountId = "user-1",
+                    serverId = "server-a",
+                )
+            )
+        assertEquals(
+            "This shared draft can only be sent from Alpha Server.",
+            resolveExternalShareCrossServerNotice(
+                session = session,
+                externalShareSources = sources,
+                externalShareAttachments = emptyList(),
+                otherServerTemplate = "This shared draft can only be sent from ${ThreadLocalizedFeedbackPlaceholder}.",
+                otherServerGenericLabel = "Generic other server.",
+            ),
+        )
+        assertEquals(
+            "Generic other server.",
+            resolveExternalShareCrossServerNotice(
+                session = session.copy(servers = emptyList()),
+                externalShareSources = sources,
+                externalShareAttachments = emptyList(),
+                otherServerTemplate = "This shared draft can only be sent from ${ThreadLocalizedFeedbackPlaceholder}.",
+                otherServerGenericLabel = "Generic other server.",
+            ),
+        )
+        // Same server -> no cross-server block notice.
+        assertNull(
+            resolveExternalShareCrossServerNotice(
+                session = session.copy(selectedServerId = "server-a"),
+                externalShareSources = sources,
+                externalShareAttachments = emptyList(),
+                otherServerTemplate = "From ${ThreadLocalizedFeedbackPlaceholder}.",
+                otherServerGenericLabel = "Generic.",
+            ),
+        )
+        // Different account -> not a cross-server notice.
+        assertNull(
+            resolveExternalShareCrossServerNotice(
+                session = session.copy(user = build.raft.app.data.StoredAuthUser(id = "user-2", email = "bob@example.com", name = "Bob")),
+                externalShareSources = sources,
+                externalShareAttachments = emptyList(),
+                otherServerTemplate = "From ${ThreadLocalizedFeedbackPlaceholder}.",
+                otherServerGenericLabel = "Generic.",
+            ),
+        )
+    }
+
     private fun externalShareAttachment(status: String) =
         SharedThreadComposerAttachment(
             id = "local",

@@ -141,6 +141,13 @@ internal class ThreadRouteComposerActions(
             }
         ) {
             bridge.logWarn("external_share_send_rejected reason=authority_changed_before_message_send")
+            resolveExternalShareCrossServerNotice(
+                session = session,
+                externalShareSources = externalShareSources,
+                externalShareAttachments = externalShareAttachments,
+                otherServerTemplate = labels.externalShareOtherServerTemplate,
+                otherServerGenericLabel = labels.externalShareOtherServerGenericLabel,
+            )?.let(bridge::toast)
             return false
         }
         val draftText = currentDraftState.seedText.trim()
@@ -345,7 +352,19 @@ internal class ThreadRouteComposerActions(
                     externalShareSendRequested = false
                     externalShareExpectedAuthority = null
                     bridge.logWarn("external_share_send_rejected reason=authority_changed")
-                    bridge.toast(genericThreadErrorLabel)
+                    val crossServerNotice =
+                        if (expected != null) {
+                            resolveExternalShareCrossServerNotice(
+                                session = currentSession,
+                                externalShareSources = externalShareSources,
+                                externalShareAttachments = emptyList(),
+                                otherServerTemplate = labels.externalShareOtherServerTemplate,
+                                otherServerGenericLabel = labels.externalShareOtherServerGenericLabel,
+                            )
+                        } else {
+                            null
+                        }
+                    bridge.toast(crossServerNotice ?: genericThreadErrorLabel)
                     return@launch
                 }
                 externalShareExpectedAuthority = expected
@@ -966,4 +985,36 @@ internal class ThreadRouteComposerActions(
                 }
                 }
         }
+}
+
+internal fun resolveExternalShareCrossServerNotice(
+    session: StoredAuthSession?,
+    externalShareSources: List<SharedThreadComposerExternalShareSource>,
+    externalShareAttachments: List<RaftPendingAttachmentItem>,
+    otherServerTemplate: String,
+    otherServerGenericLabel: String,
+): String? {
+    val activeSession = session ?: return null
+    val activeUserId = activeSession.user.id.takeIf { it.isNotBlank() } ?: return null
+    val activeServerId = activeSession.currentServerId?.takeIf { it.isNotBlank() } ?: return null
+    val sourceAccountMismatch = externalShareSources.any { it.accountId != activeUserId }
+    val attachmentAccountMismatch = externalShareAttachments.any { it.externalShareAccountId != activeUserId }
+    if (sourceAccountMismatch || attachmentAccountMismatch) return null
+    val foreignServerId =
+        externalShareSources.firstOrNull { it.serverId.isNotBlank() && it.serverId != activeServerId }?.serverId
+            ?: externalShareAttachments
+                .firstOrNull { !it.externalShareServerId.isNullOrBlank() && it.externalShareServerId != activeServerId }
+                ?.externalShareServerId
+            ?: return null
+    val targetServerName =
+        activeSession.servers
+            .firstOrNull { it.id == foreignServerId }
+            ?.name
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    return if (targetServerName != null) {
+        otherServerTemplate.replace(ThreadLocalizedFeedbackPlaceholder, targetServerName)
+    } else {
+        otherServerGenericLabel
+    }
 }

@@ -510,8 +510,8 @@ internal fun SharedHomeActivityScreen(
         sharedStores.composerDraftPersistSlice.activeDraftRecordsState.value
     )
     val draftProjection =
-        remember(activeDraftRecords) {
-            activeDraftRecords.toSharedThreadComposerDraftProjection()
+        remember(activeDraftRecords, openConversationDirectory) {
+            activeDraftRecords.toSharedThreadComposerDraftProjection(openConversationDirectory)
         }
     val conversationNotReadyMessage = stringResource(Res.string.inbox_error_conversation_not_ready)
     val latestActive by rememberUpdatedState(active)

@@ -66,6 +66,7 @@ internal data class RaftThreadScreenPayload(
     val mainLoadFailed: Boolean = false,
     val surfaceKind: String = RaftThreadSurfaceKind.Channel,
     val channelKind: String = "channel",
+    val jointChannelId: String? = null,
     val sourceThreadId: String? = null,
     val streamChannelId: String? = null,
     val parentChannelId: String? = null,

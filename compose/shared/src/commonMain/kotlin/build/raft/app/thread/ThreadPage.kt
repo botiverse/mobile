@@ -2325,6 +2325,23 @@ private fun SharedThreadRouteContentContent(
                 previous = lastAcceptedHeaderProjection
             )
         }
+    val composerJointChannelId =
+        remember(
+            payload.surfaceKind,
+            payload.channelKind,
+            payload.parentChannelId,
+            payload.jointChannelId,
+            conversationDirectoryLookupIds,
+            billingDirectoryProjections,
+            stableHeaderProjection,
+        ) {
+            threadComposerJointChannelId(
+                payload = payload,
+                lookupIds = conversationDirectoryLookupIds,
+                projections = billingDirectoryProjections,
+                stableHeaderProjection = stableHeaderProjection,
+            )
+        }
     LaunchedEffect(headerProjectionInput, directoryConversationProjection) {
         val previous = lastAcceptedHeaderProjection
         val accepted = directoryConversationProjection?.takeIf(headerProjectionInput::acceptsForDisplay)
@@ -2854,6 +2871,7 @@ private fun SharedThreadRouteContentContent(
                         accessResolution = renderSlice.accessResolution,
                         replyParentAuthority = renderSlice.replyParentAuthority,
                         composerDraftViewModel = composerDraftViewModel,
+                        jointChannelId = composerJointChannelId,
                         composerLocked = threadLimitLocksWrites(loadingJointBillingNotice, loadingExternalFreezeState),
                         externalFrozen = loadingExternalFreezeState == ExternalFreezeState.Active,
                         composerSendKey = loadingSendKey,
@@ -4347,6 +4365,7 @@ private fun SharedThreadRouteContentContent(
             scopedBaseComposerState,
             resolvedAuxiliaryThreadId,
             renderedPayload.parentChannelId,
+            composerJointChannelId,
             headerDisplayModel.title,
             headerDisplayModel.subtitle,
             renderedPayload.surfaceKind,
@@ -4356,6 +4375,7 @@ private fun SharedThreadRouteContentContent(
             scopedBaseComposerState.toThreadComposerSurface(
                 channelId = resolvedAuxiliaryThreadId.orEmpty(),
                 parentChannelId = renderedPayload.parentChannelId,
+                jointChannelId = composerJointChannelId,
                 mentionChannelLabel = headerDisplayModel.threadComposerMentionScopeChannelLabel(),
                 memberSuggestionHeadersVisible = renderedPayload.threadComposerMemberSuggestionHeadersVisible()
             ).withTaskV2().copy(assistantContext = assistantPanelContext)

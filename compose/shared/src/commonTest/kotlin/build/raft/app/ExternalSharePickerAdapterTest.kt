@@ -180,6 +180,37 @@ class ExternalSharePickerAdapterTest {
 
         // Reply thread missing parentMessageId fails closed.
         assertNull(threadTarget("thread-incomplete", parentMessageId = null).toExternalShareConversationIdentityOrNull())
+
+        // Joint channel & joint reply-thread targets carry jointChannelId into launch payload and shared draft key.
+        val jointChannel =
+            ForwardMessageTarget(
+                serverId = ServerId("server-a"),
+                kind = ForwardMessageTargetKind.RecentChannel,
+                id = "chan-joint-a",
+                title = "wg-shared",
+                channelId = ChannelId("chan-joint-a"),
+                channelKind = ConversationKind.Joint,
+                channelType = "joint",
+                jointChannelId = "joint-42",
+            )
+        val jointIdentity = assertNotNull(jointChannel.toExternalShareConversationIdentityOrNull())
+        val jointPayload = assertNotNull(buildStandaloneConversationThreadLaunchPayload(jointIdentity, timeContext = null))
+        assertEquals("joint-42", jointIdentity.jointChannelId)
+        assertEquals("joint-42", jointPayload.jointChannelId)
+        assertEquals("send=chan-joint-a|parent=_|mention=chan-joint-a|joint=joint-42", jointPayload.threadComposerDraftKey())
+
+        val jointThread =
+            threadTarget(
+                id = "thread-joint-a",
+                parentChannelId = ChannelId("chan-joint-a"),
+                parentChannelType = "joint",
+                parentMessageId = MessageId("parent-42"),
+            )
+        val jointThreadIdentity = assertNotNull(jointThread.toExternalShareConversationIdentityOrNull(resolvedJointChannelId = "joint-42"))
+        val jointThreadPayload = assertNotNull(buildStandaloneConversationThreadLaunchPayload(jointThreadIdentity, timeContext = null))
+        assertEquals("joint-42", jointThreadIdentity.jointChannelId)
+        assertEquals("joint-42", jointThreadPayload.jointChannelId)
+        assertEquals("send=thread-joint-a|parent=parent-42|mention=chan-joint-a|joint=joint-42", jointThreadPayload.threadComposerDraftKey())
     }
 
     @Test

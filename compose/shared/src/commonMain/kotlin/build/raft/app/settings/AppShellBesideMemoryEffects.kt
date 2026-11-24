@@ -277,6 +277,7 @@ internal fun raftBesideThreadLaunchPayload(
     return WireThreadLaunchPayload(
         instanceId = "shared-shell-thread-pending-$parentMessageId",
         surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+        jointChannelId = if (dm) null else main.jointChannelId.nonBlank(),
         parentChannelId = mainIdentity.channelId ?: mainIdentity.threadId,
         parentMessageId = parentMessageId,
         parentSurfaceKind = if (dm) RaftThreadSurfaceKind.DirectMessage else RaftThreadSurfaceKind.Channel,

@@ -1328,6 +1328,8 @@
     <string name="external_share_error_title">Não foi possível abrir o conteúdo compartilhado</string>
     <string name="external_share_error_detail">Tente novamente ou feche e compartilhe o conteúdo de novo.</string>
     <string name="external_share_retry_failed">Tentar novamente os itens com falha</string>
+    <string name="thread_composer_external_share_other_server">Este rascunho compartilhado só pode ser enviado de %1$s.</string>
+    <string name="thread_composer_external_share_other_server_generic">Este rascunho compartilhado só pode ser enviado do servidor para o qual foi compartilhado.</string>
     <string name="thread_share_preview_title">Prévia para compartilhar</string>
     <string name="thread_share_export_failed">NÃO FOI POSSÍVEL EXPORTAR A IMAGEM</string>
     <string name="thread_share_export_failed_detail">TENTE NOVAMENTE QUANDO AS MENSAGENS SELECIONADAS ESTIVEREM VISÍVEIS.</string>

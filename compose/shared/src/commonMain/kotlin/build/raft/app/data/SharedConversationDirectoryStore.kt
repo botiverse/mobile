@@ -78,6 +78,8 @@ internal data class SharedConversationDirectoryProjection(
     val guestVisible: Boolean = false,
     /** Channel `hasExternalRelation` from the Home channel row; threads/DMs/inbox projections never carry it. */
     val hasExternalRelation: Boolean = false,
+    /** Shared joint-channel UUID (`jointChannelId`) across all participating servers; only channels carry one. */
+    val jointChannelId: String? = null,
     /** A joint channel's `jointRole` (`host`, ...) from the Home channel row; only channels carry one. */
     val jointRole: String? = null,
     /** Connected servers of a joint channel (`jointServers[]`, slock #15809) with each server's logo. */
@@ -553,8 +555,24 @@ private fun sharedConversationDirectoryStateFromProjections(
     for (projection in claimed) {
         val existing = byCanonicalId[projection.canonicalChannelId]
         byCanonicalId[projection.canonicalChannelId] =
-            if (existing != null && projection.jointServers.isEmpty() && existing.jointServers.isNotEmpty()) {
-                projection.copy(jointServers = existing.jointServers)
+            if (existing != null) {
+                val mergedJointServers =
+                    if (projection.jointServers.isEmpty() && existing.jointServers.isNotEmpty()) {
+                        existing.jointServers
+                    } else {
+                        projection.jointServers
+                    }
+                val mergedJointChannelId =
+                    projection.jointChannelId?.takeIf(String::isNotBlank)
+                        ?: existing.jointChannelId?.takeIf(String::isNotBlank)
+                if (mergedJointServers !== projection.jointServers || mergedJointChannelId != projection.jointChannelId) {
+                    projection.copy(
+                        jointChannelId = mergedJointChannelId,
+                        jointServers = mergedJointServers,
+                    )
+                } else {
+                    projection
+                }
             } else {
                 projection
             }
@@ -665,6 +683,7 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         slackSyncProblem = if (kind == ConversationKind.Thread) null else slackSyncProblem,
         guestVisible = kind != ConversationKind.Thread && guestVisible,
         hasExternalRelation = kind != ConversationKind.Thread && kind != ConversationKind.DirectMessage && hasExternalRelation,
+        jointChannelId = if (kind == ConversationKind.Thread || kind == ConversationKind.DirectMessage) null else jointChannelId?.takeIf(String::isNotBlank),
         jointRole = if (kind == ConversationKind.Thread || kind == ConversationKind.DirectMessage) null else jointRole?.takeIf(String::isNotBlank),
         jointServers = if (kind == ConversationKind.Thread || kind == ConversationKind.DirectMessage) emptyList() else jointServers,
         loungeAgentId = if (kind == ConversationKind.Channel) loungeAgentId?.takeIf { it.isNotBlank() } else null,

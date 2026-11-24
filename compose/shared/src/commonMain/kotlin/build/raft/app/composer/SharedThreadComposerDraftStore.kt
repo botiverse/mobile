@@ -7,6 +7,7 @@ import build.raft.app.data.MviDispatchReceipt
 import build.raft.app.data.MviPersistSlice
 import build.raft.app.data.MviPersistSliceTransitionSnapshot
 import build.raft.app.data.MviStoreRuntime
+import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.ThreadSendMessageMention
 import build.raft.app.model.InboxItemKind
@@ -130,27 +131,38 @@ internal data class SharedThreadComposerDraftRecord(
     val key: String,
     val sendChannelId: String,
     val parentMessageId: String? = null,
-    val mentionChannelId: String? = null
+    val mentionChannelId: String? = null,
+    val jointChannelId: String? = null
 ) {
     val isRootComposer: Boolean
         get() = parentMessageId.isNullOrBlank()
 
-    fun matchesRootConversation(conversationId: String): Boolean =
-        isRootComposer && sendChannelId == conversationId
+    fun matchesRootConversation(conversationId: String, jointChannelId: String? = null): Boolean =
+        isRootComposer && (
+            sendChannelId == conversationId ||
+                (!jointChannelId.isNullOrBlank() && this.jointChannelId == jointChannelId)
+        )
 
     fun matchesReplyThread(parentMessageId: String): Boolean =
         !isRootComposer && this.parentMessageId == parentMessageId
 
-    fun matchesReplyThreadIdentity(other: SharedThreadComposerDraftRecord): Boolean =
-        if (isRootComposer || other.isRootComposer) {
-            false
-        } else {
-            val parent = parentMessageId?.takeIf { it.isNotBlank() }
-            val otherParent = other.parentMessageId?.takeIf { it.isNotBlank() }
-            val mention = mentionChannelId?.takeIf { it.isNotBlank() }
-            val otherMention = other.mentionChannelId?.takeIf { it.isNotBlank() }
-            parent != null && parent == otherParent && mention != null && mention == otherMention
+    fun matchesSharedDraftIdentity(other: SharedThreadComposerDraftRecord): Boolean {
+        if (isRootComposer != other.isRootComposer) return false
+        val joint = jointChannelId?.takeIf { it.isNotBlank() }
+        val otherJoint = other.jointChannelId?.takeIf { it.isNotBlank() }
+        if (isRootComposer) {
+            return sendChannelId == other.sendChannelId || (joint != null && joint == otherJoint)
         }
+        val parent = parentMessageId?.takeIf { it.isNotBlank() }
+        val otherParent = other.parentMessageId?.takeIf { it.isNotBlank() }
+        if (parent == null || parent != otherParent) return false
+        val mention = mentionChannelId?.takeIf { it.isNotBlank() }
+        val otherMention = other.mentionChannelId?.takeIf { it.isNotBlank() }
+        return (mention != null && mention == otherMention) || (joint != null && joint == otherJoint)
+    }
+
+    fun matchesReplyThreadIdentity(other: SharedThreadComposerDraftRecord): Boolean =
+        !isRootComposer && !other.isRootComposer && matchesSharedDraftIdentity(other)
 }
 
 /** One active draft as the Drafts list reads it: where it was typed, its text and its last edit. */
@@ -243,6 +255,8 @@ internal class SharedThreadComposerDraftPersistenceTransaction(
         uploadedAttachments: List<SharedThreadComposerAttachment>,
         externalShareSources: List<SharedThreadComposerExternalShareSource>,
         structuredMentions: List<ThreadSendMessageMention>? = null,
+        preserveEditedAt: Boolean = false,
+        preservedEditedAtEpochMillis: Long? = null,
     ): Set<String> = owner.saveInTransaction(
         transaction = this,
         key = key,
@@ -251,6 +265,8 @@ internal class SharedThreadComposerDraftPersistenceTransaction(
         uploadedAttachments = uploadedAttachments,
         externalShareSources = externalShareSources,
         structuredMentions = structuredMentions,
+        preserveEditedAt = preserveEditedAt,
+        preservedEditedAtEpochMillis = preservedEditedAtEpochMillis,
     )
 
     internal fun clear(key: String): Set<String> = owner.clearInTransaction(this, key)
@@ -333,21 +349,23 @@ internal class SharedThreadComposerDraftPersistenceFailure(
 
 internal data class SharedThreadComposerDraftProjection(
     private val rootConversationIds: Set<String> = emptySet(),
+    private val rootJointChannelIds: Set<String> = emptySet(),
     private val replyParentMessageIds: Set<String> = emptySet()
 ) {
-    fun hasRootDraft(conversationId: String): Boolean =
-        conversationId in rootConversationIds
+    fun hasRootDraft(conversationId: String, jointChannelId: String? = null): Boolean =
+        conversationId in rootConversationIds ||
+            jointChannelId?.takeIf { it.isNotBlank() } in rootJointChannelIds
 
     fun hasReplyDraft(parentMessageId: String?): Boolean =
         parentMessageId?.takeIf { it.isNotBlank() } in replyParentMessageIds
 
-    fun hasDraftForInboxItem(item: InboxItem): Boolean =
+    fun hasDraftForInboxItem(item: InboxItem, jointChannelId: String? = null): Boolean =
         when (item.kind) {
             InboxItemKind.Thread -> hasReplyDraft(item.parentMessageId?.value)
             InboxItemKind.Channel,
             InboxItemKind.DirectMessage,
             InboxItemKind.MentionAction,
-            InboxItemKind.System -> hasRootDraft(item.channelId.value)
+            InboxItemKind.System -> hasRootDraft(item.channelId.value, jointChannelId)
             InboxItemKind.Object -> false
         }
 
@@ -360,25 +378,49 @@ internal data class SharedThreadComposerDraftProjection(
     }
 }
 
-internal fun Set<SharedThreadComposerDraftRecord>.toSharedThreadComposerDraftProjection(): SharedThreadComposerDraftProjection =
-    SharedThreadComposerDraftProjection(
-        rootConversationIds = mapNotNull { record ->
+internal fun Set<SharedThreadComposerDraftRecord>.toSharedThreadComposerDraftProjection(
+    conversationDirectory: SharedConversationDirectoryState? = null
+): SharedThreadComposerDraftProjection {
+    val rootJointIds =
+        mapNotNull { record ->
+            record.jointChannelId?.takeIf { record.isRootComposer && it.isNotBlank() }
+        }.toSet()
+    val directRootIds =
+        mapNotNull { record ->
             record.sendChannelId.takeIf { record.isRootComposer }
-        }.toSet(),
+        }.toSet()
+    val directoryJointRootIds =
+        if (conversationDirectory == null || rootJointIds.isEmpty()) {
+            emptySet()
+        } else {
+            conversationDirectory.projectionsByCanonicalId.values
+                .mapNotNull { projection ->
+                    projection.canonicalChannelId.takeIf {
+                        projection.jointChannelId?.takeIf { id -> id.isNotBlank() } in rootJointIds
+                    }
+                }
+                .toSet()
+        }
+    return SharedThreadComposerDraftProjection(
+        rootConversationIds = directRootIds + directoryJointRootIds,
+        rootJointChannelIds = rootJointIds,
         replyParentMessageIds = mapNotNull { record ->
             record.parentMessageId?.takeIf { !record.isRootComposer && it.isNotBlank() }
         }.toSet()
     )
+}
 
 internal fun InboxItem.withComposerDraftProjection(
-    draftProjection: SharedThreadComposerDraftProjection
+    draftProjection: SharedThreadComposerDraftProjection,
+    jointChannelId: String? = null
 ): InboxItem =
-    copy(hasDraft = draftProjection.hasDraftForInboxItem(this))
+    copy(hasDraft = draftProjection.hasDraftForInboxItem(this, jointChannelId))
 
 internal fun InboxSnapshot.withComposerDraftProjection(
-    draftProjection: SharedThreadComposerDraftProjection
+    draftProjection: SharedThreadComposerDraftProjection,
+    jointChannelIdForChannel: (String) -> String? = { null }
 ): InboxSnapshot =
-    copy(items = items.map { item -> item.withComposerDraftProjection(draftProjection) })
+    copy(items = items.map { item -> item.withComposerDraftProjection(draftProjection, jointChannelIdForChannel(item.channelId.value)) })
 
 /**
  * A preference store is the synchronization domain for composer drafts.  A page can construct
@@ -759,14 +801,55 @@ internal class SharedThreadComposerDraftPersistence(
         readWithReplyFallbackUnlocked(key)
     }
 
-    private fun readWithReplyFallbackUnlocked(key: String): Pair<String, SharedThreadComposerPersistedDraft>? {
-        readUnlocked(key)?.let { draft -> return key to draft }
-        val currentRecord = key.toSharedThreadComposerDraftRecord()?.takeUnless { it.isRootComposer }
-            ?: return null
+    fun readEditedAtEpochMillis(key: String): Long? = lock.withLock {
+        store.getString(editedAtKey(key))?.toLongOrNull()
+    }
+
+    fun matchingSiblingKeys(key: String): List<String> = lock.withLock {
+        matchingSiblingKeysUnlocked(key)
+    }
+
+    private fun matchingSiblingKeysUnlocked(key: String): List<String> {
+        val currentRecord = key.toSharedThreadComposerDraftRecord() ?: return emptyList()
         return activeDraftRecordsUnlocked()
-            .filter { record -> record.key != key && record.matchesReplyThreadIdentity(currentRecord) }
-            .sortedBy { record -> record.key }
-            .mapNotNull { record -> readUnlocked(record.key)?.let { draft -> record.key to draft } }
+            .filter { record -> record.key != key && record.matchesSharedDraftIdentity(currentRecord) }
+            .map { record -> record.key }
+            .sorted()
+    }
+
+    private fun readWithReplyFallbackUnlocked(key: String): Pair<String, SharedThreadComposerPersistedDraft>? {
+        val directDraft = readUnlocked(key)
+        val currentRecord = key.toSharedThreadComposerDraftRecord()
+            ?: return directDraft?.let { key to it }
+        val siblings =
+            activeDraftRecordsUnlocked()
+                .filter { record -> record.key != key && record.matchesSharedDraftIdentity(currentRecord) }
+        if (siblings.isEmpty()) {
+            return directDraft?.let { key to it }
+        }
+        val candidates =
+            buildList {
+                if (directDraft != null) {
+                    add(key to store.getString(editedAtKey(key))?.toLongOrNull())
+                }
+                siblings.forEach { sibling ->
+                    add(sibling.key to store.getString(editedAtKey(sibling.key))?.toLongOrNull())
+                }
+            }
+        return candidates
+            .sortedWith(
+                compareByDescending<Pair<String, Long?>> { (_, editedAt) ->
+                    editedAt ?: Long.MIN_VALUE
+                }.thenBy { (candidateKey, _) ->
+                    if (candidateKey == key) 0 else 1
+                }.thenBy { (candidateKey, _) ->
+                    candidateKey
+                }
+            )
+            .mapNotNull { (candidateKey, _) ->
+                val draft = if (candidateKey == key) directDraft else readUnlocked(candidateKey)
+                draft?.let { candidateKey to it }
+            }
             .firstOrNull()
     }
 
@@ -783,6 +866,8 @@ internal class SharedThreadComposerDraftPersistence(
          * `persist_save[d]` lines; the slice logs one summary line for the burst instead.
          */
         routineDiagnostics: Boolean = true,
+        preserveEditedAt: Boolean = false,
+        preservedEditedAtEpochMillis: Long? = null,
     ) {
         var durableSnapshot: SharedThreadComposerDraftStorageSnapshot? = null
         var mutation: SharedThreadComposerDraftNonTransactionalMutation? = null
@@ -802,6 +887,8 @@ internal class SharedThreadComposerDraftPersistence(
                         uploadedAttachments = uploadedAttachments,
                         externalShareSources = externalShareSources,
                         structuredMentions = structuredMentions,
+                        preserveEditedAt = preserveEditedAt,
+                        preservedEditedAtEpochMillis = preservedEditedAtEpochMillis,
                     )
                     transactionOwned = true
                     return@withLock
@@ -820,6 +907,8 @@ internal class SharedThreadComposerDraftPersistence(
                     externalShareSources = externalShareSources,
                     structuredMentions = structuredMentions,
                     routineDiagnostics = routineDiagnostics,
+                    preserveEditedAt = preserveEditedAt,
+                    preservedEditedAtEpochMillis = preservedEditedAtEpochMillis,
                 )
                 mutation =
                     SharedThreadComposerDraftNonTransactionalMutation(
@@ -856,6 +945,8 @@ internal class SharedThreadComposerDraftPersistence(
         uploadedAttachments: List<SharedThreadComposerAttachment>,
         externalShareSources: List<SharedThreadComposerExternalShareSource>,
         structuredMentions: List<ThreadSendMessageMention>? = null,
+        preserveEditedAt: Boolean = false,
+        preservedEditedAtEpochMillis: Long? = null,
     ): Set<String> = lock.withLock {
         checkOwnsTransitionLocked(transaction)
         saveUnlocked(
@@ -865,6 +956,8 @@ internal class SharedThreadComposerDraftPersistence(
             uploadedAttachments = uploadedAttachments,
             externalShareSources = externalShareSources,
             structuredMentions = structuredMentions,
+            preserveEditedAt = preserveEditedAt,
+            preservedEditedAtEpochMillis = preservedEditedAtEpochMillis,
         ).also { refs -> transaction.deferRetirement(key, refs) }
     }
 
@@ -886,6 +979,8 @@ internal class SharedThreadComposerDraftPersistence(
         externalShareSources: List<SharedThreadComposerExternalShareSource>,
         structuredMentions: List<ThreadSendMessageMention>? = null,
         routineDiagnostics: Boolean = true,
+        preserveEditedAt: Boolean = false,
+        preservedEditedAtEpochMillis: Long? = null,
     ): Set<String> {
         val previous = readUnlocked(key)
         val persistedMentions =
@@ -941,10 +1036,10 @@ internal class SharedThreadComposerDraftPersistence(
             // draft saved before this row existed has none until its text changes.
             store.putString(
                 editedAtKey(key),
-                if (previous != null && previous.text == text) {
-                    store.getString(editedAtKey(key))
-                } else {
-                    nowEpochMillis().toString()
+                when {
+                    preserveEditedAt -> preservedEditedAtEpochMillis?.toString()
+                    previous != null && previous.text == text -> store.getString(editedAtKey(key))
+                    else -> nowEpochMillis().toString()
                 }
             )
             addActiveKey(key)
@@ -1135,6 +1230,7 @@ internal class SharedThreadComposerDraftPersistence(
         }
         val existing = readWithReplyFallbackUnlocked(key)
         val fallbackSourceKey = existing?.first?.takeIf { it != key }
+        val siblingKeysToClear = (listOfNotNull(fallbackSourceKey) + matchingSiblingKeysUnlocked(key)).distinct()
         val current = existing?.second
         val nextText =
             listOf(current?.text.orEmpty(), text.trim())
@@ -1155,7 +1251,7 @@ internal class SharedThreadComposerDraftPersistence(
                 "external_share_composer_draft_empty"
             )
         }
-        val before = captureTransitionSnapshotUnlocked(listOfNotNull(key, fallbackSourceKey))
+        val before = captureTransitionSnapshotUnlocked(listOf(key) + siblingKeysToClear)
         try {
             store.putString(textKey(key), nextText)
             store.putString(asTaskKey(key), (record.isRootComposer && current?.asTask == true).toString())
@@ -1180,11 +1276,11 @@ internal class SharedThreadComposerDraftPersistence(
                 }
             )
             addActiveKey(key)
-            if (fallbackSourceKey != null) {
-                storageKeysForDraft(fallbackSourceKey).forEach { storageKey ->
+            siblingKeysToClear.forEach { siblingKey ->
+                storageKeysForDraft(siblingKey).forEach { storageKey ->
                     store.putString(storageKey, null)
                 }
-                removeActiveKey(fallbackSourceKey)
+                removeActiveKey(siblingKey)
             }
         } catch (error: Throwable) {
             runCatching { restoreTransitionSnapshotUnlocked(before) }
@@ -1465,7 +1561,8 @@ internal class SharedThreadComposerDraftPersistence(
             key = this,
             sendChannelId = sendChannelId,
             parentMessageId = values["parent"]?.takeIf { it.isNotBlank() && it != "_" },
-            mentionChannelId = values["mention"]?.takeIf { it.isNotBlank() && it != "_" }
+            mentionChannelId = values["mention"]?.takeIf { it.isNotBlank() && it != "_" },
+            jointChannelId = values["joint"]?.takeIf { it.isNotBlank() && it != "_" }
         )
     }
 
@@ -1591,9 +1688,15 @@ internal class SharedThreadComposerDraftPersistSlice(
 
     /** The durable drafts with their text and last edit (the Drafts list); see [SharedThreadComposerDraftPersistence.draftListings]. */
     fun draftListings(): List<SharedThreadComposerDraftListing> = persistence.draftListings()
+    private data class PendingFallbackDraftMigration(
+        val sourceKeys: List<String>,
+        val saveToCurrentKey: Boolean,
+        val editedAtEpochMillis: Long?,
+    )
+
     private val stagedUploadedAttachmentsByDraftKey =
         mutableMapOf<String, List<SharedThreadComposerAttachment>>()
-    private val fallbackDraftSourceKeyByCurrentKey = mutableMapOf<String, String>()
+    private val fallbackDraftMigrationByCurrentKey = mutableMapOf<String, PendingFallbackDraftMigration>()
     /** Single re-entrant lock for every slice-local map and the shared active-record projection. */
     private val stateLock = reentrantLock()
     /** Secondary write ordering lock; always acquired after [stateLock]. */
@@ -1627,7 +1730,7 @@ internal class SharedThreadComposerDraftPersistSlice(
      */
     private inner class SharedThreadComposerDraftMutableSnapshot(
         val stagedUploadedAttachmentsByDraftKey: Map<String, List<SharedThreadComposerAttachment>>,
-        val fallbackDraftSourceKeyByCurrentKey: Map<String, String>,
+        val fallbackDraftMigrationByCurrentKey: Map<String, PendingFallbackDraftMigration>,
         val pendingWritesByDraftKey: Map<String, PendingThreadComposerDraftWriteSnapshot>,
         val writeGenerationByDraftKey: Map<String, Long>,
         val activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
@@ -1684,7 +1787,8 @@ internal class SharedThreadComposerDraftPersistSlice(
         val pendingKeys = pendingWritesByDraftKey.keys.toSet()
         val stagedKeys = stagedUploadedAttachmentsByDraftKey.keys.toSet()
         val fallbackKeys =
-            (fallbackDraftSourceKeyByCurrentKey.keys + fallbackDraftSourceKeyByCurrentKey.values).toSet()
+            (fallbackDraftMigrationByCurrentKey.keys +
+                fallbackDraftMigrationByCurrentKey.values.flatMap { it.sourceKeys }).toSet()
         val keys =
             buildSet {
                 previous.draftKey?.let(::add)
@@ -1711,7 +1815,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                 }
             SharedThreadComposerDraftMutableSnapshot(
                 stagedUploadedAttachmentsByDraftKey = stagedUploadedAttachmentsByDraftKey.mapValues { (_, value) -> value.toList() },
-                fallbackDraftSourceKeyByCurrentKey = fallbackDraftSourceKeyByCurrentKey.toMap(),
+                fallbackDraftMigrationByCurrentKey = fallbackDraftMigrationByCurrentKey.toMap(),
                 pendingWritesByDraftKey = pendingSnapshot,
                 writeGenerationByDraftKey = writeGenerationByDraftKey.toMap(),
                 activeDraftRecords = SharedActiveDraftRecordsState.value,
@@ -1745,8 +1849,8 @@ internal class SharedThreadComposerDraftPersistSlice(
                 pendingWritesByDraftKey.values.forEach { pending -> pending.cancellation?.cancel() }
                 stagedUploadedAttachmentsByDraftKey.clear()
                 stagedUploadedAttachmentsByDraftKey.putAll(snapshot.stagedUploadedAttachmentsByDraftKey)
-                fallbackDraftSourceKeyByCurrentKey.clear()
-                fallbackDraftSourceKeyByCurrentKey.putAll(snapshot.fallbackDraftSourceKeyByCurrentKey)
+                fallbackDraftMigrationByCurrentKey.clear()
+                fallbackDraftMigrationByCurrentKey.putAll(snapshot.fallbackDraftMigrationByCurrentKey)
                 pendingWritesByDraftKey.clear()
                 writeGenerationByDraftKey.clear()
                 writeGenerationByDraftKey.putAll(snapshot.writeGenerationByDraftKey)
@@ -1793,7 +1897,18 @@ internal class SharedThreadComposerDraftPersistSlice(
             is SharedThreadComposerDraftIntent.Start -> {
                 val draftKey = intent.draftKey?.takeIf { it.isNotBlank() }
                 previous.draftKey?.takeIf { it != draftKey }?.let(::flushPendingWrite)
-                draftKey?.let(::flushPendingWrite)
+                draftKey?.let { key ->
+                    flushPendingWrite(key)
+                    persistence.recordForKey(key)?.let { targetRecord ->
+                        pendingWritesByDraftKey.keys
+                            .filter { pendingKey ->
+                                pendingKey != key &&
+                                    persistence.recordForKey(pendingKey)?.matchesSharedDraftIdentity(targetRecord) == true
+                            }
+                            .sorted()
+                            .forEach(::flushPendingWrite)
+                    }
+                }
                 val sameDraftKey = draftKey != null && previous.draftKey == draftKey
                 val stagedUploadedAttachments = consumeStagedUploadedAttachments(draftKey)
                 val sessionAttachments =
@@ -1811,8 +1926,20 @@ internal class SharedThreadComposerDraftPersistSlice(
                 val restoredDraft =
                     draftKey
                         ?.let(persistence::readWithReplyFallback)
-                if (draftKey != null && restoredDraft != null && restoredDraft.first != draftKey) {
-                    fallbackDraftSourceKeyByCurrentKey[draftKey] = restoredDraft.first
+                if (draftKey != null) {
+                    val siblingKeys = persistence.matchingSiblingKeys(draftKey)
+                    val fallbackSourceKey = restoredDraft?.first?.takeIf { it != draftKey }
+                    val sourceKeysToClear = (listOfNotNull(fallbackSourceKey) + siblingKeys).distinct()
+                    if (sourceKeysToClear.isNotEmpty()) {
+                        fallbackDraftMigrationByCurrentKey[draftKey] =
+                            PendingFallbackDraftMigration(
+                                sourceKeys = sourceKeysToClear,
+                                saveToCurrentKey = fallbackSourceKey != null,
+                                editedAtEpochMillis = fallbackSourceKey?.let(persistence::readEditedAtEpochMillis),
+                            )
+                    } else {
+                        fallbackDraftMigrationByCurrentKey.remove(draftKey)
+                    }
                 }
                 val restored =
                     restoredDraft
@@ -1871,20 +1998,29 @@ internal class SharedThreadComposerDraftPersistSlice(
         when (intent) {
             is SharedThreadComposerDraftIntent.Start ->
                 next.draftKey?.let { key ->
-                    val fallbackSourceKey = stateLock.withLock {
-                        fallbackDraftSourceKeyByCurrentKey.remove(key)
+                    val migration = stateLock.withLock {
+                        fallbackDraftMigrationByCurrentKey.remove(key)
                     }
-                    if (fallbackSourceKey != null && fallbackSourceKey != key && isCurrentAccount(next)) {
+                    if (migration != null && isCurrentAccount(next)) {
                         persistenceWriteLock.withLock {
-                            persistence.save(
-                                key = key,
-                                text = next.seedText,
-                                asTask = next.seedAsTask,
-                                uploadedAttachments = next.visiblePersistableThreadComposerDraftAttachments(),
-                                externalShareSources = next.externalShareSources,
-                                structuredMentions = next.structuredMentions,
-                            )
-                            persistence.clear(fallbackSourceKey)
+                            if (migration.saveToCurrentKey) {
+                                persistence.save(
+                                    key = key,
+                                    text = next.seedText,
+                                    asTask = next.seedAsTask,
+                                    uploadedAttachments = next.visiblePersistableThreadComposerDraftAttachments(),
+                                    externalShareSources = next.externalShareSources,
+                                    structuredMentions = next.structuredMentions,
+                                    preserveEditedAt = true,
+                                    preservedEditedAtEpochMillis = migration.editedAtEpochMillis,
+                                )
+                            }
+                            migration.sourceKeys
+                                .filter { sourceKey -> sourceKey != key }
+                                .forEach { sourceKey ->
+                                    cancelPendingWrite(sourceKey)
+                                    persistence.clear(sourceKey)
+                                }
                             refreshActiveDraftRecords(reason = "StartFallbackRestore")
                         }
                     }
@@ -1919,6 +2055,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                         cancelPendingWrite(key)
                         persistenceWriteLock.withLock {
                             persistence.clear(key)
+                            clearMatchingSiblingDraftsLocked(key)
                             refreshActiveDraftRecords(reason = "CompleteSend")
                         }
                     }
@@ -2153,8 +2290,25 @@ internal class SharedThreadComposerDraftPersistSlice(
             structuredMentions = state.structuredMentions,
             routineDiagnostics = routineDiagnostics,
         )
+        if (!state.hasPersistableThreadComposerDraft()) {
+            clearMatchingSiblingDraftsLocked(key)
+        }
         refreshActiveDraftRecords(reason = reason, onlyLogWhenChanged = onlyLogRecordsWhenChanged)
         return true
+    }
+
+    private fun clearMatchingSiblingDraftsLocked(key: String) {
+        val targetRecord = persistence.recordForKey(key) ?: return
+        pendingWritesByDraftKey.keys
+            .filter { pendingKey ->
+                pendingKey != key &&
+                    persistence.recordForKey(pendingKey)?.matchesSharedDraftIdentity(targetRecord) == true
+            }
+            .sorted()
+            .forEach(::cancelPendingWrite)
+        persistence.matchingSiblingKeys(key).forEach { siblingKey ->
+            persistence.clear(siblingKey)
+        }
     }
 
     private fun persistStateIfGenerationCurrent(
@@ -2283,12 +2437,11 @@ internal class SharedThreadComposerDraftPersistSlice(
                 // merge the handoff without allowing a debounced save to overwrite it in between.
                 flushPendingWriteLocked(key)
                 persistence.recordForKey(key)
-                    ?.takeUnless { it.isRootComposer }
                     ?.let { targetRecord ->
                         pendingWritesByDraftKey.keys
                             .filter { pendingKey ->
                                 pendingKey != key &&
-                                    persistence.recordForKey(pendingKey)?.matchesReplyThreadIdentity(targetRecord) == true
+                                    persistence.recordForKey(pendingKey)?.matchesSharedDraftIdentity(targetRecord) == true
                             }
                             .sorted()
                             .forEach(::flushPendingWriteLocked)
@@ -2322,7 +2475,7 @@ internal class SharedThreadComposerDraftPersistSlice(
             pendingWritesByDraftKey.clear()
             lastChangeWriteAtMillisByDraftKey.clear()
             stagedUploadedAttachmentsByDraftKey.clear()
-            fallbackDraftSourceKeyByCurrentKey.clear()
+            fallbackDraftMigrationByCurrentKey.clear()
             persistenceWriteLock.withLock { rebind() }
             pending.values
         }

@@ -1328,6 +1328,8 @@
     <string name="external_share_error_title">無法開啟分享內容</string>
     <string name="external_share_error_detail">請再試一次，或關閉後重新分享內容。</string>
     <string name="external_share_retry_failed">重試失敗的項目</string>
+    <string name="thread_composer_external_share_other_server">此分享草稿只能在 %1$s 中傳送。</string>
+    <string name="thread_composer_external_share_other_server_generic">此分享草稿只能在分享目標伺服器中傳送。</string>
     <string name="thread_share_preview_title">分享預覽</string>
     <string name="thread_share_export_failed">圖片匯出失敗</string>
     <string name="thread_share_export_failed_detail">請在所選訊息顯示後再試一次。</string>

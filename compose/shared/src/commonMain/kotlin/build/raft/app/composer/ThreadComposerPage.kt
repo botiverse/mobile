@@ -594,6 +594,7 @@ internal data class ThreadComposerSurface(
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
     val mentionChannelId: String? = null,
+    val jointChannelId: String? = null,
     val mentionChannelLabel: String? = null,
     val memberSuggestionHeadersVisible: Boolean = kind != RaftThreadSurfaceKind.DirectMessage,
     val showTaskButton: Boolean = true,
@@ -634,11 +635,15 @@ internal fun ThreadComposerSurface.composerAutofocusConversationKey(): String? =
 
 internal fun ThreadComposerSurface.threadComposerDraftKey(): String? {
     val sendTarget = sendChannelId?.takeIf { it.isNotBlank() } ?: return null
-    return listOf(
-        "send" to sendTarget,
-        "parent" to parentMessageId.orEmpty(),
-        "mention" to mentionScopeChannelId.orEmpty()
-    ).joinToString(separator = "|") { (name, value) ->
+    val normalizedJoint = jointChannelId?.trim()?.takeIf { it.isNotBlank() }
+    return buildList {
+        add("send" to sendTarget)
+        add("parent" to parentMessageId.orEmpty())
+        add("mention" to mentionScopeChannelId.orEmpty())
+        if (normalizedJoint != null) {
+            add("joint" to normalizedJoint)
+        }
+    }.joinToString(separator = "|") { (name, value) ->
         "$name=${value.threadComposerDraftKeyPart()}"
     }
 }
@@ -2288,6 +2293,7 @@ internal fun RaftThreadComposerPayload.isDefaultThreadComposer(): Boolean =
 internal fun RaftThreadComposerPayload.toThreadComposerSurface(
     channelId: String,
     parentChannelId: String? = null,
+    jointChannelId: String? = null,
     mentionChannelLabel: String? = null,
     memberSuggestionHeadersVisible: Boolean = surfaceKind != RaftThreadSurfaceKind.DirectMessage
 ): ThreadComposerSurface =
@@ -2298,6 +2304,7 @@ internal fun RaftThreadComposerPayload.toThreadComposerSurface(
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
         mentionChannelId = mentionChannelId,
+        jointChannelId = jointChannelId?.trim()?.takeIf { it.isNotBlank() },
         mentionChannelLabel = mentionChannelLabel,
         memberSuggestionHeadersVisible = memberSuggestionHeadersVisible,
         showTaskButton = showAsTaskToggle

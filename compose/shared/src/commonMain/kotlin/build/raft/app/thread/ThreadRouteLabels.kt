@@ -87,7 +87,9 @@ internal data class ThreadRouteLabels(
     val dropFoldersCantUploadLabel: String,
     val dropFoldersSkippedLabel: String,
     val attachmentSkippedManyTemplate: String,
-    val unableToOpenThreadRefLabel: String
+    val unableToOpenThreadRefLabel: String,
+    val externalShareOtherServerTemplate: String,
+    val externalShareOtherServerGenericLabel: String,
 )
 
 @Composable
@@ -249,6 +251,10 @@ internal fun threadRouteLabels(): ThreadRouteLabels {
     val attachmentSkippedManyTemplate =
         stringResource(Res.string.thread_attachment_skipped_many, ThreadLocalizedFeedbackPlaceholder)
     val unableToOpenThreadRefLabel = stringResource(Res.string.thread_error_open_thread_ref)
+    val externalShareOtherServerTemplate =
+        stringResource(Res.string.thread_composer_external_share_other_server, ThreadLocalizedFeedbackPlaceholder)
+    val externalShareOtherServerGenericLabel =
+        stringResource(Res.string.thread_composer_external_share_other_server_generic)
     return ThreadRouteLabels(
         actionCardSuccessLabels = actionCardSuccessLabels,
         actionCardFailureLabels = actionCardFailureLabels,
@@ -326,6 +332,8 @@ internal fun threadRouteLabels(): ThreadRouteLabels {
         dropFoldersCantUploadLabel = dropFoldersCantUploadLabel,
         dropFoldersSkippedLabel = dropFoldersSkippedLabel,
         attachmentSkippedManyTemplate = attachmentSkippedManyTemplate,
-        unableToOpenThreadRefLabel = unableToOpenThreadRefLabel
+        unableToOpenThreadRefLabel = unableToOpenThreadRefLabel,
+        externalShareOtherServerTemplate = externalShareOtherServerTemplate,
+        externalShareOtherServerGenericLabel = externalShareOtherServerGenericLabel
     )
 }

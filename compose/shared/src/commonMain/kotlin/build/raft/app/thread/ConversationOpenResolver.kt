@@ -43,7 +43,8 @@ internal data class ConversationOpenSourceMessageIdentity(
     val lastMessageId: String? = null,
     val latestActivityMessageId: String? = null,
     val unreadCount: Int = 0,
-    val originFallback: ThreadLaunchOriginFallback? = null
+    val originFallback: ThreadLaunchOriginFallback? = null,
+    val jointChannelId: String? = null,
 ) {
     // task #441 (superseding the old ordered-fallback contract): the lookup resolves ONLY
     // ids that name the conversation itself (thread stream, channel). The parent/anchor
@@ -152,12 +153,21 @@ internal fun resolveOpenRequest(
     // parentConversationKind on the source; otherwise it stays unresolved and must NOT fall
     // back to a channel-shaped guess (#415). A projection that never resolved is still just
     // hydrating. The distinction is the Pending reason.
+    val parentProjection =
+        sourceMessageIdentity.parentChannelId
+            ?.let(conversationDirectory::resolve)
+            ?.takeUnless { it.surfaceKind == RaftThreadSurfaceKind.ReplyThread }
     val authoritativeParentKind =
         sourceMessageIdentity.parentConversationKind
-            ?: sourceMessageIdentity.parentChannelId
+            ?: parentProjection?.conversationKind
+    val authoritativeJointChannelId =
+        sourceMessageIdentity.jointChannelId?.takeIf { it.isNotBlank() }
+            ?: parentProjection?.jointChannelId?.takeIf { it.isNotBlank() }
+            ?: sourceMessageIdentity.channelId
                 ?.let(conversationDirectory::resolve)
                 ?.takeUnless { it.surfaceKind == RaftThreadSurfaceKind.ReplyThread }
-                ?.conversationKind
+                ?.jointChannelId
+                ?.takeIf { it.isNotBlank() }
     val conversation =
         if (activityInternalJointParentSource || notificationThreadProjectionMismatch) {
             null
@@ -167,11 +177,28 @@ internal fun resolveOpenRequest(
             // projection must never rewrite the row's local parent identity.
             // Rebuild only from the typed source (or remain Pending below).
             sourceMessageIdentity.toThreadLaunchConversationIdentity(
-                sourceMessageIdentity.parentConversationKind
+                authoritativeParentKind = sourceMessageIdentity.parentConversationKind,
+                authoritativeJointChannelId = sourceMessageIdentity.jointChannelId,
             )
         } else {
             projection?.toThreadLaunchConversationIdentity(conversationDirectory)
-                ?: sourceMessageIdentity.toThreadLaunchConversationIdentity(authoritativeParentKind)
+                ?.let { identity ->
+                    if (
+                        identity.jointChannelId.isNullOrBlank() &&
+                        !authoritativeJointChannelId.isNullOrBlank() &&
+                        identity.kind != ConversationKind.DirectMessage &&
+                        identity.kind != ConversationKind.Task &&
+                        identity.thread?.parentSurfaceKind != RaftThreadSurfaceKind.DirectMessage
+                    ) {
+                        identity.copy(jointChannelId = authoritativeJointChannelId)
+                    } else {
+                        identity
+                    }
+                }
+                ?: sourceMessageIdentity.toThreadLaunchConversationIdentity(
+                    authoritativeParentKind = authoritativeParentKind,
+                    authoritativeJointChannelId = authoritativeJointChannelId,
+                )
         }
     val resolution =
         if (conversation == null) {
@@ -323,10 +350,13 @@ internal fun AuthPendingOpenRequest.Thread.toConversationOpenSourceMessageIdenti
 }
 
 private fun ConversationOpenSourceMessageIdentity.toThreadLaunchConversationIdentity(
-    authoritativeParentKind: ConversationKind?
+    authoritativeParentKind: ConversationKind?,
+    authoritativeJointChannelId: String? = null,
 ): ThreadLaunchConversationIdentity? {
     val kind = conversationKind ?: return null
     val parentKind = parentConversationKind ?: authoritativeParentKind
+    val resolvedJointChannelId =
+        (jointChannelId ?: authoritativeJointChannelId)?.trim()?.takeIf { it.isNotBlank() }
     if (kind == ConversationKind.Thread) {
         val parentChannel = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
         val parentMessage = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId) ?: return null
@@ -342,7 +372,8 @@ private fun ConversationOpenSourceMessageIdentity.toThreadLaunchConversationIden
             parentChannelId = parentChannel,
             parentMessageId = parentMessage,
             parentSurfaceKind = typedParentKind.threadParentSurfaceKindOrNull(),
-            parentChannelKind = typedParentKind.threadChannelKindWireValue()
+            parentChannelKind = typedParentKind.threadChannelKindWireValue(),
+            jointChannelId = if (typedParentKind == ConversationKind.DirectMessage) null else resolvedJointChannelId,
         )
     }
     val channel = channelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
@@ -353,7 +384,13 @@ private fun ConversationOpenSourceMessageIdentity.toThreadLaunchConversationIden
         parentChannelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         parentSurfaceKind = parentKind.threadParentSurfaceKindOrNull(),
-        parentChannelKind = parentKind.threadChannelKindWireValue()
+        parentChannelKind = parentKind.threadChannelKindWireValue(),
+        jointChannelId =
+            if (kind == ConversationKind.DirectMessage || kind == ConversationKind.Task) {
+                null
+            } else {
+                resolvedJointChannelId
+            },
     )
 }
 

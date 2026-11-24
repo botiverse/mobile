@@ -18,6 +18,7 @@ internal data class RaftDraftChannelPlaceWireDto(
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
     val taskId: String? = null,
+    val jointChannelId: String? = null,
 )
 
 /** A conversation as `GET /channels/:id` names it; [type] is lower-case (`channel`, `dm`, `thread`, `task`, ...). */
@@ -27,6 +28,7 @@ internal data class RaftDraftChannelPlace(
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
     val taskId: String? = null,
+    val jointChannelId: String? = null,
 )
 
 /** Null for a body that is not a channel row (no id or type). */
@@ -43,5 +45,6 @@ internal fun parseRaftDraftChannelPlace(bodyText: String?): RaftDraftChannelPlac
         parentChannelId = wire.parentChannelId?.trim()?.takeIf(String::isNotBlank),
         parentMessageId = wire.parentMessageId?.trim()?.takeIf(String::isNotBlank),
         taskId = wire.taskId?.trim()?.takeIf(String::isNotBlank),
+        jointChannelId = wire.jointChannelId?.trim()?.takeIf(String::isNotBlank),
     )
 }

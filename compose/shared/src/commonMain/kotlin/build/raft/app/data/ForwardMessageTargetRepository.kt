@@ -1494,6 +1494,7 @@ private fun ForwardTargetSearchItemDto.toForwardConversationTarget(
         channelId = ChannelId(conversationChannelId),
         channelKind = if (task) ConversationKind.Task else ConversationKind.Thread,
         channelType = cleanType,
+        jointChannelId = if (task) null else jointChannelId?.trim()?.takeIf { it.isNotBlank() },
         joined = true,
         canForwardNow = true,
         requiredAction = ForwardMessageTargetRequiredAction.None,
