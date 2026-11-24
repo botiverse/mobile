@@ -6489,11 +6489,11 @@ internal class RaftBridgeModule(
                                 )
                 )
         val sdkErrorCode =
-                when {
-                    decision.targetDrifted && offerAvailable -> "target_changed"
-                    decision.targetDrifted -> "offer_withdrawn"
-                    else -> status.errorCode
-                }
+                handsUpdateBridgeErrorCode(
+                        decision = decision,
+                        offerAvailable = offerAvailable,
+                        sdkErrorCode = status.errorCode
+                )
         // The SDK keeps install_permission_required until the installer opens: read it against the
         // permission as it is now (granted since then: a plain Install).
         val permission =

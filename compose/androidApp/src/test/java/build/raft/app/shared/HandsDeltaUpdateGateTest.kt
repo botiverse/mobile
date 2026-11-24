@@ -115,6 +115,210 @@ class HandsDeltaUpdateGateTest {
         assertFalse(decision.updateAvailable)
         assertFalse(decision.retryable)
         assertFalse(decision.targetDrifted)
+        assertFalse(decision.supersededPriorInstall)
+    }
+
+    @Test
+    fun newerOfferOverridesCompletedInstalledTransactionAndClearsStaleError() {
+        listOf("installed", "installer_opened", "failed").forEach { priorState ->
+            val decision =
+                handsUpdateBridgeDecision(
+                    sdkStateWire = priorState,
+                    sdkTarget = updateTarget(13_000_003L),
+                    sdkInstalledVersionCode = 13_000_004L,
+                    sdkRetryable = true,
+                    offerChecked = true,
+                    offerAvailable = true,
+                    offerTarget = updateTarget(13_000_005L)
+                )
+
+            assertEquals(priorState, SharedSettingsUpdateTransactionState.Idle, decision.state)
+            assertEquals(priorState, 13_000_005L, decision.targetVersionCode)
+            assertEquals(priorState, 13_000_004L, decision.installedVersionCode)
+            assertTrue(priorState, decision.updateAvailable)
+            assertFalse(priorState, decision.retryable)
+            assertFalse(priorState, decision.targetDrifted)
+            assertTrue(priorState, decision.supersededPriorInstall)
+            assertNull(
+                priorState,
+                handsUpdateBridgeErrorCode(
+                    decision = decision,
+                    offerAvailable = true,
+                    sdkErrorCode = "download_failed"
+                )
+            )
+        }
+    }
+
+    @Test
+    fun installedTransactionStaysInstalledUnlessCheckedOfferIsStrictlyNewer() {
+        val sameVersion =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "installed",
+                sdkTarget = updateTarget(13_000_004L),
+                sdkInstalledVersionCode = 13_000_004L,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget = updateTarget(13_000_004L)
+            )
+        val olderVersion =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "installed",
+                sdkTarget = updateTarget(13_000_003L),
+                sdkInstalledVersionCode = 13_000_004L,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget = updateTarget(13_000_003L)
+            )
+        val unavailableOffer =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "installed",
+                sdkTarget = updateTarget(13_000_003L),
+                sdkInstalledVersionCode = 13_000_004L,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = false,
+                offerTarget = updateTarget(13_000_005L)
+            )
+        val uncheckedOffer =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "installed",
+                sdkTarget = updateTarget(13_000_003L),
+                sdkInstalledVersionCode = 13_000_004L,
+                sdkRetryable = false,
+                offerChecked = false,
+                offerAvailable = true,
+                offerTarget = updateTarget(13_000_005L)
+            )
+        val missingOfferTarget =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "installed",
+                sdkTarget = updateTarget(13_000_003L),
+                sdkInstalledVersionCode = 13_000_004L,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget = updateTarget(null)
+            )
+        val unknownInstalledSameTarget =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "installed",
+                sdkTarget = updateTarget(13_000_004L),
+                sdkInstalledVersionCode = null,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget = updateTarget(13_000_004L)
+            )
+        val unknownInstalledNewerTarget =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "installed",
+                sdkTarget = updateTarget(13_000_004L),
+                sdkInstalledVersionCode = null,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget = updateTarget(13_000_005L)
+            )
+        val unknownInstalledNullSdkTarget =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "installed",
+                sdkTarget = updateTarget(null),
+                sdkInstalledVersionCode = null,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget = updateTarget(13_000_005L)
+            )
+
+        listOf(
+            "sameVersion" to sameVersion,
+            "olderVersion" to olderVersion,
+            "unavailableOffer" to unavailableOffer,
+            "uncheckedOffer" to uncheckedOffer,
+            "missingOfferTarget" to missingOfferTarget,
+            "unknownInstalledSameTarget" to unknownInstalledSameTarget
+        ).forEach { (label, decision) ->
+            assertEquals(label, SharedSettingsUpdateTransactionState.Installed, decision.state)
+            assertFalse(label, decision.updateAvailable)
+            assertFalse(label, decision.retryable)
+            assertFalse(label, decision.targetDrifted)
+            assertFalse(label, decision.supersededPriorInstall)
+        }
+
+        listOf(
+            "unknownInstalledNewerTarget" to unknownInstalledNewerTarget,
+            "unknownInstalledNullSdkTarget" to unknownInstalledNullSdkTarget
+        ).forEach { (label, decision) ->
+            assertEquals(label, SharedSettingsUpdateTransactionState.Idle, decision.state)
+            assertEquals(label, 13_000_005L, decision.targetVersionCode)
+            assertTrue(label, decision.updateAvailable)
+            assertFalse(label, decision.retryable)
+            assertFalse(label, decision.targetDrifted)
+            assertTrue(label, decision.supersededPriorInstall)
+        }
+    }
+
+    @Test
+    fun bridgeErrorCodePreservesActiveErrorsAndClearsInstalledOrSupersededErrors() {
+        val nativeIdle =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "idle",
+                sdkTarget = updateTarget(null),
+                sdkInstalledVersionCode = 13_000_004L,
+                sdkRetryable = false,
+                offerChecked = false,
+                offerAvailable = false,
+                offerTarget = updateTarget(null)
+            )
+        val nativeFailed =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "failed",
+                sdkTarget = updateTarget(13_000_005L),
+                sdkInstalledVersionCode = 13_000_004L,
+                sdkRetryable = true,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget = updateTarget(13_000_005L)
+            )
+        val driftedAvailable =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "ready_to_install",
+                sdkTarget = updateTarget(13_000_005L),
+                sdkInstalledVersionCode = 13_000_004L,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = true,
+                offerTarget = updateTarget(13_000_006L)
+            )
+        val driftedWithdrawn =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "ready_to_install",
+                sdkTarget = updateTarget(13_000_005L),
+                sdkInstalledVersionCode = 13_000_004L,
+                sdkRetryable = false,
+                offerChecked = true,
+                offerAvailable = false,
+                offerTarget = updateTarget(null)
+            )
+        val installed =
+            handsUpdateBridgeDecision(
+                sdkStateWire = "failed",
+                sdkTarget = updateTarget(13_000_004L),
+                sdkInstalledVersionCode = 13_000_004L,
+                sdkRetryable = true,
+                offerChecked = true,
+                offerAvailable = false,
+                offerTarget = updateTarget(13_000_004L)
+            )
+
+        assertEquals("network_error", handsUpdateBridgeErrorCode(nativeIdle, offerAvailable = false, sdkErrorCode = "network_error"))
+        assertEquals("sha256_mismatch", handsUpdateBridgeErrorCode(nativeFailed, offerAvailable = true, sdkErrorCode = "sha256_mismatch"))
+        assertEquals("target_changed", handsUpdateBridgeErrorCode(driftedAvailable, offerAvailable = true, sdkErrorCode = null))
+        assertEquals("offer_withdrawn", handsUpdateBridgeErrorCode(driftedWithdrawn, offerAvailable = false, sdkErrorCode = null))
+        assertNull(handsUpdateBridgeErrorCode(installed, offerAvailable = false, sdkErrorCode = "download_failed"))
     }
 
     @Test
