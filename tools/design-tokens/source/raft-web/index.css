@@ -185,6 +185,18 @@
     animation: onboarding-runtime-reveal 160ms cubic-bezier(0.2, 0, 0.2, 1);
   }
 
+  /* Runtime usage card (#587 site 6): a manual Check again's answer flashes
+     the "Updated …" line in info-soft, so a check that changed nothing still
+     shows it happened. A colour change, no motion. */
+  @keyframes usage-check-answer {
+    0% { background-color: var(--info-soft); }
+    100% { background-color: transparent; }
+  }
+
+  .usage-check-answer {
+    animation: usage-check-answer 900ms ease-out;
+  }
+
   /* Phone tab bar (Kirby/Jasper 2026-10-20): it hides while the on-screen
      keyboard is up and, when the keyboard closes, comes back with the
      platform's slide-and-fade up instead of a jump: 200ms on the slide ease
