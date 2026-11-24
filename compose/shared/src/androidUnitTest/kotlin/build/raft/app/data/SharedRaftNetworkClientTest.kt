@@ -354,6 +354,33 @@ class SharedRaftNetworkClientTest {
         assertTrue(executor.multiparts.isEmpty(), "no partial multipart may start")
     }
 
+    @Test
+    fun plainChannelDetailGetsShareShortTtlCacheAndInvalidateOnChannelMutation() = runTest {
+        val channelId = "550e8400-e29b-41d4-a716-4466554400aa"
+        var responseIndex = 0
+        val executor = RecordingExecutor {
+            responseIndex += 1
+            ok("""{"id":"$channelId","rev":$responseIndex}""")
+        }
+        val client =
+            SharedRaftNetworkClient(
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                executor = executor,
+                channelDetailCoalescer = RaftChannelDetailGetCoalescer(nowMillis = { testScheduler.currentTime }),
+            )
+
+        val first = client.request(DataRequestPriority.Visible, "channels/$channelId", serverIdOverride = ServerId("server-1"))
+        val second = client.request(DataRequestPriority.Background, "channels/$channelId")
+        assertEquals(first.bodyText, second.bodyText)
+        assertEquals(1, executor.requests.size)
+
+        client.request(DataRequestPriority.Foreground, "channels/$channelId", method = "PATCH", bodyText = """{"name":"updated"}""")
+        val afterPatch = client.request(DataRequestPriority.Visible, "channels/$channelId", serverIdOverride = ServerId("server-1"))
+        assertEquals(3, executor.requests.size)
+        assertEquals("""{"id":"$channelId","rev":3}""", afterPatch.bodyText)
+    }
+
     private class RecordingPlatformFileResolver(
         private val sizeBytes: Long? = 42L
     ) : RaftPlatformFileResolver {

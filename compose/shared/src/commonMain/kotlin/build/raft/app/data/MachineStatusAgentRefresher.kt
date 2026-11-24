@@ -24,15 +24,20 @@ import kotlin.time.TimeSource
  * server-derived online activity.
  *
  * Bursts (e.g. many Computers reconnecting together after a server restart) fold into one
- * `/agents` fetch per active server within [windowMillis]. Pending debounce jobs, active in-flight
- * refresh jobs, and the latest `machine:status` arrival timestamp are coordinated under a single
- * [lock] so:
- * - Events arriving before the debounce fires update the `notStartedBefore` boundary atomically
- *   without scheduling a duplicate follow-up.
- * - An event arriving after a refresh has already started schedules a single follow-up with its
- *   own arrival timestamp.
+ * `/agents` fetch per active server within [windowMillis], and repeated `machine:status` events
+ * are rate-limited to at most one refresh per [minRefreshIntervalMillis] per server (coalescing
+ * any events arriving during the cooldown into one trailing refresh with the latest arrival
+ * boundary). Pending debounce jobs, active in-flight refresh jobs, the last refresh start mark,
+ * and the latest `machine:status` arrival timestamp are coordinated under a single [lock] so:
+ * - A single `machine:status` after idle runs promptly after [windowMillis].
+ * - Events arriving before the scheduled refresh fires update the `notStartedBefore` boundary
+ *   atomically without scheduling a duplicate follow-up.
+ * - An event arriving after a refresh has already started schedules a single trailing follow-up
+ *   once the remaining [minRefreshIntervalMillis] cooldown elapses (or after [windowMillis] when
+ *   no cooldown applies) with its own arrival timestamp.
  * - [cancel] and [cancelAll] cancel both pending and in-flight refreshes for the server(s) and
- *   drop their recorded timestamps; a missing timestamp never fabricates `now` or triggers a read.
+ *   drop their recorded timestamps and cooldown marks; a missing timestamp never fabricates `now`
+ *   or triggers a read.
  * - Forwarding `notStartedBefore` prevents joining or reusing a pre-event `/agents` read, while
  *   concurrent stores for the same server still share one post-event read via [coalesceFreshWithin].
  */
@@ -40,6 +45,7 @@ internal class MachineStatusAgentRefresher(
     private val scope: CoroutineScope,
     private val storesForActiveServer: (serverId: String) -> List<SharedServerMembersStore>,
     private val windowMillis: Long = AgentProfileRefreshCoalescer.DEFAULT_WINDOW_MILLIS,
+    private val minRefreshIntervalMillis: Long = DEFAULT_MIN_REFRESH_INTERVAL_MILLIS,
     private val coalesceFreshWithin: Duration = RECENT_LIVE_STATUS_REFRESH_COALESCE_WINDOW,
     private val timeSource: TimeSource.WithComparableMarks = TimeSource.Monotonic,
     private val logger: (String) -> Unit = {},
@@ -48,6 +54,7 @@ internal class MachineStatusAgentRefresher(
     private val pending = mutableMapOf<String, Job>()
     private val active = mutableMapOf<String, MutableSet<Job>>()
     private val latestEventAtByServerId = mutableMapOf<String, ComparableTimeMark>()
+    private val lastRefreshStartedAtByServerId = mutableMapOf<String, ComparableTimeMark>()
 
     fun onMachineStatus(serverId: String) {
         val normalizedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return
@@ -59,13 +66,26 @@ internal class MachineStatusAgentRefresher(
                     latestEventAtByServerId[normalizedServerId] = eventAt
                     null
                 } else {
+                    val remainingCooldownMillis =
+                        if (minRefreshIntervalMillis > 0L) {
+                            val lastStarted = lastRefreshStartedAtByServerId[normalizedServerId]
+                            if (lastStarted != null) {
+                                val elapsedMillis = (eventAt - lastStarted).inWholeMilliseconds.coerceAtLeast(0L)
+                                (minRefreshIntervalMillis - elapsedMillis).coerceAtLeast(0L)
+                            } else {
+                                0L
+                            }
+                        } else {
+                            0L
+                        }
+                    val delayMillis = maxOf(windowMillis, remainingCooldownMillis)
                     lateinit var scheduled: Job
                     scheduled =
                         scope.launch(start = CoroutineStart.LAZY) {
                             var notStartedBefore: ComparableTimeMark? = null
                             var promotedToActive = false
                             try {
-                                delay(windowMillis)
+                                delay(delayMillis)
                                 synchronized(lock) {
                                     if (scheduled.isActive && pending[normalizedServerId] === scheduled) {
                                         pending.remove(normalizedServerId)
@@ -79,7 +99,7 @@ internal class MachineStatusAgentRefresher(
                                 }
                                 val boundary = notStartedBefore ?: return@launch
                                 coroutineContext.ensureActive()
-                                refreshNow(normalizedServerId, boundary)
+                                refreshNow(normalizedServerId, boundary, scheduled)
                             } finally {
                                 synchronized(lock) {
                                     if (pending[normalizedServerId] === scheduled) {
@@ -115,6 +135,7 @@ internal class MachineStatusAgentRefresher(
         val jobsToCancel =
             synchronized(lock) {
                 latestEventAtByServerId.remove(normalizedServerId)
+                lastRefreshStartedAtByServerId.remove(normalizedServerId)
                 buildList {
                     pending.remove(normalizedServerId)?.let(::add)
                     active.remove(normalizedServerId)?.let(::addAll)
@@ -127,6 +148,7 @@ internal class MachineStatusAgentRefresher(
         val jobsToCancel =
             synchronized(lock) {
                 latestEventAtByServerId.clear()
+                lastRefreshStartedAtByServerId.clear()
                 buildList {
                     addAll(pending.values)
                     pending.clear()
@@ -142,9 +164,22 @@ internal class MachineStatusAgentRefresher(
     private suspend fun refreshNow(
         serverId: String,
         notStartedBefore: ComparableTimeMark,
+        job: Job,
     ) {
         val stores = storesForActiveServer(serverId)
         if (stores.isEmpty()) return
+        val stillActive =
+            synchronized(lock) {
+                if (active[serverId]?.contains(job) == true) {
+                    if (minRefreshIntervalMillis > 0L) {
+                        lastRefreshStartedAtByServerId[serverId] = timeSource.markNow()
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
+        if (!stillActive) return
         logger("machine_status_agents_refresh serverId=$serverId stores=${stores.size}")
         coroutineScope {
             stores.forEach { store ->
@@ -171,5 +206,6 @@ internal class MachineStatusAgentRefresher(
 
     companion object {
         const val REASON = "realtime_${RealtimeSocketEvents.MachineStatus}"
+        const val DEFAULT_MIN_REFRESH_INTERVAL_MILLIS = 15_000L
     }
 }

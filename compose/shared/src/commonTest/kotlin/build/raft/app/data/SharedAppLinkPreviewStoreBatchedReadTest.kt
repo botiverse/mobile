@@ -1,6 +1,8 @@
 package build.raft.app.data
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -172,5 +174,158 @@ class SharedAppLinkPreviewStoreBatchedReadTest {
         assertFalse(store.rereadLink(BViewer, BServer, BMessage, BContent, batch, Pr1), "the read failed")
         assertEquals(3, api.cardReads.size - 1)
         assertTrue(store.view(batch).results[Pr1] is AppLinkResult.Card, "the card stays as it was")
+    }
+
+    @Test
+    fun concurrentInitialBatchedReadsCoalesceStateEmissionsWhileSingleReadCommitsImmediately() = runTest(StandardTestDispatcher()) {
+        val gatesByMessageId = linkedMapOf<String, CompletableDeferred<Unit>>()
+        val responsesByMessageId = linkedMapOf<String, HomeNetworkResponse>()
+        val api =
+            object : RaftAppLinkPreviewApi {
+                override suspend fun readPreviews(messageId: String, serverId: String): HomeNetworkResponse = error("unused")
+
+                override suspend fun readLinkCards(messageId: String, serverId: String, body: AppLinkCardReadRequestBody): HomeNetworkResponse {
+                    gatesByMessageId[messageId]?.await()
+                    return responsesByMessageId.getValue(messageId)
+                }
+
+                override suspend fun allow(appId: String, serverId: String): HomeNetworkResponse = error("unused")
+                override suspend fun decline(appId: String, serverId: String): HomeNetworkResponse = error("unused")
+            }
+
+        val store = SharedAppLinkPreviewStore(api = api, scope = backgroundScope, retryJitterMs = { 0L })
+        val emissions = mutableListOf<Int>()
+        val collectJob = backgroundScope.launch {
+            store.state.collect { emissions += it.entries.size }
+        }
+        runCurrent()
+        assertEquals(listOf(0), emissions)
+
+        // 1. Single-message read commits immediately with 0ms delay.
+        val singleId = "33333333-3333-3333-3333-333333333300"
+        val singleGate = CompletableDeferred<Unit>()
+        gatesByMessageId[singleId] = singleGate
+        responsesByMessageId[singleId] = answer(card(Pr1))
+        val singleBatch = AppLinkBatchRead(AppLinkCardView.create(), "en")
+        store.read(BViewer, BServer, singleId, "See $Pr1", BConversation, singleBatch)
+        runCurrent()
+        singleGate.complete(Unit)
+        runCurrent()
+        assertEquals(listOf(0, 1), emissions, "single read must commit immediately without waiting for batch window")
+
+        // 2. Six concurrent DM-open reads arriving staggered collapse into 2 atomic commits instead of 6.
+        val msgIds = (1..6).map { "33333333-3333-3333-3333-33333333330$it" }
+        msgIds.forEach { id ->
+            gatesByMessageId[id] = CompletableDeferred()
+            responsesByMessageId[id] = answer(card(Pr1))
+            store.read(BViewer, BServer, id, "See $Pr1", BConversation, AppLinkBatchRead(AppLinkCardView.create(), "en"))
+        }
+        runCurrent()
+        emissions.clear()
+
+        // First 4 finish staggered within the 120ms micro-batch window while msgs 5..6 remain in flight.
+        gatesByMessageId.getValue(msgIds[0]).complete(Unit)
+        runCurrent()
+        advanceTimeBy(30)
+        gatesByMessageId.getValue(msgIds[1]).complete(Unit)
+        runCurrent()
+        advanceTimeBy(40)
+        gatesByMessageId.getValue(msgIds[2]).complete(Unit)
+        runCurrent()
+        advanceTimeBy(30)
+        gatesByMessageId.getValue(msgIds[3]).complete(Unit)
+        runCurrent()
+        assertTrue(emissions.isEmpty(), "first 4 stay staged while batch window (100ms < 120ms) and siblings remain active")
+
+        // Window cap (120ms from msg 1) flushes msgs 1..4 in ONE atomic state commit.
+        advanceTimeBy(20)
+        runCurrent()
+        assertEquals(listOf(5), emissions, "msgs 1..4 commit together in a single state emission")
+
+        // Msgs 5..6 finish 50ms apart: msg 6 drains activeInitialReads to 0 and flushes both immediately!
+        advanceTimeBy(50)
+        gatesByMessageId.getValue(msgIds[4]).complete(Unit)
+        runCurrent()
+        assertEquals(listOf(5), emissions, "msg 5 stages while msg 6 is still in flight")
+        advanceTimeBy(50)
+        gatesByMessageId.getValue(msgIds[5]).complete(Unit)
+        runCurrent()
+        assertEquals(listOf(5, 7), emissions, "msg 6 drains in-flight batch and flushes msgs 5..6 immediately")
+
+        collectJob.cancel()
+    }
+
+    @Test
+    fun stagedCommitsFlushWhenLastSiblingFailsAndDropOnClearAllOrDropServer() = runTest(StandardTestDispatcher()) {
+        val gatesByMessageId = linkedMapOf<String, CompletableDeferred<Unit>>()
+        val responsesByMessageId = linkedMapOf<String, HomeNetworkResponse>()
+        val api =
+            object : RaftAppLinkPreviewApi {
+                override suspend fun readPreviews(messageId: String, serverId: String): HomeNetworkResponse = error("unused")
+
+                override suspend fun readLinkCards(messageId: String, serverId: String, body: AppLinkCardReadRequestBody): HomeNetworkResponse {
+                    gatesByMessageId[messageId]?.await()
+                    return responsesByMessageId.getValue(messageId)
+                }
+
+                override suspend fun allow(appId: String, serverId: String): HomeNetworkResponse = error("unused")
+                override suspend fun decline(appId: String, serverId: String): HomeNetworkResponse = error("unused")
+            }
+
+        val store = SharedAppLinkPreviewStore(api = api, scope = backgroundScope, retryJitterMs = { 0L })
+
+        // Case 1: Msg A succeeds and stages while Msg B is in flight; Msg B fails (500) -> Msg A flushes immediately.
+        val msgA = "33333333-3333-3333-3333-333333333311"
+        val msgB = "33333333-3333-3333-3333-333333333312"
+        gatesByMessageId[msgA] = CompletableDeferred()
+        gatesByMessageId[msgB] = CompletableDeferred()
+        responsesByMessageId[msgA] = answer(card(Pr1))
+        responsesByMessageId[msgB] = HomeNetworkResponse(500, null)
+        store.read(BViewer, BServer, msgA, "See $Pr1", BConversation, AppLinkBatchRead(AppLinkCardView.create(), "en"))
+        store.read(BViewer, BServer, msgB, "See $Pr1", BConversation, AppLinkBatchRead(AppLinkCardView.create(), "en"))
+        runCurrent()
+        gatesByMessageId.getValue(msgA).complete(Unit)
+        runCurrent()
+        assertEquals(0, store.state.value.entries.size, "msgA staged while msgB in flight")
+        gatesByMessageId.getValue(msgB).complete(Unit)
+        runCurrent()
+        assertEquals(1, store.state.value.entries.size, "msgA flushes immediately when msgB fails and drains batch")
+
+        // Case 2: dropServer discards staged commits for that server without dropping another server's staged commit.
+        val msgS1 = "33333333-3333-3333-3333-333333333321"
+        val msgS2 = "33333333-3333-3333-3333-333333333322"
+        val msgHold = "33333333-3333-3333-3333-333333333323"
+        listOf(msgS1, msgS2, msgHold).forEach { id ->
+            gatesByMessageId[id] = CompletableDeferred()
+            responsesByMessageId[id] = answer(card(Pr1))
+        }
+        store.read(BViewer, BServer, msgS1, "See $Pr1", BConversation, AppLinkBatchRead(AppLinkCardView.create(), "en"))
+        store.read("user-1:server-2", "server-2", msgS2, "See $Pr1", BConversation, AppLinkBatchRead(AppLinkCardView.create(), "en"))
+        store.read("user-1:server-2", "server-2", msgHold, "See $Pr1", BConversation, AppLinkBatchRead(AppLinkCardView.create(), "en"))
+        runCurrent()
+        gatesByMessageId.getValue(msgS1).complete(Unit)
+        gatesByMessageId.getValue(msgS2).complete(Unit)
+        runCurrent()
+        store.dropServer(BServer)
+        advanceTimeBy(APP_LINK_READ_COMMIT_BATCH_WINDOW_MS)
+        runCurrent()
+        assertEquals(1, store.state.value.entries.size)
+        assertEquals("server-2", store.state.value.entries.values.single().serverId)
+
+        // Case 3: clearAll discards staged commits before timer fires.
+        val msgC1 = "33333333-3333-3333-3333-333333333331"
+        gatesByMessageId[msgC1] = CompletableDeferred()
+        responsesByMessageId[msgC1] = answer(card(Pr1))
+        store.read(BViewer, BServer, msgC1, "See $Pr1", BConversation, AppLinkBatchRead(AppLinkCardView.create(), "en"))
+        runCurrent()
+        gatesByMessageId.getValue(msgC1).complete(Unit)
+        runCurrent()
+        store.clearAll()
+        advanceTimeBy(APP_LINK_READ_COMMIT_BATCH_WINDOW_MS)
+        runCurrent()
+        assertTrue(store.state.value.entries.isEmpty(), "clearAll must drop all staged commits")
+        gatesByMessageId.getValue(msgHold).complete(Unit)
+        runCurrent()
+        assertTrue(store.state.value.entries.isEmpty(), "in-flight read from before clearAll must not repopulate state")
     }
 }
