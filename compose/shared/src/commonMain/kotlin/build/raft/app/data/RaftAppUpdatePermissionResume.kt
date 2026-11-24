@@ -4,7 +4,7 @@ package build.raft.app.data
 internal const val RaftAppUpdatePermissionResumeKey = "appUpdate.reopenInstallerAfterPermission"
 
 /**
- * "Reopen the update installer when Raft is back" (the Android Alpha build's Hands update): set
+ * "Reopen the update installer when Raft is back" (Android Hands delta updates): set
  * just before Raft opens its "Install unknown apps" switch for an update that waits for that
  * permission. Android kills Raft's process when the switch changes, so it is kept in the shared
  * preference store, not in memory. The next resume [take]s it, once, whatever the person chose.

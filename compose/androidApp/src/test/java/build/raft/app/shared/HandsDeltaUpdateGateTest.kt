@@ -1,5 +1,8 @@
 package build.raft.app.shared
 
+import build.hands.update.HandsUpdateProgress
+import build.hands.update.HandsUpdateState
+import build.hands.update.HandsUpdateStatus
 import build.hands.update.INSTALL_PERMISSION_REQUIRED
 import build.hands.update.models.App
 import build.hands.update.models.LatestUpdate
@@ -115,27 +118,39 @@ class HandsDeltaUpdateGateTest {
     }
 
     @Test
-    fun generatedVariantConfigEnablesDeltaOnlyForExactAlphaAndPreviewRelease() {
+    fun generatedVariantConfigEnablesDeltaOnlyForExactAlphaPreviewAndMainRelease() {
         val isExactAlpha =
             BuildConfig.BUILD_TYPE == "alpha" &&
                 BuildConfig.APPLICATION_ID == HANDS_DELTA_ALPHA_APPLICATION_ID
         val isExactPreviewRelease =
             BuildConfig.BUILD_TYPE == "release" &&
-                BuildConfig.APPLICATION_ID == HANDS_DELTA_PREVIEW_APPLICATION_ID &&
-                BuildConfig.HANDS_APP_SLUG == HANDS_DELTA_PREVIEW_APP_SLUG &&
+                BuildConfig.APPLICATION_ID == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
+                BuildConfig.HANDS_APP_SLUG == HANDS_DELTA_PRODUCTION_APP_SLUG &&
                 BuildConfig.HANDS_CHANNEL == HANDS_DELTA_PREVIEW_CHANNEL
+        val isExactMainRelease =
+            BuildConfig.BUILD_TYPE == "release" &&
+                BuildConfig.APPLICATION_ID == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
+                BuildConfig.HANDS_APP_SLUG == HANDS_DELTA_PRODUCTION_APP_SLUG &&
+                BuildConfig.HANDS_CHANNEL == HANDS_DELTA_MAIN_CHANNEL
         val isPlay = BuildConfig.BUILD_TYPE == "play"
 
         assertEquals(!isPlay, BuildConfig.HANDS_APK_UPDATE_ENABLED)
-        assertEquals(isExactAlpha || isExactPreviewRelease, BuildConfig.HANDS_DELTA_UPDATE_ENABLED)
+        assertEquals(
+            isExactAlpha || isExactPreviewRelease || isExactMainRelease,
+            BuildConfig.HANDS_DELTA_UPDATE_ENABLED
+        )
         when {
             isExactAlpha -> {
                 assertEquals(HANDS_DELTA_ALPHA_APP_SLUG, BuildConfig.HANDS_DELTA_APP_SLUG)
                 assertEquals(HANDS_DELTA_ALPHA_CHANNEL, BuildConfig.HANDS_DELTA_CHANNEL)
             }
             isExactPreviewRelease -> {
-                assertEquals(HANDS_DELTA_PREVIEW_APP_SLUG, BuildConfig.HANDS_DELTA_APP_SLUG)
+                assertEquals(HANDS_DELTA_PRODUCTION_APP_SLUG, BuildConfig.HANDS_DELTA_APP_SLUG)
                 assertEquals(HANDS_DELTA_PREVIEW_CHANNEL, BuildConfig.HANDS_DELTA_CHANNEL)
+            }
+            isExactMainRelease -> {
+                assertEquals(HANDS_DELTA_PRODUCTION_APP_SLUG, BuildConfig.HANDS_DELTA_APP_SLUG)
+                assertEquals(HANDS_DELTA_MAIN_CHANNEL, BuildConfig.HANDS_DELTA_CHANNEL)
             }
             else -> {
                 assertEquals("", BuildConfig.HANDS_DELTA_APP_SLUG)
@@ -152,7 +167,7 @@ class HandsDeltaUpdateGateTest {
                 appSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
                 channel = BuildConfig.HANDS_DELTA_CHANNEL
             )
-        assertEquals(isExactAlpha || isExactPreviewRelease, allowed)
+        assertEquals(isExactAlpha || isExactPreviewRelease || isExactMainRelease, allowed)
 
         val route =
             resolveHandsUpdateRoute(
@@ -177,8 +192,18 @@ class HandsDeltaUpdateGateTest {
                 assertEquals(
                     HandsUpdateRoute(
                         mode = HANDS_UPDATE_MODE_PREVIEW_DELTA,
-                        appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
+                        appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                         channel = HANDS_DELTA_PREVIEW_CHANNEL,
+                        deltaEnabled = true
+                    ),
+                    route
+                )
+            isExactMainRelease ->
+                assertEquals(
+                    HandsUpdateRoute(
+                        mode = HANDS_UPDATE_MODE_MAIN_DELTA,
+                        appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                        channel = HANDS_DELTA_MAIN_CHANNEL,
                         deltaEnabled = true
                     ),
                     route
@@ -212,16 +237,26 @@ class HandsDeltaUpdateGateTest {
             handsDeltaUpdateAllowed(
                 configuredEnabled = true,
                 apkUpdateEnabled = true,
-                buildApplicationId = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                runtimePackageName = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                 channel = HANDS_DELTA_PREVIEW_CHANNEL
+            )
+        )
+        assertTrue(
+            handsDeltaUpdateAllowed(
+                configuredEnabled = true,
+                apkUpdateEnabled = true,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_MAIN_CHANNEL
             )
         )
 
         val denied =
             listOf(
-                // Configured disabled for Alpha and Preview
+                // Configured disabled for Alpha, Preview, and Main
                 handsDeltaUpdateAllowed(
                     configuredEnabled = false,
                     apkUpdateEnabled = true,
@@ -233,18 +268,34 @@ class HandsDeltaUpdateGateTest {
                 handsDeltaUpdateAllowed(
                     configuredEnabled = false,
                     apkUpdateEnabled = true,
-                    buildApplicationId = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    runtimePackageName = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                     channel = HANDS_DELTA_PREVIEW_CHANNEL
                 ),
-                // Play (apkUpdateEnabled=false) denied even with exact Preview or Alpha tuples
+                handsDeltaUpdateAllowed(
+                    configuredEnabled = false,
+                    apkUpdateEnabled = true,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                    channel = HANDS_DELTA_MAIN_CHANNEL
+                ),
+                // Play (apkUpdateEnabled=false) denied even with exact Main, Preview, or Alpha tuples
                 handsDeltaUpdateAllowed(
                     configuredEnabled = true,
                     apkUpdateEnabled = false,
-                    buildApplicationId = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    runtimePackageName = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                    channel = HANDS_DELTA_MAIN_CHANNEL
+                ),
+                handsDeltaUpdateAllowed(
+                    configuredEnabled = true,
+                    apkUpdateEnabled = false,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                     channel = HANDS_DELTA_PREVIEW_CHANNEL
                 ),
                 handsDeltaUpdateAllowed(
@@ -255,37 +306,29 @@ class HandsDeltaUpdateGateTest {
                     appSlug = HANDS_DELTA_ALPHA_APP_SLUG,
                     channel = HANDS_DELTA_ALPHA_CHANNEL
                 ),
-                // Non-preview channels on build.raft.app: main, debug, nightly, empty
+                // Non-release channels on build.raft.app stay full-APK: debug, nightly, empty
                 handsDeltaUpdateAllowed(
                     configuredEnabled = true,
                     apkUpdateEnabled = true,
-                    buildApplicationId = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    runtimePackageName = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
-                    channel = "main"
-                ),
-                handsDeltaUpdateAllowed(
-                    configuredEnabled = true,
-                    apkUpdateEnabled = true,
-                    buildApplicationId = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    runtimePackageName = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                     channel = "debug"
                 ),
                 handsDeltaUpdateAllowed(
                     configuredEnabled = true,
                     apkUpdateEnabled = true,
-                    buildApplicationId = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    runtimePackageName = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                     channel = "nightly"
                 ),
                 handsDeltaUpdateAllowed(
                     configuredEnabled = true,
                     apkUpdateEnabled = true,
-                    buildApplicationId = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    runtimePackageName = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                     channel = ""
                 ),
                 // Other application IDs or app slugs
@@ -294,22 +337,38 @@ class HandsDeltaUpdateGateTest {
                     apkUpdateEnabled = true,
                     buildApplicationId = "build.raft.app.connectedtest",
                     runtimePackageName = "build.raft.app.connectedtest",
-                    appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                     channel = HANDS_DELTA_PREVIEW_CHANNEL
                 ),
                 handsDeltaUpdateAllowed(
                     configuredEnabled = true,
                     apkUpdateEnabled = true,
-                    buildApplicationId = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    runtimePackageName = HANDS_DELTA_PREVIEW_APPLICATION_ID,
+                    buildApplicationId = "build.raft.app.connectedtest",
+                    runtimePackageName = "build.raft.app.connectedtest",
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                    channel = HANDS_DELTA_MAIN_CHANNEL
+                ),
+                handsDeltaUpdateAllowed(
+                    configuredEnabled = true,
+                    apkUpdateEnabled = true,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                     appSlug = "raft-android-other",
                     channel = HANDS_DELTA_PREVIEW_CHANNEL
                 ),
-                // Cross-paired Alpha and Preview package / slug / channel coordinates
                 handsDeltaUpdateAllowed(
                     configuredEnabled = true,
                     apkUpdateEnabled = true,
-                    buildApplicationId = HANDS_DELTA_PREVIEW_APPLICATION_ID,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    appSlug = "raft-android-other",
+                    channel = HANDS_DELTA_MAIN_CHANNEL
+                ),
+                // Cross-paired Alpha and Production package / slug / channel coordinates
+                handsDeltaUpdateAllowed(
+                    configuredEnabled = true,
+                    apkUpdateEnabled = true,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                     runtimePackageName = HANDS_DELTA_ALPHA_APPLICATION_ID,
                     appSlug = HANDS_DELTA_ALPHA_APP_SLUG,
                     channel = HANDS_DELTA_ALPHA_CHANNEL
@@ -318,32 +377,32 @@ class HandsDeltaUpdateGateTest {
                     configuredEnabled = true,
                     apkUpdateEnabled = true,
                     buildApplicationId = HANDS_DELTA_ALPHA_APPLICATION_ID,
-                    runtimePackageName = HANDS_DELTA_PREVIEW_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                     appSlug = HANDS_DELTA_ALPHA_APP_SLUG,
                     channel = HANDS_DELTA_ALPHA_CHANNEL
                 ),
                 handsDeltaUpdateAllowed(
                     configuredEnabled = true,
                     apkUpdateEnabled = true,
-                    buildApplicationId = HANDS_DELTA_PREVIEW_APPLICATION_ID,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                     runtimePackageName = HANDS_DELTA_ALPHA_APPLICATION_ID,
-                    appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                     channel = HANDS_DELTA_PREVIEW_CHANNEL
                 ),
                 handsDeltaUpdateAllowed(
                     configuredEnabled = true,
                     apkUpdateEnabled = true,
                     buildApplicationId = HANDS_DELTA_ALPHA_APPLICATION_ID,
-                    runtimePackageName = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
-                    channel = HANDS_DELTA_PREVIEW_CHANNEL
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                    channel = HANDS_DELTA_MAIN_CHANNEL
                 ),
                 handsDeltaUpdateAllowed(
                     configuredEnabled = true,
                     apkUpdateEnabled = true,
                     buildApplicationId = HANDS_DELTA_ALPHA_APPLICATION_ID,
                     runtimePackageName = HANDS_DELTA_ALPHA_APPLICATION_ID,
-                    appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                     channel = HANDS_DELTA_ALPHA_CHANNEL
                 ),
                 handsDeltaUpdateAllowed(
@@ -359,30 +418,46 @@ class HandsDeltaUpdateGateTest {
                     apkUpdateEnabled = true,
                     buildApplicationId = HANDS_DELTA_ALPHA_APPLICATION_ID,
                     runtimePackageName = HANDS_DELTA_ALPHA_APPLICATION_ID,
-                    appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
-                    channel = HANDS_DELTA_PREVIEW_CHANNEL
+                    appSlug = HANDS_DELTA_ALPHA_APP_SLUG,
+                    channel = HANDS_DELTA_MAIN_CHANNEL
                 ),
                 handsDeltaUpdateAllowed(
                     configuredEnabled = true,
                     apkUpdateEnabled = true,
-                    buildApplicationId = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    runtimePackageName = HANDS_DELTA_PREVIEW_APPLICATION_ID,
+                    buildApplicationId = HANDS_DELTA_ALPHA_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_ALPHA_APPLICATION_ID,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                    channel = HANDS_DELTA_MAIN_CHANNEL
+                ),
+                handsDeltaUpdateAllowed(
+                    configuredEnabled = true,
+                    apkUpdateEnabled = true,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                     appSlug = HANDS_DELTA_ALPHA_APP_SLUG,
                     channel = HANDS_DELTA_PREVIEW_CHANNEL
                 ),
                 handsDeltaUpdateAllowed(
                     configuredEnabled = true,
                     apkUpdateEnabled = true,
-                    buildApplicationId = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    runtimePackageName = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    appSlug = HANDS_DELTA_ALPHA_APP_SLUG,
+                    channel = HANDS_DELTA_MAIN_CHANNEL
+                ),
+                handsDeltaUpdateAllowed(
+                    configuredEnabled = true,
+                    apkUpdateEnabled = true,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                     channel = HANDS_DELTA_ALPHA_CHANNEL
                 ),
                 handsDeltaUpdateAllowed(
                     configuredEnabled = true,
                     apkUpdateEnabled = true,
-                    buildApplicationId = HANDS_DELTA_PREVIEW_APPLICATION_ID,
-                    runtimePackageName = HANDS_DELTA_PREVIEW_APPLICATION_ID,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                     appSlug = HANDS_DELTA_ALPHA_APP_SLUG,
                     channel = HANDS_DELTA_ALPHA_CHANNEL
                 ),
@@ -400,7 +475,7 @@ class HandsDeltaUpdateGateTest {
     }
 
     @Test
-    fun routeResolutionSelectsAlphaDeltaPreviewDeltaOrFullApk() {
+    fun routeResolutionSelectsAlphaDeltaPreviewDeltaMainDeltaOrFullApk() {
         assertEquals(
             HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_ALPHA_DELTA,
@@ -419,7 +494,7 @@ class HandsDeltaUpdateGateTest {
         assertEquals(
             HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_PREVIEW_DELTA,
-                appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                 channel = HANDS_DELTA_PREVIEW_CHANNEL,
                 deltaEnabled = true
             ),
@@ -427,21 +502,36 @@ class HandsDeltaUpdateGateTest {
                 deltaEnabled = true,
                 defaultAppSlug = "raft-android",
                 defaultChannel = "preview",
-                deltaAppSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                 deltaChannel = HANDS_DELTA_PREVIEW_CHANNEL
+            )
+        )
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_MAIN_DELTA,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_MAIN_CHANNEL,
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = "raft-android",
+                defaultChannel = "main",
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_MAIN_CHANNEL
             )
         )
         assertEquals(
             HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_FULL_APK,
                 appSlug = "raft-android",
-                channel = "main",
+                channel = "debug",
                 deltaEnabled = false
             ),
             resolveHandsUpdateRoute(
                 deltaEnabled = false,
                 defaultAppSlug = "raft-android",
-                defaultChannel = "main",
+                defaultChannel = "debug",
                 deltaAppSlug = "",
                 deltaChannel = ""
             )
@@ -450,18 +540,33 @@ class HandsDeltaUpdateGateTest {
             HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_FULL_APK,
                 appSlug = "raft-android",
-                channel = "preview",
+                channel = "main",
                 deltaEnabled = false
             ),
             resolveHandsUpdateRoute(
                 deltaEnabled = false,
                 defaultAppSlug = "raft-android",
-                defaultChannel = "preview",
-                deltaAppSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
-                deltaChannel = HANDS_DELTA_PREVIEW_CHANNEL
+                defaultChannel = "main",
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_MAIN_CHANNEL
             )
         )
         // Unrecognized or cross-paired delta tuple fails closed to full_apk even if deltaEnabled is true.
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_FULL_APK,
+                appSlug = "raft-android",
+                channel = "debug",
+                deltaEnabled = false
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = "raft-android",
+                defaultChannel = "debug",
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = "debug"
+            )
+        )
         assertEquals(
             HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_FULL_APK,
@@ -473,23 +578,136 @@ class HandsDeltaUpdateGateTest {
                 deltaEnabled = true,
                 defaultAppSlug = "raft-android",
                 defaultChannel = "main",
-                deltaAppSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
-                deltaChannel = "main"
+                deltaAppSlug = HANDS_DELTA_ALPHA_APP_SLUG,
+                deltaChannel = HANDS_DELTA_MAIN_CHANNEL
+            )
+        )
+    }
+
+    @Test
+    fun deltaDownloadProgressTokenAndPayloadCoverActiveReadyFailedAndMismatchedTargets() {
+        val mainRoute =
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_MAIN_DELTA,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_MAIN_CHANNEL,
+                deltaEnabled = true
+            )
+        val fullApkRoute =
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_FULL_APK,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = "debug",
+                deltaEnabled = false
+            )
+
+        val token =
+            handsDeltaDownloadProgressToken(
+                updateRoute = mainRoute,
+                state = SharedSettingsUpdateTransactionState.Downloading,
+                targetVersionCode = 13_000_002L
+            )
+        assertEquals("hands_sdk:raft-android:main:13000002", token)
+        assertEquals(13_000_002L, handsDeltaDownloadProgressTokenTargetVersionCode(token))
+        assertEquals(
+            "",
+            handsDeltaDownloadProgressToken(
+                updateRoute = mainRoute,
+                state = SharedSettingsUpdateTransactionState.ReadyToInstall,
+                targetVersionCode = 13_000_002L
             )
         )
         assertEquals(
-            HandsUpdateRoute(
-                mode = HANDS_UPDATE_MODE_FULL_APK,
-                appSlug = "raft-android",
-                channel = "preview",
-                deltaEnabled = false
+            "",
+            handsDeltaDownloadProgressToken(
+                updateRoute = mainRoute,
+                state = SharedSettingsUpdateTransactionState.Patching,
+                targetVersionCode = 13_000_002L
+            )
+        )
+        assertEquals(
+            "",
+            handsDeltaDownloadProgressToken(
+                updateRoute = fullApkRoute,
+                state = SharedSettingsUpdateTransactionState.Downloading,
+                targetVersionCode = 13_000_002L
+            )
+        )
+
+        assertEquals(
+            mapOf(
+                "status" to "ok",
+                "token" to token,
+                "phase" to "downloading",
+                "downloadedBytes" to 12_000_000L,
+                "totalBytes" to 45_000_000L
             ),
-            resolveHandsUpdateRoute(
-                deltaEnabled = true,
-                defaultAppSlug = "raft-android",
-                defaultChannel = "preview",
-                deltaAppSlug = HANDS_DELTA_ALPHA_APP_SLUG,
-                deltaChannel = HANDS_DELTA_PREVIEW_CHANNEL
+            handsDeltaProgressPayload(
+                token = token,
+                status =
+                    HandsUpdateStatus(
+                        state = HandsUpdateState.DOWNLOADING,
+                        targetVersionCode = 13_000_002L,
+                        progress = HandsUpdateProgress(downloadedBytes = 12_000_000L, totalBytes = 45_000_000L)
+                    )
+            )
+        )
+        assertEquals(
+            mapOf(
+                "status" to "ok",
+                "token" to token,
+                "phase" to "paused",
+                "downloadedBytes" to 12_000_000L,
+                "totalBytes" to -1L
+            ),
+            handsDeltaProgressPayload(
+                token = token,
+                status =
+                    HandsUpdateStatus(
+                        state = HandsUpdateState.DOWNLOADING,
+                        targetVersionCode = 13_000_002L,
+                        progress = HandsUpdateProgress(downloadedBytes = 12_000_000L, totalBytes = null, paused = true)
+                    )
+            )
+        )
+        for (terminalReady in listOf(
+            HandsUpdateState.READY_TO_INSTALL,
+            HandsUpdateState.INSTALLER_OPENED,
+            HandsUpdateState.INSTALLED
+        )) {
+            assertEquals(
+                "ready",
+                handsDeltaProgressPayload(
+                    token = token,
+                    status = HandsUpdateStatus(state = terminalReady, targetVersionCode = 13_000_002L)
+                )?.get("phase")
+            )
+        }
+        for (terminalFailed in listOf(HandsUpdateState.FAILED, HandsUpdateState.STALE)) {
+            assertEquals(
+                mapOf("status" to "ok", "token" to token, "phase" to "failed"),
+                handsDeltaProgressPayload(
+                    token = token,
+                    status = HandsUpdateStatus(state = terminalFailed, targetVersionCode = 13_000_002L)
+                )
+            )
+        }
+        assertNull(
+            handsDeltaProgressPayload(
+                token = token,
+                status = HandsUpdateStatus(state = HandsUpdateState.DOWNLOADING, targetVersionCode = 13_000_003L)
+            )
+        )
+        assertNull(
+            handsDeltaProgressPayload(
+                token = token,
+                status = HandsUpdateStatus(state = HandsUpdateState.IDLE, targetVersionCode = 13_000_002L)
+            )
+        )
+        assertNull(
+            handsDeltaProgressPayload(
+                token = "42",
+                status = HandsUpdateStatus(state = HandsUpdateState.DOWNLOADING, targetVersionCode = 13_000_002L)
             )
         )
     }
@@ -509,8 +727,18 @@ class HandsDeltaUpdateGateTest {
                 fullSizeBytes = 94_411_540L
             ),
             updateResponse(
-                appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                 channel = HANDS_DELTA_PREVIEW_CHANNEL
+            ).handsUpdateDisplaySizes(deltaEnabled = true)
+        )
+        assertEquals(
+            HandsUpdateDisplaySizes(
+                patchSizeBytes = 95_256L,
+                fullSizeBytes = 94_411_540L
+            ),
+            updateResponse(
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_MAIN_CHANNEL
             ).handsUpdateDisplaySizes(deltaEnabled = true)
         )
         assertEquals(
@@ -519,8 +747,8 @@ class HandsDeltaUpdateGateTest {
                 fullSizeBytes = 94_411_540L
             ),
             updateResponse(
-                appSlug = HANDS_DELTA_PREVIEW_APP_SLUG,
-                channel = HANDS_DELTA_PREVIEW_CHANNEL
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_MAIN_CHANNEL
             ).handsUpdateDisplaySizes(deltaEnabled = false)
         )
     }
