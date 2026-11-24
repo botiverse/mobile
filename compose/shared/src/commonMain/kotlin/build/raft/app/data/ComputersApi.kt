@@ -1149,7 +1149,11 @@ internal data class ComputerSummary(
      * person must act on this Computer, false when the server reported `count == 0`, null when the
      * row carried no readable `attention` summary (older server or incremental-sync row).
      */
-    val serverNeedsAttention: Boolean? = null
+    val serverNeedsAttention: Boolean? = null,
+    /** Server `revocation` (slock #16468): set only for a machine whose Computers are all revoked. */
+    val revocation: SettingsComputerRevocationSnapshot? = null,
+    /** Server `versionRefusedAt` (slock #16514): when connect was last refused below the version floor. */
+    val versionRefusedAt: String? = null
 )
 
 /**
@@ -1435,8 +1439,42 @@ private data class ComputerDto(
     // packages/shared/src/readiness.ts `ReadinessAttention`): what a person must act on. Additive:
     // absent from older servers and when the server's readiness read failed. Kept raw and read item
     // by item ([computerLoginSteps]) so an item this build cannot read never drops the machine.
-    val attention: JsonElement? = null
+    val attention: JsonElement? = null,
+    // routes/servers.ts GET /:id/machines `revocation` (slock #16468, packages/shared/src/computerRevocation.ts
+    // `ComputerRevocation`): set only for a machine whose Computers are all revoked; null/absent otherwise.
+    val revocation: ComputerRevocationDto? = null,
+    // services/machineReadModel.ts `versionRefusedAt` (slock #16514): when the server last refused
+    // this machine on connect below the Computer version floor; null/absent otherwise.
+    val versionRefusedAt: String? = null
 )
+
+/**
+ * slock packages/shared/src/computerRevocation.ts `ComputerRevocation`:
+ * `{ at, via, byUserName, subjectUserName, departureReason }`.
+ * Additive: an unknown `via` decodes as null rather than dropping the revocation.
+ */
+@Serializable
+private data class ComputerRevocationDto(
+    val at: String? = null,
+    val via: String? = null,
+    val byUserName: String? = null,
+    val subjectUserName: String? = null,
+    val departureReason: String? = null
+) {
+    fun toSnapshot(): SettingsComputerRevocationSnapshot? {
+        val revokedAt = at?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val cleanReason = departureReason?.trim()?.takeIf { it in COMPUTER_REVOCATION_DEPARTURE_REASONS }
+        return SettingsComputerRevocationSnapshot(
+            at = revokedAt,
+            via = SettingsComputerRevokedVia.fromWire(via),
+            byUserName = byUserName?.trim()?.takeIf { it.isNotBlank() },
+            subjectUserName = subjectUserName?.trim()?.takeIf { it.isNotBlank() },
+            departureReason = cleanReason
+        )
+    }
+}
+
+private val COMPUTER_REVOCATION_DEPARTURE_REASONS = setOf("left", "removed", "account_deleted")
 
 /**
  * slock `packages/shared/src/index.ts` `MachineDiskStatus` / `MachineMemoryStatus`:
@@ -1726,7 +1764,9 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         diskStatus = diskStatus?.toStatus(),
         memoryStatus = memoryStatus?.toStatus(),
         loginSteps = attention?.let(::computerLoginSteps),
-        serverNeedsAttention = attention?.let(::computerServerNeedsAttention)
+        serverNeedsAttention = attention?.let(::computerServerNeedsAttention),
+        revocation = revocation?.toSnapshot(),
+        versionRefusedAt = versionRefusedAt?.trim()?.takeIf { it.isNotBlank() }
     )
 }
 

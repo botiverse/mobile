@@ -101,6 +101,8 @@ internal data class RaftComputerRowModel(
     val owner: RaftComputerCreatorModel? = null,
     /** The machine logins that hold agents and need a step (server `attention`, slock #14602): the usage cells' "Verify" / "Sign in". */
     val loginSteps: List<ComputerLoginStep> = emptyList(),
+    /** True when all Computers of this machine were revoked (server `revocation != null && !isComputer`, slock #16468). */
+    val revoked: Boolean = false,
 )
 
 /**
@@ -345,6 +347,7 @@ internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel 
         owner = raftComputerOwner(this),
         updating = updating,
         loginSteps = loginSteps,
+        revoked = !isComputer && revocation != null,
     )
 }
 
