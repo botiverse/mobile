@@ -131,7 +131,11 @@ internal fun MembersHumanDetailHeader(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val messageLabel = stringResource(Res.string.member_label_message)
-    val showsBack = raftSidePaneShowsBack()
+    val showsBack =
+        raftMembersDetailShowsBack(
+            sidePaneShowsBack = raftSidePaneShowsBack(),
+            inWideSplit = LocalRaftMembersWideSplitDetail.current,
+        )
     val paneCloses = LocalRaftSidePanePage.current != null
     val headRowTabs = LocalRaftPaneGridHeadTabs.current
     val messageButton: @Composable () -> Unit = {
@@ -156,14 +160,14 @@ internal fun MembersHumanDetailHeader(
             } else {
                 emptyList()
             },
-        nativeOnBack = onBack,
+        nativeOnBack = onBack.takeIf { showsBack },
         backgroundColor = RaftColor.Canvas,
         contentStartPadding = if (showsBack) MembersHumanHeaderEdgeInset else MembersHeaderContentMargin,
         contentEndPadding = if (canMessage || paneCloses) MembersHumanHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
         contentSpacing = MembersHumanHeaderContentSpacing,
         showBodyTopBanner = false,
         titleLeadingContent = {
-            RaftPaneAwareBackButton(onClick = onBack)
+            if (showsBack) RaftPaneAwareBackButton(onClick = onBack)
             if (headRowTabs == null) {
                 MembersStickerAvatar(member, RaftAvatarSize.Md, memberAvatarResolver)
             }
@@ -290,6 +294,11 @@ internal fun MembersDetailHeader(
     val nativeMoreLabel = stringResource(Res.string.tab_more)
     val nativeBar = LocalRaftNativeNavBar.current
     val headRowTabs = LocalRaftPaneGridHeadTabs.current
+    val showsBack =
+        raftMembersDetailShowsBack(
+            sidePaneShowsBack = raftSidePaneShowsBack(),
+            inWideSplit = LocalRaftMembersWideSplitDetail.current,
+        )
     if (
         headRowTabs == null &&
         nativeBar != null &&
@@ -317,7 +326,7 @@ internal fun MembersDetailHeader(
                         )
                     }
                 },
-            onBack = onBack,
+            onBack = onBack.takeIf { showsBack },
         )
     ) {
         Box(Modifier.fillMaxWidth().height(topSafeArea)) {
@@ -339,7 +348,6 @@ internal fun MembersDetailHeader(
     // The web head's Start / Stop and Restart / Reset sit in the More menu at phone width.
     // In the wide layout's profile column (a side pane) the actions end in the pane's Close, and
     // Back shows only over a page of the cell's own stack (raftSidePaneHeadButtons).
-    val showsBack = raftSidePaneShowsBack()
     val paneCloses = LocalRaftSidePanePage.current != null
     Column(
         modifier = Modifier
@@ -389,7 +397,7 @@ internal fun MembersDetailHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
                 ) {
-                    RaftPaneAwareBackButton(onClick = onBack)
+                    if (showsBack) RaftPaneAwareBackButton(onClick = onBack)
                     if (headRowTabs != null) {
                         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                             RaftPaneGridHeadRowTabs(

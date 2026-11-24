@@ -151,6 +151,49 @@ class RaftComputersRackCardsModelTest {
         assertEquals(RaftComputerFactsLinePlan(osWidth = 100 - ch(10), stepOnLine = false), raftComputerFactsLinePlan(100, ch(12), 24, ch(10), ch(19)))
     }
 
+    @Test
+    fun factsLineDropsStepToNextLineBeforeSqueezingReadableOsNameOnMediumCards() {
+        // Portrait tablet 800dp 2-column card (~270px text width): keeping " · Update available" on
+        // line 1 would crush "Ubuntu 24.04" (84px) into "Ubuntu 2..." (~67px). With the readable
+        // inline step floor (88px), the step wraps onto line 2 so the full OS name stays intact.
+        val inlineFloor = RaftComputerFactsOsInlineStepFloor.value.toInt()
+        assertEquals(
+            RaftComputerFactsLinePlan(osWidth = ch(12), stepOnLine = false),
+            raftComputerFactsLinePlan(
+                width = 270,
+                os = ch(12),
+                osFloor = 24,
+                version = ch(10),
+                step = ch(19),
+                osInlineStepFloor = inlineFloor,
+            ),
+        )
+        // A very long distro name still shares line 1 with the step when it keeps at least the
+        // readable inline floor (88px), and very narrow widths still protect the version down to 24px.
+        assertEquals(
+            RaftComputerFactsLinePlan(osWidth = 310 - ch(10) - ch(19), stepOnLine = true),
+            raftComputerFactsLinePlan(
+                width = 310,
+                os = ch(28),
+                osFloor = 24,
+                version = ch(10),
+                step = ch(19),
+                osInlineStepFloor = inlineFloor,
+            ),
+        )
+        assertEquals(
+            RaftComputerFactsLinePlan(osWidth = 100 - ch(10), stepOnLine = false),
+            raftComputerFactsLinePlan(
+                width = 100,
+                os = ch(12),
+                osFloor = 24,
+                version = ch(10),
+                step = ch(19),
+                osInlineStepFloor = inlineFloor,
+            ),
+        )
+    }
+
     private fun agent(id: String, name: String, machineId: String?) =
         MemberProfile(
             id = MemberId(id),

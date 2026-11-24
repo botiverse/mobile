@@ -630,6 +630,9 @@ internal fun RaftTopPageHeaderFrame(
     }
 }
 
+internal fun raftMainTabHeaderUsesCanvasBackground(scale: RaftScale, underAppShellTopBar: Boolean): Boolean =
+    scale == RaftScale.Wide || underAppShellTopBar
+
 @Composable
 internal fun RaftMainTabPageHeader(
     title: String,
@@ -643,11 +646,15 @@ internal fun RaftMainTabPageHeader(
     // PROTOTYPE (native nav bar): a title tap on the host bar (the head's own modifier click).
     nativeOnTitleClick: (() -> Unit)? = null,
 ) {
+    // Wide main tabs sit under the wide top bar / beside the rail on the canvas surface (matching
+    // Activity, Artifacts, Members and Computers); only phone top-level tabs wear the yellow Frame band.
+    val useCanvasBackground = raftMainTabHeaderUsesCanvasBackground(RaftTheme.scale, raftUnderAppShellTopBar())
     RaftTopPageHeader(
         title = title,
         onBack = onBack,
         subtitle = subtitle,
         modifier = modifier,
+        backgroundColor = if (useCanvasBackground) RaftColor.Canvas else RaftColor.Frame,
         applyTopSafeArea = applyTopSafeArea,
         contentStartPadding = contentStartPadding,
         titleStyle = RaftMainTabHeaderTitleStyle,

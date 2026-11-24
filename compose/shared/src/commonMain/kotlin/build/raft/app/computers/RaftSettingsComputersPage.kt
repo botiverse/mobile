@@ -2472,7 +2472,8 @@ private fun RaftComputerDeviceIcon(row: RaftComputerRowModel) {
 /**
  * The facts line (web card `CardDescription`, Space Mono `foreground-hint`). Online, as on the web it
  * keeps to one line where it can, "Ubuntu 24.04 · v1.0.49 · Update available", with the OS giving way
- * first (cut, down to a couple of characters); the step is bold `warning-strong` (Update available and
+ * first down to [RaftComputerFactsOsInlineStepFloor] so short OS names are not crushed to a couple of
+ * characters beside the step; the step is bold `warning-strong` (Update available and
  * Update required alike, raft-design patterns/status.md), "· Updating to v1.0.50" bold ink while an
  * update is in flight. A step that doesn't fit beside the version even then goes whole onto the next
  * line, and the OS keeps its room on the first ([raftComputerFactsLinePlan]): the version and the
@@ -2538,19 +2539,31 @@ internal data class RaftComputerFactsLinePlan(
  * The facts line's layout, in px: the line is [width] wide ([Constraints.Infinity]: unbounded); the OS
  * name wants [os] (0: none) and gives way down to [osFloor]; the version (" · v1.0.49") wants
  * [version]; the step (" · Update available") [step] (0: none). Web ComputerRackRow `onlineFacts`: one
- * line, the OS gives way first, the version and the step never. So the step stays on the line when it
- * fits there with the OS cut to its floor at most. Otherwise (its words are longer than the web's
- * "→ v1.0.50") it goes whole onto the next line, and the OS gives way only as far as the version needs.
+ * line, the OS gives way first, the version and the step never. So the step stays on the line only when
+ * it fits there without squeezing the OS below [osInlineStepFloor]. Otherwise (its words are longer than
+ * the web's "→ v1.0.50") it goes whole onto the next line, and the OS gives way only as far as the
+ * version needs (down to [osFloor]).
  */
-internal fun raftComputerFactsLinePlan(width: Int, os: Int, osFloor: Int, version: Int, step: Int): RaftComputerFactsLinePlan {
+internal fun raftComputerFactsLinePlan(
+    width: Int,
+    os: Int,
+    osFloor: Int,
+    version: Int,
+    step: Int,
+    osInlineStepFloor: Int = osFloor,
+): RaftComputerFactsLinePlan {
     val floor = minOf(os, osFloor)
+    val stepFloor = minOf(os, maxOf(osFloor, osInlineStepFloor))
     if (width == Constraints.Infinity || os + version + step <= width) return RaftComputerFactsLinePlan(os, stepOnLine = true)
-    if (step > 0 && floor + version + step <= width) return RaftComputerFactsLinePlan(width - version - step, stepOnLine = true)
+    if (step > 0 && stepFloor + version + step <= width) return RaftComputerFactsLinePlan(width - version - step, stepOnLine = true)
     val osWidth = if (os + version <= width) os else maxOf(width - version, floor)
     return RaftComputerFactsLinePlan(osWidth, stepOnLine = step == 0)
 }
 
 private val RaftComputerFactsOsFloor = 24.dp
+
+/** Minimum readable OS width before dropping the update step onto the next line (avoids "Ubuntu 2..."). */
+internal val RaftComputerFactsOsInlineStepFloor = 88.dp
 
 /**
  * The online facts line laid out as [raftComputerFactsLinePlan] says: [os], then [version] right after
@@ -2571,7 +2584,15 @@ private fun RaftComputerFactsRow(
         val osWant = osMeasurable?.maxIntrinsicWidth(constraints.maxHeight) ?: 0
         val versionWant = versionMeasurable?.maxIntrinsicWidth(constraints.maxHeight) ?: 0
         val stepWant = inlineMeasurable?.maxIntrinsicWidth(constraints.maxHeight) ?: 0
-        val plan = raftComputerFactsLinePlan(width, osWant, RaftComputerFactsOsFloor.roundToPx(), versionWant, stepWant)
+        val plan =
+            raftComputerFactsLinePlan(
+                width = width,
+                os = osWant,
+                osFloor = RaftComputerFactsOsFloor.roundToPx(),
+                version = versionWant,
+                step = stepWant,
+                osInlineStepFloor = RaftComputerFactsOsInlineStepFloor.roundToPx(),
+            )
         val osPlaceable = osMeasurable?.measure(Constraints(maxWidth = plan.osWidth, maxHeight = constraints.maxHeight))
         val osWidth = osPlaceable?.width ?: 0
         val stepOnLine = plan.stepOnLine && inlineMeasurable != null
