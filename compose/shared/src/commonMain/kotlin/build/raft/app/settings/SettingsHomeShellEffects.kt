@@ -216,6 +216,7 @@ internal fun AppShellNotificationBadgeEffects(
 internal fun AppShellExternalLinkNavigationEffects(
     sharedStores: RaftSharedStoreProvider,
     pager: Pager,
+    adaptivePane: RaftAdaptivePaneState,
     desktopModeOnLargeScreenState: MutableState<Boolean>,
     bridge: build.raft.app.base.BridgeModule,
     storeScope: RaftShellStoreScope,
@@ -300,14 +301,36 @@ internal fun AppShellExternalLinkNavigationEffects(
             pager.openSettingsStoragePage(navigationStoreScope)
         }
     }
-    // Phone layout: the conversation page on top of the shell, so a notification or link to it is
-    // not pushed twice (preferring the host's authoritative navigation stack over Compose visibility,
-    // which clears when the app enters the background).
+    // Single-pane layout (compact phones, or large screens with desktop mode off): resolve the
+    // conversation page on top of the shell so a notification or link to it is not pushed twice
+    // (preferring the host's authoritative navigation stack over Compose visibility, which clears
+    // when the app enters the background). Only an active wide dual-pane split skips this check.
+    val wideSplitPaneActive =
+        raftAdaptiveNavRailActive(
+            desktopModeEnabled = desktopModeOnLargeScreen,
+            paneState = adaptivePane,
+        )
     val latestNavigationTopPageRoute by rememberUpdatedState {
         raftResolveNavigationTopPageRoute(
-            desktopModeOnLargeScreen = desktopModeOnLargeScreen,
+            wideSplitPaneActive = wideSplitPaneActive,
             hostTopPage = pager.host?.navigator?.topPage(),
             fallbackVisibleRoute = foregroundBannerStore::visibleRouteIdentity,
+        )
+    }
+    val latestFocusTopConversationMessage by rememberUpdatedState<(HomeMessageOpenRequest, String) -> Unit> { request, source ->
+        val messageId = request.anchorMessageId?.trim()?.takeIf(String::isNotBlank) ?: return@rememberUpdatedState
+        val result =
+            foregroundBannerStore.topPageFocus.dispatch(
+                targetRoute = request.conversationIdentity.resolveThreadRouteIdentity(),
+                messageId = messageId,
+                source = source,
+            )
+        bridge.log(
+            "window_navigation_top_page_focus source=$source " +
+                "threadId=${request.conversationIdentity.threadId.value} " +
+                "focusedMessageId=$messageId " +
+                "delivery=${if (result?.deliveredImmediately == true) "immediate" else if (result != null) "pending" else "dropped"} " +
+                "nonce=${result?.request?.nonce ?: 0L}"
         )
     }
     LaunchedEffect(navigationIntake) {
@@ -335,6 +358,9 @@ internal fun AppShellExternalLinkNavigationEffects(
                 override fun readiness(): WindowNavigationReadiness? = latestNavigationReadiness()
 
                 override fun topPageRoute(): ThreadRouteIdentity? = latestNavigationTopPageRoute()
+
+                override fun focusTopConversationMessage(request: HomeMessageOpenRequest, source: String) =
+                    latestFocusTopConversationMessage(request, source)
 
                 override suspend fun closeIncomingNavigationCover(): Boolean = foregroundBannerStore.incomingNavigation.closeAll()
 

@@ -5,6 +5,7 @@ import build.raft.app.data.SharedWindowNavigationCoordinator
 import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
+import build.raft.app.data.defaultNowMillis
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -52,6 +53,12 @@ internal interface RaftShellNavigationIntakeHost {
 
     /** The conversation page on top of the shell (phone layout), or null (wide layout, none). */
     fun topPageRoute(): ThreadRouteIdentity?
+
+    /**
+     * Focuses [request.anchorMessageId] in-place inside the conversation already on top of the
+     * stack when an incoming open was skipped as `already_top_page`.
+     */
+    fun focusTopConversationMessage(request: HomeMessageOpenRequest, source: String) {}
 
     /**
      * Something is about to open: closes the window's task surfaces ([RaftIncomingNavigationSignal]),
@@ -237,6 +244,9 @@ internal class RaftShellNavigationIntake(
                     "window_navigation_open_skipped reason=already_top_page source=${action.intent.source} " +
                         "threadId=${action.request.conversationIdentity.threadId.value}"
                 )
+                if (!action.request.anchorMessageId.isNullOrBlank()) {
+                    host.focusTopConversationMessage(action.request, action.intent.source)
+                }
                 continue
             }
             host.perform(action)
@@ -244,18 +254,30 @@ internal class RaftShellNavigationIntake(
     }
 }
 
-/** The conversation [request] opens is the page already on top ([topPageRoute]): pushing it would stack it twice. */
-internal fun raftWindowNavigationTargetIsTopPage(request: HomeMessageOpenRequest, topPageRoute: ThreadRouteIdentity?): Boolean {
-    val top = topPageRoute ?: return false
-    val target = request.conversationIdentity.resolveThreadRouteIdentity()
-    if (target.instanceKey.isNotBlank() && target.instanceKey == top.instanceKey) return true
+/**
+ * Whether [candidate] and [target] identify the same conversation surface (instance key,
+ * canonical timeline channel id, or reply-thread parent key for unresolved 0-reply threads).
+ */
+internal fun raftThreadRoutesMatch(
+    candidate: ThreadRouteIdentity?,
+    target: ThreadRouteIdentity?,
+): Boolean {
+    if (candidate == null || target == null) return false
+    if (target.instanceKey.isNotBlank() && target.instanceKey == candidate.instanceKey) return true
     val timeline = target.timelineChannelId
-    if (timeline != null && timeline == top.timelineChannelId) return true
+    if (timeline != null && timeline == candidate.timelineChannelId) return true
     return target.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
-        top.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+        candidate.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
         !target.parentKey.isNullOrBlank() &&
-        target.parentKey == top.parentKey
+        target.parentKey == candidate.parentKey
 }
+
+/** The conversation [request] opens is the page already on top ([topPageRoute]): pushing it would stack it twice. */
+internal fun raftWindowNavigationTargetIsTopPage(request: HomeMessageOpenRequest, topPageRoute: ThreadRouteIdentity?): Boolean =
+    raftThreadRoutesMatch(
+        candidate = topPageRoute,
+        target = request.conversationIdentity.resolveThreadRouteIdentity(),
+    )
 
 /**
  * Conversation route of a host's authoritative top page ([RaftCmpNavigator.topPage]), or null when
@@ -270,23 +292,195 @@ internal fun raftTopPageThreadRouteOrNull(topPage: RaftCmpPageArgs): ThreadRoute
 }
 
 /**
- * Resolves the phone-layout top conversation route for [RaftShellNavigationIntake]:
- * - Wide desktop layout returns null (split pane handles selection in place).
+ * Resolves the single-pane top conversation route for [RaftShellNavigationIntake]:
+ * - Active wide split-pane layout ([wideSplitPaneActive] == true, i.e., desktop mode enabled AND
+ *   the window is currently in [RaftAdaptivePaneLayout.DualPane]) returns null because the split
+ *   pane updates its detail slot in place. Never pass the raw user preference toggle alone: it
+ *   defaults to true on compact phones.
  * - When the host reports its authoritative top stack page ([hostTopPage] != null), use it
  *   exclusively — surviving app backgrounding, native pops, and cancelled interactive swipes,
  *   and never falling back to a stale [fallbackVisibleRoute] when a non-conversation page sits on top.
  * - Fall back to [fallbackVisibleRoute] only when the host does not report [hostTopPage].
  */
 internal fun raftResolveNavigationTopPageRoute(
-    desktopModeOnLargeScreen: Boolean,
+    wideSplitPaneActive: Boolean,
     hostTopPage: RaftCmpPageArgs?,
     fallbackVisibleRoute: () -> ThreadRouteIdentity?,
 ): ThreadRouteIdentity? =
     when {
-        desktopModeOnLargeScreen -> null
+        wideSplitPaneActive -> null
         hostTopPage != null -> raftTopPageThreadRouteOrNull(hostTopPage)
         else -> fallbackVisibleRoute()
     }
+
+/** One-shot request to focus [messageId] inside the conversation already sitting on top of the stack. */
+internal data class RaftTopPageConversationFocusRequest(
+    val nonce: Long,
+    val targetRoute: ThreadRouteIdentity,
+    val messageId: String,
+    val source: String,
+)
+
+/** Outcome of [RaftTopPageConversationFocusSignal.dispatch]. */
+internal data class RaftTopPageFocusDispatchResult(
+    val request: RaftTopPageConversationFocusRequest,
+    val deliveredImmediately: Boolean,
+)
+
+/**
+ * Shell-scoped signal (owned by [SharedForegroundBannerStore]) that routes an in-place message
+ * focus from [RaftShellNavigationIntake] (`already_top_page`) to the live standalone [ThreadPage]
+ * already mounted on top of the stack.
+ *
+ * - Delivers immediately to the topmost matching registered standalone page (even while the app is
+ *   returning from background and Compose `active` has not flipped back to `true` yet).
+ * - If the matching top page was just pushed onto the host stack and has not run its first
+ *   `DisposableEffect` yet, holds a single short-lived, TTL-bounded pending request that is
+ *   consumed atomically at most once when that matching page registers — and cleared on any fresh
+ *   conversation open or session reset so stale requests never replay into unrelated or future opens.
+ */
+internal class RaftTopPageConversationFocusSignal(
+    private val nowEpochMillis: () -> Long = ::defaultNowMillis,
+    private val pendingTtlMillis: Long = DefaultPendingTtlMillis,
+) {
+    fun interface Target {
+        /** Accepts [request] and dispatches the in-place jump/focus; returns true if handled. */
+        fun focusMessage(request: RaftTopPageConversationFocusRequest): Boolean
+    }
+
+    private class Entry(
+        val routeProvider: () -> ThreadRouteIdentity,
+        val target: Target,
+    )
+
+    private data class PendingEntry(
+        val request: RaftTopPageConversationFocusRequest,
+        val expiresAtEpochMillis: Long,
+    )
+
+    private val lock = SynchronizedObject()
+    private val entries = LinkedHashSet<Entry>()
+    private var entriesVersion = 0L
+    private var nextNonce = 0L
+    private var pending: PendingEntry? = null
+
+    /** Registers a mounted standalone conversation target until the returned disposer runs. */
+    fun register(
+        routeProvider: () -> ThreadRouteIdentity,
+        target: Target,
+    ): () -> Unit {
+        val entry = Entry(routeProvider, target)
+        val pendingToDeliver =
+            synchronized(lock) {
+                entries.add(entry)
+                entriesVersion += 1L
+                takeMatchingPendingLocked(routeProvider())
+            }
+        if (pendingToDeliver != null) {
+            target.focusMessage(pendingToDeliver)
+        }
+        return {
+            synchronized(lock) {
+                entries.remove(entry)
+            }
+        }
+    }
+
+    /**
+     * Dispatches an in-place focus for [messageId] to the topmost mounted target matching
+     * [targetRoute], or stages a short-lived one-shot pending request if the pushed top page has
+     * not registered yet. Returns null when [messageId] is blank.
+     */
+    fun dispatch(
+        targetRoute: ThreadRouteIdentity,
+        messageId: String,
+        source: String,
+    ): RaftTopPageFocusDispatchResult? {
+        val normalizedMessageId = messageId.trim().takeIf(String::isNotBlank) ?: return null
+        val (request, initialCandidates, initialVersion) =
+            synchronized(lock) {
+                val created =
+                    RaftTopPageConversationFocusRequest(
+                        nonce = ++nextNonce,
+                        targetRoute = targetRoute,
+                        messageId = normalizedMessageId,
+                        source = source,
+                    )
+                pending = null
+                Triple(created, entries.toList().asReversed(), entriesVersion)
+            }
+        if (deliverToFirstMatching(initialCandidates, targetRoute, request)) {
+            return RaftTopPageFocusDispatchResult(request = request, deliveredImmediately = true)
+        }
+        var seenVersion = initialVersion
+        val tried = initialCandidates.toHashSet()
+        while (true) {
+            val nextBatch =
+                synchronized(lock) {
+                    if (nextNonce != request.nonce) {
+                        // A newer dispatch superseded this one.
+                        return RaftTopPageFocusDispatchResult(request = request, deliveredImmediately = false)
+                    }
+                    if (entriesVersion == seenVersion) {
+                        pending =
+                            PendingEntry(
+                                request = request,
+                                expiresAtEpochMillis = nowEpochMillis() + pendingTtlMillis,
+                            )
+                        null
+                    } else {
+                        seenVersion = entriesVersion
+                        entries.toList().asReversed().filter { it !in tried }
+                    }
+                } ?: return RaftTopPageFocusDispatchResult(request = request, deliveredImmediately = false)
+            tried.addAll(nextBatch)
+            if (deliverToFirstMatching(nextBatch, targetRoute, request)) {
+                return RaftTopPageFocusDispatchResult(request = request, deliveredImmediately = true)
+            }
+        }
+    }
+
+    /** Drops any unconsumed mounting-window pending request (e.g. before opening a fresh page). */
+    fun clearPending() {
+        synchronized(lock) {
+            pending = null
+        }
+    }
+
+    /** Clears pending state on shell/session reset. Mounted entries clean up via their disposers. */
+    fun clear() {
+        clearPending()
+    }
+
+    private fun deliverToFirstMatching(
+        candidates: List<Entry>,
+        targetRoute: ThreadRouteIdentity,
+        request: RaftTopPageConversationFocusRequest,
+    ): Boolean {
+        for (entry in candidates) {
+            if (!raftThreadRoutesMatch(entry.routeProvider(), targetRoute)) continue
+            if (entry.target.focusMessage(request)) return true
+        }
+        return false
+    }
+
+    private fun takeMatchingPendingLocked(candidateRoute: ThreadRouteIdentity): RaftTopPageConversationFocusRequest? {
+        val current = pending ?: return null
+        if (nowEpochMillis() > current.expiresAtEpochMillis) {
+            pending = null
+            return null
+        }
+        if (!raftThreadRoutesMatch(candidateRoute, current.request.targetRoute)) {
+            return null
+        }
+        pending = null
+        return current.request
+    }
+
+    companion object {
+        internal const val DefaultPendingTtlMillis: Long = 5_000L
+    }
+}
 
 /**
  * "Something is about to open in this window" (a message link, a notification or banner open, an
