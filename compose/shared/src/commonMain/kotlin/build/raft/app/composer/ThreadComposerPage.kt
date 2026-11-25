@@ -212,12 +212,15 @@ private val ThreadComposerCardPadding = 12.dp + ThreadComposerCardBorder
 private val ThreadComposerEmbeddedInset = 6.dp
 private val ThreadComposerCardPaddingBottom = ThreadComposerEmbeddedInset - 1.dp + ThreadComposerCardBorder
 private val ThreadComposerInputPaddingHorizontal = 2.dp
-// raft-ui `ComposerActions` / `ComposerMeta`: `gap-embedded-inset`. Buttons embedded in the frame
+// raft-ui `ComposerActions`: `gap-embedded-inset`. Buttons embedded in the frame
 // sit as far apart as they sit from its edge (raft-design #810, shape.md "The space is even on
 // every side"), so 6dp, not the old `gap-2` 8dp. Raft chrome casts no offset shadow, so this is
 // the visible gap.
 private val ThreadComposerLeftActionGroupSpacing = ThreadComposerEmbeddedInset
-private val ThreadComposerRightActionGroupSpacing = ThreadComposerEmbeddedInset
+// The group at the end (quote count, send-key hint, "As task", send): web MessageInput's own
+// `flex items-center gap-2`, not `ComposerMeta`; `ComposerToolbarLabel` is `gap-2` as well.
+private val ThreadComposerRightActionGroupSpacing = 8.dp
+private val ThreadComposerToolbarLabelSpacing = 8.dp
 private const val ThreadComposerMentionActionNoticeDurationMillis = 1800L
 private const val ThreadComposerSuggestionQueryDebounceMillis = 24L
 // raft-ui 0.58.1 `ComposerSuggestionList` geometry: `max-h-60` root with `p-1`, opening
@@ -4130,7 +4133,7 @@ internal fun ThreadComposerContentLeaf(
                                             }
                                             .heightIn(min = 18.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(ThreadComposerToolbarLabelSpacing)
                                     ) {
                                         RaftCheckboxIndicator(checked = asTask, enabled = composerEnabled)
                                         // raft-ui `ComposerToolbarLabel`: text-callout (14/20) semibold on
