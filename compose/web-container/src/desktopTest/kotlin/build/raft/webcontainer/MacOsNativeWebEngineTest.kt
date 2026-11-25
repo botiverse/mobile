@@ -386,6 +386,7 @@ class MacOsNativeWebEngineTest {
                                 allowNavigation = false,
                                 allowedSchemes = setOf("https"),
                                 lockedMainFrameOrigin = origin,
+                                restoreStripFragments = false,
                             ),
                         jsbPolicy =
                             JsbPolicy(
