@@ -5110,6 +5110,9 @@
     <string name="agent_status_delivery_hold_window_weekly_opus">每周 Opus</string>
     <string name="agent_status_delivery_hold_window_weekly_sonnet">每周 Sonnet</string>
     <string name="agent_status_delivery_hold_window_extra_usage">额外用量</string>
+    <string name="agent_status_working_through_worker">正通过 Worker 工作</string>
+    <string name="agent_status_working_through_workers">正通过 %1$d 个 Worker 工作</string>
+    <string name="agent_status_working_through_workers_presence">正通过 Worker 工作</string>
     <string name="agent_status_computer_access_revoked">Computer 访问权限已撤销：请重新加入这台 Computer，或把 Agent 迁走</string>
     <string name="agent_revoked_reattach">重新加入 %1$s：在那台机器上运行 %2$s，并用所有者或管理员的账号批准登录。批准的人会成为它的授权人。</string>
     <string name="agent_revoked_move">或者把这个 Agent 迁到另一台 Computer。</string>

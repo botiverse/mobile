@@ -5318,7 +5318,7 @@ private fun RaftAppShellReadyContent(
             readyServerId?.trim()?.takeIf(String::isNotBlank)?.let { serverId ->
                 RaftWorkingNowSource(
                     serverId = serverId,
-                    items = sharedStores.liveAgentActivity(storeScope).itemsFlow(serverId),
+                    items = sharedStores.liveAgentActivity(storeScope).workspaceItemsFlow(serverId),
                     agentStatusResolver = raftScopedAgentStatusResolver(appShellServerMembersStore, serverId),
                     subscriptions = sharedStores.agentActivitySubscriptions,
                     onOpenAgent = { agentId ->

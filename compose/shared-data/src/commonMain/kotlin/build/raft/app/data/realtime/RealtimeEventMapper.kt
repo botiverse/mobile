@@ -27,6 +27,7 @@ import build.raft.app.data.AgentActivityDetailKindWakeCrashLoopBlocked
 import build.raft.app.data.AgentActivityStatusProjection
 import build.raft.app.data.AgentRuntimeErrorCode
 import build.raft.app.data.parseAgentDeliveryHold
+import build.raft.app.data.parseAgentRunningWorkers
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.parseConversationKindOrNull
@@ -916,7 +917,7 @@ private data class AgentSeenDto(
     val lastSeenAt: String,
 )
 
-/** Shared `AgentActivityStatePayload` (botiverse/slock 968d102d `agentActivitySubscriptions.ts`, #16333). */
+/** Shared `AgentActivityStatePayload` (botiverse/slock 968d102d `agentActivitySubscriptions.ts`, #16333, #16819). */
 @Serializable
 private data class AgentActivityStateDto(
     val agentId: String,
@@ -925,6 +926,8 @@ private data class AgentActivityStateDto(
     val serverSeq: Long,
     /** Shared `DeliveryHoldActivityDiagnostic`, carried on coarse state too (botiverse/slock #16333). */
     val deliveryHold: JsonElement? = null,
+    /** Positive count of running Workers on its current Computer (joint peer: 1 or absent, #16819). */
+    val runningWorkers: JsonElement? = null,
 )
 
 @Serializable
@@ -952,6 +955,8 @@ private data class AgentActivityDto(
     val credentialHold: CredentialHoldDto? = null,
     /** Shared `DeliveryHoldActivityDiagnostic`, on every frame while deliveries are held (botiverse/slock #16333). */
     val deliveryHold: JsonElement? = null,
+    /** Positive count of running Workers on its current Computer (joint peer: 1 or absent, #16819). */
+    val runningWorkers: JsonElement? = null,
     /** #wg-rbac:#57 (server #13949): the runtime error's code on an error frame, for every viewer. */
     val errorCode: String? = null,
 )
@@ -1800,6 +1805,7 @@ private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
         spawnFailure = spawnFailure.toAgentSpawnFailure(projectedActivity.detailKind),
         credentialHold = credentialHold.toAgentCredentialHold(projectedActivity.detailKind),
         deliveryHold = parseAgentDeliveryHold(deliveryHold),
+        runningWorkers = parseAgentRunningWorkers(runningWorkers),
         // Web attachSocketTypedCarriers (#13985): the code rides only an error frame.
         errorCode = AgentRuntimeErrorCode.fromWire(errorCode).takeIf { status == AgentStatus.Error },
         toolStuck =
@@ -1841,6 +1847,7 @@ private fun AgentActivityStateDto.toDomain(diagnostics: (String) -> Unit): Membe
         agentStatus = status,
         serverSeq = serverSeq,
         deliveryHold = parseAgentDeliveryHold(deliveryHold),
+        runningWorkers = parseAgentRunningWorkers(runningWorkers),
         coarseState = true,
     )
 }

@@ -4902,6 +4902,9 @@
     <string name="agent_status_delivery_hold_window_weekly_opus">недельный Opus</string>
     <string name="agent_status_delivery_hold_window_weekly_sonnet">недельный Sonnet</string>
     <string name="agent_status_delivery_hold_window_extra_usage">дополнительное использование</string>
+    <string name="agent_status_working_through_worker">Работает через Worker</string>
+    <string name="agent_status_working_through_workers">Работает через Workers: %1$d</string>
+    <string name="agent_status_working_through_workers_presence">Работает через Workers</string>
     <string name="agent_status_computer_access_revoked">Доступ компьютера отозван: подключите компьютер снова или перенесите агента</string>
     <string name="agent_revoked_reattach">Подключите %1$s снова: на той машине выполните %2$s и подтвердите вход с аккаунта владельца или администратора. Подтвердивший станет тем, кто его подключил.</string>
     <string name="agent_revoked_move">Или перенесите этого агента на другой компьютер.</string>

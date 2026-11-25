@@ -8793,6 +8793,13 @@ private fun DirectMessageAvatar(
         } else {
             null
         }
+    val workersBusyText =
+        if (agentMemberId != null && holdingReadiness == null && signIn == null && deliveryHold == null) {
+            val nowMs = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: build.raft.app.data.defaultNowMillis()
+            status?.busyThroughWorkers(nowMs = nowMs)?.localizedText()
+        } else {
+            null
+        }
     RaftAvatarWithStatus(
         statusColor =
             when {
@@ -8801,7 +8808,7 @@ private fun DirectMessageAvatar(
                 deliveryHold != null -> RaftColor.AccentOrange
                 else -> status?.color
             },
-        statusDescription = signIn?.detail ?: deliveryHold?.text,
+        statusDescription = signIn?.detail ?: deliveryHold?.text ?: workersBusyText,
         avatarSize = ChannelAvatarSize,
     ) {
         RaftAppAvatar(
@@ -8889,6 +8896,30 @@ private fun DirectMessageAgentMeta(
                     .semantics { contentDescription = deliveryHold.text },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
+        )
+        return
+    }
+    // Web SidebarAgentMeta (#16819): busy only through its Workers says the short "Working…"
+    // with the full sentence ("Working through 2 Workers") in semantics.
+    val workersBusy =
+        if (agentMemberId != null && status?.external != true) {
+            val nowMs = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: build.raft.app.data.defaultNowMillis()
+            status?.busyThroughWorkers(nowMs = nowMs)
+        } else {
+            null
+        }
+    if (workersBusy != null) {
+        val fullText = workersBusy.localizedText()
+        Text(
+            stringResource(Res.string.home_dm_agent_activity_working),
+            style = RaftType.Footnote,
+            color = if (selected) RaftColor.StickerInk else RaftColor.TextMuted,
+            modifier =
+                modifier
+                    .testTag(AgentRunningWorkersTestTags.SidebarShort)
+                    .semantics { contentDescription = fullText },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         return
     }

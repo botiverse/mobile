@@ -11,6 +11,7 @@ import build.raft.app.data.NeutralAgentStatusLabel
 import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.data.truncateAgentToolLabel
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentDeliveryHoldReason
 import build.raft.app.model.AgentReadiness
@@ -87,8 +88,18 @@ internal data class RaftAgentStatusIndicatorState(
     val agentDisplayName: String? = null,
     /** Server-composed readiness from `GET /api/agents` (already trimmed per viewer). */
     val readiness: AgentReadiness? = null,
+    /** Older daemon idle credential hold (`agent:activity` `credentialHold`, botiverse/slock #13276). */
+    val credentialHold: AgentCredentialHoldReason? = null,
     /** The daemon holds this agent's deliveries on any activity or coarse state (botiverse/slock #16333). */
     val deliveryHold: AgentDeliveryHold? = null,
+    /**
+     * Positive count of running Workers on this agent's current Computer (`runningWorkers`,
+     * botiverse/slock #16819). For another server's agent in a joint channel, normalized to 1
+     * with [runningWorkersPresenceOnly] = true.
+     */
+    val runningWorkers: Int? = null,
+    /** Another server's agent (joint channel): only presence is known, never the count. */
+    val runningWorkersPresenceOnly: Boolean = false,
 )
 
 /** React parity: external agents caption as "External" (agentStore.ts resolveAgentDisplayState). */
@@ -214,16 +225,21 @@ internal fun rememberRaftAgentStatusIndicatorState(
         }
         base.deliveryHold != null -> {
             val activeHold = base.activeDeliveryHold(nowMs = nowForHold)
+            // Strip an expired ProviderLimit hold once our LaunchedEffect reaches untilMs so
+            // downstream label surfaces (which read minute-granular RaftTimeContext) immediately
+            // agree with the updated dot color instead of waiting up to 59s.
+            val effectiveBase = if (activeHold == null) base.copy(deliveryHold = null) else base
             val resolvedColor =
-                if (activeHold != null) {
-                    RaftColor.AccentOrange
-                } else {
-                    raftAgentManagedStatusColor(
-                        status = base.status,
-                        presence = if (base.likelyOnline) Presence.Active else base.status?.presence ?: Presence.Offline,
-                    )
+                when {
+                    activeHold != null -> RaftColor.AccentOrange
+                    effectiveBase.busyThroughWorkers(nowMs = nowForHold) != null -> RaftColor.BrandYellow
+                    else ->
+                        raftAgentManagedStatusColor(
+                            status = effectiveBase.status,
+                            presence = if (effectiveBase.likelyOnline) Presence.Active else effectiveBase.status?.presence ?: Presence.Offline,
+                        )
                 }
-            if (resolvedColor == base.color) base else base.copy(color = resolvedColor)
+            if (resolvedColor == effectiveBase.color) effectiveBase else effectiveBase.copy(color = resolvedColor)
         }
         else -> base
     }
@@ -270,17 +286,26 @@ internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(
             machineId = machineId,
             machineName = machineName,
             readiness = readiness,
+            credentialHold = credentialHold,
             deliveryHold = deliveryHold,
+            runningWorkers = runningWorkers,
+            runningWorkersPresenceOnly = runningWorkersPresenceOnly,
         )
-    // Web AgentActivityDot (botiverse/slock #16333): a held agent paints the error light on every
-    // avatar and in the @mention list while its hold is active (except offline/external/blocked/guessed).
+    // Web AgentActivityDot (botiverse/slock #16333, #16819): a held agent paints the error light on
+    // every avatar and in the @mention list while its hold is active; otherwise an online agent
+    // whose Workers are working paints the busy yellow light.
+    val nowMs = nowEpochMillis ?: defaultNowMillis()
     val activeHold =
         if (deliveryHold != null) {
-            base.activeDeliveryHold(nowMs = nowEpochMillis ?: defaultNowMillis())
+            base.activeDeliveryHold(nowMs = nowMs)
         } else {
             null
         }
-    return if (activeHold != null) base.copy(color = RaftColor.AccentOrange) else base
+    return when {
+        activeHold != null -> base.copy(color = RaftColor.AccentOrange)
+        base.busyThroughWorkers(nowMs = nowMs) != null -> base.copy(color = RaftColor.BrandYellow)
+        else -> base
+    }
 }
 
 internal fun raftAgentManagedStatusColor(
@@ -594,6 +619,11 @@ internal fun RaftAgentStatusIndicatorState.localizedMemberStatusLabel(): String 
     if (likelyOnline && label == LikelyOnlineAgentStatusLabel) {
         return stringResource(Res.string.member_row_status_likely_online)
     }
+    // Web formatAgentDisplayStateText (#16819): online with running Workers reads
+    // "Working through a Worker" / "Working through N Workers" (or "Working through Workers"
+    // for another server's agent in a joint channel).
+    val nowMs = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
+    busyThroughWorkers(nowMs = nowMs)?.let { return it.localizedText() }
     return when (label.trim().lowercase()) {
         "online", "active" -> stringResource(Res.string.member_row_status_online)
         "offline" -> stringResource(Res.string.member_row_status_offline)

@@ -493,4 +493,42 @@ class MemberAgentParserTest {
         val snake = parseSharedAgentProfile("""{"id":"a1","name":"x","assistant_paused_at":"2026-10-30T09:12:44.512Z","pausedAt":"2026-10-30T09:12:44.512Z"}""")
         assertNull(snake?.assistantPausedAt)
     }
+
+    @Test
+    fun agentsGuestListAndChannelMembersParseRunningWorkers() {
+        val agents =
+            parseSharedSettingsAgentsAsMembers(
+                """
+                [
+                  {"id":"a-local","name":"kirby","status":"active","activity":"online","runningWorkers":2},
+                  {"id":"a-guest","name":"guest-bot","status":"active","activity":"online","runningWorkers":3,"profileProjection":"channel_summary"},
+                  {"id":"a-zero","name":"idle","status":"active","activity":"online","runningWorkers":0},
+                  {"id":"a-frac","name":"odd","status":"active","activity":"online","runningWorkers":1.5}
+                ]
+                """.trimIndent()
+            )
+        val byId = assertNotNull(agents).associateBy { it.id.value }
+        assertEquals(2, byId.getValue("a-local").agentRunningWorkers)
+        assertEquals(3, byId.getValue("a-guest").agentRunningWorkers)
+        assertNull(byId.getValue("a-zero").agentRunningWorkers)
+        assertNull(byId.getValue("a-frac").agentRunningWorkers)
+
+        val channelSnapshot =
+            parseSharedChannelMemberSnapshot(
+                """
+                {
+                  "humans": [],
+                  "agents": [
+                    {"id":"a-local","name":"kirby","status":"active","activity":"online","runningWorkers":2,"inViewerServer":true,"serverId":"s1"},
+                    {"id":"a-peer","name":"peer","status":"active","activity":"online","runningWorkers":1,"inViewerServer":false,"serverId":"s2"}
+                  ]
+                }
+                """.trimIndent(),
+                ChannelId("ch-1"),
+            )
+        val channelById = assertNotNull(channelSnapshot).members.associateBy { it.id.value }
+        assertEquals(2, channelById.getValue("a-local").agentRunningWorkers)
+        assertEquals(1, channelById.getValue("a-peer").agentRunningWorkers)
+        assertEquals(false, channelById.getValue("a-peer").inViewerServer)
+    }
 }

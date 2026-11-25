@@ -14,11 +14,14 @@ import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.composerMentionHandle
 import build.raft.app.model.ChannelExternalMemberProfile
 import build.raft.app.model.ChannelId
+import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentDeliveryHold
+import build.raft.app.model.AgentDeliveryHoldReason
 import build.raft.app.model.AgentReadiness
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
+import build.raft.app.model.holds
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberServerRef
 import build.raft.app.model.MemberKind
@@ -52,6 +55,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -280,7 +284,12 @@ data class SharedServerMembersState(
         // Web resolveAgentDisplayState: a held agent reads why, whatever its last activity.
         member.blockedMemberStatusOrNull()?.let { return it }
         return applySeedOnlyOfflinePolicy(
-            resolved = member.toSharedServerMemberStatus(null, authoritativeReadiness = rosterMember != null),
+            resolved =
+                member.toSharedServerMemberStatus(
+                    presenceFact = null,
+                    viewerServerId = cleanServerId,
+                    authoritativeReadiness = rosterMember != null,
+                ),
             seedOnly = rosterMember == null
         )
     }
@@ -444,8 +453,18 @@ data class SharedServerMemberStatus(
     val machineName: String? = null,
     /** Server-composed agent readiness from `GET /api/agents` (already trimmed per viewer). */
     val readiness: AgentReadiness? = null,
+    /** Older daemon idle credential hold (`agent:activity` `credentialHold`, botiverse/slock #13276). */
+    val credentialHold: AgentCredentialHoldReason? = null,
     /** The daemon holds this agent's deliveries on any activity or coarse state (botiverse/slock #16333). */
     val deliveryHold: AgentDeliveryHold? = null,
+    /**
+     * Positive count of running Workers on this agent's current Computer (`runningWorkers`,
+     * botiverse/slock #16819). For another server's agent in a joint channel, normalized to 1
+     * with [runningWorkersPresenceOnly] = true.
+     */
+    val runningWorkers: Int? = null,
+    /** Another server's agent (joint channel): only presence is known, never the count. */
+    val runningWorkersPresenceOnly: Boolean = false,
 )
 
 /**
@@ -555,6 +574,7 @@ private fun SharedServerMembersEntry.visibleDirectoryEntry(): SharedServerMember
 
 private fun MemberProfile?.toSharedServerMemberStatus(
     presenceFact: MemberPresenceUpdated?,
+    viewerServerId: String? = null,
     authoritativeReadiness: Boolean = true,
 ): SharedServerMemberStatus? {
     val resolvedLastSeenAt =
@@ -570,6 +590,11 @@ private fun MemberProfile?.toSharedServerMemberStatus(
     val keptSpawnFailureReason = this?.lastRuntimeErrorSpawnFailureReason?.trim()?.takeIf { it.isNotBlank() }
     val resolvedReadiness = if (authoritativeReadiness) this?.agentReadiness else null
     val resolvedProfileDeliveryHold = if (authoritativeReadiness) this?.agentDeliveryHold else null
+    val cleanViewerServerId = viewerServerId.normalizedServerMembersId()
+    val memberServerId = this?.serverId?.value.normalizedServerMembersId()
+    val otherServer =
+        this?.inViewerServer == false ||
+            (memberServerId != null && cleanViewerServerId != null && memberServerId != cleanViewerServerId)
     if (
         presenceFact != null &&
         (
@@ -578,6 +603,13 @@ private fun MemberProfile?.toSharedServerMemberStatus(
                 this?.kind == MemberKind.Agent
         )
     ) {
+        val rawRunningWorkers = normalizeAgentRunningWorkers(presenceFact.runningWorkers)
+        val resolvedRunningWorkers =
+            when {
+                rawRunningWorkers == null -> null
+                otherServer -> 1
+                else -> rawRunningWorkers
+            }
         return SharedServerMemberStatus(
             status = presenceFact.agentStatus ?: this?.agentStatus,
             presence = presenceFact.presence,
@@ -599,10 +631,21 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             machineId = memberMachineId,
             machineName = memberMachineName,
             readiness = resolvedReadiness,
+            credentialHold = presenceFact.credentialHold,
             deliveryHold = presenceFact.deliveryHold,
+            runningWorkers = resolvedRunningWorkers,
+            runningWorkersPresenceOnly = resolvedRunningWorkers != null && otherServer,
         )
     }
     if (this?.kind != MemberKind.Agent) return null
+    val rawProfileRunningWorkers =
+        if (authoritativeReadiness) normalizeAgentRunningWorkers(agentRunningWorkers) else null
+    val resolvedProfileRunningWorkers =
+        when {
+            rawProfileRunningWorkers == null -> null
+            otherServer -> 1
+            else -> rawProfileRunningWorkers
+        }
     return SharedServerMemberStatus(
         status = agentStatus,
         presence = presence,
@@ -616,6 +659,8 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         machineName = memberMachineName,
         readiness = resolvedReadiness,
         deliveryHold = resolvedProfileDeliveryHold,
+        runningWorkers = resolvedProfileRunningWorkers,
+        runningWorkersPresenceOnly = resolvedProfileRunningWorkers != null && otherServer,
     )
 }
 
@@ -1143,6 +1188,77 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
         }.distinctUntilChanged()
     }
 
+    /**
+     * Local agents busy only through their Workers (Web `selectWorkerBusyAgentsKey`, botiverse/slock
+     * #16819): online with `runningWorkers > 0`, and no higher-priority state (external, App Bot,
+     * deleted, other server, paused, blocked, holding readiness, active delivery hold, or idle
+     * credential hold). Merged ONLY into the workspace Working now summary — never into
+     * [workingAgentsFlow] so a channel's "working here" line never counts Workers.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun workerBusyAgentsFlow(serverId: ServerId): Flow<List<RaftWorkingAgent>> {
+        val serverKey = serverId.value.normalizedServerMembersId() ?: return flowOf(emptyList())
+        val scopedServerId = ServerId(serverKey)
+        val factsFlow =
+            presenceOwnerFlow(scopedServerId).flatMapLatest { owner ->
+                owner?.let { presenceRegistry.factsFlow(it) } ?: flowOf(emptyMap())
+            }
+        return combine(state, factsFlow) { _, facts ->
+            facts to currentKnownMemberProfilesById(scopedServerId)
+        }.transformLatest { (facts, profiles) ->
+            var clockFloorMs = Long.MIN_VALUE
+            while (true) {
+                val nowMs = maxOf(defaultNowMillis(), clockFloorMs)
+                var nextExpiryMs: Long? = null
+                val busy =
+                    facts.mapNotNull { (memberId, fact) ->
+                        if (fact.agentStatus != AgentStatus.Online) return@mapNotNull null
+                        val count = normalizeAgentRunningWorkers(fact.runningWorkers) ?: return@mapNotNull null
+                        if (fact.credentialHold != null) return@mapNotNull null
+                        val profile = profiles[memberId.trim()] ?: return@mapNotNull null
+                        val otherServer =
+                            profile.inViewerServer == false ||
+                                profile.serverId?.value?.trim()?.let { it.isNotEmpty() && it != serverKey } == true
+                        if (
+                            profile.kind != MemberKind.Agent ||
+                            profile.isExternal ||
+                            !profile.managedByAppInstallId.isNullOrBlank() ||
+                            !profile.agentDeletedAt.isNullOrBlank() ||
+                            profile.isDeletedAgentProfile(serverKey) ||
+                            otherServer ||
+                            !profile.assistantPausedAt.isNullOrBlank() ||
+                            profile.blockedMemberStatusOrNull() != null ||
+                            profile.agentReadiness?.holds() == true
+                        ) {
+                            return@mapNotNull null
+                        }
+                        val hold = fact.deliveryHold
+                        if (hold != null) {
+                            val untilMs =
+                                if (hold.reason == AgentDeliveryHoldReason.ProviderLimit) hold.untilMs else null
+                            if (untilMs == null || untilMs > nowMs) {
+                                if (untilMs != null) {
+                                    nextExpiryMs = nextExpiryMs?.let { minOf(it, untilMs) } ?: untilMs
+                                }
+                                return@mapNotNull null
+                            }
+                        }
+                        RaftWorkingAgent(
+                            agentId = memberId.trim(),
+                            name = profile.displayName.ifBlank { profile.handle },
+                            avatarWireValue = profile.avatarWireValueForRenderedAvatar(),
+                            status = AgentStatus.Online,
+                            runningWorkers = count,
+                        )
+                    }
+                emit(busy)
+                val waitMs = nextExpiryMs?.let { (it - nowMs).coerceAtLeast(1L) } ?: break
+                delay(waitMs)
+                clockFloorMs = maxOf(clockFloorMs, nowMs + waitMs)
+            }
+        }.distinctUntilChanged()
+    }
+
     @RaftCoreInternalApi fun currentServerMembersEntry(owner: AuthenticatedRouteOwner): SharedServerMembersEntry {
         val normalizedOwner = owner.normalizedOrNull()
             ?: return SharedServerMembersEntry(serverId = owner.serverId.trim())
@@ -1513,7 +1629,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
             scopedMemberProfileResolutionFlow(scopedServerId, cleanMemberId),
             presenceOwnerSnapshotFlow
         ) { resolution, presenceOwnerSnapshot ->
-            memberStatusOf(resolution, presenceOwnerSnapshot, cleanMemberId)
+            memberStatusOf(resolution, presenceOwnerSnapshot, cleanMemberId, viewerServerId = scopedServerId.value)
         }.distinctUntilChanged()
     }
 
@@ -1534,14 +1650,16 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
         return memberStatusOf(
             resolution = currentScopedMemberProfileResolution(scopedServerId, cleanMemberId),
             presenceOwnerSnapshot = presenceOwnerSnapshot,
-            memberId = cleanMemberId
+            memberId = cleanMemberId,
+            viewerServerId = cleanServerId,
         )
     }
 
     private fun memberStatusOf(
         resolution: ScopedMemberProfileResolution,
         presenceOwnerSnapshot: ProcessPresenceOwnerSnapshot,
-        memberId: String
+        memberId: String,
+        viewerServerId: String,
     ): SharedServerMemberStatus? {
         val member = resolution.profile
         val presenceFact = presenceOwnerSnapshot.facts[memberId]
@@ -1578,6 +1696,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                 resolved =
                     member.toSharedServerMemberStatus(
                         presenceFact,
+                        viewerServerId = viewerServerId,
                         authoritativeReadiness = resolution.authoritative,
                     ),
                 seedOnly = !resolution.authoritative && presenceFact == null
@@ -2195,6 +2314,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                         agentStatus = status,
                         statusLabel = status.label,
                         deliveryHold = profile.agentDeliveryHold,
+                        runningWorkers = profile.agentRunningWorkers,
                         serverSeq = null
                     ),
                 writeGeneration = write.writeGeneration
@@ -3581,6 +3701,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                         agentStatus = status,
                         statusLabel = status.label,
                         deliveryHold = profile.agentDeliveryHold,
+                        runningWorkers = profile.agentRunningWorkers,
                         serverSeq = null
                     )
             )
@@ -4528,10 +4649,18 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                     .filterServerRosterMembers(key)
                     .filterDeletedAgents(key)
                     .map { member ->
-                        if (member.agentReadiness == null && member.agentDeliveryHold == null) {
+                        if (
+                            member.agentReadiness == null &&
+                            member.agentDeliveryHold == null &&
+                            member.agentRunningWorkers == null
+                        ) {
                             member
                         } else {
-                            member.copy(agentReadiness = null, agentDeliveryHold = null)
+                            member.copy(
+                                agentReadiness = null,
+                                agentDeliveryHold = null,
+                                agentRunningWorkers = null,
+                            )
                         }
                     }
             if (members.isEmpty()) return@withLock false
@@ -5021,7 +5150,13 @@ private fun List<String>.rosterPresenceSample(): String =
 
 private fun MemberProfile.withoutVolatileStatus(): MemberProfile =
     if (kind == MemberKind.Agent) {
-        copy(presence = Presence.Offline, agentStatus = null, agentReadiness = null, agentDeliveryHold = null)
+        copy(
+            presence = Presence.Offline,
+            agentStatus = null,
+            agentReadiness = null,
+            agentDeliveryHold = null,
+            agentRunningWorkers = null,
+        )
     } else {
         this
     }
@@ -5047,6 +5182,7 @@ private fun MemberProfile.mergeAuthoritativeProfile(
             inViewerServer = incoming.inViewerServer ?: inViewerServer,
             agentReadiness = if (replaceReadiness) incoming.agentReadiness else incoming.agentReadiness ?: agentReadiness,
             agentDeliveryHold = if (replaceReadiness) incoming.agentDeliveryHold else incoming.agentDeliveryHold ?: agentDeliveryHold,
+            agentRunningWorkers = if (replaceReadiness) incoming.agentRunningWorkers else incoming.agentRunningWorkers ?: agentRunningWorkers,
         )
     val statusMerged =
         if (incoming.kind == MemberKind.Agent && incoming.agentStatus != null) {

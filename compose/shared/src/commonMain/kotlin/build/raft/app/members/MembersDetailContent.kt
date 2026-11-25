@@ -431,7 +431,13 @@ internal fun MembersDetailContent(
     // null so no chip is rendered.
     val managedAgentStatusObservedState =
         if (member.kind == MemberKind.Agent) {
-            val canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value)
+            val rawCanonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value)
+            val canonicalState =
+                if (remoteProfile && rawCanonicalState?.runningWorkers != null && !rawCanonicalState.runningWorkersPresenceOnly) {
+                    rawCanonicalState.copy(runningWorkers = 1, runningWorkersPresenceOnly = true)
+                } else {
+                    rawCanonicalState
+                }
             val remoteProfileFallback =
                 if (remoteProfile) {
                     membersRemoteProfileAgentStatusIndicatorStateOrNull(
@@ -441,6 +447,8 @@ internal fun MembersDetailContent(
                         runtime = detail?.summary?.runtime,
                         model = detail?.summary?.model,
                         deliveryHold = detail?.summary?.deliveryHold,
+                        runningWorkers = detail?.summary?.runningWorkers,
+                        runningWorkersPresenceOnly = remoteProfile,
                     )
                 } else {
                     null

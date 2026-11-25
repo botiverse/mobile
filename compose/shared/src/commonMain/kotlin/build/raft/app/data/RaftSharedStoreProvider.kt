@@ -1984,6 +1984,7 @@ internal class RaftSharedStoreProvider private constructor(
             SharedLiveAgentActivityStore(
                 scope = threadSendScope,
                 workingAgents = { serverId -> members.workingAgentsFlow(build.raft.app.model.ServerId(serverId)) },
+                workerBusyAgents = { serverId -> members.workerBusyAgentsFlow(build.raft.app.model.ServerId(serverId)) },
             )
         }
 

@@ -58,6 +58,7 @@ import kotlinx.serialization.Serializable
                     agentStatus = null,
                     agentReadiness = null,
                     agentDeliveryHold = null,
+                    agentRunningWorkers = null,
                     canChangeChannelRole = null,
                     canRemoveFromChannel = null,
                     createdAgents = emptyList(),

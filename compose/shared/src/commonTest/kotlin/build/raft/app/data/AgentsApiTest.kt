@@ -953,4 +953,24 @@ class AgentsApiTest {
             assertTrue(summary.executionMode == "byoc" || summary.executionMode == "cloud", "$name: executionMode is where it runs")
         }
     }
+
+    @Test
+    fun agentSummaryAndDetailParseRunningWorkersDefensively() = runPortableCoroutineTest {
+        suspend fun readWorkers(rawField: String?): Pair<Int?, Int?> {
+            val extra = rawField?.let { ""","runningWorkers":$it""" }.orEmpty()
+            val body = """{"id":"agent-1","name":"kirby","status":"active","activity":"online"$extra}"""
+            val summary =
+                assertIs<DataResult.Content<AgentSummary>>(
+                    RaftAgentsApiClient(RecordingAgentsApi(agentBody = body)).agent(MemberId("agent-1"))
+                ).data
+            return summary.runningWorkers to summary.toAgentDetailSummary().runningWorkers
+        }
+        assertEquals(3 to 3, readWorkers("3"))
+        assertEquals(1 to 1, readWorkers("1"))
+        assertEquals(null to null, readWorkers(null))
+        assertEquals(null to null, readWorkers("0"))
+        assertEquals(null to null, readWorkers("-2"))
+        assertEquals(null to null, readWorkers("1.5"))
+        assertEquals(null to null, readWorkers(""""2""""))
+    }
 }

@@ -12,7 +12,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 
 /**
@@ -30,6 +32,8 @@ data class RaftWorkingAgent(
      * fact carried over a reconnect with its seq dropped), which is no signal of its own.
      */
     val signal: RaftLiveAgentSignal? = null,
+    /** Positive count when this entry comes from `workerBusyAgentsFlow` (botiverse/slock #16819). */
+    val runningWorkers: Int = 0,
 )
 
 /**
@@ -63,6 +67,8 @@ data class RaftLiveAgentActivityItem(
     val lastSignalAt: Long = startedAt,
     val lastSignalSeq: Long? = null,
     val heldUntilChange: Boolean = true,
+    /** Positive count when this workspace-summary row represents an agent busy only through its Workers (#16819). */
+    val runningWorkers: Int = 0,
 )
 
 /**
@@ -218,6 +224,33 @@ fun nextLiveAgentActivityExpiry(items: List<RaftLiveAgentActivityItem>): Long? =
     }.distinctUntilChanged()
 
 /**
+ * Web `useWorkingNowItems` (botiverse/slock #16819): combines the own-work live rows with agents
+ * busy only through their Workers that are not already listed. Used ONLY for the workspace
+ * "Working now" summary/popover — never for a channel's "working here" line.
+ */
+@RaftCoreInternalApi fun mergeWorkingNowWithWorkerBusy(
+    liveItems: List<RaftLiveAgentActivityItem>,
+    workerBusy: List<RaftWorkingAgent>,
+): List<RaftLiveAgentActivityItem> {
+    if (workerBusy.isEmpty()) return liveItems
+    val listed = liveItems.mapTo(HashSet()) { it.agentId }
+    val extra =
+        workerBusy.mapNotNull { agent ->
+            val count = normalizeAgentRunningWorkers(agent.runningWorkers) ?: return@mapNotNull null
+            if (agent.agentId in listed) return@mapNotNull null
+            RaftLiveAgentActivityItem(
+                agentId = agent.agentId,
+                name = agent.name,
+                avatarWireValue = agent.avatarWireValue,
+                status = AgentStatus.Online,
+                startedAt = 0L,
+                runningWorkers = count,
+            )
+        }
+    return if (extra.isEmpty()) liveItems else liveItems + extra
+}
+
+/**
  * Who is working right now, per server (Web `liveAgentActivityStore`), for the summary at the top
  * of the window and on the Home bar. Shared by every surface that shows it, so the order the
  * agents started in survives a page being rebuilt. Reads only what the app already has: the
@@ -226,17 +259,37 @@ fun nextLiveAgentActivityExpiry(items: List<RaftLiveAgentActivityItem>): Long? =
 class SharedLiveAgentActivityStore @RaftCoreInternalApi constructor(
     private val scope: CoroutineScope,
     private val workingAgents: (serverId: String) -> Flow<List<RaftWorkingAgent>>,
+    private val workerBusyAgents: (serverId: String) -> Flow<List<RaftWorkingAgent>> = { flowOf(emptyList()) },
     private val now: () -> Long = ::defaultNowMillis,
 ) {
     private val lock = SynchronizedObject()
     private val flows = mutableMapOf<String, StateFlow<List<RaftLiveAgentActivityItem>>>()
+    private val workspaceFlows = mutableMapOf<String, StateFlow<List<RaftLiveAgentActivityItem>>>()
 
+    /** Agents whose own status is thinking or working (used by channel "working here"). */
     fun itemsFlow(serverId: String): StateFlow<List<RaftLiveAgentActivityItem>> {
         val key = serverId.trim()
         return synchronized(lock) {
             flows.getOrPut(key) {
                 liveAgentActivityFlow(workingAgents(key), now)
                     // A page swap keeps the list (and its order); nobody watching for a while drops it.
+                    .stateIn(scope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 30_000L), emptyList())
+            }
+        }
+    }
+
+    /**
+     * Workspace "Working now" summary and popover (Web `useWorkingNowItems`, #16819): own-work
+     * live rows plus agents busy only through their Workers.
+     */
+    fun workspaceItemsFlow(serverId: String): StateFlow<List<RaftLiveAgentActivityItem>> {
+        val key = serverId.trim()
+        return synchronized(lock) {
+            workspaceFlows.getOrPut(key) {
+                combine(itemsFlow(key), workerBusyAgents(key)) { liveItems, workerBusy ->
+                    mergeWorkingNowWithWorkerBusy(liveItems, workerBusy)
+                }
+                    .distinctUntilChanged()
                     .stateIn(scope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 30_000L), emptyList())
             }
         }

@@ -838,7 +838,8 @@ private fun SharedAgentDetailState.mergeSequencedActivityIntoDetail(
                 activityDetail = currentSummary.activityDetail ?: incomingSummary.activityDetail,
                 spawnFailure = if (currentSummary.activityDetail != null) currentSummary.spawnFailure else incomingSummary.spawnFailure,
                 credentialHold = if (currentSummary.activityDetail != null) currentSummary.credentialHold else incomingSummary.credentialHold,
-                deliveryHold = currentSummary.deliveryHold
+                deliveryHold = currentSummary.deliveryHold,
+                runningWorkers = currentSummary.runningWorkers
             )
         } else {
             incomingSummary
@@ -934,6 +935,11 @@ private fun AgentDetailSnapshot.withAgentActivity(
             deliveryHold =
                 if (isSeenEvent) currentSummary.deliveryHold
                 else event.deliveryHold,
+            // Web activityTypedCarriers (#16819): `runningWorkers` rides both detailed `agent:activity`
+            // and coarse `agent:activity_state`; any frame without it clears it.
+            runningWorkers =
+                if (isSeenEvent) currentSummary.runningWorkers
+                else normalizeAgentRunningWorkers(event.runningWorkers),
             // Web activityTypedCarriers (#13985): the error code rides only a detailed error frame.
             activityErrorCode =
                 if (isSeenEvent || event.coarseState) currentSummary.activityErrorCode

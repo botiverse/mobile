@@ -905,6 +905,79 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun workerBusyAgentsFlowIncludesLocalOnlineRunningWorkersAndExcludesHoldsPeersAndOwnWork() = runTest {
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        fun agent(id: String, name: String) =
+            member(id, name).copy(kind = MemberKind.Agent, presence = Presence.Active, serverId = ServerId("server-1"))
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    agent("workers", "Kirby"),
+                    agent("self", "Niko"),
+                    agent("held", "Sage"),
+                    agent("paused", "Pausey").copy(assistantPausedAt = "2026-11-25T10:00:00Z"),
+                    agent("blocked", "OldComp").copy(agentBlockedReason = "computer_offline"),
+                    agent("readiness", "HeldReady").copy(
+                        agentReadiness = AgentReadiness(state = "blocked", primary = AgentReadinessFact(code = "computer_offline"))
+                    ),
+                    agent("peer", "Peer").copy(serverId = ServerId("server-2"), inViewerServer = false),
+                    agent("ext", "External").copy(isExternal = true),
+                    agent("bot", "Bot").copy(managedByAppInstallId = "install-1"),
+                    agent("idle", "Idle"),
+                )
+            )
+        )
+        fun onlineFact(id: String, workers: Int?, status: AgentStatus = AgentStatus.Online, hold: AgentDeliveryHold? = null) =
+            MemberPresenceUpdated(
+                memberId = MemberId(id),
+                presence = status.presence,
+                kind = MemberKind.Agent,
+                agentStatus = status,
+                deliveryHold = hold,
+                runningWorkers = workers,
+                serverSeq = 1L,
+            )
+        val activeHold =
+            AgentDeliveryHold(
+                reason = AgentDeliveryHoldReason.CredentialInvalid,
+                credentialDetail = AgentCredentialHoldReason.UserReauth,
+                since = 1_000L,
+            )
+        store.applyPresence(ServerId("server-1"), onlineFact("workers", 2))
+        store.applyPresence(ServerId("server-1"), onlineFact("self", 1, status = AgentStatus.Working))
+        store.applyPresence(ServerId("server-1"), onlineFact("held", 2, hold = activeHold))
+        store.applyPresence(ServerId("server-1"), onlineFact("paused", 2))
+        store.applyPresence(ServerId("server-1"), onlineFact("blocked", 2))
+        store.applyPresence(ServerId("server-1"), onlineFact("readiness", 2))
+        store.applyPresence(ServerId("server-1"), onlineFact("peer", 1))
+        store.applyPresence(ServerId("server-1"), onlineFact("ext", 2))
+        store.applyPresence(ServerId("server-1"), onlineFact("bot", 2))
+        store.applyPresence(ServerId("server-1"), onlineFact("idle", null))
+
+        // workingAgentsFlow keeps ONLY own thinking/working (channel "working here" never counts Workers).
+        val ownWorking = store.workingAgentsFlow(ServerId("server-1")).first()
+        assertEquals(listOf("self"), ownWorking.map { it.agentId })
+
+        // workerBusyAgentsFlow includes ONLY local online agents busy through Workers with no overriding hold/block/pause.
+        val workerBusy = store.workerBusyAgentsFlow(ServerId("server-1")).first()
+        assertEquals(listOf("workers" to 2), workerBusy.map { it.agentId to it.runningWorkers })
+
+        // Peer agent on another server resolves runningWorkers as presence-only (never a count).
+        val peerStatus = store.memberStatusFlow(ServerId("server-1"), "peer").first()
+        assertEquals(1, peerStatus?.runningWorkers)
+        assertEquals(true, peerStatus?.runningWorkersPresenceOnly)
+
+        val localStatus = store.memberStatusFlow(ServerId("server-1"), "workers").first()
+        assertEquals(2, localStatus?.runningWorkers)
+        assertEquals(false, localStatus?.runningWorkersPresenceOnly)
+
+        // Durable roster stripping never persists volatile runningWorkers.
+        val durable = agent("workers", "Kirby").copy(agentRunningWorkers = 3).forDurableRoster()
+        assertNull(durable.agentRunningWorkers)
+    }
+
+    @Test
     fun applyPresenceStoresOfflineFactWithoutAgentStatus() {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)
