@@ -76,7 +76,8 @@ fun RaftSearchTrigger(
     val focused = raftIsFocused(source)
     val shape = RoundedCornerShape(RaftRadius.Control)
     Box(
-        modifier
+        // raft-ui's `search-trigger` slot, for the visual-testing component comparison.
+        Modifier.raftSlot("search-trigger").then(modifier)
             .width(RaftSearchTriggerDefaults.width(windowWidth))
             .height(RaftTopBarDefaults.itemSize)
             .raftFocusRing(focused, RaftRadius.Control, colors)

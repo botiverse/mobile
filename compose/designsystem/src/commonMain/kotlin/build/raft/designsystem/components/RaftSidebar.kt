@@ -340,7 +340,12 @@ private fun RaftSidebarItemLayout(
     titleTrailing: (@Composable () -> Unit)?,
     variant: RaftSidebarItemVariant,
     stackedSubtitle: (@Composable (modifier: Modifier, style: TextStyle, ink: Color) -> Unit)? = null,
+    leadingSlot: String = "sidebar-item-icon",
 ) {
+    // raft-ui's slot names on the row's parts, for the visual-testing component comparison.
+    val namedTitle: @Composable (modifier: Modifier, style: TextStyle, ink: Color) -> Unit = { textModifier, style, ink ->
+        titleText(Modifier.raftSlot("sidebar-item-title").then(textModifier), style, ink)
+    }
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -442,6 +447,7 @@ private fun RaftSidebarItemLayout(
             if (leading != null) {
                 Box(
                     Modifier
+                        .raftSlot(leadingSlot)
                         .padding(end = shape.leadingGap - RaftSidebarItemMetrics.Gap)
                         // `md:pointer-fine:*:data-[slot=avatar]:mr-[-3px]`: a DM's avatar pulls
                         // the name onto the text axis. (raft-ui's icon slot also drops to 16dp
@@ -469,12 +475,12 @@ private fun RaftSidebarItemLayout(
             }
             if (stackedSubtitle != null) {
                 // SidebarItemContent `stacked`: the name over its second line.
-                Column(Modifier.weight(1f)) {
-                    titleText(Modifier, rowStyle.copy(fontWeight = titleWeight), look.ink)
+                Column(Modifier.raftSlot("sidebar-item-content").weight(1f)) {
+                    namedTitle(Modifier, rowStyle.copy(fontWeight = titleWeight), look.ink)
                     stackedSubtitle(Modifier, typography.footnote, subtitleInk)
                 }
             } else Row(
-                Modifier.weight(1f),
+                Modifier.raftSlot("sidebar-item-content").weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -483,9 +489,9 @@ private fun RaftSidebarItemLayout(
                 val titleStyle = rowStyle.copy(fontWeight = titleWeight)
                 if (titleTrailing == null) {
                     // A single text: reading its own baseline lays out no children.
-                    titleText(if (subtitle == null) Modifier.weight(1f) else Modifier.alignByBaseline(), titleStyle, look.ink)
+                    namedTitle(if (subtitle == null) Modifier.weight(1f) else Modifier.alignByBaseline(), titleStyle, look.ink)
                 } else if (subtitle == null) {
-                    RaftSidebarItemTitleGroup(Modifier.weight(1f), titleText, titleStyle, look.ink, titleTrailing, lines = null)
+                    RaftSidebarItemTitleGroup(Modifier.weight(1f), namedTitle, titleStyle, look.ink, titleTrailing, lines = null)
                 } else {
                     // The subtitle sits on the group's first baseline, but this row never reads
                     // the group's line while it measures: that lays out the slot's badges before
@@ -495,7 +501,7 @@ private fun RaftSidebarItemLayout(
                     // together from the name's carried baseline and the slot's line as read once
                     // it was placed ([RaftSidebarItemTitleLines]).
                     val lines = remember { RaftSidebarItemTitleLines() }
-                    RaftSidebarItemTitleGroup(Modifier.alignBy { lines.firstBaseline(it.measuredHeight) }, titleText, titleStyle, look.ink, titleTrailing, lines)
+                    RaftSidebarItemTitleGroup(Modifier.alignBy { lines.firstBaseline(it.measuredHeight) }, namedTitle, titleStyle, look.ink, titleTrailing, lines)
                 }
                 if (subtitle != null) {
                     RaftText(
@@ -743,6 +749,7 @@ private fun RaftSidebarChannelItemLayout(
         menuOpen = menuOpen,
         titleTrailing = titleTrailing,
         variant = RaftSidebarItemVariant.Default,
+        leadingSlot = "sidebar-item-channel-icon",
     )
 }
 
@@ -833,7 +840,7 @@ internal object RaftQuietUnreadDotMetrics {
 fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier, overflow: TextOverflow = TextOverflow.Clip) {
     RaftText(
         text,
-        modifier = modifier,
+        modifier = modifier.raftSlot("sidebar-item-meta"),
         style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Normal, fontFeatureSettings = "tnum"),
         color = LocalRaftSidebarItemHint.current ?: RaftTheme.colors.foregroundHint,
         maxLines = 1,
@@ -1033,21 +1040,23 @@ fun RaftSidebarSectionHeader(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                // raft-ui slot names, for the visual-testing component comparison.
+                val countModifier = Modifier.raftSlot("sidebar-section-count")
                 if (countSeparator != null) {
                     Row(Modifier.weight(1f, fill = false), verticalAlignment = Alignment.CenterVertically) {
-                        titleText(Modifier.weight(1f, fill = false))
-                        if (countText != null) RaftText(countText, style = countStyle, color = hint, maxLines = 1)
+                        titleText(Modifier.raftSlot("sidebar-section-title").weight(1f, fill = false))
+                        if (countText != null) RaftText(countText, modifier = countModifier, style = countStyle, color = hint, maxLines = 1)
                     }
                 } else {
-                    titleText(Modifier.weight(1f, fill = false))
-                    if (countText != null) RaftText(countText, style = countStyle, color = hint, maxLines = 1)
+                    titleText(Modifier.raftSlot("sidebar-section-title").weight(1f, fill = false))
+                    if (countText != null) RaftText(countText, modifier = countModifier, style = countStyle, color = hint, maxLines = 1)
                 }
             }
         }
         // The trailing box (`min-w-4.5`): the attention pixel, then the controls.
         if ((attention && !expanded) || actions != null) {
             Row(
-                Modifier.widthIn(min = 18.dp).overhang(lineHeight),
+                Modifier.raftSlot("sidebar-section-trailing").widthIn(min = 18.dp).overhang(lineHeight),
                 horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1056,6 +1065,7 @@ fun RaftSidebarSectionHeader(
                     CompositionLocalProvider(LocalRaftSidebarSectionOpenMenus provides openMenus) {
                         Row(
                             Modifier
+                                .raftSlot("sidebar-section-controls")
                                 .hangEnd(RaftSidebarSectionActionIconInset)
                                 .alpha(if (actionsShown) 1f else 0f)
                                 .semantics { this[RaftSidebarSectionActionsShown] = actionsShown },

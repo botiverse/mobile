@@ -46,6 +46,7 @@ import build.raft.designsystem.components.RaftMentionMarker
 import build.raft.designsystem.components.RaftRowTone
 import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftWorkspaceButton
+import build.raft.designsystem.components.raftSlot
 import build.raft.designsystem.components.RaftWorkspaceButtonDefaults
 import build.raft.designsystem.components.RaftSidebarItem
 import build.raft.designsystem.components.RaftGlyphIcon
@@ -2910,7 +2911,7 @@ private fun RaftStructuralHomeShellContent(
                                         )
                                     }
                                 }
-                                item { HomeSidebarEntryRow(RaftLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding), trailing = formatHomeSavedCount(savedCount)?.let { count -> { RaftSidebarItemMeta(count) } }, onClick = if (sidebarInteractionsEnabled) onSavedClickWithDismiss else null) }
+                                item { HomeSidebarEntryRow(RaftLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Saved, modifier = Modifier.testTag("sidebar-saved-entry").padding(horizontal = HomeListRowHorizontalPadding), trailing = formatHomeSavedCount(savedCount)?.let { count -> { RaftSidebarItemMeta(count) } }, onClick = if (sidebarInteractionsEnabled) onSavedClickWithDismiss else null) }
                                 // Drafts (drafts_section_v0, botiverse/slock #12159): under Saved, the same kind of
                                 // row with its gray count (hidden at 0). Null: the flag is off, no row.
                                 if (draftsCount != null) {
@@ -5892,7 +5893,8 @@ private fun HomeTitlebar(
     // (an alpha seam over the yellow frame came out yellow-brown).
     // The frame runs up under the status bar: the host's status bar icons follow it.
     RaftStatusBarBackdropClaim(background, enabled = topSafeArea > 0.dp)
-    Box(modifier = Modifier.fillMaxWidth().height(homeShellHeaderHeight(topSafeArea, bellInColumn)).background(background)) {
+    // Web names (`data-slot`/`data-testid`) on the head's parts, for the visual-testing component comparison.
+    Box(modifier = Modifier.raftSlot("panel-section-header").fillMaxWidth().height(homeShellHeaderHeight(topSafeArea, bellInColumn)).background(background)) {
         // Beside the Duo side column the switcher line is the page's first line, on paper, with the
         // same seam as every top-level head.
         Box(
@@ -5939,7 +5941,7 @@ private fun HomeTitlebar(
                 notifications = notifications,
                 open = notificationCenterExpanded,
                 onToggle = onNotificationToggle,
-                modifier = Modifier.offset(x = HomeNotificationBellEdgeInset)
+                modifier = Modifier.offset(x = HomeNotificationBellEdgeInset).testTag("notification-trigger-mobile")
             )
         }
     }
@@ -5997,6 +5999,7 @@ private fun HomeServerIdentityCluster(
     RaftWorkspaceButton(
         name = server.name,
         onClick = onClick,
+        modifier = Modifier.testTag("mobile-workspace-trigger"),
         // Web: the button keeps its press fill while the server list is open.
         open = open,
         avatar = {
@@ -6013,7 +6016,8 @@ private fun HomeServerIdentityCluster(
                     }
                 },
             ) {
-                ServerSwitcherAvatarTile(server, size = RaftWorkspaceButtonDefaults.AvatarSize)
+                // A wrapper of the tile's own size: raft-ui's `avatar` slot for the component comparison.
+                Box(Modifier.raftSlot("avatar")) { ServerSwitcherAvatarTile(server, size = RaftWorkspaceButtonDefaults.AvatarSize) }
             }
         },
         mark =
@@ -8804,6 +8808,7 @@ private fun DirectMessageAvatar(
             kind = kind,
             avatarWireValue = avatarWireValue,
             label = avatarLabel,
+            modifier = Modifier.raftSlot("avatar"),
             cacheSubject = cacheSubject,
             cacheServerId = cacheServerId,
             avatarPending = avatarPending,

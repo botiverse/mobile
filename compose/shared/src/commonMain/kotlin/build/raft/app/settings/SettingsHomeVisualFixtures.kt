@@ -548,10 +548,25 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
                 usageDataSharing = true
             ),
         applyTopSafeArea = false,
+        // As the web case: Login & security read (two-step off, no passkeys, as its
+        // second-factor mock) and Delete account at the end.
+        accountDeletion = SettingsAccountDeletionUi(onOpen = {}),
+        loginSecurity = settingsVisualLoginSecurity(),
         onPasswordChange = { _, _ -> },
         onEvent = { _, _ -> }
     )
 }
+
+/** Settings › Account's Login & security as the web case reads it: two-step off, no passkeys. */
+private fun settingsVisualLoginSecurity(): SettingsAccountLoginSecurityUi =
+    SettingsAccountLoginSecurityUi(
+        state =
+            build.raft.app.data.SharedAccountLoginSecurityState(
+                security = build.raft.app.data.AccountLoginSecurity(twoStepEnabled = false, passkeyCount = 0),
+            ),
+        onOpen = {},
+        onRetry = {},
+    )
 
 @Composable
 private fun SettingsVisualServerFocusedContent(variant: String) {
@@ -1057,6 +1072,23 @@ internal fun SettingsRouteVisualScreen() {
                 payload = appShellSettingsHomePayload(session, serverPanelPages = true),
                 onBack = {},
                 onSelect = {},
+                // The app's Settings home has Search settings on top (SettingsHomePage), as the
+                // web's has: an empty field, nothing searched.
+                search =
+                    SettingsSearchHost(
+                        state = rememberSettingsSearchState(null),
+                        context =
+                            RaftSettingsSearchContext(
+                                rowKeys = emptyList(),
+                                role = session.currentServerSummary()?.role,
+                                publicServer = false,
+                                serverSso = false,
+                                followedThreadReplies = false,
+                            ),
+                        serverName = session.currentServerSummary()?.name.orEmpty(),
+                        active = true,
+                        onOpen = {},
+                    ),
             )
         } else {
             SettingsRouteVisualFixtureDetailContent(
@@ -1196,6 +1228,10 @@ private fun SettingsDedicatedPagerVisualFixtureContent(
                         settingsState.account.settingsAccountAvatarCacheIdentity(session),
                     applyTopSafeArea = false,
                     bottomContentPadding = bottomContentPadding,
+                    // As the web case: Login & security read (two-step off, no passkeys, as its
+                    // second-factor mock) and Delete account at the end.
+                    accountDeletion = SettingsAccountDeletionUi(onOpen = {}),
+                    loginSecurity = settingsVisualLoginSecurity(),
                     onPasswordChange = { _, _ -> },
                     onEvent = { _, _ -> },
                 )

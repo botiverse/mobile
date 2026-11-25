@@ -65,10 +65,12 @@ fun RaftUnreadCount(
     contentDescription: String? = raftUnreadCountDescription(count),
 ) {
     if (count <= 0) return
+    // raft-ui `SidebarItemCount`'s slot name, for the visual-testing component comparison.
+    val slotted = modifier.raftSlot("sidebar-item-count")
     RaftBadge(
         text = raftUnreadCountText(count),
         // A number, not a picture: no image role.
-        modifier = if (contentDescription != null) modifier.clearAndSetSemantics { this.contentDescription = contentDescription } else modifier,
+        modifier = if (contentDescription != null) slotted.clearAndSetSemantics { this.contentDescription = contentDescription } else slotted,
         variant = RaftBadgeVariant.Accent,
     )
 }
@@ -101,6 +103,7 @@ fun RaftUnreadCount(
     Row(
         modifier =
             modifier
+                .raftSlot("sidebar-item-count")
                 .then(if (contentDescription != null) Modifier.clearAndSetSemantics { this.contentDescription = contentDescription } else Modifier)
                 .raftDieCutEdge(look.outerRing, look.radius)
                 .height(look.height)
@@ -141,6 +144,7 @@ fun RaftMentionMarker(
     val look = raftActiveStickerLook(active = true, colors = RaftTheme.colors).copy(fill = RaftUiPalette.you)
     Box(
         modifier
+            .raftSlot("sidebar-item-indicator")
             .size(20.dp)
             .raftSticker(look, RaftRadius.Sticker, colors = RaftTheme.colors)
             .imageSemantics(contentDescription),

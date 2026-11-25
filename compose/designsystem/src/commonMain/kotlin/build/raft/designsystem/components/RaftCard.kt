@@ -165,7 +165,8 @@ fun RaftCard(
     val surface = if (inactive) colors.fillSubtle.compositeOver(colors.layerCanvas) else colors.layerCard
     CompositionLocalProvider(LocalRaftContentColor provides colors.foreground, LocalRaftSurfaceColor provides surface) {
         Column(
-            modifier
+            // raft-ui's `card` slot first, so a page's own name wins.
+            Modifier.raftSlot("card").then(modifier)
                 .raftFocusRing(focused, look.radius, colors)
                 .clip(shape)
                 .background(surface, shape)

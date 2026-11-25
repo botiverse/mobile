@@ -93,7 +93,8 @@ fun RaftStatusDot(
 ) {
     val shape = RoundedCornerShape(size.radius)
     Box(
-        modifier
+        // raft-ui's `status` slot first, so a page's own name wins.
+        Modifier.raftSlot("status").then(modifier)
             .size(size.edge)
             .background(color ?: presence?.color ?: variant.color, shape)
             .border(size.border, RaftUiPalette.stickerInk, shape)

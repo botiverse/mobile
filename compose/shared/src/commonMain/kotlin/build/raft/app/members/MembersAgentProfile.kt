@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.ui.platform.testTag
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.app.data.AgentBlockedState
 import build.raft.app.assistant.AssistantOwnerPausedNotice
@@ -2094,9 +2095,11 @@ internal fun MembersAgentProfileActionsSection(
     // ink and warn in their confirmations.
     Column(modifier = modifier.fillMaxWidth()) {
         MembersProfileFullBleedDivider()
-        RaftListRowGroup(Modifier.fillMaxWidth().padding(vertical = MembersProfileSectionPaddingY)) {
+        // The web's names on the card and its rows (data-testid), for the visual-testing component comparison.
+        RaftListRowGroup(Modifier.fillMaxWidth().padding(vertical = MembersProfileSectionPaddingY).testTag("agent-actions-group")) {
             if (primaryAction != null) {
                 MembersAgentActionRow(
+                    testTag = "agent-${primaryAction.actionKey}-action",
                     label = if (primaryBusy) primaryAction.localizedBusyLabel() else primaryLabel,
                     iconName = primaryAction.iconName,
                     enabled = lifecycleInFlight == null,
@@ -2108,6 +2111,7 @@ internal fun MembersAgentProfileActionsSection(
             // Web `restartResetOffered(canControl, computerOffline)`.
             if (!computerOffline) {
                 MembersAgentActionRow(
+                    testTag = "agent-restart-reset-action",
                     label = stringResource(Res.string.member_label_restart_reset),
                     iconName = RaftLucideIconName.RotateCcw,
                     enabled = lifecycleInFlight == null,
@@ -2117,6 +2121,7 @@ internal fun MembersAgentProfileActionsSection(
                 )
             }
             MembersAgentActionRow(
+                testTag = "agent-copy-diagnostic-action",
                 label = copyState?.successLabel ?: stringResource(Res.string.member_action_copy_diagnostic_info),
                 iconName = if (copyState?.successLabel != null) RaftLucideIconName.Check else RaftLucideIconName.Copy,
                 enabled = !diagnosticBusy,
@@ -2126,6 +2131,7 @@ internal fun MembersAgentProfileActionsSection(
             )
             if (reportIssueOffered) {
                 MembersAgentActionRow(
+                    testTag = "agent-report-issue-action",
                     label = if (reportState?.inProgress == true) stringResource(Res.string.member_action_reporting) else stringResource(Res.string.member_action_report_issue),
                     iconName = RaftLucideIconName.Bug,
                     enabled = !diagnosticBusy,
@@ -2135,6 +2141,7 @@ internal fun MembersAgentProfileActionsSection(
                 )
             }
             MembersAgentActionRow(
+                testTag = "agent-archive-button",
                 label = if (lifecycleInFlight == MembersAgentLifecycleAction.Delete.actionKey) stringResource(Res.string.member_action_deleting) else stringResource(Res.string.member_action_delete_agent),
                 iconName = RaftLucideIconName.Archive,
                 enabled = lifecycleInFlight == null,
@@ -2158,6 +2165,7 @@ internal fun membersAgentProfileActionRisk(action: MembersAgentLifecycleAction):
 /** One action row (raft-ui ListRow `plain`): its icon and its name, both in the risk's ink. */
 @Composable
 private fun MembersAgentActionRow(
+    testTag: String,
     label: String,
     iconName: RaftLucideIconName,
     enabled: Boolean,
@@ -2166,6 +2174,7 @@ private fun MembersAgentActionRow(
     onClick: () -> Unit
 ) {
     RaftListRow(
+        modifier = Modifier.testTag(testTag),
         title = label,
         variant = RaftListRowVariant.Plain,
         onClick = onClick,

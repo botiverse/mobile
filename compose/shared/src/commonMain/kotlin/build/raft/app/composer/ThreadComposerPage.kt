@@ -4001,6 +4001,8 @@ internal fun ThreadComposerContentLeaf(
                                 .composerReportsFocus(autofocusOnOpen)
                                 .fillMaxWidth()
                                 .padding(horizontal = ThreadComposerInputPaddingHorizontal)
+                                // raft-ui `composer-input` (the web's composer-textarea), for the component comparison.
+                                .raftSlot("composer-input")
                                 .heightIn(
                                     min = ThreadComposerTextFieldMinHeight,
                                     max = ThreadComposerTextFieldMaxHeight
@@ -4030,13 +4032,14 @@ internal fun ThreadComposerContentLeaf(
                     // raft-ui `ComposerToolbar`: its buttons are embedded in the composer's frame.
                     RaftEmbeddedControls {
                         Row(
-                            modifier = Modifier.composerToolbarBleed().fillMaxWidth().heightIn(min = ThreadComposerToolbarMinHeight),
+                            modifier = Modifier.raftSlot("composer-toolbar").composerToolbarBleed().fillMaxWidth().heightIn(min = ThreadComposerToolbarMinHeight),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(
                                 modifier =
                                     Modifier
+                                        .raftSlot("composer-actions")
                                         .heightIn(min = ThreadComposerToolbarMinHeight),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(ThreadComposerLeftActionGroupSpacing)
@@ -4118,6 +4121,7 @@ internal fun ThreadComposerContentLeaf(
                                 if (surface.showTaskButton) {
                                     Row(
                                         modifier = Modifier
+                                            .testTag("composer-as-task-toggle")
                                             // The whole label row is the checkbox (one target, checkbox role).
                                             .toggleable(value = asTask, enabled = composerEnabled, role = Role.Checkbox) { newValue ->
                                                 if (editorOwner.acceptAsTask(editorSessionId, newValue)) {

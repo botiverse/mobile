@@ -204,6 +204,8 @@ fun RaftListRowGroup(
     CompositionLocalProvider(LocalRaftSurfaceColor provides colors.layerCard) {
         Column(
             modifier
+                // raft-ui's slot name, for the visual-testing component comparison.
+                .raftSlot("list-row-group")
                 // An inset card is content: it stays out of the horizontal safe area, and its
                 // rows (which consume it here) do not pad it again.
                 .raftSafeAreaHorizontalPadding()
@@ -383,7 +385,7 @@ fun RaftListRow(
             verticalAlignment = align,
         ) {
             if (leading != null) {
-                Box(contentAlignment = Alignment.Center) {
+                Box(Modifier.raftSlot("list-row-icon"), contentAlignment = Alignment.Center) {
                     // A risk colors the leading icon too (`--list-row-risk-ink`) and makes it 18dp
                     // (raft-design #1296); an avatar ignores both.
                     CompositionLocalProvider(
@@ -392,13 +394,13 @@ fun RaftListRow(
                     ) { leading() }
                 }
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (alignTop) 4.dp else 2.dp)) {
+            Column(Modifier.raftSlot("list-row-body").weight(1f), verticalArrangement = Arrangement.spacedBy(if (alignTop) 4.dp else 2.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     val titleStyle = (if (text == RaftListRowText.Member) typography.subhead else typography.body).copy(fontWeight = inks.titleWeight)
                     if (titleTrailing == null) {
                         RaftText(
                             title,
-                            modifier = Modifier.weight(1f).raftCopyable(titleCopyText),
+                            modifier = Modifier.raftSlot("list-row-title").weight(1f).raftCopyable(titleCopyText),
                             style = titleStyle,
                             color = inks.ink,
                             maxLines = titleMaxLines.coerceAtLeast(1),
@@ -414,7 +416,7 @@ fun RaftListRow(
                         ) {
                             RaftText(
                                 title,
-                                modifier = Modifier.weight(1f, fill = false).raftCopyable(titleCopyText),
+                                modifier = Modifier.raftSlot("list-row-title").weight(1f, fill = false).raftCopyable(titleCopyText),
                                 style = titleStyle,
                                 color = inks.ink,
                                 maxLines = titleMaxLines.coerceAtLeast(1),
