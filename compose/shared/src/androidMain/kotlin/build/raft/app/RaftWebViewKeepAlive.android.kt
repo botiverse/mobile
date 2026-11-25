@@ -50,10 +50,16 @@ internal object RaftAndroidWebViewKeepAlive {
         if (
             view.isDestroyed ||
             view.mainFrameLoadFailed ||
+            view.hasPendingRenderProcessRestore ||
             view.keepAliveKey != key ||
             view.storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty
         ) {
-            val reason = if (view.mainFrameLoadFailed) "load_error" else "other_key"
+            val reason =
+                when {
+                    view.mainFrameLoadFailed -> "load_error"
+                    view.hasPendingRenderProcessRestore -> "render_process_gone"
+                    else -> "other_key"
+                }
             view.destroy()
             raftLogInfo(LOG_TAG, "keep_alive result=dropped reason=$reason")
             return null
@@ -68,6 +74,7 @@ internal object RaftAndroidWebViewKeepAlive {
         if (
             view.isDestroyed ||
             view.mainFrameLoadFailed ||
+            view.hasPendingRenderProcessRestore ||
             view.keepAliveKey == null ||
             view.storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty
         ) {
@@ -77,6 +84,8 @@ internal object RaftAndroidWebViewKeepAlive {
             }
             if (view.mainFrameLoadFailed) {
                 raftLogInfo(LOG_TAG, "keep_alive result=refused reason=load_error")
+            } else if (view.hasPendingRenderProcessRestore) {
+                raftLogInfo(LOG_TAG, "keep_alive result=refused reason=render_process_gone")
             }
             return false
         }
@@ -96,7 +105,15 @@ internal object RaftAndroidWebViewKeepAlive {
         dropIfOtherThemeMode()
         dropIfLoadFailed()
         val current = parked
-        if (current != null && !current.isDestroyed && !current.mainFrameLoadFailed && current.keepAliveKey == key) return
+        if (
+            current != null &&
+            !current.isDestroyed &&
+            !current.mainFrameLoadFailed &&
+            !current.hasPendingRenderProcessRestore &&
+            current.keepAliveKey == key
+        ) {
+            return
+        }
         // Built on the page's (Activity) context, whose theme carries the app's light/dark mode
         // (the application context's does not on API 29-30); park() switches it to the
         // application context at once, so no Activity is held.
@@ -117,7 +134,9 @@ internal object RaftAndroidWebViewKeepAlive {
     fun kept(key: String): RaftAndroidSandboxWebView? {
         dropIfOtherThemeMode()
         dropIfLoadFailed()
-        return parked?.takeIf { !it.isDestroyed && !it.mainFrameLoadFailed && it.keepAliveKey == key }
+        return parked?.takeIf {
+            !it.isDestroyed && !it.mainFrameLoadFailed && !it.hasPendingRenderProcessRestore && it.keepAliveKey == key
+        }
     }
 
     /** Drops the parked view when the app's light/dark mode changed since it was built. */

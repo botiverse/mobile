@@ -1,12 +1,18 @@
 package build.raft.app
 
+import android.app.Activity
 import android.net.Uri
+import android.os.Looper
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
+import java.time.Duration
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -20,7 +26,9 @@ import kotlin.test.assertTrue
  * content frame loads as a sub-frame, scripts reach only a top-level document of the web origin,
  * and no bridge is installed.
  */
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class RaftAndroidArtifactViewerWebViewRulesTest {
     private val webOrigin = "https://raft-app-staging.botiverse.dev"
     private val viewerUrl = "$webOrigin/artifacts/pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
@@ -149,7 +157,11 @@ class RaftAndroidArtifactViewerWebViewRulesTest {
         assertFalse(webView.settings.useWideViewPort)
         assertFalse(webView.settings.loadWithOverviewMode)
 
-        // Renderer recovery rebuilds the WebView and preserves pinch-to-zoom without buttons.
+        // Renderer recovery rebuilds a foreground WebView and preserves pinch-to-zoom without buttons.
+        val activityController = Robolectric.buildActivity(Activity::class.java).create()
+        activityController.get().setContentView(host)
+        activityController.start().resume().visible()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(34))
         assertTrue(shadowOf(webView).webViewClient.onRenderProcessGone(webView, null))
         val recreated = host.getChildAt(0) as WebView
         assertTrue(recreated.settings.supportZoom())

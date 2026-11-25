@@ -67,7 +67,12 @@ class RaftWebViewRendererGoneRuntimeTest {
             events.onLoadSuccess = { loads += "load" }
             events.onContentProcessGone = { reason -> processGone += reason }
             host =
-                RaftAndroidSandboxWebView(MutableContextWrapper(context), events).apply {
+                // :shared's androidInstrumentedTest has no Activity window, so treat this test host as foreground.
+                RaftAndroidSandboxWebView(
+                    MutableContextWrapper(context),
+                    events,
+                    isForegroundWindowForRecovery = { true },
+                ).apply {
                     applyConfig(
                         RaftWebViewConfig(
                             url = PAGE,
