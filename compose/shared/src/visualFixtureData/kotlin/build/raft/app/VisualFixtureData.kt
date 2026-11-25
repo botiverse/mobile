@@ -587,4 +587,125 @@ object VisualFixtureData {
             mapOf<String, Any?>("id" to "dm-human-jiacheng", "peerType" to "user", "peerId" to "visual-human-jiacheng", "name" to "Jiacheng from the infrastructure reliability team", "avatarLabel" to "JI", "unread" to 1, "runtime" to null, "activity" to null, "activityDetail" to null),
         )
     }
+
+    object WideShell {
+        const val COMMENT: String = "The conversations of the wide-layout cases (screens.wide.channel, channel-thread, activity-task, tasks-task). The one source for both providers: the React host (WideShellCases.tsx) and the playwright stubs (wideShell.ts) read it here; Android reads the generated VisualFixtureData.WideShell in WideShellVisualFixtures.kt. The server name, the sidebar rows and the Saved count are homeChannelList's; the open channel is its channelId row. timeLabel is createdAtIso as locale (Asia/Shanghai, 24h) prints it. The open task is taskId's row of tasksFixture.json, with taskMessages as its conversation. authorDescription is what the web's author row prints from its member and agent stores."
+        const val CHANNEL_ID: String = "channel-announcements"
+        const val CHANNEL_DESCRIPTION: String = "Release train for the tablet layout"
+        object Messages1 {
+            const val ID: String = "wide-msg-1"
+            const val SEQ: Int = 1
+            const val AUTHOR_KIND: String = "user"
+            const val AUTHOR_ID: String = "visual-human-designer"
+            const val AUTHOR_NAME: String = "Designer"
+            const val AUTHOR_DESCRIPTION: String = "Product design"
+            const val OWN: Boolean = false
+            const val BODY: String = "Morning. The tablet build is on the internal track; please give the split view a spin."
+            const val CREATED_AT_ISO: String = "2026-06-19T12:11:00.000Z"
+            const val TIME_LABEL: String = "20:11"
+        }
+        object Messages2 {
+            const val ID: String = "wide-msg-2"
+            const val SEQ: Int = 2
+            const val AUTHOR_KIND: String = "agent"
+            const val AUTHOR_ID: String = "agent-cindy"
+            const val AUTHOR_NAME: String = "Cindy"
+            const val AUTHOR_DESCRIPTION: String = "GPT-5 Codex"
+            const val OWN: Boolean = false
+            const val BODY: String = "Checked on the Pixel Tablet: the sidebar and the conversation sit side by side, rows read well."
+            const val CREATED_AT_ISO: String = "2026-06-19T12:12:00.000Z"
+            const val TIME_LABEL: String = "20:12"
+        }
+        object Messages3 {
+            const val ID: String = "wide-msg-3"
+            const val SEQ: Int = 3
+            const val AUTHOR_KIND: String = "user"
+            const val AUTHOR_ID: String = "visual-user"
+            const val AUTHOR_NAME: String = "artin"
+            const val AUTHOR_DESCRIPTION: String = "Owner"
+            const val OWN: Boolean = true
+            const val BODY: String = "Thanks. Next up is matching the heads to the web on wide windows."
+            const val CREATED_AT_ISO: String = "2026-06-19T12:13:00.000Z"
+            const val TIME_LABEL: String = "20:13"
+        }
+        object Messages4 {
+            const val ID: String = "wide-msg-4"
+            const val SEQ: Int = 4
+            const val AUTHOR_KIND: String = "user"
+            const val AUTHOR_ID: String = "visual-human-designer"
+            const val AUTHOR_NAME: String = "Designer"
+            const val AUTHOR_DESCRIPTION: String = "Product design"
+            const val OWN: Boolean = false
+            const val BODY: String = "Works for me. Touch keeps the 44dp targets; the mouse gets the tighter controls."
+            const val CREATED_AT_ISO: String = "2026-06-19T12:14:00.000Z"
+            const val TIME_LABEL: String = "20:14"
+        }
+        val MESSAGES: List<Map<String, Any?>> = listOf(
+            mapOf<String, Any?>("id" to "wide-msg-1", "seq" to 1, "authorKind" to "user", "authorId" to "visual-human-designer", "authorName" to "Designer", "authorDescription" to "Product design", "own" to false, "body" to "Morning. The tablet build is on the internal track; please give the split view a spin.", "createdAtIso" to "2026-06-19T12:11:00.000Z", "timeLabel" to "20:11"),
+            mapOf<String, Any?>("id" to "wide-msg-2", "seq" to 2, "authorKind" to "agent", "authorId" to "agent-cindy", "authorName" to "Cindy", "authorDescription" to "GPT-5 Codex", "own" to false, "body" to "Checked on the Pixel Tablet: the sidebar and the conversation sit side by side, rows read well.", "createdAtIso" to "2026-06-19T12:12:00.000Z", "timeLabel" to "20:12"),
+            mapOf<String, Any?>("id" to "wide-msg-3", "seq" to 3, "authorKind" to "user", "authorId" to "visual-user", "authorName" to "artin", "authorDescription" to "Owner", "own" to true, "body" to "Thanks. Next up is matching the heads to the web on wide windows.", "createdAtIso" to "2026-06-19T12:13:00.000Z", "timeLabel" to "20:13"),
+            mapOf<String, Any?>("id" to "wide-msg-4", "seq" to 4, "authorKind" to "user", "authorId" to "visual-human-designer", "authorName" to "Designer", "authorDescription" to "Product design", "own" to false, "body" to "Works for me. Touch keeps the 44dp targets; the mouse gets the tighter controls.", "createdAtIso" to "2026-06-19T12:14:00.000Z", "timeLabel" to "20:14"),
+        )
+        const val THREAD_ROOT_ID: String = "wide-msg-2"
+        const val THREAD_CHANNEL_ID: String = "wide-thread-2"
+        object ThreadMessages1 {
+            const val ID: String = "wide-reply-1"
+            const val SEQ: Int = 1
+            const val AUTHOR_KIND: String = "user"
+            const val AUTHOR_ID: String = "visual-human-designer"
+            const val AUTHOR_NAME: String = "Designer"
+            const val AUTHOR_DESCRIPTION: String = "Product design"
+            const val OWN: Boolean = false
+            const val BODY: String = "From 768 a head is one line, by touch too."
+            const val CREATED_AT_ISO: String = "2026-06-19T12:15:00.000Z"
+            const val TIME_LABEL: String = "20:15"
+        }
+        object ThreadMessages2 {
+            const val ID: String = "wide-reply-2"
+            const val SEQ: Int = 2
+            const val AUTHOR_KIND: String = "user"
+            const val AUTHOR_ID: String = "visual-user"
+            const val AUTHOR_NAME: String = "artin"
+            const val AUTHOR_DESCRIPTION: String = "Owner"
+            const val OWN: Boolean = true
+            const val BODY: String = "Noted, the Activity head goes first."
+            const val CREATED_AT_ISO: String = "2026-06-19T12:16:00.000Z"
+            const val TIME_LABEL: String = "20:16"
+        }
+        val THREAD_MESSAGES: List<Map<String, Any?>> = listOf(
+            mapOf<String, Any?>("id" to "wide-reply-1", "seq" to 1, "authorKind" to "user", "authorId" to "visual-human-designer", "authorName" to "Designer", "authorDescription" to "Product design", "own" to false, "body" to "From 768 a head is one line, by touch too.", "createdAtIso" to "2026-06-19T12:15:00.000Z", "timeLabel" to "20:15"),
+            mapOf<String, Any?>("id" to "wide-reply-2", "seq" to 2, "authorKind" to "user", "authorId" to "visual-user", "authorName" to "artin", "authorDescription" to "Owner", "own" to true, "body" to "Noted, the Activity head goes first.", "createdAtIso" to "2026-06-19T12:16:00.000Z", "timeLabel" to "20:16"),
+        )
+        const val TASK_ID: String = "msg-task-visual-212"
+        const val TASK_NUMBER: Int = 212
+        const val TASK_CONVERSATION_ID: String = "wide-task-212"
+        object TaskMessages1 {
+            const val ID: String = "wide-task-msg-1"
+            const val SEQ: Int = 1
+            const val AUTHOR_KIND: String = "user"
+            const val AUTHOR_ID: String = "visual-human-designer"
+            const val AUTHOR_NAME: String = "Designer"
+            const val AUTHOR_DESCRIPTION: String = "Product design"
+            const val OWN: Boolean = false
+            const val BODY: String = "The fixture gaps left are the wide cases."
+            const val CREATED_AT_ISO: String = "2026-06-19T12:17:00.000Z"
+            const val TIME_LABEL: String = "20:17"
+        }
+        object TaskMessages2 {
+            const val ID: String = "wide-task-msg-2"
+            const val SEQ: Int = 2
+            const val AUTHOR_KIND: String = "agent"
+            const val AUTHOR_ID: String = "agent-cindy"
+            const val AUTHOR_NAME: String = "Cindy"
+            const val AUTHOR_DESCRIPTION: String = "GPT-5 Codex"
+            const val OWN: Boolean = false
+            const val BODY: String = "On it; the channel and its thread are paired now."
+            const val CREATED_AT_ISO: String = "2026-06-19T12:18:00.000Z"
+            const val TIME_LABEL: String = "20:18"
+        }
+        val TASK_MESSAGES: List<Map<String, Any?>> = listOf(
+            mapOf<String, Any?>("id" to "wide-task-msg-1", "seq" to 1, "authorKind" to "user", "authorId" to "visual-human-designer", "authorName" to "Designer", "authorDescription" to "Product design", "own" to false, "body" to "The fixture gaps left are the wide cases.", "createdAtIso" to "2026-06-19T12:17:00.000Z", "timeLabel" to "20:17"),
+            mapOf<String, Any?>("id" to "wide-task-msg-2", "seq" to 2, "authorKind" to "agent", "authorId" to "agent-cindy", "authorName" to "Cindy", "authorDescription" to "GPT-5 Codex", "own" to false, "body" to "On it; the channel and its thread are paired now.", "createdAtIso" to "2026-06-19T12:18:00.000Z", "timeLabel" to "20:18"),
+        )
+    }
 }
