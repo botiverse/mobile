@@ -40,6 +40,15 @@ class ThreadComposerDockScreenshotTest {
     @Test
     fun dockLight() = capture("thread.composer-dock", RaftAppAppearance.Light)
 
+    /** The longest "As task" labels on the narrowest phone: the toolbar fits beside three attach buttons. */
+    @Test
+    @Config(sdk = [34], qualifiers = "ru-w320dp-h320dp-xxhdpi")
+    fun dockNarrowRussian() = capture("thread.composer-dock.ru.w320", RaftAppAppearance.Light)
+
+    @Test
+    @Config(sdk = [34], qualifiers = "ja-w320dp-h320dp-xxhdpi")
+    fun dockNarrowJapanese() = capture("thread.composer-dock.ja.w320", RaftAppAppearance.Light)
+
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
