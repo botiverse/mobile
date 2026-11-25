@@ -3,6 +3,17 @@ package build.raft.app.desktop
 import build.raft.app.RaftDesktopFileLog
 import build.raft.app.data.RaftDesktopPaths
 import build.raft.app.data.isAllowedAppLoginUrl
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMode
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMutationResult
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideSnapshot
+import build.raft.app.network.sync.DiagnosticFeatureFlagScope
+import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
+import build.raft.app.network.sync.ProcessReadStateV1DiagnosticOverride
+import build.raft.app.network.sync.ReadStateV1DiagnosticExactScope
+import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideController
+import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideMode
+import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideSnapshot
 import build.raft.app.toRaftJsonString
 import java.awt.Desktop
 import java.io.File
@@ -20,9 +31,11 @@ import kotlinx.serialization.json.JsonPrimitive
  * (`appLoginPrepare` / `appLoginOpen`, the Android host's contract); the callback comes back as
  * [APP_LOGIN_RETURN_URI] (see [RaftDesktopLoginCallbacks]); `loadStorage` measures the app's data
  * directory ([storagePayload]; clearing is not offered yet); `loadDiagnostics` / `shareDiagnostics`
- * read and reveal the log file ([RaftDesktopFileLog]). TODO(desktop): every other action
- * (about, developer environment, notifications, account linking) answers
- * "not implemented" and the shared pages fall back as for an unsupported host action.
+ * read and reveal the log file ([RaftDesktopFileLog]) and expose process-local diagnostic feature
+ * flag overrides (`setDiagnosticFeatureFlagOverride`) strictly when entitled via
+ * [DESKTOP_DEBUG_PROPERTY] or [DESKTOP_DIAGNOSTIC_OVERRIDES_PROPERTY]. TODO(desktop): every other
+ * action (about, developer environment, notifications, account linking) answers "not implemented"
+ * and the shared pages fall back as for an unsupported host action.
  */
 object RaftDesktopSettingsCapability {
     /**
@@ -31,7 +44,20 @@ object RaftDesktopSettingsCapability {
      */
     const val APP_LOGIN_RETURN_URI = "${RaftDesktopLoginCallbacks.SCHEME}://login/callback"
 
+    internal const val DESKTOP_DEBUG_PROPERTY = "raft.desktop.debug"
+    internal const val DESKTOP_DIAGNOSTIC_OVERRIDES_PROPERTY = "raft.desktop.diagnosticOverrides"
+
     private val random = SecureRandom()
+
+    internal fun isDebugBuild(
+        readProperty: (String) -> String? = System::getProperty,
+    ): Boolean = readProperty(DESKTOP_DEBUG_PROPERTY)?.trim().equals("true", ignoreCase = true)
+
+    internal fun isDiagnosticFeatureFlagOverridesEntitled(
+        readProperty: (String) -> String? = System::getProperty,
+    ): Boolean =
+        isDebugBuild(readProperty) ||
+            readProperty(DESKTOP_DIAGNOSTIC_OVERRIDES_PROPERTY)?.trim().equals("true", ignoreCase = true)
 
     fun handle(command: JsonObject, callback: ((String?) -> Unit)?) {
         val action = command.string("action")
@@ -39,8 +65,12 @@ object RaftDesktopSettingsCapability {
             callback?.invoke(storagePayload(RaftDesktopPaths.databaseDir, RaftDesktopPaths.cacheDir, RaftDesktopPaths.dataDir).toRaftJsonString())
             return
         }
-        // Settings > About > Diagnostics: the log file's newest lines, and Export logs shows the
-        // log folder (~/Library/Logs/Raft) in Finder so the files can be attached to a report.
+        if (action == "setDiagnosticFeatureFlagOverride") {
+            callback?.invoke(setDiagnosticFeatureFlagOverridePayload(command).toRaftJsonString())
+            return
+        }
+        // Settings > About / Developer > Diagnostics: the log file's newest lines plus redacted
+        // diagnostic feature-flag snapshots, and Export logs shows the log folder in Finder.
         if (action == "loadDiagnostics" || action == "shareDiagnostics") {
             Thread({
                 val payload =
@@ -100,7 +130,13 @@ object RaftDesktopSettingsCapability {
     private const val DIAGNOSTICS_LINES = 300
 
     /** `loadDiagnostics`: log lines (`<time> <level> [thread] <tag>: <message>`) as entries, newest first. */
-    internal fun diagnosticsPayload(lines: List<String>): JsonObject {
+    internal fun diagnosticsPayload(
+        lines: List<String>,
+        registry: DiagnosticFeatureFlagOverrideRegistry = ProcessDiagnosticFeatureFlagOverrides.registry,
+        readStateController: ReadStateV1DiagnosticOverrideController = ProcessReadStateV1DiagnosticOverride.controller,
+        entitled: Boolean = isDiagnosticFeatureFlagOverridesEntitled(),
+    ): JsonObject {
+        registry.configureEntitlement(entitled)
         val entries =
             lines.asReversed().map { line ->
                 val match = LOG_LINE.matchEntire(line)
@@ -112,7 +148,166 @@ object RaftDesktopSettingsCapability {
                     ),
                 )
             }
-        return JsonObject(mapOf("status" to JsonPrimitive("ok"), "entries" to JsonArray(entries)))
+        return JsonObject(
+            mapOf(
+                "status" to JsonPrimitive("ok"),
+                "entries" to JsonArray(entries),
+                "readStateV1DiagnosticJson" to JsonPrimitive(readStateController.snapshot().toRedactedJson().toRaftJsonString()),
+                "diagnosticFeatureFlagOverridesJson" to JsonPrimitive(registry.snapshots().toRedactedJson().toRaftJsonString()),
+            ),
+        )
+    }
+
+    internal fun setDiagnosticFeatureFlagOverridePayload(
+        command: JsonObject,
+        registry: DiagnosticFeatureFlagOverrideRegistry = ProcessDiagnosticFeatureFlagOverrides.registry,
+        entitled: Boolean = isDiagnosticFeatureFlagOverridesEntitled(),
+    ): JsonObject {
+        registry.configureEntitlement(entitled)
+        val key = command.string("key").trim()
+        val mode =
+            when (command.string("mode").trim()) {
+                "force_off" -> DiagnosticFeatureFlagOverrideMode.ForceOff
+                "force_on" -> DiagnosticFeatureFlagOverrideMode.ForceOn
+                "server" -> DiagnosticFeatureFlagOverrideMode.Server
+                else ->
+                    return JsonObject(
+                        mapOf(
+                            "status" to JsonPrimitive("error"),
+                            "code" to JsonPrimitive("diagnostic_feature_flag_override_mode_unknown"),
+                        ),
+                    )
+            }
+        return when (val result = registry.setMode(key, mode)) {
+            is DiagnosticFeatureFlagOverrideMutationResult.Applied -> {
+                val snapshot = result.snapshot
+                log(
+                    "diagnostic_override key=${snapshot.key} mode=${snapshot.mode.name} " +
+                        "scope=${snapshot.boundScope?.toStableRedactedLabel() ?: "none"}",
+                )
+                JsonObject(
+                    mapOf(
+                        "status" to JsonPrimitive("ok"),
+                        "diagnosticFeatureFlagOverridesJson" to JsonPrimitive(registry.snapshots().toRedactedJson().toRaftJsonString()),
+                    ),
+                )
+            }
+            is DiagnosticFeatureFlagOverrideMutationResult.Rejected ->
+                JsonObject(
+                    mapOf(
+                        "status" to JsonPrimitive("error"),
+                        "code" to JsonPrimitive(result.code),
+                        "diagnosticFeatureFlagOverridesJson" to JsonPrimitive(registry.snapshots().toRedactedJson().toRaftJsonString()),
+                    ),
+                )
+        }
+    }
+
+    private fun List<DiagnosticFeatureFlagOverrideSnapshot>.toRedactedJson(): JsonArray =
+        JsonArray(map { it.toRedactedJson() })
+
+    private fun DiagnosticFeatureFlagOverrideSnapshot.toRedactedJson(): JsonObject =
+        JsonObject(
+            mapOf(
+                "key" to JsonPrimitive(key),
+                "supported" to JsonPrimitive(supported),
+                "scopeKind" to JsonPrimitive(scopeKind?.name ?: "unsupported"),
+                "entitled" to JsonPrimitive(entitled),
+                "clientOverride" to JsonPrimitive(mode.name),
+                "expiresAtMillis" to JsonPrimitive(expiresAtMillis ?: 0L),
+                "clearReason" to JsonPrimitive(clearReason.orEmpty()),
+                "observedScope" to JsonPrimitive(observedScope?.toStableRedactedLabel().orEmpty()),
+                "boundScope" to JsonPrimitive(boundScope?.toStableRedactedLabel().orEmpty()),
+                "serverEffective" to JsonPrimitive(lastDecision?.serverEffective?.toString().orEmpty()),
+                "finalEffective" to JsonPrimitive(diagnosticFinalEffective()?.toString().orEmpty()),
+                "precedence" to JsonPrimitive(diagnosticPrecedence()),
+                "exactScopeMatched" to JsonPrimitive(lastDecision?.exactScopeMatched ?: false),
+                "evidence" to
+                    JsonPrimitive(
+                        listOfNotNull(
+                            evidence.selectedScope?.let { scope -> "selected=${scope.toStableRedactedLabel()}" },
+                            evidence.witnessGeneration?.let { "generation=$it" },
+                            evidence.durableReadStateVersion?.let { version ->
+                                "durable=($version,${evidence.durableMaxReadSeq ?: "--"})"
+                            },
+                            evidence.latestAdjudication?.takeIf { it.isNotBlank() }?.let { "adjudication=$it" },
+                            evidence.destinationPublication?.takeIf { it.isNotBlank() }?.let { "publication=$it" },
+                            evidence.barrierState?.takeIf { it.isNotBlank() }?.let { "barrier=$it" },
+                            evidence.stalePublicationRejectedCount.takeIf { it > 0L }?.let { "staleRejected=$it" },
+                        ).joinToString(" · "),
+                    ),
+            ),
+        )
+
+    private fun ReadStateV1DiagnosticOverrideSnapshot.toRedactedJson(): JsonObject =
+        JsonObject(
+            mapOf(
+                "entitled" to JsonPrimitive(entitled),
+                "clientOverride" to JsonPrimitive(mode.name),
+                "expiresAtMillis" to JsonPrimitive(expiresAtMillis ?: 0L),
+                "clearReason" to JsonPrimitive(clearReason.orEmpty()),
+                "observedScope" to JsonPrimitive(observedScope?.toStableRedactedLabel().orEmpty()),
+                "boundScope" to JsonPrimitive(boundScope?.toStableRedactedLabel().orEmpty()),
+                "serverEffective" to JsonPrimitive(lastDecision?.serverEffective?.toString().orEmpty()),
+                "finalEffective" to JsonPrimitive(diagnosticFinalEffective()?.toString().orEmpty()),
+                "precedence" to JsonPrimitive(diagnosticPrecedence()),
+                "exactScopeMatched" to JsonPrimitive(lastDecision?.exactScopeMatched ?: false),
+                "selectedScope" to JsonPrimitive(selectedScope?.toStableRedactedLabel().orEmpty()),
+                "witnessGeneration" to JsonPrimitive(witnessGeneration ?: 0L),
+                "durableReadStateVersion" to JsonPrimitive(durableReadStateVersion ?: 0L),
+                "durableMaxReadSeq" to JsonPrimitive(durableMaxReadSeq ?: -1L),
+                "latestAdjudication" to JsonPrimitive(latestAdjudication.orEmpty()),
+                "destinationPublication" to JsonPrimitive(destinationPublication.orEmpty()),
+                "barrierState" to JsonPrimitive(barrierState.orEmpty()),
+                "stalePublicationRejectedCount" to JsonPrimitive(stalePublicationRejectedCount),
+            ),
+        )
+
+    private fun DiagnosticFeatureFlagOverrideSnapshot.diagnosticFinalEffective(): Boolean? =
+        when (mode) {
+            DiagnosticFeatureFlagOverrideMode.ForceOff -> false
+            DiagnosticFeatureFlagOverrideMode.ForceOn -> true
+            DiagnosticFeatureFlagOverrideMode.Server -> lastDecision?.serverEffective
+        }
+
+    private fun DiagnosticFeatureFlagOverrideSnapshot.diagnosticPrecedence(): String =
+        when (mode) {
+            DiagnosticFeatureFlagOverrideMode.ForceOff -> "diagnostic_override_force_off"
+            DiagnosticFeatureFlagOverrideMode.ForceOn -> "diagnostic_override_force_on"
+            DiagnosticFeatureFlagOverrideMode.Server -> lastDecision?.precedence ?: "not_observed"
+        }
+
+    private fun ReadStateV1DiagnosticOverrideSnapshot.diagnosticFinalEffective(): Boolean? =
+        when (mode) {
+            ReadStateV1DiagnosticOverrideMode.ForceOff -> false
+            ReadStateV1DiagnosticOverrideMode.ForceOn -> true
+            ReadStateV1DiagnosticOverrideMode.Server -> lastDecision?.serverEffective
+        }
+
+    private fun ReadStateV1DiagnosticOverrideSnapshot.diagnosticPrecedence(): String =
+        when (mode) {
+            ReadStateV1DiagnosticOverrideMode.ForceOff -> "diagnostic_override_force_off"
+            ReadStateV1DiagnosticOverrideMode.ForceOn -> "diagnostic_override_force_on"
+            ReadStateV1DiagnosticOverrideMode.Server -> lastDecision?.precedence ?: "not_observed"
+        }
+
+    private fun ReadStateV1DiagnosticExactScope.toStableRedactedLabel(): String =
+        "env=${environmentId.stableDiagnosticId()} account=${accountId.stableDiagnosticId()} " +
+            "server=${serverId.stableDiagnosticId()} channel=${channelId.stableDiagnosticId()}"
+
+    private fun DiagnosticFeatureFlagScope.toStableRedactedLabel(): String =
+        buildString {
+            append("env=${environmentId.stableDiagnosticId()} account=${accountId.stableDiagnosticId()} ")
+            append("server=${serverId.stableDiagnosticId()}")
+            channelId?.let { append(" channel=${it.stableDiagnosticId()}") }
+        }
+
+    private fun String.stableDiagnosticId(): String {
+        var hash = 0xcbf29ce484222325UL
+        encodeToByteArray().forEach { byte ->
+            hash = (hash xor byte.toUByte().toULong()) * 0x100000001b3UL
+        }
+        return "#${hash.toString(16).takeLast(12).padStart(12, '0')}"
     }
 
     private val LOG_LINE = Regex("""(\S+) ([DIWEF]) \[[^\]]*] ([^:]+): (.*)""")

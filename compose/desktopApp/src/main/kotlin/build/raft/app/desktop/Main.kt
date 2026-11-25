@@ -26,6 +26,7 @@ import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.data.RaftDesktopComposerTemporaryFiles
 import build.raft.app.data.raftClearLegacyFontPreference
 import build.raft.app.network.installDesktopRaftAppIdentity
+import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.designsystem.focus.RaftFocusCoordinator
 import java.awt.Dimension
 
@@ -35,8 +36,11 @@ fun main(args: Array<String>) {
     RaftDesktopLoginCallbacks.install(args)
     // Then the log file and crash recording (~/Library/Logs/Raft), before anything else can fail.
     RaftDesktopCrashReporting.install()
-    val debugBuild = System.getProperty("raft.desktop.debug") == "true"
+    val debugBuild = RaftDesktopSettingsCapability.isDebugBuild()
     RaftCmpRouter.configure(debugBuild = debugBuild)
+    ProcessDiagnosticFeatureFlagOverrides.registry.configureEntitlement(
+        RaftDesktopSettingsCapability.isDiagnosticFeatureFlagOverridesEntitled(),
+    )
     RaftPageRegistry.install()
     installDesktopRaftAppIdentity(
         version = System.getProperty("raft.desktop.version") ?: "1.0.0",
