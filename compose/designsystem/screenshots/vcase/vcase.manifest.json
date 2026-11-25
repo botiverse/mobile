@@ -188,9 +188,21 @@
       "divergences": []
     },
     {
+      "id": "ds.choice-list.form",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ChoiceListCases.kt:124",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "maxWidth": 1600
+      }
+    },
+    {
       "id": "ds.choice-list.gallery",
       "kind": "component",
-      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ChoiceListCases.kt:43",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ChoiceListCases.kt:44",
       "fixture": null,
       "axes": {},
       "parity": [],
@@ -202,7 +214,7 @@
     {
       "id": "ds.choice-list.grouped",
       "kind": "component",
-      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ChoiceListCases.kt:67",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ChoiceListCases.kt:68",
       "fixture": null,
       "axes": {},
       "parity": [],
@@ -214,7 +226,7 @@
     {
       "id": "ds.choice-list.multiple",
       "kind": "component",
-      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ChoiceListCases.kt:95",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ChoiceListCases.kt:96",
       "fixture": null,
       "axes": {},
       "parity": [],
