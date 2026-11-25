@@ -55,9 +55,9 @@ internal fun List<RaftBottomTabItemPayload>.orderedLikeRailTabOrder(order: List<
 /** The rail's reordering: [onOrderChange] gets the drawn items' keys in their new order. */
 @Immutable
 internal data class RaftRailTabReorder(
-    val onOrderChange: (List<String>) -> Unit,
     /** Keys fixed at the top of the rail (e.g. Search, Chat, Activity) that cannot be dragged. */
     val fixedKeys: Set<String> = emptySet(),
+    val onOrderChange: (List<String>) -> Unit,
 )
 
 /** Fixed rail item keys (app-side keys) for per-server rail places (#wg-mobile-sync:#294). */

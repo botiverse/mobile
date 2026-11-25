@@ -70,8 +70,34 @@ class RaftRailTabReorderUiTest {
             assertTrue(tab("home").top() > tab("tasks").top(), "the dropped tab shows in its new slot")
         }
 
+    @Test
+    fun fixedTabsStayPinnedWhileMovableTabsReorderBelowThem() =
+        runRobolectricComposeUiTest {
+            setContent { Rail(fixedKeys = setOf("home", "activity")) }
+
+            // Dragging a fixed tab leaves the order unchanged.
+            tab("home").performTouchInput {
+                down(center)
+                moveBy(Offset(0f, 8f))
+                moveBy(Offset(0f, 92f))
+                up()
+            }
+            waitForIdle()
+            assertEquals(emptyList(), commits)
+
+            // Dragging a movable tab below fixed tabs reorders only the movable slice and preserves fixed prefixes.
+            tab("tasks").performTouchInput {
+                down(center)
+                moveBy(Offset(0f, 8f))
+                moveBy(Offset(0f, 46f))
+                up()
+            }
+            waitForIdle()
+            assertEquals(listOf(listOf("home", "activity", "members", "tasks")), commits)
+        }
+
     @androidx.compose.runtime.Composable
-    private fun Rail() {
+    private fun Rail(fixedKeys: Set<String> = emptySet()) {
         var order by remember { mutableStateOf(listOf("home", "activity", "tasks", "members")) }
         Row(Modifier.fillMaxSize()) {
             RaftNavigationRailTabBar(
@@ -79,8 +105,8 @@ class RaftRailTabReorderUiTest {
                 onSelect = { selected += it },
                 modifier = Modifier.fillMaxHeight(),
                 reorder =
-                    remember {
-                        RaftRailTabReorder { next ->
+                    remember(fixedKeys) {
+                        RaftRailTabReorder(fixedKeys = fixedKeys) { next ->
                             commits += next
                             order = next
                         }
