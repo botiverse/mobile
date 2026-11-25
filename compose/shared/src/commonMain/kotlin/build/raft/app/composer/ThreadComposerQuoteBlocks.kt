@@ -117,7 +117,9 @@ internal fun ThreadComposerQuoteBlocks(
                     softwareKeyboardController = softwareKeyboardController,
                 )
             } else {
-                runCatching { requester.requestFocus() }
+                quoteKeyboardIntent.focusWithoutKeyboard(
+                    focusRequester = requester,
+                )
             }
         }
         controller.consumeFocusRequest(request.nonce)

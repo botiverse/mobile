@@ -31,12 +31,14 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
@@ -104,43 +106,75 @@ class ComposerImeStateModelUiTest {
     }
 
     @Test
-    fun showKeyboardOnFocusPolicyMatrixAndIntentGenerationDisarming() {
-        assertFalse(raftResolveShowKeyboardOnFocus(desktopHost = false, explicitKeyboardIntentArmed = false))
-        assertTrue(raftResolveShowKeyboardOnFocus(desktopHost = false, explicitKeyboardIntentArmed = true))
-        assertTrue(raftResolveShowKeyboardOnFocus(desktopHost = true, explicitKeyboardIntentArmed = false))
+    fun showKeyboardOnFocusPolicyMatrixAndIntentGenerationTracking() {
+        // Default (not suppressed): true on every host so semantic/accessibility focus and
+        // connected hardware keyboards establish a platform InputConnection immediately.
+        assertTrue(
+            raftResolveShowKeyboardOnFocus(
+                desktopHost = false,
+                hardwareKeyboardConnected = false,
+                suppressKeyboardOnFocus = false,
+            ),
+        )
+        // Explicit FocusOnly suppresses soft-keyboard session ONLY on touch-only hosts.
+        assertFalse(
+            raftResolveShowKeyboardOnFocus(
+                desktopHost = false,
+                hardwareKeyboardConnected = false,
+                suppressKeyboardOnFocus = true,
+            ),
+        )
+        // Hardware keyboard and desktop keep showKeyboardOnFocus = true even on FocusOnly so
+        // hardware CJK IME composition works without tapping the screen.
+        assertTrue(
+            raftResolveShowKeyboardOnFocus(
+                desktopHost = false,
+                hardwareKeyboardConnected = true,
+                suppressKeyboardOnFocus = true,
+            ),
+        )
+        assertTrue(
+            raftResolveShowKeyboardOnFocus(
+                desktopHost = true,
+                hardwareKeyboardConnected = false,
+                suppressKeyboardOnFocus = true,
+            ),
+        )
         assertFalse(
             raftResolveShowKeyboardOnFocus(
                 desktopHost = true,
-                explicitKeyboardIntentArmed = true,
+                hardwareKeyboardConnected = true,
+                suppressKeyboardOnFocus = false,
                 callerOverride = false,
             ),
         )
         assertTrue(
             raftResolveShowKeyboardOnFocus(
                 desktopHost = false,
-                explicitKeyboardIntentArmed = false,
+                hardwareKeyboardConnected = false,
+                suppressKeyboardOnFocus = true,
                 callerOverride = true,
             ),
         )
 
         val intent = RaftEditorKeyboardIntent()
-        assertFalse(intent.armed)
-        val gen1 = intent.arm()
-        assertTrue(intent.armed)
-        val gen2 = intent.arm()
-        // Stale generation must not disarm a newer explicit keyboard request.
-        intent.disarmIfCurrent(gen1)
-        assertTrue(intent.armed)
-        intent.disarmIfCurrent(gen2)
-        assertFalse(intent.armed)
+        assertFalse(intent.suppressKeyboardOnFocus)
+        val gen1 = intent.suppressForFocusOnly()
+        assertTrue(intent.suppressKeyboardOnFocus)
+        val gen2 = intent.clearSuppression()
+        assertFalse(intent.suppressKeyboardOnFocus)
+        assertTrue(gen2 > gen1)
     }
 
-    // Scenarios 1 & 3: Window focus loss (floating window / notification shade) preserves focus,
-    // draft, and cursor; window focus regain triggers zero showSoftInput; tapping the message list
-    // then dismisses focus with zero keyboard flash.
+    // Scenarios 1 & 3: Focused composer establishes a normal input session; window focus loss
+    // (floating window / notification shade) parks ONLY the platform session while preserving
+    // focus, draft, and cursor; window focus regain + imeAction recomposition stays parked with
+    // zero showSoftInput; tapping the message list dismisses focus cleanly and ends the parked
+    // tenure so later semantic focus establishes a fresh session.
     @Test
     fun windowFocusLossPreservesDraftAndCursorAndMessageListTapDismissesWithoutKeyboardFlash() =
         runRobolectricComposeUiTest {
+            val keyboard = RecordingKeyboard()
             val composerFocus = FocusRequester()
             val fieldState = TextFieldState(initialText = "hello world", initialSelection = TextRange(5))
             var imeAction by mutableStateOf(ImeAction.Default)
@@ -155,25 +189,27 @@ class ComposerImeStateModelUiTest {
                     hostComposeView = view
                     observedWindowFocused = isWindowFocused
                 }
-                RaftWindowFocusScope {
-                    RaftInputFocusDismissHost { focusDismissModifier ->
-                        Column(focusDismissModifier.fillMaxSize()) {
-                            Box(Modifier.size(1.dp).focusable())
-                            Box(
-                                Modifier
-                                    .testTag(MESSAGE_LIST)
-                                    .fillMaxWidth()
-                                    .height(120.dp),
-                            )
-                            CompositionLocalProvider(LocalRaftEditorIsConversationComposer provides true) {
-                                TextField(
-                                    state = fieldState,
-                                    modifier = Modifier.testTag(COMPOSER).fillMaxWidth().height(48.dp),
-                                    autoFocus = false,
-                                    keyboardOptions = KeyboardOptions(imeAction = imeAction),
-                                    onBlur = { blurCount++ },
-                                    focusRequester = composerFocus,
+                CompositionLocalProvider(LocalSoftwareKeyboardController provides keyboard) {
+                    RaftWindowFocusScope {
+                        RaftInputFocusDismissHost { focusDismissModifier ->
+                            Column(focusDismissModifier.fillMaxSize()) {
+                                Box(Modifier.size(1.dp).focusable())
+                                Box(
+                                    Modifier
+                                        .testTag(MESSAGE_LIST)
+                                        .fillMaxWidth()
+                                        .height(120.dp),
                                 )
+                                CompositionLocalProvider(LocalRaftEditorIsConversationComposer provides true) {
+                                    TextField(
+                                        state = fieldState,
+                                        modifier = Modifier.testTag(COMPOSER).fillMaxWidth().height(48.dp),
+                                        autoFocus = false,
+                                        keyboardOptions = KeyboardOptions(imeAction = imeAction),
+                                        onBlur = { blurCount++ },
+                                        focusRequester = composerFocus,
+                                    )
+                                }
                             }
                         }
                     }
@@ -184,9 +220,8 @@ class ComposerImeStateModelUiTest {
             val composeRoot = checkNotNull(hostComposeView)
             val imm = composeRoot.context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
             var showImeCount = 0
-            var hideImeCount = 0
             shadowOf(imm).setSoftInputVisibilityHandler { visible ->
-                if (visible) showImeCount++ else hideImeCount++
+                if (visible) showImeCount++
             }
 
             runOnIdle {
@@ -199,22 +234,30 @@ class ComposerImeStateModelUiTest {
             onNodeWithTag(COMPOSER).assertIsFocused()
             assertEquals("hello world", fieldState.text.toString())
             assertEquals(TextRange(5), fieldState.selection)
-            assertFalse(composeRoot.onCheckIsTextEditor(), "default showKeyboardOnFocus = false starts no input session")
-            assertNull(composeRoot.onCreateInputConnection(EditorInfo()))
-            assertEquals(0, showImeCount)
+            assertTrue(
+                composeRoot.onCheckIsTextEditor(),
+                "normal focus must establish platform input session for accessibility and IME tests",
+            )
+            assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
+            val showCountBeforeFloatingWindow = showImeCount
+            val keyboardShownBeforeFloatingWindow = keyboard.shown
 
-            // Scenario 3: window focus loss (e.g. notification shade or floating window) leaves
-            // focus, draft, and non-end cursor intact and never hides another window's IME.
+            // Scenario 3: window focus loss (e.g. notification shade or floating window) parks the
+            // platform input session while leaving focus, draft, and non-end cursor intact and
+            // never calling SoftwareKeyboardController.hide() on Raft's side.
             runOnIdle { dispatchWindowFocus(composeRoot, false) }
             waitForIdle()
             assertFalse(observedWindowFocused)
             onNodeWithTag(COMPOSER).assertIsFocused()
             assertEquals("hello world", fieldState.text.toString())
             assertEquals(TextRange(5), fieldState.selection)
+            assertFalse(composeRoot.onCheckIsTextEditor())
+            assertNull(composeRoot.onCreateInputConnection(EditorInfo()))
             assertEquals(0, blurCount)
-            assertEquals(0, hideImeCount)
+            assertEquals(0, keyboard.hidden)
 
-            // Scenario 1: window focus regain + recomposition triggers zero showSoftInput.
+            // Scenario 1: window focus regain + imeAction recomposition keeps the session parked
+            // and triggers zero showSoftInput or keyboard.show().
             runOnIdle {
                 dispatchWindowFocus(composeRoot, true)
                 imeAction = ImeAction.Send
@@ -226,7 +269,8 @@ class ComposerImeStateModelUiTest {
             assertEquals(TextRange(5), fieldState.selection)
             assertFalse(composeRoot.onCheckIsTextEditor())
             assertNull(composeRoot.onCreateInputConnection(EditorInfo()))
-            assertEquals(0, showImeCount)
+            assertEquals(showCountBeforeFloatingWindow, showImeCount)
+            assertEquals(keyboardShownBeforeFloatingWindow, keyboard.shown)
 
             // Tapping the message list after return dismisses focus cleanly after 2 frames with zero flash.
             onNodeWithTag(MESSAGE_LIST).performTouchInput { click() }
@@ -236,11 +280,22 @@ class ComposerImeStateModelUiTest {
             onNodeWithTag(COMPOSER).assertIsNotFocused()
             assertEquals(1, blurCount)
             assertEquals("hello world", fieldState.text.toString())
-            assertEquals(0, showImeCount)
+            assertEquals(showCountBeforeFloatingWindow, showImeCount)
+            assertEquals(keyboardShownBeforeFloatingWindow, keyboard.shown)
+
+            // After blur ends the parked tenure, a new semantic focus establishes a fresh session.
+            onNodeWithTag(COMPOSER).performSemanticsAction(SemanticsActions.RequestFocus)
+            waitForIdle()
+            onNodeWithTag(COMPOSER).assertIsFocused()
+            assertTrue(
+                composeRoot.onCheckIsTextEditor(),
+                "semantic RequestFocus after blur must establish a fresh input session",
+            )
+            assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
         }
 
-    // Scenario 2: Returning from a floating window and tapping directly on the composer opens the
-    // keyboard via Compose's native startInputSession(fromTap = true) while preserving draft & cursor.
+    // Scenario 2: Returning from a floating window and tapping directly on the composer wakes the
+    // parked platform input session while preserving draft & cursor and allowing live typing.
     @Test
     fun directComposerTapAfterWindowFocusRegainStartsInputSessionAndPreservesDraftAndCursor() =
         runRobolectricComposeUiTest {
@@ -277,24 +332,25 @@ class ComposerImeStateModelUiTest {
             }
             waitForIdle()
             onNodeWithTag(COMPOSER).assertIsFocused()
-            assertFalse(composeRoot.onCheckIsTextEditor())
+            assertTrue(composeRoot.onCheckIsTextEditor())
 
-            // Lose and regain window focus: draft and non-end cursor remain intact, no spurious session.
+            // Lose and regain window focus: draft and non-end cursor remain intact, session stays parked.
             runOnIdle { dispatchWindowFocus(composeRoot, false) }
             waitForIdle()
+            assertFalse(composeRoot.onCheckIsTextEditor())
             runOnIdle { dispatchWindowFocus(composeRoot, true) }
             waitForIdle()
             assertEquals("hello world", fieldState.text.toString())
             assertEquals(TextRange(5), fieldState.selection)
             assertFalse(composeRoot.onCheckIsTextEditor())
 
-            // Direct tap bypasses showKeyboardOnFocus == false via startInputSession(fromTap = true).
+            // Direct tap wakes the parked session cleanly.
             onNodeWithTag(COMPOSER).performTouchInput { click() }
             waitForIdle()
 
             onNodeWithTag(COMPOSER).assertIsFocused()
             assertEquals("hello world", fieldState.text.toString())
-            assertTrue(composeRoot.onCheckIsTextEditor(), "direct tap must start platform input session")
+            assertTrue(composeRoot.onCheckIsTextEditor(), "direct tap must wake platform input session")
             val inputConnection = assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
             runOnIdle {
                 // Verify continuous typing works through the newly opened InputConnection.
@@ -367,6 +423,7 @@ class ComposerImeStateModelUiTest {
             assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
             val selectionAfterInitialTap = fieldState.selection
             val showCountAfterInitialTap = showImeCount
+            val keyboardShownAfterInitialTap = keyboard.shown
 
             // External window focus loss (floating window / notification shade): parks ONLY the
             // inner platform session (onCheckIsTextEditor == false) while preserving focus, draft,
@@ -399,13 +456,14 @@ class ComposerImeStateModelUiTest {
             )
             assertNull(composeRoot.onCreateInputConnection(EditorInfo()))
             assertEquals(showCountAfterInitialTap, showImeCount)
+            assertEquals(keyboardShownAfterInitialTap, keyboard.shown)
 
             // Subsequent direct single tap on the composer invokes SoftwareKeyboardController.show(),
             // waking the parked session and re-creating a working InputConnection cleanly.
             mainClock.advanceTimeBy(600L)
             onNodeWithTag(COMPOSER).performTouchInput { click() }
             waitForIdle()
-            assertEquals(1, keyboard.shown)
+            assertEquals(keyboardShownAfterInitialTap + 1, keyboard.shown)
             assertTrue(
                 composeRoot.onCheckIsTextEditor(),
                 "tapping composer after return must wake and restart platform input session",
@@ -672,8 +730,7 @@ class ComposerImeStateModelUiTest {
             assertTrue(composeRoot.onCheckIsTextEditor(), "autoFocus must start the input session")
             assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
             assertEquals(1, keyboard.shown)
-            assertFalse(keyboardIntent.armed, "explicit intent must disarm after settling")
-            // Disarmed showKeyboardOnFocus = false must leave the active input session intact.
+            assertFalse(keyboardIntent.suppressKeyboardOnFocus)
             assertTrue(composeRoot.onCheckIsTextEditor())
             assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
         }
@@ -749,7 +806,8 @@ class ComposerImeStateModelUiTest {
             assertFalse(coordinator.anyComposerFocused)
             assertFalse(composeRoot.onCheckIsTextEditor())
 
-            // 1. FocusOnly focuses the composer WITHOUT starting an input session or raising IME.
+            // 1. FocusOnly focuses the composer WITHOUT starting an input session or raising IME
+            // on a touch-only host.
             runOnIdle {
                 composerState =
                     composerState.copy(
@@ -761,14 +819,15 @@ class ComposerImeStateModelUiTest {
                             ),
                     )
             }
+            repeat(4) { mainClock.advanceTimeByFrame() }
             waitForIdle()
             assertTrue(coordinator.anyComposerFocused, "FocusOnly must focus composer")
-            assertFalse(composeRoot.onCheckIsTextEditor(), "FocusOnly must not start input session")
+            assertFalse(composeRoot.onCheckIsTextEditor(), "FocusOnly must not start input session on touch-only host")
             assertNull(composeRoot.onCreateInputConnection(EditorInfo()))
             assertEquals(0, keyboard.shown)
 
-            // 2. Explicit RaiseKeyboard (e.g. Reply / Quote) while ALREADY focused arms
-            // showKeyboardOnFocus = true, starts the input session, opens IME, and disarms cleanly.
+            // 2. Explicit RaiseKeyboard (e.g. Reply / Quote) while ALREADY focused clears
+            // suppression, starts the input session, and opens IME cleanly.
             runOnIdle {
                 composerState =
                     composerState.copy(
@@ -808,6 +867,128 @@ class ComposerImeStateModelUiTest {
             assertTrue(composeRoot.onCheckIsTextEditor(), "handoff return must restart input session")
             assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
             assertEquals(2, keyboard.shown)
+        }
+
+    // Scenario 6a: Accessibility / semantic RequestFocus on a touch host must establish a live
+    // platform text input session and working InputConnection immediately.
+    @Test
+    fun semanticRequestFocusEstablishesInputSessionOnTouchHost() =
+        runRobolectricComposeUiTest {
+            val fieldState = TextFieldState(initialText = "")
+            var hostComposeView: View? = null
+
+            setContent {
+                val view = LocalView.current
+                SideEffect { hostComposeView = view }
+                RaftWindowFocusScope {
+                    Column(Modifier.fillMaxSize()) {
+                        Box(Modifier.size(1.dp).focusable())
+                        CompositionLocalProvider(LocalRaftEditorIsConversationComposer provides true) {
+                            TextField(
+                                state = fieldState,
+                                modifier = Modifier.testTag(COMPOSER).fillMaxWidth().height(48.dp),
+                                autoFocus = false,
+                            )
+                        }
+                    }
+                }
+            }
+
+            waitForIdle()
+            val composeRoot = checkNotNull(hostComposeView)
+            runOnIdle { dispatchWindowFocus(composeRoot, true) }
+            waitForIdle()
+
+            onNodeWithTag(COMPOSER).performSemanticsAction(SemanticsActions.RequestFocus)
+            waitForIdle()
+            onNodeWithTag(COMPOSER).assertIsFocused()
+            assertTrue(
+                composeRoot.onCheckIsTextEditor(),
+                "SemanticsActions.RequestFocus must start platform text input session",
+            )
+            val connection = assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
+            runOnIdle {
+                assertTrue(connection.setComposingText("ni", 1))
+                assertTrue(connection.commitText("你好", 1))
+            }
+            waitForIdle()
+            assertEquals("你好", fieldState.text.toString())
+        }
+
+    // Scenario 6b: When a hardware keyboard is connected on Android, FocusOnly still establishes a
+    // platform text input session so hardware-keyboard CJK IME composition works without tapping.
+    @Test
+    @Config(qualifiers = "keysexposed-qwerty")
+    fun hardwareKeyboardFocusOnlyEstablishesInputSessionWithoutCallingShow() =
+        runRobolectricComposeUiTest {
+            val keyboard = RecordingKeyboard()
+            val coordinator = RaftFocusCoordinator()
+            var composerState by mutableStateOf(ThreadComposerUiState(instanceId = "conv-hw-ime"))
+            var hostComposeView: View? = null
+
+            setContent {
+                val view = LocalView.current
+                SideEffect { hostComposeView = view }
+                RaftTheme(appearance = RaftAppearance.Light) {
+                    val portal = remember { ThreadComposerSuggestionPortalState() }
+                    CompositionLocalProvider(
+                        LocalSoftwareKeyboardController provides keyboard,
+                        LocalThreadComposerSuggestionPortal provides portal,
+                    ) {
+                        RaftWindowFocusScope(coordinator = coordinator) {
+                            Column(Modifier.fillMaxSize()) {
+                                Box(Modifier.size(1.dp).focusable())
+                                RaftFocusRegionHost(RaftFocusRegion.Conversation) {
+                                    val focusOnOpen =
+                                        rememberComposerFocusOnOpen(
+                                            policy = true,
+                                            shown = true,
+                                            yieldsToSideThread = false,
+                                            opensOnMessage = true,
+                                        )
+                                    ThreadComposerContent(
+                                        surface = ThreadComposerSurface(channelId = "c-hw-ime"),
+                                        state = composerState,
+                                        onEvent = { _, _, _, _ -> },
+                                        onKeyboardHeightChange = {},
+                                        contentPaddingTop = 0.dp,
+                                        contentPaddingBottom = 0.dp,
+                                        attachmentPreviewEnabled = true,
+                                        autofocusOnOpen = focusOnOpen,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            waitForIdle()
+            val composeRoot = checkNotNull(hostComposeView)
+            runOnIdle { dispatchWindowFocus(composeRoot, true) }
+            waitForIdle()
+
+            runOnIdle {
+                composerState =
+                    composerState.copy(
+                        focusRequestNonce = composerState.focusRequestNonce + 1,
+                        focusRequestMeta =
+                            ThreadComposerFocusRequestMeta(
+                                source = RaftFocusRequestSource.User("hw_focus_only"),
+                                keyboardMode = ThreadComposerFocusRequestKeyboardMode.FocusOnly,
+                            ),
+                    )
+            }
+            repeat(4) { mainClock.advanceTimeByFrame() }
+            waitForIdle()
+
+            assertTrue(coordinator.anyComposerFocused)
+            assertEquals(0, keyboard.shown)
+            assertTrue(
+                composeRoot.onCheckIsTextEditor(),
+                "hardware keyboard FocusOnly must establish InputConnection for CJK IME",
+            )
+            assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
         }
 
     private fun dispatchWindowFocus(composeRoot: View, hasFocus: Boolean) {

@@ -10,6 +10,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -322,17 +323,44 @@ internal class RaftWindowPlatformInputGate(
     private val hostWindowToken: () -> Any?,
     private val isWindowFocused: () -> Boolean,
     private val retainsHostKeyboard: () -> Boolean,
+    private val scheduleBlurCleanup: ((() -> Unit) -> Unit)? = null,
 ) : PlatformTextInputInterceptor {
-    private var parkedWake: CompletableDeferred<Unit>? = null
+    private var parkedWake: CompletableDeferred<(() -> Unit)?>? = null
+    private var activeHostInterceptions: Int = 0
+    private var parkedAfterExternalWindowLoss: Boolean = false
+    private val keyboardShowListeners = mutableSetOf<() -> Unit>()
 
     val isParked: Boolean
-        get() = parkedWake != null
+        get() = parkedAfterExternalWindowLoss || parkedWake != null
 
-    fun wakeIfParked(): Boolean {
-        val wake = parkedWake ?: return false
-        parkedWake = null
-        wake.complete(Unit)
-        return true
+    fun addKeyboardShowListener(listener: () -> Unit) {
+        keyboardShowListeners += listener
+    }
+
+    fun removeKeyboardShowListener(listener: () -> Unit) {
+        keyboardShowListeners -= listener
+    }
+
+    fun notifyKeyboardShow(showPlatformKeyboard: () -> Unit) {
+        keyboardShowListeners.toList().forEach { it() }
+        val wake = parkedWake
+        if (wake != null) {
+            parkedAfterExternalWindowLoss = false
+            parkedWake = null
+            wake.complete(showPlatformKeyboard)
+        } else {
+            parkedAfterExternalWindowLoss = false
+            showPlatformKeyboard()
+        }
+    }
+
+    /**
+     * Ends a parked window-focus-loss tenure when a host editor explicitly blurs (for example,
+     * tapping the message list after returning from a floating window). Never wakes an exiting
+     * parked session, so the blurring editor cannot blip `onCheckIsTextEditor()` while tearing down.
+     */
+    fun onHostEditorBlurred() {
+        parkedAfterExternalWindowLoss = false
     }
 
     override suspend fun interceptStartInputMethod(
@@ -342,40 +370,66 @@ internal class RaftWindowPlatformInputGate(
         if (!nextHandler.belongsToRaftPlatformHostWindow(hostWindowToken())) {
             nextHandler.startInputMethod(request)
         }
-        while (true) {
-            var wasWindowFocused = isWindowFocused()
-            coroutineScope {
-                val activeSession =
-                    launch(start = CoroutineStart.UNDISPATCHED) {
-                        nextHandler.startInputMethod(request)
-                    }
-                // Trigger strictly on an external true -> false window-focus edge while no
-                // keepsHostKeyboard modal is open: closing a keepsHostKeyboard modal releases its
-                // retention token while isWindowFocused is still false for a frame, so ignoring
-                // retention flips prevents false parking on modal dismiss.
-                snapshotFlow { isWindowFocused() }
-                    .first { focused ->
-                        if (focused) {
-                            wasWindowFocused = true
-                            false
-                        } else {
-                            wasWindowFocused && !retainsHostKeyboard()
+        activeHostInterceptions += 1
+        try {
+            while (true) {
+                var onWoken: (() -> Unit)? = null
+                if (parkedAfterExternalWindowLoss) {
+                    onWoken = awaitWake()
+                }
+                var wasWindowFocused = isWindowFocused()
+                coroutineScope {
+                    val activeSession =
+                        launch(start = CoroutineStart.UNDISPATCHED) {
+                            nextHandler.startInputMethod(request)
                         }
-                    }
-                activeSession.cancelAndJoin()
+                    onWoken?.invoke()
+                    // Trigger strictly on an external true -> false window-focus edge while no
+                    // keepsHostKeyboard modal is open: closing a keepsHostKeyboard modal releases its
+                    // retention token while isWindowFocused is still false for a frame, so ignoring
+                    // retention flips prevents false parking on modal dismiss.
+                    snapshotFlow { isWindowFocused() }
+                        .first { focused ->
+                            if (focused) {
+                                wasWindowFocused = true
+                                false
+                            } else {
+                                wasWindowFocused && !retainsHostKeyboard()
+                            }
+                        }
+                    parkedAfterExternalWindowLoss = true
+                    activeSession.cancelAndJoin()
+                }
             }
-            val wake = CompletableDeferred<Unit>()
-            parkedWake = wake
-            try {
-                wake.await()
-            } finally {
-                if (parkedWake === wake) {
-                    parkedWake = null
+        } finally {
+            activeHostInterceptions = (activeHostInterceptions - 1).coerceAtLeast(0)
+            if (activeHostInterceptions == 0 && parkedAfterExternalWindowLoss) {
+                scheduleBlurCleanup?.invoke {
+                    if (activeHostInterceptions == 0) {
+                        parkedAfterExternalWindowLoss = false
+                    }
                 }
             }
         }
     }
+
+    private suspend fun awaitWake(): (() -> Unit)? {
+        val wake = CompletableDeferred<(() -> Unit)?>()
+        parkedWake = wake
+        return try {
+            wake.await()
+        } finally {
+            if (parkedWake === wake) {
+                parkedWake = null
+            }
+        }
+    }
 }
+
+/** This window's [RaftWindowPlatformInputGate], or null on desktop / outside [RaftWindowFocusScope]. */
+@OptIn(ExperimentalComposeUiApi::class)
+internal val LocalRaftWindowPlatformInputGate =
+    staticCompositionLocalOf<RaftWindowPlatformInputGate?> { null }
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -391,22 +445,30 @@ internal fun RaftWindowPlatformInputGateScope(
     val windowInfo = LocalWindowInfo.current
     val hostWindowToken = rememberRaftPlatformHostWindowToken()
     val parentKeyboardController = LocalSoftwareKeyboardController.current
+    val gateScope = rememberCoroutineScope()
     val currentWindowInfo by rememberUpdatedState(windowInfo)
     val currentHostWindowToken by rememberUpdatedState(hostWindowToken)
     val gate =
-        remember(hostKeyboardRetention) {
+        remember(hostKeyboardRetention, gateScope) {
             RaftWindowPlatformInputGate(
                 hostWindowToken = { currentHostWindowToken },
                 isWindowFocused = { currentWindowInfo.isWindowFocused },
                 retainsHostKeyboard = { hostKeyboardRetention.retained },
+                scheduleBlurCleanup = { onCleanup ->
+                    gateScope.launch {
+                        withFrameNanos { }
+                        onCleanup()
+                    }
+                },
             )
         }
     val wrappedKeyboardController =
         remember(gate, parentKeyboardController) {
             object : SoftwareKeyboardController {
                 override fun show() {
-                    gate.wakeIfParked()
-                    parentKeyboardController?.show()
+                    gate.notifyKeyboardShow {
+                        parentKeyboardController?.show()
+                    }
                 }
 
                 override fun hide() {
@@ -414,7 +476,10 @@ internal fun RaftWindowPlatformInputGateScope(
                 }
             }
         }
-    CompositionLocalProvider(LocalSoftwareKeyboardController provides wrappedKeyboardController) {
+    CompositionLocalProvider(
+        LocalSoftwareKeyboardController provides wrappedKeyboardController,
+        LocalRaftWindowPlatformInputGate provides gate,
+    ) {
         InterceptPlatformTextInput(interceptor = gate, content = content)
     }
 }
