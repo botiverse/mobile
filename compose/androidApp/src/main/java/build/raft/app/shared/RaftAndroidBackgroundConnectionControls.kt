@@ -10,6 +10,7 @@ import build.raft.app.core.data.auth.AndroidAppScopeMMKV
 import build.raft.app.data.RaftBackgroundConnectionControls
 import build.raft.app.data.RaftBackgroundWhitelistGuide
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,6 +60,8 @@ internal class RaftAndroidBackgroundConnectionControls(
             directGmsKeepAliveOverrideAllowedProvider(appContext) && !noPlayServicesFallbackProvider(appContext)
         }.getOrDefault(false)
 
+    private val overrideStateLock = Any()
+    private val overrideStateVersion = AtomicLong(0L)
     private val directGmsOverrideState = MutableStateFlow(false)
     private val directGmsOverrideStateView = directGmsOverrideState.asStateFlow()
     private val initialOverrideRefreshScheduled = AtomicBoolean(false)
@@ -66,29 +69,46 @@ internal class RaftAndroidBackgroundConnectionControls(
     override val directGmsKeepAliveOverrideState: StateFlow<Boolean>
         get() {
             if (initialOverrideRefreshScheduled.compareAndSet(false, true)) {
-                refreshScope.launch { refreshDirectGmsKeepAliveOverrideStatus() }
+                val scheduledVersion = overrideStateVersion.get()
+                refreshScope.launch { refreshDirectGmsKeepAliveOverrideStatus(expectedVersion = scheduledVersion) }
             }
             return directGmsOverrideStateView
         }
 
     /** Called on startup IO and activity resume to keep the UI toggle aligned with stored state. */
     fun refreshDirectGmsKeepAliveOverrideStatus() {
+        refreshDirectGmsKeepAliveOverrideStatus(expectedVersion = overrideStateVersion.get())
+    }
+
+    private fun refreshDirectGmsKeepAliveOverrideStatus(expectedVersion: Long) {
         initialOverrideRefreshScheduled.set(true)
-        directGmsOverrideState.value =
+        if (overrideStateVersion.get() != expectedVersion) return
+        val resolved =
             if (canOverrideWithForegroundService()) {
                 runCatching { directGmsKeepAliveOverrideEnabledProvider(appContext) }.getOrDefault(false)
             } else {
                 false
             }
+        synchronized(overrideStateLock) {
+            if (overrideStateVersion.get() == expectedVersion) {
+                directGmsOverrideState.value = resolved
+            }
+        }
     }
 
     override fun setDirectGmsKeepAliveOverrideEnabled(enabled: Boolean) {
         if (!canOverrideWithForegroundService()) {
-            directGmsOverrideState.value = false
+            synchronized(overrideStateLock) {
+                overrideStateVersion.incrementAndGet()
+                directGmsOverrideState.value = false
+            }
             return
         }
         initialOverrideRefreshScheduled.set(true)
-        directGmsOverrideState.value = enabled
+        synchronized(overrideStateLock) {
+            overrideStateVersion.incrementAndGet()
+            directGmsOverrideState.value = enabled
+        }
         directGmsKeepAliveOverrideSetter(appContext, enabled)
     }
 

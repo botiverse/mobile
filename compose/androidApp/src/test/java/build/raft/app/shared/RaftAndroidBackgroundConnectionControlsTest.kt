@@ -9,6 +9,12 @@ import android.content.pm.PackageInfo
 import android.provider.Settings
 import build.raft.app.data.RaftBackgroundWhitelistGuide
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -243,5 +249,56 @@ class RaftAndroidBackgroundConnectionControlsTest {
         playControls.setDirectGmsKeepAliveOverrideEnabled(true)
         assertFalse(playControls.directGmsKeepAliveOverrideState.value)
         assertTrue(playWrites.isEmpty())
+    }
+
+    @Test
+    fun staleInitialOverrideRefreshDoesNotClobberSubsequentToggle() {
+        val readStarted = CountDownLatch(1)
+        val allowReadReturn = CountDownLatch(1)
+        val refreshFinished = CountDownLatch(1)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val controls =
+                RaftAndroidBackgroundConnectionControls(
+                    context = context,
+                    refreshScope = scope,
+                    batteryOptimizationExemptProvider = { false },
+                    batteryOptimizationPermissionDeclaredProvider = { true },
+                    noPlayServicesFallbackProvider = { false },
+                    directGmsKeepAliveOverrideAllowedProvider = { true },
+                    directGmsKeepAliveOverrideEnabledProvider = {
+                        readStarted.countDown()
+                        assertTrue("Timed out waiting to release stale read", allowReadReturn.await(5, TimeUnit.SECONDS))
+                        try {
+                            true
+                        } finally {
+                            refreshFinished.countDown()
+                        }
+                    },
+                    directGmsKeepAliveOverrideSetter = { _, _ -> },
+                    vendorProvider = { AndroidOemVendor.Vivo },
+                    intentLauncher = {},
+                )
+
+            // First observation launches the async initial IO refresh.
+            assertFalse(controls.directGmsKeepAliveOverrideState.value)
+            assertTrue("Initial refresh did not start", readStarted.await(5, TimeUnit.SECONDS))
+
+            // User explicitly toggles ON then OFF while the initial IO read is still in flight.
+            controls.setDirectGmsKeepAliveOverrideEnabled(true)
+            assertTrue(controls.directGmsKeepAliveOverrideState.value)
+            controls.setDirectGmsKeepAliveOverrideEnabled(false)
+            assertFalse(controls.directGmsKeepAliveOverrideState.value)
+
+            // Unblock the stale initial read returning `true`; it must NOT clobber the explicit OFF state.
+            allowReadReturn.countDown()
+            assertTrue("Initial refresh did not complete", refreshFinished.await(5, TimeUnit.SECONDS))
+            // Give the post-provider synchronized block a moment to run if it were going to write.
+            Thread.sleep(50)
+            assertFalse(controls.directGmsKeepAliveOverrideState.value)
+        } finally {
+            allowReadReturn.countDown()
+            scope.cancel()
+        }
     }
 }
