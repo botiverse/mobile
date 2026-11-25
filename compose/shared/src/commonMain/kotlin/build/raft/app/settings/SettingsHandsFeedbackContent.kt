@@ -1420,7 +1420,6 @@ internal fun SettingsHandsFeedbackForm(
             .fillMaxSize()
             .background(colors.layerCanvas)
             .verticalScroll(rememberScrollState())
-            .dismissInputFocusOnScrollableChrome()
     ) {
         Column(
             Modifier

@@ -5,8 +5,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import build.raft.app.RaftEditorKeyboardIntent
 import build.raft.app.compat.ui.KeyboardParams
 import build.raft.app.raftAppEditorBehavior
+import build.raft.app.raftPlatformHasFinePointer
+import build.raft.app.raftResolveShowKeyboardOnFocus
 import build.raft.app.raftResolvedKeyboardOptions
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.fillMaxSize
@@ -184,7 +188,17 @@ internal fun rememberRaftDesignSystemEditor(
     onFocus: () -> Unit,
     onBlur: () -> Unit
 ): RaftDesignSystemEditor {
-    val resolvedKeyboardOptions = raftResolvedKeyboardOptions(keyboardOptions, singleLine = true, imeActionRequested = true)
+    val keyboardIntent = remember { RaftEditorKeyboardIntent(initialArmed = autoFocus) }
+    val softwareKeyboardController = LocalSoftwareKeyboardController.current
+    val effectiveShowKeyboardOnFocus =
+        raftResolveShowKeyboardOnFocus(
+            desktopHost = raftPlatformHasFinePointer(),
+            explicitKeyboardIntentArmed = keyboardIntent.armed,
+            callerOverride = keyboardOptions.showKeyboardOnFocus,
+        )
+    val resolvedKeyboardOptions =
+        raftResolvedKeyboardOptions(keyboardOptions, singleLine = true, imeActionRequested = true)
+            .copy(showKeyboardOnFocus = effectiveShowKeyboardOnFocus)
     val modifier =
         Modifier.raftAppEditorBehavior(
             singleLine = true,
@@ -197,8 +211,11 @@ internal fun rememberRaftDesignSystemEditor(
         )
     LaunchedEffect(autoFocus) {
         if (autoFocus) {
-            delay(100)
-            focusRequester.requestFocus()
+            keyboardIntent.focusWithKeyboard(
+                focusRequester = focusRequester,
+                softwareKeyboardController = softwareKeyboardController,
+                beforeFocusDelayMs = 100L,
+            )
         }
     }
     return RaftDesignSystemEditor(modifier, resolvedKeyboardOptions)

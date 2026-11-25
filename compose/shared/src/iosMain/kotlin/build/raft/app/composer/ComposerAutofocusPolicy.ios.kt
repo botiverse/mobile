@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.PlatformTextInputSession
 
 // GameController's coalesced keyboard: non-null while any hardware keyboard (a Magic Keyboard,
 // a Bluetooth keyboard, the simulator's host keyboard) is connected (RaftIosHardwareKeyboardState).
@@ -9,3 +10,8 @@ internal actual fun rememberRaftHardwareKeyboardConnected(): Boolean {
     RaftIosHardwareKeyboardState.install()
     return RaftIosHardwareKeyboardState.connected
 }
+
+@Composable
+internal actual fun rememberRaftPlatformHostWindowToken(): Any? = null
+
+internal actual fun PlatformTextInputSession.belongsToRaftPlatformHostWindow(hostToken: Any?): Boolean = true

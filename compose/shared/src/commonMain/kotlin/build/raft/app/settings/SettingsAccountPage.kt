@@ -517,7 +517,6 @@ internal fun SettingsAccountContent(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .dismissInputFocusOnScrollableChrome()
                     .background(RaftColor.Canvas)
                     .padding(top = topSafeArea)
                     .raftSafeAreaHorizontalPadding()

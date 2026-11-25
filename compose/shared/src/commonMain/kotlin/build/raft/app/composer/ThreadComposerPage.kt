@@ -77,6 +77,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -168,6 +169,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 import androidx.compose.foundation.gestures.Orientation
@@ -1390,16 +1392,6 @@ internal fun <T> threadComposerRenderedSuggestions(
     loadedSuggestions.takeIf { it.isNotEmpty() || status == SharedMembersLoadStatus.Loaded }
         ?: retainedSuggestions.takeIf { it.isNotEmpty() }
         ?: fallbackSuggestions
-
-internal fun restoreComposerInputAfterExternalMention(
-    focusOwnerRegistry: RaftInputFocusOwnerRegistry?,
-    requestFocus: () -> Unit,
-    showKeyboard: () -> Unit
-) {
-    focusOwnerRegistry?.cancelPendingFocusDismissalForExplicitInputIntent()
-    requestFocus()
-    showKeyboard()
-}
 
 @Serializable
 internal data class RaftPendingAttachmentItem(
@@ -2665,6 +2657,8 @@ internal fun ThreadComposerContentLeaf(
     // still fences stale callbacks below, but recreating the FocusRequester makes the host text
     // field lose first-responder status before the restore effect can run.
     val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
+    val composerKeyboardIntent = remember(state.instanceId) { RaftEditorKeyboardIntent() }
+    val composerFocusScope = rememberCoroutineScope()
     val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
     val focusManager = LocalFocusManager.current
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
@@ -2839,10 +2833,14 @@ internal fun ThreadComposerContentLeaf(
                         generation = suggestionPortalGeneration,
                         onFocusedChanged = { focused = it }
                     )
-                runCatching { composerFocusRequester.requestFocus() }
-                // FocusOnly system requests never raise the IME.
+                // FocusOnly system requests leave showKeyboardOnFocus = false and never raise the IME.
                 if (explicitPlan.showKeyboard) {
-                    softwareKeyboardController?.show()
+                    composerKeyboardIntent.focusWithKeyboard(
+                        focusRequester = composerFocusRequester,
+                        softwareKeyboardController = softwareKeyboardController,
+                    )
+                } else {
+                    runCatching { composerFocusRequester.requestFocus() }
                 }
             }
         } else if (explicitFocusRequest) {
@@ -2879,10 +2877,14 @@ internal fun ThreadComposerContentLeaf(
                             generation = suggestionPortalGeneration,
                             onFocusedChanged = { focused = it }
                         )
-                    runCatching { composerFocusRequester.requestFocus() }
                 }
                 if (transferPlan.showKeyboard) {
-                    softwareKeyboardController?.show()
+                    composerKeyboardIntent.focusWithKeyboard(
+                        focusRequester = composerFocusRequester,
+                        softwareKeyboardController = softwareKeyboardController,
+                    )
+                } else if (!focusedByExplicit) {
+                    runCatching { composerFocusRequester.requestFocus() }
                 }
             }
         }
@@ -3230,16 +3232,13 @@ internal fun ThreadComposerContentLeaf(
                             generation = suggestionPortalGeneration,
                             onFocusedChanged = { focused = it }
                         )
-                    restoreComposerInputAfterExternalMention(
-                        focusOwnerRegistry = focusOwnerRegistry,
-                        requestFocus = { runCatching { composerFocusRequester.requestFocus() } },
-                        showKeyboard = {
-                            // Android Back can dismiss the IME while the editor remains focused. A
-                            // repeated avatar mention is an explicit input intent, so reassert both
-                            // logical focus and the software keyboard instead of relying on a focus
-                            // transition that may be a no-op.
-                            softwareKeyboardController?.show()
-                        }
+                    focusOwnerRegistry?.cancelPendingFocusDismissalForExplicitInputIntent()
+                    // Android Back can dismiss the IME while the editor remains focused. A
+                    // repeated avatar mention is an explicit input intent, so arm keyboard-show
+                    // intent and reassert both logical focus and the software keyboard.
+                    composerKeyboardIntent.focusWithKeyboard(
+                        focusRequester = composerFocusRequester,
+                        softwareKeyboardController = softwareKeyboardController,
                     )
                 }
             }
@@ -3744,7 +3743,12 @@ internal fun ThreadComposerContentLeaf(
                                     modalToken = focusModalToken,
                                 )
                             if (focusCoordinator.evaluate(tapTicket, checkEpochs = false, consume = true).isAllowed) {
-                                runCatching { composerFocusRequester.requestFocus() }
+                                composerFocusScope.launch {
+                                    composerKeyboardIntent.focusWithKeyboard(
+                                        focusRequester = composerFocusRequester,
+                                        softwareKeyboardController = softwareKeyboardController,
+                                    )
+                                }
                             }
                         }
                         .padding(
@@ -3893,7 +3897,16 @@ internal fun ThreadComposerContentLeaf(
                                     )
                                     emitChange(nextText = serialized)
                                     if (!quoteController.isSegmented) {
-                                        runCatching { composerFocusRequester.requestFocus() }
+                                        if (keyboardInsetDp > 0f) {
+                                            composerFocusScope.launch {
+                                                composerKeyboardIntent.focusWithKeyboard(
+                                                    focusRequester = composerFocusRequester,
+                                                    softwareKeyboardController = softwareKeyboardController,
+                                                )
+                                            }
+                                        } else {
+                                            runCatching { composerFocusRequester.requestFocus() }
+                                        }
                                     }
                                 },
                                 onJumpToQuotedMessage = quoteReplyHost.onJumpToQuotedMessage,
@@ -3990,10 +4003,10 @@ internal fun ThreadComposerContentLeaf(
                             },
                             placeholderColor = RaftColor.ForegroundHint,
                             cursorBrush = SolidColor(RaftColor.TextBlack),
-                            systemNewlineAction = true,
                             nativeEditingStateReader = externalNativeEditingStateReader,
                             // React mobile uses a one-line textarea; keep the toolbar as the touch target.
                             focusRequester = composerFocusRequester,
+                            keyboardIntent = composerKeyboardIntent,
                             modifier = Modifier
                                 // Where the focus is when a side thread closes (ComposerAutofocusPolicy.kt).
                                 .composerReportsFocus(autofocusOnOpen)
