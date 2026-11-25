@@ -539,10 +539,20 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         }
 
 
+        internal fun shouldTreatRemotePushAsActive(
+            fcmUnavailable: Boolean,
+            directGmsKeepAliveOverrideActive: Boolean,
+            policyRemotePushActive: Boolean,
+        ): Boolean = !fcmUnavailable && !directGmsKeepAliveOverrideActive && policyRemotePushActive
+
         /**
          * FCM delivers this server's tray notifications (the server's stored delivery-status answer for
          * this environment, user and installation says fcmActive for the event's server), so posting here
          * would show a duplicate. Any unknown input, or a read failure, keeps the local post.
+         *
+         * When Play services is absent OR the user opted into the direct-install GMS keep-alive override
+         * (because FCM is unreachable on their network), local realtime notifications still post; if FCM
+         * also delivers the same message, [AndroidUnreadNotificationPoster] deduplicates by messageId.
          */
         private suspend fun isRemotePushActive(
             appContext: Context,
@@ -550,15 +560,26 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             event: NotificationPushReceived
         ): Boolean =
             try {
-                // Without Play services FCM cannot deliver, whatever an earlier registration left stored.
-                !RaftPlayServicesAvailability.isFcmUnavailable(appContext) &&
-                RaftRealtimeAppScopePolicy.isRemotePushActive(
-                    serverId = event.serverId,
-                    environmentId = AndroidAuthApiFactory.currentBaseUrl(appContext),
-                    currentUserId = sessionStore.readSession()?.user?.id,
-                    installationId = RaftAndroidPushRegistrationBridge.installationIdOrNull(),
-                    deliveryStatus = RaftAndroidPushRegistrationBridge.storedDeliveryStatusOrNull(),
-                    nowMillis = System.currentTimeMillis()
+                val fcmUnavailable = RaftPlayServicesAvailability.isFcmUnavailable(appContext)
+                val directGmsOverrideActive =
+                    !fcmUnavailable && AndroidRealtimeKeepAliveController.isDirectGmsKeepAliveOverrideActive(appContext)
+                val policyRemotePushActive =
+                    if (fcmUnavailable || directGmsOverrideActive) {
+                        false
+                    } else {
+                        RaftRealtimeAppScopePolicy.isRemotePushActive(
+                            serverId = event.serverId,
+                            environmentId = AndroidAuthApiFactory.currentBaseUrl(appContext),
+                            currentUserId = sessionStore.readSession()?.user?.id,
+                            installationId = RaftAndroidPushRegistrationBridge.installationIdOrNull(),
+                            deliveryStatus = RaftAndroidPushRegistrationBridge.storedDeliveryStatusOrNull(),
+                            nowMillis = System.currentTimeMillis()
+                        )
+                    }
+                shouldTreatRemotePushAsActive(
+                    fcmUnavailable = fcmUnavailable,
+                    directGmsKeepAliveOverrideActive = directGmsOverrideActive,
+                    policyRemotePushActive = policyRemotePushActive,
                 )
             } catch (cancellation: CancellationException) {
                 throw cancellation

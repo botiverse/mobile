@@ -400,6 +400,14 @@ private fun SettingsPushStatusCard(
                         }
                         SettingsNotificationsBackgroundKeepAliveMode.None -> Unit
                     }
+                    if (backgroundControls != null && backgroundPlan.showDirectGmsOverrideRow) {
+                        RaftDirectGmsKeepAliveOverrideRow(
+                            controls = backgroundControls,
+                            permissionGranted = permissionGranted,
+                            showBatteryExemptionRow = backgroundPlan.showBatteryExemptionRow,
+                            onPermission = onPermission,
+                        )
+                    }
                     if (backgroundControls != null && backgroundPlan.showBatteryExemptionRow) {
                         RaftBackgroundConnectionBatteryRow(backgroundControls)
                     }
@@ -476,7 +484,8 @@ private fun SettingsNotificationSwitchRow(
     checked: Boolean,
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    divider: Boolean = true
+    divider: Boolean = true,
+    modifier: Modifier = Modifier,
 ) {
     RaftListRow(
         title = title,
@@ -485,6 +494,7 @@ private fun SettingsNotificationSwitchRow(
         description = detail,
         wrapDescription = true,
         divider = divider,
+        modifier = modifier,
         trailing = { RaftSwitch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled, label = title) }
     )
 }
@@ -719,6 +729,7 @@ private fun SettingsNotificationActionRow(
 
 /** Anchor id used when jumping from the background-kill notice banner into Settings › Notifications. */
 internal const val SETTINGS_NOTIFICATIONS_BACKGROUND_KEEP_ALIVE_ANCHOR = "background-keep-alive"
+internal const val SETTINGS_NOTIFICATIONS_DIRECT_GMS_OVERRIDE_ROW_TAG = "settings_notifications_direct_gms_override_row"
 internal const val SETTINGS_NOTIFICATIONS_BATTERY_OPTIMIZATION_ROW_TAG = "settings_notifications_battery_optimization_row"
 internal const val SETTINGS_NOTIFICATIONS_VENDOR_BACKGROUND_ROW_TAG = "settings_notifications_vendor_background_row"
 
@@ -738,6 +749,12 @@ internal enum class SettingsNotificationsBackgroundKeepAliveMode {
 
 internal data class SettingsNotificationsBackgroundControlsPlan(
     val mode: SettingsNotificationsBackgroundKeepAliveMode,
+    /**
+     * Show the direct-install Android APK opt-in foreground-service keep-alive override when GMS
+     * is available (for networks where FCM cannot be reached). Always false on Google Play builds,
+     * no-GMS devices, iOS, and desktop.
+     */
+    val showDirectGmsOverrideRow: Boolean = false,
     /** Show the direct battery-optimization exemption row (direct/non-Play builds declaring the permission). */
     val showBatteryExemptionRow: Boolean,
     /**
@@ -762,12 +779,15 @@ internal fun settingsNotificationsBackgroundControlsPlan(
                 } else {
                     SettingsNotificationsBackgroundKeepAliveMode.None
                 },
+            showDirectGmsOverrideRow = false,
             showBatteryExemptionRow = false,
             showVendorBackgroundRow = false,
             whitelistGuide = RaftBackgroundWhitelistGuide.AppDetails,
         )
     }
     val fallbackOffered = runCatching { controls.isOffered() }.getOrDefault(false)
+    val canOverrideWithForegroundService =
+        !fallbackOffered && runCatching { controls.canOverrideWithForegroundService() }.getOrDefault(false)
     val canRequestBattery = runCatching { controls.canRequestBatteryOptimizationExemption() }.getOrDefault(false)
     val guide = runCatching { controls.whitelistGuide() }.getOrDefault(RaftBackgroundWhitelistGuide.AppDetails)
     val hasOemWhitelist = guide != RaftBackgroundWhitelistGuide.AppDetails
@@ -778,9 +798,41 @@ internal fun settingsNotificationsBackgroundControlsPlan(
             } else {
                 SettingsNotificationsBackgroundKeepAliveMode.AndroidWithPlayServices
             },
+        showDirectGmsOverrideRow = canOverrideWithForegroundService,
         showBatteryExemptionRow = canRequestBattery,
         showVendorBackgroundRow = if (canRequestBattery) hasOemWhitelist else true,
         whitelistGuide = guide,
+    )
+}
+
+/**
+ * Direct-install APK opt-in switch when GMS is available but FCM cannot be reached on the user's
+ * network. Never rendered on Google Play builds, no-GMS devices, iOS, or desktop.
+ */
+@Composable
+private fun RaftDirectGmsKeepAliveOverrideRow(
+    controls: RaftBackgroundConnectionControls,
+    permissionGranted: Boolean,
+    showBatteryExemptionRow: Boolean,
+    onPermission: () -> Unit,
+) {
+    val overrideEnabled by controls.directGmsKeepAliveOverrideState.collectAsState()
+    SettingsNotificationSwitchRow(
+        title = stringResource(Res.string.settings_notifications_direct_keep_connection_title),
+        detail = stringResource(Res.string.settings_notifications_direct_keep_connection_detail),
+        checked = overrideEnabled,
+        enabled = true,
+        modifier = Modifier.testTag(SETTINGS_NOTIFICATIONS_DIRECT_GMS_OVERRIDE_ROW_TAG),
+        onCheckedChange = { enabled ->
+            controls.setDirectGmsKeepAliveOverrideEnabled(enabled)
+            if (enabled) {
+                if (!permissionGranted) {
+                    onPermission()
+                } else if (showBatteryExemptionRow && !controls.isBatteryOptimizationExempt()) {
+                    controls.requestBatteryOptimizationExemption()
+                }
+            }
+        },
     )
 }
 

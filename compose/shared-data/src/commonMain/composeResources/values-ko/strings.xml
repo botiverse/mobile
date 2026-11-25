@@ -2804,6 +2804,8 @@
     <string name="settings_notifications_background_realtime_detail">백그라운드에서도 실시간 연결을 유지해요. %1$s에서 오래 실행되는 세션을 일시 중지할 수도 있어요.</string>
     <string name="settings_notifications_keep_connection_title">백그라운드에서 연결 유지</string>
     <string name="settings_notifications_keep_connection_detail">Raft를 백그라운드에서 연결된 상태로 유지하면 메시지 알림을 받을 수 있어요. ‘Raft가 메시지를 받는 중’ 알림이 계속 표시되고 배터리를 더 많이 사용해요.</string>
+    <string name="settings_notifications_direct_keep_connection_title">백그라운드 상시 연결</string>
+    <string name="settings_notifications_direct_keep_connection_detail">Google 푸시 알림에 연결할 수 없는 네트워크에서 Raft를 백그라운드에 연결된 상태로 유지해 메시지 알림을 받아요. ‘Raft가 메시지를 받는 중’ 알림이 계속 표시되고 배터리를 더 많이 사용해요.</string>
     <string name="settings_notifications_battery_optimization_title">백그라운드 실행 허용</string>
     <string name="settings_notifications_battery_optimization_detail">Raft의 배터리 최적화를 꺼서 시스템이 백그라운드 연결을 중단하지 않게 하세요. 일부 휴대폰에서는 앱 실행 관리나 백그라운드 활동 설정에서도 Raft를 허용해야 해요.</string>
     <string name="settings_notifications_battery_optimization_allowed">허용됨</string>

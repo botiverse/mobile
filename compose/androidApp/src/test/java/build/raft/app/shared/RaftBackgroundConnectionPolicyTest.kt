@@ -1,5 +1,6 @@
 package build.raft.app.shared
 
+import build.raft.app.shared.RaftBackgroundConnectionPolicy.BackgroundTransitionAction
 import build.raft.app.shared.RaftBackgroundConnectionPolicy.Decision
 import build.raft.app.shared.RaftBackgroundConnectionPolicy.Inputs
 import build.raft.app.shared.RaftBackgroundConnectionPolicy.StartCommandOutcome
@@ -81,6 +82,126 @@ class RaftBackgroundConnectionPolicyTest {
                 hasRealtimeSession = false,
                 stopRequested = false,
                 decision = Decision.Run,
+            )
+        )
+    }
+
+    @Test
+    fun directApkGmsOverrideDefaultsOffAndRunsWhenOptedIn() {
+        val gmsDirectDefaultOff =
+            Inputs(
+                fcmUnavailable = false,
+                keepAlivePreferenceEnabled = true,
+                signedIn = true,
+                messageNotificationsEnabled = true,
+                systemNotificationsAllowed = true,
+                directGmsKeepAliveOverrideAllowed = true,
+                directGmsKeepAliveOverrideEnabled = false,
+            )
+        assertEquals(Decision.Stop("play_services_available"), RaftBackgroundConnectionPolicy.decide(gmsDirectDefaultOff))
+
+        // Direct APK opt-in ON with GMS runs even when the separate Background realtime switch is off.
+        val gmsDirectOptedIn =
+            gmsDirectDefaultOff.copy(
+                keepAlivePreferenceEnabled = false,
+                directGmsKeepAliveOverrideEnabled = true,
+            )
+        assertEquals(Decision.Run, RaftBackgroundConnectionPolicy.decide(gmsDirectOptedIn))
+        assertEquals(Decision.Stop("signed_out"), RaftBackgroundConnectionPolicy.decide(gmsDirectOptedIn.copy(signedIn = false)))
+        assertEquals(
+            Decision.Stop("message_notifications_disabled"),
+            RaftBackgroundConnectionPolicy.decide(gmsDirectOptedIn.copy(messageNotificationsEnabled = false)),
+        )
+        assertEquals(
+            Decision.Stop("system_notifications_blocked"),
+            RaftBackgroundConnectionPolicy.decide(gmsDirectOptedIn.copy(systemNotificationsAllowed = false)),
+        )
+    }
+
+    @Test
+    fun playBuildNeverHonorsPersistedDirectGmsOverrideFlag() {
+        val playWithStaleFlag =
+            Inputs(
+                fcmUnavailable = false,
+                keepAlivePreferenceEnabled = true,
+                signedIn = true,
+                messageNotificationsEnabled = true,
+                systemNotificationsAllowed = true,
+                directGmsKeepAliveOverrideAllowed = false,
+                directGmsKeepAliveOverrideEnabled = true,
+            )
+        assertFalse(
+            RaftBackgroundConnectionPolicy.isDirectGmsOverrideActive(
+                fcmUnavailable = false,
+                directGmsKeepAliveOverrideAllowed = false,
+                directGmsKeepAliveOverrideEnabled = true,
+            )
+        )
+        assertEquals(Decision.Stop("play_services_available"), RaftBackgroundConnectionPolicy.decide(playWithStaleFlag))
+    }
+
+    @Test
+    fun noGmsDevicesIgnoreDirectGmsOverrideAndFollowExistingKeepAlivePreference() {
+        assertFalse(
+            RaftBackgroundConnectionPolicy.isDirectGmsOverrideActive(
+                fcmUnavailable = true,
+                directGmsKeepAliveOverrideAllowed = true,
+                directGmsKeepAliveOverrideEnabled = true,
+            )
+        )
+        val noGmsPrefOffWithStaleOverride =
+            allSatisfied.copy(
+                keepAlivePreferenceEnabled = false,
+                directGmsKeepAliveOverrideAllowed = true,
+                directGmsKeepAliveOverrideEnabled = true,
+            )
+        assertEquals(Decision.Stop("preference_disabled"), RaftBackgroundConnectionPolicy.decide(noGmsPrefOffWithStaleOverride))
+    }
+
+    @Test
+    fun shouldEnableBackgroundKeepAliveRespectsServiceDecisionAndPlainPreference() {
+        assertTrue(RaftBackgroundConnectionPolicy.shouldEnableBackgroundKeepAlive(false, Decision.Run, keepAlivePreferenceEnabled = false))
+        assertFalse(
+            RaftBackgroundConnectionPolicy.shouldEnableBackgroundKeepAlive(
+                fallbackApplies = false,
+                decision = Decision.Stop("system_notifications_blocked"),
+                keepAlivePreferenceEnabled = false,
+            )
+        )
+        assertTrue(
+            RaftBackgroundConnectionPolicy.shouldEnableBackgroundKeepAlive(
+                fallbackApplies = false,
+                decision = Decision.Stop("play_services_available"),
+                keepAlivePreferenceEnabled = true,
+            )
+        )
+        assertFalse(
+            RaftBackgroundConnectionPolicy.shouldEnableBackgroundKeepAlive(
+                fallbackApplies = true,
+                decision = Decision.Stop("system_notifications_blocked"),
+                keepAlivePreferenceEnabled = true,
+            )
+        )
+    }
+
+    @Test
+    fun backgroundTransitionStopsStaleServiceWhenOverrideTurnedOffAndNoOpsOnPlay() {
+        assertEquals(
+            BackgroundTransitionAction.None,
+            RaftBackgroundConnectionPolicy.backgroundTransitionAction(
+                fallbackApplies = false,
+                decision = Decision.Stop("play_services_available"),
+                serviceActive = false,
+                stopQueued = false,
+            )
+        )
+        assertEquals(
+            BackgroundTransitionAction.Stop("play_services_available"),
+            RaftBackgroundConnectionPolicy.backgroundTransitionAction(
+                fallbackApplies = false,
+                decision = Decision.Stop("play_services_available"),
+                serviceActive = true,
+                stopQueued = false,
             )
         )
     }

@@ -150,4 +150,98 @@ class RaftAndroidBackgroundConnectionControlsTest {
         assertEquals(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS, vendorIntents.last().action)
         assertTrue(vendorIntents.none { it.action == Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS })
     }
+
+    @Test
+    fun playManifestStripsBackgroundConnectionServiceAndFgsPermissions() {
+        val main = File("src/main/AndroidManifest.xml").readText()
+        val play = File("src/play/AndroidManifest.xml").readText()
+        assertTrue(main.contains("android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING"))
+        assertTrue(main.contains(".shared.RaftBackgroundConnectionService"))
+        assertTrue(
+            Regex("""android:name="android\.permission\.FOREGROUND_SERVICE"\s+tools:node="remove"""").containsMatchIn(play)
+        )
+        assertTrue(
+            Regex("""android:name="android\.permission\.FOREGROUND_SERVICE_REMOTE_MESSAGING"\s+tools:node="remove"""").containsMatchIn(play)
+        )
+        assertTrue(
+            Regex("""android:name="build\.raft\.app\.shared\.RaftBackgroundConnectionService"\s+tools:node="remove"""").containsMatchIn(play)
+        )
+    }
+
+    @Test
+    fun directGmsOverrideExposedAndToggleableOnlyOnDirectInstallWithGms() {
+        val persistedWrites = mutableListOf<Boolean>()
+        var stored = false
+        val directGmsControls =
+            RaftAndroidBackgroundConnectionControls(
+                context = context,
+                batteryOptimizationExemptProvider = { false },
+                batteryOptimizationPermissionDeclaredProvider = { true },
+                noPlayServicesFallbackProvider = { false },
+                directGmsKeepAliveOverrideAllowedProvider = { true },
+                directGmsKeepAliveOverrideEnabledProvider = { stored },
+                directGmsKeepAliveOverrideSetter = { _, enabled ->
+                    stored = enabled
+                    persistedWrites += enabled
+                },
+                vendorProvider = { AndroidOemVendor.Vivo },
+                intentLauncher = {},
+            )
+
+        assertFalse(directGmsControls.isOffered())
+        assertTrue(directGmsControls.canOverrideWithForegroundService())
+        assertFalse(directGmsControls.directGmsKeepAliveOverrideState.value)
+
+        directGmsControls.setDirectGmsKeepAliveOverrideEnabled(true)
+        assertTrue(directGmsControls.directGmsKeepAliveOverrideState.value)
+        assertEquals(listOf(true), persistedWrites)
+
+        directGmsControls.setDirectGmsKeepAliveOverrideEnabled(false)
+        assertFalse(directGmsControls.directGmsKeepAliveOverrideState.value)
+        assertEquals(listOf(true, false), persistedWrites)
+
+        // Direct no-GMS device: automatic fallback already applies, override is not offered or mutable.
+        val noGmsWrites = mutableListOf<Boolean>()
+        val noGmsControls =
+            RaftAndroidBackgroundConnectionControls(
+                context = context,
+                batteryOptimizationExemptProvider = { false },
+                batteryOptimizationPermissionDeclaredProvider = { true },
+                noPlayServicesFallbackProvider = { true },
+                directGmsKeepAliveOverrideAllowedProvider = { true },
+                directGmsKeepAliveOverrideEnabledProvider = { true },
+                directGmsKeepAliveOverrideSetter = { _, enabled -> noGmsWrites += enabled },
+                vendorProvider = { AndroidOemVendor.Huawei },
+                intentLauncher = {},
+            )
+        assertTrue(noGmsControls.isOffered())
+        assertFalse(noGmsControls.canOverrideWithForegroundService())
+        noGmsControls.refreshDirectGmsKeepAliveOverrideStatus()
+        assertFalse(noGmsControls.directGmsKeepAliveOverrideState.value)
+        noGmsControls.setDirectGmsKeepAliveOverrideEnabled(true)
+        assertFalse(noGmsControls.directGmsKeepAliveOverrideState.value)
+        assertTrue(noGmsWrites.isEmpty())
+
+        // Play build: NEVER offers the override, ignores persisted true, and ignores setter calls.
+        val playWrites = mutableListOf<Boolean>()
+        val playControls =
+            RaftAndroidBackgroundConnectionControls(
+                context = context,
+                batteryOptimizationExemptProvider = { false },
+                batteryOptimizationPermissionDeclaredProvider = { false },
+                noPlayServicesFallbackProvider = { false },
+                directGmsKeepAliveOverrideAllowedProvider = { false },
+                directGmsKeepAliveOverrideEnabledProvider = { true },
+                directGmsKeepAliveOverrideSetter = { _, enabled -> playWrites += enabled },
+                vendorProvider = { AndroidOemVendor.Vivo },
+                intentLauncher = {},
+            )
+        assertFalse(playControls.isOffered())
+        assertFalse(playControls.canOverrideWithForegroundService())
+        playControls.refreshDirectGmsKeepAliveOverrideStatus()
+        assertFalse(playControls.directGmsKeepAliveOverrideState.value)
+        playControls.setDirectGmsKeepAliveOverrideEnabled(true)
+        assertFalse(playControls.directGmsKeepAliveOverrideState.value)
+        assertTrue(playWrites.isEmpty())
+    }
 }

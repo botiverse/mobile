@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
+import build.raft.app.core.data.auth.AndroidAppScopeMMKV
 import build.raft.app.data.RaftBackgroundConnectionControls
 import build.raft.app.data.RaftBackgroundWhitelistGuide
 import java.util.concurrent.atomic.AtomicBoolean
@@ -18,13 +19,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Unified Android Settings › Notifications host controls for background keep-alive (#proj-mobile:#325).
+ * Unified Android Settings › Notifications host controls for background keep-alive (#proj-mobile:#325, #373).
  *
  * Installed on every Android build (no-Play-services direct, GMS direct, and Google Play).
- * All system/OEM intents route through [RaftAndroidVendorWhitelist]; the direct exemption prompt
- * (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) is only ever invoked when this build's merged
- * manifest declares [Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS] (stripped from the
- * `play` build via `src/play/AndroidManifest.xml`).
+ * - Direct-install GMS foreground-service override ([canOverrideWithForegroundService]) is ONLY
+ *   exposed on direct-install APKs whose manifest declares [RaftBackgroundConnectionService] when
+ *   Google Play services is available; on Google Play builds it is always false and setter calls
+ *   are ignored.
+ * - All system/OEM intents route through [RaftAndroidVendorWhitelist]; the direct exemption prompt
+ *   (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) is only ever invoked when this build's merged
+ *   manifest declares [Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS] (stripped from the
+ *   `play` build via `src/play/AndroidManifest.xml`).
  */
 internal class RaftAndroidBackgroundConnectionControls(
     context: Context,
@@ -32,6 +37,13 @@ internal class RaftAndroidBackgroundConnectionControls(
     private val batteryOptimizationExemptProvider: (Context) -> Boolean = ::readBatteryOptimizationExempt,
     private val batteryOptimizationPermissionDeclaredProvider: (Context) -> Boolean = ::isBatteryOptimizationPermissionDeclared,
     private val noPlayServicesFallbackProvider: (Context) -> Boolean = AndroidRealtimeKeepAliveController::noPlayServicesFallbackApplies,
+    private val directGmsKeepAliveOverrideAllowedProvider: (Context) -> Boolean = AndroidRealtimeKeepAliveController::directGmsKeepAliveOverrideAllowed,
+    private val directGmsKeepAliveOverrideEnabledProvider: (Context) -> Boolean = AndroidRealtimeKeepAliveController::isDirectGmsKeepAliveOverrideEnabled,
+    private val directGmsKeepAliveOverrideSetter: (Context, Boolean) -> Unit = { appContext, enabled ->
+        AndroidAppScopeMMKV.keepAliveRunner {
+            AndroidRealtimeKeepAliveController.setDirectGmsKeepAliveOverrideEnabled(appContext, enabled)
+        }
+    },
     private val vendorProvider: () -> AndroidOemVendor = { RaftAndroidVendorWhitelist.resolveVendor() },
     private val intentLauncher: (Intent) -> Unit = { intent -> context.applicationContext.startActivity(intent) },
 ) : RaftBackgroundConnectionControls {
@@ -41,6 +53,44 @@ internal class RaftAndroidBackgroundConnectionControls(
     private var cachedBatteryOptimizationPermissionDeclared: Boolean? = null
 
     override fun isOffered(): Boolean = noPlayServicesFallbackProvider(appContext)
+
+    override fun canOverrideWithForegroundService(): Boolean =
+        runCatching {
+            directGmsKeepAliveOverrideAllowedProvider(appContext) && !noPlayServicesFallbackProvider(appContext)
+        }.getOrDefault(false)
+
+    private val directGmsOverrideState = MutableStateFlow(false)
+    private val directGmsOverrideStateView = directGmsOverrideState.asStateFlow()
+    private val initialOverrideRefreshScheduled = AtomicBoolean(false)
+
+    override val directGmsKeepAliveOverrideState: StateFlow<Boolean>
+        get() {
+            if (initialOverrideRefreshScheduled.compareAndSet(false, true)) {
+                refreshScope.launch { refreshDirectGmsKeepAliveOverrideStatus() }
+            }
+            return directGmsOverrideStateView
+        }
+
+    /** Called on startup IO and activity resume to keep the UI toggle aligned with stored state. */
+    fun refreshDirectGmsKeepAliveOverrideStatus() {
+        initialOverrideRefreshScheduled.set(true)
+        directGmsOverrideState.value =
+            if (canOverrideWithForegroundService()) {
+                runCatching { directGmsKeepAliveOverrideEnabledProvider(appContext) }.getOrDefault(false)
+            } else {
+                false
+            }
+    }
+
+    override fun setDirectGmsKeepAliveOverrideEnabled(enabled: Boolean) {
+        if (!canOverrideWithForegroundService()) {
+            directGmsOverrideState.value = false
+            return
+        }
+        initialOverrideRefreshScheduled.set(true)
+        directGmsOverrideState.value = enabled
+        directGmsKeepAliveOverrideSetter(appContext, enabled)
+    }
 
     override fun canRequestBatteryOptimizationExemption(): Boolean =
         cachedBatteryOptimizationPermissionDeclared ?: runCatching {

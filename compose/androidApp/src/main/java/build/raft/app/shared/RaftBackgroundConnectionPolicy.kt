@@ -1,8 +1,9 @@
 package build.raft.app.shared
 
 /**
- * Pure decisions for the no-Google-Play-services background connection (foreground service that keeps
- * the app-scope realtime connection alive so local message notifications keep working).
+ * Pure decisions for the Android background connection foreground service (keeps the app-scope
+ * realtime connection alive so local message notifications keep working on no-GMS devices and on
+ * direct-install APKs where the user explicitly opted into the GMS override).
  */
 internal object RaftBackgroundConnectionPolicy {
     internal data class Inputs(
@@ -16,6 +17,16 @@ internal object RaftBackgroundConnectionPolicy {
         val messageNotificationsEnabled: Boolean,
         /** POST_NOTIFICATIONS granted and the app's notifications not blocked in system settings. */
         val systemNotificationsAllowed: Boolean,
+        /**
+         * True only on direct-install Android APKs that ship [RaftBackgroundConnectionService];
+         * always false on Google Play builds so a persisted override can never take effect there.
+         */
+        val directGmsKeepAliveOverrideAllowed: Boolean = false,
+        /**
+         * User opt-in override (`notifications:direct_gms_keep_alive_override_enabled`) allowing
+         * the foreground connection service on GMS devices when FCM is unreachable. Default false.
+         */
+        val directGmsKeepAliveOverrideEnabled: Boolean = false,
     )
 
     internal sealed interface Decision {
@@ -25,19 +36,39 @@ internal object RaftBackgroundConnectionPolicy {
     }
 
     /**
-     * The service only runs when it is the device's only notification path and it can actually deliver:
-     * never on a Play services device, never signed out, never when message notifications cannot be shown
-     * (without notification permission the service's own notification would be hidden too).
+     * True when a direct-install Android APK user on a GMS device has opted into keeping the
+     * foreground connection service running despite Play services being installed. Always false on
+     * no-GMS devices (where the automatic fallback governs) and on Google Play builds.
      */
-    fun decide(inputs: Inputs): Decision =
-        when {
-            !inputs.fcmUnavailable -> Decision.Stop("play_services_available")
-            !inputs.keepAlivePreferenceEnabled -> Decision.Stop("preference_disabled")
+    fun isDirectGmsOverrideActive(
+        fcmUnavailable: Boolean,
+        directGmsKeepAliveOverrideAllowed: Boolean,
+        directGmsKeepAliveOverrideEnabled: Boolean,
+    ): Boolean = !fcmUnavailable && directGmsKeepAliveOverrideAllowed && directGmsKeepAliveOverrideEnabled
+
+    /**
+     * The service only runs when either Play services is unavailable (automatic fallback with the
+     * keep-alive switch on) or a direct-install APK user explicitly enabled the GMS override, and
+     * only while signed in with notifications allowed (without notification permission the
+     * service's own notification would be hidden too). Google Play builds always stop with
+     * `play_services_available`.
+     */
+    fun decide(inputs: Inputs): Decision {
+        val gmsOverrideActive =
+            isDirectGmsOverrideActive(
+                fcmUnavailable = inputs.fcmUnavailable,
+                directGmsKeepAliveOverrideAllowed = inputs.directGmsKeepAliveOverrideAllowed,
+                directGmsKeepAliveOverrideEnabled = inputs.directGmsKeepAliveOverrideEnabled,
+            )
+        return when {
+            !inputs.fcmUnavailable && !gmsOverrideActive -> Decision.Stop("play_services_available")
+            inputs.fcmUnavailable && !inputs.keepAlivePreferenceEnabled -> Decision.Stop("preference_disabled")
             !inputs.signedIn -> Decision.Stop("signed_out")
             !inputs.messageNotificationsEnabled -> Decision.Stop("message_notifications_disabled")
             !inputs.systemNotificationsAllowed -> Decision.Stop("system_notifications_blocked")
             else -> Decision.Run
         }
+    }
 
     /**
      * Default ON for devices without Play services: the preference is seeded to "true" once, only while the
@@ -105,13 +136,23 @@ internal object RaftBackgroundConnectionPolicy {
     /**
      * On a no-Play-services device the keep-alive preference is seeded on by default, so it alone must not
      * keep a background connection: without the service (e.g. no notification permission) the process gets
-     * frozen anyway and nothing could be shown. Play services devices keep the plain preference behaviour.
+     * frozen anyway and nothing could be shown. When the foreground connection service should run (either
+     * no-GMS fallback or direct-install GMS override), socket background keep-alive must be enabled too.
+     * Otherwise Play services devices keep the plain preference behaviour.
      */
-    fun shouldEnableBackgroundKeepAlive(fallbackApplies: Boolean, decision: Decision): Boolean =
-        !fallbackApplies || decision == Decision.Run
+    fun shouldEnableBackgroundKeepAlive(
+        fallbackApplies: Boolean,
+        decision: Decision,
+        keepAlivePreferenceEnabled: Boolean = true,
+    ): Boolean =
+        when {
+            decision == Decision.Run -> true
+            fallbackApplies -> false
+            else -> keepAlivePreferenceEnabled
+        }
 
     internal sealed interface BackgroundTransitionAction {
-        /** Nothing to do: a Play services device, or the service is already up (or stopped) as it should be. */
+        /** Nothing to do: a Play services device without the override, or the service is already up (or stopped) as it should be. */
         data object None : BackgroundTransitionAction
 
         /** The service should run but is not up: request it now, inside the foreground-to-background grace. */
@@ -125,7 +166,7 @@ internal object RaftBackgroundConnectionPolicy {
      * lets the app start a foreground service, and the moment the service starts to matter, so the decision is
      * re-read from storage here: it catches every input that changed after the last activity resume (sign-in
      * or session restore finishing after resume, a server switch racing the resume-time start, a service the
-     * system stopped). Play services devices are never touched.
+     * system stopped). Play services devices without the direct-install override are never touched.
      */
     fun backgroundTransitionAction(
         fallbackApplies: Boolean,
@@ -134,7 +175,13 @@ internal object RaftBackgroundConnectionPolicy {
         stopQueued: Boolean,
     ): BackgroundTransitionAction =
         when {
-            !fallbackApplies -> BackgroundTransitionAction.None
+            !fallbackApplies ->
+                if (serviceActive && !stopQueued) {
+                    val reason = (decision as? Decision.Stop)?.reason ?: "play_services_available"
+                    BackgroundTransitionAction.Stop(reason)
+                } else {
+                    BackgroundTransitionAction.None
+                }
             decision is Decision.Stop ->
                 if (serviceActive) BackgroundTransitionAction.Stop(decision.reason) else BackgroundTransitionAction.None
             serviceActive && !stopQueued -> BackgroundTransitionAction.None

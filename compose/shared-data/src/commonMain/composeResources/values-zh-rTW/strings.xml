@@ -2804,6 +2804,8 @@
     <string name="settings_notifications_background_realtime_detail">在背景保持即時連線。%1$s 仍可能暫停長時間執行的工作階段。</string>
     <string name="settings_notifications_keep_connection_title">在背景保持連線</string>
     <string name="settings_notifications_keep_connection_detail">在背景保持 Raft 連線，即可收到訊息通知。開啟後會常駐一則「Raft 正在接收訊息」通知，並增加耗電。</string>
+    <string name="settings_notifications_direct_keep_connection_title">背景常駐連線</string>
+    <string name="settings_notifications_direct_keep_connection_detail">在 Google 推送無法連線的網路環境下，保持 Raft 背景連線以接收訊息通知。開啟後會常駐一則「Raft 正在接收訊息」通知，並增加耗電。</string>
     <string name="settings_notifications_battery_optimization_title">允許在背景執行</string>
     <string name="settings_notifications_battery_optimization_detail">為 Raft 關閉電池最佳化，避免系統中斷背景連線。部分手機還需要在應用程式啟動管理或背景活動設定中允許 Raft。</string>
     <string name="settings_notifications_battery_optimization_allowed">已允許</string>

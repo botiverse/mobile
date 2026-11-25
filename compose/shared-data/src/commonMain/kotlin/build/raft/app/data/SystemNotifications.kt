@@ -18,6 +18,7 @@ data class NotificationPreferenceSnapshot(
 
 const val NOTIFICATION_ENABLED_PREFERENCE_KEY = "notifications:enabled"
 const val NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY = "notifications:foreground_keep_alive_enabled"
+const val NOTIFICATION_DIRECT_GMS_KEEP_ALIVE_OVERRIDE_PREFERENCE_KEY = "notifications:direct_gms_keep_alive_override_enabled"
 
 interface NotificationPreferenceStore {
     fun readNotificationEnabledSync(): Boolean
