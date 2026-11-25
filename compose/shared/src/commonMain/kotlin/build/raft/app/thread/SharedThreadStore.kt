@@ -6,10 +6,7 @@ import build.raft.app.data.raftConversationReadOnSight
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
-import build.raft.app.data.MarkUnreadOutcome
-import build.raft.app.data.leftMarkedUnread
 import build.raft.app.data.RaftReadToggleNotice
-import build.raft.app.data.markUnreadOutcome
 import build.raft.app.data.MessageMutationSummary
 import build.raft.app.data.InboxFetchReason
 import build.raft.app.data.MviStaleToken
@@ -82,7 +79,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 private data class PendingReactionRealtimeGuard(
@@ -108,7 +104,6 @@ private const val SharedThreadFirstFrameDelayMillis = 16L
  * or an older durable frame, then the refresh result. The load keeps running past the timeout;
  * nothing it wrote is rolled back.
  */
-private const val ThreadVisibleReadCoalesceWindowMillis = 2_000L
 private const val ThreadInitialAccessLookupTimeoutMillis = 1_000L
 /**
  * A reply thread whose parent write authority is still Resolving / Unknown this long after the
@@ -305,29 +300,32 @@ internal class SharedThreadStore(
     private var taskConversationTitleJob: Job? = null
     private var taskConversationTitleJobKey: String? = null
     private var backgroundMembersHydrationJob: Job? = null
-    private var readInFlightMarker: ThreadVisibleReadMarker? = null
-    private var pendingReadMarker: ThreadVisibleReadMarker? = null
     // Task #19: a newer marker coalesced away by the window is re-tried when the window ends.
     private var deferredReadJob: Job? = null
-    private var lastCompletedReadMarker: ThreadVisibleReadMarker? = null
-    private var lastCompletedReadAt: TimeMark? = null
-    // fb-4440a18c (artin, 1.22.0): whether the page still shows this conversation. The page's
-    // visible-read gate only covers its own dispatch; the deferred retry and the queued in-flight
-    // follow-up run later, after the page may have been left, covered or backgrounded, and must not
-    // mark anything read then. MarkVisibleRead opens it, [SharedThreadIntent.VisibleReadHidden] shuts it.
-    private var visibleReadShown: Boolean = true
-    // botiverse/slock #11687: the thread this page marked unread. Its visible reads are held while
-    // the page shows it (web threadUnreadHold / autoReadHold), so the open page does not read it
-    // again at once; leaving the page (a new store) or showing another thread ends the hold, and so
-    // does sending in a channel or DM marked here (#16250, [endConversationUnreadHoldOnSend]).
-    private var markedUnreadHoldChannelId: String? = null
-    // #proj-mobile:#70: the thread whose Mark as Unread was answered 202 (admitted, result unknown). The
-    // `read_state:updated` for it decides; it says so (the nothing toast) only while the hold is still on.
-    private var pendingMarkUnreadChannelId: String? = null
     private val _readToggleNotices = MutableSharedFlow<RaftReadToggleNotice>(extraBufferCapacity = 4)
 
     /** One-shot Mark as Unread notices (Nothing to mark), shown by the page as a toast. */
     val readToggleNotices: SharedFlow<RaftReadToggleNotice> = _readToggleNotices.asSharedFlow()
+
+    /**
+     * Visible read and Mark as Unread for this page; see [ThreadVisibleRead]. [deferredReadJob] stays
+     * here (clear() cancels it with the other jobs); [readOnSight] is still owned by this store (it
+     * stays the owner key).
+     */
+    private val threadVisibleRead =
+        ThreadVisibleRead(
+            dataSource = dataSource,
+            scope = scope,
+            diagnosticsLogger = diagnosticsLogger,
+            readCoalesceTimeSource = readCoalesceTimeSource,
+            readOnSight = readOnSight,
+            readOnSightOwner = this,
+            readToggleNotices = _readToggleNotices,
+            currentState = { _state.value },
+            currentVisiblePayloadOwnerScopeId = { visiblePayloadOwnerScopeId },
+            getDeferredReadJob = { deferredReadJob },
+            setDeferredReadJob = { deferredReadJob = it },
+        )
     private val _jumpFailures = MutableSharedFlow<ThreadJumpFailure>(extraBufferCapacity = 4)
 
     /**
@@ -602,7 +600,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.MarkVisibleRead -> {
                 // Opened here, not in the launched block: a VisibleReadHidden dispatched right after
                 // must not be undone by this read starting later.
-                visibleReadShown = true
+                threadVisibleRead.showVisibleRead()
                 scope.launch { markVisibleRead(intent.visibleTailIndex) }
             }
             SharedThreadIntent.VisibleReadHidden -> hideVisibleRead()
@@ -711,7 +709,7 @@ internal class SharedThreadStore(
                     activeReplyParentMessageId = intent.activeReplyParentMessageId
                 )
             is SharedThreadIntent.MarkVisibleRead -> {
-                visibleReadShown = true
+                threadVisibleRead.showVisibleRead()
                 markVisibleRead(intent.visibleTailIndex)
             }
             SharedThreadIntent.VisibleReadHidden -> hideVisibleRead()
@@ -783,10 +781,7 @@ internal class SharedThreadStore(
         }
         cancelLoadingRevealTimer()
         visiblePayloadOwnerScopeId = null
-        readInFlightMarker = null
-        pendingReadMarker = null
-        lastCompletedReadMarker = null
-        lastCompletedReadAt = null
+        threadVisibleRead.resetReadMarkers()
         synchronized(initialProducerContextLock) { initialProducerContextRef = null }
     }
 
@@ -4413,254 +4408,19 @@ internal class SharedThreadStore(
         return ReplyCountRealtimeGap(replyCount = event.replyCount)
     }
 
-    /** fb-4440a18c: the page stopped showing this conversation; nothing it queued may be marked now. */
-    private fun hideVisibleRead() {
-        visibleReadShown = false
-        readOnSight.hide(this)
-        val hadDeferred = deferredReadJob?.isActive == true
-        deferredReadJob?.cancel()
-        deferredReadJob = null
-        val dropped = pendingReadMarker
-        pendingReadMarker = null
-        if (hadDeferred || dropped != null) {
-            diagnosticsLogger?.invoke(
-                "thread_read_skip channelId=${dropped?.channelId.orEmpty()} reason=not_shown " +
-                    "deferred=$hadDeferred pending=${dropped?.latestMessageId.orEmpty()}"
-            )
-        }
-    }
+    private fun hideVisibleRead() = threadVisibleRead.hideVisibleRead()
 
-    private suspend fun markVisibleRead(visibleTailIndex: Int? = null) {
-        // Shown again below only once this read is known to go out for the live tail.
-        readOnSight.hide(this)
-        if (!visibleReadShown) {
-            diagnosticsLogger?.invoke("thread_read_skip reason=not_shown")
-            return
-        }
-        val authorityState = _state.value
-        if (
-            authorityState.accessResolution != ThreadAccessResolution.Resolved ||
-            !authorityState.writeActionsEnabled
-        ) {
-            diagnosticsLogger?.invoke("thread_read_skip reason=write_authority_closed")
-            return
-        }
-        val expectedProvenance = dataSource.currentReplyCacheProvenance() ?: return
-        if (visiblePayloadOwnerScopeId != expectedProvenance.threadPayloadOwnerScopeId) return
-        val expectedRoute = authorityState.payload.resolveThreadRouteIdentity()
-        fun authorityStillCurrent(): Boolean {
-            val currentState = _state.value
-            return currentState.accessResolution == ThreadAccessResolution.Resolved &&
-                currentState.writeActionsEnabled &&
-                currentState.payload.resolveThreadRouteIdentity() == expectedRoute &&
-                dataSource.isCurrentReplyCacheProvenance(expectedProvenance)
-        }
-        if (!authorityStillCurrent()) return
-        val marker = authorityState.payload.visibleReadMarker(visibleTailIndex) ?: return
-        if (marker.channelId == markedUnreadHoldChannelId) {
-            diagnosticsLogger?.invoke(
-                "thread_read_skip channelId=${marker.channelId} reason=marked_unread_hold latest=${marker.latestMessageId}"
-            )
-            return
-        }
-        // Reading another thread here means the person left the one they marked: its hold ends.
-        markedUnreadHoldChannelId = null
-        pendingMarkUnreadChannelId = null
-        // Read on sight only at the live tail: scrolled up, a live append is not read (task #232),
-        // so Activity must count it as the server does.
-        if (visibleTailIndex == null || authorityState.payload.visibleReadMarker(null) == marker) {
-            readOnSight.show(this, marker.channelId)
-        }
-        if (marker.wasRecentlyMarkedRead()) {
-            // Task #19 (Hands 2aa74345): the window only coalesces. A marker NEWER than the completed one
-            // (a message that arrived, or a stand-in replaced by the network page, right after the last
-            // read) must still be marked once the window ends: nothing else re-runs the visible read while
-            // the user just stays on the page, and the conversation kept one unread forever.
-            val deferMs = if (marker != lastCompletedReadMarker) readCoalesceRemainingMillis() else null
-            diagnosticsLogger?.invoke(
-                "thread_read_skip channelId=${marker.channelId} reason=recently_marked latest=${marker.latestMessageId}" +
-                    (deferMs?.let { " deferredMs=$it" } ?: "")
-            )
-            if (deferMs != null) {
-                deferredReadJob?.cancel()
-                deferredReadJob =
-                    scope.launch {
-                        delay(deferMs)
-                        // Only the marker the user was shown: anything that changed since (a newer message
-                        // while the page went to the background, older rows shifting the index) is owned by
-                        // the page's own next visible-read dispatch, never marked from here unseen.
-                        if (_state.value.payload.visibleReadMarker(visibleTailIndex) == marker) {
-                            markVisibleRead(visibleTailIndex)
-                        } else {
-                            diagnosticsLogger?.invoke(
-                                "thread_read_skip channelId=${marker.channelId} reason=deferred_marker_changed " +
-                                    "latest=${marker.latestMessageId}"
-                            )
-                        }
-                    }
-            }
-            return
-        }
-        if (readInFlightMarker != null) {
-            pendingReadMarker = marker
-            diagnosticsLogger?.invoke(
-                "thread_read_skip channelId=${marker.channelId} reason=in_flight latest=${marker.latestMessageId}"
-            )
-            return
-        }
+    private suspend fun markVisibleRead(visibleTailIndex: Int? = null) = threadVisibleRead.markVisibleRead(visibleTailIndex)
 
-        var nextMarker: ThreadVisibleReadMarker? = marker
-        while (nextMarker != null) {
-            // A follow-up queued while the previous read was in flight goes out only if the page still
-            // shows the conversation (fb-4440a18c: it was sent after the person had left).
-            if (!authorityStillCurrent() || !visibleReadShown) {
-                pendingReadMarker = null
-                return
-            }
-            val current = nextMarker
-            pendingReadMarker = null
-            readInFlightMarker = current
-            val startedAt = TimeSource.Monotonic.markNow()
-            diagnosticsLogger?.invoke(
-                "thread_read_start channelId=${current.channelId} latest=${current.latestMessageId}"
-            )
-            try {
-                val result =
-                    dataSource.markVisibleChannelRead(
-                        current.channelId,
-                        current.latestSeq,
-                        expectedProvenance = expectedProvenance
-                    )
-                if (
-                    authorityStillCurrent() &&
-                    (result is DataResult.Content || result is DataResult.Empty)
-                ) {
-                    lastCompletedReadMarker = current
-                    lastCompletedReadAt = readCoalesceTimeSource.markNow()
-                }
-                diagnosticsLogger?.invoke(
-                    "thread_read_result channelId=${current.channelId} result=${result.threadDiagnosticsResult()} " +
-                        "mode=${if (current.latestSeq != null && current.latestSeq > 0L) "seq" else "all"} " +
-                        "seq=${current.latestSeq ?: -1} latest=${current.latestMessageId} " +
-                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-                )
-            } finally {
-                readInFlightMarker = null
-            }
-            val pending = pendingReadMarker
-            nextMarker =
-                if (pending != null && pending != current && pending != lastCompletedReadMarker) {
-                    pending
-                } else {
-                    pendingReadMarker = null
-                    null
-                }
-        }
-    }
+    private suspend fun markThreadUnread(threadChannelId: String) = threadVisibleRead.markThreadUnread(threadChannelId)
 
-    /**
-     * botiverse/slock #11687 (web threadUnreadHold.markOpenThreadUnread): the hold starts before the
-     * write, so no visible read of this page goes out after it; a read still queued is dropped. The
-     * answer is read as the Activity row reads it ([markUnreadOutcome]): Counted / Marked keep the
-     * hold; Nothing to mark says so (the Activity toast) and, like a failed write, ends the hold, as
-     * nothing was marked. A 202 (Pending, #proj-mobile:#70) keeps the hold with no toast until the
-     * `read_state:updated` for the thread answers ([resolvePendingMarkUnread]).
-     */
-    private suspend fun markThreadUnread(threadChannelId: String) {
-        val channelId = threadChannelId.trim().takeIf { it.isNotBlank() } ?: return
-        // botiverse/slock #14222: a followed thread marked from a channel's list is not the one this
-        // page shows: the same write with no hold (web markThreadUnreadFromThread), so the page's
-        // own reads (and a hold on its conversation) go on as before.
-        val holds = channelId == _state.value.payload.cacheThreadId()
-        if (holds) {
-            markedUnreadHoldChannelId = channelId
-            readOnSight.hide(this)
-            pendingMarkUnreadChannelId = null
-            deferredReadJob?.cancel()
-            deferredReadJob = null
-            if (pendingReadMarker?.channelId == channelId) pendingReadMarker = null
-            lastCompletedReadMarker = null
-            lastCompletedReadAt = null
-        }
-        val result = dataSource.markThreadChannelUnread(channelId)
-        val outcome = (result as? DataResult.Content)?.data?.markUnreadOutcome()
-        diagnosticsLogger?.invoke(
-            "thread_mark_unread channelId=$channelId result=${result.threadDiagnosticsResult()} " +
-                "outcome=${outcome?.name ?: "none"}"
-        )
-        if (outcome == MarkUnreadOutcome.Counted || outcome == MarkUnreadOutcome.Marked) return
-        if (outcome == MarkUnreadOutcome.Pending) {
-            if (markedUnreadHoldChannelId == channelId) pendingMarkUnreadChannelId = channelId
-            return
-        }
-        if (markedUnreadHoldChannelId == channelId) markedUnreadHoldChannelId = null
-        if (outcome == MarkUnreadOutcome.NothingToMark) {
-            _readToggleNotices.tryEmit(RaftReadToggleNotice.MarkUnreadNothing)
-        }
-    }
+    private suspend fun markConversationUnread() = threadVisibleRead.markConversationUnread()
 
-    /**
-     * botiverse/slock #14222: the conversation this page shows (its timeline channel), marked unread
-     * and held as [markThreadUnread] holds an open thread (web messageStore.markUnread keeps it
-     * unread while the person stays in it).
-     */
-    private suspend fun markConversationUnread() {
-        val payload = _state.value.payload
-        if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) return
-        val channelId = payload.cacheThreadId() ?: return
-        markThreadUnread(channelId)
-    }
+    private fun endConversationUnreadHoldOnSend(payload: RaftThreadScreenPayload) =
+        threadVisibleRead.endConversationUnreadHoldOnSend(payload)
 
-    /**
-     * botiverse/slock #16250 (web messageStore.sendMessage forgetManualUnread): a message the person
-     * sends from this page into the channel or DM they marked unread here ends that hold. It ends as
-     * the send starts, whatever its answer, as web forgets the mark before its request: their own
-     * message reads the conversation and later ones are read on sight again. A reply thread's hold
-     * stays, as web's thread hold (threadUnreadHold) is not ended by a reply.
-     */
-    private fun endConversationUnreadHoldOnSend(payload: RaftThreadScreenPayload) {
-        if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) return
-        val channelId = markedUnreadHoldChannelId?.takeIf { it == payload.cacheThreadId() } ?: return
-        markedUnreadHoldChannelId = null
-        pendingMarkUnreadChannelId = null
-        diagnosticsLogger?.invoke("thread_mark_unread_hold_end channelId=$channelId reason=sent")
-    }
-
-    /**
-     * #proj-mobile:#70 (Tenny): the `read_state:updated` that answers a 202 Mark as Unread. Marked (a
-     * count or the mark) keeps the hold; not marked reads as a 200 nothing to mark (the toast, the
-     * hold ends), but only while the person is still on the thread (the hold is on). Once they left,
-     * the event only updates the state, with no toast.
-     */
-    private fun resolvePendingMarkUnread(event: PerReceiverReadStateChanged, sessionServerId: String?) {
-        val channelId = pendingMarkUnreadChannelId ?: return
-        if (event.serverId != null && !sessionServerId.isNullOrBlank() && event.serverId?.value != sessionServerId) return
-        val scope = event.scopes.lastOrNull { it.scopeId.value == channelId } ?: return
-        pendingMarkUnreadChannelId = null
-        val marked = scope.leftMarkedUnread()
-        val stillThere = markedUnreadHoldChannelId == channelId
-        diagnosticsLogger?.invoke(
-            "thread_mark_unread_pending_resolved channelId=$channelId marked=$marked stillThere=$stillThere"
-        )
-        if (marked || !stillThere) return
-        markedUnreadHoldChannelId = null
-        _readToggleNotices.tryEmit(RaftReadToggleNotice.MarkUnreadNothing)
-    }
-
-    /** Time left in the coalesce window of the last completed read (at least 1 ms). */
-    private fun readCoalesceRemainingMillis(): Long {
-        val ageMs = lastCompletedReadAt?.elapsedNow()?.inWholeMilliseconds ?: 0L
-        return (ThreadVisibleReadCoalesceWindowMillis - ageMs).coerceAtLeast(1L)
-    }
-
-    private fun ThreadVisibleReadMarker.wasRecentlyMarkedRead(): Boolean {
-        val completed = lastCompletedReadMarker ?: return false
-        if (completed.channelId != channelId) return false
-        if (completed == this) return true
-        val completedAt = lastCompletedReadAt ?: return false
-        val ageMs = completedAt.elapsedNow().inWholeMilliseconds
-        return ageMs in 0L until ThreadVisibleReadCoalesceWindowMillis
-    }
+    private fun resolvePendingMarkUnread(event: PerReceiverReadStateChanged, sessionServerId: String?) =
+        threadVisibleRead.resolvePendingMarkUnread(event, sessionServerId)
 
     private suspend fun loadOlder() = threadPaging.loadOlder()
 
