@@ -190,6 +190,25 @@ stamp issue list --repo botiverse/mobile     # open issues (bugs, release-target
 
 The cut waits until this list is empty of undecided items.
 
+### 1.2 Previous release merge-back check (before every cut)
+
+artin, 2026-11-25 (`#proj-mobile:4ea7ae87`): before cutting `release/X.Y.Z`,
+verify that **every prior shipped release branch** — the previous minor/patch
+branch (`release/<prev>`) and any platform-ahead branch (`release/<prev>-ios`,
+`release/<prev>-android`, §3.1) — has every shipped fix and changelog already
+present in `origin/main` (by content, not merely commit ancestry, since
+merge-backs are squash-merged and files may have moved across modules):
+
+1. Confirm the merge-back PR (e.g. `chore(release): merge release/<prev> back into main`)
+   is merged into `origin/main` and that every commit on any platform-ahead branch
+   (`origin/release/<prev>..origin/release/<prev>-ios`) exists in `origin/main`.
+2. Diff every non-changelog fix touched on `release/<prev>*` against `origin/main`
+   (accounting for file moves) and confirm zero shipped fixes were dropped or
+   overwritten.
+3. Record the verified merge-back PR/commit(s) in the new release issue before
+   pushing `release/X.Y.Z`. If anything shipped in `<prev>` is missing from
+   `origin/main`, land it on `main` first — **do not cut the new branch**.
+
 ## 2. Version and bump rules
 
 Pick the smallest bump that is honest (artin, 2026-11-02):
@@ -924,6 +943,7 @@ a reminder is a process defect. The reminder authorizes nothing.
 
 - No real date or unaccepted scope: don't cut the branch.
 - An open PR or issue without a recorded outcome (§1.1): don't cut the branch.
+- Any prior shipped release branch (including `-ios` / `-android` platform-ahead branches) not verified merged back into `origin/main` (§1.2): don't cut the branch.
 - Release head moved: all evidence stale; supersede and rebuild both
   platforms with higher builds. Never move the branch back.
 - Revision, scope, group or source mismatch: stop and fresh-read.
