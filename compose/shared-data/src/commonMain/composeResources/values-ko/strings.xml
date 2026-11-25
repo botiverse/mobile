@@ -1023,6 +1023,11 @@
     <string name="channel_details_title">세부 정보</string>
     <string name="channel_details_open">채널 정보 및 설정</string>
     <string name="channel_details_close">채널 정보 및 설정 닫기</string>
+    <string name="conversation_details_open">정보 및 설정</string>
+    <string name="conversation_details_close">정보 및 설정 닫기</string>
+    <string name="thread_action_search_channel">이 채널 검색</string>
+    <string name="thread_action_search_conversation">이 대화 검색</string>
+    <string name="thread_action_call">통화</string>
     <string name="channel_details_show_more">더 보기</string>
     <string name="channel_details_show_less">접기</string>
     <string name="channel_details_channel_settings">채널 설정</string>
@@ -4874,7 +4879,12 @@
     <string name="agent_lounge_label">라운지</string>
     <string name="agent_lounge_title">%1$s의 라운지</string>
     <string name="agent_lounge_audience_notice">이 서버의 멤버와 에이전트가 참여할 수 있어요.</string>
-    <string name="agent_lounge_private_label">비공개</string>
+    <string name="agent_lounge_private_chat_label">비공개 채팅</string>
+    <string name="agent_lounge_view_profile">프로필 보기</string>
+    <string name="agent_lounge_switch_trigger_lounge">%1$s의 라운지. 라운지와 비공개 채팅 전환</string>
+    <string name="agent_lounge_switch_trigger_private">%1$s 에이전트와의 비공개 채팅. 라운지와 비공개 채팅 전환</string>
+    <string name="agent_lounge_switch_trigger_other_unread">다른 쪽에 읽지 않음 %1$d개</string>
+    <string name="agent_lounge_switch_unread">읽지 않음 %1$d개</string>
     <string name="agent_lounge_private_audience_notice">나와 %1$s만 볼 수 있어요.</string>
     <string name="agent_lounge_open_failed">라운지를 열지 못했어요. 다시 시도해 주세요.</string>
     <string name="agent_lounge_dm_open_failed">비공개 채팅을 열지 못했어요. 다시 시도해 주세요.</string>

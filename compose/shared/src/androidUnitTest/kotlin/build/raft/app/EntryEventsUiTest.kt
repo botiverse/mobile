@@ -182,7 +182,7 @@ class EntryEventsUiTest {
         }
 
     @Test
-    fun agentDmUnderHeaderTabSwitchSwitchesToLoungeAndShowsPrivateAudienceSubtitle() =
+    fun agentDmAvatarMenuSwitchesToLoungeAndShowsPrivateAudienceSubtitle() =
         runRobolectricComposeUiTest {
             var openedLounge = 0
             val dmPayload =
@@ -250,14 +250,15 @@ class EntryEventsUiTest {
                                 onShowSettings = {},
                                 lounge = lounge,
                             )
-                            AgentLoungeConversationTabStrip(switch = switch, wideWindow = false)
                         }
                     }
                 }
             }
 
             onNodeWithText("Only you and Lagoon can see this.").fetchSemanticsNode()
-            onNodeWithTag(AgentLoungeTestTags.TabLounge).performClick()
+            onNodeWithTag(AgentLoungeTestTags.ConversationMenuTrigger).performClick()
+            waitForIdle()
+            onNodeWithTag(AgentLoungeTestTags.ConversationMenuLounge).performClick()
             waitForIdle()
 
             assertEquals(1, openedLounge)

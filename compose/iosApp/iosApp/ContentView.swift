@@ -457,18 +457,21 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             editorStyle = true
         }
         var leadingTitleView: RaftNativeNavTitleView?
+        let hasAvatarMenu = !titleMenu.isEmpty && (leading?["kind"] as? String) == "agent_conversation"
         if largeTitle {
             // A large title cannot carry a title view: the count goes in the subtitle line.
             item.titleView = nil
             if let badge, subtitle == nil { subtitle = badge }
-        } else if !titleMenu.isEmpty && editorStyle {
+        } else if !titleMenu.isEmpty && !hasAvatarMenu && editorStyle {
             item.titleView = nil
-        } else if titleMenu.isEmpty && (leading != nil || refreshing || badge != nil || titleTap || subtitleTap || chevron != nil || !editorStyle) {
+        } else if (titleMenu.isEmpty || hasAvatarMenu) && (leading != nil || refreshing || badge != nil || titleTap || subtitleTap || chevron != nil || !editorStyle) {
             // A compact-height bar (landscape iPhone) has room for one line only.
             let compact = (owner.navigationController ?? owner).traitCollection.verticalSizeClass == .compact
+            let avatarMenu = hasAvatarMenu ? UIMenu(children: menuElements(titleMenu)) : nil
             let view = RaftNativeNavTitleView(
                 title: lastTitle, subtitle: compact ? nil : lastSubtitle, leading: leading, leadingImage: lastTitleImage,
-                badge: badge, refreshing: refreshing, compact: compact, chevron: chevron
+                badge: badge, refreshing: refreshing, compact: compact, chevron: chevron,
+                avatarMenu: avatarMenu, avatarAccessibilityLabel: leading?["accessibilityLabel"] as? String
             )
             if subtitleTap, let subtitleLabel = view.subtitleLabel {
                 subtitleLabel.isUserInteractionEnabled = true
@@ -493,16 +496,18 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         }
 
         // Title menu (Home's server switcher): the system chevron beside the title.
+        // When the menu is attached to the B1 conversation avatar pill (`hasAvatarMenu`), it lives
+        // on the avatar button inside `RaftNativeNavTitleView` rather than `titleMenuProvider`.
         var leadingItems: [UIBarButtonItem] = []
         if #available(iOS 16.0, *) {
-            if titleMenu.isEmpty {
+            if titleMenu.isEmpty || hasAvatarMenu {
                 item.titleMenuProvider = nil
             } else {
-                let rows = titleMenu.map { self.menuElement($0) }
+                let rows = menuElements(titleMenu)
                 item.titleMenuProvider = { _ in UIMenu(children: rows) }
             }
-        } else if !titleMenu.isEmpty {
-            let switcher = UIBarButtonItem(title: lastTitle, image: nil, primaryAction: nil, menu: UIMenu(children: titleMenu.map { menuElement($0) }))
+        } else if !titleMenu.isEmpty && !hasAvatarMenu {
+            let switcher = UIBarButtonItem(title: lastTitle, image: nil, primaryAction: nil, menu: UIMenu(children: menuElements(titleMenu)))
             leadingItems.append(switcher)
         }
 
@@ -573,7 +578,7 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         var barItems: [UIBarButtonItem] = []
         let overflow = actions.filter { $0.placement == "overflow" }
         if !overflow.isEmpty {
-            let menu = UIMenu(children: overflow.map { menuElement($0) })
+            let menu = UIMenu(children: menuElements(overflow))
             let more = UIBarButtonItem(
                 title: nil, image: RaftNativeNavIcon.image(asset: "lucide-ellipsis", symbol: "ellipsis"), primaryAction: nil, menu: menu
             )
@@ -614,6 +619,7 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
     private struct Action {
         let id: String
         let label: String
+        let subtitle: String?
         /// The design-system glyph (`lucide-<name>` in the asset catalog), preferred over [symbol].
         let asset: String?
         let symbol: String?
@@ -624,6 +630,7 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         let enabled: Bool
         let checked: Bool
         let destructive: Bool
+        let dividerBefore: Bool
         let placement: String
         let children: [Action]
     }
@@ -634,6 +641,7 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         return Action(
             id: id,
             label: row["label"] as? String ?? id,
+            subtitle: (row["subtitle"] as? String).flatMap { $0.isEmpty ? nil : $0 },
             asset: row["imageAsset"] as? String,
             symbol: row["systemSymbol"] as? String,
             badge: (row["badge"] as? NSNumber)?.intValue,
@@ -642,6 +650,7 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             enabled: (row["enabled"] as? Bool) ?? true,
             checked: (row["checked"] as? Bool) ?? false,
             destructive: (row["destructive"] as? Bool) ?? false,
+            dividerBefore: (row["dividerBefore"] as? Bool) ?? false,
             placement: row["placement"] as? String ?? "trailing",
             children: children
         )
@@ -654,13 +663,46 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         return rows.compactMap { parseAction($0) }
     }
 
+    /// Groups menu rows into inline sections wherever `dividerBefore` is true, drawing UIKit's
+    /// native menu separators between groups.
+    private func menuElements(_ actions: [Action]) -> [UIMenuElement] {
+        guard actions.contains(where: { $0.dividerBefore }) else {
+            return actions.map { menuElement($0) }
+        }
+        var sections: [[Action]] = []
+        var current: [Action] = []
+        for action in actions {
+            if action.dividerBefore && !current.isEmpty {
+                sections.append(current)
+                current = []
+            }
+            current.append(action)
+        }
+        if !current.isEmpty { sections.append(current) }
+        return sections.map { group in
+            UIMenu(title: "", options: .displayInline, children: group.map { menuElement($0) })
+        }
+    }
+
     /// A ⋯ / title-menu row (a submenu when it has children).
     private func menuElement(_ action: Action) -> UIMenuElement {
         let image = RaftNativeNavIcon.image(asset: action.asset, symbol: action.symbol, pointSize: RaftNativeNavIcon.menuPointSize)
         if !action.children.isEmpty {
-            return UIMenu(title: action.label, image: image, children: action.children.map { menuElement($0) })
+            return UIMenu(title: action.label, image: image, children: menuElements(action.children))
         }
-        let row = UIAction(title: action.label, image: image) { [weak self] _ in
+        let title: String
+        if action.subtitle != nil {
+            if let badge = action.badge, badge > 0 {
+                title = "\(action.label) · \(badge)"
+            } else if action.attention {
+                title = "\(action.label) ●"
+            } else {
+                title = action.label
+            }
+        } else {
+            title = action.label
+        }
+        let row = UIAction(title: title, image: image) { [weak self] _ in
             _ = self?.bridge.actionTapped(id: action.id)
         }
         var attributes: UIMenuElement.Attributes = []
@@ -669,7 +711,9 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         row.attributes = attributes
         row.state = action.checked ? .on : .off
         if #available(iOS 16.0, *) {
-            if let badge = action.badge, badge > 0 {
+            if let subtitle = action.subtitle {
+                row.subtitle = subtitle
+            } else if let badge = action.badge, badge > 0 {
                 row.subtitle = "\(badge)"
             } else if let count = action.count {
                 row.subtitle = count
@@ -1057,7 +1101,8 @@ final class RaftNativeNavTitleView: UIStackView {
 
     init(
         title: String, subtitle: String?, leading: [String: Any]?, leadingImage: UIImage? = nil, badge: String?,
-        refreshing: Bool, compact: Bool = false, chevron: String? = nil
+        refreshing: Bool, compact: Bool = false, chevron: String? = nil,
+        avatarMenu: UIMenu? = nil, avatarAccessibilityLabel: String? = nil
     ) {
         self.compact = compact
         super.init(frame: .zero)
@@ -1066,7 +1111,18 @@ final class RaftNativeNavTitleView: UIStackView {
         spacing = 8
         let leadingSize: CGFloat = compact ? 22 : Self.leadingImagePoints
         if let leading, let view = Self.leadingView(leading, image: leadingImage, size: leadingSize) {
-            addArrangedSubview(view)
+            if let avatarMenu {
+                addArrangedSubview(
+                    Self.avatarMenuButton(
+                        avatarView: view,
+                        avatarSize: leadingSize,
+                        menu: avatarMenu,
+                        accessibilityLabel: avatarAccessibilityLabel
+                    )
+                )
+            } else {
+                addArrangedSubview(view)
+            }
         }
         let text = UIStackView()
         text.axis = .vertical
@@ -1177,13 +1233,60 @@ final class RaftNativeNavTitleView: UIStackView {
         )
     }
 
+    /// Wraps the B1 agent conversation avatar and up/down chevron into a single native menu button
+    /// (`showsMenuAsPrimaryAction = true`) that opens the Lounge / Private chat / View profile UIMenu.
+    private static func avatarMenuButton(
+        avatarView: UIView,
+        avatarSize: CGFloat,
+        menu: UIMenu,
+        accessibilityLabel: String?
+    ) -> UIButton {
+        let button = UIButton(type: .system)
+        button.menu = menu
+        button.showsMenuAsPrimaryAction = true
+        button.layer.cornerRadius = 6
+        button.accessibilityLabel = accessibilityLabel
+        button.translatesAutoresizingMaskIntoConstraints = false
+
+        avatarView.isUserInteractionEnabled = false
+        let chevronImage = RaftNativeNavIcon.image(asset: "lucide-chevrons-up-down", symbol: nil, pointSize: 12)
+            ?? UIImage(systemName: "chevron.up.chevron.down", withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+        let chevronView = UIImageView(image: chevronImage)
+        chevronView.tintColor = .secondaryLabel
+        chevronView.contentMode = .scaleAspectFit
+        chevronView.isUserInteractionEnabled = false
+        chevronView.translatesAutoresizingMaskIntoConstraints = false
+
+        let row = UIStackView(arrangedSubviews: [avatarView, chevronView])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = 4
+        row.isUserInteractionEnabled = false
+        row.translatesAutoresizingMaskIntoConstraints = false
+        button.addSubview(row)
+
+        let chevronSize: CGFloat = 12
+        let width = avatarSize + 4 + chevronSize + 6
+        let height = avatarSize + 4
+        NSLayoutConstraint.activate([
+            chevronView.widthAnchor.constraint(equalToConstant: chevronSize),
+            chevronView.heightAnchor.constraint(equalToConstant: chevronSize),
+            row.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 2),
+            row.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -4),
+            row.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+            button.widthAnchor.constraint(equalToConstant: width),
+            button.heightAnchor.constraint(equalToConstant: height),
+        ])
+        return button
+    }
+
     /// The tile / avatar: the app's drawing ([image]) when it has arrived, else a stand-in in the
     /// Compose head's shape (raft-ui sticker: 4pt corners, 1.5pt ink edge): the channel tile with
     /// its Lucide glyph, or the avatar's fill with the initials the app sent in Space Grotesk (none
     /// for an agent or a person, whose fallback face is the app's to draw: robot / placeholder).
     private static func leadingView(_ leading: [String: Any], image: UIImage?, size: CGFloat) -> UIView? {
         let kind = leading["kind"] as? String
-        guard kind == "channel" || kind == "avatar" || kind == "server" else { return nil }
+        guard kind == "channel" || kind == "avatar" || kind == "server" || kind == "agent_conversation" else { return nil }
         if let image {
             let view = UIImageView(image: image)
             view.contentMode = .scaleAspectFit

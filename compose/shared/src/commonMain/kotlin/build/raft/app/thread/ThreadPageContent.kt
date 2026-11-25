@@ -1282,13 +1282,12 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                         },
                 )
             }
-            // Agent Lounge v0: under-header tab strip switches between Lounge and Private DM in place.
+            // Agent Lounge v0 (slock #16450, B1): switching between Lounge and Private DM lives in
+            // the header's avatar switcher menu, with the audience line under the title. Keep the
+            // fallback audience banner only when the avatar switcher menu is unavailable.
             val loungeSwitch =
                 data.lounge?.conversationSwitch?.takeIf { LocalThreadAssistantPanelEmbed.current == null }
-            if (loungeSwitch != null) {
-                AgentLoungeConversationTabStrip(switch = loungeSwitch)
-            } else if (conversationLounge != null) {
-                // Fallback audience banner when the under-header switch is unavailable.
+            if (conversationLounge != null && loungeSwitch == null) {
                 AgentLoungeAudienceNotice(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
             // A conversion to an external channel under way: before the announcement, which stays next

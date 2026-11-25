@@ -1383,11 +1383,6 @@ internal fun rememberThreadDeferredLoadingScaffoldSlots(
             )
         },
         body = {
-            val loadingLoungeSwitch =
-                lounge?.conversationSwitch?.takeIf { LocalThreadAssistantPanelEmbed.current == null }
-            if (loadingLoungeSwitch != null) {
-                AgentLoungeConversationTabStrip(switch = loadingLoungeSwitch)
-            }
             Box(
                 modifier =
                     Modifier

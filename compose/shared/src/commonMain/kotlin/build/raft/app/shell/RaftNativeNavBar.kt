@@ -94,6 +94,10 @@ data class RaftNativeNavBarAction(
     /** Ranks for the trailing buttons: the higher stay out of the ⋯ longer (Duo column rule). */
     val priority: Int = 0,
     val icon: RaftLucideIconName? = null,
+    /** Secondary line for a native UIMenu row (iOS 16+ `UIAction.subtitle`, e.g. Lounge audience). */
+    val subtitle: String? = null,
+    /** Starts a new inline menu section before this row (native `UIMenu` separator). */
+    val dividerBefore: Boolean = false,
 )
 
 /**
@@ -137,6 +141,31 @@ internal fun raftNativeNavBarSplit(actions: List<RaftNativeNavBarAction>): List<
     }
 }
 
+/**
+ * Phone conversation header fold (`botiverse/slock#16464`, `#proj-chat:#45`): on a phone every
+ * top-level conversation head shows at most two buttons on the right — Search and `⋯` — folding
+ * Call (when present), Tasks, Files, and Details & settings into `⋯` in that order. A head with
+ * at most two trailing buttons and no pre-existing overflow items keeps both on the bar.
+ */
+internal fun foldPhoneConversationNativeNavBarActions(
+    actions: List<RaftNativeNavBarAction>,
+    foldForPhone: Boolean,
+): List<RaftNativeNavBarAction> {
+    if (!foldForPhone) return actions
+    val trailingIndices = actions.indices.filter { actions[it].placement == RaftNativeNavBarPlacement.Trailing }
+    val hasExplicitOverflow = actions.any { it.placement == RaftNativeNavBarPlacement.Overflow }
+    val keptCount = threadHeaderPhoneShownOwnActions(ownCount = trailingIndices.size, existingMenuItems = hasExplicitOverflow)
+    if (keptCount >= trailingIndices.size) return actions
+    val keptIndices = trailingIndices.take(keptCount).toSet()
+    return actions.mapIndexed { index, action ->
+        if (action.placement == RaftNativeNavBarPlacement.Trailing && index !in keptIndices) {
+            action.copy(placement = RaftNativeNavBarPlacement.Overflow)
+        } else {
+            action
+        }
+    }
+}
+
 /** The leading image of the host's title view. */
 sealed interface RaftNativeNavBarTitleLeading {
     /**
@@ -166,6 +195,21 @@ sealed interface RaftNativeNavBarTitleLeading {
      * is a plain http(s) image, else [label]'s initial in brand yellow on the sticker-ink tile.
      */
     data class Server(val label: String, val imageUrl: String?) : RaftNativeNavBarTitleLeading
+
+    /**
+     * B1 agent conversation switcher avatar (`botiverse/slock#16450`): the agent's avatar carrying
+     * the Lounge Sofa or Private Lock corner mark and an optional opposite-side attention dot,
+     * paired with a native `UIMenu` (`titleMenu`) attached to the avatar+chevron pill on iOS.
+     */
+    data class AgentConversation(
+        val label: String,
+        val avatarWireValue: String?,
+        val isLounge: Boolean,
+        val attention: Boolean = false,
+        val agentId: String? = null,
+        val cacheServerId: String? = null,
+        val accessibilityLabel: String? = null,
+    ) : RaftNativeNavBarTitleLeading
 }
 
 /** The chevron after a title that opens a menu the page draws itself (Home's server switcher). */
@@ -478,6 +522,19 @@ private fun RaftNativeNavBarTitleExtras.toJson(): JsonObject =
                         put("inkArgb", raftArgbHex(RaftColor.BrandYellow))
                     }
                 )
+            is RaftNativeNavBarTitleLeading.AgentConversation ->
+                put(
+                    "leading",
+                    buildJsonObject {
+                        put("kind", "agent_conversation")
+                        put("label", "")
+                        put("side", if (lead.isLounge) "lounge" else "private")
+                        if (lead.attention) put("attention", true)
+                        lead.accessibilityLabel?.takeIf { it.isNotBlank() }?.let { put("accessibilityLabel", it) }
+                        put("fillArgb", raftArgbHex(RaftAvatarKind.Agent.fill))
+                        put("inkArgb", raftArgbHex(RaftColor.StickerInk))
+                    }
+                )
             null -> Unit
         }
         badge?.let { put("badge", it) }
@@ -513,12 +570,14 @@ private fun List<RaftNativeNavBarAction>.toJsonArray(): kotlinx.serialization.js
                 put("label", action.label)
                 action.icon?.let { put("imageAsset", raftNativeNavBarImageAssetName(it)) }
                 action.systemSymbol?.let { put("systemSymbol", it) }
+                action.subtitle?.takeIf { it.isNotBlank() }?.let { put("subtitle", it) }
                 action.badge?.let { put("badge", it) }
                 action.count?.let { put("count", it) }
                 if (action.attention) put("attention", true)
                 if (!action.enabled) put("enabled", false)
                 if (action.checked) put("checked", true)
                 if (action.destructive) put("destructive", true)
+                if (action.dividerBefore) put("dividerBefore", true)
                 put("placement", action.placement.name.lowercase())
                 if (action.children.isNotEmpty()) put("children", action.children.toJsonArray())
             }
@@ -648,8 +707,9 @@ internal fun raftLucideIconNameForWire(wireName: String): RaftLucideIconName? = 
 internal fun raftNativeNavBarSymbolFor(id: String): String? =
     when (id) {
         "home-bell" -> "bell"
-        "lounge" -> "person.2"
+        "lounge" -> AgentLoungeSystemSymbol
         "thread-search", SEARCH_IN_TASK_MENU_ITEM_ID -> "magnifyingglass"
+        "thread-call" -> "phone"
         "thread-side-card-tasks" -> "checklist"
         "thread-side-card-files" -> "paperclip"
         "thread-settings" -> "gearshape"

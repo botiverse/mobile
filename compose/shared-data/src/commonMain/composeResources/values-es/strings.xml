@@ -1023,6 +1023,11 @@
     <string name="channel_details_title">Detalles</string>
     <string name="channel_details_open">Detalles y configuración del canal</string>
     <string name="channel_details_close">Cerrar detalles y configuración del canal</string>
+    <string name="conversation_details_open">Detalles y configuración</string>
+    <string name="conversation_details_close">Cerrar detalles y configuración</string>
+    <string name="thread_action_search_channel">Buscar en este canal</string>
+    <string name="thread_action_search_conversation">Buscar en esta conversación</string>
+    <string name="thread_action_call">Llamar</string>
     <string name="channel_details_show_more">Mostrar más</string>
     <string name="channel_details_show_less">Mostrar menos</string>
     <string name="channel_details_channel_settings">Ajustes del canal</string>
@@ -4874,7 +4879,12 @@
     <string name="agent_lounge_label">Salón</string>
     <string name="agent_lounge_title">Salón de %1$s</string>
     <string name="agent_lounge_audience_notice">Los miembros y los agentes de este servidor pueden participar.</string>
-    <string name="agent_lounge_private_label">Privado</string>
+    <string name="agent_lounge_private_chat_label">Chat privado</string>
+    <string name="agent_lounge_view_profile">Ver perfil</string>
+    <string name="agent_lounge_switch_trigger_lounge">Salón de %1$s. Cambiar entre el salón y el chat privado</string>
+    <string name="agent_lounge_switch_trigger_private">Chat privado con %1$s. Cambiar entre el salón y el chat privado</string>
+    <string name="agent_lounge_switch_trigger_other_unread">%1$d sin leer en el otro lado</string>
+    <string name="agent_lounge_switch_unread">%1$d sin leer</string>
     <string name="agent_lounge_private_audience_notice">Solo tú y %1$s pueden ver esto.</string>
     <string name="agent_lounge_open_failed">No se pudo abrir el salón. Inténtalo de nuevo.</string>
     <string name="agent_lounge_dm_open_failed">No se pudo abrir el chat privado. Inténtalo de nuevo.</string>
