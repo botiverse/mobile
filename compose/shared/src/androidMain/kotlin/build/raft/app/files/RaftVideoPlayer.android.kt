@@ -36,6 +36,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -59,7 +60,8 @@ internal actual fun RaftVideoPlayer(
     val stateCallback by rememberUpdatedState(onPlayStateChanged)
     val timeCallback by rememberUpdatedState(onPlayTimeChanged)
     val firstFrameCallback by rememberUpdatedState(onFirstFrame)
-    val audioOnly = LocalRaftVideoPlayerAudioOnly.current
+    val role = LocalRaftVideoPlayerRole.current
+    val audioOnly = LocalRaftVideoPlayerAudioOnly.current || role == RaftMediaPlayerRole.InlineAudio
     val lifecycleOwner = LocalLifecycleOwner.current
     key(source) {
         val viewHolder = remember { RaftAndroidVideoViewHolder() }
@@ -91,6 +93,7 @@ internal actual fun RaftVideoPlayer(
 
                                 override fun onFirstFrame() = firstFrameCallback()
                             },
+                        role = role,
                     ).also { view ->
                         viewHolder.view = view
                         attachedView = view
@@ -135,6 +138,20 @@ private class RaftAndroidVideoViewHolder {
 /** The host lifecycle events that pause playback: the app went to the background. */
 internal fun raftVideoPausesOnLifecycleEvent(event: Lifecycle.Event): Boolean = event == Lifecycle.Event.ON_STOP
 
+@androidx.annotation.OptIn(UnstableApi::class)
+internal fun buildRaftAndroidLoadControl(policy: RaftAndroidVideoBufferPolicy): DefaultLoadControl =
+    DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            policy.minBufferMs,
+            policy.maxBufferMs,
+            policy.bufferForPlaybackMs,
+            policy.bufferForPlaybackAfterRebufferMs,
+        )
+        .setTargetBufferBytes(policy.targetBufferBytes)
+        .setPrioritizeTimeOverSizeThresholds(false)
+        .setBackBuffer(policy.backBufferDurationMs, policy.retainBackBufferFromKeyframe)
+        .build()
+
 /**
  * Media3 (ExoPlayer) backed video view with Raft's Compose touch controls:
  * - `PlayerView` uses `TextureView` (`raft_video_player_view.xml`) with `useController = false`,
@@ -143,14 +160,27 @@ internal fun raftVideoPausesOnLifecycleEvent(event: Lifecycle.Event): Boolean = 
  * - Fullscreen reparents `playerView` + a dedicated fullscreen `ComposeView` onto the activity's
  *   `android.R.id.content` so rotation or list recycling never tears down fullscreen, and chooses
  *   portrait vs landscape orientation from the video's display dimensions.
+ * - [ExoPlayer] allocation is guarded by [RaftProcessMediaPlayerBudget] with tight role-scoped
+ *   [DefaultLoadControl] thresholds and dormant eviction/recovery: idle inline audio cards hold
+ *   zero decoders until Play/Seek, inline cards cap process-wide concurrent decoders, and
+ *   evicted or background-released cards re-create their player seamlessly on tap.
  */
 @SuppressLint("ViewConstructor")
 @androidx.annotation.OptIn(UnstableApi::class)
 internal class RaftAndroidVideoView(
     context: Context,
-    src: String,
+    private val src: String,
     private var audioOnly: Boolean,
     private val callbacks: Callbacks,
+    private val role: RaftMediaPlayerRole = RaftMediaPlayerRole.FilePreview,
+    private val budget: RaftMediaPlayerBudget = RaftProcessMediaPlayerBudget,
+    private val playerFactory: (Context, RaftAndroidVideoBufferPolicy) -> ExoPlayer = { ctx, policy ->
+        ExoPlayer.Builder(ctx)
+            .setLoadControl(buildRaftAndroidLoadControl(policy))
+            .setSeekBackIncrementMs(RaftAndroidVideoSeekJumpMs)
+            .setSeekForwardIncrementMs(RaftAndroidVideoSeekJumpMs)
+            .build()
+    },
 ) : FrameLayout(context), RaftAndroidVideoActions {
     interface Callbacks {
         fun onPlayState(state: PlayState)
@@ -165,6 +195,7 @@ internal class RaftAndroidVideoView(
     private val mainHandler = Handler(Looper.getMainLooper())
     private var stopped = false
     private var lastReportedState: PlayState? = null
+    private var firstFrameReported = false
     private var appliedPlayControl: VideoPlayControl? = null
     private var appliedSeekRequestId: Int? = null
     private var appliedHostMuted: Boolean? = null
@@ -173,9 +204,11 @@ internal class RaftAndroidVideoView(
     private val terminalGate = RaftVideoPlaybackAttemptGate(progressContract.currentGeneration)
     private var awaitingAttemptStart = false
     private var scheduledTickerGeneration: Long? = null
+    private var progressTickerRunnable: Runnable? = null
     private var videoWidth = 0
     private var videoHeight = 0
     private var videoPixelWidthHeightRatio = 1f
+    private var savedPositionMs = 0L
 
     private val hostActivity: ComponentActivity? = context.unwrapRaftComponentActivity()
     private var fullscreenContainer: FrameLayout? = null
@@ -193,125 +226,224 @@ internal class RaftAndroidVideoView(
             }
         }
 
-    private val player: ExoPlayer =
-        ExoPlayer.Builder(context)
-            .setSeekBackIncrementMs(RaftAndroidVideoSeekJumpMs)
-            .setSeekForwardIncrementMs(RaftAndroidVideoSeekJumpMs)
-            .build()
-            .also { player ->
-                player.setMediaItem(MediaItem.fromUri(src))
-                player.playWhenReady = false
-            }
+    private var player: ExoPlayer? = null
+    private var budgetToken: Long? = null
+
+    internal val hasLivePlayerForTest: Boolean
+        get() = player != null
 
     private val playerView: PlayerView =
         (LayoutInflater.from(context).inflate(R.layout.raft_video_player_view, this, false) as PlayerView).also { view ->
             view.useController = false
             view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-            view.player = player
+            view.player = null
             addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         }
 
     init {
         setBackgroundColor(FULLSCREEN_BACKGROUND)
-        player.addListener(
-            object : Player.Listener {
-                override fun onRenderedFirstFrame() {
-                    if (stopped) return
-                    uiState.hasFirstFrame = true
-                    if (!releaseDeferred) callbacks.onFirstFrame()
-                }
+    }
 
-                override fun onVideoSizeChanged(videoSize: VideoSize) {
-                    if (stopped) return
-                    if (videoSize.width > 0 && videoSize.height > 0) {
-                        videoWidth = videoSize.width
-                        videoHeight = videoSize.height
-                        videoPixelWidthHeightRatio = videoSize.pixelWidthHeightRatio
-                        if (fullscreenContainer != null && !fullscreenOrientationApplied) {
-                            applyFullscreenOrientationIfKnown()
-                        }
+    private fun ensurePlayer(
+        prepareNow: Boolean,
+        playingHint: Boolean = false,
+    ): ExoPlayer? {
+        if (stopped) return null
+        player?.let { existing ->
+            budgetToken?.let { token ->
+                budget.markActivity(
+                    id = token,
+                    playing = if (playingHint) true else null,
+                    fullscreen = fullscreenContainer != null,
+                    touch = true,
+                )
+            }
+            return existing
+        }
+        // Acquire a concurrency slot BEFORE constructing ExoPlayer so any evicted LRU victim
+        // releases its MediaCodec and buffer pool before the incoming player allocates its own.
+        val token =
+            budget.register(
+                role = role,
+                playing = playingHint,
+                fullscreen = fullscreenContainer != null,
+                onEvict = ::scheduleEvictToDormant,
+            )
+        val policy = raftAndroidVideoBufferPolicy(role = role, audioOnly = audioOnly)
+        val created =
+            try {
+                playerFactory(context, policy)
+            } catch (throwable: Throwable) {
+                budget.unregister(token)
+                throw throwable
+            }
+        player = created
+        budgetToken = token
+        uiState.isDormant = false
+        created.setMediaItem(MediaItem.fromUri(src))
+        created.playWhenReady = false
+        created.volume = if (uiState.muted) 0f else 1f
+        if (created.playbackParameters.speed != uiState.rate) {
+            created.playbackParameters = PlaybackParameters(uiState.rate)
+        }
+        created.addListener(createPlayerListener(created))
+        playerView.player = created
+        if (savedPositionMs > 0L && !uiState.isEnded) {
+            created.seekTo(savedPositionMs)
+        }
+        if (prepareNow) {
+            created.prepare()
+        }
+        return created
+    }
+
+    private fun createPlayerListener(ownerPlayer: ExoPlayer): Player.Listener =
+        object : Player.Listener {
+            override fun onRenderedFirstFrame() {
+                if (stopped || player !== ownerPlayer) return
+                uiState.hasFirstFrame = true
+                reportFirstFrameOnce()
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (stopped || player !== ownerPlayer) return
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    videoWidth = videoSize.width
+                    videoHeight = videoSize.height
+                    videoPixelWidthHeightRatio = videoSize.pixelWidthHeightRatio
+                    if (fullscreenContainer != null && !fullscreenOrientationApplied) {
+                        applyFullscreenOrientationIfKnown()
                     }
-                }
-
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (stopped) return
-                    syncDurationAndBuffered()
-                    when (playbackState) {
-                        Player.STATE_BUFFERING -> {
-                            uiState.isBuffering = true
-                            uiState.hasError = false
-                            reportState(PlayState.BUFFERING)
-                            ensureProgressTicker()
-                        }
-                        Player.STATE_READY -> {
-                            uiState.isBuffering = false
-                            uiState.hasError = false
-                            uiState.isEnded = false
-                            uiState.playWhenReady = player.playWhenReady
-                            val nextState = if (player.playWhenReady) PlayState.PLAYING else PlayState.PAUSED
-                            reportState(nextState)
-                            pollProgressOnce(progressContract.currentGeneration)
-                            if (shouldKeepProgressTickerRunning()) ensureProgressTicker()
-                        }
-                        // Terminal state is derived through the progress contract and attempt gate
-                        // so a stale ended event never terminates a new replay/seek attempt.
-                        Player.STATE_ENDED -> {
-                            uiState.isBuffering = false
-                            uiState.playWhenReady = player.playWhenReady
-                            pollProgressOnce(progressContract.currentGeneration, nativeEnded = true)
-                        }
-                        Player.STATE_IDLE -> {
-                            uiState.isBuffering = false
-                        }
-                    }
-                }
-
-                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                    if (stopped) return
-                    uiState.playWhenReady = playWhenReady
-                    if (player.playbackState == Player.STATE_READY) {
-                        reportState(if (playWhenReady) PlayState.PLAYING else PlayState.PAUSED)
-                    }
-                    if (shouldKeepProgressTickerRunning()) ensureProgressTicker()
-                }
-
-                override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    if (stopped) return
-                    if (isPlaying) {
-                        uiState.isBuffering = false
-                        uiState.isEnded = false
-                        uiState.hasError = false
-                        if (awaitingAttemptStart) {
-                            val duration = player.duration.takeIf { it > 0L } ?: 0L
-                            if (duration <= 0L || player.currentPosition < duration) {
-                                terminalGate.markStarted(progressContract.currentGeneration)
-                                awaitingAttemptStart = false
-                            }
-                        }
-                        ensureProgressTicker()
-                    } else {
-                        pollProgressOnce(progressContract.currentGeneration)
-                    }
-                }
-
-                override fun onPositionDiscontinuity(
-                    oldPosition: Player.PositionInfo,
-                    newPosition: Player.PositionInfo,
-                    reason: Int,
-                ) {
-                    if (stopped) return
-                    pollProgressOnce(progressContract.currentGeneration)
-                }
-
-                override fun onPlayerError(error: PlaybackException) {
-                    if (stopped) return
-                    uiState.isBuffering = false
-                    uiState.hasError = true
-                    reportState(PlayState.ERROR)
                 }
             }
-        )
-        player.prepare()
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (stopped || player !== ownerPlayer) return
+                syncDurationAndBuffered(ownerPlayer)
+                when (playbackState) {
+                    Player.STATE_BUFFERING -> {
+                        uiState.isBuffering = true
+                        uiState.hasError = false
+                        reportState(PlayState.BUFFERING)
+                        ensureProgressTicker()
+                    }
+                    Player.STATE_READY -> {
+                        uiState.isBuffering = false
+                        uiState.hasError = false
+                        uiState.isEnded = false
+                        uiState.playWhenReady = ownerPlayer.playWhenReady
+                        val nextState = if (ownerPlayer.playWhenReady) PlayState.PLAYING else PlayState.PAUSED
+                        reportState(nextState)
+                        pollProgressOnce(progressContract.currentGeneration)
+                        if (shouldKeepProgressTickerRunning()) ensureProgressTicker()
+                    }
+                    // Terminal state is derived through the progress contract and attempt gate
+                    // so a stale ended event never terminates a new replay/seek attempt.
+                    Player.STATE_ENDED -> {
+                        uiState.isBuffering = false
+                        uiState.playWhenReady = ownerPlayer.playWhenReady
+                        budgetToken?.let { budget.markActivity(it, playing = false, touch = false) }
+                        pollProgressOnce(progressContract.currentGeneration, nativeEnded = true)
+                    }
+                    Player.STATE_IDLE -> {
+                        uiState.isBuffering = false
+                    }
+                }
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (stopped || player !== ownerPlayer) return
+                uiState.playWhenReady = playWhenReady
+                budgetToken?.let { budget.markActivity(it, playing = playWhenReady, touch = playWhenReady) }
+                if (ownerPlayer.playbackState == Player.STATE_READY) {
+                    reportState(if (playWhenReady) PlayState.PLAYING else PlayState.PAUSED)
+                }
+                if (shouldKeepProgressTickerRunning()) ensureProgressTicker()
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (stopped || player !== ownerPlayer) return
+                val activePlayback =
+                    isPlaying || (ownerPlayer.playWhenReady && ownerPlayer.playbackState == Player.STATE_BUFFERING)
+                budgetToken?.let { budget.markActivity(it, playing = activePlayback, touch = isPlaying) }
+                if (isPlaying) {
+                    uiState.isBuffering = false
+                    uiState.isEnded = false
+                    uiState.hasError = false
+                    if (awaitingAttemptStart) {
+                        val duration = ownerPlayer.duration.takeIf { it > 0L } ?: 0L
+                        if (duration <= 0L || ownerPlayer.currentPosition < duration) {
+                            terminalGate.markStarted(progressContract.currentGeneration)
+                            awaitingAttemptStart = false
+                        }
+                    }
+                    ensureProgressTicker()
+                } else {
+                    pollProgressOnce(progressContract.currentGeneration)
+                }
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                if (stopped || player !== ownerPlayer) return
+                pollProgressOnce(progressContract.currentGeneration)
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                if (stopped || player !== ownerPlayer) return
+                uiState.isBuffering = false
+                uiState.hasError = true
+                budgetToken?.let { budget.markActivity(it, playing = false, touch = false) }
+                reportState(PlayState.ERROR)
+            }
+        }
+
+    private fun scheduleEvictToDormant() {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            releasePlayerToDormant(unregisterFromBudget = false)
+        } else {
+            mainHandler.post { releasePlayerToDormant(unregisterFromBudget = false) }
+        }
+    }
+
+    private fun releasePlayerToDormant(unregisterFromBudget: Boolean) {
+        if (stopped || fullscreenContainer != null) return
+        val current = player
+        val token = budgetToken
+        budgetToken = null
+        if (unregisterFromBudget && token != null) {
+            budget.unregister(token)
+        }
+        if (current != null) {
+            if (uiState.isEnded) {
+                savedPositionMs = 0L
+            } else if (current.playbackState == Player.STATE_READY || current.currentPosition > 0L) {
+                savedPositionMs = current.currentPosition.coerceAtLeast(0L)
+            }
+            val duration = current.duration.takeIf { it > 0L }
+            if (duration != null) uiState.durationMs = duration
+            player = null
+            cancelProgressTicker()
+            playerView.player = null
+            current.release()
+        }
+        val preserveTerminalState =
+            uiState.hasError ||
+                uiState.isEnded ||
+                lastReportedState == PlayState.ERROR ||
+                lastReportedState == PlayState.PLAY_END
+        uiState.isDormant = true
+        uiState.isBuffering = false
+        uiState.playWhenReady = false
+        if (!audioOnly && !uiState.hasError) {
+            reportFirstFrameOnce()
+        }
+        if (!preserveTerminalState) {
+            reportState(PlayState.PAUSED)
+        }
     }
 
     fun setAudioOnly(value: Boolean) {
@@ -322,9 +454,15 @@ internal class RaftAndroidVideoView(
         if (control == appliedPlayControl) return
         appliedPlayControl = control
         when (control) {
-            // prepare() already ran with playWhenReady=false: the first frame is decoded and
-            // reported without starting playback.
-            VideoPlayControl.PREPLAY -> Unit
+            // Prepare video cards within the concurrency budget; keep idle inline audio dormant
+            // until the user taps Play or scrubs.
+            VideoPlayControl.PREPLAY -> {
+                if (raftMediaPlayerShouldPrepareOnAttach(role, audioOnly)) {
+                    ensurePlayer(prepareNow = true)
+                } else {
+                    uiState.isDormant = true
+                }
+            }
             VideoPlayControl.PLAY -> play()
             VideoPlayControl.PAUSE -> pause()
             VideoPlayControl.STOP -> stop()
@@ -359,7 +497,8 @@ internal class RaftAndroidVideoView(
             retryAfterError()
             return
         }
-        if (uiState.isEnded || player.playbackState == Player.STATE_ENDED) {
+        val activePlayer = player
+        if (uiState.isEnded || activePlayer?.playbackState == Player.STATE_ENDED) {
             play()
         } else if (uiState.isPlaying) {
             pause()
@@ -374,7 +513,7 @@ internal class RaftAndroidVideoView(
 
     override fun seekRelative(deltaMs: Long) {
         if (stopped) return
-        val duration = (player.duration.takeIf { it > 0L } ?: uiState.durationMs).coerceAtLeast(0L)
+        val duration = (player?.duration?.takeIf { it > 0L } ?: uiState.durationMs).coerceAtLeast(0L)
         if (duration <= 0L) return
         val target = raftAndroidVideoResolveRelativeSeekTarget(uiState.positionMs, deltaMs, duration)
         seekToTime(target)
@@ -396,21 +535,25 @@ internal class RaftAndroidVideoView(
         uiState.isEnded = false
         uiState.isBuffering = true
         lastReportedState = null
-        player.prepare()
-        player.play()
+        val activePlayer = ensurePlayer(prepareNow = false, playingHint = true) ?: return
+        budgetToken?.let { budget.markActivity(it, playing = true) }
+        activePlayer.prepare()
+        activePlayer.play()
         ensureProgressTicker()
     }
 
     private fun setEffectiveMuted(muted: Boolean) {
         uiState.muted = muted
-        player.volume = if (muted) 0f else 1f
+        player?.volume = if (muted) 0f else 1f
     }
 
     private fun setEffectiveRate(rate: Float) {
         val target = if (rate.isFinite()) rate.coerceAtLeast(0.25f) else 1f
         uiState.rate = target
-        if (player.playbackParameters.speed != target) {
-            player.playbackParameters = PlaybackParameters(target)
+        player?.let { activePlayer ->
+            if (activePlayer.playbackParameters.speed != target) {
+                activePlayer.playbackParameters = PlaybackParameters(target)
+            }
         }
     }
 
@@ -420,7 +563,12 @@ internal class RaftAndroidVideoView(
             retryAfterError()
             return
         }
-        if (player.playbackState == Player.STATE_ENDED || uiState.isEnded) {
+        val wasEnded = uiState.isEnded || player?.playbackState == Player.STATE_ENDED
+        if (wasEnded) {
+            savedPositionMs = 0L
+        }
+        val activePlayer = ensurePlayer(prepareNow = true, playingHint = true) ?: return
+        if (wasEnded || activePlayer.playbackState == Player.STATE_ENDED) {
             val progress = progressContract.replay()
             terminalGate.begin(progress.generation)
             awaitingAttemptStart = true
@@ -428,26 +576,33 @@ internal class RaftAndroidVideoView(
             uiState.positionMs = progress.currentMs
             if (progress.durationMs > 0L) uiState.durationMs = progress.durationMs
             if (!releaseDeferred) callbacks.onPlayTime(progress.currentMs, progress.durationMs)
-            player.seekTo(0L)
+            activePlayer.seekTo(0L)
             ensureProgressTicker(progress.generation)
         }
-        player.play()
+        budgetToken?.let { budget.markActivity(it, playing = true) }
+        activePlayer.play()
         ensureProgressTicker()
     }
 
     private fun pause() {
         if (stopped) return
-        player.pause()
+        player?.pause()
     }
 
     /**
      * The host Activity was stopped (app in background): pause without changing the applied
-     * play control, so returning to the app does not auto-resume; the PAUSED state is reported
-     * through the player listener as usual.
+     * play control, so returning to the app does not auto-resume; inline cards also release
+     * their ExoPlayer into dormant state so backgrounded apps hold zero inline decoders.
      */
     fun pauseForHostBackground() {
-        if (stopped || !player.playWhenReady) return
-        player.pause()
+        if (stopped) return
+        val activePlayer = player
+        if (activePlayer != null && activePlayer.playWhenReady) {
+            activePlayer.pause()
+        }
+        if (role != RaftMediaPlayerRole.FilePreview && fullscreenContainer == null && player != null) {
+            releasePlayerToDormant(unregisterFromBudget = true)
+        }
     }
 
     /**
@@ -468,19 +623,26 @@ internal class RaftAndroidVideoView(
     private fun release() {
         if (stopped) return
         stopped = true
-        scheduledTickerGeneration = null
+        val token = budgetToken
+        budgetToken = null
+        if (token != null) budget.unregister(token)
+        cancelProgressTicker()
         mainHandler.removeCallbacksAndMessages(null)
+        val current = player
+        player = null
         playerView.player = null
-        player.release()
+        current?.release()
     }
 
     private fun seekToTime(seekToTimeMs: Long) {
         if (stopped) return
-        syncDurationAndBuffered()
-        val duration = (player.duration.takeIf { it > 0L } ?: uiState.durationMs).coerceAtLeast(0L)
+        val activePlayer = ensurePlayer(prepareNow = true) ?: return
+        syncDurationAndBuffered(activePlayer)
+        val duration = (activePlayer.duration.takeIf { it > 0L } ?: uiState.durationMs).coerceAtLeast(0L)
         val clampedTarget = if (duration > 0L) seekToTimeMs.coerceIn(0L, duration) else seekToTimeMs.coerceAtLeast(0L)
         val seekingToEnd = duration > 0L && clampedTarget >= duration
         val progress = progressContract.seek(clampedTarget)
+        savedPositionMs = progress.currentMs
         terminalGate.begin(progress.generation)
         if (seekingToEnd) {
             // Seeking directly to duration transitions straight to STATE_ENDED without passing
@@ -496,58 +658,77 @@ internal class RaftAndroidVideoView(
         val effectiveDuration = if (progress.durationMs > 0L) progress.durationMs else duration
         if (effectiveDuration > 0L) uiState.durationMs = effectiveDuration
         if (!releaseDeferred) callbacks.onPlayTime(progress.currentMs, effectiveDuration)
-        player.seekTo(progress.currentMs)
+        activePlayer.seekTo(progress.currentMs)
         if (!seekingToEnd && (uiState.playState == PlayState.PLAY_END || lastReportedState == PlayState.PLAY_END)) {
-            reportState(if (player.playWhenReady) PlayState.PLAYING else PlayState.PAUSED)
+            reportState(if (activePlayer.playWhenReady) PlayState.PLAYING else PlayState.PAUSED)
         }
-        if (seekingToEnd && player.playbackState == Player.STATE_ENDED) {
+        if (seekingToEnd && activePlayer.playbackState == Player.STATE_ENDED) {
             pollProgressOnce(progress.generation, nativeEnded = true)
             return
         }
         ensureProgressTicker(progress.generation)
     }
 
-    private fun syncDurationAndBuffered() {
-        val duration = player.duration.takeIf { it > 0L } ?: 0L
+    private fun syncDurationAndBuffered(activePlayer: ExoPlayer = player ?: return) {
+        val duration = activePlayer.duration.takeIf { it > 0L } ?: 0L
         if (duration > 0L) uiState.durationMs = duration
-        val buffered = player.bufferedPosition.takeIf { it >= 0L } ?: 0L
+        val buffered = activePlayer.bufferedPosition.takeIf { it >= 0L } ?: 0L
         uiState.bufferedPositionMs = if (duration > 0L) buffered.coerceIn(0L, duration) else buffered
     }
 
-    private fun shouldKeepProgressTickerRunning(): Boolean =
-        !stopped && (player.isPlaying || player.playbackState == Player.STATE_BUFFERING || (player.playWhenReady && player.playbackState != Player.STATE_ENDED))
+    private fun shouldKeepProgressTickerRunning(): Boolean {
+        val activePlayer = player ?: return false
+        return !stopped && (
+            activePlayer.isPlaying ||
+                activePlayer.playbackState == Player.STATE_BUFFERING ||
+                (activePlayer.playWhenReady && activePlayer.playbackState != Player.STATE_ENDED)
+            )
+    }
+
+    private fun cancelProgressTicker() {
+        progressTickerRunnable?.let(mainHandler::removeCallbacks)
+        progressTickerRunnable = null
+        scheduledTickerGeneration = null
+    }
 
     private fun ensureProgressTicker(generation: Long = progressContract.currentGeneration) {
-        if (stopped) return
+        if (stopped || player == null) return
         if (scheduledTickerGeneration == generation) return
-        mainHandler.removeCallbacksAndMessages(null)
+        cancelProgressTicker()
         scheduledTickerGeneration = generation
         scheduleProgressTicker(generation)
     }
 
     private fun scheduleProgressTicker(generation: Long = progressContract.currentGeneration) {
-        mainHandler.postDelayed({
-            if (scheduledTickerGeneration == generation) scheduledTickerGeneration = null
-            if (stopped || !terminalGate.acceptsProgress(generation)) return@postDelayed
-            pollProgressOnce(generation)
-            if (shouldKeepProgressTickerRunning() && terminalGate.acceptsProgress(generation)) {
-                scheduledTickerGeneration = generation
-                scheduleProgressTicker(generation)
+        val runnable =
+            Runnable {
+                if (scheduledTickerGeneration == generation) {
+                    scheduledTickerGeneration = null
+                    progressTickerRunnable = null
+                }
+                if (stopped || player == null || !terminalGate.acceptsProgress(generation)) return@Runnable
+                pollProgressOnce(generation)
+                if (shouldKeepProgressTickerRunning() && terminalGate.acceptsProgress(generation)) {
+                    scheduledTickerGeneration = generation
+                    scheduleProgressTicker(generation)
+                }
             }
-        }, PROGRESS_TICK_MS)
+        progressTickerRunnable = runnable
+        mainHandler.postDelayed(runnable, PROGRESS_TICK_MS)
     }
 
     private fun pollProgressOnce(
         generation: Long,
         nativeEnded: Boolean = false,
     ) {
+        val activePlayer = player ?: return
         if (stopped || !terminalGate.acceptsProgress(generation)) return
-        syncDurationAndBuffered()
-        val knownDuration = (player.duration.takeIf { it > 0L } ?: uiState.durationMs).coerceAtLeast(0L)
-        val duration = if (knownDuration > 0L) knownDuration else if (nativeEnded) player.currentPosition.coerceAtLeast(0L) else 0L
-        val rawPosition = if (nativeEnded && duration > 0L) duration else player.currentPosition
+        syncDurationAndBuffered(activePlayer)
+        val knownDuration = (activePlayer.duration.takeIf { it > 0L } ?: uiState.durationMs).coerceAtLeast(0L)
+        val duration = if (knownDuration > 0L) knownDuration else if (nativeEnded) activePlayer.currentPosition.coerceAtLeast(0L) else 0L
+        val rawPosition = if (nativeEnded && duration > 0L) duration else activePlayer.currentPosition
         val progress = progressContract.progress(rawPosition, duration, generation)
-        if (awaitingAttemptStart && player.isPlaying && !progress.terminal) {
+        if (awaitingAttemptStart && activePlayer.isPlaying && !progress.terminal) {
             terminalGate.markStarted(progress.generation)
             awaitingAttemptStart = false
         }
@@ -556,6 +737,7 @@ internal class RaftAndroidVideoView(
             terminalGate.markTerminalEligible(progress.generation)
             if (terminalGate.acceptsTerminal(progress.generation)) {
                 val terminal = progressContract.ended(duration, progress.generation)
+                savedPositionMs = 0L
                 uiState.isEnded = true
                 uiState.positionMs = terminal.currentMs
                 uiState.durationMs = terminal.durationMs
@@ -564,6 +746,7 @@ internal class RaftAndroidVideoView(
                 return
             }
         }
+        savedPositionMs = progress.currentMs
         uiState.positionMs = progress.currentMs
         if (progress.durationMs > 0L) uiState.durationMs = progress.durationMs
         if (!releaseDeferred) callbacks.onPlayTime(progress.currentMs, progress.durationMs)
@@ -585,8 +768,9 @@ internal class RaftAndroidVideoView(
         val activity = hostActivity ?: return
         if (activity.isFinishing || activity.isDestroyed) return
         val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
+        val activePlayer = ensurePlayer(prepareNow = true) ?: return
         if (videoWidth <= 0 || videoHeight <= 0) {
-            val currentSize = player.videoSize
+            val currentSize = activePlayer.videoSize
             if (currentSize.width > 0 && currentSize.height > 0) {
                 videoWidth = currentSize.width
                 videoHeight = currentSize.height
@@ -622,6 +806,7 @@ internal class RaftAndroidVideoView(
         fullscreenContainer = container
         fullscreenComposeView = overlayView
         uiState.isFullscreen = true
+        budgetToken?.let { budget.markActivity(it, fullscreen = true) }
         savedOrientation = activity.requestedOrientation
         fullscreenOrientationApplied = false
         applyFullscreenOrientationIfKnown()
@@ -660,7 +845,14 @@ internal class RaftAndroidVideoView(
         }
         savedOrientation = null
         uiState.isFullscreen = false
+        budgetToken?.let { budget.markActivity(it, fullscreen = false) }
         if (releaseDeferred) release()
+    }
+
+    private fun reportFirstFrameOnce() {
+        if (firstFrameReported) return
+        firstFrameReported = true
+        if (!releaseDeferred) callbacks.onFirstFrame()
     }
 
     private fun reportState(state: PlayState) {

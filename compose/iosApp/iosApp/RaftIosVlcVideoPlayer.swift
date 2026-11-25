@@ -208,6 +208,7 @@ private final class RaftIosVlcKitPlayer: NSObject, RaftIosVlcVideoPlayer {
         controller.view.raftVlcEmbed(chrome)
         chrome.setFullScreen(true)
         fullScreenController = controller
+        events?.onFullscreenChanged(fullscreen: true)
         presenter.present(controller, animated: true)
     }
 
@@ -218,6 +219,7 @@ private final class RaftIosVlcKitPlayer: NSObject, RaftIosVlcVideoPlayer {
         controller.dismiss(animated: true) { [weak self] in
             guard let self, !self.disposed else { return }
             self.hostView.raftVlcEmbed(self.chrome)
+            self.events?.onFullscreenChanged(fullscreen: false)
         }
     }
 }

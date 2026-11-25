@@ -58,6 +58,17 @@ class RaftVideoAttachmentPlatformIosTest {
         assertFalse(raftFilePreviewIsPreviewableVideoAttachment("index.ts", "video/mp2t"))
     }
 
+    @Test
+    fun iosForwardBufferCapTightensInlineCardsRelativeToFilePreview() {
+        val inlineVideo = raftIosVideoPreferredForwardBufferSeconds(RaftMediaPlayerRole.InlineVideo, audioOnly = false)
+        val inlineAudio = raftIosVideoPreferredForwardBufferSeconds(RaftMediaPlayerRole.InlineAudio, audioOnly = true)
+        val filePreview = raftIosVideoPreferredForwardBufferSeconds(RaftMediaPlayerRole.FilePreview, audioOnly = false)
+        assertEquals(RAFT_IOS_INLINE_FORWARD_BUFFER_SECONDS, inlineVideo)
+        assertEquals(RAFT_IOS_INLINE_FORWARD_BUFFER_SECONDS, inlineAudio)
+        assertEquals(RAFT_IOS_PREVIEW_FORWARD_BUFFER_SECONDS, filePreview)
+        assertTrue(inlineVideo < filePreview)
+    }
+
     private object UnusedVlcPlayerFactory : RaftIosVlcVideoPlayerFactory {
         override fun createPlayer(url: String, labels: RaftIosVlcVideoLabels): RaftIosVlcVideoPlayer =
             error("routing only: no player is created")

@@ -87,6 +87,8 @@ internal class RaftAndroidVideoUiState {
     var isEnded by mutableStateOf(false)
     var hasError by mutableStateOf(false)
     var hasFirstFrame by mutableStateOf(false)
+    /** True when the underlying ExoPlayer was deferred or evicted by the concurrency budget and can wake on tap. */
+    var isDormant by mutableStateOf(false)
     var positionMs by mutableLongStateOf(0L)
     var bufferedPositionMs by mutableLongStateOf(0L)
     var durationMs by mutableLongStateOf(0L)
@@ -157,10 +159,10 @@ internal fun RaftAndroidVideoControlsOverlay(
             hasError = state.hasError,
         )
 
-    // Keep controls visible when audio-only, paused/ended, or errored; auto-hide 3s after the last
-    // interaction once playback is running.
-    LaunchedEffect(audioOnly, state.hasError, state.isEnded) {
-        if (audioOnly || state.hasError || state.isEnded) {
+    // Keep controls visible when audio-only, paused/ended, dormant, or errored; auto-hide 3s after
+    // the last interaction once playback is running.
+    LaunchedEffect(audioOnly, state.hasError, state.isEnded, state.isDormant) {
+        if (audioOnly || state.hasError || state.isEnded || state.isDormant) {
             controlsVisible = true
         }
     }
@@ -418,7 +420,7 @@ internal fun RaftAndroidVideoControlsOverlay(
                         )
                     }
                 }
-                state.isBuffering && (state.hasFirstFrame || fullscreen || audioOnly) -> {
+                state.isBuffering && (state.hasFirstFrame || state.playWhenReady || fullscreen || audioOnly) -> {
                     RaftSpinner(
                         size = RaftSpinnerSize.Md,
                         color = RaftUiPalette.white, // raft-color: buffering spinner on dark video surface
@@ -436,7 +438,7 @@ internal fun RaftAndroidVideoControlsOverlay(
                 controlsVisible &&
                     !state.isPlaying &&
                     barScrubFraction == null &&
-                    ((!state.hasError && (state.hasFirstFrame || fullscreen)) || (state.hasError && fullscreen)) -> {
+                    ((!state.hasError && (state.hasFirstFrame || state.isDormant || fullscreen)) || (state.hasError && fullscreen)) -> {
                     val centerButtonSize = if (fullscreen) 56.dp else 48.dp
                     val centerIconSize = if (fullscreen) 26.dp else 22.dp
                     val centerIcon =

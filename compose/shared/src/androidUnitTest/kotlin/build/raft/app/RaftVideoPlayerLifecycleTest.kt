@@ -2,9 +2,12 @@ package build.raft.app
 
 import android.content.pm.ActivityInfo
 import androidx.lifecycle.Lifecycle
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class RaftVideoPlayerLifecycleTest {
@@ -151,5 +154,26 @@ class RaftVideoPlayerLifecycleTest {
 
         assertFalse(raftAndroidVideoShouldShowInlineControls(widthDp = 1f, heightDp = 1f))
         assertTrue(raftAndroidVideoShouldShowInlineControls(widthDp = 320f, heightDp = 180f))
+    }
+
+    @Test
+    @androidx.annotation.OptIn(UnstableApi::class)
+    fun inlineBufferPolicyStaysFarBelowMedia3DefaultsAndBuildsValidLoadControls() {
+        val inlineVideo = raftAndroidVideoBufferPolicy(RaftMediaPlayerRole.InlineVideo, audioOnly = false)
+        val inlineAudio = raftAndroidVideoBufferPolicy(RaftMediaPlayerRole.InlineAudio, audioOnly = true)
+        val filePreview = raftAndroidVideoBufferPolicy(RaftMediaPlayerRole.FilePreview, audioOnly = false)
+
+        assertTrue(inlineVideo.maxBufferMs < DefaultLoadControl.DEFAULT_MAX_BUFFER_MS)
+        assertTrue(inlineVideo.maxBufferMs <= 5_000)
+        assertTrue(inlineVideo.targetBufferBytes <= 2 * 1024 * 1024)
+        assertEquals(0, inlineVideo.backBufferDurationMs)
+
+        assertTrue(inlineAudio.targetBufferBytes < inlineVideo.targetBufferBytes)
+        assertTrue(inlineVideo.maxBufferMs < filePreview.maxBufferMs)
+        assertTrue(filePreview.maxBufferMs < DefaultLoadControl.DEFAULT_MAX_BUFFER_MS)
+
+        assertNotNull(buildRaftAndroidLoadControl(inlineVideo))
+        assertNotNull(buildRaftAndroidLoadControl(inlineAudio))
+        assertNotNull(buildRaftAndroidLoadControl(filePreview))
     }
 }

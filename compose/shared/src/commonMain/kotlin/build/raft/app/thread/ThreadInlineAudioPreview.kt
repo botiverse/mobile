@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -33,6 +35,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onVisibilityChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -42,6 +45,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
 import build.raft.app.components.RaftDesignSystemTheme
@@ -258,6 +262,16 @@ internal fun ThreadInlineAudioAttachmentCard(
         }
     }
 
+    val pageActive = LocalRaftPageActive.current
+    val shareCaptureActive = LocalThreadShareCaptureActive.current
+    var onScreen by remember { mutableStateOf(false) }
+    val playerActive =
+        threadInlineMediaShouldMountPlayer(
+            pageActive = pageActive,
+            onScreen = onScreen,
+            shareCaptureActive = shareCaptureActive,
+        )
+
     RaftDesignSystemTheme {
         val colors = RaftTheme.colors
         val shape = RoundedCornerShape(RaftRadius.Container)
@@ -269,6 +283,8 @@ internal fun ThreadInlineAudioAttachmentCard(
                 Modifier
                     .widthIn(max = ThreadInlineAudioMaxWidth)
                     .fillMaxWidth()
+                    // Only hold a native player while placed inside the visible window on the active page.
+                    .onVisibilityChanged(minFractionVisible = 0f) { visible -> onScreen = visible }
                     .clip(shape)
                     .background(colors.layerCard)
                     .border(RaftStroke.Hairline, colors.lineHairline, shape)
@@ -315,13 +331,19 @@ internal fun ThreadInlineAudioAttachmentCard(
                 }
             }
 
-            ThreadInlineAudioSurface(
-                previewState = previewState,
-                previewEnabled = host != null,
-                onRetry = { host?.requestPreview?.invoke(attachment.id, true) },
-                onDownload = onDownload,
-                onFailedChange = { failed = it }
-            )
+            CompositionLocalProvider(
+                LocalRaftVideoPlayerRole provides RaftMediaPlayerRole.InlineAudio,
+                LocalRaftVideoPlayerAudioOnly provides true,
+            ) {
+                ThreadInlineAudioSurface(
+                    previewState = previewState,
+                    previewEnabled = host != null,
+                    playerActive = playerActive,
+                    onRetry = { host?.requestPreview?.invoke(attachment.id, true) },
+                    onDownload = onDownload,
+                    onFailedChange = { failed = it }
+                )
+            }
         }
     }
 }
@@ -335,6 +357,7 @@ private val ThreadInlineAudioIconTile = 36.dp
 private fun ThreadInlineAudioSurface(
     previewState: ThreadInlineAudioPreviewUiState?,
     previewEnabled: Boolean,
+    playerActive: Boolean,
     onRetry: () -> Unit,
     onDownload: () -> Unit,
     onFailedChange: (Boolean) -> Unit
@@ -349,6 +372,14 @@ private fun ThreadInlineAudioSurface(
             val source = previewState?.url.orEmpty()
             var playback by remember(source) { mutableStateOf(ThreadInlineAudioPlayback()) }
             var scrubTimeMs by remember(source) { mutableStateOf<Float?>(null) }
+            DisposableEffect(source, playerActive) {
+                onDispose {
+                    if (playerActive) {
+                        scrubTimeMs = null
+                        playback = playback.onPlayerDetached()
+                    }
+                }
+            }
             val playState = playback.state
             val currentTimeMs = scrubTimeMs?.toInt() ?: playback.currentTimeMs
             val totalTimeMs = playback.totalTimeMs
@@ -356,16 +387,20 @@ private fun ThreadInlineAudioSurface(
             val canPlay = source.isNotBlank()
             val playerGeneration = playback.generation
 
-            key(source, playerGeneration) {
-                Box(modifier = Modifier.size(1.dp).alpha(0f)) {
-                    LocalThreadInlineAudioPlayer.current(
-                        source,
-                        playback.control,
-                        playback.seekRequest,
-                        { playback = playback.withState(playerGeneration, it) },
-                        { current, total -> playback = playback.withTime(playerGeneration, current, total) },
-                        Modifier.fillMaxSize()
-                    )
+            // Keep the 1dp slot unconditional inside the card's spaced Column so toggling
+            // `playerActive` never introduces a 9dp vertical layout jump.
+            Box(modifier = Modifier.size(1.dp).alpha(0f)) {
+                if (playerActive) {
+                    key(source, playerGeneration) {
+                        LocalThreadInlineAudioPlayer.current(
+                            source,
+                            playback.control,
+                            playback.seekRequest,
+                            { playback = playback.withState(playerGeneration, it) },
+                            { current, total -> playback = playback.withTime(playerGeneration, current, total) },
+                            Modifier.fillMaxSize()
+                        )
+                    }
                 }
             }
 
