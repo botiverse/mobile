@@ -906,9 +906,12 @@ class SharedServerMembersStoreTest {
 
     @Test
     fun workerBusyAgentsFlowIncludesLocalOnlineRunningWorkersAndExcludesHoldsPeersAndOwnWork() = runTest {
-        val store = SharedServerMembersStore(FakeMemberRepository())
+        val repository = FakeMemberRepository()
         fun agent(id: String, name: String) =
             member(id, name).copy(kind = MemberKind.Agent, presence = Presence.Active, serverId = ServerId("server-1"))
+        val peer = agent("peer", "Peer").copy(serverId = ServerId("server-2"), inViewerServer = false)
+        repository.channelMembersByChannel["joint-1"] = listOf(agent("workers", "Kirby"), peer)
+        val store = SharedServerMembersStore(repository)
         store.seed(
             MemberSnapshot(
                 server("server-1"),
@@ -921,12 +924,14 @@ class SharedServerMembersStoreTest {
                     agent("readiness", "HeldReady").copy(
                         agentReadiness = AgentReadiness(state = "blocked", primary = AgentReadinessFact(code = "computer_offline"))
                     ),
-                    agent("peer", "Peer").copy(serverId = ServerId("server-2"), inViewerServer = false),
                     agent("ext", "External").copy(isExternal = true),
                     agent("bot", "Bot").copy(managedByAppInstallId = "install-1"),
                     agent("idle", "Idle"),
                 )
             )
+        )
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+            store.loadChannelMembers(ServerId("server-1"), ChannelId("joint-1"))
         )
         fun onlineFact(id: String, workers: Int?, status: AgentStatus = AgentStatus.Online, hold: AgentDeliveryHold? = null) =
             MemberPresenceUpdated(
@@ -950,7 +955,7 @@ class SharedServerMembersStoreTest {
         store.applyPresence(ServerId("server-1"), onlineFact("paused", 2))
         store.applyPresence(ServerId("server-1"), onlineFact("blocked", 2))
         store.applyPresence(ServerId("server-1"), onlineFact("readiness", 2))
-        store.applyPresence(ServerId("server-1"), onlineFact("peer", 1))
+        store.applyPresence(ServerId("server-1"), onlineFact("peer", 3))
         store.applyPresence(ServerId("server-1"), onlineFact("ext", 2))
         store.applyPresence(ServerId("server-1"), onlineFact("bot", 2))
         store.applyPresence(ServerId("server-1"), onlineFact("idle", null))
@@ -963,7 +968,7 @@ class SharedServerMembersStoreTest {
         val workerBusy = store.workerBusyAgentsFlow(ServerId("server-1")).first()
         assertEquals(listOf("workers" to 2), workerBusy.map { it.agentId to it.runningWorkers })
 
-        // Peer agent on another server resolves runningWorkers as presence-only (never a count).
+        // Peer agent on another server resolves runningWorkers as presence-only (clamped to 1, never a count).
         val peerStatus = store.memberStatusFlow(ServerId("server-1"), "peer").first()
         assertEquals(1, peerStatus?.runningWorkers)
         assertEquals(true, peerStatus?.runningWorkersPresenceOnly)
