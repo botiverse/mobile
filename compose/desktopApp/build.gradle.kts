@@ -1,4 +1,5 @@
 import java.security.MessageDigest
+import org.gradle.api.tasks.Sync
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 /*
@@ -109,6 +110,41 @@ val raftDesktopBuild =
         },
     )
 
+val isMacOsBuildHost: Boolean =
+    System.getProperty("os.name").orEmpty().lowercase().let { it.contains("mac") || it.contains("darwin") }
+
+val macOsBuildArch: String =
+    when (System.getProperty("os.arch").orEmpty().trim().lowercase()) {
+        "aarch64", "arm64" -> "arm64"
+        "x86_64", "amd64" -> "x86_64"
+        else -> System.getProperty("os.arch").orEmpty().trim().lowercase()
+    }
+
+val generatedAppResourcesRoot = layout.buildDirectory.dir("generated/raft-app-resources")
+
+// On macOS builds, stage :web-container's compiled native WKWebView bridge inside Compose Desktop's
+// appResourcesRootDir so jpackage places it at Raft.app/Contents/app/resources/libraft_webcontainer_macos.dylib
+// where desktop-macos-dmg.yml signs and verifies it with `codesign --force --deep`. Linux CI never
+// invokes macOS native compilation or staging.
+val stageMacOsWebContainerNative by tasks.registering(Sync::class) {
+    onlyIf { isMacOsBuildHost }
+    if (isMacOsBuildHost) {
+        dependsOn(":web-container:compileMacOsWebContainerNative")
+        from(
+            project(":web-container").layout.buildDirectory.file(
+                "generated/macos-native-resources/native/darwin-$macOsBuildArch/libraft_webcontainer_macos.dylib",
+            ),
+        )
+    }
+    into(generatedAppResourcesRoot.map { it.dir("macos") })
+}
+
+if (isMacOsBuildHost) {
+    tasks.matching { it.name == "prepareAppResources" || it.name == "prepareReleaseAppResources" }.configureEach {
+        dependsOn(stageMacOsWebContainerNative)
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "build.raft.app.desktop.MainKt"
@@ -123,6 +159,9 @@ compose.desktop {
         // freeze's sample caught (VM_G1CollectFull). Run those as concurrent cycles instead.
         jvmArgs += listOf("-XX:+ExplicitGCInvokesConcurrent")
         nativeDistributions {
+            if (isMacOsBuildHost) {
+                appResourcesRootDir.set(generatedAppResourcesRoot)
+            }
             // macOS dmg only for now (Linux packages would need their own data-dir and URL handler story).
             targetFormats(TargetFormat.Dmg)
             packageName = "Raft"

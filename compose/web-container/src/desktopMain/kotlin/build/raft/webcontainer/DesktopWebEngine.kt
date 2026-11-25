@@ -26,6 +26,33 @@ data class DesktopWebSessionState(
     val progress: Int = 0,
 )
 
+/** Rich navigation request metadata reported by native desktop WebView engines (macOS WKWebView / Windows WebView2). */
+data class DesktopNavigationRequest(
+    val url: String,
+    val isMainFrame: Boolean = true,
+    val method: String = "GET",
+    val requestCarriesScopedHeader: Boolean = false,
+    val isUserGesture: Boolean = false,
+    val starter: WebNavigationStarter = WebNavigationStarter.Other,
+)
+
+/** Navigation policy verdict returned by [DesktopWebSessionCallbacks.onNavigationDecision]. */
+sealed interface DesktopNavigationDecision {
+    data object Allow : DesktopNavigationDecision
+
+    data object Cancel : DesktopNavigationDecision
+
+    data class ReissueWithHeader(
+        val url: String,
+        val headerName: String,
+        val headerValue: String,
+    ) : DesktopNavigationDecision
+
+    data class ReissueWithoutHeader(
+        val url: String,
+    ) : DesktopNavigationDecision
+}
+
 /** Callbacks invoked by a [DesktopWebSession] into [DesktopWebContainerHostController]. */
 interface DesktopWebSessionCallbacks {
     /** Evaluates whether a navigation to [url] is allowed (main frame or subframe). */
@@ -33,6 +60,17 @@ interface DesktopWebSessionCallbacks {
         url: String,
         isMainFrame: Boolean = true,
     ): Boolean
+
+    /**
+     * Full policy evaluation supporting scoped request headers and re-issue directives for direct
+     * native engines (e.g. macOS `WKWebView`). Defaults to delegating to [onNavigationRequested].
+     */
+    fun onNavigationDecision(request: DesktopNavigationRequest): DesktopNavigationDecision =
+        if (onNavigationRequested(request.url, request.isMainFrame)) {
+            DesktopNavigationDecision.Allow
+        } else {
+            DesktopNavigationDecision.Cancel
+        }
 
     fun onStateChanged(state: DesktopWebSessionState)
 
@@ -52,6 +90,21 @@ interface DesktopWebSessionCallbacks {
         isMainFrame: Boolean,
         reply: (replyJson: String) -> Unit,
     )
+
+    /**
+     * JSB delivery distinguishing the native frame's verified `securityOrigin` from the active
+     * top-level document URL (fail closed on opaque/sandboxed frames or `allowNavigation=false`
+     * pushState drift). Defaults to delegating to [onJsbMessage].
+     */
+    fun onVerifiedJsbMessage(
+        rawPayload: String,
+        frameOriginUrl: String,
+        documentUrl: String,
+        isMainFrame: Boolean,
+        reply: (replyJson: String) -> Unit,
+    ) {
+        onJsbMessage(rawPayload, frameOriginUrl, isMainFrame, reply)
+    }
 
     /** Reported when the page requests a new window (`window.open` / `target=_blank`). */
     fun onNewWindowRequested(url: String) = Unit
@@ -94,6 +147,17 @@ interface DesktopWebSession {
         script: String,
         callback: ((String?) -> Unit)? = null,
     )
+
+    /**
+     * Evaluates [script] inside an isolated engine content world (e.g. macOS
+     * `WKContentWorld.defaultClientWorld`) when [isolatedWorld] is `true`. Engines without
+     * content-world separation fall back to [evaluateJavaScript].
+     */
+    fun evaluateJavaScript(
+        script: String,
+        isolatedWorld: Boolean,
+        callback: ((String?) -> Unit)? = null,
+    ) = evaluateJavaScript(script, callback)
 
     fun dispose()
 }
@@ -177,6 +241,53 @@ class DesktopWebContainerHostController(
 
     private val callbacks =
         object : DesktopWebSessionCallbacks {
+            override fun onNavigationDecision(request: DesktopNavigationRequest): DesktopNavigationDecision {
+                if (disposed) return DesktopNavigationDecision.Cancel
+                if (!request.isMainFrame) {
+                    return if (isAllowedSubframeUrl(request.url, config.navigationPolicy)) {
+                        DesktopNavigationDecision.Allow
+                    } else {
+                        DesktopNavigationDecision.Cancel
+                    }
+                }
+                if (request.starter == WebNavigationStarter.Link || request.starter == WebNavigationStarter.Form) {
+                    val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
+                    chainState.startChain(
+                        carriesHeader = request.requestCarriesScopedHeader,
+                        reissueBudget = budget,
+                        starter = request.starter,
+                    )
+                }
+                val decision =
+                    evaluateMainFrameNavigation(
+                        targetUrl = request.url,
+                        initialUrl = config.url,
+                        policy = config.navigationPolicy,
+                        method = request.method,
+                        requestCarriesScopedHeader = request.requestCarriesScopedHeader,
+                        chainState = chainState,
+                        isUserGesture = request.isUserGesture,
+                        catchesMainFrameNavigation = events.catchesMainFrameNavigation,
+                        routesMainFrameNavigation = events.routesMainFrameNavigation,
+                    )
+                return when (decision) {
+                    WebNavigationDecision.Allow -> DesktopNavigationDecision.Allow
+                    is WebNavigationDecision.InterceptedByHost -> DesktopNavigationDecision.Cancel
+                    is WebNavigationDecision.Block -> {
+                        notifyBlocked(decision.url, decision.reason)
+                        DesktopNavigationDecision.Cancel
+                    }
+                    is WebNavigationDecision.ReissueWithHeader ->
+                        DesktopNavigationDecision.ReissueWithHeader(
+                            url = decision.url,
+                            headerName = decision.headerName,
+                            headerValue = decision.headerValue,
+                        )
+                    is WebNavigationDecision.ReissueWithoutHeader ->
+                        DesktopNavigationDecision.ReissueWithoutHeader(url = decision.url)
+                }
+            }
+
             override fun onNavigationRequested(
                 url: String,
                 isMainFrame: Boolean,
@@ -203,7 +314,7 @@ class DesktopWebContainerHostController(
                         false
                     }
                     is WebNavigationDecision.ReissueWithHeader -> true
-                    // Desktop SPI has no per-redirect header-strip API yet: fail closed rather than
+                    // Wry bridge has no per-redirect header-strip API: fail closed rather than
                     // leaking origin-scoped headers across origins.
                     is WebNavigationDecision.ReissueWithoutHeader -> {
                         notifyBlocked(decision.url, "desktop_header_strip_unsupported")
@@ -223,9 +334,12 @@ class DesktopWebContainerHostController(
                 jsbDispatcher?.cancelInFlight("main_frame_navigation")
                 loadGeneration += 1
                 lastSuccessfulUrl = ""
-                currentState = currentState.copy(url = url, isLoading = true, progress = 10)
+                val effectiveUrl = url.trim().ifEmpty { currentState.url }
+                currentState = currentState.copy(url = effectiveUrl, isLoading = true, progress = 10)
                 watchdog.onEvent(WebContainerWatchdogEvent.LoadStarted(loadGeneration), nowMs())
-                events.onUrlChange(url)
+                if (effectiveUrl.isNotEmpty()) {
+                    events.onUrlChange(effectiveUrl)
+                }
                 notifyNavigationState(force = false)
             }
 
@@ -285,8 +399,21 @@ class DesktopWebContainerHostController(
                             initialUrl = config.url,
                             candidateUrl = currentState.url,
                             policy = config.navigationPolicy,
+                            isAllowedCandidate = { candidate ->
+                                config.navigationPolicy.allowNavigation ||
+                                    isSameDocumentIgnoringFragment(config.url.trim(), candidate)
+                            },
                         )
                     if (restoreUrl.isNotBlank()) {
+                        val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
+                        val headerRule = config.navigationPolicy.requestHeaderRule
+                        val carriesHeader =
+                            headerRule != null && parseWebContainerOrigin(restoreUrl) == headerRule.allowedOrigin
+                        chainState.startChain(
+                            carriesHeader = carriesHeader,
+                            reissueBudget = budget,
+                            starter = WebNavigationStarter.Launch,
+                        )
                         session?.loadUrl(restoreUrl)
                     }
                 } else {
@@ -297,6 +424,22 @@ class DesktopWebContainerHostController(
             override fun onJsbMessage(
                 rawPayload: String,
                 originUrl: String,
+                isMainFrame: Boolean,
+                reply: (replyJson: String) -> Unit,
+            ) {
+                onVerifiedJsbMessage(
+                    rawPayload = rawPayload,
+                    frameOriginUrl = originUrl,
+                    documentUrl = originUrl,
+                    isMainFrame = isMainFrame,
+                    reply = reply,
+                )
+            }
+
+            override fun onVerifiedJsbMessage(
+                rawPayload: String,
+                frameOriginUrl: String,
+                documentUrl: String,
                 isMainFrame: Boolean,
                 reply: (replyJson: String) -> Unit,
             ) {
@@ -312,10 +455,21 @@ class DesktopWebContainerHostController(
                     )
                     return
                 }
+                val frameOrigin = parseWebContainerOrigin(frameOriginUrl)
+                val docOrigin = parseWebContainerOrigin(documentUrl)
+                val fencedDocumentAllowed =
+                    config.navigationPolicy.allowNavigation ||
+                        (documentUrl.isNotBlank() && isSameDocumentIgnoringFragment(config.url.trim(), documentUrl))
+                val verifiedOrigin =
+                    when {
+                        frameOrigin == null -> null
+                        isMainFrame && (docOrigin == null || frameOrigin != docOrigin || !fencedDocumentAllowed) -> null
+                        else -> frameOrigin
+                    }
                 dispatcher.dispatch(
                     rawPayload = rawPayload,
-                    origin = parseWebContainerOrigin(originUrl),
-                    documentUrl = originUrl,
+                    origin = verifiedOrigin,
+                    documentUrl = documentUrl.ifBlank { currentState.url },
                     isMainFrame = isMainFrame,
                     onReply = reply,
                 )
@@ -361,8 +515,6 @@ class DesktopWebContainerHostController(
         }
         val initial = config.url.trim()
         if (initial.isNotEmpty()) {
-            val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
-            chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.Launch)
             val decision =
                 evaluateMainFrameNavigation(
                     targetUrl = initial,
@@ -373,6 +525,12 @@ class DesktopWebContainerHostController(
                 notifyBlocked(decision.url, decision.reason)
                 return
             }
+            val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
+            chainState.startChain(
+                carriesHeader = decision is WebNavigationDecision.ReissueWithHeader,
+                reissueBudget = budget,
+                starter = WebNavigationStarter.Launch,
+            )
         }
         activeSession.start()
         syncVisibility()
@@ -473,7 +631,7 @@ class DesktopWebContainerHostController(
             handleWatchdogAction(watchdog.onEvent(WebContainerWatchdogEvent.DomProbeResult(expectedGen, null), nowMs()))
             return
         }
-        activeSession.evaluateJavaScript(JsbBootstrapScripts.ContentVisibilityProbeScript) { raw ->
+        activeSession.evaluateJavaScript(JsbBootstrapScripts.ContentVisibilityProbeScript, isolatedWorld = true) { raw ->
             if (disposed || expectedGen != loadGeneration) return@evaluateJavaScript
             val hasContent = JsbBootstrapScripts.decodeContentProbeResult(raw)
             events.onContentProbe(hasContent)
