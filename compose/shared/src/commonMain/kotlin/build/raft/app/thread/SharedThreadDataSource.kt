@@ -15,7 +15,6 @@ import build.raft.app.data.InboxFetchReason
 import build.raft.app.data.withInboxFetchReason
 import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.PlatformFile
-import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
@@ -23,12 +22,8 @@ import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
 import build.raft.app.data.ActionCardExecuteOutcome
 import build.raft.app.data.ExecuteActionFormBody
 import build.raft.app.data.ConversationRepository
-import build.raft.app.data.RealConversationRepository
-import build.raft.app.data.ProgressiveConversationAttachmentUploader
 import build.raft.app.data.DirectAttachmentUploadOperation
 import build.raft.app.data.RaftExpectedAuthBinding
-import build.raft.app.data.matchesExpectedAuthority
-import build.raft.app.data.normalizedEnvironmentId
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.ChannelProfileUpdateResult
 import build.raft.app.data.ReadReceiptResult
@@ -497,6 +492,15 @@ internal class SharedThreadDataSource(
                     call = call,
                 )
             },
+        )
+    /** Attachment upload, its authority and limits, attachment URLs and the files list; see [ThreadAttachmentTransfers]. */
+    private val attachmentTransfers: ThreadAttachmentTransfers =
+        ThreadAttachmentTransfers(
+            api = api,
+            sessionStore = sessionStore,
+            conversationRepository = conversationRepository,
+            apiEnvironmentIdProvider = apiEnvironmentIdProvider,
+            attachmentUploadCapabilitiesCache = attachmentUploadCapabilitiesCache,
         )
     /** What a Markdown channel, task, thread or message reference opens; see [ThreadMarkdownRefLaunch]. */
     private val markdownRefLaunch: ThreadMarkdownRefLaunch =
@@ -1997,176 +2001,51 @@ internal class SharedThreadDataSource(
         channelId: String,
         files: List<PlatformFile>,
         onProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null
-    ): DataResult<AttachmentUploadResult> {
-        val repository =
-            conversationRepository
-                ?: return DataResult.Error(ScreenError(code = "attachment_upload_unavailable", retryable = false))
-        if (channelId.isBlank()) {
-            return DataResult.Error(ScreenError(code = "missing_channel_id", retryable = false))
-        }
-        if (files.isEmpty()) {
-            return DataResult.Error(ScreenError(code = "attachment_read_failed", retryable = false))
-        }
-        val request =
-            AttachmentUploadRequest(
-                channelId = ChannelId(channelId),
-                files = files
-            )
-        val progressive = repository as? ProgressiveConversationAttachmentUploader
-        return if (onProgress != null && progressive != null) {
-            progressive.uploadAttachmentsWithProgress(request, onProgress)
-        } else {
-            repository.uploadAttachments(request)
-        }
-    }
+    ): DataResult<AttachmentUploadResult> = attachmentTransfers.uploadAttachments(channelId, files, onProgress)
 
-    /**
-     * Capture one complete authority witness and bind it to one direct-session coordinator.  The
-     * returned operation must be reused for capability admission, every upload mutation and all
-     * later compensation; this data source intentionally exposes no reconstruct-on-cleanup seam.
-     */
     suspend fun captureDirectAttachmentUploadOperation(
         diagnosticsLogger: (String) -> Unit = {},
-    ): DirectAttachmentUploadOperation? {
-        val repository =
-            conversationRepository
-                ?: return null
-        val authority = captureExternalShareSendAuthority() ?: return null
-        return (repository as? RealConversationRepository)
-            ?.directAttachmentUploadOperation(authority, diagnosticsLogger)
-    }
+    ): DirectAttachmentUploadOperation? = attachmentTransfers.captureDirectAttachmentUploadOperation(diagnosticsLogger)
 
-    /** Fresh cached capabilities for [operation]'s authority; never suspends or hits the network. */
     fun peekAttachmentUploadCapabilities(
         operation: DirectAttachmentUploadOperation,
-    ): AttachmentUploadCapabilities? = attachmentUploadCapabilitiesCache.peek(operation.authority)
+    ): AttachmentUploadCapabilities? = attachmentTransfers.peekAttachmentUploadCapabilities(operation)
 
-    /** Cached (TTL) or single-flight fetched capabilities for the operation's authority. */
     suspend fun attachmentUploadCapabilities(
         operation: DirectAttachmentUploadOperation,
-    ): DataResult<AttachmentUploadCapabilities> =
-        attachmentUploadCapabilitiesCache.getOrFetch(operation.authority) { operation.capabilities() }
+    ): DataResult<AttachmentUploadCapabilities> = attachmentTransfers.attachmentUploadCapabilities(operation)
 
-    /** Warm the capability cache when the composer opens so the first pick needs no round trip. */
-    suspend fun prefetchAttachmentUploadCapabilities() {
-        val operation = captureDirectAttachmentUploadOperation() ?: return
-        attachmentUploadCapabilities(operation)
-    }
+    suspend fun prefetchAttachmentUploadCapabilities() = attachmentTransfers.prefetchAttachmentUploadCapabilities()
 
     suspend fun attachmentUploadMaxBytes(
         expectedAuthority: RaftExpectedAuthBinding? = null,
-    ): DataResult<Long> {
-        val repository =
-            conversationRepository
-                ?: return DataResult.Error(
-                    ScreenError(code = "attachment_upload_capabilities_unavailable", retryable = true)
-                )
-        val boundRepository =
-            expectedAuthority?.let { authority ->
-                (repository as? RealConversationRepository)?.boundTo(authority)
-                    ?: return DataResult.Error(
-                        ScreenError(
-                            code = "attachment_upload_authority_binding_unsupported",
-                            retryable = false,
-                        )
-                    )
-            } ?: repository
-        return boundRepository.getAttachmentUploadCapabilities().map { capabilities -> capabilities.maxBytes }
-    }
+    ): DataResult<Long> = attachmentTransfers.attachmentUploadMaxBytes(expectedAuthority)
 
-    suspend fun captureExternalShareSendAuthority(): RaftExpectedAuthBinding? {
-        val session = sessionStore.readSession() ?: return null
-        val environmentId = apiEnvironmentIdProvider().normalizedEnvironmentId().takeIf { it.isNotBlank() } ?: return null
-        val accountId = session.user.id.trim().takeIf { it.isNotBlank() } ?: return null
-        val accessToken = session.accessToken.takeIf { it.isNotBlank() } ?: return null
-        val refreshToken = session.refreshToken.takeIf { it.isNotBlank() } ?: return null
-        val serverId = session.currentServerId?.trim()?.takeIf(String::isNotBlank) ?: return null
-        if (session.servers.none { server -> server.id.trim() == serverId }) return null
-        return RaftExpectedAuthBinding(
-            accountId = accountId,
-            accessToken = accessToken,
-            refreshToken = refreshToken,
-            serverId = serverId,
-            environmentId = environmentId,
-        )
-    }
+    suspend fun captureExternalShareSendAuthority(): RaftExpectedAuthBinding? =
+        attachmentTransfers.captureExternalShareSendAuthority()
 
-    suspend fun matchesExternalShareSendAuthority(expected: RaftExpectedAuthBinding): Boolean {
-        val session = sessionStore.readSession() ?: return false
-        val environmentId = apiEnvironmentIdProvider().normalizedEnvironmentId()
-        val expectedEnvironment = expected.environmentId.normalizedEnvironmentId()
-        return expectedEnvironment.isNotBlank() &&
-            environmentId == expectedEnvironment &&
-            session.matchesExpectedAuthority(
-                expected = expected,
-                effectiveServerId = expected.serverId,
-                effectiveEnvironmentId = environmentId,
-            ) &&
-            session.servers.any { server -> server.id.trim() == expected.serverId.trim() }
-    }
+    suspend fun matchesExternalShareSendAuthority(expected: RaftExpectedAuthBinding): Boolean =
+        attachmentTransfers.matchesExternalShareSendAuthority(expected)
 
     suspend fun attachmentUrl(
         priority: DataRequestPriority,
         attachmentId: String,
         disposition: String? = null
-    ): ThreadApiResult<ThreadAttachmentOpenTarget> =
-        api.attachmentUrl(priority, attachmentId, disposition)
+    ): ThreadApiResult<ThreadAttachmentOpenTarget> = attachmentTransfers.attachmentUrl(priority, attachmentId, disposition)
 
     suspend fun attachmentUrls(
         priority: DataRequestPriority,
         attachmentIds: List<String>,
-    ): ThreadApiResult<Map<String, ThreadAttachmentOpenTarget>> =
-        api.attachmentUrls(priority, attachmentIds)
+    ): ThreadApiResult<Map<String, ThreadAttachmentOpenTarget>> = attachmentTransfers.attachmentUrls(priority, attachmentIds)
 
     suspend fun attachmentHtmlPreviewUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget> =
-        api.attachmentHtmlPreviewUrl(attachmentId)
+        attachmentTransfers.attachmentHtmlPreviewUrl(attachmentId)
 
     suspend fun fetchFilesPayload(
         basePayload: RaftThreadScreenPayload,
         cursor: String? = null,
         currentPayload: RaftThreadFilesPayload? = null
-    ): DataResult<RaftThreadFilesPayload> {
-        val repository =
-            conversationRepository
-                ?: return DataResult.Error(ScreenError(code = "thread_files_unavailable", retryable = false, traceId = null))
-        val threadId =
-            basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
-                ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false, traceId = null))
-        return when (val result = repository.getChannelFiles(ChannelId(threadId), cursor = cursor)) {
-            is DataResult.Content ->
-                DataResult.Content(
-                    result.data.toRaftThreadFilesPayload(
-                        basePayload = basePayload,
-                        currentPayload = currentPayload,
-                        append = cursor != null
-                    )
-                )
-            is DataResult.Empty ->
-                DataResult.Content(
-                    currentPayload
-                        ?.takeIf { cursor != null && it.items.isNotEmpty() }
-                        ?.copy(
-                            status = "content",
-                            hasMore = false,
-                            loadingMore = false,
-                            nextCursor = null,
-                            errorCode = null,
-                            errorServerMessage = null,
-                            errorTraceId = null
-                        )
-                        ?: RaftThreadFilesPayload(
-                            instanceId = basePayload.instanceId,
-                            status = "empty",
-                            items = emptyList(),
-                            hasMore = false,
-                            loadingMore = false,
-                            nextCursor = null
-                        )
-                )
-            is DataResult.Error -> result
-            is DataResult.NoPermission -> result
-        }
-    }
+    ): DataResult<RaftThreadFilesPayload> = attachmentTransfers.fetchFilesPayload(basePayload, cursor, currentPayload)
 
     suspend fun saveMessage(messageId: String): DataResult<Unit> = itemActions.saveMessage(messageId)
 
