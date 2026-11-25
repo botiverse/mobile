@@ -180,6 +180,8 @@ kotlin {
                 api(project(":shared-data"))
                 // Common-Kotlin Socket.IO client (realtime unification; RaftKmpRealtimeSocket is the host facade).
                 implementation(project(":realtime-socket"))
+                // Standalone cross-platform Hybrid WebView Container + Kotlin JSB runtime (gated behind mobile_web_container_v1).
+                implementation(project(":web-container"))
                 // CMP switch (Phase A): :shared's UI renders on upstream Compose Multiplatform
                 // through the :ui-cmp hosts (RaftCmpRoot). The Kuikly compose fork, Kuikly core
                 // (Pager/Module/nvi JSON) and core-render-android are gone; their remaining API

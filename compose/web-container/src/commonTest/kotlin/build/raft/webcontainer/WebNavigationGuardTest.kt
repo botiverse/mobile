@@ -209,7 +209,11 @@ class WebNavigationGuardTest {
             )
         assertTrue(isAllowedSubframeUrl("about:blank", policy))
         assertTrue(isAllowedSubframeUrl("about:srcdoc", policy))
+        assertTrue(isAllowedSubframeUrl("blob:https://embed.raft.build/1234", policy))
+        assertTrue(isAllowedSubframeUrl("data:text/html,<h1>ok</h1>", policy))
         assertTrue(isAllowedSubframeUrl("https://embed.raft.build/widget", policy))
+        assertTrue(isAllowedSubframeUrl("https://content.embed.raft.build/widget", policy))
+        assertFalse(isAllowedSubframeUrl("https://evilembed.raft.build/widget", policy))
         assertFalse(isAllowedSubframeUrl("https://evil.example/widget", policy))
         assertFalse(isAllowedSubframeUrl("file:///etc/passwd", policy))
     }

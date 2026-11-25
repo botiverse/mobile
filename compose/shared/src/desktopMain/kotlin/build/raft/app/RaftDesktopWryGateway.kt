@@ -371,13 +371,47 @@ class RaftDesktopWryGateway(
                 } else {
                     File(build.raft.app.data.RaftDesktopPaths.dataDir, "webview").apply { mkdirs() }.path
                 },
+        ): RaftDesktopWryGateway =
+            createInternal(
+                initialUrl = policy.initialUrl() ?: "about:blank",
+                initScript = policy.documentStartScript(),
+                ephemeral = ephemeral,
+                dataDirectory = dataDirectory,
+            )
+
+        /**
+         * Creates an off-EDT [RaftDesktopWryGateway] for `:web-container` sessions without leaking
+         * any Wry API references outside [RaftDesktopWryGateway].
+         */
+        fun createForWebContainer(
+            initialUrl: String,
+            initScript: String,
+            ephemeral: Boolean,
+            dataDirectory: String? =
+                if (ephemeral) {
+                    null
+                } else {
+                    File(build.raft.app.data.RaftDesktopPaths.dataDir, "webview").apply { mkdirs() }.path
+                },
+        ): RaftDesktopWryGateway =
+            createInternal(
+                initialUrl = initialUrl.trim().ifEmpty { "about:blank" },
+                initScript = initScript,
+                ephemeral = ephemeral,
+                dataDirectory = dataDirectory,
+            )
+
+        private fun createInternal(
+            initialUrl: String,
+            initScript: String,
+            ephemeral: Boolean,
+            dataDirectory: String?,
         ): RaftDesktopWryGateway {
-            val initialUrl = policy.initialUrl() ?: "about:blank"
             val panel =
                 WryWebViewPanel(
                     initialUrl = initialUrl,
                     dataDirectory = dataDirectory,
-                    initScript = policy.documentStartScript(),
+                    initScript = initScript,
                     supportZoom = false,
                     // #wg-mobile-sync:#242: Wry's native createWebview places a new WKWebView at
                     // (0, 0) until its 16 ms boundsTimer moves it off-screen. Keep the WKWebView

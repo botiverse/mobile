@@ -996,6 +996,8 @@ dependencies {
     // The common Socket.IO client (the realtime socket, through :shared's raftRealtimeSocketTransport);
     // the realtime client tests script a server through its WebSocket connector.
     implementation(project(":realtime-socket"))
+    // Standalone WebView container startup helper (WebViewCompat.startUpWebView, opt-in behind mobile_web_container_v1).
+    implementation(project(":web-container"))
     // org.json for JVM unit tests (android.jar only has stubs); it used to arrive through socket.io-client.
     testImplementation(libs.org.json)
     // Builds real notifications in JVM unit tests.

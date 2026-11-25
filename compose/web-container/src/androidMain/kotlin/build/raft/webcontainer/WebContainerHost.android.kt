@@ -644,6 +644,7 @@ internal class WebContainerAndroidView(
                     }
                     currentUrl = target.ifBlank { currentUrl }
                     currentTitle = view?.title.orEmpty().ifBlank { currentTitle }
+                    events.onUrlChange(currentUrl)
                     if (!mainFrameLoadFailed) {
                         markPagePainted()
                         chainState.markCommitted()
@@ -653,7 +654,6 @@ internal class WebContainerAndroidView(
                         )
                         events.onLoadCommit()
                     }
-                    events.onUrlChange(currentUrl)
                     notifyNavigationState()
                 }
 

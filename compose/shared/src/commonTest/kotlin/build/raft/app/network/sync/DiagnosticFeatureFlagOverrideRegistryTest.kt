@@ -2,6 +2,7 @@ package build.raft.app.network.sync
 
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
 import build.raft.app.data.MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY
+import build.raft.app.data.MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY
 import build.raft.app.data.SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY
 import kotlin.test.Test
 import kotlin.test.assertFalse
@@ -21,6 +22,7 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
         registry.observe(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, channelScope)
         registry.observe(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, serverScope)
         registry.observe(MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY, serverScope)
+        registry.observe(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY, serverScope)
 
         assertIs<DiagnosticFeatureFlagOverrideMutationResult.Rejected>(
             registry.setMode(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
@@ -31,6 +33,33 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
         assertIs<DiagnosticFeatureFlagOverrideMutationResult.Rejected>(
             registry.setMode(MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
         )
+        assertIs<DiagnosticFeatureFlagOverrideMutationResult.Rejected>(
+            registry.setMode(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+        )
+    }
+
+    @Test
+    fun webContainerV1LocalOverrideTogglesWhenEntitled() {
+        registry.configureEntitlement(true)
+        assertTrue(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY in registry.supportedKeys)
+
+        assertFalse(registry.decide(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY, false, serverScope).finalEffective)
+
+        assertIs<DiagnosticFeatureFlagOverrideMutationResult.Applied>(
+            registry.setMode(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+        )
+        assertTrue(registry.decide(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY, false, serverScope).finalEffective)
+
+        assertIs<DiagnosticFeatureFlagOverrideMutationResult.Applied>(
+            registry.setMode(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOff)
+        )
+        assertFalse(registry.decide(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY, true, serverScope).finalEffective)
+
+        assertIs<DiagnosticFeatureFlagOverrideMutationResult.Applied>(
+            registry.setMode(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.Server)
+        )
+        assertTrue(registry.decide(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY, true, serverScope).finalEffective)
+        assertFalse(registry.decide(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY, false, serverScope).finalEffective)
     }
 
     @Test

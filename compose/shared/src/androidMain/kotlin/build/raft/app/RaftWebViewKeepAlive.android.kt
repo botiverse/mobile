@@ -7,6 +7,7 @@ import android.os.Looper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
+import build.raft.webcontainer.WebContainerAndroidKeepAlive
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -158,10 +159,14 @@ internal actual fun raftWebViewEvaluateInKept(key: String, origin: String, scrip
     runOnMainOrNull { RaftAndroidWebViewKeepAlive.kept(key)?.evaluateInTopDocument(origin, script) } == true
 
 internal actual fun raftWebViewKeepAliveClear() {
-    if (Looper.myLooper() == Looper.getMainLooper()) {
+    val clearAction = {
         RaftAndroidWebViewKeepAlive.drop("cleared")
+        runCatching { WebContainerAndroidKeepAlive.clearAll() }
+    }
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        clearAction()
     } else {
-        Handler(Looper.getMainLooper()).post { RaftAndroidWebViewKeepAlive.drop("cleared") }
+        Handler(Looper.getMainLooper()).post { clearAction() }
     }
 }
 
@@ -218,7 +223,10 @@ internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<Str
         val cookieManager = runCatching { android.webkit.CookieManager.getInstance() }.getOrNull()
         clearAndroidWebViewAuthStorage(
             origins = origins,
-            dropKeepAlive = { RaftAndroidWebViewKeepAlive.drop("logout") },
+            dropKeepAlive = {
+                RaftAndroidWebViewKeepAlive.drop("logout")
+                runCatching { WebContainerAndroidKeepAlive.clearAll() }
+            },
             webStorage =
                 storage?.let { instance ->
                     object : RaftAndroidWebStorageClearTarget {
@@ -264,6 +272,7 @@ internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<Str
             // Fallback when Main dispatcher is absent (unit tests without Robolectric Main).
             Handler(mainLooper).post {
                 runCatching { RaftAndroidWebViewKeepAlive.drop("logout") }
+                runCatching { WebContainerAndroidKeepAlive.clearAll() }
                 runCatching { android.webkit.WebStorage.getInstance().deleteAllData() }
             }
         }

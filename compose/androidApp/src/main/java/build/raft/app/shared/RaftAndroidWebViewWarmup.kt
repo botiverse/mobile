@@ -8,6 +8,7 @@ import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
 import build.raft.app.RaftDetachedWebViewClient
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
+import build.raft.webcontainer.AndroidWebContainerStartup
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -96,6 +97,23 @@ internal object RaftAndroidWebViewWarmup {
     @Volatile
     internal var logWarn: (String) -> Unit = { message -> RaftAndroidLocalDiagnostics.recordLog("warn", LOG_TAG, message) }
 
+    /**
+     * Test seam for the opt-in asynchronous WebView provider startup path
+     * ([AndroidWebContainerStartup.startUpAsync]).
+     */
+    @Volatile
+    internal var runAsyncStartup: (Any?, (Boolean, String?) -> Unit) -> Boolean = { context, onCompleted ->
+        val androidContext = context as? Context
+        if (androidContext == null) {
+            false
+        } else {
+            AndroidWebContainerStartup.startUpAsync(
+                context = androidContext,
+                onCompleted = onCompleted,
+            )
+        }
+    }
+
     private val attempted = AtomicBoolean(false)
 
     @Volatile
@@ -140,6 +158,42 @@ internal object RaftAndroidWebViewWarmup {
     }
 
     fun hasScheduled(): Boolean = attempted.get()
+
+    /**
+     * Opt-in off-main-thread Chromium provider startup backed by `WebViewCompat.startUpWebView`
+     * ([AndroidWebContainerStartup.startUpAsync]). Disabled by default until enabled by feature
+     * flag so existing warm-up behaviour stays unchanged during rollout. Never throws.
+     */
+    fun scheduleAsyncProviderStartup(
+        context: Context,
+        enabled: Boolean,
+    ): Boolean = scheduleAsyncProviderStartupForTest(context, enabled)
+
+    internal fun scheduleAsyncProviderStartupForTest(
+        contextSentinel: Any?,
+        enabled: Boolean,
+    ): Boolean {
+        if (!enabled) return false
+        return runCatching {
+            val resolved = resolveContext(contextSentinel)
+            val startedNs = System.nanoTime()
+            runAsyncStartup(resolved) { success, errorReason ->
+                val elapsedMs = (System.nanoTime() - startedNs) / 1_000_000L
+                if (success) {
+                    runCatching { log("webview_async_startup status=ready elapsedMs=$elapsedMs") }
+                } else {
+                    runCatching { logWarn("webview_async_startup status=failed reason=${errorReason ?: "unknown"}") }
+                }
+            }
+        }.getOrElse { error ->
+            runCatching {
+                logWarn(
+                    "webview_async_startup status=exception errorType=${error::class.simpleName ?: "unknown"}",
+                )
+            }
+            false
+        }
+    }
 
     /**
      * Test-only entry that mirrors [schedule] but takes an opaque context sentinel, so JVM unit
@@ -192,6 +246,17 @@ internal object RaftAndroidWebViewWarmup {
         resolveContext = { context -> (context as Context).applicationContext ?: context }
         log = { message -> Log.i(LOG_TAG, message) }
         logWarn = { message -> RaftAndroidLocalDiagnostics.recordLog("warn", LOG_TAG, message) }
+        runAsyncStartup = { context, onCompleted ->
+            val androidContext = context as? Context
+            if (androidContext == null) {
+                false
+            } else {
+                AndroidWebContainerStartup.startUpAsync(
+                    context = androidContext,
+                    onCompleted = onCompleted,
+                )
+            }
+        }
     }
 
     /** Runs [task] once, the next time the main looper has nothing due. Any thread. */
