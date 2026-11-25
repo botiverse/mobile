@@ -15,7 +15,6 @@ import build.raft.app.data.InboxFetchReason
 import build.raft.app.data.withInboxFetchReason
 import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.PlatformFile
-import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
@@ -23,12 +22,8 @@ import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
 import build.raft.app.data.ActionCardExecuteOutcome
 import build.raft.app.data.ExecuteActionFormBody
 import build.raft.app.data.ConversationRepository
-import build.raft.app.data.RealConversationRepository
-import build.raft.app.data.ProgressiveConversationAttachmentUploader
 import build.raft.app.data.DirectAttachmentUploadOperation
 import build.raft.app.data.RaftExpectedAuthBinding
-import build.raft.app.data.matchesExpectedAuthority
-import build.raft.app.data.normalizedEnvironmentId
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.ChannelProfileUpdateResult
 import build.raft.app.data.ReadReceiptResult
@@ -103,8 +98,6 @@ import build.raft.app.network.sync.ThreadRepliesAcceptedProjection
 import build.raft.app.network.sync.ThreadRepliesPageIdentity
 import build.raft.app.network.sync.RaftCachedThreadReplyWindow
 import kotlinx.atomicfu.atomic
-import kotlinx.atomicfu.locks.SynchronizedObject
-import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
@@ -481,6 +474,34 @@ internal class SharedThreadDataSource(
             readReplyResolutionScope = ::readReplyResolutionScope,
             loadTaskConversationRef = ::loadTaskConversationRef,
         )
+    /** Reply-parent lookup in the message store and its context request, and what is remembered of it; see [ThreadReplyParentMessages]. */
+    private val replyParentMessages: ThreadReplyParentMessages =
+        ThreadReplyParentMessages(
+            provenanceOwner = provenanceOwner,
+            messageStore = messageStore,
+            messageResolver = messageResolver,
+            replyThreadPrewarm = replyThreadPrewarm,
+            diagnosticsLogger = diagnosticsLogger,
+            captureReplyCacheProducerContext = ::captureReplyCacheProducerContext,
+            readReplyResolutionScope = ::readReplyResolutionScope,
+            fetchThreadSnapshot = { fallbackCode, expectedProvenance, allowCapturedScopeResultAfterProvenanceChange, call ->
+                fetchThreadSnapshotFromRepository(
+                    fallbackCode = fallbackCode,
+                    expectedProvenance = expectedProvenance,
+                    allowCapturedScopeResultAfterProvenanceChange = allowCapturedScopeResultAfterProvenanceChange,
+                    call = call,
+                )
+            },
+        )
+    /** Attachment upload, its authority and limits, attachment URLs and the files list; see [ThreadAttachmentTransfers]. */
+    private val attachmentTransfers: ThreadAttachmentTransfers =
+        ThreadAttachmentTransfers(
+            api = api,
+            sessionStore = sessionStore,
+            conversationRepository = conversationRepository,
+            apiEnvironmentIdProvider = apiEnvironmentIdProvider,
+            attachmentUploadCapabilitiesCache = attachmentUploadCapabilitiesCache,
+        )
     /** What a Markdown channel, task, thread or message reference opens; see [ThreadMarkdownRefLaunch]. */
     private val markdownRefLaunch: ThreadMarkdownRefLaunch =
         ThreadMarkdownRefLaunch(
@@ -510,9 +531,7 @@ internal class SharedThreadDataSource(
     private val replyCacheCaptureSequence = atomic(0L)
     internal val replyCacheProvenanceState: StateFlow<ReplyCacheProvenance?> =
         provenanceOwner.replyCacheProvenanceState
-    // The lock and the provenance it guards are owned by [provenanceOwner]; the data source's
-    // other lock-held cache paths take the same lock object and read the provenance through it.
-    private val replyCacheProvenanceLock: SynchronizedObject get() = provenanceOwner.replyCacheProvenanceLock
+    // The lock and the provenance it guards are owned by [provenanceOwner]; read through it.
     private val replyCacheProvenance: StateFlow<ReplyCacheProvenance?> get() = provenanceOwner.replyCacheProvenanceState
     internal var onReplyCacheIdentitySourceCapturedForTest: (suspend () -> Unit)? = null
     internal var onMarkdownReplyCacheScopeCapturedForTest: (suspend () -> Unit)? = null
@@ -1005,81 +1024,18 @@ internal class SharedThreadDataSource(
         expectedProvenance: ReplyCacheProvenance,
     ): Boolean = provenanceOwner.invalidateCachedPayload(payload, expectedProvenance)
 
-    suspend fun withCachedReplyParentCandidate(basePayload: RaftThreadScreenPayload): RaftThreadScreenPayload {
-        val context = captureReplyCacheProducerContext() ?: return basePayload
-        return withCachedReplyParentCandidate(basePayload, context)
-    }
+    suspend fun withCachedReplyParentCandidate(basePayload: RaftThreadScreenPayload): RaftThreadScreenPayload =
+        replyParentMessages.withCachedReplyParentCandidate(basePayload)
 
     internal fun withCachedReplyParentCandidate(
         basePayload: RaftThreadScreenPayload,
         context: ReplyCacheProducerContext
-    ): RaftThreadScreenPayload {
-        if (basePayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) return basePayload
-        if (basePayload.originMessage != null || basePayload.originPreview?.isNotBlank() == true) return basePayload
-        val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() } ?: return basePayload
-        val parentMessageId =
-            basePayload.parentMessageId?.takeIf { it.isNotBlank() }
-                ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
-                ?: return basePayload
-        if (!isCurrentReplyCacheProvenance(context.provenance)) return basePayload
-        val session = context.session
-        val messageStoreScopeId = context.provenance.messageStoreScopeId ?: return basePayload
-        val parent =
-            getCachedReplyParentMessage(
-                messageStoreScopeId = messageStoreScopeId,
-                parentChannelId = parentChannelId,
-                parentMessageId = parentMessageId
-            ) ?: return basePayload
-        return basePayload.copy(
-            originMessage = parent.toRaftThreadMessageItem(session.user.id),
-            originParentMessageId = parentMessageId,
-            originStatus = "loaded",
-            originErrorCode = null
-        )
-    }
+    ): RaftThreadScreenPayload = replyParentMessages.withCachedReplyParentCandidate(basePayload, context)
 
     suspend fun resolveReplyOrigin(
         basePayload: RaftThreadScreenPayload,
         expectedProvenance: ReplyCacheProvenance? = null
-    ): SharedThreadOriginResolution {
-        if (basePayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) {
-            return SharedThreadOriginResolution.Missing
-        }
-        val parentChannelId =
-            basePayload.parentChannelId?.takeIf { it.isNotBlank() }
-                ?: return SharedThreadOriginResolution.Error("thread_parent_channel_missing")
-        val parentMessageId =
-            basePayload.parentMessageId?.takeIf { it.isNotBlank() }
-                ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
-                ?: return SharedThreadOriginResolution.Error("thread_parent_message_missing")
-        val replyResolutionScope =
-            readReplyResolutionScope()
-                ?: return SharedThreadOriginResolution.Error("thread_parent_context_session_missing")
-        if (expectedProvenance != null && replyResolutionScope.provenance != expectedProvenance) {
-            return SharedThreadOriginResolution.Error("thread_reply_cache_provenance_stale")
-        }
-        val session = replyResolutionScope.session
-        val selected = when (
-            val resolution = resolveReplyParentMessageFromStore(
-                parentChannelId = parentChannelId,
-                parentMessageId = parentMessageId,
-                messageStoreScopeId = replyResolutionScope.messageStoreScopeId,
-                expectedProvenance = replyResolutionScope.provenance
-            )
-        ) {
-            is SharedThreadMessageResolution.Loaded ->
-                SharedThreadOriginResolution.Loaded(
-                    resolution.message.toRaftThreadMessageItem(session.user.id)
-                )
-            SharedThreadMessageResolution.Missing -> SharedThreadOriginResolution.Missing
-            is SharedThreadMessageResolution.Error -> SharedThreadOriginResolution.Error(resolution.code, resolution.hiddenTarget)
-        }
-        return if (isCurrentReplyCacheProvenance(replyResolutionScope.provenance)) {
-            selected
-        } else {
-            SharedThreadOriginResolution.Error("thread_reply_cache_provenance_stale")
-        }
-    }
+    ): SharedThreadOriginResolution = replyParentMessages.resolveReplyOrigin(basePayload, expectedProvenance)
 
     fun rememberReplyParentCandidate(
         provenance: ReplyCacheProvenance,
@@ -1087,86 +1043,12 @@ internal class SharedThreadDataSource(
         parentChannelId: String?,
         parentMessage: RaftThreadMessageItem,
         threadChannelId: String?,
-        /**
-         * The reply count the opener shows for [parentMessage]. A timeline row carries no reply facts
-         * ([withoutThreadReplyMetadata]), so without it the remembered parent says "0 replies" and the
-         * thread counts only the replies it has loaded. A candidate: the thread's own load replaces it.
-         */
         replyCount: Int = 0
-    ): Boolean {
-        val channelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return false
-        if (parentMessage.id.isBlank()) return false
-        val exactServerId = serverId?.takeIf { it.isNotBlank() } ?: provenance.serverId.takeIf { it.isNotBlank() }
-        if (exactServerId == null || exactServerId != provenance.serverId) return false
-        val projectedParent =
-            if (parentMessage.needsReplyOriginContextHydration()) {
-                null
-            } else {
-                parentMessage.toMessage(
-                    threadId = ThreadId(channelId.value),
-                    channelId = channelId,
-                    diagnostics = diagnosticsLogger,
-                ) ?: return false
-            }
-        val accepted =
-            synchronized(replyCacheProvenanceLock) {
-                if (replyCacheProvenance.value != provenance) return@synchronized false
-                threadChannelId?.takeIf { it.isNotBlank() }?.let { resolvedThreadChannelId ->
-                    cacheReplyThreadResolution(
-                        namespaceId = provenance.namespaceId,
-                        parentChannelId = channelId.value,
-                        parentMessageId = parentMessage.id,
-                        threadChannelId = resolvedThreadChannelId
-                    )
-                }
-                projectedParent?.let { parent ->
-                    val scopeId =
-                        provenance.messageStoreScopeId
-                            ?: provenance.serverId.takeIf { messageStore == null && it.isNotBlank() }
-                            ?: return@synchronized false
-                    val knownReplyCount =
-                        maxOf(
-                            parent.replyCount,
-                            replyCount,
-                            messageResolver.getScoped(scopeId, channelId, parent.id)?.replyCount ?: 0
-                        )
-                    messageResolver.upsertScoped(
-                        scopeId = scopeId,
-                        channelId = channelId,
-                        message = if (knownReplyCount == parent.replyCount) parent else parent.copy(replyCount = knownReplyCount)
-                    )
-                }
-                true
-            }
-        if (!accepted) return false
-        diagnosticsLogger(
-            "thread_parent_context_store_seed parentChannelId=${channelId.value} " +
-                "parentMessageId=${parentMessage.id} threadChannelId=${threadChannelId.orEmpty()}"
-        )
-        return true
-    }
+    ): Boolean =
+        replyParentMessages.rememberReplyParentCandidate(provenance, serverId, parentChannelId, parentMessage, threadChannelId, replyCount)
 
-    /**
-     * A [ThreadUpdated] reached the open page: the remembered parent (what the next open of its
-     * thread resolves its origin from) follows the server's count too. Events can arrive out of
-     * order, so the count only grows here, as the reply-count facts do. A parent that is not
-     * remembered stays unknown; its thread reads it when opened.
-     */
-    fun rememberReplyParentReplyCount(parentChannelId: String?, parentMessageId: String, replyCount: Int) {
-        val channelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return
-        val messageId = parentMessageId.takeIf { it.isNotBlank() }?.let(::MessageId) ?: return
-        synchronized(replyCacheProvenanceLock) {
-            val provenance = replyCacheProvenance.value ?: return@synchronized
-            val scopeId =
-                provenance.messageStoreScopeId
-                    ?: provenance.serverId.takeIf { messageStore == null && it.isNotBlank() }
-                    ?: return@synchronized
-            val remembered = messageResolver.getScoped(scopeId, channelId, messageId) ?: return@synchronized
-            if (remembered.replyCount < replyCount) {
-                messageResolver.upsertScoped(scopeId, channelId, remembered.copy(replyCount = replyCount))
-            }
-        }
-    }
+    fun rememberReplyParentReplyCount(parentChannelId: String?, parentMessageId: String, replyCount: Int) =
+        replyParentMessages.rememberReplyParentReplyCount(parentChannelId, parentMessageId, replyCount)
 
     suspend fun withConversationAccessFallback(basePayload: RaftThreadScreenPayload): RaftThreadScreenPayload =
         conversationAccessResolution.withConversationAccessFallback(basePayload)
@@ -1220,13 +1102,6 @@ internal class SharedThreadDataSource(
         provenance: ReplyCacheProvenance,
         payload: RaftThreadScreenPayload
     ): Boolean = replyThreadPrewarm.cacheReplyThreadResolution(provenance, payload)
-
-    private fun cacheReplyThreadResolution(
-        namespaceId: String?,
-        parentChannelId: String,
-        parentMessageId: String,
-        threadChannelId: String
-    ) = replyThreadPrewarm.cacheReplyThreadResolution(namespaceId, parentChannelId, parentMessageId, threadChannelId)
 
     suspend fun joinChannel(channelId: ChannelId) = channelMemberCommands.joinChannel(channelId)
 
@@ -2122,176 +1997,51 @@ internal class SharedThreadDataSource(
         channelId: String,
         files: List<PlatformFile>,
         onProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null
-    ): DataResult<AttachmentUploadResult> {
-        val repository =
-            conversationRepository
-                ?: return DataResult.Error(ScreenError(code = "attachment_upload_unavailable", retryable = false))
-        if (channelId.isBlank()) {
-            return DataResult.Error(ScreenError(code = "missing_channel_id", retryable = false))
-        }
-        if (files.isEmpty()) {
-            return DataResult.Error(ScreenError(code = "attachment_read_failed", retryable = false))
-        }
-        val request =
-            AttachmentUploadRequest(
-                channelId = ChannelId(channelId),
-                files = files
-            )
-        val progressive = repository as? ProgressiveConversationAttachmentUploader
-        return if (onProgress != null && progressive != null) {
-            progressive.uploadAttachmentsWithProgress(request, onProgress)
-        } else {
-            repository.uploadAttachments(request)
-        }
-    }
+    ): DataResult<AttachmentUploadResult> = attachmentTransfers.uploadAttachments(channelId, files, onProgress)
 
-    /**
-     * Capture one complete authority witness and bind it to one direct-session coordinator.  The
-     * returned operation must be reused for capability admission, every upload mutation and all
-     * later compensation; this data source intentionally exposes no reconstruct-on-cleanup seam.
-     */
     suspend fun captureDirectAttachmentUploadOperation(
         diagnosticsLogger: (String) -> Unit = {},
-    ): DirectAttachmentUploadOperation? {
-        val repository =
-            conversationRepository
-                ?: return null
-        val authority = captureExternalShareSendAuthority() ?: return null
-        return (repository as? RealConversationRepository)
-            ?.directAttachmentUploadOperation(authority, diagnosticsLogger)
-    }
+    ): DirectAttachmentUploadOperation? = attachmentTransfers.captureDirectAttachmentUploadOperation(diagnosticsLogger)
 
-    /** Fresh cached capabilities for [operation]'s authority; never suspends or hits the network. */
     fun peekAttachmentUploadCapabilities(
         operation: DirectAttachmentUploadOperation,
-    ): AttachmentUploadCapabilities? = attachmentUploadCapabilitiesCache.peek(operation.authority)
+    ): AttachmentUploadCapabilities? = attachmentTransfers.peekAttachmentUploadCapabilities(operation)
 
-    /** Cached (TTL) or single-flight fetched capabilities for the operation's authority. */
     suspend fun attachmentUploadCapabilities(
         operation: DirectAttachmentUploadOperation,
-    ): DataResult<AttachmentUploadCapabilities> =
-        attachmentUploadCapabilitiesCache.getOrFetch(operation.authority) { operation.capabilities() }
+    ): DataResult<AttachmentUploadCapabilities> = attachmentTransfers.attachmentUploadCapabilities(operation)
 
-    /** Warm the capability cache when the composer opens so the first pick needs no round trip. */
-    suspend fun prefetchAttachmentUploadCapabilities() {
-        val operation = captureDirectAttachmentUploadOperation() ?: return
-        attachmentUploadCapabilities(operation)
-    }
+    suspend fun prefetchAttachmentUploadCapabilities() = attachmentTransfers.prefetchAttachmentUploadCapabilities()
 
     suspend fun attachmentUploadMaxBytes(
         expectedAuthority: RaftExpectedAuthBinding? = null,
-    ): DataResult<Long> {
-        val repository =
-            conversationRepository
-                ?: return DataResult.Error(
-                    ScreenError(code = "attachment_upload_capabilities_unavailable", retryable = true)
-                )
-        val boundRepository =
-            expectedAuthority?.let { authority ->
-                (repository as? RealConversationRepository)?.boundTo(authority)
-                    ?: return DataResult.Error(
-                        ScreenError(
-                            code = "attachment_upload_authority_binding_unsupported",
-                            retryable = false,
-                        )
-                    )
-            } ?: repository
-        return boundRepository.getAttachmentUploadCapabilities().map { capabilities -> capabilities.maxBytes }
-    }
+    ): DataResult<Long> = attachmentTransfers.attachmentUploadMaxBytes(expectedAuthority)
 
-    suspend fun captureExternalShareSendAuthority(): RaftExpectedAuthBinding? {
-        val session = sessionStore.readSession() ?: return null
-        val environmentId = apiEnvironmentIdProvider().normalizedEnvironmentId().takeIf { it.isNotBlank() } ?: return null
-        val accountId = session.user.id.trim().takeIf { it.isNotBlank() } ?: return null
-        val accessToken = session.accessToken.takeIf { it.isNotBlank() } ?: return null
-        val refreshToken = session.refreshToken.takeIf { it.isNotBlank() } ?: return null
-        val serverId = session.currentServerId?.trim()?.takeIf(String::isNotBlank) ?: return null
-        if (session.servers.none { server -> server.id.trim() == serverId }) return null
-        return RaftExpectedAuthBinding(
-            accountId = accountId,
-            accessToken = accessToken,
-            refreshToken = refreshToken,
-            serverId = serverId,
-            environmentId = environmentId,
-        )
-    }
+    suspend fun captureExternalShareSendAuthority(): RaftExpectedAuthBinding? =
+        attachmentTransfers.captureExternalShareSendAuthority()
 
-    suspend fun matchesExternalShareSendAuthority(expected: RaftExpectedAuthBinding): Boolean {
-        val session = sessionStore.readSession() ?: return false
-        val environmentId = apiEnvironmentIdProvider().normalizedEnvironmentId()
-        val expectedEnvironment = expected.environmentId.normalizedEnvironmentId()
-        return expectedEnvironment.isNotBlank() &&
-            environmentId == expectedEnvironment &&
-            session.matchesExpectedAuthority(
-                expected = expected,
-                effectiveServerId = expected.serverId,
-                effectiveEnvironmentId = environmentId,
-            ) &&
-            session.servers.any { server -> server.id.trim() == expected.serverId.trim() }
-    }
+    suspend fun matchesExternalShareSendAuthority(expected: RaftExpectedAuthBinding): Boolean =
+        attachmentTransfers.matchesExternalShareSendAuthority(expected)
 
     suspend fun attachmentUrl(
         priority: DataRequestPriority,
         attachmentId: String,
         disposition: String? = null
-    ): ThreadApiResult<ThreadAttachmentOpenTarget> =
-        api.attachmentUrl(priority, attachmentId, disposition)
+    ): ThreadApiResult<ThreadAttachmentOpenTarget> = attachmentTransfers.attachmentUrl(priority, attachmentId, disposition)
 
     suspend fun attachmentUrls(
         priority: DataRequestPriority,
         attachmentIds: List<String>,
-    ): ThreadApiResult<Map<String, ThreadAttachmentOpenTarget>> =
-        api.attachmentUrls(priority, attachmentIds)
+    ): ThreadApiResult<Map<String, ThreadAttachmentOpenTarget>> = attachmentTransfers.attachmentUrls(priority, attachmentIds)
 
     suspend fun attachmentHtmlPreviewUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget> =
-        api.attachmentHtmlPreviewUrl(attachmentId)
+        attachmentTransfers.attachmentHtmlPreviewUrl(attachmentId)
 
     suspend fun fetchFilesPayload(
         basePayload: RaftThreadScreenPayload,
         cursor: String? = null,
         currentPayload: RaftThreadFilesPayload? = null
-    ): DataResult<RaftThreadFilesPayload> {
-        val repository =
-            conversationRepository
-                ?: return DataResult.Error(ScreenError(code = "thread_files_unavailable", retryable = false, traceId = null))
-        val threadId =
-            basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
-                ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false, traceId = null))
-        return when (val result = repository.getChannelFiles(ChannelId(threadId), cursor = cursor)) {
-            is DataResult.Content ->
-                DataResult.Content(
-                    result.data.toRaftThreadFilesPayload(
-                        basePayload = basePayload,
-                        currentPayload = currentPayload,
-                        append = cursor != null
-                    )
-                )
-            is DataResult.Empty ->
-                DataResult.Content(
-                    currentPayload
-                        ?.takeIf { cursor != null && it.items.isNotEmpty() }
-                        ?.copy(
-                            status = "content",
-                            hasMore = false,
-                            loadingMore = false,
-                            nextCursor = null,
-                            errorCode = null,
-                            errorServerMessage = null,
-                            errorTraceId = null
-                        )
-                        ?: RaftThreadFilesPayload(
-                            instanceId = basePayload.instanceId,
-                            status = "empty",
-                            items = emptyList(),
-                            hasMore = false,
-                            loadingMore = false,
-                            nextCursor = null
-                        )
-                )
-            is DataResult.Error -> result
-            is DataResult.NoPermission -> result
-        }
-    }
+    ): DataResult<RaftThreadFilesPayload> = attachmentTransfers.fetchFilesPayload(basePayload, cursor, currentPayload)
 
     suspend fun saveMessage(messageId: String): DataResult<Unit> = itemActions.saveMessage(messageId)
 
@@ -2924,89 +2674,21 @@ internal class SharedThreadDataSource(
     private fun ThreadSnapshot.withCachedReplyParentMessage(
         basePayload: RaftThreadScreenPayload,
         messageStoreScopeId: String?
-    ): ThreadSnapshot {
-        val isReplyThread =
-            basePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread ||
-                conversation.kind == ConversationKind.Thread
-        if (!isReplyThread) return this
-        val parentMessageId =
-            basePayload.parentMessageId?.takeIf { it.isNotBlank() }
-                ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
-                ?: conversation.thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }
-                ?: return this
-        val parentChannelId =
-            basePayload.parentChannelId?.takeIf { it.isNotBlank() }
-                ?: conversation.thread?.parentChannelId?.value
-                ?: parentMessage?.channelId?.value
-                ?: return this
-        val parent =
-            getCachedReplyParentMessage(
-                messageStoreScopeId = messageStoreScopeId ?: return this,
-                parentChannelId = parentChannelId,
-                parentMessageId = parentMessageId
-            ) ?: return this
-        return copy(parentMessage = parent)
-    }
+    ): ThreadSnapshot =
+        with(replyParentMessages) { this@withCachedReplyParentMessage.withCachedReplyParentMessage(basePayload, messageStoreScopeId) }
 
     private suspend fun ThreadSnapshot.withReplyParentMessageFromContext(
         basePayload: RaftThreadScreenPayload,
         allowNetworkHydration: Boolean = true,
         replyResolutionScope: ReplyResolutionScope
-    ): ThreadSnapshot {
-        val isReplyThread =
-            basePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread ||
-                conversation.kind == ConversationKind.Thread
-        if (!isReplyThread) return this
-        val parentMessageId =
-            basePayload.parentMessageId?.takeIf { it.isNotBlank() }
-                ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
-                ?: conversation.thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }
-                ?: return this
-        val existingParentMessage = parentMessage?.takeIf { it.id.value == parentMessageId }
-        if (existingParentMessage != null && !existingParentMessage.needsReplyOriginContextHydration()) {
-            return this
-        }
-        if (
-            basePayload.originStatus == "loaded" &&
-            basePayload.originMessage?.id == parentMessageId &&
-            !basePayload.originMessage.needsReplyOriginContextHydration()
-        ) {
-            val originParentChannelId =
-                basePayload.parentChannelId?.takeIf { it.isNotBlank() }
-                    ?: conversation.thread?.parentChannelId?.value
-                    ?: parentMessage?.channelId?.value
-                    ?: return this
-            return copy(
-                parentMessage =
-                    basePayload.originMessage.toMessage(
-                        threadId = ThreadId(originParentChannelId),
-                        channelId = ChannelId(originParentChannelId),
-                        diagnostics = diagnosticsLogger,
-                    )
+    ): ThreadSnapshot =
+        with(replyParentMessages) {
+            this@withReplyParentMessageFromContext.withReplyParentMessageFromContext(
+                basePayload,
+                allowNetworkHydration,
+                replyResolutionScope,
             )
         }
-        val messageParentCandidate = messages.firstOrNull { message -> message.id.value == parentMessageId }
-        if (messageParentCandidate != null && !messageParentCandidate.needsReplyOriginContextHydration()) {
-            return this
-        }
-        val parentChannelId =
-            basePayload.parentChannelId?.takeIf { it.isNotBlank() }
-                ?: conversation.thread?.parentChannelId?.value
-                ?: parentMessage?.channelId?.value
-        if (!allowNetworkHydration) {
-            return this
-        }
-        val resolvedParentChannelId = parentChannelId ?: return this
-        val parent =
-            getReplyParentMessageFromStore(
-                parentChannelId = resolvedParentChannelId,
-                parentMessageId = parentMessageId,
-                messageStoreScopeId = replyResolutionScope.messageStoreScopeId,
-                expectedProvenance = replyResolutionScope.provenance
-            )
-                ?: return this
-        return copy(parentMessage = parent)
-    }
 
     private suspend fun fetchInitialReplyThreadPayloadFromRepository(
         session: StoredAuthSession,
@@ -3235,124 +2917,29 @@ internal class SharedThreadDataSource(
         }
     }
 
-    private suspend fun getReplyParentMessageFromStore(
-        parentChannelId: String,
-        parentMessageId: String,
-        requestPriority: DataRequestPriority = DataRequestPriority.Foreground,
-        messageStoreScopeId: String?,
-        expectedProvenance: ReplyCacheProvenance
-    ): Message? =
-        when (
-            val resolution = resolveReplyParentMessageFromStore(
-                parentChannelId = parentChannelId,
-                parentMessageId = parentMessageId,
-                requestPriority = requestPriority,
-                messageStoreScopeId = messageStoreScopeId,
-                expectedProvenance = expectedProvenance
-            )
-        ) {
-            is SharedThreadMessageResolution.Loaded -> resolution.message
-            SharedThreadMessageResolution.Missing,
-            is SharedThreadMessageResolution.Error -> null
-        }
-
     private suspend fun resolveReplyParentMessageFromStore(
         parentChannelId: String,
         parentMessageId: String,
         requestPriority: DataRequestPriority = DataRequestPriority.Foreground,
         messageStoreScopeId: String?,
         expectedProvenance: ReplyCacheProvenance
-    ): SharedThreadMessageResolution {
-        val parentChannel = ChannelId(parentChannelId)
-        val parentMessage = MessageId(parentMessageId)
-        val cachedParent = messageStoreScopeId?.let { scopeId ->
-            messageResolver.getScoped(scopeId, parentChannel, parentMessage)
-        }
-            ?.takeIf { message -> message.matchesReplyOriginParent(parentChannel, parentMessage) }
-        suspend fun fetchParent(): SharedThreadMessageResolution {
-            val startedAt = TimeSource.Monotonic.markNow()
-            val contextResult =
-                fetchThreadSnapshotFromRepository(
-                    fallbackCode = "thread_parent_context",
-                    expectedProvenance = expectedProvenance,
-                    allowCapturedScopeResultAfterProvenanceChange = true
-                ) { repository ->
-                    repository.getMessageContext(parentMessage, parentChannel, requestPriority)
-                }
-            diagnosticsLogger(
-                "thread_parent_context_parallel_result parentChannelId=$parentChannelId " +
-                    "parentMessageId=$parentMessageId result=${contextResult.threadDiagnosticsResult()} " +
-                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-            )
-            return when (contextResult) {
-                is DataResult.Content -> {
-                    val message =
-                        contextResult.data.parentMessage?.takeIf { message -> message.id == parentMessage }
-                            ?: contextResult.data.messages.firstOrNull { message -> message.id == parentMessage }
-                    message
-                        ?.let { resolved -> SharedThreadMessageResolution.Loaded(resolved) }
-                        ?: SharedThreadMessageResolution.Missing
-                }
-                is DataResult.Empty -> SharedThreadMessageResolution.Missing
-                is DataResult.Error ->
-                    SharedThreadMessageResolution.Error(
-                        contextResult.error.code,
-                        contextResult.error.threadParentHiddenTargetOrNull(parentMessageId)
-                    )
-                is DataResult.NoPermission -> SharedThreadMessageResolution.Error(contextResult.blocker.code)
-            }
-        }
-        val parent =
-            if (messageStoreScopeId == null) {
-                fetchParent()
-            } else {
-                messageResolver.resolveScoped(messageStoreScopeId, parentChannel, parentMessage, ::fetchParent)
-            }
-        if (cachedParent != null && parent is SharedThreadMessageResolution.Loaded && parent.message == cachedParent) {
-            diagnosticsLogger(
-                "thread_parent_context_store_hit parentChannelId=$parentChannelId parentMessageId=$parentMessageId"
-            )
-        }
-        return when (parent) {
-            is SharedThreadMessageResolution.Loaded -> {
-                parent.message
-                    .takeIf { message -> message.matchesReplyOriginParent(parentChannel, parentMessage) }
-                    ?.let { resolved -> SharedThreadMessageResolution.Loaded(resolved) }
-                    ?: SharedThreadMessageResolution.Error("thread_parent_context_identity_mismatch")
-            }
-            SharedThreadMessageResolution.Missing -> parent
-            is SharedThreadMessageResolution.Error -> parent
-        }
-    }
-
-    private fun getCachedReplyParentMessage(
-        messageStoreScopeId: String,
-        parentChannelId: String,
-        parentMessageId: String
-    ): Message? {
-        val parentChannel = ChannelId(parentChannelId)
-        val parentMessage = MessageId(parentMessageId)
-        return messageResolver.getScoped(messageStoreScopeId, parentChannel, parentMessage)
-            ?.takeIf { message -> message.matchesReplyOriginParent(parentChannel, parentMessage) }
-    }
+    ): SharedThreadMessageResolution =
+        replyParentMessages.resolveReplyParentMessageFromStore(
+            parentChannelId,
+            parentMessageId,
+            requestPriority,
+            messageStoreScopeId,
+            expectedProvenance,
+        )
 
     private fun ThreadSnapshot.rememberReplyParentMessage(
         parentChannelId: String,
         parentMessageId: String,
         messageStoreScopeId: String?
-    ): ThreadSnapshot {
-        val parentChannel = ChannelId(parentChannelId)
-        val targetMessageId = MessageId(parentMessageId)
-        val candidate =
-            parentMessage?.takeIf { message -> message.id == targetMessageId }
-                ?: messages.firstOrNull { message -> message.id == targetMessageId }
-                ?: return this
-        if (candidate.matchesReplyOriginParent(parentChannel, targetMessageId)) {
-            val scopeId = messageStoreScopeId ?: return this
-            messageResolver.upsertScoped(scopeId, parentChannel, candidate)
+    ): ThreadSnapshot =
+        with(replyParentMessages) {
+            this@rememberReplyParentMessage.rememberReplyParentMessage(parentChannelId, parentMessageId, messageStoreScopeId)
         }
-        return this
-    }
 
     private suspend fun fetchResolvedReplyThreadSnapshot(
         session: StoredAuthSession,
