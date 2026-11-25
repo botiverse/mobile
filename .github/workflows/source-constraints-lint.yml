@@ -26,6 +26,8 @@ on:
       # check_no_strong_invocation_object_return (1.17.1 crash) scans the Objective-C sources.
       - "compose/iosApp/**/*.m"
       - "compose/iosApp/**/*.mm"
+      - "compose/iosApp/iosApp/Info.plist"
+      - "compose/iosApp/iosApp/*.lproj/InfoPlist.strings"
       - "compose/iosApp/iosApp/iosApp.entitlements"
       - "compose/iosApp/iosApp.xcodeproj/project.pbxproj"
       - "scripts/ci/check_string_edge_spaces.py"

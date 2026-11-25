@@ -456,6 +456,39 @@ class RaftWebContainerAdapterTest {
             )
         assertFalse(scopeWarn)
         assertTrue(scopeLine.contains("result=CLEARED"))
+
+        val (mediaDenyWarn, mediaDenyLine) =
+            formatWebContainerTelemetryLog(
+                WebContainerTelemetryEvent.MediaCapturePermission(
+                    surfaceId = "in_app_browser",
+                    kind = "Microphone",
+                    grantedPrompt = false,
+                    reason = "missing_usage_description",
+                    missingKeys = listOf("NSMicrophoneUsageDescription"),
+                    origin = "https://deck.raft.build",
+                    isMainFrame = true,
+                ),
+            )
+        assertTrue(mediaDenyWarn)
+        assertTrue(mediaDenyLine.contains("decision=deny"))
+        assertTrue(mediaDenyLine.contains("reason=missing_usage_description"))
+        assertTrue(mediaDenyLine.contains("missingKeys=NSMicrophoneUsageDescription"))
+
+        val (mediaPromptWarn, mediaPromptLine) =
+            formatWebContainerTelemetryLog(
+                WebContainerTelemetryEvent.MediaCapturePermission(
+                    surfaceId = "in_app_browser",
+                    kind = "Microphone",
+                    grantedPrompt = true,
+                    reason = null,
+                    missingKeys = emptyList(),
+                    origin = "https://deck.raft.build",
+                    isMainFrame = true,
+                ),
+            )
+        assertFalse(mediaPromptWarn)
+        assertTrue(mediaPromptLine.contains("decision=prompt"))
+        assertTrue(mediaPromptLine.contains("origin=https://deck.raft.build"))
     }
 
     @Test

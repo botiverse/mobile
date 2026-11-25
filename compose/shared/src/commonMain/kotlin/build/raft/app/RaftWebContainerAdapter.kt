@@ -569,6 +569,16 @@ internal fun formatWebContainerTelemetryLog(event: WebContainerTelemetryEvent): 
             false to "web_container_pool action=${event.action} size=${event.poolSizeAfter}"
         is WebContainerTelemetryEvent.IsolationScopeCleared ->
             false to "web_container_scope_cleared scope=${event.scope} evicted=${event.evictedPooledCount} result=${event.result}"
+        is WebContainerTelemetryEvent.MediaCapturePermission ->
+            (!event.grantedPrompt) to
+                buildString {
+                    append("web_container_media_capture surface=${event.surfaceId}")
+                    append(" decision=${if (event.grantedPrompt) "prompt" else "deny"}")
+                    append(" kind=${event.kind}")
+                    if (!event.reason.isNullOrBlank()) append(" reason=${event.reason}")
+                    if (event.missingKeys.isNotEmpty()) append(" missingKeys=${event.missingKeys.joinToString(",")}")
+                    append(" mainFrame=${event.isMainFrame} origin=${event.origin}")
+                }
     }
 
 internal val RaftWebContainerTelemetrySink: WebContainerTelemetrySink =

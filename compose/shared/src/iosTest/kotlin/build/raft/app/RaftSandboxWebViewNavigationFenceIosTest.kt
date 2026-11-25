@@ -2,9 +2,13 @@
 
 package build.raft.app
 
+import build.raft.webcontainer.IOS_CAMERA_USAGE_DESCRIPTION_KEY
+import build.raft.webcontainer.IOS_MICROPHONE_USAGE_DESCRIPTION_KEY
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.*
 import platform.UIKit.UIView
+import platform.WebKit.WKMediaCaptureType
+import platform.WebKit.WKPermissionDecision
 import platform.WebKit.WKUserScript
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
@@ -586,5 +590,75 @@ class RaftSandboxWebViewNavigationFenceIosTest {
             )
         assertFalse(ios16Config.websiteDataStore.persistent)
         assertFalse(raftIsSameObjCObject(ios16Config.websiteDataStore, defaultStore))
+    }
+
+    @Test
+    fun mediaCapturePermissionGuardFailsClosedWithoutUsageDescriptionAndPromptsWhenDeclared() {
+        val (host, webView) = host(allowNavigation = true)
+        val cameraOnly = setOf(IOS_CAMERA_USAGE_DESCRIPTION_KEY)
+        val bothKeys = setOf(IOS_CAMERA_USAGE_DESCRIPTION_KEY, IOS_MICROPHONE_USAGE_DESCRIPTION_KEY)
+
+        assertEquals(
+            WKPermissionDecision.WKPermissionDecisionDeny,
+            host.decideMediaCapturePermission(
+                source = webView,
+                originLabel = "https://deck.raft.build",
+                isMainFrame = true,
+                type = WKMediaCaptureType.WKMediaCaptureTypeMicrophone,
+                hasUsageDescription = { it in cameraOnly },
+            ),
+        )
+        assertEquals(
+            WKPermissionDecision.WKPermissionDecisionDeny,
+            host.decideMediaCapturePermission(
+                source = webView,
+                originLabel = "https://deck.raft.build",
+                isMainFrame = true,
+                type = WKMediaCaptureType.WKMediaCaptureTypeCameraAndMicrophone,
+                hasUsageDescription = { it in cameraOnly },
+            ),
+        )
+        assertEquals(
+            WKPermissionDecision.WKPermissionDecisionPrompt,
+            host.decideMediaCapturePermission(
+                source = webView,
+                originLabel = "https://deck.raft.build",
+                isMainFrame = true,
+                type = WKMediaCaptureType.WKMediaCaptureTypeCamera,
+                hasUsageDescription = { it in cameraOnly },
+            ),
+        )
+        assertEquals(
+            WKPermissionDecision.WKPermissionDecisionPrompt,
+            host.decideMediaCapturePermission(
+                source = webView,
+                originLabel = "https://deck.raft.build",
+                isMainFrame = true,
+                type = WKMediaCaptureType.WKMediaCaptureTypeMicrophone,
+                hasUsageDescription = { it in bothKeys },
+            ),
+        )
+        assertEquals(
+            WKPermissionDecision.WKPermissionDecisionPrompt,
+            host.decideMediaCapturePermission(
+                source = webView,
+                originLabel = "https://deck.raft.build",
+                isMainFrame = true,
+                type = WKMediaCaptureType.WKMediaCaptureTypeCameraAndMicrophone,
+                hasUsageDescription = { it in bothKeys },
+            ),
+        )
+
+        val stranger = WKWebView(frame = CGRectMake(0.0, 0.0, 1.0, 1.0), configuration = WKWebViewConfiguration())
+        assertEquals(
+            WKPermissionDecision.WKPermissionDecisionDeny,
+            host.decideMediaCapturePermission(
+                source = stranger,
+                originLabel = "https://deck.raft.build",
+                isMainFrame = true,
+                type = WKMediaCaptureType.WKMediaCaptureTypeMicrophone,
+                hasUsageDescription = { it in bothKeys },
+            ),
+        )
     }
 }

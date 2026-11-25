@@ -1,3 +1,4 @@
 "NSPhotoLibraryUsageDescription" = "O Raft usa o acesso à biblioteca de fotos quando você escolhe imagens para anexar a mensagens.";
 "NSCameraUsageDescription" = "O Raft usa o acesso à câmera quando você tira uma foto para anexar a uma mensagem.";
+"NSMicrophoneUsageDescription" = "O Raft usa o acesso ao microfone quando você usa recursos de voz ou áudio no Raft e nos Raft Apps.";
 "NSPhotoLibraryAddUsageDescription" = "O Raft salva as imagens anexadas às mensagens na sua biblioteca de Fotos quando você escolhe Salvar em Fotos.";

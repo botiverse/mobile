@@ -1,3 +1,4 @@
 "NSPhotoLibraryUsageDescription" = "Raft 需要访问照片图库，以便选择图片并附加到消息。";
 "NSCameraUsageDescription" = "Raft 需要访问相机，以便拍摄照片并附加到消息。";
+"NSMicrophoneUsageDescription" = "Raft 需要访问麦克风，以便在 Raft 和 Raft 应用中使用语音或音频功能。";
 "NSPhotoLibraryAddUsageDescription" = "当你选择“存储到照片”时，Raft 会将消息中的图片附件存储到你的照片图库。";

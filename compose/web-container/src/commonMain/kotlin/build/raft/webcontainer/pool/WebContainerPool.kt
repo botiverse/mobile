@@ -378,6 +378,16 @@ sealed interface WebContainerTelemetryEvent {
         val evictedPooledCount: Int,
         val result: WebIsolationClearResult,
     ) : WebContainerTelemetryEvent
+
+    data class MediaCapturePermission(
+        val surfaceId: String,
+        val kind: String,
+        val grantedPrompt: Boolean,
+        val reason: String?,
+        val missingKeys: List<String>,
+        val origin: String,
+        val isMainFrame: Boolean,
+    ) : WebContainerTelemetryEvent
 }
 
 /** Host-provided sink receiving [WebContainerTelemetryEvent]s for logging or metrics export. */
