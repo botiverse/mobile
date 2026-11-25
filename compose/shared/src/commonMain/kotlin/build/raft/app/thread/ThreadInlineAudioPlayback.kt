@@ -10,7 +10,9 @@ internal data class ThreadInlineAudioPlayback(
     val state: PlayState = PlayState.NONE,
     val currentTimeMs: Int = 0,
     val totalTimeMs: Int = 0,
-    val seekRequest: RaftFilePreviewVideoSeekRequest? = null
+    val seekRequest: RaftFilePreviewVideoSeekRequest? = null,
+    /** Saved offset to seek back to on the next Play after the card was detached off-screen/off-page. */
+    val pendingResumeTimeMs: Int? = null,
 ) {
     fun toggle(): ThreadInlineAudioPlayback = when (state) {
         // A PLAY attribute equal to the previous PLAY is not dispatched again.
@@ -21,10 +23,38 @@ internal data class ThreadInlineAudioPlayback(
             control = VideoPlayControl.PLAY,
             state = PlayState.NONE,
             currentTimeMs = 0,
-            seekRequest = null
+            seekRequest = null,
+            pendingResumeTimeMs = null,
         )
-        PlayState.PLAYING -> copy(control = VideoPlayControl.PAUSE)
-        else -> copy(control = VideoPlayControl.PLAY)
+        PlayState.PLAYING -> copy(control = VideoPlayControl.PAUSE, pendingResumeTimeMs = null)
+        else -> {
+            val resumeTarget =
+                pendingResumeTimeMs
+                    ?: currentTimeMs.takeIf { control == VideoPlayControl.PLAY && it > 0 }
+            val nextSeek =
+                if (resumeTarget != null && resumeTarget > 0) {
+                    RaftFilePreviewVideoSeekRequest((seekRequest?.id ?: 0) + 1, resumeTarget)
+                } else {
+                    seekRequest
+                }
+            if (control == VideoPlayControl.PLAY) {
+                // Playback was externally paused or evicted by the player budget while `control`
+                // remained PLAY: bump generation so a fresh player receives PLAY cleanly.
+                copy(
+                    generation = generation + 1,
+                    control = VideoPlayControl.PLAY,
+                    state = PlayState.NONE,
+                    seekRequest = nextSeek,
+                    pendingResumeTimeMs = null,
+                )
+            } else {
+                copy(
+                    control = VideoPlayControl.PLAY,
+                    seekRequest = nextSeek,
+                    pendingResumeTimeMs = null,
+                )
+            }
+        }
     }
 
     fun seekTo(timeMs: Int): ThreadInlineAudioPlayback {
@@ -33,10 +63,38 @@ internal data class ThreadInlineAudioPlayback(
         return copy(
             currentTimeMs = target,
             seekRequest = RaftFilePreviewVideoSeekRequest((seekRequest?.id ?: 0) + 1, target),
+            pendingResumeTimeMs = null,
             // Seeking an ended item leaves it paused; the next Play must be a
             // new command. Seeking while playing/paused preserves that intent.
             control = if (state == PlayState.PLAY_END) VideoPlayControl.PAUSE else control,
             state = if (state == PlayState.PLAY_END) PlayState.PAUSED else state
+        )
+    }
+
+    /**
+     * Releases the underlying platform player when the enclosing page becomes inactive or the card
+     * scrolls out of the viewport, preserving the remembered timestamp/duration for seamless resume.
+     */
+    fun onPlayerDetached(): ThreadInlineAudioPlayback {
+        val resumeOffset = currentTimeMs.takeIf { it > 0 && state != PlayState.PLAY_END }
+        val detachedState =
+            when (state) {
+                PlayState.PLAYING, PlayState.BUFFERING -> PlayState.PAUSED
+                PlayState.ERROR -> PlayState.NONE
+                else -> state
+            }
+        val detachedControl =
+            if (control == VideoPlayControl.PLAY || detachedState == PlayState.PAUSED) {
+                VideoPlayControl.PAUSE
+            } else {
+                VideoPlayControl.PREPLAY
+            }
+        return copy(
+            generation = generation + 1,
+            control = detachedControl,
+            state = detachedState,
+            seekRequest = null,
+            pendingResumeTimeMs = resumeOffset,
         )
     }
 
@@ -46,6 +104,6 @@ internal data class ThreadInlineAudioPlayback(
     fun withTime(playerGeneration: Int, current: Int, total: Int): ThreadInlineAudioPlayback =
         if (playerGeneration == generation) copy(
             currentTimeMs = current.coerceAtLeast(0),
-            totalTimeMs = total.coerceAtLeast(0)
+            totalTimeMs = if (total > 0) total else totalTimeMs
         ) else this
 }

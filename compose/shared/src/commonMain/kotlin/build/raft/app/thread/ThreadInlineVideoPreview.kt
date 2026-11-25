@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -30,12 +31,14 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onVisibilityChanged
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
 import build.raft.app.components.RaftDesignSystemTheme
@@ -180,6 +183,16 @@ internal fun ThreadInlineVideoAttachmentCard(
         }
     }
 
+    val pageActive = LocalRaftPageActive.current
+    val shareCaptureActive = LocalThreadShareCaptureActive.current
+    var onScreen by remember { mutableStateOf(false) }
+    val playerActive =
+        threadInlineMediaShouldMountPlayer(
+            pageActive = pageActive,
+            onScreen = onScreen,
+            shareCaptureActive = shareCaptureActive,
+        )
+
     val name = attachment.name.ifBlank { stringResource(Res.string.thread_video_attachment_fallback_name) }
     RaftDesignSystemTheme {
         val outer = RoundedCornerShape(RaftRadius.Container)
@@ -189,6 +202,8 @@ internal fun ThreadInlineVideoAttachmentCard(
                     .widthIn(max = ThreadInlineVideoMaxWidth)
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
+                    // Only hold a native decoder while placed inside the visible window on the active page.
+                    .onVisibilityChanged(minFractionVisible = 0f) { visible -> onScreen = visible }
                     // Full-bleed media: in a clipped pane of the wide row it is cut hard at the pane's edge, never faded.
                     .raftPaneGridNoFade()
                     .border(RaftStroke.Hairline, RaftTheme.colors.lineHairline, outer)
@@ -203,11 +218,15 @@ internal fun ThreadInlineVideoAttachmentCard(
                     raftFilePreviewVideoPlaybackEngine(fileName = attachment.name, mimeType = attachment.mimeType)
                         ?: RaftVideoPlaybackEngine.Platform
                 }
-            CompositionLocalProvider(LocalRaftVideoPlaybackEngine provides engine) {
+            CompositionLocalProvider(
+                LocalRaftVideoPlaybackEngine provides engine,
+                LocalRaftVideoPlayerRole provides RaftMediaPlayerRole.InlineVideo,
+            ) {
                 ThreadInlineVideoSurface(
                     attachment = attachment,
                     previewState = previewState,
                     previewEnabled = host != null,
+                    playerActive = playerActive,
                     onRetry = { host?.requestPreview?.invoke(attachment.id, true) },
                     onDownload = onDownload
                 )
@@ -239,15 +258,29 @@ private fun BoxScope.ThreadInlineVideoSurface(
     attachment: RaftThreadAttachmentItem,
     previewState: ThreadInlineVideoPreviewUiState?,
     previewEnabled: Boolean,
+    playerActive: Boolean,
     onRetry: () -> Unit,
     onDownload: () -> Unit
 ) {
     val source = previewState?.url.orEmpty()
     val renderMode = previewState.renderMode()
+    val mountPlayer = renderMode == ThreadInlineVideoRenderMode.Ready && playerActive
     var playControl by remember(source) { mutableStateOf(VideoPlayControl.PREPLAY) }
     var playState by remember(source) { mutableStateOf(PlayState.NONE) }
     var firstFrameVisible by remember(source) { mutableStateOf(false) }
     val nativeController = raftPlatformUsesNativeVideoController()
+    // Releasing the native decoder when the page becomes inactive or the row scrolls off screen
+    // resets local playback state deterministically on unmount (even across rapid same-frame
+    // toggles) without firing on Frame 1 before a player has mounted.
+    DisposableEffect(source, mountPlayer) {
+        onDispose {
+            if (mountPlayer) {
+                playControl = VideoPlayControl.PREPLAY
+                playState = PlayState.NONE
+                firstFrameVisible = false
+            }
+        }
+    }
     // Like the web client: a media error right after a link was issued refreshes the link once
     // before showing "playback failed".
     var playbackAutoRefreshed by remember(attachment.id) { mutableStateOf(false) }
@@ -258,7 +291,7 @@ private fun BoxScope.ThreadInlineVideoSurface(
         }
     }
 
-    if (renderMode == ThreadInlineVideoRenderMode.Ready) {
+    if (mountPlayer) {
         LocalThreadInlineVideoPlayer.current(
             source,
             playControl,
@@ -305,7 +338,7 @@ private fun BoxScope.ThreadInlineVideoSurface(
                 onRetry = onRetry,
                 onDownload = onDownload
             )
-        !nativeController ->
+        mountPlayer && !nativeController ->
             RaftEmbeddedControls {
                 val playing = playState == PlayState.PLAYING
                 RaftIconButton(
@@ -315,7 +348,7 @@ private fun BoxScope.ThreadInlineVideoSurface(
                 ) { RaftSlotIcon(if (playing) RaftLucideIconName.Pause else RaftLucideIconName.Play, size = 16.dp) }
             }
         // The player is preparing its first frame.
-        !firstFrameVisible -> ThreadInlineVideoSpinner()
+        mountPlayer && !firstFrameVisible -> ThreadInlineVideoSpinner()
     }
 }
 

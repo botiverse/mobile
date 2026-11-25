@@ -10039,6 +10039,7 @@ private fun RaftFilePreviewVideoPanel(
         ) {
             if (canPlay) {
                 CompositionLocalProvider(
+                    LocalRaftVideoPlayerRole provides RaftMediaPlayerRole.FilePreview,
                     LocalRaftVideoPlayerAudioOnly provides audioOnly,
                     LocalRaftVideoPlaybackEngine provides engine
                 ) {

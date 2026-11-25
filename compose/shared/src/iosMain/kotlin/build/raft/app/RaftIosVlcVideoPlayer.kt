@@ -54,6 +54,9 @@ interface RaftIosVlcVideoEvents {
     fun onFailed()
 
     fun onTime(currentMs: Long, durationMs: Long)
+
+    /** Full-screen presentation entered or exited so the inline host can defer disposal across rotation. */
+    fun onFullscreenChanged(fullscreen: Boolean)
 }
 
 /** Implemented by the iOS app: makes a [RaftIosVlcVideoPlayer] for a signed attachment link. */

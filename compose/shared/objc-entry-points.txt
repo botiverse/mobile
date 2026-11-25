@@ -31,6 +31,7 @@ callable build.raft.app.RaftIosUnhandledExceptionSink.Companion.*
 function build.raft.app.RaftIosVlcVideoEvents.onBuffering
 function build.raft.app.RaftIosVlcVideoEvents.onEnded
 function build.raft.app.RaftIosVlcVideoEvents.onFailed
+function build.raft.app.RaftIosVlcVideoEvents.onFullscreenChanged
 function build.raft.app.RaftIosVlcVideoEvents.onPaused
 function build.raft.app.RaftIosVlcVideoEvents.onPlaying
 function build.raft.app.RaftIosVlcVideoEvents.onReady

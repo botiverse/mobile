@@ -48,4 +48,48 @@ class ThreadInlineAudioPlaybackTest {
         assertEquals(VideoPlayControl.PLAY, sought.toggle().control)
         assertEquals(2000, sought.toggle().seekRequest?.timeMs)
     }
+
+    @Test
+    fun detachingOffScreenPausesPreservesTimeAndResumesFromSavedPosition() {
+        val playing =
+            ThreadInlineAudioPlayback(
+                control = VideoPlayControl.PLAY,
+                state = PlayState.PLAYING,
+                currentTimeMs = 18_500,
+                totalTimeMs = 60_000,
+            )
+        val detached = playing.onPlayerDetached()
+        assertEquals(1, detached.generation)
+        assertEquals(VideoPlayControl.PAUSE, detached.control)
+        assertEquals(PlayState.PAUSED, detached.state)
+        assertEquals(18_500, detached.currentTimeMs)
+        assertEquals(60_000, detached.totalTimeMs)
+        assertNull(detached.seekRequest)
+        // Late callbacks from the releasing player are ignored.
+        assertEquals(detached, detached.withState(0, PlayState.PLAYING))
+
+        val resumed = detached.toggle()
+        assertEquals(VideoPlayControl.PLAY, resumed.control)
+        assertEquals(18_500, resumed.seekRequest?.timeMs)
+        assertNull(resumed.pendingResumeTimeMs)
+        // Fresh player emitting 0 total duration before metadata loads keeps remembered totalTimeMs.
+        assertEquals(60_000, resumed.withTime(resumed.generation, 0, 0).totalTimeMs)
+    }
+
+    @Test
+    fun externalEvictionPauseReopensFreshPlayerOnNextToggle() {
+        val playing =
+            ThreadInlineAudioPlayback(
+                control = VideoPlayControl.PLAY,
+                state = PlayState.PLAYING,
+                currentTimeMs = 9_000,
+                totalTimeMs = 30_000,
+            )
+        // Player evicted by concurrency budget reports PAUSED while control remained PLAY.
+        val evicted = playing.withState(0, PlayState.PAUSED)
+        val restarted = evicted.toggle()
+        assertEquals(1, restarted.generation)
+        assertEquals(VideoPlayControl.PLAY, restarted.control)
+        assertEquals(9_000, restarted.seekRequest?.timeMs)
+    }
 }

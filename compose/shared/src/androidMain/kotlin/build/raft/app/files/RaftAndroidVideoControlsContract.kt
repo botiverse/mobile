@@ -214,3 +214,49 @@ internal fun raftAndroidVideoShouldShowInlineControls(
     widthDp: Float,
     heightDp: Float,
 ): Boolean = widthDp >= RaftAndroidVideoMinOverlaySizeDp && heightDp >= RaftAndroidVideoMinOverlaySizeDp
+
+/**
+ * Tight Media3 [androidx.media3.exoplayer.DefaultLoadControl] thresholds per playback role.
+ * Media3's stock defaults buffer up to 50s / 125 MB per video instance; capping inline cards to
+ * 5s / 2 MB (and audio to 512 KB) keeps peak heap tiny even when multiple cards are visible.
+ */
+internal data class RaftAndroidVideoBufferPolicy(
+    val minBufferMs: Int,
+    val maxBufferMs: Int,
+    val bufferForPlaybackMs: Int,
+    val bufferForPlaybackAfterRebufferMs: Int,
+    val targetBufferBytes: Int,
+    val backBufferDurationMs: Int = 0,
+    val retainBackBufferFromKeyframe: Boolean = false,
+)
+
+internal fun raftAndroidVideoBufferPolicy(
+    role: RaftMediaPlayerRole,
+    audioOnly: Boolean,
+): RaftAndroidVideoBufferPolicy =
+    when {
+        role == RaftMediaPlayerRole.InlineAudio || (role != RaftMediaPlayerRole.FilePreview && audioOnly) ->
+            RaftAndroidVideoBufferPolicy(
+                minBufferMs = 2_000,
+                maxBufferMs = 5_000,
+                bufferForPlaybackMs = 500,
+                bufferForPlaybackAfterRebufferMs = 1_000,
+                targetBufferBytes = 512 * 1024,
+            )
+        role == RaftMediaPlayerRole.InlineVideo ->
+            RaftAndroidVideoBufferPolicy(
+                minBufferMs = 2_000,
+                maxBufferMs = 5_000,
+                bufferForPlaybackMs = 500,
+                bufferForPlaybackAfterRebufferMs = 1_000,
+                targetBufferBytes = 2 * 1024 * 1024,
+            )
+        else ->
+            RaftAndroidVideoBufferPolicy(
+                minBufferMs = 5_000,
+                maxBufferMs = 15_000,
+                bufferForPlaybackMs = 1_000,
+                bufferForPlaybackAfterRebufferMs = 2_000,
+                targetBufferBytes = 8 * 1024 * 1024,
+            )
+    }
