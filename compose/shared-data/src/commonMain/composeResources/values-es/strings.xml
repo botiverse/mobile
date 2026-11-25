@@ -2728,7 +2728,7 @@
     <string name="settings_mobile_link_open_mode_system_browser">Navegador predeterminado</string>
     <string name="settings_mobile_link_open_mode_in_app_browser">Navegador integrado</string>
     <string name="in_app_browser_title">Navegador</string>
-    <string name="in_app_browser_forward">Reenviar</string>
+    <string name="in_app_browser_forward">Adelante</string>
     <string name="in_app_browser_reload">Volver a cargar</string>
     <string name="in_app_browser_open_system">Abrir en el navegador predeterminado</string>
     <string name="in_app_browser_invalid_link">No se puede abrir este enlace.</string>

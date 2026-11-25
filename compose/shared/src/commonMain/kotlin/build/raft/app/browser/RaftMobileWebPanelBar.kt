@@ -62,9 +62,9 @@ import kotlinx.coroutines.flow.map
  * kirby-link-sheet-v2.html):
  * - Dimmed 1-line source strip (visible in the 88% default detent; tapping collapses keeping page alive).
  * - Top drag handle lip.
- * - Minimal 3-region bottom bar: leading RaftCloseButton (×), center identity (Layer 3 host OR
- *   Layer 2 App icon + name + "Signed in as"), trailing ⋮ menu (Share, Copy link, and Layer 3 only
- *   Open in browser ↗). NO refresh, back, or forward buttons.
+ * - Bottom bar: leading RaftCloseButton (×), center identity (Layer 3 host OR Layer 2 App icon +
+ *   name + "Signed in as"), trailing history Back/Forward buttons (`<` / `>`) and `⋮` menu (Share,
+ *   Copy link, and Layer 3 only Open in browser ↗).
  * - Keep-open chip shown under the source message (or floating when scrolled off-screen / non-message).
  */
 
@@ -72,6 +72,8 @@ internal const val RAFT_WEB_PANEL_SOURCE_STRIP_TAG = "raft_web_panel_source_stri
 internal const val RAFT_WEB_PANEL_DRAG_HANDLE_TAG = "raft_web_panel_drag_handle"
 internal const val RAFT_WEB_PANEL_BOTTOM_BAR_TAG = "raft_web_panel_bottom_bar"
 internal const val RAFT_WEB_PANEL_CLOSE_BUTTON_TAG = "raft_web_panel_close_button"
+internal const val RAFT_WEB_PANEL_BACK_BUTTON_TAG = "raft_web_panel_back_button"
+internal const val RAFT_WEB_PANEL_FORWARD_BUTTON_TAG = "raft_web_panel_forward_button"
 internal const val RAFT_WEB_PANEL_MORE_BUTTON_TAG = "raft_web_panel_more_button"
 internal const val RAFT_WEB_PANEL_HOST_LABEL_TAG = "raft_web_panel_host_label"
 internal const val RAFT_WEB_PANEL_APP_NAME_TAG = "raft_web_panel_app_name"
@@ -218,13 +220,12 @@ internal fun RaftMobileWebPanelSourceStrip(
 }
 
 /**
- * Minimal 3-region bottom bar (per `kirby-link-sheet-v2.html`):
- * - Leading: `×` (`RaftCloseButton`).
+ * Mobile web panel bottom bar:
+ * - Leading: `×` (`RaftCloseButton`), isolated from history buttons to prevent accidental close.
  * - Center: Layer 3 formatted ASCII host (`www.` stripped, IDN as `xn--`), OR Layer 2 App icon +
  *   App name + subtle "Signed in as <name>" caption when available.
- * - Trailing: `⋮` overflow menu (Share, Copy link, and for Layer 3 only: Open in browser ↗).
- *
- * NO refresh, back, or forward buttons.
+ * - Trailing: history Back (`<`) and Forward (`>`) buttons disabled when no history exists in that
+ *   direction, followed by `⋮` overflow menu (Share, Copy link, and for Layer 3 only: Open in browser ↗).
  */
 @Composable
 internal fun RaftMobileWebPanelBottomBar(
@@ -238,6 +239,10 @@ internal fun RaftMobileWebPanelBottomBar(
     onCopyLink: () -> Unit,
     onOpenInBrowser: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    canGoBack: Boolean = false,
+    canGoForward: Boolean = false,
+    onGoBack: () -> Unit = {},
+    onGoForward: () -> Unit = {},
 ) {
     val colors = RaftTheme.colors
     var menuExpanded by remember { mutableStateOf(false) }
@@ -265,7 +270,7 @@ internal fun RaftMobileWebPanelBottomBar(
                     .fillMaxWidth()
                     .height(52.dp) // app-only: kirby-link-sheet-v2 mobile web panel bottom bar
                     .padding(horizontal = RaftBackButtonDefaults.EdgeInset),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RaftCloseButton(
@@ -295,53 +300,75 @@ internal fun RaftMobileWebPanelBottomBar(
                     )
                 }
             }
-            Box {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 RaftIconButton(
-                    onClick = { menuExpanded = true },
-                    tooltip = stringResource(Res.string.common_more_actions),
+                    onClick = onGoBack,
+                    tooltip = stringResource(Res.string.common_back),
                     variant = RaftButtonVariant.Ghost,
                     size = RaftIconButtonSize.Lg,
-                    modifier = Modifier.testTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG),
+                    enabled = canGoBack,
+                    modifier = Modifier.testTag(RAFT_WEB_PANEL_BACK_BUTTON_TAG),
                 ) {
-                    RaftSlotIcon(RaftLucideIconName.EllipsisVertical)
+                    RaftSlotIcon(RaftLucideIconName.ChevronLeft)
                 }
-                RaftDropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false },
-                    alignEnd = true,
+                RaftIconButton(
+                    onClick = onGoForward,
+                    tooltip = stringResource(Res.string.in_app_browser_forward),
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftIconButtonSize.Lg,
+                    enabled = canGoForward,
+                    modifier = Modifier.testTag(RAFT_WEB_PANEL_FORWARD_BUTTON_TAG),
                 ) {
-                    menuActions.forEach { action ->
-                        when (action) {
-                            RaftMobileWebPanelMenuAction.Share ->
-                                RaftMenuItem(
-                                    text = stringResource(Res.string.common_share),
-                                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Share) },
-                                    onClick = {
-                                        menuExpanded = false
-                                        onShare()
-                                    },
-                                )
-                            RaftMobileWebPanelMenuAction.CopyLink ->
-                                RaftMenuItem(
-                                    text = stringResource(Res.string.thread_link_menu_copy_link),
-                                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Link) },
-                                    onClick = {
-                                        menuExpanded = false
-                                        onCopyLink()
-                                    },
-                                )
-                            RaftMobileWebPanelMenuAction.OpenInBrowser -> {
-                                if (onOpenInBrowser != null) {
-                                    RaftMenuSeparator()
+                    RaftSlotIcon(RaftLucideIconName.ChevronRight)
+                }
+                Box {
+                    RaftIconButton(
+                        onClick = { menuExpanded = true },
+                        tooltip = stringResource(Res.string.common_more_actions),
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftIconButtonSize.Lg,
+                        modifier = Modifier.testTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG),
+                    ) {
+                        RaftSlotIcon(RaftLucideIconName.EllipsisVertical)
+                    }
+                    RaftDropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false },
+                        alignEnd = true,
+                    ) {
+                        menuActions.forEach { action ->
+                            when (action) {
+                                RaftMobileWebPanelMenuAction.Share ->
                                     RaftMenuItem(
-                                        text = stringResource(Res.string.thread_link_menu_open_in_browser),
-                                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.Globe) },
-                                        trailingIcon = { RaftSlotIcon(RaftLucideIconName.ArrowUpRight) },
+                                        text = stringResource(Res.string.common_share),
+                                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.Share) },
                                         onClick = {
                                             menuExpanded = false
-                                            onOpenInBrowser()
+                                            onShare()
                                         },
                                     )
+                                RaftMobileWebPanelMenuAction.CopyLink ->
+                                    RaftMenuItem(
+                                        text = stringResource(Res.string.thread_link_menu_copy_link),
+                                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.Link) },
+                                        onClick = {
+                                            menuExpanded = false
+                                            onCopyLink()
+                                        },
+                                    )
+                                RaftMobileWebPanelMenuAction.OpenInBrowser -> {
+                                    if (onOpenInBrowser != null) {
+                                        RaftMenuSeparator()
+                                        RaftMenuItem(
+                                            text = stringResource(Res.string.thread_link_menu_open_in_browser),
+                                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.Globe) },
+                                            trailingIcon = { RaftSlotIcon(RaftLucideIconName.ArrowUpRight) },
+                                            onClick = {
+                                                menuExpanded = false
+                                                onOpenInBrowser()
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }

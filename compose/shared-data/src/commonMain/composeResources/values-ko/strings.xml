@@ -2728,7 +2728,7 @@
     <string name="settings_mobile_link_open_mode_system_browser">기본 브라우저</string>
     <string name="settings_mobile_link_open_mode_in_app_browser">인앱 브라우저</string>
     <string name="in_app_browser_title">브라우저</string>
-    <string name="in_app_browser_forward">전달</string>
+    <string name="in_app_browser_forward">앞으로</string>
     <string name="in_app_browser_reload">새로고침</string>
     <string name="in_app_browser_open_system">기본 브라우저에서 열기</string>
     <string name="in_app_browser_invalid_link">이 링크를 열 수 없어요.</string>

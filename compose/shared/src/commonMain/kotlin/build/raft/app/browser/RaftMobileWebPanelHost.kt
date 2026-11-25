@@ -684,7 +684,10 @@ internal fun RaftMobileWebPanelBrowserBody(
         blocksBackSwipe = false,
         onBack = {
             when (resolveRaftMobileWebPanelBackAction(latestDetent, navigationState.canGoBack)) {
-                RaftMobileWebPanelBackAction.WebGoBack -> controller.goBack()
+                RaftMobileWebPanelBackAction.WebGoBack -> {
+                    loadError = null
+                    controller.goBack()
+                }
                 RaftMobileWebPanelBackAction.CollapseKeepingAlive -> onCollapse?.invoke() ?: onClose()
                 RaftMobileWebPanelBackAction.Ignore -> Unit
             }
@@ -845,6 +848,20 @@ internal fun RaftMobileWebPanelBrowserBody(
             appName = entryContext?.appName ?: fallbackAppName,
             appLogoUrl = entryContext?.appLogoUrl ?: fallbackAppLogoUrl,
             signedInAsName = signInHost.signedInAsName,
+            canGoBack = navigationState.canGoBack,
+            canGoForward = navigationState.canGoForward,
+            onGoBack = {
+                if (navigationState.canGoBack) {
+                    loadError = null
+                    controller.goBack()
+                }
+            },
+            onGoForward = {
+                if (navigationState.canGoForward) {
+                    loadError = null
+                    controller.goForward()
+                }
+            },
             onClose = onClose,
             onShare = ::shareCurrentUrl,
             onCopyLink = ::copyCurrentUrl,

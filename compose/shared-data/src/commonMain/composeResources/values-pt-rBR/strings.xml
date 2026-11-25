@@ -2728,7 +2728,7 @@
     <string name="settings_mobile_link_open_mode_system_browser">Navegador padrão</string>
     <string name="settings_mobile_link_open_mode_in_app_browser">Navegador do app</string>
     <string name="in_app_browser_title">Navegador</string>
-    <string name="in_app_browser_forward">Encaminhar</string>
+    <string name="in_app_browser_forward">Avançar</string>
     <string name="in_app_browser_reload">Recarregar</string>
     <string name="in_app_browser_open_system">Abrir no navegador padrão</string>
     <string name="in_app_browser_invalid_link">Não é possível abrir este link.</string>
