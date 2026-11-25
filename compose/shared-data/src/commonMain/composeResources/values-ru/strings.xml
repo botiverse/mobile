@@ -2449,6 +2449,7 @@
     <string name="home_second_factor_recovery_cancelled">Сброс отменён. Двухэтапная аутентификация остаётся включённой. Мы отправили вам письмо.</string>
     <string name="home_second_factor_recovery_cancel_failed">Не удалось отменить сброс. Попробуйте ещё раз.</string>
     <string name="home_notification_app_update_title">Доступно обновление приложения</string>
+    <string name="home_notification_app_update_ready_title">Обновление готово к установке</string>
     <string name="home_notification_app_update_body">Текущая версия: %1$s. Последняя версия: %2$s.</string>
     <string name="app_update_view">Открыть</string>
     <string name="app_update_retry">Повторить</string>
@@ -2462,9 +2463,9 @@
     <string name="app_update_installed">Установлено</string>
     <string name="app_update_update">Обновить</string>
     <string name="app_update_unavailable">Информация об обновлениях временно недоступна.</string>
-    <string name="app_update_detail_available_with_size">Доступно обновление Raft (APK, %1$s).</string>
-    <string name="app_update_detail_available_with_patch_size">Патч: %1$s.</string>
-    <string name="app_update_detail_available_with_patch_and_full_sizes">Патч: %1$s; запасной полный APK: %2$s.</string>
+    <string name="app_update_detail_available_with_size">Размер обновления: %1$s</string>
+    <string name="app_update_detail_available_with_patch_size">Размер обновления: %1$s</string>
+    <string name="app_update_detail_available_with_patch_and_full_sizes">Размер обновления: %1$s</string>
     <string name="app_update_detail_available">Доступно обновление Raft.</string>
     <string name="app_update_detail_current">У вас последняя версия Raft.</string>
     <string name="app_update_version_summary">%1$s → %2$s</string>

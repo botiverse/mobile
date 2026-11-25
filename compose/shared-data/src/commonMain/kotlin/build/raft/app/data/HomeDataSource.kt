@@ -474,12 +474,21 @@ private const val HOME_UNREAD_ENRICHMENT_BUDGET_MS = 3_000L
             .takeIf { it.isNotBlank() }
             ?.let { if (nameOnly) it else "$it ($latestVersionCode)" }
             ?: latestVersionCode.toString()
+    val isReadyToComplete =
+        transactionState == SharedSettingsUpdateTransactionState.ReadyToInstall ||
+            transactionState == SharedSettingsUpdateTransactionState.InstallerOpened ||
+            transactionState == SharedSettingsUpdateTransactionState.ReadyToRestart
     return SharedHomeNotification(
         id = APP_UPDATE_HOME_NOTIFICATION_ID,
-        title = "App update available",
+        title = if (isReadyToComplete) "Update ready to install" else "App update available",
         body = "Current version $currentVersion. Latest version $latestVersion.",
         actionLabel = appUpdateNotificationActionLabel(),
-        titleDesc = Res.string.home_notification_app_update_title.desc(),
+        titleDesc =
+            if (isReadyToComplete) {
+                Res.string.home_notification_app_update_ready_title.desc()
+            } else {
+                Res.string.home_notification_app_update_title.desc()
+            },
         bodyDesc = Res.string.home_notification_app_update_body.format(listOf(localizedCurrentVersion, localizedLatestVersion)),
         actionLabelDesc = appUpdateNotificationActionDesc(),
         targetId = APP_UPDATE_HOME_NOTIFICATION_ID,
@@ -516,7 +525,7 @@ private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionDesc():
     appUpdateNotificationActionLabel().lowercase().let { action ->
         when (action) {
             "downloading" -> Res.string.home_notification_action_downloading.desc()
-            "install" -> Res.string.home_notification_action_install.desc()
+            "install" -> Res.string.app_update_install.desc()
             "restart to update" -> Res.string.app_update_restart_to_update.desc()
             "update" -> Res.string.app_update_update.desc()
             "download", "" -> Res.string.home_notification_action_download.desc()

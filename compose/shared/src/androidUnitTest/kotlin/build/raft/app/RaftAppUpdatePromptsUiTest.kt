@@ -13,7 +13,6 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import build.raft.app.cmp.ProvideRaftPageCover
@@ -38,14 +37,19 @@ import build.raft.app.data.RaftAppUpdateCoordinator
 import build.raft.app.data.RaftAppUpdatePromptStore
 import build.raft.app.data.RaftAppUpdateStrongPromptReason
 import build.raft.app.data.RaftMinBuildGateDecision
-import build.raft.app.data.RaftPostUpdateNoticeState
 import build.raft.app.data.SharedAnnouncementStore
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedSettingsUpdateTransactionState
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.data.toSharedHomeAppUpdateNotification
 import build.raft.app.model.MemberId
 import build.raft.app.resources.StringDesc
+import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftPageCoverSignal
+import build.raft.designsystem.components.RaftToastActionTimeoutMillis
+import build.raft.designsystem.components.RaftToastHost
+import build.raft.designsystem.components.RaftToastHostState
+import build.raft.designsystem.components.RaftToastIntent
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -228,7 +232,58 @@ class RaftAppUpdatePromptsUiTest {
         }
 
     @Test
-    fun strongPromptDialogRendersCopyAndInvokesPrimaryAndSnoozeActions() =
+    fun homeAppUpdateBannerSwitchesCopyBetweenAvailableReadyToInstallAndReadyToRestart() =
+        runRobolectricComposeUiTest {
+            var snapshot by mutableStateOf(
+                SharedSettingsUpdateCheckSnapshot(
+                    supported = true,
+                    updateAvailable = true,
+                    currentVersionLabel = "1.29.0",
+                    currentVersionCode = 12_900_000L,
+                    latestVersionLabel = "1.30.0",
+                    latestVersionCode = 13_000_000L,
+                    patchDownloadSizeBytes = 29_696L,
+                    transactionState = SharedSettingsUpdateTransactionState.Idle,
+                )
+            )
+            var clicks = 0
+
+            setContent {
+                RaftDesignSystemTheme {
+                    val notice = snapshot.toSharedHomeAppUpdateNotification()!!.toHomeNotificationItem()
+                    HomeAppUpdateBanner(notification = notice, onClick = { clicks += 1 })
+                }
+            }
+
+            // Idle: "App update available" + "View", zero size numbers.
+            onNode(hasTestTag(HOME_APP_UPDATE_BANNER_TAG)).assertExists()
+            onNode(hasText("App update available")).assertExists()
+            onNode(hasText("View")).assertExists()
+            onNode(hasText("29.0 KB", substring = true)).assertDoesNotExist()
+            onNode(hasTestTag(HOME_APP_UPDATE_BANNER_TAG)).performClick()
+            waitForIdle()
+            assertEquals(1, clicks)
+
+            // ReadyToInstall: "Update ready to install" + "Install".
+            runOnIdle {
+                snapshot = snapshot.copy(transactionState = SharedSettingsUpdateTransactionState.ReadyToInstall)
+            }
+            waitForIdle()
+            onNode(hasText("Update ready to install")).assertExists()
+            onNode(hasText("Install")).assertExists()
+            onNode(hasText("View")).assertDoesNotExist()
+
+            // ReadyToRestart: "Update ready to install" + "Restart to update".
+            runOnIdle {
+                snapshot = snapshot.copy(transactionState = SharedSettingsUpdateTransactionState.ReadyToRestart)
+            }
+            waitForIdle()
+            onNode(hasText("Update ready to install")).assertExists()
+            onNode(hasText("Restart to update")).assertExists()
+        }
+
+    @Test
+    fun strongPromptDialogRendersStrippedMarkdownDownloadSizeAndReadyState() =
         runRobolectricComposeUiTest {
             var updateClicks = 0
             var laterClicks = 0
@@ -241,7 +296,10 @@ class RaftAppUpdatePromptsUiTest {
                     currentVersionCode = 12_800_000L,
                     latestVersionLabel = "1.30.0",
                     latestVersionCode = 13_000_000L,
-                    latestChangelog = "# Highlights\n- New update bar\n- Better reminders\n- Fourth line hidden",
+                    latestChangelog =
+                        "### ✨ **New**\n- **New update bar**: Faster `install` ([docs](https://raft.build))\n- Better reminders\n- Fourth line hidden",
+                    patchDownloadSizeBytes = 29_696L,
+                    fullDownloadSizeBytes = 94_411_540L,
                     forceUpdate = true,
                 )
             )
@@ -261,11 +319,20 @@ class RaftAppUpdatePromptsUiTest {
 
             onNode(hasTestTag(RAFT_APP_UPDATE_STRONG_DIALOG_TAG)).assertExists()
             onNode(hasText("Update Raft to 1.30.0")).assertExists()
-            onNode(hasText("1.28.0 → 1.30.0")).assertExists()
-            onNode(hasText("- New update bar")).assertExists()
-            onNode(hasText("- Fourth line hidden")).assertDoesNotExist()
+            // Not ready: shows actual download size (patch wins over full) next to version pair.
+            onNode(hasText("1.28.0 → 1.30.0 · 29.0 KB")).assertExists()
+            onNode(hasText("✨ New")).assertExists()
+            onNode(hasText("• New update bar: Faster install (docs)")).assertExists()
+            onNode(hasText("• Fourth line hidden")).assertDoesNotExist()
             onNode(hasText("Update now")).assertExists()
             onNode(hasText("Later (24h)")).assertExists()
+
+            // When no patch exists, falls back to full download size cleanly.
+            runOnIdle {
+                snapshot = snapshot.copy(patchDownloadSizeBytes = 0L)
+            }
+            waitForIdle()
+            onNode(hasText("1.28.0 → 1.30.0 · 90.0 MB")).assertExists()
 
             onNode(hasTestTag(RAFT_APP_UPDATE_STRONG_DIALOG_UPDATE_TAG)).performClick()
             waitForIdle()
@@ -276,13 +343,19 @@ class RaftAppUpdatePromptsUiTest {
             assertEquals(1, laterClicks)
             assertEquals(0, dismissClicks)
 
-            // ReadyToRestart switches title and primary CTA to "Update 1.30.0 is ready" + "Restart to update".
+            // ReadyToRestart omits download size and switches title/CTA to Ready + Restart to update.
             runOnIdle {
-                snapshot = snapshot.copy(transactionState = SharedSettingsUpdateTransactionState.ReadyToRestart)
+                snapshot =
+                    snapshot.copy(
+                        patchDownloadSizeBytes = 29_696L,
+                        transactionState = SharedSettingsUpdateTransactionState.ReadyToRestart,
+                    )
                 reason = RaftAppUpdateStrongPromptReason.ReadyToRestart
             }
             waitForIdle()
             onNode(hasText("Update 1.30.0 is ready")).assertExists()
+            onNode(hasText("1.28.0 → 1.30.0")).assertExists()
+            onNode(hasText("29.0 KB", substring = true)).assertDoesNotExist()
             onNode(hasText("Restart to update")).assertExists()
         }
 
@@ -367,70 +440,86 @@ class RaftAppUpdatePromptsUiTest {
         }
 
     @Test
-    fun postUpdateWhatsNewBannerRendersAndHandlesViewAndDismiss() =
-        runRobolectricComposeUiTest {
-            var viewed = 0
-            var dismissed = 0
-
-            setContent {
-                RaftDesignSystemTheme {
-                    RaftPostUpdateWhatsNewBanner(
-                        notice = RaftPostUpdateNoticeState(versionCode = 13_000_000L, versionLabel = "1.30.0"),
-                        onViewReleaseNotes = { viewed += 1 },
-                        onDismiss = { dismissed += 1 },
-                    )
-                }
-            }
-
-            onNode(hasTestTag(RAFT_POST_UPDATE_WHATS_NEW_BANNER_TAG)).assertExists()
-            // RaftBanner uses a SubcomposeLayout probe pass on wide viewports, so match onFirst().
-            onAllNodes(hasText("Updated to 1.30.0")).onFirst().assertExists()
-            onNode(hasText("What's new")).assertExists()
-            onNode(hasText("Dismiss")).assertExists()
-
-            onNode(hasTestTag(RAFT_POST_UPDATE_WHATS_NEW_ACTION_TAG)).performClick()
-            waitForIdle()
-            assertEquals(1, viewed)
-
-            onNode(hasTestTag(RAFT_POST_UPDATE_WHATS_NEW_DISMISS_TAG)).performClick()
-            waitForIdle()
-            assertEquals(1, dismissed)
-        }
-
-    @Test
-    fun postUpdateBannerHostOpensReleaseNotesAndDismissesViaCoordinator() =
+    fun postUpdateWhatsNewToastFiresOnceWith8sDurationOpensReleaseNotesAndRespectsHardBlock() =
         runRobolectricComposeUiTest {
             val kvStore = InMemoryRaftKeyValueStore()
             val promptStore = RaftAppUpdatePromptStore(kvStore)
+            var gate: RaftMinBuildGateDecision =
+                RaftMinBuildGateDecision.Block(
+                    threshold = 13_100_000L,
+                    latestBuild = 13_100_000L,
+                    updateUrl = "https://example.test/raft.apk",
+                )
             val coordinator =
                 RaftAppUpdateCoordinator(
                     store = promptStore,
                     now = { 1_700_000_000_000L },
-                    minBuildGateDecision = { RaftMinBuildGateDecision.None },
+                    minBuildGateDecision = { gate },
                 )
-            // Simulate upgrading from 1.29.0 -> 1.30.0.
+            // Simulate upgrading from 1.29.0 -> 1.30.0 while L3 hard block is active.
             coordinator.recordAppLaunch(12_900_000L, "1.29.0")
             coordinator.recordAppLaunch(13_000_000L, "1.30.0")
 
+            val toastHostState = RaftToastHostState()
             val openedVersions = mutableListOf<String>()
+            var activeGate by mutableStateOf<RaftMinBuildGateDecision>(gate)
+            val host = testHost()
 
             setContent {
-                RaftDesignSystemTheme {
-                    HomePostUpdateWhatsNewBannerHost(
-                        onOpenReleaseNotes = { openedVersions += it },
-                        coordinator = coordinator,
-                    )
+                val signal = remember { RaftPageCoverSignal() }
+                val pager = remember { testPager() }
+                ProvideRaftPageCover(host, signal) {
+                    CompositionLocalProvider(
+                        LocalActivity provides RaftPageActivity(pager),
+                        LocalRaftToastHostState provides toastHostState,
+                    ) {
+                        RaftProvidePageActive(active = true) {
+                            RaftDesignSystemTheme {
+                                Box(Modifier.fillMaxSize()) {
+                                    AppShellUpdatePromptHost(
+                                        pageVisible = true,
+                                        userDialogActive = false,
+                                        announcementStore = null,
+                                        announcementModalShown = false,
+                                        onOpenUpdatePage = {},
+                                        onCompleteRestart = {},
+                                        onSnoozed = {},
+                                        onOpenReleaseNotes = { openedVersions += it },
+                                        coordinator = coordinator,
+                                        minBuildGateDecision = activeGate,
+                                    )
+                                    RaftToastHost(toastHostState)
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
-            onNode(hasTestTag(RAFT_POST_UPDATE_WHATS_NEW_BANNER_TAG)).assertExists()
-            onAllNodes(hasText("Updated to 1.30.0")).onFirst().assertExists()
+            // While L3 hard block is active, the L0 post-update toast must NOT fire or dismiss itself.
+            assertTrue(toastHostState.visible.isEmpty())
+            assertEquals(0L, promptStore.readState().dismissedPostUpdateVersionCode)
 
-            onNode(hasTestTag(RAFT_POST_UPDATE_WHATS_NEW_ACTION_TAG)).performClick()
+            // Once L3 clears, the 8-second dismissible Info toast fires once and persists dismissal.
+            runOnIdle {
+                gate = RaftMinBuildGateDecision.None
+                activeGate = RaftMinBuildGateDecision.None
+                coordinator.onMinBuildGateDecisionChanged(RaftMinBuildGateDecision.None)
+            }
+            waitForIdle()
+
+            val toast = toastHostState.visible.single()
+            assertEquals("Updated to 1.30.0", toast.title)
+            assertEquals("What's new", toast.actionLabel)
+            assertEquals(RaftToastIntent.Info, toast.intent)
+            assertEquals(RaftToastActionTimeoutMillis, toast.durationMillis)
+            assertEquals(13_000_000L, promptStore.readState().dismissedPostUpdateVersionCode)
+
+            onNode(hasText("Updated to 1.30.0")).assertExists()
+            onNode(hasText("What's new")).performClick()
             waitForIdle()
 
             assertEquals(listOf("13000000"), openedVersions)
-            onNode(hasTestTag(RAFT_POST_UPDATE_WHATS_NEW_BANNER_TAG)).assertDoesNotExist()
-            assertEquals(13_000_000L, promptStore.readState().dismissedPostUpdateVersionCode)
+            assertTrue(toastHostState.visible.isEmpty())
         }
 }

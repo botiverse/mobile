@@ -4,6 +4,7 @@ import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
+import build.raft.app.data.SharedSettingsUpdateTransactionState
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -32,7 +33,25 @@ class SignedOutAppUpdateBannerTest {
         assertEquals(1, checks)
         assertEquals(APP_UPDATE_HOME_NOTIFICATION_ID, notice?.id)
         assertEquals(APP_UPDATE_HOME_NOTIFICATION_ID, notice?.targetId)
+        assertEquals("App update available", notice?.title)
         assertEquals("Current version 1.23.0. Latest version 1.24.0 (12400002).", notice?.body)
+    }
+
+    @Test
+    fun signedOutNoticeSwitchesToReadyCopyWhenDownloadedOrReadyToRestart() = runTest {
+        val readyToInstall =
+            loadSignedOutAppUpdateNotification(skippedVersionCode = 0L) {
+                DataResult.Content(update124.copy(transactionState = SharedSettingsUpdateTransactionState.ReadyToInstall))
+            }
+        assertEquals("Update ready to install", readyToInstall?.title)
+        assertEquals("Install", readyToInstall?.actionLabel)
+
+        val readyToRestart =
+            loadSignedOutAppUpdateNotification(skippedVersionCode = 0L) {
+                DataResult.Content(update124.copy(transactionState = SharedSettingsUpdateTransactionState.ReadyToRestart))
+            }
+        assertEquals("Update ready to install", readyToRestart?.title)
+        assertEquals("Restart to update", readyToRestart?.actionLabel)
     }
 
     @Test

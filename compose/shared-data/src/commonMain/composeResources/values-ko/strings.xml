@@ -2449,6 +2449,7 @@
     <string name="home_second_factor_recovery_cancelled">재설정을 취소했어요. 2단계 인증은 계속 켜져 있고, 안내 이메일도 보내 드렸어요.</string>
     <string name="home_second_factor_recovery_cancel_failed">재설정을 취소하지 못했어요. 다시 시도해 주세요.</string>
     <string name="home_notification_app_update_title">앱 업데이트가 있어요</string>
+    <string name="home_notification_app_update_ready_title">업데이트 설치 준비 완료</string>
     <string name="home_notification_app_update_body">현재 버전 %1$s. 최신 버전 %2$s.</string>
     <string name="app_update_view">보기</string>
     <string name="app_update_retry">다시 시도</string>
@@ -2462,9 +2463,9 @@
     <string name="app_update_installed">설치됨</string>
     <string name="app_update_update">업데이트</string>
     <string name="app_update_unavailable">지금은 업데이트 정보를 확인할 수 없어요.</string>
-    <string name="app_update_detail_available_with_size">Raft 업데이트가 있어요 (%1$s APK).</string>
-    <string name="app_update_detail_available_with_patch_size">패치 %1$s.</string>
-    <string name="app_update_detail_available_with_patch_and_full_sizes">패치 %1$s, 전체 대체 패키지 %2$s.</string>
+    <string name="app_update_detail_available_with_size">업데이트 크기 %1$s</string>
+    <string name="app_update_detail_available_with_patch_size">업데이트 크기 %1$s</string>
+    <string name="app_update_detail_available_with_patch_and_full_sizes">업데이트 크기 %1$s</string>
     <string name="app_update_detail_available">Raft 업데이트가 있어요.</string>
     <string name="app_update_detail_current">Raft가 최신 버전이에요.</string>
     <string name="app_update_version_summary">%1$s → %2$s</string>

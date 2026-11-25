@@ -1803,7 +1803,6 @@ internal class RaftStructuralHomeShellCallbacks(
     val diagnosticsLogger: (String) -> Unit = {},
     val onPinMenuDismiss: () -> Unit = {},
     val onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
-    val onOpenReleaseNotes: ((String) -> Unit)? = null,
 )
 
 @Composable
@@ -1933,7 +1932,6 @@ internal fun RaftStructuralHomeShell(
     listPositionServerId: String = currentServerId,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
-    onOpenReleaseNotes: ((String) -> Unit)? = null,
     active: Boolean = true
 ) {
     // task #336: thin delegation to the payload-based implementation keeps every call site
@@ -2056,7 +2054,6 @@ internal fun RaftStructuralHomeShell(
                 diagnosticsLogger = diagnosticsLogger,
                 onPinMenuDismiss = onPinMenuDismiss,
                 onListPositionSnapshot = onListPositionSnapshot,
-                onOpenReleaseNotes = onOpenReleaseNotes,
             ),
         bottomContentPadding = bottomContentPadding,
         listPositionServerId = listPositionServerId,
@@ -2181,7 +2178,6 @@ private fun RaftStructuralHomeShellContent(
     val diagnosticsLogger = callbacks.diagnosticsLogger
     val onPinMenuDismiss = callbacks.onPinMenuDismiss
     val onListPositionSnapshot = callbacks.onListPositionSnapshot
-    val onOpenReleaseNotes = callbacks.onOpenReleaseNotes
     var channelsExpanded by remember { mutableStateOf(true) }
     var jointChannelsExpanded by remember { mutableStateOf(true) }
     var directMessagesExpanded by remember { mutableStateOf(true) }
@@ -2783,9 +2779,6 @@ private fun RaftStructuralHomeShellContent(
                             onClick = { onNotificationView(update) }
                         )
                     }
-                }
-                if ((!showHomeSidebarUpdateBanner || appUpdateBanner == null) && onOpenReleaseNotes != null) {
-                    HomePostUpdateWhatsNewBannerHost(onOpenReleaseNotes = onOpenReleaseNotes)
                 }
                 BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     val targetHomeBeyondBoundsItemCount =
@@ -6230,6 +6223,16 @@ internal const val HOME_APP_UPDATE_BANNER_TAG = "home_app_update_banner"
 internal fun shouldShowHomeSidebarAppUpdateBanner(underAppShellTopBar: Boolean): Boolean =
     !underAppShellTopBar
 
+internal fun homeAppUpdateBannerActionLabel(
+    notification: RaftHomeNotificationItem,
+    fallbackViewLabel: String,
+): String =
+    if (notification.primaryActionActive && notification.actionLabel.isNotBlank()) {
+        notification.actionLabel
+    } else {
+        fallbackViewLabel
+    }
+
 @Composable
 internal fun HomeAppUpdateBanner(
     notification: RaftHomeNotificationItem,
@@ -6260,7 +6263,7 @@ internal fun HomeAppUpdateBanner(
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            text = stringResource(Res.string.app_update_view),
+            text = homeAppUpdateBannerActionLabel(notification, fallbackViewLabel = stringResource(Res.string.app_update_view)),
             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
             color = RaftColor.TextBlack,
             maxLines = 1

@@ -6637,10 +6637,12 @@ private fun RaftAppShellReadyContent(
                                     homeShellStore.dispatch(SharedHomeShellIntent.DismissNotification(id))
                                 },
                                 onAppUpdateOpen = {
-                                    pager.openAppUpdatePage(storeScope)
-                                },
-                                onOpenReleaseNotes = { versionCode ->
-                                    pager.openReleaseNotesPage(versionCode = versionCode, storeScope = storeScope)
+                                    triggerAppShellUpdateOpenOrRestart(
+                                        snapshot = build.raft.app.data.RaftAppUpdates.coordinator.state.value.snapshot,
+                                        scope = appShellCoroutineScope,
+                                        settingsCapabilities = settingsCapabilities,
+                                        onOpenUpdatePage = { pager.openAppUpdatePage(storeScope) },
+                                    )
                                 },
                                 externalFocusLossDismissEpoch = homeFocusLossDismissEpoch,
                                 selectedConversationId =
@@ -7517,6 +7519,9 @@ private fun RaftAppShellReadyContent(
                         )
                     },
                     onSnoozed = { appUpdateEvents.notifyStatusChanged() },
+                    onOpenReleaseNotes = { versionCode ->
+                        pager.openReleaseNotesPage(versionCode = versionCode, storeScope = storeScope)
+                    },
                     minBuildGateDecision = minBuildGateDecision,
                 )
                 AppShellSendPromptHost(

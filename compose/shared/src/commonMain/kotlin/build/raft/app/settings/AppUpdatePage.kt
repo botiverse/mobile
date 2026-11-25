@@ -474,9 +474,9 @@ internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
             statusLabel = "download",
             detail =
                 if (chinese) {
-                    "增量包 93.0 KB；完整包备用 90.0 MB。"
+                    "更新大小 93.0 KB"
                 } else {
-                    "Patch 93.0 KB; full fallback 90.0 MB."
+                    "Update size: 93.0 KB"
                 },
             actionLabel = "download",
             updateAvailable = true,
