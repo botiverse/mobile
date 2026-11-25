@@ -932,7 +932,7 @@ private fun searchResultSourceLabel(item: InboxItem): String {
 internal fun agentLoungeSearchScopeOrNull(channelId: String?): SearchChannelFilterItem? {
     val id = channelId?.takeIf { it.isNotBlank() } ?: return null
     val label = agentLoungeLabelOrNull(id) ?: return null
-    return SearchChannelFilterItem(id = id, label = label, icon = RaftLucideIconName.Users)
+    return SearchChannelFilterItem(id = id, label = label, icon = AgentLoungeIcon)
 }
 
 /** The raft-ui search hit spans; [RaftSearchHitText] draws the sticker behind them. */

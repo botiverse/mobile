@@ -312,7 +312,7 @@ internal fun MembersDetailHeader(
             actions =
                 buildList {
                     if (onOpenLounge != null) {
-                        add(RaftNativeNavBarAction("member-lounge", nativeLoungeLabel, "person.2", onOpenLounge, icon = RaftLucideIconName.Users))
+                        add(RaftNativeNavBarAction("member-lounge", nativeLoungeLabel, AgentLoungeSystemSymbol, onOpenLounge, icon = AgentLoungeIcon))
                     }
                     if (directMessageEligibility != MembersDirectMessageEligibility.Unavailable) {
                         add(RaftNativeNavBarAction("member-message", nativeMessageLabel, "message", onOpenDirectMessage, icon = RaftLucideIconName.DirectMessage))
@@ -477,7 +477,7 @@ internal fun MembersDetailHeader(
                                 loading = loungeOpening,
                                 modifier = Modifier.testTag(AgentLoungeTestTags.ProfileAction)
                             ) {
-                                RaftContentLucideIcon(RaftLucideIconName.Users, size = RaftTheme.controls.barIconSize)
+                                RaftContentLucideIcon(AgentLoungeIcon, size = RaftTheme.controls.barIconSize)
                             }
                         }
                         if (showMessage && membersHeaderMessageUsesIconOnly(member.kind)) {

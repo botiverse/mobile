@@ -246,6 +246,7 @@ enum class RaftLucideIconName(val wireName: String) {
     SlidersHorizontal("sliders-horizontal"),
     Smartphone("smartphone"),
     SmilePlus("smile-plus"),
+    Sofa("sofa"),
     Sparkles("sparkles"),
     Square("square"),
     SquareCheckBig("square-check-big"),

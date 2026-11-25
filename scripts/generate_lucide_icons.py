@@ -292,6 +292,7 @@ LUCIDE_ICONS = [
     "sliders-horizontal",
     "smartphone",
     "smile-plus",
+    "sofa",
     "sparkles",
     "square",
     "square-check-big",
