@@ -428,8 +428,8 @@ internal class SharedThreadStore(
     private var loadOlderState: LoadOlderState? = null
     /**
      * Older pages and inline timeline-gap fills; see [ThreadPaging]. [loadOlderState] stays here: start,
-     * refresh and clear reset it. Newer paging stays here too: it shares [realtimeGapRecoveryMutex] and
-     * [loadNewerState] with realtime gap recovery and realtime folding.
+     * refresh and clear reset it. Newer paging is in [ThreadRealtimeGapRecovery]: it shares
+     * [realtimeGapRecoveryMutex] and [loadNewerState] with realtime gap recovery.
      */
     private val threadPaging =
         ThreadPaging(
