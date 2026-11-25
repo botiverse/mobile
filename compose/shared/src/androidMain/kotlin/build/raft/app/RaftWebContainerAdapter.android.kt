@@ -5,7 +5,15 @@ import android.content.ContextWrapper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import build.raft.app.data.MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.ServerFeatureFlagLastKnownStore
+import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.data.SharedServerFeatureFlags
+import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.model.ServerId
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMode
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.webcontainer.LocalAndroidWebFileChooser
 import build.raft.webcontainer.WebContainerAndroidFileChooser
@@ -14,24 +22,79 @@ import build.raft.webcontainer.resource.WebResourceResponseData
 import build.raft.webcontainer.resource.WebResourceSource
 
 /**
- * Non-blocking in-memory snapshot check of `mobile_web_container_v1` for Android startup hooks
+ * Non-blocking snapshot check of `mobile_web_container_v1` for Android startup hooks
  * (such as `RaftAndroidWebViewWarmup` opting into off-main-thread `WebViewCompat.startUpWebView`).
- * Fails closed (`false`) when the flag is unset/OFF or unresolved (while still honoring an
- * entitled in-process diagnostic override, matching `rememberRaftWebContainerV1Enabled()`).
+ *
+ * Resolution order (fails closed to `false` on any error):
+ * 1. Entitled in-process diagnostic override (matching `rememberRaftWebContainerV1Enabled()`).
+ * 2. Authoritative live or per-server last-known evaluation from [SharedServerFeatureFlags] when
+ *    decided (neither pending nor undetermined — explicit per-server `false` is never overridden).
+ * 3. Direct disk read of [ServerFeatureFlagLastKnownStore] when `RaftSharedStoreRegistry` or
+ *    `accountBinding` have not initialized yet on the first CMP frame.
  */
-fun isRaftAndroidWebContainerEnabledSnapshot(): Boolean =
+fun isRaftAndroidWebContainerEnabledSnapshot(
+    preferenceStoreProvider: () -> SharedPreferenceStore? = { runCatching { raftSharedPreferenceStore() }.getOrNull() },
+): Boolean =
     runCatching {
         val provider = RaftSharedStoreRegistry.currentOrNull()
         val session = provider?.let { runCatching { it.authStore.readCommittedSessionSnapshot() }.getOrNull() }
         val serverId =
             session?.currentServerId?.trim()?.takeIf { it.isNotEmpty() }
                 ?: session?.servers?.firstOrNull()?.id?.trim().orEmpty()
-        resolveMobileWebContainerV1EnabledPure(
+        val environmentId =
+            provider?.let { runCatching { it.apiEnvironmentStore.current().apiBaseUrl }.getOrNull() }
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        val accountId = session?.user?.id?.trim()?.takeIf { it.isNotEmpty() }
+        resolveRaftAndroidWebContainerEnabledSnapshot(
             serverFeatureFlags = provider?.serverFeatureFlags,
             registry = ProcessDiagnosticFeatureFlagOverrides.registry,
             serverId = serverId,
+            signedOut = provider != null && session == null,
+            environmentId = environmentId,
+            accountId = accountId,
+            preferenceStoreProvider = preferenceStoreProvider,
         )
     }.getOrDefault(false)
+
+internal fun resolveRaftAndroidWebContainerEnabledSnapshot(
+    serverFeatureFlags: SharedServerFeatureFlags?,
+    registry: DiagnosticFeatureFlagOverrideRegistry,
+    serverId: String,
+    signedOut: Boolean = false,
+    environmentId: String? = null,
+    accountId: String? = null,
+    preferenceStoreProvider: () -> SharedPreferenceStore?,
+): Boolean {
+    val diagnostic = registry.snapshot(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY)
+    if (diagnostic.entitled) {
+        when (diagnostic.mode) {
+            DiagnosticFeatureFlagOverrideMode.ForceOn -> return true
+            DiagnosticFeatureFlagOverrideMode.ForceOff -> return false
+            DiagnosticFeatureFlagOverrideMode.Server -> Unit
+        }
+    }
+    if (signedOut) return false
+    val normalizedServerId = serverId.trim()
+    if (serverFeatureFlags != null && normalizedServerId.isNotEmpty()) {
+        val sid = ServerId(normalizedServerId)
+        val hasDecidedValue =
+            serverFeatureFlags.snapshotFor(sid).resolved ||
+                (!serverFeatureFlags.isDecisionPending(sid, MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY) &&
+                    !serverFeatureFlags.isDecisionUndetermined(sid, MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY))
+        if (hasDecidedValue) {
+            return serverFeatureFlags.isEnabled(sid, MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY)
+        }
+    }
+    val prefs = preferenceStoreProvider() ?: return false
+    return ServerFeatureFlagLastKnownStore.readColdStartFlag(
+        store = prefs,
+        key = MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY,
+        preferredServerId = normalizedServerId.ifEmpty { null },
+        preferredEnvironmentId = environmentId,
+        preferredAccountId = accountId,
+    )
+}
 
 private fun unwrapWebContainerFileChooserHost(context: Context): RaftWebViewFileChooserHost? {
     var current: Context? = context

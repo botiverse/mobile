@@ -31,6 +31,7 @@ enum class AndroidWebContainerStartupState {
 object AndroidWebContainerStartup {
     private val lock = Any()
     private var currentState: AndroidWebContainerStartupState = AndroidWebContainerStartupState.NOT_STARTED
+    private var attemptGeneration: Long = 0L
     private val pendingCallbacks = mutableListOf<(Boolean, String?) -> Unit>()
 
     private val defaultBackgroundExecutor: Executor by lazy {
@@ -38,6 +39,21 @@ object AndroidWebContainerStartup {
             Thread(runnable, "raft-webcontainer-startup").apply { isDaemon = true }
         }
     }
+
+    private val defaultStartUpInvoker: (
+        Context?,
+        WebViewStartUpConfig,
+        WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException>,
+    ) -> Unit = { ctx, cfg, callback ->
+        WebViewCompat.startUpWebView(requireNotNull(ctx), cfg, callback)
+    }
+
+    @Volatile
+    internal var startUpInvoker: (
+        Context?,
+        WebViewStartUpConfig,
+        WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException>,
+    ) -> Unit = defaultStartUpInvoker
 
     val state: AndroidWebContainerStartupState
         get() = synchronized(lock) { currentState }
@@ -54,6 +70,24 @@ object AndroidWebContainerStartup {
         telemetrySink: WebContainerTelemetrySink? = null,
         onCompleted: ((success: Boolean, errorReason: String?) -> Unit)? = null,
     ): Boolean {
+        val appContext = runCatching { context.applicationContext }.getOrNull() ?: context
+        return startUpAsyncInternal(
+            appContext = appContext,
+            shouldRunUiThreadStartUpTasks = shouldRunUiThreadStartUpTasks,
+            backgroundExecutor = backgroundExecutor,
+            telemetrySink = telemetrySink,
+            onCompleted = onCompleted,
+        )
+    }
+
+    internal fun startUpAsyncInternal(
+        appContext: Context?,
+        shouldRunUiThreadStartUpTasks: Boolean = true,
+        backgroundExecutor: Executor = defaultBackgroundExecutor,
+        telemetrySink: WebContainerTelemetrySink? = null,
+        onCompleted: ((success: Boolean, errorReason: String?) -> Unit)? = null,
+    ): Boolean {
+        var activeGeneration = 0L
         val shouldStart =
             synchronized(lock) {
                 when (currentState) {
@@ -68,61 +102,132 @@ object AndroidWebContainerStartup {
                     AndroidWebContainerStartupState.FAILED,
                     -> {
                         currentState = AndroidWebContainerStartupState.STARTING
+                        attemptGeneration += 1L
+                        activeGeneration = attemptGeneration
                         if (onCompleted != null) pendingCallbacks += onCompleted
                         true
                     }
                 }
             }
         if (!shouldStart) {
-            onCompleted?.invoke(true, null)
+            runCatching { onCompleted?.invoke(true, null) }
             return false
         }
 
-        val startedAtMs = SystemClock.elapsedRealtime()
-        val appContext = context.applicationContext ?: context
+        val startedAtMs = monotonicMillis()
+        // AndroidX WebKit 1.18.0 dispatches provider loading onto `backgroundExecutor` without a
+        // try/catch around provider lookup; guard both submission and execution so a broken/updating
+        // WebView package or shut-down executor never kills the process or wedges `STARTING`.
+        val safeBackgroundExecutor =
+            Executor { command ->
+                try {
+                    backgroundExecutor.execute {
+                        try {
+                            command.run()
+                        } catch (error: Throwable) {
+                            completeFailure(
+                                expectedGeneration = activeGeneration,
+                                reason = formatStartupErrorReason(error, "startup_bg_exception"),
+                                telemetrySink = telemetrySink,
+                            )
+                        }
+                    }
+                } catch (error: Throwable) {
+                    completeFailure(
+                        expectedGeneration = activeGeneration,
+                        reason = formatStartupErrorReason(error, "startup_executor_rejected"),
+                        telemetrySink = telemetrySink,
+                    )
+                }
+            }
         return try {
             val config =
-                WebViewStartUpConfig.Builder(backgroundExecutor)
+                WebViewStartUpConfig.Builder(safeBackgroundExecutor)
                     .setShouldRunUiThreadStartUpTasks(shouldRunUiThreadStartUpTasks)
                     .build()
-            WebViewCompat.startUpWebView(
+            startUpInvoker(
                 appContext,
                 config,
                 object : WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException> {
                     override fun onResult(result: WebViewStartUpResult) {
-                        val elapsed = (SystemClock.elapsedRealtime() - startedAtMs).coerceAtLeast(0L)
-                        val listeners =
-                            synchronized(lock) {
-                                currentState = AndroidWebContainerStartupState.READY
-                                pendingCallbacks.toList().also { pendingCallbacks.clear() }
-                            }
-                        telemetrySink?.onEvent(WebContainerTelemetryEvent.StartupCompleted(elapsed))
-                        listeners.forEach { it(true, null) }
+                        val elapsed = (monotonicMillis() - startedAtMs).coerceAtLeast(0L)
+                        completeSuccess(
+                            expectedGeneration = activeGeneration,
+                            elapsedMs = elapsed,
+                            telemetrySink = telemetrySink,
+                        )
                     }
 
                     override fun onError(error: WebViewStartupException) {
-                        val reason = error.message?.take(160) ?: (error::class.simpleName ?: "startup_failed")
-                        val listeners =
-                            synchronized(lock) {
-                                currentState = AndroidWebContainerStartupState.FAILED
-                                pendingCallbacks.toList().also { pendingCallbacks.clear() }
-                            }
-                        telemetrySink?.onEvent(WebContainerTelemetryEvent.StartupFailed(reason))
-                        listeners.forEach { it(false, reason) }
+                        completeFailure(
+                            expectedGeneration = activeGeneration,
+                            reason = formatStartupErrorReason(error, "startup_failed"),
+                            telemetrySink = telemetrySink,
+                        )
                     }
                 },
             )
             true
         } catch (error: Throwable) {
-            val reason = error.message?.take(160) ?: (error::class.simpleName ?: "startup_exception")
-            val listeners =
-                synchronized(lock) {
-                    currentState = AndroidWebContainerStartupState.FAILED
-                    pendingCallbacks.toList().also { pendingCallbacks.clear() }
-                }
-            telemetrySink?.onEvent(WebContainerTelemetryEvent.StartupFailed(reason))
-            listeners.forEach { it(false, reason) }
+            completeFailure(
+                expectedGeneration = activeGeneration,
+                reason = formatStartupErrorReason(error, "startup_exception"),
+                telemetrySink = telemetrySink,
+            )
             false
         }
+    }
+
+    private fun completeSuccess(
+        expectedGeneration: Long,
+        elapsedMs: Long,
+        telemetrySink: WebContainerTelemetrySink?,
+    ) {
+        val listeners =
+            synchronized(lock) {
+                if (currentState != AndroidWebContainerStartupState.STARTING || attemptGeneration != expectedGeneration) {
+                    return
+                }
+                currentState = AndroidWebContainerStartupState.READY
+                pendingCallbacks.toList().also { pendingCallbacks.clear() }
+            }
+        runCatching { telemetrySink?.onEvent(WebContainerTelemetryEvent.StartupCompleted(elapsedMs)) }
+        listeners.forEach { listener -> runCatching { listener(true, null) } }
+    }
+
+    private fun completeFailure(
+        expectedGeneration: Long,
+        reason: String,
+        telemetrySink: WebContainerTelemetrySink?,
+    ) {
+        val listeners =
+            synchronized(lock) {
+                if (currentState != AndroidWebContainerStartupState.STARTING || attemptGeneration != expectedGeneration) {
+                    return
+                }
+                currentState = AndroidWebContainerStartupState.FAILED
+                pendingCallbacks.toList().also { pendingCallbacks.clear() }
+            }
+        runCatching { telemetrySink?.onEvent(WebContainerTelemetryEvent.StartupFailed(reason)) }
+        listeners.forEach { listener -> runCatching { listener(false, reason) } }
+    }
+
+    private fun formatStartupErrorReason(
+        error: Throwable,
+        fallback: String,
+    ): String =
+        error.message?.trim()?.takeIf { it.isNotEmpty() }?.take(160)
+            ?: (error::class.simpleName ?: fallback)
+
+    private fun monotonicMillis(): Long =
+        runCatching { SystemClock.elapsedRealtime() }.getOrElse { System.nanoTime() / 1_000_000L }
+
+    internal fun resetForTest() {
+        synchronized(lock) {
+            currentState = AndroidWebContainerStartupState.NOT_STARTED
+            attemptGeneration += 1L
+            pendingCallbacks.clear()
+        }
+        startUpInvoker = defaultStartUpInvoker
     }
 }

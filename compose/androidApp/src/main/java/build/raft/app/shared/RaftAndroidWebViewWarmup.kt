@@ -115,7 +115,7 @@ internal object RaftAndroidWebViewWarmup {
      * `mobile_web_container_v1`, default OFF).
      */
     @Volatile
-    internal var resolveAsyncStartupPreferred: () -> Boolean = ::isRaftAndroidWebContainerEnabledSnapshot
+    internal var resolveAsyncStartupPreferred: () -> Boolean = { isRaftAndroidWebContainerEnabledSnapshot() }
 
     private fun defaultRunAsyncStartup(
         context: Any?,
@@ -172,42 +172,6 @@ internal object RaftAndroidWebViewWarmup {
     }
 
     fun hasScheduled(): Boolean = attempted.get()
-
-    /**
-     * Opt-in off-main-thread Chromium provider startup backed by `WebViewCompat.startUpWebView`
-     * ([AndroidWebContainerStartup.startUpAsync]). Disabled by default until enabled by feature
-     * flag so existing warm-up behaviour stays unchanged during rollout. Never throws.
-     */
-    fun scheduleAsyncProviderStartup(
-        context: Context,
-        enabled: Boolean,
-    ): Boolean = scheduleAsyncProviderStartupForTest(context, enabled)
-
-    internal fun scheduleAsyncProviderStartupForTest(
-        contextSentinel: Any?,
-        enabled: Boolean,
-    ): Boolean {
-        if (!enabled) return false
-        return runCatching {
-            val resolved = resolveContext(contextSentinel)
-            val startedNs = System.nanoTime()
-            runAsyncStartup(resolved) { success, errorReason ->
-                val elapsedMs = (System.nanoTime() - startedNs) / 1_000_000L
-                if (success) {
-                    runCatching { log("webview_async_startup status=ready elapsedMs=$elapsedMs") }
-                } else {
-                    runCatching { logWarn("webview_async_startup status=failed reason=${errorReason ?: "unknown"}") }
-                }
-            }
-        }.getOrElse { error ->
-            runCatching {
-                logWarn(
-                    "webview_async_startup status=exception errorType=${error::class.simpleName ?: "unknown"}",
-                )
-            }
-            false
-        }
-    }
 
     /**
      * Test-only entry that mirrors [schedule] but takes an opaque context sentinel, so JVM unit
@@ -342,7 +306,7 @@ internal object RaftAndroidWebViewWarmup {
         log = { message -> Log.i(LOG_TAG, message) }
         logWarn = { message -> RaftAndroidLocalDiagnostics.recordLog("warn", LOG_TAG, message) }
         runAsyncStartup = ::defaultRunAsyncStartup
-        resolveAsyncStartupPreferred = ::isRaftAndroidWebContainerEnabledSnapshot
+        resolveAsyncStartupPreferred = { isRaftAndroidWebContainerEnabledSnapshot() }
     }
 
     /** Runs [task] once, the next time the main looper has nothing due. Any thread. */

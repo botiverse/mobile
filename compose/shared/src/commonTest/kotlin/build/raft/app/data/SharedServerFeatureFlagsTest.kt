@@ -156,9 +156,10 @@ class SharedServerFeatureFlagsTest {
         // #wg-mobile-feedback:#276 screenshot -> quick feedback sheet allowlist (default off).
         assertEquals("mobile_screenshot_feedback_v0", MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY)
         assertFalse(MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
-        // dm:@artin:#6 standalone cross-platform Hybrid WebView Container (default off).
+        // dm:@artin:#6 standalone cross-platform Hybrid WebView Container (default off, last-known persisted for cold start).
         assertEquals("mobile_web_container_v1", MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY)
         assertTrue(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertTrue(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
         assertFalse(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
         // botiverse/slock #16210 / #16027: inline quote reply chips + multi-quote composer (default off).
         assertEquals("quote_reply_v0", QUOTE_REPLY_FEATURE_FLAG_KEY)
@@ -231,6 +232,48 @@ class SharedServerFeatureFlagsTest {
         process(FakeApi(ok("""{"evaluations":[${evaluations.replace("true", "false")}]}"""))).prefetch(server)
         val afterKill = process(FakeApi(HomeNetworkResponse(code = 0, bodyText = null)))
         keys.forEach { key -> assertFalse(afterKill.isEnabled(server, key), "after the kill: $key") }
+    }
+
+    @Test
+    fun webContainerFlagPersistsInLastKnownStoreHonorsPerServerFalseOmittedKillAndSignOut() = runTest {
+        val disk = InMemoryRaftKeyValueStore()
+        val binding = ServerFeatureFlagLastKnownBinding("https://api.example", "user-a")
+        val serverA = ServerId("server-a")
+        val serverB = ServerId("server-b")
+        fun newFlags(api: RaftFeatureFlagsApi) =
+            SharedServerFeatureFlags(
+                api = api,
+                lastKnown = ServerFeatureFlagLastKnownStore(store = disk, currentBinding = { binding }),
+            )
+
+        assertFalse(ServerFeatureFlagLastKnownStore.readColdStartFlag(disk, MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY))
+
+        // Enable on serverA, explicitly disable on serverB.
+        newFlags(
+            FakeApi(ok("""{"evaluations":[{"key":"$MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY","enabled":true}]}"""))
+        ).prefetch(serverA)
+        newFlags(
+            FakeApi(ok("""{"evaluations":[{"key":"$MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY","enabled":false}]}"""))
+        ).prefetch(serverB)
+
+        // Pre-auth-store cold start (preferredServerId = null) sees true because serverA has it on;
+        // preferredServerId = serverB respects explicit false without falling through to serverA!
+        assertTrue(ServerFeatureFlagLastKnownStore.readColdStartFlag(disk, MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY))
+        assertTrue(ServerFeatureFlagLastKnownStore.readColdStartFlag(disk, MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY, "server-a"))
+        assertFalse(ServerFeatureFlagLastKnownStore.readColdStartFlag(disk, MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY, "server-b"))
+
+        // Omitting the key from server evaluations overwrites stored value to false (never stuck true).
+        newFlags(FakeApi(ok("""{"evaluations":[]}"""))).prefetch(serverA)
+        assertFalse(ServerFeatureFlagLastKnownStore.readColdStartFlag(disk, MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY, "server-a"))
+        assertFalse(ServerFeatureFlagLastKnownStore.readColdStartFlag(disk, MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY))
+
+        // Sign-out clears persisted last-known storage completely.
+        newFlags(
+            FakeApi(ok("""{"evaluations":[{"key":"$MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY","enabled":true}]}"""))
+        ).prefetch(serverA)
+        assertTrue(ServerFeatureFlagLastKnownStore.readColdStartFlag(disk, MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY))
+        ServerFeatureFlagLastKnownStore(store = disk, currentBinding = { binding }).clearAll()
+        assertFalse(ServerFeatureFlagLastKnownStore.readColdStartFlag(disk, MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY))
     }
 
     @Test

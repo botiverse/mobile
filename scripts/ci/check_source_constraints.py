@@ -1243,7 +1243,9 @@ def check_freshness_by_default_invariants(
 WEB_CONTAINER_BUILD_GRADLE = "compose/web-container/build.gradle.kts"
 WEB_CONTAINER_NATIVE_ROOT = "compose/web-container/native"
 JAVASCRIPT_INTERFACE_RE = re.compile(
-    r"@\s*(?:[A-Za-z_]\w*\s*:\s*)?(?:android\s*\.\s*webkit\s*\.\s*)?JavascriptInterface\b"
+    r"@\s*(?:[A-Za-z_]\w*\s*:\s*)?(?:android\s*\.\s*webkit\s*\.\s*)?`?JavascriptInterface`?\b"
+    r"|@\s*(?:[A-Za-z_]\w*\s*:\s*)?\[[^\]]*\b`?JavascriptInterface`?\b"
+    r"|\bandroid\s*\.\s*webkit\s*\.\s*`?JavascriptInterface`?\b"
     r"|\baddJavascriptInterface\b"
 )
 # compose/web-container must have ZERO internal Raft module dependencies (no type-safe
@@ -1253,6 +1255,39 @@ WEB_CONTAINER_FORBIDDEN_INTERNAL_DEP_RE = re.compile(
     r"""\bproject\s*\([^)]*["']:[^"'\n]+["']"""
 )
 NATIVE_DISPATCH_SYNC_RE = re.compile(r"\bdispatch_(?:barrier_)?sync(?:_f)?\s*\(")
+
+
+CPP_DIGIT_SEP_PREFIX_RE = re.compile(
+    r"(?:"
+    r"0[xX][0-9a-fA-F']*(?:\.[0-9a-fA-F']*)?(?:[pP][+-]?[0-9']*)?"
+    r"|0[bB][01']+"
+    r"|[0-9][0-9']*(?:\.[0-9']*)?(?:[eE][+-]?[0-9']*)?"
+    r"|\.[0-9][0-9']*(?:[eE][+-]?[0-9']*)?"
+    r")"
+)
+
+
+def _is_cpp_digit_separator(text: str, pos: int) -> bool:
+    """Return True iff `text[pos] == "'"` is a C++14 digit separator inside a numeric literal."""
+    if pos <= 0 or pos + 1 >= len(text):
+        return False
+    prev_ch = text[pos - 1]
+    next_ch = text[pos + 1]
+    if not (prev_ch.isdigit() or prev_ch in "abcdefABCDEF"):
+        return False
+    if not (next_ch.isdigit() or next_ch in "abcdefABCDEF"):
+        return False
+    k = pos - 1
+    while k > 0 and (text[k - 1].isalnum() or text[k - 1] in "_'."):
+        k -= 1
+    token_prefix = text[k:pos]
+    if not CPP_DIGIT_SEP_PREFIX_RE.fullmatch(token_prefix):
+        return False
+    # Reject non-hex decimal/float prefixes ending on hex letters (e.g. `1e` followed by `'a`).
+    is_hex = token_prefix.startswith(("0x", "0X"))
+    if not is_hex and not (prev_ch.isdigit() and next_ch.isdigit()):
+        return False
+    return True
 
 
 def _strip_c_comments_and_strings(text: str) -> str:
@@ -1297,8 +1332,9 @@ def _strip_c_comments_and_strings(text: str) -> str:
                 out[i] = " "
                 i += 1
         elif text[i] == "'":
-            # Skip C++14 numeric digit separators (e.g. `1'000` or `0xFF'FF`).
-            if i > 0 and (text[i - 1].isdigit() or text[i - 1] in "abcdefABCDEF"):
+            # Skip C++14 numeric digit separators (e.g. `1'000` or `0xFF'FF`), but never
+            # confuse identifier-adjacent char literals like `case'"':` with digit separators.
+            if _is_cpp_digit_separator(text, i):
                 i += 1
                 continue
             j = i + 1
@@ -1975,6 +2011,7 @@ com.apple.SignInWithApple = {
         "compose/web-container/native/macos/Bridge.m": (
             "#pragma mark - Session's bridge\n"
             "int count = 1'000;\n"
+            "int hex = 0xFF'FF;\n"
             "// dispatch_sync(dispatch_get_main_queue(), ^{}) in comment is fine\n"
             'const char *msg = "dispatch_sync("; dispatch_async(dispatch_get_main_queue(), ^{});\n'
         ),
@@ -1984,6 +2021,11 @@ com.apple.SignInWithApple = {
         ({**good_wc_kt, "bad.kt": "@JavascriptInterface\nfun post(s: String) {}\n"}, good_wc_java, good_wc_gradle, good_wc_native),
         ({**good_wc_kt, "bad.kt": "@get:JavascriptInterface\nval x: String get() = \"\"\n"}, good_wc_java, good_wc_gradle, good_wc_native),
         ({**good_wc_kt, "bad.kt": "@android.webkit.JavascriptInterface\nfun post(s: String) {}\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "import android.webkit.JavascriptInterface as Jsi\n@Jsi\nfun post(s: String) {}\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "import android.webkit.`JavascriptInterface` as Jsi\n@Jsi\nfun post(s: String) {}\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "typealias Jsi = android.webkit.JavascriptInterface\n@Jsi\nfun post(s: String) {}\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "@[Suppress(\"x\") JavascriptInterface]\nfun post(s: String) {}\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "@field:[JavascriptInterface]\nval x = 1\n"}, good_wc_java, good_wc_gradle, good_wc_native),
         ({**good_wc_kt, "bad.kt": "webView.addJavascriptInterface(bridge, \"x\")\n"}, good_wc_java, good_wc_gradle, good_wc_native),
         ({**good_wc_kt, "bad.kt": "WebView(ctx).apply { addJavascriptInterface(bridge, \"x\") }\n"}, good_wc_java, good_wc_gradle, good_wc_native),
         ({**good_wc_kt, "bad.kt": "val ref = WebView::addJavascriptInterface\n"}, good_wc_java, good_wc_gradle, good_wc_native),
@@ -2005,6 +2047,13 @@ com.apple.SignInWithApple = {
         (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.m": "dispatch_barrier_sync_f(q, ctx, fn);\n"}),
         (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.m": "#pragma mark - Session's bridge\ndispatch_sync(q, ^{});\n"}),
         (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.mm": "int n = 1'000;\ndispatch_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.m": "case'\"': dispatch_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.m": "case'a': dispatch_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.mm": "double a = 1e1'0; char c = '\"'; dispatch_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.mm": "double a = 0x1.a'bp0; char c = '\"'; dispatch_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.mm": "double a = 1e1'0; dispatch_sync(q, ^{}); double b = 1e2'0;\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.mm": "long x = time+1'000; char c = '\"'; dispatch_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.mm": "long x = value-1'000; char c = '\"'; dispatch_sync(q, ^{});\n"}),
     ):
         try:
             check_web_container_invariants(bad_kt, bad_java, bad_gradle, bad_native)
