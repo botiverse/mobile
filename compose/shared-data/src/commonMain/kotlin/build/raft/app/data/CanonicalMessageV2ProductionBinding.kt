@@ -168,8 +168,6 @@ import kotlinx.serialization.json.intOrNull
             path = "channels/$scopeId",
             serverId = partition.serverId,
         ) ?: return null
-        // A forum channel (`threadSort: activity`, `channel_thread_sort_v0`) is never written from a page of this path.
-        if (detail.stringOrNull("threadSort") == CHANNEL_THREAD_SORT_ACTIVITY) return null
         val channelType = (detail["type"] as? JsonPrimitive)
             ?.takeIf { it.isString }
             ?.content
@@ -958,8 +956,8 @@ import kotlinx.serialization.json.intOrNull
         // can only follow a page whose claim could not reach the oldest. `after` says nothing about the head either.
         if (rawMessages.isEmpty()) return log("empty_page")
         if (requestedLimit <= 0) return log("invalid_limit")
-        // The scope key is the response's. No window (an older server, or a page that is not a seq page such as
-        // `by-activity`) names no scope and proves no range, so nothing is written.
+        // The scope key is the response's. No window (an older server, or a page that is not a seq page) names no
+        // scope and proves no range, so nothing is written.
         val window = messageWindow ?: return log("no_message_window")
         val scopeId = window.scopeId?.takeIf { it.isNotBlank() && it == it.trim() } ?: return log("no_message_window")
         if (window.serverId != partition.serverId) return log("window_server_mismatch")
@@ -1618,9 +1616,6 @@ private fun JsonObject.stringOrNull(key: String): String? =
     (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
 
 private const val REPLY_THREAD_SCOPE_KIND: String = "thread"
-
-/** The channel `threadSort` value of a forum channel (server `channel_thread_sort_v0`). */
-@RaftCoreInternalApi const val CHANNEL_THREAD_SORT_ACTIVITY: String = "activity"
 
 private fun JsonObject.threadChannelIdOrNull(): String? =
     (this["threadId"] as? JsonPrimitive)

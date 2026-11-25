@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.CHANNEL_THREAD_SORT_ACTIVITY
 import build.raft.app.data.RaftMessageContextPageSink
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.StoredAuthServer
@@ -285,13 +284,10 @@ internal class RaftMessageLinkResolver(
             }
         }
         if (resolution is RaftMessageLinkResolution.Open && contextResponse.linkOutcome() == RaftLinkProbeOutcome.Found) {
-            // A forum channel never writes segments.
-            if (channelProbe?.threadSort != CHANNEL_THREAD_SORT_ACTIVITY) {
-                contextResponse?.bodyText?.let { body ->
-                    // The probe names the link's channel. The page's scope is the response's, so the type only helps
-                    // when they are the same conversation; the sink checks.
-                    pendingContextPage?.offer(body, channelId = link.channelId, channelType = channelProbe?.type)
-                }
+            contextResponse?.bodyText?.let { body ->
+                // The probe names the link's channel. The page's scope is the response's, so the type only helps
+                // when they are the same conversation; the sink checks.
+                pendingContextPage?.offer(body, channelId = link.channelId, channelType = channelProbe?.type)
             }
         }
         return resolution
