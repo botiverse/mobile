@@ -3956,7 +3956,6 @@ private fun ThreadMessagesListContent(
                     // Outside the list's scroll, so it sees every change first once it claimed.
                     .then(timeRevealModifier)
                     .keyboardDismissModeInteractiveIOS()
-                    .dismissInputFocusOnScrollableChrome()
                     // A mouse wheel or trackpad scrolls without a touch: the touch listener below
                     // never sees it (task #253 / #258).
                     .threadListWheelScroll(userScrollGeneration, newerGestureDemandTracker)

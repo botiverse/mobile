@@ -3,12 +3,20 @@ package build.raft.app
 import android.content.res.Configuration
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.PlatformTextInputSession
 
 @Composable
 internal actual fun rememberRaftHardwareKeyboardConnected(): Boolean {
     val configuration = LocalConfiguration.current
     return raftAndroidHardwareKeyboardConnected(configuration.keyboard, configuration.hardKeyboardHidden)
 }
+
+@Composable
+internal actual fun rememberRaftPlatformHostWindowToken(): Any? = LocalView.current
+
+internal actual fun PlatformTextInputSession.belongsToRaftPlatformHostWindow(hostToken: Any?): Boolean =
+    hostToken == null || view === hostToken
 
 /**
  * A hardware keyboard is attached and usable: the configuration reports keys

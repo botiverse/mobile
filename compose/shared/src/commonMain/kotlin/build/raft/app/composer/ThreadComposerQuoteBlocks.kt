@@ -104,14 +104,19 @@ internal fun ThreadComposerQuoteBlocks(
         focusRequesters.getOrPut(blockId) { FocusRequester() }
 
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
+    val quoteKeyboardIntent = remember { RaftEditorKeyboardIntent() }
     val pendingFocus = controller.pendingFocusRequest
     LaunchedEffect(pendingFocus?.nonce) {
         val request = pendingFocus ?: return@LaunchedEffect
         val requester = focusRequesters[request.blockId]
         if (requester != null) {
-            runCatching { requester.requestFocus() }
             if (request.raiseKeyboard) {
-                softwareKeyboardController?.show()
+                quoteKeyboardIntent.focusWithKeyboard(
+                    focusRequester = requester,
+                    softwareKeyboardController = softwareKeyboardController,
+                )
+            } else {
+                runCatching { requester.requestFocus() }
             }
         }
         controller.consumeFocusRequest(request.nonce)
@@ -213,6 +218,7 @@ internal fun ThreadComposerQuoteBlocks(
                             composerKeyboardActions = composerKeyboardActions,
                             hardwareEnterConfig = hardwareEnterConfig,
                             focusRequester = focusRequesterFor(block.id),
+                            keyboardIntent = quoteKeyboardIntent,
                             nativeEditingStateReader = if (isPrimary) nativeEditingStateReader else null,
                             inputTransformation = inputTransformation,
                             suggestionKeyPresses = suggestionKeyPresses,
@@ -348,6 +354,7 @@ private fun ComposerSegmentedTextBlockRow(
     composerKeyboardActions: KeyboardActions,
     hardwareEnterConfig: RaftHardwareEnterConfig,
     focusRequester: FocusRequester,
+    keyboardIntent: RaftEditorKeyboardIntent,
     nativeEditingStateReader: RaftTextFieldNativeEditingStateReader?,
     inputTransformation: InputTransformation?,
     suggestionKeyPresses: ThreadComposerSuggestionKeyPresses,
@@ -400,9 +407,9 @@ private fun ComposerSegmentedTextBlockRow(
             keyboardHeightChange = { params -> onKeyboardHeightChange(params.height) },
             placeholderColor = RaftColor.ForegroundHint,
             cursorBrush = SolidColor(RaftColor.TextBlack),
-            systemNewlineAction = true,
             nativeEditingStateReader = nativeEditingStateReader,
             focusRequester = focusRequester,
+            keyboardIntent = keyboardIntent,
             modifier =
                 Modifier
                     .fillMaxWidth()

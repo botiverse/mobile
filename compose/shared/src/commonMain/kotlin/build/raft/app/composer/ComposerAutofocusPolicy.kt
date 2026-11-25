@@ -16,10 +16,17 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.InterceptPlatformTextInput
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.PlatformTextInputInterceptor
+import androidx.compose.ui.platform.PlatformTextInputMethodRequest
+import androidx.compose.ui.platform.PlatformTextInputSession
+import androidx.compose.ui.platform.SoftwareKeyboardController
 import build.raft.app.data.SharedAdaptiveWorkspaceSession
 import build.raft.app.data.visibleSideThread
 import build.raft.designsystem.focus.LocalRaftAutofocusGuard
@@ -32,8 +39,13 @@ import build.raft.designsystem.focus.RaftFocusDecision
 import build.raft.designsystem.focus.RaftFocusRegion
 import build.raft.designsystem.focus.RaftFocusRequestSource
 import build.raft.designsystem.focus.raftObserveFocusInteractions
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /*
  * Opening a conversation puts the keyboard focus in its composer, as on the web (botiverse/slock
@@ -254,61 +266,158 @@ internal class ComposerFocusHolders(
 internal val LocalComposerFocusHolders = staticCompositionLocalOf { ComposerFocusHolders.Default }
 
 /**
- * Per-window bridge between the platform host window (e.g. Android `RaftCmpActivity`) and the
- * Compose text inputs inside [RaftWindowFocusScope].
- *
- * - Tracks currently focused host-window text inputs ([hasFocusedTextInput]) so window-focus loss
- *   clears stale editor focus only when a text input actually holds it (Hands b0d1ed9f).
- * - Tracks in-app overlays that intentionally preserve the host keyboard (`Modal(keepsHostKeyboard = true)`,
- *   such as thread message long-press menus), so losing Activity window focus to those in-app
- *   dialog windows leaves composer focus and the IME untouched.
- * - Holds the window root's Compose `FocusManager.clearFocus(force = true)` handle so the host can
- *   clear stale Compose focus without calling `InputMethodManager.hideSoftInputFromWindow` (which
- *   must never interfere with a system floating window's own IME).
- *
- * Main thread only.
+ * Tracks active in-app overlays (`Modal(keepsHostKeyboard = true)`, e.g. thread message long-press
+ * menus) that intentionally keep the host window's IME alive while their dialog window takes window
+ * focus. Main thread only.
  */
-class RaftWindowInputFocusController {
-    private val focusedTextInputs = mutableSetOf<Any>()
-    private val windowFocusLossRetentionTokens = mutableSetOf<Any>()
-    private var clearComposeFocus: (() -> Unit)? = null
+@Stable
+internal class RaftHostKeyboardRetentionState {
+    private val tokens = mutableSetOf<Any>()
+    var retained: Boolean by mutableStateOf(false)
+        private set
 
-    val hasFocusedTextInput: Boolean
-        get() = focusedTextInputs.isNotEmpty()
-
-    val isRetainingInputFocusOnWindowFocusLoss: Boolean
-        get() = windowFocusLossRetentionTokens.isNotEmpty()
-
-    fun setTextInputFocused(owner: Any, focused: Boolean) {
-        if (focused) {
-            focusedTextInputs += owner
-        } else {
-            focusedTextInputs -= owner
-        }
+    fun retain(token: Any) {
+        if (tokens.add(token)) retained = true
     }
 
-    fun retainInputFocusOnWindowFocusLoss(token: Any) {
-        windowFocusLossRetentionTokens += token
-    }
-
-    fun releaseInputFocusRetention(token: Any) {
-        windowFocusLossRetentionTokens -= token
-    }
-
-    internal fun bindFocusClear(clear: (() -> Unit)?) {
-        clearComposeFocus = clear
-    }
-
-    fun clearComposeInputFocus(): Boolean {
-        val clear = clearComposeFocus ?: return false
-        clear()
-        return true
+    fun release(token: Any) {
+        if (tokens.remove(token)) retained = tokens.isNotEmpty()
     }
 }
 
-/** This window's [RaftWindowInputFocusController], or null outside a [RaftWindowFocusScope]. */
-internal val LocalRaftWindowInputFocusController =
-    staticCompositionLocalOf<RaftWindowInputFocusController?> { null }
+/** This window's [RaftHostKeyboardRetentionState], or null outside a [RaftWindowFocusScope]. */
+internal val LocalRaftHostKeyboardRetentionState =
+    staticCompositionLocalOf<RaftHostKeyboardRetentionState?> { null }
+
+/**
+ * Opaque handle for the platform host window wrapping [RaftWindowFocusScope] (Android: root
+ * `LocalView.current`, so child `Dialog`/`Popup` windows with their own `AndroidComposeView` pass
+ * straight through [RaftWindowPlatformInputGate] without watching the host Activity's window focus).
+ */
+@Composable
+internal expect fun rememberRaftPlatformHostWindowToken(): Any?
+
+/** Whether this [PlatformTextInputSession] belongs to the host window identified by [hostToken]. */
+internal expect fun PlatformTextInputSession.belongsToRaftPlatformHostWindow(hostToken: Any?): Boolean
+
+/**
+ * Mobile touch-host platform text input gate implementing the 3-axis IME state model
+ * (`Window Focus` × `Editor Focus & Cursor` × `Explicit Keyboard-Show Intent`):
+ *
+ * Compose's `TextFieldDecoratorModifierNode` keeps its `inputSessionJob` alive across external
+ * window-focus loss (`isWindowFocused: true -> false`), which leaves `AndroidComposeView`'s
+ * `onCheckIsTextEditor() == true` and allows Android IMMS to transfer/flash a floating window's
+ * IME onto Raft on window-focus regain before `RaftInputFocusDismissHost` blurs focus.
+ *
+ * This interceptor releases ONLY the inner platform `startInputMethod` session on an external
+ * `isWindowFocused: true -> false` transition (never wiping editor focus, draft text, or cursor,
+ * and leaving `Modal(keepsHostKeyboard = true)` overlays untouched), parks the outer session so
+ * window-focus regain keeps `onCheckIsTextEditor() == false`, and wakes/re-invokes the re-entrant
+ * [PlatformTextInputMethodRequest] as soon as `SoftwareKeyboardController.show()` fires on an
+ * explicit tap or programmatic keyboard-show intent.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Stable
+internal class RaftWindowPlatformInputGate(
+    private val hostWindowToken: () -> Any?,
+    private val isWindowFocused: () -> Boolean,
+    private val retainsHostKeyboard: () -> Boolean,
+) : PlatformTextInputInterceptor {
+    private var parkedWake: CompletableDeferred<Unit>? = null
+
+    val isParked: Boolean
+        get() = parkedWake != null
+
+    fun wakeIfParked(): Boolean {
+        val wake = parkedWake ?: return false
+        parkedWake = null
+        wake.complete(Unit)
+        return true
+    }
+
+    override suspend fun interceptStartInputMethod(
+        request: PlatformTextInputMethodRequest,
+        nextHandler: PlatformTextInputSession,
+    ): Nothing {
+        if (!nextHandler.belongsToRaftPlatformHostWindow(hostWindowToken())) {
+            nextHandler.startInputMethod(request)
+        }
+        while (true) {
+            var wasWindowFocused = isWindowFocused()
+            coroutineScope {
+                val activeSession =
+                    launch(start = CoroutineStart.UNDISPATCHED) {
+                        nextHandler.startInputMethod(request)
+                    }
+                // Trigger strictly on an external true -> false window-focus edge while no
+                // keepsHostKeyboard modal is open: closing a keepsHostKeyboard modal releases its
+                // retention token while isWindowFocused is still false for a frame, so ignoring
+                // retention flips prevents false parking on modal dismiss.
+                snapshotFlow { isWindowFocused() }
+                    .first { focused ->
+                        if (focused) {
+                            wasWindowFocused = true
+                            false
+                        } else {
+                            wasWindowFocused && !retainsHostKeyboard()
+                        }
+                    }
+                activeSession.cancelAndJoin()
+            }
+            val wake = CompletableDeferred<Unit>()
+            parkedWake = wake
+            try {
+                wake.await()
+            } finally {
+                if (parkedWake === wake) {
+                    parkedWake = null
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+internal fun RaftWindowPlatformInputGateScope(
+    desktopHost: Boolean = raftPlatformHasFinePointer(),
+    hostKeyboardRetention: RaftHostKeyboardRetentionState,
+    content: @Composable () -> Unit,
+) {
+    if (desktopHost) {
+        content()
+        return
+    }
+    val windowInfo = LocalWindowInfo.current
+    val hostWindowToken = rememberRaftPlatformHostWindowToken()
+    val parentKeyboardController = LocalSoftwareKeyboardController.current
+    val currentWindowInfo by rememberUpdatedState(windowInfo)
+    val currentHostWindowToken by rememberUpdatedState(hostWindowToken)
+    val gate =
+        remember(hostKeyboardRetention) {
+            RaftWindowPlatformInputGate(
+                hostWindowToken = { currentHostWindowToken },
+                isWindowFocused = { currentWindowInfo.isWindowFocused },
+                retainsHostKeyboard = { hostKeyboardRetention.retained },
+            )
+        }
+    val wrappedKeyboardController =
+        remember(gate, parentKeyboardController) {
+            object : SoftwareKeyboardController {
+                override fun show() {
+                    gate.wakeIfParked()
+                    parentKeyboardController?.show()
+                }
+
+                override fun hide() {
+                    parentKeyboardController?.hide()
+                }
+            }
+        }
+    CompositionLocalProvider(LocalSoftwareKeyboardController provides wrappedKeyboardController) {
+        InterceptPlatformTextInput(interceptor = gate, content = content)
+    }
+}
 
 /**
  * One app window's focus bookkeeping: its own focus coordinator, autofocus guard and composer
@@ -323,29 +432,24 @@ internal val LocalRaftWindowInputFocusController =
 fun RaftWindowFocusScope(
     modifier: Modifier = Modifier,
     coordinator: RaftFocusCoordinator? = null,
-    inputFocusController: RaftWindowInputFocusController? = null,
     content: @Composable () -> Unit,
 ) {
     val resolvedCoordinator = coordinator ?: remember { RaftFocusCoordinator() }
-    val resolvedInputFocusController = inputFocusController ?: remember { RaftWindowInputFocusController() }
     val guard = remember(resolvedCoordinator) { RaftAutofocusGuard(resolvedCoordinator) }
     val holders = remember(resolvedCoordinator) { ComposerFocusHolders(resolvedCoordinator) }
-    val rootFocusManager = LocalFocusManager.current
-    val currentRootFocusManager by rememberUpdatedState(rootFocusManager)
-    DisposableEffect(resolvedInputFocusController) {
-        resolvedInputFocusController.bindFocusClear { currentRootFocusManager.clearFocus(force = true) }
-        onDispose { resolvedInputFocusController.bindFocusClear(null) }
-    }
+    val hostKeyboardRetention = remember { RaftHostKeyboardRetentionState() }
     CompositionLocalProvider(
         LocalRaftAutofocusGuard provides guard,
         LocalComposerFocusHolders provides holders,
-        LocalRaftWindowInputFocusController provides resolvedInputFocusController,
+        LocalRaftHostKeyboardRetentionState provides hostKeyboardRetention,
     ) {
-        Box(modifier = modifier.raftObserveFocusInteractions(coordinator = resolvedCoordinator, forceInstall = true)) {
-            CompositionLocalProvider(
-                LocalRaftFocusInteractionObserverInstalled provides true,
-                content = content,
-            )
+        RaftWindowPlatformInputGateScope(hostKeyboardRetention = hostKeyboardRetention) {
+            Box(modifier = modifier.raftObserveFocusInteractions(coordinator = resolvedCoordinator, forceInstall = true)) {
+                CompositionLocalProvider(
+                    LocalRaftFocusInteractionObserverInstalled provides true,
+                    content = content,
+                )
+            }
         }
     }
 }

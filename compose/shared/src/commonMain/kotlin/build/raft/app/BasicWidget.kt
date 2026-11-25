@@ -4,14 +4,13 @@ package build.raft.app
 
 import build.raft.designsystem.focus.LocalRaftAutofocusTargetField
 import build.raft.designsystem.focus.LocalRaftAutofocusGuard
-import build.raft.designsystem.focus.LocalRaftFocusModalToken
 import build.raft.designsystem.focus.LocalRaftFocusRegion
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipeRegion
-import build.raft.app.compat.ui.nativeEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -19,6 +18,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -112,6 +112,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onLongClick
@@ -894,17 +896,6 @@ internal fun Modifier.dismissInputFocusOnOutsidePointerDown(
             var multiplePointers = false
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
-                if (
-                    isNativeInputFocusDismissCancellation(
-                        nativeEvent = event.nativeEvent,
-                        hasTerminalChange = event.changes.any { it.previousPressed && !it.pressed }
-                    )
-                ) {
-                    dismissTracker.cancel()
-                    registry.invalidatePointerFocusClearCandidates()
-                    awaitPointerEvent(PointerEventPass.Main)
-                    return@awaitEachGesture
-                }
                 if (event.changes.count { it.pressed || it.previousPressed } > 1) {
                     multiplePointers = true
                     dismissTracker.cancel()
@@ -1091,12 +1082,6 @@ internal class RaftInputFocusOwnerRegistry {
         multiPointerFocusClearBlocked = false
     }
 
-    fun invalidatePointerFocusClearCandidates() {
-        pointerSafetyGeneration += 1L
-        multiPointerFocusClearBlocked = false
-        claimedFocusClearToken = null
-    }
-
     /**
      * Cancels an outside-gesture dismissal that was armed before a descendant established a new
      * explicit editing intent. The current gesture may still finish normally, but its old token
@@ -1130,19 +1115,6 @@ internal data class RaftInputFocusDismissToken(
     val focusOwnerGeneration: Long,
     val pointerSafetyGeneration: Long
 )
-
-private const val RaftNativeCancelEvent = "cancel"
-
-/**
- * Kuikly's `SuperTouchManager` tags a native touch-cancel as
- * the literal `cancel` event while normal physical Up remains untagged, including after a native
- * scroll gesture. A cancel terminates the Compose hit path but is not proof that the finger lifted,
- * so it must invalidate pending focus dismissal instead of being folded into [TouchType.Up].
- */
-internal fun isNativeInputFocusDismissCancellation(
-    nativeEvent: Any?,
-    hasTerminalChange: Boolean
-): Boolean = nativeEvent == RaftNativeCancelEvent && hasTerminalChange
 
 internal val LocalRaftInputFocusOwnerRegistry =
     compositionLocalOf<RaftInputFocusOwnerRegistry?> { null }
@@ -1214,86 +1186,6 @@ internal class RaftInputFocusDismissGestureTracker {
     fun cancel() {
         tracking = false
         armedDismissToken = null
-    }
-}
-
-/**
- * Shared non-consuming outside-focus observer for native-backed scrollable chrome. Attaching
- * directly to the scroll node is required on Kuikly/iOS because the native scroll host does not
- * relay its consumed pointer stream to an ancestor Compose pointerInput. The local down is resolved
- * into root coordinates before checking every active input bound, so inputs nested inside the same
- * scroll node preserve cursor and selection behavior.
- */
-@Composable
-internal fun Modifier.dismissInputFocusOnScrollableChrome(): Modifier {
-    val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
-    val currentFocusManager by rememberUpdatedState(LocalFocusManager.current)
-    val scrollAnchor = remember { RaftInputFocusRootAnchor() }
-    val focusDismissScope = rememberCoroutineScope()
-    return onGloballyPositioned(scrollAnchor::update).pointerInput(focusOwnerRegistry) {
-        val registry = focusOwnerRegistry ?: return@pointerInput
-        awaitEachGesture {
-            val touchTracker = RaftTouchSequenceTracker<PointerId>()
-            val dismissTracker = RaftInputFocusDismissGestureTracker()
-            var multiplePointers = false
-            while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Main)
-                if (
-                    isNativeInputFocusDismissCancellation(
-                        nativeEvent = event.nativeEvent,
-                        hasTerminalChange = event.changes.any { it.previousPressed && !it.pressed }
-                    )
-                ) {
-                    dismissTracker.cancel()
-                    return@awaitEachGesture
-                }
-                if (event.changes.count { it.pressed || it.previousPressed } > 1) {
-                    multiplePointers = true
-                    dismissTracker.cancel()
-                }
-                var terminalDismissToken: RaftInputFocusDismissToken? = null
-                var sawTrackedUp = false
-                event.changes.forEach { change ->
-                    val type =
-                        touchTracker.onChange(
-                            pointerId = change.id,
-                            pressed = change.pressed,
-                            positionChanged = change.positionChangedIgnoreConsumed()
-                        ) ?: return@forEach
-                    val dismissToken =
-                        if (type == TouchType.Down) {
-                            scrollAnchor.resolve(change.position)
-                                ?.let(registry::outsideFocusToken)
-                        } else {
-                            null
-                        }
-                    dismissTracker.onTouch(
-                        type = type,
-                        dismissToken = dismissToken
-                    )?.let { terminalDismissToken = it }
-                    if (type == TouchType.Up) {
-                        sawTrackedUp = true
-                    }
-                }
-                if (sawTrackedUp) {
-                    terminalDismissToken
-                        ?.takeUnless { multiplePointers }
-                        ?.let { dismissToken ->
-                            focusDismissScope.launch {
-                                withFrameNanos { }
-                                withFrameNanos { }
-                                if (registry.claimFocusClear(dismissToken)) {
-                                    currentFocusManager.clearFocus(force = true)
-                                    withFrameNanos { }
-                                    withFrameNanos { }
-                                    registry.releaseUnreconciledFocusClearClaim(dismissToken)
-                                }
-                            }
-                        }
-                    return@awaitEachGesture
-                }
-            }
-        }
     }
 }
 
@@ -1466,18 +1358,14 @@ fun Modal(
     // here in the page: the dialog is its own full-window layer, so it pads the whole left/right
     // inset itself. Zero outside a page shell (previews, screenshot tests).
     val horizontalSafeArea = LocalRaftWindowHorizontalSafeArea.current
-    val windowInputFocusController = LocalRaftWindowInputFocusController.current
-    val keyboardRetentionToken = remember { Any() }
-    // Registered ahead of RaftWindowDialog so the retention token is live before the Android
-    // Dialog window calls show() and shifts window focus away from RaftCmpActivity.
-    DisposableEffect(windowInputFocusController, keyboardRetentionToken, keepsHostKeyboard) {
-        if (keepsHostKeyboard) {
-            windowInputFocusController?.retainInputFocusOnWindowFocusLoss(keyboardRetentionToken)
-        }
-        onDispose {
-            if (keepsHostKeyboard) {
-                windowInputFocusController?.releaseInputFocusRetention(keyboardRetentionToken)
-            }
+    val hostKeyboardRetention = LocalRaftHostKeyboardRetentionState.current
+    DisposableEffect(hostKeyboardRetention, keepsHostKeyboard) {
+        if (keepsHostKeyboard && hostKeyboardRetention != null) {
+            val token = Any()
+            hostKeyboardRetention.retain(token)
+            onDispose { hostKeyboardRetention.release(token) }
+        } else {
+            onDispose {}
         }
     }
     // The strips stay transparent: under them is the page (its full-width canvas), and a
@@ -1902,12 +1790,87 @@ internal val LocalRaftDialogKeyboardHeightChange =
     compositionLocalOf<(KeyboardParams) -> Unit> { {} }
 
 /**
+ * Whether a text editor's [KeyboardOptions.showKeyboardOnFocus] should be enabled right now
+ * (Axis 3 of the composer/editor IME state model: Window Focus × Editor Focus & Cursor × Explicit
+ * Keyboard-Show Intent).
+ *
+ * - On desktop hosts ([desktopHost] == true), there is no soft keyboard and the platform text
+ *   input session is needed immediately on focus for hardware CJK IME composition -> `true`.
+ * - On touch hosts (Android/iOS, [desktopHost] == false), passive/non-tap focus transitions
+ *   (autofocus on open with a hardware keyboard, `FocusOnly` requests, window-focus regain,
+ *   recomposition updates) must not auto-raise the soft keyboard -> `false` by default, and
+ *   `true` only while [explicitKeyboardIntentArmed] is set. Direct user taps on state-based
+ *   `BasicTextField` bypass `showKeyboardOnFocus == false` natively via
+ *   `TextFieldDecoratorModifierNode.startInputSession(fromTap = true)`.
+ */
+internal fun raftResolveShowKeyboardOnFocus(
+    desktopHost: Boolean,
+    explicitKeyboardIntentArmed: Boolean,
+    callerOverride: Boolean? = null,
+): Boolean = callerOverride ?: (desktopHost || explicitKeyboardIntentArmed)
+
+/**
+ * Explicit programmatic keyboard-show intent (Axis 3) for a [TextField] or design-system editor.
+ *
+ * Arming [armed] temporarily sets `KeyboardOptions(showKeyboardOnFocus = true)` around an explicit
+ * programmatic focus request (`autoFocus = true`, Reply / Quote / Mention focus, image-editor
+ * handoff return, blank-area composer card tap) so Compose's `TextFieldDecoratorModifierNode`
+ * starts its platform input session and opens the IME. Disarming back to `false` once focus/session
+ * settles calls `startInputSession(fromTap = false)` which returns early without disposing the
+ * active input session, leaving the open keyboard completely undisturbed.
+ */
+@Stable
+internal class RaftEditorKeyboardIntent(initialArmed: Boolean = false) {
+    var armed: Boolean by mutableStateOf(initialArmed)
+        private set
+
+    var requestGeneration: Long by mutableLongStateOf(0L)
+        private set
+
+    fun arm(): Long {
+        armed = true
+        requestGeneration += 1L
+        return requestGeneration
+    }
+
+    fun disarmIfCurrent(generation: Long) {
+        if (requestGeneration == generation) {
+            armed = false
+        }
+    }
+
+    /**
+     * Arms explicit keyboard-show intent, commits `showKeyboardOnFocus = true` to the editor node
+     * before focusing, requests focus and shows the keyboard (handling both unfocused and
+     * already-focused fields), then disarms back to `false` without dropping the running session.
+     */
+    suspend fun focusWithKeyboard(
+        focusRequester: FocusRequester,
+        softwareKeyboardController: SoftwareKeyboardController?,
+        beforeFocusDelayMs: Long = 0L,
+    ) {
+        if (beforeFocusDelayMs > 0L) {
+            delay(beforeFocusDelayMs)
+        }
+        val generation = arm()
+        try {
+            withFrameNanos { }
+            runCatching { focusRequester.requestFocus() }
+            softwareKeyboardController?.show()
+            withFrameNanos { }
+        } finally {
+            disarmIfCurrent(generation)
+        }
+    }
+}
+
+/**
  * The app's editor behaviour as a modifier for the editor node itself: the IME enter action
- * (systemNewlineAction / imeActionRequested were native-editor props; see [raftImeEnterAction] /
- * [raftResolvedKeyboardOptions]), dialog keyboard-height events, [focusRequester], focus / blur
- * callbacks and the global tap-outside focus-dismiss registry. [TextField] and the
- * design-system fields (`RaftTextField` / `RaftTextarea` through `rememberRaftDesignSystemEditor` / `rememberRaftTextareaEditorModifier`) share
- * it, so a field keeps the same behaviour whichever editor draws it.
+ * (see [raftImeEnterAction] / [raftResolvedKeyboardOptions]), dialog keyboard-height events,
+ * [focusRequester], focus / blur callbacks and the global tap-outside focus-dismiss registry.
+ * [TextField] and the design-system fields (`RaftTextField` / `RaftTextarea` through
+ * `rememberRaftDesignSystemEditor` / `rememberRaftTextareaEditorModifier`) share it, so a field
+ * keeps the same behaviour whichever editor draws it.
  */
 @Composable
 internal fun Modifier.raftAppEditorBehavior(
@@ -1942,24 +1905,16 @@ internal fun Modifier.raftAppEditorBehavior(
     // This window's guard: a field focused in another app window never blocks this one's composer.
     val autofocusGuard = LocalRaftAutofocusGuard.current
     val focusRegion = LocalRaftFocusRegion.current
-    val windowInputFocusController = LocalRaftWindowInputFocusController.current
-    // Only host-window editors (outside a RaftWindowDialog modal) register for Activity
-    // window-focus-loss cleanup; modal editors live in their own Android Dialog window.
-    val tracksHostWindowInputFocus = LocalRaftFocusModalToken.current == null
-    androidx.compose.runtime.SideEffect {
+    SideEffect {
         if (!blocksComposerAutofocus) {
             if (lastFocus) autofocusGuard.setFieldFocused(focusOwner, false, focusRegion)
         } else if (lastFocus) {
             autofocusGuard.setFieldFocused(focusOwner, true, focusRegion)
         }
-        if (lastFocus) {
-            windowInputFocusController?.setTextInputFocused(focusOwner, tracksHostWindowInputFocus)
-        }
     }
-    DisposableEffect(focusOwner, autofocusGuard, windowInputFocusController) {
+    DisposableEffect(focusOwner, autofocusGuard) {
         onDispose {
             autofocusGuard.setFieldFocused(focusOwner, false, focusRegion)
-            windowInputFocusController?.setTextInputFocused(focusOwner, false)
         }
     }
     return this
@@ -1982,9 +1937,6 @@ internal fun Modifier.raftAppEditorBehavior(
                     if (participatesInGlobalFocusDismiss) {
                         focusOwnerRegistry?.setFocused(focusOwner, true, focusOwnerAnchor::resolveBounds)
                     }
-                    if (tracksHostWindowInputFocus) {
-                        windowInputFocusController?.setTextInputFocused(focusOwner, true)
-                    }
                     currentOnFocus()
                     lastFocus = true
                 }
@@ -1992,7 +1944,6 @@ internal fun Modifier.raftAppEditorBehavior(
                 if (participatesInGlobalFocusDismiss) {
                     focusOwnerRegistry?.setFocused(focusOwner, false)
                 }
-                windowInputFocusController?.setTextInputFocused(focusOwner, false)
                 currentOnBlur()
                 lastFocus = false
             }
@@ -2019,81 +1970,38 @@ internal fun TextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     focusRequester: FocusRequester = remember { FocusRequester() },
-    systemNewlineAction: Boolean = false,
-    /**
-     * True when the host wants Enter to trigger the IME action (send) rather than
-     * insert a newline. Android can only offer an action key on a single-line field,
-     * so the native view needs this before it fixes its line mode.
-     */
     imeActionRequested: Boolean = true,
     participatesInGlobalFocusDismiss: Boolean = true,
-    /**
-     * Task #43 QA-4: visual transformation for password-typed inputs.
-     * When non-null (e.g. [PasswordVisualTransformation()]), the
-     * underlying value stays intact but the rendered text is masked.
-     * Show/Hide toggles in the caller just switch this parameter.
-     */
     visualTransformation: VisualTransformation = VisualTransformation.None,
-    contentAlignment: Alignment = Alignment.CenterStart
+    contentAlignment: Alignment = Alignment.CenterStart,
+    keyboardIntent: RaftEditorKeyboardIntent = remember { RaftEditorKeyboardIntent(initialArmed = autoFocus) },
 ) {
-
     val currentOnValueChange by rememberUpdatedState(onValueChange)
-    val currentOnTextLayout by rememberUpdatedState(onTextLayout)
-
-    val resolvedKeyboardOptions =
-        raftResolvedKeyboardOptions(keyboardOptions, raftTextFieldSingleLine(maxLines), imeActionRequested)
-    val updatedModifier = modifier
-        .raftAppEditorBehavior(
-            singleLine = raftTextFieldSingleLine(maxLines),
-            resolvedKeyboardOptions = resolvedKeyboardOptions,
-            keyboardActions = keyboardActions,
-            keyboardHeightChange = keyboardHeightChange,
-            focusRequester = focusRequester,
-            onFocus = onFocus,
-            onBlur = onBlur,
-            participatesInGlobalFocusDismiss = participatesInGlobalFocusDismiss,
-        )
-    val resolvedTextStyle = raftTextFieldResolvedTextStyle(textStyle)
-    // Focused: cursor and selection drags (and single-line scrolling) keep the drag from the
-    // host's full-page back swipe.
-    val keepsBackSwipe = remember { mutableStateOf(false) }
     val state = rememberRaftTextFieldState(value, currentOnValueChange, traceName = "TextField")
-    RaftAppStateTextField(
+    TextField(
         state = state,
-        modifier = updatedModifier
-            .raftKeepsBackSwipe(keepsBackSwipe.value)
-            .onFocusChanged { keepsBackSwipe.value = it.isFocused },
-        textStyle = resolvedTextStyle,
-        maxLines = maxLines,
-        onTextLayout = currentOnTextLayout,
-        keyboardOptions = resolvedKeyboardOptions,
-        keyboardActions = keyboardActions,
-        cursorBrush = cursorBrush,
+        modifier = modifier,
+        placeholder = placeholder,
+        autoFocus = autoFocus,
+        onBlur = onBlur,
+        onFocus = onFocus,
+        keyboardHeightChange = keyboardHeightChange,
         enabled = enabled,
         readOnly = readOnly,
+        textStyle = textStyle,
+        placeholderColor = placeholderColor,
+        cursorBrush = cursorBrush,
+        maxLines = maxLines,
+        onTextLayout = onTextLayout,
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        focusRequester = focusRequester,
+        imeActionRequested = imeActionRequested,
+        participatesInGlobalFocusDismiss = participatesInGlobalFocusDismiss,
         visualTransformation = visualTransformation,
-        decorator = { innerTextField ->
-            Box(contentAlignment = contentAlignment) {
-                if (state.text.isEmpty() && placeholder.isNotEmpty()) {
-                    Text(
-                        text = placeholder,
-                        style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
-                        color = placeholderColor ?: resolvedTextStyle.color,
-                        maxLines = maxLines,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                innerTextField()
-            }
-        }
+        contentAlignment = contentAlignment,
+        keyboardIntent = keyboardIntent,
     )
-
-    LaunchedEffect(autoFocus) {
-        if (autoFocus) {
-            delay(100)
-            focusRequester.requestFocus()
-        }
-    }
 }
 
 @Composable
@@ -2116,97 +2024,42 @@ internal fun TextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     focusRequester: FocusRequester = remember { FocusRequester() },
-    systemNewlineAction: Boolean = false,
-    /**
-     * True when the host wants Enter to trigger the IME action (send) rather than
-     * insert a newline. Android can only offer an action key on a single-line field,
-     * so the native view needs this before it fixes its line mode.
-     */
     imeActionRequested: Boolean = true,
     participatesInGlobalFocusDismiss: Boolean = true,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     contentAlignment: Alignment = Alignment.CenterStart,
     nativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
     hardwareEnterConfig: RaftHardwareEnterConfig? = null,
+    keyboardIntent: RaftEditorKeyboardIntent = remember { RaftEditorKeyboardIntent(initialArmed = autoFocus) },
 ) {
-    val nativeEditingStateBindingOwner = remember { Any() }
-
     val currentOnValueChange by rememberUpdatedState(onValueChange)
-    val currentOnTextLayout by rememberUpdatedState(onTextLayout)
-    DisposableEffect(nativeEditingStateReader, nativeEditingStateBindingOwner) {
-        onDispose { nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner) }
-    }
-
-    val resolvedKeyboardOptions =
-        raftResolvedKeyboardOptions(keyboardOptions, raftTextFieldSingleLine(maxLines), imeActionRequested)
-    val updatedModifier = modifier
-        .raftAppEditorBehavior(
-            singleLine = raftTextFieldSingleLine(maxLines),
-            resolvedKeyboardOptions = resolvedKeyboardOptions,
-            keyboardActions = keyboardActions,
-            keyboardHeightChange = keyboardHeightChange,
-            focusRequester = focusRequester,
-            onFocus = onFocus,
-            onBlur = onBlur,
-            participatesInGlobalFocusDismiss = participatesInGlobalFocusDismiss,
-            hardwareEnterConfig = hardwareEnterConfig,
-        )
-    // The editor edits a TextFieldState; the caller's value follows it (rememberRaftTextFieldState).
-    // The "native" read is that state itself: it already holds an IME edit the caller has not been
-    // told about or recomposed with yet (an IME commit and Send within one frame).
     val state = rememberRaftTextFieldState(value, { next -> currentOnValueChange(next) }, traceName = "TextField")
-    if (nativeEditingStateReader != null) {
-        SideEffect {
-            nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
-                callback(
-                    RaftTextFieldNativeEditorRead(
-                        state = state.toRaftTextFieldValue().toRaftTextInputState().raftWithFinishedComposition(),
-                        editorNativeRef = -1,
-                    )
-                )
-            }
-        }
-    }
-    val resolvedTextStyle = raftTextFieldResolvedTextStyle(textStyle)
-    // Focused: cursor and selection drags (and single-line scrolling) keep the drag from the
-    // host's full-page back swipe.
-    val keepsBackSwipe = remember { mutableStateOf(false) }
-    RaftAppStateTextField(
+    TextField(
         state = state,
-        modifier = updatedModifier
-            .raftKeepsBackSwipe(keepsBackSwipe.value)
-            .onFocusChanged { keepsBackSwipe.value = it.isFocused },
-        textStyle = resolvedTextStyle,
-        maxLines = maxLines,
-        onTextLayout = currentOnTextLayout,
-        keyboardOptions = resolvedKeyboardOptions,
-        keyboardActions = keyboardActions,
-        cursorBrush = cursorBrush,
+        modifier = modifier,
+        placeholder = placeholder,
+        autoFocus = autoFocus,
+        onBlur = onBlur,
+        onFocus = onFocus,
+        keyboardHeightChange = keyboardHeightChange,
         enabled = enabled,
         readOnly = readOnly,
+        textStyle = textStyle,
+        placeholderColor = placeholderColor,
+        cursorBrush = cursorBrush,
+        maxLines = maxLines,
+        onTextLayout = onTextLayout,
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        focusRequester = focusRequester,
+        imeActionRequested = imeActionRequested,
+        participatesInGlobalFocusDismiss = participatesInGlobalFocusDismiss,
         visualTransformation = visualTransformation,
-        decorator = { innerTextField ->
-            Box(contentAlignment = contentAlignment) {
-                if (state.text.isEmpty() && placeholder.isNotEmpty()) {
-                    Text(
-                        text = placeholder,
-                        style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
-                        color = placeholderColor ?: resolvedTextStyle.color,
-                        maxLines = maxLines,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                innerTextField()
-            }
-        }
+        contentAlignment = contentAlignment,
+        nativeEditingStateReader = nativeEditingStateReader,
+        hardwareEnterConfig = hardwareEnterConfig,
+        keyboardIntent = keyboardIntent,
     )
-
-    LaunchedEffect(autoFocus) {
-        if (autoFocus) {
-            delay(100)
-            focusRequester.requestFocus()
-        }
-    }
 }
 
 /**
@@ -2233,7 +2086,6 @@ internal fun TextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     focusRequester: FocusRequester = remember { FocusRequester() },
-    systemNewlineAction: Boolean = false,
     imeActionRequested: Boolean = true,
     participatesInGlobalFocusDismiss: Boolean = true,
     visualTransformation: VisualTransformation = VisualTransformation.None,
@@ -2242,15 +2094,24 @@ internal fun TextField(
     hardwareEnterConfig: RaftHardwareEnterConfig? = null,
     inputTransformation: InputTransformation? = null,
     traceName: String = "TextField",
+    keyboardIntent: RaftEditorKeyboardIntent = remember { RaftEditorKeyboardIntent(initialArmed = autoFocus) },
 ) {
     val nativeEditingStateBindingOwner = remember { Any() }
     val currentOnTextLayout by rememberUpdatedState(onTextLayout)
+    val softwareKeyboardController = LocalSoftwareKeyboardController.current
     DisposableEffect(nativeEditingStateReader, nativeEditingStateBindingOwner) {
         onDispose { nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner) }
     }
 
+    val effectiveShowKeyboardOnFocus =
+        raftResolveShowKeyboardOnFocus(
+            desktopHost = raftPlatformHasFinePointer(),
+            explicitKeyboardIntentArmed = keyboardIntent.armed,
+            callerOverride = keyboardOptions.showKeyboardOnFocus,
+        )
     val resolvedKeyboardOptions =
         raftResolvedKeyboardOptions(keyboardOptions, raftTextFieldSingleLine(maxLines), imeActionRequested)
+            .copy(showKeyboardOnFocus = effectiveShowKeyboardOnFocus)
     val updatedModifier = modifier
         .raftAppEditorBehavior(
             singleLine = raftTextFieldSingleLine(maxLines),
@@ -2313,8 +2174,11 @@ internal fun TextField(
 
     LaunchedEffect(autoFocus) {
         if (autoFocus) {
-            delay(100)
-            focusRequester.requestFocus()
+            keyboardIntent.focusWithKeyboard(
+                focusRequester = focusRequester,
+                softwareKeyboardController = softwareKeyboardController,
+                beforeFocusDelayMs = 100L,
+            )
         }
     }
 }

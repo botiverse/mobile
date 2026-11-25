@@ -494,7 +494,6 @@ private fun AttachmentCommentComposer(
                 placeholderColor = colors.foregroundHint,
                 cursorBrush = SolidColor(colors.foreground),
                 maxLines = 5,
-                systemNewlineAction = true,
                 imeActionRequested = false,
                 contentAlignment = Alignment.TopStart,
                 modifier =
