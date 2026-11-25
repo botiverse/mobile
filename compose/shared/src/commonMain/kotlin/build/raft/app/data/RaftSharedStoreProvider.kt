@@ -815,6 +815,13 @@ internal class RaftSharedStoreProvider private constructor(
     }
     val resolvedQuotesStore: SharedResolvedQuotesStore by resolvedQuotesStoreLazy
 
+    /**
+     * In-memory LRU cache of resolved quoted message permalinks (#proj-mobile:#383), scoped by
+     * `(accountUserId, serverId, channelId, messageId)` and cleared on sign-out / server-access loss.
+     */
+    internal val quotedPermalinkCache: build.raft.app.ThreadQuotedPermalinkCache =
+        build.raft.app.ThreadQuotedPermalinkCache()
+
     /** Joint channel Connected-servers pages (data-layer plan step 5): memory + durable. */
     internal val jointConnectionsCache: build.raft.app.RaftJointConnectionsCache by lazy {
         RaftKeyedSnapshotCache(
@@ -934,8 +941,9 @@ internal class RaftSharedStoreProvider private constructor(
                 if (artifactFollowStoreLazy.isInitialized()) artifactFollowStore.clearAll()
                 if (artifactScreenshotStoreLazy.isInitialized()) artifactScreenshotStore.clearAll()
                 artifactScreenshotDiskCache.clearAllAsync(threadSendScope)
-                // Quote replies' resolved quotes and composer quote metadata: per viewer, session only.
+                // Quote replies' resolved quotes, cached quoted permalinks, and composer quote metadata: per viewer, session only.
                 if (resolvedQuotesStoreLazy.isInitialized()) resolvedQuotesStore.clearAll()
+                quotedPermalinkCache.clear()
                 build.raft.app.ThreadComposerQuoteMetaCache.clear()
                 // The Artifact viewer's headers and its kept WebView (Tenny's cache rule 1).
                 build.raft.app.RaftArtifactViewerMemory.clear()
@@ -2329,6 +2337,7 @@ internal class RaftSharedStoreProvider private constructor(
                 if (installedAppOriginsCacheLazy.isInitialized()) {
                     installedAppOriginsCache.dropServer(grant.serverId)
                 }
+                quotedPermalinkCache.dropServer(grant.serverId, lostAccountId)
                 val lostEnvironmentId = replyCacheAuthContext.value?.environmentId ?: apiEnvironmentStore.current().apiBaseUrl
                 if (artifactScreenshotStoreLazy.isInitialized()) {
                     artifactScreenshotStore.dropServer(grant.serverId, lostAccountId, lostEnvironmentId)

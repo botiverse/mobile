@@ -393,6 +393,7 @@ private class ThreadMessageCardCallbacks(
     val onToggleLongMessage: () -> Unit,
     val onLongPressInputReady: ((String) -> Unit)?,
     val quotedPermalinkLoader: ThreadQuotedPermalinkLoader?,
+    val quotedPermalinkLookup: ThreadQuotedPermalinkLookup? = null,
     val onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
     /** A quote reply's card was tapped: the quoted message's id ([ThreadQuoteReplyBody]); null: cards don't jump. */
     val onJumpToQuotedMessage: ((String) -> Unit)? = null,
@@ -475,6 +476,7 @@ fun ThreadMessageCard(
     onLongPressInputReady: ((String) -> Unit)? = null,
     longPressGestureInstanceKey: Any = message.id,
     quotedPermalinkLoader: ThreadQuotedPermalinkLoader? = null,
+    quotedPermalinkLookup: ThreadQuotedPermalinkLookup? = null,
     onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
     outerPadding: androidx.compose.ui.unit.Dp = RaftAppSpacing.Sm,
     /** web MessageHoverToolbar: the row's hover toolbar under a mouse or trackpad; null: none. */
@@ -572,6 +574,7 @@ fun ThreadMessageCard(
                 onToggleLongMessage = onToggleLongMessage,
                 onLongPressInputReady = onLongPressInputReady,
                 quotedPermalinkLoader = quotedPermalinkLoader,
+                quotedPermalinkLookup = quotedPermalinkLookup,
                 onShowAuthorDescription = onShowAuthorDescription,
                 onJumpToQuotedMessage = onJumpToQuotedMessage,
             ),
@@ -658,6 +661,9 @@ private fun ThreadMessageCardContent(
     val onLongPressInputReady = callbacks.onLongPressInputReady
     val longPressGestureInstanceKey = data.longPressGestureInstanceKey
     val quotedPermalinkLoader = callbacks.quotedPermalinkLoader ?: LocalThreadQuotedPermalinkLoader.current
+    val quotedPermalinkLookup =
+        callbacks.quotedPermalinkLookup
+            ?: if (callbacks.quotedPermalinkLoader == null) LocalThreadQuotedPermalinkLookup.current else null
     val outerPadding = data.outerPadding
     // read_receipts_v0: @mentioned agents' read badges on the viewer's own message (web MentionLink).
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
@@ -736,14 +742,30 @@ private fun ThreadMessageCardContent(
                 )?.parsed
             }
         }
+    val initialCachedQuotedPermalink =
+        remember(message.id, message.body, currentServerSlug, initialQuotedPermalinkTarget, quotedPermalinkLookup) {
+            initialQuotedPermalinkTarget?.let { target -> quotedPermalinkLookup?.invoke(target) }
+        }
     val quotedPermalinkState =
-        remember(message.id, message.body, currentServerSlug, hasQuotedPermalinkLoader) {
+        remember(message.id, message.body, currentServerSlug, hasQuotedPermalinkLoader, initialCachedQuotedPermalink) {
             mutableStateOf<ThreadQuotedPermalinkUiState?>(
-                if (initialQuotedPermalinkTarget != null) ThreadQuotedPermalinkUiState.Loading else null
+                when {
+                    initialCachedQuotedPermalink != null -> initialCachedQuotedPermalink.toQuotedPermalinkUiState()
+                    initialQuotedPermalinkTarget != null -> ThreadQuotedPermalinkUiState.Loading
+                    else -> null
+                }
             )
         }
     val quotedPermalinkTarget = initialQuotedPermalinkTarget
-    LaunchedEffect(message.id, message.body, currentServerSlug, quotedPermalinkLoader, initialQuotedPermalinkTarget) {
+    LaunchedEffect(
+        message.id,
+        message.body,
+        currentServerSlug,
+        quotedPermalinkLoader,
+        quotedPermalinkLookup,
+        initialQuotedPermalinkTarget,
+        initialCachedQuotedPermalink,
+    ) {
         val loader = quotedPermalinkLoader ?: return@LaunchedEffect
         val target = initialQuotedPermalinkTarget
         if (target == null) {
@@ -760,13 +782,16 @@ private fun ThreadMessageCardContent(
             }
             return@LaunchedEffect
         }
+        val cached = initialCachedQuotedPermalink ?: quotedPermalinkLookup?.invoke(target)
+        if (cached != null) {
+            quotedPermalinkState.value = cached.toQuotedPermalinkUiState()
+            return@LaunchedEffect
+        }
         if (quotedPermalinkState.value == null) {
             quotedPermalinkState.value = ThreadQuotedPermalinkUiState.Loading
         }
         quotedPermalinkState.value =
-            loader(target)?.let { item ->
-                if (item.item.isRetracted) ThreadQuotedPermalinkUiState.Retracted else ThreadQuotedPermalinkUiState.Loaded(item)
-            }
+            loader(target)?.toQuotedPermalinkUiState()
                 ?: ThreadQuotedPermalinkUiState.Unavailable
     }
     val jointAuthor =

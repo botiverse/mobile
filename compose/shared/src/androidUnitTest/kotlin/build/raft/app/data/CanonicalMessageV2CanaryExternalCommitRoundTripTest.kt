@@ -245,6 +245,8 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
             delegate.hasFactAfter(scope, afterSeq)
         override suspend fun highestFactSeqBefore(scope: SyncScopeKey, beforeSeq: Long) =
             delegate.highestFactSeqBefore(scope, beforeSeq)
+        override suspend fun lowestFactSeqAfter(scope: SyncScopeKey, afterSeq: Long) =
+            delegate.lowestFactSeqAfter(scope, afterSeq)
         override suspend fun locateFact(partition: DurablePartitionKey, factId: String) =
             delegate.locateFact(partition, factId)
         override suspend fun touchUserAccess(scope: SyncScopeKey) = delegate.touchUserAccess(scope)

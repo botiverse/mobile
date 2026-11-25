@@ -345,12 +345,21 @@ internal data class ThreadQuotedPermalinkMessage(
 
 internal typealias ThreadQuotedPermalinkLoader = suspend (ParsedRaftPermalink) -> ThreadQuotedPermalinkMessage?
 
+/** Synchronous cache lookup for already-loaded quoted permalinks (zero Frame 1 loading flash). */
+internal typealias ThreadQuotedPermalinkLookup = (ParsedRaftPermalink) -> ThreadQuotedPermalinkMessage?
+
 /**
  * The loader behind the quoted-permalink card. SharedThreadRouteContent is at the JVM argument
  * limit, so it reaches [ThreadMessageCard] through this local instead of a parameter chain (the
  * chain had silently ended in `null` defaults, so no card ever loaded).
  */
 internal val LocalThreadQuotedPermalinkLoader = compositionLocalOf<ThreadQuotedPermalinkLoader?> { null }
+
+/** Synchronous lookup paired with [LocalThreadQuotedPermalinkLoader] for instant cached rendering. */
+internal val LocalThreadQuotedPermalinkLookup = compositionLocalOf<ThreadQuotedPermalinkLookup?> { null }
+
+internal fun ThreadQuotedPermalinkMessage.toQuotedPermalinkUiState(): ThreadQuotedPermalinkUiState =
+    if (item.isRetracted) ThreadQuotedPermalinkUiState.Retracted else ThreadQuotedPermalinkUiState.Loaded(this)
 
 internal sealed interface ThreadQuotedPermalinkUiState {
     data object Loading : ThreadQuotedPermalinkUiState

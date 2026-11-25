@@ -279,6 +279,19 @@ interface CanonicalMessageV2Store {
         .maxOrNull()
 
     /**
+     * Phase 2d: non-decoding probe for the lowest stored fact seq of [scope] strictly above [afterSeq],
+     * or `null` when none exists. Avoids decoding out-of-window or skipped-segment payloads.
+     */
+    suspend fun lowestFactSeqAfter(
+        scope: SyncScopeKey,
+        afterSeq: Long,
+    ): Long? = restore(scope).envelopes
+        .asSequence()
+        .map { it.fact.seq }
+        .filter { it > afterSeq }
+        .minOrNull()
+
+    /**
      * Phase 2d: locate every stored copy of [factId] inside [partition] without scanning scopes.
      * Used by anchored opens (`anchor = MessageId`) to read around a cached island directly.
      */
@@ -1218,6 +1231,23 @@ fun CanonicalMessageV2ScopePoisoned.diagnosticsLabel(): String = "fact=${factId.
             scopeKind = scope.scopeKind,
             channelId = scope.scopeId,
             seq = beforeSeq,
+            limit = 1L,
+        ).executeAsOneOrNull()?.seq
+    }
+
+    override suspend fun lowestFactSeqAfter(
+        scope: SyncScopeKey,
+        afterSeq: Long,
+    ): Long? {
+        requireV2Scope(scope)
+        return database.queries.selectFactsInScopeAfter(
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+            seq = afterSeq,
             limit = 1L,
         ).executeAsOneOrNull()?.seq
     }
