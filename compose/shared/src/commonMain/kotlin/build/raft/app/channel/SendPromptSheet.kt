@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
@@ -52,6 +53,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.OpenedDirectMessageAuthority
+import build.raft.app.data.RaftComposerSendKeyRuntime
 import build.raft.app.data.RaftDirectMessageOpens
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
@@ -945,6 +947,7 @@ private fun SendPromptComposerFooter(
                         .testTag(SendPromptErrorBannerTestTag),
             )
         }
+        val composerSendKey = RaftComposerSendKeyRuntime.observeSendKey()
         Box(
             modifier =
                 Modifier
@@ -952,36 +955,39 @@ private fun SendPromptComposerFooter(
                     .padding(horizontal = 12.dp, vertical = 8.dp)
                     .testTag(SendPromptComposerTestTag),
         ) {
-            ThreadComposerContent(
-                payload =
-                    RaftThreadComposerPayload(
-                        instanceId = "send-prompt:$requestKey",
-                        seedText = prompt,
-                        placeholder = stringResource(Res.string.thread_composer_placeholder_named, agentName),
-                        enabled = !sending,
-                        attachmentActionsEnabled = false,
-                        originalImageOptionEnabled = false,
-                        showAsTaskToggle = false,
-                        composerMode = if (sending) "sending" else "idle",
-                    ),
-                onEvent = { action, value, _, _ ->
-                    if (action == "change" && value != null) {
-                        onDraftChange(value)
-                    }
-                },
-                onSendRequest = { request ->
-                    val text = request.value.text
-                    if (sending || text.isBlank()) {
-                        ThreadComposerSendAdmission.Rejected
-                    } else {
-                        onSubmit(text)
-                        // Keep text in composer until the dialog closes so a failed send preserves edits.
-                        ThreadComposerSendAdmission.Deferred
-                    }
-                },
-                attachmentReorderEnabled = false,
-                attachmentPreviewEnabled = false,
-            )
+            CompositionLocalProvider(LocalThreadComposerShowSendKeyHint provides false) {
+                ThreadComposerContent(
+                    payload =
+                        RaftThreadComposerPayload(
+                            instanceId = "send-prompt:$requestKey",
+                            seedText = prompt,
+                            placeholder = stringResource(Res.string.thread_composer_placeholder_named, agentName),
+                            enabled = !sending,
+                            attachmentActionsEnabled = false,
+                            originalImageOptionEnabled = false,
+                            showAsTaskToggle = false,
+                            composerMode = if (sending) "sending" else "idle",
+                        ),
+                    composerSendKey = composerSendKey,
+                    onEvent = { action, value, _, _ ->
+                        if (action == "change" && value != null) {
+                            onDraftChange(value)
+                        }
+                    },
+                    onSendRequest = { request ->
+                        val text = request.value.text
+                        if (sending || text.isBlank()) {
+                            ThreadComposerSendAdmission.Rejected
+                        } else {
+                            onSubmit(text)
+                            // Keep text in composer until the dialog closes so a failed send preserves edits.
+                            ThreadComposerSendAdmission.Deferred
+                        }
+                    },
+                    attachmentReorderEnabled = false,
+                    attachmentPreviewEnabled = false,
+                )
+            }
         }
     }
 }

@@ -19,6 +19,7 @@ import build.raft.designsystem.components.RaftSideActionColumnDefaults
 import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.data.RaftDisplayPreferenceRuntime
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RaftSidebarAction
 import build.raft.app.data.RaftSidebarActionSurface
@@ -8593,6 +8594,16 @@ private fun HomeSidebarSortRow(
 }
 
 /**
+ * Subtitle shown after a peer's name in a sidebar DM row (web `SidebarPeerRowBody`, slock #16597):
+ * Settings › Appearance › "Show member descriptions" off hides the description here as well as
+ * beside a message's author.
+ */
+internal fun homeSidebarDirectMessageSubtitle(
+    description: String?,
+    showMemberDescriptions: Boolean,
+): String? = description?.takeIf { showMemberDescriptions && it.isNotBlank() }
+
+/**
  * A person or agent conversation in the Home list (web `SidebarPeerRowBody`): a
  * [RaftSidebarItem] led by the 19dp avatar with the agent's status pixel on its corner, the
  * name with the muted bell right after it and the description as its subtitle, then the
@@ -8660,6 +8671,7 @@ internal fun HomeSidebarDirectMessageRow(
     val markedUnreadDescription =
         if (badge.markedUnreadDot) stringResource(Res.string.home_sidebar_marked_unread) else null
     val mutedIcon = homeConversationMutedIndicatorIcon(muted)
+    val showMemberDescriptions = RaftDisplayPreferenceRuntime.observeShowSenderDescription()
     val longClick = rememberHomeSidebarLongClick(interactionIdentity, onLongPress)
     val title = remember(name) { homeSidebarUserContentName(name) }
     traceMarkdownSection(RaftHomeTraceNames.DIRECT_MESSAGE_ROW_RENDER, name.length) {
@@ -8669,7 +8681,7 @@ internal fun HomeSidebarDirectMessageRow(
             onClick = onClick,
             selected = selected,
             tone = homeConversationRowTone(muted = muted, joined = true, selected = selected, loudUnread = badge.hasUnread || mentioned),
-            subtitle = description?.takeIf { it.isNotBlank() },
+            subtitle = homeSidebarDirectMessageSubtitle(description = description, showMemberDescriptions = showMemberDescriptions),
             onLongClick = longClick.onLongClick,
             onLongClickLabel = longClick.onLongClick?.let { stringResource(Res.string.home_sidebar_row_menu_action) },
             menuOpen = menuOpen,
