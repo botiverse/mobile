@@ -240,6 +240,45 @@ class MembersAgentUsageTabUiTest {
             onAllNodesWithTag(AgentUsageTestTags.OpenComputerButton, useUnmergedTree = true).assertCountEquals(0)
         }
 
+    @Test
+    fun hoistedUsageTabStateRetainsLoadedSummaryAcrossTabDisposalWithoutRefetchOrLoadingFlash(): Unit =
+        runRobolectricComposeUiTest {
+            val api = FakeAgentUsageApi { from, to -> HomeNetworkResponse(code = 200, bodyText = readyPayload(from, to)) }
+            val client = RaftAgentsApiClient(api)
+            var showUsageTab by mutableStateOf(true)
+            setContent {
+                val usageState = remember { MembersAgentUsageTabState() }
+                if (showUsageTab) {
+                    MembersAgentUsageTab(
+                        agentId = MemberId("agent-1"),
+                        serverId = ServerId("srv-1"),
+                        agentsApiClient = client,
+                        timeContext = timeContext,
+                        onOpenComputer = {},
+                        state = usageState,
+                    )
+                }
+            }
+            waitUntil(timeoutMillis = 5_000) {
+                onAllNodesWithTag(AgentUsageTestTags.Headline, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(1, api.requests.size)
+            onNodeWithTag(AgentUsageTestTags.CacheReadsSwitch, useUnmergedTree = true).performClick()
+            waitForIdle()
+            onNodeWithTag(AgentUsageTestTags.Headline, useUnmergedTree = true).assertTextContains("8.1K")
+
+            // Dispose Usage tab (simulating TabPager swipe to Overview) and remount it.
+            showUsageTab = false
+            waitForIdle()
+            onAllNodesWithTag(AgentUsageTestTags.Headline, useUnmergedTree = true).assertCountEquals(0)
+
+            showUsageTab = true
+            waitForIdle()
+            onNodeWithTag(AgentUsageTestTags.Headline, useUnmergedTree = true).assertTextContains("8.1K")
+            onAllNodesWithText("Loading…", useUnmergedTree = true).assertCountEquals(0)
+            assertEquals(1, api.requests.size, "re-entering Usage tab with hoisted state must not refetch")
+        }
+
     private class FakeAgentUsageApi(
         private val responder: (from: String, to: String) -> HomeNetworkResponse,
     ) : RaftAgentsApi {

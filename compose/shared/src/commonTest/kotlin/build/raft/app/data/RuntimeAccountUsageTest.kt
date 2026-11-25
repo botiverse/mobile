@@ -242,16 +242,99 @@ class RuntimeAccountUsageTest {
         assertEquals(5, api.calls.size)
     }
 
+    @Test
+    fun peekSyncAndPeekAllSyncFenceOnOwnerGenerationClearAndDropServer() = runPortableCoroutineTest<Unit> {
+        var now = 1_000L
+        val gate = CompletableDeferred<Unit>()
+        var blockNextRead = false
+        val api =
+            FakeUsageApi(
+                beforeRespond = {
+                    if (blockNextRead) {
+                        blockNextRead = false
+                        gate.await()
+                    }
+                },
+            ) { request ->
+                when {
+                    request.contains("/m-denied/") -> status(403)
+                    request.contains("/m-fail/") -> status(500)
+                    else -> ok(FRESH_BODY)
+                }
+            }
+        val store = store(api, clock = { now }, currentIdentitySync = { signedIn })
+        val k1 = key()
+        val kDenied = k1.copy(machineId = "m-denied")
+        val kFailed = k1.copy(machineId = "m-fail")
+        val kServer2 = k1.copy(serverId = "s2")
+
+        assertIs<RuntimeAccountUsageLoad.Loaded>(store.read(k1))
+        assertSame(RuntimeAccountUsageLoad.Forbidden, store.read(kDenied))
+        assertIs<RuntimeAccountUsageLoad.Failed>(store.read(kFailed))
+        assertIs<RuntimeAccountUsageLoad.Loaded>(store.read(kServer2))
+        val callsAfterSeed = api.calls.size
+
+        // Synchronous Frame-1 peek hits warm cache with zero network traffic.
+        assertIs<RuntimeAccountUsageLoad.Loaded>(store.peekSync(k1))
+        assertSame(RuntimeAccountUsageLoad.Forbidden, store.peekSync(kDenied))
+        assertIs<RuntimeAccountUsageLoad.Failed>(store.peekSync(kFailed))
+        val batch = store.peekAllSync(listOf(k1, kDenied, kFailed, kServer2))
+        assertEquals(setOf(k1, kDenied, kFailed, kServer2), batch.keys)
+        assertEquals(callsAfterSeed, api.calls.size)
+
+        // Past the 60 s TTL: allowExpiredLoaded returns Loaded only (never stale Forbidden or Failed).
+        now += RUNTIME_ACCOUNT_USAGE_CACHE_MILLIS + 1L
+        assertNull(store.peekSync(k1, allowExpiredLoaded = false))
+        assertIs<RuntimeAccountUsageLoad.Loaded>(store.peekSync(k1, allowExpiredLoaded = true))
+        assertNull(store.peekSync(kDenied, allowExpiredLoaded = true))
+        assertNull(store.peekSync(kFailed, allowExpiredLoaded = true))
+        val expiredBatch = store.peekAllSync(listOf(k1, kDenied, kFailed, kServer2), allowExpiredLoaded = true)
+        assertEquals(setOf(k1, kServer2), expiredBatch.keys)
+
+        // Owner / session-generation / environment / sign-out fencing blocks synchronous peeks immediately.
+        val original = signedIn!!
+        signedIn = original.copy(sessionGeneration = "gen-2")
+        assertNull(store.peekSync(k1, allowExpiredLoaded = true))
+        assertTrue(store.peekAllSync(listOf(k1, kServer2), allowExpiredLoaded = true).isEmpty())
+        signedIn = original.copy(accountId = "user-2")
+        assertNull(store.peekSync(k1, allowExpiredLoaded = true))
+        signedIn = original.copy(environmentId = "https://other.example")
+        assertNull(store.peekSync(k1, allowExpiredLoaded = true))
+        signedIn = null
+        assertNull(store.peekSync(k1, allowExpiredLoaded = true))
+        signedIn = original
+
+        // Server eviction drops only that server's entries.
+        store.dropServerSync("s1")
+        assertNull(store.peekSync(k1, allowExpiredLoaded = true))
+        assertIs<RuntimeAccountUsageLoad.Loaded>(store.peekSync(kServer2, allowExpiredLoaded = true))
+
+        // clearSync clears cached entries AND fences in-flight reads from writing back stale cache.
+        blockNextRead = true
+        val inFlight = async(start = CoroutineStart.UNDISPATCHED) { store.read(k1, force = true) }
+        yield()
+        store.clearSync()
+        assertNull(store.peekSync(kServer2, allowExpiredLoaded = true))
+        gate.complete(Unit)
+        inFlight.await()
+        assertNull(store.peekSync(k1, allowExpiredLoaded = true))
+    }
+
     private fun parseRefresh(body: String): RuntimeAccountUsageRefresh? =
         Json.parseToJsonElement(body).toRuntimeAccountUsageRefresh()
 
     private var signedIn: SharedComputersOwner? = key().owner
 
-    private fun store(api: FakeUsageApi, clock: RaftEpochMillisSource = RaftEpochMillisSource { 0L }) =
+    private fun store(
+        api: FakeUsageApi,
+        clock: RaftEpochMillisSource = RaftEpochMillisSource { 0L },
+        currentIdentitySync: (() -> SharedComputersOwner?)? = null,
+    ) =
         SharedRuntimeAccountUsageStore(
             client = RaftComputersApiClient(api),
             currentIdentity = { signedIn },
-            clock = clock
+            clock = clock,
+            currentIdentitySync = currentIdentitySync,
         )
 
     private fun parse(body: String): RuntimeAccountUsageRead? =

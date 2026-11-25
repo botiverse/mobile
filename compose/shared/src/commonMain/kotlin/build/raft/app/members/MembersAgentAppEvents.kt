@@ -64,6 +64,28 @@ internal typealias MembersAgentAppEventsLoader = suspend (MemberId, String?, Str
 internal typealias MembersAgentAppEventLoader = suspend (MemberId, String) -> DataResult<AgentAppEventDetail>
 
 /**
+ * Hoistable state holder for [MembersAgentAppEventsSection] so loaded app events, active filter,
+ * and expanded event payloads survive `TabPager` horizontal page disposal across tab switches
+ * (#proj-mobile:#386). Scoped to `(agentId, serverId)` by the caller.
+ */
+internal class MembersAgentAppEventsState {
+    var events by mutableStateOf<List<AgentAppEvent>>(emptyList())
+    var nextCursor by mutableStateOf<String?>(null)
+    var appFilter by mutableStateOf<String?>(null)
+    // Filter chips come from the apps seen so far in the unfiltered list (web).
+    var apps by mutableStateOf<List<Pair<String, String>>>(emptyList())
+    var loading by mutableStateOf(false)
+    var error by mutableStateOf<String?>(null)
+    var request by mutableStateOf(0)
+    var hasLoaded by mutableStateOf(false)
+    var loadedAgentId by mutableStateOf<MemberId?>(null)
+    var loadedAppFilter by mutableStateOf<String?>(null)
+    var expandedEventIds by mutableStateOf<Set<String>>(emptySet())
+    var payloadByEventId by mutableStateOf<Map<String, String>>(emptyMap())
+    var errorByEventId by mutableStateOf<Map<String, String>>(emptyMap())
+}
+
+/**
  * Web AgentAppAccessTab › AgentAppEventsSection: the events apps sent to this agent, newest
  * first. A SectionHeader ("App events" with an outline Refresh), its description, then app filters
  * (once more than one app shows), the events as plain list rows that open the payload under them,
@@ -76,66 +98,78 @@ internal fun MembersAgentAppEventsSection(
     detailLoader: MembersAgentAppEventLoader?,
     timeContext: RaftTimeContext,
     modifier: Modifier = Modifier,
+    state: MembersAgentAppEventsState = remember(agentId) { MembersAgentAppEventsState() },
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val scope = rememberCoroutineScope()
     val loadFailed = stringResource(Res.string.member_app_events_load_failed)
-    var events by remember(agentId) { mutableStateOf<List<AgentAppEvent>>(emptyList()) }
-    var nextCursor by remember(agentId) { mutableStateOf<String?>(null) }
-    var appFilter by remember(agentId) { mutableStateOf<String?>(null) }
-    // Filter chips come from the apps seen so far in the unfiltered list (web).
-    var apps by remember(agentId) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-    var loading by remember(agentId) { mutableStateOf(false) }
-    var error by remember(agentId) { mutableStateOf<String?>(null) }
-    var request by remember(agentId) { mutableStateOf(0) }
 
     fun load(cursor: String?) {
         val callback = loader ?: return
-        val filter = appFilter
-        val number = ++request
-        loading = true
-        error = null
+        val filter = state.appFilter
+        val number = ++state.request
+        state.loading = true
+        state.error = null
         scope.launch {
-            val result =
-                try {
-                    callback(agentId, filter, cursor)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    null
-                }
-            if (number != request) return@launch
-            when (result) {
-                is DataResult.Content -> {
-                    val page = result.data
-                    events = if (cursor != null) events + page.events else page.events
-                    nextCursor = page.nextCursor
-                    if (filter == null) {
-                        val byId = LinkedHashMap<String, String>()
-                        apps.forEach { (id, name) -> byId[id] = name }
-                        page.events.forEach { byId[it.appClientId] = it.appName }
-                        apps = byId.toList()
+            try {
+                val result =
+                    try {
+                        callback(agentId, filter, cursor)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        null
+                    }
+                if (number != state.request) return@launch
+                when (result) {
+                    is DataResult.Content -> {
+                        val page = result.data
+                        state.events = if (cursor != null) state.events + page.events else page.events
+                        state.nextCursor = page.nextCursor
+                        if (filter == null) {
+                            val byId = LinkedHashMap<String, String>()
+                            state.apps.forEach { (id, name) -> byId[id] = name }
+                            page.events.forEach { byId[it.appClientId] = it.appName }
+                            state.apps = byId.toList()
+                        }
+                        state.hasLoaded = true
+                        state.loadedAgentId = agentId
+                        state.loadedAppFilter = filter
+                    }
+                    is DataResult.Empty -> {
+                        if (cursor == null) state.events = emptyList()
+                        state.nextCursor = null
+                        state.hasLoaded = true
+                        state.loadedAgentId = agentId
+                        state.loadedAppFilter = filter
+                    }
+                    else -> {
+                        // A failed first page (another filter, a refresh) drops what the last one showed.
+                        if (cursor == null) {
+                            state.events = emptyList()
+                            state.nextCursor = null
+                        }
+                        state.error = loadFailed
+                        state.hasLoaded = false
                     }
                 }
-                is DataResult.Empty -> {
-                    if (cursor == null) events = emptyList()
-                    nextCursor = null
-                }
-                else -> {
-                    // A failed first page (another filter, a refresh) drops what the last one showed.
-                    if (cursor == null) {
-                        events = emptyList()
-                        nextCursor = null
-                    }
-                    error = loadFailed
-                }
+            } finally {
+                if (number == state.request) state.loading = false
             }
-            loading = false
         }
     }
 
-    LaunchedEffect(agentId, appFilter, loader) { load(null) }
+    LaunchedEffect(agentId, state.appFilter, loader) {
+        val alreadyLoadedForFilter =
+            state.hasLoaded &&
+                state.loadedAgentId == agentId &&
+                state.loadedAppFilter == state.appFilter &&
+                state.error == null
+        if (!alreadyLoadedForFilter) {
+            load(null)
+        }
+    }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.fillMaxWidth()) {
@@ -147,12 +181,12 @@ internal fun MembersAgentAppEventsSection(
                 RaftSectionEyebrow(text = stringResource(Res.string.member_app_events_title), modifier = Modifier.weight(1f))
                 RaftButton(
                     text =
-                        if (loading) stringResource(Res.string.common_loading)
+                        if (state.loading) stringResource(Res.string.common_loading)
                         else stringResource(Res.string.member_app_events_refresh),
                     onClick = { load(null) },
                     variant = RaftButtonVariant.Default,
                     size = RaftButtonSize.Md,
-                    enabled = !loading && loader != null,
+                    enabled = !state.loading && loader != null,
                 )
             }
             RaftText(
@@ -162,29 +196,29 @@ internal fun MembersAgentAppEventsSection(
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
-        if (apps.size > 1) {
+        if (state.apps.size > 1) {
             @OptIn(ExperimentalLayoutApi::class)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 MembersAgentAppEventFilter(
                     text = stringResource(Res.string.member_app_events_all_apps),
-                    active = appFilter == null,
-                    onClick = { appFilter = null },
+                    active = state.appFilter == null,
+                    onClick = { state.appFilter = null },
                 )
-                apps.forEach { (clientId, name) ->
-                    MembersAgentAppEventFilter(text = name, active = appFilter == clientId, onClick = { appFilter = clientId })
+                state.apps.forEach { (clientId, name) ->
+                    MembersAgentAppEventFilter(text = name, active = state.appFilter == clientId, onClick = { state.appFilter = clientId })
                 }
             }
         }
-        error?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm) }
-        if (events.isEmpty() && !loading && error == null) {
+        state.error?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm) }
+        if (state.events.isEmpty() && !state.loading && state.error == null) {
             RaftText(
                 text = stringResource(Res.string.member_app_events_empty),
                 style = typography.callout,
                 color = colors.foregroundHint,
             )
-        } else if (events.isNotEmpty()) {
+        } else if (state.events.isNotEmpty()) {
             RaftListRowGroup(Modifier.fillMaxWidth()) {
-                events.forEachIndexed { index, event ->
+                state.events.forEachIndexed { index, event ->
                     key(event.id) {
                         MembersAgentAppEventRow(
                             agentId = agentId,
@@ -192,18 +226,19 @@ internal fun MembersAgentAppEventsSection(
                             divider = index > 0,
                             detailLoader = detailLoader,
                             timeContext = timeContext,
+                            state = state,
                         )
                     }
                 }
             }
         }
-        if (nextCursor != null) {
+        if (state.nextCursor != null) {
             RaftButton(
                 text = stringResource(Res.string.member_app_events_load_more),
-                onClick = { load(nextCursor) },
+                onClick = { load(state.nextCursor) },
                 variant = RaftButtonVariant.Default,
                 size = RaftButtonSize.Md,
-                enabled = !loading,
+                enabled = !state.loading,
             )
         }
     }
@@ -217,14 +252,58 @@ private fun MembersAgentAppEventRow(
     divider: Boolean,
     detailLoader: MembersAgentAppEventLoader?,
     timeContext: RaftTimeContext,
+    state: MembersAgentAppEventsState,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val scope = rememberCoroutineScope()
     val loadFailed = stringResource(Res.string.member_app_event_load_failed)
-    var open by remember(event.id) { mutableStateOf(false) }
-    var payloadText by remember(event.id) { mutableStateOf<String?>(null) }
-    var error by remember(event.id) { mutableStateOf<String?>(null) }
+    val open = event.id in state.expandedEventIds
+    val payloadText = state.payloadByEventId[event.id]
+    val error = state.errorByEventId[event.id]
+    var loading by remember(event.id) { mutableStateOf(false) }
+
+    fun loadDetail() {
+        val callback = detailLoader
+        if (callback == null) {
+            loading = false
+            state.errorByEventId = state.errorByEventId + (event.id to loadFailed)
+            return
+        }
+        if (loading) return
+        loading = true
+        state.errorByEventId = state.errorByEventId - event.id
+        scope.launch {
+            try {
+                val result =
+                    try {
+                        callback(agentId, event.id)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        null
+                    }
+                when (result) {
+                    is DataResult.Content -> {
+                        state.payloadByEventId = state.payloadByEventId + (event.id to result.data.payloadText)
+                        state.errorByEventId = state.errorByEventId - event.id
+                    }
+                    else -> state.errorByEventId = state.errorByEventId + (event.id to loadFailed)
+                }
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    // Re-entering an expanded row whose prior in-flight load was cancelled by a tab switch
+    // resumes loading instead of sticking in Loading, and settles cleanly when detailLoader is null.
+    LaunchedEffect(open, event.id, detailLoader) {
+        if (open && payloadText == null && !loading && error == null) {
+            loadDetail()
+        }
+    }
+
     val statusBadge: (@Composable () -> Unit)? =
         event.status?.let { status -> @Composable { MembersAgentAppEventStatusBadge(status) } }
     Column(Modifier.fillMaxWidth()) {
@@ -233,24 +312,15 @@ private fun MembersAgentAppEventRow(
             variant = RaftListRowVariant.Plain,
             divider = divider,
             onClick = {
-                open = !open
-                val callback = detailLoader
-                if (open && payloadText == null && callback != null) {
-                    error = null
-                    scope.launch {
-                        val result =
-                            try {
-                                callback(agentId, event.id)
-                            } catch (cancellation: CancellationException) {
-                                throw cancellation
-                            } catch (_: Throwable) {
-                                null
-                            }
-                        when (result) {
-                            is DataResult.Content -> payloadText = result.data.payloadText
-                            else -> error = loadFailed
-                        }
+                val nextOpen = !open
+                state.expandedEventIds =
+                    if (nextOpen) {
+                        state.expandedEventIds + event.id
+                    } else {
+                        state.expandedEventIds - event.id
                     }
+                if (nextOpen && payloadText == null) {
+                    loadDetail()
                 }
             },
             meta = timeContext.formatTimestampLabel(event.createdAt).takeIf { it.isNotBlank() },
@@ -261,9 +331,10 @@ private fun MembersAgentAppEventRow(
             Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
                 val text = payloadText
                 when {
-                    error != null -> RaftBanner(description = error.orEmpty(), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                    error != null -> RaftBanner(description = error, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
                     text != null -> RaftCodeBlock(text = text, containerRadius = true)
-                    else -> RaftText(text = stringResource(Res.string.common_loading), style = typography.caption, color = colors.foregroundHint)
+                    loading -> RaftText(text = stringResource(Res.string.common_loading), style = typography.caption, color = colors.foregroundHint)
+                    else -> RaftBanner(description = loadFailed, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
                 }
             }
         }

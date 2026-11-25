@@ -31,7 +31,9 @@ import build.raft.app.data.RuntimeAccountUsageKey
 import build.raft.app.data.RuntimeAccountUsageLoad
 import build.raft.app.data.RuntimeAccountUsageProvider
 import build.raft.app.data.RaftComputersRackUsageSession
+import build.raft.app.data.raftComputersRackPeekUsageKeys
 import build.raft.app.data.raftComputersRackUsageKeys
+import build.raft.app.data.raftComputersRackUsageLoadsForOwner
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.components.RaftMeter
@@ -444,14 +446,34 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisible: Boolean) {
     val usageAccess = rememberShellRuntimeAccountUsageAccess()
     val usageSession = remember(usageAccess.store) { RaftComputersRackUsageSession(usageAccess.store) }
     val usageScope = rememberCoroutineScope()
-    var usageReads by remember { mutableStateOf<Map<RuntimeAccountUsageKey, RuntimeAccountUsageLoad>>(emptyMap()) }
     val usageServerId = usageAccess.serverId?.takeIf { it == currentServerId }
+    var usageReads by
+        remember(usageAccess.owner, usageServerId) {
+            mutableStateOf<Map<RuntimeAccountUsageKey, RuntimeAccountUsageLoad>>(emptyMap())
+        }
+    val authoritativeComputers = (settingsState.computers as? ScreenLoadState.Content)?.data?.computers
+    val displayedComputers = (computersLoadState as? ScreenLoadState.Content)?.data?.computers.orEmpty()
     val usageKeys =
         raftComputersRackUsageKeys(
             owner = usageAccess.owner,
             serverId = usageServerId,
-            computers = (settingsState.computers as? ScreenLoadState.Content)?.data?.computers.orEmpty(),
+            computers = authoritativeComputers.orEmpty(),
         )
+    // Frame-1 synchronous peek of already-loaded owner-scoped usage snapshots so revisiting
+    // Settings › Computers never flashes blank/placeholder usage cards while refreshing.
+    val peekUsageKeys =
+        remember(usageAccess.owner, usageServerId, authoritativeComputers, displayedComputers) {
+            raftComputersRackPeekUsageKeys(
+                owner = usageAccess.owner,
+                serverId = usageServerId,
+                computers = authoritativeComputers ?: displayedComputers,
+                includeUnpermissionedCached = authoritativeComputers == null,
+            )
+        }
+    val peekedUsageReads =
+        remember(usageSession, usageAccess.owner, usageServerId, peekUsageKeys) {
+            usageSession.peekSync(peekUsageKeys, allowExpiredLoaded = true)
+        }
     // How many lines each usage line drew last time, for its placeholder while it is read again (web rackUsageLines).
     val usageLinesMemory = remember { RaftRackUsageLinesMemory(raftSharedPreferenceStore()) }
     val onUsageResult: (RuntimeAccountUsageKey, RuntimeAccountUsageLoad) -> Unit = { key, load ->
@@ -467,11 +489,13 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisible: Boolean) {
         if (usageKeys.isNotEmpty()) usageScope.launch { usageSession.open(usageKeys, onUsageResult) }
     }
     val usageLoads =
-        remember(usageReads, usageAccess.owner, usageServerId) {
-            usageReads.filterKeys { it.owner == usageAccess.owner && it.serverId == usageServerId }
-                .entries
-                .groupBy({ it.key.machineId }, { it.key.provider to it.value })
-                .mapValues { (_, loads) -> loads.toMap() }
+        remember(peekedUsageReads, usageReads, usageAccess.owner, usageServerId) {
+            raftComputersRackUsageLoadsForOwner(
+                peeked = peekedUsageReads,
+                live = usageReads,
+                owner = usageAccess.owner,
+                serverId = usageServerId,
+            )
         }
     // A line read but not answered yet is pending (web `rackRuntimeCell` "pending"): placeholders, not "—".
     val usagePending =
@@ -546,7 +570,12 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisible: Boolean) {
             },
     ) {
         // Mobile refreshes by pull only (no header refresh button): same store refresh as Retry.
-        RaftStorePullToRefreshBox(refreshing = refreshing, onRefresh = ::refresh, modifier = Modifier.fillMaxSize()) {
+        RaftStorePullToRefreshBox(
+            refreshing = refreshing,
+            onRefresh = ::refresh,
+            enabled = model !is RaftComputersListModel.Loading,
+            modifier = Modifier.fillMaxSize(),
+        ) {
         // A usage line's card (web rack `UsageCardTrigger` → RuntimeUsageHoverCard): on a mouse's
         // hover and click; a finger's tap is the line's own (the page's usage sheet, below).
         val usageCard: RaftRackUsageCard? =
@@ -2926,6 +2955,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                     settingsViewModel.dispatch(SharedSettingsIntent.ScanComputerWorkspaces(target.machineId))
                 }
             },
+            enabled = model !is RaftComputerDetailModel.Loading,
             modifier = Modifier.fillMaxSize(),
         ) {
         RaftComputersTheme {

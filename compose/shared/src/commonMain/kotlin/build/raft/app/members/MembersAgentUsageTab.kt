@@ -135,6 +135,19 @@ internal sealed interface AgentUsageLoadState {
 }
 
 /**
+ * Hoistable state holder for [MembersAgentUsageTab] so loaded usage responses, period selection,
+ * and Cache reads toggle survive `TabPager` horizontal page disposal across tab switches
+ * (#proj-mobile:#386). Scoped to `(agentId, serverId)` by the caller.
+ */
+internal class MembersAgentUsageTabState {
+    var view by mutableStateOf(AgentUsageView())
+    var withCacheReads by mutableStateOf(false)
+    var attempt by mutableIntStateOf(0)
+    var settled by mutableStateOf<Pair<String, AgentUsageLoadState>?>(null)
+    val cachedResponses: MutableMap<String, AgentUsageResponse> = mutableMapOf()
+}
+
+/**
  * Agent profile Usage tab (`botiverse/slock` `AgentUsageTab.tsx`, behind `agent_usage_v0`):
  * period selector, Cache reads switch (default off), daily stacked bars, headline + prior-period
  * change, token types (with reasoning inside output), context (cache share, per turn, context
@@ -149,27 +162,35 @@ internal fun MembersAgentUsageTab(
     onOpenComputer: (() -> Unit)?,
     modifier: Modifier = Modifier,
     nowMillisProvider: () -> Long = ::defaultNowMillis,
+    state: MembersAgentUsageTabState = remember(agentId.value, serverId?.value) { MembersAgentUsageTabState() },
 ) {
-    var view by remember(agentId.value, serverId?.value) { mutableStateOf(AgentUsageView()) }
-    var withCacheReads by remember(agentId.value, serverId?.value) { mutableStateOf(false) }
-    var attempt by remember(agentId.value, serverId?.value) { mutableIntStateOf(0) }
-
-    val fallbackToday = remember(timeContext.nowEpochMillis, attempt) {
+    val fallbackToday = remember(timeContext.nowEpochMillis, state.attempt) {
         agentUsageUtcDay(timeContext.nowEpochMillis ?: nowMillisProvider())
     }
-    val requestWindow = remember(view.range, fallbackToday) {
-        agentUsageRequestWindow(view.range.days, fallbackToday)
+    val requestWindow = remember(state.view.range, fallbackToday) {
+        agentUsageRequestWindow(state.view.range.days, fallbackToday)
     }
-    val requestKey = "${serverId?.value.orEmpty()}\u0000${agentId.value}\u0000${requestWindow.from}\u0000${requestWindow.to}\u0000$attempt"
-    var settled by remember { mutableStateOf<Pair<String, AgentUsageLoadState>?>(null) }
+    val cacheKey = "${serverId?.value.orEmpty()}\u0000${agentId.value}\u0000${requestWindow.from}\u0000${requestWindow.to}"
+    val requestKey = "$cacheKey\u0000${state.attempt}"
 
     LaunchedEffect(requestKey, agentsApiClient) {
         val currentServerId = serverId?.value?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId)
         if (currentServerId == null || agentsApiClient == null) {
-            settled = requestKey to AgentUsageLoadState.Error
+            state.settled = requestKey to AgentUsageLoadState.Error
             return@LaunchedEffect
         }
-        settled = null
+        val alreadySettled = state.settled
+        if (alreadySettled?.first == requestKey && alreadySettled.second is AgentUsageLoadState.Ready) {
+            return@LaunchedEffect
+        }
+        val cachedForWindow = state.cachedResponses[cacheKey]
+        if (cachedForWindow != null && state.settled?.first != requestKey) {
+            // Re-entering a previously loaded window (e.g. tab switch or period switch back)
+            // renders warm content immediately while refreshing silently in the background.
+            state.settled = requestKey to AgentUsageLoadState.Ready(cachedForWindow)
+        } else {
+            state.settled = null
+        }
         val result =
             try {
                 agentsApiClient.agentUsage(
@@ -183,31 +204,41 @@ internal fun MembersAgentUsageTab(
             } catch (_: Throwable) {
                 DataResult.Error(ScreenError("agent_usage_load_failed"))
             }
-        settled =
+        state.settled =
             requestKey to
                 when (result) {
-                    is DataResult.Content -> AgentUsageLoadState.Ready(result.data)
+                    is DataResult.Content -> {
+                        state.cachedResponses[cacheKey] = result.data
+                        AgentUsageLoadState.Ready(result.data)
+                    }
                     is DataResult.Empty,
                     is DataResult.Error,
-                    is DataResult.NoPermission -> AgentUsageLoadState.Error
+                    is DataResult.NoPermission ->
+                        cachedForWindow?.let { AgentUsageLoadState.Ready(it) } ?: AgentUsageLoadState.Error
                 }
     }
 
-    val loadState = if (settled?.first == requestKey) settled!!.second else AgentUsageLoadState.Loading
+    val loadState =
+        when {
+            state.settled?.first == requestKey -> state.settled!!.second
+            state.cachedResponses[cacheKey] != null -> AgentUsageLoadState.Ready(state.cachedResponses.getValue(cacheKey))
+            else -> AgentUsageLoadState.Loading
+        }
 
     RaftDesignSystemTheme {
         MembersAgentUsageTabBody(
             agentId = agentId.value,
             loadState = loadState,
-            view = view,
-            withCacheReads = withCacheReads,
+            view = state.view,
+            withCacheReads = state.withCacheReads,
             fallbackToday = fallbackToday,
             timeContext = timeContext,
-            onViewChange = { view = it },
-            onWithCacheReadsChange = { withCacheReads = it },
+            onViewChange = { state.view = it },
+            onWithCacheReadsChange = { state.withCacheReads = it },
             onRetry = {
-                settled = null
-                attempt += 1
+                state.cachedResponses.remove(cacheKey)
+                state.settled = null
+                state.attempt += 1
             },
             onOpenComputer = onOpenComputer,
             modifier = modifier,

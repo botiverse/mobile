@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -48,9 +49,14 @@ class SettingsFeedbackTicketsStoreTest {
 
         /** Each ticket call's operation and the ticket app it named (null: this app's). */
         val sources = mutableListOf<Pair<String, String?>>()
+        var listGate: CompletableDeferred<FeedbackResult<FeedbackTicketListRead>>? = null
 
         override suspend fun listTickets(cursor: String?, limit: Int): FeedbackResult<FeedbackTicketListRead> {
             listCursors += cursor
+            listGate?.let { gate ->
+                listGate = null
+                return gate.await()
+            }
             return listAnswers.removeFirst()
         }
 
@@ -625,5 +631,77 @@ class SettingsFeedbackTicketsStoreTest {
         )
         assertEquals(FeedbackTicketsListPhase.Failed, store.state.value.list.phase)
         assertTrue(store.state.value.list.tickets.isEmpty())
+    }
+
+    @Test
+    fun listSnapshotCacheSeedsFrameZeroRefreshesSilentlyAndIsolatesByAccountAndEnvironment() = runTest {
+        val cache = SettingsFeedbackTicketsListCache()
+        val key1 = feedbackTicketsListCacheKey("https://api.example/", "user-1")!!
+        val keyOtherAccount = feedbackTicketsListCacheKey("https://api.example", "user-2")!!
+        val keyOtherEnv = feedbackTicketsListCacheKey("https://staging.example", "user-1")!!
+        assertNull(feedbackTicketsListCacheKey("", "user-1"))
+        assertNull(feedbackTicketsListCacheKey("https://api.example", " "))
+
+        val warmTicket = ticket("t-warm", createdAt = 1_000)
+        val freshTicket = ticket("t-fresh", createdAt = 2_000)
+        cache.put(key1, FeedbackTicketsListSnapshot(tickets = listOf(warmTicket), nextCursor = "c-warm"))
+        assertEquals(listOf("t-warm"), cache.peek(key1)?.tickets?.map { it.id })
+        assertNull(cache.peek(keyOtherAccount))
+        assertNull(cache.peek(keyOtherEnv))
+
+        val repo = FakeRepository()
+        val gate = CompletableDeferred<FeedbackResult<FeedbackTicketListRead>>()
+        repo.listGate = gate
+        val store =
+            SettingsFeedbackTicketsStore(
+                repository = repo,
+                scope = backgroundScope,
+                initialListSnapshot = cache.peek(key1),
+                onListSnapshotUpdated = { snapshot -> cache.put(key1, snapshot) },
+            )
+        // Frame 0 already holds the cached tickets in Ready phase before start().
+        assertEquals(FeedbackTicketsListPhase.Ready, store.state.value.list.phase)
+        assertEquals(listOf("t-warm"), store.state.value.list.tickets.map { it.id })
+        assertEquals("c-warm", store.state.value.list.nextCursor)
+
+        // start() refreshes in the background without reverting phase to Loading.
+        store.start()
+        runCurrent()
+        assertEquals(FeedbackTicketsListPhase.Ready, store.state.value.list.phase)
+        assertTrue(store.state.value.list.refreshing)
+        assertEquals(listOf("t-warm"), store.state.value.list.tickets.map { it.id })
+
+        gate.complete(page(freshTicket, warmTicket))
+        runCurrent()
+        assertFalse(store.state.value.list.refreshing)
+        assertEquals(listOf("t-fresh", "t-warm"), store.state.value.list.tickets.map { it.id })
+        assertEquals(listOf("t-fresh", "t-warm"), cache.peek(key1)?.tickets?.map { it.id })
+
+        // clear() drops cached entries on sign-out.
+        cache.clear()
+        assertNull(cache.peek(key1))
+    }
+
+    @Test
+    fun refreshDuringActiveInitialLoadingDoesNotStartDuplicateInitialFetch() = runTest {
+        val repo = FakeRepository()
+        val gate = CompletableDeferred<FeedbackResult<FeedbackTicketListRead>>()
+        repo.listGate = gate
+        val store = store(repo)
+        store.start()
+        runCurrent()
+        assertEquals(FeedbackTicketsListPhase.Loading, store.state.value.list.phase)
+        assertEquals(1, repo.listCursors.size)
+
+        // Calling refresh() while initial Loading is in flight must not cancel or duplicate the request.
+        store.refresh()
+        runCurrent()
+        assertEquals(1, repo.listCursors.size)
+        assertEquals(FeedbackTicketsListPhase.Loading, store.state.value.list.phase)
+
+        gate.complete(page(ticket("a")))
+        runCurrent()
+        assertEquals(FeedbackTicketsListPhase.Ready, store.state.value.list.phase)
+        assertEquals(listOf("a"), store.state.value.list.tickets.map { it.id })
     }
 }

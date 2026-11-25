@@ -1816,6 +1816,189 @@ def check_no_alpha_zero_loading_row(common_main_sources: dict[str, str]) -> None
                 )
 
 
+PULL_REFRESH_SCAN_PREFIX = "compose/shared/src/commonMain/kotlin/"
+PULL_REFRESH_DEFINITION_FILE = (
+    "compose/shared/src/commonMain/kotlin/build/raft/app/components/RaftPullToRefresh.kt"
+)
+PULL_REFRESH_CALL_RE = re.compile(r"\b(Raft(?:Store)?PullToRefreshBox)\s*\(")
+PULL_REFRESH_INLINE_LOADING_RE = re.compile(
+    r"\bRaftCenteredLoading\s*\("
+    r"|\b(?![A-Za-z0-9_]*(?:LoadMore|Paging|Footer)[A-Za-z0-9_]*\s*\.)[A-Za-z0-9_]+\s*\.\s*Loading\b"
+    r"|\bloading\s*=\s*true\b"
+    r"|\b[A-Za-z0-9_]*Loading\s*\("
+    r"|\b[A-Za-z0-9_]*Skeleton(?:Row)?\s*\("
+)
+# Call sites that omit `enabled = ...` ONLY because an outer branch / early return guarantees
+# initial full-screen Loading never mounts this pull-to-refresh box. Any loading UI inside the
+# trailing lambda is still rejected unconditionally, and stale entries fail closed.
+PULL_REFRESH_OUTER_GUARDED_SITES: tuple[tuple[str, int, str], ...] = (
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/home/SharedInboxPanel.kt",
+        2,
+        "Outer `when` handles `snapshot == null && state.loading` before SharedActivityList and SharedActivityRefreshableStateBody",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersList.kt",
+        1,
+        "Outer SettingsHomeMembers renders SharedMembersUiState.Loading before mounting MembersRouteContent/MembersListContent",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeSaved.kt",
+        1,
+        "Early return `if (state.loading && projectedItems.isEmpty())` renders RaftCenteredLoading before RaftPullToRefreshBox",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadFilesContent.kt",
+        1,
+        "Outer `when (payload.status)` handles loading and ThreadFilesList early-returns on empty before RaftStorePullToRefreshBox",
+    ),
+)
+
+
+def _scan_balanced_span(text: str, open_idx: int, open_ch: str, close_ch: str) -> int | None:
+    if open_idx >= len(text) or text[open_idx] != open_ch:
+        return None
+    depth = 0
+    for idx in range(open_idx, len(text)):
+        ch = text[idx]
+        if ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return idx
+    return None
+
+
+def _top_level_named_arg(args_text: str, name: str) -> str | None:
+    """Return the expression assigned to top-level named arg `name = ...`, or None."""
+    parts: list[str] = []
+    paren = brace = bracket = 0
+    start = 0
+    for idx, ch in enumerate(args_text):
+        if ch == "(":
+            paren += 1
+        elif ch == ")":
+            paren = max(0, paren - 1)
+        elif ch == "{":
+            brace += 1
+        elif ch == "}":
+            brace = max(0, brace - 1)
+        elif ch == "[":
+            bracket += 1
+        elif ch == "]":
+            bracket = max(0, bracket - 1)
+        elif ch == "," and paren == 0 and brace == 0 and bracket == 0:
+            parts.append(args_text[start:idx])
+            start = idx + 1
+    parts.append(args_text[start:])
+    pattern = re.compile(rf"^\s*{re.escape(name)}\s*=\s*(.+?)\s*$", re.DOTALL)
+    for part in parts:
+        match = pattern.match(part)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _is_unconditional_true_expr(expr: str) -> bool:
+    compact = re.sub(r"\s+", "", expr)
+    while compact.startswith("(") and compact.endswith(")"):
+        if _scan_balanced_span(compact, 0, "(", ")") == len(compact) - 1:
+            compact = compact[1:-1]
+        else:
+            break
+    return compact in ("true", "!false")
+
+
+def check_pull_refresh_guards(
+    sources: dict[str, str],
+    outer_guarded_sites: tuple[tuple[str, int, str], ...] = PULL_REFRESH_OUTER_GUARDED_SITES,
+) -> None:
+    """Incident: #proj-mobile:#386 pull-to-refresh enabled during initial full-screen Loading.
+
+    Enabling `RaftPullToRefreshBox` / `RaftStorePullToRefreshBox` while initial full-screen
+    `Loading` is active causes double loading indicators and duplicate concurrent initial loads.
+    Every call site in `compose/shared/src/commonMain/` must either pass a non-literal `enabled =`
+    guard that disables pull-to-refresh during initial loading, or have its initial loading gated
+    strictly outside the pull-to-refresh box (explicitly recorded in
+    `PULL_REFRESH_OUTER_GUARDED_SITES` with no loading UI inside its body).
+    """
+    allowed: dict[str, int] = {}
+    for path, count, reason in outer_guarded_sites:
+        if count <= 0:
+            raise Violation(f"pull-refresh guard allowlist entry for {path} must have positive count")
+        if not reason.strip():
+            raise Violation(f"pull-refresh guard allowlist entry for {path} is missing a reason")
+        if path in allowed:
+            raise Violation(f"duplicate pull-refresh guard allowlist entry for {path}")
+        allowed[path] = count
+
+    total_calls = 0
+    unguarded_counts: dict[str, int] = {}
+
+    for name in sorted(sources):
+        if name == PULL_REFRESH_DEFINITION_FILE:
+            continue
+        code = _kotlin_code_only(sources[name])
+        for match in PULL_REFRESH_CALL_RE.finditer(code):
+            prefix = code[max(0, match.start() - 24) : match.start()]
+            if re.search(r"\bfun\s+$", prefix):
+                continue
+            line_no = code.count("\n", 0, match.start()) + 1
+            open_paren = match.end() - 1
+            close_paren = _scan_balanced_span(code, open_paren, "(", ")")
+            if close_paren is None:
+                continue
+            total_calls += 1
+            args_text = code[open_paren + 1 : close_paren]
+            enabled_expr = _top_level_named_arg(args_text, "enabled")
+
+            trailing_body = ""
+            cursor = close_paren + 1
+            while cursor < len(code) and code[cursor].isspace():
+                cursor += 1
+            if cursor < len(code) and code[cursor] == "{":
+                close_brace = _scan_balanced_span(code, cursor, "{", "}")
+                if close_brace is not None:
+                    trailing_body = code[cursor + 1 : close_brace]
+
+            if enabled_expr is not None:
+                if _is_unconditional_true_expr(enabled_expr):
+                    raise Violation(
+                        f"pull-refresh guard (#proj-mobile:#386): {name}:{line_no} passes "
+                        f"unconditional `enabled = {enabled_expr.strip()}` to {match.group(1)}; "
+                        "gate `enabled` on not being in initial Loading state"
+                    )
+                continue
+
+            if trailing_body and PULL_REFRESH_INLINE_LOADING_RE.search(trailing_body):
+                raise Violation(
+                    f"pull-refresh guard (#proj-mobile:#386): {name}:{line_no} calls "
+                    f"{match.group(1)} without `enabled = ...` while its body renders an initial "
+                    "Loading / skeleton state; disable pull-to-refresh during initial Loading"
+                )
+
+            unguarded_counts[name] = unguarded_counts.get(name, 0) + 1
+            if name not in allowed:
+                raise Violation(
+                    f"pull-refresh guard (#proj-mobile:#386): {name}:{line_no} calls "
+                    f"{match.group(1)} without `enabled = ...`; pass `enabled = <not initial "
+                    "loading>` (or, if initial Loading is gated strictly outside this box, add "
+                    "it to PULL_REFRESH_OUTER_GUARDED_SITES in scripts/ci/check_source_constraints.py)"
+                )
+
+    if total_calls == 0:
+        raise Violation("pull-refresh guard (#proj-mobile:#386): scan found no pull-to-refresh call sites")
+
+    for path, expected in allowed.items():
+        actual = unguarded_counts.get(path, 0)
+        if actual != expected:
+            raise Violation(
+                f"pull-refresh guard allowlist mismatch for {path}: expected {expected} "
+                f"outer-guarded call site(s), found {actual}; update PULL_REFRESH_OUTER_GUARDED_SITES"
+            )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -1858,6 +2041,9 @@ def run(root: Path) -> None:
     check_native_safe_test_names(_native_test_sources(root))
     check_no_top_level_or_object_snapshot_state(_top_level_snapshot_state_sources(root))
     check_date_time_di_invariants(_date_time_di_sources(root))
+    check_pull_refresh_guards(
+        {name: text for name, text in prod_kotlin.items() if name.startswith(PULL_REFRESH_SCAN_PREFIX)}
+    )
 
 
 def self_test() -> None:
@@ -2523,6 +2709,147 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit(f"self-test: alpha-zero loading row checker accepted {bad_alpha!r}")
 
+    ptr_guarded = "compose/shared/src/commonMain/kotlin/build/raft/app/GuardedPage.kt"
+    ptr_outer = "compose/shared/src/commonMain/kotlin/build/raft/app/OuterGuardedPage.kt"
+    ptr_allow = ((ptr_outer, 1, "outer when excludes Loading"),)
+    good_ptr = {
+        PULL_REFRESH_DEFINITION_FILE: (
+            "internal fun RaftPullToRefreshBox(enabled: Boolean = true, content: () -> Unit) {}\n"
+            "internal fun RaftStorePullToRefreshBox(enabled: Boolean = true, content: () -> Unit) {\n"
+            "    RaftPullToRefreshBox(enabled = enabled, content = content)\n"
+            "}\n"
+        ),
+        ptr_guarded: (
+            "// RaftStorePullToRefreshBox(refreshing = r, onRefresh = {}) in comment is ignored\n"
+            'val note = "RaftPullToRefreshBox(isRefreshing = r, onRefresh = {})"\n'
+            "RaftStorePullToRefreshBox(\n"
+            "    refreshing = list.refreshing,\n"
+            "    onRefresh = actions.onRefresh,\n"
+            "    enabled = list.phase != FeedbackTicketsListPhase.Loading,\n"
+            ") {\n"
+            "    when (list.phase) {\n"
+            "        FeedbackTicketsListPhase.Loading -> RaftCenteredLoading()\n"
+            "        else -> LazyColumn {}\n"
+            "    }\n"
+            "}\n"
+        ),
+        ptr_outer: (
+            "RaftPullToRefreshBox(isRefreshing = r, onRefresh = onRefresh) {\n"
+            "    LazyColumn { items(rows) { Row() } }\n"
+            "}\n"
+        ),
+    }
+    check_pull_refresh_guards(good_ptr, ptr_allow)
+    for bad_ptr_sources, bad_ptr_allow in (
+        # Omitted enabled with inline RaftCenteredLoading
+        (
+            {
+                **good_ptr,
+                "compose/shared/src/commonMain/kotlin/build/raft/app/Bad1.kt": (
+                    "RaftStorePullToRefreshBox(refreshing = r, onRefresh = {}) {\n"
+                    "    RaftCenteredLoading()\n"
+                    "}\n"
+                ),
+            },
+            ptr_allow,
+        ),
+        # Omitted enabled with inline .Loading state
+        (
+            {
+                **good_ptr,
+                "compose/shared/src/commonMain/kotlin/build/raft/app/Bad2.kt": (
+                    "RaftStorePullToRefreshBox(refreshing = r, onRefresh = {}) {\n"
+                    "    if (state.phase == Phase.Loading) Box {}\n"
+                    "}\n"
+                ),
+            },
+            ptr_allow,
+        ),
+        # Omitted enabled with inline loading = true
+        (
+            {
+                **good_ptr,
+                "compose/shared/src/commonMain/kotlin/build/raft/app/Bad3.kt": (
+                    "RaftPullToRefreshBox(isRefreshing = r, onRefresh = {}) {\n"
+                    "    StateBlock(loading = true)\n"
+                    "}\n"
+                ),
+            },
+            ptr_allow,
+        ),
+        # Omitted enabled in non-allowlisted file (even when loading is in a child composable)
+        (
+            {
+                **good_ptr,
+                "compose/shared/src/commonMain/kotlin/build/raft/app/Bad4.kt": (
+                    "RaftStorePullToRefreshBox(refreshing = r, onRefresh = {}) {\n"
+                    "    Content(model = model)\n"
+                    "}\n"
+                ),
+            },
+            ptr_allow,
+        ),
+        # Unconditional enabled = true
+        (
+            {
+                **good_ptr,
+                "compose/shared/src/commonMain/kotlin/build/raft/app/Bad5.kt": (
+                    "RaftStorePullToRefreshBox(refreshing = r, onRefresh = {}, enabled = true) {\n"
+                    "    Content()\n"
+                    "}\n"
+                ),
+            },
+            ptr_allow,
+        ),
+        # Unconditional enabled = !false / (true)
+        (
+            {
+                **good_ptr,
+                "compose/shared/src/commonMain/kotlin/build/raft/app/Bad6.kt": (
+                    "RaftPullToRefreshBox(isRefreshing = r, onRefresh = {}, enabled = ( !false )) {\n"
+                    "    Content()\n"
+                    "}\n"
+                ),
+            },
+            ptr_allow,
+        ),
+        # Allowlisted outer-guarded file that adds inline RaftCenteredLoading inside body
+        (
+            {
+                **good_ptr,
+                ptr_outer: (
+                    "RaftPullToRefreshBox(isRefreshing = r, onRefresh = onRefresh) {\n"
+                    "    RaftCenteredLoading()\n"
+                    "}\n"
+                ),
+            },
+            ptr_allow,
+        ),
+        # Second unguarded call in allowlisted file
+        (
+            {**good_ptr, ptr_outer: good_ptr[ptr_outer] * 2},
+            ptr_allow,
+        ),
+        # Stale allowlist entry
+        (
+            {**good_ptr, ptr_outer: "val plain = 1\n"},
+            ptr_allow,
+        ),
+        # Empty scan (fail-closed)
+        (
+            {"compose/shared/src/commonMain/kotlin/build/raft/app/NoPtr.kt": "val x = 1\n"},
+            (),
+        ),
+    ):
+        try:
+            check_pull_refresh_guards(bad_ptr_sources, bad_ptr_allow)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(
+                f"self-test: pull-refresh guard accepted {(bad_ptr_sources, bad_ptr_allow)!r}"
+            )
+
     print("check_source_constraints self-test passed")
 
 
@@ -2547,7 +2874,7 @@ def main(argv: list[str]) -> int:
         "#wg-mobile-feedback:#274 freshness by default, "
         "dm:@artin:#6 web-container security & module boundary invariants, "
         "#wg-mobile-feedback:#308 iOS WebView media capture TCC guard, "
-        "#proj-mobile:#386 no online crossGaps & no alpha-zero loading row)"
+        "#proj-mobile:#386 no online crossGaps, no alpha-zero loading row & pull-refresh loading guards)"
     )
     return 0
 

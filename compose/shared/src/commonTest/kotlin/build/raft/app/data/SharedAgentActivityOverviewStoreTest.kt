@@ -10,6 +10,10 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SharedAgentActivityOverviewStoreTest {
     private val agent = MemberId("agent-1")
@@ -39,6 +43,9 @@ class SharedAgentActivityOverviewStoreTest {
 
         /** Answers per reply id, in order; the last one repeats. Unscripted ids are unavailable. */
         val replies = mutableMapOf<MessageId, ArrayDeque<AgentActivityTurnReply>>()
+        var loadTurnsThrows: (() -> Throwable?)? = null
+        var loadReplyThrows: ((MessageId) -> Throwable?)? = null
+        var loadOperatorEventsThrows: (() -> Throwable?)? = null
 
         override suspend fun loadTurns(
             priority: DataRequestPriority,
@@ -48,6 +55,7 @@ class SharedAgentActivityOverviewStoreTest {
         ): DataResult<AgentActivityTurnPage> {
             val call = Call(priority, agentId, before)
             calls += call
+            loadTurnsThrows?.invoke()?.let { throw it }
             return call.result.await()
         }
 
@@ -63,6 +71,7 @@ class SharedAgentActivityOverviewStoreTest {
             sinceEpochMillis: Long?,
         ): DataResult<AgentOperatorEventsPage> {
             operatorEventCalls += sinceEpochMillis
+            loadOperatorEventsThrows?.invoke()?.let { throw it }
             return when {
                 operatorEventAnswers.size > 1 -> operatorEventAnswers.removeFirst()
                 operatorEventAnswers.isNotEmpty() -> operatorEventAnswers.first()
@@ -72,6 +81,7 @@ class SharedAgentActivityOverviewStoreTest {
 
         override suspend fun loadReply(priority: DataRequestPriority, messageId: MessageId): AgentActivityTurnReply {
             replyCalls += priority to messageId
+            loadReplyThrows?.invoke(messageId)?.let { throw it }
             val answers = replies[messageId] ?: return AgentActivityTurnReply.Unavailable
             return if (answers.size > 1) answers.removeFirst() else answers.first()
         }
@@ -572,5 +582,163 @@ class SharedAgentActivityOverviewStoreTest {
         runCurrent()
         assertEquals(AgentActivityOverviewStatus.Loaded, store.state.value.status)
         assertEquals(listOf("t1"), keys(store))
+    }
+
+    @Test
+    fun snapshotCacheSeedsFrameZeroAndRefreshesSilentlyWithIsolationAndEviction() = runTest {
+        val cache = AgentActivityOverviewSnapshotCache(maxEntries = 2)
+        val keyFor: (String, String, MemberId) -> AgentActivityOverviewCacheKey? = { account, server, id ->
+            agentActivityOverviewCacheKey("https://api.example", account, server, id)
+        }
+        val repo1 = FakeRepository()
+        val r1 = MessageId("r1")
+        repo1.replies[r1] = ArrayDeque(listOf(AgentActivityTurnReply.Loaded("warm reply", 10L)))
+        repo1.operatorEventAnswers += events(operatorEvent("e1", 900))
+        val first =
+            SharedAgentActivityOverviewStore(
+                repository = repo1,
+                scope = backgroundScope,
+                snapshotCache = cache,
+                cacheKeyFor = { keyFor("user-1", "srv-1", it) },
+                initialAgentId = agent,
+            )
+        assertEquals(AgentActivityOverviewStatus.Idle, first.state.value.status)
+        first.dispatch(AgentActivityOverviewIntent.Open(agent))
+        runCurrent()
+        repo1.calls[0].result.complete(page(turn("t1", 1_000), next = "1000:t1"))
+        runCurrent()
+        first.dispatch(AgentActivityOverviewIntent.LoadReply(r1))
+        runCurrent()
+        assertEquals(AgentActivityReplyState.Ready(AgentActivityTurnReply.Loaded("warm reply", 10L)), first.state.value.replies[r1])
+
+        // Reopening the same agent on a fresh store renders warm turns, events, and replies on Frame 0.
+        val repo2 = FakeRepository()
+        val reopened =
+            SharedAgentActivityOverviewStore(
+                repository = repo2,
+                scope = backgroundScope,
+                snapshotCache = cache,
+                cacheKeyFor = { keyFor("user-1", "srv-1", it) },
+                initialAgentId = agent,
+            )
+        assertEquals(AgentActivityOverviewStatus.Loaded, reopened.state.value.status)
+        assertEquals(listOf("t1"), keys(reopened))
+        assertEquals(listOf("e1"), reopened.state.value.operatorEvents.map { it.id })
+        assertEquals(AgentActivityReplyState.Ready(AgentActivityTurnReply.Loaded("warm reply", 10L)), reopened.state.value.replies[r1])
+
+        // Open refreshes silently in the background without dropping warm turns or flipping refreshing.
+        reopened.dispatch(AgentActivityOverviewIntent.Open(agent))
+        runCurrent()
+        assertEquals(1, repo2.calls.size)
+        assertEquals(DataRequestPriority.Background, repo2.calls[0].priority)
+        assertFalse(reopened.state.value.refreshing)
+        assertEquals(AgentActivityOverviewStatus.Loaded, reopened.state.value.status)
+        repo2.calls[0].result.complete(page(turn("t2", 2_000), turn("t1", 1_000)))
+        runCurrent()
+        assertEquals(listOf("t2", "t1"), keys(reopened))
+
+        // Different account, server, or agent stays strictly isolated.
+        val otherAccount =
+            SharedAgentActivityOverviewStore(
+                repository = FakeRepository(),
+                scope = backgroundScope,
+                snapshotCache = cache,
+                cacheKeyFor = { keyFor("user-2", "srv-1", it) },
+                initialAgentId = agent,
+            )
+        assertEquals(AgentActivityOverviewStatus.Idle, otherAccount.state.value.status)
+        val otherServer =
+            SharedAgentActivityOverviewStore(
+                repository = FakeRepository(),
+                scope = backgroundScope,
+                snapshotCache = cache,
+                cacheKeyFor = { keyFor("user-1", "srv-2", it) },
+                initialAgentId = agent,
+            )
+        assertEquals(AgentActivityOverviewStatus.Idle, otherServer.state.value.status)
+
+        // NoPermission on refresh evicts the cached snapshot so the next open starts clean.
+        reopened.dispatch(AgentActivityOverviewIntent.Refresh)
+        runCurrent()
+        repo2.calls[1].result.complete(DataResult.NoPermission(PermissionBlocker("forbidden")))
+        runCurrent()
+        assertNull(cache.peek(keyFor("user-1", "srv-1", agent)!!))
+
+        // LRU cap, evictAgent, dropServer, and clear behave cleanly.
+        val snap = AgentActivityOverviewCachedSnapshot(agent, listOf(turn("t1", 1_000)), null, null, emptyList(), emptyMap())
+        val ka = keyFor("user-1", "srv-1", MemberId("a"))!!
+        val kb = keyFor("user-1", "srv-1", MemberId("b"))!!
+        val kc = keyFor("user-1", "srv-2", MemberId("c"))!!
+        cache.put(ka, snap)
+        cache.put(kb, snap)
+        cache.put(kc, snap)
+        assertNull(cache.peek(ka), "oldest LRU entry evicted at maxEntries=2")
+        assertNotNull(cache.peek(kb))
+        cache.evictAgent("srv-1", MemberId("b"))
+        assertNull(cache.peek(kb))
+        assertNotNull(cache.peek(kc))
+        cache.dropServer("srv-2")
+        assertNull(cache.peek(kc))
+        cache.put(ka, snap)
+        cache.clear()
+        assertNull(cache.peek(ka))
+    }
+
+    @Test
+    fun loadMoreLoadReplyAndOperatorEventsExceptionsSettleCleanlyWithoutStickingInLoading() = runTest {
+        val repository = FakeRepository()
+        repository.operatorEventAnswers += events(operatorEvent("e1", 500))
+        val store = openLoaded(repository, page(turn("t1", 2_000), next = "2000:t1"))
+
+        // 1. loadMore exception must reset loadingMore = false so retry works instead of sticking forever.
+        var failLoadMore = true
+        repository.loadTurnsThrows = {
+            if (failLoadMore) {
+                failLoadMore = false
+                IllegalStateException("boom loadMore")
+            } else {
+                null
+            }
+        }
+        store.dispatch(AgentActivityOverviewIntent.LoadMore)
+        runCurrent()
+        assertFalse(store.state.value.loadingMore, "loadMore must settle to false when repository throws")
+        assertEquals(AgentActivityOverviewStatus.Loaded, store.state.value.status)
+        store.dispatch(AgentActivityOverviewIntent.LoadMore)
+        runCurrent()
+        assertTrue(store.state.value.loadingMore)
+        repository.calls.last().result.complete(page(turn("t2", 1_000)))
+        runCurrent()
+        assertFalse(store.state.value.loadingMore)
+        assertEquals(listOf("t1", "t2"), keys(store))
+
+        // 2. loadReply exception must settle to Failed (never stuck in Loading) and allow retry.
+        val msgId = MessageId("reply-boom")
+        var failReply = true
+        repository.loadReplyThrows = { id ->
+            if (id == msgId && failReply) {
+                failReply = false
+                RuntimeException("boom reply")
+            } else {
+                null
+            }
+        }
+        repository.replies[msgId] = ArrayDeque(listOf(AgentActivityTurnReply.Loaded("recovered", 42L)))
+        store.dispatch(AgentActivityOverviewIntent.LoadReply(msgId))
+        runCurrent()
+        assertEquals(AgentActivityReplyState.Failed, store.state.value.replies[msgId])
+
+        store.dispatch(AgentActivityOverviewIntent.LoadReply(msgId))
+        runCurrent()
+        assertEquals(AgentActivityReplyState.Ready(AgentActivityTurnReply.Loaded("recovered", 42L)), store.state.value.replies[msgId])
+
+        // 3. loadOperatorEvents exception must not crash or drop previously shown events.
+        repository.loadOperatorEventsThrows = { IllegalStateException("boom operator events") }
+        store.dispatch(AgentActivityOverviewIntent.Refresh)
+        runCurrent()
+        repository.calls.last().result.complete(page(turn("t1", 2_000)))
+        runCurrent()
+        assertFalse(store.state.value.refreshing)
+        assertEquals(listOf("e1"), store.state.value.operatorEvents.map { it.id })
     }
 }

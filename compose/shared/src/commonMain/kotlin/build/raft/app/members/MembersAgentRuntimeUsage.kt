@@ -89,11 +89,12 @@ internal class MembersRuntimeAccountUsageAccess(
  * the previous identity before anything else can show it — and then re-resolves it.
  */
 internal class MembersRuntimeAccountUsageOwnerTracker(
+    initialOwner: SharedComputersOwner? = null,
     private val resolve: suspend () -> SharedComputersOwner?
 ) {
     private val mutex = Mutex()
     private var generation = 0L
-    private val mutableOwner = MutableStateFlow<SharedComputersOwner?>(null)
+    private val mutableOwner = MutableStateFlow<SharedComputersOwner?>(initialOwner)
     val owner: StateFlow<SharedComputersOwner?> = mutableOwner.asStateFlow()
 
     /** Re-reads the owner; a result that an [invalidate] overtook is dropped. */

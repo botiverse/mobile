@@ -703,6 +703,114 @@ class SharedArtifactsHomeStoreTest {
         assertTrue("a" in store.state.value.unfollowedIds)
     }
 
+    @Test
+    fun snapshotCacheSeedsFrameZeroRefreshesKeepingRowsAndIsolatesByServerReaderEnvAndQuery() = runTest {
+        val cache = ArtifactsHomeSnapshotCache(maxEntries = 2)
+        val api1 = FakeDashboardApi()
+        api1.answer = { _, _ -> ok(rows("a"), next = "c1", counts = ArtifactsHomeCounts(4, 4, 1)) }
+        val first =
+            store(
+                api = api1,
+                snapshotCache = cache,
+                environmentIdProvider = { "https://api.example" },
+                initialServerId = "s-1",
+                initialReaderId = "r-1",
+            )
+        assertNull(first.state.value.rows)
+        first.dispatch(ArtifactsHomeIntent.Start("s-1", "r-1"))
+        advanceUntilIdle()
+        assertEquals(listOf("a"), first.state.value.rows?.map { it.summary.id })
+
+        // Reopening Artifacts Home on a fresh store renders cached rows on Frame 0 while refreshing.
+        val gate = CompletableDeferred<ArtifactsHomeLoad<ArtifactsHomePage>>()
+        val api2 = FakeDashboardApi()
+        api2.answer = { _, _ -> gate.await() }
+        val reopened =
+            store(
+                api = api2,
+                snapshotCache = cache,
+                environmentIdProvider = { "https://api.example" },
+                initialServerId = "s-1",
+                initialReaderId = "r-1",
+            )
+        assertEquals(ArtifactsHomeStatus.Ok, reopened.state.value.status)
+        assertEquals(listOf("a"), reopened.state.value.rows?.map { it.summary.id })
+        assertEquals(4, reopened.state.value.counts?.total)
+
+        reopened.dispatch(ArtifactsHomeIntent.Start("s-1", "r-1"))
+        runCurrent()
+        assertEquals(listOf("a"), reopened.state.value.rows?.map { it.summary.id }, "cached rows stay visible while refreshing")
+        assertEquals(1, api2.calls.size)
+        gate.complete(ok(rows("b", "a"), counts = ArtifactsHomeCounts(5, 5, 1)))
+        advanceUntilIdle()
+        assertEquals(listOf("b", "a"), reopened.state.value.rows?.map { it.summary.id })
+
+        // Strict isolation by server, reader, environment, and query.
+        val otherServer =
+            store(
+                api = FakeDashboardApi(),
+                snapshotCache = cache,
+                environmentIdProvider = { "https://api.example" },
+                initialServerId = "s-2",
+                initialReaderId = "r-1",
+            )
+        assertNull(otherServer.state.value.rows)
+        val otherReader =
+            store(
+                api = FakeDashboardApi(),
+                snapshotCache = cache,
+                environmentIdProvider = { "https://api.example" },
+                initialServerId = "s-1",
+                initialReaderId = "r-2",
+            )
+        assertNull(otherReader.state.value.rows)
+        val otherEnv =
+            store(
+                api = FakeDashboardApi(),
+                snapshotCache = cache,
+                environmentIdProvider = { "https://staging.example" },
+                initialServerId = "s-1",
+                initialReaderId = "r-1",
+            )
+        assertNull(otherEnv.state.value.rows)
+
+        // Switching servers inside a live store restores cached rows when returning to s-1.
+        api2.answer = { _, _ -> ok(rows("s2-row")) }
+        reopened.dispatch(ArtifactsHomeIntent.Start("s-2", "r-1"))
+        advanceUntilIdle()
+        assertEquals(listOf("s2-row"), reopened.state.value.rows?.map { it.summary.id })
+
+        val backGate = CompletableDeferred<ArtifactsHomeLoad<ArtifactsHomePage>>()
+        api2.answer = { _, _ -> backGate.await() }
+        reopened.dispatch(ArtifactsHomeIntent.Start("s-1", "r-1"))
+        runCurrent()
+        assertEquals(listOf("b", "a"), reopened.state.value.rows?.map { it.summary.id }, "returning to s-1 paints cached rows immediately")
+        backGate.complete(ArtifactsHomeLoad.Off)
+        advanceUntilIdle()
+        assertEquals(ArtifactsHomeStatus.Off, reopened.state.value.status)
+
+        // Off drops s-1 entries; s-2 remains until dropServer / clear.
+        val afterOff =
+            store(
+                api = FakeDashboardApi(),
+                snapshotCache = cache,
+                environmentIdProvider = { "https://api.example" },
+                initialServerId = "s-1",
+                initialReaderId = "r-1",
+            )
+        assertNull(afterOff.state.value.rows)
+        cache.dropServer("s-2")
+        val afterDrop =
+            store(
+                api = FakeDashboardApi(),
+                snapshotCache = cache,
+                environmentIdProvider = { "https://api.example" },
+                initialServerId = "s-2",
+                initialReaderId = "r-1",
+            )
+        assertNull(afterDrop.state.value.rows)
+    }
+
     private fun TestScope.store(
         api: FakeDashboardApi,
         onSortChosen: (ArtifactsHomeSort) -> Unit = {},
@@ -710,6 +818,10 @@ class SharedArtifactsHomeStoreTest {
         settledRepo: ArtifactsHomeSettledSeenRepository? = null,
         ownFollowEvents: SharedFlow<ArtifactOwnFollowEvent>? = null,
         onOwnFollowCommitted: (String, String, Boolean) -> Unit = { _, _, _ -> },
+        snapshotCache: ArtifactsHomeSnapshotCache? = null,
+        environmentIdProvider: () -> String = { "" },
+        initialServerId: String? = null,
+        initialReaderId: String? = null,
     ) =
         SharedArtifactsHomeStore(
             api = api,
@@ -719,6 +831,10 @@ class SharedArtifactsHomeStoreTest {
             settledSeenRepository = settledRepo,
             ownFollowEvents = ownFollowEvents,
             onOwnFollowCommitted = onOwnFollowCommitted,
+            snapshotCache = snapshotCache,
+            environmentIdProvider = environmentIdProvider,
+            initialServerId = initialServerId,
+            initialReaderId = initialReaderId,
         )
 
     private fun TestScope.started(api: FakeDashboardApi, onSortChosen: (ArtifactsHomeSort) -> Unit = {}): SharedArtifactsHomeStore {

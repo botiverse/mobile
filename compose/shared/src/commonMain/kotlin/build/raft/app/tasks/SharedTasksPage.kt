@@ -1089,9 +1089,16 @@ private fun SharedTasksLoadedBodyContent(
                 }
                 // Pull-to-refresh over both views (board columns scroll vertically inside the
                 // horizontal board, so their overscroll reaches this box through the LazyRow).
+                val queryInitialLoading =
+                    query != null &&
+                        queryState != null &&
+                        querySections.none { it.rows.isNotEmpty() } &&
+                        querySections.any { !it.loaded } &&
+                        queryState.error == null
                 RaftStorePullToRefreshBox(
                     refreshing = state.refreshing,
                     onRefresh = { onIntent(SharedTasksRouteIntent.Refresh) },
+                    enabled = !queryInitialLoading,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     pullState = tasksPullState,
                 ) {
