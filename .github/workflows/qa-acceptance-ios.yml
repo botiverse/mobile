@@ -267,6 +267,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
             RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
+            RAFT_GIT_COMMIT="$GITHUB_SHA" \
             build-for-testing > "$log" 2>&1
           status=$?
           tail -100 "$log"

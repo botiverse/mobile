@@ -36,7 +36,7 @@
         <key>SlockOAuthCallbackScheme</key>
         <string>$(SLOCK_OAUTH_CALLBACK_SCHEME)</string>
         <key>HandsBuildCommit</key>
-        <string></string>
+        <string>$(RAFT_GIT_COMMIT)</string>
         <key>SlockAPNSEnvironment</key>
         <string>$(APS_ENVIRONMENT)</string>
         <key>UIBackgroundModes</key>
