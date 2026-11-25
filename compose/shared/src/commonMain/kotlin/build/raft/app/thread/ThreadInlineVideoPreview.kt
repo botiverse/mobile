@@ -144,14 +144,16 @@ internal val LocalThreadInlineVideoPlayer =
 /**
  * The inline video of a message (raft-ui `MessageVideoPreview`, web `InlineVideoPreview`): a
  * 16:9 black box at most 360dp wide, `rounded-container` with a `line-hairline` edge outside the
- * black (`bg-clip-padding`). There is no name or size strip; the file opens in the preview from
- * the corner button.
+ * black (`bg-clip-padding`). There is no name or size strip; the top-right corner carries Download
+ * and "Open in preview" (web #16551).
  */
 @Composable
 internal fun ThreadInlineVideoAttachmentCard(
     attachment: RaftThreadAttachmentItem,
     onDownload: () -> Unit,
-    onOpenPreview: (() -> Unit)? = null
+    onOpenPreview: (() -> Unit)? = null,
+    /** The message is still sending (web `isOptimistic`): no corner actions until it lands. */
+    pending: Boolean = false
 ) {
     val host = LocalThreadInlineVideoPreviewHost.current
     val cachedUrl =
@@ -231,13 +233,26 @@ internal fun ThreadInlineVideoAttachmentCard(
                     onDownload = onDownload
                 )
             }
-            if (onOpenPreview != null) {
+            // Web #16551: our own Download sits left of "Open in preview" (the inline player offers no
+            // download of its own); both stay hidden while the message is still sending.
+            if (!pending) {
                 RaftEmbeddedControls {
-                    RaftIconButton(
-                        onClick = onOpenPreview,
-                        tooltip = stringResource(Res.string.thread_video_open_in_preview, name),
-                        modifier = Modifier.align(Alignment.TopEnd).padding(ThreadInlineVideoControlInset)
-                    ) { RaftSlotIcon(RaftLucideIconName.Eye, size = 16.dp) }
+                    Row(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(ThreadInlineVideoControlInset),
+                        horizontalArrangement = Arrangement.spacedBy(ThreadInlineVideoControlGap),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RaftIconButton(
+                            onClick = onDownload,
+                            tooltip = stringResource(Res.string.thread_video_download_file, name)
+                        ) { RaftSlotIcon(RaftLucideIconName.Download, size = 16.dp) }
+                        if (onOpenPreview != null) {
+                            RaftIconButton(
+                                onClick = onOpenPreview,
+                                tooltip = stringResource(Res.string.thread_video_open_in_preview, name)
+                            ) { RaftSlotIcon(RaftLucideIconName.Eye, size = 16.dp) }
+                        }
+                    }
                 }
             }
         }
@@ -248,6 +263,9 @@ private val ThreadInlineVideoMaxWidth = 360.dp
 
 /** raft-ui `--control-embedded-inset` (6px) from the outer edge, less the 1dp hairline. */
 private val ThreadInlineVideoControlInset = 5.dp
+
+/** Web #16551: the Download button sits one button plus `0.25rem` left of the Eye. */
+private val ThreadInlineVideoControlGap = RaftSpacing.Xs
 
 /** The media's white ink and its muted (`white/75`) actions; the box is black in both themes. */
 private val ThreadInlineVideoInk = RaftUiPalette.white

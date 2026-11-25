@@ -1216,6 +1216,7 @@
     <string name="thread_video_attachment_fallback_name">Vídeo anexado</string>
     <string name="thread_video_download_to_view">Baixar para ver</string>
     <string name="thread_video_open_in_preview">Abrir %1$s na pré-visualização</string>
+    <string name="thread_video_download_file">Baixar %1$s</string>
     <string name="video_player_mute">Silenciar</string>
     <string name="video_player_unmute">Desativar silêncio</string>
     <string name="video_player_volume">Volume</string>

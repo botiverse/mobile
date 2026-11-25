@@ -1216,6 +1216,7 @@
     <string name="thread_video_attachment_fallback_name">動画の添付ファイル</string>
     <string name="thread_video_download_to_view">ダウンロードして表示</string>
     <string name="thread_video_open_in_preview">%1$s をプレビューで開く</string>
+    <string name="thread_video_download_file">%1$s をダウンロード</string>
     <string name="video_player_mute">ミュート</string>
     <string name="video_player_unmute">ミュートを解除</string>
     <string name="video_player_volume">音量</string>
