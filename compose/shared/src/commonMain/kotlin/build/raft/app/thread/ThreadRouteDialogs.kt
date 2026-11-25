@@ -14,11 +14,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.TextStyle
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.DataResult
+import build.raft.app.data.QuestionAskActionCardType
 import build.raft.app.data.SecondFactorStepUpCoordinator
 import build.raft.app.data.SecondFactorStepUpDialogState
 import build.raft.app.data.SecondFactorStepUpIntent
 import build.raft.app.data.SecondFactorStepUpWebTarget
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.expiredAsOf
 import build.raft.app.data.secondFactorStepUpWebUrl
 import build.raft.app.data.secondFactorStepUpWebServerSlug
 import build.raft.app.data.SharedCreateAgentFormStore
@@ -49,6 +52,7 @@ internal class ThreadRouteDialogStates(
     val renderSlice: State<SharedThreadRenderSlice>,
     val actionCardSpecStore: ThreadActionCardSpecStore,
     val createAgentFormStore: SharedCreateAgentFormStore,
+    val viewerUserId: String? = null,
 )
 
 /**
@@ -255,19 +259,40 @@ internal fun ThreadRouteDialogs(
                     channels = homeChannels,
                 )
             }
-        RaftActionCardFormSheet(
-            form = formState.form,
-            values = formState.values,
-            onValuesChange = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.FormValuesChanged(it)) },
-            fieldErrors = formState.issues,
-            fieldErrorsTraceId = formState.issuesTraceId,
-            submitting = formState.submitting,
-            onSubmit = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.SubmitForm(it)) },
-            onDismiss = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.DismissForm) },
-            candidates = candidates,
-            formError = threadActionCardSpecErrorText(formState.error),
-            formErrorTraceId = formState.error.traceIdOrNull(),
-        )
+        val isQuestion = formState.card.type.equals(QuestionAskActionCardType, ignoreCase = true)
+        val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
+        val effectiveCard = formState.card.expiredAsOf(nowMillis)
+        val canSubmit =
+            !effectiveCard.isExecuted &&
+                !effectiveCard.isFrozen &&
+                !effectiveCard.hasEnded &&
+                !effectiveCard.needsReconfirmation &&
+                (!isQuestion || effectiveCard.questionAsksViewer(states.viewerUserId))
+        // A paged form and a question card's keep a local draft until submitted or the card ends (web ActionCardSpecCard).
+        val draftKey =
+            if (formState.form.steps != null || isQuestion) {
+                actionCardFormDraftKey(states.viewerUserId, formState.messageId, formState.formId)
+            } else {
+                null
+            }
+        key(formState.messageId, formState.formId) {
+            RaftActionCardFormSheet(
+                form = formState.form,
+                values = formState.values,
+                onValuesChange = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.FormValuesChanged(it)) },
+                fieldErrors = formState.issues,
+                fieldErrorsTraceId = formState.issuesTraceId,
+                submitting = formState.submitting,
+                onSubmit = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.SubmitForm(it)) },
+                onDismiss = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.DismissForm) },
+                candidates = candidates,
+                formError = threadActionCardSpecErrorText(formState.error),
+                formErrorTraceId = formState.error.traceIdOrNull(),
+                canSubmit = canSubmit,
+                draftKey = draftKey,
+                question = isQuestion,
+            )
+        }
     }
     // Last of the card dialogs, so it opens over the install confirmation or spec sheet that asked.
     actionCardStepUpState?.let { dialogState ->

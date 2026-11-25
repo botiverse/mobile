@@ -28,6 +28,7 @@ import build.raft.app.data.ActionCardSpecCard
 import build.raft.app.data.ActionCardSpecChoiceField
 import build.raft.app.data.ActionCardSpecDisplayElement
 import build.raft.app.data.ActionCardSpecForm
+import build.raft.app.data.ActionCardSpecFormField
 import build.raft.app.data.ActionCardSpecFormPlacement
 import build.raft.app.data.ActionCardSpecMsg
 import build.raft.app.data.ActionCardSpecTree
@@ -197,8 +198,8 @@ internal fun actionCardTraceIdSpot(
  * Whether tapping an option answers the whole form (web `tapSubmitsForm`, spec §5.10): its one
  * question is a single Choice and Other… isn't chosen. Such a form shows no submit button.
  */
-internal fun actionCardTapSubmitsForm(fields: List<ActionCardSpecChoiceField>, values: Map<String, ActionCardFormValue>): Boolean {
-    val only = fields.singleOrNull() ?: return false
+internal fun actionCardTapSubmitsForm(fields: List<ActionCardSpecFormField>, values: Map<String, ActionCardFormValue>): Boolean {
+    val only = fields.singleOrNull() as? ActionCardSpecChoiceField ?: return false
     if (only.multiple) return false
     return (values[only.name] as? ActionCardFormValue.Choice)?.other == null
 }
@@ -260,7 +261,7 @@ internal class QuestionUndoableSubmit<T : Any>(
  */
 @Composable
 internal fun rememberQuestionUndoableSubmit(
-    formId: String,
+    formId: Any,
     onSend: (Map<String, ActionCardFormValue>) -> Unit,
 ): QuestionUndoableSubmit<Map<String, ActionCardFormValue>> {
     val scope = rememberCoroutineScope()

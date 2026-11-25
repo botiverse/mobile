@@ -5993,6 +5993,7 @@ private fun SharedThreadRouteContentContent(
             renderSlice = renderSliceState,
             actionCardSpecStore = actionCardSpecStore,
             createAgentFormStore = createAgentFormStore,
+            viewerUserId = currentSession?.user?.id,
         )
     // The route's thread events, read through one object for the same reason (and so the content
     // lambda below captures it instead of the values it reads). Rebuilt every composition, by a
