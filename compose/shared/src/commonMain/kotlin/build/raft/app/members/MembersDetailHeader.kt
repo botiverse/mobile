@@ -98,12 +98,14 @@ import build.raft.designsystem.components.RaftHoverTier
 import androidx.compose.ui.semantics.selected
 
 // raft-ui PanelHeader: Back and the trailing action are bar buttons whose glyphs land on the
-// 16dp content line (3dp from the edges with a phone's 44dp buttons, 8 with the wide touch head's 36).
+// 16dp content line (5dp from the edges with a phone's 44dp buttons, 8 with the wide touch head's 36).
 private val MembersHumanHeaderEdgeInset: Dp
     @Composable @ReadOnlyComposable
     get() = RaftTheme.controls.barEdgeInset
 
-private val MembersHumanHeaderContentSpacing = 6.dp
+// raft-ui `PanelHeaderIcon` with `data-icon-kind="avatar"`: its 1.5px border stays, transparent, so the profile
+// heads' avatar stands 1.5dp inside its slot all round.
+private val MembersHeadAvatarRing = RaftAppStroke.Control
 
 // A profile head that starts without Back (the first page of the wide layout's profile column):
 // the avatar on the 16dp content margin (raft-ui head edges), as the channel details' title under it.
@@ -169,12 +171,14 @@ internal fun MembersHumanDetailHeader(
         backgroundColor = RaftColor.Canvas,
         contentStartPadding = if (showsBack) MembersHumanHeaderEdgeInset else MembersHeaderContentMargin,
         contentEndPadding = if (canMessage || paneCloses) MembersHumanHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
-        contentSpacing = MembersHumanHeaderContentSpacing,
+        contentSpacing = RaftTopPageHeaderBackContentSpacing,
         showBodyTopBanner = false,
         titleLeadingContent = {
             if (showsBack) RaftPaneAwareBackButton(onClick = onBack)
             if (headRowTabs == null) {
-                MembersStickerAvatar(member, RaftTheme.controls.headAvatar, memberAvatarResolver)
+                Box(Modifier.padding(horizontal = MembersHeadAvatarRing)) {
+                    MembersStickerAvatar(member, RaftTheme.controls.headAvatar, memberAvatarResolver)
+                }
             }
         },
         titleContent = {
@@ -367,8 +371,8 @@ internal fun MembersDetailHeader(
         // The head's icon-lg buttons are bar buttons: 28dp under a mouse or trackpad (sizing v12).
         CompositionLocalProvider(LocalRaftBarButtons provides true) {
             BoxWithConstraints(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding()) {
-                val startInset = if (showsBack) RaftBackButtonDefaults.EdgeInset - 2.dp else MembersHeaderContentMargin
-                val endInset = RaftBackButtonDefaults.EdgeInset - 2.dp
+                val startInset = if (showsBack) RaftBackButtonDefaults.EdgeInset else MembersHeaderContentMargin
+                val endInset = RaftBackButtonDefaults.EdgeInset
                 val hasLounge = onOpenLounge != null
                 val hasMessage = directMessageEligibility != MembersDirectMessageEligibility.Unavailable
                 val hasMore = member.kind == MemberKind.Agent && canManage && !deleted
@@ -399,7 +403,7 @@ internal fun MembersDetailHeader(
                         .fillMaxWidth()
                         // 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
                         .height(RaftTheme.controls.headHeight - RaftStroke.Hairline)
-                        // 3dp for a finger's 44dp buttons; 8dp for the 28dp bar buttons (sizing v12). Without
+                        // 5dp for a finger's 44dp buttons; 10dp for the 28dp bar buttons (sizing v12). Without
                         // Back the avatar starts on the 16dp content margin.
                         .padding(start = startInset, end = endInset),
                     verticalAlignment = Alignment.CenterVertically,
@@ -415,11 +419,13 @@ internal fun MembersDetailHeader(
                         }
                     } else {
                         // The web's panel head shows the avatar only; it is changed from the profile hero.
-                        MembersRaftAvatar(
-                            member = member,
-                            size = RaftTheme.controls.headAvatar,
-                            memberAvatarResolver = memberAvatarResolver
-                        )
+                        Box(Modifier.padding(horizontal = MembersHeadAvatarRing)) {
+                            MembersRaftAvatar(
+                                member = member,
+                                size = RaftTheme.controls.headAvatar,
+                                memberAvatarResolver = memberAvatarResolver
+                            )
+                        }
                         if (RaftTheme.scale == RaftScale.Wide && !headerMetaLabel.isNullOrBlank()) {
                             // raft-design desktop-density rule 2: wide heads place meta on the title's baseline.
                             Row(
@@ -505,8 +511,8 @@ internal fun MembersDetailHeader(
                                 text = stringResource(Res.string.member_label_message),
                                 onClick = onOpenDirectMessage,
                                 // The filled button ends 10dp from the edge whatever the head's inset
-                                // (endInset, the bar-button inset less 2): 7 + 3 on a phone.
-                                modifier = Modifier.padding(end = (12.dp - RaftBackButtonDefaults.EdgeInset).coerceAtLeast(0.dp)),
+                                // (endInset): 5 + 5 on a phone.
+                                modifier = Modifier.padding(end = (10.dp - RaftBackButtonDefaults.EdgeInset).coerceAtLeast(0.dp)),
                                 loading = directMessageOpening,
                                 leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.DirectMessage) }
                             )

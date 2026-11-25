@@ -86,8 +86,11 @@ internal val RaftMainTabHeaderTitleStyle: TextStyle
     get() = RaftType.Headline
 internal val RaftTopPageHeaderContentStartPadding = 18.dp
 internal val RaftTopPageHeaderContentSpacing = 12.dp
-// After a 44dp Back: its 22dp arrow keeps 11dp of its own inset, so the title sits 17dp past it.
-private val RaftTopPageHeaderBackContentSpacing = 6.dp
+// After Back: raft-ui PanelHeader's phone gap (`max-md:gap-2`), so past a 44dp Back, whose 22dp arrow keeps 11dp
+// of its own inset, the title starts at 57. The wide scale keeps its 6.
+internal val RaftTopPageHeaderBackContentSpacing: Dp
+    @Composable @ReadOnlyComposable
+    get() = if (RaftTheme.scale == RaftScale.Wide) 6.dp else 8.dp
 internal val RaftTopPageHeaderContentEndPadding = 16.dp
 // raft-ui `PanelHeaderContent` `md:gap-2`: between a one-line head's title and its meta.
 internal val RaftPanelHeadInlineMetaGap = 8.dp
@@ -160,7 +163,7 @@ internal fun RaftTopPageHeader(
     topSafeAreaOverride: Dp? = null,
     // 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
     headerHeight: Dp = RaftTheme.controls.headHeight,
-    // [onBack] sets the Back button's 3dp edge inset and the 6dp gap after it (none on a wide side pane's first page,
+    // [onBack] sets the Back button's 5dp edge inset and the gap after it, 8dp on a phone (none on a wide side pane's first page,
     // which has no Back: raftSidePaneShowsBack).
     contentStartPadding: Dp = if (onBack != null && raftSidePaneShowsBack()) RaftBackButtonDefaults.EdgeInset else RaftTopPageHeaderContentStartPadding,
     // In a wide side pane the pane's Close ends the head: its glyph on the 16dp line, as Back's at the start.
