@@ -935,6 +935,12 @@ internal data class ActivityRowLayout(
      * False on wide lists, which keep the single-line `InboxItemLine` layout.
      */
     val twoLinePreview: Boolean = false,
+    /**
+     * Top inset on the top-aligned leading avatar/tile so the 35dp square optically aligns with the
+     * 15/20dp title glyphs instead of sticking above them (and stays balanced on 1-line rows within
+     * the 40dp inner height of a 56dp row). Zero on centered wide rows.
+     */
+    val leadingTopPadding: Dp = 0.dp,
     /** A hairline between two adjacent rows (none in the web's list cells: lists.md "lists have no dividers"). */
     val dividers: Boolean,
     /** Between two rows (the list's `gap-0.5`). */
@@ -966,6 +972,7 @@ internal data class ActivityRowLayout(
                 previewLines = 2,
                 reservePreviewLines = false,
                 twoLinePreview = true,
+                leadingTopPadding = 3.dp,
                 dividers = false,
                 rowGap = 2.dp,
                 listTop = 8.dp,
@@ -1211,7 +1218,12 @@ internal fun ActivityConversationListRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = if (layout.twoLinePreview) Alignment.Top else Alignment.CenterVertically,
             ) {
-                ActivityConversationLeading(model, item.channelName, agentStatusResolver)
+                ActivityConversationLeading(
+                    model = model,
+                    fallbackLabel = item.channelName,
+                    agentStatusResolver = agentStatusResolver,
+                    modifier = if (layout.leadingTopPadding > 0.dp) Modifier.padding(top = layout.leadingTopPadding) else Modifier,
+                )
                 Column(modifier = Modifier.weight(1f)) {
                     // Line 1: title (+ task badge) and, at its end, the time (raft-ui InboxItem: the
                     // timestamp sits beside the title only, so it never narrows the excerpt below).
@@ -1489,6 +1501,7 @@ internal fun ActivityConversationLeading(
     model: ActivityConversationRowModel,
     fallbackLabel: String,
     agentStatusResolver: RaftAgentStatusResolver,
+    modifier: Modifier = Modifier,
 ) {
     val colors = RaftTheme.colors
     // Draft (cindyz, icon flip): a thread or task in a channel leads with the thread / task mark in the
@@ -1526,7 +1539,7 @@ internal fun ActivityConversationLeading(
         } else {
             null
         }
-    RaftInboxItemLeading(badge = threadBadge) {
+    RaftInboxItemLeading(badge = threadBadge, modifier = modifier) {
         val peer = model.dmPeer
         val lounge = model.lounge
         if (lounge != null && !flipped && model.leadingKind == ActivityConversationLeadingKind.Channel) {
