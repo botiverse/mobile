@@ -402,7 +402,8 @@ private fun WideMessages(modifier: Modifier, messages: List<RaftThreadMessageIte
 
 @Composable
 private fun WideComposer(placeholder: String, asTask: Boolean) {
-    ThreadComposerDock {
+    // Every conversation here is a split's pane: the dock's edges as ThreadPageContent sets them there.
+    ThreadComposerDock(edgePadding = ThreadSplitDetailEdgeInset) {
         ThreadComposerContent(
             payload = RaftThreadComposerPayload(instanceId = "wide-composer", placeholder = placeholder, showAsTaskToggle = asTask),
             onEvent = { _, _, _, _ -> },
