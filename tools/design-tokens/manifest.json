@@ -1,6 +1,6 @@
 {
   "comment": "Pinned Web design sources. Bump per README (Bumping to a newer Web); tailwindcss and index.css match slock packages/web at slockCommit; raft-ui is the web's version or a newer release (it may lead the web by a patch that only adds tokens).",
-  "slockCommit": "1cad6b2dc9a5b7d0830d35ec1b8a0509d3066beb",
+  "slockCommit": "5973bf6fb798f2a9e9dc6c8de602bc05bd854bcd",
   "sources": {
     "tailwind": {
       "path": "source/tailwindcss-4.3.3/theme.css",
@@ -8,28 +8,28 @@
       "sha256": "443d7af364200f8ec8352dc78e39485a118a1840d498c97967bf0ae402b39167"
     },
     "raftUiStyles": {
-      "path": "source/raft-ui-0.103.2/styles.css",
-      "origin": "npm:@botiverse/raft-ui@0.103.2/dist/styles.css",
+      "path": "source/raft-ui-0.103.3/styles.css",
+      "origin": "npm:@botiverse/raft-ui@0.103.3/dist/styles.css",
       "sha256": "05a4142a72923af2016a7b6a4202a8a7c294a9c92e0aee3fc2322463500feb48"
     },
     "raftUiFoundation": {
-      "path": "source/raft-ui-0.103.2/foundation.css",
-      "origin": "npm:@botiverse/raft-ui@0.103.2/dist/foundation.css",
+      "path": "source/raft-ui-0.103.3/foundation.css",
+      "origin": "npm:@botiverse/raft-ui@0.103.3/dist/foundation.css",
       "sha256": "57c4bf1673e8e0f6e8f72ecbd324ca0a73e456fb2a13a5b76b9db199207f198b"
     },
     "raftUiThemes": {
-      "path": "source/raft-ui-0.103.2/themes.css",
-      "origin": "npm:@botiverse/raft-ui@0.103.2/dist/themes.css",
+      "path": "source/raft-ui-0.103.3/themes.css",
+      "origin": "npm:@botiverse/raft-ui@0.103.3/dist/themes.css",
       "sha256": "d676bb4b3ad783cfbe81a1428939d76783f2bee1b9ed1ec5d3913e661b65093d"
     },
     "web": {
       "path": "source/raft-web/index.css",
-      "origin": "botiverse/slock@1cad6b2dc9a5b7d0830d35ec1b8a0509d3066beb:packages/web/src/index.css",
+      "origin": "botiverse/slock@5973bf6fb798f2a9e9dc6c8de602bc05bd854bcd:packages/web/src/index.css",
       "sha256": "618bd25a4516e94e0bbe5ee042b9c4b76507bc88b72c13972dee8a94ad974cf0"
     },
     "raftUiResolvedTokens": {
-      "path": "source/raft-ui-0.103.2/tokens.resolved.json",
-      "origin": "npm:@botiverse/raft-ui@0.103.2/dist/tokens.resolved.json",
+      "path": "source/raft-ui-0.103.3/tokens.resolved.json",
+      "origin": "npm:@botiverse/raft-ui@0.103.3/dist/tokens.resolved.json",
       "sha256": "6acb350bbfe077b462edef24910761ce5a6f6288025973fe8a0949ac6b07db88"
     }
   }
