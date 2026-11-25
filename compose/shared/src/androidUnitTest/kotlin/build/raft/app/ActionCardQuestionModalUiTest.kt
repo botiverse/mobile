@@ -7,11 +7,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -19,6 +21,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
+import build.raft.app.data.ActionCardFormIssue
+import build.raft.app.data.ActionCardFormIssueCode
 import build.raft.app.data.ActionCardFormValue
 import build.raft.app.data.ActionCardSpecChoiceField
 import build.raft.app.data.ActionCardSpecChoiceOption
@@ -681,5 +685,156 @@ class ActionCardQuestionModalUiTest {
             ActionCardFormValue.Choice(emptyList(), "Later today"),
             assertNotNull(readActionCardFormDraft(draftKey)).values["window"],
         )
+    }
+
+    @Test
+    fun reTappingAlreadySelectedOptionAfterGoingBackAdvances() = runRobolectricComposeUiTest {
+        val form =
+            questionForm(
+                singleChoice("p1", "Page one?", listOf("a" to "Alpha", "b" to "Beta")),
+                singleChoice("p2", "Page two?", listOf("c" to "Gamma", "d" to "Delta")),
+                steps =
+                    listOf(
+                        ActionCardSpecFormStep(null, listOf("p1")),
+                        ActionCardSpecFormStep(null, listOf("p2")),
+                    ),
+            )
+        mainClock.autoAdvance = false
+        setContent {
+            RaftTheme(appearance = RaftAppearance.Light) {
+                var values by remember { mutableStateOf(initialActionCardFormValues(form)) }
+                RaftActionCardFormSheet(
+                    form = form,
+                    values = values,
+                    onValuesChange = { values = it },
+                    fieldErrors = emptyList(),
+                    submitting = false,
+                    onSubmit = {},
+                    onDismiss = {},
+                    question = true,
+                    nowMillis = { mainClock.currentTime },
+                )
+            }
+        }
+        advance(50)
+
+        // Page 1 -> pick Alpha -> Page 2.
+        onNodeWithText("Alpha").performClick()
+        advance(QUESTION_CHOICE_PICK_HIGHLIGHT_MS + 50)
+        onNodeWithText("Question 2 of 2").assertExists()
+
+        // Go Back to Page 1 -> Alpha is still selected.
+        onNodeWithContentDescription("Back").performClick()
+        advance(50)
+        onNodeWithText("Question 1 of 2").assertExists()
+        onNodeWithText("Alpha").assertIsSelected()
+
+        // Past settle guard, re-tapping the already-selected Alpha still triggers onItemClick -> advances to Page 2.
+        advance(ACTION_CARD_FORM_PAGE_TURN_SETTLE_MS)
+        onNodeWithText("Alpha").performClick()
+        advance(QUESTION_CHOICE_PICK_HIGHLIGHT_MS + 50)
+        onNodeWithText("Question 2 of 2").assertExists()
+    }
+
+    @Test
+    fun multiChoiceAutoSearchShowsOnlyAboveFiveItems() = runRobolectricComposeUiTest {
+        fun multiField(count: Int) =
+            ActionCardSpecChoiceField(
+                name = "tags",
+                label = raw("Select tags"),
+                required = true,
+                multiple = true,
+                options = (1..count).map { ActionCardSpecChoiceOption("o$it", raw("Tag $it")) },
+            )
+        var itemCount by mutableStateOf(5)
+        var latestValues by mutableStateOf<Map<String, ActionCardFormValue>>(emptyMap())
+        setContent {
+            val form = remember(itemCount) { questionForm(multiField(itemCount)) }
+            RaftTheme(appearance = RaftAppearance.Light) {
+                var values by remember(form) { mutableStateOf(initialActionCardFormValues(form)) }
+                RaftActionCardFormSheet(
+                    form = form,
+                    values = values,
+                    onValuesChange = {
+                        values = it
+                        latestValues = it
+                    },
+                    fieldErrors = emptyList(),
+                    submitting = false,
+                    onSubmit = {},
+                    onDismiss = {},
+                    question = true,
+                )
+            }
+        }
+        waitForIdle()
+
+        // 5 options: no search box (`RaftChoiceListSearch.Auto`).
+        onAllNodes(hasSetTextAction()).assertCountEquals(0)
+        onNodeWithText("Tag 1").performClick()
+        waitForIdle()
+        assertEquals(ActionCardFormValue.Choice(listOf("o1")), latestValues["tags"])
+
+        // 6 options: search box appears, filters rows, and ticking still works inside scrolling form (`lazy = false`).
+        itemCount = 6
+        waitForIdle()
+        onAllNodes(hasSetTextAction()).assertCountEquals(1)
+        onNode(hasSetTextAction()).performTextInput("6")
+        waitForIdle()
+        onNodeWithText("Tag 1").assertDoesNotExist()
+        onNodeWithText("Tag 6").performClick()
+        waitForIdle()
+        assertEquals(ActionCardFormValue.Choice(listOf("o6")), latestValues["tags"])
+    }
+
+    @Test
+    fun choiceDescriptionSitsBelowLabelAboveOptionsAndStaysVisibleWithError() = runRobolectricComposeUiTest {
+        val field =
+            ActionCardSpecChoiceField(
+                name = "tz",
+                label = raw("Which time zone?"),
+                description = raw("All times are UTC."),
+                required = true,
+                multiple = false,
+                options =
+                    listOf(
+                        ActionCardSpecChoiceOption("utc", raw("UTC")),
+                        ActionCardSpecChoiceOption("local", raw("My time zone")),
+                    ),
+            )
+        val form = questionForm(field)
+        val issues =
+            listOf(
+                ActionCardFormIssue(
+                    field = "tz",
+                    code = ActionCardFormIssueCode.Required,
+                    message = raw("Pick one option."),
+                ),
+            )
+        setContent {
+            RaftTheme(appearance = RaftAppearance.Light) {
+                var values by remember { mutableStateOf(initialActionCardFormValues(form)) }
+                RaftActionCardFormSheet(
+                    form = form,
+                    values = values,
+                    onValuesChange = { values = it },
+                    fieldErrors = issues,
+                    submitting = false,
+                    onSubmit = {},
+                    onDismiss = {},
+                    question = true,
+                )
+            }
+        }
+        waitForIdle()
+
+        val labelBounds = onNodeWithText("Which time zone?").getBoundsInRoot()
+        val descriptionBounds = onNodeWithText("All times are UTC.").getBoundsInRoot()
+        val optionBounds = onNodeWithText("UTC").getBoundsInRoot()
+        val errorBounds = onNodeWithText("Pick one option.").getBoundsInRoot()
+
+        assertTrue(descriptionBounds.top >= labelBounds.bottom, "description sits below question label")
+        assertTrue(descriptionBounds.bottom <= optionBounds.top, "description sits above options card")
+        assertTrue(errorBounds.top >= optionBounds.bottom, "validation error sits below options card while description stays visible")
     }
 }
