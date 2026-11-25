@@ -8,6 +8,7 @@ import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
 import build.raft.app.RaftDetachedWebViewClient
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
+import build.raft.app.isRaftAndroidWebContainerEnabledSnapshot
 import build.raft.webcontainer.AndroidWebContainerStartup
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -100,18 +101,35 @@ internal object RaftAndroidWebViewWarmup {
     /**
      * Test seam for the opt-in asynchronous WebView provider startup path
      * ([AndroidWebContainerStartup.startUpAsync]).
+     *
+     * Contract: unless throwing an exception, every implementation MUST invoke `onCompleted`
+     * (either synchronously or asynchronously), even when returning `false` (for example when
+     * `AndroidWebContainerStartup.startUpAsync` is already `STARTING` or `READY`).
      */
     @Volatile
-    internal var runAsyncStartup: (Any?, (Boolean, String?) -> Unit) -> Boolean = { context, onCompleted ->
+    internal var runAsyncStartup: (Any?, (Boolean, String?) -> Unit) -> Boolean = ::defaultRunAsyncStartup
+
+    /**
+     * Test seam resolving whether the current process should run off-main-thread
+     * `WebViewCompat.startUpWebView` ahead of detached renderer warm-up (gated behind
+     * `mobile_web_container_v1`, default OFF).
+     */
+    @Volatile
+    internal var resolveAsyncStartupPreferred: () -> Boolean = { isRaftAndroidWebContainerEnabledSnapshot() }
+
+    private fun defaultRunAsyncStartup(
+        context: Any?,
+        onCompleted: (Boolean, String?) -> Unit,
+    ): Boolean {
         val androidContext = context as? Context
         if (androidContext == null) {
-            false
-        } else {
-            AndroidWebContainerStartup.startUpAsync(
-                context = androidContext,
-                onCompleted = onCompleted,
-            )
+            onCompleted(false, "context_unavailable")
+            return false
         }
+        return AndroidWebContainerStartup.startUpAsync(
+            context = androidContext,
+            onCompleted = onCompleted,
+        )
     }
 
     private val attempted = AtomicBoolean(false)
@@ -144,56 +162,16 @@ internal object RaftAndroidWebViewWarmup {
     /**
      * Schedules a one-shot warm-up on the next main-thread idle slot. Safe to call from any
      * thread and safe to call repeatedly; only the first call has an effect.
+     *
+     * When `mobile_web_container_v1` is active ([resolveAsyncStartupPreferred]), Chromium provider
+     * initialization runs off the UI thread first via `WebViewCompat.startUpWebView` and queues the
+     * detached warm renderer afterward (with automatic single-shot fallback on error).
      */
     fun schedule(context: Context) {
-        if (!attempted.compareAndSet(false, true)) return
-        val startedNs = System.nanoTime()
-        val queued =
-            dispatch {
-                runWarmup(resolveContext(context), startedNs)
-            }
-        if (!queued) {
-            log("webview_warmup skipped reason=post_rejected")
-        }
+        scheduleInternal(context)
     }
 
     fun hasScheduled(): Boolean = attempted.get()
-
-    /**
-     * Opt-in off-main-thread Chromium provider startup backed by `WebViewCompat.startUpWebView`
-     * ([AndroidWebContainerStartup.startUpAsync]). Disabled by default until enabled by feature
-     * flag so existing warm-up behaviour stays unchanged during rollout. Never throws.
-     */
-    fun scheduleAsyncProviderStartup(
-        context: Context,
-        enabled: Boolean,
-    ): Boolean = scheduleAsyncProviderStartupForTest(context, enabled)
-
-    internal fun scheduleAsyncProviderStartupForTest(
-        contextSentinel: Any?,
-        enabled: Boolean,
-    ): Boolean {
-        if (!enabled) return false
-        return runCatching {
-            val resolved = resolveContext(contextSentinel)
-            val startedNs = System.nanoTime()
-            runAsyncStartup(resolved) { success, errorReason ->
-                val elapsedMs = (System.nanoTime() - startedNs) / 1_000_000L
-                if (success) {
-                    runCatching { log("webview_async_startup status=ready elapsedMs=$elapsedMs") }
-                } else {
-                    runCatching { logWarn("webview_async_startup status=failed reason=${errorReason ?: "unknown"}") }
-                }
-            }
-        }.getOrElse { error ->
-            runCatching {
-                logWarn(
-                    "webview_async_startup status=exception errorType=${error::class.simpleName ?: "unknown"}",
-                )
-            }
-            false
-        }
-    }
 
     /**
      * Test-only entry that mirrors [schedule] but takes an opaque context sentinel, so JVM unit
@@ -201,14 +179,89 @@ internal object RaftAndroidWebViewWarmup {
      * Production code always goes through [schedule].
      */
     internal fun scheduleForTest(contextSentinel: Any?) {
+        scheduleInternal(contextSentinel)
+    }
+
+    private fun scheduleInternal(contextSentinel: Any?) {
         if (!attempted.compareAndSet(false, true)) return
         val startedNs = System.nanoTime()
+        val preferAsyncStartup = runCatching { resolveAsyncStartupPreferred() }.getOrDefault(false)
+        if (!preferAsyncStartup) {
+            queueDetachedWarmRenderer(contextSentinel, startedNs)
+            return
+        }
+        val rendererQueued = AtomicBoolean(false)
+        fun queueRendererOnce(resolvedContext: Any?, alreadyResolved: Boolean) {
+            if (!rendererQueued.compareAndSet(false, true)) return
+            queueDetachedWarmRenderer(resolvedContext, startedNs, alreadyResolved = alreadyResolved)
+        }
+        val resolved =
+            runCatching { resolveContext(contextSentinel) }
+                .getOrElse { error ->
+                    runCatching {
+                        logWarn(
+                            "webview_async_startup status=exception errorType=${error::class.simpleName ?: "unknown"}",
+                        )
+                    }
+                    queueRendererOnce(contextSentinel, alreadyResolved = false)
+                    return
+                }
+        runCatching {
+            runAsyncStartup(resolved) { success, errorReason ->
+                val elapsedMs = (System.nanoTime() - startedNs) / 1_000_000L
+                if (success) {
+                    runCatching { log("webview_async_startup status=ready elapsedMs=$elapsedMs") }
+                } else {
+                    runCatching { logWarn("webview_async_startup status=failed reason=${errorReason ?: "unknown"}") }
+                }
+                queueRendererOnce(resolved, alreadyResolved = true)
+            }
+        }.onFailure { error ->
+            runCatching {
+                logWarn(
+                    "webview_async_startup status=exception errorType=${error::class.simpleName ?: "unknown"}",
+                )
+            }
+            queueRendererOnce(resolved, alreadyResolved = true)
+        }
+    }
+
+    private fun queueDetachedWarmRenderer(
+        contextSentinel: Any?,
+        startedNs: Long,
+        alreadyResolved: Boolean = false,
+    ) {
         val queued =
-            dispatch {
-                runWarmup(resolveContext(contextSentinel), startedNs)
+            runCatching {
+                dispatch {
+                    val targetContext =
+                        if (alreadyResolved) {
+                            contextSentinel
+                        } else {
+                            runCatching { resolveContext(contextSentinel) }
+                                .getOrElse { error ->
+                                    runCatching {
+                                        log(
+                                            "webview_warmup failed stage=resolve_context errorType=" +
+                                                (error::class.simpleName ?: "unknown")
+                                        )
+                                    }
+                                    return@dispatch
+                                }
+                        }
+                    runWarmup(targetContext, startedNs)
+                }
+            }.getOrElse { error ->
+                runCatching {
+                    logWarn(
+                        "webview_warmup skipped reason=dispatch_exception errorType=" +
+                            (error::class.simpleName ?: "unknown")
+                    )
+                }
+                return
             }
         if (!queued) {
-            log("webview_warmup skipped reason=post_rejected")
+            runCatching { log("webview_warmup skipped reason=post_rejected") }
         }
     }
 
@@ -217,9 +270,12 @@ internal object RaftAndroidWebViewWarmup {
                 val warm =
                     runCatching { createWarmInstance(context) }
                         .getOrElse { error ->
-                            log("webview_warmup failed stage=construct errorType=" +
-                                    (error::class.simpleName ?: "unknown")
-                            )
+                            runCatching {
+                                log(
+                                    "webview_warmup failed stage=construct errorType=" +
+                                        (error::class.simpleName ?: "unknown")
+                                )
+                            }
                             return
                         }
                 warmInstance = warm
@@ -228,12 +284,15 @@ internal object RaftAndroidWebViewWarmup {
                 // navigation): this instance must never be able to reach product content.
                 (warm as? WebView)?.loadUrl("about:blank")
                 val elapsedMs = (System.nanoTime() - startedNs) / 1_000_000L
-                log("webview_warmup completed elapsedMs=$elapsedMs")
+                runCatching { log("webview_warmup completed elapsedMs=$elapsedMs") }
             }
             .onFailure { error ->
-                log("webview_warmup failed stage=load errorType=" +
-                        (error::class.simpleName ?: "unknown")
-                )
+                runCatching {
+                    log(
+                        "webview_warmup failed stage=load errorType=" +
+                            (error::class.simpleName ?: "unknown")
+                    )
+                }
             }
     }
 
@@ -246,17 +305,8 @@ internal object RaftAndroidWebViewWarmup {
         resolveContext = { context -> (context as Context).applicationContext ?: context }
         log = { message -> Log.i(LOG_TAG, message) }
         logWarn = { message -> RaftAndroidLocalDiagnostics.recordLog("warn", LOG_TAG, message) }
-        runAsyncStartup = { context, onCompleted ->
-            val androidContext = context as? Context
-            if (androidContext == null) {
-                false
-            } else {
-                AndroidWebContainerStartup.startUpAsync(
-                    context = androidContext,
-                    onCompleted = onCompleted,
-                )
-            }
-        }
+        runAsyncStartup = ::defaultRunAsyncStartup
+        resolveAsyncStartupPreferred = { isRaftAndroidWebContainerEnabledSnapshot() }
     }
 
     /** Runs [task] once, the next time the main looper has nothing due. Any thread. */

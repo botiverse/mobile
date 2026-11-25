@@ -21,6 +21,9 @@ const val SERVER_FEATURE_FLAG_LAST_KNOWN_STORAGE_KEY: String = "serverFeatureFla
  *   badge read by one rule from the first frame, not by today's off path until the evaluation lands
  *   and then by the flag's (the first load's rows and badge counted one way, the live patches after
  *   it the other).
+ * - `mobile_web_container_v1` (dm:@artin:#6): persisted across cold restarts so Android's
+ *   first-frame off-main-thread `WebViewCompat.startUpWebView` warmup and offline cold opens
+ *   follow the last server evaluation instead of defaulting off before network lands.
  */
 val SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS: Set<String> =
     setOf(
@@ -28,6 +31,7 @@ val SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS: Set<String> =
         MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY,
         INBOX_ROW_POSITION_FEATURE_FLAG_KEY,
         MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY,
+        MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY,
     )
 
 /** The auth binding a last-known value belongs to. Token rotation does not change it. */
@@ -154,7 +158,51 @@ class ServerFeatureFlagLastKnownStore(
     private fun PersistedServerFeatureFlagLastKnown.matches(scope: ServerFeatureFlagLastKnownScope): Boolean =
         environmentId == scope.environmentId && accountId == scope.accountId && serverId == scope.serverId
 
-    private companion object {
-        val lastKnownJson = Json { ignoreUnknownKeys = true }
+    companion object {
+        private val lastKnownJson = Json { ignoreUnknownKeys = true }
+
+        /**
+         * Reads the last accepted server evaluation for [key] directly from [store] during early
+         * process cold start (before `RaftSharedStoreRegistry` or `accountBinding` are bound).
+         *
+         * Because [writeIfCurrent] retains entries for only the single active `(environment, account)`
+         * and [clearAll] wipes storage on sign-out:
+         * - When [preferredServerId] is provided, only that server's stored value is consulted so
+         *   an explicit `false` on the active server is never overridden by another server's `true`.
+         * - When [preferredServerId] is `null` (pre-auth-store first frame), returns `true` iff any
+         *   server of the last signed-in account had [key] enabled.
+         */
+        fun readColdStartFlag(
+            store: SharedPreferenceStore,
+            key: String,
+            preferredServerId: String? = null,
+            preferredEnvironmentId: String? = null,
+            preferredAccountId: String? = null,
+        ): Boolean {
+            if (key !in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS) return false
+            val encoded = runCatching { store.getString(SERVER_FEATURE_FLAG_LAST_KNOWN_STORAGE_KEY) }.getOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?: return false
+            val targetEnv = preferredEnvironmentId?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
+            val targetAccount = preferredAccountId?.trim()?.takeIf { it.isNotEmpty() }
+            val entries =
+                runCatching {
+                    lastKnownJson.decodeFromString<PersistedServerFeatureFlagLastKnownDocument>(encoded).entries
+                }.getOrNull()
+                    .orEmpty()
+                    .filter { entry ->
+                        entry.environmentId.isNotBlank() &&
+                            entry.accountId.isNotBlank() &&
+                            entry.serverId.isNotBlank() &&
+                            (targetEnv == null || entry.environmentId.trim().trimEnd('/') == targetEnv) &&
+                            (targetAccount == null || entry.accountId.trim() == targetAccount)
+                    }
+            if (entries.isEmpty()) return false
+            val targetServer = preferredServerId?.trim()?.takeIf { it.isNotEmpty() }
+            if (targetServer != null) {
+                return entries.firstOrNull { it.serverId == targetServer }?.values?.get(key) == true
+            }
+            return entries.any { it.values[key] == true }
+        }
     }
 }

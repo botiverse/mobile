@@ -1240,6 +1240,294 @@ def check_freshness_by_default_invariants(
             )
 
 
+WEB_CONTAINER_BUILD_GRADLE = "compose/web-container/build.gradle.kts"
+WEB_CONTAINER_NATIVE_ROOT = "compose/web-container/native"
+JAVASCRIPT_INTERFACE_RE = re.compile(
+    r"@\s*(?:[A-Za-z_]\w*\s*:\s*)?(?:android\s*\.\s*webkit\s*\.\s*)?`?JavascriptInterface`?\b"
+    r"|@\s*(?:[A-Za-z_]\w*\s*:\s*)?\[[^\]]*\b`?JavascriptInterface`?\b"
+    r"|\bandroid\s*\.\s*webkit\s*\.\s*`?JavascriptInterface`?\b"
+    r"|\baddJavascriptInterface\b"
+)
+# compose/web-container must have ZERO internal Raft module dependencies (no type-safe
+# `projects.<module>` accessors and no `project(":...")` / `project(path = ":...")` calls).
+WEB_CONTAINER_FORBIDDEN_INTERNAL_DEP_RE = re.compile(
+    r"""\bprojects\.[A-Za-z_]\w*\b|"""
+    r"""\bproject\s*\([^)]*["']:[^"'\n]+["']"""
+)
+NATIVE_DISPATCH_SYNC_RE = re.compile(r"\bdispatch_(?:barrier_)?sync(?:_f)?\s*\(")
+
+
+CPP_DIGIT_SEP_PREFIX_RE = re.compile(
+    r"(?:"
+    r"0[xX][0-9a-fA-F']*(?:\.[0-9a-fA-F']*)?(?:[pP][+-]?[0-9']*)?"
+    r"|0[bB][01']+"
+    r"|[0-9][0-9']*(?:\.[0-9']*)?(?:[eE][+-]?[0-9']*)?"
+    r"|\.[0-9][0-9']*(?:[eE][+-]?[0-9']*)?"
+    r")"
+)
+
+
+def _is_cpp_digit_separator(text: str, pos: int) -> bool:
+    """Return True iff `text[pos] == "'"` is a C++14 digit separator inside a numeric literal."""
+    if pos <= 0 or pos + 1 >= len(text):
+        return False
+    prev_ch = text[pos - 1]
+    next_ch = text[pos + 1]
+    if not (prev_ch.isdigit() or prev_ch in "abcdefABCDEF"):
+        return False
+    if not (next_ch.isdigit() or next_ch in "abcdefABCDEF"):
+        return False
+    k = pos - 1
+    while k > 0 and (text[k - 1].isalnum() or text[k - 1] in "_'."):
+        k -= 1
+    token_prefix = text[k:pos]
+    if not CPP_DIGIT_SEP_PREFIX_RE.fullmatch(token_prefix):
+        return False
+    # Reject non-hex decimal/float prefixes ending on hex letters (e.g. `1e` followed by `'a`).
+    is_hex = token_prefix.startswith(("0x", "0X"))
+    if not is_hex and not (prev_ch.isdigit() and next_ch.isdigit()):
+        return False
+    return True
+
+
+def _strip_c_comments_and_strings(text: str) -> str:
+    """Strip C/ObjC/C++ comments and string/char literal contents while preserving newlines.
+
+    Handles line/block comments, single-line `"..."` strings (with `\\` escapes and `\\\n`
+    continuations), and `'...'` char literals without misparsing apostrophes in `#pragma mark`
+    directives or C++14 digit separators (`1'000`) as unterminated literals.
+    """
+    out = list(text)
+    n = len(text)
+    i = 0
+    while i < n:
+        if text.startswith("//", i):
+            stop = text.find("\n", i)
+            stop = n if stop < 0 else stop
+            for k in range(i, stop):
+                out[k] = " "
+            i = stop
+        elif text.startswith("/*", i):
+            stop = text.find("*/", i + 2)
+            stop = n if stop < 0 else stop + 2
+            for k in range(i, stop):
+                if out[k] != "\n":
+                    out[k] = " "
+            i = stop
+        elif text[i] == '"':
+            i += 1
+            while i < n:
+                if text[i] == "\\":
+                    for k in range(i, min(i + 2, n)):
+                        if out[k] != "\n":
+                            out[k] = " "
+                    i += 2
+                    continue
+                if text[i] == '"':
+                    i += 1
+                    break
+                if text[i] == "\n":
+                    # Unterminated string does not span an unescaped newline in C/ObjC.
+                    break
+                out[i] = " "
+                i += 1
+        elif text[i] == "'":
+            # Skip C++14 numeric digit separators (e.g. `1'000` or `0xFF'FF`), but never
+            # confuse identifier-adjacent char literals like `case'"':` with digit separators.
+            if _is_cpp_digit_separator(text, i):
+                i += 1
+                continue
+            j = i + 1
+            closed = False
+            while j < n and text[j] != "\n":
+                if text[j] == "\\":
+                    j += 2
+                    continue
+                if text[j] == "'":
+                    closed = True
+                    break
+                j += 1
+            if closed:
+                for k in range(i + 1, j):
+                    out[k] = " "
+                i = j + 1
+            else:
+                # Unterminated apostrophe (e.g. inside `#pragma mark - Session's bridge`): leave intact.
+                i += 1
+        else:
+            i += 1
+    return "".join(out)
+
+
+def _strip_kotlin_comments_only(text: str) -> str:
+    """Strip Kotlin comments while keeping string literal contents (for Gradle project(':...') checks)."""
+    out = list(text)
+    n = len(text)
+    i = 0
+    while i < n:
+        if text.startswith("//", i):
+            stop = text.find("\n", i)
+            stop = n if stop < 0 else stop
+            for k in range(i, stop):
+                out[k] = " "
+            i = stop
+        elif text.startswith("/*", i):
+            depth = 0
+            j = i
+            while j < n:
+                if text.startswith("/*", j):
+                    depth += 1
+                    j += 2
+                elif text.startswith("*/", j):
+                    depth -= 1
+                    j += 2
+                    if depth == 0:
+                        break
+                else:
+                    j += 1
+            for k in range(i, j):
+                if out[k] != "\n":
+                    out[k] = " "
+            i = j
+        elif text.startswith('"""', i):
+            i += 3
+            while i < n:
+                if text.startswith('"""', i):
+                    i += 3
+                    while i < n and text[i] == '"':
+                        i += 1
+                    break
+                i += 1
+        elif text[i] == '"':
+            i += 1
+            while i < n:
+                if text[i] == "\\":
+                    i += 2
+                    continue
+                if text[i] == '"':
+                    i += 1
+                    break
+                if text[i] == "\n":
+                    break
+                i += 1
+        elif text[i] == "'":
+            j = i + 1
+            if j < n and text[j] == "\\":
+                j += 2
+                while j < n and text[j] not in "'\n":
+                    j += 1
+            else:
+                j += 1
+            if j < n and text[j] == "'":
+                i = j + 1
+            else:
+                i += 1
+        else:
+            i += 1
+    return "".join(out)
+
+
+def _production_java_sources(root: Path) -> dict[str, str]:
+    base = root / RUN_BLOCKING_SCAN_ROOT
+    if not base.is_dir():
+        raise Violation(f"web-container Java scan: missing source root {RUN_BLOCKING_SCAN_ROOT}")
+    sources: dict[str, str] = {}
+    for module_src in sorted(base.glob("*/src")) + sorted(base.glob("*/*/src")):
+        if not module_src.is_dir():
+            continue
+        for path in sorted(module_src.rglob("*.java")):
+            rel = str(path.relative_to(root))
+            if any(rel.startswith(prefix) for prefix in RUN_BLOCKING_EXCLUDED_PREFIXES):
+                continue
+            parts = rel.split("/")
+            source_set = parts[parts.index("src") + 1] if parts.index("src") + 1 < len(parts) else ""
+            if "test" in source_set.lower():
+                continue
+            sources[rel] = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    return sources
+
+
+def _web_container_native_sources(root: Path) -> dict[str, str]:
+    base = root / WEB_CONTAINER_NATIVE_ROOT
+    if not base.is_dir():
+        return {}
+    sources: dict[str, str] = {}
+    for pattern in ("*.m", "*.mm", "*.c", "*.cc", "*.cpp", "*.h", "*.hpp", "*.hxx"):
+        for path in sorted(base.rglob(pattern)):
+            rel = str(path.relative_to(root))
+            if "/build/" in f"/{rel}/":
+                continue
+            sources[rel] = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    return sources
+
+
+def check_web_container_invariants(
+    prod_kotlin: dict[str, str],
+    prod_java: dict[str, str],
+    web_container_build_gradle: str,
+    native_sources: dict[str, str],
+) -> None:
+    """Enforce dm:@artin:#6 standalone WebView container security & architecture invariants:
+
+    1. Zero `@JavascriptInterface` or `addJavascriptInterface` in production Kotlin/Java
+       sources (Android JSB must exclusively use `WebViewCompat.addWebMessageListener`).
+    2. `compose/web-container/build.gradle.kts` must never depend on any internal Gradle project
+       module (`projects.*` or `project(":...")`) so `:web-container` remains an independently
+       publishable zero-internal-dep KMP package.
+    3. Zero `dispatch_sync` / `dispatch_sync_f` / `dispatch_barrier_sync` /
+       `dispatch_barrier_sync_f` inside `compose/web-container/native/` to prevent macOS
+       Thread-0 <-> AWT EDT AB-BA deadlocks in the native WKWebView bridge.
+    """
+    for name, text in sorted(prod_kotlin.items()):
+        if "JavascriptInterface" not in text:
+            continue
+        code = _kotlin_code_only(text)
+        match = JAVASCRIPT_INTERFACE_RE.search(code)
+        if match:
+            line = code.count("\n", 0, match.start()) + 1
+            raise Violation(
+                f"web-container security violation (dm:@artin:#6): {name}:{line} uses "
+                f"`{match.group(0).strip()}`; Android JSB must use WebViewCompat.addWebMessageListener "
+                "instead of reflective JavascriptInterface bindings."
+            )
+
+    for name, text in sorted(prod_java.items()):
+        if "JavascriptInterface" not in text:
+            continue
+        code = _strip_c_comments_and_strings(text)
+        match = JAVASCRIPT_INTERFACE_RE.search(code)
+        if match:
+            line = code.count("\n", 0, match.start()) + 1
+            raise Violation(
+                f"web-container security violation (dm:@artin:#6): {name}:{line} uses "
+                f"`{match.group(0).strip()}`; Android JSB must use WebViewCompat.addWebMessageListener "
+                "instead of reflective JavascriptInterface bindings."
+            )
+
+    gradle_code = _strip_kotlin_comments_only(web_container_build_gradle)
+    dep_match = WEB_CONTAINER_FORBIDDEN_INTERNAL_DEP_RE.search(gradle_code)
+    if dep_match:
+        line = gradle_code.count("\n", 0, dep_match.start()) + 1
+        raise Violation(
+            f"web-container boundary violation (dm:@artin:#6): {WEB_CONTAINER_BUILD_GRADLE}:{line} "
+            f"references internal project `{dep_match.group(0)}`; compose/web-container must stay "
+            "free of internal Raft module dependencies."
+        )
+
+    for name, text in sorted(native_sources.items()):
+        if "dispatch_" not in text:
+            continue
+        code = _strip_c_comments_and_strings(text)
+        match = NATIVE_DISPATCH_SYNC_RE.search(code)
+        if match:
+            line = code.count("\n", 0, match.start()) + 1
+            raise Violation(
+                f"web-container native deadlock violation (dm:@artin:#6): {name}:{line} calls "
+                f"`{match.group(0).strip()}`; never synchronously block on macOS main queue from JNI "
+                "because AppKit/IME synchronously waits on the AWT EDT."
+            )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -1261,6 +1549,12 @@ def run(root: Path) -> None:
     check_server_refusal_surface_invariants(prod_kotlin)
     check_desktop_wry_off_edt_gateway(prod_kotlin)
     check_freshness_by_default_invariants(prod_kotlin)
+    check_web_container_invariants(
+        prod_kotlin=prod_kotlin,
+        prod_java=_production_java_sources(root),
+        web_container_build_gradle=read(WEB_CONTAINER_BUILD_GRADLE),
+        native_sources=_web_container_native_sources(root),
+    )
     check_native_safe_test_names(_native_test_sources(root))
     check_no_top_level_or_object_snapshot_state(_top_level_snapshot_state_sources(root))
     check_date_time_di_invariants(_date_time_di_sources(root))
@@ -1692,6 +1986,84 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit(f"self-test: freshness-by-default checker accepted {bad_fresh!r}")
 
+    good_wc_kt = {
+        "compose/web-container/src/androidMain/kotlin/A.kt": (
+            "// @JavascriptInterface and .addJavascriptInterface( in comments are fine\n"
+            'val note = "@JavascriptInterface addJavascriptInterface("\n'
+            "WebViewCompat.addWebMessageListener(webView, name, origins, listener)\n"
+        ),
+    }
+    good_wc_java = {
+        "compose/androidApp/src/main/java/A.java": (
+            "/* @JavascriptInterface in comment */\n"
+            'String s = "addJavascriptInterface(";\n'
+        ),
+    }
+    good_wc_gradle = (
+        "// project(':shared') in comment is fine\n"
+        "val q = '\"'\n"
+        "// project(':core') after char quote is still a comment\n"
+        "val r = \"\"\"hello\"\"\"\"\n"
+        "// project(path = ':designsystem') after 4-quote raw string is still a comment\n"
+        "dependencies { implementation(libs.androidx.webkit) }\n"
+    )
+    good_wc_native = {
+        "compose/web-container/native/macos/Bridge.m": (
+            "#pragma mark - Session's bridge\n"
+            "int count = 1'000;\n"
+            "int hex = 0xFF'FF;\n"
+            "// dispatch_sync(dispatch_get_main_queue(), ^{}) in comment is fine\n"
+            'const char *msg = "dispatch_sync("; dispatch_async(dispatch_get_main_queue(), ^{});\n'
+        ),
+    }
+    check_web_container_invariants(good_wc_kt, good_wc_java, good_wc_gradle, good_wc_native)
+    for bad_kt, bad_java, bad_gradle, bad_native in (
+        ({**good_wc_kt, "bad.kt": "@JavascriptInterface\nfun post(s: String) {}\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "@get:JavascriptInterface\nval x: String get() = \"\"\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "@android.webkit.JavascriptInterface\nfun post(s: String) {}\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "import android.webkit.JavascriptInterface as Jsi\n@Jsi\nfun post(s: String) {}\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "import android.webkit.`JavascriptInterface` as Jsi\n@Jsi\nfun post(s: String) {}\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "typealias Jsi = android.webkit.JavascriptInterface\n@Jsi\nfun post(s: String) {}\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "@[Suppress(\"x\") JavascriptInterface]\nfun post(s: String) {}\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "@field:[JavascriptInterface]\nval x = 1\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "webView.addJavascriptInterface(bridge, \"x\")\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "WebView(ctx).apply { addJavascriptInterface(bridge, \"x\") }\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        ({**good_wc_kt, "bad.kt": "val ref = WebView::addJavascriptInterface\n"}, good_wc_java, good_wc_gradle, good_wc_native),
+        (good_wc_kt, {**good_wc_java, "Bad.java": "@JavascriptInterface\npublic void f() {}\n"}, good_wc_gradle, good_wc_native),
+        (good_wc_kt, {**good_wc_java, "Bad.java": "view.addJavascriptInterface(obj, \"x\");\n"}, good_wc_gradle, good_wc_native),
+        (good_wc_kt, good_wc_java, "implementation(projects.shared)\n", good_wc_native),
+        (good_wc_kt, good_wc_java, "implementation(projects.sharedData)\n", good_wc_native),
+        (good_wc_kt, good_wc_java, "implementation(projects.core)\n", good_wc_native),
+        (good_wc_kt, good_wc_java, 'implementation(project(":shared"))\n', good_wc_native),
+        (good_wc_kt, good_wc_java, 'implementation(project(path = ":shared"))\n', good_wc_native),
+        (good_wc_kt, good_wc_java, "implementation(project(':core'))\n", good_wc_native),
+        (good_wc_kt, good_wc_java, 'implementation(project(":designsystem"))\n', good_wc_native),
+        (good_wc_kt, good_wc_java, 'implementation(project(":realtime-socket"))\n', good_wc_native),
+        (good_wc_kt, good_wc_java, "implementation(project(':shared-data'))\n", good_wc_native),
+        (good_wc_kt, good_wc_java, 'implementation(project(":ui-cmp"))\n', good_wc_native),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.m": "dispatch_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.m": "dispatch_sync_f(q, ctx, fn);\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.m": "dispatch_barrier_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.m": "dispatch_barrier_sync_f(q, ctx, fn);\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.m": "#pragma mark - Session's bridge\ndispatch_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.mm": "int n = 1'000;\ndispatch_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.m": "case'\"': dispatch_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.m": "case'a': dispatch_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.mm": "double a = 1e1'0; char c = '\"'; dispatch_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.mm": "double a = 0x1.a'bp0; char c = '\"'; dispatch_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.mm": "double a = 1e1'0; dispatch_sync(q, ^{}); double b = 1e2'0;\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.mm": "long x = time+1'000; char c = '\"'; dispatch_sync(q, ^{});\n"}),
+        (good_wc_kt, good_wc_java, good_wc_gradle, {"compose/web-container/native/macos/Bad.mm": "long x = value-1'000; char c = '\"'; dispatch_sync(q, ^{});\n"}),
+    ):
+        try:
+            check_web_container_invariants(bad_kt, bad_java, bad_gradle, bad_native)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(
+                f"self-test: web-container checker accepted {(bad_kt, bad_java, bad_gradle, bad_native)!r}"
+            )
+
     print("check_source_constraints self-test passed")
 
 
@@ -1713,7 +2085,8 @@ def main(argv: list[str]) -> int:
         "1.17.1 NSInvocation object return, #264 no top-level/object snapshot state, "
         "dm:@artin:#2 date/time DI invariants, #proj-mobile:#319 server refusal invariants, "
         "#wg-mobile-sync:bf308ade desktop Wry off-EDT gateway, "
-        "#wg-mobile-feedback:#274 freshness by default)"
+        "#wg-mobile-feedback:#274 freshness by default, "
+        "dm:@artin:#6 web-container security & module boundary invariants)"
     )
     return 0
 
