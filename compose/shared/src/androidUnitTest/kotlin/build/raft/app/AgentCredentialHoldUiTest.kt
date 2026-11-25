@@ -20,6 +20,7 @@ import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentDeliveryHoldReason
 import build.raft.app.model.AgentProviderLimitHoldKind
+import build.raft.app.model.AgentProviderLimitWindow
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -292,5 +293,204 @@ class AgentCredentialHoldUiTest {
             )
             onAllNodesWithText("Can't respond", substring = true).assertCountEquals(0)
             onNodeWithText("Running tests").assertExists()
+        }
+
+    @Test
+    fun deliveryHoldScopedProviderLimitNamesModelWindowAndReportedResetWithUntilMsFallback() =
+        runRobolectricComposeUiTest {
+            // 2026-11-23 09:00 UTC -> resets 19:00 UTC, untilMs 19:02 UTC (jitter past reset)
+            val nowMs = 1_795_424_400_000L
+            val resetMs = 1_795_460_400_000L
+            val untilMs = resetMs + 120_000L
+            val clock = RaftTimeContext(nowEpochMillis = nowMs, localOffsetMinutes = 0, timeFormat = RaftTimeFormat24Hour)
+            val fable =
+                AgentDeliveryHold(
+                    reason = AgentDeliveryHoldReason.ProviderLimit,
+                    providerLimitDetail = AgentProviderLimitHoldKind.QuotaExhausted,
+                    untilMs = untilMs,
+                    since = nowMs - 60_000L,
+                    model = "Fable",
+                    window = AgentProviderLimitWindow.SevenDay,
+                    resetsAtMs = resetMs,
+                )
+            showHero(
+                state = live(AgentStatus.Working, "Running tests", "running_command", runtime = "claude", model = "fable", deliveryHold = fable, nowMs = nowMs),
+                summary = summary("working", "Running tests", "running_command", runtime = "claude", model = "fable", deliveryHold = fable),
+                onRetry = {},
+                showActivityDetail = true,
+                timeContext = clock,
+            )
+            // Uses resetsAtMs (19:00), not untilMs (19:02)
+            onNodeWithText("Can't respond: Claude Code Fable weekly limit, resets 19:00").assertExists()
+            onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(0)
+        }
+
+    @Test
+    fun deliveryHoldScopedProviderLimitFallsBackToUntilMsWhenResetsAtMsAbsentOrPassed() =
+        runRobolectricComposeUiTest {
+            val nowMs = 1_795_424_400_000L
+            val resetMs = 1_795_460_400_000L
+            val clock = RaftTimeContext(nowEpochMillis = nowMs, localOffsetMinutes = 0, timeFormat = RaftTimeFormat24Hour)
+            val cases =
+                listOf(
+                    // Model's own window without window or resetsAtMs -> weekly + untilMs
+                    AgentDeliveryHold(
+                        reason = AgentDeliveryHoldReason.ProviderLimit,
+                        providerLimitDetail = AgentProviderLimitHoldKind.QuotaExhausted,
+                        untilMs = resetMs,
+                        since = nowMs - 60_000L,
+                        model = "Fable",
+                        window = null,
+                        resetsAtMs = null,
+                    ) to "Can't respond: Claude Code Fable weekly limit, resets 19:00",
+                    // Reported reset already passed while wait continues -> falls back to untilMs
+                    AgentDeliveryHold(
+                        reason = AgentDeliveryHoldReason.ProviderLimit,
+                        providerLimitDetail = AgentProviderLimitHoldKind.QuotaExhausted,
+                        untilMs = resetMs,
+                        since = nowMs - 60_000L,
+                        model = "Fable",
+                        window = AgentProviderLimitWindow.SevenDay,
+                        resetsAtMs = nowMs - 1L,
+                    ) to "Can't respond: Claude Code Fable weekly limit, resets 19:00",
+                )
+            setContent {
+                RaftDesignSystemTheme {
+                    Column(Modifier.fillMaxSize()) {
+                        cases.forEach { (hold, _) ->
+                            androidx.compose.material3.Text(
+                                text =
+                                    formatAgentDeliveryHoldText(
+                                        hold = hold,
+                                        runtime = "claude",
+                                        model = "fable",
+                                        timeContext = clock,
+                                        nowMs = nowMs,
+                                    )
+                            )
+                        }
+                    }
+                }
+            }
+            onAllNodesWithText("Can't respond: Claude Code Fable weekly limit, resets 19:00").assertCountEquals(2)
+        }
+
+    @Test
+    fun deliveryHoldFormatsEveryWindowKindWithAndWithoutModelAndKeepsRateLimitWords() =
+        runRobolectricComposeUiTest {
+            val nowMs = 1_795_424_400_000L
+            val clock = RaftTimeContext(nowEpochMillis = nowMs, localOffsetMinutes = 0, timeFormat = RaftTimeFormat24Hour)
+            fun quotaHold(model: String? = null, window: AgentProviderLimitWindow? = null) =
+                AgentDeliveryHold(
+                    reason = AgentDeliveryHoldReason.ProviderLimit,
+                    providerLimitDetail = AgentProviderLimitHoldKind.QuotaExhausted,
+                    since = 1L,
+                    model = model,
+                    window = window,
+                )
+            val cases =
+                listOf(
+                    quotaHold(window = AgentProviderLimitWindow.FiveHour) to
+                        "Can't respond: Claude Code 5-hour limit reached",
+                    quotaHold(window = AgentProviderLimitWindow.SevenDay) to
+                        "Can't respond: Claude Code weekly limit reached",
+                    quotaHold(window = AgentProviderLimitWindow.SevenDayOpus) to
+                        "Can't respond: Claude Code weekly Opus limit reached",
+                    quotaHold(window = AgentProviderLimitWindow.SevenDaySonnet) to
+                        "Can't respond: Claude Code weekly Sonnet limit reached",
+                    quotaHold(window = AgentProviderLimitWindow.SevenDayOverageIncluded) to
+                        "Can't respond: Claude Code weekly limit reached",
+                    quotaHold(window = AgentProviderLimitWindow.Overage) to
+                        "Can't respond: Claude Code extra usage limit reached",
+                    quotaHold(model = "Fable", window = AgentProviderLimitWindow.FiveHour) to
+                        "Can't respond: Claude Code Fable 5-hour limit reached",
+                    quotaHold(model = "Fable", window = null) to
+                        "Can't respond: Claude Code Fable weekly limit reached",
+                    quotaHold(model = "Opus", window = AgentProviderLimitWindow.SevenDayOpus) to
+                        "Can't respond: Claude Code Opus weekly limit reached",
+                    quotaHold(model = "Sonnet", window = AgentProviderLimitWindow.SevenDaySonnet) to
+                        "Can't respond: Claude Code Sonnet weekly limit reached",
+                    quotaHold(model = "Fable", window = AgentProviderLimitWindow.SevenDayOverageIncluded) to
+                        "Can't respond: Claude Code Fable weekly limit reached",
+                    quotaHold(model = "Fable", window = AgentProviderLimitWindow.Overage) to
+                        "Can't respond: Claude Code Fable extra usage limit reached",
+                    AgentDeliveryHold(
+                        reason = AgentDeliveryHoldReason.ProviderLimit,
+                        providerLimitDetail = AgentProviderLimitHoldKind.TransientRateLimit,
+                        since = 1L,
+                        window = AgentProviderLimitWindow.FiveHour,
+                    ) to "Can't respond: Claude Code rate limit, retrying soon",
+                )
+            setContent {
+                RaftDesignSystemTheme {
+                    Column(Modifier.fillMaxSize()) {
+                        cases.forEach { (hold, _) ->
+                            androidx.compose.material3.Text(
+                                text =
+                                    formatAgentDeliveryHoldText(
+                                        hold = hold,
+                                        runtime = "claude",
+                                        model = "fable",
+                                        timeContext = clock,
+                                        nowMs = nowMs,
+                                    )
+                            )
+                        }
+                    }
+                }
+            }
+            cases.forEach { (_, expected) ->
+                onAllNodesWithText(expected).assertCountEquals(
+                    cases.count { it.second == expected }
+                )
+            }
+        }
+
+    @Test
+    fun deliveryHoldScopedProviderLimitMatchesZhCnCatalogCopy() =
+        runRobolectricComposeUiTest {
+            StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
+            val nowMs = 1_795_424_400_000L
+            val resetMs = 1_795_460_400_000L
+            val clock = RaftTimeContext(nowEpochMillis = nowMs, localOffsetMinutes = 0, timeFormat = RaftTimeFormat24Hour)
+            val cases =
+                listOf(
+                    AgentDeliveryHold(
+                        reason = AgentDeliveryHoldReason.ProviderLimit,
+                        providerLimitDetail = AgentProviderLimitHoldKind.QuotaExhausted,
+                        untilMs = resetMs + 120_000L,
+                        since = 1L,
+                        model = "Fable",
+                        window = AgentProviderLimitWindow.SevenDay,
+                        resetsAtMs = resetMs,
+                    ) to "无法回复：Claude Code Fable 每周额度已用完，19:00 重置",
+                    AgentDeliveryHold(
+                        reason = AgentDeliveryHoldReason.ProviderLimit,
+                        providerLimitDetail = AgentProviderLimitHoldKind.QuotaExhausted,
+                        since = 1L,
+                        window = AgentProviderLimitWindow.FiveHour,
+                    ) to "无法回复：Claude Code 5 小时额度已用完",
+                )
+            setContent {
+                RaftDesignSystemTheme {
+                    Column(Modifier.fillMaxSize()) {
+                        cases.forEach { (hold, _) ->
+                            androidx.compose.material3.Text(
+                                text =
+                                    formatAgentDeliveryHoldText(
+                                        hold = hold,
+                                        runtime = "claude",
+                                        model = "fable",
+                                        timeContext = clock,
+                                        nowMs = nowMs,
+                                    )
+                            )
+                        }
+                    }
+                }
+            }
+            cases.forEach { (_, expected) ->
+                onNodeWithText(expected).assertExists()
+            }
         }
 }

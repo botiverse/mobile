@@ -14,10 +14,12 @@ import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentDeliveryHoldReason
 import build.raft.app.model.AgentProviderLimitHoldKind
+import build.raft.app.model.AgentProviderLimitWindow
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.resources.*
 import kotlinx.coroutines.delay
+import org.jetbrains.compose.resources.StringResource
 
 internal object AgentDeliveryHoldTestTags {
     const val DmHeaderStatus = "agent_dm_status_delivery_hold"
@@ -98,9 +100,36 @@ internal fun membersAgentDeliveryHold(
 }
 
 /**
- * How long until a provider-limit hold's displayed state changes by itself: at `untilMs` (the wait
- * ends and the hold clears) or at the viewer's next local midnight (the date drops off the clock);
- * null for `credential_invalid` or when no future `untilMs` is set.
+ * Whether [hold] is a scoped provider-limit hold (botiverse/slock #16629): a non-rate-limit
+ * provider limit that names a model's own window or a provider limit window.
+ */
+internal fun isScopedProviderLimitDeliveryHold(hold: AgentDeliveryHold): Boolean =
+    hold.reason == AgentDeliveryHoldReason.ProviderLimit &&
+        hold.providerLimitDetail != AgentProviderLimitHoldKind.TransientRateLimit &&
+        (!hold.model.isNullOrBlank() || hold.window != null)
+
+/**
+ * Web `deliveryHoldWindowLabelId` (`packages/web/src/utils/activity.ts`, botiverse/slock #16629):
+ * the words for a provider limit's window. A model's own window (Claude's per-model windows) is
+ * weekly unless the provider named the 5-hour or overage one.
+ */
+internal fun deliveryHoldWindowLabelRes(
+    window: AgentProviderLimitWindow?,
+    ofModel: Boolean,
+): StringResource =
+    when {
+        window == AgentProviderLimitWindow.FiveHour -> Res.string.agent_status_delivery_hold_window_five_hour
+        window == AgentProviderLimitWindow.Overage -> Res.string.agent_status_delivery_hold_window_extra_usage
+        !ofModel && window == AgentProviderLimitWindow.SevenDayOpus -> Res.string.agent_status_delivery_hold_window_weekly_opus
+        !ofModel && window == AgentProviderLimitWindow.SevenDaySonnet -> Res.string.agent_status_delivery_hold_window_weekly_sonnet
+        else -> Res.string.agent_status_delivery_hold_window_weekly
+    }
+
+/**
+ * How long until a provider-limit hold's displayed state changes by itself: at `resetsAtMs` (for
+ * a scoped hold, switching to `untilMs` or dropping the clock), at `untilMs` (the wait ends and
+ * the hold clears), or at the viewer's next local midnight (the date drops off the clock); null
+ * for `credential_invalid` or when no future change is scheduled.
  */
 internal fun agentDeliveryHoldNextChangeInMs(
     hold: AgentDeliveryHold?,
@@ -108,22 +137,26 @@ internal fun agentDeliveryHoldNextChangeInMs(
     localOffsetMinutes: Int,
 ): Long? {
     if (hold == null || hold.reason != AgentDeliveryHoldReason.ProviderLimit) return null
-    return agentSpawnFailureNextChangeInMs(hold.untilMs, nowMs, localOffsetMinutes)
+    val untilChange = agentSpawnFailureNextChangeInMs(hold.untilMs, nowMs, localOffsetMinutes)
+    if (!isScopedProviderLimitDeliveryHold(hold)) return untilChange
+    val resetChange = agentSpawnFailureNextChangeInMs(hold.resetsAtMs, nowMs, localOffsetMinutes)
+    return listOfNotNull(resetChange, untilChange).minOrNull()
 }
 
 /** What the status surfaces show while the daemon holds the agent's deliveries (web `AgentDeliveryHoldView`). */
 internal data class AgentDeliveryHoldView(
     val hold: AgentDeliveryHold,
-    /** Full sentence: "Can't respond: Claude Code usage limit reached, until 14:05". */
+    /** Full sentence: "Can't respond: Claude Code Fable weekly limit, resets 19:00". */
     val text: String,
     /** Compact chip / sidebar label: "Can't respond". */
     val shortText: String,
 )
 
 /**
- * Web `formatDeliveryHoldText` (`packages/web/src/utils/activity.ts`, botiverse/slock #16333):
+ * Web `formatDeliveryHoldText` (`packages/web/src/utils/activity.ts`, botiverse/slock #16333, #16629):
  * `"Can't respond: <reason>"`, naming the agent's runtime (and model for a plan without it) and,
- * for a provider limit, when the wait ends.
+ * for a provider limit, when the wait ends; for a scoped provider limit, the model whose own window
+ * is used up, the window, and the reported reset (`resetsAtMs`, falling back to `untilMs`).
  */
 @Composable
 internal fun formatAgentDeliveryHoldText(
@@ -147,27 +180,47 @@ internal fun formatAgentDeliveryHoldText(
                         stringResource(Res.string.agent_status_delivery_hold_credential, runtimeName)
                 }
             AgentDeliveryHoldReason.ProviderLimit -> {
-                val until =
-                    hold.untilMs?.takeIf { it > nowMs }?.let { atMs ->
+                fun formatFutureTime(atMs: Long?): String? =
+                    atMs?.takeIf { it > nowMs }?.let { futureMs ->
                         val clock =
                             (timeContext ?: RaftTimeContext(localOffsetMinutes = 0))
                                 .copy(nowEpochMillis = nowMs, todayEpochDay = null)
-                        membersActivityOverviewClock(atMs, clock)
+                        membersActivityOverviewClock(futureMs, clock)
                     }
-                when (hold.providerLimitDetail) {
-                    AgentProviderLimitHoldKind.TransientRateLimit ->
-                        if (until != null) {
-                            stringResource(Res.string.agent_status_delivery_hold_rate_limit_until, runtimeName, until)
-                        } else {
-                            stringResource(Res.string.agent_status_delivery_hold_rate_limit, runtimeName)
+                val holdModel = hold.model?.trim()?.takeIf { it.isNotEmpty() }
+                if (hold.providerLimitDetail != AgentProviderLimitHoldKind.TransientRateLimit && (holdModel != null || hold.window != null)) {
+                    // botiverse/slock #16629: the model whose own window is used up, the window, and when it resets.
+                    val subject =
+                        when {
+                            holdModel == null -> runtimeName
+                            runtimeName.isBlank() -> holdModel
+                            else -> "$runtimeName $holdModel"
                         }
-                    AgentProviderLimitHoldKind.QuotaExhausted,
-                    null ->
-                        if (until != null) {
-                            stringResource(Res.string.agent_status_delivery_hold_usage_limit_until, runtimeName, until)
-                        } else {
-                            stringResource(Res.string.agent_status_delivery_hold_usage_limit, runtimeName)
-                        }
+                    val window = stringResource(deliveryHoldWindowLabelRes(hold.window, ofModel = holdModel != null))
+                    // The reported reset; once it passed (jitter, clock skew) while the wait runs, the wait's end.
+                    val resets = formatFutureTime(hold.resetsAtMs) ?: formatFutureTime(hold.untilMs)
+                    if (resets != null) {
+                        stringResource(Res.string.agent_status_delivery_hold_window_limit_resets, subject, window, resets)
+                    } else {
+                        stringResource(Res.string.agent_status_delivery_hold_window_limit, subject, window)
+                    }
+                } else {
+                    val until = formatFutureTime(hold.untilMs)
+                    when (hold.providerLimitDetail) {
+                        AgentProviderLimitHoldKind.TransientRateLimit ->
+                            if (until != null) {
+                                stringResource(Res.string.agent_status_delivery_hold_rate_limit_until, runtimeName, until)
+                            } else {
+                                stringResource(Res.string.agent_status_delivery_hold_rate_limit, runtimeName)
+                            }
+                        AgentProviderLimitHoldKind.QuotaExhausted,
+                        null ->
+                            if (until != null) {
+                                stringResource(Res.string.agent_status_delivery_hold_usage_limit_until, runtimeName, until)
+                            } else {
+                                stringResource(Res.string.agent_status_delivery_hold_usage_limit, runtimeName)
+                            }
+                    }
                 }
             }
         }

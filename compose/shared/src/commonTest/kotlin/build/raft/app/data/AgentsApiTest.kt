@@ -5,6 +5,7 @@ import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentDeliveryHoldReason
 import build.raft.app.model.AgentProviderLimitHoldKind
+import build.raft.app.model.AgentProviderLimitWindow
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
@@ -395,6 +396,28 @@ class AgentsApiTest {
                 """{"id":"agent-1","name":"held","runtime":"claude","model":"claude-sonnet-4-6","status":"active","activity":"working","deliveryHold":{"reason":"provider_limit","detail":"quota_exhausted","untilMs":1794485000000,"since":1794484700000}}"""
             )
         assertEquals(workingQuota.deliveryHold, roster?.agentDeliveryHold)
+
+        // botiverse/slock #16629: scoped provider_limit model, window and resetsAtMs survive detail + roster parsing.
+        val scopedWire =
+            """{"reason":"provider_limit","detail":"quota_exhausted","untilMs":1794485000000,"since":1794484700000,"model":"Fable","window":"seven_day","resetsAtMs":1794484999000}"""
+        val expectedScoped =
+            AgentDeliveryHold(
+                reason = AgentDeliveryHoldReason.ProviderLimit,
+                providerLimitDetail = AgentProviderLimitHoldKind.QuotaExhausted,
+                untilMs = 1794485000000L,
+                since = 1794484700000L,
+                model = "Fable",
+                window = AgentProviderLimitWindow.SevenDay,
+                resetsAtMs = 1794484999000L,
+            )
+        assertEquals(
+            expectedScoped,
+            detailOf(""""activity":"working","deliveryHold":$scopedWire""").deliveryHold,
+        )
+        assertEquals(
+            expectedScoped,
+            parseSharedAgentProfile("""{"id":"agent-1","name":"held","runtime":"claude","model":"fable","status":"active","activity":"working","deliveryHold":$scopedWire}""")?.agentDeliveryHold,
+        )
     }
 
     @Test

@@ -4,6 +4,7 @@ import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentDeliveryHoldReason
 import build.raft.app.model.AgentProviderLimitHoldKind
+import build.raft.app.model.AgentProviderLimitWindow
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -293,6 +294,32 @@ class ProcessMemberPresenceRegistryTest {
         assertTrue(sameHoldMovedSince.hasSameVisibleRegisteredPresenceAs(held), "re-recording same hold moves since only")
         assertFalse(differentUntil.hasSameVisibleRegisteredPresenceAs(held), "changed untilMs is a visible change")
         assertFalse(released.hasSameVisibleRegisteredPresenceAs(held), "cleared deliveryHold is a visible change")
+        val scoped =
+            held.copy(
+                deliveryHold =
+                    quota.copy(
+                        model = "Fable",
+                        window = AgentProviderLimitWindow.SevenDay,
+                        resetsAtMs = 9_500L,
+                    )
+            )
+        assertFalse(scoped.hasSameVisibleRegisteredPresenceAs(held), "adding model/window/resetsAtMs is a visible change")
+        assertTrue(
+            scoped.copy(deliveryHold = scoped.deliveryHold?.copy(since = 3_000L)).hasSameVisibleRegisteredPresenceAs(scoped),
+            "re-recording same scoped hold moves since only",
+        )
+        assertFalse(
+            scoped.copy(deliveryHold = scoped.deliveryHold?.copy(model = "Opus")).hasSameVisibleRegisteredPresenceAs(scoped),
+            "changed model is a visible change",
+        )
+        assertFalse(
+            scoped.copy(deliveryHold = scoped.deliveryHold?.copy(window = AgentProviderLimitWindow.FiveHour)).hasSameVisibleRegisteredPresenceAs(scoped),
+            "changed window is a visible change",
+        )
+        assertFalse(
+            scoped.copy(deliveryHold = scoped.deliveryHold?.copy(resetsAtMs = 9_600L)).hasSameVisibleRegisteredPresenceAs(scoped),
+            "changed resetsAtMs is a visible change",
+        )
 
         val registry = ProcessMemberPresenceRegistry()
         registry.apply(ownerServerA, held, GEN0)

@@ -4920,6 +4920,13 @@
     <string name="agent_status_delivery_hold_usage_limit_until">Limite de uso do %1$s atingido, até %2$s</string>
     <string name="agent_status_delivery_hold_rate_limit">Limite de taxa do %1$s, tentando de novo em breve</string>
     <string name="agent_status_delivery_hold_rate_limit_until">Limite de taxa do %1$s, tentando de novo %2$s</string>
+    <string name="agent_status_delivery_hold_window_limit">Limite %2$s do %1$s atingido</string>
+    <string name="agent_status_delivery_hold_window_limit_resets">Limite %2$s do %1$s, reinicia %3$s</string>
+    <string name="agent_status_delivery_hold_window_five_hour">de 5 horas</string>
+    <string name="agent_status_delivery_hold_window_weekly">semanal</string>
+    <string name="agent_status_delivery_hold_window_weekly_opus">semanal de Opus</string>
+    <string name="agent_status_delivery_hold_window_weekly_sonnet">semanal de Sonnet</string>
+    <string name="agent_status_delivery_hold_window_extra_usage">de uso extra</string>
     <string name="agent_status_computer_access_revoked">Acesso do computador revogado: vincule o computador de novo ou mova o agente</string>
     <string name="agent_revoked_reattach">Vincule %1$s de novo: nessa máquina, execute %2$s e aprove o login com uma conta de proprietário ou administrador. Quem aprovar passa a ser quem o vinculou.</string>
     <string name="agent_revoked_move">Ou mova este agente para outro computador.</string>

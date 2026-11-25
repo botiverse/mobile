@@ -1476,10 +1476,30 @@ enum class AgentProviderLimitHoldKind(val wireValue: String) {
 }
 
 /**
+ * Which provider limit window holds the agent's deliveries (shared `PROVIDER_LIMIT_WINDOWS`,
+ * botiverse/slock #16629): Claude Code's `rateLimitType` values. A reader drops an unknown
+ * window and keeps the hold.
+ */
+@Serializable
+enum class AgentProviderLimitWindow(val wireValue: String) {
+    FiveHour("five_hour"),
+    SevenDay("seven_day"),
+    SevenDayOpus("seven_day_opus"),
+    SevenDaySonnet("seven_day_sonnet"),
+    SevenDayOverageIncluded("seven_day_overage_included"),
+    Overage("overage");
+
+    companion object {
+        fun fromWireValue(value: String?): AgentProviderLimitWindow? =
+            value?.let { wire -> entries.firstOrNull { it.wireValue == wire } }
+    }
+}
+
+/**
  * Typed carrier on every `agent:activity` frame, coarse `agent:activity_state`, and REST
  * `GET /agents` / `GET /agents/:id` response while the daemon holds the agent's deliveries
- * (shared `DeliveryHoldActivityDiagnostic`, botiverse/slock #16333). Not tied to a detail kind, so
- * a working frame does not clear it; a frame without it means "not held".
+ * (shared `DeliveryHoldActivityDiagnostic`, botiverse/slock #16333, #16629). Not tied to a detail
+ * kind, so a working frame does not clear it; a frame without it means "not held".
  */
 @Serializable
 data class AgentDeliveryHold(
@@ -1492,19 +1512,43 @@ data class AgentDeliveryHold(
     val untilMs: Long? = null,
     /** When the record holding the agent was made (daemon clock, epoch ms). */
     val since: Long,
+    /**
+     * The model whose own window is used up (Claude's per-model window, e.g. `"Fable"`,
+     * botiverse/slock #16629); only that model's agents are held. Always null for
+     * [AgentDeliveryHoldReason.CredentialInvalid] or when absent/invalid.
+     */
+    val model: String? = null,
+    /**
+     * The limiting window the provider named (`PROVIDER_LIMIT_WINDOWS`, botiverse/slock #16629).
+     * Always null for [AgentDeliveryHoldReason.CredentialInvalid] or when absent/unknown.
+     */
+    val window: AgentProviderLimitWindow? = null,
+    /**
+     * The reset the provider reported (daemon clock, epoch ms, botiverse/slock #16629); [untilMs]
+     * may wait a little past it (jitter), so UI shows this one when present and still in the future.
+     * Always null for [AgentDeliveryHoldReason.CredentialInvalid] or when absent/invalid.
+     */
+    val resetsAtMs: Long? = null,
 ) {
     /**
-     * Shared `sameDeliveryHold`: compares reason, detail and (for `provider_limit`) `untilMs`.
-     * `since` is deliberately ignored because re-recording the same hold moves `since` without
-     * changing what holds the agent.
+     * Shared `sameDeliveryHold`: compares reason, detail and (for `provider_limit`) `untilMs`,
+     * `model`, `window` and `resetsAtMs`. `since` is deliberately ignored because re-recording
+     * the same hold moves `since` without changing what holds the agent.
      */
     fun sameHoldAs(other: AgentDeliveryHold?): Boolean {
         if (other == null) return false
-        return reason == other.reason &&
-            credentialDetail == other.credentialDetail &&
-            providerLimitDetail == other.providerLimitDetail &&
-            (if (reason == AgentDeliveryHoldReason.ProviderLimit) untilMs else null) ==
-                (if (other.reason == AgentDeliveryHoldReason.ProviderLimit) other.untilMs else null)
+        if (
+            reason != other.reason ||
+            credentialDetail != other.credentialDetail ||
+            providerLimitDetail != other.providerLimitDetail
+        ) {
+            return false
+        }
+        if (reason != AgentDeliveryHoldReason.ProviderLimit) return true
+        return untilMs == other.untilMs &&
+            model == other.model &&
+            window == other.window &&
+            resetsAtMs == other.resetsAtMs
     }
 }
 
