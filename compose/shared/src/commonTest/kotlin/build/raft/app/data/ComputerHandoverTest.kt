@@ -17,8 +17,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * botiverse/slock #16435 / #16445 / #16452:
- * - `COMPUTER_HANDOVER_MIN_COMPUTER_VERSION` floor (`1.25.14`, #16445).
+ * botiverse/slock #16435 / #16445 / #16452 / #16619:
+ * - `COMPUTER_HANDOVER_MIN_COMPUTER_VERSION` floor (`1.25.16`, compared against `1.25.16-0`, #16619).
  * - `GET` / `POST` / `DELETE servers/:id/machines/:machineId/handover` contract, refusal codes,
  *   and `RaftComputerHandoverController` reload-on-refusal behavior.
  * - `raftComputerHandoverCandidates` (active human owners/admins only, excluding attacher).
@@ -26,8 +26,41 @@ import kotlin.test.assertTrue
  */
 class ComputerHandoverTest {
     @Test
-    fun handoverFloorMatchesSlock16445() {
-        assertEquals("1.25.14", COMPUTER_HANDOVER_MIN_COMPUTER_VERSION)
+    fun handoverFloorMatchesSlock16619() {
+        assertEquals("1.25.16", COMPUTER_HANDOVER_MIN_COMPUTER_VERSION)
+        assertEquals("1.25.16-0", COMPUTER_HANDOVER_MIN_COMPUTER_VERSION_COMPARED)
+    }
+
+    @Test
+    fun handoverVersionFloorComparisonMatchesSlock16619() {
+        for (rejected in listOf(
+            null,
+            "",
+            "   ",
+            "unknown",
+            "latest",
+            "v1.25.16",
+            "1.25.14",
+            "1.25.15",
+            "1.25.15-rc.1",
+            "1.25.16-01",
+        )) {
+            assertFalse(isComputerHandoverVersionSupported(rejected), "expected rejected handover version: $rejected")
+        }
+        for (accepted in listOf(
+            "1.25.16-0",
+            "1.25.16-alpha.1",
+            "1.25.16-rc.1",
+            "1.25.16-staging.3",
+            "1.25.16-staging.20261124120000.sha.abc123",
+            "1.25.16",
+            "1.25.16+build.1",
+            "1.25.17",
+            "1.26.0",
+            "2.0.0",
+        )) {
+            assertTrue(isComputerHandoverVersionSupported(accepted), "expected accepted handover version: $accepted")
+        }
     }
 
     @Test
@@ -40,7 +73,7 @@ class ComputerHandoverTest {
                   "canDesignate": true,
                   "canCancel": false,
                   "upgradeRequired": false,
-                  "minimumComputerVersion": "1.25.14"
+                  "minimumComputerVersion": "1.25.16"
                 }
                 """.trimIndent()
             )
@@ -50,7 +83,7 @@ class ComputerHandoverTest {
                 canDesignate = true,
                 canCancel = false,
                 upgradeRequired = false,
-                minimumComputerVersion = "1.25.14",
+                minimumComputerVersion = "1.25.16",
             ),
             ready,
         )
@@ -120,19 +153,19 @@ class ComputerHandoverTest {
                         listOf(
                             HomeNetworkResponse(
                                 200,
-                                """{"handover":null,"canDesignate":true,"canCancel":false,"upgradeRequired":false,"minimumComputerVersion":"1.25.14"}""",
+                                """{"handover":null,"canDesignate":true,"canCancel":false,"upgradeRequired":false,"minimumComputerVersion":"1.25.16"}""",
                             ),
                             HomeNetworkResponse(
                                 201,
-                                """{"handover":{"id":"h-1","to":{"id":"admin-1","name":"ada","displayName":"Ada Admin"},"fromUserId":"attacher-1","createdBy":"attacher-1","createdAt":"2026-11-23T10:00:00Z","expiresAt":"2026-11-24T10:00:00Z"},"canDesignate":true,"canCancel":true,"upgradeRequired":false,"minimumComputerVersion":"1.25.14"}""",
+                                """{"handover":{"id":"h-1","to":{"id":"admin-1","name":"ada","displayName":"Ada Admin"},"fromUserId":"attacher-1","createdBy":"attacher-1","createdAt":"2026-11-23T10:00:00Z","expiresAt":"2026-11-24T10:00:00Z"},"canDesignate":true,"canCancel":true,"upgradeRequired":false,"minimumComputerVersion":"1.25.16"}""",
                             ),
                             HomeNetworkResponse(
                                 200,
-                                """{"handover":null,"canDesignate":true,"canCancel":false,"upgradeRequired":false,"minimumComputerVersion":"1.25.14"}""",
+                                """{"handover":null,"canDesignate":true,"canCancel":false,"upgradeRequired":false,"minimumComputerVersion":"1.25.16"}""",
                             ),
                             HomeNetworkResponse(
                                 code = 409,
-                                bodyText = """{"code":"computer_upgrade_required","error":"Upgrade this Computer first: handing it over needs Raft Computer 1.25.14 or later."}""",
+                                bodyText = """{"code":"computer_upgrade_required","error":"Upgrade this Computer first: handing it over needs Raft Computer 1.25.16 or later."}""",
                                 responseHeaders = mapOf("X-Trace-Id" to listOf("0123456789abcdef0123456789abcdef")),
                             ),
                         )

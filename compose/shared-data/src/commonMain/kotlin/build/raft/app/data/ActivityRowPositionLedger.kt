@@ -271,6 +271,7 @@ import kotlinx.atomicfu.locks.synchronized
         systemSubtype = provenance?.systemSubtype,
         carriesSystemProvenance = provenance != null,
         countsUnread = provenance?.countsUnread ?: if (!countsUnread) false else null,
+        agentOnly = provenance?.agentOnly,
         mentions = mentions.map { ActivityUnreadTarget(it.type, it.id) },
     )
 

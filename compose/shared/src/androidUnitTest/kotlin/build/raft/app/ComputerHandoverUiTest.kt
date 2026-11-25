@@ -47,7 +47,7 @@ import org.robolectric.annotation.Config
  * - "Attached by" / "No one" copy on the Computer detail page (#16452).
  * - Hand over dialog: owners & admins only, sign-ins warning (yours vs theirs), registrant moves
  *   banner, accept command with server slug, failure retention, and successful designate.
- * - Upgrade-first banner naming `1.25.14` (#16445) when below the handover version.
+ * - Upgrade-first banner naming `1.25.16` (#16619) when below the handover version.
  * - Pending handover notice for plain viewer (no cancel), attacher ("Cancel handover"), and
  *   designee ("Handing over to you", accept command, "Decline").
  * - Leave server dialog non-blocking warning naming multiple handed-over Computers.
@@ -245,14 +245,14 @@ class ComputerHandoverUiTest {
     }
 
     @Test
-    fun belowHandoverVersionHidesButtonAndShowsUpgradeFirstWithFloor12514() = runRobolectricComposeUiTest {
+    fun belowHandoverVersionHidesButtonAndShowsUpgradeFirstWithFloor12516() = runRobolectricComposeUiTest {
         showDetail(
             snapshot = detailSnapshot(currentUserId = attacherId),
             handoverState = readyState.copy(upgradeRequired = true),
         )
         onAllNodesWithTag(RAFT_COMPUTER_HANDOVER_BUTTON_TAG).assertCountEquals(0)
         onNodeWithTag(RAFT_COMPUTER_HANDOVER_UPGRADE_FIRST_TAG).assertIsDisplayed()
-        onNodeWithText("Upgrade this Computer first: handing it over needs Raft Computer 1.25.14 or later.")
+        onNodeWithText("Upgrade this Computer first: handing it over needs Raft Computer 1.25.16 or later.")
             .assertIsDisplayed()
     }
 

@@ -153,7 +153,7 @@ private data class InPlaceLiveUnread(val counts: Boolean, val mention: Boolean)
 private fun threadSystemMessageCounts(row: InboxItem, provenance: MessageSystemProvenance?, principalId: String): Boolean {
     if (row.isTaskConversation) return false
     if (provenance == null) return false
-    if (!messageCountsAsUnreadActivity(provenance.countsUnread, provenance.systemSubtype)) return false
+    if (!messageCountsAsUnreadActivity(provenance.countsUnread, provenance.systemSubtype, readerType = "user", agentOnly = provenance.agentOnly)) return false
     return !(provenance.causalActorType == "user" && provenance.causalActorId == principalId)
 }
 
@@ -178,7 +178,7 @@ private fun InPlaceUnreadContext.unreadFor(
         message.author.id.value != principalId &&
             !isActiveActivityConversation(streamChannelId, activeConversationId, snapshot) &&
             !row.isUnfollowedActivityThread
-    val countsUnread = message.countsUnread && provenance?.countsUnread != false
+    val countsUnread = message.countsUnread && provenance?.countsUnread != false && provenance?.agentOnly != true
     val counts =
         live &&
             countsUnread &&

@@ -1181,12 +1181,13 @@ data class MessageNew(
     @Transient val systemProvenance: MessageSystemProvenance? = null,
 ) : RealtimeEvent
 
-/** Wire `systemSubtype` / `causalActorType` / `causalActorId` / `countsUnread` of a `message:new` frame (each may be null). */
+/** Wire `systemSubtype` / `causalActorType` / `causalActorId` / `countsUnread` / `agentOnly` of a `message:new` frame (each may be null). */
 data class MessageSystemProvenance(
     val systemSubtype: String?,
     val causalActorType: String?,
     val causalActorId: String?,
     val countsUnread: Boolean? = null,
+    val agentOnly: Boolean? = null,
 )
 
 @Serializable

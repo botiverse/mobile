@@ -1,0 +1,186 @@
+package build.raft.app.data
+
+import build.raft.app.data.realtime.RealtimeEventMapper
+import build.raft.app.data.realtime.RealtimeSocketEvents
+import build.raft.app.model.MessageNew
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/**
+ * Contract parity tests for botiverse/slock #16677 (`AGENT_ONLY_SYSTEM_SUBTYPES`, `readerType` on
+ * `messageCountsAsUnreadActivity`) and #16678 (`messages.agent_only`).
+ */
+class ActivityUnreadPredicateTest {
+    @Test
+    fun agentOnlySystemSubtypesMatchSlock16677() {
+        assertEquals(setOf("agent.server_role_hint", "channel.self_unfollow_thread"), AGENT_ONLY_SYSTEM_SUBTYPES)
+    }
+
+    @Test
+    fun agentOnlySystemSubtypeCountsOnlyForAgentsNotPeople() {
+        // Default readerType ("user") preserves human-client callers and never counts agents-only rows.
+        assertFalse(messageCountsAsUnreadActivity(countsUnread = true, systemSubtype = "agent.server_role_hint"))
+        assertFalse(messageCountsAsUnreadActivity(countsUnread = null, systemSubtype = "agent.server_role_hint"))
+        assertFalse(messageCountsAsUnreadActivity(countsUnread = true, systemSubtype = "agent.server_role_hint", readerType = "user"))
+        assertTrue(messageCountsAsUnreadActivity(countsUnread = true, systemSubtype = "agent.server_role_hint", readerType = "agent"))
+        assertTrue(messageCountsAsUnreadActivity(countsUnread = null, systemSubtype = "agent.server_role_hint", readerType = "agent"))
+        assertFalse(messageCountsAsUnreadActivity(countsUnread = false, systemSubtype = "agent.server_role_hint", readerType = "agent"))
+
+        // An old unfollow row (counts_unread default true) stays noise for agents too (slock #16677).
+        assertFalse(messageCountsAsUnreadActivity(countsUnread = true, systemSubtype = "channel.self_unfollow_thread", readerType = "user"))
+        assertFalse(messageCountsAsUnreadActivity(countsUnread = true, systemSubtype = "channel.self_unfollow_thread", readerType = "agent"))
+        assertFalse(messageCountsAsUnreadActivity(countsUnread = true, systemSubtype = "task.deleted_summary", readerType = "user"))
+        assertFalse(messageCountsAsUnreadActivity(countsUnread = true, systemSubtype = "task.deleted_summary", readerType = "agent"))
+
+        // Ordinary system notices still count for both readers unless countsUnread == false.
+        assertTrue(messageCountsAsUnreadActivity(countsUnread = true, systemSubtype = "channel.agent_membership", readerType = "user"))
+        assertTrue(messageCountsAsUnreadActivity(countsUnread = true, systemSubtype = "channel.agent_membership", readerType = "agent"))
+        assertTrue(messageCountsAsUnreadActivity(countsUnread = null, systemSubtype = null, readerType = "user"))
+    }
+
+    @Test
+    fun agentOnlyWireFlagSuppressesUnreadForUsersWhileLeavingAgentsIntact() {
+        // Defense-in-depth for slock #16678 `messages.agent_only`: even an unknown future subtype
+        // flagged agentOnly=true never counts for a human reader.
+        assertFalse(messageCountsAsUnreadActivity(countsUnread = true, systemSubtype = "agent.future_hint", readerType = "user", agentOnly = true))
+        assertTrue(messageCountsAsUnreadActivity(countsUnread = true, systemSubtype = "agent.future_hint", readerType = "agent", agentOnly = true))
+        assertFalse(messageCountsAsUnreadActivity(countsUnread = false, systemSubtype = "agent.future_hint", readerType = "agent", agentOnly = true))
+        assertTrue(messageCountsAsUnreadActivity(countsUnread = true, systemSubtype = "channel.agent_membership", readerType = "user", agentOnly = false))
+    }
+
+    @Test
+    fun activityLiveUnreadRespectsViewerTypeForAgentOnlySubtypesAndAgentOnlyFlag() {
+        val userViewer = ActivityUnreadViewer(type = "user", id = "user-1")
+        val agentViewer = ActivityUnreadViewer(type = "agent", id = "agent-1")
+        val hint =
+            ActivityUnreadMessage(
+                senderType = "user",
+                senderId = "system",
+                messageType = "system",
+                causalActorType = "user",
+                causalActorId = "user-2",
+                systemSubtype = "agent.server_role_hint",
+                countsUnread = true,
+                agentOnly = true,
+            )
+
+        for (kind in listOf(ActivityUnreadRowKind.Channel, ActivityUnreadRowKind.Dm, ActivityUnreadRowKind.Thread)) {
+            assertEquals(
+                ActivityUnreadVerdict(counts = false, mention = false, moves = true),
+                activityLiveUnread(hint, userViewer, ActivityUnreadScope(rowKind = kind)),
+                "user reader must not count agent.server_role_hint on $kind",
+            )
+            assertEquals(
+                ActivityUnreadVerdict(counts = true, mention = false, moves = true),
+                activityLiveUnread(hint, agentViewer, ActivityUnreadScope(rowKind = kind)),
+                "agent reader counts agent.server_role_hint on $kind",
+            )
+        }
+
+        // Even if an agents-only notice carried a personal mention of a user, unread stays false while mention still lights `@`.
+        val mentionedHint = hint.copy(mentions = listOf(ActivityUnreadTarget(type = "user", id = "user-1")))
+        assertEquals(
+            ActivityUnreadVerdict(counts = false, mention = true, moves = true),
+            activityLiveUnread(mentionedHint, userViewer, ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Dm)),
+        )
+
+        // Agent-caused or self-caused rule still applies to agents reading agent.server_role_hint.
+        assertEquals(
+            false,
+            activityLiveUnread(
+                hint.copy(causalActorType = "agent", causalActorId = "agent-1"),
+                agentViewer,
+                ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Channel),
+            ).counts,
+        )
+
+        // Future agents-only frame with agentOnly=true does not count for a user even without subtype provenance.
+        val futureAgentOnly =
+            ActivityUnreadMessage(
+                senderType = "user",
+                senderId = "system",
+                messageType = "system",
+                carriesSystemProvenance = false,
+                countsUnread = true,
+                agentOnly = true,
+            )
+        assertEquals(
+            false,
+            activityLiveUnread(futureAgentOnly, userViewer, ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Channel)).counts,
+        )
+    }
+
+    @Test
+    fun realtimeEventMapperDecodesAgentOnlyProvenanceAndThreadsToUnreadMessage() {
+        val mapper = RealtimeEventMapper()
+        val agentOnlyEvent =
+            assertIs<MessageNew>(
+                mapper.map(
+                    RealtimeSocketEvents.MessageNew,
+                    """
+                    {
+                      "id": "m-hint-1",
+                      "channelId": "dm-1",
+                      "seq": 12,
+                      "senderType": "user",
+                      "senderId": "system",
+                      "messageType": "system",
+                      "content": "run raft server info",
+                      "systemSubtype": "agent.server_role_hint",
+                      "causalActorType": "user",
+                      "causalActorId": "user-2",
+                      "countsUnread": true,
+                      "agentOnly": true
+                    }
+                    """.trimIndent(),
+                )
+            )
+        assertEquals("agent.server_role_hint", agentOnlyEvent.systemProvenance?.systemSubtype)
+        assertEquals(true, agentOnlyEvent.systemProvenance?.agentOnly)
+
+        val unreadMessage = agentOnlyEvent.message.toActivityUnreadMessage(agentOnlyEvent.systemProvenance)
+        assertEquals(true, unreadMessage.agentOnly)
+        assertEquals(
+            false,
+            activityLiveUnread(
+                unreadMessage,
+                ActivityUnreadViewer(type = "user", id = "user-1"),
+                ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Dm),
+            ).counts,
+        )
+        assertEquals(
+            true,
+            activityLiveUnread(
+                unreadMessage,
+                ActivityUnreadViewer(type = "agent", id = "agent-1"),
+                ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Dm),
+            ).counts,
+        )
+
+        val omittedEvent =
+            assertIs<MessageNew>(
+                mapper.map(
+                    RealtimeSocketEvents.MessageNew,
+                    """
+                    {
+                      "id": "m-plain-1",
+                      "channelId": "ch-1",
+                      "seq": 13,
+                      "senderType": "user",
+                      "senderId": "system",
+                      "messageType": "system",
+                      "content": "notice",
+                      "systemSubtype": "channel.agent_membership",
+                      "causalActorType": "user",
+                      "causalActorId": "user-2"
+                    }
+                    """.trimIndent(),
+                )
+            )
+        assertNull(omittedEvent.systemProvenance?.agentOnly)
+    }
+}

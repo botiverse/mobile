@@ -20,14 +20,31 @@ import build.raft.app.RaftCoreInternalApi
 @RaftCoreInternalApi val ActivityUncountedSystemSubtypes: Set<String> = setOf("channel.self_unfollow_thread", "task.deleted_summary")
 
 /**
- * Receiver-independent unread activity predicate (slock #16667 `messageCountsAsUnreadActivity`):
- * false when `messages.counts_unread` is explicitly `false` (history-only / skip notice) or when
+ * System subtypes written for agents only (slock #16677 `AGENT_ONLY_SYSTEM_SUBTYPES`, pinned to
+ * `SYSTEM_MESSAGE_AUDIENCE` `agents` kinds): never a person's unread activity.
+ */
+@RaftCoreInternalApi val AGENT_ONLY_SYSTEM_SUBTYPES: Set<String> = setOf("agent.server_role_hint", "channel.self_unfollow_thread")
+
+/**
+ * Whether a message can count as unread activity for a reader of [readerType] (`"user"` or
+ * `"agent"`, slock #16667 / #16677 `messageCountsAsUnreadActivity`):
+ * false when `messages.counts_unread` is explicitly `false` (history-only / skip notice), when a
+ * person (`"user"`) reads an agents-only message ([agentOnly] `true` from slock #16678
+ * `messages.agent_only` or [systemSubtype] in [AGENT_ONLY_SYSTEM_SUBTYPES]), or when
  * [systemSubtype] is one of the legacy uncounted noise subtypes. Absent `countsUnread` (`null`)
  * counts as true for older servers.
  */
-@RaftCoreInternalApi fun messageCountsAsUnreadActivity(countsUnread: Boolean?, systemSubtype: String?): Boolean {
+@RaftCoreInternalApi fun messageCountsAsUnreadActivity(
+    countsUnread: Boolean?,
+    systemSubtype: String?,
+    readerType: String = "user",
+    agentOnly: Boolean? = null,
+): Boolean {
     if (countsUnread == false) return false
-    return systemSubtype == null || systemSubtype !in ActivityUncountedSystemSubtypes
+    if (readerType == "user" && agentOnly == true) return false
+    if (systemSubtype == null) return true
+    if (readerType == "user" && systemSubtype in AGENT_ONLY_SYSTEM_SUBTYPES) return false
+    return systemSubtype !in ActivityUncountedSystemSubtypes
 }
 
 /** Who reads the Activity: [type] `user` or `agent`. Web `ActivityUnreadViewer`. */
@@ -53,6 +70,8 @@ import build.raft.app.RaftCoreInternalApi
     val carriesSystemProvenance: Boolean = true,
     /** `messages.counts_unread`; false: history only (`messageCountsAsUnreadActivity`). Absent on older events. */
     val countsUnread: Boolean? = null,
+    /** `messages.agent_only` (slock #16678); true: agents-only system row, never unread for a person. Absent on older events. */
+    val agentOnly: Boolean? = null,
     val mentions: List<ActivityUnreadTarget> = emptyList(),
 )
 
@@ -105,8 +124,14 @@ private fun countsForViewer(message: ActivityUnreadMessage, viewer: ActivityUnre
     if (scope.rowKind == ActivityUnreadRowKind.Task) return (message.messageType == null || message.messageType == "chat") && message.countsUnread != false
     if (scope.activityMuted && scope.rowKind != ActivityUnreadRowKind.Thread) return false
     if (message.countsUnread == false) return false
+    if (viewer.type == "user" && message.agentOnly == true) return false
     if (message.messageType != "system") return true
     if (!message.carriesSystemProvenance) return null
     if (message.causalActorType == viewer.type && message.causalActorId == viewer.id) return false
-    return messageCountsAsUnreadActivity(message.countsUnread, message.systemSubtype)
+    return messageCountsAsUnreadActivity(
+        countsUnread = message.countsUnread,
+        systemSubtype = message.systemSubtype,
+        readerType = viewer.type,
+        agentOnly = message.agentOnly,
+    )
 }

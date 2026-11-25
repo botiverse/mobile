@@ -2288,7 +2288,9 @@ data class SettingsComputerAgentRuntimeConfig(
     val command: String? = null,
     /** `mode.kind == "fast"`. */
     val fastMode: Boolean = false,
-    val envVars: Map<String, String>? = null
+    val envVars: Map<String, String>? = null,
+    /** `codexAccess`: `"auto"` or `"inherit"` (Codex only); null is All Access (slock #16692). */
+    val codexAccess: String? = null,
 )
 
 data class SettingsServerSnapshot(

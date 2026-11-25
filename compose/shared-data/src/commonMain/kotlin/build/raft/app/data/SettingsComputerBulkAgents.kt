@@ -131,11 +131,26 @@ private val RAFT_FAST_MODE_UNSUPPORTED_MODELS = mapOf("claude" to setOf("claude-
     return runtime in RUNTIME_FAST_MODE_RUNTIMES && RAFT_FAST_MODE_UNSUPPORTED_MODELS[runtime]?.contains(baseId) != true
 }
 
+/** Shared `CODEX_ACCESS_VALUES` (slock #16692): stored Codex access choices; absent is All Access. */
+@RaftCoreInternalApi val RAFT_CODEX_ACCESS_VALUES: Set<String> = setOf("auto", "inherit")
+
+/** Shared `isCodexAccess` (slock #16692). */
+@RaftCoreInternalApi fun isRaftCodexAccess(value: String?): Boolean =
+    value != null && value in RAFT_CODEX_ACCESS_VALUES
+
+/**
+ * Shared `runtimeConfigCodexAccess` (slock #16692): the Codex access choice (`"auto"` or
+ * `"inherit"`) a config launches with; null is All Access.
+ */
+@RaftCoreInternalApi fun raftRuntimeConfigCodexAccess(config: SettingsComputerAgentRuntimeConfig?): String? =
+    if (config?.runtime == "codex" && isRaftCodexAccess(config.codexAccess)) config.codexAccess else null
+
 /**
  * The `PATCH /agents/:id` body for one agent (web `buildBulkAgentUpdate` + `updateAgent`):
  * `runtime`, `model`, `reasoningEffort` and a rebuilt v1 `runtimeConfig` that keeps the agent's
- * own env vars, and its fast mode while it stays on a runtime and model that run fast. Provider
- * and command never appear here: such agents are skipped by the planner. [restart] adds
+ * own env vars, its fast mode while it stays on a runtime and model that run fast, and its
+ * `codexAccess` choice (`"auto"` / `"inherit"`, slock #16692) while a Codex agent stays on Codex.
+ * Provider and command never appear here: such agents are skipped by the planner. [restart] adds
  * `restartMode: "restart"`.
  */
 fun buildRaftBulkAgentModelUpdateBody(agent: SettingsComputerAgentSnapshot, target: RaftBulkModelTarget, restart: Boolean): String {
@@ -144,6 +159,13 @@ fun buildRaftBulkAgentModelUpdateBody(agent: SettingsComputerAgentSnapshot, targ
             target.runtime in RUNTIME_FAST_MODE_RUNTIMES &&
             agent.runtimeConfig?.fastMode == true &&
             raftRuntimeModelSupportsFastMode(target.runtime, target.model)
+    // Task #113 (slock #16692): a Codex agent staying on Codex keeps how Codex runs for it.
+    val codexAccess =
+        if (agent.runtime == "codex" && target.runtime == "codex") {
+            raftRuntimeConfigCodexAccess(agent.runtimeConfig)
+        } else {
+            null
+        }
     val envVars = agent.runtimeConfig?.envVars ?: agent.envVars
     val effort: JsonPrimitive = target.reasoningEffort?.let(::JsonPrimitive) ?: JsonNull
     val runtimeConfig: JsonObject =
@@ -166,6 +188,7 @@ fun buildRaftBulkAgentModelUpdateBody(agent: SettingsComputerAgentSnapshot, targ
             } else {
                 put("envVars", JsonObject(envVars.mapValues { JsonPrimitive(it.value) }))
             }
+            if (codexAccess != null) put("codexAccess", codexAccess)
         }
     return buildJsonObject {
         put("runtime", target.runtime)
