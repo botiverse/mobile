@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,13 +24,12 @@ import build.raft.app.data.InboxFilter
 import build.raft.app.data.RaftListPaneKind
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsAppearanceSnapshot
-import build.raft.app.data.TaskWireDto
 import build.raft.app.data.TasksContent
 import build.raft.app.data.TasksPresentationState
 import build.raft.app.data.TasksUiState
 import build.raft.app.data.TasksViewMode
+import build.raft.app.data.parseSharedServerTasksPayload
 import build.raft.app.data.summaryCounts
-import build.raft.app.data.toTaskSummary
 import build.raft.app.model.MemberKind
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
@@ -121,8 +121,8 @@ private fun WideShellFrame(selectedTab: String, content: @Composable () -> Unit)
 // activityResultsFixture.json (slock packages/visual-testing/shared; the thread in #design, the
 // #android-artifacts channel, the DM with Cindy; 3 conversations, 3 unread) and renders at
 // fixtureData.locale's instant, the same rows and clock the phone's Activity fixture ports
-// ([homeActivityVisualSnapshot], [homeVisualFixtureTimeContext]). The web opens no conversation (its
-// harness serves no task load yet), so no row is selected here either.
+// ([homeActivityVisualSnapshot], [homeVisualFixtureTimeContext]). The task open beside it is none of
+// the rows, so no row is selected.
 private val wideActivity = homeActivityVisualSnapshot
 
 @Composable
@@ -190,32 +190,15 @@ private fun WideActivityList() {
 
 // ---- Task conversation (Activity's detail and the Tasks column) ------------------------------
 
-private fun wideTask(number: Int, title: String, status: String): TaskSummary =
-    TaskWireDto(
-        id = "task-$number",
-        messageId = "msg-task-$number",
-        channelId = "ch-ship-mobile",
-        channelName = "ship-mobile",
-        channelType = "channel",
-        taskNumber = number,
-        title = title,
-        status = status,
-        createdByType = "user",
-        createdById = "user-maya",
-        createdByName = "Maya Chen",
-        createdAt = "2026-10-29T18:38:00Z",
-        updatedAt = "2026-10-29T19:12:05Z",
-    ).toTaskSummary(diagnostics = {}) ?: error("fixture task #$number must map")
+private val wide = VisualFixtureData.WideShell
 
-private val wideTasks =
-    listOf(
-        wideTask(1, "Add dark mode to the onboarding screens", "todo"),
-        wideTask(4, "Migrate push notifications to the new API", "in_progress"),
-        wideTask(5, "Tablet layout for the Tasks page", "in_progress"),
-        wideTask(7, "Release notes for 1.27", "done"),
-    )
+// The `GET /tasks/server` body the web side loads (slock tasksFixture.json), as TasksVisualFixtures reads it.
+private val wideTasks: List<TaskSummary> =
+    checkNotNull(parseSharedServerTasksPayload(VisualFixtureWire.TASKS)) { "tasksFixture.json does not parse" }.tasks
 
-private val wideOpenTask = wideTasks[1]
+private val wideOpenTask = checkNotNull(wideTasks.firstOrNull { it.id.value == wide.TASK_ID }) { "wideShell.taskId is not a task" }
+
+private val wideTaskRef = "#${VisualFixtureData.Channels.Design.NAME}:#${wide.TASK_NUMBER}"
 
 @Composable
 private fun WideTaskPage() {
@@ -223,7 +206,7 @@ private fun WideTaskPage() {
         ThreadPageHeader(
             payload =
                 RaftThreadScreenPayload(
-                    instanceId = "wide-task-conversation-4",
+                    instanceId = "wide-task-conversation",
                     surfaceKind = RaftThreadSurfaceKind.Channel,
                     channelKind = RaftTaskConversationChannelKind,
                     status = "content",
@@ -233,7 +216,7 @@ private fun WideTaskPage() {
                 ),
             headerDisplay =
                 ThreadHeaderDisplayModel(
-                    title = "#ship-mobile:#4 ${wideOpenTask.title}",
+                    title = "$wideTaskRef ${wideOpenTask.title}",
                     subtitle = null,
                     surfaceKind = RaftThreadSurfaceKind.Channel,
                     channelKind = RaftTaskConversationChannelKind,
@@ -248,10 +231,10 @@ private fun WideTaskPage() {
             onShowSettings = {},
             taskConversationChrome =
                 TaskConversationHeaderChrome(
-                    ref = "#ship-mobile:#4",
-                    taskNumber = 4,
+                    ref = wideTaskRef,
+                    taskNumber = wide.TASK_NUMBER,
                     status = TaskStatus.InProgress,
-                    assigneeName = "Lagoon",
+                    assigneeName = VisualFixtureData.Agents.Cindy.DISPLAY_NAME,
                     assigneeKind = MemberKind.Agent,
                     summarized = false,
                     followed = true,
@@ -261,53 +244,51 @@ private fun WideTaskPage() {
                 ),
         )
         WideMessages(Modifier.weight(1f).fillMaxWidth(), wideTaskMessages)
-        WideComposer("Message #ship-mobile:#4")
+        WideComposer("Message this task", asTask = false)
     }
 }
 
 // ---- Channel (and its thread) ---------------------------------------------------------------
 
-private fun wideRow(id: String, seq: Long, author: String, body: String, own: Boolean = false, kind: String = "human") =
+/** A `wideShell` message row (fixtureData.json), the web's wideShell.ts maps the same fields. */
+private fun wideRow(row: Map<String, Any?>): RaftThreadMessageItem =
     RaftThreadMessageItem(
-        id = id,
-        authorId = if (own) "user-me" else "member-$author".lowercase(),
-        authorName = author,
-        authorKind = kind,
-        isOwn = own,
-        avatarLabel = author.take(1),
-        seq = seq,
-        timestampLabel = "2026-11-02T09:1$seq:00Z",
-        body = body,
+        id = row["id"] as String,
+        authorId = row["authorId"] as String,
+        authorName = row["authorName"] as String,
+        authorDescription = row["authorDescription"] as String,
+        authorKind = if (row["authorKind"] == "agent") "agent" else "human",
+        isOwn = row["own"] as Boolean,
+        avatarLabel = (row["authorName"] as String).take(1),
+        seq = (row["seq"] as Int).toLong(),
+        timestampLabel = row["timeLabel"] as String,
+        body = row["body"] as String,
     )
 
-private val wideChannelMessages =
-    listOf(
-        wideRow("m-1", 1, "Ada", "Morning. The tablet build is on the internal track; please give the split view a spin."),
-        wideRow("m-2", 2, "Scout", "Checked on the Pixel Tablet: the sidebar and the conversation sit side by side, rows read well.", kind = "agent"),
-        wideRow("m-3", 3, "Me", "Thanks. Next up is matching the heads to the web on wide windows.", own = true),
-        wideRow("m-4", 4, "Ada", "Works for me. Touch keeps the 44dp targets; the mouse gets the tighter controls."),
-    )
+private val wideChannelMessages = wide.MESSAGES.map(::wideRow)
 
 private val wideThreadMessages =
-    listOf(
-        wideRow("t-1", 1, "Scout", "Checked on the Pixel Tablet: the sidebar and the conversation sit side by side, rows read well.", kind = "agent"),
-        wideRow("t-2", 2, "Kirby", "From 768 a head is one line, by touch too."),
-        wideRow("t-3", 3, "Me", "Noted, the Activity head goes first.", own = true),
-    )
+    wideChannelMessages.filter { it.id == wide.THREAD_ROOT_ID } + wide.THREAD_MESSAGES.map(::wideRow)
 
-private val wideTaskMessages =
-    listOf(
-        wideRow("k-1", 1, "Maya", "Push tokens move to the new endpoint this week."),
-        wideRow("k-2", 2, "Lagoon", "The new token flow is in; testing on the tablet next.", kind = "agent"),
-    )
+private val wideTaskMessages = wide.TASK_MESSAGES.map(::wideRow)
+
+/** The channel's rows; with its thread open, the root carries the reply count, as on the web. */
+private fun wideChannelRows(withThread: Boolean): List<RaftThreadMessageItem> =
+    wideChannelMessages.map { row ->
+        if (!withThread || row.id != wide.THREAD_ROOT_ID) return@map row
+        row.copy(threadChannelId = wide.THREAD_CHANNEL_ID, replyCount = wide.THREAD_MESSAGES.size)
+    }
 
 @Composable
 private fun WideChannel(withThread: Boolean) {
     val fixture = VisualFixtureData.HomeChannelList
     val servers = listOf(RaftServerSwitcherItem(id = VisualFixtureData.Server.ID, name = fixture.SERVER_NAME, slug = VisualFixtureData.Server.SLUG))
-    val channels = remember { fixture.CHANNELS.map(::homeChannelListChannel) }
+    val channels = remember {
+        // The open channel is read, as opening it makes it.
+        fixture.CHANNELS.map(::homeChannelListChannel).map { if (it.id == wide.CHANNEL_ID) it.copy(unreadCount = 0) else it }
+    }
     val directMessages = remember { fixture.DIRECT_MESSAGES.map(::homeChannelListDirectMessage) }
-    val channelName = channels.firstOrNull()?.name ?: "general"
+    val channelName = channels.first { it.id == wide.CHANNEL_ID }.name
     RaftAdaptiveListDetailSplit(
         kind = RaftListPaneKind.Sidebar,
         widths = remember { RaftListPaneWidths(store = null) },
@@ -322,7 +303,7 @@ private fun WideChannel(withThread: Boolean) {
                 servers = servers,
                 channels = channels,
                 directMessages = directMessages,
-                selectedChannelId = channels.firstOrNull()?.id,
+                selectedChannelId = wide.CHANNEL_ID,
                 pinnedChannelIds = fixture.PINNED_CHANNEL_IDS,
                 savedCount = fixture.SAVED_TOTAL,
                 contentRefreshEnabled = false,
@@ -336,9 +317,12 @@ private fun WideChannel(withThread: Boolean) {
         },
         detailPane = { modifier ->
             Row(modifier) {
-                WideConversation(Modifier.weight(1f).fillMaxHeight(), "#$channelName", wideChannelMessages, "Message #$channelName")
+                WideConversation(Modifier.weight(1f).fillMaxHeight(), "#$channelName", wideChannelRows(withThread), "Message #$channelName")
                 if (withThread) {
-                    WideConversation(Modifier.width(400.dp).fillMaxHeight(), "Thread", wideThreadMessages, "Reply in thread", sourceThreadId = "thread-wide")
+                    // A side pane's page: its head ends in Close and has no Back (as the shell's thread column).
+                    CompositionLocalProvider(LocalRaftSidePanePage provides remember { RaftSidePanePage(depth = 1) {} }) {
+                        WideConversation(Modifier.width(400.dp).fillMaxHeight(), "Thread", wideThreadMessages, "Message thread", sourceThreadId = wide.THREAD_CHANNEL_ID)
+                    }
                 }
             }
         },
@@ -351,20 +335,21 @@ private fun WideConversation(
     title: String,
     messages: List<RaftThreadMessageItem>,
     placeholder: String,
-    sourceThreadId: String = "channel-wide",
+    sourceThreadId: String? = null,
 ) {
+    val thread = sourceThreadId != null
     val payload =
         remember(title, sourceThreadId) {
             RaftThreadScreenPayload(
-                instanceId = "wide-$sourceThreadId",
-                sourceThreadId = sourceThreadId,
+                instanceId = "wide-${sourceThreadId ?: wide.CHANNEL_ID}",
+                sourceThreadId = sourceThreadId ?: wide.CHANNEL_ID,
                 title = title,
-                subtitle = "Release train for the tablet layout",
+                subtitle = if (thread) "#${VisualFixtureData.HomeChannelList.Channels1.NAME}" else wide.CHANNEL_DESCRIPTION,
                 status = "content",
-                surfaceKind = RaftThreadSurfaceKind.Channel,
+                surfaceKind = if (thread) RaftThreadSurfaceKind.ReplyThread else RaftThreadSurfaceKind.Channel,
                 selectedTab = "chat",
-                showSettingsAction = true,
-                showMembersAction = true,
+                showSettingsAction = !thread,
+                showMembersAction = !thread,
                 membersCount = 6,
                 showOpenInChannelAction = false,
             )
@@ -373,6 +358,8 @@ private fun WideConversation(
         ThreadPageHeader(
             payload = payload,
             applyTopSafeArea = false,
+            // The detail pane of the split, beside the sidebar: no Back (as ThreadPageContent).
+            showBack = false,
             onBack = {},
             onOpenInChannel = {},
             onOpenMemberProfile = {},
@@ -380,20 +367,25 @@ private fun WideConversation(
             onShowMembers = {},
             onShowSettings = {},
         )
-        WideMessages(Modifier.weight(1f).fillMaxWidth(), messages)
-        WideComposer(placeholder)
+        // A short channel stands on its composer, under the date it starts with; a thread starts at the top.
+        WideMessages(Modifier.weight(1f).fillMaxWidth(), messages, dateLabel = "Today".takeUnless { thread })
+        WideComposer(placeholder, asTask = !thread)
     }
 }
 
 @Composable
-private fun WideMessages(modifier: Modifier, messages: List<RaftThreadMessageItem>) {
-    Column(modifier.background(RaftColor.Canvas).padding(top = RaftAppSpacing.Sm)) {
+private fun WideMessages(modifier: Modifier, messages: List<RaftThreadMessageItem>, dateLabel: String? = null) {
+    Column(
+        modifier.background(RaftColor.Canvas).padding(top = RaftAppSpacing.Sm),
+        verticalArrangement = if (dateLabel != null) Arrangement.Bottom else Arrangement.Top,
+    ) {
+        dateLabel?.let { ThreadDateDivider(it) }
         messages.forEach { message ->
             ThreadMessageCard(
                 message = message,
                 messageBodyTextStyle = raftMessageBodyTextStyle("md"),
                 isMarkdownTagValid = { false },
-                timestampLabel = "9:1${message.seq} AM",
+                timestampLabel = message.timestampLabel,
                 onShowActions = {},
                 onOpenMember = {},
                 onOpenThread = {},
@@ -409,10 +401,11 @@ private fun WideMessages(modifier: Modifier, messages: List<RaftThreadMessageIte
 }
 
 @Composable
-private fun WideComposer(placeholder: String) {
-    ThreadComposerDock {
+private fun WideComposer(placeholder: String, asTask: Boolean) {
+    // Every conversation here is a split's pane: the dock's edges as ThreadPageContent sets them there.
+    ThreadComposerDock(edgePadding = ThreadSplitDetailEdgeInset) {
         ThreadComposerContent(
-            payload = RaftThreadComposerPayload(instanceId = "wide-composer", placeholder = placeholder),
+            payload = RaftThreadComposerPayload(instanceId = "wide-composer", placeholder = placeholder, showAsTaskToggle = asTask),
             onEvent = { _, _, _, _ -> },
             attachmentPreviewEnabled = false,
         )
@@ -469,6 +462,7 @@ private fun WideTasksTask() {
             SharedTasksPanel(
                 state = TasksUiState(loadState = ScreenLoadState.Content(TasksContent(summaryCounts = wideTasks.summaryCounts(), tasks = wideTasks))),
                 onIntent = {},
+                timeContext = homeVisualFixtureTimeContext,
                 initialPresentationOverride = TasksPresentationState.Default.copy(selectedMode = TasksViewMode.List),
             )
         }
