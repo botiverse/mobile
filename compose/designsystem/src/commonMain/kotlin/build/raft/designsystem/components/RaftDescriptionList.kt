@@ -271,9 +271,11 @@ private fun DescriptionTerm(
     accessory: (@Composable () -> Unit)?,
     modifier: Modifier = Modifier,
     lines: HorizontalFactLines? = null,
+    // False for the labels measured for the column width ([TermsScope]): never placed, not named.
+    slotted: Boolean = true,
 ) {
     val textModifier = remember(lines) { if (lines != null) Modifier.textLineInto(lines.termBaseline, lines.termTextHeight) else Modifier }
-    Row(Modifier.raftSlot("description-term").then(modifier), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row((if (slotted) Modifier.raftSlot("description-term") else Modifier).then(modifier), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         RaftText(
             term,
             modifier = textModifier,
@@ -471,7 +473,7 @@ private val RaftDescriptionInlineMaxWidth = 384.dp
 private object TermsScope : RaftDescriptionListScope {
     @Composable
     override fun Item(term: String, termAccessory: (@Composable () -> Unit)?, details: @Composable RowScope.() -> Unit) {
-        DescriptionTerm(term, termAccessory, Modifier.clearAndSetSemantics { })
+        DescriptionTerm(term, termAccessory, Modifier.clearAndSetSemantics { }, slotted = false)
     }
 }
 
