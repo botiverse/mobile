@@ -296,6 +296,51 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
+    fun phoneHeaderActionFlagDefaultsOffAndPreservesVariantOnlyWhenEnabled() = runBlocking {
+        assertEquals("mobile_phone_header_action_v0", MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY)
+        assertTrue(MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse(MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+
+        val enabled =
+            SharedServerFeatureFlags(
+                FakeApi(
+                    ok(
+                        """{"evaluations":[{"key":"$MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY","enabled":true,"variant":" tasks,search "}]}"""
+                    )
+                )
+            )
+        assertFalse(enabled.isEnabled(server, MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY))
+        assertEquals(null, enabled.snapshotFor(server).variant(MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY))
+
+        val enabledSnapshot = enabled.prefetch(server)
+        assertTrue(enabledSnapshot.isEnabled(MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY))
+        assertEquals("tasks,search", enabledSnapshot.variant(MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY))
+        assertFalse(enabled.isEnabled(ServerId("s2"), MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY))
+
+        val disabledSnapshot =
+            SharedServerFeatureFlags(
+                FakeApi(
+                    ok(
+                        """{"evaluations":[{"key":"$MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY","enabled":false,"variant":"tasks,search"}]}"""
+                    )
+                )
+            ).prefetch(server)
+        assertFalse(disabledSnapshot.isEnabled(MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY))
+        assertEquals(null, disabledSnapshot.variant(MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY))
+
+        val blankSnapshot =
+            SharedServerFeatureFlags(
+                FakeApi(
+                    ok(
+                        """{"evaluations":[{"key":"$MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY","enabled":true,"variant":"   "}]}"""
+                    )
+                )
+            ).prefetch(server)
+        assertTrue(blankSnapshot.isEnabled(MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY))
+        assertEquals(null, blankSnapshot.variant(MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY))
+    }
+
+    @Test
     fun selectedServerFeatureFlagsRefreshAgainWithoutASelectionChange() = runBlocking {
         var refreshCount = 0
         val waits = mutableListOf<Long>()

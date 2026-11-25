@@ -6320,6 +6320,11 @@ private fun SharedThreadRouteContentContent(
             )
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
+                LocalPhoneConversationHeaderPrimaryConfig provides
+                    rememberPhoneConversationHeaderPrimaryConfig(
+                        flags = sharedStores.serverFeatureFlags,
+                        serverId = headerProjectionServerId,
+                    ),
                 LocalThreadQuoteReplyHost provides quoteReplyHost,
                 LocalRaftViewerServerLogos provides viewerServerLogos,
                 LocalRaftChannelJointServers provides channelJointServers,
