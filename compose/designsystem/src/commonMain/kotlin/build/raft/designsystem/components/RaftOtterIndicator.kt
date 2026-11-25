@@ -63,7 +63,7 @@ fun RaftOtterIndicator(
         )
     val measurer = rememberTextMeasurer()
     // raft-ui's `otter-indicator` slot, for the visual-testing component comparison.
-    Canvas(Modifier.raftSlot("otter-indicator").then(modifier).size(size).clearAndSetSemantics {}) {
+    Canvas(modifier.raftDefaultSlot("otter-indicator").size(size).clearAndSetSemantics {}) {
         when (status) {
             // `.r-otter-indicator__rest`: the whole image, `contain`.
             RaftStepStatus.Wait -> drawOttieCell(sheet, columns = 1, rows = 1, column = 0, row = 0)

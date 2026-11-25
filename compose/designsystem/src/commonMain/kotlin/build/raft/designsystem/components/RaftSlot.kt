@@ -1,6 +1,7 @@
 package build.raft.designsystem.components
 
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.semantics
 
@@ -15,3 +16,14 @@ val RaftSlotKey = SemanticsPropertyKey<String>("RaftSlot")
 
 /** Marks this element as raft-ui's [name] slot ([RaftSlotKey]). */
 fun Modifier.raftSlot(name: String): Modifier = semantics { this[RaftSlotKey] = name }
+
+/**
+ * A component's own [raftSlot], for the end of the caller's modifier: a name the caller already set
+ * stays. After the caller's modifier, not before it: a node's semantics bounds are its outermost
+ * semantics modifier's, so a slot in front of a caller's `padding` would add that padding to the
+ * component's bounds (accessibility, tests and the capture).
+ */
+internal fun Modifier.raftDefaultSlot(name: String): Modifier =
+    semantics {
+        if ((this as? SemanticsConfiguration)?.contains(RaftSlotKey) != true) this[RaftSlotKey] = name
+    }

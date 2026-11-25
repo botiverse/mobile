@@ -280,7 +280,7 @@ fun RaftAppRail(
     val hasFooter = footer != null || footerItems.isNotEmpty()
     // raft-ui's slot names (`app-rail-root`, `-nav`, `-footer`, `-item-icon`), for the
     // visual-testing component comparison.
-    Row(Modifier.raftSlot("app-rail-root").then(modifier).fillMaxHeight().raftKeepsEdgeTouches()) {
+    Row(modifier.raftDefaultSlot("app-rail-root").fillMaxHeight().raftKeepsEdgeTouches()) {
         Column(
             Modifier
                 .fillMaxHeight()

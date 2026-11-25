@@ -308,9 +308,9 @@ fun RaftTab(
     // it, so the last tab lands at the strip's end (no fade left over it), not 8dp short.
     val reveal = if (strip != null) Modifier.raftRevealInStripWhen(selected, strip, room = RaftTabStripInset) else Modifier
     when (variant) {
-        // raft-ui's `tabs-tab` slot first, so a page's own name on the tab wins.
-        RaftTabsVariant.Default -> RaftStickerItem(text, selected, enabled, source, Modifier.raftSlot("tabs-tab").then(modifier).then(reveal).then(target).then(select), icon = icon)
-        RaftTabsVariant.Underline -> RaftUnderlineTab(text, selected, enabled, source, Modifier.raftSlot("tabs-tab").then(modifier).then(reveal).then(select), icon)
+        // raft-ui's `tabs-tab` slot; a page's own name on the tab wins.
+        RaftTabsVariant.Default -> RaftStickerItem(text, selected, enabled, source, modifier.raftDefaultSlot("tabs-tab").then(reveal).then(target).then(select), icon = icon)
+        RaftTabsVariant.Underline -> RaftUnderlineTab(text, selected, enabled, source, modifier.raftDefaultSlot("tabs-tab").then(reveal).then(select), icon)
     }
 }
 

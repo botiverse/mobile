@@ -804,8 +804,8 @@ fun RaftIconButton(
         // On the frame: the top bar's item, 36 (34 under a fine pointer).
         box = if (onFrame) controls.topBarItemSize else size.boxIn(controls, bar),
         glyph = if (onFrame) 20.dp else size.glyphIn(controls, bar),
-        // raft-ui's `button` slot first, so a page's own name wins (visual-testing component comparison).
-        modifier = Modifier.raftSlot("button").then(modifier),
+        // raft-ui's `button` slot; a page's own name wins (visual-testing component comparison).
+        modifier = modifier.raftDefaultSlot("button"),
         variant = variant,
         enabled = enabled,
         loading = loading,
