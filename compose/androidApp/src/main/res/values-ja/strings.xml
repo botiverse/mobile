@@ -91,6 +91,11 @@
     <string name="push_body_app_permission_update_sign_in_data">新しいログイン権限と、このサーバーのデータへのより広いアクセスを求めています。更新を承認するか、アプリをアンインストールしてください。</string>
     <string name="push_body_app_permission_update_card_button">カードボタンの呼び出し先アドレスが変わりました。更新を承認するか、アプリをアンインストールしてください。</string>
     <string name="push_body_app_permission_update_permissions_card_button">新しい権限を求めており、カードボタンの呼び出し先アドレスも変わりました。更新を承認するか、アプリをアンインストールしてください。</string>
+    <string name="push_title_lounge">%1$s のラウンジ</string>
+    <string name="push_title_thread_in_lounge">%1$s のラウンジのスレッド</string>
+    <string name="push_title_task_in_lounge">%1$s のラウンジのタスク</string>
+    <string name="push_subtitle_lounge">%1$s のラウンジ</string>
+    <string name="push_subtitle_lounge_server">%1$s のラウンジ · %2$s</string>
     <string name="notification_unread_general_channel_name">未読メッセージ</string>
     <string name="notification_unread_general_channel_description">Raft の一般的な未読メッセージ通知。</string>
     <string name="notification_unread_channel_channel_name">チャンネルの未読メッセージ</string>

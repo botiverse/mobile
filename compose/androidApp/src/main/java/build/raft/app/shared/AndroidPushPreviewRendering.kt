@@ -69,14 +69,14 @@ internal fun interface PushPreviewStrings {
 }
 
 /**
- * The banner copy keys of preview key set 4 (contract §1.5, slock `packages/shared/src/notificationCopy.ts`)
+ * The banner copy keys of preview key set 5 (contract §1.5, slock `packages/shared/src/notificationCopy.ts`)
  * and the string resource of each, `{0}` / `{1}` = `%1$s` / `%2$s`. Every key the server can send to a
  * registration of [build.raft.app.data.RAFT_ANDROID_PUSH_PREVIEW_KEY_SET] must be here (or in
  * [PushPreviewKeys]); AndroidNotificationCopyVectorTest pins the list to the slock catalogue.
  */
 internal object AndroidPushCopyKeys {
     /** The botiverse/slock commit whose notificationCopy.ts this table follows (scripts/check_notification_copy_vector.sh). */
-    const val SLOCK_SHA = "9bd45ecf815dc645b29e7c36fc182b0c7328fc4d"
+    const val SLOCK_SHA = "827ab8e3b96aaf5dd99148ad887ec31d3fb25e6d"
 
     /** key -> (string resource, number of positional args). */
     val resources: Map<String, Pair<Int, Int>> =
@@ -125,7 +125,13 @@ internal object AndroidPushCopyKeys {
             "push.body.app_permission_update.data" to (R.string.push_body_app_permission_update_data to 0),
             "push.body.app_permission_update.sign_in_data" to (R.string.push_body_app_permission_update_sign_in_data to 0),
             "push.body.app_permission_update.card_button" to (R.string.push_body_app_permission_update_card_button to 0),
-            "push.body.app_permission_update.permissions_card_button" to (R.string.push_body_app_permission_update_permissions_card_button to 0)
+            "push.body.app_permission_update.permissions_card_button" to (R.string.push_body_app_permission_update_permissions_card_button to 0),
+            // Agent Lounge labels (key set 5, slock #16691).
+            "push.title.lounge" to (R.string.push_title_lounge to 1),
+            "push.title.thread_in_lounge" to (R.string.push_title_thread_in_lounge to 1),
+            "push.title.task_in_lounge" to (R.string.push_title_task_in_lounge to 1),
+            "push.subtitle.lounge" to (R.string.push_subtitle_lounge to 1),
+            "push.subtitle.lounge_server" to (R.string.push_subtitle_lounge_server to 2)
         )
 
     /** The generic task title: sender_only stands it in for a task title (content) this device redacts. */
@@ -274,9 +280,9 @@ internal fun resolveUnreadNotificationText(
 
 /**
  * Resolves the server display label for grouping headers when the notification is not `hidden`.
- * Prefers the server's multi-server subtitle context (`subtitleKey = push.subtitle.dm_server`,
- * `context · Server`, or non-task `subtitle`), falling back to an explicit `serverName` field
- * (present on mobile socket pushes and future FCM payloads).
+ * Prefers the server's multi-server subtitle context (`subtitleKey = push.subtitle.dm_server` or
+ * `push.subtitle.lounge_server`, `context · Server`, or non-task `subtitle`), falling back to an
+ * explicit `serverName` field (present on mobile socket pushes and future FCM payloads).
  */
 internal fun unreadNotificationServerName(
     request: JSONObject,
@@ -291,7 +297,14 @@ internal fun unreadNotificationServerName(
                 ?.trim()
                 ?.takeIf { it.isNotEmpty() }
                 ?.let { return it }
-        "push.subtitle.dm" -> return null
+        "push.subtitle.lounge_server" ->
+            parseArgs(request.optString("subtitleArgs"))
+                .getOrNull(1)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { return it }
+        "push.subtitle.dm",
+        "push.subtitle.lounge" -> return null
     }
     val cleanSubtitle = subtitle?.trim()?.takeIf { it.isNotEmpty() }
     if (cleanSubtitle != null) {

@@ -92,6 +92,11 @@
     <string name="push_body_app_permission_update_sign_in_data">Pede novas permissões de login e mais acesso aos dados deste servidor. Aprove a atualização ou desinstale o app.</string>
     <string name="push_body_app_permission_update_card_button">Mudou o endereço que os botões do cartão chamam. Aprove a atualização ou desinstale o app.</string>
     <string name="push_body_app_permission_update_permissions_card_button">Pede novas permissões e mudou o endereço que os botões do cartão chamam. Aprove a atualização ou desinstale o app.</string>
+    <string name="push_title_lounge">Lounge de %1$s</string>
+    <string name="push_title_thread_in_lounge">Thread no Lounge de %1$s</string>
+    <string name="push_title_task_in_lounge">Tarefa no Lounge de %1$s</string>
+    <string name="push_subtitle_lounge">Lounge de %1$s</string>
+    <string name="push_subtitle_lounge_server">Lounge de %1$s · %2$s</string>
     <string name="notification_unread_general_channel_name">Mensagens não lidas</string>
     <string name="notification_unread_general_channel_description">Notificações gerais de mensagens não lidas do Raft.</string>
     <string name="notification_unread_channel_channel_name">Mensagens não lidas de canais</string>

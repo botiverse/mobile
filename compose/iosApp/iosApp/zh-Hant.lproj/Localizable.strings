@@ -47,3 +47,9 @@
 "push.body.app_permission_update.sign_in_data" = "它要求新的登入權限，以及存取此伺服器上更多的資料。請核准更新，或解除安裝該應用程式。";
 "push.body.app_permission_update.card_button" = "它變更了卡片按鈕呼叫的位址。請核准更新，或解除安裝該應用程式。";
 "push.body.app_permission_update.permissions_card_button" = "它要求新的權限，並變更了卡片按鈕呼叫的位址。請核准更新，或解除安裝該應用程式。";
+/* Agent Lounge labels (preview key set 5, slock #16691). */
+"push.title.lounge" = "%1$@ 的會客廳";
+"push.title.thread_in_lounge" = "%1$@ 的會客廳中的討論串";
+"push.title.task_in_lounge" = "%1$@ 的會客廳中的任務";
+"push.subtitle.lounge" = "%1$@ 的會客廳";
+"push.subtitle.lounge_server" = "%1$@ 的會客廳 · %2$@";

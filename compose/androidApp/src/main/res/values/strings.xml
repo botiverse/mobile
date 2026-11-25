@@ -96,6 +96,12 @@
     <string name="push_body_app_permission_update_sign_in_data">It asks for new sign-in permissions and more access to data on this Server. Approve the update or uninstall the App.</string>
     <string name="push_body_app_permission_update_card_button">It changed the address its card buttons call. Approve the update or uninstall the App.</string>
     <string name="push_body_app_permission_update_permissions_card_button">It asks for new permissions and changed the address its card buttons call. Approve the update or uninstall the App.</string>
+    <!-- Banner copy keys of preview key set 5 (slock #16691, packages/shared/src/notificationCopy.ts). -->
+    <string name="push_title_lounge">%1$s’s Lounge</string>
+    <string name="push_title_thread_in_lounge">Thread in %1$s’s Lounge</string>
+    <string name="push_title_task_in_lounge">Task in %1$s’s Lounge</string>
+    <string name="push_subtitle_lounge">%1$s’s Lounge</string>
+    <string name="push_subtitle_lounge_server">%1$s’s Lounge · %2$s</string>
     <string name="notification_unread_general_channel_name">Unread messages</string>
     <string name="notification_unread_general_channel_description">General unread Raft message notifications.</string>
     <string name="notification_unread_channel_channel_name">Channel unread messages</string>

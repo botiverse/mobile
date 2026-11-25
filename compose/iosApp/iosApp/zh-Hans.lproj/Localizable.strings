@@ -45,3 +45,9 @@
 "push.body.app_permission_update.sign_in_data" = "它请求新的登录权限，以及访问此服务器上更多的数据。请批准更新，或卸载该应用。";
 "push.body.app_permission_update.card_button" = "它更改了卡片按钮调用的地址。请批准更新，或卸载该应用。";
 "push.body.app_permission_update.permissions_card_button" = "它请求新的权限，并更改了卡片按钮调用的地址。请批准更新，或卸载该应用。";
+/* Agent Lounge labels (preview key set 5, slock #16691). */
+"push.title.lounge" = "%1$@ 的会客厅";
+"push.title.thread_in_lounge" = "%1$@ 的会客厅中的消息列";
+"push.title.task_in_lounge" = "%1$@ 的会客厅中的任务";
+"push.subtitle.lounge" = "%1$@ 的会客厅";
+"push.subtitle.lounge_server" = "%1$@ 的会客厅 · %2$@";

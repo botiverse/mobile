@@ -47,3 +47,9 @@
 "push.body.app_permission_update.sign_in_data" = "Приложение запрашивает новые разрешения на вход и больше доступа к данным этого сервера. Одобрите обновление или удалите приложение.";
 "push.body.app_permission_update.card_button" = "Приложение изменило адрес, который вызывают его кнопки карточек. Одобрите обновление или удалите приложение.";
 "push.body.app_permission_update.permissions_card_button" = "Приложение запрашивает новые разрешения и изменило адрес, который вызывают его кнопки карточек. Одобрите обновление или удалите приложение.";
+/* Agent Lounge labels (preview key set 5, slock #16691). */
+"push.title.lounge" = "Гостиная агента %1$@";
+"push.title.thread_in_lounge" = "Ветка в гостиной агента %1$@";
+"push.title.task_in_lounge" = "Задача в гостиной агента %1$@";
+"push.subtitle.lounge" = "Гостиная агента %1$@";
+"push.subtitle.lounge_server" = "Гостиная агента %1$@ · %2$@";

@@ -56,6 +56,11 @@
     <string name="push_body_app_permission_update_sign_in_data">它请求新的登录权限，以及访问此服务器上更多的数据。请批准更新，或卸载该应用。</string>
     <string name="push_body_app_permission_update_card_button">它更改了卡片按钮调用的地址。请批准更新，或卸载该应用。</string>
     <string name="push_body_app_permission_update_permissions_card_button">它请求新的权限，并更改了卡片按钮调用的地址。请批准更新，或卸载该应用。</string>
+    <string name="push_title_lounge">%1$s 的会客厅</string>
+    <string name="push_title_thread_in_lounge">%1$s 的会客厅中的消息列</string>
+    <string name="push_title_task_in_lounge">%1$s 的会客厅中的任务</string>
+    <string name="push_subtitle_lounge">%1$s 的会客厅</string>
+    <string name="push_subtitle_lounge_server">%1$s 的会客厅 · %2$s</string>
     <string name="notification_unread_dm_channel_description">未读私信通知。</string>
     <string name="notification_unread_dm_channel_name">私信</string>
     <string name="notification_unread_general_channel_description">Raft 的一般未读消息通知。</string>

@@ -17,11 +17,11 @@ import kotlinx.serialization.json.jsonObject
  */
 class RaftNotificationBannerCopyTest {
     @Test
-    fun bothPlatformsDeclareKeySet4() {
+    fun bothPlatformsDeclareKeySet5() {
         // Android ships every banner key (AndroidNotificationCopyVectorTest); iOS has them in every
         // Localizable.strings (an unknown loc-key would show verbatim).
-        assertEquals(4, RaftPushProviderSpec.Fcm.previewKeySet)
-        assertEquals(4, RaftPushProviderSpec.Apns.previewKeySet)
+        assertEquals(5, RaftPushProviderSpec.Fcm.previewKeySet)
+        assertEquals(5, RaftPushProviderSpec.Apns.previewKeySet)
     }
 
     @Test

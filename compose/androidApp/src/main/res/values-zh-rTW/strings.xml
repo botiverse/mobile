@@ -92,6 +92,11 @@
     <string name="push_body_app_permission_update_sign_in_data">它要求新的登入權限，以及存取此伺服器上更多的資料。請核准更新，或解除安裝該應用程式。</string>
     <string name="push_body_app_permission_update_card_button">它變更了卡片按鈕呼叫的位址。請核准更新，或解除安裝該應用程式。</string>
     <string name="push_body_app_permission_update_permissions_card_button">它要求新的權限，並變更了卡片按鈕呼叫的位址。請核准更新，或解除安裝該應用程式。</string>
+    <string name="push_title_lounge">%1$s 的會客廳</string>
+    <string name="push_title_thread_in_lounge">%1$s 的會客廳中的討論串</string>
+    <string name="push_title_task_in_lounge">%1$s 的會客廳中的任務</string>
+    <string name="push_subtitle_lounge">%1$s 的會客廳</string>
+    <string name="push_subtitle_lounge_server">%1$s 的會客廳 · %2$s</string>
     <string name="notification_unread_general_channel_name">未讀訊息</string>
     <string name="notification_unread_general_channel_description">Raft 的一般未讀訊息通知。</string>
     <string name="notification_unread_channel_channel_name">頻道未讀訊息</string>
