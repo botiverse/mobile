@@ -103,6 +103,9 @@ import build.raft.app.data.toRuntimeAuthLoginOutcome
 import build.raft.app.data.toRuntimeAuthLoginStep
 import build.raft.app.model.ServerDeleted
 import build.raft.app.model.ActivityChanged
+import build.raft.app.model.ActivityDoneRowKind
+import build.raft.app.model.ActivityDoneUpdated
+import build.raft.app.data.isCanonicalPositiveActivitySeq
 import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.ServerAppearanceUpdated
@@ -448,6 +451,8 @@ class RealtimeEventMapper(
                 decodeOrNull(ActivityChangedDto.serializer(), element)
                     ?.takeIf { it.serverId.isNotBlank() }
                     ?.let { ActivityChanged(ServerId(it.serverId), it.source) }
+            RealtimeSocketEvents.ActivityDoneUpdated ->
+                element.parseActivityDoneUpdatedOrNull()
             RealtimeSocketEvents.JointInvitesChanged ->
                 decodeOrNull(ServerListChangedDto.serializer(), element)
                     ?.takeIf { it.serverId.isNotBlank() }
@@ -1094,6 +1099,55 @@ private data class ActivityChangedDto(
     val serverId: String,
     val source: String = "object",
 )
+
+/**
+ * Strict parser for `activity_done:updated` (botiverse/slock #16816
+ * `packages/shared/src/activityDoneEvent.ts`, web `packages/web/src/store/inboxDoneEvent.ts`
+ * `parseDoneEvent`):
+ * - `serverId`, `rowId`: non-blank strings
+ * - `rowKind`: one of `channel | dm | thread | task | object`
+ * - `objectKind`: required non-blank string when `rowKind == "object"`, ignored otherwise
+ * - `done`: strict JSON boolean
+ * - `position`: JSON `null` or canonical positive decimal string (`^[1-9][0-9]*$`); must be `null` when `done == false`
+ */
+private fun JsonObject.parseActivityDoneUpdatedOrNull(): ActivityDoneUpdated? {
+    fun strictString(key: String): String? =
+        (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+    val serverId = strictString("serverId")?.takeIf { it.isNotBlank() } ?: return null
+    val rowId = strictString("rowId")?.takeIf { it.isNotBlank() } ?: return null
+    val rowKind = strictString("rowKind")?.let(ActivityDoneRowKind::fromWire) ?: return null
+    val donePrimitive = (this["done"] as? JsonPrimitive)?.takeIf { !it.isString } ?: return null
+    val done =
+        when (donePrimitive.content) {
+            "true" -> true
+            "false" -> false
+            else -> return null
+        }
+    val positionElement = this["position"] ?: return null
+    val position: String? =
+        when {
+            positionElement is JsonNull -> null
+            positionElement is JsonPrimitive && positionElement.isString && isCanonicalPositiveActivitySeq(positionElement.content) ->
+                positionElement.content
+            else -> return null
+        }
+    if (!done && position != null) return null
+    val objectKind =
+        if (rowKind == ActivityDoneRowKind.Object) {
+            strictString("objectKind")?.takeIf { it.isNotBlank() } ?: return null
+        } else {
+            null
+        }
+    return ActivityDoneUpdated(
+        serverId = ServerId(serverId),
+        rowKind = rowKind,
+        rowId = rowId,
+        objectKind = objectKind,
+        done = done,
+        position = position,
+    )
+}
 
 /** slock `packages/shared/src/listChangedEvents.ts` `ListChangedEvent`: `{ serverId }` only. */
 @Serializable

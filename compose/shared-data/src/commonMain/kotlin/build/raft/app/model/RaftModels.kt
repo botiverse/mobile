@@ -1771,6 +1771,36 @@ data class ActivityChanged(
     val source: String,
 ) : RealtimeEvent
 
+/** The Activity row kinds named by `activity_done:updated` (botiverse/slock #16816 `ActivityDoneRowKind`). */
+@Serializable
+enum class ActivityDoneRowKind(val wireValue: String) {
+    Channel("channel"),
+    Dm("dm"),
+    Thread("thread"),
+    Task("task"),
+    Object("object");
+
+    companion object {
+        fun fromWire(value: String): ActivityDoneRowKind? =
+            entries.firstOrNull { it.wireValue == value }
+    }
+}
+
+/**
+ * `activity_done:updated` (botiverse/slock #16816 `packages/shared/src/activityDoneEvent.ts`
+ * `ActivityDoneUpdatedEvent`), sent to the person's own room (`user:<id>`) after their Done or
+ * undo of one Activity row committed, so their other devices drop or re-read that row alone.
+ */
+@Serializable
+data class ActivityDoneUpdated(
+    val serverId: ServerId,
+    val rowKind: ActivityDoneRowKind,
+    val rowId: String,
+    val objectKind: String? = null,
+    val done: Boolean,
+    val position: String? = null,
+) : RealtimeEvent
+
 /**
  * `joint-invites:changed` (botiverse/slock #12939 `listChangedEvents.ts`): the pending joint-channel
  * invites to this person on [serverId] changed (web `usePendingJointInvites` reads them again).

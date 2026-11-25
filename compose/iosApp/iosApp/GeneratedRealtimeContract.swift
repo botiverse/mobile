@@ -96,6 +96,7 @@ enum GeneratedRealtimeContract {
         static let productFeedbackUnread = "product_feedback:unread"
         static let productFeedbackAppUnread = "product_feedback:app_unread"
         static let activityChanged = "activity:changed"
+        static let activityDoneUpdated = "activity_done:updated"
         static let announcementNew = "announcement:new"
         static let reminderFired = "reminder:fired"
         static let reminderScheduled = "reminder:scheduled"
@@ -159,6 +160,7 @@ enum GeneratedRealtimeContract {
             SocketEvent.productFeedbackUnread,
             SocketEvent.productFeedbackAppUnread,
             SocketEvent.activityChanged,
+            SocketEvent.activityDoneUpdated,
             SocketEvent.announcementNew,
             SocketEvent.reminderFired,
             SocketEvent.reminderScheduled,

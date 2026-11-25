@@ -16,6 +16,7 @@ import build.raft.app.model.ServerDeleted
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.ActivityChanged
+import build.raft.app.model.ActivityDoneUpdated
 import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.ServerAppearanceUpdated
@@ -351,6 +352,7 @@ private fun RealtimeEvent.serverIdHint(): ServerId? =
         is ServerPlanUpdated -> serverId
         is ServerFeaturesChanged -> serverId
         is ActivityChanged -> serverId
+        is ActivityDoneUpdated -> serverId
         is build.raft.app.model.JointInvitesChanged -> serverId
         is build.raft.app.model.PermissionUpdatesChanged -> serverId
         is ServerAppearanceUpdated -> serverId

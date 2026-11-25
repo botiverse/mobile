@@ -125,11 +125,16 @@ import kotlin.time.TimeSource
 
 @RaftCoreInternalApi fun InboxItem.activityOverlayMarker(): ActivityOverlayMarker =
     ActivityOverlayMarker(
-        seq = readStateLatestActivitySeq?.takeIf(::isCanonicalActivitySeq),
+        seq =
+            if (kind == InboxItemKind.Object) {
+                activityObject?.doneFrontierSeq?.takeIf(::isCanonicalActivitySeq)
+            } else {
+                readStateLatestActivitySeq?.takeIf(::isCanonicalActivitySeq)
+            },
         anchor = latestActivityMessageId ?: lastMessageId ?: parentMessageId,
         replyCount = replyCount,
         isThread = kind == InboxItemKind.Thread,
-        storageFrontier = doneFrontierSeqPresent
+        storageFrontier = doneFrontierSeqPresent || kind == InboxItemKind.Object
     )
 
 /**
@@ -158,6 +163,12 @@ import kotlin.time.TimeSource
     value.isNotEmpty() &&
         value.all { it in '0'..'9' } &&
         (value.length == 1 || value[0] != '0')
+
+/** Positive canonical decimal seq (`^[1-9][0-9]*$`, web `CANONICAL_SEQ` in `inboxDoneEvent.ts`). */
+@RaftCoreInternalApi fun isCanonicalPositiveActivitySeq(value: String): Boolean =
+    value.isNotEmpty() &&
+        value[0] in '1'..'9' &&
+        value.all { it in '0'..'9' }
 
 /**
  * Exact decimal comparison (no Long overflow / precision loss). Absent or
