@@ -51,3 +51,62 @@ for bad in ("main", "release/1.29.0-android", "release/1.29.0-ios-extra", "agent
         raise SystemExit(f"Audit tag branch regex must reject {bad!r}: {match.group(1)}")
 print("iOS audit tag branch regex guard: PASS")
 PY
+
+# Simulator and QA carrier builds must pass RAFT_GIT_COMMIT explicitly to xcodebuild,
+# Info.plist must expand $(RAFT_GIT_COMMIT), and Stamp Hands Build Metadata must run
+# AFTER Embed App Extensions with $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH) in inputPaths
+# (Xcode 27 runs ProcessInfoPlistFile after Embed App Extensions due to privacy-manifest
+# scanning of RaftShareExtension.appex; an earlier phase skips stamping with a warning).
+python3 - <<'PY'
+import re
+from pathlib import Path
+
+sim_workflow = Path(".github/workflows/ios-simulator-app.yml").read_text()
+if 'RAFT_GIT_COMMIT="$RAFT_GIT_COMMIT"' not in sim_workflow:
+    raise SystemExit(
+        'ios-simulator-app.yml must pass RAFT_GIT_COMMIT="$RAFT_GIT_COMMIT" to xcodebuild'
+    )
+
+qa_workflow = Path(".github/workflows/qa-acceptance-ios.yml").read_text()
+if 'RAFT_GIT_COMMIT="$GITHUB_SHA"' not in qa_workflow:
+    raise SystemExit(
+        'qa-acceptance-ios.yml must pass RAFT_GIT_COMMIT="$GITHUB_SHA" to xcodebuild'
+    )
+
+info_plist = Path("compose/iosApp/iosApp/Info.plist").read_text()
+if "<key>HandsBuildCommit</key>\n        <string>$(RAFT_GIT_COMMIT)</string>" not in info_plist:
+    raise SystemExit("compose/iosApp/iosApp/Info.plist must bind HandsBuildCommit to $(RAFT_GIT_COMMIT)")
+
+pbxproj = Path("compose/iosApp/iosApp.xcodeproj/project.pbxproj").read_text()
+target_match = re.search(
+    r'7555FF7A242A565900829871 /\* iosApp \*/ = \{.*?buildPhases = \((.*?)\);',
+    pbxproj,
+    re.S,
+)
+if not target_match:
+    raise SystemExit("Could not locate iosApp target buildPhases in project.pbxproj")
+phases = target_match.group(1)
+embed_idx = phases.find("E36000050000000000000001 /* Embed App Extensions */")
+stamp_idx = phases.find("D4C7A0122E15000100C0DE01 /* Stamp Hands Build Metadata */")
+if embed_idx < 0 or stamp_idx < 0 or stamp_idx < embed_idx:
+    raise SystemExit(
+        "Stamp Hands Build Metadata must be ordered AFTER Embed App Extensions in iosApp buildPhases"
+    )
+
+phase_match = re.search(
+    r'D4C7A0122E15000100C0DE01 /\* Stamp Hands Build Metadata \*/ = \{(.*?)\};',
+    pbxproj,
+    re.S,
+)
+if not phase_match:
+    raise SystemExit("Could not locate Stamp Hands Build Metadata phase definition in project.pbxproj")
+phase_body = phase_match.group(1)
+if '"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"' not in phase_body:
+    raise SystemExit(
+        'Stamp Hands Build Metadata must declare "$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)" in inputPaths'
+    )
+if "alwaysOutOfDate = 1;" not in phase_body:
+    raise SystemExit("Stamp Hands Build Metadata must set alwaysOutOfDate = 1")
+
+print("iOS Simulator HandsBuildCommit xcodebuild & phase-order guard: PASS")
+PY
