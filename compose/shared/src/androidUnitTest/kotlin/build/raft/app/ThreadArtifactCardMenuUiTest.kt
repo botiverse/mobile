@@ -344,8 +344,9 @@ class ThreadArtifactCardMenuUiTest {
     }
 
     @Test
-    fun viewerBarHidesMoreMenuWithoutDesktopModeAndOmitsOpenInBrowserWhenUnset() = runRobolectricComposeUiTest {
+    fun viewerBarHidesMoreMenuWithoutDesktopModeAndOmitsOpenInBrowser() = runRobolectricComposeUiTest {
         var desktopMode by mutableStateOf<Boolean?>(null)
+        var pageDrawsBar by mutableStateOf(false)
         var toggles = 0
         setContent {
             RaftDesignSystemTheme {
@@ -353,44 +354,6 @@ class ThreadArtifactCardMenuUiTest {
                     title = "Q3 revenue report",
                     onBack = {},
                     actions = RaftArtifactViewerBarActions(onToggleDesktopMode = { toggles += 1 }),
-                    desktopMode = desktopMode,
-                    topSafeAreaOverride = 0.dp,
-                ) {
-                    Box(Modifier.fillMaxSize())
-                }
-            }
-        }
-        waitForIdle()
-        onNodeWithTag(RAFT_ARTIFACT_VIEWER_OPEN_IN_BROWSER_TAG).assertDoesNotExist()
-        onNodeWithContentDescription("More actions").assertDoesNotExist()
-
-        desktopMode = false
-        waitForIdle()
-        onNodeWithTag(RAFT_ARTIFACT_VIEWER_OPEN_IN_BROWSER_TAG).assertDoesNotExist()
-        onNodeWithContentDescription("More actions").assertIsDisplayed().performClick()
-        waitForIdle()
-        onNodeWithText("Desktop mode").assertIsDisplayed().performClick()
-        waitForIdle()
-        onNodeWithText("Open in browser").assertDoesNotExist()
-        assertEquals(1, toggles)
-    }
-
-    @Test
-    fun viewerBarShowsTopRightOpenInBrowserButtonWithAndWithoutDesktopMode() = runRobolectricComposeUiTest {
-        var desktopMode by mutableStateOf<Boolean?>(null)
-        var pageDrawsBar by mutableStateOf(false)
-        var browserOpens = 0
-        var toggles = 0
-        setContent {
-            RaftDesignSystemTheme {
-                RaftArtifactViewerFrame(
-                    title = "Q3 revenue report",
-                    onBack = {},
-                    actions =
-                        RaftArtifactViewerBarActions(
-                            onToggleDesktopMode = { toggles += 1 },
-                            onOpenInBrowser = { browserOpens += 1 },
-                        ),
                     desktopMode = desktopMode,
                     pageDrawsBar = pageDrawsBar,
                     topSafeAreaOverride = 0.dp,
@@ -400,17 +363,12 @@ class ThreadArtifactCardMenuUiTest {
             }
         }
         waitForIdle()
-        // Desktop mode not offered: Open in browser icon button is still shown, ⋮ stays hidden.
-        onNodeWithTag(RAFT_ARTIFACT_VIEWER_OPEN_IN_BROWSER_TAG).assertIsDisplayed().performClick()
-        onNodeWithContentDescription("Open in browser").assertIsDisplayed()
+        onNodeWithContentDescription("Open in browser").assertDoesNotExist()
         onNodeWithContentDescription("More actions").assertDoesNotExist()
-        assertEquals(1, browserOpens)
 
-        // Desktop mode offered: Open in browser button sits beside ⋮; ⋮ contains only Desktop mode.
         desktopMode = false
         waitForIdle()
-        onNodeWithTag(RAFT_ARTIFACT_VIEWER_OPEN_IN_BROWSER_TAG).assertIsDisplayed().performClick()
-        assertEquals(2, browserOpens)
+        onNodeWithContentDescription("Open in browser").assertDoesNotExist()
         onNodeWithContentDescription("More actions").assertIsDisplayed().performClick()
         waitForIdle()
         onNodeWithText("Desktop mode").assertIsDisplayed().performClick()
@@ -421,7 +379,7 @@ class ThreadArtifactCardMenuUiTest {
         // When the page draws the single bar, the fallback native bar (and its buttons) are hidden.
         pageDrawsBar = true
         waitForIdle()
-        onNodeWithTag(RAFT_ARTIFACT_VIEWER_OPEN_IN_BROWSER_TAG).assertDoesNotExist()
+        onNodeWithContentDescription("Open in browser").assertDoesNotExist()
         onNodeWithContentDescription("More actions").assertDoesNotExist()
     }
 

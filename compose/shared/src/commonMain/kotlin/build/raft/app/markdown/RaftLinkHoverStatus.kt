@@ -96,7 +96,9 @@ internal fun raftLinkHoverLabel(
     // A Raft Desktop link stays with Raft even where it is not a message (the app's own scheme).
     val scheme = raw.substringBefore("://", missingDelimiterValue = "").lowercase()
     val raftScheme = scheme == "raft" || scheme.startsWith("raft-")
-    val hasMessageTarget = open.target != null || open.conversationLink?.focusMessageId != null
+    val hasMessageTarget =
+        open.target != null ||
+            (open.conversationLink?.focusMessageId != null && !open.conversationLink.isTask)
     if (!hasMessageTarget) {
         // In-app Raft destinations (conversations, Artifacts, join/invite links), Raft Desktop
         // links, and chips whose own click handler opens an in-app viewer (forceInApp) stay in

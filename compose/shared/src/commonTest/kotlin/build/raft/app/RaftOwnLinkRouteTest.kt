@@ -19,13 +19,21 @@ class RaftOwnLinkRouteTest {
     private val cid = "bd6e1218-1e13-4e40-838a-8c168fad487a"
     private val mid = "1c1c2197-490a-435b-8e07-e6c79c871ed1"
     private val pid = "9d6d1a00-86de-4c81-81ef-1f727384ecbb"
+    private val tid = "b0b0b0b0-1111-4222-8333-444455556666"
+    private val otherCid = "11111111-2222-4333-8444-555555555555"
     private val prod = "https://app.raft.build"
     private val noHosts = emptySet<String>()
 
     private fun route(url: String, webUrl: String? = null, appHosts: Set<String> = noHosts) = raftOwnLinkRoute(url, webUrl, appHosts)
 
-    private fun conversation(kind: ConversationKind = ConversationKind.Channel, msg: String? = null, parent: String? = null) =
-        RaftOwnLinkRoute.Conversation(RaftMessageLink(slug, kind, cid, messageId = msg, threadParentMessageId = parent))
+    private fun conversation(
+        kind: ConversationKind = ConversationKind.Channel,
+        msg: String? = null,
+        parent: String? = null,
+        taskId: String? = null,
+    ) = RaftOwnLinkRoute.Conversation(
+        RaftMessageLink(slug, kind, cid, messageId = msg, threadParentMessageId = parent, taskId = taskId)
+    )
 
     @Test
     fun everyConversationShapeOpensInTheApp() {
@@ -37,6 +45,11 @@ class RaftOwnLinkRouteTest {
                 "$prod/s/$slug/channel/$cid?msg=$mid" to conversation(msg = mid),
                 "$prod/s/$slug/channel/$cid?thread=$cid%3A$pid" to conversation(parent = pid),
                 "$prod/s/$slug/dm/$cid?msg=$mid&thread=$cid:$pid" to conversation(ConversationKind.DirectMessage, mid, pid),
+                // Task conversations (slock #16576): channel, DM, and joint channels, with or without `msg=`.
+                "$prod/s/$slug/channel/$cid?task=$cid%3Atask%3A$tid" to conversation(taskId = tid),
+                "$prod/s/$slug/channel/$cid?msg=$mid&task=$cid%3Atask%3A$tid" to conversation(msg = mid, taskId = tid),
+                "$prod/s/$slug/dm/$cid?task=$cid:task:$tid" to conversation(ConversationKind.DirectMessage, taskId = tid),
+                "$prod/s/$slug/dm/$cid?msg=$mid&task=$cid%3Atask%3A$tid" to conversation(ConversationKind.DirectMessage, msg = mid, taskId = tid),
                 // A task's own conversation is a channel link here; the shell's read of it opens the task (slock #14960).
                 "$prod/s/$slug/channel/$cid?msg=$mid&app=missing" to conversation(msg = mid),
             )
@@ -52,8 +65,13 @@ class RaftOwnLinkRouteTest {
                 "$prod/artifacts/pt_abc123/v/2" to RaftOwnLinkRoute.Artifact(ArtifactLinkTarget("pt_abc123", 2)),
                 "$prod/join/tok-1" to RaftOwnLinkRoute.ServerJoin("tok-1"),
                 "$prod/external-invite/inv-1" to RaftOwnLinkRoute.ExternalInvite("inv-1"),
-                // The web's task panel: the app can't open a task by its id, and the channel alone loses it.
-                "$prod/s/$slug/channel/$cid?task=$cid%3Atask%3Ab0b0" to RaftOwnLinkRoute.WebPage(RaftOwnLinkWebPageReason.TaskPanel),
+                // Non-task-conversation / malformed `?task=` URLs keep falling back to the web task panel.
+                "$prod/s/$slug/channel/$cid?task=1" to RaftOwnLinkRoute.WebPage(RaftOwnLinkWebPageReason.TaskPanel),
+                "$prod/s/$slug/channel/$cid?task=1&thread=$cid%3A$pid" to RaftOwnLinkRoute.WebPage(RaftOwnLinkWebPageReason.TaskPanel),
+                "$prod/s/$slug/channel/$cid?task=$cid%3A$mid" to RaftOwnLinkRoute.WebPage(RaftOwnLinkWebPageReason.TaskPanel),
+                "$prod/s/$slug/channel/$cid?task=$otherCid%3Atask%3A$tid" to RaftOwnLinkRoute.WebPage(RaftOwnLinkWebPageReason.TaskPanel),
+                "$prod/s/$slug/channel/$cid?task=$cid%3Atask%3A" to RaftOwnLinkRoute.WebPage(RaftOwnLinkWebPageReason.TaskPanel),
+                "$prod/s/$slug/channel/$cid?thread=$cid%3A$pid&task=$cid%3Atask%3A$tid" to RaftOwnLinkRoute.WebPage(RaftOwnLinkWebPageReason.TaskPanel),
             )
         for ((url, expected) in cases) assertEquals(expected, route(url), url)
         val webPages =
@@ -95,8 +113,13 @@ class RaftOwnLinkRouteTest {
         val channelOnly = raftMarkdownUrlOpen("$prod/s/$slug/channel/$cid", null, noHosts)
         assertEquals(conversation().link, channelOnly.conversationLink)
         assertFalse(channelOnly.opensOnThisPage { true })
-        // The web's task panel: its web page.
-        val taskPanel = raftMarkdownUrlOpen("$prod/s/$slug/channel/$cid?task=$cid%3Atask%3Ab0b0", null, noHosts)
-        assertEquals(RaftMarkdownUrlOpen("$prod/s/$slug/channel/$cid?task=$cid%3Atask%3Ab0b0", target = null), taskPanel)
+        // A task-conversation link always goes through the shell resolver (never opens the parent channel locally).
+        val taskLink = raftMarkdownUrlOpen("$prod/s/$slug/channel/$cid?msg=$mid&task=$cid%3Atask%3A$tid", null, noHosts)
+        assertEquals(conversation(msg = mid, taskId = tid).link, taskLink.conversationLink)
+        assertNull(taskLink.target)
+        assertFalse(taskLink.opensOnThisPage { true })
+        // Non-task-conversation `?task=` links still fall back to the web page.
+        val taskPanel = raftMarkdownUrlOpen("$prod/s/$slug/channel/$cid?task=$cid%3A$mid", null, noHosts)
+        assertEquals(RaftMarkdownUrlOpen("$prod/s/$slug/channel/$cid?task=$cid%3A$mid", target = null), taskPanel)
     }
 }

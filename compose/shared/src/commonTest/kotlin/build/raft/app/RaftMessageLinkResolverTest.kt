@@ -11,11 +11,14 @@ import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
+import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
@@ -40,6 +43,9 @@ class RaftMessageLinkResolverTest {
     private val pid = "a3b4c5d6-e7f8-4a1b-8c2d-3e4f5a6b7c8d"
     private val mid = "0b1c2d3e-4f50-4617-8293-a4b5c6d7e8f9"
     private val threadChannelId = "7c7c7c7c-1111-4222-8333-444455556666"
+    private val taskId = "b0b0b0b0-1111-4222-8333-444455556666"
+    private val taskConvId = "8d8d8d8d-1111-4222-8333-444455556666"
+    private val localJointTaskConvId = "9e9e9e9e-1111-4222-8333-444455556666"
     /** A server the account is not in, and another channel of it. */
     private val publicSlug = "open-source-club"
     private val publicServerId = "5e7a0c1d-0000-4000-8000-00000000a003"
@@ -352,13 +358,190 @@ class RaftMessageLinkResolverTest {
         assertEquals(listOf<Triple<String, String?, String?>>(Triple(body, cid, "channel")), offered)
     }
 
+    @Test
+    fun taskConversationQueryParamResolvesChannelDmAndShortMessageIdWithoutPosting() = runTest {
+        val shortMid = mid.take(8)
+        for ((routeKind, parentType) in listOf(
+            ConversationKind.Channel to "channel",
+            ConversationKind.DirectMessage to "dm",
+        )) {
+            for (msg in listOf(mid, shortMid, null)) {
+                val network =
+                    FakeMessageLinkNetwork(
+                        channel = HomeNetworkResponse(200, channelBody(type = parentType, id = cid)),
+                        channelTasks = HomeNetworkResponse(200, tasksListBody(channelType = parentType, conversationChannelId = taskConvId)),
+                        context = HomeNetworkResponse(200, contextBody(target = mid, channelId = taskConvId)),
+                    )
+                val open =
+                    assertIs<RaftMessageLinkResolution.Open>(
+                        RaftMessageLinkResolver(network).resolve(link(kind = routeKind, msg = msg, taskId = taskId), servers)
+                    )
+                val request = openThroughCoordinator(open)
+                assertEquals(ConversationKind.Task, request.conversationIdentity.kind, "$routeKind msg=$msg")
+                assertEquals(taskConvId, request.conversationIdentity.channelId?.value, "$routeKind msg=$msg")
+                assertEquals(if (msg != null) mid else null, request.anchorMessageId, "$routeKind msg=$msg")
+                // Never POSTs for non-joint channels/DMs.
+                assertFalse(network.requests.any { it.method == "POST" }, "$routeKind msg=$msg")
+                if (msg != null) {
+                    val contextReq = network.requests.single { it.path.startsWith("messages/context/") }
+                    assertEquals("messages/context/$msg", contextReq.path)
+                    assertEquals(listOf("channelId" to taskConvId, "before" to "0", "after" to "0"), contextReq.query)
+                }
+            }
+        }
+        // Wrong route kind for parent DM/channel is rejected.
+        val dmUnderChannel =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, channelBody(type = "dm", id = cid)),
+                channelTasks = HomeNetworkResponse(200, tasksListBody(channelType = "dm", conversationChannelId = taskConvId)),
+            )
+        assertIs<RaftMessageLinkResolution.NotFound>(
+            RaftMessageLinkResolver(dmUnderChannel).resolve(link(kind = ConversationKind.Channel, msg = mid, taskId = taskId), servers)
+        )
+        val channelUnderDm =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, channelBody(type = "channel", id = cid)),
+                channelTasks = HomeNetworkResponse(200, tasksListBody(channelType = "channel", conversationChannelId = taskConvId)),
+            )
+        assertIs<RaftMessageLinkResolution.NotFound>(
+            RaftMessageLinkResolver(channelUnderDm).resolve(link(kind = ConversationKind.DirectMessage, msg = mid, taskId = taskId), servers)
+        )
+    }
+
+    @Test
+    fun jointChannelTaskConversationResolvesLocalProjectionAndNeverLeaksCanonicalId() = runTest {
+        for (msg in listOf(mid, null)) {
+            val network =
+                FakeMessageLinkNetwork(
+                    channel = HomeNetworkResponse(200, channelBody(type = "joint", id = cid)),
+                    channelTasks = HomeNetworkResponse(200, tasksListBody(channelType = "joint", conversationChannelId = taskConvId)),
+                    openTaskConversation =
+                        HomeNetworkResponse(
+                            200,
+                            """{"conversationChannelId":"$localJointTaskConvId","canonicalConversationChannelId":"$taskConvId","created":false}""",
+                        ),
+                    context = HomeNetworkResponse(200, contextBody(target = mid, channelId = localJointTaskConvId)),
+                )
+            val open =
+                assertIs<RaftMessageLinkResolution.Open>(
+                    RaftMessageLinkResolver(network).resolve(link(msg = msg, taskId = taskId), servers)
+                )
+            val request = openThroughCoordinator(open)
+            assertEquals(ConversationKind.Task, request.conversationIdentity.kind, "msg=$msg")
+            assertEquals(localJointTaskConvId, request.conversationIdentity.channelId?.value, "msg=$msg")
+            assertEquals(msg, request.anchorMessageId, "msg=$msg")
+            val postReq = network.requests.single { it.method == "POST" }
+            assertEquals("tasks/$taskId/conversation", postReq.path)
+            if (msg != null) {
+                val contextReq = network.requests.single { it.path.startsWith("messages/context/") }
+                assertEquals(listOf("channelId" to localJointTaskConvId, "before" to "0", "after" to "0"), contextReq.query)
+            }
+        }
+
+        // If resolving the joint local projection is refused (403/404/409), fail closed and never open the canonical id.
+        for (code in listOf(403, 404, 409)) {
+            val refused =
+                FakeMessageLinkNetwork(
+                    channel = HomeNetworkResponse(200, channelBody(type = "joint", id = cid)),
+                    channelTasks = HomeNetworkResponse(200, tasksListBody(channelType = "joint", conversationChannelId = taskConvId)),
+                    openTaskConversation = HomeNetworkResponse(code, """{"error":"refused"}"""),
+                )
+            assertIs<RaftMessageLinkResolution.NotFound>(
+                RaftMessageLinkResolver(refused).resolve(link(msg = mid, taskId = taskId), servers),
+                "code=$code",
+            )
+        }
+    }
+
+    @Test
+    fun taskConversationPendingLegacyMissingAndTransientFailureCases() = runTest {
+        // Pending task (no conversation yet) without `msg=` opens pending route WITHOUT POSTing.
+        val pendingNetwork =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, channelBody(type = "channel", id = cid)),
+                channelTasks = HomeNetworkResponse(200, tasksListBody(channelType = "channel", conversationChannelId = null)),
+            )
+        val pending =
+            assertIs<RaftMessageLinkResolution.OpenPendingTask>(
+                RaftMessageLinkResolver(pendingNetwork).resolve(link(taskId = taskId), servers)
+            )
+        assertEquals(serverId, pending.serverId)
+        assertEquals(taskId, pending.taskId)
+        assertEquals(ChannelId(cid), pending.channelId)
+        assertEquals(taskId, pending.task?.id?.value)
+        assertNull(pending.focusedMessageId)
+        assertFalse(pendingNetwork.requests.any { it.method == "POST" })
+
+        // Pending task WITH `msg=` cannot have a task message yet -> NotFound without POSTing.
+        val pendingWithMsg =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, channelBody(type = "channel", id = cid)),
+                channelTasks = HomeNetworkResponse(200, tasksListBody(channelType = "channel", conversationChannelId = null)),
+            )
+        assertIs<RaftMessageLinkResolution.NotFound>(
+            RaftMessageLinkResolver(pendingWithMsg).resolve(link(msg = mid, taskId = taskId), servers)
+        )
+        assertFalse(pendingWithMsg.requests.any { it.method == "POST" })
+
+        // Legacy task and unknown task id -> NotFound.
+        val legacyNetwork =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, channelBody(type = "channel", id = cid)),
+                channelTasks = HomeNetworkResponse(200, tasksListBody(channelType = "channel", conversationChannelId = null, isLegacy = true)),
+            )
+        assertIs<RaftMessageLinkResolution.NotFound>(
+            RaftMessageLinkResolver(legacyNetwork).resolve(link(taskId = taskId), servers)
+        )
+        val missingTaskNetwork =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, channelBody(type = "channel", id = cid)),
+                channelTasks = HomeNetworkResponse(200, """{"tasks":[]}"""),
+            )
+        assertIs<RaftMessageLinkResolution.NotFound>(
+            RaftMessageLinkResolver(missingTaskNetwork).resolve(link(taskId = taskId), servers)
+        )
+
+        // Transient 503 on tasks list opens pending route with focusedMessageId preserved (never NotFound).
+        val offlineNetwork =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, channelBody(type = "channel", id = cid)),
+                channelTasks = HomeNetworkResponse(503, null),
+            )
+        val offlinePending =
+            assertIs<RaftMessageLinkResolution.OpenPendingTask>(
+                RaftMessageLinkResolver(offlineNetwork).resolve(link(msg = mid, taskId = taskId), servers)
+            )
+        assertEquals(mid, offlinePending.focusedMessageId)
+        assertNull(offlinePending.task)
+
+        // Server outside the account never opens public preview for a task link.
+        val outsideNetwork = FakeMessageLinkNetwork()
+        assertIs<RaftMessageLinkResolution.PublicNotFound>(
+            RaftMessageLinkResolver(outsideNetwork).resolve(link(slug = publicSlug, msg = mid, taskId = taskId), servers)
+        )
+        assertTrue(outsideNetwork.requests.isEmpty())
+    }
+
+    private fun tasksListBody(
+        id: String = taskId,
+        channelType: String = "channel",
+        conversationChannelId: String? = taskConvId,
+        isLegacy: Boolean = false,
+    ): String {
+        val convJson = conversationChannelId?.let { "\"$it\"" } ?: "null"
+        return """{"tasks":[{"id":"$id","channelId":"$cid","channelName":"release-notes","channelType":"$channelType",""" +
+            """"taskNumber":7,"title":"Ship task backlink","status":"in_progress","conversationChannelId":$convJson,""" +
+            """"conversationAnchored":${!isLegacy},"isLegacy":$isLegacy,"revision":1}]}"""
+    }
+
     private fun link(
         slug: String = this.slug,
         kind: ConversationKind = ConversationKind.Channel,
         channelId: String = cid,
         msg: String? = null,
         threadParent: String? = null,
-    ) = RaftMessageLink(slug, kind, channelId, messageId = msg, threadParentMessageId = threadParent)
+        taskId: String? = null,
+    ) = RaftMessageLink(slug, kind, channelId, messageId = msg, threadParentMessageId = threadParent, taskId = taskId)
 
     /** The resolved link through the coordinator a notification tap uses, on a ready Home. */
     private fun openThroughCoordinator(
@@ -393,6 +576,7 @@ private data class RecordedMessageLinkRequest(
     val query: List<Pair<String, String>>,
     val serverIdOverride: ServerId?,
     val priority: DataRequestPriority,
+    val method: String = "GET",
 )
 
 private class FakeMessageLinkNetwork(
@@ -401,6 +585,8 @@ private class FakeMessageLinkNetwork(
     channelResponses: List<HomeNetworkResponse> = emptyList(),
     private val context: HomeNetworkResponse? = null,
     contextResponses: List<HomeNetworkResponse> = emptyList(),
+    private val channelTasks: HomeNetworkResponse? = null,
+    private val openTaskConversation: HomeNetworkResponse? = null,
     private val throwOnContext: Boolean = false,
     private val throwOnChannel: Boolean = false,
     /** `GET /api/public/servers/:slug`; unset, the request is unexpected. */
@@ -419,7 +605,7 @@ private class FakeMessageLinkNetwork(
         serverIdOverride: ServerId?,
         bodyText: String?,
     ): HomeNetworkResponse {
-        requests += RecordedMessageLinkRequest(path, query, serverIdOverride, priority)
+        requests += RecordedMessageLinkRequest(path, query, serverIdOverride, priority, method)
         return when {
             path.startsWith("channels/") -> {
                 if (throwOnChannel) error("timeout")
@@ -429,6 +615,10 @@ private class FakeMessageLinkNetwork(
                     ?: channel
                     ?: HomeNetworkResponse(200, """{"id":"$id","name":"release-notes","type":"channel"}""")
             }
+            path.startsWith("tasks/channel/") ->
+                channelTasks ?: error("unexpected request $method $path")
+            method == "POST" && path.startsWith("tasks/") && path.endsWith("/conversation") ->
+                openTaskConversation ?: error("unexpected request $method $path")
             path.startsWith("messages/context/") -> {
                 if (throwOnContext) error("socket closed")
                 queuedContextResponses.removeFirstOrNull()
@@ -439,7 +629,7 @@ private class FakeMessageLinkNetwork(
                 if (throwOnPublicServer) error("offline")
                 publicServer ?: error("unexpected request $path")
             }
-            else -> error("unexpected request $path")
+            else -> error("unexpected request $method $path")
         }
     }
 }

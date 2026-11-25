@@ -474,6 +474,7 @@ internal fun raftMarkdownUrlOpen(
  * channel route does, so a task's conversation opens as the task (slock #14960).
  */
 internal fun RaftMarkdownUrlOpen.opensOnThisPage(knownHere: (channelId: String) -> Boolean): Boolean {
+    if (conversationLink?.isTask == true) return false
     val local = target ?: return false
     return conversationLink == null || knownHere(local.channelId)
 }

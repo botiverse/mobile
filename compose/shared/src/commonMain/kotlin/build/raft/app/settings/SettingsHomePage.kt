@@ -3002,6 +3002,43 @@ private fun RaftAppShellReadyContent(
                     source = MessageLinkNavigationSource,
                     launchId = "message-link-${taken.id}"
                 )
+            is RaftMessageLinkResolution.OpenPendingTask -> {
+                if (resolution.serverId != readySession?.currentServerId) {
+                    when (val switched = authDataSource.selectServer(resolution.serverId)) {
+                        is SharedAuthResult.Success -> {
+                            authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(switched.data))
+                            resetAppShellSessionState()
+                            switched.data.servers.firstOrNull { it.id == resolution.serverId }?.name
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { name ->
+                                    bridge.toast(messageLinkSwitchedServerTemplate.replace(MessageLinkServerNamePlaceholder, name))
+                                }
+                        }
+                        is SharedAuthResult.Failure -> {
+                            pager.openRaftMessageLinkNotFoundPage(navigationStoreScope)
+                            return@rememberUpdatedState null
+                        }
+                        SharedAuthResult.Unauthenticated -> {
+                            bridge.toast(notificationSignInMessage)
+                            return@rememberUpdatedState null
+                        }
+                    }
+                }
+                foregroundBannerStore.incomingNavigation.closeAll()
+                pager.openTaskPendingPage(
+                    taskId = resolution.taskId,
+                    channelId = resolution.channelId,
+                    serverId = resolution.serverId,
+                    storeScope = navigationStoreScope,
+                    foregroundBannerStore = foregroundBannerStore,
+                    task = resolution.task,
+                    focusedMessageId = resolution.focusedMessageId,
+                    timeContext = threadTimeContext,
+                    alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                    compactConsecutiveMessages = compactConsecutiveMessages,
+                )
+                null
+            }
             is RaftMessageLinkResolution.NotFound -> {
                 // The page's button goes back to the conversation list (Home tab) on a phone, the
                 // server's channel list on a wide window: leave the Home tab with nothing open under it.

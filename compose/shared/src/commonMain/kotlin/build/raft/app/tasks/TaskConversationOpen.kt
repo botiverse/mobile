@@ -104,6 +104,7 @@ internal fun buildTaskOpenLaunchPayload(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
+    anchorMessageId: String? = null,
     hostThreadPayload: () -> WireThreadLaunchPayload?,
 ): WireThreadLaunchPayload? {
     // Unresolved, only a task made the v2 way (`conversationAnchored`) names its conversation itself.
@@ -116,6 +117,7 @@ internal fun buildTaskOpenLaunchPayload(
         return buildStandaloneConversationThreadLaunchPayload(
             conversation = taskConversationLaunchIdentity(conversationId),
             timeContext = timeContext,
+            anchorMessageId = anchorMessageId,
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages,
         )
