@@ -82,6 +82,7 @@ internal fun ThreadComposerQuoteBlocks(
     onSerializedCommit: (serialized: String, focusOffset: Int?) -> Unit,
     onJumpToQuotedMessage: ((String) -> Unit)?,
     onPasteAttachments: () -> Unit,
+    fill: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val blocks = controller.blocks
@@ -142,14 +143,20 @@ internal fun ThreadComposerQuoteBlocks(
         }
 
     val containerModifier =
-        if (isSingleSimple) {
-            modifier.fillMaxWidth().testTag(ComposerQuoteBlocksTestTag)
-        } else {
-            modifier
-                .fillMaxWidth()
-                .heightIn(max = ComposerQuoteBlocksMaxHeight)
-                .verticalScroll(rememberScrollState())
-                .testTag(ComposerQuoteBlocksTestTag)
+        when {
+            fill ->
+                modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .testTag(ComposerQuoteBlocksTestTag)
+            isSingleSimple ->
+                modifier.fillMaxWidth().testTag(ComposerQuoteBlocksTestTag)
+            else ->
+                modifier
+                    .fillMaxWidth()
+                    .heightIn(max = ComposerQuoteBlocksMaxHeight)
+                    .verticalScroll(rememberScrollState())
+                    .testTag(ComposerQuoteBlocksTestTag)
         }
 
     Column(
@@ -209,6 +216,7 @@ internal fun ThreadComposerQuoteBlocks(
                             blockIndex = index,
                             isPrimary = isPrimary,
                             isTrailing = isTrailing,
+                            fill = fill,
                             ariaLabel = ariaLabel,
                             placeholder = if (isTrailing) placeholder else "",
                             fieldState = blockFieldState,
@@ -345,6 +353,7 @@ private fun ComposerSegmentedTextBlockRow(
     blockIndex: Int,
     isPrimary: Boolean,
     isTrailing: Boolean,
+    fill: Boolean,
     ariaLabel: String,
     placeholder: String,
     fieldState: TextFieldState,
@@ -392,7 +401,7 @@ private fun ComposerSegmentedTextBlockRow(
             onFocus = onFocus,
             onBlur = onBlur,
             enabled = composerEnabled,
-            maxLines = 4,
+            maxLines = if (fill) Int.MAX_VALUE else 4,
             imeActionRequested = effectiveImeActionRequested,
             keyboardOptions = composerKeyboardOptions,
             keyboardActions = composerKeyboardActions,
@@ -413,8 +422,14 @@ private fun ComposerSegmentedTextBlockRow(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 2.dp)
-                    .heightIn(min = ComposerQuoteSegmentTextMinHeight, max = ComposerQuoteSegmentTextMaxHeight)
+                    .padding(horizontal = if (fill) 0.dp else 2.dp)
+                    .then(
+                        if (fill) {
+                            Modifier.heightIn(min = ComposerQuoteSegmentTextMinHeight)
+                        } else {
+                            Modifier.heightIn(min = ComposerQuoteSegmentTextMinHeight, max = ComposerQuoteSegmentTextMaxHeight)
+                        }
+                    )
                     .testTag(composerTextBlockTestTag(blockIndex, isPrimary))
                     .semantics {
                         if (!isPrimary || !isTrailing) {

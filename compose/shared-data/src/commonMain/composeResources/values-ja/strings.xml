@@ -3762,6 +3762,8 @@
     <string name="composer_add_image">画像を追加</string>
     <string name="composer_take_photo">写真を撮る</string>
     <string name="composer_attach_file">ファイル</string>
+    <string name="composer_expand">展開</string>
+    <string name="composer_collapse">折りたたむ</string>
     <string name="markdown_task_list_checkbox">タスクリストのチェックボックス</string>
     <string name="markdown_task_list_checked">完了</string>
     <string name="markdown_task_list_unchecked">未完了</string>

@@ -3583,6 +3583,8 @@
     <string name="composer_add_image">이미지 추가</string>
     <string name="composer_take_photo">사진 찍기</string>
     <string name="composer_attach_file">파일 첨부</string>
+    <string name="composer_expand">펼치기</string>
+    <string name="composer_collapse">접기</string>
     <string name="markdown_task_list_checkbox">작업 목록 체크박스</string>
     <string name="markdown_task_list_checked">완료</string>
     <string name="markdown_task_list_unchecked">완료되지 않음</string>

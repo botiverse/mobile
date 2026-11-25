@@ -3583,6 +3583,8 @@
     <string name="composer_add_image">新增圖片</string>
     <string name="composer_take_photo">拍照</string>
     <string name="composer_attach_file">附加檔案</string>
+    <string name="composer_expand">展開</string>
+    <string name="composer_collapse">收合</string>
     <string name="markdown_task_list_checkbox">任務清單核取方塊</string>
     <string name="markdown_task_list_checked">已完成</string>
     <string name="markdown_task_list_unchecked">未完成</string>

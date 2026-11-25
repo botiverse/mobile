@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -675,9 +676,15 @@ internal fun ThreadComposerRoute(
                 edge
             }
         }
+    val composerExpandState = LocalThreadComposerExpandState.current
+    val composerExpanded =
+        composerExpandState?.isExpanded(
+            conversationKey = surface.expandConversationKey,
+            canExpand = threadComposerCanExpand(expandable = true, windowWidthDp = raftWindowWidth()),
+        ) == true
     // The assistant's DM in its panel: the conversation it was opened from, a chip above the
     // composer (web MessageInput's accessory row, `gap-1.5`), until × or the next message with text.
-    Column(Modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxWidth().then(if (composerExpanded) Modifier.fillMaxHeight() else Modifier)) {
         surface.assistantContext?.let { attachment ->
             attachment.context?.let { context ->
                 ThreadAssistantContextChip(
@@ -693,9 +700,14 @@ internal fun ThreadComposerRoute(
             enabled = composerUiState.enabled && composerUiState.attachmentActionsEnabled && surface.sendChannelId != null,
             onDropFiles = onDropFiles,
             modifier =
-                Modifier.fillMaxWidth().onSizeChangedDp { size ->
-                    if (composerAtRest) ThreadComposerRestingHeight.record(restingHeightKey, size.height)
-                }
+                Modifier
+                    .fillMaxWidth()
+                    .then(if (composerExpanded) Modifier.weight(1f) else Modifier)
+                    .onSizeChangedDp { size ->
+                        if (composerAtRest && !composerExpanded) {
+                            ThreadComposerRestingHeight.record(restingHeightKey, size.height)
+                        }
+                    }
         ) {
         ThreadComposerContentWithSuggestions(
             surface = surface,
@@ -1094,15 +1106,17 @@ private fun String?.threadParticipantHandleKey(): String? =
  */
 @Composable
 internal fun ThreadComposerDock(
+    modifier: Modifier = Modifier,
     composerModifier: Modifier = Modifier,
     edgePadding: Dp = RaftAppSpacing.Sm,
+    expanded: Boolean = false,
     keyboardLiftPx: Density.() -> Float = { 0f },
     composer: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
     Column(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 // The whole dock belongs to the focused composer: its margins and the keyboard lift
                 // under the card (composerModifier) are outside the composer's own region, and a tap
@@ -1110,13 +1124,29 @@ internal fun ThreadComposerDock(
                 .retainInputFocusForInteractions()
                 .background(RaftColor.Canvas)
     ) {
+        if (expanded) {
+            // Web COMPOSER_EXPANDED.root (`border-t border-line-seam`): one 1px seam between the
+            // 120dp message strip and the expanded composer.
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(RaftColor.BorderSeam)
+            )
+        }
         Box(
             modifier =
                 Modifier.fillMaxWidth()
+                    .then(if (expanded) Modifier.weight(1f) else Modifier)
                     // The dock's canvas runs edge to edge; the composer box keeps out of the
                     // horizontal safe area.
                     .raftSafeAreaHorizontalPadding()
-                    .padding(start = edgePadding, top = 8.dp, end = edgePadding)
+                    .padding(
+                        start = edgePadding,
+                        top = if (expanded) 12.dp else 8.dp,
+                        end = edgePadding,
+                    )
                     .then(composerModifier)
                     // raft-ui: on a conversation page the window's toasts sit just above the composer.
                     // Gated by LocalRaftToastAvoidanceActive (immediately active on the top stack

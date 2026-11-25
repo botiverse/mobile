@@ -81,6 +81,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
@@ -613,6 +614,17 @@ internal data class ThreadComposerSurface(
 ) {
     val sendChannelId: String?
         get() = streamChannelId?.takeIf { it.isNotBlank() } ?: channelId.takeIf { it.isNotBlank() }
+
+    /** Conversation identity for composer expansion: switching channels or threads starts collapsed. */
+    val expandConversationKey: String
+        get() =
+            buildString {
+                append(sendChannelId ?: channelId)
+                parentMessageId?.takeIf { it.isNotBlank() }?.let {
+                    append(':')
+                    append(it)
+                }
+            }
 
     val mentionScopeChannelId: String?
         get() =
@@ -1322,6 +1334,55 @@ internal fun rememberRaftComposerHasHardwareKeyboard(): Boolean =
     raftPlatformHasFinePointer() || rememberRaftHardwareKeyboardConnected() || raftPlatformIsiOSAppOnMac()
 
 internal const val ThreadComposerSendKeyHintTestTag = "composer-send-key-hint"
+internal const val ThreadComposerExpandToggleTestTag = "composer-expand-toggle"
+internal const val ThreadComposerExpandedSurfaceTestTag = "composer-expanded-surface"
+
+/** Height kept for the latest messages strip above an expanded composer (web `h-30` = 120px). */
+internal val ThreadComposerExpandedMessageListStripHeight = 120.dp
+
+/**
+ * Whether an expandable conversation composer offers Expand / Collapse at [windowWidthDp]
+ * (web slock #16670; uses [raftWindowWide] so iPad mini portrait and desktop switch with #307).
+ */
+internal fun threadComposerCanExpand(
+    expandable: Boolean,
+    windowWidthDp: Dp,
+): Boolean = expandable && raftWindowWide(windowWidthDp)
+
+/**
+ * Conversation-scoped expanded state for writing long messages (web `useComposerExpand`, slock #16670):
+ * belongs to one conversation column, starts collapsed when switching conversations, and collapses
+ * automatically when the viewport narrows below the wide breakpoint ([raftWindowWide]).
+ */
+@Stable
+internal class ThreadComposerExpandState {
+    var expandedConversationKey: String? by mutableStateOf(null)
+        private set
+
+    fun isExpanded(conversationKey: String, canExpand: Boolean): Boolean =
+        canExpand && conversationKey.isNotBlank() && expandedConversationKey == conversationKey
+
+    fun toggle(conversationKey: String, canExpand: Boolean): Boolean {
+        if (!canExpand || conversationKey.isBlank()) {
+            expandedConversationKey = null
+            return false
+        }
+        val next = if (expandedConversationKey == conversationKey) null else conversationKey
+        expandedConversationKey = next
+        return next != null
+    }
+
+    fun collapse() {
+        expandedConversationKey = null
+    }
+}
+
+/**
+ * Provided by conversation hosts ([ThreadRouteScaffold]) that opt into the wide-viewport
+ * expandable composer; null in compact dialogs such as `SendPromptDialog` or Forward.
+ */
+internal val LocalThreadComposerExpandState =
+    staticCompositionLocalOf<ThreadComposerExpandState?> { null }
 
 /**
  * Whether a composer under it renders the `"⌘Enter to send"` / `"Ctrl+Enter to send"` hint in
@@ -2670,6 +2731,12 @@ internal fun ThreadComposerContentLeaf(
     val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
     val focusManager = LocalFocusManager.current
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
+    val expandState = LocalThreadComposerExpandState.current
+    val expandConversationKey = surface.expandConversationKey
+    val canExpandComposer =
+        expandState != null && threadComposerCanExpand(expandable = true, windowWidthDp = raftWindowWidth())
+    val composerExpanded =
+        expandState?.isExpanded(conversationKey = expandConversationKey, canExpand = canExpandComposer) == true
     val suggestionPortal = LocalThreadComposerSuggestionPortal.current
     val suggestionPortalOwner = remember(state.instanceId) { ThreadComposerSuggestionPortalOwner() }
     var suggestionPortalGeneration by remember(state.instanceId, suggestionPortalOwner) { mutableStateOf(0L) }
@@ -3387,8 +3454,12 @@ internal fun ThreadComposerContentLeaf(
                 optimisticResolvedQuotes = optimisticQuotes,
             )
         if (onSendRequest != null) {
-            onSendRequest.invoke(request)
+            val admission = onSendRequest.invoke(request)
+            if (admission != ThreadComposerSendAdmission.Rejected) {
+                expandState?.collapse()
+            }
         } else {
+            expandState?.collapse()
             onEvent("send", sendFieldValue.text, effectiveAsTask, null)
         }
     }
@@ -3431,27 +3502,45 @@ internal fun ThreadComposerContentLeaf(
     // through the row's own click, so they insert exactly what a click inserts, never send.
     val suggestionKeyPresses = remember(state.instanceId) { ThreadComposerSuggestionKeyPresses() }
     fun handleSuggestionKeyDown(key: Key, shift: Boolean): Boolean {
-        val shown = suggestionPortal?.presentation?.takeIf { it.owner === suggestionPortalOwner } ?: return false
-        val rowCount = shown.suggestionRowCount()
-        val highlight = suggestionHighlight
-        val action =
-            threadComposerSuggestionKeyAction(
-                key = key,
-                shift = shift,
-                panelState = shown.panelState,
-                rowCount = rowCount,
-                composing = currentActiveFieldState().composition != null,
-            )
-        when (action) {
-            ThreadComposerSuggestionKeyAction.None -> return false
-            ThreadComposerSuggestionKeyAction.MoveUp ->
-                suggestionHighlight = highlight.moved(suggestionTrigger, rowCount, ThreadComposerSuggestionSelectionMove.Up)
-            ThreadComposerSuggestionKeyAction.MoveDown ->
-                suggestionHighlight = highlight.moved(suggestionTrigger, rowCount, ThreadComposerSuggestionSelectionMove.Down)
-            ThreadComposerSuggestionKeyAction.Pick -> shown.pickSuggestionRow(highlight.indexFor(suggestionTrigger))
-            ThreadComposerSuggestionKeyAction.Dismiss -> suggestionsDismissed = true
+        val shown = suggestionPortal?.presentation?.takeIf { it.owner === suggestionPortalOwner }
+        if (shown != null) {
+            val rowCount = shown.suggestionRowCount()
+            val highlight = suggestionHighlight
+            val action =
+                threadComposerSuggestionKeyAction(
+                    key = key,
+                    shift = shift,
+                    panelState = shown.panelState,
+                    rowCount = rowCount,
+                    composing = currentActiveFieldState().composition != null,
+                )
+            when (action) {
+                ThreadComposerSuggestionKeyAction.None -> Unit
+                ThreadComposerSuggestionKeyAction.MoveUp -> {
+                    suggestionHighlight = highlight.moved(suggestionTrigger, rowCount, ThreadComposerSuggestionSelectionMove.Up)
+                    return true
+                }
+                ThreadComposerSuggestionKeyAction.MoveDown -> {
+                    suggestionHighlight = highlight.moved(suggestionTrigger, rowCount, ThreadComposerSuggestionSelectionMove.Down)
+                    return true
+                }
+                ThreadComposerSuggestionKeyAction.Pick -> {
+                    shown.pickSuggestionRow(highlight.indexFor(suggestionTrigger))
+                    return true
+                }
+                ThreadComposerSuggestionKeyAction.Dismiss -> {
+                    suggestionsDismissed = true
+                    return true
+                }
+            }
         }
-        return true
+        // Web useComposerExpand (slock #16670): Esc collapses the expanded composer only after
+        // an open suggestion list (above) or IME composition has taken its own Esc.
+        if (key == Key.Escape && composerExpanded && currentActiveFieldState().composition == null) {
+            expandState?.collapse()
+            return true
+        }
+        return false
     }
     val composerKeyboardActions =
         if (composerUsesImeAction) {
@@ -3601,6 +3690,7 @@ internal fun ThreadComposerContentLeaf(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .then(if (composerExpanded) Modifier.fillMaxHeight().testTag(ThreadComposerExpandedSurfaceTestTag) else Modifier)
                 .retainInputFocusForInteractions()
                 .background(RaftColor.Canvas)
                 .padding(
@@ -3614,6 +3704,7 @@ internal fun ThreadComposerContentLeaf(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (composerExpanded) Modifier.fillMaxHeight() else Modifier)
                 .padding(top = contentPaddingTop, bottom = contentPaddingBottom)
         ) {
             // Everything stacked above the composer frame (status, attachment tray, mention
@@ -3717,19 +3808,27 @@ internal fun ThreadComposerContentLeaf(
                         // The 6dp gap to what is stacked above, only when something is.
                         .padding(top = if (contentAboveFrame) 6.dp else 0.dp)
                         .fillMaxWidth()
+                        .then(if (composerExpanded) Modifier.weight(1f) else Modifier)
                         .raftCaptureLiveRootAnchor(suggestionAnchorRef) { nextSize ->
                             if (composerCardSize != nextSize) composerCardSize = nextSize
                         }
             ) {
                 // raft-ui `Composer`: card layer, container radius, 1.5dp line-strong edge,
-                // no shadow.
+                // no shadow. Expanded (slock #16670): borderless on canvas, text flush on the
+                // messages' left edge, editor filling height.
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .raftControlSurface(
-                            fill = RaftColor.Card,
-                            border = RaftColor.BorderBlack,
-                            radius = RaftAppRadius.Container
+                        .then(
+                            if (composerExpanded) {
+                                Modifier.fillMaxHeight()
+                            } else {
+                                Modifier.raftControlSurface(
+                                    fill = RaftColor.Card,
+                                    border = RaftColor.BorderBlack,
+                                    radius = RaftAppRadius.Container
+                                )
+                            }
                         )
                         .testTag(ThreadComposerCardTestTag)
                         .raftSlot("composer-frame")
@@ -3759,11 +3858,17 @@ internal fun ThreadComposerContentLeaf(
                                 }
                             }
                         }
-                        .padding(
-                            start = ThreadComposerCardPadding,
-                            top = ThreadComposerCardPadding,
-                            end = ThreadComposerCardPadding,
-                            bottom = ThreadComposerCardPaddingBottom
+                        .then(
+                            if (composerExpanded) {
+                                Modifier.padding(bottom = ThreadComposerCardPaddingBottom)
+                            } else {
+                                Modifier.padding(
+                                    start = ThreadComposerCardPadding,
+                                    top = ThreadComposerCardPadding,
+                                    end = ThreadComposerCardPadding,
+                                    bottom = ThreadComposerCardPaddingBottom
+                                )
+                            }
                         ),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -3921,6 +4026,8 @@ internal fun ThreadComposerContentLeaf(
                                 onPasteAttachments = {
                                     onEvent(ThreadComposerPasteAttachmentsAction, null, null, null)
                                 },
+                                fill = composerExpanded,
+                                modifier = if (composerExpanded) Modifier.weight(1f) else Modifier,
                             )
                         } else {
                         // Hebrew, Arabic: right to left from the first letter, skipping mentions (slock #15039).
@@ -3964,7 +4071,7 @@ internal fun ThreadComposerContentLeaf(
                                 }
                             },
                             enabled = composerEnabled,
-                            maxLines = 4,
+                            maxLines = if (composerExpanded) Int.MAX_VALUE else 4,
                             // Only the preference decides the line mode. A multi-line field
                             // suppresses the IME action key, so with "return key sends" off the
                             // editor stays multi-line and Enter inserts a newline; the suggestion
@@ -4011,6 +4118,7 @@ internal fun ThreadComposerContentLeaf(
                             },
                             placeholderColor = RaftColor.ForegroundHint,
                             cursorBrush = SolidColor(RaftColor.TextBlack),
+                            contentAlignment = if (composerExpanded) Alignment.TopStart else Alignment.CenterStart,
                             nativeEditingStateReader = externalNativeEditingStateReader,
                             // React mobile uses a one-line textarea; keep the toolbar as the touch target.
                             focusRequester = composerFocusRequester,
@@ -4019,12 +4127,19 @@ internal fun ThreadComposerContentLeaf(
                                 // Where the focus is when a side thread closes (ComposerAutofocusPolicy.kt).
                                 .composerReportsFocus(autofocusOnOpen)
                                 .fillMaxWidth()
-                                .padding(horizontal = ThreadComposerInputPaddingHorizontal)
                                 // raft-ui `composer-input` (the web's composer-textarea), for the component comparison.
                                 .raftSlot("composer-input")
-                                .heightIn(
-                                    min = ThreadComposerTextFieldMinHeight,
-                                    max = ThreadComposerTextFieldMaxHeight
+                                .then(
+                                    if (composerExpanded) {
+                                        Modifier.weight(1f)
+                                    } else {
+                                        Modifier
+                                            .padding(horizontal = ThreadComposerInputPaddingHorizontal)
+                                            .heightIn(
+                                                min = ThreadComposerTextFieldMinHeight,
+                                                max = ThreadComposerTextFieldMaxHeight
+                                            )
+                                    }
                                 )
                                 .threadComposerImagePasteFocus(imagePasteFocusOwner)
                                 .threadComposerPasteAttachments {
@@ -4051,7 +4166,12 @@ internal fun ThreadComposerContentLeaf(
                     // raft-ui `ComposerToolbar`: its buttons are embedded in the composer's frame.
                     RaftEmbeddedControls {
                         Row(
-                            modifier = Modifier.raftSlot("composer-toolbar").composerToolbarBleed().fillMaxWidth().heightIn(min = ThreadComposerToolbarMinHeight),
+                            modifier =
+                                Modifier
+                                    .raftSlot("composer-toolbar")
+                                    .then(if (!composerExpanded) Modifier.composerToolbarBleed() else Modifier)
+                                    .fillMaxWidth()
+                                    .heightIn(min = ThreadComposerToolbarMinHeight),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -4165,6 +4285,40 @@ internal fun ThreadComposerContentLeaf(
                                             color = labelColor
                                         )
                                     }
+                                }
+                                if (canExpandComposer) {
+                                    // Web ComposerExpandButton (slock #16670): last before Send; no
+                                    // shortcut, keeps the same editor/draft focused across toggle.
+                                    ComposerIconButton(
+                                        icon =
+                                            if (composerExpanded) {
+                                                RaftLucideIconName.Minimize2
+                                            } else {
+                                                RaftLucideIconName.Maximize2
+                                            },
+                                        enabled = composerEnabled,
+                                        modifier =
+                                            Modifier
+                                                .threadComposerSuggestionKeepsEditorFocus()
+                                                .testTag(ThreadComposerExpandToggleTestTag),
+                                        contentDescription =
+                                            stringResource(
+                                                if (composerExpanded) {
+                                                    Res.string.composer_collapse
+                                                } else {
+                                                    Res.string.composer_expand
+                                                }
+                                            ),
+                                        onClick = {
+                                            expandState?.toggle(
+                                                conversationKey = expandConversationKey,
+                                                canExpand = canExpandComposer,
+                                            )
+                                            if (!isSegmentedQuoteComposer) {
+                                                runCatching { composerFocusRequester.requestFocus() }
+                                            }
+                                        },
+                                    )
                                 }
                                 ComposerSendButton(
                                     enabled = canSend,
