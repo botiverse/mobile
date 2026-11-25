@@ -2963,8 +2963,11 @@ internal fun activityRowActionIcon(item: InboxItem, actionId: String): RaftLucid
     when (actionId) {
         "toggle-read" -> if (item.showsUnread) RaftLucideIconName.MessageSquareCheck else RaftLucideIconName.MessageSquareDot
         "done" -> RaftLucideIconName.Check
-        "follow-thread", "unmute-activity" -> RaftLucideIconName.Bell
-        "unfollow-thread", "mute-activity", "unfollow-object" -> RaftLucideIconName.BellOff
+        "follow-thread" -> RaftLucideIconName.FollowThread
+        "unfollow-thread" -> RaftLucideIconName.UnfollowThread
+        "unfollow-object" -> RaftLucideIconName.UnfollowArtifact
+        "unmute-activity" -> RaftLucideIconName.Bell
+        "mute-activity" -> RaftLucideIconName.BellOff
         else -> error("unknown Activity row action: $actionId")
     }
 
@@ -3314,7 +3317,7 @@ private fun SharedActivityStateBody(
         title = title,
         description = detail,
         modifier = modifier.padding(bottom = bottomContentPadding).fillMaxSize(),
-        icon = { RaftContentLucideIcon(RaftLucideIconName.Activity, size = RaftEmptyStateDefaults.IconSize) },
+        icon = { RaftContentLucideIcon(RaftLucideIconName.Message, size = RaftEmptyStateDefaults.IconSize) },
         actions =
             actionLabel?.let { label ->
                 {
@@ -3346,7 +3349,7 @@ private fun InboxFilter.localizedLabel(): String =
 internal fun InboxFilter.iconName(): RaftLucideIconName =
     when (this) {
         InboxFilter.All -> RaftLucideIconName.Inbox
-        InboxFilter.Unread -> RaftLucideIconName.CircleDot
+        InboxFilter.Unread -> RaftLucideIconName.MessageSquareDot
         InboxFilter.Mentions -> RaftLucideIconName.AtSign
         InboxFilter.Pinned -> RaftLucideIconName.Pin
         InboxFilter.Saved -> RaftLucideIconName.Bookmark

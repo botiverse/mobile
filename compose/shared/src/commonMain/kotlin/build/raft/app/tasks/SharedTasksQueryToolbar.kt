@@ -108,7 +108,7 @@ internal fun SharedTasksQueryToolbar(
         listOf(
             sheetChoice("channel", channelLabel, RaftLucideIconName.Hash, query.channelIds.size, SharedTasksToolbarTags.Channel),
             status,
-            sheetChoice("creator", creatorLabel, RaftLucideIconName.CircleUser, query.creators.size, SharedTasksToolbarTags.Creator),
+            sheetChoice("creator", creatorLabel, RaftLucideIconName.CircleUserRound, query.creators.size, SharedTasksToolbarTags.Creator),
             sheetChoice("assignee", assigneeLabel, RaftLucideIconName.User, query.assignees.size, SharedTasksToolbarTags.Assignee),
         )
             .sortedByDescending { (_, applied) -> applied }

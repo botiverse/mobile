@@ -1170,7 +1170,7 @@ private fun SharedHomeSearchHistorySection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RaftLucideIcon(
-                RaftLucideIconName.Clock3,
+                RaftLucideIconName.Clock,
                 color = raftArgbHex(RaftColor.ForegroundHint),
                 modifier = Modifier.size(14.dp),
             )
@@ -1282,7 +1282,7 @@ private fun SharedHomeSearchHistoryTag(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 RaftLucideIcon(
-                    RaftLucideIconName.Clock3,
+                    RaftLucideIconName.Clock,
                     color = raftArgbHex(RaftColor.ForegroundHint),
                     modifier = Modifier.size(12.dp),
                 )

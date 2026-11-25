@@ -777,7 +777,7 @@ internal fun threadMessageMenuActions(
             add(
                 ThreadMessageMenuAction(
                     label = Res.string.common_delete.desc(),
-                    icon = RaftLucideIconName.Trash,
+                    icon = RaftLucideIconName.Trash2,
                     group = "destructive",
                     onClick = onDelete
                 )

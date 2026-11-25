@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
@@ -374,9 +375,10 @@ private fun RaftScreenshotFeedbackPromptPill(
                         alpha = entry.value
                         translationY = 24.dp.toPx() * hidden
                     }
+                    .shadow(elevation = if (RaftTheme.isDark) 8.dp else 4.dp, shape = pillShape)
                     .clip(pillShape)
-                    .background(colors.layerCard, pillShape)
-                    .border(RaftStroke.Strong, colors.lineStrong, pillShape)
+                    .background(colors.layerPopover, pillShape)
+                    .border(RaftStroke.Hairline, colors.lineSeam, pillShape)
                     .padding(6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -387,7 +389,7 @@ private fun RaftScreenshotFeedbackPromptPill(
                 modifier = Modifier.testTag(RaftScreenshotFeedbackPromptActionTag).weight(1f, fill = false),
                 variant = RaftButtonVariant.Ghost,
                 size = RaftButtonSize.Md,
-                leadingIcon = { RaftSlotIcon(RaftLucideIconName.MessageSquarePlus) },
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Feedback) },
             )
             RaftCloseButton(
                 onClick = onDismiss,

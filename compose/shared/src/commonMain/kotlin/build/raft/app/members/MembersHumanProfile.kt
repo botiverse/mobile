@@ -56,7 +56,9 @@ import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -839,13 +841,15 @@ internal fun MembersServerRoleEditor(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
+        val roleChipShape = RoundedCornerShape(RaftAppRadius.Chip)
         Row(
             modifier = Modifier
                 .widthIn(min = 160.dp)
                 .height(33.dp)
-                // Web InlineBadgeEditor with the roles' `default` soft badge: the fill-muted wash.
-                .raftControlSurface(fill = RaftColor.FillMuted, border = RaftColor.LineField)
-                .raftClickable(onClick = onToggle, enabled = enabled, shape = RoundedCornerShape(RaftAppRadius.Control))
+                // Web InlineBadgeEditor with the roles' `default` soft badge: the fill-muted wash, no border.
+                .clip(roleChipShape)
+                .background(RaftColor.FillMuted, roleChipShape)
+                .raftClickable(onClick = onToggle, enabled = enabled, shape = roleChipShape)
                 .padding(horizontal = RaftAppSpacing.Sm, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
             verticalAlignment = Alignment.CenterVertically

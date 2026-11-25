@@ -153,6 +153,42 @@ class RaftComputersRackModelTest {
         assertEquals(steps, computer().copy(runtimes = runtimes, loginSteps = steps).toRaftComputerRow().loginSteps)
     }
 
+    @Test
+    fun computerDeviceIconMapsProviderAndDeviceClassLikeWeb() {
+        // Recognized cloud hostProvider wins over deviceClass.
+        assertEquals(
+            RaftLucideIconName.Cloud,
+            raftComputerDeviceIconName(RaftComputerKind.Computer, hostProvider = "hetzner", deviceClass = "server"),
+        )
+        assertEquals(
+            RaftLucideIconName.Cloud,
+            raftComputerDeviceIconName(RaftComputerKind.Computer, hostProvider = "AWS", deviceClass = null),
+        )
+        assertEquals(
+            RaftLucideIconName.Laptop,
+            raftComputerDeviceIconName(RaftComputerKind.Computer, hostProvider = null, deviceClass = "laptop"),
+        )
+        assertEquals(
+            RaftLucideIconName.Server,
+            raftComputerDeviceIconName(RaftComputerKind.Computer, hostProvider = null, deviceClass = "server"),
+        )
+        assertEquals(
+            RaftLucideIconName.Monitor,
+            raftComputerDeviceIconName(RaftComputerKind.Computer, hostProvider = null, deviceClass = "desktop"),
+        )
+        assertEquals(
+            RaftLucideIconName.Monitor,
+            raftComputerDeviceIconName(RaftComputerKind.Computer, hostProvider = null, deviceClass = null),
+        )
+        assertEquals(
+            RaftLucideIconName.Server,
+            raftComputerDeviceIconName(RaftComputerKind.Daemon, hostProvider = null, deviceClass = null),
+        )
+        val row = computer().copy(hostProvider = "aws", deviceClass = "server").toRaftComputerRow()
+        assertEquals("aws", row.hostProvider)
+        assertEquals("server", row.deviceClass)
+    }
+
     private fun computer(
         online: Boolean = true,
         disk: SettingsComputerSizeStatusSnapshot? = null,

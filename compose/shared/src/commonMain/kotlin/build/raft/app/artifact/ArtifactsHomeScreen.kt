@@ -398,7 +398,7 @@ private fun artifactsHomeAuthorChoice(
                     avatarSize = 16.dp,
                 )
             } else {
-                ArtifactsHomeToolbarIcon(RaftLucideIconName.CircleUser)
+                ArtifactsHomeToolbarIcon(RaftLucideIconName.UserRound)
             }
         },
         options = emptyList(),
@@ -522,7 +522,7 @@ private fun artifactsHomeViewSwitch(
                 RaftFitToolbarViewOption(
                     key = ArtifactsHomeView.List.wire,
                     label = list,
-                    icon = { ArtifactsHomeToolbarIcon(RaftLucideIconName.LayoutList) },
+                    icon = { ArtifactsHomeToolbarIcon(RaftLucideIconName.List) },
                 ),
             ),
         selectedKey = view.wire,
@@ -616,12 +616,12 @@ private fun artifactsHomeChoicesEmptyText(phase: ArtifactsHomeChoicesPhase, fail
 
 private fun artifactsHomePlaceIcon(place: ArtifactsHomePlace?): RaftLucideIconName =
     when (place) {
-        null -> RaftLucideIconName.MessageSquare
+        null -> RaftLucideIconName.DirectMessage
         is ArtifactsHomePlace.Home -> if (place.scope == ArtifactsHomeScope.Public) RaftLucideIconName.Globe else RaftLucideIconName.Users
         is ArtifactsHomePlace.Conversation ->
             when (place.conversation.type) {
                 "private" -> RaftLucideIconName.Lock
-                "dm" -> RaftLucideIconName.MessageSquare
+                "dm" -> RaftLucideIconName.DirectMessage
                 else -> RaftLucideIconName.Hash
             }
     }

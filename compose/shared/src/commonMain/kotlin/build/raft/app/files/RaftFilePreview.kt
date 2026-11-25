@@ -4355,7 +4355,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                     RaftUiMenuItem(
                         id = RaftFilePreviewCommentsActionId,
                         label = stringResource(Res.string.file_preview_action_comments),
-                        icon = RaftLucideIconName.MessageCircle
+                        icon = RaftLucideIconName.Comment
                     )
                 } else {
                     null

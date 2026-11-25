@@ -581,7 +581,7 @@ internal fun ThreadMessageCommentRefChip(
         horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         RaftLucideIcon(
-            RaftLucideIconName.MessageSquare,
+            RaftLucideIconName.Comment,
             modifier = Modifier.size(12.dp),
             color = if (enabled) "#FF111827" else "#FF6B7280"
         )

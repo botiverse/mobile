@@ -2126,9 +2126,9 @@ private fun ActivitySwipeButtonCell(
         ) {
             when (button) {
                 ActivitySwipeButton.Done -> RaftGlyphIcon(RaftGlyph.Check, size = 18.dp, color = foreground)
-                // Each button uses its action's menu icon, as on web: Unfollow thread is message-circle-off.
+                // Each button uses its action's menu icon, as on web: Unfollow thread is UnfollowThreadIcon.
                 ActivitySwipeButton.Unfollow ->
-                    RaftLucideIcon(RaftLucideIconName.MessageCircleOff, Modifier.size(18.dp), color = raftArgbHex(foreground))
+                    RaftLucideIcon(RaftLucideIconName.UnfollowThread, Modifier.size(18.dp), color = raftArgbHex(foreground))
                 ActivitySwipeButton.Mute ->
                     RaftLucideIcon(RaftLucideIconName.BellOff, Modifier.size(18.dp), color = raftArgbHex(foreground))
                 // Mark as read / unread (web InboxContextMenu): message-square-check / message-square-dot.

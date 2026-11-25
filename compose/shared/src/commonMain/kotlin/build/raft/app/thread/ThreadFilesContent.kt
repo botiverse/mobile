@@ -708,7 +708,7 @@ private fun ThreadFileMetaLine(item: RaftThreadFileItem) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RaftLucideIcon(
-                    name = RaftLucideIconName.Clock3.wireName,
+                    name = RaftLucideIconName.Clock.wireName,
                     modifier = Modifier.size(12.dp),
                     color = raftArgbHex(RaftColor.ForegroundHint)
                 )
@@ -798,7 +798,7 @@ private fun RaftThreadFileItem.threadFileTypeIconName(): RaftLucideIconName {
     val lowerName = name.lowercase()
     return when {
         raftFilePreviewIsImageAttachment(fileName = name, mimeType = mimeType) -> RaftLucideIconName.Image
-        normalizedMime.startsWith("video/") -> RaftLucideIconName.FileVideoCamera
+        normalizedMime.startsWith("video/") -> RaftLucideIconName.Video
         normalizedMime == "application/pdf" || lowerName.endsWith(".pdf") -> RaftLucideIconName.FileText
         normalizedMime.contains("zip") ||
             normalizedMime.contains("archive") ||

@@ -6015,7 +6015,7 @@ private fun RaftAppShellReadyContent(
                                     RaftEmptyState(
                                         title = adaptiveEmptyLabel,
                                         modifier = Modifier.fillMaxSize(),
-                                        icon = { RaftContentLucideIcon(RaftLucideIconName.MessageSquare, size = RaftEmptyStateDefaults.IconSize) },
+                                        icon = { RaftContentLucideIcon(RaftLucideIconName.Message, size = RaftEmptyStateDefaults.IconSize) },
                                     )
                                 }
                             } else {

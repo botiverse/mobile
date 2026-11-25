@@ -105,4 +105,11 @@ class RaftNotificationLevelPickerTest {
             raftNotificationChoicePlan(mentions, muted, serverAll),
         )
     }
+
+    @Test
+    fun notificationLevelIconMatchesWebLevelIcon() {
+        assertEquals(RaftLucideIconName.BellRing, RaftNotificationLevel.All.notificationLevelIconName())
+        assertEquals(RaftLucideIconName.Bell, RaftNotificationLevel.Mentions.notificationLevelIconName())
+        assertEquals(RaftLucideIconName.BellMinus, RaftNotificationLevel.None.notificationLevelIconName())
+    }
 }
