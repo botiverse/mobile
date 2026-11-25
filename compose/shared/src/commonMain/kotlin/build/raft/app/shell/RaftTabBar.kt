@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSlot
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import androidx.compose.runtime.Immutable
@@ -286,6 +287,8 @@ internal fun RaftBottomTabBar(
     // dots sit on the slot's top-right corner, above the pill border, never over the icon.
     Box(
         modifier = modifier
+            // raft-ui `mobile-nav-root`, for the visual-testing component comparison.
+            .raftSlot("mobile-nav-root")
             .fillMaxWidth()
             .height(RaftBottomTabBarSpec.BarHeight)
             .background(RaftColor.Card)

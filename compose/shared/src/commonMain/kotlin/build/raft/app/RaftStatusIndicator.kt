@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSlot
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -132,6 +133,8 @@ internal fun RaftAvatarWithStatus(
                     Modifier
                         .align(Alignment.BottomEnd)
                         .offset(x = step.badgeOverhang, y = step.badgeOverhang)
+                        // raft-ui's `avatar-badge` slot, for the visual-testing component comparison.
+                        .raftSlot("avatar-badge")
                         .then(
                             if (statusDescription != null) {
                                 Modifier.semantics { contentDescription = statusDescription }

@@ -463,7 +463,7 @@ fun RaftMobileNavServerPopoverItem(
         }
         return
     }
-    Column(modifier.then(gesture), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier.raftSlot("mobile-nav-server-item").then(gesture), horizontalAlignment = Alignment.CenterHorizontally) {
         RaftMobileNavPill(selected = false, washed = washed, open = state.open) {
             RaftMobileNavServerAvatar(
                 RaftMobileNavDefaults.ServerAvatarSize,
@@ -963,7 +963,9 @@ private fun RaftMobileNavLabel(
         // ascent/descent (~1.45em, 16.7dp at 11.5sp). Squeezed into 14dp the text node clips to
         // its bounds and cut the strokes under the baseline (主页 动态 任务 搜索).
         modifier =
-            (if (readable) Modifier else Modifier.clearAndSetSemantics { })
+            Modifier
+                .raftSlot("mobile-nav-item-label")
+                .then(if (readable) Modifier else Modifier.clearAndSetSemantics { })
                 .height(lineBox)
                 .wrapContentHeight(Alignment.CenterVertically, unbounded = true)
                 .padding(horizontal = 2.dp),

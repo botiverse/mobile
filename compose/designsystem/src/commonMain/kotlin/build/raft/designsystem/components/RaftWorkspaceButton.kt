@@ -78,7 +78,9 @@ fun RaftWorkspaceButton(
         look = look,
         onClick = onClick,
         // The top bar's item: 36, or 34 (the control height) under a fine pointer.
-        modifier = modifier.height(RaftTopBarDefaults.itemSize),
+        // raft-ui's slot names (`button`, `workspace-button-name`, `workspace-button-chevron`), for
+        // the visual-testing component comparison.
+        modifier = modifier.raftSlot("button").height(RaftTopBarDefaults.itemSize),
         enabled = true,
         loading = false,
         loadingLabel = "",
@@ -98,14 +100,19 @@ fun RaftWorkspaceButton(
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false).widthIn(max = nameMaxWidth),
+                modifier = Modifier.raftSlot("workspace-button-name").weight(1f, fill = false).widthIn(max = nameMaxWidth),
             )
             if (mark != null) {
                 Spacer(Modifier.width(RaftWorkspaceButtonDefaults.MarkGap))
                 Box(contentAlignment = Alignment.Center) { mark() }
             }
             Spacer(Modifier.width(RaftWorkspaceButtonDefaults.NameChevronGap))
-            RaftGlyphIcon(RaftGlyph.ChevronDown, size = RaftWorkspaceButtonDefaults.ChevronSize, color = look.ink)
+            RaftGlyphIcon(
+                RaftGlyph.ChevronDown,
+                modifier = Modifier.raftSlot("workspace-button-chevron"),
+                size = RaftWorkspaceButtonDefaults.ChevronSize,
+                color = look.ink,
+            )
         }
     }
 }
