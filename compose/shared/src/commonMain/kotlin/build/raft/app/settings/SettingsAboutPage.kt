@@ -223,7 +223,7 @@ internal fun settingsAboutDeveloperShortcutRows(
             add(
                 RaftSharedSettingsRow(
                     key = SETTINGS_ABOUT_FEEDBACK_ACTION,
-                    iconName = RaftLucideIconName.MessageSquarePlus,
+                    iconName = RaftLucideIconName.Feedback,
                     title = feedbackTitle,
                     detail = feedbackDetail,
                     status = openStatus,

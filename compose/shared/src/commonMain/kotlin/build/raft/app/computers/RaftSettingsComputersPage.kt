@@ -2391,7 +2391,7 @@ private fun RaftComputerDeviceIcon(row: RaftComputerRowModel) {
     Box(Modifier.size(RaftComputerCardIconSize)) {
         CompositionLocalProvider(LocalRaftContentColor provides RaftTheme.colors.foregroundMuted) {
             RaftComputersIcon(
-                if (row.kind == RaftComputerKind.Computer) RaftLucideIconName.Monitor else RaftLucideIconName.Server,
+                raftComputerDeviceIconName(row.kind, row.hostProvider, row.deviceClass),
                 size = RaftComputerCardIconSize,
             )
         }
@@ -4259,7 +4259,7 @@ private fun RaftComputerWorkspaceRow(workspace: SettingsComputerWorkspaceSnapsho
         subtitle = workspace.path,
         description = listOfNotNull(raftComputerWorkspaceSize(workspace.totalSizeBytes), files, modified).joinToString(" · ").ifBlank { null },
         leading = {
-            RaftIconTile { RaftComputersIcon(RaftLucideIconName.Folder, size = RaftIconTileSize.Md.icon) }
+            RaftIconTile { RaftComputersIcon(RaftLucideIconName.FolderOpen, size = RaftIconTileSize.Md.icon) }
         },
         trailing = {
             when (workspace.statusLabel) {
@@ -4302,7 +4302,7 @@ internal fun RaftComputersIcon(name: RaftLucideIconName, size: Dp = 16.dp) {
 private fun RaftComputerTile(row: RaftComputerRowModel, size: RaftIconTileSize = RaftIconTileSize.Md) {
     RaftIconTile(size = size) {
         RaftComputersIcon(
-            if (row.kind == RaftComputerKind.Computer) RaftLucideIconName.Monitor else RaftLucideIconName.Server,
+            raftComputerDeviceIconName(row.kind, row.hostProvider, row.deviceClass),
             size = size.icon,
         )
     }

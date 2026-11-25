@@ -1043,6 +1043,8 @@ private fun SharedComputersOwner.durableKey(serverId: String): RaftDurableSnapsh
     val osRelease: String? = null,
     /** Server `hostProvider`, so a cold start groups by Provider as the live list does. */
     val hostProvider: String? = null,
+    /** Server `deviceClass` ("laptop", "server", ...), so a cold start draws the right device icon. */
+    val deviceClass: String? = null,
     val runtimeVersions: Map<String, String> = emptyMap(),
     val description: String? = null,
     val lastHeartbeat: String? = null,
@@ -1128,6 +1130,7 @@ private fun SharedComputersServerSlice.toDurableRecord(): RaftComputersDurableRe
                     os = machine.os,
                     osRelease = machine.osRelease,
                     hostProvider = machine.hostProvider,
+                    deviceClass = machine.deviceClass,
                     runtimeVersions = machine.runtimeVersions,
                     description = machine.description,
                     lastHeartbeat = machine.lastHeartbeat,
@@ -1172,6 +1175,7 @@ private fun RaftComputersDurableRecord.toServerSlice(): SharedComputersServerSli
                     os = machine.os,
                     osRelease = machine.osRelease,
                     hostProvider = machine.hostProvider,
+                    deviceClass = machine.deviceClass,
                     runtimeVersions = machine.runtimeVersions,
                     description = machine.description,
                     lastHeartbeat = machine.lastHeartbeat,

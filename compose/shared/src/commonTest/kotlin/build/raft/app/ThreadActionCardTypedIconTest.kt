@@ -23,9 +23,9 @@ class ThreadActionCardTypedIconTest {
             "integration:update_app_registration" to RaftLucideIconName.AppWindow,
             "integration:recover_app_owner" to RaftLucideIconName.ShieldAlert,
             "integration:connect_mcp" to RaftLucideIconName.Plug,
-            "feedback:submit" to RaftLucideIconName.MessageSquare,
+            "feedback:submit" to RaftLucideIconName.Message,
             "plan:upgrade" to RaftLucideIconName.CreditCard,
-            "question:ask" to RaftLucideIconName.MessageSquare,
+            "question:ask" to RaftLucideIconName.Message,
         )
 
     @Test

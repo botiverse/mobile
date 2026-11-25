@@ -1,7 +1,12 @@
 package build.raft.app
 
 import build.raft.app.resources.*
-import androidx.compose.foundation.border
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -534,11 +539,22 @@ private fun AddComputerCommandRow(command: String, onCopy: (String) -> Unit, lab
 /** Web `COMMAND_PLACEHOLDER_CLASS_NAME`: where the command would be when there is none yet. */
 @Composable
 private fun AddComputerCommandPlaceholder(text: String) {
-    val shape = RoundedCornerShape(RaftRadius.Control)
+    val lineColor = RaftTheme.colors.lineSeam
+    val radius = RaftRadius.Control
+    val stroke = RaftStroke.Hairline
     Box(
         Modifier
             .fillMaxWidth()
-            .border(RaftStroke.Hairline, RaftTheme.colors.lineSeam, shape)
+            .drawBehind {
+                val inset = stroke.toPx() / 2f
+                drawRoundRect(
+                    color = lineColor,
+                    topLeft = Offset(inset, inset),
+                    size = Size(size.width - inset * 2f, size.height - inset * 2f),
+                    cornerRadius = CornerRadius((radius.toPx() - inset).coerceAtLeast(0f)),
+                    style = Stroke(width = stroke.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))),
+                )
+            }
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         RaftText(text, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundHint)

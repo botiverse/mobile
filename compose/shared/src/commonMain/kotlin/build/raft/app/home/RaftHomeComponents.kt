@@ -3798,6 +3798,7 @@ private fun RaftStructuralHomeShellContent(
                 // A Lounge's menu keeps plain Mute (web: no Notifications row for a Lounge).
                 activeConversation?.takeIf { it.agentLounge == null }?.let { homeNotificationLevelTarget(currentServerId, it) }.whenLevelsSupported()
             val activeNotificationLevelLabel = rememberRaftNotificationLevelMenuLabel(activeNotificationTarget)
+            val activeNotificationLevelIcon = rememberRaftNotificationLevelIcon(activeNotificationTarget)
             val pinMenuItems = activeConversation?.let { conversation ->
                 if (conversation.agentLounge != null) {
                     // Agent Lounge (#proj-chat:#44): Mark All as Read when unread, Unmute only if already muted, Pin, Close.
@@ -3817,7 +3818,8 @@ private fun RaftStructuralHomeShellContent(
                     activeCanArchive = activeCanArchive,
                     activeCanLeave = activeCanLeave,
                     markAllReadEnabled = onMarkConversationReadAll != null,
-                    notificationLevelLabel = activeNotificationTarget?.let { activeNotificationLevelLabel }
+                    notificationLevelLabel = activeNotificationTarget?.let { activeNotificationLevelLabel },
+                    notificationLevelIcon = activeNotificationLevelIcon
                 )
             }
             if (activeConversationId != null && pinMenuItems != null) {
@@ -4458,7 +4460,7 @@ internal fun raftHomeAgentLoungeMenuItems(
                 RaftBaseMenuItem(
                     id = if (markAllReadEnabled) "mark-all-read" else "mark-read",
                     label = if (markAllReadEnabled) labels.markAllAsRead else labels.markAsRead,
-                    icon = RaftLucideIconName.MailOpen
+                    icon = RaftLucideIconName.MessageSquareCheck
                 )
             )
         }
@@ -4590,7 +4592,8 @@ internal fun raftHomeConversationMenuItems(
     /** The row offers "Mark All as Read" (its owner wired [onMarkConversationReadAll]). */
     markAllReadEnabled: Boolean = false,
     /** "Notifications: <choice>" (design §4.3; it stands in for Mute / Unmute); null leaves the row out. */
-    notificationLevelLabel: String? = null
+    notificationLevelLabel: String? = null,
+    notificationLevelIcon: RaftLucideIconName = RaftLucideIconName.Bell
 ): List<RaftBaseMenuItem> =
     buildList {
         // Web parity (menu order v4, botiverse/slock #16225 / SidebarRowContextMenu.tsx):
@@ -4621,14 +4624,14 @@ internal fun raftHomeConversationMenuItems(
                         readConversation -> labels.markAllAsRead
                         else -> labels.markAsRead
                     },
-                icon = if (hasUnread) RaftLucideIconName.MailOpen else RaftLucideIconName.Mail
+                icon = if (hasUnread) RaftLucideIconName.MessageSquareCheck else RaftLucideIconName.MessageSquareDot
             )
         )
         // A channel's mute is the third choice of its Notifications row (slock #12231, as in Slack), so
         // only a row without one (a DM, or a server without the unified API) lists Mute / Unmute.
         // Unmute stays offered while muted even if mute is no longer supported (removed App bot DM).
         if (notificationLevelLabel != null) {
-            add(RaftBaseMenuItem(id = "notification-level", label = notificationLevelLabel, icon = RaftLucideIconName.BellRing))
+            add(RaftBaseMenuItem(id = "notification-level", label = notificationLevelLabel, icon = notificationLevelIcon))
         } else if (conversation.activityMuteSupported || conversation.activityMuted) {
             add(
                 RaftBaseMenuItem(
@@ -6459,7 +6462,7 @@ internal fun RaftHomeNotificationKind.iconTileVariant(): RaftIconTileVariant =
 
 internal fun RaftHomeNotificationIcon.notificationIconName(kind: RaftHomeNotificationKind): RaftLucideIconName =
     when (this) {
-        RaftHomeNotificationIcon.WifiOff -> RaftLucideIconName.TriangleAlert
+        RaftHomeNotificationIcon.WifiOff -> RaftLucideIconName.WifiOff
         RaftHomeNotificationIcon.CircleArrowUp -> RaftLucideIconName.CircleArrowUp
         RaftHomeNotificationIcon.Info -> RaftLucideIconName.Info
         RaftHomeNotificationIcon.ShieldAlert -> RaftLucideIconName.ShieldAlert
@@ -6568,14 +6571,13 @@ private fun HomeServerDrawerPanel(
         Box(Modifier.fillMaxSize().background(RaftTheme.scrim))
         val drawerWidth = homeServerDrawerWidth(maxWidth = maxWidth, maxHeight = maxHeight)
         var horizontalDragPx by remember { mutableStateOf(0f) }
-        Column(
-            modifier =
-                Modifier
-                    .width(drawerWidth)
-                    .height(maxHeight)
-                    .background(RaftColor.Canvas)
-                    .border(RaftAppStroke.Thin, RaftColor.BorderSeam)
-                    // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
+        Box(modifier = Modifier.width(drawerWidth).height(maxHeight)) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(RaftColor.Canvas)
+                        // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
                     .clickable(onClick = {})
                     .raftKeepsBackSwipe()
                     .pointerInput(onDismiss) {
@@ -6667,6 +6669,15 @@ private fun HomeServerDrawerPanel(
             Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
             ServerSwitcherActionRow(labels.switchOrCreateServer, onCreateServerClick)
             onInviteHumanClick?.let { ServerSwitcherActionRow(labels.inviteHuman, it, RaftLucideIconName.UserPlus) }
+            }
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .width(RaftAppStroke.Thin)
+                        .background(RaftColor.BorderSeam)
+            )
         }
     }
 }

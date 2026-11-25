@@ -293,7 +293,7 @@ internal fun ThreadDateDivider(label: String) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(Modifier.weight(1f).height(RaftAppStroke.Thin).background(RaftColor.TextMutedGray.copy(alpha = 0.35f)))
+        Box(Modifier.weight(1f).height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
         Text(
             text = label,
             style = threadDateDividerTextStyle(),
@@ -302,7 +302,7 @@ internal fun ThreadDateDivider(label: String) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.height(ThreadDateDividerLineHeight)
         )
-        Box(Modifier.weight(1f).height(RaftAppStroke.Thin).background(RaftColor.TextMutedGray.copy(alpha = 0.35f)))
+        Box(Modifier.weight(1f).height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
     }
 }
 
@@ -704,7 +704,7 @@ internal fun ThreadOriginCard(
                 }
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
+        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
     }
 }
 

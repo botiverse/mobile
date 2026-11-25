@@ -216,7 +216,7 @@ private fun SettingsWebViewScreen() {
             StandaloneSettingsWebViewPage(
                 pager = pager,
                 title = stringResource(Res.string.settings_connected_apps_title),
-                iconName = RaftLucideIconName.Link2,
+                iconName = RaftLucideIconName.AppWindow,
                 spec = remember(installedAppId) { settingsMarketplaceWebViewSpec(installedAppId) },
             )
         }
@@ -231,7 +231,7 @@ private fun SettingsWebViewScreen() {
             StandaloneSettingsWebViewPage(
                 pager = pager,
                 title = stringResource(Res.string.settings_im_bridges_title),
-                iconName = RaftLucideIconName.Network,
+                iconName = RaftLucideIconName.ArrowLeftRight,
                 spec = settingsImBridgesWebViewSpec,
             )
         SettingsWebViewSurface.AppAuthorizations ->

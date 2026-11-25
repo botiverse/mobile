@@ -771,7 +771,7 @@ private fun InviteHumanDialogBody(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    InviteHumanIcon(RaftLucideIconName.Link2, 14.dp, colors.foregroundHint)
+                    InviteHumanIcon(RaftLucideIconName.Link, 14.dp, colors.foregroundHint)
                     RaftText(
                         stringResource(Res.string.invite_human_send_link_hint),
                         style = typography.caption,

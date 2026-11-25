@@ -359,7 +359,7 @@ internal fun SharedTasksPanel(
                     SharedTasksStateBody(
                         title = emptyCopy.title,
                         detail = emptyCopy.description,
-                        iconName = RaftLucideIconName.SquareCheckBig
+                        iconName = RaftLucideIconName.ListTodo
                     )
                 }
             }
@@ -803,7 +803,7 @@ private fun SharedTasksLoadedBodyContent(
         visibleContent.channelOptions.map { name -> RaftFilterOption(id = name, label = name, icon = RaftLucideIconName.Hash) }
     }
     val creatorFilterOptions = remember(visibleContent.creatorOptions) {
-        visibleContent.creatorOptions.map { RaftFilterOption(id = it.tasksIdentityFilterId(), label = it.displayName, icon = RaftLucideIconName.CircleUser) }
+        visibleContent.creatorOptions.map { RaftFilterOption(id = it.tasksIdentityFilterId(), label = it.displayName, icon = RaftLucideIconName.CircleUserRound) }
     }
     val unassignedAssigneeLabel = stringResource(Res.string.tasks_assignee_unassigned)
     val assigneeFilterOptions = remember(visibleContent.assigneeOptions, unassignedAssigneeLabel) {
@@ -1194,7 +1194,7 @@ private fun SharedTasksLoadedBodyContent(
                             SharedTasksStateBody(
                                 title = emptyCopy.title,
                                 detail = emptyCopy.description,
-                                iconName = RaftLucideIconName.SquareCheckBig
+                                iconName = RaftLucideIconName.ListTodo
                             )
                         } else if (showHeader) {
                             LazyColumn(
@@ -1527,7 +1527,7 @@ private fun SharedTasksToolbar(
     val filters =
         listOfNotNull(
             if (showChannelFilter) filterChoice("channel", channelLabel, RaftLucideIconName.Hash, selectedChannels, SharedTasksToolbarTags.Channel) else null,
-            filterChoice("creator", creatorLabel, RaftLucideIconName.CircleUser, selectedCreatorIds, SharedTasksToolbarTags.Creator),
+            filterChoice("creator", creatorLabel, RaftLucideIconName.CircleUserRound, selectedCreatorIds, SharedTasksToolbarTags.Creator),
             filterChoice("assignee", assigneeLabel, RaftLucideIconName.User, selectedAssigneeIds, SharedTasksToolbarTags.Assignee),
         )
             .sortedByDescending { (_, applied) -> applied }
@@ -1961,6 +1961,7 @@ private fun SharedTaskCard(
                         labelLineHeight = 16.sp,
                         labelFontWeight = FontWeight.SemiBold,
                         borderWidth = RaftAppStroke.Thin,
+                        borderColor = RaftColor.BorderHairline,
                         anchorPlacement = RaftAnchorPlacement.BottomEnd
                     )
                     assigneePicker()
@@ -1981,7 +1982,7 @@ private fun SharedTaskCard(
 internal fun TaskSummary.taskCardReplyCount(): Int? =
     conversationReplyCount.takeIf { conversationChannelId != null && it > 0 }
 
-/** web `ReplyCount`: a 12dp `message-square` then the count in `text-mono-meta` `foreground-hint`. */
+/** web `ReplyCount`: a 12dp `ThreadIcon` then the count in `text-mono-meta` `foreground-hint`. */
 @Composable
 private fun SharedTaskReplyCount(count: Int) {
     val description = stringResource(Res.string.tasks_reply_count_description, count)
@@ -1990,7 +1991,7 @@ private fun SharedTaskReplyCount(count: Int) {
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RaftLucideIcon(RaftLucideIconName.MessageSquare, Modifier.size(12.dp), color = raftArgbHex(RaftColor.ForegroundHint))
+        RaftLucideIcon(RaftLucideIconName.Thread, Modifier.size(12.dp), color = raftArgbHex(RaftColor.ForegroundHint))
         Text(text = count.toString(), style = SharedTaskMonoMetaStyle, color = RaftColor.ForegroundHint, maxLines = 1)
     }
 }
@@ -2088,7 +2089,7 @@ private fun SharedTasksStateBody(
     title: String,
     detail: String?,
     loading: Boolean = false,
-    iconName: RaftLucideIconName = RaftLucideIconName.SquareCheckBig,
+    iconName: RaftLucideIconName = RaftLucideIconName.ListTodo,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
     traceId: String? = null,

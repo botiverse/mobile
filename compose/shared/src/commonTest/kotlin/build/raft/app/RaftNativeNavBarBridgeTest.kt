@@ -672,7 +672,7 @@ class RaftNativeNavBarBridgeTest {
 
         assertEquals(JsonPrimitive("agent-conversation-profile"), rows[2]["id"])
         assertEquals(JsonPrimitive(true), rows[2]["dividerBefore"])
-        assertEquals(JsonPrimitive("lucide-user"), rows[2]["imageAsset"])
+        assertEquals(JsonPrimitive("lucide-user-round"), rows[2]["imageAsset"])
 
         assertTrue(bridge.actionTapped("agent-conversation-lounge"))
         assertEquals(0, selectedLounge, "already on Lounge")

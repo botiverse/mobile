@@ -104,7 +104,7 @@ internal fun RaftArtifactViewerFrame(
                                         variant = RaftButtonVariant.Ghost,
                                         size = RaftIconButtonSize.Lg,
                                     ) {
-                                        RaftSlotIcon(RaftLucideIconName.ExternalLink)
+                                        RaftSlotIcon(RaftLucideIconName.ArrowUpRight)
                                     }
                                 }
                                 if (hasMenu) {

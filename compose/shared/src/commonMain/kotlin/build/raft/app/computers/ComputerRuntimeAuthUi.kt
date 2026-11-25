@@ -470,7 +470,7 @@ internal fun ComputerRuntimeAuthProviderRows(auth: ComputerRuntimeAuthCardState,
                     ),
                 leading = {
                     RaftIconTile(size = RaftIconTileSize.Sm) {
-                        RaftComputersIcon(if (provider.apiKey) RaftLucideIconName.KeyRound else RaftLucideIconName.User, size = 14.dp)
+                        RaftComputersIcon(if (provider.apiKey) RaftLucideIconName.KeyRound else RaftLucideIconName.UserRound, size = 14.dp)
                     }
                 },
                 trailing =

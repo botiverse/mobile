@@ -684,7 +684,7 @@ internal fun ArtifactCombinedCommentBadge(
         RaftBadge(
             text = stringResource(Res.string.artifacts_dashboard_comment_badge_new, total, newComments),
             variant = RaftBadgeVariant.Accent,
-            icon = { RaftLucideIcon(RaftLucideIconName.MessageSquare, Modifier.fillMaxSize(), color = raftArgbHex(LocalRaftContentColor.current)) },
+            icon = { RaftLucideIcon(RaftLucideIconName.Comment, Modifier.fillMaxSize(), color = raftArgbHex(LocalRaftContentColor.current)) },
             modifier = Modifier.testTag(ArtifactsHomeTags.CommentBadge).semantics { contentDescription = desc },
         )
         return
@@ -700,7 +700,7 @@ internal fun ArtifactCombinedCommentBadge(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RaftLucideIcon(RaftLucideIconName.MessageSquare, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundOnHud))
+            RaftLucideIcon(RaftLucideIconName.Comment, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundOnHud))
             RaftText("$total", style = RaftTheme.typography.monoMeta, color = colors.foregroundOnHud, maxLines = 1)
         }
     } else {
@@ -713,7 +713,7 @@ internal fun ArtifactCombinedCommentBadge(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RaftLucideIcon(RaftLucideIconName.MessageSquare, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundMuted))
+            RaftLucideIcon(RaftLucideIconName.Comment, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundMuted))
             RaftText("$total", style = RaftTheme.typography.monoMeta, color = colors.foregroundMuted, maxLines = 1)
         }
     }
@@ -735,7 +735,7 @@ internal fun ArtifactHomeInline(
             is ArtifactHome.Conversation ->
                 when {
                     home.private -> RaftLucideIconName.Lock
-                    home.dm -> RaftLucideIconName.MessageSquare
+                    home.dm -> RaftLucideIconName.DirectMessage
                     else -> RaftLucideIconName.Hash
                 }
         }

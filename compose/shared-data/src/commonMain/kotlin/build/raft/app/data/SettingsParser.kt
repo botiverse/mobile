@@ -576,6 +576,8 @@ private data class WireSettingsComputer(
     val isComputer: Boolean = false,
     val status: String? = null,
     val lastHeartbeat: String? = null,
+    val hostProvider: String? = null,
+    val deviceClass: String? = null,
 )
 
 fun parseSharedSettingsComputers(bodyText: String): SettingsComputersSnapshot? = runCatching {
@@ -603,6 +605,8 @@ private fun WireSettingsComputer.toSettingsComputerSnapshot(): SettingsComputerS
         hostname = hostname,
         platform = os,
         lastSeenLabel = lastHeartbeat,
+        hostProvider = hostProvider?.trim()?.takeIf { it.isNotBlank() },
+        deviceClass = deviceClass?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 

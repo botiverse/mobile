@@ -606,7 +606,7 @@ internal fun AgentConversationAvatarMenuRows(
             onViewProfile?.invoke()
         },
         enabled = onViewProfile != null,
-        leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.User, size = 16.dp) },
+        leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.UserRound, size = 16.dp) },
         modifier = Modifier.testTag(AgentLoungeTestTags.ConversationMenuProfile),
     )
 }
@@ -755,7 +755,7 @@ internal fun agentConversationNativeTitleMenu(
             id = "agent-conversation-profile",
             label = viewProfileLabel,
             systemSymbol = "person",
-            icon = RaftLucideIconName.User,
+            icon = RaftLucideIconName.UserRound,
             enabled = onViewProfile != null,
             dividerBefore = true,
             onClick = { onViewProfile?.invoke() },

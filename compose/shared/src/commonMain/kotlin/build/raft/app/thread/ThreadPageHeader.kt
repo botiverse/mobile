@@ -476,6 +476,7 @@ internal fun ThreadPageHeader(
         }
     val nativeLevelTarget = notificationLevelTarget.whenLevelsSupported()
     val nativeLevelLabel = rememberRaftNotificationLevelMenuLabel(nativeLevelTarget)
+    val nativeLevelIcon = rememberRaftNotificationLevelIcon(nativeLevelTarget)
     var nativeLevelDialogOpen by remember { mutableStateOf(false) }
     if (nativeLevelDialogOpen && nativeLevelTarget != null) {
         RaftNotificationLevelDialog(target = nativeLevelTarget, onDismiss = { nativeLevelDialogOpen = false })
@@ -500,7 +501,7 @@ internal fun ThreadPageHeader(
                             "bell",
                             { nativeLevelDialogOpen = true },
                             placement = RaftNativeNavBarPlacement.Overflow,
-                            icon = RaftLucideIconName.BellRing,
+                            icon = nativeLevelIcon,
                         )
                     val deleteIndex = baseActions.indexOfFirst { it.id == DELETE_TASK_MENU_ITEM_ID }
                     if (deleteIndex >= 0) {
@@ -2061,6 +2062,7 @@ internal data class ThreadHeaderOverflowMenuLabels(
     val timelineLabel: String = "",
     val viewInChannelLabel: String = "",
     val notificationLevelLabel: String? = null,
+    val notificationLevelIcon: RaftLucideIconName = RaftLucideIconName.Bell,
     val deleteTaskLabel: String = "",
 )
 
@@ -2168,7 +2170,7 @@ internal fun threadHeaderOverflowMenuItems(
                 RaftUiMenuItem(
                     id = NOTIFICATION_LEVEL_MENU_ITEM_ID,
                     label = levelLabel,
-                    icon = RaftLucideIconName.BellRing,
+                    icon = labels.notificationLevelIcon,
                     enabled = true,
                     dividerBefore = isNotEmpty(),
                 )
@@ -2229,6 +2231,7 @@ private fun ThreadHeaderFocusModeMenu(
     var localMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     var notificationLevelDialogOpen by remember { mutableStateOf(false) }
     val notificationLevelLabel = rememberRaftNotificationLevelMenuLabel(notificationLevelTarget)
+    val notificationLevelIcon = rememberRaftNotificationLevelIcon(notificationLevelTarget)
     val latestFoldedActions by rememberUpdatedState(foldedActions)
     val latestOnMenuOpen by rememberUpdatedState(onMenuOpen)
     val latestOnMenuItemSelected by rememberUpdatedState(onMenuItemSelected)
@@ -2261,6 +2264,7 @@ private fun ThreadHeaderFocusModeMenu(
                     timelineLabel = stringResource(Res.string.thread_outline_list_title),
                     viewInChannelLabel = stringResource(Res.string.task_conversation_view_in_channel),
                     notificationLevelLabel = notificationLevelTarget?.let { notificationLevelLabel },
+                    notificationLevelIcon = notificationLevelIcon,
                     deleteTaskLabel = stringResource(Res.string.task_delete_action),
                 ),
             foldedActions = foldedActions,

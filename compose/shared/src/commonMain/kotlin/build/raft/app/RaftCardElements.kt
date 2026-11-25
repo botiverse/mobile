@@ -568,8 +568,8 @@ internal fun actionCardIconName(icon: ActionCardSpecIcon?): RaftLucideIconName? 
         ActionCardSpecIcon.Key -> RaftLucideIconName.KeyRound
         ActionCardSpecIcon.App -> RaftLucideIconName.AppWindow
         ActionCardSpecIcon.Package -> RaftLucideIconName.Package
-        ActionCardSpecIcon.Message -> RaftLucideIconName.MessageSquare
-        ActionCardSpecIcon.Sparkles -> RaftLucideIconName.Sparkles
+        ActionCardSpecIcon.Message -> RaftLucideIconName.Message
+        ActionCardSpecIcon.Sparkles -> RaftLucideIconName.Lightbulb
         ActionCardSpecIcon.Plug -> RaftLucideIconName.Plug
         // As the web's typed cards draw them (ActionTypeIcon): restoring an App owner, upgrading.
         ActionCardSpecIcon.Shield -> RaftLucideIconName.ShieldAlert

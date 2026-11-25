@@ -69,7 +69,7 @@ internal fun RaftAppRailHelpOverlay(
                     RaftMenuItem(
                         text = stringResource(Res.string.settings_feedback_title),
                         onClick = onFeedback,
-                        leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.MessageSquarePlus, size = 14.dp) },
+                        leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.Feedback, size = 14.dp) },
                     )
                 }
             }

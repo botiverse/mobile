@@ -232,7 +232,7 @@ internal fun SharedHomeSearchFilters(
                                         label = state.localizedSenderFilterLabel(),
                                         anchorIdentity = "search_filter:sender",
                                         hasValue = senderActive,
-                                        iconName = RaftLucideIconName.CircleUser,
+                                        iconName = RaftLucideIconName.CircleUserRound,
                                         onAnchorChanged = senderAnchorChanged,
                                         onClick = { anchor ->
                                             onOpenFilter("sender", anchor)
@@ -279,7 +279,7 @@ internal fun SharedHomeSearchFilters(
                                     label = state.timeRange.localizedSearchLabel(),
                                     anchorIdentity = "search_filter:time",
                                     hasValue = timeActive,
-                                    iconName = RaftLucideIconName.Calendar,
+                                    iconName = RaftLucideIconName.CalendarRange,
                                     onAnchorChanged = timeAnchorChanged,
                                     onClick = { anchor ->
                                         onOpenFilter("time", anchor)

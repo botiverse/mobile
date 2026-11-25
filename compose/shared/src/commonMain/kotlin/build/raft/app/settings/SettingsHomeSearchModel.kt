@@ -60,7 +60,7 @@ internal fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChanne
                 SearchChannelFilterItem(
                     id = conversation.channelId?.value ?: conversation.threadId.value,
                     label = "@${conversation.name.removePrefix("@")}",
-                    icon = if (conversation.isAgentDirectMessage()) RaftLucideIconName.Bot else RaftLucideIconName.CircleUser
+                    icon = if (conversation.isAgentDirectMessage()) RaftLucideIconName.Bot else RaftLucideIconName.CircleUserRound
                 )
             }
     return (channelFilters + directMessageFilters)
@@ -288,7 +288,7 @@ internal fun SharedHomeSearchPanelState.senderFilterOptions(): List<RaftFilterOp
             RaftFilterOption(
                 id = sender.id,
                 label = if (sender.isSelf) meLabel else sender.displayLabel,
-                icon = if (sender.kind == MemberKind.Agent) RaftLucideIconName.Bot else RaftLucideIconName.CircleUser
+                icon = if (sender.kind == MemberKind.Agent) RaftLucideIconName.Bot else RaftLucideIconName.CircleUserRound
             )
         }
         .distinctBy { it.id }

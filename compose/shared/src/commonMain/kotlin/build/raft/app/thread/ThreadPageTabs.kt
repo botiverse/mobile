@@ -987,7 +987,7 @@ internal fun ThreadJoinFooter(
             onClick = onJoin,
             modifier = Modifier.fillMaxWidth(),
             enabled = !joining,
-            leadingIcon = { RaftSlotIcon(RaftLucideIconName.LogIn) },
+            leadingIcon = { RaftSlotIcon(RaftLucideIconName.JoinChannel) },
             variant = RaftButtonVariant.Primary,
             size = RaftButtonSize.Lg
         )
@@ -1088,21 +1088,11 @@ internal fun ThreadTaskDetailDialog(
                             style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                             color = RaftColor.TextMutedGray
                         )
-                        RaftAnchoredMetaChip(
-                            label = task.status.localizedLabel(),
-                            iconName = null,
-                            color = task.status.sharedTaskStatusChipMeta().color,
-                            contentColor = task.status.sharedTaskStatusChipMeta().foregroundColor,
+                        RaftTaskStatusChip(
+                            status = task.status,
                             onClick = { anchor -> statusMenuAnchor = anchor },
                             anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "status"),
                             modifier = Modifier.padding(start = 6.dp),
-                            trailingIconName = RaftLucideIconName.Pencil,
-                            minHeight = 24.dp,
-                            horizontalPadding = 8.dp,
-                            labelFontSize = 12.sp,
-                            labelLineHeight = 16.sp,
-                            borderWidth = RaftAppStroke.Default,
-                            anchorPlacement = RaftAnchorPlacement.BottomEnd
                         )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1126,7 +1116,8 @@ internal fun ThreadTaskDetailDialog(
                             horizontalPadding = 8.dp,
                             labelFontSize = 12.sp,
                             labelLineHeight = 16.sp,
-                            borderWidth = RaftAppStroke.Default,
+                            borderWidth = RaftAppStroke.Thin,
+                            borderColor = RaftColor.BorderHairline,
                             anchorPlacement = RaftAnchorPlacement.BottomEnd
                         )
                     }

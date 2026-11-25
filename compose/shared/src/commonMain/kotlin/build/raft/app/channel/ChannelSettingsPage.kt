@@ -2493,7 +2493,7 @@ private fun ChannelPreferencesSection(
     val notificationLevelTarget = notificationLevelTargetInput.whenLevelsSupported()
     ChannelDetailsSection(
         title = stringResource(Res.string.channel_details_your_preferences),
-        icon = RaftLucideIconName.User,
+        icon = RaftLucideIconName.UserRound,
     ) {
         if (notificationLevelTarget != null) {
             val title = stringResource(Res.string.notification_level_title)
@@ -2683,7 +2683,7 @@ internal fun ChannelActionsSection(
                                 Res.string.channel_settings_unarchive
                             }
                         ),
-                        RaftLucideIconName.Archive,
+                        RaftLucideIconName.ArchiveRestore,
                         risk = channelSettingsActionRisk(ChannelSettingsActionRow.Unarchive),
                         enabled = buttonEnabled,
                         divider = divider,

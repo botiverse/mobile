@@ -556,7 +556,7 @@ private fun MembersAgentReminderCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     RaftLucideIcon(
-                        RaftLucideIconName.Clock3,
+                        RaftLucideIconName.Clock,
                         modifier = Modifier.size(14.dp),
                         color = raftArgbHex(colors.foregroundMuted)
                     )
@@ -614,7 +614,7 @@ private fun MembersAgentReminderCard(
                             RaftBadge(
                                 text = messageRef,
                                 appearance = RaftBadgeAppearance.Outline,
-                                icon = { RaftContentLucideIcon(RaftLucideIconName.Link2, size = 13.dp) },
+                                icon = { RaftContentLucideIcon(RaftLucideIconName.Link, size = 13.dp) },
                                 onClick = permalink?.let { link -> { onOpenMessageRef(link) } }
                             )
                         }
@@ -1685,7 +1685,7 @@ private fun membersWorkspaceRows(
 
 private fun RaftWorkspaceNode.membersWorkspaceIconName(expanded: Boolean): String =
     when (kind) {
-        RaftWorkspaceFileKind.Folder -> if (expanded) "folder-open" else "folder"
+        RaftWorkspaceFileKind.Folder -> if (expanded) "folder-open" else "folder-closed"
         RaftWorkspaceFileKind.Markdown,
         RaftWorkspaceFileKind.Text -> "file-text"
         RaftWorkspaceFileKind.Image -> "image"
