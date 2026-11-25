@@ -157,19 +157,22 @@ fun RaftDescriptionList(
     direction: RaftDescriptionListDirection = RaftDescriptionListDirection.Vertical,
     content: @Composable RaftDescriptionListScope.() -> Unit,
 ) {
+    // raft-ui's slot names (`description-list`, `-term`, `-details`), for the visual-testing
+    // component comparison.
+    val listModifier = modifier.raftSlot("description-list")
     when (direction) {
         RaftDescriptionListDirection.Vertical ->
-            Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) { VerticalScope.content() }
+            Column(listModifier, verticalArrangement = Arrangement.spacedBy(8.dp)) { VerticalScope.content() }
         RaftDescriptionListDirection.Inline ->
             // `flex flex-wrap items-baseline gap-x-6 gap-y-2`.
             FlowRow(
-                modifier,
+                listModifier,
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) { InlineScope(this).content() }
         RaftDescriptionListDirection.Horizontal -> {
             val slots = remember(content) { HorizontalSlots(content) }
-            SubcomposeLayout(modifier) { constraints ->
+            SubcomposeLayout(listModifier) { constraints ->
                 val bounded = constraints.hasBoundedWidth
                 // The label column is as wide as the widest label (88..160dp): measure the
                 // labels alone first, then lay out each fact (one node, for screen readers) on it.
@@ -270,7 +273,7 @@ private fun DescriptionTerm(
     lines: HorizontalFactLines? = null,
 ) {
     val textModifier = remember(lines) { if (lines != null) Modifier.textLineInto(lines.termBaseline, lines.termTextHeight) else Modifier }
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.raftSlot("description-term").then(modifier), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         RaftText(
             term,
             modifier = textModifier,
@@ -306,7 +309,7 @@ private fun DescriptionDetails(
                     itemVerticalAlignment = Alignment.CenterVertically,
                 ) { content() }
             },
-            modifier = modifier,
+            modifier = Modifier.raftSlot("description-details").then(modifier),
             measurePolicy = remember(minHeight, lineHeight, lines) { DescriptionDetailsPolicy(minHeight, lineHeight, lines) },
         )
     }

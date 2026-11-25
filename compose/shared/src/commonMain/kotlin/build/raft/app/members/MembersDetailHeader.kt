@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSlot
 import build.raft.designsystem.components.LocalRaftPaneGridHeadTabs
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftBackButtonDefaults
@@ -353,8 +354,11 @@ internal fun MembersDetailHeader(
     // In the wide layout's profile column (a side pane) the actions end in the pane's Close, and
     // Back shows only over a page of the cell's own stack (raftSidePaneHeadButtons).
     val paneCloses = LocalRaftSidePanePage.current != null
+    // The web's names on the head's parts (raft-ui `data-slot`, page `data-testid`), for the
+    // visual-testing component comparison.
     Column(
         modifier = Modifier
+            .raftSlot("panel-header")
             .raftPaneGridFitHead()
             .fillMaxWidth()
             .background(colors.layerCanvas)
@@ -401,7 +405,7 @@ internal fun MembersDetailHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
                 ) {
-                    if (showsBack) RaftPaneAwareBackButton(onClick = onBack)
+                    if (showsBack) Box(Modifier.testTag("agent-mobile-back")) { RaftPaneAwareBackButton(onClick = onBack) }
                     if (headRowTabs != null) {
                         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                             RaftPaneGridHeadRowTabs(
@@ -419,12 +423,12 @@ internal fun MembersDetailHeader(
                         if (RaftTheme.scale == RaftScale.Wide && !headerMetaLabel.isNullOrBlank()) {
                             // raft-design desktop-density rule 2: wide heads place meta on the title's baseline.
                             Row(
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.raftSlot("panel-header-content").weight(1f),
                                 horizontalArrangement = Arrangement.spacedBy(RaftPanelHeadInlineMetaGap),
                             ) {
                                 RaftText(
                                     text = member.displayName,
-                                    modifier = Modifier.alignByBaseline(),
+                                    modifier = Modifier.raftSlot("panel-title").alignByBaseline(),
                                     style = typography.headline,
                                     color = colors.foreground,
                                     maxLines = 1,
@@ -432,7 +436,7 @@ internal fun MembersDetailHeader(
                                 )
                                 RaftText(
                                     text = headerMetaLabel,
-                                    modifier = Modifier.weight(1f).alignByBaseline(),
+                                    modifier = Modifier.raftSlot("panel-meta").weight(1f).alignByBaseline(),
                                     style = if (deleted) typography.caption else typography.monoMeta.copy(lineHeight = typography.caption.lineHeight),
                                     color = if (deleted) colors.dangerStrong else colors.foregroundHint,
                                     maxLines = 1,
@@ -441,10 +445,11 @@ internal fun MembersDetailHeader(
                             }
                         } else {
                             Column(
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.raftSlot("panel-header-content").weight(1f)
                             ) {
                                 RaftText(
                                     text = member.displayName,
+                                    modifier = Modifier.raftSlot("panel-title"),
                                     style = typography.headline,
                                     color = colors.foreground,
                                     maxLines = 1,
@@ -453,6 +458,7 @@ internal fun MembersDetailHeader(
                                 if (!headerMetaLabel.isNullOrBlank()) {
                                     RaftText(
                                         text = headerMetaLabel,
+                                        modifier = Modifier.raftSlot("panel-meta"),
                                         style = if (deleted) typography.caption else typography.monoMeta.copy(lineHeight = typography.caption.lineHeight),
                                         color = if (deleted) colors.dangerStrong else colors.foregroundHint,
                                         maxLines = 1,
@@ -463,6 +469,7 @@ internal fun MembersDetailHeader(
                         }
                     }
                     Row(
+                        modifier = Modifier.raftSlot("panel-actions"),
                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -486,7 +493,8 @@ internal fun MembersDetailHeader(
                                 tooltip = stringResource(Res.string.member_label_message),
                                 variant = RaftButtonVariant.Ghost,
                                 size = RaftIconButtonSize.Lg,
-                                loading = directMessageOpening
+                                loading = directMessageOpening,
+                                modifier = Modifier.testTag("agent-profile-message"),
                             ) {
                                 // raft-ui `DirectMessageIcon`, as the web head draws it.
                                 RaftContentLucideIcon(RaftLucideIconName.DirectMessage, size = RaftTheme.controls.barIconSize)
@@ -516,7 +524,7 @@ internal fun MembersDetailHeader(
                                 variant = RaftButtonVariant.Ghost,
                                 size = RaftIconButtonSize.Lg,
                                 modifier =
-                                    Modifier.raftCaptureLiveRootAnchor(threeDotButtonAnchor) {
+                                    Modifier.testTag("agent-profile-overflow-trigger").raftCaptureLiveRootAnchor(threeDotButtonAnchor) {
                                         currentOnManagementMenuAnchorResolverReady(threeDotButtonAnchorResolver)
                                     }
                             ) {
@@ -1182,6 +1190,8 @@ internal fun MembersAgentTabBar(
                     onClick = { onSelectedTabChange(tab) },
                     icon = { RaftContentLucideIcon(tab.iconName) },
                     modifier = Modifier
+                        // The web's `panel-tab-<id>` (AGENT_TABS ids; Apps is `integrations`).
+                        .testTag("panel-tab-" + if (tab == MembersAgentDetailTab.Apps) "integrations" else tab.name.lowercase())
                         .onSizeChanged { tabWidthsPx[tab] = it.width }
                         .then(
                             if (dragging) {

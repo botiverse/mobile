@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSlot
 import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.RaftAvatarSize
@@ -262,7 +263,7 @@ internal fun RaftTopPageHeader(
                 headRowTabs != null -> Unit
                 leadingContent != null ->
                     Box(
-                        modifier = Modifier.size(raftHeaderIconTileSize()),
+                        modifier = Modifier.raftSlot("panel-header-icon").size(raftHeaderIconTileSize()),
                         contentAlignment = Alignment.Center,
                         content = leadingContent
                     )
@@ -270,6 +271,7 @@ internal fun RaftTopPageHeader(
                     Box(
                         modifier =
                             Modifier
+                                .raftSlot("panel-header-icon")
                                 .size(raftHeaderIconTileSize())
                                 // raft `PanelHeaderIcon`: a Source Yellow sticker, sticker radius, ink edge.
                                 .background(iconBackground, RoundedCornerShape(RaftAppRadius.Sticker))
@@ -312,13 +314,13 @@ internal fun RaftTopPageHeader(
                 val shownSubtitle = subtitle?.takeIf { it.isNotBlank() }
                 if (subtitleInline && shownSubtitle != null) {
                     Row(
-                        modifier = Modifier.weight(1f).then(titleTapModifier),
+                        modifier = Modifier.raftSlot("panel-header-content").weight(1f).then(titleTapModifier),
                         horizontalArrangement = Arrangement.spacedBy(RaftPanelHeadInlineMetaGap),
                     ) {
                         // The title is measured first and keeps its room; the meta takes what is left.
                         Text(
                             text = title,
-                            modifier = Modifier.alignByBaseline().raftCopyable(titleCopyText),
+                            modifier = Modifier.raftSlot("panel-title").alignByBaseline().raftCopyable(titleCopyText),
                             style = titleStyle,
                             color = RaftColor.TextBlack,
                             maxLines = 1,
@@ -326,7 +328,7 @@ internal fun RaftTopPageHeader(
                         )
                         Text(
                             text = shownSubtitle,
-                            modifier = Modifier.weight(1f).alignByBaseline(),
+                            modifier = Modifier.raftSlot("panel-meta").weight(1f).alignByBaseline(),
                             // raft-ui PanelMeta: font-sans text-caption (12/16 500).
                             style = RaftType.Caption,
                             color = RaftColor.ForegroundHint,
@@ -336,12 +338,12 @@ internal fun RaftTopPageHeader(
                     }
                 } else {
                     Column(
-                        modifier = Modifier.weight(1f).then(titleTapModifier),
+                        modifier = Modifier.raftSlot("panel-header-content").weight(1f).then(titleTapModifier),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Text(
                             text = title,
-                            modifier = Modifier.raftCopyable(titleCopyText),
+                            modifier = Modifier.raftSlot("panel-title").raftCopyable(titleCopyText),
                             style = titleStyle,
                             color = RaftColor.TextBlack,
                             maxLines = 1,
@@ -350,6 +352,7 @@ internal fun RaftTopPageHeader(
                         shownSubtitle?.let {
                             Text(
                                 text = it,
+                                modifier = Modifier.raftSlot("panel-meta"),
                                 // raft-ui PanelMeta: font-sans text-caption (12/16 500).
                                 style = RaftType.Caption,
                                 color = RaftColor.ForegroundHint,
@@ -366,7 +369,7 @@ internal fun RaftTopPageHeader(
             if (paneCloses) {
                 RaftSidePaneHeadEnd(trailingContent)
             } else if (trailingContent != null) {
-                Box(content = trailingContent)
+                Box(Modifier.raftSlot("panel-actions"), content = trailingContent)
             }
         }
         if (showBodyTopBanner) {
@@ -441,7 +444,8 @@ internal fun RaftPanelBackHeader(
     val onBack = shownBack.takeUnless { backInColumn }
     Box(
         modifier =
-            modifier
+            // raft-ui's slot names on the head's parts, for the visual-testing component comparison.
+            Modifier.raftSlot("panel-header").then(modifier)
                 // In a pane of the wide row laid out wider than it shows (#189 rule 2): what shows, never clipped.
                 .raftPaneGridFitHead()
                 .fillMaxWidth()
@@ -496,12 +500,12 @@ internal fun RaftPanelBackHeader(
                     if (RaftTheme.scale == RaftScale.Wide && shownSubtitle != null) {
                         Row(
                             // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
-                            modifier = titleTapModifier,
+                            modifier = Modifier.raftSlot("panel-header-content").then(titleTapModifier),
                             horizontalArrangement = Arrangement.spacedBy(RaftPanelHeadInlineMetaGap),
                         ) {
                             Text(
                                 text = title,
-                                modifier = Modifier.alignByBaseline(),
+                                modifier = Modifier.raftSlot("panel-title").alignByBaseline(),
                                 style = RaftPanelHeaderTitleStyle,
                                 color = RaftColor.TextBlack,
                                 maxLines = 1,
@@ -509,7 +513,7 @@ internal fun RaftPanelBackHeader(
                             )
                             Text(
                                 text = shownSubtitle,
-                                modifier = Modifier.weight(1f).alignByBaseline(),
+                                modifier = Modifier.raftSlot("panel-meta").weight(1f).alignByBaseline(),
                                 style = RaftType.Caption,
                                 color = RaftColor.ForegroundHint,
                                 maxLines = 1,
@@ -519,10 +523,11 @@ internal fun RaftPanelBackHeader(
                     } else {
                         Column(
                             // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
-                            modifier = titleTapModifier,
+                            modifier = Modifier.raftSlot("panel-header-content").then(titleTapModifier),
                         ) {
                             Text(
                                 text = title,
+                                modifier = Modifier.raftSlot("panel-title"),
                                 style = RaftPanelHeaderTitleStyle,
                                 color = RaftColor.TextBlack,
                                 maxLines = 1,
@@ -531,6 +536,7 @@ internal fun RaftPanelBackHeader(
                             shownSubtitle?.let {
                                 Text(
                                     text = it,
+                                    modifier = Modifier.raftSlot("panel-meta"),
                                     style = RaftType.Caption,
                                     color = RaftColor.ForegroundHint,
                                     maxLines = 1,
@@ -545,12 +551,12 @@ internal fun RaftPanelBackHeader(
                 }
                 if (paneCloses) {
                     // The head's actions, then the side pane's Close.
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(RaftSidePaneHeadActionGap)) {
+                    Row(Modifier.raftSlot("panel-actions"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(RaftSidePaneHeadActionGap)) {
                         trailingContent?.invoke(this)
                         RaftSidePaneCloseButton()
                     }
                 } else if (trailingContent != null) {
-                    Row(verticalAlignment = Alignment.CenterVertically, content = trailingContent)
+                    Row(Modifier.raftSlot("panel-actions"), verticalAlignment = Alignment.CenterVertically, content = trailingContent)
                 }
             }
         }
@@ -599,7 +605,8 @@ internal fun RaftTopPageHeaderFrame(
     RaftStatusBarBackdropClaim(backgroundColor, enabled = topSafeArea > 0.dp)
     Box(
         modifier =
-            modifier
+            // raft-ui's `panel-header` slot, for the visual-testing component comparison.
+            Modifier.raftSlot("panel-header").then(modifier)
                 .fillMaxWidth()
                 .height(metrics.totalHeight)
                 .background(backgroundColor)

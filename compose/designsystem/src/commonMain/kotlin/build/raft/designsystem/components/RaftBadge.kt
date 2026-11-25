@@ -225,7 +225,8 @@ fun RaftBadge(
         text = text,
         look = raftBadgeLook(appearance, variant, enabled, RaftTheme.colors),
         appearance = appearance,
-        modifier = if (onClick == null) modifier.raftCopyable(copyText) else modifier,
+        // raft-ui's `badge` slot first, so a preset's or a page's own name wins.
+        modifier = Modifier.raftSlot("badge").then(if (onClick == null) modifier.raftCopyable(copyText) else modifier),
         icon = icon,
         trailing = trailing,
         onClick = onClick,
