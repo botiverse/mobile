@@ -394,8 +394,21 @@ class RaftNativeNavBarBridgeTest {
         assertEquals("Lagoon", dmLoungeOnHead.title)
         assertEquals("Only you and Lagoon can see this.", dmLoungeOnHead.subtitle)
         assertEquals(
-            RaftNativeNavBarTitleLeading.Avatar("Lagoon", "https://cdn.example/lagoon.png", RaftAvatarKind.Agent),
+            RaftNativeNavBarTitleLeading.AgentConversation(
+                label = "Lagoon",
+                avatarWireValue = "https://cdn.example/lagoon.png",
+                isLounge = false,
+                agentId = "agent-1",
+            ),
             dmLoungeOnHead.extras.leading,
+        )
+        assertEquals(
+            listOf("thread-search"),
+            dmLoungeOnHead.actions.filter { it.placement == RaftNativeNavBarPlacement.Trailing }.map { it.id },
+        )
+        assertEquals(
+            listOf("thread-side-card-tasks", "thread-side-card-files", "thread-settings"),
+            dmLoungeOnHead.actions.filter { it.placement == RaftNativeNavBarPlacement.Overflow }.map { it.id },
         )
         assertEquals(
             liveIdsFor(dmPayload, RaftThreadSurfaceKind.DirectMessage),
@@ -412,6 +425,10 @@ class RaftNativeNavBarBridgeTest {
                 strings = strings,
             )
         assertEquals(null, dmLoungeOffHead.subtitle)
+        assertEquals(
+            RaftNativeNavBarTitleLeading.Avatar("Lagoon", "https://cdn.example/lagoon.png", RaftAvatarKind.Agent),
+            dmLoungeOffHead.extras.leading,
+        )
         assertEquals(
             liveIdsFor(dmPayload, RaftThreadSurfaceKind.DirectMessage),
             dmLoungeOffHead.actions.map { it.id },
@@ -432,6 +449,23 @@ class RaftNativeNavBarBridgeTest {
             )
         assertEquals("Lagoon's Lounge", loungeHead.title)
         assertEquals("Everyone in this server can see this. Only this agent replies.", loungeHead.subtitle)
+        assertEquals(
+            RaftNativeNavBarTitleLeading.AgentConversation(
+                label = "Lagoon",
+                avatarWireValue = null,
+                isLounge = true,
+                agentId = "agent-1",
+            ),
+            loungeHead.extras.leading,
+        )
+        assertEquals(
+            listOf("thread-search"),
+            loungeHead.actions.filter { it.placement == RaftNativeNavBarPlacement.Trailing }.map { it.id },
+        )
+        assertEquals(
+            listOf("thread-side-card-tasks", "thread-side-card-files", "thread-settings"),
+            loungeHead.actions.filter { it.placement == RaftNativeNavBarPlacement.Overflow }.map { it.id },
+        )
 
         // 3. Reply thread
         val replyPayload =
@@ -546,5 +580,105 @@ class RaftNativeNavBarBridgeTest {
             null,
             buildNativeNavBarPrefillHead(RAFT_APP_SHELL_SERVER_PAGE, """{"tab":"unknown"}""", strings = strings),
         )
+    }
+
+    @Test
+    fun agentConversationNativeTitleMenuSerializesAudienceSubtitlesUnreadAndSeparator() {
+        val bridge = RaftNativeNavBarBridge()
+        var lastTitleMenuJson = ""
+        var lastExtrasJson = ""
+        bridge.attachListener(
+            object : RaftNativeNavBarListener {
+                override fun onNativeNavBarChanged(
+                    title: String,
+                    subtitle: String?,
+                    actionsJson: String,
+                    extrasJson: String,
+                    titleMenuJson: String,
+                    hasBack: Boolean,
+                    nested: Boolean,
+                    titleImage: RaftNativeTabBarAvatar?,
+                ) {
+                    lastExtrasJson = extrasJson
+                    lastTitleMenuJson = titleMenuJson
+                }
+
+                override fun onNativeNavBarCleared() = Unit
+
+                override fun onNativeNavBarScroll(offset: Double, contentHeight: Double, dragging: Boolean) = Unit
+            }
+        )
+        var selectedLounge = 0
+        var selectedPrivate = 0
+        var viewedProfile = 0
+        val switch =
+            AgentLoungeConversationSwitch(
+                activeSide = AgentLoungeConversationSide.Lounge,
+                privateUnread = AgentLoungeSwitchUnread(count = 4),
+                onSelectLounge = { selectedLounge++ },
+                onSelectPrivate = { selectedPrivate++ },
+            )
+        val menu =
+            agentConversationNativeTitleMenu(
+                switch = switch,
+                loungeLabel = "Lounge",
+                loungeAudience = "Members and agents of this server can take part.",
+                privateChatLabel = "Private chat",
+                privateAudience = "Only you and Tenny can see this.",
+                viewProfileLabel = "View profile",
+                onViewProfile = { viewedProfile++ },
+            )
+        val entry = RaftNativeNavBarBridge.Entry()
+        bridge.activate(entry)
+        bridge.publish(
+            entry,
+            RaftNativeNavBarHead(
+                title = "Tenny's Lounge",
+                subtitle = "Members and agents of this server can take part.",
+                actions = emptyList(),
+                extras =
+                    RaftNativeNavBarTitleExtras(
+                        leading =
+                            RaftNativeNavBarTitleLeading.AgentConversation(
+                                label = "Tenny",
+                                avatarWireValue = null,
+                                isLounge = true,
+                                attention = true,
+                                agentId = "agent-tenny",
+                                accessibilityLabel = "Tenny's Lounge. Switch between Lounge and private chat",
+                            ),
+                    ),
+                titleMenu = menu,
+            ),
+        )
+        val extrasObj = Json.parseToJsonElement(lastExtrasJson).jsonObject["leading"]!!.jsonObject
+        assertEquals(JsonPrimitive("agent_conversation"), extrasObj["kind"])
+        assertEquals(JsonPrimitive("lounge"), extrasObj["side"])
+        assertEquals(JsonPrimitive(true), extrasObj["attention"])
+
+        val rows = Json.parseToJsonElement(lastTitleMenuJson).jsonArray.map { it.jsonObject }
+        assertEquals(3, rows.size)
+        assertEquals(JsonPrimitive("agent-conversation-lounge"), rows[0]["id"])
+        assertEquals(JsonPrimitive(true), rows[0]["checked"])
+        assertEquals(JsonPrimitive("lucide-sofa"), rows[0]["imageAsset"])
+        assertEquals(JsonPrimitive("Members and agents of this server can take part."), rows[0]["subtitle"])
+        assertEquals(null, rows[0]["badge"])
+
+        assertEquals(JsonPrimitive("agent-conversation-private"), rows[1]["id"])
+        assertEquals(null, rows[1]["checked"])
+        assertEquals(JsonPrimitive("lucide-lock"), rows[1]["imageAsset"])
+        assertEquals(JsonPrimitive("Only you and Tenny can see this."), rows[1]["subtitle"])
+        assertEquals(JsonPrimitive(4), rows[1]["badge"])
+
+        assertEquals(JsonPrimitive("agent-conversation-profile"), rows[2]["id"])
+        assertEquals(JsonPrimitive(true), rows[2]["dividerBefore"])
+        assertEquals(JsonPrimitive("lucide-user"), rows[2]["imageAsset"])
+
+        assertTrue(bridge.actionTapped("agent-conversation-lounge"))
+        assertEquals(0, selectedLounge, "already on Lounge")
+        assertTrue(bridge.actionTapped("agent-conversation-private"))
+        assertEquals(1, selectedPrivate)
+        assertTrue(bridge.actionTapped("agent-conversation-profile"))
+        assertEquals(1, viewedProfile)
     }
 }

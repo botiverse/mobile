@@ -402,6 +402,14 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("m18 15-6-6-6 6"),
                     ),
                 )
+            RaftLucideIconName.ChevronsUpDown ->
+                RaftLucideIconSpec(
+                    "chevrons-up-down",
+                    listOf(
+                        RaftLucidePathSpec("m7 15 5 5 5-5"),
+                        RaftLucidePathSpec("m7 9 5-5 5 5"),
+                    ),
+                )
             RaftLucideIconName.Circle ->
                 RaftLucideIconSpec(
                     "circle",
@@ -1950,6 +1958,13 @@ internal object RaftLucideIconPaths {
                     listOf(
                         RaftLucidePathSpec("M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"),
                         RaftLucidePathSpec("m15 5 4 4"),
+                    ),
+                )
+            RaftLucideIconName.Phone ->
+                RaftLucideIconSpec(
+                    "phone",
+                    listOf(
+                        RaftLucidePathSpec("M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384"),
                     ),
                 )
             RaftLucideIconName.Pin ->

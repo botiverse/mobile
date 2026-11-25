@@ -1023,6 +1023,11 @@
     <string name="channel_details_title">Detalhes</string>
     <string name="channel_details_open">Detalhes e configurações do canal</string>
     <string name="channel_details_close">Fechar detalhes e configurações do canal</string>
+    <string name="conversation_details_open">Detalhes e configurações</string>
+    <string name="conversation_details_close">Fechar detalhes e configurações</string>
+    <string name="thread_action_search_channel">Pesquisar neste canal</string>
+    <string name="thread_action_search_conversation">Pesquisar nesta conversa</string>
+    <string name="thread_action_call">Ligar</string>
     <string name="channel_details_show_more">Mostrar mais</string>
     <string name="channel_details_show_less">Mostrar menos</string>
     <string name="channel_details_channel_settings">Configurações do canal</string>
@@ -4874,7 +4879,12 @@
     <string name="agent_lounge_label">Lounge</string>
     <string name="agent_lounge_title">Lounge de %1$s</string>
     <string name="agent_lounge_audience_notice">Os membros e os agentes deste servidor podem participar.</string>
-    <string name="agent_lounge_private_label">Privado</string>
+    <string name="agent_lounge_private_chat_label">Conversa privada</string>
+    <string name="agent_lounge_view_profile">Ver perfil</string>
+    <string name="agent_lounge_switch_trigger_lounge">Lounge de %1$s. Alternar entre o Lounge e a conversa privada</string>
+    <string name="agent_lounge_switch_trigger_private">Conversa privada com %1$s. Alternar entre o Lounge e a conversa privada</string>
+    <string name="agent_lounge_switch_trigger_other_unread">%1$d não lidas no outro lado</string>
+    <string name="agent_lounge_switch_unread">%1$d não lidas</string>
     <string name="agent_lounge_private_audience_notice">Somente você e %1$s podem ver isto.</string>
     <string name="agent_lounge_open_failed">Não foi possível abrir o Lounge. Tente novamente.</string>
     <string name="agent_lounge_dm_open_failed">Não foi possível abrir a conversa privada. Tente novamente.</string>

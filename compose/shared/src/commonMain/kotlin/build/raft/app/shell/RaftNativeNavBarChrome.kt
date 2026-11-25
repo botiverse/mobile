@@ -128,6 +128,16 @@ internal fun RaftNativeNavBarTitleImageCapture(
                         imageUrl = leading.imageUrl,
                         tileSize = RaftNativeNavBarTitleImageSize,
                     )
+                is RaftNativeNavBarTitleLeading.AgentConversation ->
+                    RaftNativeNavBarAgentConversationAvatar(
+                        agentId = leading.agentId,
+                        avatarWireValue = leading.avatarWireValue,
+                        label = leading.label,
+                        cacheServerId = leading.cacheServerId,
+                        side = if (leading.isLounge) AgentLoungeConversationSide.Lounge else AgentLoungeConversationSide.Private,
+                        attention = leading.attention,
+                        captureSize = RaftNativeNavBarTitleImageSize,
+                    )
             }
         }
     }

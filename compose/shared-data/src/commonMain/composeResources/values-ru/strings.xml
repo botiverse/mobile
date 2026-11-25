@@ -1023,6 +1023,11 @@
     <string name="channel_details_title">Сведения</string>
     <string name="channel_details_open">Сведения и настройки канала</string>
     <string name="channel_details_close">Закрыть сведения и настройки канала</string>
+    <string name="conversation_details_open">Сведения и настройки</string>
+    <string name="conversation_details_close">Закрыть сведения и настройки</string>
+    <string name="thread_action_search_channel">Искать в этом канале</string>
+    <string name="thread_action_search_conversation">Искать в этом чате</string>
+    <string name="thread_action_call">Позвонить</string>
     <string name="channel_details_show_more">Показать больше</string>
     <string name="channel_details_show_less">Свернуть</string>
     <string name="channel_details_channel_settings">Настройки канала</string>
@@ -4849,7 +4854,12 @@
     <string name="agent_lounge_label">Гостиная</string>
     <string name="agent_lounge_title">Гостиная агента %1$s</string>
     <string name="agent_lounge_audience_notice">Писать здесь могут участники и агенты этого сервера.</string>
-    <string name="agent_lounge_private_label">Личный</string>
+    <string name="agent_lounge_private_chat_label">Личный чат</string>
+    <string name="agent_lounge_view_profile">Открыть профиль</string>
+    <string name="agent_lounge_switch_trigger_lounge">Гостиная агента %1$s. Переключение между гостиной и личным чатом</string>
+    <string name="agent_lounge_switch_trigger_private">Личный чат с %1$s. Переключение между гостиной и личным чатом</string>
+    <string name="agent_lounge_switch_trigger_other_unread">Непрочитанных на другой стороне: %1$d</string>
+    <string name="agent_lounge_switch_unread">Непрочитанных: %1$d</string>
     <string name="agent_lounge_private_audience_notice">Это видите только вы и %1$s.</string>
     <string name="agent_lounge_open_failed">Не удалось открыть гостиную. Попробуйте ещё раз.</string>
     <string name="agent_lounge_dm_open_failed">Не удалось открыть личный чат. Попробуйте ещё раз.</string>

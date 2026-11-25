@@ -39,6 +39,7 @@ internal fun threadHeaderOwnActionProductEvent(
 ): RaftConversationHeaderAction? =
     when (actionId) {
         "thread-search" -> RaftConversationHeaderAction.Search
+        "thread-call" -> RaftConversationHeaderAction.StartCall
         "lounge" -> RaftConversationHeaderAction.OpenLounge
         "thread-settings" ->
             if (settingsOpen) RaftConversationHeaderAction.CloseDetails
@@ -158,6 +159,57 @@ internal fun wrapThreadHeaderSideColumnActionsForAnalytics(
                     RaftProductEvents.conversationHeaderActionSelected(
                         action = eventAction,
                         surface = RaftConversationHeaderSurface.Header,
+                        conversation = conversation,
+                        compact = compact,
+                    )
+                    delegate()
+                }
+            )
+        }
+    }
+}
+
+/**
+ * Wraps iOS native navigation bar actions so tracked entries emit
+ * `conversation_header_action_selected` with `more_menu` for overflow items and `header` for
+ * trailing bar buttons (`botiverse/slock#16464`).
+ */
+internal fun wrapThreadHeaderNativeNavBarActionsForAnalytics(
+    actions: List<RaftNativeNavBarAction>,
+    conversation: RaftConversationHeaderKind?,
+    compact: Boolean,
+    settingsOpen: Boolean,
+    focusModeActive: Boolean,
+    threadFollowed: Boolean?,
+    taskConversation: Boolean,
+): List<RaftNativeNavBarAction> {
+    if (conversation == null) return actions
+    return actions.map { action ->
+        val eventAction =
+            threadHeaderOwnActionProductEvent(
+                actionId = action.id,
+                settingsOpen = settingsOpen,
+                focusModeActive = focusModeActive,
+            ) ?: threadHeaderOverflowMenuProductEvent(
+                actionId = action.id,
+                followed = threadFollowed,
+                taskConversation = taskConversation,
+            )
+        if (eventAction == null) {
+            action
+        } else {
+            val delegate = action.onClick
+            val surface =
+                if (action.placement == RaftNativeNavBarPlacement.Overflow) {
+                    RaftConversationHeaderSurface.MoreMenu
+                } else {
+                    RaftConversationHeaderSurface.Header
+                }
+            action.copy(
+                onClick = {
+                    RaftProductEvents.conversationHeaderActionSelected(
+                        action = eventAction,
+                        surface = surface,
                         conversation = conversation,
                         compact = compact,
                     )

@@ -1023,6 +1023,11 @@
     <string name="channel_details_title">Details</string>
     <string name="channel_details_open">Channel details and settings</string>
     <string name="channel_details_close">Close channel details and settings</string>
+    <string name="conversation_details_open">Details and settings</string>
+    <string name="conversation_details_close">Close details and settings</string>
+    <string name="thread_action_search_channel">Search this channel</string>
+    <string name="thread_action_search_conversation">Search this conversation</string>
+    <string name="thread_action_call">Call</string>
     <string name="channel_details_show_more">Show more</string>
     <string name="channel_details_show_less">Show less</string>
     <string name="channel_details_channel_settings">Channel settings</string>
@@ -5058,7 +5063,12 @@
     <string name="agent_lounge_label">Lounge</string>
     <string name="agent_lounge_title">%1$s's Lounge</string>
     <string name="agent_lounge_audience_notice">Members and agents of this server can take part.</string>
-    <string name="agent_lounge_private_label">Private</string>
+    <string name="agent_lounge_private_chat_label">Private chat</string>
+    <string name="agent_lounge_view_profile">View profile</string>
+    <string name="agent_lounge_switch_trigger_lounge">%1$s's Lounge. Switch between Lounge and private chat</string>
+    <string name="agent_lounge_switch_trigger_private">Private chat with %1$s. Switch between Lounge and private chat</string>
+    <string name="agent_lounge_switch_trigger_other_unread">%1$d unread on the other side</string>
+    <string name="agent_lounge_switch_unread">%1$d unread</string>
     <string name="agent_lounge_private_audience_notice">Only you and %1$s can see this.</string>
     <string name="agent_lounge_open_failed">Couldn't open the Lounge. Try again.</string>
     <string name="agent_lounge_dm_open_failed">Couldn't open the private chat. Try again.</string>

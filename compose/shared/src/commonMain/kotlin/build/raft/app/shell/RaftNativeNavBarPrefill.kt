@@ -15,7 +15,9 @@ import build.raft.app.resources.Res
 import build.raft.app.resources.agent_lounge_audience_notice
 import build.raft.app.resources.agent_lounge_label
 import build.raft.app.resources.agent_lounge_private_audience_notice
+import build.raft.app.resources.channel_details_open
 import build.raft.app.resources.channel_details_title
+import build.raft.app.resources.conversation_details_open
 import build.raft.app.resources.desc
 import build.raft.app.resources.format
 import build.raft.app.resources.resolve
@@ -23,6 +25,8 @@ import build.raft.app.resources.settings_title
 import build.raft.app.resources.task_conversation_search
 import build.raft.app.resources.task_conversation_view_in_channel
 import build.raft.app.resources.thread_action_search
+import build.raft.app.resources.thread_action_search_channel
+import build.raft.app.resources.thread_action_search_conversation
 import build.raft.app.resources.thread_action_search_in_thread
 import build.raft.app.resources.thread_channel_title
 import build.raft.app.resources.thread_direct_message_title
@@ -70,6 +74,10 @@ internal data class RaftNativeNavBarPrefillStrings(
     val privateAudienceSubtitleForAgent: (String) -> String = { "" },
     val channelDetailsTitle: String,
     val membersTitle: String,
+    val searchChannelLabel: String = searchLabel,
+    val searchConversationLabel: String = searchLabel,
+    val channelDetailsOpenLabel: String = settingsLabel,
+    val conversationDetailsOpenLabel: String = settingsLabel,
 )
 
 private fun defaultNativeNavBarPrefillStrings(): RaftNativeNavBarPrefillStrings =
@@ -92,6 +100,10 @@ private fun defaultNativeNavBarPrefillStrings(): RaftNativeNavBarPrefillStrings 
         },
         channelDetailsTitle = Res.string.channel_details_title.desc().resolve(),
         membersTitle = Res.string.thread_members_heading.desc().resolve(),
+        searchChannelLabel = Res.string.thread_action_search_channel.desc().resolve(),
+        searchConversationLabel = Res.string.thread_action_search_conversation.desc().resolve(),
+        channelDetailsOpenLabel = Res.string.channel_details_open.desc().resolve(),
+        conversationDetailsOpenLabel = Res.string.conversation_details_open.desc().resolve(),
     )
 
 internal fun buildNativeNavBarPrefillHead(
@@ -320,6 +332,20 @@ internal fun buildThreadNativeNavBarPrefillHead(
         replyThread && !subtitle.isNullOrBlank() && payload.threadHeaderOpenInParentActionVisible()
     val leading =
         when {
+            loungeSwitchVisible && loungeHeader != null ->
+                RaftNativeNavBarTitleLeading.AgentConversation(
+                    label = resolvedLoungeName.orEmpty(),
+                    avatarWireValue = loungeAgentAvatarWireValue,
+                    isLounge = true,
+                    agentId = loungeHeader.agentId,
+                )
+            loungeSwitchVisible && headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage ->
+                RaftNativeNavBarTitleLeading.AgentConversation(
+                    label = headerDisplay.title.ifBlank { headerDisplay.dmPeerAvatarLabel },
+                    avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
+                    isLounge = false,
+                    agentId = headerDisplay.dmPeerIdentity?.memberId?.value,
+                )
             loungeHeader != null ->
                 RaftNativeNavBarTitleLeading.Avatar(
                     label = resolvedLoungeName.orEmpty(),
@@ -355,22 +381,29 @@ internal fun buildThreadNativeNavBarPrefillHead(
         } else {
             null
         }
-    val actions =
+    val isTopLevelConversation = !taskConversation && !replyThread
+    val isNamedChannel = headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel && loungeHeader == null && !taskConversation
+    val rawActions =
         threadHeaderSideColumnActionsForPayload(
             payload = payload,
             surfaceKind = headerDisplay.surfaceKind,
             taskConversation = taskConversation,
             labels =
                 ThreadHeaderSideColumnLabels(
-                    searchLabel = resolvedStrings.searchLabel,
+                    searchLabel = if (isNamedChannel) resolvedStrings.searchChannelLabel else resolvedStrings.searchConversationLabel,
                     searchInThreadLabel = resolvedStrings.searchInThreadLabel,
                     searchInTaskLabel = resolvedStrings.searchInTaskLabel,
-                    settingsLabel = resolvedStrings.settingsLabel,
+                    settingsLabel = if (isNamedChannel) resolvedStrings.channelDetailsOpenLabel else resolvedStrings.conversationDetailsOpenLabel,
                     viewInChannelLabel = resolvedStrings.viewInChannelLabel,
                 ),
             onViewTaskInChannel = taskViewInChannel,
             sideCardActions = sideCardActions,
         ).toRaftNativeNavBarActions()
+    val actions =
+        foldPhoneConversationNativeNavBarActions(
+            actions = rawActions,
+            foldForPhone = isTopLevelConversation,
+        )
     return RaftNativeNavBarHead(
         title = title,
         subtitle = subtitle,

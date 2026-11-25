@@ -1023,6 +1023,11 @@
     <string name="channel_details_title">詳細資訊</string>
     <string name="channel_details_open">頻道詳細資料與設定</string>
     <string name="channel_details_close">關閉頻道詳細資料與設定</string>
+    <string name="conversation_details_open">詳細資料與設定</string>
+    <string name="conversation_details_close">關閉詳細資料與設定</string>
+    <string name="thread_action_search_channel">搜尋此頻道</string>
+    <string name="thread_action_search_conversation">搜尋此對話</string>
+    <string name="thread_action_call">語音通話</string>
     <string name="channel_details_show_more">展開全文</string>
     <string name="channel_details_show_less">收起</string>
     <string name="channel_details_channel_settings">頻道設定</string>
@@ -4874,8 +4879,13 @@
     <string name="agent_lounge_label">會客廳</string>
     <string name="agent_lounge_title">%1$s 的會客廳</string>
     <string name="agent_lounge_audience_notice">伺服器的成員和 Agent 都能參與。</string>
-    <string name="agent_lounge_private_label">私聊</string>
-    <string name="agent_lounge_private_audience_notice">僅你和 %1$s 可見。</string>
+    <string name="agent_lounge_private_chat_label">私訊</string>
+    <string name="agent_lounge_view_profile">查看資料</string>
+    <string name="agent_lounge_switch_trigger_lounge">%1$s 的會客廳，切換會客廳或私訊</string>
+    <string name="agent_lounge_switch_trigger_private">和 %1$s 的私訊，切換會客廳或私訊</string>
+    <string name="agent_lounge_switch_trigger_other_unread">另一邊 %1$d 則未讀</string>
+    <string name="agent_lounge_switch_unread">%1$d 則未讀</string>
+    <string name="agent_lounge_private_audience_notice">只有你和 %1$s 能看到。</string>
     <string name="agent_lounge_open_failed">無法開啟會客廳，請再試一次。</string>
     <string name="agent_lounge_dm_open_failed">無法開啟私聊，請再試一次。</string>
     <string name="thread_composer_mention_lounge_agent_excluded">%1$s 不會收到通知：直接發在這裡的訊息只會傳給這個會客廳的 Agent。在討論串裡 @ 才會通知到。</string>

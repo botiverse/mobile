@@ -2903,7 +2903,9 @@ private fun SharedThreadRouteContentContent(
                 ThreadPageLounge(
                     lounge = mutePageLounge,
                     agentAvatarWireValue =
-                        mutePageLounge?.let { rememberRaftMemberAvatarWireValue(memberAvatarResolver, it.agentId) },
+                        (mutePageLounge?.agentId ?: loadingSwitchAgentId)?.let {
+                            rememberRaftMemberAvatarWireValue(memberAvatarResolver, it)
+                        },
                     cacheServerId = loadingServerId,
                     canUnarchive = false,
                     unarchiving = false,
