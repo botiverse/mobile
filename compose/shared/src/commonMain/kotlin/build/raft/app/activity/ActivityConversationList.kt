@@ -936,9 +936,9 @@ internal data class ActivityRowLayout(
      */
     val twoLinePreview: Boolean = false,
     /**
-     * Top inset on the top-aligned leading avatar/tile so the 35dp square optically aligns with the
-     * 15/20dp title glyphs instead of sticking above them (and stays balanced on 1-line rows within
-     * the 40dp inner height of a 56dp row). Zero on centered wide rows.
+     * Static top inset on the top-aligned leading avatar/tile so the 36dp leading slot centers on
+     * the first two lines (20dp title + 20dp first excerpt line = 40dp -> static 2dp, matching web
+     * `data-lead="two"` `margin-top: 2px` with zero runtime calculation). Zero on centered wide rows.
      */
     val leadingTopPadding: Dp = 0.dp,
     /** A hairline between two adjacent rows (none in the web's list cells: lists.md "lists have no dividers"). */
@@ -972,7 +972,7 @@ internal data class ActivityRowLayout(
                 previewLines = 2,
                 reservePreviewLines = false,
                 twoLinePreview = true,
-                leadingTopPadding = 3.dp,
+                leadingTopPadding = 2.dp,
                 dividers = false,
                 rowGap = 2.dp,
                 listTop = 8.dp,
