@@ -4,6 +4,7 @@ import build.raft.app.RaftCoreInternalApi
 
 import build.raft.app.RaftScrollFrameSignal
 import build.raft.app.activityRowTimeValue
+import build.raft.app.isJointActivityRow
 import build.raft.app.reportProjectionRowDropped
 import build.raft.app.shownAuthorName
 import build.raft.app.withKnownLatestDelegatedLabelsFrom
@@ -11,6 +12,8 @@ import build.raft.app.SharedThreadContentGeneration
 import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.SharedThreadSummaryFact
 import build.raft.app.model.ActivityChanged
+import build.raft.app.model.ActivityDoneRowKind
+import build.raft.app.model.ActivityDoneUpdated
 import build.raft.app.model.ChannelId
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.ConversationKind
@@ -1681,6 +1684,9 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             requestSyncPullForRetract(event)
             return null
         }
+        if (event is ActivityDoneUpdated) {
+            return applyActivityDoneUpdatedLocked(event, intent)
+        }
         if (event is ThreadFollowersUpdated) {
             // A task conversation row shows the reader's follow state (Unfollow / Follow). The frame
             // (slock threadFollowerRealtimeService, to the conversation's room) does not say whose
@@ -3048,9 +3054,26 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 recordAuditNotJudgedLocked(pending.copy(followup = false), ActivityAuditNotJudgedCause.SupersededByReread)
                 ActivityRowRereadPending(InboxRefreshTriggerCount(trigger), serverId = _state.value.ownerServerId)
             } else {
-                ActivityRowRereadPending(pending?.trigger.foldWith(trigger), serverId = _state.value.ownerServerId)
+                ActivityRowRereadPending(
+                    trigger = pending?.trigger.foldWith(trigger),
+                    serverId = _state.value.ownerServerId,
+                    insertRetries = pending?.insertRetries,
+                )
             }
         scheduleRowRereadFlushLocked()
+    }
+
+    /**
+     * #triage:#618 / #632 (web `requestRowInsert`): re-read this one row (`?ids=`) and, when the
+     * answer has it and the loaded list does not, insert it at its place instead of reloading the
+     * whole list. Runs even when `inbox_row_position_v1` is off (for `row_undone`).
+     */
+    private fun requestRowInsertLocked(scopeId: String, trigger: InboxRefreshTrigger, retries: Int = 0) {
+        val priorRetries = rowRereadPending[scopeId]?.insertRetries
+        requestRowRereadLocked(scopeId, trigger)
+        rowRereadPending[scopeId]?.let { entry ->
+            rowRereadPending[scopeId] = entry.copy(insertRetries = maxOf(retries, priorRetries ?: 0))
+        }
     }
 
     private fun scheduleRowRereadFlushLocked() {
@@ -3081,7 +3104,11 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         synchronized(realtimeOwnerLock) {
             if (generation != rowRereadGeneration) return
             rowRereadFlushJob = null
-            val waiting = rowRereadPending.entries.filter { it.key !in rowRereadInFlight }
+            val rowPositionOn = rowPositionOnLocked()
+            val waiting =
+                rowRereadPending.entries.filter { (scopeId, entry) ->
+                    scopeId !in rowRereadInFlight && (rowPositionOn || entry.insertRetries != null)
+                }
             // Audits and re-reads go in reads of their own, so each read's reason says which (web).
             val audit = waiting.firstOrNull()?.value?.audit != null
             val ready =
@@ -3093,7 +3120,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             ready.forEach { (scopeId, _) -> rowRereadPending.remove(scopeId) }
             val trigger = ready.map { it.second.trigger }.reduce { folded, next -> folded.foldWith(next)!! }
             val serverId = _state.value.ownerServerId
-            if (serverId == null || !rowPositionOnLocked()) {
+            if (serverId == null) {
                 if (rowRereadPending.keys.any { it !in rowRereadInFlight }) scheduleRowRereadFlushLocked()
                 return
             }
@@ -3109,7 +3136,9 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 }
                 if (rowRereadPending.isNotEmpty()) scheduleRowRereadFlushLocked()
             } else {
-                if (rowRereadPending.keys.any { it !in rowRereadInFlight }) scheduleRowRereadFlushLocked()
+                if (rowRereadPending.entries.any { (id, entry) -> id !in rowRereadInFlight && (rowPositionOn || entry.insertRetries != null) }) {
+                    scheduleRowRereadFlushLocked()
+                }
                 val ids = ready.map { it.first }
                 rowRereadInFlight += ids
                 request =
@@ -3165,21 +3194,26 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             read.ready.filter { (scopeId, _) -> scopeId in changed }.forEach { (scopeId, entry) ->
                 if (entry.audit != null) {
                     recordAuditNotJudgedLocked(entry, ActivityAuditNotJudgedCause.ReadChanged, backend)
+                } else if (entry.insertRetries != null) {
+                    requestRowInsertLocked(scopeId, entry.trigger.trigger, entry.insertRetries)
                 } else {
                     requestRowRereadLocked(scopeId, entry.trigger.trigger)
                 }
             }
+            val rowPositionOn = rowPositionOnLocked()
+            val applicable = asked.filter { (_, entry) -> rowPositionOn || entry.insertRetries != null }
             when {
-                !rowPositionOnLocked() -> Unit
-                asked.isEmpty() -> Unit
+                applicable.isEmpty() -> Unit
                 result is DataResult.Content ->
-                    applyRowAnswerLocked(asked, result.data.items, backend, read.readMark.takeIf { result.data.staleReason == null })?.let(jobs::add)
-                result is DataResult.Empty -> applyRowAnswerLocked(asked, emptyList(), backend, null)?.let(jobs::add)
+                    applyRowAnswerLocked(applicable, result.data.items, backend, read.readMark.takeIf { result.data.staleReason == null })?.let(jobs::add)
+                result is DataResult.Empty -> applyRowAnswerLocked(applicable, emptyList(), backend, null)?.let(jobs::add)
                 // A failed row read falls back to the list read (an audit is not judged).
-                read.audit -> asked.forEach { (_, entry) -> recordAuditNotJudgedLocked(entry, ActivityAuditNotJudgedCause.RequestFailed) }
+                read.audit -> applicable.forEach { (_, entry) -> recordAuditNotJudgedLocked(entry, ActivityAuditNotJudgedCause.RequestFailed) }
                 else -> jobs += scheduleRealtimeBackgroundReconcileLocked(read.trigger.trigger)
             }
-            if (rowRereadPending.isNotEmpty()) scheduleRowRereadFlushLocked()
+            if (rowRereadPending.entries.any { (id, entry) -> id !in rowRereadInFlight && (rowPositionOnLocked() || entry.insertRetries != null) }) {
+                scheduleRowRereadFlushLocked()
+            }
         }
         jobs.forEach(Job::start)
     }
@@ -3192,13 +3226,13 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         audited.latestActivitySeq != latestActivitySeq || audited.unreadCount != unreadCount || audited.hasMention != hasMention
 
     /**
-     * A row re-read's answer (web `applyRowAnswer`): each asked row still listed merges by the per-row
-     * rule (never added, never moved off the list), judged first (the drift check, scope=row; an
-     * audit's row as the patch left it). The route answers only the rows that still qualify for the
-     * All list, so an asked-for row the answer leaves out is one the list no longer has: the list is
-     * re-read ([InboxRefreshTrigger.RowMissing], through the throttled single-flight background read).
-     * A row the read did not ask for is left as shown. An audited row the answer does not judge is
-     * recorded not judged (`row_missing`: left out; `row_unlisted`: answered, no longer listed here).
+     * A row re-read's answer (web `applyRowAnswer` + `insertAnsweredRows`):
+     * - Each asked row still listed merges by the per-row rule when `inbox_row_position_v1` is on.
+     * - An asked-for listed row left out of the answer triggers a list re-read (`row_missing`).
+     * - An insert ask (`requestRowInsertLocked`, e.g. `row_undone`) answered for a row not listed
+     *   here inserts it at its time-sorted place (even when `inbox_row_position_v1` is off); if left
+     *   out by a lagging view, it retries up to [ActivityRowInsertMaxRetries] times before stopping;
+     *   if refused (`row_joint`, `below_window`, `list_not_settled`), falls back to a list read.
      */
     private fun applyRowAnswerLocked(
         asked: List<Pair<String, ActivityRowRereadPending>>,
@@ -3210,12 +3244,17 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         val current = _state.value
         val snapshot = current.snapshot ?: return null
         val serverId = current.ownerServerId ?: return null
+        val rowPositionOn = rowPositionOnLocked()
         val askedByScope = asked.toMap()
         if (readMark != null) forgetAbsentReadStatesLocked(current, answered.filter { it.activityRowScopeId() in askedByScope }, readMark)
         val owner = overlayOwner(current)
-        val served =
+        val heldConversations =
             answered
-                .filter { it.isActivityPositionRow() && it.activityRowScopeId() in askedByScope }
+                .filter { item ->
+                    item.kind != InboxItemKind.Object &&
+                        item.kind != InboxItemKind.MentionAction &&
+                        item.activityRowScopeId() in askedByScope
+                }
                 .withActivityThreadTaskProjection(serverId, tasksDataStore)
                 .reconcileLocallyClearedUnreadItems(current.selectedFilter, owner)
                 .reconcileLocallyDoneItems(owner)
@@ -3223,7 +3262,14 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         val returned = answered.mapNotNullTo(mutableSetOf()) { it.activityRowScopeId() }
         val listed = snapshot.items.mapNotNullTo(mutableSetOf()) { it.activityRowScopeId() }
         val missing = askedByScope.keys.any { it !in returned && it in listed }
-        val servedByKey = served.associateBy(InboxItem::key)
+        // An insert ask left out by a lagging view: retry up to ActivityRowInsertMaxRetries times, then stop.
+        for ((scopeId, entry) in asked) {
+            val retries = entry.insertRetries
+            if (retries != null && retries < ActivityRowInsertMaxRetries && scopeId !in returned && scopeId !in listed) {
+                requestRowInsertLocked(scopeId, entry.trigger.trigger, retries + 1)
+            }
+        }
+        val servedByKey = heldConversations.filter { it.isActivityPositionRow() }.associateBy(InboxItem::key)
         val judged = mutableSetOf<String>()
         val followups = mutableListOf<Pair<String, InboxItem>>()
         var delta = 0
@@ -3232,26 +3278,30 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         var mergedCount = 0
         var newerCount = 0
         var rereadCount = 0
-        val items =
-            snapshot.items.map { item ->
-                val row = servedByKey[item.key]
-                if (row == null || !item.isActivityPositionRow()) return@map item
-                val scopeId = item.activityRowScopeId() ?: return@map item
-                val entry = askedByScope[scopeId] ?: return@map item
-                judged += scopeId
-                val next = mergeServedRowLocked(item, row, base = row, emitLog = false)
-                if (next.kept && !next.newer) keptCount += 1 else mergedCount += 1
-                if (next.newer) newerCount += 1
-                if (next.reread) rereadCount += 1
-                val audit = entry.audit?.let { audited -> ActivityRowAudit(moved = item.auditMovedFrom(audited), followup = entry.followup) }
-                val (check, followup) =
-                    inPlaceDriftCheck.checkRow(item, row, entry.trigger.trigger, backend, audit, next.row, next.note)
-                check?.let { emitInPlaceCheckLocked(serverId, it) }
-                if (followup) followups += scopeId to next.row
-                delta += next.row.unreadCount - item.unreadCount
-                // A served row at a newer message than shown moves to its place by time.
-                if (!next.kept && next.row.activityRowTimeValue() != item.activityRowTimeValue()) moved += next.row.key
-                next.row
+        val updatedListed =
+            if (!rowPositionOn) {
+                snapshot.items
+            } else {
+                snapshot.items.map { item ->
+                    val row = servedByKey[item.key]
+                    if (row == null || !item.isActivityPositionRow()) return@map item
+                    val scopeId = item.activityRowScopeId() ?: return@map item
+                    val entry = askedByScope[scopeId] ?: return@map item
+                    judged += scopeId
+                    val next = mergeServedRowLocked(item, row, base = row, emitLog = false)
+                    if (next.kept && !next.newer) keptCount += 1 else mergedCount += 1
+                    if (next.newer) newerCount += 1
+                    if (next.reread) rereadCount += 1
+                    val audit = entry.audit?.let { audited -> ActivityRowAudit(moved = item.auditMovedFrom(audited), followup = entry.followup) }
+                    val (check, followup) =
+                        inPlaceDriftCheck.checkRow(item, row, entry.trigger.trigger, backend, audit, next.row, next.note)
+                    check?.let { emitInPlaceCheckLocked(serverId, it) }
+                    if (followup) followups += scopeId to next.row
+                    delta += next.row.unreadCount - item.unreadCount
+                    // A served row at a newer message than shown moves to its place by time.
+                    if (!next.kept && next.row.activityRowTimeValue() != item.activityRowTimeValue()) moved += next.row.key
+                    next.row
+                }
             }
         val evaluated = keptCount + mergedCount
         if (evaluated > 0) {
@@ -3260,26 +3310,80 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                     "kept=$keptCount merged=$mergedCount newer=$newerCount reread=$rereadCount"
             )
         }
-        if (items != snapshot.items) {
-            val ordered =
-                if (moved.isEmpty()) {
-                    items
-                } else {
-                    activityRowsWithHeldRowsAtTheirTime(
-                        served = items.filterNot { it.key in moved },
-                        held = items.filter { it.key in moved }
-                    )
+        val orderedAfterUpdate =
+            if (moved.isEmpty()) {
+                updatedListed
+            } else {
+                activityRowsWithHeldRowsAtTheirTime(
+                    served = updatedListed.filterNot { it.key in moved },
+                    held = updatedListed.filter { it.key in moved }
+                )
+            }
+        val workingItems = orderedAfterUpdate.toMutableList()
+        var insertedCount = 0
+        var insertFallbackTrigger: InboxRefreshTrigger? = null
+        val insertCandidates =
+            heldConversations.filter { row ->
+                val scopeId = row.activityRowScopeId()
+                scopeId != null && scopeId !in listed && askedByScope[scopeId]?.insertRetries != null
+            }
+        val settledForInsert =
+            current.selectedFilter == InboxFilter.All &&
+                current.loaded &&
+                !current.loading &&
+                loadJob?.isActive != true &&
+                realtimeBackgroundReconcileJob?.isActive != true &&
+                !realtimeBackgroundReconcileDirty
+        for (row in insertCandidates) {
+            val scopeId = row.activityRowScopeId() ?: continue
+            val entry = askedByScope[scopeId] ?: continue
+            if (workingItems.any { it.key == row.key }) continue
+            val refusal: String? =
+                when {
+                    row.isJointActivityRow() -> "row_joint"
+                    !settledForInsert -> "list_not_settled"
+                    hasLocalRowHoldLocked(current, row.key) -> "row_held"
+                    else -> null
                 }
+            val insertIndex =
+                if (refusal == null) insertedActivityRowIndex(workingItems, row, snapshot.hasMore) else null
+            if (refusal != null || insertIndex == null) {
+                val reason = refusal ?: "below_window"
+                diagnosticsLogger(
+                    "activity_row_reread_insert_refused scopeId=$scopeId trigger=${entry.trigger.trigger.wireValue} reason=$reason"
+                )
+                if (current.selectedFilter == InboxFilter.All && insertFallbackTrigger == null) {
+                    insertFallbackTrigger = entry.trigger.trigger
+                }
+                continue
+            }
+            workingItems.add(insertIndex, row)
+            insertedCount += 1
+            delta += row.unreadCount
+            if (rowPositionOn) {
+                rowPositions.start(scopeId, row.latestActivitySeq)
+                foldLedgerRead(scopeId)
+                rowPositions.noteRead(scopeId, row.readStateMaxReadSeq)
+            }
+            rememberFollowedThreadLocked(row)
+            diagnosticsLogger(
+                "activity_row_reread_inserted scopeId=$scopeId trigger=${entry.trigger.trigger.wireValue} " +
+                    "index=$insertIndex unread=${row.unreadCount} mention=${row.hasMention}"
+            )
+        }
+        if (workingItems != snapshot.items) {
             reduceState(
                 SharedActivityIntent.Refresh,
                 current.copy(
                     snapshot =
                         snapshot.copy(
-                            items = ordered,
+                            items = workingItems,
+                            totalCount = snapshot.totalCount + insertedCount,
                             totalUnreadCount = maxOf(0, snapshot.totalUnreadCount + delta)
                         )
                 ),
-                summarySource = "activity_row_reread"
+                summarySource = "activity_row_reread",
+                invalidateOtherFilters = insertedCount > 0,
             )
         }
         asked.forEach { (scopeId, entry) ->
@@ -3292,7 +3396,11 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             }
         }
         followups.forEach { (scopeId, row) -> scheduleAuditFollowupLocked(scopeId, row) }
-        return if (missing) scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.RowMissing) else null
+        return when {
+            missing -> scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.RowMissing)
+            insertFallbackTrigger != null -> scheduleRealtimeBackgroundReconcileLocked(insertFallbackTrigger)
+            else -> null
+        }
     }
 
     /**
@@ -3768,6 +3876,18 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         // A list off screen keeps the row too: the pull reaches it there as well.
         if (event is NotificationRetracted) {
             requestSyncPullForRetract(event)
+            return
+        }
+        if (event is ActivityDoneUpdated) {
+            val summaryIntent =
+                SharedActivityIntent.ApplyRealtimeSummaryEvent(
+                    event = event,
+                    activeConversationId = activeConversationId,
+                    activityMuted = activityMuted,
+                    primarySurfaceVisible = primarySurfaceVisible,
+                )
+            val reconcileJob = synchronized(realtimeOwnerLock) { applyActivityDoneUpdatedLocked(event, summaryIntent) }
+            reconcileJob?.start()
             return
         }
         val ownsBadge = synchronized(realtimeOwnerLock) { listOwnsBadgeLocked() }
@@ -5149,6 +5269,17 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                         } else {
                             adjustedCanonicalUnreadCount
                         }
+                    val adjustedObjectCounts =
+                        result.data.objectCounts?.let { counts ->
+                            var adjusted = counts
+                            for (obj in pageItems.suppressedUnreadObjects) {
+                                adjusted = adjusted.withoutUnreadRow(obj, current.selectedFilter)
+                            }
+                            for (obj in pageItems.suppressedDoneObjects) {
+                                adjusted = adjusted.withoutDoneObjectRow(obj)
+                            }
+                            adjusted
+                        }
                     val nextState =
                         current.copy(
                             snapshot =
@@ -5162,6 +5293,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                                         },
                                     totalUnreadCount =
                                         canonicalUnreadCount,
+                                    objectCounts = adjustedObjectCounts,
                                     hasMore =
                                         result.data.hasMore || (unfetchedTail.isNotEmpty() && current.hasMore),
                                     // The kept rows below were read up to the shown offset; a
@@ -5811,16 +5943,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 snapshot =
                     snapshot.copy(
                         items = snapshot.items.filterNot { it.key == item.key },
-                        objectCounts =
-                            snapshot.objectCounts?.let { counts ->
-                                val unread = item.unreadCount > 0
-                                counts.copy(
-                                    objectUnreadCount = (counts.objectUnreadCount - if (unread) 1 else 0).coerceAtLeast(0),
-                                    objectMentionUnreadCount =
-                                        (counts.objectMentionUnreadCount - if (unread && item.hasMention) 1 else 0).coerceAtLeast(0),
-                                    objectCount = (counts.objectCount - 1).coerceAtLeast(0),
-                                )
-                            },
+                        objectCounts = snapshot.objectCounts?.withoutDoneObjectRow(item),
                     ),
                 errorCode = null,
                 retainedReadRowKeys = current.retainedReadRowKeys - item.key,
@@ -6701,19 +6824,190 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             )
     }
 
+    /**
+     * #triage:#632 (botiverse/slock #16816, web `inboxDoneEvent.ts`): live `activity_done:updated`
+     * from the person's own room (`user:<id>`). Applied to that one row:
+     * - `done == true`: drops the row when `position == null` (unconditionally, e.g. deleted thread
+     *   residue) or when its `latestActivitySeq` (object row: `doneFrontierSeq`) <= `position` via
+     *   exact decimal compare, holding it in `doneOverlay` against lagging refreshes. Joint-channel
+     *   rows and threads under a joint channel are skipped when `position != null` (display vs
+     *   storage seq spaces; sync pull handles joint rows). Already unlisted (originating device) is
+     *   a clean no-op.
+     * - `done == false`: releases any local Done hold for the row; already listed is a clean no-op.
+     *   For `channel`/`dm`/`thread`/`task` on a settled All list, reads that single row via
+     *   `GET /api/channels/inbox?ids=<rowId>` (`row_undone`, even with `inbox_row_position_v1` off)
+     *   and inserts it without reloading the whole list. For `object` rows, schedules a single
+     *   throttled refresh unless one (e.g. from the paired `activity:changed`) is already running.
+     */
+    private fun applyActivityDoneUpdatedLocked(
+        event: ActivityDoneUpdated,
+        intent: SharedActivityIntent,
+    ): Job? {
+        val current = _state.value
+        val serverId = current.ownerServerId ?: current.snapshot?.server?.id?.value
+        if (serverId == null || serverId != event.serverId.value) return null
+        val keys = event.activityDoneRowKeys()
+        if (keys.isEmpty()) return null
+        if (event.done) {
+            val snapshot = current.snapshot ?: return null
+            val listed = snapshot.items.filter { it.key in keys }
+            if (listed.isEmpty()) {
+                diagnosticsLogger(
+                    "activity_done_event action=done rowKind=${event.rowKind.wireValue} rowId=${event.rowId} outcome=not_listed"
+                )
+                return null
+            }
+            val objects = listed.filter { it.kind == InboxItemKind.Object }
+            val conversations =
+                listed.filter { item ->
+                    item.kind != InboxItemKind.Object &&
+                        item.kind != InboxItemKind.MentionAction &&
+                        item.activityRowScopeId() == event.rowId
+                }
+            if (objects.isEmpty() && conversations.isEmpty()) {
+                diagnosticsLogger(
+                    "activity_done_event action=done rowKind=${event.rowKind.wireValue} rowId=${event.rowId} outcome=not_listed"
+                )
+                return null
+            }
+            if (event.position != null && conversations.any { it.isJointActivityRow() }) {
+                diagnosticsLogger(
+                    "activity_done_event action=done rowKind=${event.rowKind.wireValue} rowId=${event.rowId} outcome=joint"
+                )
+                return null
+            }
+            fun covers(seq: String?): Boolean =
+                event.position == null ||
+                    (seq != null && isCanonicalActivitySeq(seq) && compareActivitySeq(seq, event.position) <= 0)
+            val allCovered =
+                objects.all { covers(it.activityObject?.doneFrontierSeq) } &&
+                    conversations.all { covers(it.latestActivitySeq) }
+            if (!allCovered) {
+                diagnosticsLogger(
+                    "activity_done_event action=done rowKind=${event.rowKind.wireValue} rowId=${event.rowId} outcome=newer"
+                )
+                return null
+            }
+            overlayOwner(current)?.let { owner ->
+                listed.forEach { row ->
+                    doneOverlay.remember(owner, row)?.let { generation ->
+                        doneOverlay.confirm(owner, row.key, generation)
+                    }
+                }
+            }
+            conversations.forEach { row -> rememberFollowedThreadLocked(row, unreadCleared = true) }
+            val droppedKeys = listed.mapTo(HashSet()) { it.key }
+            val droppedConvCount =
+                conversations.count { item ->
+                    val alreadyLeftCount =
+                        !current.selectedFilter.keepsReadActivityRows() &&
+                            item.key in current.retainedReadRowKeys &&
+                            !item.showsUnread
+                    !alreadyLeftCount
+                }
+            val droppedConvUnread = conversations.sumOf { it.unreadCount }
+            var nextObjectCounts = snapshot.objectCounts
+            for (obj in objects) {
+                nextObjectCounts = nextObjectCounts?.withoutDoneObjectRow(obj)
+            }
+            reduceState(
+                intent = intent,
+                nextState =
+                    current.copy(
+                        snapshot =
+                            snapshot.copy(
+                                items = snapshot.items.filterNot { it.key in droppedKeys },
+                                totalCount = maxOf(0, snapshot.totalCount - droppedConvCount),
+                                totalUnreadCount = maxOf(0, snapshot.totalUnreadCount - droppedConvUnread),
+                                objectCounts = nextObjectCounts,
+                            ),
+                        retainedReadRowKeys = current.retainedReadRowKeys - droppedKeys,
+                        pendingDeferredHide = current.pendingDeferredHide?.takeUnless { it.itemKey in droppedKeys },
+                    ),
+                summarySource = "activity_done_event",
+                invalidateOtherFilters = true,
+            )
+            diagnosticsLogger(
+                "activity_done_event action=done rowKind=${event.rowKind.wireValue} rowId=${event.rowId} outcome=dropped rows=${listed.size}"
+            )
+            return null
+        }
+        var releasedHold = false
+        overlayOwner(current)?.let { owner ->
+            keys.forEach { key ->
+                if (doneOverlay.contains(owner, key)) releasedHold = true
+                doneOverlay.forget(owner, key)
+            }
+        }
+        if (releasedHold && current.filterSnapshots.size > 1) {
+            val keep = current.filterSnapshots[current.selectedFilter]
+            _state.value =
+                current.copy(
+                    filterSnapshots = if (keep != null) mapOf(current.selectedFilter to keep) else emptyMap(),
+                )
+        }
+        val latestState = _state.value
+        val snapshot = latestState.snapshot
+        if (snapshot?.items?.any { it.key in keys } == true) {
+            diagnosticsLogger(
+                "activity_done_event action=undone rowKind=${event.rowKind.wireValue} rowId=${event.rowId} outcome=listed"
+            )
+            return null
+        }
+        if (event.rowKind == ActivityDoneRowKind.Object) {
+            if (snapshot == null) {
+                diagnosticsLogger(
+                    "activity_done_event action=undone rowKind=object rowId=${event.rowId} outcome=not_loaded"
+                )
+                return null
+            }
+            if (loadJob?.isActive == true || realtimeBackgroundReconcileJob?.isActive == true || realtimeBackgroundReconcileDirty) {
+                diagnosticsLogger(
+                    "activity_done_event action=undone rowKind=object rowId=${event.rowId} outcome=object_refresh_in_flight"
+                )
+                return null
+            }
+            diagnosticsLogger(
+                "activity_done_event action=undone rowKind=object rowId=${event.rowId} outcome=object_list_read"
+            )
+            return scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.RowUndone)
+        }
+        val settledPlainAll =
+            snapshot != null &&
+                latestState.loaded &&
+                !latestState.loading &&
+                latestState.selectedFilter == InboxFilter.All &&
+                loadJob?.isActive != true &&
+                realtimeBackgroundReconcileJob?.isActive != true &&
+                !realtimeBackgroundReconcileDirty
+        if (!settledPlainAll) {
+            diagnosticsLogger(
+                "activity_done_event action=undone rowKind=${event.rowKind.wireValue} rowId=${event.rowId} outcome=not_settled"
+            )
+            return null
+        }
+        requestRowInsertLocked(event.rowId, InboxRefreshTrigger.RowUndone)
+        diagnosticsLogger(
+            "activity_done_event action=undone rowKind=${event.rowKind.wireValue} rowId=${event.rowId} outcome=row_insert"
+        )
+        return null
+    }
+
     private fun reduceState(
         intent: SharedActivityIntent,
         nextState: SharedActivityState,
         summaryAuthoritative: Boolean = false,
         summaryFactCounts: Pair<Int, Int>? = null,
-        summarySource: String = "activity:${intent.activitySummarySource()}"
+        summarySource: String = "activity:${intent.activitySummarySource()}",
+        invalidateOtherFilters: Boolean = false
     ): Boolean {
         val previousState = _state.value
         val stateWithFilterCache =
             if (nextState.snapshot != null) {
                 val updatedMap = nextState.filterSnapshots.toMutableMap()
                 updatedMap[nextState.selectedFilter] = nextState.snapshot
-                if (intent is SharedActivityIntent.MarkRead ||
+                if (invalidateOtherFilters ||
+                    intent is SharedActivityIntent.MarkRead ||
                     // The swipe's / menu's Unread (#793): an Unread page cached before it lacks the row.
                     intent is SharedActivityIntent.MarkUnread ||
                     intent is SharedActivityIntent.MarkDone ||
@@ -7042,6 +7336,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         val reconciled = mutableListOf<InboxItem>()
         var suppressedUnreadCount = 0
         var removedUnreadRows = 0
+        val suppressedUnreadObjects = mutableListOf<InboxItem>()
         for (item in this) {
             // An already-read row keeps its entry: a later stale copy may still
             // carry the pre-read unread state for the same activity marker.
@@ -7049,18 +7344,23 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 reconciled += item
                 continue
             }
-            suppressedUnreadCount += item.unreadCount
+            if (item.kind == InboxItemKind.Object) {
+                suppressedUnreadObjects += item
+            } else {
+                suppressedUnreadCount += item.unreadCount
+            }
             val clearedItem = item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
             if (filter.keepsReadActivityRows()) {
                 reconciled += clearedItem
             } else {
-                removedUnreadRows += 1
+                if (item.kind != InboxItemKind.Object) removedUnreadRows += 1
             }
         }
         return ActivityUnreadReconcileResult(
             items = reconciled,
             suppressedUnreadCount = suppressedUnreadCount,
-            removedUnreadRows = removedUnreadRows
+            removedUnreadRows = removedUnreadRows,
+            suppressedUnreadObjects = suppressedUnreadObjects
         )
     }
 
@@ -7072,16 +7372,22 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             return ActivityReconcileResult(
                 items = items,
                 suppressedUnreadCount = suppressedUnreadCount,
-                removedUnreadRows = removedUnreadRows
+                removedUnreadRows = removedUnreadRows,
+                suppressedUnreadObjects = suppressedUnreadObjects
             )
         }
         val reconciled = mutableListOf<InboxItem>()
         var suppressedDoneUnreadCount = 0
         var removedDoneRows = 0
+        val suppressedDoneObjects = mutableListOf<InboxItem>()
         for (item in items) {
             if (item.key in resolvedMentionActions || doneOverlay.holds(owner, item)) {
-                suppressedDoneUnreadCount += item.unreadCount
-                removedDoneRows += 1
+                if (item.kind == InboxItemKind.Object) {
+                    suppressedDoneObjects += item
+                } else {
+                    suppressedDoneUnreadCount += item.unreadCount
+                    removedDoneRows += 1
+                }
             } else {
                 reconciled += item
             }
@@ -7091,15 +7397,27 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             suppressedUnreadCount = suppressedUnreadCount,
             removedUnreadRows = removedUnreadRows,
             suppressedDoneUnreadCount = suppressedDoneUnreadCount,
-            removedDoneRows = removedDoneRows
+            removedDoneRows = removedDoneRows,
+            suppressedUnreadObjects = suppressedUnreadObjects,
+            suppressedDoneObjects = suppressedDoneObjects
         )
     }
 }
 
+private fun ActivityDoneUpdated.activityDoneRowKeys(): Set<String> =
+    when (rowKind) {
+        ActivityDoneRowKind.Object -> objectKind?.takeIf { it.isNotBlank() }?.let { setOf(activityObjectRowKey(it, rowId)) }.orEmpty()
+        ActivityDoneRowKind.Thread,
+        ActivityDoneRowKind.Task -> setOf("thread:$rowId")
+        ActivityDoneRowKind.Channel,
+        ActivityDoneRowKind.Dm -> setOf("channel:$rowId", "dm:$rowId")
+    }
+
 private data class ActivityUnreadReconcileResult(
     val items: List<InboxItem>,
     val suppressedUnreadCount: Int = 0,
-    val removedUnreadRows: Int = 0
+    val removedUnreadRows: Int = 0,
+    val suppressedUnreadObjects: List<InboxItem> = emptyList()
 )
 
 private data class ActivityReconcileResult(
@@ -7107,7 +7425,9 @@ private data class ActivityReconcileResult(
     val suppressedUnreadCount: Int = 0,
     val removedUnreadRows: Int = 0,
     val suppressedDoneUnreadCount: Int = 0,
-    val removedDoneRows: Int = 0
+    val removedDoneRows: Int = 0,
+    val suppressedUnreadObjects: List<InboxItem> = emptyList(),
+    val suppressedDoneObjects: List<InboxItem> = emptyList()
 )
 
 /** The counts once [item], unread, is read: it leaves every unread count (all filters list it under `objectCount` when unread-only). */
@@ -7121,6 +7441,16 @@ private data class ActivityReconcileResult(
             objectCount = if (filter == InboxFilter.Unread) (objectCount - 1).coerceAtLeast(0) else objectCount,
         )
     }
+
+/** The counts once object row [item] is marked Done: removes it from total, unread, and mention counts. */
+@RaftCoreInternalApi fun ActivityObjectCounts.withoutDoneObjectRow(item: InboxItem): ActivityObjectCounts {
+    val unread = item.unreadCount > 0
+    return copy(
+        objectUnreadCount = (objectUnreadCount - if (unread) 1 else 0).coerceAtLeast(0),
+        objectMentionUnreadCount = (objectMentionUnreadCount - if (unread && item.hasMention) 1 else 0).coerceAtLeast(0),
+        objectCount = (objectCount - 1).coerceAtLeast(0),
+    )
+}
 
 @RaftCoreInternalApi fun List<InboxItem>.dedupeActivityItems(): List<InboxItem> =
     if (size <= 1) {

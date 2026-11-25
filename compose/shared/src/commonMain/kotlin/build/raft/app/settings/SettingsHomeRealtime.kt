@@ -21,6 +21,7 @@ import build.raft.app.model.Heartbeat
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.ServerDeleted
 import build.raft.app.model.ActivityChanged
+import build.raft.app.model.ActivityDoneUpdated
 import build.raft.app.model.ServerAppearanceUpdated
 import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
@@ -61,6 +62,7 @@ internal fun RealtimeEvent.performanceMarkerName(): String =
         is ServerPlanUpdated -> "server_plan_updated"
         is ServerFeaturesChanged -> "server_features_changed"
         is ActivityChanged -> "activity_changed"
+        is ActivityDoneUpdated -> "activity_done_updated"
         is build.raft.app.model.JointInvitesChanged -> "joint_invites_changed"
         is build.raft.app.model.PermissionUpdatesChanged -> "permission_updates_changed"
         is ServerAppearanceUpdated -> "appearance_updated"
@@ -122,6 +124,7 @@ internal fun RealtimeEvent.performanceMarkerPhase(): String =
         is AgentCreated -> "realtime_membership_apply"
         is Heartbeat -> "realtime_heartbeat"
         is PerReceiverReadStateChanged,
+        is ActivityDoneUpdated,
         is PerReceiverNotificationPrefsChanged,
         is ServerNotificationPreferencesChanged,
         is PerReceiverPinnedChanged,
@@ -272,6 +275,7 @@ private fun RealtimeEvent.serverIdHint(): ServerId? =
         is ServerPlanUpdated -> serverId
         is ServerFeaturesChanged -> serverId
         is ActivityChanged -> serverId
+        is ActivityDoneUpdated -> serverId
         is build.raft.app.model.JointInvitesChanged -> serverId
         is build.raft.app.model.PermissionUpdatesChanged -> serverId
         is ServerAppearanceUpdated -> serverId

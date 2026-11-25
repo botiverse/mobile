@@ -124,6 +124,11 @@ enum class InboxRefreshTrigger(val wireValue: String) {
     RowReplyGap("row_reply_gap"),
     /** `inbox_row_position_v1`: the sampled audit read of a row a live message was applied to ([InboxFetchReason.PositionAudit]). */
     PositionAudit("position_audit"),
+    /**
+     * #triage:#632 (botiverse/slock #16816): `activity_done:updated` undone for a row the list does
+     * not show: that row is asked for alone (`?ids=`, `position_reread`) and inserted from the answer.
+     */
+    RowUndone("row_undone"),
 }
 
 /** The trigger a realtime event gives the Activity re-read it asks for. */

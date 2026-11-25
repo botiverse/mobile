@@ -50,7 +50,7 @@ class InboxFetchTriggerHeaderTest {
                 // `inbox_row_position_v1`: a row re-read's triggers, then the list read for a row it left out.
                 "ambiguous_seq", "row_inversion", "row_null_position", "row_unjudged", "row_partial_read",
                 "row_missing",
-                "reply_gap", "row_reply_gap", "position_audit"
+                "reply_gap", "row_reply_gap", "position_audit", "row_undone"
             ),
             InboxRefreshTrigger.entries.map { it.wireValue }
         )

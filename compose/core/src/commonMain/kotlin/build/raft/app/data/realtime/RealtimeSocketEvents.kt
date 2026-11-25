@@ -109,6 +109,12 @@ object RealtimeSocketEvents {
     const val ProductFeedbackUnread = GeneratedRealtimeContract.SocketEvent.ProductFeedbackUnread
     const val ProductFeedbackAppUnread = GeneratedRealtimeContract.SocketEvent.ProductFeedbackAppUnread
     const val ActivityChanged = GeneratedRealtimeContract.SocketEvent.ActivityChanged
+    /**
+     * `activity_done:updated` (botiverse/slock #16816 `packages/shared/src/activityDoneEvent.ts`):
+     * the person marked one of their Activity rows Done or undid it on one of their devices. Sent
+     * to their own `user:<id>` room after commit: `{ serverId, rowKind, rowId, objectKind?, done, position }`.
+     */
+    const val ActivityDoneUpdated = GeneratedRealtimeContract.SocketEvent.ActivityDoneUpdated
     const val AnnouncementNew = GeneratedRealtimeContract.SocketEvent.AnnouncementNew
     const val ReminderFired = GeneratedRealtimeContract.SocketEvent.ReminderFired
     const val ReminderScheduled = GeneratedRealtimeContract.SocketEvent.ReminderScheduled

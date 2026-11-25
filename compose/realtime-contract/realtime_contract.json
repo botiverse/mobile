@@ -91,6 +91,7 @@
     "productFeedbackUnread": "product_feedback:unread",
     "productFeedbackAppUnread": "product_feedback:app_unread",
     "activityChanged": "activity:changed",
+    "activityDoneUpdated": "activity_done:updated",
     "announcementNew": "announcement:new",
     "reminderFired": "reminder:fired",
     "reminderScheduled": "reminder:scheduled",
@@ -154,6 +155,7 @@
     "productFeedbackUnread",
     "productFeedbackAppUnread",
     "activityChanged",
+    "activityDoneUpdated",
     "announcementNew",
     "reminderFired",
     "reminderScheduled",
@@ -185,6 +187,7 @@
   },
   "slockSharedEvents": {
     "ACTIVITY_CHANGED_EVENT": "activity:changed",
+    "ACTIVITY_DONE_UPDATED_EVENT": "activity_done:updated",
     "ACTOR_UPDATED_EVENT": "actor:updated",
     "AGENT_ACTIVITY_SUBSCRIBE_EVENT": "agent:activity:subscribe",
     "AGENT_ACTIVITY_SUBSCRIBED_EVENT": "agent:activity:subscribed",

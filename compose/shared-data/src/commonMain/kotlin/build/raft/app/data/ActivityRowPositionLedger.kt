@@ -32,6 +32,9 @@ import kotlinx.atomicfu.locks.synchronized
 /** The route's `ids` limit (server `INBOX_ROW_IDS_MAX`). */
 @RaftCoreInternalApi const val ActivityRowRereadIdsMax: Int = 50
 
+/** Answers that may leave an insert ask's row out (view lag behind write) before stopping (web `ROW_INSERT_RETRIES`). */
+@RaftCoreInternalApi const val ActivityRowInsertMaxRetries: Int = 2
+
 /** Rows with a kept state; past this the oldest go (web `ROW_STATE_CAP`). */
 @RaftCoreInternalApi const val ActivityRowPositionStateCap: Int = 500
 
@@ -371,6 +374,8 @@ import kotlinx.atomicfu.locks.synchronized
     val audit: InboxItem? = null,
     val followup: Boolean = false,
     val serverId: String? = null,
+    /** Non-null for an insert ask (web `requestRowInsert`): answers that left the row out so far. */
+    val insertRetries: Int? = null,
 )
 
 /** A follow-up audit waiting for its delay (web `followupTimers`). */
