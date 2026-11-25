@@ -17,8 +17,10 @@ internal actual fun RaftWebContainerPlatformScope(
 ) {
     // Schedule the container-owned iOS warm spare only once mobile_web_container_v1 actually runs,
     // avoiding allocating an extra idle WKWebView while the flag remains default-OFF.
-    LaunchedEffect(Unit) {
-        WebContainerIosSparePool.schedule()
+    LaunchedEffect(config.allowPinchZoom, config.useWideViewPort) {
+        WebContainerIosSparePool.schedule(
+            preferredIgnoresViewportScaleLimits = config.allowPinchZoom || config.useWideViewPort,
+        )
     }
     content()
 }

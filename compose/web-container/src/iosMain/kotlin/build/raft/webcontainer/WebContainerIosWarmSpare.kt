@@ -47,6 +47,17 @@ import platform.objc.sel_registerName
 /** Process-lifetime sentinel pointer passed as the KVO `context:` for [WebContainerIosKvoObserver]. */
 private val WebContainerIosKvoContext: COpaquePointer = nativeHeap.alloc<ByteVar>().ptr
 
+/** KVO key paths observed on `WKWebView` (top-level: K/N disallows fields on NSObject subclass companions). */
+private val WebContainerIosKvoObservedKeyPaths: List<String> =
+    listOf(
+        "URL",
+        "title",
+        "estimatedProgress",
+        "loading",
+        "canGoBack",
+        "canGoForward",
+    )
+
 /**
  * Top-level Objective-C KVO trampoline invoked by `staticCFunction` without capturing Kotlin state.
  */
@@ -116,7 +127,7 @@ internal class WebContainerIosKvoObserver(
         detach()
         if (!WebContainerIosKvoHook.install(this)) return false
         observedView = view
-        for (keyPath in ObservedKeyPaths) {
+        for (keyPath in WebContainerIosKvoObservedKeyPaths) {
             val ok =
                 runCatching {
                     view.addObserver(
@@ -156,27 +167,21 @@ internal class WebContainerIosKvoObserver(
             onChanged(view)
         }
     }
-
-    companion object {
-        private val ObservedKeyPaths =
-            listOf(
-                "URL",
-                "title",
-                "estimatedProgress",
-                "loading",
-                "canGoBack",
-                "canGoForward",
-            )
-    }
 }
+
+private data class WarmedIosSpare(
+    val view: WebContainerIosWebView,
+    val ignoresViewportScaleLimits: Boolean,
+)
 
 /**
  * Main-thread warm spare `WKWebView` pool for `:web-container` on iOS.
  *
  * Improvements over legacy warm-up:
- * - Configures `ignoresViewportScaleLimits = true` so **both** `allowPinchZoom = true` surfaces
- *   (Artifact Viewer) and `allowPinchZoom = false` surfaces (Settings, which dynamically disables
- *   `scrollView.pinchGestureRecognizer`) hit the warm pool.
+ * - Matches `WKWebViewConfiguration.ignoresViewportScaleLimits` strictly on `take()` (without
+ *   tampering with `scrollView.pinchGestureRecognizer`), so `allowPinchZoom = true` surfaces
+ *   (Artifact Viewer), viewport-respecting pages (`file_preview_html`), and `user-scalable=no`
+ *   pages (`settings_*`) behave identically across warm-spare and cold-start opens.
  * - Multi-layer anti-zombie defense:
  *   1. Evicts immediately if `webViewWebContentProcessDidTerminate` fires while parked.
  *   2. Drops on `UIApplicationDidReceiveMemoryWarningNotification` and
@@ -193,18 +198,25 @@ object WebContainerIosSparePool {
     private const val MAX_SPARE_IDLE_MS = 5 * 60_000L
     private const val SPARE_TELEMETRY_KEY = "ios_default_spare"
 
-    private val slot = WebContainerSpareSlot<WebContainerIosWebView>(retire = ::retire)
+    private val slot = WebContainerSpareSlot<WarmedIosSpare>(retire = { retire(it.view) })
+    private var preferredIgnoresViewportScaleLimits: Boolean = false
     private var warmupDelegate: WebContainerIosSpareWarmupDelegate? = null
     private var refillTimer: NSTimer? = null
     private var installed: Boolean = false
 
     /** Schedules warm spare maintenance on the main thread (idempotent). */
-    fun schedule() {
+    fun schedule(preferredIgnoresViewportScaleLimits: Boolean = false) {
         if (!NSThread.isMainThread) {
-            dispatch_async(dispatch_get_main_queue()) { schedule() }
+            dispatch_async(dispatch_get_main_queue()) { schedule(preferredIgnoresViewportScaleLimits) }
             return
         }
-        if (installed) return
+        if (!installed || !slot.hasItem) {
+            this.preferredIgnoresViewportScaleLimits = preferredIgnoresViewportScaleLimits
+        }
+        if (installed) {
+            if (!slot.hasItem) refillLater(WARM_DELAY_SECONDS)
+            return
+        }
         installed = true
         val center = NSNotificationCenter.defaultCenter
         center.addObserverForName(UIApplicationDidReceiveMemoryWarningNotification, null, NSOperationQueue.mainQueue) { _ ->
@@ -219,14 +231,27 @@ object WebContainerIosSparePool {
         refillLater(WARM_DELAY_SECONDS)
     }
 
-    /** Takes a ready, non-expired warm spare if available, or returns `null`. */
-    internal fun take(telemetrySink: WebContainerTelemetrySink? = null): WebContainerIosWebView? {
+    /** Takes a ready, non-expired warm spare matching [ignoresViewportScaleLimits], or returns `null`. */
+    internal fun take(
+        ignoresViewportScaleLimits: Boolean,
+        telemetrySink: WebContainerTelemetrySink? = null,
+    ): WebContainerIosWebView? {
         if (!NSThread.isMainThread) return null
-        val candidate = slot.take(maxIdleMs = MAX_SPARE_IDLE_MS)
+        val candidate =
+            slot.take(maxIdleMs = MAX_SPARE_IDLE_MS) { spare ->
+                spare.ignoresViewportScaleLimits == ignoresViewportScaleLimits
+            }
         if (candidate == null) {
+            preferredIgnoresViewportScaleLimits = ignoresViewportScaleLimits
+            val action =
+                when {
+                    slot.isReady -> "ios_spare_zoom_mismatch"
+                    slot.hasItem -> "ios_spare_warming"
+                    else -> "ios_spare_miss"
+                }
             telemetrySink?.onEvent(
                 WebContainerTelemetryEvent.PoolEvent(
-                    action = if (slot.hasItem) "ios_spare_warming" else "ios_spare_miss",
+                    action = action,
                     keepAliveKey = SPARE_TELEMETRY_KEY,
                     poolSizeAfter = if (slot.hasItem) 1 else 0,
                 ),
@@ -234,11 +259,12 @@ object WebContainerIosSparePool {
             if (installed && !slot.hasItem) refillLater(REFILL_DELAY_SECONDS)
             return null
         }
-        candidate.navigationDelegate = null
+        val view = candidate.view
+        view.navigationDelegate = null
         warmupDelegate = null
-        val url = candidate.URL?.absoluteString
+        val url = view.URL?.absoluteString
         if (url != WEB_CONTAINER_SPARE_BLANK_URL) {
-            retire(candidate)
+            retire(view)
             telemetrySink?.onEvent(
                 WebContainerTelemetryEvent.PoolEvent(
                     action = "ios_spare_rejected_unexpected_url",
@@ -249,6 +275,7 @@ object WebContainerIosSparePool {
             if (installed) refillLater(REFILL_DELAY_SECONDS)
             return null
         }
+        preferredIgnoresViewportScaleLimits = ignoresViewportScaleLimits
         telemetrySink?.onEvent(
             WebContainerTelemetryEvent.PoolEvent(
                 action = "ios_spare_hit",
@@ -257,7 +284,7 @@ object WebContainerIosSparePool {
             ),
         )
         if (installed) refillLater(REFILL_DELAY_SECONDS)
-        return candidate
+        return view
     }
 
     /** Drops any parked or warming spare and returns `1` if evicted synchronously on main, else `0`. */
@@ -285,11 +312,12 @@ object WebContainerIosSparePool {
     private fun fill() {
         if (slot.hasItem) return
         if (UIApplication.sharedApplication.applicationState != UIApplicationState.UIApplicationStateActive) return
+        val ignoresScaleLimits = preferredIgnoresViewportScaleLimits
         runCatching {
             val configuration = WKWebViewConfiguration()
             configuration.websiteDataStore = WKWebsiteDataStore.defaultDataStore()
             configuration.allowsInlineMediaPlayback = true
-            configuration.ignoresViewportScaleLimits = true
+            configuration.ignoresViewportScaleLimits = ignoresScaleLimits
             configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
             configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeAll
             val pagePrefs = WKWebpagePreferences()
@@ -300,11 +328,11 @@ object WebContainerIosSparePool {
             view.opaque = false
             view.backgroundColor = UIColor.clearColor
             view.scrollView.backgroundColor = UIColor.clearColor
-            val generation = slot.put(view)
+            val generation = slot.put(WarmedIosSpare(view = view, ignoresViewportScaleLimits = ignoresScaleLimits))
             val delegate =
                 WebContainerIosSpareWarmupDelegate(
                     onReady = { slot.markReady(generation) },
-                    onFailedOrTerminated = { dead -> slot.invalidateIfSame(dead, ::isSameObjCObject) },
+                    onFailedOrTerminated = { dead -> slot.invalidateIf { isSameObjCObject(it.view, dead) } },
                 )
             warmupDelegate = delegate
             view.navigationDelegate = delegate

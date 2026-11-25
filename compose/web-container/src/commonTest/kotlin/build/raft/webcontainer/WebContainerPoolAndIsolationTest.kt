@@ -270,6 +270,14 @@ class WebContainerPoolAndIsolationTest {
         assertFalse(slot.hasItem)
         assertEquals(listOf("spare-2", "spare-3"), retired)
 
+        // Taking with a false predicate leaves a healthy spare parked for compatible callers.
+        val g4 = slot.put("spare-zoom-true")
+        assertTrue(slot.markReady(g4))
+        assertNull(slot.take(maxIdleMs = 60_000L) { it.endsWith("false") })
+        assertTrue(slot.isReady)
+        assertEquals("spare-zoom-true", slot.take(maxIdleMs = 60_000L) { it.endsWith("true") })
+        assertFalse(slot.hasItem)
+
         // Replacing retires prior spare; drop returns exact eviction count.
         slot.put("spare-4")
         slot.put("spare-5")
@@ -281,20 +289,22 @@ class WebContainerPoolAndIsolationTest {
 
     @Test
     fun iosWarmSpareEligibilityBlankGuardAndBlankCanvasScript() {
-        // Default + scripts + no custom scheme + initial build -> eligible (including pinch-zoom Artifact Viewer).
+        // Default + scripts + no custom scheme + no back-forward gesture + initial build -> eligible.
         assertTrue(
             isIosWarmSpareEligible(
                 isolationScope = WebIsolationScope.Default,
                 allowScripts = true,
                 hasCustomScheme = false,
+                allowsBackForwardNavigationGestures = false,
                 isRecoveryOrRebuild = false,
             ),
         )
-        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Ephemeral, true, false, false))
-        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Named("raft_third_party"), true, false, false))
-        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Default, false, false, false))
-        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Default, true, true, false))
-        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Default, true, false, true))
+        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Ephemeral, true, false, false, false))
+        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Named("raft_third_party"), true, false, false, false))
+        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Default, false, false, false, false))
+        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Default, true, true, false, false))
+        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Default, true, false, true, false))
+        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Default, true, false, false, true))
 
         assertTrue(shouldIgnoreWarmSpareBlankNavigation(true, WEB_CONTAINER_SPARE_BLANK_URL, "https://app.raft.build/a/1"))
         assertFalse(shouldIgnoreWarmSpareBlankNavigation(false, WEB_CONTAINER_SPARE_BLANK_URL, "https://app.raft.build/a/1"))

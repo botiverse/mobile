@@ -647,5 +647,13 @@ class RaftWebContainerAdapterTest {
         appStoreBillingRules = false
         assertEquals(true, host.openExternalUrl(ctx, "https://app.raft.build/billing/upgrade"))
         assertEquals(2, opened.size)
+
+        // Wide split-pane detail close override intercepts nav.close without calling host closePage.
+        var wideClosed = 0
+        val wideHost = host.withCloseOverride { wideClosed += 1 }
+        assertEquals(true, wideHost.closeContainer(ctx, "wide_detail_done"))
+        assertEquals(1, wideClosed)
+        assertEquals(1, closedCount)
+        assertEquals("1.30.0", wideHost.getAppInfo(ctx)?.appVersion)
     }
 }

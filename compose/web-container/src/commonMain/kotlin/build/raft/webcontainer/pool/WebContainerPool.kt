@@ -412,15 +412,12 @@ class WebContainerSpareSlot<T : Any>(
     }
 
     /**
-     * Retires the held spare if [sameInstance] confirms it matches [target] (used when the OS
-     * terminates a parked spare's WebContent process while idle).
+     * Retires the held spare if [predicate] matches it (used when the OS terminates a parked
+     * spare's WebContent process while idle).
      */
-    fun invalidateIfSame(
-        target: T,
-        sameInstance: (T, T) -> Boolean = { a, b -> a === b },
-    ): Boolean {
+    fun invalidateIf(predicate: (T) -> Boolean): Boolean {
         val current = item ?: return false
-        if (!sameInstance(current, target)) return false
+        if (!predicate(current)) return false
         item = null
         ready = false
         readyAt = 0L
@@ -430,10 +427,23 @@ class WebContainerSpareSlot<T : Any>(
     }
 
     /**
-     * Takes the ready spare if healthy and within [maxIdleMs], or returns `null`.
-     * An expired ready spare is retired immediately so callers never inherit a stale zombie.
+     * Retires the held spare if [sameInstance] confirms it matches [target] (used when the OS
+     * terminates a parked spare's WebContent process while idle).
      */
-    fun take(maxIdleMs: Long = Long.MAX_VALUE): T? {
+    fun invalidateIfSame(
+        target: T,
+        sameInstance: (T, T) -> Boolean = { a, b -> a === b },
+    ): Boolean = invalidateIf { current -> sameInstance(current, target) }
+
+    /**
+     * Takes the ready spare if healthy, within [maxIdleMs], and matching [predicate], or returns
+     * `null`. An expired ready spare is retired immediately; a healthy spare that does not match
+     * [predicate] remains parked for a compatible caller.
+     */
+    fun take(
+        maxIdleMs: Long = Long.MAX_VALUE,
+        predicate: (T) -> Boolean = { true },
+    ): T? {
         val current = item ?: return null
         if (!ready) return null
         val idleMs = nowMs() - readyAt
@@ -445,6 +455,7 @@ class WebContainerSpareSlot<T : Any>(
             retire(current)
             return null
         }
+        if (!predicate(current)) return null
         item = null
         ready = false
         readyAt = 0L
@@ -466,19 +477,22 @@ class WebContainerSpareSlot<T : Any>(
 /**
  * Determines whether an iOS container creation may consume the warmed `Default`-scope spare.
  *
- * Unlike legacy warm pools, `allowPinchZoom = true` surfaces (such as Artifact Viewer) ARE eligible
- * because the warm spare configures `ignoresViewportScaleLimits = true` and enforces pinch zoom
- * dynamically via `scrollView.pinchGestureRecognizer`.
+ * Excludes non-Default partitions, script-disabled surfaces, custom-scheme bundles, recovery
+ * rebuilds, and surfaces with `allowsBackForwardNavigationGestures = true` (so native left-edge
+ * swipe can never navigate back into the spare's initial `about:blank` entry). Zoom compatibility
+ * (`ignoresViewportScaleLimits`) is matched strictly against the parked spare on `take()`.
  */
 fun isIosWarmSpareEligible(
     isolationScope: WebIsolationScope,
     allowScripts: Boolean,
     hasCustomScheme: Boolean,
+    allowsBackForwardNavigationGestures: Boolean,
     isRecoveryOrRebuild: Boolean,
 ): Boolean =
     isolationScope == WebIsolationScope.Default &&
         allowScripts &&
         !hasCustomScheme &&
+        !allowsBackForwardNavigationGestures &&
         !isRecoveryOrRebuild
 
 /**

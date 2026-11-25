@@ -206,7 +206,6 @@ internal class WebContainerIosHost(
         }
     private var usingSpare: Boolean = false
     private var spareCommitted: Boolean = false
-    private var viewSupportsDynamicPinchZoom: Boolean = false
     private var activeSchemeHandler: WebContainerIosSchemeHandler? = null
     private val activeDownloads = mutableListOf<WebContainerIosDownloadDelegate>()
     private var downloadCancelledUrl: String? = null
@@ -258,30 +257,23 @@ internal class WebContainerIosHost(
     fun applyConfig(next: WebContainerConfig) {
         if (disposed) return
         val prev = config
-        val pinchZoomNeedsRebuild =
-            prev != null &&
-                prev.allowPinchZoom != next.allowPinchZoom &&
-                !viewSupportsDynamicPinchZoom &&
-                next.allowPinchZoom
         val needsRebuild =
             prev == null ||
                 prev.isolationScope != next.isolationScope ||
                 prev.allowScripts != next.allowScripts ||
-                pinchZoomNeedsRebuild ||
+                prev.allowPinchZoom != next.allowPinchZoom ||
                 prev.desktopViewportMode != next.desktopViewportMode ||
                 prev.jsbPolicy != next.jsbPolicy ||
                 prev.documentStartScripts != next.documentStartScripts ||
                 prev.offlineBundle != next.offlineBundle ||
+                (usingSpare && next.allowsBackForwardNavigationGestures) ||
                 (!pagePainted && (prev.backgroundArgb != next.backgroundArgb || prev.isDarkTheme != next.isDarkTheme))
         val urlChanged = prev == null || prev.url.trim() != next.url.trim()
 
         config = next
         chainState.configureBudget(next.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0)
         webView?.allowsBackForwardNavigationGestures = next.allowsBackForwardNavigationGestures
-        (webView as? WebContainerIosWebView)?.let { iosWebView ->
-            iosWebView.showsFormAccessoryBar = next.showsFormAccessoryBar
-            applyEffectivePinchZoomPolicy(iosWebView, next)
-        }
+        (webView as? WebContainerIosWebView)?.showsFormAccessoryBar = next.showsFormAccessoryBar
 
         if (needsRebuild) {
             // Tear down existing WKWebView BEFORE switching registered active scope so deferred
@@ -330,7 +322,6 @@ internal class WebContainerIosHost(
         downloadCancelledUrl = null
         usingSpare = false
         spareCommitted = false
-        viewSupportsDynamicPinchZoom = false
         for (download in activeDownloads.toList()) {
             download.cancelAndCleanup()
         }
@@ -382,16 +373,21 @@ internal class WebContainerIosHost(
             }
 
         val customScheme = cfg.offlineBundle?.iosCustomScheme?.takeIf(::isValidIosCustomScheme)
+        val ignoresScaleLimits = cfg.allowPinchZoom || cfg.desktopViewportMode
         val spare =
             if (
                 isIosWarmSpareEligible(
                     isolationScope = cfg.isolationScope,
                     allowScripts = cfg.allowScripts,
                     hasCustomScheme = customScheme != null,
+                    allowsBackForwardNavigationGestures = cfg.allowsBackForwardNavigationGestures,
                     isRecoveryOrRebuild = restoreUrl != null || hadPreviousView,
                 )
             ) {
-                WebContainerIosSparePool.take(telemetrySink)
+                WebContainerIosSparePool.take(
+                    ignoresViewportScaleLimits = ignoresScaleLimits,
+                    telemetrySink = telemetrySink,
+                )
             } else {
                 null
             }
@@ -472,14 +468,12 @@ internal class WebContainerIosHost(
             if (spare != null) {
                 spare.setFrame(container.bounds)
                 usingSpare = true
-                viewSupportsDynamicPinchZoom = true
                 spare
             } else {
                 val configuration = WKWebViewConfiguration()
                 configuration.websiteDataStore = IosWebContainerDataStoreRegistry.dataStoreFor(cfg.isolationScope)
                 configuration.userContentController = userContentController
                 configuration.allowsInlineMediaPlayback = true
-                val ignoresScaleLimits = cfg.allowPinchZoom || cfg.desktopViewportMode
                 configuration.ignoresViewportScaleLimits = ignoresScaleLimits
                 configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
                 configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeAll
@@ -492,12 +486,10 @@ internal class WebContainerIosHost(
                     configuration.setURLSchemeHandler(handler, forURLScheme = customScheme.trim().lowercase())
                 }
                 usingSpare = false
-                viewSupportsDynamicPinchZoom = ignoresScaleLimits
                 WebContainerIosWebView(frame = container.bounds, configuration = configuration)
             }
 
         nextView.showsFormAccessoryBar = cfg.showsFormAccessoryBar
-        applyEffectivePinchZoomPolicy(nextView, cfg)
         nextView.navigationDelegate = navDelegate
         nextView.UIDelegate = navDelegate
         nextView.allowsBackForwardNavigationGestures = cfg.allowsBackForwardNavigationGestures
@@ -546,26 +538,6 @@ internal class WebContainerIosHost(
             }
         }
         loadUrlInternal(cfg, overrideUrl = restoreUrl)
-    }
-
-    /**
-     * Fresh views built with `ignoresViewportScaleLimits = false` already respect each page's
-     * viewport meta natively (so general web pages in `in_app_browser` and `file_preview_html` stay
-     * pinch-zoomable while `user-scalable=no` pages do not zoom); keep their pinch recognizer
-     * enabled. Only views created with `ignoresViewportScaleLimits = true` (warm spares or
-     * dynamically toggled zoom views) gate `pinchGestureRecognizer` when zoom is turned off.
-     */
-    private fun applyEffectivePinchZoomPolicy(
-        view: WebContainerIosWebView,
-        cfg: WebContainerConfig,
-    ) {
-        val pinchEnabled =
-            if (viewSupportsDynamicPinchZoom) {
-                cfg.allowPinchZoom || cfg.desktopViewportMode
-            } else {
-                true
-            }
-        view.applyPinchZoomPolicy(pinchEnabled)
     }
 
     private fun applyBackgroundVisuals(cfg: WebContainerConfig) {
@@ -1018,9 +990,6 @@ internal class WebContainerIosHost(
         spareCommitted = true
         hostCancelledUrl = null
         downloadCancelledUrl = null
-        config?.let { cfg ->
-            (source as? WebContainerIosWebView)?.let { applyEffectivePinchZoomPolicy(it, cfg) }
-        }
         currentUrl = source.URL?.absoluteString ?: currentUrl
         chainState.markCommitted()
         watchdog.onEvent(WebContainerWatchdogEvent.PageCommitted(loadGeneration), webContainerMonotonicMillis())
@@ -1042,9 +1011,6 @@ internal class WebContainerIosHost(
         spareCommitted = true
         hostCancelledUrl = null
         downloadCancelledUrl = null
-        config?.let { cfg ->
-            (source as? WebContainerIosWebView)?.let { applyEffectivePinchZoomPolicy(it, cfg) }
-        }
         currentUrl = source.URL?.absoluteString ?: currentUrl
         currentTitle = source.title ?: currentTitle
         currentLoading = false
@@ -1439,17 +1405,9 @@ internal class WebContainerIosWebView(
     configuration: WKWebViewConfiguration,
 ) : WKWebView(frame = frame, configuration = configuration) {
     var showsFormAccessoryBar: Boolean = false
-    var allowPinchZoom: Boolean = false
-        private set
 
     init {
         WebContainerIosAccessoryHook.install(this)
-    }
-
-    /** Dynamically gates pinch-to-zoom without detaching WebKit's internal scrollView delegate. */
-    fun applyPinchZoomPolicy(enabled: Boolean) {
-        allowPinchZoom = enabled
-        scrollView.pinchGestureRecognizer?.enabled = enabled
     }
 }
 

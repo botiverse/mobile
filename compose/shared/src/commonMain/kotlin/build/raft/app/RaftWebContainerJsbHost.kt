@@ -134,6 +134,22 @@ internal class RaftCmpJsbStandardHost(
     override suspend fun getAuthStatus(context: JsbCallContext): JsbAuthStatus = readAuthStatus()
 }
 
+/**
+ * Returns a [JsbStandardHost] delegating all methods to `this` while routing `nav.close` to
+ * [onClose] (used when a wide split-pane Settings detail supplies `LocalRaftSettingsWideDetailClose`
+ * so closing the embedded web detail does not dismiss the whole Settings route).
+ */
+internal fun JsbStandardHost.withCloseOverride(onClose: () -> Unit): JsbStandardHost =
+    object : JsbStandardHost by this {
+        override suspend fun closeContainer(
+            context: JsbCallContext,
+            reason: String?,
+        ): Boolean {
+            onClose()
+            return true
+        }
+    }
+
 @OptIn(RaftCoreInternalApi::class)
 @Composable
 internal fun rememberRaftCmpJsbStandardHost(host: RaftCmpHost): JsbStandardHost {
