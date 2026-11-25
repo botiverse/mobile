@@ -1069,6 +1069,187 @@ def check_desktop_wry_off_edt_gateway(sources: dict[str, str]) -> None:
             )
 
 
+FRESHNESS_LIVE_CATCH_UP_DECL_FILE = (
+    "compose/shared/src/commonMain/kotlin/build/raft/app/thread/RaftLiveCatchUp.kt"
+)
+FRESHNESS_GATE_DECL_FILE = (
+    "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/RaftFreshnessSignal.kt"
+)
+# Ratchet allowlist of legacy page-owned RaftLiveCatchUpEffect sites (#wg-mobile-feedback:#274).
+# Shrink as Phases 1-3 migrate each page into store-owned / sync/changes freshness; never add new sites.
+FRESHNESS_LIVE_CATCH_UP_ALLOWLIST: tuple[tuple[str, int, str], ...] = (
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/artifact/ArtifactsHomePage.kt",
+        1,
+        "#274 Phase 3: move into ArtifactsHomeStore",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentActivityTab.kt",
+        1,
+        "#274 Phase 1: move into AgentActivityOverviewStore",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomePage.kt",
+        1,
+        "#274 Phase 3: move Tasks home catch-up into SharedTasksStore",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeShellNavigation.kt",
+        1,
+        "#274 Phase 2: fold shell reconnect catch-up into SharedForegroundReconciler",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadMembersPage.kt",
+        1,
+        "#274 Phase 1: move channel members catch-up into ServerMembersStore",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPageTabs.kt",
+        1,
+        "#274 Phase 3: move channel Tasks tab catch-up into SharedTasksStore",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadViewportAnchors.kt",
+        1,
+        "#274 Phase 2: move active conversation catch-up into SharedThreadStore",
+    ),
+)
+# Ratchet allowlist of legacy RaftFreshnessGate sites not yet passing trackOutcome = true (#273/#274).
+FRESHNESS_GATE_UNTRACKED_ALLOWLIST: tuple[tuple[str, int, str], ...] = (
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/RaftLiveCatchUp.kt",
+        1,
+        "#274 legacy page helper (to be deleted after Phases 1-3)",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/channel/ChannelAnnouncementHost.kt",
+        1,
+        "#274 legacy announcement host gate (migrate to trackOutcome = true)",
+    ),
+    (
+        "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SharedAppLinkPreviewStore.kt",
+        1,
+        "#274 legacy link-preview gate (migrate to trackOutcome = true)",
+    ),
+)
+
+FRESHNESS_LIVE_CATCH_UP_CALL_RE = re.compile(r"\bRaftLiveCatchUpEffect\s*\(")
+FRESHNESS_GATE_CALL_RE = re.compile(r"\bRaftFreshnessGate\s*\(")
+FRESHNESS_TRACK_OUTCOME_TRUE_RE = re.compile(r"\btrackOutcome\s*=\s*true\b")
+
+
+def _extract_balanced_parens(code: str, open_paren_index: int) -> str:
+    """Return the argument slice inside balanced parentheses starting at open_paren_index."""
+    depth = 0
+    for idx in range(open_paren_index, len(code)):
+        ch = code[idx]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return code[open_paren_index + 1 : idx]
+    return code[open_paren_index + 1 :]
+
+
+def _validate_ratchet_allowlist(
+    allowlist: tuple[tuple[str, int, str], ...],
+    label: str,
+) -> dict[str, int]:
+    expected: dict[str, int] = {}
+    for rel, count, reason in allowlist:
+        if not reason.strip():
+            raise Violation(f"{label} allowlist entry for {rel} has an empty reason")
+        if count <= 0:
+            raise Violation(f"{label} allowlist entry for {rel} must have count > 0, got {count}")
+        if rel in expected:
+            raise Violation(f"{label} allowlist has duplicate path {rel}")
+        expected[rel] = count
+    return expected
+
+
+def check_freshness_by_default_invariants(
+    sources: dict[str, str],
+    live_catch_up_allowlist: tuple[tuple[str, int, str], ...] = FRESHNESS_LIVE_CATCH_UP_ALLOWLIST,
+    untracked_gate_allowlist: tuple[tuple[str, int, str], ...] = FRESHNESS_GATE_UNTRACKED_ALLOWLIST,
+) -> None:
+    """Incident: #wg-mobile-feedback:#273/#274 (Freshness by Default).
+
+    1. No new page-owned `RaftLiveCatchUpEffect(...)` call sites in production Kotlin: resources
+       must be observed from their single per-server store and refreshed via `sync/changes` or
+       store-owned freshness coordinators. Existing 7 legacy sites are pinned in a ratchet allowlist.
+    2. Every new `RaftFreshnessGate(...)` construction in production Kotlin must set
+       `trackOutcome = true` so a failed foreground read never consumes the 10 s coalescing window
+       before `NetworkRestored` / `Reconnect` arrives. Existing 3 legacy sites are pinned in a
+       ratchet allowlist.
+    """
+    expected_catch_up = _validate_ratchet_allowlist(
+        live_catch_up_allowlist, "freshness RaftLiveCatchUpEffect"
+    )
+    expected_untracked_gate = _validate_ratchet_allowlist(
+        untracked_gate_allowlist, "freshness untracked RaftFreshnessGate"
+    )
+    actual_catch_up: dict[str, int] = {}
+    actual_untracked_gate: dict[str, int] = {}
+
+    for name, text in sorted(sources.items()):
+        code = _kotlin_code_only(text)
+
+        if name != FRESHNESS_LIVE_CATCH_UP_DECL_FILE:
+            matches = list(FRESHNESS_LIVE_CATCH_UP_CALL_RE.finditer(code))
+            if matches:
+                actual_catch_up[name] = len(matches)
+                allowed = expected_catch_up.get(name, 0)
+                if len(matches) > allowed:
+                    line = code.count("\n", 0, matches[allowed].start()) + 1
+                    raise Violation(
+                        f"freshness-by-default violation (#wg-mobile-feedback:#274): {name}:{line} "
+                        f"calls RaftLiveCatchUpEffect ({len(matches)} > allowed {allowed}); "
+                        "do not add page-owned catch-up effects — observe the single store and "
+                        "refresh via sync/changes or a store-owned coordinator."
+                    )
+
+        if name != FRESHNESS_GATE_DECL_FILE:
+            untracked_lines: list[int] = []
+            for match in FRESHNESS_GATE_CALL_RE.finditer(code):
+                # Skip declaration `class RaftFreshnessGate(` if present in synthetic tests.
+                prefix = code[max(0, match.start() - 24) : match.start()]
+                if re.search(r"\bclass\s+$", prefix):
+                    continue
+                args_text = _extract_balanced_parens(code, match.end() - 1)
+                if not FRESHNESS_TRACK_OUTCOME_TRUE_RE.search(args_text):
+                    untracked_lines.append(code.count("\n", 0, match.start()) + 1)
+            if untracked_lines:
+                actual_untracked_gate[name] = len(untracked_lines)
+                allowed = expected_untracked_gate.get(name, 0)
+                if len(untracked_lines) > allowed:
+                    line = untracked_lines[allowed]
+                    raise Violation(
+                        f"freshness-by-default violation (#wg-mobile-feedback:#274): {name}:{line} "
+                        f"constructs RaftFreshnessGate without `trackOutcome = true` "
+                        f"({len(untracked_lines)} > allowed {allowed}); failed catch-ups must not "
+                        "consume the 10 s coalescing window before NetworkRestored/Reconnect."
+                    )
+
+    for rel, allowed in sorted(expected_catch_up.items()):
+        actual = actual_catch_up.get(rel, 0)
+        if actual < allowed:
+            raise Violation(
+                f"freshness-by-default ratchet (#wg-mobile-feedback:#274): {rel} has {actual} "
+                f"RaftLiveCatchUpEffect call(s) (< allowlisted {allowed}); tighten "
+                "FRESHNESS_LIVE_CATCH_UP_ALLOWLIST in scripts/ci/check_source_constraints.py."
+            )
+
+    for rel, allowed in sorted(expected_untracked_gate.items()):
+        actual = actual_untracked_gate.get(rel, 0)
+        if actual < allowed:
+            raise Violation(
+                f"freshness-by-default ratchet (#wg-mobile-feedback:#274): {rel} has {actual} "
+                f"untracked RaftFreshnessGate call(s) (< allowlisted {allowed}); tighten "
+                "FRESHNESS_GATE_UNTRACKED_ALLOWLIST in scripts/ci/check_source_constraints.py."
+            )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -1089,6 +1270,7 @@ def run(root: Path) -> None:
     check_no_production_run_blocking(prod_kotlin)
     check_server_refusal_surface_invariants(prod_kotlin)
     check_desktop_wry_off_edt_gateway(prod_kotlin)
+    check_freshness_by_default_invariants(prod_kotlin)
     check_native_safe_test_names(_native_test_sources(root))
     check_no_top_level_or_object_snapshot_state(_top_level_snapshot_state_sources(root))
     check_date_time_di_invariants(_date_time_di_sources(root))
@@ -1478,6 +1660,48 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit(f"self-test: desktop Wry off-EDT gateway checker accepted {bad_wry!r}")
 
+    fresh_legacy_page = "compose/shared/src/commonMain/kotlin/build/raft/app/LegacyPage.kt"
+    fresh_legacy_gate = "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/LegacyStore.kt"
+    fresh_good_store = "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/NewStore.kt"
+    good_fresh = {
+        FRESHNESS_LIVE_CATCH_UP_DECL_FILE: (
+            "internal fun RaftLiveCatchUpEffect() { val g = RaftFreshnessGate(trackOutcome = true) }\n"
+        ),
+        FRESHNESS_GATE_DECL_FILE: "class RaftFreshnessGate(val trackOutcome: Boolean = false)\n",
+        fresh_legacy_page: "fun P() { RaftLiveCatchUpEffect(serverId = id) {} }\n",
+        fresh_legacy_gate: "val g = RaftFreshnessGate(nowMillis = clock)\n",
+        fresh_good_store: (
+            "// RaftLiveCatchUpEffect( in comments is ignored\n"
+            "val g = RaftFreshnessGate(\n"
+            "    nowMillis = clock,\n"
+            "    trackOutcome = true,\n"
+            ")\n"
+        ),
+    }
+    fresh_cu_allow = ((fresh_legacy_page, 1, "legacy"),)
+    fresh_gate_allow = ((fresh_legacy_gate, 1, "legacy"),)
+    check_freshness_by_default_invariants(good_fresh, fresh_cu_allow, fresh_gate_allow)
+    for bad_fresh, bad_cu, bad_gt in (
+        # New RaftLiveCatchUpEffect outside allowlist
+        ({**good_fresh, "new.kt": "fun N() { RaftLiveCatchUpEffect(id) {} }\n"}, fresh_cu_allow, fresh_gate_allow),
+        # Second call in allowlisted file
+        ({**good_fresh, fresh_legacy_page: good_fresh[fresh_legacy_page] * 2}, fresh_cu_allow, fresh_gate_allow),
+        # Stale RaftLiveCatchUpEffect allowlist entry (must ratchet down)
+        ({**good_fresh, fresh_legacy_page: "fun P() {}\n"}, fresh_cu_allow, fresh_gate_allow),
+        # New RaftFreshnessGate without trackOutcome = true
+        ({**good_fresh, "new_store.kt": "val g = RaftFreshnessGate(nowMillis = clock)\n"}, fresh_cu_allow, fresh_gate_allow),
+        # New RaftFreshnessGate with trackOutcome = false
+        ({**good_fresh, "new_store.kt": "val g = RaftFreshnessGate(trackOutcome = false)\n"}, fresh_cu_allow, fresh_gate_allow),
+        # Stale RaftFreshnessGate allowlist entry (must ratchet down)
+        ({**good_fresh, fresh_legacy_gate: "val g = RaftFreshnessGate(trackOutcome = true)\n"}, fresh_cu_allow, fresh_gate_allow),
+    ):
+        try:
+            check_freshness_by_default_invariants(bad_fresh, bad_cu, bad_gt)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: freshness-by-default checker accepted {bad_fresh!r}")
+
     print("check_source_constraints self-test passed")
 
 
@@ -1498,7 +1722,8 @@ def main(argv: list[str]) -> int:
         "#3823 no production runBlocking, #3845 Native-safe test names, "
         "1.17.1 NSInvocation object return, #264 no top-level/object snapshot state, "
         "dm:@artin:#2 date/time DI invariants, #proj-mobile:#319 server refusal invariants, "
-        "#wg-mobile-sync:bf308ade desktop Wry off-EDT gateway)"
+        "#wg-mobile-sync:bf308ade desktop Wry off-EDT gateway, "
+        "#wg-mobile-feedback:#274 freshness by default)"
     )
     return 0
 
