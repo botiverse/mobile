@@ -103,6 +103,71 @@ class AndroidNotificationBannerCopyTest {
                 )
             )
         assertNull(channelTaskSingle.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME))
+
+        val loungeTaskMulti =
+            build(
+                fcm(
+                    "category" to "task_status",
+                    "title" to "#4 Stamp record",
+                    "body" to "Edgar changed title",
+                    "subtitle" to "Tenny’s Lounge · Raft",
+                    "subtitleKey" to "push.subtitle.lounge_server",
+                    "subtitleArgs" to """["Tenny","Raft"]"""
+                )
+            )
+        assertEquals("Tenny’s Lounge · Raft", loungeTaskMulti.extras.getCharSequence(Notification.EXTRA_SUB_TEXT).toString())
+        assertEquals("Raft", loungeTaskMulti.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME))
+
+        val loungeTaskSingle =
+            build(
+                fcm(
+                    "category" to "task_status",
+                    "title" to "#4 Stamp record",
+                    "body" to "Edgar changed title",
+                    "subtitle" to "Tenny · QA’s Lounge",
+                    "subtitleKey" to "push.subtitle.lounge",
+                    "subtitleArgs" to """["Tenny · QA"]"""
+                )
+            )
+        assertEquals("Tenny · QA’s Lounge", loungeTaskSingle.extras.getCharSequence(Notification.EXTRA_SUB_TEXT).toString())
+        assertNull(loungeTaskSingle.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME))
+    }
+
+    @Test
+    fun loungeTitleKeysRenderWithAgentName() {
+        val lounge =
+            build(
+                fcm(
+                    "title" to "Tenny’s Lounge",
+                    "titleKey" to "push.title.lounge",
+                    "titleArgs" to """["Tenny"]""",
+                    "subtitle" to "Acme"
+                )
+            )
+        assertEquals("Tenny’s Lounge", lounge.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_TITLE))
+        assertEquals("Tenny’s Lounge · Acme", titleOf(lounge))
+
+        val loungeThread =
+            build(
+                fcm(
+                    "category" to "thread",
+                    "title" to "Thread in Tenny’s Lounge",
+                    "titleKey" to "push.title.thread_in_lounge",
+                    "titleArgs" to """["Tenny"]"""
+                )
+            )
+        assertEquals("Thread in Tenny’s Lounge", titleOf(loungeThread))
+
+        val loungeTask =
+            build(
+                fcm(
+                    "category" to "task_status",
+                    "title" to "Task in Tenny’s Lounge",
+                    "titleKey" to "push.title.task_in_lounge",
+                    "titleArgs" to """["Tenny"]"""
+                )
+            )
+        assertEquals("Task in Tenny’s Lounge", titleOf(loungeTask))
     }
 
     private fun baseFcm(): Map<String, String> =

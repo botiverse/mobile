@@ -94,6 +94,11 @@
     <string name="push_body_app_permission_update_sign_in_data">Приложение запрашивает новые разрешения на вход и больше доступа к данным этого сервера. Одобрите обновление или удалите приложение.</string>
     <string name="push_body_app_permission_update_card_button">Приложение изменило адрес, который вызывают его кнопки карточек. Одобрите обновление или удалите приложение.</string>
     <string name="push_body_app_permission_update_permissions_card_button">Приложение запрашивает новые разрешения и изменило адрес, который вызывают его кнопки карточек. Одобрите обновление или удалите приложение.</string>
+    <string name="push_title_lounge">Гостиная агента %1$s</string>
+    <string name="push_title_thread_in_lounge">Ветка в гостиной агента %1$s</string>
+    <string name="push_title_task_in_lounge">Задача в гостиной агента %1$s</string>
+    <string name="push_subtitle_lounge">Гостиная агента %1$s</string>
+    <string name="push_subtitle_lounge_server">Гостиная агента %1$s · %2$s</string>
     <string name="notification_unread_general_channel_name">Непрочитанные сообщения</string>
     <string name="notification_unread_general_channel_description">Общие уведомления Raft о непрочитанных сообщениях.</string>
     <string name="notification_unread_channel_channel_name">Непрочитанные в каналах</string>

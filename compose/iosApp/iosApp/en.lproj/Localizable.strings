@@ -47,3 +47,9 @@
 "push.body.app_permission_update.sign_in_data" = "It asks for new sign-in permissions and more access to data on this Server. Approve the update or uninstall the App.";
 "push.body.app_permission_update.card_button" = "It changed the address its card buttons call. Approve the update or uninstall the App.";
 "push.body.app_permission_update.permissions_card_button" = "It asks for new permissions and changed the address its card buttons call. Approve the update or uninstall the App.";
+/* Agent Lounge labels (preview key set 5, slock #16691). */
+"push.title.lounge" = "%1$@’s Lounge";
+"push.title.thread_in_lounge" = "Thread in %1$@’s Lounge";
+"push.title.task_in_lounge" = "Task in %1$@’s Lounge";
+"push.subtitle.lounge" = "%1$@’s Lounge";
+"push.subtitle.lounge_server" = "%1$@’s Lounge · %2$@";

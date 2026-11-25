@@ -47,3 +47,9 @@
 "push.body.app_permission_update.sign_in_data" = "새 로그인 권한과 이 서버의 데이터에 대한 더 많은 접근을 요청해요. 업데이트를 승인하거나 앱을 제거해 주세요.";
 "push.body.app_permission_update.card_button" = "카드 버튼이 호출하는 주소가 바뀌었어요. 업데이트를 승인하거나 앱을 제거해 주세요.";
 "push.body.app_permission_update.permissions_card_button" = "새 권한을 요청하고, 카드 버튼이 호출하는 주소도 바뀌었어요. 업데이트를 승인하거나 앱을 제거해 주세요.";
+/* Agent Lounge labels (preview key set 5, slock #16691). */
+"push.title.lounge" = "%1$@의 라운지";
+"push.title.thread_in_lounge" = "%1$@의 라운지 스레드";
+"push.title.task_in_lounge" = "%1$@의 라운지 작업";
+"push.subtitle.lounge" = "%1$@의 라운지";
+"push.subtitle.lounge_server" = "%1$@의 라운지 · %2$@";

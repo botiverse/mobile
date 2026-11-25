@@ -92,6 +92,11 @@
     <string name="push_body_app_permission_update_sign_in_data">Pide nuevos permisos de inicio de sesión y más acceso a los datos de este servidor. Aprueba la actualización o desinstala la app.</string>
     <string name="push_body_app_permission_update_card_button">Cambió la dirección a la que llaman sus botones de tarjeta. Aprueba la actualización o desinstala la app.</string>
     <string name="push_body_app_permission_update_permissions_card_button">Pide nuevos permisos y cambió la dirección a la que llaman sus botones de tarjeta. Aprueba la actualización o desinstala la app.</string>
+    <string name="push_title_lounge">Salón de %1$s</string>
+    <string name="push_title_thread_in_lounge">Hilo en el Salón de %1$s</string>
+    <string name="push_title_task_in_lounge">Tarea en el Salón de %1$s</string>
+    <string name="push_subtitle_lounge">Salón de %1$s</string>
+    <string name="push_subtitle_lounge_server">Salón de %1$s · %2$s</string>
     <string name="notification_unread_general_channel_name">Mensajes no leídos</string>
     <string name="notification_unread_general_channel_description">Notificaciones generales de mensajes de Raft sin leer.</string>
     <string name="notification_unread_channel_channel_name">Mensajes de canales sin leer</string>

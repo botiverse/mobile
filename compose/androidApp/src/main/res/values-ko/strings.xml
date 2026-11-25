@@ -92,6 +92,11 @@
     <string name="push_body_app_permission_update_sign_in_data">새 로그인 권한과 이 서버의 데이터에 대한 더 많은 접근을 요청해요. 업데이트를 승인하거나 앱을 제거해 주세요.</string>
     <string name="push_body_app_permission_update_card_button">카드 버튼이 호출하는 주소가 바뀌었어요. 업데이트를 승인하거나 앱을 제거해 주세요.</string>
     <string name="push_body_app_permission_update_permissions_card_button">새 권한을 요청하고, 카드 버튼이 호출하는 주소도 바뀌었어요. 업데이트를 승인하거나 앱을 제거해 주세요.</string>
+    <string name="push_title_lounge">%1$s의 라운지</string>
+    <string name="push_title_thread_in_lounge">%1$s의 라운지 스레드</string>
+    <string name="push_title_task_in_lounge">%1$s의 라운지 작업</string>
+    <string name="push_subtitle_lounge">%1$s의 라운지</string>
+    <string name="push_subtitle_lounge_server">%1$s의 라운지 · %2$s</string>
     <string name="notification_unread_general_channel_name">읽지 않은 메시지</string>
     <string name="notification_unread_general_channel_description">Raft의 읽지 않은 메시지에 대한 일반 알림이에요.</string>
     <string name="notification_unread_channel_channel_name">채널의 읽지 않은 메시지</string>

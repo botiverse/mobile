@@ -47,3 +47,9 @@
 "push.body.app_permission_update.sign_in_data" = "Pide nuevos permisos de inicio de sesión y más acceso a los datos de este servidor. Aprueba la actualización o desinstala la app.";
 "push.body.app_permission_update.card_button" = "Cambió la dirección a la que llaman sus botones de tarjeta. Aprueba la actualización o desinstala la app.";
 "push.body.app_permission_update.permissions_card_button" = "Pide nuevos permisos y cambió la dirección a la que llaman sus botones de tarjeta. Aprueba la actualización o desinstala la app.";
+/* Agent Lounge labels (preview key set 5, slock #16691). */
+"push.title.lounge" = "Salón de %1$@";
+"push.title.thread_in_lounge" = "Hilo en el Salón de %1$@";
+"push.title.task_in_lounge" = "Tarea en el Salón de %1$@";
+"push.subtitle.lounge" = "Salón de %1$@";
+"push.subtitle.lounge_server" = "Salón de %1$@ · %2$@";

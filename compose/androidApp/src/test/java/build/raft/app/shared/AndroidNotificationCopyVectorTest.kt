@@ -1,7 +1,7 @@
 package build.raft.app.shared
 
 // Vendored from packages/shared/src/notificationCopy.ts (NOTIFICATION_COPY) at
-//   github.com/botiverse/slock PR #16546 (merged to staging) @ 9bd45ecf815dc645b29e7c36fc182b0c7328fc4d
+//   github.com/botiverse/slock PR #16691 (merged to staging) @ 827ab8e3b96aaf5dd99148ad887ec31d3fb25e6d
 // (scripts/check_notification_copy_vector.sh keeps this header, the test's assertion and
 // AndroidPushCopyKeys.SLOCK_SHA in step). To update: re-copy the catalogue, add the new keys to the
 // string files and AndroidPushCopyKeys, and bump all three pins together.
@@ -72,13 +72,18 @@ class AndroidNotificationCopyVectorTest {
             CopyKey("push.body.app_permission_update.sign_in_data", "It asks for new sign-in permissions and more access to data on this Server. Approve the update or uninstall the App.", 4),
             CopyKey("push.body.app_permission_update.card_button", "It changed the address its card buttons call. Approve the update or uninstall the App.", 4),
             CopyKey("push.body.app_permission_update.permissions_card_button", "It asks for new permissions and changed the address its card buttons call. Approve the update or uninstall the App.", 4),
+            CopyKey("push.title.lounge", "{0}’s Lounge", 5),
+            CopyKey("push.title.thread_in_lounge", "Thread in {0}’s Lounge", 5),
+            CopyKey("push.title.task_in_lounge", "Task in {0}’s Lounge", 5),
+            CopyKey("push.subtitle.lounge", "{0}’s Lounge", 5),
+            CopyKey("push.subtitle.lounge_server", "{0}’s Lounge · {1}", 5),
         )
 
     @Test
     fun pinnedToTheSlockCatalogue() {
-        assertEquals("9bd45ecf815dc645b29e7c36fc182b0c7328fc4d", AndroidPushCopyKeys.SLOCK_SHA)
-        assertEquals(4, RAFT_ANDROID_PUSH_PREVIEW_KEY_SET)
-        assertEquals(41, catalogue.size)
+        assertEquals("827ab8e3b96aaf5dd99148ad887ec31d3fb25e6d", AndroidPushCopyKeys.SLOCK_SHA)
+        assertEquals(5, RAFT_ANDROID_PUSH_PREVIEW_KEY_SET)
+        assertEquals(46, catalogue.size)
     }
 
     @Test
