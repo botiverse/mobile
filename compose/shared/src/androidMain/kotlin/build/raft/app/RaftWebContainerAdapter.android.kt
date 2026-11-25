@@ -5,11 +5,33 @@ import android.content.ContextWrapper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.webcontainer.LocalAndroidWebFileChooser
 import build.raft.webcontainer.WebContainerAndroidFileChooser
 import build.raft.webcontainer.resource.WebResourceInterceptor
 import build.raft.webcontainer.resource.WebResourceResponseData
 import build.raft.webcontainer.resource.WebResourceSource
+
+/**
+ * Non-blocking in-memory snapshot check of `mobile_web_container_v1` for Android startup hooks
+ * (such as `RaftAndroidWebViewWarmup` opting into off-main-thread `WebViewCompat.startUpWebView`).
+ * Fails closed (`false`) when the flag is unset/OFF or unresolved (while still honoring an
+ * entitled in-process diagnostic override, matching `rememberRaftWebContainerV1Enabled()`).
+ */
+fun isRaftAndroidWebContainerEnabledSnapshot(): Boolean =
+    runCatching {
+        val provider = RaftSharedStoreRegistry.currentOrNull()
+        val session = provider?.let { runCatching { it.authStore.readCommittedSessionSnapshot() }.getOrNull() }
+        val serverId =
+            session?.currentServerId?.trim()?.takeIf { it.isNotEmpty() }
+                ?: session?.servers?.firstOrNull()?.id?.trim().orEmpty()
+        resolveMobileWebContainerV1EnabledPure(
+            serverFeatureFlags = provider?.serverFeatureFlags,
+            registry = ProcessDiagnosticFeatureFlagOverrides.registry,
+            serverId = serverId,
+        )
+    }.getOrDefault(false)
 
 private fun unwrapWebContainerFileChooserHost(context: Context): RaftWebViewFileChooserHost? {
     var current: Context? = context
