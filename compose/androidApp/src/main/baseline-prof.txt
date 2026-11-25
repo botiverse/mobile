@@ -1303,7 +1303,6 @@ HSPLbuild/raft/app/SharedThreadStore$$ExternalSyntheticLambda12;->invoke(Ljava/l
 HSPLbuild/raft/app/SharedThreadStore$dispatch$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore$dispatch$5;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore$launchBackgroundMembersHydration$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
-HSPLbuild/raft/app/SharedThreadStore$launchInitialAccessResolution$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore$launchSecondaryTimelineRefresh$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore$refresh$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore$renderSliceFlow$$inlined$map$1$2;->emit(Ljava/lang/Object;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -1444,6 +1443,8 @@ HSPLbuild/raft/app/RaftType;-><clinit>()V
 HSPLbuild/raft/app/StrictProjectionParsersKt$$ExternalSyntheticLambda1;->invoke(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/StrictProjectionParsersKt;->$r8$lambda$gIHz1gvmIv5RiOOdsKGAQVMb9gc(Ljava/lang/String;)Lkotlin/Unit;
 HSPLbuild/raft/app/StrictProjectionParsersKt;->projectionRejectingDiagnosticsLogger$lambda$1(Ljava/lang/String;)Lkotlin/Unit;
+HSPLbuild/raft/app/ThreadAccessResolver$launchInitialAccessResolution$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
+HSPLbuild/raft/app/ThreadAccessResolver;->launchInitialAccessResolution(Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/data/MviStaleToken;)V
 HSPLbuild/raft/app/ThreadCompactAuthorSignature;->equals(Ljava/lang/Object;)Z
 HSPLbuild/raft/app/ThreadComposerPageKt$ThreadComposerContent$9$5$1$entries$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/ThreadComposerPageKt$ThreadComposerContent$9$5$1;-><init>(Lbuild/raft/app/ThreadComposerUiState;Landroidx/compose/runtime/MutableState;Lkotlin/coroutines/Continuation;)V
