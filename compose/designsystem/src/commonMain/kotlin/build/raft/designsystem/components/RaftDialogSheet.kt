@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -70,7 +71,9 @@ import build.raft.designsystem.tokens.RaftStroke
  *   clears the home indicator; keep the phone's 16dp margin inside it.
  * - A dialog with steps passes [onBack] from its second step on: the head's start button is then
  *   a back arrow ([RaftGlyph.ArrowLeft], named [backLabel], which the caller localizes) that goes to the previous step instead of
- *   closing (raft-ui `DialogSheetBack`).
+ *   closing (raft-ui `DialogSheetBack`), with no × beside it (raft-ui dialog.md, stdrc 2026-10-22: the
+ *   sheet is a stack of steps and Back undoes one, as on a pushed page; people go back to the first
+ *   step and close it with ×).
  */
 @Composable
 fun RaftDialogSheetSurface(
@@ -215,7 +218,8 @@ internal fun raftDialogSheetWindowProperties(centered: Boolean): RaftWindowDialo
  *
  * On a tablet or a large screen: a centred dialog, as on a desktop ([RaftDialogSheetCenteredSurface]):
  * the title with × at the end, the body, and a footer with a ghost Cancel ([cancelLabel]) and the
- * commit button. It appears without animation.
+ * commit button. It appears without animation. [footerStart] and [cancelVisible] are the centred
+ * footer's ([RaftDialogSheetCenteredSurface]); a phone sheet has no footer.
  *
  * Either way × (and Cancel) and Back call [onDismissRequest]; a tap on the scrim does not, so a
  * stray tap loses nothing. [closeEnabled] false disables × and Cancel while the commit is in
@@ -238,6 +242,8 @@ fun RaftDialogSheet(
     closeEnabled: Boolean = true,
     onBack: (() -> Unit)? = null,
     backLabel: String = "",
+    footerStart: (@Composable RowScope.() -> Unit)? = null,
+    cancelVisible: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val hostWindowWidthPx = LocalWindowInfo.current.containerSize.width
@@ -276,6 +282,8 @@ fun RaftDialogSheet(
                         closeEnabled = closeEnabled,
                         onBack = onBack,
                         backLabel = backLabel,
+                        footerStart = footerStart,
+                        cancelVisible = cancelVisible,
                         content = content,
                     )
                 }
@@ -390,6 +398,12 @@ private fun RaftDialogSheetBottom(
  *   list scrolls itself); keep a 16dp margin inside it, as on the phone sheet.
  * - Footer: a ghost Cancel ([cancelLabel], calls [onClose]; [backLabel] and [onBack] instead from a step's second page on) and the commit button
  *   ([commitLabel], [commitVariant], [commitIcon]) at the end, `Lg`, 8dp apart, 20dp from the edges.
+ *   Cancel shows whether or not there is a commit button: a view with nothing to commit still
+ *   has its way out, as the web footer's Cancel does when a question card has no submit.
+ * - [footerStart]: what the web writes in `DialogFooter` before the buttons (`mr-auto`), at the
+ *   footer's start, the buttons staying at its end: a question card's "Submitted · Undo".
+ * - [cancelVisible] false leaves Cancel (or Back) out of the footer, as the web footer does while
+ *   a question card's answer waits for Undo; the header's × still closes.
  */
 @Composable
 fun RaftDialogSheetCenteredSurface(
@@ -407,6 +421,8 @@ fun RaftDialogSheetCenteredSurface(
     closeEnabled: Boolean = true,
     onBack: (() -> Unit)? = null,
     backLabel: String = "",
+    footerStart: (@Composable RowScope.() -> Unit)? = null,
+    cancelVisible: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -428,14 +444,19 @@ fun RaftDialogSheetCenteredSurface(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (footerStart != null) {
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, content = footerStart)
+                }
                 // From a step's second page on, Cancel is Back (the header's × still closes).
-                RaftButton(
-                    text = if (onBack != null) backLabel else cancelLabel,
-                    onClick = onBack ?: onClose,
-                    variant = RaftButtonVariant.Ghost,
-                    size = RaftButtonSize.Lg,
-                    enabled = closeEnabled,
-                )
+                if (cancelVisible) {
+                    RaftButton(
+                        text = if (onBack != null) backLabel else cancelLabel,
+                        onClick = onBack ?: onClose,
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftButtonSize.Lg,
+                        enabled = closeEnabled,
+                    )
+                }
                 if (commitLabel != null) {
                     RaftButton(
                         text = commitLabel,
