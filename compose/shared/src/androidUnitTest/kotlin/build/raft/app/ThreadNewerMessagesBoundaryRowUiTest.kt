@@ -84,7 +84,9 @@ class ThreadNewerMessagesBoundaryRowUiTest {
     fun newerBoundaryRowIsZeroHeightWhenIdleAndVisibleImmediatelyWhenLoadingOrError() {
         var idleHeight = -1
         var loadingHeight = -1
+        var suppressedLoadingHeight = -1
         var retryClicks = 0
+        var suppressedRetryClicks = 0
 
         val root =
             render {
@@ -99,16 +101,42 @@ class ThreadNewerMessagesBoundaryRowUiTest {
                 ) {
                     ThreadNewerMessagesBoundaryRow(newerMessagesStatus = "loading", onRetry = {})
                 }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .semantics { testTag = "newer-loading-suppressed" }
+                        .onGloballyPositioned { suppressedLoadingHeight = it.size.height }
+                ) {
+                    ThreadNewerMessagesBoundaryRow(
+                        newerMessagesStatus = "loading",
+                        onRetry = {},
+                        suppressLoadingIndicator = true,
+                    )
+                }
                 Box(Modifier.fillMaxWidth().semantics { testTag = "newer-error" }) {
                     ThreadNewerMessagesBoundaryRow(newerMessagesStatus = "error", onRetry = { retryClicks += 1 })
+                }
+                Box(Modifier.fillMaxWidth().semantics { testTag = "newer-error-suppressed" }) {
+                    ThreadNewerMessagesBoundaryRow(
+                        newerMessagesStatus = "error",
+                        onRetry = { suppressedRetryClicks += 1 },
+                        suppressLoadingIndicator = true,
+                    )
                 }
             }
 
         assertEquals(0, idleHeight, "idle ThreadNewerMessagesBoundaryRow must occupy 0px height, never 36dp blank space")
         assertTrue(loadingHeight > 0, "loading ThreadNewerMessagesBoundaryRow must render visible status row immediately")
         assertTrue(root.textsUnder("newer-loading").isNotEmpty())
+        assertEquals(0, suppressedLoadingHeight, "suppressed loading ThreadNewerMessagesBoundaryRow must collapse to 0px")
+        assertTrue(root.textsUnder("newer-loading-suppressed").isEmpty())
         assertTrue(root.clickNodeUnder("newer-error"), "error boundary row must expose clickable retry button")
         assertEquals(1, retryClicks)
+        assertTrue(
+            root.clickNodeUnder("newer-error-suppressed"),
+            "error retry button must never be suppressed when suppressLoadingIndicator = true",
+        )
+        assertEquals(1, suppressedRetryClicks)
     }
 
     @Test

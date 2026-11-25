@@ -8,7 +8,9 @@ import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.model.delegatedGroupKey
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -122,6 +124,86 @@ internal fun threadOlderMessagesStatusSpec(
                 secondaryReplyCount = secondaryReplyCount
             )
     }
+}
+
+/**
+ * Which outer boundary of [ThreadMessagesList] currently owns the single visible loading
+ * indicator (#proj-mobile:#390).
+ */
+internal enum class ThreadBoundaryLoadingSlot {
+    Older,
+    Newer,
+}
+
+/**
+ * Enforces at most one visible boundary loading indicator across the timeline while keeping older
+ * and newer paging fetches running in parallel in [SharedThreadStore] (#proj-mobile:#390).
+ *
+ * - Neither boundary loading -> `null`.
+ * - Only one boundary loading -> that boundary.
+ * - Both boundaries loading simultaneously -> preserve [activeSlot] if one is already showing so
+ *   staggered starts never flicker between edges; otherwise pick [ThreadBoundaryLoadingSlot.Older]
+ *   deterministically (the historical/top edge).
+ */
+internal fun resolveVisibleThreadBoundaryLoadingSlot(
+    olderLoading: Boolean,
+    newerLoading: Boolean,
+    activeSlot: ThreadBoundaryLoadingSlot?,
+): ThreadBoundaryLoadingSlot? =
+    when {
+        olderLoading && newerLoading -> activeSlot ?: ThreadBoundaryLoadingSlot.Older
+        olderLoading -> ThreadBoundaryLoadingSlot.Older
+        newerLoading -> ThreadBoundaryLoadingSlot.Newer
+        else -> null
+    }
+
+/**
+ * Filters an older-boundary [ThreadHistoryStatusSpec] through the active [visibleLoadingSlot].
+ * Non-loading labels ("Beginning of conversation", "Older messages are not available offline")
+ * are never suppressed; loading specs render only while [ThreadBoundaryLoadingSlot.Older] owns
+ * the single visible boundary slot.
+ */
+internal fun ThreadHistoryStatusSpec?.visibleForBoundaryLoadingSlot(
+    visibleLoadingSlot: ThreadBoundaryLoadingSlot?,
+): ThreadHistoryStatusSpec? =
+    this?.takeUnless { it.loading && visibleLoadingSlot != ThreadBoundaryLoadingSlot.Older }
+
+/**
+ * Whether [ThreadNewerMessagesBoundaryRow] should suppress its loading indicator for the given
+ * [visibleLoadingSlot] (or while an empty-reply loading skeleton already owns the list). Error
+ * retry rows are handled before suppression inside [ThreadNewerMessagesBoundaryRow].
+ */
+internal fun shouldSuppressThreadNewerBoundaryLoading(
+    visibleLoadingSlot: ThreadBoundaryLoadingSlot?,
+    replyLoadingSkeletonVisible: Boolean = false,
+): Boolean = replyLoadingSkeletonVisible || visibleLoadingSlot != ThreadBoundaryLoadingSlot.Newer
+
+private class ThreadBoundaryLoadingSlotHolder {
+    var activeSlot: ThreadBoundaryLoadingSlot? = null
+}
+
+/**
+ * Remembers the active boundary loading slot per [threadInstanceKey] so switching conversations
+ * resets arbitration state, and commits updates synchronously via [SideEffect] so staggered loads
+ * never flip between edges on the next recomposition.
+ */
+@Composable
+internal fun rememberVisibleThreadBoundaryLoadingSlot(
+    threadInstanceKey: String,
+    olderLoading: Boolean,
+    newerLoading: Boolean,
+): ThreadBoundaryLoadingSlot? {
+    val holder = remember(threadInstanceKey) { ThreadBoundaryLoadingSlotHolder() }
+    val visibleSlot =
+        resolveVisibleThreadBoundaryLoadingSlot(
+            olderLoading = olderLoading,
+            newerLoading = newerLoading,
+            activeSlot = holder.activeSlot,
+        )
+    SideEffect {
+        holder.activeSlot = visibleSlot
+    }
+    return visibleSlot
 }
 
 /**

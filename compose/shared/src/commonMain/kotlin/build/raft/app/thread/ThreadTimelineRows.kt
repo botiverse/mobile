@@ -165,7 +165,8 @@ internal fun ThreadSystemMessageRow(
 @Composable
 internal fun ThreadNewerMessagesBoundaryRow(
     newerMessagesStatus: String,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    suppressLoadingIndicator: Boolean = false,
 ) {
     val spec = threadNewerMessagesActionSpec(newerMessagesStatus)
     if (spec.event == "retryLoadNewer") {
@@ -176,15 +177,16 @@ internal fun ThreadNewerMessagesBoundaryRow(
         )
         return
     }
-    if (newerMessagesStatus == "loading") {
+    if (newerMessagesStatus == "loading" && !suppressLoadingIndicator) {
         ThreadHistoryStatusRow(
             spec = ThreadHistoryStatusSpec(label = spec.label, loading = true),
             loadingRevealDelayMs = 0L,
         )
         return
     }
-    // Keep the LazyColumn slot when idle (index arithmetic stays invariant) at 0dp height so
-    // anchored opens never show a 36dp blank white band below the last message (#proj-mobile:#386).
+    // Keep the LazyColumn slot when idle (or suppressed while the older boundary owns the single
+    // visible loading indicator, #proj-mobile:#390) at 0dp height so index arithmetic stays
+    // invariant and anchored opens never show a 36dp blank white band below the last message (#proj-mobile:#386).
     Box(modifier = Modifier.fillMaxWidth())
 }
 
