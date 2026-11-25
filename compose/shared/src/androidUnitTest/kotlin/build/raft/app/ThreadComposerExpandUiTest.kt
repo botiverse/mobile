@@ -12,10 +12,10 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -62,13 +62,12 @@ class ThreadComposerExpandUiTest {
             val collapsedComposerBounds = onNodeWithTag(ThreadComposerCardTestTag).getUnclippedBoundsInRoot()
             val collapsedComposerHeight = collapsedComposerBounds.bottom - collapsedComposerBounds.top
 
-            val toggle = onNodeWithTag(ThreadComposerExpandToggleTestTag)
-            toggle.assertContentDescriptionEquals("Expand")
-            toggle.performClick()
+            onNodeWithTag(ThreadComposerExpandToggleTestTag, useUnmergedTree = true).assertExists()
+            onNodeWithContentDescription("Expand").assertExists().performClick()
             waitForIdle()
 
             onNodeWithTag(ThreadComposerExpandedSurfaceTestTag, useUnmergedTree = true).assertExists()
-            toggle.assertContentDescriptionEquals("Collapse")
+            onNodeWithContentDescription("Collapse").assertExists()
             editor.assertIsFocused()
             assertEquals("a long message\nsecond line", events.valueOf("change"))
 
@@ -85,11 +84,11 @@ class ThreadComposerExpandUiTest {
                 "Expected expanded composer ($expandedComposerHeight) to grow well past collapsed ($collapsedComposerHeight)",
             )
 
-            toggle.performClick()
+            onNodeWithContentDescription("Collapse").performClick()
             waitForIdle()
 
             onNodeWithTag(ThreadComposerExpandedSurfaceTestTag, useUnmergedTree = true).assertDoesNotExist()
-            toggle.assertContentDescriptionEquals("Expand")
+            onNodeWithContentDescription("Expand").assertExists()
             editor.assertIsFocused()
             assertEquals("a long message\nsecond line", events.valueOf("change"))
         }
@@ -100,7 +99,7 @@ class ThreadComposerExpandUiTest {
             val events = showComposer(expandable = true, members = listOf(ADA))
             val editor = onNode(hasSetTextAction())
 
-            onNodeWithTag(ThreadComposerExpandToggleTestTag).performClick()
+            onNodeWithContentDescription("Expand").performClick()
             waitForIdle()
             onNodeWithTag(ThreadComposerExpandedSurfaceTestTag, useUnmergedTree = true).assertExists()
 
@@ -126,7 +125,7 @@ class ThreadComposerExpandUiTest {
             val events = showComposer(expandable = true)
             val editor = onNode(hasSetTextAction())
 
-            onNodeWithTag(ThreadComposerExpandToggleTestTag).performClick()
+            onNodeWithContentDescription("Expand").performClick()
             waitForIdle()
             onNodeWithTag(ThreadComposerExpandedSurfaceTestTag, useUnmergedTree = true).assertExists()
 
@@ -144,7 +143,8 @@ class ThreadComposerExpandUiTest {
     fun nonExpandableHostHidesExpandButtonOnWideWindow() =
         runRobolectricComposeUiTest {
             showComposer(expandable = false)
-            onNodeWithTag(ThreadComposerExpandToggleTestTag).assertDoesNotExist()
+            onNodeWithTag(ThreadComposerExpandToggleTestTag, useUnmergedTree = true).assertDoesNotExist()
+            onNodeWithContentDescription("Expand").assertDoesNotExist()
             onNodeWithTag(ThreadComposerExpandedSurfaceTestTag, useUnmergedTree = true).assertDoesNotExist()
         }
 
@@ -153,7 +153,8 @@ class ThreadComposerExpandUiTest {
     fun phoneViewportHidesExpandButton() =
         runRobolectricComposeUiTest {
             showComposer(expandable = true)
-            onNodeWithTag(ThreadComposerExpandToggleTestTag).assertDoesNotExist()
+            onNodeWithTag(ThreadComposerExpandToggleTestTag, useUnmergedTree = true).assertDoesNotExist()
+            onNodeWithContentDescription("Expand").assertDoesNotExist()
             onNodeWithTag(ThreadComposerExpandedSurfaceTestTag, useUnmergedTree = true).assertDoesNotExist()
         }
 
@@ -180,11 +181,11 @@ class ThreadComposerExpandUiTest {
                     Column(Modifier.fillMaxSize()) {
                         Box(
                             modifier =
-                                if (expanded) {
+                                (if (expanded) {
                                     Modifier.fillMaxWidth().height(ThreadComposerExpandedMessageListStripHeight)
                                 } else {
                                     Modifier.fillMaxWidth().weight(1f)
-                                }.testTag(MessageListTag)
+                                }).testTag(MessageListTag)
                         )
                         ThreadComposerDock(
                             modifier = if (expanded) Modifier.weight(1f) else Modifier,

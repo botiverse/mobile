@@ -30,6 +30,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -365,37 +366,43 @@ internal fun SendPromptDialog(
         onOpened(suggested.kind)
     }
 
-    fun cancel() {
-        if (sending) return
-        if (!closedRecorded) {
-            closedRecorded = true
-            onClosed("cancelled", draftText != prompt, changedAgent)
-        }
-        onClose()
-    }
-
-    fun submit(rawText: String) {
-        val target = pickedAgent ?: return
-        val trimmed = rawText.trim()
-        if (sending || trimmed.isEmpty()) return
-        sending = true
-        sendFailed = false
-        scope.launch {
-            val succeeded =
-                runCatchingPreservingCancellation { onSend(target, trimmed) }
-                    .getOrDefault(false)
-            if (succeeded) {
+    val currentCancel by rememberUpdatedState<() -> Unit>(
+        {
+            if (!sending) {
                 if (!closedRecorded) {
                     closedRecorded = true
-                    onClosed("sent", trimmed != prompt.trim(), changedAgent)
+                    onClosed("cancelled", draftText != prompt, changedAgent)
                 }
                 onClose()
-            } else {
-                sendFailed = true
-                sending = false
             }
         }
-    }
+    )
+
+    val currentSubmit by rememberUpdatedState<(String) -> Unit>(
+        { rawText ->
+            val target = pickedAgent
+            val trimmed = rawText.trim()
+            if (target != null && !sending && trimmed.isNotEmpty()) {
+                sending = true
+                sendFailed = false
+                scope.launch {
+                    val succeeded =
+                        runCatchingPreservingCancellation { onSend(target, trimmed) }
+                            .getOrDefault(false)
+                    if (succeeded) {
+                        if (!closedRecorded) {
+                            closedRecorded = true
+                            onClosed("sent", trimmed != prompt.trim(), changedAgent)
+                        }
+                        onClose()
+                    } else {
+                        sendFailed = true
+                        sending = false
+                    }
+                }
+            }
+        }
+    )
 
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -403,7 +410,7 @@ internal fun SendPromptDialog(
     if (recipients.isEmpty() || pickedAgent == null) {
         RaftUnifiedDialog(
             title = stringResource(Res.string.send_prompt_heading),
-            onDismiss = ::cancel,
+            onDismiss = { currentCancel() },
             presentation = RaftDialogPresentation.Centered,
             hostRoute = SendPromptDialogHostRoute,
             contentPadding = RaftAppSpacing.Md,
@@ -454,8 +461,11 @@ internal fun SendPromptDialog(
         previewResult = previewResult,
         onPickAgent = { picked -> selectedAgentId = picked.id.value },
         onDraftChange = { draftText = it },
-        onSubmit = ::submit,
-        onCancel = ::cancel,
+        // Avoid Kotlin local function references (::submit / ::cancel): their equals() ignores
+        // captured Compose state (pickedAgent, sending), causing Compose strong skipping inside
+        // CompositionLocalProvider to memoize a stale recipient after switching agents.
+        onSubmit = { rawText -> currentSubmit(rawText) },
+        onCancel = { currentCancel() },
     )
 }
 
@@ -948,6 +958,9 @@ private fun SendPromptComposerFooter(
             )
         }
         val composerSendKey = RaftComposerSendKeyRuntime.observeSendKey()
+        val currentSending by rememberUpdatedState(sending)
+        val currentOnDraftChange by rememberUpdatedState(onDraftChange)
+        val currentOnSubmit by rememberUpdatedState(onSubmit)
         Box(
             modifier =
                 Modifier
@@ -971,15 +984,15 @@ private fun SendPromptComposerFooter(
                     composerSendKey = composerSendKey,
                     onEvent = { action, value, _, _ ->
                         if (action == "change" && value != null) {
-                            onDraftChange(value)
+                            currentOnDraftChange(value)
                         }
                     },
                     onSendRequest = { request ->
                         val text = request.value.text
-                        if (sending || text.isBlank()) {
+                        if (currentSending || text.isBlank()) {
                             ThreadComposerSendAdmission.Rejected
                         } else {
-                            onSubmit(text)
+                            currentOnSubmit(text)
                             // Keep text in composer until the dialog closes so a failed send preserves edits.
                             ThreadComposerSendAdmission.Deferred
                         }
