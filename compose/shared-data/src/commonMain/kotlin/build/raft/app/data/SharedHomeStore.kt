@@ -3505,6 +3505,7 @@ private data class HomeNotificationAuthority(
                 }
             }
         }
+        val isLifecycleRetired = dataResult is DataResult.Error && dataResult.error.isLifecycleRetired()
         val result =
             when (dataResult) {
                 is DataResult.Content ->
@@ -3520,14 +3521,25 @@ private data class HomeNotificationAuthority(
                     )
                 is DataResult.Empty -> SharedHomeContentState.Empty(activeSession)
                 is DataResult.Error -> {
-                    diagnosticsLogger(
-                        "home_ui_error source=shared_home_load code=${dataResult.error.code} mapped=${_state.value.content.refreshFailureMapping()}"
-                    )
-                    _state.value.content.asRefreshFailed(
-                        dataResult.error.code,
-                        serverMessage = dataResult.error.serverMessage,
-                        traceId = dataResult.error.traceId
-                    )
+                    if (isLifecycleRetired) {
+                        diagnosticsLogger(
+                            "home_ui_retired source=shared_home_load code=${dataResult.error.code} " +
+                                "pendingServerId=${_state.value.serverSwitchState.pendingServerId ?: "_"}"
+                        )
+                        when (val currentContent = _state.value.content) {
+                            is SharedHomeContentState.Content -> currentContent.copy(contentRefreshing = false)
+                            else -> currentContent
+                        }
+                    } else {
+                        diagnosticsLogger(
+                            "home_ui_error source=shared_home_load code=${dataResult.error.code} mapped=${_state.value.content.refreshFailureMapping()}"
+                        )
+                        _state.value.content.asRefreshFailed(
+                            dataResult.error.code,
+                            serverMessage = dataResult.error.serverMessage,
+                            traceId = dataResult.error.traceId
+                        )
+                    }
                 }
                 is DataResult.NoPermission -> {
                     diagnosticsLogger(
@@ -3633,14 +3645,37 @@ private data class HomeNotificationAuthority(
                     serverSwitchState =
                         when {
                             resultServerId == null -> latestSwitch
+                            // Expected lifecycle retirement (e.g. screen lock / backgrounding) while a
+                            // server switch was in flight is not a switch failure: stop the watchdog and
+                            // clear pendingServerId without bumping failureCount, keeping selectedServerId
+                            // so foreground reconcile loads the target server cleanly on unlock.
+                            latestSwitch.pendingServerId != null &&
+                                isLifecycleRetired &&
+                                latestSwitch.isCurrent(request.requestGeneration, resultServerId) -> {
+                                diagnosticsLogger(
+                                    "home_server_switch_deferred reason=lifecycle_retired " +
+                                        "serverId=${latestSwitch.pendingServerId} generation=${latestSwitch.requestGeneration}"
+                                )
+                                serverSwitchWatchdog?.cancel()
+                                serverSwitchWatchdog = null
+                                latestSwitch.complete(request.requestGeneration, resultServerId)
+                            }
                             // The switch's own load failed: the switch failed (the UI says so once).
                             latestSwitch.pendingServerId != null &&
                                 (dataResult is DataResult.Error || dataResult is DataResult.NoPermission) &&
                                 latestSwitch.isCurrent(request.requestGeneration, resultServerId) -> {
                                 diagnosticsLogger("home_server_switch_failed reason=load_error serverId=${latestSwitch.pendingServerId}")
+                                serverSwitchWatchdog?.cancel()
+                                serverSwitchWatchdog = null
                                 latestSwitch.fail()
                             }
-                            else -> latestSwitch.complete(request.requestGeneration, resultServerId)
+                            else -> {
+                                if (latestSwitch.isCurrent(request.requestGeneration, resultServerId)) {
+                                    serverSwitchWatchdog?.cancel()
+                                    serverSwitchWatchdog = null
+                                }
+                                latestSwitch.complete(request.requestGeneration, resultServerId)
+                            }
                         },
                     // task #831: keep the prior drawer unread when unread was
                     // unavailable, so a slow/hung unread endpoint can't blank the
@@ -3686,7 +3721,9 @@ private data class HomeNotificationAuthority(
                 return
             }
             settleUnreadStaleRecovery(dataResult, fetchedSnapshot?.unreadRetryAfterMillis)
-            if (refreshNotificationsAfterLoad) {
+            if (isLifecycleRetired) {
+                diagnosticsLogger("home_notifications_refresh_skip reason=lifecycle_retired")
+            } else if (refreshNotificationsAfterLoad) {
                 loadNotifications(afterHomeLoad = true)
             } else {
                 diagnosticsLogger("home_notifications_refresh_skip reason=cached_refresh_already_loaded")

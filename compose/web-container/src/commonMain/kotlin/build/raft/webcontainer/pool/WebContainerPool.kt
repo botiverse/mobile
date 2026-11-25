@@ -36,6 +36,13 @@ interface WebPooledContainer {
     /** Anti-zombie health probe checked before vending a pooled instance. */
     fun isHealthy(): Boolean
 
+    /**
+     * Whether this pooled container still has a main-frame load in flight (not yet finished).
+     * Used on single-renderer platforms (Android) so an actively loading background prewarm
+     * yields immediately when a foreground WebView opens instead of starving it.
+     */
+    fun isLoadInFlight(): Boolean = false
+
     /** Permanently tears down the underlying platform WebView and releases resources. */
     fun destroy()
 }
@@ -142,6 +149,25 @@ class WebContainerKeepAlivePool<T : WebPooledContainer>(
             emitPoolEvent("dropped", targetKey.keepAliveKey)
         }
         return true
+    }
+
+    /**
+     * Evicts and destroys any parked containers whose main-frame load is still in flight
+     * (except [exceptKey] when the foreground caller is adopting that exact entry). Already
+     * finished containers stay parked so warm-hit reuse is preserved. Returns count aborted.
+     */
+    fun abortInFlightLoads(exceptKey: WebContainerPoolKey? = null): Int {
+        val inFlightKeys =
+            entries.entries
+                .filter { (key, entry) -> key != exceptKey && entry.container.isLoadInFlight() }
+                .map { it.key }
+        for (key in inFlightKeys) {
+            entries.remove(key)?.let { removed ->
+                removed.container.destroy()
+                emitPoolEvent("aborted_for_foreground", key.keepAliveKey)
+            }
+        }
+        return inFlightKeys.size
     }
 
     /** Evicts and destroys all pooled instances bound to [scope]. Returns the number destroyed. */

@@ -34,11 +34,14 @@ class WebContainerPoolAndIsolationTest {
         override val isolationScope: WebIsolationScope,
         override val isDarkTheme: Boolean = false,
         var healthy: Boolean = true,
+        var loadInFlight: Boolean = false,
     ) : WebPooledContainer {
         var destroyed: Boolean = false
             private set
 
         override fun isHealthy(): Boolean = healthy && !destroyed
+
+        override fun isLoadInFlight(): Boolean = loadInFlight && !destroyed
 
         override fun destroy() {
             destroyed = true
@@ -104,6 +107,52 @@ class WebContainerPoolAndIsolationTest {
         assertNull(pool.peek(k2))
         assertTrue(c2.destroyed)
         assertEquals(0, pool.size)
+    }
+
+    @Test
+    fun keepAlivePoolAbortsOnlyInFlightLoadsForForegroundAndPreservesFinishedEntries() {
+        val actions = mutableListOf<String>()
+        val pool =
+            WebContainerKeepAlivePool<FakePooledContainer>(
+                maxEntries = 3,
+                ttlMs = 60_000L,
+                nowMs = { 0L },
+                telemetrySink = { event ->
+                    if (event is build.raft.webcontainer.pool.WebContainerTelemetryEvent.PoolEvent) {
+                        actions += "${event.action}:${event.keepAliveKey}"
+                    }
+                },
+            )
+        val scope = WebIsolationScope.Default
+        val warmLoadingKey = WebContainerPoolKey("artifact:loading", scope, isDarkTheme = false)
+        val warmSameKey = WebContainerPoolKey("artifact:same", scope, isDarkTheme = false)
+        val warmFinishedKey = WebContainerPoolKey("artifact:finished", scope, isDarkTheme = false)
+
+        val loading = FakePooledContainer(scope, loadInFlight = true)
+        val sameKeyLoading = FakePooledContainer(scope, loadInFlight = true)
+        val finished = FakePooledContainer(scope, loadInFlight = false)
+
+        assertTrue(pool.park(warmLoadingKey, loading))
+        assertTrue(pool.park(warmSameKey, sameKeyLoading))
+        assertTrue(pool.park(warmFinishedKey, finished))
+
+        // Foreground WebView adopting warmSameKey aborts other in-flight prewarms but keeps
+        // its own entry and preserves already-finished entries for warm-hit reuse.
+        val aborted = pool.abortInFlightLoads(exceptKey = warmSameKey)
+        assertEquals(1, aborted)
+        assertTrue(loading.destroyed)
+        assertFalse(sameKeyLoading.destroyed)
+        assertFalse(finished.destroyed)
+        assertTrue("aborted_for_foreground:artifact:loading" in actions)
+        assertSame(finished, pool.peek(warmFinishedKey))
+        assertSame(sameKeyLoading, pool.peek(warmSameKey))
+
+        // Foreground WebView with no keepAliveKey (e.g. settings_marketplace) aborts remaining
+        // in-flight prewarm while still preserving finished warm-hit entry.
+        assertEquals(1, pool.abortInFlightLoads(exceptKey = null))
+        assertTrue(sameKeyLoading.destroyed)
+        assertFalse(finished.destroyed)
+        assertSame(finished, pool.take(warmFinishedKey))
     }
 
     @Test

@@ -30,6 +30,7 @@ import androidx.webkit.ScriptHandler
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import build.raft.webcontainer.WebContainerAndroidKeepAlive
 import java.io.ByteArrayInputStream
 import java.net.URI
 import org.json.JSONObject as AndroidJSONObject
@@ -71,12 +72,20 @@ internal actual fun RaftSandboxWebViewHost(
     AndroidView(
         factory = { context ->
             val partition = config.effectiveStoragePartition
+            val effectiveKey =
+                if (partition == RaftWebViewStoragePartition.IsolatedThirdParty) null else config.keepAliveKey
+            // Yield any still-loading background prewarm (e.g. raft-app-warm) so it cannot starve
+            // this user-initiated foreground WebView on Android's single Chromium renderer process.
+            RaftAndroidWebViewKeepAlive.abortInFlightPrewarmForForeground(
+                foregroundSurface = config.diagnosticsSurface,
+                foregroundKeepAliveKey = effectiveKey,
+            )
+            WebContainerAndroidKeepAlive.abortInFlightPrewarmForForeground(
+                foregroundSurface = config.diagnosticsSurface,
+                telemetrySink = RaftWebContainerTelemetrySink,
+            )
             val kept =
-                if (partition == RaftWebViewStoragePartition.IsolatedThirdParty) {
-                    null
-                } else {
-                    config.keepAliveKey?.let { key -> RaftAndroidWebViewKeepAlive.take(key, context, events, partition) }
-                }
+                effectiveKey?.let { key -> RaftAndroidWebViewKeepAlive.take(key, context, events, partition) }
             if (config.keepAliveKey != null) {
                 raftLogInfo(RAFT_WEBVIEW_DIAGNOSTICS_TAG, "webview_attach source=${if (kept != null) "keep_alive" else "new"}")
             }
@@ -195,6 +204,9 @@ internal class RaftAndroidSandboxWebView(
     /** True when the current main-frame navigation failed (network/SSL/HTTP >= 400); cleared on next load. */
     internal var mainFrameLoadFailed: Boolean = false
         private set
+    /** True while this view started loading a configured URL and has not yet finished cleanly. */
+    internal val isMainFrameLoadInFlight: Boolean
+        get() = !destroyed && !mainFrameLoadFailed && loadedSrc.isNotBlank() && (currentIsLoading || lastSuccessfulUrl.isBlank())
     private var currentUrl: String = ""
     private var currentTitle: String = ""
     private var currentProgress: Int = 0
@@ -804,6 +816,9 @@ internal class RaftAndroidSandboxWebView(
                                 markDocumentCommitted(target)
                                 onPagePainted()
                                 notifyLoadSuccess(url, "finished", beforeCallback = ::flushPendingRuntimeJavaScript)
+                                if (parkedForKeepAlive) {
+                                    RaftAndroidWebViewKeepAlive.onParkedLoadFinished(this@RaftAndroidSandboxWebView)
+                                }
                             }
                         }
                         notifyUrlChange(target)
