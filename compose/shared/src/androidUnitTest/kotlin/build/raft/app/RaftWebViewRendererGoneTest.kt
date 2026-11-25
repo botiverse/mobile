@@ -1,15 +1,19 @@
 package build.raft.app
 
+import android.app.Activity
 import android.os.Looper
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
+import java.time.Duration
 import org.junit.After
 import org.junit.Before
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -21,6 +25,7 @@ import kotlin.test.assertTrue
  * renderer, all in one main-thread turn. Every client must clean up its own WebView and return
  * true (else the app is killed), and the death is one event: one ticket at most.
  */
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class RaftWebViewRendererGoneTest {
@@ -47,8 +52,13 @@ class RaftWebViewRendererGoneTest {
             override fun rendererPriorityAtExit(): Int = priority
         }
 
-    private fun sandbox(surface: String): RaftAndroidSandboxWebView =
-        RaftAndroidSandboxWebView(RuntimeEnvironment.getApplication(), RaftWebViewEvents()).apply {
+    private fun sandbox(surface: String): RaftAndroidSandboxWebView {
+        val controller = Robolectric.buildActivity(Activity::class.java).create()
+        val activity = controller.get()
+        return RaftAndroidSandboxWebView(activity, RaftWebViewEvents()).apply {
+            activity.setContentView(this)
+            controller.start().resume().visible()
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(34))
             applyConfig(
                 RaftWebViewConfig(
                     url = "https://app.raft.build/artifacts/pt_1",
@@ -65,6 +75,7 @@ class RaftWebViewRendererGoneTest {
                 )
             )
         }
+    }
 
     private fun RaftAndroidSandboxWebView.innerWebView(): WebView = getChildAt(0) as WebView
 
