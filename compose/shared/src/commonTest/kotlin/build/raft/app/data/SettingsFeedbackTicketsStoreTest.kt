@@ -534,4 +534,96 @@ class SettingsFeedbackTicketsStoreTest {
         assertEquals(1, opened.size)
         assertTrue(store.state.value.detail!!.attachmentError)
     }
+
+    @Test
+    fun detailOnlyModeSkipsListFetchesAndSyncsMutationsBackToListStore() = runTest {
+        val a = ticket("a", unread = true, comments = 0, createdAt = 1_000)
+        val b = ticket("b", unread = false, comments = 0, createdAt = 2_000)
+
+        val listRepo = FakeRepository()
+        listRepo.listAnswers += page(b, a)
+        val listStore = store(listRepo)
+        listStore.start()
+        runCurrent()
+        assertEquals(listOf("b", "a"), listStore.state.value.list.tickets.map { it.id })
+        assertTrue(listStore.state.value.list.tickets.first { it.id == "a" }.unread)
+
+        val detailRepo = FakeRepository()
+        val detailRead = detail(a.copy(unread = false, unreadCount = 0))
+        detailRepo.ticketAnswers += detailRead
+        val replyComment = FeedbackComment("r1", FeedbackAuthorType.Reporter, "Follow-up", 3_000)
+        detailRepo.replyAnswers += FeedbackResult.Ok(replyComment)
+        val afterReply = a.copy(unread = false, unreadCount = 0, commentCount = 1, updatedAt = 3_000)
+        detailRepo.ticketAnswers += detail(afterReply, replyComment)
+        val afterClose = afterReply.copy(status = FeedbackTicketStatus.Closed, closureReason = FeedbackClosureReason.Completed)
+        detailRepo.ticketAnswers += detail(afterClose, replyComment)
+
+        val synced = mutableListOf<FeedbackTicketSyncEvent>()
+        val detailStore =
+            SettingsFeedbackTicketsStore(
+                repository = detailRepo,
+                scope = backgroundScope,
+                initialDetail = FeedbackTicketDetailState(ticketId = "a", summary = a),
+                onTicketSynced = { event ->
+                    synced += event
+                    when (event) {
+                        is FeedbackTicketSyncEvent.Read -> listStore.applyExternalTicketRead(event.ticket)
+                        is FeedbackTicketSyncEvent.Replied -> listStore.applyExternalTicketUpsert(event.ticket, event.reply)
+                        is FeedbackTicketSyncEvent.Closed -> listStore.applyExternalTicketUpsert(event.ticket)
+                    }
+                },
+            )
+        // Frame 0 already holds the seeded summary before start() runs.
+        assertEquals("a", detailStore.state.value.detail?.ticketId)
+        assertEquals(a, detailStore.state.value.detail?.summary)
+
+        detailStore.start(initialTicketId = "a", loadList = false, initialSummary = a)
+        runCurrent()
+        // Detail-only mode must never fetch listTickets on start or refresh.
+        assertTrue(detailRepo.listCursors.isEmpty())
+        assertFalse(listStore.state.value.list.tickets.first { it.id == "a" }.unread)
+
+        // Reply propagates to the list store and moves ticket "a" to the top with latestComment.
+        detailStore.setReplyDraft("Follow-up")
+        detailStore.sendReply()
+        runCurrent()
+        assertEquals(listOf("a", "b"), listStore.state.value.list.tickets.map { it.id })
+        assertEquals("Follow-up", listStore.state.value.list.tickets.first().latestComment?.bodyPreview)
+        assertEquals(1, listStore.state.value.list.tickets.first().commentCount)
+
+        // Close propagates Closed status to the list store.
+        detailStore.closeTicket(FeedbackReporterCloseReason.Completed)
+        runCurrent()
+        assertEquals(FeedbackTicketStatus.Closed, listStore.state.value.list.tickets.first().status)
+        assertEquals(FeedbackClosureReason.Completed, listStore.state.value.list.tickets.first().closureReason)
+
+        // Refresh on a detail-only store refreshes the ticket without touching listTickets.
+        detailRepo.ticketAnswers += detail(afterClose, replyComment)
+        detailStore.refresh()
+        runCurrent()
+        assertTrue(detailRepo.listCursors.isEmpty())
+        assertTrue(synced.any { it is FeedbackTicketSyncEvent.Read })
+        assertTrue(synced.any { it is FeedbackTicketSyncEvent.Replied })
+        assertTrue(synced.any { it is FeedbackTicketSyncEvent.Closed })
+    }
+
+    @Test
+    fun externalTicketSyncIsIgnoredWhenListIsNotReady() = runTest {
+        val repository = FakeRepository()
+        repository.listAnswers += failed(FeedbackErrorKind.Unavailable)
+        val store = store(repository)
+        store.start()
+        runCurrent()
+        assertEquals(FeedbackTicketsListPhase.Failed, store.state.value.list.phase)
+        assertTrue(store.state.value.list.tickets.isEmpty())
+
+        val externalTicket = ticket("a", unread = false)
+        store.applyExternalTicketRead(externalTicket)
+        store.applyExternalTicketUpsert(
+            externalTicket,
+            FeedbackComment("c1", FeedbackAuthorType.Reporter, "Reply", 2_000),
+        )
+        assertEquals(FeedbackTicketsListPhase.Failed, store.state.value.list.phase)
+        assertTrue(store.state.value.list.tickets.isEmpty())
+    }
 }

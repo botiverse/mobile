@@ -1,5 +1,7 @@
 package build.raft.app
 
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -14,6 +16,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -35,17 +38,30 @@ import build.raft.app.data.FeedbackReporterCloseReason
 import build.raft.app.data.FeedbackResult
 import build.raft.app.data.FeedbackTicket
 import build.raft.app.data.FeedbackTicketDetail
+import build.raft.app.data.FeedbackTicketDetailState
 import build.raft.app.data.FeedbackTicketKind
 import build.raft.app.data.FeedbackTicketListRead
 import build.raft.app.data.FeedbackTicketPage
 import build.raft.app.data.FeedbackTicketStatus
 import build.raft.app.data.RaftPrivacyMode
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SettingsFeedbackTicketsRepository
+import build.raft.app.data.SettingsFeedbackTicketsState
 import build.raft.app.data.SettingsFeedbackTicketsStore
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.nav.RaftPageStack
+import build.raft.app.nav.raftPageRouteIdentity
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftTextarea
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -238,6 +254,139 @@ class SettingsFeedbackTicketsPageUiTest {
             runOnIdle { storeRef!!.setFilter(build.raft.app.data.FeedbackTicketFilter.Active) }
             waitForIdle()
             onNodeWithText("Feedback ticket item #0").assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun ticketDetailStackPageHasDistinctRouteIdentityAndPopsBackToList() {
+        val scope = RaftShellStoreScope.create(shellInstanceId = "shell-1", initialServerId = "srv-1")
+        val listJson =
+            Json.parseToJsonElement(settingsFeedbackTicketsPageData(scope).toString()).jsonObject
+        val detailJson =
+            Json.parseToJsonElement(
+                settingsFeedbackTicketsPageData(
+                    storeScope = scope,
+                    ticketId = crash.id,
+                    detailOnly = true,
+                ).toString(),
+            ).jsonObject
+
+        assertNotEquals(
+            raftPageRouteIdentity(SETTINGS_FEEDBACK_TICKETS_PAGE, listJson),
+            raftPageRouteIdentity(SETTINGS_FEEDBACK_TICKETS_PAGE, detailJson),
+        )
+
+        // Simulates Settings (root) -> Feedback List -> Feedback Detail -> swipe/back pops to Feedback List.
+        val stack = RaftPageStack()
+        stack.open(SETTINGS_FEEDBACK_TICKETS_PAGE, listJson, from = stack.pages.last())
+        assertEquals(2, stack.pages.size)
+
+        stack.open(SETTINGS_FEEDBACK_TICKETS_PAGE, detailJson, from = stack.pages.last())
+        assertEquals(3, stack.pages.size)
+        assertEquals(crash.id, stack.pages.last().key.pageData[SETTINGS_FEEDBACK_TICKETS_TICKET_ID]?.toString()?.trim('"'))
+
+        assertTrue(stack.back())
+        assertEquals(2, stack.pages.size)
+        assertEquals(SETTINGS_FEEDBACK_TICKETS_PAGE, stack.pages.last().key.pageName)
+        assertFalse(stack.pages.last().key.pageData.containsKey(SETTINGS_FEEDBACK_TICKETS_TICKET_ID))
+    }
+
+    @Test
+    fun pushedDetailModeDelegatesSystemBackToHostWhileHeaderBackClosesPage() {
+        val detail =
+            FeedbackTicketDetail(
+                ticket = crash,
+                comments = listOf(FeedbackComment("c-1", FeedbackAuthorType.Staff, "Detail body", now - 1_000L)),
+                attachments = emptyList(),
+                nextCommentCursor = null,
+                unreadTotal = 0,
+            )
+        val detailState =
+            SettingsFeedbackTicketsState(
+                detail =
+                    FeedbackTicketDetailState(
+                        ticketId = crash.id,
+                        summary = crash,
+                        detail = detail,
+                        loading = false,
+                    ),
+            )
+
+        // Pushed detail page (handlesDetailBackInPlace = false): system Back falls through to the host
+        // stack handler (so swipe-back / predictive back pops the page), while the top-left Back button
+        // still calls actions.onBack.
+        runRobolectricComposeUiTest {
+            var backCalls = 0
+            var hostPageBacks = 0
+            var dispatcher: OnBackPressedDispatcher? = null
+            setContent {
+                Host {
+                    dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+                    RaftBackHandler(enabled = true, label = "test_host_page") { hostPageBacks += 1 }
+                    SettingsFeedbackTicketsScreen(
+                        state = detailState,
+                        timeContext = timeContext,
+                        actions = SettingsFeedbackTicketsActions(onBack = { backCalls += 1 }),
+                        replyComposer = { _, _, _, _, _, _ -> },
+                        handlesDetailBackInPlace = false,
+                    )
+                }
+            }
+            waitForIdle()
+            onNodeWithText("Detail body").assertIsDisplayed()
+
+            runOnIdle { assertNotNull(dispatcher).onBackPressed() }
+            waitForIdle()
+            assertEquals(0, backCalls)
+            assertEquals(1, hostPageBacks)
+
+            onNodeWithContentDescription("Back").performClick()
+            waitForIdle()
+            assertEquals(1, backCalls)
+            assertEquals(1, hostPageBacks)
+        }
+
+        // In-place detail mode (handlesDetailBackInPlace = true): system Back is intercepted by the
+        // screen's RaftBackHandler instead of falling through to the host.
+        runRobolectricComposeUiTest {
+            var backCalls = 0
+            var hostPageBacks = 0
+            var dispatcher: OnBackPressedDispatcher? = null
+            setContent {
+                Host {
+                    dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+                    RaftBackHandler(enabled = true, label = "test_host_page") { hostPageBacks += 1 }
+                    SettingsFeedbackTicketsScreen(
+                        state = detailState,
+                        timeContext = timeContext,
+                        actions = SettingsFeedbackTicketsActions(onBack = { backCalls += 1 }),
+                        replyComposer = { _, _, _, _, _, _ -> },
+                        handlesDetailBackInPlace = true,
+                    )
+                }
+            }
+            waitForIdle()
+            onNodeWithText("Detail body").assertIsDisplayed()
+
+            runOnIdle { assertNotNull(dispatcher).onBackPressed() }
+            waitForIdle()
+            assertEquals(1, backCalls)
+            assertEquals(0, hostPageBacks)
+        }
+    }
+
+    @Test
+    fun summaryCacheIsScopedAndOneShot() {
+        SettingsFeedbackTicketSummaryCache.clear()
+        try {
+            SettingsFeedbackTicketSummaryCache.put("shell-1:srv-a", crash)
+            // A different scope cannot read the seeded summary.
+            assertNull(SettingsFeedbackTicketSummaryCache.take("shell-1:srv-b", crash.id))
+            // The matching scope receives it once, and subsequent takes return null.
+            assertEquals(crash, SettingsFeedbackTicketSummaryCache.take("shell-1:srv-a", crash.id))
+            assertNull(SettingsFeedbackTicketSummaryCache.take("shell-1:srv-a", crash.id))
+        } finally {
+            SettingsFeedbackTicketSummaryCache.clear()
         }
     }
 
