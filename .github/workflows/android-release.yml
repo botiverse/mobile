@@ -436,10 +436,14 @@ jobs:
             play) GRADLE_VARIANT=Play ;;
             *) echo "Unsupported Android variant: ${{ needs.resolve.outputs.android_variant }}" >&2; exit 1 ;;
           esac
+          SQLDELIGHT_TASK=":shared:generateSqlDelightInterface"
+          if [ -d compose/shared-data/src/commonMain/sqldelight ]; then
+            SQLDELIGHT_TASK=":shared-data:generateSqlDelightInterface"
+          fi
           GRADLE_ARGS=(
             # The patched foundation AAR, byte for byte (compose/build.gradle.kts).
             :verifyComposeFoundationPatch
-            :shared:generateSqlDelightInterface
+            "${SQLDELIGHT_TASK}"
             ":androidApp:assemble${GRADLE_VARIANT}"
             ":androidApp:bundle${GRADLE_VARIANT}"
             :androidApp:copyHandsNativeSymbols
