@@ -11,6 +11,7 @@ class RaftMessageLinkParserTest {
     private val cid = "6f1c2b9e-1d2a-4c7b-9a51-0d3e8f7a6b21"
     private val pid = "a3b4c5d6-e7f8-4a1b-8c2d-3e4f5a6b7c8d"
     private val mid = "0b1c2d3e-4f50-4617-8293-a4b5c6d7e8f9"
+    private val tid = "b0b0b0b0-1111-4222-8333-444455556666"
 
     @Test
     fun acceptsEveryRouteFormOnBothProductionHosts() {
@@ -22,15 +23,49 @@ class RaftMessageLinkParserTest {
                     RaftMessageLink(slug, ConversationKind.Channel, cid, messageId = mid, threadParentMessageId = pid),
                 "/s/$slug/channel/$cid?thread=$cid:$pid" to
                     RaftMessageLink(slug, ConversationKind.Channel, cid, threadParentMessageId = pid),
+                "/s/$slug/channel/$cid?task=$cid%3Atask%3A$tid" to
+                    RaftMessageLink(slug, ConversationKind.Channel, cid, taskId = tid),
+                "/s/$slug/channel/$cid?msg=$mid&task=$cid%3Atask%3A$tid" to
+                    RaftMessageLink(slug, ConversationKind.Channel, cid, messageId = mid, taskId = tid),
                 "/s/$slug/dm/$cid" to RaftMessageLink(slug, ConversationKind.DirectMessage, cid),
                 "/s/$slug/dm/$cid?msg=$mid" to RaftMessageLink(slug, ConversationKind.DirectMessage, cid, messageId = mid),
                 "/s/$slug/dm/$cid?thread=$cid:$pid&msg=$mid" to
                     RaftMessageLink(slug, ConversationKind.DirectMessage, cid, messageId = mid, threadParentMessageId = pid),
+                "/s/$slug/dm/$cid?task=$cid:task:$tid" to
+                    RaftMessageLink(slug, ConversationKind.DirectMessage, cid, taskId = tid),
+                "/s/$slug/dm/$cid?msg=$mid&task=$cid%3Atask%3A$tid" to
+                    RaftMessageLink(slug, ConversationKind.DirectMessage, cid, messageId = mid, taskId = tid),
             )
         for (host in listOf("app.raft.build", "open.raft.build", "APP.RAFT.BUILD")) {
             for ((pathAndQuery, expected) in cases) {
                 assertEquals(expected, parseRaftMessageLink("https://$host$pathAndQuery"), "$host$pathAndQuery")
             }
+        }
+    }
+
+    @Test
+    fun taskConversationLinkRoundTripsAndRejectsNonTaskConversationParams() {
+        val channelTask = RaftMessageLink(slug, ConversationKind.Channel, cid, messageId = mid, taskId = tid)
+        val built = buildRaftMessageLink(channelTask, webUrl = null)
+        assertEquals("https://app.raft.build/s/$slug/channel/$cid?msg=$mid&task=$cid%3Atask%3A$tid", built)
+        assertEquals(channelTask, parseRaftMessageLink(built!!))
+
+        val dmTaskNoMsg = RaftMessageLink(slug, ConversationKind.DirectMessage, cid, taskId = tid)
+        val builtDm = buildRaftMessageLink(dmTaskNoMsg, webUrl = null)
+        assertEquals("https://app.raft.build/s/$slug/dm/$cid?task=$cid%3Atask%3A$tid", builtDm)
+        assertEquals(dmTaskNoMsg, parseRaftMessageLink(builtDm!!))
+
+        val other = "11111111-2222-4333-8444-555555555555"
+        for (rejected in listOf(
+            "https://app.raft.build/s/$slug/channel/$cid?task=1",
+            "https://app.raft.build/s/$slug/channel/$cid?task=1&thread=$cid:$pid",
+            "https://app.raft.build/s/$slug/channel/$cid?task=$cid:$mid",
+            "https://app.raft.build/s/$slug/channel/$cid?task=$other:task:$tid",
+            "https://app.raft.build/s/$slug/channel/$cid?task=$cid:task:",
+            "https://app.raft.build/s/$slug/channel/$cid?task=$cid:task:a:b",
+            "https://app.raft.build/s/$slug/channel/$cid?thread=$cid:$pid&task=$cid:task:$tid",
+        )) {
+            assertNull(parseRaftMessageLink(rejected), rejected)
         }
     }
 

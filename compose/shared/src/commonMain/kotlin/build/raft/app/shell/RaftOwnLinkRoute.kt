@@ -41,9 +41,10 @@ internal sealed interface RaftOwnLinkRoute {
 /** Why a Raft page stays a web page (logged; the PR lists them). */
 internal enum class RaftOwnLinkWebPageReason {
     /**
-     * A conversation link with the web's task panel (`task=<channel>:task:<id>`, the address bar
-     * while a task is open). The app has no read of a task by id to open it from (opening must not
-     * create its conversation), and dropping `task` would open only the channel.
+     * A conversation link with a non-task-conversation or malformed `task=` query parameter
+     * (e.g. legacy `task=1`, message-keyed `task=<channel>:<msg>`, or mismatched scope channel).
+     * Valid task-conversation links (`task=<channel>:task:<taskId>`, slock #16576) route natively
+     * through [RaftOwnLinkRoute.Conversation]; dropping an unrecognized `task=` would lose the panel.
      */
     TaskPanel,
 
@@ -73,20 +74,33 @@ internal fun raftOwnLinkRoute(
     parseRaftServerJoinLink(url, configuredWebUrl, appHosts)?.let { return RaftOwnLinkRoute.ServerJoin(it) }
     parseRaftExternalInviteLink(url, configuredWebUrl, appHosts)?.let { return RaftOwnLinkRoute.ExternalInvite(it) }
     parseRaftMessageLink(url, configuredWebUrl, appHosts)?.let { link ->
-        return if (url.raftLinkHasTaskPanel()) {
-            RaftOwnLinkRoute.WebPage(RaftOwnLinkWebPageReason.TaskPanel)
-        } else {
-            RaftOwnLinkRoute.Conversation(link)
-        }
+        return RaftOwnLinkRoute.Conversation(link)
+    }
+    if (url.raftLinkHasTaskPanel() && url.withoutTaskQueryParam()?.let { parseRaftMessageLink(it, configuredWebUrl, appHosts) } != null) {
+        return RaftOwnLinkRoute.WebPage(RaftOwnLinkWebPageReason.TaskPanel)
     }
     return RaftOwnLinkRoute.WebPage(RaftOwnLinkWebPageReason.NoInAppRoute)
 }
 
-/** Whether [this] (a conversation link) names the web's task panel: a non-empty `task` query value. */
+/** Whether [this] carries a non-empty `task` query value. */
 private fun String.raftLinkHasTaskPanel(): Boolean =
     trim().substringBefore('#').substringAfter('?', "").split('&').any { part ->
         part.substringBefore('=') == "task" && part.substringAfter('=', "").isNotEmpty()
     }
+
+/** [this] with any `task=` query entries removed, or null when no query existed. */
+private fun String.withoutTaskQueryParam(): String? {
+    val trimmed = trim()
+    val beforeFragment = trimmed.substringBefore('#')
+    val queryStart = beforeFragment.indexOf('?')
+    if (queryStart < 0) return null
+    val base = beforeFragment.substring(0, queryStart)
+    val kept =
+        beforeFragment.substring(queryStart + 1)
+            .split('&')
+            .filter { it.isNotEmpty() && it.substringBefore('=') != "task" }
+    return if (kept.isEmpty()) base else "$base?${kept.joinToString("&")}"
+}
 
 /**
  * Opens the in-app destinations of [raftOwnLinkRoute] that wait for the app shell: a conversation
@@ -108,7 +122,7 @@ internal fun raftOwnLinkShellOpener(
             val pending = messageInbox.submit(route.link, "message_link_tap")
             log(
                 "raft_link_tap route=conversation id=${pending.id} kind=${route.link.routeKind.name} " +
-                    "thread=${route.link.isThread} msg=${route.link.messageId != null}"
+                    "thread=${route.link.isThread} task=${route.link.isTask} msg=${route.link.messageId != null}"
             )
             true
         }

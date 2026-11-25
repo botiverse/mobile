@@ -161,19 +161,6 @@ object RaftProductEvents {
         recorder.draftsItemOpened(place)
     }
 
-    /** Artifact viewer temporary "Open in browser" button shown or clicked (#proj-mobile:#364). */
-    fun artifactOpenInBrowser(
-        action: RaftArtifactOpenInBrowserAction,
-        surface: RaftArtifactOpenInBrowserSurface,
-    ) {
-        testEntryEventObserver?.invoke(
-            RaftProductEvent.ArtifactOpenInBrowser(
-                RaftArtifactOpenInBrowserProperties(action = action, surface = surface)
-            )
-        )
-        recorder.artifactOpenInBrowser(action, surface)
-    }
-
     /** See [RaftProductEventsRecorder.appRatingPromptRequested]. */
     fun appRatingPromptRequested(trigger: RaftAppRatingPromptTrigger) {
         recorder.appRatingPromptRequested(trigger)

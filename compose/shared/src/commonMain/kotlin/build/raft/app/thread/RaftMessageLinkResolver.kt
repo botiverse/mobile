@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.DataResult
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftMessageContextPageSink
 import build.raft.app.data.RaftNetworkClient
@@ -9,9 +10,13 @@ import build.raft.app.data.isRaftMessageContextHistoryLimited
 import build.raft.app.data.parseRaftMessageLinkChannelProbe
 import build.raft.app.data.parseRaftPublicServerCard
 import build.raft.app.data.parseSharedMessageContext
+import build.raft.app.data.parseSharedServerTasksPayload
 import build.raft.app.data.raftPublicServerPath
+import build.raft.app.data.toTaskConversationOpenResult
+import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
+import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -26,6 +31,19 @@ internal sealed interface RaftMessageLinkResolution {
     data class Open(
         val serverId: String,
         val sourceIdentity: ConversationOpenSourceMessageIdentity,
+    ) : RaftMessageLinkResolution
+
+    /**
+     * A task-conversation link (`?task=<parentId>:task:<taskId>`, slock #16576) whose task has no
+     * conversation yet (opening must not create one), or whose task lookup hit a transient network
+     * failure: opens [TASK_PENDING_CONVERSATION_PAGE], preserving [focusedMessageId] for hand-off.
+     */
+    data class OpenPendingTask(
+        val serverId: String,
+        val taskId: String,
+        val channelId: ChannelId,
+        val task: TaskSummary? = null,
+        val focusedMessageId: String? = null,
     ) : RaftMessageLinkResolution
 
     /**
@@ -78,7 +96,10 @@ internal class RaftMessageLinkResolver(
     suspend fun resolve(link: RaftMessageLink, servers: List<StoredAuthServer>): RaftMessageLinkResolution {
         val server =
             servers.firstOrNull { it.slug?.equals(link.serverSlug, ignoreCase = true) == true }
-                ?: return resolveOutsideAccount(link)
+                ?: return if (link.isTask) publicNotFound("public_task_not_supported") else resolveOutsideAccount(link)
+        if (link.isTask) {
+            return resolveTaskConversationLink(link, server)
+        }
         val serverId = ServerId(server.id)
         val focusMessageId = link.focusMessageId
         // Before the requests: the page's revision and head epoch must predate its fetch.
@@ -377,6 +398,194 @@ internal class RaftMessageLinkResolver(
     }
 
     /**
+     * Resolves a task-conversation link (`/s/<slug>/<channel|dm>/<parentId>?[msg=<mid>&]task=<parentId>:task:<taskId>`,
+     * botiverse/slock #16576):
+     * - validates the parent channel and its route kind (`/dm/` vs `/channel/`);
+     * - reads `GET /api/tasks/channel/:parentId` to locate the task without creating a conversation;
+     * - for ordinary channels, DMs, and Agent Lounges, uses `task.conversationChannelId` directly;
+     * - for joint channels, resolves this server's local conversation projection via idempotent
+     *   `POST /api/tasks/:taskId/conversation` (never leaking a canonical joint storage ID);
+     * - for tasks with no conversation yet (`conversationChannelId == null`), opens
+     *   [RaftMessageLinkResolution.OpenPendingTask] (without POSTing) when no `msg=` is requested;
+     * - when `msg=` is present, probes `GET /api/messages/context/:mid?channelId=<localTaskConvId>`
+     *   to confirm visibility, expand short IDs, honour history paywalls, and feed [contextPageSink].
+     */
+    private suspend fun resolveTaskConversationLink(
+        link: RaftMessageLink,
+        server: StoredAuthServer,
+    ): RaftMessageLinkResolution {
+        val serverId = ServerId(server.id)
+        val taskId = link.taskId ?: return notFound("task_id_missing")
+        val (channelResponse, tasksResponse) =
+            coroutineScope {
+                val channel = async { request(serverId, path = "channels/${link.channelId}") }
+                val tasks = async { request(serverId, path = "tasks/channel/${link.channelId}") }
+                channel.await() to tasks.await()
+            }
+        val channelProbe =
+            when (channelResponse.linkOutcome()) {
+                RaftLinkProbeOutcome.Found -> {
+                    val probe = parseRaftMessageLinkChannelProbe(channelResponse?.bodyText)
+                    if (probe != null) {
+                        if (!probe.id.equals(link.channelId, ignoreCase = true)) {
+                            return notFound("channel_identity_mismatch")
+                        }
+                        val validParent =
+                            if (link.routeKind == ConversationKind.DirectMessage) {
+                                probe.type == "dm"
+                            } else {
+                                probe.type !in setOf("dm", "thread", RaftTaskConversationChannelKind)
+                            }
+                        if (!validParent) {
+                            return notFound("route_kind_mismatch")
+                        }
+                    }
+                    probe
+                }
+                RaftLinkProbeOutcome.NotFound -> return notFound("channel_${channelResponse?.code}")
+                RaftLinkProbeOutcome.Unavailable -> null
+            }
+        val task =
+            when (tasksResponse.linkOutcome()) {
+                RaftLinkProbeOutcome.Found -> {
+                    val payload =
+                        parseSharedServerTasksPayload(
+                            body = tasksResponse?.bodyText.orEmpty(),
+                            diagnostics = diagnosticsLogger,
+                        )
+                            ?: return openPendingTask(
+                                serverId = server.id,
+                                taskId = taskId,
+                                channelId = ChannelId(link.channelId),
+                                task = null,
+                                focusedMessageId = link.messageId,
+                            )
+                    payload.tasks.firstOrNull { it.id.value.equals(taskId, ignoreCase = true) }
+                        ?: return notFound("task_not_found")
+                }
+                RaftLinkProbeOutcome.NotFound -> return notFound("task_channel_${tasksResponse?.code}")
+                RaftLinkProbeOutcome.Unavailable ->
+                    return openPendingTask(
+                        serverId = server.id,
+                        taskId = taskId,
+                        channelId = ChannelId(link.channelId),
+                        task = null,
+                        focusedMessageId = link.messageId,
+                    )
+            }
+        if (task.isLegacy) return notFound("task_legacy_no_conversation")
+        val isJoint =
+            parseConversationKindOrNull(task.channelType) == ConversationKind.Joint ||
+                channelProbe?.type == "joint"
+        val canonicalConversationId = task.conversationChannelId?.value?.takeIf(String::isNotBlank)
+        if (canonicalConversationId == null) {
+            if (link.messageId != null) return notFound("task_conversation_missing")
+            return openPendingTask(
+                serverId = server.id,
+                taskId = task.id.value,
+                channelId = task.channelId ?: ChannelId(link.channelId),
+                task = task,
+                focusedMessageId = null,
+            )
+        }
+        val localConversationId =
+            if (!isJoint) {
+                canonicalConversationId
+            } else {
+                val openResponse = request(serverId, path = "tasks/${task.id.value}/conversation", method = "POST")
+                when (openResponse.linkOutcome()) {
+                    RaftLinkProbeOutcome.Found ->
+                        when (val opened = openResponse?.toTaskConversationOpenResult(diagnosticsLogger)) {
+                            is DataResult.Content -> opened.data.conversationChannelId.value
+                            else ->
+                                return openPendingTask(
+                                    serverId = server.id,
+                                    taskId = task.id.value,
+                                    channelId = task.channelId ?: ChannelId(link.channelId),
+                                    task = task,
+                                    focusedMessageId = link.messageId,
+                                )
+                        }
+                    RaftLinkProbeOutcome.NotFound -> return notFound("task_conversation_${openResponse?.code}")
+                    RaftLinkProbeOutcome.Unavailable ->
+                        if (openResponse?.code == 409) {
+                            return notFound("task_conversation_409")
+                        } else {
+                            return openPendingTask(
+                                serverId = server.id,
+                                taskId = task.id.value,
+                                channelId = task.channelId ?: ChannelId(link.channelId),
+                                task = task,
+                                focusedMessageId = link.messageId,
+                            )
+                        }
+                }
+            }
+        val taskConversationLink =
+            link.copy(
+                channelId = localConversationId,
+                threadParentMessageId = null,
+                taskId = task.id.value,
+            )
+        val targetMessageId = link.messageId
+            ?: return open(
+                serverId = server.id,
+                link = taskConversationLink,
+                conversationKind = ConversationKind.Task,
+                threadChannelId = null,
+            )
+        val pendingContextPage = contextPageSink?.beginRequest(server.id)
+        val contextResponse =
+            request(
+                serverId = serverId,
+                path = "messages/context/$targetMessageId",
+                query = listOf("channelId" to localConversationId, "before" to "0", "after" to "0"),
+            )
+        val resolution =
+            when (contextResponse.linkOutcome()) {
+                RaftLinkProbeOutcome.Found -> {
+                    val context = parseSharedMessageContext(contextResponse?.bodyText.orEmpty(), ThreadId(localConversationId))
+                    val lookedUp =
+                        context.targetMessageId?.value?.takeIf { raftMessageIdMatches(targetMessageId, it) }
+                            ?: targetMessageId
+                    open(
+                        serverId = server.id,
+                        link = taskConversationLink.copy(messageId = lookedUp),
+                        conversationKind = ConversationKind.Task,
+                        threadChannelId = null,
+                    )
+                }
+                RaftLinkProbeOutcome.NotFound ->
+                    if (
+                        contextResponse?.code == 404 &&
+                        isRaftMessageContextHistoryLimited(contextResponse.bodyText ?: contextResponse.errorBodyText)
+                    ) {
+                        open(
+                            serverId = server.id,
+                            link = taskConversationLink,
+                            conversationKind = ConversationKind.Task,
+                            threadChannelId = null,
+                        )
+                    } else {
+                        notFound("message_${contextResponse?.code}")
+                    }
+                RaftLinkProbeOutcome.Unavailable ->
+                    open(
+                        serverId = server.id,
+                        link = taskConversationLink,
+                        conversationKind = ConversationKind.Task,
+                        threadChannelId = null,
+                    )
+            }
+        if (resolution is RaftMessageLinkResolution.Open && contextResponse.linkOutcome() == RaftLinkProbeOutcome.Found) {
+            contextResponse?.bodyText?.let { body ->
+                pendingContextPage?.offer(body, channelId = localConversationId, channelType = RaftTaskConversationChannelKind)
+            }
+        }
+        return resolution
+    }
+
+    /**
      * [serverId] null: no server binding (the anonymous public routes).
      *
      * Warm App Links accepted from another app can launch these idempotent GET probes right as
@@ -388,6 +597,7 @@ internal class RaftMessageLinkResolver(
         serverId: ServerId?,
         path: String,
         query: List<Pair<String, String>> = emptyList(),
+        method: String = "GET",
     ): HomeNetworkResponse? {
         repeat(2) { attempt ->
             val response =
@@ -395,6 +605,7 @@ internal class RaftMessageLinkResolver(
                     networkClient.request(
                         priority = DataRequestPriority.Foreground,
                         path = path,
+                        method = method,
                         query = query,
                         serverIdOverride = serverId,
                     )
@@ -435,6 +646,25 @@ internal class RaftMessageLinkResolver(
                     threadChannelId = threadChannelId,
                     parentConversationKind = parentConversationKind,
                 ),
+        )
+    }
+
+    private fun openPendingTask(
+        serverId: String,
+        taskId: String,
+        channelId: ChannelId,
+        task: TaskSummary?,
+        focusedMessageId: String?,
+    ): RaftMessageLinkResolution.OpenPendingTask {
+        diagnosticsLogger(
+            "message_link_resolved result=open_pending_task seeded=${task != null} msg=${focusedMessageId != null}"
+        )
+        return RaftMessageLinkResolution.OpenPendingTask(
+            serverId = serverId,
+            taskId = taskId,
+            channelId = channelId,
+            task = task,
+            focusedMessageId = focusedMessageId,
         )
     }
 

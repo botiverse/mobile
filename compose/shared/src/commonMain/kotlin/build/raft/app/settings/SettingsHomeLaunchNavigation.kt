@@ -754,6 +754,7 @@ internal fun buildStandaloneTaskThreadLaunchPayload(
     parentConversationKind: ConversationKind? = null,
     /** Task v2: the local conversation `POST /tasks/:id/conversation` answered (see [taskOpenTarget]). */
     resolvedConversationChannelId: ChannelId? = null,
+    anchorMessageId: String? = null,
 ): WireThreadLaunchPayload? =
     buildTaskOpenLaunchPayload(
         task = task,
@@ -761,6 +762,7 @@ internal fun buildStandaloneTaskThreadLaunchPayload(
         timeContext = timeContext,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
+        anchorMessageId = anchorMessageId,
     ) {
         val request =
             task.resolveTaskThreadOpenRequest(

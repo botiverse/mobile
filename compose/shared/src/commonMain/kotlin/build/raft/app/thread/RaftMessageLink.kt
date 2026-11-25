@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * - `…?msg={mid}`: the channel, scrolled to and highlighting {mid};
  * - `…?msg={mid}&thread={cid}:{pid}`: the thread of {pid}, highlighting reply {mid};
  * - `…?thread={cid}:{pid}`: the thread of {pid}, highlighting the parent;
+ * - `…?task={cid}:task:{tid}` / `…?msg={mid}&task={cid}:task:{tid}`: the task's own conversation
+ *   (slock #16576), highlighting {mid} when present;
  * - `/s/{slug}/dm/{cid}…`: the same for a DM.
  *
  * Nothing in the link is shown or trusted: the app shell resolves {slug} against the signed-in
@@ -38,15 +40,20 @@ internal data class RaftMessageLink(
     /** [ConversationKind.Channel] for `/channel/`, [ConversationKind.DirectMessage] for `/dm/`. */
     val routeKind: ConversationKind,
     val channelId: String,
-    /** `msg`: the message to highlight (a reply when [threadParentMessageId] is set). */
+    /** `msg`: the message to highlight (a reply when [threadParentMessageId] is set, or a task message when [taskId] is set). */
     val messageId: String? = null,
     /** The `{pid}` of `thread={cid}:{pid}`; its `{cid}` always equals [channelId]. */
     val threadParentMessageId: String? = null,
+    /** The `{tid}` of `task={cid}:task:{tid}` (slock #16576); its `{cid}` always equals [channelId]. */
+    val taskId: String? = null,
 ) {
     val isThread: Boolean
         get() = threadParentMessageId != null
 
-    /** The message the open lands on: the reply, else the thread parent, else none. */
+    val isTask: Boolean
+        get() = taskId != null
+
+    /** The message the open lands on: the reply / task message, else the thread parent, else none. */
     val focusMessageId: String?
         get() = messageId ?: threadParentMessageId
 }
@@ -85,6 +92,7 @@ internal fun parseRaftMessageLink(
         channelId = link.channelId.value,
         messageId = link.messageId?.value,
         threadParentMessageId = link.threadParentMessageId?.value,
+        taskId = link.taskId?.value,
     )
 }
 
@@ -156,6 +164,7 @@ internal fun parseRaftServerJoinLink(
 internal fun buildRaftMessageLink(link: RaftMessageLink, webUrl: String?): String? {
     if (!isRaftLinkIdentifier(link.serverSlug) || !isRaftPermalinkChannelId(link.channelId)) return null
     if (!listOfNotNull(link.messageId, link.threadParentMessageId).all(::isRaftPermalinkMessageId)) return null
+    if (link.taskId != null && (link.threadParentMessageId != null || !isRaftLinkIdentifier(link.taskId))) return null
     val routeKind =
         when (link.routeKind) {
             ConversationKind.DirectMessage -> "dm"
@@ -165,6 +174,7 @@ internal fun buildRaftMessageLink(link: RaftMessageLink, webUrl: String?): Strin
         listOfNotNull(
             link.messageId?.let { "msg=$it" },
             link.threadParentMessageId?.let { "thread=${link.channelId}%3A$it" },
+            link.taskId?.let { "task=${link.channelId}%3Atask%3A$it" },
         ).joinToString("&")
     val base = sharedSettingsResolvedWebBaseUrl(webUrl)
     val path = "$base/s/${link.serverSlug}/$routeKind/${link.channelId}"
@@ -578,7 +588,7 @@ object RaftMessageLinkIngress {
         raftLogInfo(
             RaftMessageLinkLogTag,
             "message_link_ingress result=pending id=${pending.id} source=${pending.source} " +
-                "kind=${link.routeKind.name} thread=${link.isThread} msg=${link.messageId != null}"
+                "kind=${link.routeKind.name} thread=${link.isThread} task=${link.isTask} msg=${link.messageId != null}"
         )
         return true
     }

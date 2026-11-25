@@ -98,6 +98,7 @@ internal const val TASK_PENDING_CONVERSATION_PAGE = "compose_task_pending"
 
 internal const val TASK_PENDING_TASK_ID_KEY = "taskId"
 internal const val TASK_PENDING_CHANNEL_ID_KEY = "channelId"
+internal const val TASK_PENDING_FOCUSED_MESSAGE_ID_KEY = "focusedMessageId"
 internal const val TASK_PENDING_ALIGN_OWN_MESSAGES_RIGHT_KEY = "alignOwnMessagesRight"
 internal const val TASK_PENDING_COMPACT_CONSECUTIVE_MESSAGES_KEY = "compactConsecutiveMessages"
 
@@ -115,22 +116,27 @@ internal data class TaskPendingRouteParams(
     val channelId: ChannelId?,
     val alignOwnMessagesRight: Boolean,
     val compactConsecutiveMessages: Boolean,
+    val focusedMessageId: String? = null,
 )
 
 /**
  * Identity-only route payload for [TASK_PENDING_CONVERSATION_PAGE]: task id, optional channel id,
- * shell scope and display prefs. Never carries serialized [TaskSummary] or message lists.
+ * optional focused message id, shell scope and display prefs. Never carries serialized [TaskSummary]
+ * or message lists.
  */
 internal fun taskPendingPageData(
-    task: TaskSummary,
+    taskId: String,
+    channelId: ChannelId?,
     storeScope: RaftShellStoreScope,
     timeContext: AppShellThreadTimeContext? = null,
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
+    focusedMessageId: String? = null,
 ): JSONObject =
     settingsStandalonePageData(TASK_PENDING_CONVERSATION_PAGE, storeScope).apply {
-        put(TASK_PENDING_TASK_ID_KEY, task.id.value)
-        task.channelId?.value?.trim()?.takeIf { it.isNotEmpty() }?.let { put(TASK_PENDING_CHANNEL_ID_KEY, it) }
+        put(TASK_PENDING_TASK_ID_KEY, taskId.trim())
+        channelId?.value?.trim()?.takeIf { it.isNotEmpty() }?.let { put(TASK_PENDING_CHANNEL_ID_KEY, it) }
+        focusedMessageId?.trim()?.takeIf { it.isNotEmpty() }?.let { put(TASK_PENDING_FOCUSED_MESSAGE_ID_KEY, it) }
         put(TASK_PENDING_ALIGN_OWN_MESSAGES_RIGHT_KEY, alignOwnMessagesRight)
         put(TASK_PENDING_COMPACT_CONSECUTIVE_MESSAGES_KEY, compactConsecutiveMessages)
         put("localOffsetMinutes", timeContext?.localOffsetMinutes ?: 0)
@@ -138,6 +144,24 @@ internal fun taskPendingPageData(
         timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
         put("timeFormat", timeContext?.timeFormat ?: RaftTimeFormat24Hour)
     }
+
+internal fun taskPendingPageData(
+    task: TaskSummary,
+    storeScope: RaftShellStoreScope,
+    timeContext: AppShellThreadTimeContext? = null,
+    alignOwnMessagesRight: Boolean = false,
+    compactConsecutiveMessages: Boolean = false,
+    focusedMessageId: String? = null,
+): JSONObject =
+    taskPendingPageData(
+        taskId = task.id.value,
+        channelId = task.channelId,
+        storeScope = storeScope,
+        timeContext = timeContext,
+        alignOwnMessagesRight = alignOwnMessagesRight,
+        compactConsecutiveMessages = compactConsecutiveMessages,
+        focusedMessageId = focusedMessageId,
+    )
 
 internal fun parseTaskPendingRouteParams(
     params: JSONObject,
@@ -149,17 +173,21 @@ internal fun parseTaskPendingRouteParams(
         channelId = params.optString(TASK_PENDING_CHANNEL_ID_KEY).trim().takeIf { it.isNotEmpty() }?.let(::ChannelId),
         alignOwnMessagesRight = params.optBoolean(TASK_PENDING_ALIGN_OWN_MESSAGES_RIGHT_KEY, false),
         compactConsecutiveMessages = params.optBoolean(TASK_PENDING_COMPACT_CONSECUTIVE_MESSAGES_KEY, false),
+        focusedMessageId = params.optString(TASK_PENDING_FOCUSED_MESSAGE_ID_KEY).trim().takeIf { it.isNotEmpty() },
     )
 
 /**
- * Seeds [foregroundBannerStore.taskPendingDrafts] for instant Frame-1 display and pushes
- * [TASK_PENDING_CONVERSATION_PAGE] onto the current navigation stack.
+ * Seeds [foregroundBannerStore.taskPendingDrafts] when [task] is known for instant Frame-1 display
+ * and pushes [TASK_PENDING_CONVERSATION_PAGE] onto the current navigation stack.
  */
 internal fun Pager.openTaskPendingPage(
-    task: TaskSummary,
+    taskId: String,
+    channelId: ChannelId?,
     serverId: String?,
     storeScope: RaftShellStoreScope,
     foregroundBannerStore: SharedForegroundBannerStore,
+    task: TaskSummary? = null,
+    focusedMessageId: String? = null,
     timeContext: AppShellThreadTimeContext? = null,
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
@@ -172,25 +200,54 @@ internal fun Pager.openTaskPendingPage(
             shellInstanceId = storeScope.shellInstanceId,
             initialServerId = resolvedServerId,
         )
-    foregroundBannerStore.taskPendingDrafts.seed(
-        serverId = resolvedServerId,
-        task = task,
-        channelJoined = channelJoined,
-        canWriteChannel = canWriteChannel,
-    )
+    if (task != null) {
+        foregroundBannerStore.taskPendingDrafts.seed(
+            serverId = resolvedServerId,
+            task = task,
+            channelJoined = channelJoined,
+            canWriteChannel = canWriteChannel,
+        )
+    }
     return openRaftPage(
         pageName = TASK_PENDING_CONVERSATION_PAGE,
         pageData =
             taskPendingPageData(
-                task = task,
+                taskId = task?.id?.value ?: taskId,
+                channelId = task?.channelId ?: channelId,
                 storeScope = targetStoreScope,
                 timeContext = timeContext,
                 alignOwnMessagesRight = alignOwnMessagesRight,
                 compactConsecutiveMessages = compactConsecutiveMessages,
+                focusedMessageId = focusedMessageId,
             ),
         storeScopeOverride = targetStoreScope,
     )
 }
+
+internal fun Pager.openTaskPendingPage(
+    task: TaskSummary,
+    serverId: String?,
+    storeScope: RaftShellStoreScope,
+    foregroundBannerStore: SharedForegroundBannerStore,
+    timeContext: AppShellThreadTimeContext? = null,
+    alignOwnMessagesRight: Boolean = false,
+    compactConsecutiveMessages: Boolean = false,
+    channelJoined: Boolean? = null,
+    canWriteChannel: Boolean? = null,
+): Boolean =
+    openTaskPendingPage(
+        taskId = task.id.value,
+        channelId = task.channelId,
+        serverId = serverId,
+        storeScope = storeScope,
+        foregroundBannerStore = foregroundBannerStore,
+        task = task,
+        timeContext = timeContext,
+        alignOwnMessagesRight = alignOwnMessagesRight,
+        compactConsecutiveMessages = compactConsecutiveMessages,
+        channelJoined = channelJoined,
+        canWriteChannel = canWriteChannel,
+    )
 
 /**
  * Whether a task without a conversation opens as its own page ([openTaskPendingPage]) rather than
@@ -666,6 +723,7 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
                     alignOwnMessagesRight = route.alignOwnMessagesRight,
                     compactConsecutiveMessages = route.compactConsecutiveMessages,
                     resolvedConversationChannelId = resolvedConversationChannelId,
+                    anchorMessageId = route.focusedMessageId,
                 )
             }
         if (launchPayload == null) {

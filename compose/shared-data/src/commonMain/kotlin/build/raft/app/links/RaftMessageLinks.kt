@@ -9,6 +9,7 @@ import build.raft.app.data.parseArtifactLinkTarget
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageId
+import build.raft.app.model.TaskId
 import build.raft.app.markdown.buildMarkdownTreeOrPlainText
 import build.raft.app.raftLogWarn
 import build.raft.app.raftSchemeLinkToWebLink
@@ -328,6 +329,7 @@ private val DefaultPermalinkHostnames = setOf("app.slock.ai", "staging.slock.ai"
 
 private val PermalinkPath = Regex("^/s/([^/]+)/(channel|dm)/([0-9a-f-]+)$", RegexOption.IGNORE_CASE)
 private val ThreadParam = Regex("^([0-9a-f-]+):([\\s\\S]+)$", RegexOption.IGNORE_CASE)
+private val TaskConversationParam = Regex("^([0-9a-f-]+):task:([A-Za-z0-9_-]{1,128})$", RegexOption.IGNORE_CASE)
 private val LeadingMessageId =
     Regex(
         "^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8})(?![0-9a-f-])",
@@ -346,9 +348,10 @@ private val LeadingMessageId =
     }
 
 /**
- * A link to a conversation, with the message or thread it points at when it has one: the shapes
- * the web's `parseRaftPermalink` reads, and the channel-only link (`/s/<slug>/channel/<id>`) the
- * app also opens ([parseRaftMessageLink]). The web's permalink is the one with a message
+ * A link to a conversation, with the message, thread, or task conversation it points at when it has
+ * one: the shapes the web's `parseRaftPermalink` reads, task-conversation links
+ * (`?task=<cid>:task:<taskId>`, slock #16576), and the channel-only link (`/s/<slug>/channel/<id>`)
+ * the app also opens ([parseRaftMessageLink]). The web's permalink is the one with a message
  * ([parseRaftPermalink]).
  */
 @RaftCoreInternalApi data class ParsedRaftConversationLink(
@@ -360,6 +363,8 @@ private val LeadingMessageId =
     /** `msg`, when the link has one. */
     val messageId: MessageId?,
     val threadParentMessageId: MessageId?,
+    /** `task=<cid>:task:<taskId>` (slock #16576), when the link names a task conversation. */
+    val taskId: TaskId? = null,
 )
 
 /** web `parseRaftPermalink`'s grammar, with the exact-hostname allow-list passed in as [hostnames]. */
@@ -376,6 +381,14 @@ private val LeadingMessageId =
         if (thread.groupValues[1] != match.groupValues[3]) return null
         threadParentMessageId = leadingMessageId(thread.groupValues[2]) ?: return null
     }
+    var taskId: String? = null
+    val taskParam = params["task"]
+    if (!taskParam.isNullOrEmpty()) {
+        if (threadParentMessageId != null) return null
+        val task = TaskConversationParam.matchEntire(taskParam) ?: return null
+        if (!task.groupValues[1].equals(match.groupValues[3], ignoreCase = true)) return null
+        taskId = task.groupValues[2]
+    }
     val explicitParam = params["msg"]
     val explicitId = explicitParam?.let { leadingMessageId(it) ?: return null }
 
@@ -386,15 +399,18 @@ private val LeadingMessageId =
         channelId = ChannelId(match.groupValues[3]),
         messageId = explicitId?.let(::MessageId),
         threadParentMessageId = threadParentMessageId?.let(::MessageId),
+        taskId = taskId?.let(::TaskId),
     )
 }
 
 /**
  * web `parseRaftPermalink`: a conversation link that points at a message. `msg` pinpoints one; a
- * thread-only URL (no `msg`) targets the thread parent.
+ * thread-only URL (no `msg`) targets the thread parent. Task-conversation links (`task=`) are
+ * excluded because `msg` belongs to the task's own conversation channel, not the path's parent.
  */
 @RaftCoreInternalApi fun parseRaftPermalink(href: String, hostnames: Set<String>): ParsedRaftPermalink? {
     val link = parseRaftConversationLink(href, hostnames) ?: return null
+    if (link.taskId != null) return null
     val messageId = link.messageId ?: link.threadParentMessageId ?: return null
     return ParsedRaftPermalink(
         rawUrl = link.rawUrl,

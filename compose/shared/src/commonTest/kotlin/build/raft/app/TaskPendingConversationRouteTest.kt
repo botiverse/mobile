@@ -195,6 +195,34 @@ class TaskPendingConversationRouteTest {
         assertTrue(taskPendingOpensAsPage(desktopModeEnabled = true, pane = pane(402, 874)), "a phone: the page")
     }
 
+    @Test
+    fun pendingRouteParamsAndHandOffPreserveFocusedMessageId() {
+        val pending = task("""{"messageId":"msg-1","hostMessageId":"msg-1","conversationChannelId":null,"conversationAnchored":true,"isLegacy":false}""")
+        val pageData =
+            taskPendingPageData(
+                taskId = pending.id.value,
+                channelId = pending.channelId,
+                storeScope = scope,
+                focusedMessageId = "msg-target-42",
+            )
+        val parsed = parseTaskPendingRouteParams(pageData, scope)
+        assertEquals("t-1", parsed.taskId)
+        assertEquals(ChannelId("channel-1"), parsed.channelId)
+        assertEquals("msg-target-42", parsed.focusedMessageId)
+
+        val launch =
+            buildStandaloneTaskThreadLaunchPayload(
+                task = pending,
+                serverId = "server-1",
+                conversationDirectory = emptyList<SharedConversationDirectoryProjection>().toSharedConversationDirectoryState(),
+                timeContext = null,
+                resolvedConversationChannelId = ChannelId("conv-local"),
+                anchorMessageId = parsed.focusedMessageId,
+            )!!
+        assertEquals("conv-local", launch.streamChannelId)
+        assertEquals("msg-target-42", launch.focusedMessageId)
+    }
+
     private fun task(fields: String): TaskSummary {
         val base =
             """{"id":"t-1","channelId":"channel-1","channelName":"general","channelType":"channel","taskNumber":7,

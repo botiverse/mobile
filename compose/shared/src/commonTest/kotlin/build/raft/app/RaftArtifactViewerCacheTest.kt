@@ -170,14 +170,19 @@ class RaftArtifactViewerCacheTest {
         // The web opens a page's link in a new tab, its viewer still there; here the app opens it over the viewer.
         val cid = "c0c0c0c0-0000-4000-8000-000000000001"
         val mid = "a0a0a0a0-0000-4000-8000-000000000009"
+        val tid = "b0b0b0b0-0000-4000-8000-000000000007"
         val inApp =
             listOf(
-                // A conversation, a channel alone, a task's conversation (the shell reads it as the task), a thread.
+                // A conversation, a channel alone, a task's conversation (slock #14960 & #16576), a thread.
                 "$web/s/acme/channel/$cid?msg=$mid",
                 "$web/s/acme/channel/$cid",
                 "$web/s/acme/dm/$cid?thread=$cid%3A$mid",
+                "$web/s/acme/channel/$cid?msg=$mid&task=$cid%3Atask%3A$tid",
+                "$web/s/acme/dm/$cid?msg=$mid&task=$cid%3Atask%3A$tid",
+                "$web/s/acme/channel/$cid?task=$cid%3Atask%3A$tid",
                 // On another of Raft's own origins (production's hosts; one written with its dot): before, the browser.
                 "https://app.raft.build/s/acme/channel/$cid?msg=$mid",
+                "https://app.raft.build/s/acme/channel/$cid?msg=$mid&task=$cid%3Atask%3A$tid",
                 "https://open.raft.build/s/acme/channel/$cid",
                 "https://app.raft.build./s/acme/channel/$cid",
                 // Join and invite links: their pages in the app.
@@ -198,10 +203,10 @@ class RaftArtifactViewerCacheTest {
             RaftArtifactViewerBlockedTarget.Ignore,
             raftArtifactViewerBlockedNavigationTarget("https://app.raft.build/artifacts/${target.id}", web, target.id, emptySet()),
         )
-        // Same-origin Raft pages without a native screen (including the web's task panel) open in
-        // the authenticated in-app WebView on Android/Desktop; cross-origin Raft pages stay in the
-        // system browser so tokens never leave the active environment.
-        for (url in listOf("$web/s/acme/tasks", "$web/s/acme/settings/theme", "$web/s/acme/channel/$cid?task=$cid%3Atask%3Ab1")) {
+        // Same-origin Raft pages without a native screen (including non-`:task:` `?task=` web panels)
+        // open in the authenticated in-app WebView on Android/Desktop; cross-origin Raft pages stay
+        // in the system browser so tokens never leave the active environment.
+        for (url in listOf("$web/s/acme/tasks", "$web/s/acme/settings/theme", "$web/s/acme/channel/$cid?task=1", "$web/s/acme/channel/$cid?task=$cid%3A$mid")) {
             assertEquals(
                 RaftArtifactViewerBlockedTarget.RaftWebPage(url),
                 raftArtifactViewerBlockedNavigationTarget(url, web, target.id, emptySet(), blockAppStoreBilling = false),

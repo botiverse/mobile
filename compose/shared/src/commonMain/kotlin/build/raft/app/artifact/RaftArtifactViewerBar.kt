@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,9 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
@@ -30,26 +27,23 @@ import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.designsystem.components.raftPaneGridNoFade
 
-internal const val RAFT_ARTIFACT_VIEWER_OPEN_IN_BROWSER_TAG = "artifact-viewer-open-in-browser"
-
 /**
  * The viewer's own bar actions: only what the web page's ⋯ cannot offer (owner decision
- * 2026-11-10, "two bars"; #proj-mobile:#364 restored Open in browser as a top-right button):
- * Desktop Mode (where offered; null: not offered) in ⋮ and Open in browser directly in the bar.
- * Everything else (where it lives, presence, Comments, Find, the version history, Copy link,
- * Follow, Send to conversation, Who can see, Rename, Files, Download, Delete, …) is the page's own
- * toolbar, under this bar, so nothing shows twice.
+ * 2026-11-10, "two bars"; #proj-mobile:#375 removed the temporary 1.30 Open in browser button):
+ * Desktop Mode (where offered; null: not offered) in ⋮. Everything else (where it lives, presence,
+ * Comments, Find, the version history, Copy link, Follow, Send to conversation, Who can see,
+ * Rename, Files, Download, Delete, …) is the page's own toolbar, under this bar, so nothing shows
+ * twice.
  */
 internal class RaftArtifactViewerBarActions(
     val onToggleDesktopMode: (() -> Unit)? = null,
-    val onOpenInBrowser: (() -> Unit)? = null,
 )
 
 /**
- * The viewer's page: the App's title bar (Back, the title, Open in browser when available, and ⋮
- * with Desktop Mode when offered) over [content], the web page with its own toolbar and ⋯ menu.
- * [desktopMode]: on or off, null where it is not offered (hiding ⋮). The menu is a window on a
- * device; screenshots draw [RaftArtifactViewerMenuItems] themselves.
+ * The viewer's page: the App's title bar (Back, the title, and ⋮ with Desktop Mode when offered)
+ * over [content], the web page with its own toolbar and ⋯ menu. [desktopMode]: on or off, null
+ * where it is not offered (hiding ⋮). The menu is a window on a device; screenshots draw
+ * [RaftArtifactViewerMenuItems] themselves.
  *
  * [pageDrawsBar] (artin, "双栏"): the page said its toolbar is the only bar (Back, the title, and
  * this bar's items in its own ⋯; [raftArtifactViewerPageDrawsHostBar]). Then this bar is not drawn:
@@ -73,9 +67,7 @@ internal fun RaftArtifactViewerFrame(
     content: @Composable () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    val openInBrowser = actions.onOpenInBrowser
     val hasMenu = desktopMode != null && actions.onToggleDesktopMode != null
-    val hasTrailing = openInBrowser != null || hasMenu
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         if (pageDrawsBar) {
             // No head here: the host's own bar (iOS native navigation) is hidden too. In a column the page's toolbar
@@ -92,35 +84,20 @@ internal fun RaftArtifactViewerFrame(
             onBack = onBack,
             topSafeAreaOverride = topSafeAreaOverride,
             trailingContent =
-                if (!hasTrailing) null else {
+                if (!hasMenu) null else {
                     {
                         RaftDesignSystemTheme {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (openInBrowser != null) {
-                                    RaftIconButton(
-                                        onClick = openInBrowser,
-                                        tooltip = stringResource(Res.string.artifacts_viewer_open_in_browser),
-                                        modifier = Modifier.testTag(RAFT_ARTIFACT_VIEWER_OPEN_IN_BROWSER_TAG),
-                                        variant = RaftButtonVariant.Ghost,
-                                        size = RaftIconButtonSize.Lg,
-                                    ) {
-                                        RaftSlotIcon(RaftLucideIconName.ArrowUpRight)
-                                    }
+                            Box {
+                                RaftIconButton(
+                                    onClick = { menuOpen = true },
+                                    tooltip = stringResource(Res.string.artifacts_viewer_more),
+                                    variant = RaftButtonVariant.Ghost,
+                                    size = RaftIconButtonSize.Lg,
+                                ) {
+                                    RaftSlotIcon(RaftLucideIconName.EllipsisVertical)
                                 }
-                                if (hasMenu) {
-                                    Box {
-                                        RaftIconButton(
-                                            onClick = { menuOpen = true },
-                                            tooltip = stringResource(Res.string.artifacts_viewer_more),
-                                            variant = RaftButtonVariant.Ghost,
-                                            size = RaftIconButtonSize.Lg,
-                                        ) {
-                                            RaftSlotIcon(RaftLucideIconName.EllipsisVertical)
-                                        }
-                                        RaftDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }, minWidth = 220.dp) {
-                                            RaftArtifactViewerMenuItems(desktopMode = desktopMode, actions = actions, onDone = { menuOpen = false })
-                                        }
-                                    }
+                                RaftDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }, minWidth = 220.dp) {
+                                    RaftArtifactViewerMenuItems(desktopMode = desktopMode, actions = actions, onDone = { menuOpen = false })
                                 }
                             }
                         }

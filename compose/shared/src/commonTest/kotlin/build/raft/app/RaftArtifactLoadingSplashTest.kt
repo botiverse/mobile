@@ -95,13 +95,13 @@ class RaftArtifactLoadingSplashTest {
         assertFalse(raftArtifactViewerKeptPageDrewBar(null))
         assertFalse(
             raftArtifactViewerKeptPageDrewBar(
-                "https://raft.build/artifacts/raft-app-warm?embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,open-in-browser,copy-link,share-link",
+                "https://raft.build/artifacts/raft-app-warm?embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,copy-link,share-link",
             )
         )
         // One that showed an Artifact keeps `hostToolbar=1` in its address (the web's keeper keeps it).
         assertTrue(
             raftArtifactViewerKeptPageDrewBar(
-                "https://raft.build/artifacts/pt_a1?embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,open-in-browser,copy-link,share-link&hostToolbar=1#panel=none",
+                "https://raft.build/artifacts/pt_a1?embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,copy-link,share-link&hostToolbar=1#panel=none",
             )
         )
     }
