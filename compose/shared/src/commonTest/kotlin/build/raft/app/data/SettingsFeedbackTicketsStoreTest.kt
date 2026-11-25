@@ -588,7 +588,7 @@ class SettingsFeedbackTicketsStoreTest {
         detailStore.sendReply()
         runCurrent()
         assertEquals(listOf("a", "b"), listStore.state.value.list.tickets.map { it.id })
-        assertEquals("Follow-up", listStore.state.value.list.tickets.first().latestComment?.body)
+        assertEquals("Follow-up", listStore.state.value.list.tickets.first().latestComment?.bodyPreview)
         assertEquals(1, listStore.state.value.list.tickets.first().commentCount)
 
         // Close propagates Closed status to the list store.
