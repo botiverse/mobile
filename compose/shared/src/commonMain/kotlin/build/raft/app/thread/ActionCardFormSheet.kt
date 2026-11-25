@@ -34,11 +34,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -47,6 +50,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.data.ACTION_CARD_CHOICE_RESERVED_VALUE
 import build.raft.app.data.ActionCardFormIssue
 import build.raft.app.data.ActionCardFormValue
 import build.raft.app.data.ActionCardSpecAgentPickerField
@@ -78,20 +82,22 @@ import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftChoiceList
+import build.raft.designsystem.components.RaftChoiceListItem
+import build.raft.designsystem.components.RaftChoiceListSearch
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftMessageActionCardActions
-import build.raft.designsystem.components.RaftCheckboxRow
-import build.raft.designsystem.components.RaftRadioGroup
-import build.raft.designsystem.components.RaftRadioRow
+import build.raft.designsystem.components.RaftMultiChoiceList
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftDialogSheet
 import build.raft.designsystem.components.RaftDialogSheetSurface
 import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftFieldDescriptionPosition
 import build.raft.designsystem.components.RaftFieldError
 import build.raft.designsystem.components.RaftFieldItem
 import build.raft.designsystem.components.RaftListRowGroup
@@ -99,7 +105,9 @@ import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextarea
+import build.raft.designsystem.components.raftDialogSheetCentered
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -132,12 +140,13 @@ internal data class ActionCardFormCandidates(
  * - `MemberPicker` / `AgentPicker` the shared [RaftMemberPicker], `ChannelPicker` a list of
  *   [RaftForwardPickerTargetRow]s (the forward picker's rows). A picker's value is always a list
  *   of ids; one that is not `multiple` keeps at most one;
- * - `Choice` (a question card's, schemaVersion 8) every option at once as [RaftRadioRow]s, or
- *   [RaftCheckboxRow]s when `multiple`, each with its description; "Other" is the last row and,
- *   chosen, opens a one-line [RaftTextField] under the list for the person's own answer (at most
- *   its maxLength in code points). Nothing is chosen at first, so a required Choice not yet answered
- *   disables the commit with a line under it saying what is missing ("Choose an option first." /
- *   "Write your answer first."; web question-card spec §5.3, A′).
+ * - `Choice` (a question card's, schemaVersion 8) every option at once inside a framed
+ *   [RaftChoiceList] (single) or [RaftMultiChoiceList] (when `multiple`, `search = Auto`, `lazy =
+ *   false`), each with its description; "Other" is the last row and, chosen, opens a one-line
+ *   [RaftTextField] under the list for the person's own answer (at most its maxLength in code
+ *   points). Nothing is chosen at first, so a required Choice not yet answered holds Next/submit
+ *   back with a line under it saying what is missing ("Choose an option first." / "Write your
+ *   answer first."; web question-card spec §5.3, A′).
  *
  * A form with `steps` pages: a step a page under "Question n of total", Next (the commit) checking
  * only that page, Back (the head's arrow, or Back in the centred dialog's footer) keeping every
@@ -362,6 +371,13 @@ internal fun RaftActionCardFormSheet(
             } else {
                 state.commitLabel(effectiveValues, locale, nextLabel)
             }
+        val windowWidthPx = LocalWindowInfo.current.containerSize.width
+        val centered =
+            if (windowWidthPx > 0) {
+                raftDialogSheetCentered(with(LocalDensity.current) { windowWidthPx.toDp() })
+            } else {
+                RaftTheme.scale == RaftScale.Wide
+            }
         RaftDialogSheet(
             onDismissRequest = requestClose,
             title = form.title.render(locale),
@@ -386,6 +402,17 @@ internal fun RaftActionCardFormSheet(
                     null
                 },
             backLabel = stringResource(Res.string.action_card_question_back),
+            footerStart =
+                if (waiting) {
+                    {
+                        ActionCardQuestionSubmittedUndoContent(
+                            onUndo = { undoable.undo() },
+                        )
+                    }
+                } else {
+                    null
+                },
+            cancelVisible = !waiting,
         ) {
             ActionCardFormBody(
                 form = form,
@@ -403,9 +430,9 @@ internal fun RaftActionCardFormSheet(
                 onChoicePicked = onChoicePicked,
                 onOtherSelected = if (question) ({ cancelAdvance() }) else null,
                 fieldTargets = fieldTargets,
-                applyImePadding = !waiting,
+                applyImePadding = !(waiting && !centered),
             )
-            if (waiting) {
+            if (waiting && !centered) {
                 RaftSeparator()
                 ActionCardQuestionSubmittedUndoBar(
                     onUndo = { undoable.undo() },
@@ -425,17 +452,15 @@ internal fun RaftActionCardFormSheet(
     }
 }
 
-/** "Submitted · Undo" bar inside a `question:ask` modal sheet while its 1.5 s Undo wait runs (web `QuestionSubmittedUndo`). */
+/** "Submitted · Undo" inline row shared by the centred footer's start slot and the phone sheet's bottom bar (web `QuestionSubmittedUndo`). */
 @Composable
-private fun ActionCardQuestionSubmittedUndoBar(
+private fun ActionCardQuestionSubmittedUndoContent(
     onUndo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
         modifier =
             modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
                 .testTag(ACTION_CARD_FORM_UNDO_ROW_TAG)
                 .semantics { liveRegion = LiveRegionMode.Polite },
         verticalAlignment = Alignment.CenterVertically,
@@ -452,6 +477,18 @@ private fun ActionCardQuestionSubmittedUndoBar(
             variant = RaftButtonVariant.Ghost,
         )
     }
+}
+
+/** "Submitted · Undo" bar at the bottom of a phone `question:ask` modal sheet while its 1.5 s Undo wait runs. */
+@Composable
+private fun ActionCardQuestionSubmittedUndoBar(
+    onUndo: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    ActionCardQuestionSubmittedUndoContent(
+        onUndo = onUndo,
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+    )
 }
 
 /** Closing a dirty form without a kept draft confirms discard first (web `ActionCardFormSheet` discard dialog). */
@@ -880,15 +917,18 @@ private fun ActionCardFormField(
 
 /**
  * A Choice (web `ChoiceFieldControl`): the label (with "(optional)" when optional), the question's
- * description, every option as a radio row (single) or checkbox row (multiple) with its description,
- * "Other" last, the one-line input under the list while Other is chosen, then the issue (by [RaftField])
- * or, for a required Choice, what it still lacks. The value is [ActionCardFormValue.Choice]: `other` is
- * non-null while Other is chosen, even empty. Choosing a single option drops Other; unticking Other
- * keeps what was typed for the next time it is chosen.
+ * description under the label above the options ([RaftFieldDescriptionPosition.BelowLabel]), every
+ * option inside a framed [RaftChoiceList] (single) or [RaftMultiChoiceList] (multiple,
+ * `search = Auto`, `lazy = false`) with its description, "Other" last, the one-line input under the
+ * list while Other is chosen, then the issue (by [RaftField]) or, for a required Choice, what it
+ * still lacks. The value is [ActionCardFormValue.Choice]: `other` is non-null while Other is
+ * chosen, even empty. Choosing a single option drops Other; unticking Other keeps what was typed
+ * for the next time it is chosen.
  *
  * On a question card answered inline ([ActionCardQuestionInlineForm]): [number] goes before the
  * question's text when the card asks several ("2. …", web `ChoiceFieldControl` `number`), and
- * [onPicked] hears a single option tapped (not Other…), which moves the form on (spec §5.10).
+ * [onPicked] hears every single-option tap via [RaftChoiceList]'s `onItemClick` (not Other…), which
+ * moves the form on even when tapping an already-chosen answer after going Back (spec §5.10).
  * [showLabel] false draws no label: a slim card whose title is its one question.
  * Other reads the app's "Other" when the server sent its known key ([questionOtherLabel]).
  *
@@ -925,8 +965,37 @@ internal fun ActionCardChoiceField(
     var focusOther by remember(field.name) { mutableStateOf(false) }
     // A required Choice speaks only to someone who can answer it, once they tried to go on, and not over an issue.
     val pending = if (field.required == true && enabled && showPending && error == null) actionCardChoicePending(value) else null
+    val invalid = error != null && enabled
     val label = field.label.render(locale)
     val firstFocusModifier = if (firstControlFocusRequester != null) Modifier.focusRequester(firstControlFocusRequester) else Modifier
+    val items =
+        remember(field.options, other, otherLabel, locale) {
+            buildList {
+                field.options.forEach { option ->
+                    val optionDesc = option.description?.render(locale)?.takeIf { it.isNotBlank() }
+                    add(
+                        RaftChoiceListItem(
+                            value = option.value,
+                            label = option.label.render(locale),
+                            descriptions = if (optionDesc != null) listOf(AnnotatedString(optionDesc)) else emptyList(),
+                        ),
+                    )
+                }
+                if (other != null) {
+                    val otherDesc = other.description?.render(locale)?.takeIf { it.isNotBlank() }
+                    add(
+                        RaftChoiceListItem(
+                            value = ACTION_CARD_CHOICE_RESERVED_VALUE,
+                            label = otherLabel.orEmpty(),
+                            descriptions = if (otherDesc != null) listOf(AnnotatedString(otherDesc)) else emptyList(),
+                        ),
+                    )
+                }
+            }
+        }
+    val searchPlaceholder = stringResource(Res.string.action_card_form_options_search)
+    val clearSearchLabel = stringResource(Res.string.common_clear)
+    val noMatchLabel = stringResource(Res.string.common_no_matches)
     RaftField(
         label = if (!showLabel) null else if (number != null) "$number. $label" else label,
         description = field.description?.render(locale),
@@ -934,8 +1003,9 @@ internal fun ActionCardChoiceField(
         enabled = enabled,
         required = showLabel && field.required == true,
         optional = showLabel && field.required != true,
+        descriptionPosition = RaftFieldDescriptionPosition.BelowLabel,
     ) {
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (field.isConfirm) {
                 val option = field.options.single()
                 val press = {
@@ -956,76 +1026,74 @@ internal fun ActionCardChoiceField(
                 }
                 if (confirmInActions) RaftMessageActionCardActions { button() } else button()
             } else if (field.multiple) {
-                field.options.forEachIndexed { index, option ->
-                    RaftCheckboxRow(
-                        label = option.label.render(locale),
-                        checked = option.value in value.selected,
-                        onCheckedChange = { checked ->
-                            // In the options' order, whatever order they were ticked in.
-                            val next = field.options.map { it.value }.filter { if (it == option.value) checked else it in value.selected }
-                            onValueChange(ActionCardFormValue.Choice(next, value.other))
-                        },
-                        modifier = if (index == 0) firstFocusModifier else Modifier,
-                        description = option.description?.render(locale),
-                        enabled = enabled,
-                    )
-                }
-                if (other != null) {
-                    RaftCheckboxRow(
-                        label = otherLabel.orEmpty(),
-                        checked = otherChosen,
-                        onCheckedChange = { checked ->
-                            if (checked) {
-                                focusOther = true
-                                onOtherSelected?.invoke()
-                            }
-                            onValueChange(ActionCardFormValue.Choice(value.selected, if (checked) value.other ?: otherDraft else null))
-                        },
-                        modifier = if (field.options.isEmpty()) firstFocusModifier else Modifier,
-                        description = other.description?.render(locale),
-                        enabled = enabled,
-                    )
-                }
+                var multiSearchQuery by remember(field.name) { mutableStateOf("") }
+                val selectedValues =
+                    remember(value.selected, otherChosen) {
+                        buildSet {
+                            addAll(value.selected)
+                            if (otherChosen) add(ACTION_CARD_CHOICE_RESERVED_VALUE)
+                        }
+                    }
+                RaftMultiChoiceList(
+                    items = items,
+                    values = selectedValues,
+                    onValuesChange = { nextSet ->
+                        // In the options' order, whatever order they were ticked in.
+                        val nextSelected = field.options.map { it.value }.filter { it in nextSet }
+                        val nextOtherChosen = other != null && ACTION_CARD_CHOICE_RESERVED_VALUE in nextSet
+                        if (nextOtherChosen && !otherChosen) {
+                            focusOther = true
+                            onOtherSelected?.invoke()
+                        }
+                        onValueChange(
+                            ActionCardFormValue.Choice(
+                                selected = nextSelected,
+                                other = if (nextOtherChosen) value.other ?: otherDraft else null,
+                            ),
+                        )
+                    },
+                    query = multiSearchQuery,
+                    onQueryChange = { multiSearchQuery = it },
+                    searchPlaceholder = searchPlaceholder,
+                    clearSearchLabel = clearSearchLabel,
+                    noMatchLabel = noMatchLabel,
+                    emptyLabel = "",
+                    modifier = firstFocusModifier,
+                    enabled = enabled,
+                    search = RaftChoiceListSearch.Auto,
+                    lazy = false,
+                    invalid = invalid,
+                )
             } else {
-                val focusIndex =
-                    if (!otherChosen) {
-                        field.options.indexOfFirst { it.value in value.selected }.takeIf { it >= 0 } ?: 0
-                    } else {
-                        -1
-                    }
-                RaftRadioGroup {
-                    field.options.forEachIndexed { index, option ->
-                        RaftRadioRow(
-                            label = option.label.render(locale),
-                            selected = !otherChosen && option.value in value.selected,
-                            onClick = {
-                                onValueChange(ActionCardFormValue.Choice(listOf(option.value)))
-                                onPicked?.invoke()
-                            },
-                            modifier = if (index == focusIndex) firstFocusModifier else Modifier,
-                            description = option.description?.render(locale),
-                            enabled = enabled,
-                        )
-                    }
-                    if (other != null) {
-                        RaftRadioRow(
-                            label = otherLabel.orEmpty(),
-                            selected = otherChosen,
-                            onClick = {
-                                focusOther = true
-                                onOtherSelected?.invoke()
-                                if (!otherChosen) {
-                                    onValueChange(ActionCardFormValue.Choice(emptyList(), value.other ?: otherDraft))
-                                }
-                            },
-                            modifier = if (focusIndex < 0 || field.options.isEmpty()) firstFocusModifier else Modifier,
-                            description = other.description?.render(locale),
-                            enabled = enabled,
-                        )
-                    }
-                }
+                val selectedValue = if (otherChosen) ACTION_CARD_CHOICE_RESERVED_VALUE else value.selected.firstOrNull()
+                RaftChoiceList(
+                    items = items,
+                    value = selectedValue,
+                    onValueChange = { pickedValue ->
+                        if (pickedValue == ACTION_CARD_CHOICE_RESERVED_VALUE) {
+                            onValueChange(ActionCardFormValue.Choice(emptyList(), value.other ?: otherDraft))
+                        } else {
+                            onValueChange(ActionCardFormValue.Choice(listOf(pickedValue)))
+                        }
+                    },
+                    searchPlaceholder = searchPlaceholder,
+                    clearSearchLabel = clearSearchLabel,
+                    noMatchLabel = noMatchLabel,
+                    emptyLabel = "",
+                    modifier = firstFocusModifier,
+                    enabled = enabled,
+                    onItemClick = { tappedValue ->
+                        if (tappedValue == ACTION_CARD_CHOICE_RESERVED_VALUE) {
+                            focusOther = true
+                            onOtherSelected?.invoke()
+                        } else {
+                            onPicked?.invoke()
+                        }
+                    },
+                    invalid = invalid,
+                )
             }
-            if (otherChosen && other != null) {
+            if (other != null && value.other != null) {
                 ActionCardChoiceOtherInput(
                     text = value.other.orEmpty(),
                     onTextChange = {
