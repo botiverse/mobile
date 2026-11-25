@@ -1123,6 +1123,11 @@ data class AgentDetailSummary(
      */
     val deliveryHold: build.raft.app.model.AgentDeliveryHold? = null,
     /**
+     * Running Workers count on this agent's current Computer (`runningWorkers`, botiverse/slock
+     * #16819; joint-channel peer is 1 or absent). Null when none or from older servers.
+     */
+    val runningWorkers: Int? = null,
+    /**
      * `modelLimits.defaultsReported` (botiverse/slock #13492): the agent's Computer reported that the
      * current session filled at least one limit of its Built-in custom gateway model with a Raft
      * default. Only true shows the warning; false, null and an old server's absent field show nothing.

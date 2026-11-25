@@ -79,12 +79,21 @@ internal fun membersRemoteProfileAgentStatusIndicatorStateOrNull(
     runtime: String? = null,
     model: String? = null,
     deliveryHold: AgentDeliveryHold? = null,
+    runningWorkers: Int? = null,
+    runningWorkersPresenceOnly: Boolean = false,
 ): RaftAgentStatusIndicatorState? {
     val status =
         normalizedAgentRuntimeStatus(
             activity = summaryActivity,
             lifecycleStatus = summaryStatus
         ) ?: return null
+    val normalizedWorkers = build.raft.app.data.normalizeAgentRunningWorkers(runningWorkers)
+    val resolvedWorkers =
+        when {
+            normalizedWorkers == null -> null
+            runningWorkersPresenceOnly -> 1
+            else -> normalizedWorkers
+        }
     val base =
         raftAgentStatusIndicatorState(
             status = status,
@@ -94,11 +103,16 @@ internal fun membersRemoteProfileAgentStatusIndicatorStateOrNull(
             runtime = runtime,
             model = model,
             deliveryHold = deliveryHold,
+            runningWorkers = resolvedWorkers,
+            runningWorkersPresenceOnly = resolvedWorkers != null && runningWorkersPresenceOnly,
         )
-    return if (deliveryHold != null && base.activeDeliveryHold(nowMs = defaultNowMillis()) != null) {
-        base.copy(color = RaftColor.AccentOrange)
-    } else {
-        base
+    val nowMs = defaultNowMillis()
+    return when {
+        deliveryHold != null && base.activeDeliveryHold(nowMs = nowMs) != null ->
+            base.copy(color = RaftColor.AccentOrange)
+        base.busyThroughWorkers(nowMs = nowMs) != null ->
+            base.copy(color = RaftColor.BrandYellow)
+        else -> base
     }
 }
 

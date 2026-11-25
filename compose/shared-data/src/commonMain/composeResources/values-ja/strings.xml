@@ -5111,6 +5111,9 @@
     <string name="agent_status_delivery_hold_window_weekly_opus">週間 Opus</string>
     <string name="agent_status_delivery_hold_window_weekly_sonnet">週間 Sonnet</string>
     <string name="agent_status_delivery_hold_window_extra_usage">追加利用</string>
+    <string name="agent_status_working_through_worker">Worker を通じて作業中</string>
+    <string name="agent_status_working_through_workers">%1$d 個の Worker を通じて作業中</string>
+    <string name="agent_status_working_through_workers_presence">Worker を通じて作業中</string>
     <string name="agent_status_computer_access_revoked">コンピューターのアクセスが取り消されました。コンピューターを再接続するか、エージェントを別のコンピューターに移動してください</string>
     <string name="agent_revoked_reattach">%1$s を再接続：そのマシンで %2$s を実行し、オーナーまたは管理者のアカウントでログインを承認します。承認した人がその接続者になります。</string>
     <string name="agent_revoked_move">または、このエージェントを別のコンピューターに移動します。</string>

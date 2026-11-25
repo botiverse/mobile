@@ -734,6 +734,27 @@ internal fun MembersAgentProfileStatus(
                 likelyOnline = agentStatusIndicatorState?.likelyOnline == true,
                 credentialReason = credentialReason,
             )
+    // Web: held or not, an invalid credential or delivery hold cannot respond: the error light.
+    val errorLight = credentialReason != null || runtimeSignInNeeded || deliveryHold != null
+    // Web AgentStatusBadge `workersBusy` (botiverse/slock #16819): online with running Workers
+    // shows busy yellow and "Working through a Worker / N Workers" (or presence-only for peers).
+    val workersBusy =
+        if (appBot || errorLight || blocked != null) {
+            null
+        } else {
+            membersAgentRunningWorkersDisplay(
+                indicator = agentStatusIndicatorState,
+                summary = summary,
+                external = external,
+                blocked = blocked,
+                paused = !member.assistantPausedAt.isNullOrBlank(),
+                nowMs = timeContext?.nowEpochMillis ?: build.raft.app.data.defaultNowMillis(),
+                appBot = appBot,
+                presenceOnly = member.inViewerServer == false,
+                hasResolvedDeliveryHold = true,
+                resolvedDeliveryHold = deliveryHold,
+            )
+        }
     val rawStatusLabel = membersHeroAgentStatusLabel(
         indicatorState = agentStatusIndicatorState,
         summaryStatus = summary?.status,
@@ -768,8 +789,13 @@ internal fun MembersAgentProfileStatus(
             } else {
                 stringResource(Res.string.member_row_status_error)
             }
+        } else if (workersBusy != null) {
+            workersBusy.localizedText()
         } else {
-            agentStatusIndicatorState?.copy(label = rawStatusLabel)?.localizedMemberStatusLabel() ?: rawStatusLabel
+            agentStatusIndicatorState
+                ?.copy(label = rawStatusLabel, runningWorkers = null)
+                ?.localizedMemberStatusLabel()
+                ?: rawStatusLabel
         }
 
     // A null resolution is Unknown/not-ready, and PresenceOffline is the
@@ -779,15 +805,24 @@ internal fun MembersAgentProfileStatus(
     // something authoritative arrives (task #253/#256).
     // An App Bot renders no presence (web: always-offline on a signal that does
     // not apply to it).
-    // Web: held or not, an invalid credential or delivery hold cannot respond: the error light.
-    val errorLight = credentialReason != null || runtimeSignInNeeded || deliveryHold != null
     val chipStatus = if (errorLight) AgentStatus.Error else agentStatusObservedState?.status
-    val chipColor = if (errorLight) RaftColor.AccentOrange else agentStatusObservedState?.color
+    val chipVariant =
+        when {
+            errorLight -> AgentStatus.Error.membersStatusBadgeVariant()
+            workersBusy != null -> RaftBadgeVariant.Busy
+            else -> chipStatus.membersStatusBadgeVariant()
+        }
+    val chipColor =
+        when {
+            errorLight -> RaftColor.AccentOrange
+            workersBusy != null -> RaftColor.BrandYellow
+            else -> agentStatusObservedState?.color
+        }
     val statusChip: @Composable (Modifier) -> Unit = { chipModifier ->
         RaftBadge(
             text = statusLabel,
             appearance = RaftBadgeAppearance.Soft,
-            variant = chipStatus.membersStatusBadgeVariant(),
+            variant = chipVariant,
             modifier = chipModifier,
             icon = if (chipColor != null) {
                 {

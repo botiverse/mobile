@@ -5112,6 +5112,9 @@
     <string name="agent_status_delivery_hold_window_weekly_opus">weekly Opus</string>
     <string name="agent_status_delivery_hold_window_weekly_sonnet">weekly Sonnet</string>
     <string name="agent_status_delivery_hold_window_extra_usage">extra usage</string>
+    <string name="agent_status_working_through_worker">Working through a Worker</string>
+    <string name="agent_status_working_through_workers">Working through %1$d Workers</string>
+    <string name="agent_status_working_through_workers_presence">Working through Workers</string>
     <string name="agent_status_computer_access_revoked">Computer access revoked: reattach the computer or move the agent</string>
     <string name="agent_revoked_reattach">Reattach %1$s: on that machine, run %2$s and approve the sign-in with an owner or admin account. Whoever approves becomes its Attached by.</string>
     <string name="agent_revoked_move">Or move this agent to another computer.</string>

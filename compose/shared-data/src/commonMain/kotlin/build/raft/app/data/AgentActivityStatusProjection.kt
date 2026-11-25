@@ -39,6 +39,8 @@ import build.raft.app.model.Presence
     val errorCode: AgentRuntimeErrorCode? = null,
     /** The daemon holds this agent's deliveries (botiverse/slock #16333); null when not held. */
     val deliveryHold: AgentDeliveryHold? = null,
+    /** Positive count of running Workers on its current Computer (botiverse/slock #16819); null when none. */
+    val runningWorkers: Int? = null,
 ) {
     val presence: Presence
         get() = status.presence
@@ -124,6 +126,7 @@ import build.raft.app.model.Presence
         detail = activityDetail.projectionNonBlankOrNull(),
         errorCode = activityErrorCode.takeIf { status == AgentStatus.Error },
         deliveryHold = deliveryHold,
+        runningWorkers = normalizeAgentRunningWorkers(runningWorkers),
     )
 }
 
@@ -166,6 +169,7 @@ import build.raft.app.model.Presence
         activityToolName = toolName,
         serverSeq = serverSeq,
         deliveryHold = deliveryHold,
+        runningWorkers = normalizeAgentRunningWorkers(runningWorkers),
         errorCode = errorCode
     )
 

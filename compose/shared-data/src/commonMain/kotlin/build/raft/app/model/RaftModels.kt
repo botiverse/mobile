@@ -528,6 +528,13 @@ data class MemberProfile(
      */
     val agentDeliveryHold: AgentDeliveryHold? = null,
     /**
+     * Running Workers count on this agent's current Computer (`GET /agents`, `GET /channels/:id/members`
+     * `runningWorkers`, botiverse/slock #16819; joint-channel peer is 1 or absent). Positive whole
+     * count only; cleared by `withoutVolatileStatus()` / durable caches so disk caches never flash
+     * stale busy state on cold start.
+     */
+    val agentRunningWorkers: Int? = null,
+    /**
      * External agents (runtime `external`) have no managed liveness. Web keeps
      * `agent.external === true || runtime === "external"` as parallel sources
      * (agentStore.ts resolveAgentDisplayState); producers fold both via
@@ -1402,6 +1409,12 @@ data class MemberPresenceUpdated(
      * (the `deliveryHold` carrier, botiverse/slock #16333); absent means "not held" (or older daemon).
      */
     val deliveryHold: AgentDeliveryHold? = null,
+    /**
+     * How many of this agent's Workers are currently running on its current Computer (carried on
+     * both `agent:activity` and `agent:activity_state`, botiverse/slock #16819; joint-channel peer
+     * carries 1 or absent). Positive integer when some are running; null means none.
+     */
+    val runningWorkers: Int? = null,
     /**
      * The code of the runtime error this frame shows (the `errorCode` carrier of `agent:activity`,
      * web #13985), only with [agentStatus] Error; null otherwise or for an unknown code.

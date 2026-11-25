@@ -4928,6 +4928,9 @@
     <string name="agent_status_delivery_hold_window_weekly_opus">semanal de Opus</string>
     <string name="agent_status_delivery_hold_window_weekly_sonnet">semanal de Sonnet</string>
     <string name="agent_status_delivery_hold_window_extra_usage">de uso extra</string>
+    <string name="agent_status_working_through_worker">Trabalhando por meio de um Worker</string>
+    <string name="agent_status_working_through_workers">Trabalhando por meio de %1$d Workers</string>
+    <string name="agent_status_working_through_workers_presence">Trabalhando por meio de Workers</string>
     <string name="agent_status_computer_access_revoked">Acesso do computador revogado: vincule o computador de novo ou mova o agente</string>
     <string name="agent_revoked_reattach">Vincule %1$s de novo: nessa máquina, execute %2$s e aprove o login com uma conta de proprietário ou administrador. Quem aprovar passa a ser quem o vinculou.</string>
     <string name="agent_revoked_move">Ou mova este agente para outro computador.</string>

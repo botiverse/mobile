@@ -219,4 +219,78 @@ class RealtimeAgentCredentialHoldTest {
             )
         assertEquals(expected, coarse.deliveryHold)
     }
+
+    @Test
+    fun activityAndCoarseStateParseRunningWorkersAndRejectInvalidValues() {
+        val detailed =
+            map(
+                """
+                {
+                  "agentId": "agent-workers",
+                  "activity": "online",
+                  "detail": "",
+                  "detailKind": "idle",
+                  "timestamp": 1782367200000,
+                  "serverSeq": 20,
+                  "runningWorkers": 2
+                }
+                """.trimIndent()
+            )
+        assertEquals(AgentStatus.Online, detailed.agentStatus)
+        assertEquals(2, detailed.runningWorkers)
+
+        val coarse =
+            assertIs<MemberPresenceUpdated>(
+                RealtimeEventMapper().map(
+                    RealtimeSocketEvents.AgentActivityState,
+                    """
+                    {
+                      "agentId": "agent-workers",
+                      "state": "online",
+                      "activity": "online",
+                      "timestamp": 1782367201000,
+                      "serverSeq": 21,
+                      "runningWorkers": 1
+                    }
+                    """.trimIndent()
+                )
+            )
+        assertEquals(true, coarse.coarseState)
+        assertEquals(1, coarse.runningWorkers)
+
+        val cleared =
+            assertIs<MemberPresenceUpdated>(
+                RealtimeEventMapper().map(
+                    RealtimeSocketEvents.AgentActivityState,
+                    """
+                    {
+                      "agentId": "agent-workers",
+                      "state": "online",
+                      "activity": "online",
+                      "timestamp": 1782367202000,
+                      "serverSeq": 22
+                    }
+                    """.trimIndent()
+                )
+            )
+        assertNull(cleared.runningWorkers)
+
+        val fractional =
+            assertIs<MemberPresenceUpdated>(
+                RealtimeEventMapper().map(
+                    RealtimeSocketEvents.AgentActivityState,
+                    """
+                    {
+                      "agentId": "agent-workers",
+                      "state": "online",
+                      "activity": "online",
+                      "timestamp": 1782367203000,
+                      "serverSeq": 23,
+                      "runningWorkers": 1.5
+                    }
+                    """.trimIndent()
+                )
+            )
+        assertNull(fractional.runningWorkers)
+    }
 }

@@ -736,4 +736,53 @@ class SharedAgentDetailStoreTest {
         assertEquals(1L, route.state.value.agentActivitySeqEpoch)
         assertEquals(2L, shell.state.value.agentActivitySeqEpoch)
     }
+
+    @Test
+    fun agentActivityAndCoarseStateUpdateAndClearRunningWorkersWhileSeenPreservesIt() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Online", activity = "Online")))
+
+        // Detailed frame sets runningWorkers.
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(AgentStatus.Online, detail = "", serverSeq = 10L).copy(runningWorkers = 2),
+                observedAtMillis = 100L,
+            )
+        )
+        assertEquals(2, s.state.value.detail?.summary?.runningWorkers)
+
+        // agent:seen preserves runningWorkers.
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event =
+                    MemberPresenceUpdated(
+                        memberId = testMemberId,
+                        presence = Presence.Active,
+                        kind = MemberKind.Agent,
+                        lastSeenAt = "2026-11-25T15:00:00.000Z",
+                    ),
+                observedAtMillis = 150L,
+            )
+        )
+        assertEquals(2, s.state.value.detail?.summary?.runningWorkers)
+
+        // Coarse state without runningWorkers clears it.
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event =
+                    MemberPresenceUpdated(
+                        memberId = testMemberId,
+                        presence = Presence.Active,
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Online,
+                        serverSeq = 11L,
+                        runningWorkers = null,
+                        coarseState = true,
+                    ),
+                observedAtMillis = 200L,
+            )
+        )
+        assertNull(s.state.value.detail?.summary?.runningWorkers)
+    }
 }

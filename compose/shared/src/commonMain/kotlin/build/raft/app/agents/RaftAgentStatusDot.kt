@@ -25,19 +25,32 @@ fun raftAgentStatusDotKind(
     nowEpochMillis: Long? = null,
     blockedReason: String? = null,
     deliveryHold: AgentDeliveryHold? = null,
+    runningWorkers: Int? = null,
 ): RaftAgentStatusDotKind {
     if (!external && agentBlockedState(blockedReason) != null) return RaftAgentStatusDotKind.Orange
     val parsedStatus = AgentStatus.fromWireValue(statusWireValue)
+    val nowMs = nowEpochMillis ?: defaultNowMillis()
     if (
         deliveryHold != null &&
         agentDeliveryHoldOf(
             status = parsedStatus,
             deliveryHold = deliveryHold,
-            nowMs = nowEpochMillis ?: defaultNowMillis(),
+            nowMs = nowMs,
             external = external,
         ) != null
     ) {
         return RaftAgentStatusDotKind.Orange
+    }
+    if (
+        agentRunningWorkersDisplayOf(
+            status = parsedStatus,
+            runningWorkers = runningWorkers,
+            nowMs = nowMs,
+            external = external,
+            deliveryHold = deliveryHold,
+        ) != null
+    ) {
+        return RaftAgentStatusDotKind.Yellow
     }
     val state =
         raftAgentStatusIndicatorState(
@@ -75,6 +88,7 @@ fun raftAgentWidgetStatusText(
     external: Boolean,
     runtime: String?,
     description: String?,
+    runningWorkers: Int? = null,
 ): StringDesc {
     if (!external) agentBlockedState(blockedReason)?.let { return it.statusLabelRes.desc() }
     val status = AgentStatus.fromWireValue(statusWireValue)
@@ -84,7 +98,19 @@ fun raftAgentWidgetStatusText(
         AgentStatus.Working -> detail?.desc() ?: Res.string.member_row_status_working.desc()
         AgentStatus.Thinking -> detail?.desc() ?: Res.string.member_row_status_thinking.desc()
         AgentStatus.Error -> detail?.desc() ?: Res.string.member_row_status_error.desc()
-        AgentStatus.Online -> Res.string.member_row_status_online.desc()
+        AgentStatus.Online -> {
+            val workers =
+                agentRunningWorkersDisplayOf(
+                    status = status,
+                    runningWorkers = runningWorkers,
+                    external = external,
+                )
+            when {
+                workers == null -> Res.string.member_row_status_online.desc()
+                workers.count == 1 -> Res.string.agent_status_working_through_worker.desc()
+                else -> Res.string.agent_status_working_through_workers.format(workers.count)
+            }
+        }
         AgentStatus.Idle -> Res.string.member_row_status_idle.desc()
         AgentStatus.Disconnected -> Res.string.member_row_status_disconnected.desc()
         AgentStatus.Offline -> Res.string.member_row_status_offline.desc()

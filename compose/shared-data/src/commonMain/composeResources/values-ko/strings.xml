@@ -4928,6 +4928,9 @@
     <string name="agent_status_delivery_hold_window_weekly_opus">주간 Opus</string>
     <string name="agent_status_delivery_hold_window_weekly_sonnet">주간 Sonnet</string>
     <string name="agent_status_delivery_hold_window_extra_usage">추가 사용량</string>
+    <string name="agent_status_working_through_worker">Worker를 통해 작업 중</string>
+    <string name="agent_status_working_through_workers">Worker %1$d개를 통해 작업 중</string>
+    <string name="agent_status_working_through_workers_presence">Worker를 통해 작업 중</string>
     <string name="agent_status_computer_access_revoked">컴퓨터 접근 권한이 취소되었어요. 컴퓨터를 다시 연결하거나 에이전트를 다른 컴퓨터로 옮겨 주세요</string>
     <string name="agent_revoked_reattach">%1$s 다시 연결하기: 그 기기에서 %2$s을(를) 실행하고 소유자나 관리자 계정으로 로그인을 승인하세요. 승인한 사람이 연결한 사람이 돼요.</string>
     <string name="agent_revoked_move">또는 이 에이전트를 다른 컴퓨터로 옮기세요.</string>

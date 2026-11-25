@@ -149,7 +149,16 @@ internal fun raftProfilePreviewCardModel(
         // directory doesn't carry: none rather than the Bot row's own, possibly stale, one.
         description = if (appBot != null) null else profile.description?.trim()?.takeIf { it.isNotBlank() },
         appBot = appBot,
-        status = if (isAgent && appBot == null) status else null,
+        status =
+            if (isAgent && appBot == null) {
+                if (origin.external && status?.runningWorkers != null && !status.runningWorkersPresenceOnly) {
+                    status.copy(runningWorkers = 1, runningWorkersPresenceOnly = true)
+                } else {
+                    status
+                }
+            } else {
+                null
+            },
         runtimeLabel = if (agentFacts) runtimeId?.let { runtimeIdentityDisplayName(it, resolvedServerId) } else null,
         runtimeId = if (agentFacts) runtimeId else null,
         modelLabel = if (agentFacts) profile.modelLabel(viewerServerId = resolvedServerId, catalog = modelLabelCatalog) else null,

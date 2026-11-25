@@ -83,9 +83,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.transformLatest
 import build.raft.app.data.map
 import kotlinx.coroutines.launch
 import androidx.compose.ui.semantics.selected
@@ -862,17 +865,64 @@ private fun membersCountsText(working: Int, members: Int): String {
     return "$workingText · $membersText"
 }
 
-/** How many of [agents] are working or thinking (web `selectWorkingAgentCount`), live. */
+/**
+ * Whether [state] counts toward the Members page "N agents working" header (web
+ * `selectWorkingAgentCount`, botiverse/slock #16819): thinking, working, or online with
+ * running Workers (by the busy-light rule, excluding holds, paused, blocked, external).
+ */
+internal fun isMembersWorkingCountAgent(
+    state: RaftAgentStatusIndicatorState?,
+    nowMs: Long = build.raft.app.data.defaultNowMillis(),
+): Boolean =
+    state != null &&
+        !state.external &&
+        state.blocked == null &&
+        !state.paused &&
+        (
+            state.status == AgentStatus.Working ||
+                state.status == AgentStatus.Thinking ||
+                state.isBusyThroughWorkers(nowMs = nowMs)
+        )
+
+/**
+ * Soonest future `ProviderLimit` hold expiry among online agents with running Workers, so the
+ * Members working count wakes up when the hold clears without waiting for a new presence frame.
+ */
+internal fun nextMembersWorkingCountHoldExpiryMs(
+    states: Array<RaftAgentStatusIndicatorState?>,
+    nowMs: Long,
+): Long? =
+    states.mapNotNull { state ->
+        if (state == null || state.status != AgentStatus.Online) return@mapNotNull null
+        if (build.raft.app.data.normalizeAgentRunningWorkers(state.runningWorkers) == null) return@mapNotNull null
+        val hold = state.deliveryHold ?: return@mapNotNull null
+        if (hold.reason != build.raft.app.model.AgentDeliveryHoldReason.ProviderLimit) return@mapNotNull null
+        hold.untilMs?.takeIf { it > nowMs }
+    }.minOrNull()
+
+/** How many of [agents] are busy — working, thinking, or through their Workers (web `selectWorkingAgentCount`), live. */
+@OptIn(ExperimentalCoroutinesApi::class)
 @Composable
 private fun rememberMembersWorkingAgentCount(agents: List<MemberProfile>, agentStatusResolver: RaftAgentStatusResolver): Int {
     val flow =
         remember(agents, agentStatusResolver) {
-            if (agents.isEmpty()) {
+            val managedAgents = agents.filter { it.managedByAppInstallId.isNullOrBlank() }
+            if (managedAgents.isEmpty()) {
                 flowOf(0)
             } else {
-                combine(agents.map { agentStatusResolver(it.id.value) }) { states ->
-                    states.count { it?.status == AgentStatus.Working || it?.status == AgentStatus.Thinking }
-                }.distinctUntilChanged()
+                combine(managedAgents.map { agentStatusResolver(it.id.value) }) { states -> states }
+                    .transformLatest { states ->
+                        var clockFloorMs = Long.MIN_VALUE
+                        while (true) {
+                            val nowMs = maxOf(build.raft.app.data.defaultNowMillis(), clockFloorMs)
+                            emit(states.count { isMembersWorkingCountAgent(it, nowMs = nowMs) })
+                            val nextExpiryMs = nextMembersWorkingCountHoldExpiryMs(states, nowMs) ?: break
+                            val waitMs = (nextExpiryMs - nowMs).coerceAtLeast(1L)
+                            delay(waitMs)
+                            clockFloorMs = maxOf(clockFloorMs, nowMs + waitMs)
+                        }
+                    }
+                    .distinctUntilChanged()
             }
         }
     val count by flow.collectAsState(0)
@@ -1097,6 +1147,13 @@ private fun MembersListRowAvatar(
         } else {
             null
         }
+    val workersBusyText =
+        if (showsStatus && holdingReadiness == null && signIn == null && deliveryHold == null) {
+            val nowMs = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: build.raft.app.data.defaultNowMillis()
+            rawStatus?.busyThroughWorkers(nowMs = nowMs)?.localizedText()
+        } else {
+            null
+        }
     val status =
         when {
             holdingReadiness != null -> rawStatus?.copy(color = holdingReadiness.dotColor())
@@ -1108,7 +1165,7 @@ private fun MembersListRowAvatar(
         member = member,
         showStatusOverlay = showsStatus && status != null,
         statusIndicatorState = status,
-        statusDescription = signIn?.detail ?: deliveryHold?.text,
+        statusDescription = signIn?.detail ?: deliveryHold?.text ?: workersBusyText,
         memberAvatarResolver = memberAvatarResolver
     )
 }

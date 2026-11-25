@@ -2324,8 +2324,15 @@ internal fun RaftThreadMemberItem.modalAgentStatusIndicatorState(
     agentStatusResolver: RaftAgentStatusResolver
 ): RaftAgentStatusIndicatorState? {
     val canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, id)
-    return resolveThreadMemberAgentStatusIndicatorState(
-        memberKind = kind,
-        canonicalState = canonicalState
-    )
+    val resolved =
+        resolveThreadMemberAgentStatusIndicatorState(
+            memberKind = kind,
+            canonicalState = canonicalState
+        ) ?: return null
+    // Joint channel peer (#16819): another server's agent reads its Workers as presence only, never a count.
+    return if (originServers.isNotEmpty() && resolved.runningWorkers != null && !resolved.runningWorkersPresenceOnly) {
+        resolved.copy(runningWorkers = 1, runningWorkersPresenceOnly = true)
+    } else {
+        resolved
+    }
 }

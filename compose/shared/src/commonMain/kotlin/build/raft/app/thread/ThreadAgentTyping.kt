@@ -151,9 +151,20 @@ internal fun formatThreadWorkingLineSentence(
         is ThreadWorkingLineSentence.TypingAndOthers -> typingAndOthers(typingSentence, sentence.others)
     }
 
-/** The agents of a channel's roster that live activity lists as working, in the order they started. */
+/**
+ * The agents of a channel's roster that live activity lists as working themselves (never agents
+ * busy only through their Workers — a Worker's channel is not known, botiverse/slock #16819), in
+ * the order they started.
+ */
 internal fun List<RaftLiveAgentActivityItem>.workingAmong(agentIds: Set<String>): List<RaftLiveAgentActivityItem> =
-    if (agentIds.isEmpty()) emptyList() else filter { it.agentId in agentIds }
+    if (agentIds.isEmpty()) {
+        emptyList()
+    } else {
+        filter {
+            it.agentId in agentIds &&
+                (it.status == build.raft.app.model.AgentStatus.Working || it.status == build.raft.app.model.AgentStatus.Thinking)
+        }
+    }
 
 /**
  * Whether the page is a channel whose line says who works there (web ChatPanel `workingAgentIdKey`:

@@ -348,4 +348,53 @@ class ProcessMemberPresenceRegistryTest {
         registry.apply(ownerServerA, coarseRelease, GEN0)
         assertNull(registry.factFor(ownerServerA, "agent-1")?.deliveryHold, "newer coarse frame without hold clears it")
     }
+
+    @Test
+    fun runningWorkersChangesVisiblePresenceSurvivesSeenAndClearsOnCoarseFrame() {
+        val idle = fact(status = AgentStatus.Online, serverSeq = 1)
+        val twoWorkers = fact(status = AgentStatus.Online, serverSeq = 2).copy(runningWorkers = 2)
+        val oneWorker = fact(status = AgentStatus.Online, serverSeq = 3).copy(runningWorkers = 1)
+        val cleared = fact(status = AgentStatus.Online, serverSeq = 4).copy(runningWorkers = null)
+
+        assertFalse(twoWorkers.hasSameVisibleRegisteredPresenceAs(idle), "0 -> 2 Workers is a visible change")
+        assertFalse(oneWorker.hasSameVisibleRegisteredPresenceAs(twoWorkers), "2 -> 1 Workers is a visible change")
+        assertFalse(cleared.hasSameVisibleRegisteredPresenceAs(oneWorker), "1 -> 0 Workers is a visible change")
+        assertTrue(
+            twoWorkers.copy(serverSeq = 9).hasSameVisibleRegisteredPresenceAs(twoWorkers),
+            "same count with newer seq has same visible presence",
+        )
+
+        val registry = ProcessMemberPresenceRegistry()
+        registry.apply(ownerServerA, twoWorkers, GEN0)
+        assertEquals(2, registry.factFor(ownerServerA, "agent-1")?.runningWorkers)
+
+        // agent:seen must not wipe runningWorkers.
+        registry.apply(
+            ownerServerA,
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                lastSeenAt = "2026-11-25T15:00:00.000Z",
+            ),
+            GEN0,
+        )
+        assertEquals(2, registry.factFor(ownerServerA, "agent-1")?.runningWorkers)
+
+        // Newer coarse frame without runningWorkers clears it.
+        registry.apply(
+            ownerServerA,
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Online,
+                serverSeq = 5L,
+                runningWorkers = null,
+                coarseState = true,
+            ),
+            GEN0,
+        )
+        assertNull(registry.factFor(ownerServerA, "agent-1")?.runningWorkers)
+    }
 }

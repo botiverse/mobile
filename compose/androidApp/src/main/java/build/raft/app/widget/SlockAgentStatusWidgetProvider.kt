@@ -193,6 +193,8 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
             val blockedReason: String?,
             /** The wire value the status came from (`activity ?: status`), for the app's dot mapping. */
             val statusWireValue: String?,
+            /** Positive count of running Workers on its current Computer (`runningWorkers`, #16819). */
+            val runningWorkers: Int? = null,
             val external: Boolean,
             val lastSeenAt: String?,
             val avatarWireValue: String?,
@@ -234,6 +236,17 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                     val description = item.optString("description").takeIf { it.isNotBlank() }
                     val blockedReason = item.optString("blockedReason").takeIf { it.isNotBlank() && it != "null" }
                     val external = runtime == ExternalAgentRuntimeId || item.optBoolean("external", false)
+                    val paused = item.optString("assistantPausedAt").takeIf { it.isNotBlank() && it != "null" } != null
+                    val appBot = item.optString("managedByAppInstallId").takeIf { it.isNotBlank() && it != "null" } != null
+                    val hasActiveHold = item.optJSONObject("deliveryHold") != null
+                    val readinessState = item.optJSONObject("readiness")?.optString("state")?.trim()?.lowercase()
+                    val holdingReadiness = readinessState == "blocked" || readinessState == "waiting" || readinessState == "offline"
+                    val runningWorkers =
+                        if (paused || appBot || hasActiveHold || holdingReadiness) {
+                            null
+                        } else {
+                            item.optRunningWorkersCountOrNull()
+                        }
                     // The app's words (raft-design patterns/status.md): "Working…", "Computer update
                     // required", the daemon's detail while it works; an unknown status says Offline,
                     // as the gray light does (was "Online", which also made every agent count as live).
@@ -245,6 +258,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                             external = external,
                             runtime = runtime,
                             description = description,
+                            runningWorkers = runningWorkers,
                         )
                     val latestAt =
                         item.optString("updatedAt").takeIf { it.isNotBlank() }
@@ -257,10 +271,11 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                             id = id,
                             name = name,
                             detail = detail,
-                            hasDetail = blockedReason != null || runtime != null || description != null,
+                            hasDetail = blockedReason != null || runtime != null || description != null || runningWorkers != null,
                             status = status,
                             blockedReason = blockedReason,
                             statusWireValue = activity ?: statusValue,
+                            runningWorkers = runningWorkers,
                             external = external,
                             lastSeenAt = item.optString("lastSeenAt").takeIf { it.isNotBlank() },
                             avatarWireValue = item.optString("avatarUrl").takeIf { it.isNotBlank() }
@@ -271,6 +286,14 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                     )
                 }
             }
+        }
+
+        private fun JSONObject.optRunningWorkersCountOrNull(): Int? {
+            val raw = opt("runningWorkers") as? Number ?: return null
+            val asDouble = raw.toDouble()
+            if (!asDouble.isFinite() || asDouble < 1.0 || asDouble > Int.MAX_VALUE.toDouble()) return null
+            if (kotlin.math.truncate(asDouble) != asDouble) return null
+            return asDouble.toInt()
         }
 
         private fun String.toAgentWidgetArray(): JSONArray? =
@@ -306,6 +329,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                         lastSeenAt = lastSeenAt,
                         nowEpochMillis = System.currentTimeMillis(),
                         blockedReason = blockedReason,
+                        runningWorkers = runningWorkers,
                     )) {
                     RaftAgentStatusDotKind.Lime -> RaftAgentWidgetTone.Active
                     RaftAgentStatusDotKind.Yellow -> RaftAgentWidgetTone.Working

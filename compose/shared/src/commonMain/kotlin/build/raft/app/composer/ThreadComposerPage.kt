@@ -4893,13 +4893,25 @@ internal fun ComposerMemberSuggestionRow(
     // (`AgentActivityDot size="sm"`), only for members of this conversation.
     val agentStatus =
         if (inChannel && member.kind == MemberKind.Agent && appBot == null) {
-            rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.memberId)
+            val rawStatus = rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.memberId)
+            if (member.mentionOriginServers().isNotEmpty() && rawStatus?.runningWorkers != null && !rawStatus.runningWorkersPresenceOnly) {
+                rawStatus.copy(runningWorkers = 1, runningWorkersPresenceOnly = true)
+            } else {
+                rawStatus
+            }
         } else {
             null
         }
     val agentDeliveryHold =
         if (agentStatus != null) {
             rememberAgentDeliveryHoldView(agentStatus)
+        } else {
+            null
+        }
+    val agentRunningWorkersText =
+        if (agentStatus != null && agentDeliveryHold == null) {
+            val nowMs = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: build.raft.app.data.defaultNowMillis()
+            agentStatus.busyThroughWorkers(nowMs = nowMs)?.localizedText()
         } else {
             null
         }
@@ -4925,7 +4937,7 @@ internal fun ComposerMemberSuggestionRow(
                     statusColor = agentStatus?.color,
                     avatarSize = ComposerMemberSuggestionAvatarSize,
                     statusSize = ComposerMemberSuggestionStatusSize,
-                    statusDescription = agentDeliveryHold?.text,
+                    statusDescription = agentDeliveryHold?.text ?: agentRunningWorkersText,
                 ) {
                     RaftMemberAvatar(
                         identity = RaftMemberAvatarIdentity(member.kind, member.memberId, member.sourceServerId),

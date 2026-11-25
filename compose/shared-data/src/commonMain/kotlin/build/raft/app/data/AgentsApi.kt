@@ -879,6 +879,8 @@ enum class AgentArchiveWorkspaceChoice(val wireValue: String) {
     val credentialHold: AgentCredentialHoldReason? = null,
     /** The daemon holds the agent's deliveries (`deliveryHold`, served with any activity, slock #16333). */
     val deliveryHold: AgentDeliveryHold? = null,
+    /** Positive count of running Workers on its current Computer (`runningWorkers`, slock #16819). */
+    val runningWorkers: Int? = null,
     /** `modelLimits.defaultsReported`: true only when the server says so; false, null or absent is false. */
     val modelLimitsDefaultsReported: Boolean = false,
     val hostedRuntime: AgentHostedRuntimeSnapshot? = null,
@@ -941,6 +943,7 @@ enum class AgentArchiveWorkspaceChoice(val wireValue: String) {
         toolStuck = toolStuck,
         credentialHold = credentialHold,
         deliveryHold = deliveryHold,
+        runningWorkers = runningWorkers,
         modelLimitsDefaultsReported = modelLimitsDefaultsReported,
         runningRuntime = runningRuntime,
         runningModel = runningModel
@@ -1201,6 +1204,8 @@ private data class AgentWireDto(
     val credentialHold: CredentialHoldDto? = null,
     /** Shared `DeliveryHoldActivityDiagnostic`, served with any activity (botiverse/slock #16333). */
     val deliveryHold: JsonElement? = null,
+    /** Positive count of running Workers on its current Computer (joint peer: 1 or absent, #16819). */
+    val runningWorkers: JsonElement? = null,
     /**
      * botiverse/slock #13492 (`routes/agents.ts`): `{ defaultsReported }` on the detail, the list and the
      * PATCH answer of a Built-in custom gateway agent; absent elsewhere and from older servers, null in a
@@ -1328,6 +1333,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         toolStuck = toolStuck.toAgentToolStuck(),
         credentialHold = credentialHold.toAgentCredentialHold(activityDetailKind),
         deliveryHold = parseAgentDeliveryHold(deliveryHold),
+        runningWorkers = parseAgentRunningWorkers(runningWorkers),
         modelLimitsDefaultsReported = modelLimits?.defaultsReported == true,
         runningRuntime = currentProfile?.runtime?.trim()?.takeIf { it.isNotEmpty() },
         runningModel = currentProfile?.model?.trim()?.takeIf { it.isNotEmpty() }

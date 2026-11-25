@@ -4928,6 +4928,9 @@
     <string name="agent_status_delivery_hold_window_weekly_opus">每週 Opus</string>
     <string name="agent_status_delivery_hold_window_weekly_sonnet">每週 Sonnet</string>
     <string name="agent_status_delivery_hold_window_extra_usage">額外用量</string>
+    <string name="agent_status_working_through_worker">正透過 Worker 工作</string>
+    <string name="agent_status_working_through_workers">正透過 %1$d 個 Worker 工作</string>
+    <string name="agent_status_working_through_workers_presence">正透過 Worker 工作</string>
     <string name="agent_status_computer_access_revoked">電腦的存取權已撤銷：請重新加入這台電腦，或把 Agent 移走</string>
     <string name="agent_revoked_reattach">重新加入 %1$s：在那台機器上執行 %2$s，並用擁有者或管理員的帳號核准登入。核准的人會成為它的授權人。</string>
     <string name="agent_revoked_move">或者把這個 Agent 遷到另一台電腦。</string>

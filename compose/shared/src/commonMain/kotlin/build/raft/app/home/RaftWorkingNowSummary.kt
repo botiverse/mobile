@@ -344,16 +344,28 @@ private fun RaftWorkingNowRow(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val indicator = rememberRaftAgentStatusIndicatorState(agentStatusResolver, item.agentId)
-    // What it is doing, as the Home DM row says it (Web `formatActivityText`): the detail when the
-    // runtime gave one, else Thinking… / Working….
-    val text =
-        if (typing) stringResource(Res.string.thread_agent_typing_row) else raftHomeDmAgentLiveActivity(indicator)?.localizedText()
-            ?: stringResource(
-                if (item.status == AgentStatus.Thinking) Res.string.home_dm_agent_activity_thinking
-                else Res.string.home_dm_agent_activity_working
-            )
     val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
     val deliveryHold = rememberAgentDeliveryHoldView(indicator)
+    val workersBusy =
+        indicator?.busyThroughWorkers(nowMs = nowMillis)
+            ?: item.runningWorkers
+                .takeIf { it > 0 && item.status == AgentStatus.Online && indicator == null }
+                ?.let { AgentRunningWorkersDisplay(count = it) }
+    val workersBusyText = workersBusy?.localizedText()
+    // What it is doing, as the Home DM row says it (Web `formatActivityText`): the detail when the
+    // runtime gave one, else "Working through a Worker / N Workers" when busy only through Workers
+    // (#16819), else Thinking… / Working….
+    val text =
+        if (typing) {
+            stringResource(Res.string.thread_agent_typing_row)
+        } else {
+            raftHomeDmAgentLiveActivity(indicator)?.localizedText()
+                ?: workersBusyText
+                ?: stringResource(
+                    if (item.status == AgentStatus.Thinking) Res.string.home_dm_agent_activity_thinking
+                    else Res.string.home_dm_agent_activity_working
+                )
+        }
     // Web `presence={activity === "error" ? "error" : "busy"}`: the still yellow light while it works,
     // or the error light when deliveries are held (#16333).
     val light =
@@ -374,7 +386,7 @@ private fun RaftWorkingNowRow(
     ) {
         RaftAvatarWithStatus(
             statusColor = light,
-            statusDescription = deliveryHold?.text,
+            statusDescription = deliveryHold?.text ?: workersBusyText,
             avatarSize = RaftAvatarSize.Sm.edge,
             cutoutColor = colors.layerPopover,
         ) {
