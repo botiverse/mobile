@@ -2769,6 +2769,7 @@ private fun RaftAppShellReadyContent(
                 }
         }
         bridge.setConversationForwardGestureEnabled(false)
+        foregroundBannerStore.topPageFocus.clearPending()
         pager.openStandaloneThreadLaunchPayload(launchPayload, navigationStoreScope)
     }
 
@@ -3067,6 +3068,7 @@ private fun RaftAppShellReadyContent(
     AppShellExternalLinkNavigationEffects(
         sharedStores = sharedStores,
         pager = pager,
+        adaptivePane = adaptivePane,
         desktopModeOnLargeScreenState = desktopModeOnLargeScreenState,
         bridge = bridge,
         storeScope = storeScope,
@@ -6706,16 +6708,16 @@ private fun RaftAppShellReadyContent(
                                     RaftProductEvents.navEntrySelected(
                                         destination = RaftNavDestination.Saved,
                                         surface =
-                                            if (desktopModeOnLargeScreen) {
+                                            if (navRailActive) {
                                                 RaftNavSurface.Sidebar
                                             } else {
                                                 RaftNavSurface.MobileHomeShortcuts
                                             },
                                         wasActive =
-                                            desktopModeOnLargeScreen &&
+                                            navRailActive &&
                                                 railInlineSecondaryDestination == AppShellRailSavedKey,
                                     )
-                                    if (desktopModeOnLargeScreen) {
+                                    if (navRailActive) {
                                         // Large screens keep the rail and open Saved as the
                                         // list pane with the shared detail beside it.
                                         railInlineSecondaryDestination = AppShellRailSavedKey
@@ -6726,7 +6728,7 @@ private fun RaftAppShellReadyContent(
                                 },
                                 draftsSource = homeDraftsSource,
                                 onOpenDrafts = {
-                                    if (desktopModeOnLargeScreen) {
+                                    if (navRailActive) {
                                         // As Saved: the wide rail opens Drafts as the list pane.
                                         railInlineSecondaryDestination = AppShellRailDraftsKey
                                         bridge.log("app_shell_rail_secondary_open destination=drafts")

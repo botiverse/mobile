@@ -168,6 +168,12 @@ internal class SharedForegroundBannerStore(
     val incomingNavigation = RaftIncomingNavigationSignal()
 
     /**
+     * This window's in-place focus signal for the conversation already sitting on top of the stack
+     * when [RaftShellNavigationIntake] deduplicates a notification/link open (`already_top_page`).
+     */
+    val topPageFocus = RaftTopPageConversationFocusSignal()
+
+    /**
      * This window's drafts for tasks without a conversation yet, shared by every page that opens a
      * task so a draft outlives the page ([TaskPendingDraftStore]). Not dropped by [clear] (a server
      * switch, e.g. a link into another server, keeps it); the shell follows the sign-in instead.
@@ -204,6 +210,7 @@ internal class SharedForegroundBannerStore(
             mutableBanner.value = null
             visibleRoutes.clear()
         }
+        topPageFocus.clear()
     }
 
     fun setVisibleRoute(ownerId: String, route: ThreadRouteIdentity, isOverlay: Boolean = false) {

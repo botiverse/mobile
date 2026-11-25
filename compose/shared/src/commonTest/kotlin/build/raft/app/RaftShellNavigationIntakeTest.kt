@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.data.DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN
 import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
 import build.raft.app.nav.RaftPageStack
 import kotlinx.serialization.json.JsonObject
@@ -163,6 +164,114 @@ class RaftShellNavigationIntakeTest {
 
         assertTrue(host.performed.isEmpty(), "both target the page on top: ${host.performed}")
         assertEquals(2, host.logs.count { it.startsWith("window_navigation_open_skipped reason=already_top_page") })
+        assertEquals(
+            setOf(
+                "message-1" to "system_notification",
+                "message-9" to MessageLinkNavigationSource,
+            ),
+            host.focusedTopMessages.map { (req, source) -> req.anchorMessageId to source }.toSet(),
+        )
+        assertEquals(2, host.focusedTopMessages.size)
+    }
+
+    @Test
+    fun compactPhoneWithDesktopModePreferenceOnDeduplicatesTopPageAndFocusesInPlace() = intakeTest {
+        fun dmPageData(dmId: String, focusedMessageId: String? = null): JsonObject =
+            JsonObject(
+                mapOf(
+                    "instanceId" to JsonPrimitive("dm:$dmId"),
+                    "payload" to
+                        JsonPrimitive(
+                            """{"instanceId":"dm:$dmId","surfaceKind":"dm","threadId":"$dmId","streamChannelId":"$dmId"""" +
+                                (focusedMessageId?.let { ""","focusedMessageId":"$it"""" } ?: "") +
+                                """}""",
+                        ),
+                ),
+            )
+
+        val stack = RaftPageStack()
+        val shell = stack.pages.single()
+        val navigator = stack.navigatorFor(shell)
+        val paneNavigator = RaftPaneNavigator(platform = navigator, wide = { false }, openInPane = { _, _, _ -> })
+        val compactPhonePane = RaftAdaptivePaneState(layout = RaftAdaptivePaneLayout.Compact)
+        val dualPaneTablet = RaftAdaptivePaneState(layout = RaftAdaptivePaneLayout.DualPane)
+        var desktopPreference = DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN // true by default on every phone
+        var currentPane = compactPhonePane
+        host.directory =
+            ShellNavigationIntakeFixtures.directoryWith(
+                SharedConversationDirectoryProjection(
+                    serverId = SERVER,
+                    canonicalChannelId = "dm-x",
+                    aliases = setOf("dm-x"),
+                    conversationKind = ConversationKind.DirectMessage,
+                    surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                    channelKind = RaftThreadSurfaceKind.DirectMessage,
+                    title = "Alice",
+                ),
+            )
+        host.topPageProvider = {
+            raftResolveNavigationTopPageRoute(
+                wideSplitPaneActive =
+                    raftAdaptiveNavRailActive(
+                        desktopModeEnabled = desktopPreference,
+                        paneState = currentPane,
+                    ),
+                hostTopPage = paneNavigator.topPage(),
+                fallbackVisibleRoute = { null },
+            )
+        }
+        host.onPerform = { action ->
+            if (action is WindowNavigationAction.OpenConversation) {
+                val id = action.request.conversationIdentity.threadId.value
+                stack.open(THREAD_PAGE, dmPageData(id, action.request.anchorMessageId), from = shell)
+            }
+        }
+
+        // 1. Compact phone with default desktopModeOnLargeScreen = true:
+        //    Push #1 (msg-1) opens DM X once.
+        assertTrue(desktopPreference)
+        assertTrue(intake.enqueue(notificationIntent(channelId = "dm-x", messageId = "msg-1", kind = ConversationKind.DirectMessage)))
+        advanceUntilIdle()
+        assertEquals(1, host.performed.size, "first push opens DM X")
+        assertEquals(2, stack.pages.size, "stack has [AppShell, DM X]")
+        assertTrue(host.focusedTopMessages.isEmpty())
+
+        //    Push #2 (msg-2) after backgrounding MUST NOT push a second DM X page, and MUST focus msg-2 in place.
+        assertTrue(intake.enqueue(notificationIntent(channelId = "dm-x", messageId = "msg-2", kind = ConversationKind.DirectMessage)))
+        advanceUntilIdle()
+        assertEquals(1, host.performed.size, "second push must not push duplicate DM X")
+        assertEquals(2, stack.pages.size, "1 tap of Back leaves DM X back to Home")
+        assertEquals(
+            1,
+            host.logs.count { it == "window_navigation_open_skipped reason=already_top_page source=system_notification threadId=dm-x" },
+        )
+        assertEquals(
+            listOf("msg-2" to "system_notification"),
+            host.focusedTopMessages.map { (req, source) -> req.anchorMessageId to source },
+        )
+
+        //    A top-page skip with no anchorMessageId skips without triggering in-place focus.
+        assertTrue(intake.enqueue(notificationIntent(channelId = "dm-x", messageId = null, kind = ConversationKind.DirectMessage)))
+        advanceUntilIdle()
+        assertEquals(1, host.performed.size)
+        assertEquals(2, host.logs.count { it.startsWith("window_navigation_open_skipped reason=already_top_page") })
+        assertEquals(1, host.focusedTopMessages.size, "null anchorMessageId must not invoke focusTopConversationMessage")
+
+        // 2. Wide dual-pane with desktop mode ON returns null (split pane handles selection in place).
+        currentPane = dualPaneTablet
+        desktopPreference = true
+        assertNull(host.topPageRoute(), "active wide split-pane layout must return null")
+
+        // 3. Tablet (DualPane) with desktop mode OFF still consults hostTopPage and deduplicates + focuses in place.
+        desktopPreference = false
+        assertTrue(intake.enqueue(notificationIntent(channelId = "dm-x", messageId = "msg-3", kind = ConversationKind.DirectMessage)))
+        advanceUntilIdle()
+        assertEquals(1, host.performed.size, "tablet with desktop mode OFF must still deduplicate top page")
+        assertEquals(3, host.logs.count { it.startsWith("window_navigation_open_skipped reason=already_top_page") })
+        assertEquals(
+            listOf("msg-2" to "system_notification", "msg-3" to "system_notification"),
+            host.focusedTopMessages.map { (req, source) -> req.anchorMessageId to source },
+        )
     }
 
     @Test
@@ -185,10 +294,10 @@ class RaftShellNavigationIntakeTest {
         val navigator = stack.navigatorFor(shell)
         val paneNavigator = RaftPaneNavigator(platform = navigator, wide = { false }, openInPane = { _, _, _ -> })
         var fallbackVisibleRoute: ThreadRouteIdentity? = null
-        var desktopWide = false
+        var wideSplitPaneActive = false
         host.topPageProvider = {
             raftResolveNavigationTopPageRoute(
-                desktopModeOnLargeScreen = desktopWide,
+                wideSplitPaneActive = wideSplitPaneActive,
                 hostTopPage = paneNavigator.topPage(),
                 fallbackVisibleRoute = { fallbackVisibleRoute },
             )
@@ -198,7 +307,7 @@ class RaftShellNavigationIntakeTest {
         stack.open(THREAD_PAGE, threadPageData("channel-1", focusedMessageId = "message-1"), from = shell)
         fallbackVisibleRoute = null
 
-        // Three consecutive notifications for different messages in channel-1 must all be skipped.
+        // Three consecutive notifications for different messages in channel-1 must all be skipped and focused in place.
         assertTrue(intake.enqueue(notificationIntent(channelId = "channel-1", messageId = "message-2")))
         advanceUntilIdle()
         assertTrue(intake.enqueue(notificationIntent(channelId = "channel-1", messageId = "message-3")))
@@ -207,6 +316,7 @@ class RaftShellNavigationIntakeTest {
         advanceUntilIdle()
         assertTrue(host.performed.isEmpty(), "duplicate pushes over top channel-1: ${host.performed}")
         assertEquals(3, host.logs.count { it.startsWith("window_navigation_open_skipped reason=already_top_page") })
+        assertEquals(listOf("message-2", "message-3", "message-4"), host.focusedTopMessages.map { it.first.anchorMessageId })
 
         // Pushing a non-conversation page (ChannelSettings) clears top conversation even if fallback is stale.
         fallbackVisibleRoute = channelRoute(host)
@@ -222,6 +332,7 @@ class RaftShellNavigationIntakeTest {
         advanceUntilIdle()
         assertEquals(1, host.performed.size)
         assertEquals(4, host.logs.count { it.startsWith("window_navigation_open_skipped reason=already_top_page") })
+        assertEquals("message-6", host.focusedTopMessages.last().first.anchorMessageId)
 
         // In-place replacement of a covered page beneath a covering page never clobbers the top page.
         val pendingTask = stack.pages.last()
@@ -233,19 +344,19 @@ class RaftShellNavigationIntakeTest {
         )
         assertNull(
             raftResolveNavigationTopPageRoute(
-                desktopModeOnLargeScreen = false,
+                wideSplitPaneActive = false,
                 hostTopPage = paneNavigator.topPage(),
                 fallbackVisibleRoute = { channelRoute(host) },
             )
         )
 
-        // Wide desktop layout always returns null regardless of host top page.
+        // Wide split-pane layout always returns null regardless of host top page.
         assertTrue(stack.back())
-        desktopWide = true
+        wideSplitPaneActive = true
         assertNull(host.topPageRoute())
 
         // Popping back to AppShell on phone layout allows notifications for channel-1 to open again.
-        desktopWide = false
+        wideSplitPaneActive = false
         assertTrue(stack.back())
         assertEquals(RAFT_APP_SHELL_PAGE, paneNavigator.topPage()?.pageName)
         assertTrue(intake.enqueue(notificationIntent(channelId = "channel-1", messageId = "message-7")))
@@ -442,9 +553,11 @@ internal class FakeShellNavigationIntakeHost : RaftShellNavigationIntakeHost {
     /** The window's task surfaces; null: none registered. */
     var cover: RaftIncomingNavigationSignal? = null
     val performed = mutableListOf<WindowNavigationAction>()
+    val focusedTopMessages = mutableListOf<Pair<HomeMessageOpenRequest, String>>()
     val openedArtifacts = mutableListOf<RaftPendingArtifactLink>()
     val openedInvites = mutableListOf<RaftPendingExternalInviteLink>()
     val openedDownloadCenters = mutableListOf<RaftPendingDownloadCenterLaunch>()
+    var directory: SharedConversationDirectoryState = ShellNavigationIntakeFixtures.directory()
     var accountId: String? = "account-a"
     var shellId: String? = "shell:default"
     val logs = mutableListOf<String>()
@@ -490,10 +603,14 @@ internal class FakeShellNavigationIntakeHost : RaftShellNavigationIntakeHost {
             canonicalServerId = SERVER,
             homeSnapshotServerId = SERVER,
             homeSessionServerId = SERVER,
-            conversationDirectory = ShellNavigationIntakeFixtures.directory(),
+            conversationDirectory = directory,
         )
 
     override fun topPageRoute(): ThreadRouteIdentity? = topPageProvider()
+
+    override fun focusTopConversationMessage(request: HomeMessageOpenRequest, source: String) {
+        focusedTopMessages += request to source
+    }
 
     override suspend fun closeIncomingNavigationCover(): Boolean = cover?.closeAll() ?: false
 
@@ -510,8 +627,12 @@ internal class FakeShellNavigationIntakeHost : RaftShellNavigationIntakeHost {
 internal object ShellNavigationIntakeFixtures {
     const val SERVER = "server-a"
 
-    /** A notification open of [messageId] in [channelId] (#general or #random). */
-    fun notificationIntent(channelId: String = "channel-1", messageId: String = "message-1"): WindowNavigationIntent =
+    /** A notification open of [messageId] in [channelId] (#general, #random, or a DM). */
+    fun notificationIntent(
+        channelId: String = "channel-1",
+        messageId: String? = "message-1",
+        kind: ConversationKind = ConversationKind.Channel,
+    ): WindowNavigationIntent =
         WindowNavigationIntent(
             serverId = SERVER,
             source = "system_notification",
@@ -521,7 +642,7 @@ internal object ShellNavigationIntakeFixtures {
                     messageId = messageId,
                     channelId = channelId,
                     threadChannelId = channelId,
-                    conversationKind = ConversationKind.Channel,
+                    conversationKind = kind,
                 ),
         )
 
@@ -543,16 +664,20 @@ internal object ShellNavigationIntakeFixtures {
         return parseSharedServerTasksPayload("""{"tasks":[$json]}""")?.tasks?.single() ?: error("task dropped: $json")
     }
 
-    fun directory(): SharedConversationDirectoryState =
-        listOf("channel-1" to "General", "channel-2" to "Random").map { (id, title) ->
-            SharedConversationDirectoryProjection(
-                serverId = SERVER,
-                canonicalChannelId = id,
-                aliases = setOf(id),
-                conversationKind = ConversationKind.Channel,
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                channelKind = RaftThreadSurfaceKind.Channel,
-                title = title,
-            )
-        }.toSharedConversationDirectoryState()
+    fun directory(): SharedConversationDirectoryState = directoryWith()
+
+    fun directoryWith(vararg extra: SharedConversationDirectoryProjection): SharedConversationDirectoryState =
+        (
+            listOf("channel-1" to "General", "channel-2" to "Random").map { (id, title) ->
+                SharedConversationDirectoryProjection(
+                    serverId = SERVER,
+                    canonicalChannelId = id,
+                    aliases = setOf(id),
+                    conversationKind = ConversationKind.Channel,
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
+                    channelKind = RaftThreadSurfaceKind.Channel,
+                    title = title,
+                )
+            } + extra
+        ).toSharedConversationDirectoryState()
 }

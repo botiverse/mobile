@@ -2832,7 +2832,13 @@ internal class SharedThreadStore(
 
     private suspend fun recoverRealtimeGap(serverSeq: Long) = threadRealtimeGapRecovery.recoverRealtimeGap(serverSeq)
 
-    private suspend fun refreshLatestAfterVisibleMaxSeq() = threadRealtimeGapRecovery.refreshLatestAfterVisibleMaxSeq()
+    private suspend fun refreshLatestAfterVisibleMaxSeq() {
+        if (messageJumpInFlightTarget != null || _state.value.unreadThreadJumpLoading) {
+            diagnosticsLogger?.invoke("thread_resume_catchup_skip reason=jump_in_flight")
+            return
+        }
+        threadRealtimeGapRecovery.refreshLatestAfterVisibleMaxSeq()
+    }
 
     private suspend fun recoverRealtimeGap(
         initial: RaftThreadScreenPayload,
@@ -3513,6 +3519,8 @@ internal class SharedThreadStore(
         // Invalidate an older focused refresh or incremental page request, as jumpToLatest does.
         loadJob?.cancel()
         loadJob = null
+        realtimeGapRecoveryJob?.cancel()
+        realtimeGapRecoveryJob = null
         secondaryTimelineRefreshJob?.cancel()
         secondaryTimelineRefreshJob = null
         pendingSecondaryTimelineApply = null
@@ -3578,6 +3586,8 @@ internal class SharedThreadStore(
         }
         loadJob?.cancel()
         loadJob = null
+        realtimeGapRecoveryJob?.cancel()
+        realtimeGapRecoveryJob = null
         secondaryTimelineRefreshJob?.cancel()
         secondaryTimelineRefreshJob = null
         pendingSecondaryTimelineApply = null

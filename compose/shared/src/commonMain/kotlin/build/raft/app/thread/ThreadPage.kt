@@ -1395,6 +1395,64 @@ private fun ThreadJumpFailureToasts(
     }
 }
 
+/**
+ * Registers a live standalone conversation page with the shell's [RaftTopPageConversationFocusSignal]
+ * so a deduplicated notification/link open (`already_top_page`) jumps to and highlights its target
+ * message in place (loading anchored context if the message is not in the timeline yet and switching
+ * back to the Chat tab). Kept outside [SharedThreadRouteContentContent] for JVM method size.
+ */
+@Composable
+private fun ThreadTopPageFocusEffect(
+    enabled: Boolean,
+    foregroundBannerStore: SharedForegroundBannerStore,
+    routeIdentity: ThreadRouteIdentity,
+    threadViewModel: SharedThreadViewModel,
+    keyboardInsetDp: () -> Float,
+    dismissKeyboard: () -> Unit,
+    coroutineScope: CoroutineScope,
+    bridge: build.raft.app.base.BridgeModule,
+) {
+    val latestRouteIdentity by rememberUpdatedState(routeIdentity)
+    val latestKeyboardInsetDp by rememberUpdatedState(keyboardInsetDp)
+    val latestDismissKeyboard by rememberUpdatedState(dismissKeyboard)
+    DisposableEffect(enabled, foregroundBannerStore, threadViewModel) {
+        if (!enabled) return@DisposableEffect onDispose {}
+        val unregister =
+            foregroundBannerStore.topPageFocus.register(
+                routeProvider = { latestRouteIdentity },
+                target = { request ->
+                    bridge.log(
+                        "window_navigation_top_page_focus_apply source=${request.source} " +
+                            "threadId=${latestRouteIdentity.timelineChannelId ?: latestRouteIdentity.instanceKey} " +
+                            "focusedMessageId=${request.messageId} nonce=${request.nonce}"
+                    )
+                    val dispatchJump = {
+                        threadViewModel.dispatch(
+                            SharedThreadIntent.JumpToMessage(
+                                messageId = request.messageId,
+                                switchToTab = RaftThreadTab.Chat.wireValue,
+                                unreadThreadPill = false,
+                            )
+                        )
+                    }
+                    if (latestKeyboardInsetDp() > 0f) {
+                        latestDismissKeyboard()
+                        coroutineScope.launch {
+                            withTimeoutOrNull(ADAPTIVE_PARENT_FOCUS_IME_WAIT_MS) {
+                                snapshotFlow { latestKeyboardInsetDp() }.first { it <= 0f }
+                            }
+                            dispatchJump()
+                        }
+                    } else {
+                        dispatchJump()
+                    }
+                    true
+                },
+            )
+        onDispose { unregister() }
+    }
+}
+
 internal data class SharedThreadRouteContentData(
     val initialPayload: RaftThreadScreenPayload,
     val timeContextProvider: RaftTimeContextProvider,
@@ -3164,6 +3222,19 @@ private fun SharedThreadRouteContentContent(
         }
         onDispose { foregroundBannerStore.clearVisibleRoute(foregroundBannerRouteOwnerId) }
     }
+    ThreadTopPageFocusEffect(
+        enabled = adaptiveCloseRequest == null && !inAssistantPanelEmbed,
+        foregroundBannerStore = foregroundBannerStore,
+        routeIdentity = payloadRouteIdentity,
+        threadViewModel = threadViewModel,
+        keyboardInsetDp = { adaptivePageKeyboardInsetDp },
+        dismissKeyboard = {
+            adaptiveFocusManager.clearFocus(force = true)
+            adaptiveKeyboardController?.hide()
+        },
+        coroutineScope = coroutineScope,
+        bridge = bridge,
+    )
     val pendingReactionKeysState = remember(threadInstanceKey) {
         mutableStateOf<Set<ThreadReactionPendingKey>>(emptySet())
     }
