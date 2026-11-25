@@ -1,5 +1,6 @@
 package build.raft.app.assistant
 
+import build.raft.app.RaftPanelHeadAvatarRing
 import build.raft.designsystem.components.LocalRaftBarButtons
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.unit.Dp
@@ -231,11 +232,11 @@ internal fun AssistantPausedChip(modifier: Modifier = Modifier) {
 
 /**
  * The assistant's face in a 32dp head (the panel's, the Assistant page's): the otter's head, cut
- * at its chest, sitting on the box's bottom edge.
+ * at its chest, sitting on the box's bottom edge, inside the head's avatar ring.
  */
 @Composable
 internal fun AssistantHeadFace(modifier: Modifier = Modifier) {
-    Box(modifier.size(32.dp).clipToBounds(), contentAlignment = Alignment.BottomCenter) {
+    Box(modifier.padding(horizontal = RaftPanelHeadAvatarRing).size(32.dp).clipToBounds(), contentAlignment = Alignment.BottomCenter) {
         Image(
             painter = painterResource(Res.drawable.assistant_otter_curious),
             contentDescription = null,

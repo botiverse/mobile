@@ -86,6 +86,11 @@ internal val RaftMainTabHeaderTitleStyle: TextStyle
     get() = RaftType.Headline
 internal val RaftTopPageHeaderContentStartPadding = 18.dp
 internal val RaftTopPageHeaderContentSpacing = 12.dp
+
+// raft-ui `PanelHeaderIcon` with `data-icon-kind="avatar"`: its 1.5px border stays, transparent, so a head's
+// avatar stands 1.5dp inside its slot all round.
+internal val RaftPanelHeadAvatarRing = RaftAppStroke.Control
+
 // After Back: raft-ui PanelHeader's phone gap (`max-md:gap-2`), so past a 44dp Back, whose 22dp arrow keeps 11dp
 // of its own inset, the title starts at 57. The wide scale keeps its 6.
 internal val RaftTopPageHeaderBackContentSpacing: Dp

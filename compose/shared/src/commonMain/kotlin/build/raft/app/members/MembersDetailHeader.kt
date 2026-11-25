@@ -103,10 +103,6 @@ private val MembersHumanHeaderEdgeInset: Dp
     @Composable @ReadOnlyComposable
     get() = RaftTheme.controls.barEdgeInset
 
-// raft-ui `PanelHeaderIcon` with `data-icon-kind="avatar"`: its 1.5px border stays, transparent, so the profile
-// heads' avatar stands 1.5dp inside its slot all round.
-private val MembersHeadAvatarRing = RaftAppStroke.Control
-
 // A profile head that starts without Back (the first page of the wide layout's profile column):
 // the avatar on the 16dp content margin (raft-ui head edges), as the channel details' title under it.
 private val MembersHeaderContentMargin = 16.dp
@@ -176,7 +172,7 @@ internal fun MembersHumanDetailHeader(
         titleLeadingContent = {
             if (showsBack) RaftPaneAwareBackButton(onClick = onBack)
             if (headRowTabs == null) {
-                Box(Modifier.padding(horizontal = MembersHeadAvatarRing)) {
+                Box(Modifier.padding(horizontal = RaftPanelHeadAvatarRing)) {
                     MembersStickerAvatar(member, RaftTheme.controls.headAvatar, memberAvatarResolver)
                 }
             }
@@ -419,7 +415,7 @@ internal fun MembersDetailHeader(
                         }
                     } else {
                         // The web's panel head shows the avatar only; it is changed from the profile hero.
-                        Box(Modifier.padding(horizontal = MembersHeadAvatarRing)) {
+                        Box(Modifier.padding(horizontal = RaftPanelHeadAvatarRing)) {
                             MembersRaftAvatar(
                                 member = member,
                                 size = RaftTheme.controls.headAvatar,
