@@ -90,6 +90,18 @@ data class SettingsFeedbackTicketsState(
 data class FeedbackOpenedAttachment(val attachment: FeedbackAttachment, val bytes: FeedbackAttachmentBytes)
 
 /**
+ * Ticket mutations observed inside a pushed detail stack page, propagated back to the underlying
+ * feedback list so the list row is already up to date during interactive swipe-back peek.
+ */
+sealed interface FeedbackTicketSyncEvent {
+    data class Read(val ticket: FeedbackTicket) : FeedbackTicketSyncEvent
+
+    data class Replied(val ticket: FeedbackTicket, val reply: FeedbackComment) : FeedbackTicketSyncEvent
+
+    data class Closed(val ticket: FeedbackTicket) : FeedbackTicketSyncEvent
+}
+
+/**
  * The native Settings › Feedback ticket list and ticket (the web page's FeedbackWorkspace, with
  * the same reads, rules and order): list with status tabs, pull to refresh, "Load More"; a ticket
  * with its thread, "Load More Replies", a reply, and close with a reason.
@@ -120,11 +132,16 @@ class SettingsFeedbackTicketsStore(
     private val onTicketRead: (source: String?, total: Int?) -> Unit = { _, _ -> },
     /** Pages answered empty with a `next_cursor` read on at once, before Load More is left to the person. */
     private val emptyPageFollowMax: Int = FEEDBACK_EMPTY_PAGE_FOLLOW_MAX,
+    /** Initial detail state seeded on frame 0 when the route opens directly onto a ticket detail. */
+    initialDetail: FeedbackTicketDetailState? = null,
+    /** Called when a ticket read, reply, or close completes so a parent list page can sync in-memory. */
+    private val onTicketSynced: (FeedbackTicketSyncEvent) -> Unit = {},
 ) {
-    private val mutableState = MutableStateFlow(SettingsFeedbackTicketsState())
+    private val mutableState = MutableStateFlow(SettingsFeedbackTicketsState(detail = initialDetail))
     val state: StateFlow<SettingsFeedbackTicketsState> = mutableState.asStateFlow()
 
     private var started = false
+    private var listEnabled = true
     private var listJob: Job? = null
     private var listGeneration = 0
     private var detailJob: Job? = null
@@ -135,38 +152,69 @@ class SettingsFeedbackTicketsStore(
     /** The reply's idempotency key, kept while the same text is retried (web stableFeedbackSubmission). */
     private var replySubmission: Pair<String, String>? = null
 
-    /** Loads the list once; [initialTicketId] opens that ticket over it (a card's "View in Settings"). */
-    fun start(initialTicketId: String? = null) {
+    /**
+     * Starts the store once. When [loadList] is true (default), loads the ticket list; when false
+     * (a pushed detail stack page above the list), skips list network reads and loads only
+     * [initialTicketId].
+     */
+    fun start(
+        initialTicketId: String? = null,
+        loadList: Boolean = true,
+        initialSummary: FeedbackTicket? = null,
+    ) {
         if (started) return
         started = true
-        scope.launch {
-            agentDraftSent.collect { sent ->
-                if (mutableState.value.showAgentHint == sent) mutableState.update { it.copy(showAgentHint = !sent) }
+        listEnabled = loadList
+        if (loadList) {
+            scope.launch {
+                agentDraftSent.collect { sent ->
+                    if (mutableState.value.showAgentHint == sent) mutableState.update { it.copy(showAgentHint = !sent) }
+                }
             }
+            loadList(mode = ListLoad.Initial)
         }
-        loadList(mode = ListLoad.Initial)
-        initialTicketId?.trim()?.takeIf { it.isNotEmpty() }?.let { openTicket(it) }
+        initialTicketId?.trim()?.takeIf { it.isNotEmpty() }?.let { openTicket(it, initialSummary = initialSummary) }
     }
 
-    /** Pull to refresh, the page reappearing: re-reads the first page (and the open ticket). */
+    /** Pull to refresh, the page reappearing: re-reads the first page (when list is active) and the open ticket. */
     fun refresh() {
-        if (mutableState.value.list.phase == FeedbackTicketsListPhase.Ready) {
-            loadList(mode = ListLoad.Refresh)
-        } else {
-            loadList(mode = ListLoad.Initial)
+        if (started && listEnabled) {
+            if (mutableState.value.list.phase == FeedbackTicketsListPhase.Ready) {
+                loadList(mode = ListLoad.Refresh)
+            } else {
+                loadList(mode = ListLoad.Initial)
+            }
         }
         if (mutableState.value.detail?.detail != null) refreshTicket()
     }
 
     fun retryList() {
+        if (!started || !listEnabled) return
         val list = mutableState.value.list
         loadList(mode = if (list.phase == FeedbackTicketsListPhase.Ready && list.loadingMoreFailed) ListLoad.More else ListLoad.Retry)
     }
 
     fun loadMore() {
+        if (!started || !listEnabled) return
         val list = mutableState.value.list
         if (list.phase != FeedbackTicketsListPhase.Ready || list.nextCursor == null || list.loadingMore || list.refreshing) return
         loadList(mode = ListLoad.More)
+    }
+
+    /** Applies a read-ticket update observed by a pushed detail stack page above this list. */
+    fun applyExternalTicketRead(ticket: FeedbackTicket) {
+        mutableState.update { state ->
+            if (state.list.phase != FeedbackTicketsListPhase.Ready) return@update state
+            state.copy(list = state.list.copy(tickets = state.list.tickets.updatedWith(ticket, markRead = true)))
+        }
+    }
+
+    /** Applies a reply or close mutation observed by a pushed detail stack page above this list. */
+    fun applyExternalTicketUpsert(ticket: FeedbackTicket, reply: FeedbackComment? = null) {
+        mutableState.update { state ->
+            if (state.list.phase != FeedbackTicketsListPhase.Ready) return@update state
+            state.copy(list = state.list.copy(tickets = state.list.tickets.upserted(ticket, reply)))
+        }
     }
 
     fun setFilter(filter: FeedbackTicketFilter) {
@@ -285,9 +333,12 @@ class SettingsFeedbackTicketsStore(
             }
     }
 
-    fun openTicket(ticketId: String) {
+    fun openTicket(ticketId: String, initialSummary: FeedbackTicket? = null) {
         val id = ticketId.trim().takeIf { it.isNotEmpty() } ?: return
-        val summary = mutableState.value.list.tickets.firstOrNull { it.id == id }
+        val summary =
+            initialSummary
+                ?: mutableState.value.list.tickets.firstOrNull { it.id == id }
+                ?: mutableState.value.detail?.takeIf { it.ticketId == id }?.summary
         replySubmission = null
         actionJob?.cancel()
         attachmentJob?.cancel()
@@ -374,7 +425,10 @@ class SettingsFeedbackTicketsStore(
                                 list = state.list.copy(tickets = state.list.tickets.updatedWith(read.ticket, markRead = cursor == null)),
                             )
                         }
-                        if (cursor == null) onTicketRead(read.ticket.source ?: source, read.unreadTotal)
+                        if (cursor == null) {
+                            onTicketRead(read.ticket.source ?: source, read.unreadTotal)
+                            onTicketSynced(FeedbackTicketSyncEvent.Read(read.ticket))
+                        }
                         logger("settings_feedback_tickets_detail_ready comments=${read.comments.size} more=${read.nextCommentCursor != null}")
                     }
                     is FeedbackResult.Failed -> {
@@ -415,7 +469,9 @@ class SettingsFeedbackTicketsStore(
                     is FeedbackResult.Ok -> {
                         replySubmission = null
                         logger("settings_feedback_tickets_reply_sent")
+                        var syncedTicket: FeedbackTicket? = null
                         mutableState.update { state ->
+                            syncedTicket = null
                             val current = state.detail?.takeIf { it.ticketId == ticketId } ?: return@update state
                             val read = current.detail
                             val next =
@@ -423,6 +479,7 @@ class SettingsFeedbackTicketsStore(
                                     comments = mergeFeedbackComments(read.comments, listOf(result.value)),
                                     ticket = read.ticket.copy(commentCount = read.ticket.commentCount + 1, updatedAt = result.value.createdAt),
                                 )
+                            syncedTicket = next?.ticket
                             state.copy(
                                 detail =
                                     current.copy(
@@ -434,6 +491,7 @@ class SettingsFeedbackTicketsStore(
                                 list = next?.let { state.list.copy(tickets = state.list.tickets.upserted(it.ticket, result.value)) } ?: state.list,
                             )
                         }
+                        syncedTicket?.let { onTicketSynced(FeedbackTicketSyncEvent.Replied(it, result.value)) }
                         // Read it again as the web does after a reply (the server's own view of it).
                         loadTicket(mode = TicketLoad.Refresh)
                     }
@@ -463,7 +521,9 @@ class SettingsFeedbackTicketsStore(
                 when (val result = repository.close(ticketId, reason, source)) {
                     is FeedbackResult.Ok -> {
                         logger("settings_feedback_tickets_closed reason=${reason.wire}")
+                        var syncedTicket: FeedbackTicket? = null
                         mutableState.update { state ->
+                            syncedTicket = null
                             val current = state.detail?.takeIf { it.ticketId == ticketId } ?: return@update state
                             val closed =
                                 current.detail?.let { read ->
@@ -476,11 +536,13 @@ class SettingsFeedbackTicketsStore(
                                             )
                                     )
                                 }
+                            syncedTicket = closed?.ticket
                             state.copy(
                                 detail = current.copy(detail = closed, closing = false),
                                 list = closed?.let { state.list.copy(tickets = state.list.tickets.upserted(it.ticket, null)) } ?: state.list,
                             )
                         }
+                        syncedTicket?.let { onTicketSynced(FeedbackTicketSyncEvent.Closed(it)) }
                         loadTicket(mode = TicketLoad.Refresh)
                     }
                     is FeedbackResult.Failed -> {

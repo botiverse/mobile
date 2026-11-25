@@ -102,4 +102,48 @@ class SettingsFeedbackFiledTicketHandoffTest {
         // Taken once: nothing is left for a later appearance to open again.
         assertNull(SettingsFeedbackFiledTicketHandoff.offered.value)
     }
+
+    @Test
+    fun openInlineFalseRefreshesListWithoutOpeningDetailInPlaceForUuidTicket() = runTest {
+        val newUuid = "11111111-2222-4333-8444-555555555555"
+        val repository = FakeRepository()
+        repository.listAnswers += page(ticket("old"))
+        val store = SettingsFeedbackTicketsStore(repository, backgroundScope)
+        store.start()
+        backgroundScope.launch { store.followSettingsFeedbackFiledTickets(openInline = false) }
+        runCurrent()
+        assertEquals(listOf("old"), store.state.value.list.tickets.map { it.id })
+
+        repository.listAnswers += page(ticket(newUuid), ticket("old"))
+        SettingsFeedbackFiledTicketHandoff.offer(newUuid)
+        runCurrent()
+
+        val state = store.state.value
+        assertEquals(FeedbackTicketsListPhase.Ready, state.list.phase)
+        assertEquals(listOf(newUuid, "old"), state.list.tickets.map { it.id })
+        // Valid UUID detail opens on its own pushed stack page instead of replacing the list in-place.
+        assertNull(state.detail)
+        assertEquals(2, repository.listReads)
+        assertNull(SettingsFeedbackFiledTicketHandoff.offered.value)
+    }
+
+    @Test
+    fun openInlineFalseFallsBackToInlineForNonUuidTicketId() = runTest {
+        val repository = FakeRepository()
+        repository.listAnswers += page(ticket("old"))
+        val store = SettingsFeedbackTicketsStore(repository, backgroundScope)
+        store.start()
+        backgroundScope.launch { store.followSettingsFeedbackFiledTickets(openInline = false) }
+        runCurrent()
+
+        repository.listAnswers += page(ticket("legacy-id"), ticket("old"))
+        repository.ticketAnswers += FeedbackResult.Ok(FeedbackTicketDetail(ticket("legacy-id"), emptyList(), emptyList(), null, 0))
+        SettingsFeedbackFiledTicketHandoff.offer("legacy-id")
+        runCurrent()
+
+        val state = store.state.value
+        assertEquals(FeedbackTicketsListPhase.Ready, state.list.phase)
+        assertEquals("legacy-id", state.detail?.ticketId)
+        assertNull(SettingsFeedbackFiledTicketHandoff.offered.value)
+    }
 }

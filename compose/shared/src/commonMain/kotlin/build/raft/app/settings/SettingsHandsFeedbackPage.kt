@@ -245,7 +245,15 @@ private fun SettingsHandsFeedbackScreen() {
                     bridge.log("settings_hands_feedback_ticket_filed ticket=${ticketId.take(8)} returnToTickets=$returnToTickets")
                     if (returnToTickets) {
                         SettingsFeedbackFiledTicketHandoff.offer(ticketId)
-                        router.closePage()
+                        if (feedbackTicketIdOrNull(ticketId) != null) {
+                            pager.openSettingsFeedbackTicketDetailPage(
+                                environment.storeScope,
+                                ticketId = ticketId,
+                                replaceCurrentPage = true,
+                            )
+                        } else {
+                            router.closePage()
+                        }
                     } else {
                         // Opened from elsewhere: the ticket list, on the new ticket, in its place.
                         pager.openSettingsFeedbackTicketsPage(environment.storeScope, ticketId)

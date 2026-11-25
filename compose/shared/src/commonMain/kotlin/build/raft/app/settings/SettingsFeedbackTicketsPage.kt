@@ -64,8 +64,10 @@ import build.raft.app.data.FeedbackTicketDetailState
 import build.raft.app.data.FeedbackTicketFilter
 import build.raft.app.data.FeedbackTicketKind
 import build.raft.app.data.FeedbackTicketStatus
+import build.raft.app.data.FeedbackTicketSyncEvent
 import build.raft.app.data.FeedbackTicketsListPhase
 import build.raft.app.data.FeedbackTicketsListState
+import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
 import build.raft.app.data.NetworkSettingsFeedbackTicketsRepository
 import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.RaftSharedStoreRegistry
@@ -107,6 +109,12 @@ import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.io.encoding.Base64
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import org.jetbrains.compose.resources.StringResource
 import kotlinx.coroutines.launch
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -126,6 +134,69 @@ const val SETTINGS_FEEDBACK_TICKETS_PAGE = "compose_settings_feedback_tickets"
 /** pageData key: the ticket to open on (a done feedback card's "View in Settings"); identity only. */
 internal const val SETTINGS_FEEDBACK_TICKETS_TICKET_ID = "settingsFeedbackTicketsTicketId"
 
+/**
+ * pageData key: when true (pushed over an existing Feedback list page), this route renders only
+ * the named ticket detail and lets native edge swipe-back / predictive back / Back pop directly
+ * back to the underlying Feedback list (#proj-mobile:#381).
+ */
+internal const val SETTINGS_FEEDBACK_TICKETS_DETAIL_ONLY = "settingsFeedbackTicketsDetailOnly"
+
+internal data class SettingsFeedbackTicketSyncNotice(
+    val syncScope: String,
+    val event: FeedbackTicketSyncEvent,
+)
+
+/**
+ * Process-local event bus propagating ticket read/reply/close mutations from a pushed detail page
+ * back to its underlying Feedback list page so the list row is already fresh during interactive
+ * swipe-back peek (uses MutableSharedFlow, never top-level Compose snapshot state).
+ */
+internal object SettingsFeedbackTicketSyncBus {
+    private val mutableEvents =
+        MutableSharedFlow<SettingsFeedbackTicketSyncNotice>(
+            extraBufferCapacity = 32,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        )
+    val events: SharedFlow<SettingsFeedbackTicketSyncNotice> = mutableEvents.asSharedFlow()
+
+    fun publish(syncScope: String, event: FeedbackTicketSyncEvent) {
+        mutableEvents.tryEmit(SettingsFeedbackTicketSyncNotice(syncScope = syncScope, event = event))
+    }
+}
+
+/**
+ * Transient, one-shot summary handoff scoped by `(syncScope, ticketId)` so a pushed ticket detail
+ * page renders the ticket title and status badge on frame 0 without stuffing content fields into
+ * pageData or leaking stale summaries across deep links / account switches.
+ */
+internal object SettingsFeedbackTicketSummaryCache {
+    private const val MAX_ENTRIES = 16
+    private val lock = SynchronizedObject()
+    private val entries = LinkedHashMap<Pair<String, String>, FeedbackTicket>()
+
+    fun put(syncScope: String, ticket: FeedbackTicket) {
+        val key = syncScope to ticket.id
+        synchronized(lock) {
+            entries.remove(key)
+            entries[key] = ticket
+            while (entries.size > MAX_ENTRIES) {
+                val oldestKey = entries.entries.firstOrNull()?.key ?: break
+                entries.remove(oldestKey)
+            }
+        }
+    }
+
+    fun take(syncScope: String, ticketId: String): FeedbackTicket? =
+        synchronized(lock) { entries.remove(syncScope to ticketId) }
+
+    fun clear() {
+        synchronized(lock) { entries.clear() }
+    }
+}
+
+private fun settingsFeedbackTicketSyncScope(storeScope: RaftShellStoreScope): String =
+    "${storeScope.shellInstanceId}:${storeScope.initialServerId.orEmpty()}"
+
 @Page(SETTINGS_FEEDBACK_TICKETS_PAGE, supportInLocal = true)
 internal class ComposeSettingsFeedbackTicketsPage :
     AuthenticatedProductPager(AuthenticatedProductRoute.SettingsFeedbackTickets) {
@@ -139,18 +210,56 @@ internal class ComposeSettingsFeedbackTicketsPage :
     }
 }
 
-internal fun settingsFeedbackTicketsPageData(storeScope: RaftShellStoreScope, ticketId: String? = null): JSONObject =
+internal fun settingsFeedbackTicketsPageData(
+    storeScope: RaftShellStoreScope,
+    ticketId: String? = null,
+    detailOnly: Boolean = false,
+    replaceCurrentPage: Boolean = false,
+): JSONObject =
     JSONObject().apply {
         put("pageName", SETTINGS_FEEDBACK_TICKETS_PAGE)
         put(RAFT_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
         storeScope.initialServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
-        feedbackTicketIdOrNull(ticketId)?.let { put(SETTINGS_FEEDBACK_TICKETS_TICKET_ID, it) }
+        val normalizedTicketId = feedbackTicketIdOrNull(ticketId)
+        normalizedTicketId?.let { put(SETTINGS_FEEDBACK_TICKETS_TICKET_ID, it) }
+        if (detailOnly && normalizedTicketId != null) {
+            put(SETTINGS_FEEDBACK_TICKETS_DETAIL_ONLY, true)
+        }
+        if (replaceCurrentPage) {
+            put(RAFT_REPLACE_CURRENT_PAGE, true)
+        }
     }
 
 internal fun Pager.openSettingsFeedbackTicketsPage(storeScope: RaftShellStoreScope, ticketId: String? = null) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         SETTINGS_FEEDBACK_TICKETS_PAGE,
         settingsFeedbackTicketsPageData(storeScope, ticketId),
+    )
+}
+
+/**
+ * Pushes a feedback ticket detail as an independent stack page above the Feedback list so iOS
+ * interactive swipe-back, Android predictive back, and the top-left Back button all return
+ * directly to the list (#proj-mobile:#381).
+ */
+internal fun Pager.openSettingsFeedbackTicketDetailPage(
+    storeScope: RaftShellStoreScope,
+    ticketId: String,
+    summary: FeedbackTicket? = null,
+    replaceCurrentPage: Boolean = false,
+) {
+    val normalizedTicketId = feedbackTicketIdOrNull(ticketId) ?: return
+    if (summary != null && summary.id == normalizedTicketId) {
+        SettingsFeedbackTicketSummaryCache.put(settingsFeedbackTicketSyncScope(storeScope), summary)
+    }
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+        SETTINGS_FEEDBACK_TICKETS_PAGE,
+        settingsFeedbackTicketsPageData(
+            storeScope = storeScope,
+            ticketId = normalizedTicketId,
+            detailOnly = true,
+            replaceCurrentPage = replaceCurrentPage,
+        ),
     )
 }
 
@@ -179,8 +288,29 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
     val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val scope = rememberCoroutineScope()
+    val initialTicketId =
+        remember(pager.pageData.params) {
+            feedbackTicketIdOrNull(pager.pageData.params.optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID))
+        }
+    val detailOnly =
+        remember(pager.pageData.params, initialTicketId) {
+            initialTicketId != null && pager.pageData.params.optBoolean(SETTINGS_FEEDBACK_TICKETS_DETAIL_ONLY, false)
+        }
+    val syncScope =
+        remember(storeScope.shellInstanceId, storeScope.initialServerId) {
+            settingsFeedbackTicketSyncScope(storeScope)
+        }
+    val initialSummary =
+        remember(detailOnly, syncScope, initialTicketId) {
+            if (detailOnly && initialTicketId != null) {
+                SettingsFeedbackTicketSummaryCache.take(syncScope, initialTicketId)
+            } else {
+                null
+            }
+        }
+    var skipNextResumeRefresh by remember { mutableStateOf(false) }
     val store =
-        remember(networkClient, scope) {
+        remember(networkClient, scope, initialTicketId, detailOnly, syncScope) {
             SettingsFeedbackTicketsStore(
                 repository = NetworkSettingsFeedbackTicketsRepository(networkClient, raftFeedbackWebViewClientKind(), bridge::log),
                 scope = scope,
@@ -195,16 +325,48 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
                 // their sum), and a ticket read here answers its app's total (a reply read clears it).
                 captureUnreadListRead = sharedStores.feedbackUnread::captureListRead,
                 onTicketRead = sharedStores.feedbackUnread::onTicketRead,
+                initialDetail = initialTicketId?.let { FeedbackTicketDetailState(ticketId = it, summary = initialSummary) },
+                onTicketSynced = { event ->
+                    if (detailOnly) {
+                        SettingsFeedbackTicketSyncBus.publish(syncScope, event)
+                    }
+                },
             )
         }
-    val initialTicketId = remember(pager.pageData.params) { feedbackTicketIdOrNull(pager.pageData.params.optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID)) }
-    LaunchedEffect(store) { store.start(initialTicketId) }
-    // Back from the app reads the list again.
-    LaunchedEffect(store, resumeTick) {
-        if (resumeTick > 0) store.refresh()
+    LaunchedEffect(store) {
+        store.start(
+            initialTicketId = initialTicketId,
+            loadList = !detailOnly,
+            initialSummary = initialSummary,
+        )
     }
-    // A ticket just filed from the submit form: read in and opened as it is filed.
-    LaunchedEffect(store) { store.followSettingsFeedbackFiledTickets(bridge::log) }
+    // Back from the app reads the list (or open detail) again, except right after popping a pushed
+    // ticket detail where SettingsFeedbackTicketSyncBus already synced read/reply/close live and a
+    // page-1 refresh would flash the spinner and truncate paginated Load More rows.
+    LaunchedEffect(store, resumeTick) {
+        if (resumeTick > 0) {
+            if (skipNextResumeRefresh) {
+                skipNextResumeRefresh = false
+            } else {
+                store.refresh()
+            }
+        }
+    }
+    if (!detailOnly) {
+        // Keep the underlying list synced live as pushed detail pages mark tickets read, reply, or close.
+        LaunchedEffect(store, syncScope) {
+            SettingsFeedbackTicketSyncBus.events.collect { notice ->
+                if (notice.syncScope != syncScope) return@collect
+                when (val event = notice.event) {
+                    is FeedbackTicketSyncEvent.Read -> store.applyExternalTicketRead(event.ticket)
+                    is FeedbackTicketSyncEvent.Replied -> store.applyExternalTicketUpsert(event.ticket, event.reply)
+                    is FeedbackTicketSyncEvent.Closed -> store.applyExternalTicketUpsert(event.ticket)
+                }
+            }
+        }
+        // A ticket just filed from the submit form: refresh the list while the form replaces itself with detail.
+        LaunchedEffect(store) { store.followSettingsFeedbackFiledTickets(bridge::log, openInline = false) }
+    }
     val state by store.state.collectAsState()
     // New Feedback only once the current server answered privacy mode off (its archive goes to Hands).
     val privacyMode by RaftTelemetryPrivacy.state.collectAsState()
@@ -254,16 +416,34 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
         timeContext = timeContext,
         actions =
             SettingsFeedbackTicketsActions(
-                onBack = { if (store.state.value.detail != null) store.closeTicketView() else router.closePage() },
+                onBack = {
+                    if (detailOnly || store.state.value.detail == null) {
+                        router.closePage()
+                    } else {
+                        store.closeTicketView()
+                    }
+                },
                 onNewFeedback = {
+                    skipNextResumeRefresh = false
                     bridge.log("settings_feedback_tickets_new_feedback")
                     pager.openSettingsHandsFeedbackPage(storeScope, returnToTickets = true)
                 },
-                onRefresh = store::refresh,
+                onRefresh = {
+                    skipNextResumeRefresh = false
+                    store.refresh()
+                },
                 onRetryList = store::retryList,
                 onLoadMore = store::loadMore,
                 onFilter = store::setFilter,
-                onOpenTicket = store::openTicket,
+                onOpenTicket = { ticketId ->
+                    if (feedbackTicketIdOrNull(ticketId) != null) {
+                        val summary = store.state.value.list.tickets.firstOrNull { it.id == ticketId }
+                        skipNextResumeRefresh = true
+                        pager.openSettingsFeedbackTicketDetailPage(storeScope, ticketId, summary = summary)
+                    } else {
+                        store.openTicket(ticketId)
+                    }
+                },
                 onRetryTicket = store::retryTicket,
                 onRefreshTicket = store::refreshTicket,
                 onLoadMoreReplies = store::loadMoreReplies,
@@ -277,6 +457,7 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
             ),
         bottomContentPadding = raftBottomSafeAreaPadding(),
         privacyMode = privacyMode,
+        handlesDetailBackInPlace = !detailOnly,
     )
 }
 
@@ -388,13 +569,18 @@ private fun String.encodeUriComponent(): String =
  * covered by the form's push, does not compose, so its reappear tick never came back from the form
  * and the new ticket was missing until a manual refresh (1.23, Hands 464d47ae). Runs until cancelled.
  */
-internal suspend fun SettingsFeedbackTicketsStore.followSettingsFeedbackFiledTickets(log: (String) -> Unit = {}) {
+internal suspend fun SettingsFeedbackTicketsStore.followSettingsFeedbackFiledTickets(
+    log: (String) -> Unit = {},
+    openInline: Boolean = true,
+) {
     SettingsFeedbackFiledTicketHandoff.offered.collect { offered ->
         if (offered == null) return@collect
         val ticketId = SettingsFeedbackFiledTicketHandoff.take() ?: return@collect
-        log("settings_feedback_tickets_open_filed ticket=${ticketId.take(8)}")
+        log("settings_feedback_tickets_open_filed ticket=${ticketId.take(8)} inline=$openInline")
         refresh()
-        openTicket(ticketId)
+        if (openInline || feedbackTicketIdOrNull(ticketId) == null) {
+            openTicket(ticketId)
+        }
     }
 }
 
@@ -443,6 +629,12 @@ internal fun SettingsFeedbackTicketsScreen(
      * unknown, the list says why in its place (the feedback's diagnostics archive goes to Hands).
      */
     privacyMode: RaftPrivacyMode = RaftPrivacyMode.Off,
+    /**
+     * True when detail is rendered in-place over the list in the same page (deep link without a
+     * list underneath, or unit tests); false when detail is a dedicated pushed stack page whose
+     * native swipe-back / predictive back pops directly back to the Feedback list (#proj-mobile:#381).
+     */
+    handlesDetailBackInPlace: Boolean = true,
 ) {
     val detail = state.detail
     val listState = remember(state.list.filter) { LazyListState() }
@@ -451,7 +643,11 @@ internal fun SettingsFeedbackTicketsScreen(
         actions.onClearCloseError()
         closeDialogOpen = true
     }
-    RaftBackHandler(enabled = detail != null, label = "settings_feedback_ticket", blocksBackSwipe = false) { actions.onBack() }
+    RaftBackHandler(
+        enabled = handlesDetailBackInPlace && detail != null,
+        label = "settings_feedback_ticket",
+        blocksBackSwipe = false,
+    ) { actions.onBack() }
     val ticket = detail?.ticket
     SettingsDetailShell(
         title = ticket?.title?.ifBlank { null } ?: stringResource(Res.string.settings_feedback_title),
