@@ -2807,6 +2807,8 @@
     <string name="settings_notifications_background_realtime_detail">在后台保持实时连接。%1$s 仍可能暂停长时间运行的会话。</string>
     <string name="settings_notifications_keep_connection_title">后台保持连接</string>
     <string name="settings_notifications_keep_connection_detail">在后台保持 Raft 连接，即可收到消息通知。开启后会常驻一条“Raft 正在接收消息”通知，并增加耗电。</string>
+    <string name="settings_notifications_direct_keep_connection_title">后台常驻连接</string>
+    <string name="settings_notifications_direct_keep_connection_detail">在 Google 推送无法连接的网络下，保持 Raft 后台连接以接收消息通知。开启后会常驻一条“Raft 正在接收消息”通知，并增加耗电。</string>
     <string name="settings_notifications_battery_optimization_title">允许后台运行</string>
     <string name="settings_notifications_battery_optimization_detail">为 Raft 关闭电池优化，避免系统中断后台连接。部分手机还需要在应用启动管理或后台活动设置中允许 Raft。</string>
     <string name="settings_notifications_battery_optimization_allowed">已允许</string>

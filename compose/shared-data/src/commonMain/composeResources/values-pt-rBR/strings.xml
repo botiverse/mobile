@@ -2804,6 +2804,8 @@
     <string name="settings_notifications_background_realtime_detail">Mantém a conexão em tempo real em segundo plano. O %1$s ainda pode pausar sessões longas.</string>
     <string name="settings_notifications_keep_connection_title">Manter a conexão em segundo plano</string>
     <string name="settings_notifications_keep_connection_detail">Mantenha o Raft conectado em segundo plano para receber notificações de mensagens. Exibe uma notificação fixa “Raft está recebendo mensagens” e consome mais bateria.</string>
+    <string name="settings_notifications_direct_keep_connection_title">Conexão permanente em segundo plano</string>
+    <string name="settings_notifications_direct_keep_connection_detail">Mantenha o Raft conectado em segundo plano quando as notificações push do Google não puderem ser recebidas. Exibe uma notificação fixa “Raft está recebendo mensagens” e consome mais bateria.</string>
     <string name="settings_notifications_battery_optimization_title">Permitir execução em segundo plano</string>
     <string name="settings_notifications_battery_optimization_detail">Desative a otimização de bateria para o Raft para que o sistema não interrompa a conexão em segundo plano. Em alguns celulares, também é preciso permitir o Raft nas configurações de inicialização de apps ou de atividade em segundo plano.</string>
     <string name="settings_notifications_battery_optimization_allowed">Permitidos</string>

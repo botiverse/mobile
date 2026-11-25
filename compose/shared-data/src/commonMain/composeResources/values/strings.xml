@@ -2808,6 +2808,8 @@
     <string name="settings_notifications_background_realtime_detail">Keep realtime connected in the background. %1$s may still pause long-running sessions.</string>
     <string name="settings_notifications_keep_connection_title">Keep connection in background</string>
     <string name="settings_notifications_keep_connection_detail">Keep Raft connected in the background to get message notifications. Shows a persistent “Raft is receiving messages” notification and uses more battery.</string>
+    <string name="settings_notifications_direct_keep_connection_title">Persistent background connection</string>
+    <string name="settings_notifications_direct_keep_connection_detail">Keep Raft connected in the background when Google push notifications cannot be reached. Shows a persistent “Raft is receiving messages” notification and uses more battery.</string>
     <string name="settings_notifications_battery_optimization_title">Allow running in background</string>
     <string name="settings_notifications_battery_optimization_detail">Turn off battery optimization for Raft so the system does not stop the background connection. Some phones also need Raft allowed under app launch or background activity settings.</string>
     <string name="settings_notifications_battery_optimization_allowed">Allowed</string>

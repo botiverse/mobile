@@ -99,12 +99,22 @@ class AndroidUnreadNotificationGroupingTest {
     @Test
     fun theSameMessageDeliveredTwiceCountsOnce() {
         post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: first"))
+        val firstNotification = conversations().single().notification
+        assertEquals(0, firstNotification.flags and Notification.FLAG_ONLY_ALERT_ONCE)
+
         post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: first"))
 
-        val notification = conversations().single().notification
-        assertEquals(1, notification.number)
-        // Still a single message line.
-        assertEquals(listOf("Alice: first"), linesOf(notification))
+        val duplicateNotification = conversations().single().notification
+        assertEquals(1, duplicateNotification.number)
+        // Still a single message line, and silent on duplicate delivery across transports (socket + FCM).
+        assertEquals(listOf("Alice: first"), linesOf(duplicateNotification))
+        assertNotEquals(0, duplicateNotification.flags and Notification.FLAG_ONLY_ALERT_ONCE)
+
+        // A genuinely new message alerts again.
+        post(fcm(channelId = "channel-1", messageId = "m-2", body = "Bob: second"))
+        val nextNotification = conversations().single().notification
+        assertEquals(2, nextNotification.number)
+        assertEquals(0, nextNotification.flags and Notification.FLAG_ONLY_ALERT_ONCE)
     }
 
     @Test

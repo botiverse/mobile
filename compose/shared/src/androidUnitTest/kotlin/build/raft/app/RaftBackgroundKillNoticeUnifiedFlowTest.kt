@@ -4,6 +4,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
@@ -112,6 +117,7 @@ class RaftBackgroundKillNoticeUnifiedFlowTest {
                 NotificationsTestHost(foregroundKeepAliveEnabled = false)
             }
 
+            onNodeWithTag(SETTINGS_NOTIFICATIONS_DIRECT_GMS_OVERRIDE_ROW_TAG).assertDoesNotExist()
             onNodeWithTag(SETTINGS_NOTIFICATIONS_BATTERY_OPTIMIZATION_ROW_TAG).assertIsDisplayed().performClick()
             onNodeWithTag(SETTINGS_NOTIFICATIONS_VENDOR_BACKGROUND_ROW_TAG).assertIsDisplayed().performClick()
 
@@ -120,11 +126,12 @@ class RaftBackgroundKillNoticeUnifiedFlowTest {
         }
 
     @Test
-    fun notificationsPageExposesUnifiedKeepAliveControlsOnGmsDirectBuild() =
+    fun notificationsPageExposesUnifiedKeepAliveControlsAndDirectGmsOverrideOnGmsDirectBuild() =
         runRobolectricComposeUiTest {
             val controls =
                 RecordingBackgroundControls(
                     offered = false,
+                    canOverrideWithForegroundService = true,
                     canRequestBattery = true,
                     guide = RaftBackgroundWhitelistGuide.VendorSettings,
                     exempt = false,
@@ -135,11 +142,59 @@ class RaftBackgroundKillNoticeUnifiedFlowTest {
                 NotificationsTestHost(foregroundKeepAliveEnabled = false)
             }
 
+            onNodeWithTag(SETTINGS_NOTIFICATIONS_DIRECT_GMS_OVERRIDE_ROW_TAG).assertIsDisplayed()
+            val overrideSwitch =
+                onNode(
+                    isToggleable() and hasAnyAncestor(hasTestTag(SETTINGS_NOTIFICATIONS_DIRECT_GMS_OVERRIDE_ROW_TAG))
+                )
+            overrideSwitch.assertIsOff().performClick()
+            waitForIdle()
+            overrideSwitch.assertIsOn()
+            assertEquals(listOf(true), controls.directGmsOverrideChanges)
+            assertEquals(1, controls.batteryRequests)
+
+            overrideSwitch.performClick()
+            waitForIdle()
+            overrideSwitch.assertIsOff()
+            assertEquals(listOf(true, false), controls.directGmsOverrideChanges)
+
             onNodeWithTag(SETTINGS_NOTIFICATIONS_BATTERY_OPTIMIZATION_ROW_TAG).assertIsDisplayed().performClick()
             onNodeWithTag(SETTINGS_NOTIFICATIONS_VENDOR_BACKGROUND_ROW_TAG).assertIsDisplayed().performClick()
 
-            assertEquals(1, controls.batteryRequests)
+            assertEquals(2, controls.batteryRequests)
             assertEquals(1, controls.vendorSettingsRequests)
+        }
+
+    @Test
+    fun notificationsPageDirectGmsOverrideRequestsNotificationPermissionBeforeBatteryWhenDenied() =
+        runRobolectricComposeUiTest {
+            var permissionRequests = 0
+            val controls =
+                RecordingBackgroundControls(
+                    offered = false,
+                    canOverrideWithForegroundService = true,
+                    canRequestBattery = true,
+                    guide = RaftBackgroundWhitelistGuide.VendorSettings,
+                    exempt = false,
+                )
+            RaftBackgroundConnectionControlsRegistry.controls = controls
+
+            setContent {
+                NotificationsTestHost(
+                    foregroundKeepAliveEnabled = false,
+                    permissionStatus = "Denied",
+                    onPermission = { permissionRequests += 1 },
+                )
+            }
+
+            onNode(isToggleable() and hasAnyAncestor(hasTestTag(SETTINGS_NOTIFICATIONS_DIRECT_GMS_OVERRIDE_ROW_TAG)))
+                .assertIsOff()
+                .performClick()
+            waitForIdle()
+
+            assertEquals(listOf(true), controls.directGmsOverrideChanges)
+            assertEquals(1, permissionRequests)
+            assertEquals(0, controls.batteryRequests)
         }
 
     @Test
@@ -148,6 +203,7 @@ class RaftBackgroundKillNoticeUnifiedFlowTest {
             val controls =
                 RecordingBackgroundControls(
                     offered = false,
+                    canOverrideWithForegroundService = false,
                     canRequestBattery = false,
                     guide = RaftBackgroundWhitelistGuide.LenovoZui,
                     exempt = false,
@@ -158,6 +214,7 @@ class RaftBackgroundKillNoticeUnifiedFlowTest {
                 NotificationsTestHost(foregroundKeepAliveEnabled = false)
             }
 
+            onNodeWithTag(SETTINGS_NOTIFICATIONS_DIRECT_GMS_OVERRIDE_ROW_TAG).assertDoesNotExist()
             onNodeWithTag(SETTINGS_NOTIFICATIONS_BATTERY_OPTIMIZATION_ROW_TAG).assertDoesNotExist()
             onNodeWithTag(SETTINGS_NOTIFICATIONS_VENDOR_BACKGROUND_ROW_TAG).assertIsDisplayed().performClick()
 
@@ -174,6 +231,7 @@ class RaftBackgroundKillNoticeUnifiedFlowTest {
                 NotificationsTestHost(foregroundKeepAliveEnabled = false)
             }
 
+            onNodeWithTag(SETTINGS_NOTIFICATIONS_DIRECT_GMS_OVERRIDE_ROW_TAG).assertDoesNotExist()
             onNodeWithTag(SETTINGS_NOTIFICATIONS_BATTERY_OPTIMIZATION_ROW_TAG).assertDoesNotExist()
             onNodeWithTag(SETTINGS_NOTIFICATIONS_VENDOR_BACKGROUND_ROW_TAG).assertDoesNotExist()
         }
@@ -183,11 +241,22 @@ class RaftBackgroundKillNoticeUnifiedFlowTest {
         private val canRequestBattery: Boolean,
         private val guide: RaftBackgroundWhitelistGuide,
         private val exempt: Boolean,
+        private val canOverrideWithForegroundService: Boolean = false,
+        initialDirectGmsOverride: Boolean = false,
     ) : RaftBackgroundConnectionControls {
         var batteryRequests: Int = 0
         var vendorSettingsRequests: Int = 0
+        val directGmsOverrideChanges = mutableListOf<Boolean>()
+        private val mutableDirectGmsOverrideState = MutableStateFlow(initialDirectGmsOverride)
 
         override fun isOffered(): Boolean = offered
+        override fun canOverrideWithForegroundService(): Boolean = canOverrideWithForegroundService
+        override val directGmsKeepAliveOverrideState: StateFlow<Boolean> = mutableDirectGmsOverrideState
+        override fun setDirectGmsKeepAliveOverrideEnabled(enabled: Boolean) {
+            if (!canOverrideWithForegroundService) return
+            mutableDirectGmsOverrideState.value = enabled
+            directGmsOverrideChanges += enabled
+        }
         override fun canRequestBatteryOptimizationExemption(): Boolean = canRequestBattery
         override fun whitelistGuide(): RaftBackgroundWhitelistGuide = guide
         override fun isBatteryOptimizationExempt(): Boolean = exempt
@@ -201,7 +270,11 @@ class RaftBackgroundKillNoticeUnifiedFlowTest {
     }
 
     @androidx.compose.runtime.Composable
-    private fun NotificationsTestHost(foregroundKeepAliveEnabled: Boolean) {
+    private fun NotificationsTestHost(
+        foregroundKeepAliveEnabled: Boolean,
+        permissionStatus: String = "Allowed",
+        onPermission: () -> Unit = {},
+    ) {
         val pager =
             remember {
                 object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
@@ -218,7 +291,13 @@ class RaftBackgroundKillNoticeUnifiedFlowTest {
         ) {
             RaftDesignSystemTheme {
                 SettingsNotificationsContent(
-                    state = ScreenLoadState.Content(sampleSnapshot),
+                    state =
+                        ScreenLoadState.Content(
+                            sampleSnapshot.copy(
+                                notificationPermission =
+                                    sampleSnapshot.notificationPermission.copy(statusLabel = permissionStatus)
+                            )
+                        ),
                     actionState = null,
                     bottomContentPadding = 16.dp,
                     notificationPreferenceSnapshot =
@@ -234,7 +313,7 @@ class RaftBackgroundKillNoticeUnifiedFlowTest {
                     onForegroundMessageBannersChange = {},
                     onServerNotificationModeChange = {},
                     onPushPreviewModeChange = {},
-                    onPermission = {},
+                    onPermission = onPermission,
                     onSettings = {},
                     onTest = {},
                     onRetry = {},

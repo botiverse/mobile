@@ -2,8 +2,10 @@ package build.raft.app.shared
 
 import android.content.Context
 import androidx.core.app.NotificationManagerCompat
+import build.raft.app.BuildConfig
 import build.raft.app.core.data.auth.AndroidAppScopeMMKV
 import build.raft.app.core.data.diagnostics.RaftAppLog
+import build.raft.app.data.NOTIFICATION_DIRECT_GMS_KEEP_ALIVE_OVERRIDE_PREFERENCE_KEY
 import build.raft.app.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.RaftBackgroundConnectionControlsRegistry
@@ -19,9 +21,28 @@ internal object AndroidRealtimeKeepAliveController {
     private const val LOG_TAG = "SlockRealtimeKeepAlive"
     private val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    @Volatile
+    internal var directInstallApkProvider: () -> Boolean = { BuildConfig.HANDS_APK_UPDATE_ENABLED }
+
+    @Volatile
+    internal var serviceDeclaredProvider: (Context) -> Boolean = RaftBackgroundConnectionService::isDeclared
+
+    @Volatile
+    internal var localPreferenceReader: (Context, String, String) -> String = ::readLocalPreferenceFromMmkv
+
+    @Volatile
+    internal var localPreferenceWriter: (Context, String, String) -> Boolean = ::writeLocalPreferenceToMmkv
+
+    @Volatile
+    internal var storedSessionProvider: (Context) -> Boolean = AndroidRealtimeSessionAvailability::hasStoredRealtimeSession
+
+    @Volatile
+    internal var systemNotificationsAllowedProvider: (Context) -> Boolean = ::readSystemNotificationsAllowed
+
     /**
      * Process start: wires the unified Settings controls synchronously (no IPC) and moves the Play
-     * services, service-declaration, permission, default-seeding, and battery-exemption probes onto IO.
+     * services, service-declaration, permission, default-seeding, override-read, and battery-exemption
+     * probes onto IO.
      */
     fun installNoPlayServicesFallback(context: Context) {
         val appContext = context.applicationContext
@@ -35,18 +56,96 @@ internal object AndroidRealtimeKeepAliveController {
             if (canRequestBattery) {
                 controls.refreshBatteryOptimizationStatus()
             }
+            controls.refreshDirectGmsKeepAliveOverrideStatus()
         }
     }
 
     /** Play services missing/disabled/invalid and this build ships the background connection service. */
     fun noPlayServicesFallbackApplies(context: Context): Boolean =
-        RaftPlayServicesAvailability.isFcmUnavailable(context) && RaftBackgroundConnectionService.isDeclared(context)
+        RaftPlayServicesAvailability.isFcmUnavailable(context) && serviceDeclaredProvider(context)
+
+    /**
+     * True only on direct-install Android APKs whose merged manifest ships
+     * [RaftBackgroundConnectionService]. Always false on Google Play builds.
+     */
+    fun directGmsKeepAliveOverrideAllowed(context: Context): Boolean =
+        directInstallApkProvider() && serviceDeclaredProvider(context)
+
+    /**
+     * Persisted opt-in override for direct-install APKs on GMS devices (default false). Always
+     * returns false on Google Play builds regardless of any persisted value.
+     */
+    fun isDirectGmsKeepAliveOverrideEnabled(context: Context): Boolean {
+        val appContext = context.applicationContext
+        if (!directGmsKeepAliveOverrideAllowed(appContext)) return false
+        return localPreferenceReader(
+            appContext,
+            NOTIFICATION_DIRECT_GMS_KEEP_ALIVE_OVERRIDE_PREFERENCE_KEY,
+            "false",
+        ) == "true"
+    }
+
+    /**
+     * True when the direct-install GMS foreground-service override is actively in effect on this
+     * device (direct APK, GMS present, user opted in). Always false on Google Play builds and on
+     * no-GMS devices.
+     */
+    fun isDirectGmsKeepAliveOverrideActive(context: Context): Boolean {
+        val appContext = context.applicationContext
+        return RaftBackgroundConnectionPolicy.isDirectGmsOverrideActive(
+            fcmUnavailable = noPlayServicesFallbackApplies(appContext),
+            directGmsKeepAliveOverrideAllowed = directGmsKeepAliveOverrideAllowed(appContext),
+            directGmsKeepAliveOverrideEnabled = isDirectGmsKeepAliveOverrideEnabled(appContext),
+        )
+    }
+
+    /**
+     * True when [RaftBackgroundConnectionService] applies to this process: either Play services is
+     * unavailable (automatic fallback) or the user enabled the direct-install GMS override.
+     */
+    fun backgroundConnectionServiceApplies(context: Context): Boolean =
+        noPlayServicesFallbackApplies(context) || isDirectGmsKeepAliveOverrideActive(context)
+
+    /**
+     * Persists and applies the direct-install GMS foreground-service override. Hard no-op on
+     * Google Play builds (never writes to storage and ensures the service is stopped).
+     */
+    fun setDirectGmsKeepAliveOverrideEnabled(context: Context, enabled: Boolean): Boolean {
+        val appContext = context.applicationContext
+        if (!directGmsKeepAliveOverrideAllowed(appContext)) {
+            RaftBackgroundConnectionService.stop(appContext, "play_services_available")
+            return false
+        }
+        val persisted =
+            localPreferenceWriter(
+                appContext,
+                NOTIFICATION_DIRECT_GMS_KEEP_ALIVE_OVERRIDE_PREFERENCE_KEY,
+                if (enabled) "true" else "false",
+            )
+        if (!persisted) return false
+        RaftAppLog.w(LOG_TAG, "direct_gms_override_changed enabled=$enabled")
+        start(
+            context = appContext,
+            source = if (enabled) "direct_gms_override_enabled" else "direct_gms_override_disabled",
+        )
+        return true
+    }
 
     fun start(context: Context, source: String = "unknown") {
         val appContext = context.applicationContext
         val fcmUnavailable = noPlayServicesFallbackApplies(appContext)
         seedNoPlayServicesDefault(appContext, fcmUnavailable)
-        if (!isForegroundKeepAliveEnabled(appContext)) {
+        val keepAlivePrefEnabled = isForegroundKeepAliveEnabled(appContext)
+        val directOverrideAllowed = directGmsKeepAliveOverrideAllowed(appContext)
+        val directOverrideEnabled =
+            if (directOverrideAllowed) isDirectGmsKeepAliveOverrideEnabled(appContext) else false
+        val gmsOverrideActive =
+            RaftBackgroundConnectionPolicy.isDirectGmsOverrideActive(
+                fcmUnavailable = fcmUnavailable,
+                directGmsKeepAliveOverrideAllowed = directOverrideAllowed,
+                directGmsKeepAliveOverrideEnabled = directOverrideEnabled,
+            )
+        if (!keepAlivePrefEnabled && !gmsOverrideActive) {
             AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive("preference_disabled")
             RaftBackgroundConnectionService.stop(appContext, "preference_disabled")
             RaftAppLog.d(
@@ -55,7 +154,7 @@ internal object AndroidRealtimeKeepAliveController {
             )
             return
         }
-        if (!AndroidRealtimeSessionAvailability.hasStoredRealtimeSession(appContext)) {
+        if (!storedSessionProvider(appContext)) {
             AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive("missing_session")
             RaftBackgroundConnectionService.stop(appContext, "missing_session")
             RaftAppLog.d(
@@ -69,17 +168,25 @@ internal object AndroidRealtimeKeepAliveController {
             backgroundConnectionDecision(
                 context = appContext,
                 fcmUnavailable = fcmUnavailable,
-                keepAlivePreferenceEnabled = true,
+                keepAlivePreferenceEnabled = keepAlivePrefEnabled,
                 signedIn = true,
+                directGmsKeepAliveOverrideAllowed = directOverrideAllowed,
+                directGmsKeepAliveOverrideEnabled = directOverrideEnabled,
             )
-        if (RaftBackgroundConnectionPolicy.shouldEnableBackgroundKeepAlive(fcmUnavailable, decision)) {
+        if (
+            RaftBackgroundConnectionPolicy.shouldEnableBackgroundKeepAlive(
+                fallbackApplies = fcmUnavailable,
+                decision = decision,
+                keepAlivePreferenceEnabled = keepAlivePrefEnabled,
+            )
+        ) {
             AndroidAppScopeRealtimeOwner.enableBackgroundKeepAlive(
                 context = appContext,
                 source = source
             )
         } else {
-            // No Play services and the service cannot run (e.g. no notification permission): a seeded
-            // preference alone must not hold a background connection the OS will freeze anyway.
+            // No Play services (or GMS override) and the service cannot run (e.g. no notification
+            // permission): without the service the OS freezes the background process anyway.
             AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive(
                 (decision as? RaftBackgroundConnectionPolicy.Decision.Stop)?.reason ?: "background_connection_stopped"
             )
@@ -88,11 +195,18 @@ internal object AndroidRealtimeKeepAliveController {
     }
 
     fun stop(context: Context, reason: String = "unknown") {
+        val appContext = context.applicationContext
+        // Turning off the separate "Background realtime" switch on a direct-install GMS device must
+        // not tear down the foreground service while the user's explicit GMS override is still ON.
+        if (reason == "preference_disabled" && isDirectGmsKeepAliveOverrideActive(appContext)) {
+            start(appContext, source = "foreground_keep_alive_disabled")
+            return
+        }
         AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive(reason)
         // Transient disconnects (server switch, page release) leave the service up; see
         // [restoreBackgroundKeepAliveAfterDisconnect]. Session ends and opt-outs stop it now.
         if (RaftBackgroundConnectionPolicy.isTerminalStopReason(reason)) {
-            RaftBackgroundConnectionService.stop(context.applicationContext, reason)
+            RaftBackgroundConnectionService.stop(appContext, reason)
         }
     }
 
@@ -138,7 +252,7 @@ internal object AndroidRealtimeKeepAliveController {
 
     private fun backgroundTransitionHandler(appContext: Context): BackgroundTransitionHandler =
         BackgroundTransitionHandler(
-            fallbackApplies = { noPlayServicesFallbackApplies(appContext) },
+            fallbackApplies = { backgroundConnectionServiceApplies(appContext) },
             decision = { currentBackgroundConnectionDecision(appContext) },
             serviceActive = { RaftBackgroundConnectionService.active },
             stopQueued = { RaftBackgroundConnectionService.stopQueued },
@@ -148,7 +262,15 @@ internal object AndroidRealtimeKeepAliveController {
                 RaftBackgroundConnectionService.start(appContext, source)
             },
             requestStop = { reason ->
-                AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive(reason)
+                if (
+                    !RaftBackgroundConnectionPolicy.shouldEnableBackgroundKeepAlive(
+                        fallbackApplies = noPlayServicesFallbackApplies(appContext),
+                        decision = RaftBackgroundConnectionPolicy.Decision.Stop(reason),
+                        keepAlivePreferenceEnabled = isForegroundKeepAliveEnabled(appContext),
+                    )
+                ) {
+                    AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive(reason)
+                }
                 RaftBackgroundConnectionService.stop(appContext, reason)
             },
             log = { message -> RaftAppLog.w(LOG_TAG, message) },
@@ -165,14 +287,16 @@ internal object AndroidRealtimeKeepAliveController {
         private val log: (String) -> Unit,
     ) {
         fun onAppBackgrounded() {
-            // Play services devices: read nothing else, change nothing.
-            if (!fallbackApplies()) return
+            val applies = fallbackApplies()
+            val active = serviceActive()
+            // Play services devices without the direct-install override: read nothing else, change nothing.
+            if (!applies && !active) return
             val current = decision()
             val action =
                 RaftBackgroundConnectionPolicy.backgroundTransitionAction(
-                    fallbackApplies = true,
+                    fallbackApplies = applies,
                     decision = current,
-                    serviceActive = serviceActive(),
+                    serviceActive = active,
                     stopQueued = stopQueued(),
                 )
             log("background_transition decision=$current action=$action")
@@ -192,26 +316,51 @@ internal object AndroidRealtimeKeepAliveController {
         val appContext = context.applicationContext
         RaftPlayServicesAvailability.refresh(appContext)
         val controls = RaftBackgroundConnectionControlsRegistry.controls as? RaftAndroidBackgroundConnectionControls
-        if (controls != null && controls.canRequestBatteryOptimizationExemption()) {
-            controls.refreshBatteryOptimizationStatus()
+        if (controls != null) {
+            if (controls.canRequestBatteryOptimizationExemption()) {
+                controls.refreshBatteryOptimizationStatus()
+            }
+            controls.refreshDirectGmsKeepAliveOverrideStatus()
         }
     }
 
     /** The policy decision from the current stored inputs (used by the service when its command runs). */
     fun currentBackgroundConnectionDecision(context: Context): RaftBackgroundConnectionPolicy.Decision {
         val appContext = context.applicationContext
+        val directOverrideAllowed = directGmsKeepAliveOverrideAllowed(appContext)
         return backgroundConnectionDecision(
             context = appContext,
             fcmUnavailable = noPlayServicesFallbackApplies(appContext),
             keepAlivePreferenceEnabled = isForegroundKeepAliveEnabled(appContext),
-            signedIn = AndroidRealtimeSessionAvailability.hasStoredRealtimeSession(appContext),
+            signedIn = storedSessionProvider(appContext),
+            directGmsKeepAliveOverrideAllowed = directOverrideAllowed,
+            directGmsKeepAliveOverrideEnabled =
+                if (directOverrideAllowed) isDirectGmsKeepAliveOverrideEnabled(appContext) else false,
         )
     }
 
     /** Re-evaluates the service after an input changed in the app (e.g. the message notification switch). */
     fun refreshBackgroundConnectionService(context: Context, source: String) {
         val appContext = context.applicationContext
-        applyBackgroundConnectionDecision(appContext, currentBackgroundConnectionDecision(appContext), source)
+        val fcmUnavailable = noPlayServicesFallbackApplies(appContext)
+        val keepAlivePrefEnabled = isForegroundKeepAliveEnabled(appContext)
+        val decision = currentBackgroundConnectionDecision(appContext)
+        if (
+            RaftBackgroundConnectionPolicy.shouldEnableBackgroundKeepAlive(
+                fallbackApplies = fcmUnavailable,
+                decision = decision,
+                keepAlivePreferenceEnabled = keepAlivePrefEnabled,
+            )
+        ) {
+            if (decision == RaftBackgroundConnectionPolicy.Decision.Run) {
+                AndroidAppScopeRealtimeOwner.enableBackgroundKeepAlive(context = appContext, source = source)
+            }
+        } else {
+            AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive(
+                (decision as? RaftBackgroundConnectionPolicy.Decision.Stop)?.reason ?: "background_connection_stopped"
+            )
+        }
+        applyBackgroundConnectionDecision(appContext, decision, source)
     }
 
     private fun backgroundConnectionDecision(
@@ -219,16 +368,20 @@ internal object AndroidRealtimeKeepAliveController {
         fcmUnavailable: Boolean,
         keepAlivePreferenceEnabled: Boolean,
         signedIn: Boolean,
+        directGmsKeepAliveOverrideAllowed: Boolean,
+        directGmsKeepAliveOverrideEnabled: Boolean,
     ): RaftBackgroundConnectionPolicy.Decision =
-            RaftBackgroundConnectionPolicy.decide(
-                RaftBackgroundConnectionPolicy.Inputs(
-                    fcmUnavailable = fcmUnavailable,
-                    keepAlivePreferenceEnabled = keepAlivePreferenceEnabled,
-                    signedIn = signedIn,
-                    messageNotificationsEnabled = readLocalPreference(context, NOTIFICATION_ENABLED_PREFERENCE_KEY, "true") == "true",
-                    systemNotificationsAllowed = systemNotificationsAllowed(context),
-                )
+        RaftBackgroundConnectionPolicy.decide(
+            RaftBackgroundConnectionPolicy.Inputs(
+                fcmUnavailable = fcmUnavailable,
+                keepAlivePreferenceEnabled = keepAlivePreferenceEnabled,
+                signedIn = signedIn,
+                messageNotificationsEnabled = localPreferenceReader(context, NOTIFICATION_ENABLED_PREFERENCE_KEY, "true") == "true",
+                systemNotificationsAllowed = systemNotificationsAllowedProvider(context),
+                directGmsKeepAliveOverrideAllowed = directGmsKeepAliveOverrideAllowed,
+                directGmsKeepAliveOverrideEnabled = directGmsKeepAliveOverrideEnabled,
             )
+        )
 
     private fun applyBackgroundConnectionDecision(
         context: Context,
@@ -248,7 +401,7 @@ internal object AndroidRealtimeKeepAliveController {
         }
     }
 
-    private fun systemNotificationsAllowed(context: Context): Boolean =
+    private fun readSystemNotificationsAllowed(context: Context): Boolean =
         runCatching {
             AndroidUnreadNotificationPoster.hasNotificationPermission(context) &&
                 NotificationManagerCompat.from(context).areNotificationsEnabled()
@@ -277,9 +430,9 @@ internal object AndroidRealtimeKeepAliveController {
     }
 
     fun isForegroundKeepAliveEnabled(context: Context): Boolean =
-        readLocalPreference(context, NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY, "false") == "true"
+        localPreferenceReader(context, NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY, "false") == "true"
 
-    private fun readLocalPreference(context: Context, key: String, defaultValue: String): String =
+    private fun readLocalPreferenceFromMmkv(context: Context, key: String, defaultValue: String): String =
         runCatching {
             val appContext = context.applicationContext
             AndroidAppScopeMMKV.ensureInitialized(appContext)
@@ -292,9 +445,38 @@ internal object AndroidRealtimeKeepAliveController {
                 LOG_TAG,
                 "preference_read_failed key=$key message=${error.message.orEmpty()}"
             )
-            // Unreadable: behave as off for the keep-alive switch, as before.
-            if (key == NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY) "false" else defaultValue
+            // Unreadable: behave as off for the keep-alive switches, as before.
+            if (
+                key == NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY ||
+                key == NOTIFICATION_DIRECT_GMS_KEEP_ALIVE_OVERRIDE_PREFERENCE_KEY
+            ) {
+                "false"
+            } else {
+                defaultValue
+            }
         }
+
+    private fun writeLocalPreferenceToMmkv(context: Context, key: String, value: String): Boolean =
+        runCatching {
+            val appContext = context.applicationContext
+            AndroidAppScopeMMKV.ensureInitialized(appContext)
+            val store = MMKV.mmkvWithID(RaftLocalPreferenceStore.KuiklyNamespace)
+            store.encode(localPreferenceKey(key), value)
+        }.onFailure { error ->
+            RaftAppLog.w(
+                LOG_TAG,
+                "preference_write_failed key=$key message=${error.message.orEmpty()}"
+            )
+        }.isSuccess
+
+    internal fun resetForTests() {
+        directInstallApkProvider = { BuildConfig.HANDS_APK_UPDATE_ENABLED }
+        serviceDeclaredProvider = RaftBackgroundConnectionService::isDeclared
+        localPreferenceReader = ::readLocalPreferenceFromMmkv
+        localPreferenceWriter = ::writeLocalPreferenceToMmkv
+        storedSessionProvider = AndroidRealtimeSessionAvailability::hasStoredRealtimeSession
+        systemNotificationsAllowedProvider = ::readSystemNotificationsAllowed
+    }
 
     internal fun localPreferenceKey(key: String): String =
         "${RaftLocalPreferenceStore.KuiklyNamespace}:$key"

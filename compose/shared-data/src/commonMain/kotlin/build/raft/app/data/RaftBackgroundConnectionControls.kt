@@ -1,7 +1,9 @@
 package build.raft.app.data
 
 import kotlin.concurrent.Volatile
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Unified Android host controls for background keep-alive in Settings › Notifications.
@@ -10,19 +12,45 @@ import kotlinx.coroutines.flow.StateFlow
  * [RaftBackgroundConnectionControlsRegistry.controls] null and render no Android keep-alive rows.
  *
  * - On Android without Google Play services, [isOffered] is true (the foreground-service fallback
- *   applies).
+ *   applies automatically).
+ * - On direct/non-Play builds when Google Play services is available,
+ *   [canOverrideWithForegroundService] is true so the user can opt in (default off) to keeping the
+ *   foreground connection service running when FCM cannot be reached on their network.
  * - On direct/non-Play builds whose manifest declares `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`,
  *   [canRequestBatteryOptimizationExemption] is true and [requestBatteryOptimizationExemption]
  *   opens the direct exemption prompt (falling back to system battery optimization settings and
  *   then App Info).
- * - On Google Play builds (where `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is removed by manifest
- *   merge), [canRequestBatteryOptimizationExemption] is false and [openVendorBackgroundSettings]
- *   routes through OEM auto-start / background management settings -> system battery optimization
- *   settings -> App Info without ever invoking `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
+ * - On Google Play builds (where `RaftBackgroundConnectionService` and
+ *   `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` are removed by manifest merge), both
+ *   [canOverrideWithForegroundService] and [canRequestBatteryOptimizationExemption] are always
+ *   false, and [openVendorBackgroundSettings] routes through OEM auto-start / background
+ *   management settings -> system battery optimization settings -> App Info without ever invoking
+ *   `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
  */
 interface RaftBackgroundConnectionControls {
     /** True when this device cannot receive server push and the foreground-service fallback applies. */
     fun isOffered(): Boolean
+
+    /**
+     * True when this build is a direct-install Android APK whose manifest ships the background
+     * connection service and Google Play services is available, so the user may opt in (default
+     * off) to keeping the foreground connection service running when FCM is unreachable. Always
+     * false on Google Play builds, no-GMS devices, iOS, and desktop.
+     */
+    fun canOverrideWithForegroundService(): Boolean = false
+
+    /**
+     * Current opt-in state for [canOverrideWithForegroundService]. Always false unless
+     * [canOverrideWithForegroundService] is true and the user opted in.
+     */
+    val directGmsKeepAliveOverrideState: StateFlow<Boolean>
+        get() = DefaultDirectGmsKeepAliveOverrideState
+
+    /**
+     * Enables or disables the direct-install GMS foreground-service override. Ignored (no-op)
+     * when [canOverrideWithForegroundService] is false (including Google Play builds).
+     */
+    fun setDirectGmsKeepAliveOverrideEnabled(enabled: Boolean) {}
 
     /**
      * True when this build declares `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` and may launch the
@@ -68,3 +96,5 @@ object RaftBackgroundConnectionControlsRegistry {
     fun offeredControls(): RaftBackgroundConnectionControls? =
         controls?.takeIf { runCatching { it.isOffered() }.getOrDefault(false) }
 }
+
+private val DefaultDirectGmsKeepAliveOverrideState: StateFlow<Boolean> = MutableStateFlow(false).asStateFlow()

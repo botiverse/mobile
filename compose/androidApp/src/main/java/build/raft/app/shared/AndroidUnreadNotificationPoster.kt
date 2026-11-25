@@ -617,7 +617,9 @@ internal object AndroidUnreadNotificationPoster {
                 defaultTitle = appContext.getString(R.string.app_name),
                 defaultBody = appContext.getString(R.string.notification_unread_default_text)
             )
-        val history = previous.appended(request.optString("messageId"), text.body, text.sender, whenMillis)
+        val incomingMessageId = request.optString("messageId").trim()
+        val duplicateMessage = incomingMessageId.isNotEmpty() && incomingMessageId in previous.messageIds
+        val history = previous.appended(incomingMessageId, text.body, text.sender, whenMillis)
         val countText =
             appContext.resources.getQuantityString(R.plurals.notification_unread_message_count, history.count, history.count)
         val serverId = request.optString("serverId").trim()
@@ -681,6 +683,9 @@ internal object AndroidUnreadNotificationPoster {
             .setBadgeIconType(NotificationCompat.BADGE_ICON_SMALL)
             // The account sound setting is off (FCM `silent: "true"`, socket `silent: true`).
             .setSilent(unreadNotificationSilent(request))
+            // If the same message already arrived via the other transport (socket vs FCM), update
+            // in place without ringing, vibrating, or popping heads-up a second time.
+            .setOnlyAlertOnce(duplicateMessage)
             // Pre-O devices take the priority from the notification, not its channel.
             .setPriority(if (highPriority) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)

@@ -2804,6 +2804,8 @@
     <string name="settings_notifications_background_realtime_detail">Поддерживать связь в реальном времени, пока приложение в фоне. %1$s всё равно может приостанавливать долгие сеансы.</string>
     <string name="settings_notifications_keep_connection_title">Поддерживать подключение в фоне</string>
     <string name="settings_notifications_keep_connection_detail">Чтобы получать уведомления о сообщениях, оставьте Raft подключённым в фоне. При этом постоянно показывается уведомление «Raft получает сообщения» и быстрее расходуется батарея.</string>
+    <string name="settings_notifications_direct_keep_connection_title">Постоянное фоновое подключение</string>
+    <string name="settings_notifications_direct_keep_connection_detail">Оставляет Raft подключённым в фоне, если push-уведомления Google недоступны в вашей сети. При этом постоянно показывается уведомление «Raft получает сообщения» и быстрее расходуется батарея.</string>
     <string name="settings_notifications_battery_optimization_title">Разрешить работу в фоне</string>
     <string name="settings_notifications_battery_optimization_detail">Отключите для Raft оптимизацию батареи, чтобы система не прерывала фоновое подключение. На некоторых телефонах также нужно разрешить Raft в настройках автозапуска или фоновой активности.</string>
     <string name="settings_notifications_battery_optimization_allowed">Разрешено</string>

@@ -416,8 +416,10 @@ internal object RaftAndroidBackgroundKillNoticeHost : RaftBackgroundKillNoticeHo
                 runCatching { AndroidRealtimeKeepAliveController.noPlayServicesFallbackApplies(appContext) }
                     .getOrDefault(false)
             val keepAliveEnabled =
-                runCatching { AndroidRealtimeKeepAliveController.isForegroundKeepAliveEnabled(appContext) }
-                    .getOrDefault(false)
+                runCatching {
+                    AndroidRealtimeKeepAliveController.isForegroundKeepAliveEnabled(appContext) ||
+                        AndroidRealtimeKeepAliveController.isDirectGmsKeepAliveOverrideActive(appContext)
+                }.getOrDefault(false)
             val startupRecords =
                 runCatching { RaftStartupPhaseMarker.readAll(appContext.filesDir) }
                     .getOrDefault(emptyList())
