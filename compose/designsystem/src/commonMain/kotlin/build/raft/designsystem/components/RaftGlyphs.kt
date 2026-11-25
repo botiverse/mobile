@@ -24,11 +24,11 @@ import build.raft.designsystem.theme.RaftTheme
  * the check of a checkbox and of a menu's current value, the dialog's close, a menu's search,
  * the top bar's Back arrow, the jump pills' arrows, a sidebar channel's `hash` / `lock`, a group header's sort
  * arrows and an action card's default `zap`, a thread
- * summary's draft `pencil`, a saved message's `bookmark`, a forwarded bundle's `forward` and `file`
- * and a quoted message's thread `message-square`, and a pane grid column head's ⋯, Expand / Restore and
+ * summary's draft `pencil`, a saved message's `bookmark`, a forwarded bundle's `forward` and `file`,
+ * and a pane grid column head's ⋯, Expand / Restore and
  * Move Left / Move Right. Each is the 24x24 outline drawn with Lucide's
- * 2-unit round stroke. App icons are not this module's business: pass them through the components' icon
- * slots.
+ * 2-unit round stroke; [Thread] and [Comment] are `@botiverse/ricons` art scaled to the same grid.
+ * App icons are not this module's business: pass them through the components' icon slots.
  */
 enum class RaftGlyph(internal vararg val paths: String) {
     ArrowLeft("m12 19-7-7 7-7", "M19 12H5"),
@@ -123,19 +123,25 @@ enum class RaftGlyph(internal vararg val paths: String) {
     /** Lucide `forward`: a forwarded bundle's header label (raft-ui MessageForwardedBundleHeaderLabel). */
     Forward("m15 17 5-5-5-5", "M4 18v-2a4 4 0 0 1 4-4h12"),
 
-    /** Lucide `message-square`: the comment count of a task row (raft-ui TaskCompactList). */
-    MessageSquare(
-        "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16" +
-            "a2 2 0 0 1 2 2z",
-    ),
-
     /**
-     * raft-ui `ThreadIcon` (two overlapping bubbles, the thread marker of a quoted message): its 18 x 18 art
-     * (1.5 stroke) scaled to this 24 grid (2 stroke).
+     * `@botiverse/ricons` `ThreadIcon` (two overlapping bubbles): the thread marker of a quoted message
+     * and the reply count of a task row (web TaskChipList). Its 18 x 18 art (1.5 stroke) scaled to this
+     * 24 grid (2 stroke).
      */
     Thread(
         "M4.6667 15.3333L2.3333 17.6667V5.6667A2.6667 2.6667 0 0 1 5 3H15",
         "M11 6.6667H19.3333C20.8 6.6667 22 7.8667 22 9.3333V15.6667C22 17.1333 20.8 18.3333 19.3333 18.3333H17.3333V21.6667L13 18.3333H11C9.5333 18.3333 8.3333 17.1333 8.3333 15.6667V9.3333C8.3333 7.8667 9.5333 6.6667 11 6.6667Z",
+    ),
+
+    /**
+     * `@botiverse/ricons` `CommentIcon` (a bubble with quote marks): the comment count of an attachment
+     * card (web AttachmentChip). Its 18 x 18 art (1.5 stroke) scaled to this 24 grid (2 stroke).
+     */
+    Comment(
+        "M19 3H5C3.5333 3 2.3333 4.2 2.3333 5.6667V15C2.3333 16.4667 3.5333 17.6667 5 17.6667H7.6667V21.6667" +
+            "L12.6667 17.6667H19C20.4667 17.6667 21.6667 16.4667 21.6667 15V5.6667C21.6667 4.2 20.4667 3 19 3Z",
+        "M8.5 13a2 2 0 0 0 2-2V7h-2",
+        "M13.5 13a2 2 0 0 0 2-2V7h-2",
     ),
 
     /** Lucide `cpu`: the agent profile's runtime chip ([RaftRuntimeChip]). */

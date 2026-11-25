@@ -162,7 +162,7 @@ fun RaftTaskCompactRow(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        RaftGlyphIcon(RaftGlyph.MessageSquare, size = 12.dp, color = colors.foregroundHint)
+                        RaftGlyphIcon(RaftGlyph.Thread, size = 12.dp, color = colors.foregroundHint)
                         RaftText(
                             text = replyCount.toString(),
                             style = typography.monoMeta,
