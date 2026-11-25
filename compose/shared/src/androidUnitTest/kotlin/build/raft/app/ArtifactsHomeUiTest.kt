@@ -1,11 +1,22 @@
 package build.raft.app
 
+import android.graphics.Bitmap
+import android.graphics.Color as AndroidColor
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -26,6 +37,10 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.AppLocale
+import build.raft.app.data.ArtifactExcerpt
+import build.raft.app.data.ArtifactExcerptBlock
+import build.raft.app.data.ArtifactExcerptListItem
+import build.raft.app.data.ArtifactExcerptSpan
 import build.raft.app.data.ArtifactHome
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactSettled
@@ -48,10 +63,15 @@ import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.resources.StringDesc
+import build.raft.designsystem.tokens.RaftUiThemeColors
+import java.io.File
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -504,6 +524,384 @@ class ArtifactsHomeUiTest {
         onAllNodesWithTag(ArtifactsHomeTags.UnfollowedTag, useUnmergedTree = true).assertCountEquals(0)
     }
 
+    @Test
+    fun gridTilesEqualizeRowHeightAlignMetaFooterAndWorkWithExcerptCovers() = runRobolectricComposeUiTest {
+        val richExcerpt =
+            ArtifactExcerpt(
+                text = "Q4 release readiness checklist and performance budgets.",
+                blocks =
+                    listOf(
+                        ArtifactExcerptBlock.Heading(1, listOf(ArtifactExcerptSpan("Release Readiness"))),
+                        ArtifactExcerptBlock.Paragraph(listOf(ArtifactExcerptSpan("All mobile lanes pass ", bold = false), ArtifactExcerptSpan("zero jank", bold = true))),
+                        ArtifactExcerptBlock.Quote(listOf(ArtifactExcerptSpan("Keep borders subtle and rows level."))),
+                        ArtifactExcerptBlock.ListBlock(
+                            listOf(
+                                ArtifactExcerptListItem(level = 0, checked = true, spans = listOf(ArtifactExcerptSpan("Equalize row height"))),
+                                ArtifactExcerptListItem(level = 0, checked = false, spans = listOf(ArtifactExcerptSpan("Pin footer row"))),
+                            ),
+                        ),
+                        ArtifactExcerptBlock.Code(listOf("border = lineHairline")),
+                        ArtifactExcerptBlock.Table(
+                            header = listOf(listOf(ArtifactExcerptSpan("Lane")), listOf(ArtifactExcerptSpan("Status"))),
+                            rows = listOf(listOf(listOf(ArtifactExcerptSpan("Android")), listOf(ArtifactExcerptSpan("Green")))),
+                        ),
+                    ),
+            )
+        val plainExcerpt = ArtifactExcerpt(text = "Short API specification summary for client callers.")
+        val rows =
+            listOf(
+                row(
+                    id = "pt_two_line",
+                    title = "Q4 Mobile Release Readiness and Performance Review Plan",
+                    kind = ArtifactKind.Markdown,
+                    excerpt = richExcerpt,
+                    commentCount = 3,
+                    updatedAt = "2026-11-18T09:00:00.000Z",
+                ),
+                row(
+                    id = "pt_one_line",
+                    title = "API Notes",
+                    kind = ArtifactKind.Markdown,
+                    home = ArtifactHome.Public,
+                    excerpt = plainExcerpt,
+                    commentCount = 1,
+                    updatedAt = "2026-11-18T08:00:00.000Z",
+                ),
+                row(
+                    id = "pt_settled_short",
+                    title = "Draft",
+                    settled = settledInfo,
+                    settledShown = true,
+                    commentCount = 0,
+                    updatedAt = "2026-11-18T07:00:00.000Z",
+                ),
+                row(
+                    id = "pt_two_line_right",
+                    title = "Cross-platform Sync Protocol Architecture Overview",
+                    commentCount = 2,
+                    updatedAt = "2026-11-18T06:00:00.000Z",
+                ),
+                row(
+                    id = "pt_trailing_odd",
+                    title = "Standalone Tile",
+                    commentCount = 0,
+                    updatedAt = "2026-11-18T05:00:00.000Z",
+                ),
+            )
+        setContent {
+            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext),
+            ) {
+                ArtifactsHomeScreen(
+                    state =
+                        loaded(
+                            rows = rows,
+                            settledEnabled = true,
+                            statusFilter = ArtifactsHomeStatusFilter.All,
+                        ),
+                    view = ArtifactsHomeView.Grid,
+                    readerId = "me",
+                    serverName = "Northwind Labs",
+                    wide = false,
+                    onIntent = { intents += it },
+                    onView = {},
+                    onOpen = { opened += it.summary.id },
+                    onBack = {},
+                    cover = { r, _ ->
+                        val excerpt = r.summary.excerpt
+                        if (excerpt != null) {
+                            ArtifactsHomeTileCoverFrame(Alignment.TopCenter) {
+                                ArtifactCardExcerpt(excerpt, fitFrame = true)
+                            }
+                        } else {
+                            ArtifactsHomeTilePlaceholder(r.summary.kind)
+                        }
+                    },
+                )
+            }
+        }
+        waitForIdle()
+
+        val tiles = onAllNodesWithTag(ArtifactsHomeTags.Tile)
+        tiles.assertCountEquals(5)
+        val titles = onAllNodesWithTag(ArtifactsHomeTags.TileTitle, useUnmergedTree = true)
+        titles.assertCountEquals(5)
+        val metas = onAllNodesWithTag(ArtifactsHomeTags.TileMeta, useUnmergedTree = true)
+        metas.assertCountEquals(5)
+
+        // Row 1: 2-line title on left, 1-line title on right -> identical tile height and bottom-aligned meta row.
+        val leftTitleBounds = titles[0].fetchSemanticsNode().boundsInRoot
+        val rightTitleBounds = titles[1].fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            leftTitleBounds.height > rightTitleBounds.height,
+            "expected left title (2 lines) taller than right title (1 line), got ${leftTitleBounds.height} vs ${rightTitleBounds.height}",
+        )
+        val leftTileBounds = tiles[0].fetchSemanticsNode().boundsInRoot
+        val rightTileBounds = tiles[1].fetchSemanticsNode().boundsInRoot
+        assertEquals(leftTileBounds.height, rightTileBounds.height, "row 1 tiles must share identical height")
+        assertEquals(leftTileBounds.top, rightTileBounds.top, "row 1 tiles must share top edge")
+        assertEquals(leftTileBounds.bottom, rightTileBounds.bottom, "row 1 tiles must share bottom edge")
+
+        val leftMetaBounds = metas[0].fetchSemanticsNode().boundsInRoot
+        val rightMetaBounds = metas[1].fetchSemanticsNode().boundsInRoot
+        assertEquals(leftMetaBounds.bottom, rightMetaBounds.bottom, "row 1 meta rows must align flush at the bottom")
+        assertEquals(leftMetaBounds.top, rightMetaBounds.top, "row 1 meta rows must share top edge")
+
+        // Row 2: 1-line title on left (with Settled tooltip badge), 2-line title on right -> equalized too.
+        val row2LeftTitle = titles[2].fetchSemanticsNode().boundsInRoot
+        val row2RightTitle = titles[3].fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            row2RightTitle.height > row2LeftTitle.height,
+            "expected row 2 right title (2 lines) taller than left title (1 line), got ${row2RightTitle.height} vs ${row2LeftTitle.height}",
+        )
+        val row2LeftTile = tiles[2].fetchSemanticsNode().boundsInRoot
+        val row2RightTile = tiles[3].fetchSemanticsNode().boundsInRoot
+        assertEquals(row2LeftTile.height, row2RightTile.height, "row 2 tiles must share identical height")
+        assertEquals(
+            metas[2].fetchSemanticsNode().boundsInRoot.bottom,
+            metas[3].fetchSemanticsNode().boundsInRoot.bottom,
+            "row 2 meta rows must align flush at the bottom",
+        )
+
+        // Row 3: single trailing tile stays single-column width (trailing Spacer occupies the empty cell).
+        val trailingTile = tiles[4].fetchSemanticsNode().boundsInRoot
+        assertEquals(leftTileBounds.width, trailingTile.width, "trailing odd tile must keep single-column width")
+
+        // Opening the context menu on a grid tile inside IntrinsicSize.Max must not crash.
+        tiles[0].performMouseInput {
+            moveTo(Offset(width * 0.5f, height * 0.5f))
+            press(MouseButton.Secondary)
+            release(MouseButton.Secondary)
+        }
+        waitForIdle()
+        onNodeWithTag(ArtifactsHomeTags.HomeMenu).assertIsDisplayed()
+    }
+
+    @Test
+    fun gridColumnCountMatchesWebContainerBreakpoints() {
+        assertEquals(2, artifactsHomeGridColumnCount(160f))
+        assertEquals(2, artifactsHomeGridColumnCount(390f))
+        assertEquals(2, artifactsHomeGridColumnCount(439f))
+        assertEquals(2, artifactsHomeGridColumnCount(440f))
+        assertEquals(3, artifactsHomeGridColumnCount(648f))
+        assertEquals(3, artifactsHomeGridColumnCount(800f))
+        assertEquals(6, artifactsHomeGridColumnCount(1280f))
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w390dp-h780dp-xxhdpi")
+    fun gridTileBordersUseLineHairlineNotLineSeam() {
+        val richExcerpt =
+            ArtifactExcerpt(
+                text = "Q4 release readiness checklist and performance budgets.",
+                blocks =
+                    listOf(
+                        ArtifactExcerptBlock.Heading(1, listOf(ArtifactExcerptSpan("Release Plan"))),
+                        ArtifactExcerptBlock.Paragraph(listOf(ArtifactExcerptSpan("Verify grid card row heights and hairline border parity."))),
+                        ArtifactExcerptBlock.ListBlock(
+                            listOf(
+                                ArtifactExcerptListItem(level = 0, checked = true, spans = listOf(ArtifactExcerptSpan("Subtle hairline border"))),
+                                ArtifactExcerptListItem(level = 0, checked = true, spans = listOf(ArtifactExcerptSpan("Equal card height"))),
+                            ),
+                        ),
+                    ),
+            )
+        val gridRows =
+            listOf(
+                row(
+                    id = "pt_1",
+                    title = "Q4 Mobile Release Readiness and Performance Review Plan",
+                    kind = ArtifactKind.Markdown,
+                    excerpt = richExcerpt,
+                    commentCount = 3,
+                    updatedAt = "2026-11-18T09:00:00.000Z",
+                ),
+                row(
+                    id = "pt_2",
+                    title = "API Notes",
+                    kind = ArtifactKind.Markdown,
+                    home = ArtifactHome.Public,
+                    excerpt = ArtifactExcerpt(text = "Concise overview of REST and realtime contracts for mobile clients."),
+                    commentCount = 1,
+                    updatedAt = "2026-11-18T08:00:00.000Z",
+                ),
+                row(
+                    id = "pt_3",
+                    title = "Design Tokens",
+                    commentCount = 0,
+                    updatedAt = "2026-11-18T07:00:00.000Z",
+                ),
+                row(
+                    id = "pt_4",
+                    title = "Cross-platform Sync Protocol Architecture Overview",
+                    author = assistant,
+                    commentCount = 5,
+                    updatedAt = "2026-11-18T06:00:00.000Z",
+                ),
+            )
+
+        val light = RaftUiThemeColors.RaftLight
+        val expectedHairlineOnCard = light.lineHairline.compositeOver(light.layerCard)
+        val seamOnCard = light.lineSeam.compositeOver(light.layerCard)
+        val expectedStrongOnSelected = light.lineStrong.compositeOver(light.fillCellSelected)
+
+        var firstCoverBounds: androidx.compose.ui.geometry.Rect? = null
+        var secondCoverBounds: androidx.compose.ui.geometry.Rect? = null
+        RaftRobolectricScreenshot.render(RaftAppAppearance.Light, activities, content = {
+            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext),
+            ) {
+                Box(Modifier.fillMaxSize()) {
+                    ArtifactsHomeScreen(
+                        state = loaded(rows = gridRows),
+                        view = ArtifactsHomeView.Grid,
+                        readerId = "me",
+                        serverName = "Northwind Labs",
+                        wide = false,
+                        onIntent = {},
+                        onView = {},
+                        onOpen = {},
+                        onBack = {},
+                        currentArtifactId = "pt_2",
+                        cover = { r, _ ->
+                            Box(
+                                Modifier.onGloballyPositioned { coords ->
+                                    if (r.summary.id == "pt_1") firstCoverBounds = coords.boundsInRoot()
+                                    if (r.summary.id == "pt_2") secondCoverBounds = coords.boundsInRoot()
+                                },
+                            ) {
+                                val excerpt = r.summary.excerpt
+                                if (excerpt != null) {
+                                    ArtifactsHomeTileCoverFrame(Alignment.TopCenter) {
+                                        ArtifactCardExcerpt(excerpt, fitFrame = true)
+                                    }
+                                } else {
+                                    ArtifactsHomeTilePlaceholder(r.summary.kind)
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+        }) { activity, bitmap ->
+            val density = activity.resources.displayMetrics.density
+            val leftCover = requireNotNull(firstCoverBounds) { "pt_1 cover bounds not measured" }
+            val rightCover = requireNotNull(secondCoverBounds) { "pt_2 cover bounds not measured" }
+            // Border is 1dp wide immediately outside the inset cover box; sample its center pixel.
+            val unselectedBorderPixel = bitmap.getPixel((leftCover.left - density * 0.5f).toInt(), ((leftCover.top + leftCover.bottom) / 2f).roundToInt())
+            assertPixelNear(expectedHairlineOnCard, unselectedBorderPixel, "unselected tile border must use lineHairline")
+            assertTrue(
+                AndroidColor.red(unselectedBorderPixel) - AndroidColor.red(seamOnCard.toArgb()) > 40,
+                "unselected tile border must be visibly lighter than lineSeam",
+            )
+            val selectedBorderPixel = bitmap.getPixel((rightCover.left - density * 0.5f).toInt(), ((rightCover.top + rightCover.bottom) / 2f).roundToInt())
+            assertPixelNear(expectedStrongOnSelected, selectedBorderPixel, "selected tile border must keep lineStrong")
+
+            if (System.getenv("RAFT_CAPTURE_ARTIFACTS_GRID_VERIFY") == "true") {
+                val out = File("build/reports/home-screenshots/artifacts-home-grid-verify-selected-light.png")
+                out.parentFile?.mkdirs()
+                out.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            }
+        }
+
+        if (System.getenv("RAFT_CAPTURE_ARTIFACTS_GRID_VERIFY") == "true") {
+            listOf(
+                RaftAppAppearance.Light to "artifacts-home-grid-verify-light.png",
+                RaftAppAppearance.Dark to "artifacts-home-grid-verify-dark.png",
+            ).forEach { (appearance, fileName) ->
+                RaftRobolectricScreenshot.render(appearance, activities, content = {
+                    val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
+                    CompositionLocalProvider(
+                        LocalActivity provides RaftPageActivity(pager),
+                        LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext),
+                    ) {
+                        ArtifactsHomeScreen(
+                            state = loaded(rows = gridRows),
+                            view = ArtifactsHomeView.Grid,
+                            readerId = "me",
+                            serverName = "Northwind Labs",
+                            wide = false,
+                            onIntent = {},
+                            onView = {},
+                            onOpen = {},
+                            onBack = {},
+                            cover = { r, _ ->
+                                val excerpt = r.summary.excerpt
+                                if (excerpt != null) {
+                                    ArtifactsHomeTileCoverFrame(Alignment.TopCenter) {
+                                        ArtifactCardExcerpt(excerpt, fitFrame = true)
+                                    }
+                                } else {
+                                    ArtifactsHomeTilePlaceholder(r.summary.kind)
+                                }
+                            },
+                        )
+                    }
+                }) { _, bitmap ->
+                    val out = File("build/reports/home-screenshots/$fileName")
+                    out.parentFile?.mkdirs()
+                    out.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun gridSkeletonBordersUseLineHairlineNotLineSeam() {
+        val light = RaftUiThemeColors.RaftLight
+        val expectedHairlineOnCard = light.lineHairline.compositeOver(light.layerCard)
+        val seamOnCard = light.lineSeam.compositeOver(light.layerCard)
+
+        RaftRobolectricScreenshot.render(RaftAppAppearance.Light, activities, content = {
+            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext),
+            ) {
+                build.raft.app.components.RaftDesignSystemTheme {
+                    ArtifactsHomeSkeleton(
+                        view = ArtifactsHomeView.Grid,
+                        wide = false,
+                        grouped = false,
+                        horizontalPadding = ArtifactsHomeMargin,
+                        animated = false,
+                    )
+                }
+            }
+        }) { activity, bitmap ->
+            val density = activity.resources.displayMetrics.density
+            val borderX = (ArtifactsHomeMargin.value * density + density * 0.5f).toInt()
+            val expectedR = AndroidColor.red(expectedHairlineOnCard.toArgb())
+            val seamR = AndroidColor.red(seamOnCard.toArgb())
+            var foundHairline = false
+            var foundSeam = false
+            for (y in 0 until bitmap.height) {
+                val px = bitmap.getPixel(borderX, y)
+                val r = AndroidColor.red(px)
+                if (abs(r - expectedR) <= 10 && abs(AndroidColor.green(px) - r) <= 6) foundHairline = true
+                if (abs(r - seamR) <= 10 && abs(AndroidColor.green(px) - r) <= 6) foundSeam = true
+            }
+            assertTrue(foundHairline, "grid skeleton tile border must render with lineHairline")
+            assertTrue(!foundSeam, "grid skeleton tile border must not render with darker lineSeam")
+        }
+    }
+
+    private fun assertPixelNear(expected: Color, actualArgb: Int, label: String, maxDelta: Int = 10) {
+        val expectedArgb = expected.toArgb()
+        val dr = abs(AndroidColor.red(expectedArgb) - AndroidColor.red(actualArgb))
+        val dg = abs(AndroidColor.green(expectedArgb) - AndroidColor.green(actualArgb))
+        val db = abs(AndroidColor.blue(expectedArgb) - AndroidColor.blue(actualArgb))
+        assertTrue(
+            dr <= maxDelta && dg <= maxDelta && db <= maxDelta,
+            "$label: expected rgb(${AndroidColor.red(expectedArgb)},${AndroidColor.green(expectedArgb)},${AndroidColor.blue(expectedArgb)}) " +
+                "got rgb(${AndroidColor.red(actualArgb)},${AndroidColor.green(actualArgb)},${AndroidColor.blue(actualArgb)})",
+        )
+    }
+
     private val assistant =
         ArtifactsHomeActor(type = "agent", id = "a-1", name = "ottie", displayName = "Ottie", onBehalfOf = ArtifactsHomeBehalf("me", "Me"))
 
@@ -517,6 +915,7 @@ class ArtifactsHomeUiTest {
     private fun row(
         id: String,
         title: String,
+        kind: ArtifactKind = ArtifactKind.Html,
         author: ArtifactsHomeActor = ArtifactsHomeActor("user", "u-2", "kirby", "Kirby"),
         home: ArtifactHome = ArtifactHome.Conversation("proj-workspace", dm = false),
         news: ArtifactsHomeNews = ArtifactsHomeNews(),
@@ -526,6 +925,7 @@ class ArtifactsHomeUiTest {
         settledShown: Boolean = settled != null,
         following: Boolean? = null,
         fromAnotherServer: Boolean = false,
+        excerpt: ArtifactExcerpt? = null,
     ) =
         ArtifactsHomeRow(
             summary =
@@ -533,7 +933,7 @@ class ArtifactsHomeUiTest {
                     id = id,
                     title = title,
                     description = null,
-                    kind = ArtifactKind.Html,
+                    kind = kind,
                     version = 2,
                     pinned = false,
                     latestVersion = 2,
@@ -544,6 +944,7 @@ class ArtifactsHomeUiTest {
                     settledShown = settledShown,
                     following = following,
                     fromAnotherServer = fromAnotherServer,
+                    excerpt = excerpt,
                 ),
             author = author,
             openedAt = null,
