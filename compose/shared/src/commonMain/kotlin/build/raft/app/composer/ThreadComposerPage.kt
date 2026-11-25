@@ -1323,6 +1323,14 @@ internal fun rememberRaftComposerHasHardwareKeyboard(): Boolean =
 
 internal const val ThreadComposerSendKeyHintTestTag = "composer-send-key-hint"
 
+/**
+ * Whether a composer under it renders the `"⌘Enter to send"` / `"Ctrl+Enter to send"` hint in
+ * [RaftComposerSendKey.ModEnter] mode (web `ComposerSendKeyHintShownContext`, slock #16598).
+ * [SendPromptDialog] sets this to `false` so its Send button stays the sole call to action while
+ * the keyboard shortcut itself continues to send.
+ */
+internal val LocalThreadComposerShowSendKeyHint = compositionLocalOf { true }
+
 internal fun threadComposerImeAction(composerUsesImeAction: Boolean): ImeAction =
     if (composerUsesImeAction) ImeAction.Send else ImeAction.Default
 
@@ -4113,6 +4121,7 @@ internal fun ThreadComposerContentLeaf(
                                 }
                                 val composingForChrome = hasReplyTextForSend || state.pendingAttachments.isNotEmpty()
                                 if (
+                                    LocalThreadComposerShowSendKeyHint.current &&
                                     hardwareKeyboardConnected &&
                                     composerSendKey == RaftComposerSendKey.ModEnter &&
                                     composingForChrome

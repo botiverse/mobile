@@ -29,6 +29,8 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
+import build.raft.app.data.RaftComposerSendKey
+import build.raft.app.data.RaftComposerSendKeyRuntime
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
@@ -444,5 +446,40 @@ class SendPromptSheetUiTest {
             waitForIdle()
             onNode(hasTestTag(SendPromptAgentTriggerTestTag) and hasText("Atlas", substring = true)).assertIsDisplayed()
             onNode(hasSetTextAction() and hasText("Audit logs")).assertIsDisplayed()
+        }
+
+    @Test
+    @Config(qualifiers = "w390dp-h844dp-xxhdpi-keysexposed-qwerty")
+    fun modEnterAccountHidesSendKeyHintInsideSendPromptDialogComposer() =
+        runRobolectricComposeUiTest {
+            val previousSendKey = RaftComposerSendKeyRuntime.sendKey
+            try {
+                RaftComposerSendKeyRuntime.setSendKey(RaftComposerSendKey.ModEnter)
+                val cindy = agent("agent-cindy", "Cindy", role = "admin")
+
+                setContent {
+                    DialogTestShell {
+                        SendPromptDialog(
+                            prompt = "Summarize today's changes",
+                            serverId = "srv-1",
+                            recipients = listOf(cindy),
+                            officialOnboardingAgentId = "agent-cindy",
+                            recentAgentIds = emptyList(),
+                            dmChannelByAgent = emptyMap(),
+                            loadPreview = { SendPromptDmPreviewResult.Loaded(emptyList()) },
+                            onSend = { _, _ -> true },
+                            onClose = {},
+                            requestKey = "req-mod-enter",
+                        )
+                    }
+                }
+
+                waitForIdle()
+                onNode(hasSetTextAction() and hasText("Summarize today's changes")).assertIsDisplayed()
+                onNode(hasTestTag(ThreadComposerSendKeyHintTestTag), useUnmergedTree = true).assertDoesNotExist()
+                onNode(hasContentDescription("Send") and hasAnyAncestor(hasTestTag(SendPromptComposerTestTag))).assertIsEnabled()
+            } finally {
+                RaftComposerSendKeyRuntime.setSendKey(previousSendKey)
+            }
         }
 }

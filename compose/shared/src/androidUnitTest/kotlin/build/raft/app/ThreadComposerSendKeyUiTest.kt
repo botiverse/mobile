@@ -116,17 +116,41 @@ class ThreadComposerSendKeyUiTest {
             assertTrue(events.none { it.first == "send" }, "Touch-only Enter with softEnterSends=false must not send: $events")
         }
 
+    @Test
+    fun suppressedSendKeyHintHidesLabelWhileKeepingModEnterShortcutWorking() =
+        runRobolectricComposeUiTest {
+            val events =
+                showComposer(
+                    composerSendKey = RaftComposerSendKey.ModEnter,
+                    hardwareKeyboardConnected = true,
+                    composerSendKeyEnabled = false,
+                    showSendKeyHint = false,
+                )
+            val editor = onNode(hasSetTextAction())
+            editor.performTextInput("prompt text")
+            waitForIdle()
+
+            onNodeWithTag(ThreadComposerSendKeyHintTestTag, useUnmergedTree = true).assertDoesNotExist()
+            editor.performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.Enter) } }
+            waitForIdle()
+            assertEquals(1, events.count { it.first == "send" }, "Ctrl+Enter must still send when hint is hidden: $events")
+        }
+
     private fun ComposeUiTest.showComposer(
         composerSendKey: RaftComposerSendKey,
         hardwareKeyboardConnected: Boolean,
         composerSendKeyEnabled: Boolean,
+        showSendKeyHint: Boolean = true,
     ): List<Pair<String, String?>> {
         RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
         val events = mutableListOf<Pair<String, String?>>()
         setContent {
             val portal = remember { ThreadComposerSuggestionPortalState() }
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-                CompositionLocalProvider(LocalThreadComposerSuggestionPortal provides portal) {
+                CompositionLocalProvider(
+                    LocalThreadComposerSuggestionPortal provides portal,
+                    LocalThreadComposerShowSendKeyHint provides showSendKeyHint,
+                ) {
                     ThreadComposerContent(
                         surface = ThreadComposerSurface(channelId = "c1"),
                         state = ThreadComposerUiState(instanceId = "send-key-test"),
