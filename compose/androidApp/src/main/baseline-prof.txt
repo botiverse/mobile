@@ -1302,8 +1302,6 @@ HSPLbuild/raft/app/SharedThreadState;-><init>(Lbuild/raft/app/RaftThreadScreenPa
 HSPLbuild/raft/app/SharedThreadStore$$ExternalSyntheticLambda12;->invoke(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore$dispatch$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore$dispatch$5;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
-HSPLbuild/raft/app/SharedThreadStore$launchBackgroundMembersHydration$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
-HSPLbuild/raft/app/SharedThreadStore$launchSecondaryTimelineRefresh$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore$refresh$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore$renderSliceFlow$$inlined$map$1$2;->emit(Ljava/lang/Object;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore$start$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
@@ -1314,7 +1312,6 @@ HSPLbuild/raft/app/SharedThreadStore;->accept(Lbuild/raft/app/SharedThreadIntent
 HSPLbuild/raft/app/SharedThreadStore;->access$loadMembers(Lbuild/raft/app/SharedThreadStore;ZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore;->access$markVisibleRead(Lbuild/raft/app/SharedThreadStore;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore;->access$refresh(Lbuild/raft/app/SharedThreadStore;Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/data/MviStaleToken;ZZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
-HSPLbuild/raft/app/SharedThreadStore;->access$refreshSecondaryTimelineData(Lbuild/raft/app/SharedThreadStore;Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/data/MviStaleToken;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore;->access$start(Lbuild/raft/app/SharedThreadStore;Lbuild/raft/app/RaftThreadScreenPayload;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore;->captureThreadRepliesPageIdentity(Lbuild/raft/app/RaftThreadScreenPayload;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore;->dispatch(Lbuild/raft/app/SharedThreadIntent;)V
@@ -1329,8 +1326,6 @@ HSPLbuild/raft/app/SharedThreadStore;->refresh$default(Lbuild/raft/app/SharedThr
 HSPLbuild/raft/app/SharedThreadStore;->refresh$lambda$24(Lbuild/raft/app/SharedThreadStore;Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/RaftThreadScreenPayload;)Lbuild/raft/app/RaftThreadScreenPayload;
 HSPLbuild/raft/app/SharedThreadStore;->refresh$lambda$29$commitWithAcceptedReplies(Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/SharedThreadState;ZLbuild/raft/app/data/DataResult;Lbuild/raft/app/SharedThreadStore;Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/RaftThreadScreenPayload;Ljava/util/Map;)V
 HSPLbuild/raft/app/SharedThreadStore;->refresh(Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/data/MviStaleToken;ZZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
-HSPLbuild/raft/app/SharedThreadStore;->refreshSecondaryTimelineData$commitSecondary(Lkotlin/jvm/internal/Ref$BooleanRef;Lbuild/raft/app/SharedThreadStore;Lbuild/raft/app/data/MviStaleToken;Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/RaftThreadScreenPayload;Ljava/util/Map;)V
-HSPLbuild/raft/app/SharedThreadStore;->refreshSecondaryTimelineData(Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/data/MviStaleToken;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadStore;->routeStillCurrent(Lbuild/raft/app/RaftThreadScreenPayload;Ljava/lang/String;Ljava/lang/String;Lbuild/raft/app/RaftThreadScreenPayload;)Z
 HSPLbuild/raft/app/SharedThreadStore;->start(Lbuild/raft/app/RaftThreadScreenPayload;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadRealtimePayloadKt;->access$isUsableCachedPayloadForRoute(Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/RaftThreadScreenPayload;)Z
@@ -1610,6 +1605,12 @@ HSPLbuild/raft/app/ThreadPageHeaderKt$ThreadPageHeader$4;->invoke(Lcom/tencent/k
 HSPLbuild/raft/app/ThreadPageHeaderKt$ThreadPageHeader$4;->invoke(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/ThreadReactionsKt$ThreadReactionAtlasProvider$2;->invoke(Landroidx/compose/runtime/Composer;I)V
 HSPLbuild/raft/app/ThreadReactionsKt$ThreadReactionAtlasProvider$2;->invoke(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+HSPLbuild/raft/app/ThreadSecondaryHydration$launchBackgroundMembersHydration$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
+HSPLbuild/raft/app/ThreadSecondaryHydration$launchSecondaryTimelineRefresh$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
+HSPLbuild/raft/app/ThreadSecondaryHydration;->access$refreshSecondaryTimelineData(Lbuild/raft/app/ThreadSecondaryHydration;Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/data/MviStaleToken;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+HSPLbuild/raft/app/ThreadSecondaryHydration;->loadMembers(ZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+HSPLbuild/raft/app/ThreadSecondaryHydration;->refreshSecondaryTimelineData$commitSecondary(Lkotlin/jvm/internal/Ref$BooleanRef;Lbuild/raft/app/ThreadSecondaryHydration;Lbuild/raft/app/data/MviStaleToken;Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/RaftThreadScreenPayload;Ljava/util/Map;)V
+HSPLbuild/raft/app/ThreadSecondaryHydration;->refreshSecondaryTimelineData(Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/data/MviStaleToken;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/ThreadViewportScrollKt$scrollThreadItemToFocusedViewport$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/ThreadMessageGesturesKt$threadMessageLongPressActions$5$1$1;->invoke(Lcom/tencent/kuikly/compose/ui/input/pointer/AwaitPointerEventScope;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/ThreadMessageGesturesKt$threadMessageLongPressActions$5$1$1;->invoke(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
