@@ -1,7 +1,11 @@
 package build.raft.app
 
+import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN
+import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ThreadId
 import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
 import build.raft.app.nav.RaftPageStack
 import kotlinx.serialization.json.JsonObject
@@ -270,6 +274,98 @@ class RaftShellNavigationIntakeTest {
         assertEquals(3, host.logs.count { it.startsWith("window_navigation_open_skipped reason=already_top_page") })
         assertEquals(
             listOf("msg-2" to "system_notification", "msg-3" to "system_notification"),
+            host.focusedTopMessages.map { (req, source) -> req.anchorMessageId to source },
+        )
+    }
+
+    @Test
+    fun productionStandaloneDmLaunchPayloadRoundtripsIntoTopPageDedupAndLogsMissDiagnostics() = intakeTest {
+        val dmId = "af67d772-4334-4966-8a70-3b661ed18567"
+        val storeScope = RaftShellStoreScope.create(shellInstanceId = "legacy-app-shell", initialServerId = SERVER)
+        host.directory =
+            ShellNavigationIntakeFixtures.directoryWith(
+                SharedConversationDirectoryProjection(
+                    serverId = SERVER,
+                    canonicalChannelId = dmId,
+                    aliases = setOf(dmId),
+                    conversationKind = ConversationKind.DirectMessage,
+                    surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                    channelKind = RaftThreadSurfaceKind.DirectMessage,
+                    title = "Jony",
+                ),
+            )
+        var simulatedHostTopPage: RaftCmpPageArgs? = RaftCmpPageArgs(RAFT_APP_SHELL_PAGE, JsonObject(emptyMap()))
+        host.topPageCheckProvider = {
+            val resolved =
+                raftResolveNavigationTopPageRoute(
+                    wideSplitPaneActive = false,
+                    hostTopPage = simulatedHostTopPage,
+                    fallbackVisibleRoute = { null },
+                )
+            RaftNavigationTopPageCheck(
+                route = resolved,
+                diagnostics = "wideSplitPane=false hostTopPage=${simulatedHostTopPage?.pageName ?: "null"}",
+            )
+        }
+        host.onPerform = { action ->
+            if (action is WindowNavigationAction.OpenConversation) {
+                val launchPayload =
+                    buildStandaloneConversationThreadLaunchPayload(
+                        conversation = action.request.conversationIdentity,
+                        timeContext = null,
+                        anchorMessageId = action.request.anchorMessageId,
+                    ) ?: error("expected valid standalone DM launch payload")
+                val wirePageDataJson =
+                    threadLaunchPageData(launchPayload)
+                        .withRaftOpenAnimation(true)
+                        .withRaftShellStoreScope(storeScope)
+                        .toJsonObject()
+                        .toRaftJsonString()
+                // Exact roundtrip through the iOS/host JSON bridge (`RaftCmpPageArgs.fromJsonText`).
+                simulatedHostTopPage = RaftCmpPageArgs.fromJsonText(THREAD_PAGE, wirePageDataJson)
+            }
+        }
+
+        // First push (msg1) sees AppShell on top -> logs structured miss diagnostics and pushes DM.
+        assertTrue(
+            intake.enqueue(
+                notificationIntent(
+                    channelId = dmId,
+                    messageId = "19436486-1307-4539-975c-dbfd98aeec7b",
+                    kind = ConversationKind.DirectMessage,
+                )
+            )
+        )
+        advanceUntilIdle()
+        assertEquals(1, host.performed.size, "first push opens DM")
+        assertTrue(
+            host.logs.any {
+                it.startsWith("window_navigation_top_page_miss source=system_notification covered=false ") &&
+                    "targetInstance=dm:$dmId" in it &&
+                    "hostTopPage=$RAFT_APP_SHELL_PAGE" in it
+            },
+            "miss diagnostic must record target and host top page: ${host.logs}",
+        )
+
+        // Second push (msg2) after backgrounding sees the real wire-serialized DM payload on top ->
+        // deduplicates via already_top_page and focuses msg2 in place without pushing a second page.
+        assertTrue(
+            intake.enqueue(
+                notificationIntent(
+                    channelId = dmId,
+                    messageId = "3798ef91-a699-4bf7-a009-21173deb0083",
+                    kind = ConversationKind.DirectMessage,
+                )
+            )
+        )
+        advanceUntilIdle()
+        assertEquals(1, host.performed.size, "second push must not push a duplicate DM page")
+        assertEquals(
+            1,
+            host.logs.count { it == "window_navigation_open_skipped reason=already_top_page source=system_notification threadId=$dmId" },
+        )
+        assertEquals(
+            listOf("3798ef91-a699-4bf7-a009-21173deb0083" to "system_notification"),
             host.focusedTopMessages.map { (req, source) -> req.anchorMessageId to source },
         )
     }
@@ -550,6 +646,7 @@ internal class FakeShellNavigationIntakeHost : RaftShellNavigationIntakeHost {
     var topPage: ThreadRouteIdentity? = null
     /** Live top-page provider (defaults to [topPage]); lets tests wire an authoritative host stack. */
     var topPageProvider: () -> ThreadRouteIdentity? = { topPage }
+    var topPageCheckProvider: (() -> RaftNavigationTopPageCheck)? = null
     /** The window's task surfaces; null: none registered. */
     var cover: RaftIncomingNavigationSignal? = null
     val performed = mutableListOf<WindowNavigationAction>()
@@ -606,7 +703,10 @@ internal class FakeShellNavigationIntakeHost : RaftShellNavigationIntakeHost {
             conversationDirectory = directory,
         )
 
-    override fun topPageRoute(): ThreadRouteIdentity? = topPageProvider()
+    override fun topPageRoute(): ThreadRouteIdentity? = topPageCheckProvider?.invoke()?.route ?: topPageProvider()
+
+    override fun checkTopPage(): RaftNavigationTopPageCheck =
+        topPageCheckProvider?.invoke() ?: RaftNavigationTopPageCheck(route = topPageProvider())
 
     override fun focusTopConversationMessage(request: HomeMessageOpenRequest, source: String) {
         focusedTopMessages += request to source

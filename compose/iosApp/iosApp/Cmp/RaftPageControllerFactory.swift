@@ -154,13 +154,7 @@ import shared
     }
 
     fileprivate static func jsonText(_ object: [AnyHashable: Any]) -> String {
-        guard JSONSerialization.isValidJSONObject(object),
-              let data = try? JSONSerialization.data(withJSONObject: object),
-              let text = String(data: data, encoding: .utf8)
-        else {
-            return "{}"
-        }
-        return text
+        RaftIosTopPageResolver.jsonText(object)
     }
 }
 
@@ -190,19 +184,10 @@ private final class RaftCmpPageNavigator: NSObject, RaftCmpIosNavigator {
     }
 
     func currentTopPage() -> RaftCmpIosTopPage? {
-        guard Thread.isMainThread else { return nil }
-        guard let nav = controller?.navigationController, let top = nav.topViewController else {
-            return nil
+        RaftIosTopPageResolver.resolveTopPage(from: controller) { top in
+            guard let page = top as? RaftPageViewController else { return nil }
+            return (page.raftPageName, page.raftPageData)
         }
-        guard let page = top as? RaftPageViewController else {
-            // A non-Raft controller sits on top of the stack: report a non-thread top page so
-            // Kotlin does not fall back to a covered conversation's visibleRouteIdentity.
-            return RaftCmpIosTopPage(pageName: "", pageDataJson: "{}")
-        }
-        return RaftCmpIosTopPage(
-            pageName: page.raftPageName,
-            pageDataJson: RaftPageControllerFactory.jsonText(page.raftPageData)
-        )
     }
 
     private func onMain(_ work: @escaping () -> Void) {

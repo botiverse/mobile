@@ -310,12 +310,25 @@ internal fun AppShellExternalLinkNavigationEffects(
             desktopModeEnabled = desktopModeOnLargeScreen,
             paneState = adaptivePane,
         )
-    val latestNavigationTopPageRoute by rememberUpdatedState {
-        raftResolveNavigationTopPageRoute(
-            wideSplitPaneActive = wideSplitPaneActive,
-            hostTopPage = pager.host?.navigator?.topPage(),
-            fallbackVisibleRoute = foregroundBannerStore::visibleRouteIdentity,
-        )
+    val latestNavigationTopPageCheck by rememberUpdatedState {
+        val hostNavigator = pager.host?.navigator
+        val hostTopPage = hostNavigator?.topPage()
+        val fallbackRoute = foregroundBannerStore.visibleRouteIdentity()
+        val resolved =
+            raftResolveNavigationTopPageRoute(
+                wideSplitPaneActive = wideSplitPaneActive,
+                hostTopPage = hostTopPage,
+                fallbackVisibleRoute = { fallbackRoute },
+            )
+        val hasStringPayload =
+            (hostTopPage?.pageData?.get("payload") as? kotlinx.serialization.json.JsonPrimitive)?.isString == true
+        val diagnostics =
+            "wideSplitPane=$wideSplitPaneActive desktopMode=$desktopModeOnLargeScreen " +
+                "paneLayout=${adaptivePane.layout.name} hostNull=${pager.host == null} " +
+                "hostTopPage=${hostTopPage?.pageName ?: "null"} " +
+                "hostTopHasPayload=$hasStringPayload hostTopKeys=${hostTopPage?.pageData?.size ?: 0} " +
+                "fallbackInstance=${fallbackRoute?.instanceKey.orEmpty()}"
+        RaftNavigationTopPageCheck(route = resolved, diagnostics = diagnostics)
     }
     val latestFocusTopConversationMessage by rememberUpdatedState<(HomeMessageOpenRequest, String) -> Unit> { request, source ->
         val messageId = request.anchorMessageId?.trim()?.takeIf(String::isNotBlank) ?: return@rememberUpdatedState
@@ -357,7 +370,9 @@ internal fun AppShellExternalLinkNavigationEffects(
 
                 override fun readiness(): WindowNavigationReadiness? = latestNavigationReadiness()
 
-                override fun topPageRoute(): ThreadRouteIdentity? = latestNavigationTopPageRoute()
+                override fun topPageRoute(): ThreadRouteIdentity? = latestNavigationTopPageCheck().route
+
+                override fun checkTopPage(): RaftNavigationTopPageCheck = latestNavigationTopPageCheck()
 
                 override fun focusTopConversationMessage(request: HomeMessageOpenRequest, source: String) =
                     latestFocusTopConversationMessage(request, source)

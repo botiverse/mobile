@@ -55,6 +55,12 @@ internal interface RaftShellNavigationIntakeHost {
     fun topPageRoute(): ThreadRouteIdentity?
 
     /**
+     * Single-shot top-page lookup with optional structured diagnostics for miss logging.
+     * Defaults to [topPageRoute] so existing test hosts need no changes.
+     */
+    fun checkTopPage(): RaftNavigationTopPageCheck = RaftNavigationTopPageCheck(route = topPageRoute())
+
+    /**
      * Focuses [request.anchorMessageId] in-place inside the conversation already on top of the
      * stack when an incoming open was skipped as `already_top_page`.
      */
@@ -235,10 +241,16 @@ internal class RaftShellNavigationIntake(
             val covered =
                 (action is WindowNavigationAction.OpenConversation || action is WindowNavigationAction.Reject) &&
                     host.closeIncomingNavigationCover()
+            val topPageCheck =
+                if (action is WindowNavigationAction.OpenConversation && !covered) {
+                    host.checkTopPage()
+                } else {
+                    null
+                }
             if (
                 action is WindowNavigationAction.OpenConversation &&
                 !covered &&
-                raftWindowNavigationTargetIsTopPage(action.request, host.topPageRoute())
+                raftWindowNavigationTargetIsTopPage(action.request, topPageCheck?.route)
             ) {
                 host.log(
                     "window_navigation_open_skipped reason=already_top_page source=${action.intent.source} " +
@@ -248,6 +260,17 @@ internal class RaftShellNavigationIntake(
                     host.focusTopConversationMessage(action.request, action.intent.source)
                 }
                 continue
+            }
+            if (action is WindowNavigationAction.OpenConversation) {
+                val targetRoute = action.request.conversationIdentity.resolveThreadRouteIdentity()
+                val detail = topPageCheck?.diagnostics?.takeIf(String::isNotBlank)?.let { " $it" }.orEmpty()
+                host.log(
+                    "window_navigation_top_page_miss source=${action.intent.source} covered=$covered " +
+                        "targetInstance=${targetRoute.instanceKey} " +
+                        "targetTimeline=${targetRoute.timelineChannelId.orEmpty()} " +
+                        "topInstance=${topPageCheck?.route?.instanceKey.orEmpty()} " +
+                        "topTimeline=${topPageCheck?.route?.timelineChannelId.orEmpty()}$detail"
+                )
             }
             host.perform(action)
         }
@@ -290,6 +313,12 @@ internal fun raftTopPageThreadRouteOrNull(topPage: RaftCmpPageArgs): ThreadRoute
     val instanceId = (topPage.pageData["instanceId"] as? JsonPrimitive)?.takeIf { it.isString }?.content.orEmpty()
     return parseThreadLaunchPayload(payloadText, instanceId)?.resolveThreadRouteIdentity()
 }
+
+/** Result of [RaftShellNavigationIntakeHost.checkTopPage], carrying both the resolved route and miss diagnostics. */
+internal data class RaftNavigationTopPageCheck(
+    val route: ThreadRouteIdentity?,
+    val diagnostics: String = "",
+)
 
 /**
  * Resolves the single-pane top conversation route for [RaftShellNavigationIntake]:
