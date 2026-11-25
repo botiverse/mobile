@@ -3238,6 +3238,7 @@ private fun List<SettingsComputerAgentSnapshot>.enrichWithMembers(
         agentScopes = agentScopes,
         osRelease = osRelease,
         hostProvider = hostProvider,
+        deviceClass = deviceClass,
         installerRepairHint = installerRepairHint,
         upgradeScopeRefused = upgradeScopeRefused,
         runtimeVersions = runtimeVersions,

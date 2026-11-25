@@ -371,7 +371,7 @@ private fun DelegatedReceiptCard(
                     size = RaftButtonSize.Md,
                     modifier = Modifier.testTag(DelegatedReceiptOpenTag),
                     leadingIcon = {
-                        RaftLucideIcon(name = RaftLucideIconName.MessageSquare, color = raftArgbHex(colors.foreground), modifier = Modifier.size(16.dp))
+                        RaftLucideIcon(name = RaftLucideIconName.Message, color = raftArgbHex(colors.foreground), modifier = Modifier.size(16.dp))
                     },
                 )
                 if (retractable) {

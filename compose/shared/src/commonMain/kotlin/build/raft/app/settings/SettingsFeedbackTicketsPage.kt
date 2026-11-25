@@ -456,7 +456,7 @@ internal fun SettingsFeedbackTicketsScreen(
     SettingsDetailShell(
         title = ticket?.title?.ifBlank { null } ?: stringResource(Res.string.settings_feedback_title),
         subtitle = "",
-        iconName = if (detail == null) RaftLucideIconName.MessageSquarePlus else null,
+        iconName = if (detail == null) RaftLucideIconName.Feedback else null,
         onBack = actions.onBack,
         titleContent = if (detail != null && ticket != null) {
             { FeedbackTicketHeadTitle(ticket) }
@@ -1127,9 +1127,9 @@ private fun FeedbackDateDivider(epochMillis: Long, timeContext: RaftTimeContext?
     val today = timeContext?.resolvedTodayEpochDay() ?: return
     val label = activityDayLabel(feedbackLocalDay(epochMillis, timeContext), today).localized()
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f).size(height = 1.dp, width = 0.dp).background(RaftTheme.colors.lineSeam))
+        Box(Modifier.weight(1f).size(height = 1.dp, width = 0.dp).background(RaftTheme.colors.lineHairline))
         RaftText(label, modifier = Modifier.padding(horizontal = 8.dp), style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
-        Box(Modifier.weight(1f).size(height = 1.dp, width = 0.dp).background(RaftTheme.colors.lineSeam))
+        Box(Modifier.weight(1f).size(height = 1.dp, width = 0.dp).background(RaftTheme.colors.lineHairline))
     }
 }
 

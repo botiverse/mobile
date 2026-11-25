@@ -777,7 +777,7 @@ class RaftAppShellTest {
         assertEquals("Parent message preview", resolved.threadContext)
         assertEquals("Hello from another route", resolved.body)
         assertEquals(RaftForegroundMessageBannerIconKind.Channel, resolved.iconKind)
-        assertEquals(RaftLucideIconName.MessageSquare, resolved.iconName)
+        assertEquals(RaftLucideIconName.Thread, resolved.iconName)
         assertEquals(ConversationKind.Thread, resolved.openRequest.conversationIdentity.kind)
         assertEquals("parent-channel", resolved.openRequest.conversationIdentity.thread?.parentChannelId?.value)
         assertEquals("parent-message", resolved.openRequest.conversationIdentity.thread?.parentMessageId?.value)

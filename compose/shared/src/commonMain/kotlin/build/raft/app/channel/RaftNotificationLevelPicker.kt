@@ -264,6 +264,26 @@ internal fun rememberRaftNotificationLevelMenuLabel(target: RaftNotificationLeve
 }
 
 /**
+ * Web `levelIcon` (`NotificationLevelMenu.tsx:170-174`): All -> BellRing, Mentions -> Bell,
+ * None / muted -> BellMinus (BellOff stays reserved for Activity mute).
+ */
+internal fun RaftNotificationLevel.notificationLevelIconName(): RaftLucideIconName =
+    when (this) {
+        RaftNotificationLevel.All -> RaftLucideIconName.BellRing
+        RaftNotificationLevel.Mentions -> RaftLucideIconName.Bell
+        RaftNotificationLevel.None -> RaftLucideIconName.BellMinus
+    }
+
+/** The icon for [target]'s effective notification level, from the process level store. */
+@Composable
+internal fun rememberRaftNotificationLevelIcon(target: RaftNotificationLevelTarget?): RaftLucideIconName {
+    if (target == null) return RaftLucideIconName.Bell
+    val all by RaftNotificationLevelStore.state.collectAsState()
+    val levels = all[target.serverId] ?: RaftServerNotificationLevels(target.serverId)
+    return target.effective(levels).notificationLevelIconName()
+}
+
+/**
  * The Notifications picker of a channel (slock #12231, as in Slack): All new messages, Only what
  * involves me, Mute ([raftNotificationChoices]); the selected one is Mute while muted, else the
  * level in effect, inherited or chosen. Levels write through `PUT notification-levels` (the store

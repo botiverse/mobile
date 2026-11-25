@@ -251,8 +251,8 @@ private fun ExcerptBlock(block: ArtifactExcerptBlock, first: Boolean, base: Text
                 base,
             )
         is ArtifactExcerptBlock.Images -> ExcerptLabel(RaftLucideIconName.Image, stringResource(Res.string.artifacts_card_excerpt_images, block.count), first, base)
-        // web draws lucide `Workflow`; the app's icon set has no Workflow glyph, GitBranch reads the same at 12dp.
-        ArtifactExcerptBlock.Diagram -> ExcerptLabel(RaftLucideIconName.GitBranch, stringResource(Res.string.artifacts_card_excerpt_diagram), first, base)
+        // web draws lucide `Workflow`.
+        ArtifactExcerptBlock.Diagram -> ExcerptLabel(RaftLucideIconName.Workflow, stringResource(Res.string.artifacts_card_excerpt_diagram), first, base)
         ArtifactExcerptBlock.Rule -> Box(Modifier.blockGap(first).fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineHairline))
     }
 }

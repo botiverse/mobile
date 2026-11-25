@@ -299,14 +299,14 @@ internal fun appShellSettingsHomePayload(
                 key = SettingsDestinationImBridges,
                 title = stringResource(Res.string.settings_im_bridges_title),
                 subtitle = stringResource(Res.string.settings_im_bridges_subtitle),
-                iconName = RaftLucideIconName.Network,
+                iconName = RaftLucideIconName.ArrowLeftRight,
                 section = workspaceSection
             ),
             SettingsHomePageLinkPayload(
                 key = SettingsDestinationConnectedApps,
                 title = stringResource(Res.string.settings_connected_apps_title),
                 subtitle = stringResource(Res.string.settings_connected_apps_subtitle),
-                iconName = RaftLucideIconName.Link2,
+                iconName = RaftLucideIconName.AppWindow,
                 section = workspaceSection
             ),
             SettingsHomePageLinkPayload(
@@ -343,7 +343,7 @@ internal fun appShellSettingsHomePayload(
                 key = SettingsDestinationHandsFeedback,
                 title = stringResource(Res.string.settings_feedback_title),
                 subtitle = stringResource(Res.string.settings_feedback_subtitle),
-                iconName = RaftLucideIconName.MessageSquarePlus,
+                iconName = RaftLucideIconName.Feedback,
                 section = aboutSection
             ),
             SettingsHomePageLinkPayload(

@@ -103,7 +103,34 @@ internal data class RaftComputerRowModel(
     val loginSteps: List<ComputerLoginStep> = emptyList(),
     /** True when all Computers of this machine were revoked (server `revocation != null && !isComputer`, slock #16468). */
     val revoked: Boolean = false,
+    /** Server `hostProvider` ("hetzner", "aws", ...), for Cloud device icon parity (web `ComputerDeviceIcon`). */
+    val hostProvider: String? = null,
+    /** Server `deviceClass` ("laptop", "server", "desktop", ...), for device icon parity (web `ComputerDeviceIcon`). */
+    val deviceClass: String? = null,
 )
+
+/**
+ * Web `computerDeviceShape` + `ComputerDeviceIcon.tsx:6-11`:
+ * recognized cloud `hostProvider` -> Cloud, `deviceClass == "laptop"` -> Laptop,
+ * `deviceClass == "server"` (or bare daemon when `deviceClass` is absent) -> Server,
+ * otherwise (desktop / monitor / unknown) -> Monitor.
+ */
+internal fun raftComputerDeviceIconName(
+    kind: RaftComputerKind,
+    hostProvider: String?,
+    deviceClass: String?,
+): RaftLucideIconName {
+    val provider = hostProvider?.trim()?.lowercase()
+    if (provider != null && provider in RAFT_HOST_PROVIDER_LABELS) {
+        return RaftLucideIconName.Cloud
+    }
+    return when (deviceClass?.trim()?.lowercase()) {
+        "laptop" -> RaftLucideIconName.Laptop
+        "server" -> RaftLucideIconName.Server
+        "desktop", "monitor" -> RaftLucideIconName.Monitor
+        else -> if (kind == RaftComputerKind.Daemon) RaftLucideIconName.Server else RaftLucideIconName.Monitor
+    }
+}
 
 /**
  * A disk or memory on a card (web `RackResource`): "62% used" over a bar. A Progress, not a Meter
@@ -348,6 +375,8 @@ internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel 
         updating = updating,
         loginSteps = loginSteps,
         revoked = !isComputer && revocation != null,
+        hostProvider = hostProvider,
+        deviceClass = deviceClass,
     )
 }
 

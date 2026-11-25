@@ -1942,6 +1942,8 @@ data class SettingsComputerSnapshot(
      * `HOST_PROVIDER_LABELS` id ("hetzner", "aws"); null when none (a personal computer) or an older server.
      */
     val hostProvider: String? = null,
+    /** Server `deviceClass` ("laptop", "server", "desktop", ...); null when unknown or an older server. */
+    val deviceClass: String? = null,
     /**
      * Server `installerRepairHint.reason` (`unrecovered_operation`): advisory, the installer state
      * needs a repair run on the machine; the install command is recommended beside Upgrade.

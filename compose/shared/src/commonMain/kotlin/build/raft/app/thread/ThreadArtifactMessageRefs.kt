@@ -703,7 +703,7 @@ internal fun ArtifactMessageCard(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        RaftLucideIcon(RaftLucideIconName.MessageSquare, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundHint))
+                        RaftLucideIcon(RaftLucideIconName.Comment, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundHint))
                         RaftText(summary.commentCount.toString(), style = typography.monoMeta, color = colors.foregroundHint, maxLines = 1)
                     }
                 }

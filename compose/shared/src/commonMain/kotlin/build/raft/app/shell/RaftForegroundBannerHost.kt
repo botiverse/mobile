@@ -498,7 +498,7 @@ private fun RaftForegroundBannerThreadContextRow(threadContext: String) {
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         RaftLucideIcon(
-            RaftLucideIconName.MessageSquare,
+            RaftLucideIconName.Thread,
             modifier = Modifier.size(ForegroundBannerReplyGlyphSize),
             color = RaftColor.TextMutedGrayArgb
         )
@@ -894,8 +894,8 @@ private fun SharedConversationDirectoryProjection?.resolveForegroundBannerIconNa
     when {
         this?.surfaceKind == RaftThreadSurfaceKind.DirectMessage -> null
         conversation.kind == ConversationKind.DirectMessage -> null
-        this?.surfaceKind == RaftThreadSurfaceKind.ReplyThread -> RaftLucideIconName.MessageSquare
-        conversation.kind == ConversationKind.Thread -> RaftLucideIconName.MessageSquare
+        this?.surfaceKind == RaftThreadSurfaceKind.ReplyThread -> RaftLucideIconName.Thread
+        conversation.kind == ConversationKind.Thread -> RaftLucideIconName.Thread
         else -> this?.channelKind.threadChannelHeaderIcon()
     }
 

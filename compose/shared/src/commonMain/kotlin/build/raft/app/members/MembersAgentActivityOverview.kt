@@ -1002,7 +1002,7 @@ private fun MembersAgentActivityLastReply(
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 RaftLucideIcon(
-                    RaftLucideIconName.MessageSquare,
+                    RaftLucideIconName.Message,
                     modifier = Modifier.size(14.dp),
                     color = raftArgbHex(colors.foregroundHint),
                 )
@@ -1103,7 +1103,7 @@ private fun MembersAgentActivitySentMessageCard(
     RaftCard(modifier = Modifier.fillMaxWidth()) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                RaftLucideIcon(RaftLucideIconName.MessageSquare, modifier = Modifier.size(14.dp), color = raftArgbHex(colors.foregroundHint))
+                RaftLucideIcon(RaftLucideIconName.Message, modifier = Modifier.size(14.dp), color = raftArgbHex(colors.foregroundHint))
                 RaftText(
                     text = loaded?.createdAtEpochMillis?.let { membersActivityOverviewClock(it, timeContext) }
                         ?: stringResource(Res.string.member_activity_overview_reply_label),

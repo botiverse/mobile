@@ -168,7 +168,7 @@ internal fun ThreadActionCardView(
                         RaftButton(
                             text = stringResource(Res.string.thread_action_card_open_on_web),
                             onClick = onOpenInWeb,
-                            trailingIcon = { RaftSlotIcon(RaftLucideIconName.ExternalLink) },
+                            trailingIcon = { RaftSlotIcon(RaftLucideIconName.ArrowUpRight) },
                         )
                     } else {
                         RaftButton(
@@ -213,7 +213,7 @@ internal fun ThreadActionCard.actionCardIconName(): RaftLucideIconName? =
         "integration:install_marketplace_app" -> RaftLucideIconName.Package
         "integration:recover_app_owner" -> RaftLucideIconName.ShieldAlert
         "integration:connect_mcp" -> RaftLucideIconName.Plug
-        "feedback:submit", "question:ask" -> RaftLucideIconName.MessageSquare
+        "feedback:submit", "question:ask" -> RaftLucideIconName.Message
         "plan:upgrade", build.raft.app.data.SeatsAddActionCardType -> RaftLucideIconName.CreditCard
         else -> null
     }

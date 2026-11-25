@@ -774,7 +774,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                     rows =
                         listOf(
                             RaftSharedSettingsRow("shareLogs", RaftLucideIconName.Share, copy.shareEnvironment, copy.logsViaFeedbackHint, status = if (diagnosticsExportAvailable) copy.export else copy.disabled, enabled = diagnosticsExportAvailable),
-                            RaftSharedSettingsRow("feedback", RaftLucideIconName.MessageSquarePlus, copy.sendDiagnostics, copy.sendDiagnosticsDetail, status = copy.send, enabled = true)
+                            RaftSharedSettingsRow("feedback", RaftLucideIconName.Feedback, copy.sendDiagnostics, copy.sendDiagnosticsDetail, status = copy.send, enabled = true)
                         )
                 )
             )

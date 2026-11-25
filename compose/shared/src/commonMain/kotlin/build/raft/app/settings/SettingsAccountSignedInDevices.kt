@@ -145,7 +145,7 @@ internal fun SettingsSignedInDevicesSection(ui: SettingsSignedInDevicesUi) {
     val state = ui.state
     if (!state.visible) return
     val list = state.list
-    SettingsFormSection(iconName = RaftLucideIconName.Smartphone, title = stringResource(Res.string.settings_signed_in_devices_title)) {
+    SettingsFormSection(iconName = RaftLucideIconName.MonitorSmartphone, title = stringResource(Res.string.settings_signed_in_devices_title)) {
         Column(
             Modifier.fillMaxWidth().testTag(SettingsSignedInDevicesSectionTag).settingsSearchAnchor("signed-in-devices"),
             verticalArrangement = Arrangement.spacedBy(12.dp)
