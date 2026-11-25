@@ -6,10 +6,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,6 +24,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -765,17 +769,15 @@ private fun ArtifactsHomeList(
             val shownUnfollowedIds = if (state.query.relevant) state.unfollowedIds else emptySet()
             val currentCanonicalId = currentArtifactId?.let(::artifactCanonicalId)
             val isGrid = view == ArtifactsHomeView.Grid
-            BoxWithConstraints(Modifier.fillMaxSize()) {
+            BoxWithConstraints(
+                Modifier
+                    .fillMaxSize()
+                    .then(if (isGrid || wide) Modifier.raftSafeAreaHorizontalPadding() else Modifier),
+            ) {
                 val containerWidthDp = maxWidth.value
                 val wideGrid = containerWidthDp >= ArtifactsHomeWideGridMinWidthDp
                 val twoColList = containerWidthDp >= ArtifactsHomeTwoColListMinWidthDp
                 val trailingListBadges = containerWidthDp >= ArtifactsHomeTrailingBadgesMinWidthDp
-                val columns =
-                    if (isGrid) {
-                        artifactsHomeGridColumnsForWidth(containerWidthDp)
-                    } else {
-                        if (twoColList) GridCells.Fixed(2) else GridCells.Fixed(1)
-                    }
                 val horizontalGap =
                     when {
                         isGrid && wideGrid -> 12.dp
@@ -788,6 +790,18 @@ private fun ArtifactsHomeList(
                         isGrid && wideGrid -> 14.dp
                         isGrid -> 8.dp
                         else -> 2.dp
+                    }
+                val gridColumnCount =
+                    if (isGrid) {
+                        artifactsHomeGridColumnCount(containerWidthDp, horizontalGapDp = horizontalGap.value)
+                    } else {
+                        1
+                    }
+                val columns =
+                    if (isGrid) {
+                        GridCells.Fixed(gridColumnCount)
+                    } else {
+                        if (twoColList) GridCells.Fixed(2) else GridCells.Fixed(1)
                     }
                 val contentPadding =
                     if (isGrid) {
@@ -803,7 +817,6 @@ private fun ArtifactsHomeList(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .then(if (isGrid || wide) Modifier.raftSafeAreaHorizontalPadding() else Modifier)
                             .then(if (!grouped.searching) Modifier.testTag(ArtifactsHomeTags.Groups) else Modifier),
                     contentPadding = contentPadding,
                     horizontalArrangement = Arrangement.spacedBy(horizontalGap),
@@ -825,34 +838,68 @@ private fun ArtifactsHomeList(
                     }
 
                     fun addSectionItems(prefix: String, sectionRows: List<ArtifactsHomeRow>) {
-                        items(sectionRows, key = { row -> "$prefix:${row.summary.id}" }) { row ->
-                            val unfollowed = row.summary.id in shownUnfollowedIds && row.summary.following == false
-                            val dimmed = unfollowed || isArtifactDimmed(row, grouped.status, grouped.settledEnabled)
-                            val current = currentCanonicalId != null && artifactCanonicalId(row.summary.id) == currentCanonicalId
-                            val settling = row.summary.id in state.settlingIds
-                            val followingPending = row.summary.id in state.followingIds
-                            val copyAction = onCopyLink?.let { cb -> { cb(row) } }
-                            val followAction: (Boolean) -> Unit = { next -> onIntent(ArtifactsHomeIntent.SetFollowing(row.summary.id, next)) }
-                            val settleAction: (Boolean) -> Unit = { next -> onIntent(ArtifactsHomeIntent.SetSettled(row.summary.id, next)) }
-                            if (isGrid) {
-                                ArtifactsHomeTile(
-                                    row = row,
-                                    readerId = readerId,
-                                    serverName = serverName,
-                                    byOpened = state.rowsByOpened,
-                                    dimmed = dimmed,
-                                    settledEnabled = grouped.settledEnabled,
-                                    settling = settling,
-                                    onOpen = { onOpen(row) },
-                                    onCopyLink = copyAction,
-                                    onSetSettled = settleAction,
-                                    current = current,
-                                    unfollowed = unfollowed,
-                                    followingPending = followingPending,
-                                    onSetFollowing = followAction,
-                                    cover = cover,
-                                )
-                            } else {
+                        if (isGrid) {
+                            // LazyVerticalGrid never stretches sibling heights across a row; chunk each visual row into
+                            // an IntrinsicSize.Max Row so every tile in the row matches the tallest card's height and
+                            // pins its author/home footer flush to the bottom (matching web CSS Grid `h-full` + `mt-auto`).
+                            val chunkedRows = sectionRows.chunked(gridColumnCount)
+                            items(
+                                items = chunkedRows,
+                                key = { rowItems -> "$prefix:row:${rowItems.joinToString(",") { it.summary.id }}" },
+                                span = { GridItemSpan(maxLineSpan) },
+                            ) { rowItems ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
+                                    horizontalArrangement = Arrangement.spacedBy(horizontalGap),
+                                ) {
+                                    rowItems.forEach { row ->
+                                        key(row.summary.id) {
+                                            val unfollowed = row.summary.id in shownUnfollowedIds && row.summary.following == false
+                                            val dimmed = unfollowed || isArtifactDimmed(row, grouped.status, grouped.settledEnabled)
+                                            val current = currentCanonicalId != null && artifactCanonicalId(row.summary.id) == currentCanonicalId
+                                            val settling = row.summary.id in state.settlingIds
+                                            val followingPending = row.summary.id in state.followingIds
+                                            val copyAction = onCopyLink?.let { cb -> { cb(row) } }
+                                            val followAction: (Boolean) -> Unit = { next -> onIntent(ArtifactsHomeIntent.SetFollowing(row.summary.id, next)) }
+                                            val settleAction: (Boolean) -> Unit = { next -> onIntent(ArtifactsHomeIntent.SetSettled(row.summary.id, next)) }
+                                            Box(Modifier.weight(1f).fillMaxHeight()) {
+                                                ArtifactsHomeTile(
+                                                    row = row,
+                                                    readerId = readerId,
+                                                    serverName = serverName,
+                                                    byOpened = state.rowsByOpened,
+                                                    dimmed = dimmed,
+                                                    settledEnabled = grouped.settledEnabled,
+                                                    settling = settling,
+                                                    onOpen = { onOpen(row) },
+                                                    onCopyLink = copyAction,
+                                                    onSetSettled = settleAction,
+                                                    current = current,
+                                                    unfollowed = unfollowed,
+                                                    followingPending = followingPending,
+                                                    onSetFollowing = followAction,
+                                                    fillHeight = true,
+                                                    modifier = Modifier.fillMaxHeight(),
+                                                    cover = cover,
+                                                )
+                                            }
+                                        }
+                                    }
+                                    repeat(gridColumnCount - rowItems.size) {
+                                        Spacer(Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                        } else {
+                            items(sectionRows, key = { row -> "$prefix:${row.summary.id}" }) { row ->
+                                val unfollowed = row.summary.id in shownUnfollowedIds && row.summary.following == false
+                                val dimmed = unfollowed || isArtifactDimmed(row, grouped.status, grouped.settledEnabled)
+                                val current = currentCanonicalId != null && artifactCanonicalId(row.summary.id) == currentCanonicalId
+                                val settling = row.summary.id in state.settlingIds
+                                val followingPending = row.summary.id in state.followingIds
+                                val copyAction = onCopyLink?.let { cb -> { cb(row) } }
+                                val followAction: (Boolean) -> Unit = { next -> onIntent(ArtifactsHomeIntent.SetFollowing(row.summary.id, next)) }
+                                val settleAction: (Boolean) -> Unit = { next -> onIntent(ArtifactsHomeIntent.SetSettled(row.summary.id, next)) }
                                 ArtifactsHomeListRow(
                                     row = row,
                                     readerId = readerId,
@@ -910,12 +957,19 @@ private fun ArtifactsHomeList(
     }
 }
 
-/** The grid's columns: two on narrow containers; adaptive 196dp columns at >= 440dp (`@min-[27.5rem]`, web #16418). */
-internal fun artifactsHomeGridColumns(wide: Boolean): GridCells =
-    if (wide) GridCells.Adaptive(ArtifactsHomeTileMinWidth) else GridCells.Fixed(2)
-
-internal fun artifactsHomeGridColumnsForWidth(containerWidthDp: Float): GridCells =
-    artifactsHomeGridColumns(containerWidthDp >= ArtifactsHomeWideGridMinWidthDp)
+/**
+ * The grid's column count: two on narrow containers; adaptive `repeat(auto-fill, minmax(196dp, 1fr))`
+ * at >= 440dp (`@min-[27.5rem]`, web #16418).
+ */
+internal fun artifactsHomeGridColumnCount(
+    containerWidthDp: Float,
+    horizontalPaddingDp: Float = ArtifactsHomeMargin.value * 2f,
+    horizontalGapDp: Float = 12f,
+): Int {
+    if (containerWidthDp < ArtifactsHomeWideGridMinWidthDp) return 2
+    val availableWidthDp = (containerWidthDp - horizontalPaddingDp).coerceAtLeast(0f)
+    return maxOf(((availableWidthDp + horizontalGapDp) / (ArtifactsHomeTileMinWidth.value + horizontalGapDp)).toInt(), 1)
+}
 
 internal val ArtifactsHomeTileMinWidth: Dp = 196.dp
 internal const val ArtifactsHomeWideGridMinWidthDp: Float = 440f

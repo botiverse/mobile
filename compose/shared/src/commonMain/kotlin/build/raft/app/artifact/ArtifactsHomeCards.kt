@@ -8,10 +8,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -305,11 +309,15 @@ internal fun ArtifactsHomeTile(
     unfollowed: Boolean = false,
     followingPending: Boolean = false,
     onSetFollowing: ((Boolean) -> Unit)? = null,
+    fillHeight: Boolean = false,
+    modifier: Modifier = Modifier,
     cover: @Composable (ArtifactsHomeRow, Boolean) -> Unit,
 ) {
     val colors = RaftTheme.colors
     val label = artifactsHomeOpenLabel(row, readerId, serverName, byOpened)
     val shape = RoundedCornerShape(RaftRadius.Container)
+    val innerShape = RoundedCornerShape((RaftRadius.Container - RaftStroke.Hairline).coerceAtLeast(0.dp))
+    val borderColor = if (current) colors.lineStrong else colors.lineHairline
     var menuAnchor by remember { mutableStateOf<IntOffset?>(null) }
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
     val hasTopRight = unfollowed || row.summary.settled != null || row.summary.home == ArtifactHome.Public
@@ -317,8 +325,9 @@ internal fun ArtifactsHomeTile(
     val hasBottomRight = row.summary.commentCount > 0 || row.news.newComments > 0
 
     Box(
-        Modifier
+        modifier
             .fillMaxWidth()
+            .then(if (fillHeight) Modifier.fillMaxHeight() else Modifier)
             .onGloballyPositioned { boxSize = it.size }
             .artifactHomeContextMenuGestures(
                 enabled = true,
@@ -329,10 +338,10 @@ internal fun ArtifactsHomeTile(
         Column(
             Modifier
                 .fillMaxWidth()
+                .then(if (fillHeight) Modifier.fillMaxHeight() else Modifier)
                 .then(if (dimmed) Modifier.alpha(RaftTheme.sizes.opacityDimmed) else Modifier)
                 .clip(shape)
                 .background(if (current) colors.fillCellSelected else colors.layerCard, shape)
-                .border(RaftStroke.Hairline, if (current) colors.lineStrong else colors.lineSeam, shape)
                 .testTag(ArtifactsHomeTags.Tile)
                 .raftClickable(onClick = onOpen)
                 .semantics {
@@ -343,41 +352,56 @@ internal fun ArtifactsHomeTile(
                         onOpen()
                         true
                     }
-                },
+                }
+                .border(RaftStroke.Hairline, borderColor, shape)
+                // CSS `border`: the 1dp edge takes layout room and clips children to the inner radius.
+                .padding(RaftStroke.Hairline)
+                .clip(innerShape),
         ) {
             Box(Modifier.fillMaxWidth()) {
                 cover(row, dimmed)
-                if (hasTopRight) {
-                    FlowRow(
-                        modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        if (unfollowed) ArtifactUnfollowedBadge(onCover = true)
-                        row.summary.settled?.let { ArtifactCoverSettledBadge(it, readerId) }
-                        if (row.summary.home == ArtifactHome.Public) ArtifactPublicBadge(onCover = true)
-                    }
-                }
-                if (hasBottomLeft) {
-                    FlowRow(
-                        modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        ArtifactNewsPills(row.news)
-                    }
-                }
-                if (hasBottomRight) {
-                    Box(Modifier.align(Alignment.BottomEnd).padding(6.dp)) {
-                        ArtifactCombinedCommentBadge(
-                            commentCount = row.summary.commentCount,
-                            newComments = row.news.newComments,
-                            onCover = true,
-                        )
+                if (hasTopRight || hasBottomLeft || hasBottomRight) {
+                    Box(Modifier.matchParentSize()) {
+                        if (hasTopRight) {
+                            FlowRow(
+                                modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                if (unfollowed) ArtifactUnfollowedBadge(onCover = true)
+                                row.summary.settled?.let { ArtifactCoverSettledBadge(it, readerId) }
+                                if (row.summary.home == ArtifactHome.Public) ArtifactPublicBadge(onCover = true)
+                            }
+                        }
+                        if (hasBottomLeft) {
+                            FlowRow(
+                                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                ArtifactNewsPills(row.news)
+                            }
+                        }
+                        if (hasBottomRight) {
+                            Box(Modifier.align(Alignment.BottomEnd).padding(6.dp)) {
+                                ArtifactCombinedCommentBadge(
+                                    commentCount = row.summary.commentCount,
+                                    newComments = row.news.newComments,
+                                    onCover = true,
+                                )
+                            }
+                        }
                     }
                 }
             }
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            // Matches web MessageEmbedHeader (px-3 pt-2 pb-1) + MessageEmbedFooter (mt-auto px-3 pt-0.5 pb-2):
+            // 12dp horizontal, 8dp top/bottom, 6dp minimum gap, and bottom-pinned meta row when equalized.
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .then(if (fillHeight) Modifier.weight(1f) else Modifier)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
                 RaftText(
                     artifactsHomeShownTitle(row.summary.title),
                     modifier = Modifier.fillMaxWidth().testTag(ArtifactsHomeTags.TileTitle),
@@ -386,6 +410,10 @@ internal fun ArtifactsHomeTile(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Spacer(Modifier.height(6.dp))
+                if (fillHeight) {
+                    Spacer(Modifier.weight(1f))
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth().testTag(ArtifactsHomeTags.TileMeta),
                     verticalAlignment = Alignment.CenterVertically,
@@ -776,6 +804,7 @@ internal fun ArtifactsHomeSkeleton(
     wide: Boolean,
     grouped: Boolean,
     horizontalPadding: Dp,
+    animated: Boolean = true,
 ) {
     val colors = RaftTheme.colors
     Column(
@@ -788,34 +817,43 @@ internal fun ArtifactsHomeSkeleton(
     ) {
         if (grouped) {
             Box(Modifier.padding(start = horizontalPadding, end = horizontalPadding, top = 8.dp)) {
-                RaftSkeleton(Modifier.width(80.dp), variant = RaftSkeletonVariant.Line)
+                RaftSkeleton(Modifier.width(80.dp), variant = RaftSkeletonVariant.Line, animated = animated)
             }
         }
         if (view == ArtifactsHomeView.Grid) {
             val columns = if (wide) 3 else 2
             val count = if (wide) 6 else 4
             val gap = if (wide) 12.dp else 8.dp
+            val shape = RoundedCornerShape(RaftRadius.Container)
+            val innerShape = RoundedCornerShape((RaftRadius.Container - RaftStroke.Hairline).coerceAtLeast(0.dp))
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = horizontalPadding),
                 verticalArrangement = Arrangement.spacedBy(gap),
             ) {
                 for (rowStart in 0 until count step columns) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    Row(
+                        Modifier.fillMaxWidth().height(IntrinsicSize.Max),
+                        horizontalArrangement = Arrangement.spacedBy(gap),
+                    ) {
                         for (col in 0 until columns) {
-                            val shape = RoundedCornerShape(RaftRadius.Container)
                             Column(
                                 Modifier
                                     .weight(1f)
+                                    .fillMaxHeight()
                                     .clip(shape)
                                     .background(colors.layerCard, shape)
-                                    .border(RaftStroke.Hairline, colors.lineSeam, shape),
+                                    .border(RaftStroke.Hairline, colors.lineHairline, shape)
+                                    // CSS `border`: the 1dp edge takes layout room and clips children to the inner radius.
+                                    .padding(RaftStroke.Hairline)
+                                    .clip(innerShape),
                             ) {
                                 Box(Modifier.fillMaxWidth().aspectRatio(16f / 10f).background(colors.fillMuted))
-                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    RaftSkeleton(Modifier.fillMaxWidth(0.75f), variant = RaftSkeletonVariant.Line)
+                                Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineHairline))
+                                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    RaftSkeleton(Modifier.fillMaxWidth(0.75f), variant = RaftSkeletonVariant.Line, animated = animated)
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        RaftSkeleton(Modifier.size(16.dp), variant = RaftSkeletonVariant.Circle)
-                                        RaftSkeleton(Modifier.width(96.dp), variant = RaftSkeletonVariant.Line)
+                                        RaftSkeleton(Modifier.size(16.dp), variant = RaftSkeletonVariant.Circle, animated = animated)
+                                        RaftSkeleton(Modifier.width(96.dp), variant = RaftSkeletonVariant.Line, animated = animated)
                                     }
                                 }
                             }
@@ -834,12 +872,13 @@ internal fun ArtifactsHomeSkeleton(
                     ) {
                         RaftSkeleton(
                             Modifier.width(ArtifactsHomeThumbnailWidth).aspectRatio(16f / 10f).clip(RoundedCornerShape(RaftRadius.Chip)),
+                            animated = animated,
                         )
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            RaftSkeleton(Modifier.fillMaxWidth(0.6f), variant = RaftSkeletonVariant.Line)
+                            RaftSkeleton(Modifier.fillMaxWidth(0.6f), variant = RaftSkeletonVariant.Line, animated = animated)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                RaftSkeleton(Modifier.size(16.dp), variant = RaftSkeletonVariant.Circle)
-                                RaftSkeleton(Modifier.fillMaxWidth(0.45f), variant = RaftSkeletonVariant.Line)
+                                RaftSkeleton(Modifier.size(16.dp), variant = RaftSkeletonVariant.Circle, animated = animated)
+                                RaftSkeleton(Modifier.fillMaxWidth(0.45f), variant = RaftSkeletonVariant.Line, animated = animated)
                             }
                         }
                     }
