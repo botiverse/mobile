@@ -3,7 +3,6 @@ package build.raft.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,11 +14,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -32,7 +31,6 @@ import build.raft.app.data.RaftAppUpdateStrongPromptReason
 import build.raft.app.data.RaftAppUpdates
 import build.raft.app.data.RaftMinBuildGate
 import build.raft.app.data.RaftMinBuildGateDecision
-import build.raft.app.data.RaftPostUpdateNoticeState
 import build.raft.app.data.SharedAnnouncementStore
 import build.raft.app.data.SharedSettingsPlatformCapabilities
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
@@ -40,17 +38,18 @@ import build.raft.app.data.SharedSettingsUpdateTransactionState
 import build.raft.app.data.arbitrateRaftAppModalPrompt
 import build.raft.app.data.parseRaftBuildNumber
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.format.RaftFormat
 import build.raft.app.network.RaftAppIdentityRegistry
 import build.raft.app.resources.*
-import build.raft.designsystem.components.RaftBanner
-import build.raft.designsystem.components.RaftBannerSize
-import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftDismissOnPageCover
+import build.raft.designsystem.components.RaftToastActionTimeoutMillis
+import build.raft.designsystem.components.RaftToastIntent
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -61,9 +60,6 @@ import kotlinx.coroutines.launch
 internal const val RAFT_APP_UPDATE_STRONG_DIALOG_TAG = "raft_app_update_strong_dialog"
 internal const val RAFT_APP_UPDATE_STRONG_DIALOG_UPDATE_TAG = "raft_app_update_strong_dialog_update"
 internal const val RAFT_APP_UPDATE_STRONG_DIALOG_LATER_TAG = "raft_app_update_strong_dialog_later"
-internal const val RAFT_POST_UPDATE_WHATS_NEW_BANNER_TAG = "raft_post_update_whats_new_banner"
-internal const val RAFT_POST_UPDATE_WHATS_NEW_ACTION_TAG = "raft_post_update_whats_new_action"
-internal const val RAFT_POST_UPDATE_WHATS_NEW_DISMISS_TAG = "raft_post_update_whats_new_dismiss"
 
 internal data class RaftTopBarUpdatePresentation(
     val label: String,
@@ -103,9 +99,53 @@ internal fun raftAppTopBarUpdatePresentation(
     }
 }
 
+private val ChangelogBlockquotePrefixRegex = Regex("^(?:>\\s*)+")
+private val ChangelogHeadingPrefixRegex = Regex("^#{1,6}\\s*")
+private val ChangelogBulletPrefixRegex = Regex("^[-*+]\\s+")
+private val ChangelogImageRegex = Regex("!\\[([^\\]]*)]\\([^)]*\\)")
+private val ChangelogLinkRegex = Regex("\\[([^\\]]+)]\\([^)]*\\)")
+private val ChangelogInlineCodeRegex = Regex("`+([^`]+)`+")
+private val ChangelogBoldItalicAsteriskRegex = Regex("\\*\\*\\*(\\S(?:.*?\\S)?)\\*\\*\\*")
+private val ChangelogBoldItalicUnderscoreRegex = Regex("(^|[^A-Za-z0-9_])___(\\S(?:.*?\\S)?)___($|[^A-Za-z0-9_])")
+private val ChangelogBoldAsteriskRegex = Regex("\\*\\*(\\S(?:.*?\\S)?)\\*\\*")
+private val ChangelogBoldUnderscoreRegex = Regex("(^|[^A-Za-z0-9_])__(\\S(?:.*?\\S)?)__($|[^A-Za-z0-9_])")
+private val ChangelogStrikeRegex = Regex("~~(\\S(?:.*?\\S)?)~~")
+private val ChangelogItalicAsteriskRegex = Regex("(^|[^*])\\*([^\\s*](?:[^*]*[^\\s*])?)\\*($|[^*])")
+private val ChangelogItalicUnderscoreRegex = Regex("(^|[^A-Za-z0-9_])_([^\\s_](?:[^_]*[^\\s_])?)_($|[^A-Za-z0-9_])")
+private val ChangelogEscapeRegex = Regex("\\\\([\\\\`*_{}\\[\\]()#+\\-.!~])")
+private val ChangelogMultiSpaceRegex = Regex("\\s{2,}")
+
+private fun stripChangelogInlineMarkdown(text: String): String {
+    val escapedChars = mutableListOf<String>()
+    var current =
+        ChangelogEscapeRegex.replace(text) { match ->
+            val index = escapedChars.size
+            escapedChars += match.groupValues[1]
+            "\uE000$index\uE001"
+        }
+    current = ChangelogImageRegex.replace(current) { it.groupValues[1] }
+    current = ChangelogLinkRegex.replace(current) { it.groupValues[1] }
+    current = ChangelogInlineCodeRegex.replace(current) { it.groupValues[1].trim() }
+    repeat(3) {
+        val before = current
+        current = ChangelogBoldItalicAsteriskRegex.replace(current) { it.groupValues[1] }
+        current = ChangelogBoldItalicUnderscoreRegex.replace(current) { "${it.groupValues[1]}${it.groupValues[2]}${it.groupValues[3]}" }
+        current = ChangelogBoldAsteriskRegex.replace(current) { it.groupValues[1] }
+        current = ChangelogBoldUnderscoreRegex.replace(current) { "${it.groupValues[1]}${it.groupValues[2]}${it.groupValues[3]}" }
+        current = ChangelogStrikeRegex.replace(current) { it.groupValues[1] }
+        current = ChangelogItalicAsteriskRegex.replace(current) { "${it.groupValues[1]}${it.groupValues[2]}${it.groupValues[3]}" }
+        current = ChangelogItalicUnderscoreRegex.replace(current) { "${it.groupValues[1]}${it.groupValues[2]}${it.groupValues[3]}" }
+        if (current == before) return@repeat
+    }
+    escapedChars.forEachIndexed { index, literal ->
+        current = current.replace("\uE000$index\uE001", literal)
+    }
+    return ChangelogMultiSpaceRegex.replace(current, " ").trim()
+}
+
 /**
- * Extracts up to [maxLines] concise, readable preview lines from [changelog] for the L2 strong
- * update reminder modal.
+ * Extracts up to [maxLines] concise, human-readable preview lines from [changelog] for the L2
+ * strong update reminder modal, stripping raw Markdown syntax and normalizing bullets to `• `.
  */
 internal fun raftAppUpdateChangelogPreviewLines(
     changelog: String,
@@ -116,18 +156,56 @@ internal fun raftAppUpdateChangelogPreviewLines(
         .lineSequence()
         .map { raw ->
             val trimmed = raw.trim()
-            if (trimmed.isEmpty()) {
-                ""
-            } else if (trimmed.all { it == '-' || it == '*' || it == '_' } && trimmed.length >= 3) {
-                ""
-            } else {
-                trimmed.trimStart('#').trim()
+            if (trimmed.isEmpty()) return@map ""
+            if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) return@map ""
+            val condensed = trimmed.filterNot(Char::isWhitespace)
+            if (condensed.length >= 3 && condensed.all { it == '-' || it == '*' || it == '_' }) {
+                return@map ""
             }
+            val withoutQuote = ChangelogBlockquotePrefixRegex.replace(trimmed, "").trim()
+            if (withoutQuote.isEmpty() || withoutQuote == "-" || withoutQuote == "*" || withoutQuote == "+") {
+                return@map ""
+            }
+            val isBullet = ChangelogBulletPrefixRegex.containsMatchIn(withoutQuote)
+            val withoutPrefix =
+                if (isBullet) {
+                    ChangelogBulletPrefixRegex.replace(withoutQuote, "").trim()
+                } else {
+                    ChangelogHeadingPrefixRegex.replace(withoutQuote, "").trim()
+                }
+            val cleaned = stripChangelogInlineMarkdown(withoutPrefix)
+            if (cleaned.isBlank()) "" else if (isBullet) "• $cleaned" else cleaned
         }
         .filter { it.isNotBlank() }
         .take(maxLines)
         .toList()
 }
+
+/**
+ * Returns the formatted actual download size for the L2 strong update dialog when the update is
+ * not yet downloaded/ready, preferring the delta patch size over the full package size.
+ */
+internal fun raftAppUpdateStrongPromptDownloadSizeLabel(
+    snapshot: SharedSettingsUpdateCheckSnapshot,
+    isReady: Boolean,
+): String? {
+    if (isReady) return null
+    val downloadBytes =
+        snapshot.patchDownloadSizeBytes.takeIf { it > 0L }
+            ?: snapshot.fullDownloadSizeBytes.takeIf { it > 0L }
+            ?: return null
+    return RaftFormat.bytes(downloadBytes)
+}
+
+internal fun raftAppUpdateStrongPromptVersionSummary(
+    versionSummary: String,
+    downloadSizeLabel: String?,
+): String =
+    if (downloadSizeLabel.isNullOrBlank()) {
+        versionSummary
+    } else {
+        "$versionSummary · $downloadSizeLabel"
+    }
 
 /**
  * Triggers in-app update completion when [snapshot] is [SharedSettingsUpdateTransactionState.ReadyToRestart],
@@ -147,6 +225,24 @@ internal fun triggerAppShellUpdateRestartOrOpenPage(
         if (result !is DataResult.Content || result.data.errorCode.isNotBlank()) {
             onOpenUpdatePage()
         }
+    }
+}
+
+internal fun triggerAppShellUpdateOpenOrRestart(
+    snapshot: SharedSettingsUpdateCheckSnapshot?,
+    scope: CoroutineScope,
+    settingsCapabilities: SharedSettingsPlatformCapabilities,
+    onOpenUpdatePage: () -> Unit,
+) {
+    if (snapshot?.transactionState == SharedSettingsUpdateTransactionState.ReadyToRestart) {
+        triggerAppShellUpdateRestartOrOpenPage(
+            snapshot = snapshot,
+            scope = scope,
+            settingsCapabilities = settingsCapabilities,
+            onOpenUpdatePage = onOpenUpdatePage,
+        )
+    } else {
+        onOpenUpdatePage()
     }
 }
 
@@ -223,6 +319,7 @@ internal fun AppShellUpdatePromptHost(
     onOpenUpdatePage: () -> Unit,
     onCompleteRestart: (SharedSettingsUpdateCheckSnapshot) -> Unit,
     onSnoozed: () -> Unit,
+    onOpenReleaseNotes: ((versionCode: String) -> Unit)? = null,
     coordinator: RaftAppUpdateCoordinator = RaftAppUpdates.coordinator,
     minBuildGateDecision: RaftMinBuildGateDecision? = null,
 ) {
@@ -327,6 +424,18 @@ internal fun AppShellUpdatePromptHost(
             },
         )
     }
+
+    if (onOpenReleaseNotes != null) {
+        RaftPostUpdateWhatsNewToastHost(
+            canPresent =
+                pageVisible &&
+                    pageActive &&
+                    !minBuildGateBlocking &&
+                    activeSlot == RaftAppModalPromptSlot.None,
+            onOpenReleaseNotes = onOpenReleaseNotes,
+            coordinator = coordinator,
+        )
+    }
 }
 
 /**
@@ -401,6 +510,11 @@ internal fun RaftAppUpdateStrongPromptDialog(
             latestCode = snapshot.latestVersionCode,
         )
     val hasVersionPair = versionLabels.first.isNotBlank() && versionLabels.second.isNotBlank()
+    val downloadSizeLabel =
+        raftAppUpdateStrongPromptDownloadSizeLabel(
+            snapshot = snapshot,
+            isReady = isReady,
+        )
     val changelogLines = remember(snapshot.latestChangelog) { raftAppUpdateChangelogPreviewLines(snapshot.latestChangelog) }
 
     RaftDesignSystemTheme {
@@ -440,6 +554,11 @@ internal fun RaftAppUpdateStrongPromptDialog(
                 )
                 if (hasVersionPair) {
                     val shape = RoundedCornerShape(RaftRadius.Control)
+                    val versionSummary =
+                        raftAppUpdateStrongPromptVersionSummary(
+                            versionSummary = stringResource(Res.string.app_update_version_summary, versionLabels.first, versionLabels.second),
+                            downloadSizeLabel = downloadSizeLabel,
+                        )
                     Row(
                         modifier =
                             Modifier
@@ -452,7 +571,7 @@ internal fun RaftAppUpdateStrongPromptDialog(
                     ) {
                         RaftContentLucideIcon(RaftLucideIconName.CircleArrowUp, size = 16.dp)
                         RaftText(
-                            text = stringResource(Res.string.app_update_version_summary, versionLabels.first, versionLabels.second),
+                            text = versionSummary,
                             style = typography.callout.copy(fontWeight = FontWeight.Bold),
                             color = colors.foreground,
                             maxLines = 2,
@@ -482,64 +601,34 @@ internal fun RaftAppUpdateStrongPromptDialog(
 }
 
 /**
- * L0 post-update "What's New" dismissible light banner, shown once after upgrading to a newer
- * build when no higher-priority update prompt is active.
+ * L0 post-update "What's new" dismissible 8-second toast host, shown once per upgrade across
+ * both Phone and Wide/Tablet/Desktop layouts when no higher-priority prompt or L3 hard block
+ * is active (matching Raft Desktop's `DesktopWhatsNew` toast).
  */
 @Composable
-internal fun RaftPostUpdateWhatsNewBanner(
-    notice: RaftPostUpdateNoticeState,
-    onViewReleaseNotes: () -> Unit,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    RaftDesignSystemTheme {
-        RaftBanner(
-            description = AnnotatedString(stringResource(Res.string.app_update_post_update_banner_title, notice.versionLabel)),
-            status = RaftBannerStatus.Info,
-            size = RaftBannerSize.Sm,
-            live = false,
-            modifier = modifier.testTag(RAFT_POST_UPDATE_WHATS_NEW_BANNER_TAG),
-            action = {
-                RaftButton(
-                    text = stringResource(Res.string.common_dismiss),
-                    onClick = onDismiss,
-                    modifier = Modifier.testTag(RAFT_POST_UPDATE_WHATS_NEW_DISMISS_TAG),
-                    variant = RaftButtonVariant.Ghost,
-                    size = RaftButtonSize.Md,
-                )
-                RaftButton(
-                    text = stringResource(Res.string.app_update_post_update_banner_action),
-                    onClick = onViewReleaseNotes,
-                    modifier = Modifier.testTag(RAFT_POST_UPDATE_WHATS_NEW_ACTION_TAG),
-                    variant = RaftButtonVariant.Default,
-                    size = RaftButtonSize.Md,
-                )
-            },
-        )
-    }
-}
-
-/**
- * Home host for [RaftPostUpdateWhatsNewBanner], observing [coordinator] in its own narrow scope.
- */
-@Composable
-internal fun HomePostUpdateWhatsNewBannerHost(
+internal fun RaftPostUpdateWhatsNewToastHost(
+    canPresent: Boolean,
     onOpenReleaseNotes: (versionCode: String) -> Unit,
-    modifier: Modifier = Modifier,
     coordinator: RaftAppUpdateCoordinator = RaftAppUpdates.coordinator,
 ) {
+    val latestOnOpenReleaseNotes by rememberUpdatedState(onOpenReleaseNotes)
     val updateState by coordinator.state.collectAsState()
     val notice = updateState.decision.postUpdateNotice ?: return
-    Box(modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-        RaftPostUpdateWhatsNewBanner(
-            notice = notice,
-            onViewReleaseNotes = {
-                coordinator.dismissPostUpdateNotice()
-                onOpenReleaseNotes(notice.versionCode.toString())
-            },
-            onDismiss = {
-                coordinator.dismissPostUpdateNotice()
-            },
+    val toastHostState = LocalRaftToastHostState.current ?: return
+    val title = stringResource(Res.string.app_update_post_update_banner_title, notice.versionLabel)
+    val actionLabel = stringResource(Res.string.app_update_post_update_banner_action)
+    val latestTitle by rememberUpdatedState(title)
+    val latestActionLabel by rememberUpdatedState(actionLabel)
+    LaunchedEffect(notice.versionCode, canPresent, toastHostState, coordinator) {
+        if (!canPresent) return@LaunchedEffect
+        val versionCode = notice.versionCode.toString()
+        coordinator.dismissPostUpdateNotice()
+        toastHostState.show(
+            title = latestTitle,
+            intent = RaftToastIntent.Info,
+            actionLabel = latestActionLabel,
+            onAction = { latestOnOpenReleaseNotes(versionCode) },
+            durationMillis = RaftToastActionTimeoutMillis,
         )
     }
 }

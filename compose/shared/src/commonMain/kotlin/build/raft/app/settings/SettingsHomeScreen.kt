@@ -295,7 +295,6 @@ internal fun SharedHomeScreen(
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
     onAppUpdateOpen: (() -> Unit)? = null,
-    onOpenReleaseNotes: ((String) -> Unit)? = null,
     externalFocusLossDismissEpoch: Int = 0,
     selectedConversationId: String? = null,
     onSelectedConversationCleared: () -> Unit = {},
@@ -985,7 +984,6 @@ internal fun SharedHomeScreen(
                     }
                 },
                 onNotificationCenterOpened = secondFactorRecovery.refresh,
-                onOpenReleaseNotes = onOpenReleaseNotes,
                 onRefresh = {
                     onIntent(SharedHomeIntent.Refresh)
                     jointInvites.refresh()

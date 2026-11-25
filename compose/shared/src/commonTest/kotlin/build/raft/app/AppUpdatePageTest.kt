@@ -60,7 +60,7 @@ class AppUpdatePageTest {
                 latestVersionCode = 1_000_011L,
                 latestChangelog = "# 中文更新说明",
                 downloadUrl = "https://example.test/1000011.apk",
-                detail = "增量包 93.0 KB；完整包备用 90.0 MB。",
+                detail = "更新大小 93.0 KB",
                 downloadSizesResolved = true,
                 patchDownloadSizeBytes = 95_256L,
                 fullDownloadSizeBytes = 94_411_540L
@@ -84,7 +84,7 @@ class AppUpdatePageTest {
         assertEquals(1_000_011L, sparse.latestVersionCode)
         assertEquals("# 中文更新说明", sparse.latestChangelog)
         assertEquals("https://example.test/1000011.apk", sparse.downloadUrl)
-        assertEquals("增量包 93.0 KB；完整包备用 90.0 MB。", sparse.detail)
+        assertEquals("更新大小 93.0 KB", sparse.detail)
         assertTrue(sparse.downloadSizesResolved)
         assertEquals(95_256L, sparse.patchDownloadSizeBytes)
         assertEquals(94_411_540L, sparse.fullDownloadSizeBytes)
@@ -101,7 +101,7 @@ class AppUpdatePageTest {
         val previous =
             SharedSettingsUpdateCheckSnapshot(
                 latestVersionCode = 1_000_011L,
-                detail = "增量包 93.0 KB；完整包备用 90.0 MB。",
+                detail = "更新大小 93.0 KB",
                 downloadSizesResolved = true,
                 patchDownloadSizeBytes = 95_256L,
                 fullDownloadSizeBytes = 94_411_540L
@@ -109,14 +109,14 @@ class AppUpdatePageTest {
         val refreshed =
             SharedSettingsUpdateCheckSnapshot(
                 latestVersionCode = 1_000_011L,
-                detail = "Raft 有可用更新（90.0 MB APK）。",
+                detail = "更新大小 90.0 MB",
                 downloadSizesResolved = true,
                 patchDownloadSizeBytes = 0L,
                 fullDownloadSizeBytes = 94_411_540L
             ).withAppUpdateDisplayFallback(previous)
 
         assertTrue(refreshed.downloadSizesResolved)
-        assertEquals("Raft 有可用更新（90.0 MB APK）。", refreshed.detail)
+        assertEquals("更新大小 90.0 MB", refreshed.detail)
         assertEquals(0L, refreshed.patchDownloadSizeBytes)
         assertEquals(94_411_540L, refreshed.fullDownloadSizeBytes)
     }

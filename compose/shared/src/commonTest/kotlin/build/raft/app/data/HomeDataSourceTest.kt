@@ -305,8 +305,10 @@ class HomeDataSourceTest {
                 latestVersionCode = 1_000_100L
             ).toSharedHomeAppUpdateNotification()
 
+        assertEquals("Update ready to install", ready?.title)
         assertEquals("Install", ready?.actionLabel)
         assertTrue(ready?.actionLabelDesc != null)
+        assertEquals("App update available", downloading?.title)
         assertEquals("Downloading", downloading?.actionLabel)
         assertTrue(downloading?.actionLabelDesc != null)
     }

@@ -2449,6 +2449,7 @@
     <string name="home_second_factor_recovery_cancelled">Redefinição cancelada. A verificação em duas etapas continua ativada, e enviamos um e-mail para você.</string>
     <string name="home_second_factor_recovery_cancel_failed">A redefinição não foi cancelada. Tente novamente.</string>
     <string name="home_notification_app_update_title">Atualização do app disponível</string>
+    <string name="home_notification_app_update_ready_title">Atualização pronta para instalar</string>
     <string name="home_notification_app_update_body">Versão atual: %1$s. Versão mais recente: %2$s.</string>
     <string name="app_update_view">Ver</string>
     <string name="app_update_retry">Tentar novamente</string>
@@ -2462,9 +2463,9 @@
     <string name="app_update_installed">Instalado</string>
     <string name="app_update_update">Atualizar</string>
     <string name="app_update_unavailable">As informações de atualização estão temporariamente indisponíveis.</string>
-    <string name="app_update_detail_available_with_size">Há uma atualização do Raft (APK de %1$s).</string>
-    <string name="app_update_detail_available_with_patch_size">Patch de %1$s.</string>
-    <string name="app_update_detail_available_with_patch_and_full_sizes">Patch de %1$s; pacote completo alternativo de %2$s.</string>
+    <string name="app_update_detail_available_with_size">Tamanho da atualização: %1$s</string>
+    <string name="app_update_detail_available_with_patch_size">Tamanho da atualização: %1$s</string>
+    <string name="app_update_detail_available_with_patch_and_full_sizes">Tamanho da atualização: %1$s</string>
     <string name="app_update_detail_available">Há uma atualização do Raft.</string>
     <string name="app_update_detail_current">O Raft está atualizado.</string>
     <string name="app_update_version_summary">%1$s → %2$s</string>

@@ -54,10 +54,17 @@ internal fun SignedOutAppUpdateBanner(pager: Pager, bridge: BridgeModule) {
             BridgeSettingsPlatformCapabilities(bridge, "", scope.kuiklyBridgeCallContext())
         }
     val appUpdateEvents = remember(bridge) { RaftAppUpdateEvents(RaftSharedStoreRegistry.get(bridge).eventBus) }
+    var latestSnapshot by remember { mutableStateOf<SharedSettingsUpdateCheckSnapshot?>(null) }
     var notification by remember { mutableStateOf<SharedHomeNotification?>(null) }
     var checkGeneration by remember { mutableStateOf(0) }
     LaunchedEffect(capabilities, checkGeneration) {
-        notification = loadSignedOutAppUpdateNotification { capabilities.checkHandsUpdateStatus() }
+        latestSnapshot = null
+        notification =
+            loadSignedOutAppUpdateNotification {
+                capabilities.checkHandsUpdateStatus().also { result ->
+                    if (result is DataResult.Content) latestSnapshot = result.data
+                }
+            }
     }
     DisposableEffect(appUpdateEvents) {
         val listener = appUpdateEvents.addStatusListener { checkGeneration += 1 }
@@ -66,6 +73,13 @@ internal fun SignedOutAppUpdateBanner(pager: Pager, bridge: BridgeModule) {
     val update = notification ?: return
     HomeAppUpdateBanner(
         notification = update.toHomeNotificationItem(),
-        onClick = { pager.openAppUpdatePage(RaftShellStoreScope.Legacy) }
+        onClick = {
+            triggerAppShellUpdateOpenOrRestart(
+                snapshot = latestSnapshot,
+                scope = scope,
+                settingsCapabilities = capabilities,
+                onOpenUpdatePage = { pager.openAppUpdatePage(RaftShellStoreScope.Legacy) },
+            )
+        }
     )
 }
