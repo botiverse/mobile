@@ -537,11 +537,12 @@ class MacOsNativeWebEngineTest {
                 ops = ops,
                 scheduleRetry = { _, action ->
                     scheduledRetries.addLast(action)
-                    {
+                    val cancel: () -> Unit = {
                         if (scheduledRetries.remove(action)) {
                             cancelledRetries += 1
                         }
                     }
+                    cancel
                 },
             )
         val failures = mutableListOf<String>()
