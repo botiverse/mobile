@@ -1,13 +1,13 @@
 ✨ New
 - App authorizations, review alerts & encrypted card forms
-- Computer handover, removal guard & agent migration cards
-- In-app updates, question close & Artifact Open in browser
+- Computer handover, removal guards & Agent migration cards
+- Question close/modal polish & Artifact follow/Open in browser
 
 🔧 Improved
-- Cleaner phone headers & in-place Activity updates
-- Cross-server drafts, guest connect & share to threads
-- Agent/Computer status, keyboard room & hover feedback
+- Cleaner phone headers & 2-line in-place Activity rows
+- Shared drafts, guest connect & share to reply threads
+- Hairline borders, icons, keyboard room & hover polish
 
 🐛 Fixed
-- IME cursor jumps, @/# autocomplete & empty-chat focus
-- Tab bar taps, tablet/landscape layout & share preview
+- IME cursor/@/# & Artifact background resume network error
+- Bottom tab taps, tablet/landscape layout & share preview
