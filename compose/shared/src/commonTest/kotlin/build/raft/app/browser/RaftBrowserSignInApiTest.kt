@@ -434,7 +434,7 @@ class RaftBrowserSignInApiTest {
             )
         val fetched = assertNotNull(api.fetchInstalledAppOrigins("srv-1"))
         assertTrue(fetched.complete)
-        assertEquals(listOf("integrations/app-origins" to "srv-1"), requestedPaths)
+        assertEquals(listOf<Pair<String, String?>>("integrations/app-origins" to "srv-1"), requestedPaths)
         assertEquals(setOf("https://stamp.build", "https://preview.example.test"), fetched.origins.keys)
         assertEquals(
             RaftInstalledAppOriginMatch(

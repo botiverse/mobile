@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.data.LinkOpenMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class RaftLinkNavigationTest {
     @Test
