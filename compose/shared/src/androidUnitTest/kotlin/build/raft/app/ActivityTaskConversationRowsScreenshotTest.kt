@@ -33,11 +33,12 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Task v2 Activity rows (web ThreadsInbox task row), light and dark: titled by the task's own title,
- * the body naming the task's address (`#channel:#7 ·`) before the latest reply, the `list-todo` mark
- * in the leading corner and the status badge (`sm`) in the marks; an unread followed row, a read one,
- * then a followed row swiped open on Done and Unfollow and an unread one open on Read. Verify / record
- * as [RaftRobolectricScreenshot].
+ * Task v2 Activity rows (Option A, #proj-mobile:#372): titled by the task's own title, the body
+ * naming the task's address (`#channel:#7 ·`) in hint colour before the latest reply (up to two
+ * lines, height following content), the `list-todo` mark in the top-aligned leading corner and only
+ * the status colour pixel in the marks; an unread followed row, a read one, then a followed row
+ * swiped open on Done and Unfollow and an unread one open on Read. Verify / record as
+ * [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

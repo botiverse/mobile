@@ -8,17 +8,23 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
+import build.raft.app.data.InboxTaskConversation
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MessageId
+import build.raft.app.model.TaskId
+import build.raft.app.model.TaskStatus
+import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import org.junit.Rule
@@ -128,6 +134,94 @@ class ActivityConversationRowAccessibilityTest {
         }
         // Each action runs the menu item of its id on its own row.
         assertEquals(rows.flatMap { item -> activityContextMenuActionIds(item, mutes).map { item.key to it } }, ran)
+    }
+
+    @Test
+    fun taskStatusPixelExposesLocalizedStatusAsContentDescriptionWithoutVisibleBadgeText() {
+        val taskItem =
+            InboxItem(
+                key = "thread:task-46",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("task-46"),
+                channelName = "general",
+                threadChannelId = ChannelId("task-46"),
+                parentChannelId = ChannelId("mobile"),
+                parentChannelName = "mobile",
+                parentChannelKind = ConversationKind.Channel,
+                parentMessageId = MessageId("parent-task-46"),
+                parentMessagePreview = "#mobile:#46 Activity two-line preview",
+                latestActivityPreview = "Shipped Option A.",
+                latestActivitySenderName = "Lagoon",
+                isFollowing = true,
+                unreadCount = 2,
+                taskNumber = 46,
+                taskStatus = TaskStatus.InProgress,
+                taskConversation = InboxTaskConversation(taskId = TaskId("t-46"), taskTitle = "Activity two-line preview"),
+            )
+        val activity = activities.launch()
+        build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
+        activity.setContent {
+            RaftTheme {
+                ActivityConversationListRow(
+                    item = taskItem,
+                    model = taskItem.activityConversationRowModel(ActivityConversationListContext(), InboxFilter.All),
+                    divider = false,
+                    selected = false,
+                    timeContext = null,
+                    agentStatusResolver = EmptyRaftAgentStatusResolver,
+                    canMarkDone = true,
+                    openGestureKey = taskItem.key,
+                    captureMenuAnchor = false,
+                    onOpen = {},
+                    onOpenMenu = {},
+                )
+            }
+        }
+        settle()
+        val root = assertNotNull(findComposeRoot(activity.window.decorView), "no compose root")
+        val mergedNodes = mutableListOf<SemanticsNode>()
+        fun walk(node: SemanticsNode) {
+            mergedNodes += node
+            node.children.forEach(::walk)
+        }
+        walk((root as ViewRootForTest).semanticsOwner.rootSemanticsNode)
+        val rowNode = assertNotNull(mergedNodes.firstOrNull { it.config.getOrNull(SemanticsActions.OnClick) != null }, "row button node")
+        val descriptions = rowNode.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
+        val texts = rowNode.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text }
+        assertTrue("In progress" in descriptions, "phone merged row ContentDescription must carry task status ($descriptions)")
+        assertFalse("In progress" in texts, "phone task status pill text must not be rendered visibly ($texts)")
+
+        // Wide layout keeps the single-line `InboxItemLine` with the `sm` status badge text.
+        val wideActivity = activities.launch()
+        build.raft.app.data.RaftAndroidSqlDatabaseContext.init(wideActivity)
+        wideActivity.setContent {
+            RaftTheme(scale = RaftScale.Wide) {
+                ActivityConversationListRow(
+                    item = taskItem,
+                    model = taskItem.activityConversationRowModel(ActivityConversationListContext(), InboxFilter.All),
+                    divider = false,
+                    selected = false,
+                    timeContext = null,
+                    agentStatusResolver = EmptyRaftAgentStatusResolver,
+                    canMarkDone = true,
+                    openGestureKey = taskItem.key,
+                    captureMenuAnchor = false,
+                    onOpen = {},
+                    onOpenMenu = {},
+                )
+            }
+        }
+        settle()
+        val wideRoot = assertNotNull(findComposeRoot(wideActivity.window.decorView), "no wide compose root")
+        val wideNodes = mutableListOf<SemanticsNode>()
+        fun walkWide(node: SemanticsNode) {
+            wideNodes += node
+            node.children.forEach(::walkWide)
+        }
+        walkWide((wideRoot as ViewRootForTest).semanticsOwner.rootSemanticsNode)
+        val wideRowNode = assertNotNull(wideNodes.firstOrNull { it.config.getOrNull(SemanticsActions.OnClick) != null }, "wide row button node")
+        val wideTexts = wideRowNode.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text }
+        assertTrue("In progress" in wideTexts, "wide row keeps status badge text ($wideTexts)")
     }
 
     private fun settle() {
