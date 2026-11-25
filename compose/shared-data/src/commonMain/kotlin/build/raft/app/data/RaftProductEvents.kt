@@ -96,10 +96,6 @@ object RaftProductEvents {
         recorder.channelTabSelected(tab, wasActive)
     }
 
-    fun channelTabSwiped(tab: RaftChannelTab) {
-        recorder.channelTabSwiped(tab)
-    }
-
     fun conversationHeaderActionSelected(
         action: RaftConversationHeaderAction,
         surface: RaftConversationHeaderSurface,

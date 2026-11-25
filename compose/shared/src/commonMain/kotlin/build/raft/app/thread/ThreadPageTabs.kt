@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.app.resources.*
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButton
@@ -79,29 +78,6 @@ import androidx.compose.ui.zIndex
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.flow.map
-
-private val RaftThreadTab.icon: RaftLucideIconName
-    get() =
-        when (this) {
-            RaftThreadTab.Chat -> RaftLucideIconName.MessageSquare
-            RaftThreadTab.Tasks -> RaftLucideIconName.ListTodo
-            RaftThreadTab.Files -> RaftLucideIconName.Paperclip
-        }
-
-@Composable
-internal fun RaftThreadTab.toRaftTabSpec(): RaftTabSpec<RaftThreadTab> =
-    RaftTabSpec(
-        key = this,
-        label =
-            when (this) {
-                RaftThreadTab.Chat -> stringResource(Res.string.thread_tab_chat)
-                RaftThreadTab.Tasks -> stringResource(Res.string.thread_tab_tasks)
-                RaftThreadTab.Files -> stringResource(Res.string.thread_tab_files)
-            },
-        iconName = icon,
-        // web ChatPanel tabs: the Chat tab is raft-ui `ChatIcon` (bubble with three dots).
-        glyph = if (this == RaftThreadTab.Chat) RaftConversationKindGlyph.Chat else null
-    )
 
 private fun RaftThreadFilesPayload.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {
     val images =

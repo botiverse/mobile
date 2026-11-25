@@ -847,13 +847,6 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
             taskChannelId
                 ?: ChannelId(threadInstanceKey)
         }
-    val selectThreadTab: (RaftThreadTab) -> Unit = { tab ->
-        onSelectedTabChanged(tab)
-        if (tab != RaftThreadTab.Chat) {
-            clearShareSelection()
-        }
-        onThreadEvent("selectTab", null, null, tab.wireValue)
-    }
     val threadHeaderScrollToTopRequestState = remember(threadInstanceKey) { mutableStateOf(0) }
     var threadHeaderScrollToTopRequest by threadHeaderScrollToTopRequestState
     val renderThreadTabContent: @Composable (RaftThreadTab, Modifier, Boolean) -> Unit =
@@ -1297,37 +1290,22 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
             data.channelAnnouncementStrip?.invoke()
             val threadTabContent: @Composable ColumnScope.() -> Unit = {
             data.taskConversationBar?.invoke()
-            // In the assistant's panel only the chat shows (web AssistantDm: ChatPanel without its head or tasks).
-            if (payload.showModeTabs && LocalThreadAssistantPanelEmbed.current == null && !sideCardsEnabled) {
-                RaftTabbedScaffold(
-                    tabs = availableTabs.map { it.toRaftTabSpec() },
-                    selectedKey = selectedTab,
-                    onSelectedKeyChange = selectThreadTab,
-                    onTabTapped = { tab, wasSelected ->
-                        RaftProductEvents.channelTabSelected(tab.productChannelTab(), wasSelected)
-                    },
-                    onTabSwiped = { tab -> RaftProductEvents.channelTabSwiped(tab.productChannelTab()) },
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    itemKeyPrefix = "thread-tab",
-                    content = renderThreadTabContent
+            // No tab pager around the list: dragging it left shows message times
+            // (ThreadMessageTimeReveal.kt). Task v2 replaced the Chat / Tasks / Files tab row with
+            // the header's Tasks / Files cards (slock #16109). On a phone the list draws the task
+            // head as its first row.
+            CompositionLocalProvider(
+                LocalThreadTimeRevealAvailable provides true,
+                LocalTaskConversationHeadRow provides data.taskConversationHeadRow,
+            ) {
+                renderThreadTabContent(
+                    // Task v2 cards: the page under them is always the conversation.
+                    if (sideCardsEnabled) RaftThreadTab.Chat else selectedTab,
+                    Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)
+                        // Task v2 on a phone: scrolling the messages puts the pulled-down head back up.
+                        .then(data.taskConversationHead?.let { Modifier.nestedScroll(it.connection) } ?: Modifier),
+                    true
                 )
-            } else {
-                // No tab pager around the list here: dragging it left shows message times
-                // (ThreadMessageTimeReveal.kt). Under the pager that drag pages to Tasks.
-                // Task v2 on a phone: the list draws the head as its first row.
-                CompositionLocalProvider(
-                    LocalThreadTimeRevealAvailable provides true,
-                    LocalTaskConversationHeadRow provides data.taskConversationHeadRow,
-                ) {
-                    renderThreadTabContent(
-                        // Task v2 cards: the page under them is always the conversation.
-                        if (sideCardsEnabled) RaftThreadTab.Chat else selectedTab,
-                        Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)
-                            // Task v2 on a phone: scrolling the messages puts the pulled-down head back up.
-                            .then(data.taskConversationHead?.let { Modifier.nestedScroll(it.connection) } ?: Modifier),
-                        true
-                    )
-                }
             }
             }
             if (payload.isTaskConversationSurface()) {

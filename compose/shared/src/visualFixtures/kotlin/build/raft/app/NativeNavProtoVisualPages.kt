@@ -54,7 +54,7 @@ internal class ComposeNativeNavProtoHomePage : BasePager() {
     }
 }
 
-/** A channel conversation: the production head, mode tabs, fixture messages and composer. */
+/** A channel conversation: the production head, fixture messages and composer. */
 @Page("compose_native_nav_proto_thread", supportInLocal = true)
 internal class ComposeNativeNavProtoThreadPage : BasePager() {
     override fun willInit() {
@@ -109,7 +109,6 @@ private fun NativeNavProtoThreadScreen() {
                 onToggleThreadFollow = {},
                 onMarkThreadUnread = {},
             )
-            ThreadNativeNavProtoModeTabs()
             Column(
                 modifier =
                     Modifier

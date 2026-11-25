@@ -50,17 +50,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.channels.Channel
 
-/** PROTOTYPE (native nav): the conversation's Chat / Tasks / Files strip, for the proto fixture page. */
-@Composable
-internal fun ThreadNativeNavProtoModeTabs() {
-    RaftTopTabBar(
-        items = RaftThreadTab.entries.map { it.toRaftTabSpec().toTopTabBarItem() },
-        selectedKey = RaftThreadTab.Chat.toString(),
-        onSelectedKeyChange = {},
-        itemKeyPrefix = "thread-tab"
-    )
-}
-
 @Composable
 internal fun ThreadHeaderVisualScreen() {
     val payload = remember {
@@ -81,13 +70,19 @@ internal fun ThreadHeaderVisualScreen() {
             showOpenInChannelAction = false
         )
     }
-    // React's thread-header element includes the Chat/Tasks/Files mode-tab strip
-    // that the real page renders via RaftTabbedScaffold directly below
-    // ThreadPageHeader, so the fixture renders the same RaftTopTabBar row with
-    // the thread tab specs (Chat selected). The explicit 120dp canvas matches the
-    // react element height (1170x360px @3x = 390x120dp); the header+tabs measure
-    // 62+32=94dp, so the white slack at the bottom exposes the real height delta
-    // (task #370).
+    // The real channel page (ThreadPageContent) hands the header its Task v2 Tasks / Files card
+    // toggles; there is no Chat / Tasks / Files tab row any more (slock #16109). On a phone the
+    // header folds to Search + ⋯ with Tasks, Files and Channel details and settings inside
+    // (slock #16464). The explicit 120dp canvas matches the react element height
+    // (1170x360px @3x = 390x120dp); the white slack under the header shows the height delta.
+    val sideCardToggles =
+        remember {
+            ThreadHeaderSideCardToggles(
+                tasksAvailable = true,
+                cards = ConversationSideCardsState(),
+                onToggle = {},
+            )
+        }
     Column(modifier = Modifier.width(390.dp).height(120.dp).background(RaftColor.SurfaceWhite)) {
         ThreadPageHeader(
             payload = payload,
@@ -97,13 +92,8 @@ internal fun ThreadHeaderVisualScreen() {
             onOpenMemberProfile = {},
             onOpenSearch = {},
             onShowMembers = {},
-            onShowSettings = {}
-        )
-        RaftTopTabBar(
-            items = RaftThreadTab.entries.map { it.toRaftTabSpec().toTopTabBarItem() },
-            selectedKey = RaftThreadTab.Chat.toString(),
-            onSelectedKeyChange = {},
-            itemKeyPrefix = "thread-tab"
+            onShowSettings = {},
+            sideCardToggles = sideCardToggles,
         )
     }
 }

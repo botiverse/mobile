@@ -290,14 +290,6 @@ class RaftProductEventsRecorder(
         )
     }
 
-    /** The header pager settled on [tab] after a user swipe: always a different tab, so `was_active` is false. */
-    fun channelTabSwiped(tab: RaftChannelTab) {
-        client.track(
-            RaftProductEvent.ChannelTabSelected(
-                RaftChannelTabSelectedProperties(tab = tab, surface = RaftChannelTabSurface.HeaderSwipe, wasActive = false)
-            )
-        )
-    }
 
     /** One conversation / thread header, announcement strip, or followers popover entry. */
     fun conversationHeaderActionSelected(
