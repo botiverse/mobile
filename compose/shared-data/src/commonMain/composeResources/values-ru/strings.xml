@@ -3957,6 +3957,7 @@
     <string name="joint_member_connect_commit_one">Подключить</string>
     <string name="joint_member_connect_connecting">Подключение…</string>
     <string name="joint_member_connect_description">Серверы, где вы владелец или администратор, подключаются сразу. Хоста, %1$s, не спрашивают. Сообщение в канале скажет, что сервер подключён.</string>
+    <string name="joint_member_connect_description_host_admin">Серверы, в которых вы владелец или администратор, подключаются сразу, без приглашения. В канале появится сообщение о том, что сервер подключён.</string>
     <string name="joint_member_connect_error_already_connected">%1$s уже подключён.</string>
     <string name="joint_member_connect_error_archived">Канал %1$s архивирован.</string>
     <string name="joint_member_connect_error_channel_name_taken">В %1$s уже есть канал %2$s. Переименуйте этот канал в %1$s и подключитесь снова.</string>
@@ -5425,15 +5426,18 @@
     <string name="channel_external_invite_emails_label">Пригласить по электронной почте</string>
     <string name="channel_external_invite_emails_placeholder">alex@example.com, sam@example.org, …</string>
     <string name="channel_external_invite_emails_join_by_link">Каждый получит письмо со ссылкой для входа, даже без аккаунта Raft.</string>
+    <string name="channel_external_invite_emails_audience">Они получат письмо, чтобы присоединиться, даже без аккаунта Raft, и увидят только %1$s, включая прежние сообщения.</string>
     <string name="channel_external_invite_too_many">Максимум адресов за раз: %1$d. Удалите %2$d адреса.</string>
     <string name="channel_external_invite_next">Далее</string>
     <string name="channel_external_invite_checking">Проверка…</string>
     <string name="channel_external_invite_back">Назад</string>
-    <string name="channel_external_invite_review_intro">Ссылка-приглашение действует %1$d дня. Приглашённые смогут присоединиться как гости или подключить свой сервер, чтобы добавить в канал своих агентов и коллег.</string>
+    <string name="channel_external_invite_review_intro">Ссылка-приглашение действует %1$d дней. Каждый сможет присоединиться к этому каналу, а если его команда тоже работает в Raft — подключить свой сервер.</string>
+    <string name="channel_external_invite_group_invited">Приглашены по почте</string>
+    <string name="channel_external_invite_group_not_sent">Не отправлены</string>
     <string name="channel_external_invite_status_will_invite">Будет отправлено приглашение</string>
-    <string name="channel_external_invite_status_already_invited">Приглашение уже отправлено · новое не отправим</string>
+    <string name="channel_external_invite_status_already_invited">Уже приглашён</string>
     <string name="channel_external_invite_status_will_add">Уже на сервере %1$s · добавим сразу</string>
-    <string name="channel_external_invite_status_already_in_channel">Уже в этом канале · без приглашения</string>
+    <string name="channel_external_invite_status_already_in_channel">Уже в этом канале</string>
     <string name="channel_external_invite_status_member_in_channel">Уже в этом канале</string>
     <string name="channel_external_invite_invite_to_connect">Пригласить подключить свой сервер</string>
     <string name="channel_external_invite_status_guest_elsewhere">Гость в канале %1$s · будет приглашён подключить сервер</string>
@@ -5441,7 +5445,8 @@
     <string name="channel_external_invite_status_guest_elsewhere_hint">На сервере %1$s гость может состоять только в одном канале, поэтому присоединиться сюда как гость этот человек не может. По этому приглашению он сможет присоединиться, подключив свой сервер или создав новый.</string>
     <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">На сервере %1$s гость может состоять только в одном канале, поэтому присоединиться сюда как гость этот человек не может. По этому приглашению он сможет присоединиться, подключив свой сервер или создав новый.</string>
     <string name="channel_external_invite_status_duplicate">Указан несколько раз · отправим одно приглашение</string>
-    <string name="channel_external_invite_status_invalid">Некорректный адрес · без приглашения</string>
+    <string name="channel_external_invite_status_invalid">Это не адрес почты</string>
+    <string name="channel_external_invite_status_self">Это вы</string>
     <string name="channel_external_invite_commit">Пригласить</string>
     <string name="channel_external_invite_sending">Отправка…</string>
     <string name="channel_external_invite_nothing_to_send">Из этого списка никого нельзя пригласить. Вернитесь назад, чтобы изменить его.</string>
@@ -5465,6 +5470,7 @@
     <string name="channel_external_invite_error_not_found">Сейчас в этот канал нельзя отправлять внешние приглашения.</string>
     <string name="channel_external_invite_error_generic">Что-то пошло не так. Попробуйте ещё раз.</string>
     <string name="channel_external_invite_servers_label">Подключить свои серверы</string>
+    <string name="channel_external_invite_connect_servers_link">Подключить свои серверы</string>
     <string name="channel_external_invite_servers_search">Поиск серверов</string>
     <string name="channel_external_invite_servers_clear_search">Очистить поиск</string>
     <string name="channel_external_invite_servers_no_match">Нет совпадений</string>
@@ -5481,6 +5487,10 @@
     <string name="channel_external_invite_server_refused_party_limit">В канале %1$s слишком много гостей, чтобы к нему подключился ещё один сервер. Во внешнем канале серверов и гостей вместе может быть не больше %2$d. Удалите часть гостей и попробуйте ещё раз.</string>
     <string name="external_invite_title">Присоединиться к каналу %1$s</string>
     <string name="external_invite_invited_by">%1$s приглашает вас с сервера %2$s.</string>
+    <string name="external_invite_invited_by_no_guest">%1$s приглашает вас с сервера %2$s. Присоединиться как гость нельзя, поэтому присоединитесь с сервером.</string>
+    <string name="external_invite_in_channel_title">Вы уже в канале %1$s</string>
+    <string name="external_invite_in_channel_description">Чтобы добавить и своих коллег и агентов, подключите сервер.</string>
+    <string name="external_invite_public_channel_becomes_private">После подключения канал %1$s станет закрытым.</string>
     <string name="external_invite_sign_out">Выйти</string>
     <string name="external_invite_back">Назад</string>
     <string name="external_invite_retry">Повторить</string>
@@ -5494,7 +5504,7 @@
     <string name="external_invite_wrong_account_description">Войдите с адресом электронной почты, на который было отправлено приглашение. Если вы уже это сделали, возможно, приглашение отозвано или срок его действия истёк.</string>
     <string name="external_invite_wrong_account_sent_to">Это приглашение отправлено на %1$s. Войдите с этим адресом, чтобы принять его.</string>
     <string name="external_invite_option_guest">Присоединиться как гость</string>
-    <string name="external_invite_option_guest_description">Присоединитесь лично и только к этому каналу, чтобы работать с людьми и агентами в нём.</string>
+    <string name="external_invite_option_guest_description">Присоединитесь лично и только к этому каналу, включая прежние сообщения.</string>
     <string name="external_invite_option_connect">Подключить сервер</string>
     <string name="external_invite_option_connect_description">Добавьте в канал коллег и агентов с сервера, в котором вы состоите.</string>
     <string name="external_invite_option_new_server">Создать новый сервер</string>
@@ -5516,6 +5526,7 @@
     <string name="external_invite_connect_search">Поиск серверов</string>
     <string name="external_invite_connect_needs_approval">Нужно одобрение</string>
     <string name="external_invite_connect_at_limit">Достигнут лимит внешних каналов</string>
+    <string name="external_invite_connect_needs_approval_public">Нужно одобрение %1$s, а канал %2$s открытый.</string>
     <string name="external_invite_connect_commit_unpicked">Подключить</string>
     <string name="external_invite_connect_commit">Подключить сервер %1$s</string>
     <string name="external_invite_connect_commit_many_other">Подключить серверы (%1$d)</string>
@@ -5577,6 +5588,8 @@
     <string name="external_invite_error_guest_unavailable">Канал %1$s используется совместно с другими серверами, поэтому пока не принимает гостей. Чтобы присоединиться, подключите свой сервер.</string>
     <string name="external_invite_error_already_member">Вы уже участник сервера %1$s. Попросите администратора этого сервера добавить вас в канал %2$s.</string>
     <string name="external_invite_error_guest_elsewhere">Так как вы уже гость в другом канале, присоединиться к каналу %1$s как гость нельзя. Вместо этого подключите или создайте сервер.</string>
+    <string name="external_invite_error_channel_public">Канал %1$s открытый. Сначала попросите владельца или администратора сделать его закрытым.</string>
+    <string name="external_invite_error_channel_public_now">Канал %1$s сейчас открытый, и подключение сделает его закрытым. Чтобы продолжить, подключите ещё раз.</string>
     <string name="external_invite_error_channel_full">В канале %1$s не осталось мест. Попросите участника %2$s освободить место, а затем снова откройте эту ссылку.</string>
     <string name="external_invite_error_deployment_user_limit">В этом развёртывании Raft Community Edition уже 5 человек — это лимит Raft License. Чтобы превысить его, напишите на contact@raft.build и запросите отдельную лицензию.</string>
     <string name="external_invite_error_invalid_server">Сервер %1$s нельзя подключить к каналу %2$s. Выберите другой сервер.</string>

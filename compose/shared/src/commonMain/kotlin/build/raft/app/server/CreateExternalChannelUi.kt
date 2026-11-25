@@ -34,7 +34,6 @@ internal fun SharedCreateExternalChannelReview(
     onBack: () -> Unit,
     onLeave: () -> Unit,
     onUpgrade: () -> Unit,
-    onConnectInviteChange: (email: String, checked: Boolean) -> Unit = { _, _ -> },
 ) {
     val invite = state.invite
     val created = state.created
@@ -58,7 +57,7 @@ internal fun SharedCreateExternalChannelReview(
             backLabel = stringResource(Res.string.channel_external_invite_back),
             modifier = Modifier.testTag(CreateExternalChannelReviewTag),
         ) {
-            SharedCreateExternalChannelReviewBody(state, serverName, onUpgrade, onConnectInviteChange)
+            SharedCreateExternalChannelReviewBody(state, serverName, onUpgrade)
         }
     }
 }
@@ -69,7 +68,6 @@ internal fun SharedCreateExternalChannelReviewBody(
     state: CreateExternalChannelState,
     serverName: String,
     onUpgrade: () -> Unit,
-    onConnectInviteChange: (email: String, checked: Boolean) -> Unit = { _, _ -> },
 ) {
     val invite = state.invite
     val created = state.created
@@ -91,7 +89,6 @@ internal fun SharedCreateExternalChannelReviewBody(
             channelSlotsLeft = null,
             onTextChange = {},
             onUpgrade = onUpgrade,
-            onConnectInviteChange = onConnectInviteChange,
         )
     }
 }

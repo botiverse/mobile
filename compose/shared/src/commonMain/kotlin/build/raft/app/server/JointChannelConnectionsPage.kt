@@ -127,12 +127,14 @@ internal fun rememberJointConnectedServers(
     seedConnections: JointChannelConnections? = null,
     onConnectionsChanged: () -> Unit = {},
     onServersChanged: () -> Unit = {},
+    onMemberConnectFinished: () -> Unit = {},
 ): JointConnectedServersHolder {
     val scope = rememberCoroutineScope()
     val authorityGateway = remember(sharedStores, storeScope) { sharedStores.authenticatedRouteAuthorityGateway(storeScope) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val latestOnConnectionsChanged = androidx.compose.runtime.rememberUpdatedState(onConnectionsChanged)
     val latestOnServersChanged = androidx.compose.runtime.rememberUpdatedState(onServersChanged)
+    val latestOnMemberConnectFinished = androidx.compose.runtime.rememberUpdatedState(onMemberConnectFinished)
     val holder =
         remember(route, routeOwner, authorityGateway, scope, sharedStores) {
             var storeRef: JointChannelConnectionsStore? = null
@@ -189,7 +191,10 @@ internal fun rememberJointConnectedServers(
         when (val effect = state.effect) {
             is JointChannelConnectionsEffect.ServerDisconnected ->
                 bridge.toast(Res.string.joint_server_disconnected_toast.format(effect.serverName, effect.channelName).resolve())
-            is JointChannelConnectionsEffect.MemberConnectFinished -> memberConnectToasts.forEach { bridge.toast(it) }
+            is JointChannelConnectionsEffect.MemberConnectFinished -> {
+                memberConnectToasts.forEach { bridge.toast(it) }
+                latestOnMemberConnectFinished.value()
+            }
             null -> Unit
         }
         if (state.effect != null) store.dispatch(JointChannelConnectionsIntent.ConsumeEffect)
@@ -201,6 +206,7 @@ internal fun rememberJointConnectedServers(
 @Composable
 internal fun JointConnectedServersOverlays(
     holder: JointConnectedServersHolder,
+    onBack: (() -> Unit)? = null,
     onUpgradeServer: (serverId: String) -> Unit = {},
 ) {
     val store = holder.store
@@ -218,6 +224,7 @@ internal fun JointConnectedServersOverlays(
     JointMemberConnectSheet(
         state = state,
         onDismiss = { store.dispatch(JointChannelConnectionsIntent.DismissMemberConnect) },
+        onBack = onBack,
         onSelectionChange = { store.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(it)) },
         onSubmit = { store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect) },
         onUpgradeServer = { serverId ->

@@ -4137,6 +4137,7 @@
     <string name="joint_member_connect_commit_one">Connect</string>
     <string name="joint_member_connect_connecting">Connecting…</string>
     <string name="joint_member_connect_description">Servers where you're an owner or admin connect now. %1$s, the host, isn't asked. A message in the channel says the server was connected.</string>
+    <string name="joint_member_connect_description_host_admin">Servers you own or administer connect now, with no invite. A message in the channel says the server was connected.</string>
     <string name="joint_member_connect_error_already_connected">%1$s is already connected.</string>
     <string name="joint_member_connect_error_archived">%1$s was archived.</string>
     <string name="joint_member_connect_error_channel_name_taken">%1$s already has a channel named %2$s. Rename that channel in %1$s, then connect again.</string>
@@ -5609,15 +5610,18 @@
     <string name="channel_external_invite_emails_label">Invite by email</string>
     <string name="channel_external_invite_emails_placeholder">alex@example.com, sam@example.org, …</string>
     <string name="channel_external_invite_emails_join_by_link">Everyone gets an email with a link to join, even without a Raft account.</string>
+    <string name="channel_external_invite_emails_audience">They'll get an email to join, with or without a Raft account, and see only %1$s, including its earlier messages.</string>
     <string name="channel_external_invite_too_many">Up to %1$d emails at a time. Remove %2$d.</string>
     <string name="channel_external_invite_next">Next</string>
     <string name="channel_external_invite_checking">Checking…</string>
     <string name="channel_external_invite_back">Back</string>
-    <string name="channel_external_invite_review_intro">The invite link works for %1$d days. People can join as a guest, or connect their server to bring in their agents and teammates.</string>
+    <string name="channel_external_invite_review_intro">The invite link works for %1$d days. Each person can join this channel, or connect their server if their team uses Raft too.</string>
+    <string name="channel_external_invite_group_invited">Invited by email</string>
+    <string name="channel_external_invite_group_not_sent">Not sent</string>
     <string name="channel_external_invite_status_will_invite">Will be invited</string>
-    <string name="channel_external_invite_status_already_invited">Already invited · no new invite</string>
+    <string name="channel_external_invite_status_already_invited">Already invited</string>
     <string name="channel_external_invite_status_will_add">Already in %1$s · added directly</string>
-    <string name="channel_external_invite_status_already_in_channel">Already in this channel · no invite</string>
+    <string name="channel_external_invite_status_already_in_channel">Already in this channel</string>
     <string name="channel_external_invite_status_member_in_channel">Already in this channel</string>
     <string name="channel_external_invite_invite_to_connect">Invite to connect their server</string>
     <string name="channel_external_invite_status_guest_elsewhere">Guest in %1$s · invited to connect a server</string>
@@ -5625,7 +5629,8 @@
     <string name="channel_external_invite_status_guest_elsewhere_hint">A guest can be in only one channel in %1$s, so they can't join here as a guest. With this invite they can join by connecting a server they belong to, or by creating one.</string>
     <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">A guest can be in only one channel in %1$s, so they can't join here as a guest. With this invite they can join by connecting a server they belong to, or by creating one.</string>
     <string name="channel_external_invite_status_duplicate">Listed more than once · one invite</string>
-    <string name="channel_external_invite_status_invalid">Not a valid email · no invite</string>
+    <string name="channel_external_invite_status_invalid">Not an email address</string>
+    <string name="channel_external_invite_status_self">That's you</string>
     <string name="channel_external_invite_commit">Invite</string>
     <string name="channel_external_invite_sending">Sending…</string>
     <string name="channel_external_invite_nothing_to_send">No one on this list can be invited. Go back to change it.</string>
@@ -5649,6 +5654,7 @@
     <string name="channel_external_invite_error_not_found">This channel can't take external invites right now.</string>
     <string name="channel_external_invite_error_generic">Something went wrong. Try again.</string>
     <string name="channel_external_invite_servers_label">Connect your servers</string>
+    <string name="channel_external_invite_connect_servers_link">Connect your servers</string>
     <string name="channel_external_invite_servers_search">Search servers</string>
     <string name="channel_external_invite_servers_clear_search">Clear search</string>
     <string name="channel_external_invite_servers_no_match">No matches</string>
@@ -5665,6 +5671,10 @@
     <string name="channel_external_invite_server_refused_party_limit">%1$s has too many guests for another server to connect. An external channel holds up to %2$d servers and guests together. Remove some guests, then try again.</string>
     <string name="external_invite_title">Join %1$s</string>
     <string name="external_invite_invited_by">%1$s invited you from %2$s.</string>
+    <string name="external_invite_invited_by_no_guest">%1$s invited you from %2$s. You can't join as a guest, so join with a server instead.</string>
+    <string name="external_invite_in_channel_title">You're in %1$s</string>
+    <string name="external_invite_in_channel_description">To bring your teammates and agents too, connect a server.</string>
+    <string name="external_invite_public_channel_becomes_private">%1$s will become private once connected.</string>
     <string name="external_invite_sign_out">Sign out</string>
     <string name="external_invite_back">Back</string>
     <string name="external_invite_retry">Retry</string>
@@ -5678,7 +5688,7 @@
     <string name="external_invite_wrong_account_description">Sign in with the email address the invite was sent to. If you already have, the invite may have been withdrawn or expired.</string>
     <string name="external_invite_wrong_account_sent_to">This invite was sent to %1$s. Sign in with that address to accept it.</string>
     <string name="external_invite_option_guest">Join as a guest</string>
-    <string name="external_invite_option_guest_description">Join just this channel yourself to work with the humans and agents there.</string>
+    <string name="external_invite_option_guest_description">Join just this channel yourself, including its earlier messages.</string>
     <string name="external_invite_option_connect">Connect a server</string>
     <string name="external_invite_option_connect_description">Bring your teammates and agents from a server you're in.</string>
     <string name="external_invite_option_new_server">Create a new server</string>
@@ -5700,6 +5710,7 @@
     <string name="external_invite_connect_search">Search servers</string>
     <string name="external_invite_connect_needs_approval">Needs approval</string>
     <string name="external_invite_connect_at_limit">At external channel limit</string>
+    <string name="external_invite_connect_needs_approval_public">You'd need approval from %1$s, and %2$s is public.</string>
     <string name="external_invite_connect_commit_unpicked">Connect</string>
     <string name="external_invite_connect_commit">Connect %1$s</string>
     <string name="external_invite_connect_commit_many_other">Connect %1$d servers</string>
@@ -5761,6 +5772,8 @@
     <string name="external_invite_error_guest_unavailable">%1$s is shared with other servers, so it can't take guests yet. Connect a server to join it.</string>
     <string name="external_invite_error_already_member">You're already a member of %1$s. Ask an admin there to add you to %2$s.</string>
     <string name="external_invite_error_guest_elsewhere">You're already a guest in another channel, so you can't join %1$s as a guest. Connect or create a server instead.</string>
+    <string name="external_invite_error_channel_public">%1$s is public. Ask an owner or admin to make it private first.</string>
+    <string name="external_invite_error_channel_public_now">%1$s is public now, so connecting will make it private. Connect again to go ahead.</string>
     <string name="external_invite_error_channel_full">%1$s is full. Ask %2$s to free a slot, then open this link again.</string>
     <string name="external_invite_error_deployment_user_limit">This Raft Community Edition deployment already has 5 people, the Raft License limit. To go above it, email contact@raft.build for a separate license.</string>
     <string name="external_invite_error_invalid_server">%1$s can't be connected to %2$s. Choose another server.</string>

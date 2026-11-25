@@ -226,6 +226,40 @@ class ExternalChannelCopyCatalogTest {
             "upgrade_dialog_limit_external_freeze_upcoming",
         )
 
+    private val requiredV5ExternalInviteKeys =
+        listOf(
+            "joint_member_connect_description_host_admin",
+            "channel_external_invite_emails_audience",
+            "channel_external_invite_review_intro",
+            "channel_external_invite_group_invited",
+            "channel_external_invite_group_not_sent",
+            "channel_external_invite_status_already_invited",
+            "channel_external_invite_status_already_in_channel",
+            "channel_external_invite_status_invalid",
+            "channel_external_invite_status_self",
+            "channel_external_invite_connect_servers_link",
+            "external_invite_invited_by_no_guest",
+            "external_invite_in_channel_title",
+            "external_invite_in_channel_description",
+            "external_invite_public_channel_becomes_private",
+            "external_invite_connect_needs_approval_public",
+            "external_invite_option_guest_description",
+            "external_invite_error_channel_public",
+            "external_invite_error_channel_public_now",
+        )
+
+    private val expectedV5ReviewStatusCopy =
+        mapOf(
+            "base" to mapOf("channel_external_invite_group_invited" to "Invited by email", "channel_external_invite_group_not_sent" to "Not sent", "channel_external_invite_status_self" to "That's you"),
+            "zh-rCN" to mapOf("channel_external_invite_group_invited" to "将通过邮件邀请", "channel_external_invite_group_not_sent" to "未发送", "channel_external_invite_status_self" to "这是你自己"),
+            "zh-rTW" to mapOf("channel_external_invite_group_invited" to "將透過電子郵件邀請", "channel_external_invite_group_not_sent" to "未傳送", "channel_external_invite_status_self" to "這是你自己"),
+            "ja" to mapOf("channel_external_invite_group_invited" to "メールで招待します", "channel_external_invite_group_not_sent" to "送信されません", "channel_external_invite_status_self" to "あなた自身です"),
+            "ko" to mapOf("channel_external_invite_group_invited" to "이메일로 초대함", "channel_external_invite_group_not_sent" to "보내지 않음", "channel_external_invite_status_self" to "나 자신"),
+            "es" to mapOf("channel_external_invite_group_invited" to "Invitados por correo", "channel_external_invite_group_not_sent" to "No enviados", "channel_external_invite_status_self" to "Eres tú"),
+            "pt-rBR" to mapOf("channel_external_invite_group_invited" to "Convidados por e-mail", "channel_external_invite_group_not_sent" to "Não enviados", "channel_external_invite_status_self" to "É você"),
+            "ru" to mapOf("channel_external_invite_group_invited" to "Приглашены по почте", "channel_external_invite_group_not_sent" to "Не отправлены", "channel_external_invite_status_self" to "Это вы"),
+        )
+
     private val allLocales = listOf("base", "zh-rCN", "zh-rTW", "ja", "ko", "es", "pt-rBR", "ru")
 
     @Test
@@ -247,6 +281,12 @@ class ExternalChannelCopyCatalogTest {
             }
             requiredGuestConnectAndPrivateRowKeys.forEach { key ->
                 assertFalse(catalog[key].isNullOrBlank(), "$locale missing $key")
+            }
+            requiredV5ExternalInviteKeys.forEach { key ->
+                assertFalse(catalog[key].isNullOrBlank(), "$locale missing $key")
+            }
+            expectedV5ReviewStatusCopy.getValue(locale).forEach { (key, expectedText) ->
+                assertEquals(expectedText, catalog[key], "$locale/$key")
             }
             retiredUpgradeJointKeys.forEach { retiredKey ->
                 assertFalse(retiredKey in catalog, "$locale still defines retired $retiredKey")

@@ -21,7 +21,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.AnnotatedString
 import build.raft.app.data.InviteConnectableServer
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
-import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftMultiChoiceList
 import androidx.compose.ui.Alignment
@@ -32,6 +31,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,10 +56,15 @@ import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowText
+import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.components.RaftTextarea
+import build.raft.designsystem.components.raftDialogSheetCentered
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -74,7 +80,9 @@ internal const val ExternalInviteErrorTag = "external-invite-error"
 internal const val ExternalInviteUpgradeTag = "external-invite-upgrade"
 internal const val ExternalInvitePrivateWarningTag = "external-invite-private-warning"
 internal const val ExternalInviteReviewRowTag = "external-invite-review-row"
-internal const val ExternalInviteConnectMemberTag = "external-invite-connect-member"
+internal const val ExternalInviteReviewGroupInvitedTag = "external-invite-review-group-invited"
+internal const val ExternalInviteReviewGroupNotSentTag = "external-invite-review-group-not-sent"
+internal const val ExternalInviteConnectServersLinkTag = "external-invite-connect-servers"
 internal const val ExternalInviteNothingToSendTag = "external-invite-nothing-to-send"
 internal const val ExternalInviteSlotsTag = "external-invite-slots"
 internal const val ExternalInviteRowTag = "external-invite-row"
@@ -364,12 +372,15 @@ internal fun ExternalInviteSheet(
     willBecomePrivate: Boolean,
     joint: Boolean,
     channelSlotsLeft: Int?,
+    /** Channel name (without `#`) for the step-1 audience sentence (`emailsAudience`). Blank for Create Channel. */
+    channelName: String = "",
     /** Web `serversHistoryHint`: a channel not joint yet with messages; a server connected sees them. */
     serversHistoryHint: Boolean = false,
+    /** Quiet footer link "Connect your servers" on step 1 (opens Connect your servers over this dialog). */
+    onConnectServers: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onTextChange: (String) -> Unit,
     onServersChange: (Set<String>) -> Unit = {},
-    onConnectInviteChange: (email: String, checked: Boolean) -> Unit = { _, _ -> },
     onNext: () -> Unit,
     onBack: () -> Unit,
     onSend: () -> Unit,
@@ -377,6 +388,14 @@ internal fun ExternalInviteSheet(
 ) {
     RaftDesignSystemTheme {
         val preview = dialog.preview
+        val windowWidthPx = LocalWindowInfo.current.containerSize.width
+        val centered =
+            if (windowWidthPx > 0) {
+                raftDialogSheetCentered(with(LocalDensity.current) { windowWidthPx.toDp() })
+            } else {
+                false
+            }
+        val connectLinkLabel = stringResource(Res.string.channel_external_invite_connect_servers_link)
         RaftDialogSheet(
             onDismissRequest = { if (!dialog.busy) onDismiss() },
             title = stringResource(Res.string.channel_external_invite_title, serverName),
@@ -396,19 +415,35 @@ internal fun ExternalInviteSheet(
             // Web ExternalInviteSteps: keep Back visible and disabled while busy (never morph to Cancel/×).
             onBack = if (preview != null) onBack else null,
             backLabel = stringResource(Res.string.channel_external_invite_back),
+            footerStart =
+                if (preview == null && onConnectServers != null) {
+                    {
+                        RaftTextLink(
+                            text = connectLinkLabel,
+                            onClick = onConnectServers,
+                            variant = RaftTextLinkVariant.Muted,
+                            style = RaftTheme.typography.callout,
+                            enabled = !dialog.busy,
+                            modifier = Modifier.testTag(ExternalInviteConnectServersLinkTag),
+                        )
+                    }
+                } else {
+                    null
+                },
             modifier = Modifier.testTag(ExternalInviteSheetTag),
         ) {
             ExternalInviteSheetBody(
-                dialog,
-                serverName,
-                willBecomePrivate,
-                joint,
-                channelSlotsLeft,
-                onTextChange,
-                onUpgrade,
+                dialog = dialog,
+                serverName = serverName,
+                willBecomePrivate = willBecomePrivate,
+                joint = joint,
+                channelSlotsLeft = channelSlotsLeft,
+                onTextChange = onTextChange,
+                onUpgrade = onUpgrade,
+                channelName = channelName,
                 serversHistoryHint = serversHistoryHint,
                 onServersChange = onServersChange,
-                onConnectInviteChange = onConnectInviteChange,
+                onConnectServers = if (!centered) onConnectServers else null,
             )
         }
     }
@@ -424,9 +459,10 @@ internal fun ExternalInviteSheetBody(
     channelSlotsLeft: Int?,
     onTextChange: (String) -> Unit,
     onUpgrade: () -> Unit,
+    channelName: String = "",
     serversHistoryHint: Boolean = false,
     onServersChange: (Set<String>) -> Unit = {},
-    onConnectInviteChange: (email: String, checked: Boolean) -> Unit = { _, _ -> },
+    onConnectServers: (() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -435,7 +471,9 @@ internal fun ExternalInviteSheetBody(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        if (willBecomePrivate) {
+        // Web privateWarning (#16635/#16643): on step 1 shown as the rule; on review only when
+        // someone outside the server (or a server) is in the send.
+        if (willBecomePrivate && dialog.makesPublicChannelPrivate) {
             RaftBanner(
                 description = stringResource(Res.string.channel_external_invite_becomes_private),
                 status = RaftBannerStatus.Warning,
@@ -450,6 +488,7 @@ internal fun ExternalInviteSheetBody(
                 onTextChange = onTextChange,
                 overBy = dialog.overBy,
                 enabled = !dialog.busy,
+                channelName = channelName,
                 historyHint = serversHistoryHint,
                 slotsText = externalInviteTypedSlotsLine(channelSlotsLeft, dialog.entries.size, dialog.chosenServers.size)?.let { externalInviteSlotsText(it, joint) },
             )
@@ -460,37 +499,57 @@ internal fun ExternalInviteSheetBody(
                 enabled = !dialog.busy,
                 historyHint = serversHistoryHint,
             )
+            // Phone sheets hide the dialog footer, so the quiet "Connect your servers" link ends the body (web DialogSheetFooterLink).
+            if (onConnectServers != null) {
+                RaftTextLink(
+                    text = stringResource(Res.string.channel_external_invite_connect_servers_link),
+                    onClick = onConnectServers,
+                    variant = RaftTextLinkVariant.Muted,
+                    style = typography.callout,
+                    enabled = !dialog.busy,
+                    modifier = Modifier.testTag(ExternalInviteConnectServersLinkTag),
+                )
+            }
         } else {
-            val rows = externalInviteReviewRows(preview)
-            if (rows.isNotEmpty()) {
+            val groups = externalInviteReviewGroups(preview, dialog.ownEmail)
+            if (groups.isNotEmpty()) {
                 RaftText(
                     stringResource(Res.string.channel_external_invite_review_intro, EXTERNAL_INVITE_EXPIRY_DAYS),
                     style = typography.callout,
                     color = colors.foregroundMuted,
                 )
-                Column(
-                    Modifier.fillMaxWidth().background(colors.layerCard, RoundedCornerShape(RaftRadius.Container)),
-                ) {
-                    rows.forEachIndexed { index, row ->
-                        RaftListRow(
-                            title = row.email,
-                            modifier = Modifier.testTag(ExternalInviteReviewRowTag),
-                            divider = index > 0,
-                            titleMaxLines = 3,
-                            description = externalInviteReviewStatusText(row, serverName),
-                            wrapDescription = true,
+                groups.forEach { group ->
+                    val groupTag =
+                        when (group.key) {
+                            ExternalInviteReviewGroupKey.Invited -> ExternalInviteReviewGroupInvitedTag
+                            ExternalInviteReviewGroupKey.NotSent -> ExternalInviteReviewGroupNotSentTag
+                        }
+                    val groupTitle =
+                        when (group.key) {
+                            ExternalInviteReviewGroupKey.Invited -> stringResource(Res.string.channel_external_invite_group_invited)
+                            ExternalInviteReviewGroupKey.NotSent -> stringResource(Res.string.channel_external_invite_group_not_sent)
+                        }
+                    Column(
+                        Modifier.fillMaxWidth().testTag(groupTag),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        RaftText(
+                            groupTitle,
+                            style = typography.footnote.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.foregroundMuted,
                         )
-                        if (row.connectInvite) {
-                            // Web `ConnectInviteCheckbox` (slock #15279): checked by default; the
-                            // member is added (or stays) either way, checked they are also invited
-                            // to connect a server of theirs.
-                            RaftCheckboxRow(
-                                label = stringResource(Res.string.channel_external_invite_invite_to_connect),
-                                checked = row.email !in dialog.noConnectInvite,
-                                onCheckedChange = { checked -> onConnectInviteChange(row.email, checked) },
-                                enabled = !dialog.busy,
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp).testTag(ExternalInviteConnectMemberTag),
-                            )
+                        RaftListRowGroup(Modifier.fillMaxWidth()) {
+                            group.rows.forEachIndexed { index, row ->
+                                RaftListRow(
+                                    title = row.email,
+                                    variant = RaftListRowVariant.Plain,
+                                    modifier = Modifier.testTag(ExternalInviteReviewRowTag),
+                                    divider = index > 0,
+                                    titleMaxLines = 3,
+                                    description = row.reason?.let { externalInviteNotSentReasonText(it) },
+                                    wrapDescription = true,
+                                )
+                            }
                         }
                     }
                 }
@@ -566,8 +625,9 @@ internal fun ExternalInviteFailureBanner(failure: ExternalInviteFailure, joint: 
 }
 
 /**
- * Web `ExternalInviteEmailsField`: Invite by email, its hint (the join-by-link line, then the history line and the
- * channel's slots as typed, when given) and the over-the-limit error.
+ * Web `ExternalInviteEmailsField`: Invite by email, its hint (when [channelName] is given, the
+ * single audience sentence `#channel` including earlier messages; otherwise Create Channel's
+ * join-by-link + optional history line, then slots as typed) and the over-the-limit error.
  */
 @Composable
 internal fun ExternalInviteEmailsField(
@@ -575,17 +635,24 @@ internal fun ExternalInviteEmailsField(
     onTextChange: (String) -> Unit,
     overBy: Int,
     enabled: Boolean,
+    channelName: String = "",
     historyHint: Boolean = false,
     slotsText: String? = null,
 ) {
+    val cleanChannel = channelName.trim().removePrefix("#")
     val hint =
-        listOfNotNull(
-            // Web #15466: everyone gets an email with a link (the separator/max line is gone;
-            // the over-limit error still names the max).
-            stringResource(Res.string.channel_external_invite_emails_join_by_link),
-            if (historyHint) stringResource(Res.string.channel_external_invite_emails_see_history) else null,
-            slotsText,
-        ).joinToString("\n")
+        if (cleanChannel.isNotEmpty()) {
+            listOfNotNull(
+                stringResource(Res.string.channel_external_invite_emails_audience, "#$cleanChannel"),
+                slotsText,
+            ).joinToString("\n")
+        } else {
+            listOfNotNull(
+                stringResource(Res.string.channel_external_invite_emails_join_by_link),
+                if (historyHint) stringResource(Res.string.channel_external_invite_emails_see_history) else null,
+                slotsText,
+            ).joinToString("\n")
+        }
     RaftField(
         label = stringResource(Res.string.channel_external_invite_emails_label),
         description = hint,
@@ -650,23 +717,14 @@ internal fun ExternalInviteServersField(
     }
 }
 
-/** A review row's status line; a guest of another channel also says why (web's tooltip, inline here). */
+/** A "Not sent" review row's concise reason line (web `reviewGroups`). */
 @Composable
-private fun externalInviteReviewStatusText(row: ExternalInviteReviewRow, serverName: String): String =
-    when (row.status) {
-        ExternalInviteReviewStatus.WillInvite -> stringResource(Res.string.channel_external_invite_status_will_invite)
-        ExternalInviteReviewStatus.WillAdd -> stringResource(Res.string.channel_external_invite_status_will_add, serverName)
-        ExternalInviteReviewStatus.Duplicate -> stringResource(Res.string.channel_external_invite_status_duplicate)
-        ExternalInviteReviewStatus.AlreadyInvited -> stringResource(Res.string.channel_external_invite_status_already_invited)
-        ExternalInviteReviewStatus.AlreadyInChannel -> stringResource(Res.string.channel_external_invite_status_already_in_channel)
-        ExternalInviteReviewStatus.MemberInChannel -> stringResource(Res.string.channel_external_invite_status_member_in_channel)
-        ExternalInviteReviewStatus.GuestElsewhere ->
-            stringResource(Res.string.channel_external_invite_status_guest_elsewhere, row.channel.orEmpty()) + "\n" +
-                stringResource(Res.string.channel_external_invite_status_guest_elsewhere_hint, serverName)
-        ExternalInviteReviewStatus.GuestElsewhereUnnamed ->
-            stringResource(Res.string.channel_external_invite_status_guest_elsewhere_unnamed) + "\n" +
-                stringResource(Res.string.channel_external_invite_status_guest_elsewhere_unnamed_hint, serverName)
-        ExternalInviteReviewStatus.Invalid -> stringResource(Res.string.channel_external_invite_status_invalid)
+private fun externalInviteNotSentReasonText(reason: ExternalInviteNotSentReason): String =
+    when (reason) {
+        ExternalInviteNotSentReason.Self -> stringResource(Res.string.channel_external_invite_status_self)
+        ExternalInviteNotSentReason.AlreadyInChannel -> stringResource(Res.string.channel_external_invite_status_already_in_channel)
+        ExternalInviteNotSentReason.AlreadyInvited -> stringResource(Res.string.channel_external_invite_status_already_invited)
+        ExternalInviteNotSentReason.Invalid -> stringResource(Res.string.channel_external_invite_status_invalid)
     }
 
 /** The toast text of an effect (web showToast titles); [ExternalInvitesEffect.Failed] is an error toast. */

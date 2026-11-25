@@ -154,34 +154,113 @@ class ExternalInvitesStoreTest {
     }
 
     @Test
-    fun reviewRowsListWhoIsInvitedAddedThenWhoIsNotAndWhy() {
-        val rows =
-            externalInviteReviewRows(
+    fun reviewGroupsCollapseInvitedAndListNotSentWithReasons() {
+        val groups =
+            externalInviteReviewGroups(
                 ExternalInvitePreview(
                     valid = listOf("new@example.com"),
                     duplicates = listOf("new@example.com", "new@example.com"),
                     invalid = listOf("nope"),
                     alreadyPending = listOf("p@example.com"),
                     alreadyMembers = listOf("m@example.com"),
-                    alreadyInChannel = listOf("c@example.com"),
+                    alreadyInChannel = listOf("c@example.com", "in-member@example.com"),
+                    alreadyInChannelMembers = listOf("in-member@example.com"),
+                    self = listOf("me@example.com"),
                     guestsElsewhere = listOf(ExternalInviteGuestElsewhere("g@example.com", "vendor"), ExternalInviteGuestElsewhere("h@example.com")),
                 )
             )
+        assertEquals(listOf(ExternalInviteReviewGroupKey.Invited, ExternalInviteReviewGroupKey.NotSent), groups.map { it.key })
+        val invited = groups[0].rows
+        // Duplicates collapse to one row in Invited; outsiders + guests elsewhere + host members (added or in channel) share one plain list.
+        assertEquals(
+            listOf("new@example.com", "g@example.com", "h@example.com", "m@example.com", "in-member@example.com"),
+            invited.map { it.email },
+        )
+        assertTrue(invited.all { it.invites && it.reason == null })
+        val notSent = groups[1].rows
         assertEquals(
             listOf(
-                ExternalInviteReviewStatus.WillInvite,
-                ExternalInviteReviewStatus.GuestElsewhere,
-                ExternalInviteReviewStatus.GuestElsewhereUnnamed,
-                ExternalInviteReviewStatus.WillAdd,
-                ExternalInviteReviewStatus.Duplicate,
-                ExternalInviteReviewStatus.AlreadyInvited,
-                ExternalInviteReviewStatus.AlreadyInChannel,
-                ExternalInviteReviewStatus.Invalid,
+                "me@example.com" to ExternalInviteNotSentReason.Self,
+                "c@example.com" to ExternalInviteNotSentReason.AlreadyInChannel,
+                "p@example.com" to ExternalInviteNotSentReason.AlreadyInvited,
+                "nope" to ExternalInviteNotSentReason.Invalid,
             ),
-            rows.map { it.status },
+            notSent.map { it.email to it.reason },
         )
-        assertEquals("#vendor", rows.first { it.status == ExternalInviteReviewStatus.GuestElsewhere }.channel)
-        assertEquals(listOf(true, true, true, true, false), rows.take(5).map { it.invites })
+        assertTrue(notSent.none { it.invites })
+    }
+
+    @Test
+    fun selfFromServerOrOwnEmailFallbackIsNeverSentAndMarkedNotSent() = runTest {
+        val source = FakeExternalInvitesDataSource()
+        // Older server classifies the viewer's own address under alreadyInChannelMembers (no `self` field).
+        source.previewAnswer =
+            DataResult.Content(
+                ExternalInviteAnswer.Ok(
+                    ExternalInvitePreview(
+                        alreadyInChannel = listOf("me@example.com"),
+                        alreadyInChannelMembers = listOf("me@example.com"),
+                        slotsLeft = 10,
+                    )
+                )
+            )
+        val store = ExternalInvitesStore(this, source)
+        store.dispatch(ExternalInvitesIntent.SetOwnEmail("ME@Example.com"))
+        store.dispatch(ExternalInvitesIntent.OpenDialog())
+        store.dispatch(ExternalInvitesIntent.SetText("me@example.com"))
+        store.dispatch(ExternalInvitesIntent.Next)
+        runCurrent()
+
+        val dialog = assertNotNull(store.state.value.dialog)
+        assertEquals(listOf("me@example.com"), dialog.selfEmails)
+        assertEquals(emptyList(), dialog.sendAddresses)
+        assertEquals(emptyList(), dialog.connectMemberEmails)
+        assertEquals(0, dialog.actionCount)
+        assertFalse(dialog.canSend)
+        val groups = externalInviteReviewGroups(assertNotNull(dialog.preview), dialog.ownEmail)
+        assertEquals(listOf(ExternalInviteReviewGroupKey.NotSent), groups.map { it.key })
+        assertEquals(listOf("me@example.com" to ExternalInviteNotSentReason.Self), groups.single().rows.map { it.email to it.reason })
+
+        // Server-classified `preview.self` works even when ownEmail is null.
+        val serverSelfGroups = externalInviteReviewGroups(ExternalInvitePreview(self = listOf("owner@acme.com")))
+        assertEquals(listOf("owner@acme.com" to ExternalInviteNotSentReason.Self), serverSelfGroups.single().rows.map { it.email to it.reason })
+    }
+
+    @Test
+    fun hostMembersInChannelAreEmailedWithoutMakingPublicChannelPrivate() = runTest {
+        val source = FakeExternalInvitesDataSource()
+        source.previewAnswer =
+            DataResult.Content(
+                ExternalInviteAnswer.Ok(
+                    ExternalInvitePreview(
+                        alreadyMembers = listOf("m@example.com"),
+                        alreadyInChannel = listOf("in@example.com"),
+                        alreadyInChannelMembers = listOf("in@example.com"),
+                        slotsLeft = 5,
+                    )
+                )
+            )
+        val store = ExternalInvitesStore(this, source)
+        store.dispatch(ExternalInvitesIntent.OpenDialog())
+        // Step 1 shows the public-becomes-private rule; own servers are NOT loaded in v5.
+        assertTrue(assertNotNull(store.state.value.dialog).makesPublicChannelPrivate)
+        assertEquals(0, source.ownServersCalls)
+
+        store.dispatch(ExternalInvitesIntent.SetText("m@example.com in@example.com"))
+        store.dispatch(ExternalInvitesIntent.Next)
+        runCurrent()
+        val review = assertNotNull(store.state.value.dialog)
+        assertEquals(0, review.inviteCount)
+        assertEquals(2, review.actionCount)
+        assertFalse(review.makesPublicChannelPrivate)
+        assertEquals(listOf("m@example.com", "in@example.com"), review.sendAddresses)
+        assertEquals(listOf("m@example.com", "in@example.com"), review.connectMemberEmails)
+
+        store.dispatch(ExternalInvitesIntent.Send(makePrivate = true))
+        runCurrent()
+        // Both host members are emailed with connectMemberEmails and no checkbox.
+        assertEquals(listOf(listOf("m@example.com", "in@example.com") to true), source.sendCalls)
+        assertEquals(listOf(listOf("m@example.com", "in@example.com")), source.connectMemberCalls)
     }
 
     @Test

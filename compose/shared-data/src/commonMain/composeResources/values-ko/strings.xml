@@ -3957,6 +3957,7 @@
     <string name="joint_member_connect_commit_one">연결</string>
     <string name="joint_member_connect_connecting">연결 중…</string>
     <string name="joint_member_connect_description">내가 소유자나 관리자인 서버는 바로 연결돼요. 호스트인 %1$s의 승인은 필요 없어요. 서버가 연결되면 채널에 메시지가 올라가요.</string>
+    <string name="joint_member_connect_description_host_admin">내가 소유자나 관리자인 서버는 초대 없이 바로 연결돼요. 채널에는 서버가 연결됐다는 메시지가 표시돼요.</string>
     <string name="joint_member_connect_error_already_connected">%1$s은(는) 이미 연결되어 있어요.</string>
     <string name="joint_member_connect_error_archived">%1$s 채널이 보관됐어요.</string>
     <string name="joint_member_connect_error_channel_name_taken">%1$s에 이미 %2$s 채널이 있어요. %1$s에서 그 채널 이름을 바꾼 다음 다시 연결해 주세요.</string>
@@ -5425,15 +5426,18 @@
     <string name="channel_external_invite_emails_label">이메일로 초대</string>
     <string name="channel_external_invite_emails_placeholder">alex@example.com, sam@example.org, …</string>
     <string name="channel_external_invite_emails_join_by_link">Raft 계정이 없어도 참여 링크를 이메일로 받아요.</string>
+    <string name="channel_external_invite_emails_audience">참여 이메일을 받으며, Raft 계정이 없어도 돼요. %1$s만 볼 수 있고, 이전 메시지도 볼 수 있어요.</string>
     <string name="channel_external_invite_too_many">한 번에 최대 %1$d개 이메일까지 초대할 수 있어요. %2$d개를 지워 주세요.</string>
     <string name="channel_external_invite_next">다음</string>
     <string name="channel_external_invite_checking">확인 중…</string>
     <string name="channel_external_invite_back">뒤로</string>
-    <string name="channel_external_invite_review_intro">초대 링크는 %1$d일 동안 유효해요. 초대받은 사람은 게스트로 참여하거나, 자신의 서버를 연결해 에이전트와 팀원을 데려올 수 있어요.</string>
+    <string name="channel_external_invite_review_intro">초대 링크는 %1$d일 동안 유효해요. 초대받은 사람은 이 채널에 참여할 수 있고, 팀에서도 Raft를 쓴다면 자신의 서버를 연결할 수도 있어요.</string>
+    <string name="channel_external_invite_group_invited">이메일로 초대함</string>
+    <string name="channel_external_invite_group_not_sent">보내지 않음</string>
     <string name="channel_external_invite_status_will_invite">초대 예정</string>
-    <string name="channel_external_invite_status_already_invited">이미 초대함 · 새로 초대하지 않음</string>
+    <string name="channel_external_invite_status_already_invited">이미 초대함</string>
     <string name="channel_external_invite_status_will_add">이미 %1$s 서버에 있음 · 바로 추가</string>
-    <string name="channel_external_invite_status_already_in_channel">이미 이 채널에 있음 · 초대하지 않음</string>
+    <string name="channel_external_invite_status_already_in_channel">이미 이 채널에 있음</string>
     <string name="channel_external_invite_status_member_in_channel">이미 이 채널에 있음</string>
     <string name="channel_external_invite_invite_to_connect">서버 연결 초대</string>
     <string name="channel_external_invite_status_guest_elsewhere">%1$s의 게스트 · 서버 연결로 초대함</string>
@@ -5441,7 +5445,8 @@
     <string name="channel_external_invite_status_guest_elsewhere_hint">게스트는 %1$s 서버에서 채널 하나에만 참여할 수 있어서 이 채널에는 게스트로 참여할 수 없어요. 이 초대로 자신이 속한 서버를 연결하거나 새 서버를 만들어 참여할 수 있어요.</string>
     <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">게스트는 %1$s 서버에서 채널 하나에만 참여할 수 있어서 이 채널에는 게스트로 참여할 수 없어요. 이 초대로 자신이 속한 서버를 연결하거나 새 서버를 만들어 참여할 수 있어요.</string>
     <string name="channel_external_invite_status_duplicate">여러 번 입력됨 · 한 번만 초대</string>
-    <string name="channel_external_invite_status_invalid">유효하지 않은 이메일 · 초대하지 않음</string>
+    <string name="channel_external_invite_status_invalid">이메일 주소가 아님</string>
+    <string name="channel_external_invite_status_self">나 자신</string>
     <string name="channel_external_invite_commit">초대</string>
     <string name="channel_external_invite_sending">보내는 중…</string>
     <string name="channel_external_invite_nothing_to_send">이 목록에는 초대할 수 있는 사람이 없어요. 뒤로 돌아가 수정해 주세요.</string>
@@ -5465,6 +5470,7 @@
     <string name="channel_external_invite_error_not_found">지금은 이 채널에 외부 사람을 초대할 수 없어요.</string>
     <string name="channel_external_invite_error_generic">문제가 발생했어요. 다시 시도해 주세요.</string>
     <string name="channel_external_invite_servers_label">내 서버 연결</string>
+    <string name="channel_external_invite_connect_servers_link">내 서버 연결</string>
     <string name="channel_external_invite_servers_search">서버 검색</string>
     <string name="channel_external_invite_servers_clear_search">검색어 지우기</string>
     <string name="channel_external_invite_servers_no_match">일치하는 항목이 없어요</string>
@@ -5481,6 +5487,10 @@
     <string name="channel_external_invite_server_refused_party_limit">%1$s 채널에 게스트가 너무 많아서 다른 서버를 연결할 수 없어요. 외부 채널에는 서버와 게스트를 합쳐 최대 %2$d개까지 참여할 수 있어요. 게스트 일부를 내보낸 후 다시 시도해 주세요.</string>
     <string name="external_invite_title">%1$s에 참여</string>
     <string name="external_invite_invited_by">%1$s 님이 %2$s 서버에서 초대했어요.</string>
+    <string name="external_invite_invited_by_no_guest">%1$s 님이 %2$s 서버에서 초대했어요. 게스트로는 참여할 수 없으니 서버로 참여해 주세요.</string>
+    <string name="external_invite_in_channel_title">%1$s에 이미 있어요</string>
+    <string name="external_invite_in_channel_description">팀원과 에이전트도 데려오려면 서버를 연결하세요.</string>
+    <string name="external_invite_public_channel_becomes_private">연결하면 %1$s이(가) 비공개로 바뀌어요.</string>
     <string name="external_invite_sign_out">로그아웃</string>
     <string name="external_invite_back">뒤로</string>
     <string name="external_invite_retry">다시 시도</string>
@@ -5494,7 +5504,7 @@
     <string name="external_invite_wrong_account_description">초대를 받은 이메일 주소로 로그인해 주세요. 이미 그 주소로 로그인했다면 초대가 철회됐거나 만료됐을 수 있어요.</string>
     <string name="external_invite_wrong_account_sent_to">이 초대는 %1$s 주소로 보냈어요. 그 주소로 로그인하면 수락할 수 있어요.</string>
     <string name="external_invite_option_guest">게스트로 참여</string>
-    <string name="external_invite_option_guest_description">혼자 이 채널에만 참여해 그곳의 사람, 에이전트와 함께 일해요.</string>
+    <string name="external_invite_option_guest_description">혼자 이 채널에만 참여해요. 이전 메시지도 볼 수 있어요.</string>
     <string name="external_invite_option_connect">서버 연결</string>
     <string name="external_invite_option_connect_description">내가 속한 서버의 팀원과 에이전트를 데려와요.</string>
     <string name="external_invite_option_new_server">새 서버 만들기</string>
@@ -5516,6 +5526,7 @@
     <string name="external_invite_connect_search">서버 검색</string>
     <string name="external_invite_connect_needs_approval">승인 필요</string>
     <string name="external_invite_connect_at_limit">외부 채널 한도 도달</string>
+    <string name="external_invite_connect_needs_approval_public">%1$s의 승인이 필요한데, %2$s은(는) 공개 채널이에요.</string>
     <string name="external_invite_connect_commit_unpicked">연결</string>
     <string name="external_invite_connect_commit">%1$s 서버 연결</string>
     <string name="external_invite_connect_commit_many_other">서버 %1$d개 연결</string>
@@ -5577,6 +5588,8 @@
     <string name="external_invite_error_guest_unavailable">%1$s 채널은 다른 서버와 공유되고 있어서 아직 게스트를 받을 수 없어요. 서버를 연결해서 참여해 주세요.</string>
     <string name="external_invite_error_already_member">이미 %1$s 서버의 멤버예요. 그 서버의 관리자에게 %2$s에 추가해 달라고 요청해 주세요.</string>
     <string name="external_invite_error_guest_elsewhere">이미 다른 채널의 게스트라서 %1$s에 게스트로 참여할 수 없어요. 대신 서버를 연결하거나 만들어 주세요.</string>
+    <string name="external_invite_error_channel_public">%1$s은(는) 공개 채널이에요. 먼저 소유자나 관리자에게 비공개로 바꿔 달라고 요청하세요.</string>
+    <string name="external_invite_error_channel_public_now">%1$s은(는) 지금 공개 채널이라서 연결하면 비공개로 바뀌어요. 계속하려면 다시 연결하세요.</string>
     <string name="external_invite_error_channel_full">%1$s 채널이 가득 찼어요. %2$s 님에게 자리를 비워 달라고 요청한 후 이 링크를 다시 열어 주세요.</string>
     <string name="external_invite_error_deployment_user_limit">이 Raft Community Edition 배포에는 이미 Raft 라이선스 한도인 5명이 있어요. 한도를 넘기려면 contact@raft.build로 이메일을 보내 별도 라이선스를 요청해 주세요.</string>
     <string name="external_invite_error_invalid_server">%1$s 서버는 %2$s에 연결할 수 없어요. 다른 서버를 선택해 주세요.</string>

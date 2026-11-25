@@ -7420,6 +7420,10 @@ private fun RaftAppShellReadyContent(
                                 )
                         }
                     val createExternalStoreState by createExternalStoreForOpening.state.collectAsState()
+                    LaunchedEffect(createExternalStoreForOpening, shellAuthStore) {
+                        val email = runCatchingPreservingCancellation { shellAuthStore.readSession() }.getOrNull()?.user?.email
+                        createExternalStoreForOpening.dispatch(CreateExternalChannelIntent.SetOwnEmail(email))
+                    }
                     // Offered while the viewer may create external channels; once the channel exists,
                     // its invite steps go on whatever happens to the role.
                     val createExternalAccess =

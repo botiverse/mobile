@@ -6,6 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
@@ -20,13 +22,16 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.DataResult
+import build.raft.app.data.ExternalInviteAnswer
 import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.InviteConnectableServer
 import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.MemberAskServer
 import build.raft.app.data.MemberConnectNewServerResponse
 import build.raft.app.data.MemberConnectOwnerRef
 import build.raft.app.data.MemberConnectResponse
 import build.raft.app.data.MemberConnectServerLimit
+import build.raft.app.data.OwnConnectableServers
 import build.raft.app.data.RaftLongMessageCollapseConversationPreference
 import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.data.SharedServerChannelMembersSlice
@@ -364,5 +369,111 @@ class JointMemberConnectSheetUiTest {
         assertTrue(shown("Free · in another external channel"))
         assertEquals(0, count(JointMemberConnectUpgradeTag))
         assertEquals(0, count(JointMemberConnectAskOwnerTag))
+    }
+
+    @Test
+    fun publicChannelConnectFromInviteShowsBecomesPrivateForAdminAndConnectsWithMakePrivate() = runRobolectricComposeUiTest {
+        val publicConn = privateTestConnections().copy(isPrivate = false, channelName = "launch-week")
+        val dataSource =
+            FakeJointConnectionsDataSource(connections = publicConn).apply {
+                ownConnectableServersResult =
+                    DataResult.Content(
+                        ExternalInviteAnswer.Ok(
+                            OwnConnectableServers(
+                                listOf(InviteConnectableServer(id = "srv-alpha", name = "Alpha Co", slug = "alpha-co", canConnectDirectly = true))
+                            )
+                        )
+                    )
+                connectOwnServersResult =
+                    DataResult.Content(ExternalInviteAnswer.Ok(listOf(ServerConnectOutcome.Connected("srv-alpha", "c1"))))
+            }
+        val store = JointChannelConnectionsStore(dataSource, CoroutineScope(Dispatchers.Main.immediate))
+        store.dispatch(JointChannelConnectionsIntent.SetMemberConnectAccount(memberTestAccount()))
+        store.dispatch(JointChannelConnectionsIntent.Load)
+        var backClicks = 0
+        setContent {
+            val state by store.state.collectAsState()
+            RaftDesignSystemTheme {
+                JointMemberConnectSheet(
+                    state = state,
+                    onBack = { backClicks += 1 },
+                    onDismiss = { store.dispatch(JointChannelConnectionsIntent.DismissMemberConnect) },
+                    onSelectionChange = { store.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(it)) },
+                    onSubmit = { store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect) },
+                )
+            }
+        }
+        store.dispatch(JointChannelConnectionsIntent.OpenFromExternalInvite(publicChannel = PublicChannelConnect(canMakePrivate = true)))
+        waitForIdle()
+
+        assertEquals(1, count(JointMemberConnectBecomesPrivateTag))
+        assertEquals(0, count(JointMemberConnectPublicRefusedTag))
+        assertTrue(shown("#launch-week will become private once connected."))
+        assertEquals(1, onAllNodes(hasContentDescription("Back"), useUnmergedTree = true).fetchSemanticsNodes().size)
+
+        onNodeWithText("Alpha Co", useUnmergedTree = true).performClick()
+        waitForIdle()
+        onNodeWithText("Connect", useUnmergedTree = true).performClick()
+        waitForIdle()
+        assertEquals(listOf(listOf("srv-alpha") to true), dataSource.connectOwnServersCalls)
+        assertEquals(0, backClicks)
+    }
+
+    @Test
+    fun publicChannelConnectFromInviteForNonAdminShowsLockedNoticeAndDisablesConnect() = runRobolectricComposeUiTest {
+        val publicConn = privateTestConnections().copy(isPrivate = false, channelName = "launch-week")
+        val dataSource = FakeJointConnectionsDataSource(connections = publicConn)
+        val store = JointChannelConnectionsStore(dataSource, CoroutineScope(Dispatchers.Main.immediate))
+        store.dispatch(JointChannelConnectionsIntent.SetMemberConnectAccount(memberTestAccount()))
+        store.dispatch(JointChannelConnectionsIntent.Load)
+        setContent {
+            val state by store.state.collectAsState()
+            RaftDesignSystemTheme {
+                JointMemberConnectSheet(
+                    state = state,
+                    onBack = { store.dispatch(JointChannelConnectionsIntent.DismissMemberConnect) },
+                    onDismiss = { store.dispatch(JointChannelConnectionsIntent.DismissMemberConnect) },
+                    onSelectionChange = { store.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(it)) },
+                    onSubmit = { store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect) },
+                )
+            }
+        }
+        store.dispatch(JointChannelConnectionsIntent.OpenFromExternalInvite(publicChannel = PublicChannelConnect(canMakePrivate = false)))
+        waitForIdle()
+
+        assertEquals(1, count(JointMemberConnectPublicRefusedTag))
+        assertEquals(0, count(JointMemberConnectBecomesPrivateTag))
+        assertTrue(shown("#launch-week is public. Ask an owner or admin to make it private first."))
+        assertEquals(0, dataSource.memberConnectLimitsCalls)
+        assertEquals(0, dataSource.ownConnectableServersCalls)
+        onNodeWithText("Connect", useUnmergedTree = false).assertIsNotEnabled()
+        assertEquals(emptyList(), dataSource.memberConnectCalls)
+        assertEquals(emptyList(), dataSource.connectOwnServersCalls)
+    }
+
+    @Test
+    fun privateChannelConnectFromInviteUsesHostAdminDescription() = runRobolectricComposeUiTest {
+        val dataSource = FakeJointConnectionsDataSource(connections = privateTestConnections())
+        val store = JointChannelConnectionsStore(dataSource, CoroutineScope(Dispatchers.Main.immediate))
+        store.dispatch(JointChannelConnectionsIntent.SetMemberConnectAccount(memberTestAccount()))
+        store.dispatch(JointChannelConnectionsIntent.Load)
+        setContent {
+            val state by store.state.collectAsState()
+            RaftDesignSystemTheme {
+                JointMemberConnectSheet(
+                    state = state,
+                    onBack = { store.dispatch(JointChannelConnectionsIntent.DismissMemberConnect) },
+                    onDismiss = { store.dispatch(JointChannelConnectionsIntent.DismissMemberConnect) },
+                    onSelectionChange = { store.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(it)) },
+                    onSubmit = { store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect) },
+                )
+            }
+        }
+        store.dispatch(JointChannelConnectionsIntent.OpenFromExternalInvite(publicChannel = null))
+        waitForIdle()
+
+        assertTrue(shown("Servers you own or administer connect now, with no invite. A message in the channel says the server was connected."))
+        assertEquals(0, count(JointMemberConnectBecomesPrivateTag))
+        assertEquals(0, count(JointMemberConnectPublicRefusedTag))
     }
 }

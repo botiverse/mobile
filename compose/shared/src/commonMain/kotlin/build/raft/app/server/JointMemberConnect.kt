@@ -113,6 +113,22 @@ internal fun memberConnectRows(channel: MemberConnectChannel?, account: MemberCo
 }
 
 /**
+ * Web `useMemberConnectRowsOncePrivate` (slock #16661): for a public channel (`!isJoint && !isPrivate`),
+ * the servers of the viewer's that Connect your servers would let them choose once it is private
+ * (owner or admin, not the host, not connected, no community server). Empty for any other channel.
+ */
+internal fun memberConnectRowsOncePrivate(
+    channel: MemberConnectChannel?,
+    account: MemberConnectAccount?,
+): List<MemberConnectRow> {
+    if (channel == null || account == null || channel.isJoint || channel.isPrivate) return emptyList()
+    return memberConnectRows(channel.copy(isPrivate = true), account).filter { it.state == MemberConnectRowState.Eligible }
+}
+
+/** Public-channel context passed when opening Connect your servers from Invite people outside (slock #16661). */
+internal data class PublicChannelConnect(val canMakePrivate: Boolean)
+
+/**
  * Web `useGuestConnectEntry` + `useGuestConnectDialog` (slock #16375/#16389): a Guest of the host
  * server bound to this channel (private non-#all, or host's joint channel) gets a "Connect your
  * servers" entry in place of Add member, even when they own no servers yet (so they can create one
@@ -217,6 +233,36 @@ internal enum class MemberConnectMessage {
 
     /** `serverConnectRequest.error.busy` {channel}. */
     Busy,
+
+    /** `channel.externalInvite.error.freeLimit` (host connect on a public channel, slock #16661). */
+    HostFreeLimit,
+
+    /** `channel.edit.convertJointPartyLimit` {channel} {max} (host connect on a public channel, slock #16661). */
+    HostPartyLimit,
+
+    /** `channel.externalInvite.error.channelFull` (host connect request refusal, slock #16661). */
+    HostChannelFull,
+
+    /** `channel.externalInvite.error.membershipRequired`. */
+    HostMembershipRequired,
+
+    /** `channel.externalInvite.error.archived`. */
+    HostArchived,
+
+    /** `channel.externalInvite.error.notInvitable`. */
+    HostNotInvitable,
+
+    /** `channel.externalInvite.error.connecting`. */
+    HostConnecting,
+
+    /** `channel.externalInvite.error.dailyCap`. */
+    HostDailyCap,
+
+    /** `channel.externalInvite.error.notFound`. */
+    HostNotFound,
+
+    /** `channel.externalInvite.error.forbidden`. */
+    HostForbidden,
 
     /** `serverConnectRequest.error.generic`. */
     Generic,
@@ -421,6 +467,82 @@ internal fun memberConnectRefusedLine(outcome: ServerConnectOutcome.Refused): Me
     }
 
 /**
+ * Web `hostConnectRefusalMessageId` (slock #16661): for `POST /channels/:id/external-connect-servers`
+ * on a public channel, the host's plan limit and joint party cap are the host's to fix; every
+ * other server refusal falls through to [memberConnectRefusedLine].
+ */
+internal fun hostConnectRefusedLine(outcome: ServerConnectOutcome.Refused): MemberConnectLine.Refused {
+    if (outcome.limitSide == "host" || outcome.code == "joint_channel_plan_limit_reached") {
+        return MemberConnectLine.Refused(serverId = outcome.serverId, message = MemberConnectMessage.HostFreeLimit)
+    }
+    if (outcome.code == "joint_party_limit") {
+        return MemberConnectLine.Refused(serverId = outcome.serverId, message = MemberConnectMessage.HostPartyLimit)
+    }
+    return memberConnectRefusedLine(outcome)
+}
+
+private val HOST_REQUEST_ERROR_MESSAGES =
+    mapOf(
+        "free_external_limit" to MemberConnectMessage.HostFreeLimit,
+        "channel_full" to MemberConnectMessage.HostChannelFull,
+        "channel_membership_required" to MemberConnectMessage.HostMembershipRequired,
+        "channel_archived" to MemberConnectMessage.HostArchived,
+        "channel_not_invitable" to MemberConnectMessage.HostNotInvitable,
+        "connecting" to MemberConnectMessage.HostConnecting,
+        "invalid_input" to MemberConnectMessage.Generic,
+    )
+
+private fun hostConnectRequestKnownCode(status: Int?, normalizedCode: String?): MemberConnectRequestRefusal? {
+    val closed = status == 403 || status == 404 || normalizedCode == "channel_not_invitable" || normalizedCode == "channel_archived"
+    normalizedCode?.let { HOST_REQUEST_ERROR_MESSAGES[it] }?.let { return MemberConnectRequestRefusal(it, closed) }
+    return when (status) {
+        429 -> MemberConnectRequestRefusal(MemberConnectMessage.HostDailyCap, closed)
+        404 -> MemberConnectRequestRefusal(MemberConnectMessage.HostNotFound, closed)
+        403 -> MemberConnectRequestRefusal(MemberConnectMessage.HostForbidden, closed)
+        else -> null
+    }
+}
+
+private fun hostConnectRequestFallback(status: Int?): MemberConnectRequestRefusal =
+    when (status) {
+        429 -> MemberConnectRequestRefusal(MemberConnectMessage.HostDailyCap, closed = false)
+        404 -> MemberConnectRequestRefusal(MemberConnectMessage.HostNotFound, closed = true)
+        403 -> MemberConnectRequestRefusal(MemberConnectMessage.HostForbidden, closed = true)
+        else -> MemberConnectRequestRefusal(MemberConnectMessage.Generic, closed = false)
+    }
+
+/**
+ * Web `hostConnectRequestError` (slock #16661): whole-request refusal for
+ * `POST /channels/:id/external-connect-servers` routed through [resolveServerRefusal].
+ */
+internal fun resolveHostConnectRequestLine(
+    status: Int?,
+    code: String?,
+    error: String?,
+    traceId: String?,
+): Pair<MemberConnectLine.Request, Boolean> {
+    val defaultClosed = status == 403 || status == 404 || code == "channel_not_invitable" || code == "channel_archived"
+    return when (
+        val resolved =
+            resolveServerRefusal(
+                ServerRefusalInput(status = status, code = code, serverMessage = error, traceId = traceId),
+                knownCode = { normalizedCode, st -> hostConnectRequestKnownCode(st, normalizedCode) },
+            )
+    ) {
+        is ResolvedServerRefusal.KnownCode ->
+            MemberConnectLine.Request(resolved.known.message) to resolved.known.closed
+        is ResolvedServerRefusal.ServerWords ->
+            MemberConnectLine.Request(MemberConnectMessage.Generic, serverWords = resolved.message) to defaultClosed
+        is ResolvedServerRefusal.Infrastructure ->
+            MemberConnectLine.Request(MemberConnectMessage.Generic) to false
+        is ResolvedServerRefusal.Generic -> {
+            val fallback = hostConnectRequestFallback(status)
+            MemberConnectLine.Request(fallback.message) to fallback.closed
+        }
+    }
+}
+
+/**
  * "Create a server and connect" step inside Connect your servers (web `ConnectNewServerForm`,
  * slock #16353/#16375).
  */
@@ -456,11 +578,28 @@ internal data class MemberConnectSheet(
     val askServers: List<MemberAskServer> = emptyList(),
     /** Opened from a Guest's Connect your servers entry (slock #16375): shows Guest helper line + Create a server and connect. */
     val guestEntry: Boolean = false,
+    /** Opened from Invite people outside's footer link (`hostAdmin = true`, slock #16643): host description, no guest line. */
+    val hostAdmin: Boolean = false,
+    /** Opened from Invite people outside: show only eligible servers (no connected, notAdmin, or askServers rows). */
+    val eligibleOnly: Boolean = false,
+    /** Opened from Invite people outside on a public channel (slock #16661). */
+    val publicChannel: PublicChannelConnect? = null,
+    /**
+     * When [hostConnect] is true, the host's own connectable direct server ids from
+     * `GET channels/external-connect-servers` once loaded; null before loaded or empty answer.
+     */
+    val hostOwnDirectServerIds: Set<String>? = null,
     /** Non-null while showing the "Create a server and connect" form step. */
     val newServer: MemberConnectNewServerFormState? = null,
 ) {
     /** True while either the server-list submit or the create-new-server request is in flight. */
     val anyBusy: Boolean get() = busy || newServer?.busy == true
+
+    /** Host owner/admin connecting directly on a public channel (`POST /channels/:id/external-connect-servers`, `makePrivate: true`). */
+    val hostConnect: Boolean get() = publicChannel?.canMakePrivate == true
+
+    /** Non-admin member on a public channel: nothing choosable, Connect disabled, no connect API called. */
+    val locked: Boolean get() = publicChannel != null && !hostConnect
 }
 
 /**

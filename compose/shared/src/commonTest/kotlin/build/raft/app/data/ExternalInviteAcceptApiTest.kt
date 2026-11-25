@@ -6,6 +6,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -121,6 +122,66 @@ class ExternalInviteAcceptApiTest {
         val servers = body.getValue("servers").jsonArray.map { it.jsonObject }
         assertEquals(setOf("serverId"), servers[0].keys)
         assertEquals("u1", servers[1].getValue("approverUserId").jsonPrimitive.content)
+        assertFalse("makePrivate" in body)
+    }
+
+    @Test
+    fun hostMemberInChannelPublicChannelAndOwnersAreParsed() {
+        val page =
+            parseSharedExternalInviteForInvitee(
+                """
+                {"channelName":"launch","serverName":"Acme","inviterName":"Lena","expiresAt":"2026-11-25T00:00:00.000Z",
+                 "status":"pending","addressedToYou":true,"channelFull":false,
+                 "alreadyInChannel":true,
+                 "openChannel":{"serverId":"host-1","channelId":"ch-1","channelName":"launch"},
+                 "publicChannel":{"canMakePrivate":true},
+                 "options":{"guest":false,"newServer":true,"connect":{"slotsLeft":4,"servers":[
+                   {"id":"s1","name":"Contoso","slug":"contoso","canConnectDirectly":true,"needsApproval":false,
+                    "approvers":[],"atLimit":true,"canUpgrade":false,"owners":[{"id":"o1","name":"Pat"}]}
+                 ]}}}
+                """.trimIndent()
+            )!!
+        assertTrue(page.alreadyInChannel)
+        assertEquals(InviteOpenChannel("host-1", "ch-1", "launch"), page.openChannel)
+        assertEquals(InvitePublicChannel(canMakePrivate = true), page.publicChannel)
+        assertEquals(listOf(InviteApprover("o1", "Pat")), page.options?.connect?.servers?.single()?.owners)
+
+        val older =
+            parseSharedExternalInviteForInvitee(
+                """{"channelName":"launch","serverName":"Acme","inviterName":"Lena","status":"pending","addressedToYou":true}"""
+            )!!
+        assertFalse(older.alreadyInChannel)
+        assertNull(older.openChannel)
+        assertNull(older.publicChannel)
+    }
+
+    @Test
+    fun connectBodiesSerializeMakePrivateOnlyWhenTrueAndConnectResultParsesBothStates() {
+        val singlePlain = Json.parseToJsonElement(buildSharedInviteConnectBody("s1")).jsonObject
+        assertEquals(setOf("serverId"), singlePlain.keys)
+        val singlePrivate = Json.parseToJsonElement(buildSharedInviteConnectBody("s1", makePrivate = true)).jsonObject
+        assertEquals(true, singlePrivate.getValue("makePrivate").jsonPrimitive.boolean)
+
+        val multiPrivate =
+            Json.parseToJsonElement(
+                buildSharedInviteConnectServersBody(listOf(InviteServerSelection("s1")), makePrivate = true)
+            ).jsonObject
+        assertEquals(true, multiPrivate.getValue("makePrivate").jsonPrimitive.boolean)
+
+        val newPlain = Json.parseToJsonElement(buildSharedInviteNewServerBody("Beta", "beta")).jsonObject
+        assertFalse("makePrivate" in newPlain)
+        val newPrivate = Json.parseToJsonElement(buildSharedInviteNewServerBody("Beta", "beta", makePrivate = true)).jsonObject
+        assertEquals(true, newPrivate.getValue("makePrivate").jsonPrimitive.boolean)
+
+        assertEquals(
+            InviteConnectResult(state = "connected", serverId = "s1", channelId = "c1"),
+            parseSharedInviteConnectResult("""{"state":"connected","serverId":"s1","channelId":"c1"}"""),
+        )
+        assertEquals(
+            InviteConnectResult(state = "connecting", serverId = "s1"),
+            parseSharedInviteConnectResult("""{"state":"connecting","serverId":"s1"}"""),
+        )
+        assertNull(parseSharedInviteConnectResult("""{"state":"connected"}"""))
     }
 
     @Test

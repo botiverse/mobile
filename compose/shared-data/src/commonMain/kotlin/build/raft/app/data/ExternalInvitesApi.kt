@@ -81,6 +81,11 @@ data class ExternalInvitePreview(
      */
     val alreadyInChannelMembers: List<String> = emptyList(),
     val guestsElsewhere: List<ExternalInviteGuestElsewhere> = emptyList(),
+    /**
+     * The viewer's own address, typed among the others: never sent anything and listed under Not
+     * sent ("That's you", slock #16653). Absent from an older server.
+     */
+    val self: List<String> = emptyList(),
     /** How many people the channel can still be invited, before these. Absent from an older server. */
     val slotsLeft: Int? = null,
 )

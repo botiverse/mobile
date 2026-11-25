@@ -9,10 +9,12 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
@@ -27,6 +29,7 @@ import build.raft.app.data.ExternalInvitePreview
 import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -231,5 +234,146 @@ class ExternalInvitesUiTest {
         onNodeWithTag(ExternalInviteMembersPageButtonTag, useUnmergedTree = true).performClick()
         waitForIdle()
         assertEquals(1, inviteOutsideClicks)
+    }
+
+    @Test
+    fun step1ShowsAudienceSentenceQuietConnectServersLinkAndBackPreservesTypedEmails() = runRobolectricComposeUiTest {
+        val inviteSource = FakeExternalInvitesDataSource()
+        val inviteStore = ExternalInvitesStore(CoroutineScope(Dispatchers.Main.immediate), inviteSource)
+        inviteStore.dispatch(ExternalInvitesIntent.OpenDialog())
+        val connectSource = FakeJointConnectionsDataSource(connections = privateTestConnections().copy(channelName = "launch-week"))
+        val connectStore = JointChannelConnectionsStore(connectSource, CoroutineScope(Dispatchers.Main.immediate))
+        connectStore.dispatch(JointChannelConnectionsIntent.SetMemberConnectAccount(memberTestAccount()))
+        connectStore.dispatch(JointChannelConnectionsIntent.Load)
+        setContent {
+            val inviteState by inviteStore.state.collectAsState()
+            val connectState by connectStore.state.collectAsState()
+            RaftDesignSystemTheme {
+                inviteState.dialog?.let { dialog ->
+                    ExternalInviteSheet(
+                        dialog = dialog,
+                        serverName = "Acme",
+                        willBecomePrivate = false,
+                        joint = false,
+                        channelSlotsLeft = 10,
+                        channelName = "launch-week",
+                        onConnectServers = { connectStore.dispatch(JointChannelConnectionsIntent.OpenFromExternalInvite(publicChannel = null)) },
+                        onDismiss = { inviteStore.dispatch(ExternalInvitesIntent.CloseDialog) },
+                        onTextChange = { inviteStore.dispatch(ExternalInvitesIntent.SetText(it)) },
+                        onNext = { inviteStore.dispatch(ExternalInvitesIntent.Next) },
+                        onBack = { inviteStore.dispatch(ExternalInvitesIntent.Back) },
+                        onSend = { inviteStore.dispatch(ExternalInvitesIntent.Send(makePrivate = false)) },
+                        onUpgrade = {},
+                    )
+                }
+                JointMemberConnectSheet(
+                    state = connectState,
+                    onBack = { connectStore.dispatch(JointChannelConnectionsIntent.DismissMemberConnect) },
+                    onDismiss = { connectStore.dispatch(JointChannelConnectionsIntent.DismissMemberConnect) },
+                    onSelectionChange = { connectStore.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(it)) },
+                    onSubmit = { connectStore.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect) },
+                )
+            }
+        }
+        waitForIdle()
+        assertTrue(shown("They'll get an email to join, with or without a Raft account, and see only #launch-week, including its earlier messages."))
+        assertEquals(1, count(ExternalInviteConnectServersLinkTag))
+        assertEquals(0, inviteSource.ownServersCalls)
+
+        onNode(hasSetTextAction(), useUnmergedTree = true).performTextInput("lena@contoso.com")
+        waitForIdle()
+        assertEquals("lena@contoso.com", inviteStore.state.value.dialog?.text)
+
+        onNodeWithTag(ExternalInviteConnectServersLinkTag, useUnmergedTree = true).performClick()
+        waitForIdle()
+        assertEquals(1, count(JointMemberConnectSheetTag))
+
+        // Back returns to Invite people outside with typed emails intact.
+        onAllNodes(hasContentDescription("Back"), useUnmergedTree = true)[0].performClick()
+        waitForIdle()
+        assertEquals(0, count(JointMemberConnectSheetTag))
+        assertEquals("lena@contoso.com", inviteStore.state.value.dialog?.text)
+        assertTrue(shown("lena@contoso.com"))
+    }
+
+    @Test
+    fun reviewRendersTwoStatusGroupsThatsYouAndHidesPrivateWarningForMemberOnly() = runRobolectricComposeUiTest {
+        val mixedDialog =
+            ExternalInviteDialogState(
+                text = "x",
+                preview =
+                    ExternalInvitePreview(
+                        valid = listOf("lena@contoso.com"),
+                        alreadyMembers = listOf("kai@acme.com"),
+                        alreadyInChannel = listOf("in@acme.com", "guest@other.io"),
+                        alreadyInChannelMembers = listOf("in@acme.com"),
+                        self = listOf("me@acme.com"),
+                        alreadyPending = listOf("sam@fabrikam.com"),
+                        invalid = listOf("not-an-email"),
+                        slotsLeft = 10,
+                    ),
+            )
+        setContent {
+            RaftDesignSystemTheme {
+                ExternalInviteSheet(
+                    dialog = mixedDialog,
+                    serverName = "Acme",
+                    willBecomePrivate = true,
+                    joint = false,
+                    channelSlotsLeft = 10,
+                    onDismiss = {},
+                    onTextChange = {},
+                    onNext = {},
+                    onBack = {},
+                    onSend = {},
+                    onUpgrade = {},
+                )
+            }
+        }
+        waitForIdle()
+        assertEquals(1, count(ExternalInviteReviewGroupInvitedTag))
+        assertEquals(1, count(ExternalInviteReviewGroupNotSentTag))
+        assertEquals(1, count(ExternalInvitePrivateWarningTag))
+        assertTrue(shown("Invited by email"))
+        assertTrue(shown("Not sent"))
+        assertTrue(shown("That's you"))
+        assertTrue(shown("Already in this channel"))
+        assertTrue(shown("Already invited"))
+        assertTrue(shown("Not an email address"))
+        assertFalse(shown("Invite to connect their server"))
+    }
+
+    @Test
+    fun reviewHidesPublicBecomesPrivateWarningWhenOnlyHostMembersAreEmailed() = runRobolectricComposeUiTest {
+        setContent {
+            RaftDesignSystemTheme {
+                ExternalInviteSheet(
+                    dialog =
+                        ExternalInviteDialogState(
+                            text = "kai@acme.com",
+                            preview =
+                                ExternalInvitePreview(
+                                    alreadyMembers = listOf("kai@acme.com"),
+                                    alreadyInChannel = listOf("in@acme.com"),
+                                    alreadyInChannelMembers = listOf("in@acme.com"),
+                                    slotsLeft = 10,
+                                ),
+                        ),
+                    serverName = "Acme",
+                    willBecomePrivate = true,
+                    joint = false,
+                    channelSlotsLeft = 10,
+                    onDismiss = {},
+                    onTextChange = {},
+                    onNext = {},
+                    onBack = {},
+                    onSend = {},
+                    onUpgrade = {},
+                )
+            }
+        }
+        waitForIdle()
+        assertEquals(1, count(ExternalInviteReviewGroupInvitedTag))
+        assertEquals(0, count(ExternalInvitePrivateWarningTag))
     }
 }

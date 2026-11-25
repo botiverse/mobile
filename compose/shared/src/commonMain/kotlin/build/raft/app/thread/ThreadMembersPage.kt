@@ -552,9 +552,10 @@ private fun ThreadMembersPageScreen() {
     var createAgentMode by remember(routeOwner) { mutableStateOf(MembersCreateAgentMode.Managed) }
     var canCreateAgents by remember(routeOwner) { mutableStateOf(false) }
     var serverPlan by remember(routeOwner) { mutableStateOf<String?>(null) }
-    // External invites (web ChannelMembers): the viewer's role and this server's name.
+    // External invites (web ChannelMembers): the viewer's role, email, and this server's name.
     var viewerServerRole by remember(routeOwner) { mutableStateOf<String?>(null) }
     var viewerServerName by remember(routeOwner) { mutableStateOf("") }
+    var viewerEmail by remember(routeOwner) { mutableStateOf<String?>(null) }
     // Guest "Connect your servers" entry (slock #16375/#16389): the account's servers and role on each.
     var memberConnectAccount by remember(routeOwner) { mutableStateOf<MemberConnectAccount?>(null) }
     var guestServersRevision by remember(routeOwner) { mutableStateOf(0) }
@@ -564,6 +565,7 @@ private fun ThreadMembersPageScreen() {
     LaunchedEffect(liveOwner, routeOwner, guestServersRevision) {
         canCreateAgents = false
         viewerServerRole = null
+        viewerEmail = null
         memberConnectAccount = null
         if (liveOwner == routeOwner) {
             val session = sharedStores.authStore(storeScope).readSession()
@@ -575,6 +577,7 @@ private fun ThreadMembersPageScreen() {
             viewerServerRole = stored?.role
             viewerServerName = stored?.name.orEmpty()
             viewerUserId = session?.user?.id?.trim()?.takeIf { it.isNotEmpty() }
+            viewerEmail = session?.user?.email?.trim()?.takeIf { it.isNotEmpty() }
             memberConnectAccount = session?.memberConnectAccount(routeOwner.serverId)
         } else createAgentName = null
     }
@@ -663,6 +666,9 @@ private fun ThreadMembersPageScreen() {
     LaunchedEffect(externalInvitesStore, externalInviteGated, externalSlotKey) {
         externalInvitesStore.dispatch(ExternalInvitesIntent.PrefetchFreeLimit(externalInviteGated))
     }
+    LaunchedEffect(externalInvitesStore, viewerEmail) {
+        externalInvitesStore.dispatch(ExternalInvitesIntent.SetOwnEmail(viewerEmail))
+    }
     LaunchedEffect(externalInvitesState.effects) {
         val pending = externalInvitesState.effects
         if (pending.isEmpty()) return@LaunchedEffect
@@ -726,6 +732,28 @@ private fun ThreadMembersPageScreen() {
                 latestRefreshMembers()
             },
             onServersChanged = { guestServersRevision += 1 },
+        )
+    val inviteConnect =
+        rememberThreadMembersInviteConnect(
+            route = route,
+            routeOwner = routeOwner,
+            liveOwner = liveOwner,
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            bridge = bridge,
+            projection = addChannelProjection,
+            channelName = channelName,
+            dialogOpen = externalInvitesState.dialog != null,
+            canMakePrivate = viewerServerRole == "owner" || viewerServerRole == "admin",
+            memberConnectAccount = memberConnectAccount,
+            onConnectionsChanged = {
+                latestHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                latestRefreshMembers()
+                if (externalInviteManagementOn) externalInvitesStore.dispatch(ExternalInvitesIntent.Load)
+            },
+            onMemberConnectFinished = {
+                externalInvitesStore.dispatch(ExternalInvitesIntent.CloseDialog)
+            },
         )
     var initialAddApplied by remember(route) { mutableStateOf(false) }
     LaunchedEffect(route.openAddMember, canAddMembers) {
@@ -1124,14 +1152,13 @@ private fun ThreadMembersPageScreen() {
                 willBecomePrivate = externalInviteChannel?.type == "channel",
                 joint = externalInviteJoint,
                 channelSlotsLeft = externalInvitesState.slotsLeft,
+                channelName = channelName,
                 // Web AddExternalMemberDialog `serversHistoryHint`: a channel not joint yet that has messages.
                 serversHistoryHint = !externalInviteJoint && channelProjections[route.channelId.value]?.hasMessages == true,
+                onConnectServers = if (inviteConnect.available) inviteConnect.onOpen else null,
                 onDismiss = { externalInvitesStore.dispatch(ExternalInvitesIntent.CloseDialog) },
                 onTextChange = { externalInvitesStore.dispatch(ExternalInvitesIntent.SetText(it)) },
                 onServersChange = { externalInvitesStore.dispatch(ExternalInvitesIntent.SetServers(it)) },
-                onConnectInviteChange = { email, checked ->
-                    externalInvitesStore.dispatch(ExternalInvitesIntent.SetConnectInvite(email, checked))
-                },
                 onNext = { externalInvitesStore.dispatch(ExternalInvitesIntent.Next) },
                 onBack = { externalInvitesStore.dispatch(ExternalInvitesIntent.Back) },
                 onSend = { externalInvitesStore.dispatch(ExternalInvitesIntent.Send(makePrivate = externalInviteChannel?.type == "channel")) },
@@ -1148,6 +1175,24 @@ private fun ThreadMembersPageScreen() {
                                     serverId = route.serverId.value,
                                     exceptChannelId = route.channelId.value,
                                 ),
+                        )
+                    } else {
+                        pager.openSettingsBillingPage(storeScope)
+                    }
+                },
+            )
+        }
+        if (inviteConnect.showOverlay) {
+            JointConnectedServersOverlays(
+                holder = inviteConnect.holder,
+                onBack = { inviteConnect.holder.store.dispatch(JointChannelConnectionsIntent.DismissMemberConnect) },
+                onUpgradeServer = { targetServerId ->
+                    externalInvitesStore.dispatch(ExternalInvitesIntent.CloseDialog)
+                    if (settingsBillingOffersUpgrade()) {
+                        pager.openRaftUpgradeDialog(
+                            gate = RaftUpgradeGate.ExternalChannelFreeLimit,
+                            storeScope = storeScope,
+                            targetServerId = targetServerId,
                         )
                     } else {
                         pager.openSettingsBillingPage(storeScope)
@@ -1241,6 +1286,113 @@ private fun ThreadMembersPageScreen() {
 
 
 
+
+private data class ThreadMembersInviteConnectHandle(
+    val available: Boolean,
+    val showOverlay: Boolean,
+    val onOpen: () -> Unit,
+    val holder: JointConnectedServersHolder,
+)
+
+/**
+ * Web `AddExternalMemberDialog`'s quiet footer link "Connect your servers" (slock #16643/#16661):
+ * opens Connect your servers OVER [ExternalInviteSheet] (pressing Back keeps typed emails intact).
+ * Available when the channel is private, joint, or public (`channel`) and the viewer has at least
+ * one eligible server (`memberConnectRowsOncePrivate` for public channels).
+ */
+@Composable
+private fun rememberThreadMembersInviteConnect(
+    route: ThreadMembersPageRoute,
+    routeOwner: AuthenticatedRouteOwner,
+    liveOwner: AuthenticatedRouteOwner?,
+    sharedStores: RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    bridge: BridgeModule,
+    projection: SharedConversationDirectoryProjection?,
+    channelName: String,
+    dialogOpen: Boolean,
+    canMakePrivate: Boolean,
+    memberConnectAccount: MemberConnectAccount?,
+    onConnectionsChanged: () -> Unit,
+    onMemberConnectFinished: () -> Unit,
+): ThreadMembersInviteConnectHandle {
+    val isJoint = projection?.let { it.conversationKind == ConversationKind.Joint || it.channelKind.equals("joint", ignoreCase = true) } == true
+    val isPrivate = !isJoint && projection?.channelKind.equals("private", ignoreCase = true)
+    val isPublic = !isJoint && !isPrivate && projection?.channelKind.equals("channel", ignoreCase = true)
+    val seedConnections =
+        remember(projection, route.channelId, route.serverId, channelName, memberConnectAccount, isJoint, isPrivate, isPublic) {
+            projection?.takeIf { isJoint || isPrivate || isPublic }?.let { proj ->
+                val jointRole = JointChannelRole.fromWire(proj.jointRole)
+                val servers =
+                    if (isJoint) {
+                        proj.jointServers
+                            .map { ref ->
+                                JointChannelServer(
+                                    serverId = ref.id,
+                                    name = ref.name,
+                                    slug = ref.slug,
+                                    active = true,
+                                    isCurrentServer = ref.id == route.serverId.value,
+                                    plan = null,
+                                    role = if (jointRole == JointChannelRole.Host && ref.id == route.serverId.value) JointChannelRole.Host else null,
+                                    avatarUrl = ref.avatarUrl,
+                                )
+                            }
+                            .ifEmpty {
+                                listOf(
+                                    JointChannelServer(
+                                        serverId = route.serverId.value,
+                                        name = memberConnectAccount?.currentServerName.orEmpty(),
+                                        slug = memberConnectAccount?.currentServerSlug.orEmpty(),
+                                        active = true,
+                                        isCurrentServer = true,
+                                        plan = null,
+                                        role = jointRole,
+                                    )
+                                )
+                            }
+                    } else {
+                        emptyList()
+                    }
+                JointChannelConnections(
+                    channelId = route.channelId,
+                    channelName = channelName,
+                    isJoint = isJoint,
+                    archived = proj.archived,
+                    servers = servers,
+                    hasCurrentServerPendingInvites = false,
+                    jointRole = jointRole,
+                    isPrivate = isPrivate,
+                    joined = proj.joined,
+                )
+            }
+        }
+    val settingsRoute = remember(route.serverId, route.channelId) { ChannelSettingsRoute(route.serverId, route.channelId) }
+    val holder =
+        rememberJointConnectedServers(
+            route = settingsRoute,
+            routeOwner = routeOwner,
+            liveOwner = liveOwner,
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            bridge = bridge,
+            active = dialogOpen && isJoint,
+            seedConnections = seedConnections,
+            onConnectionsChanged = onConnectionsChanged,
+            onMemberConnectFinished = onMemberConnectFinished,
+        )
+    val state by holder.store.state.collectAsState()
+    val available = (isJoint || isPrivate || isPublic) && state.memberConnectInviteRows.isNotEmpty()
+    val publicConnect = if (isPublic) PublicChannelConnect(canMakePrivate = canMakePrivate) else null
+    return ThreadMembersInviteConnectHandle(
+        available = available,
+        showOverlay = state.memberConnectSheet != null,
+        onOpen = {
+            holder.store.dispatch(JointChannelConnectionsIntent.OpenFromExternalInvite(publicChannel = publicConnect))
+        },
+        holder = holder,
+    )
+}
 
 private data class ThreadMembersGuestConnectHandle(
     val available: Boolean,

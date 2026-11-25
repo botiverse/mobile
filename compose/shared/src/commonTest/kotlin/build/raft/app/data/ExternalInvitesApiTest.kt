@@ -47,8 +47,27 @@ class ExternalInvitesApiTest {
         val preview =
             parseSharedExternalInvitePreview("""{"valid":["a@example.com"],"duplicates":[],"invalid":[],"alreadyPending":[],"alreadyMembers":[]}""")!!
         assertEquals(emptyList(), preview.alreadyInChannel)
+        assertEquals(emptyList(), preview.alreadyInChannelMembers)
+        assertEquals(emptyList(), preview.self)
         assertEquals(emptyList(), preview.guestsElsewhere)
         assertNull(preview.slotsLeft)
+    }
+
+    @Test
+    fun previewParsesSelfAndAlreadyInChannelMembers() {
+        val preview =
+            parseSharedExternalInvitePreview(
+                """
+                {"valid":["out@example.com"],"duplicates":[],"invalid":[],"alreadyPending":[],"alreadyMembers":["m@example.com"],
+                 "alreadyInChannel":["guest@example.com","in-member@example.com"],
+                 "alreadyInChannelMembers":["in-member@example.com"],
+                 "self":["me@example.com"],
+                 "guestsElsewhere":[],"slotsLeft":25}
+                """.trimIndent()
+            )!!
+        assertEquals(listOf("me@example.com"), preview.self)
+        assertEquals(listOf("in-member@example.com"), preview.alreadyInChannelMembers)
+        assertEquals(listOf("guest@example.com", "in-member@example.com"), preview.alreadyInChannel)
     }
 
     @Test

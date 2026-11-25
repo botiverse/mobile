@@ -370,6 +370,18 @@ private fun WireJointServer.toDomain(): JointChannelServer? {
     suspend fun listMemberConnectLimits(channelId: ChannelId): Map<String, MemberConnectServerLimit> =
         networkClient.listMemberConnectLimits(channelId, warningLogger)
 
+    /** Host owner/admin connectable servers (`GET channels/external-connect-servers`, slock #16661). */
+    suspend fun ownConnectableServers(): DataResult<ExternalInviteAnswer<OwnConnectableServers>> =
+        ExternalInvitesApi(networkClient, warningLogger).ownConnectableServers()
+
+    /** Host owner/admin direct connect on a public channel (`POST channels/:id/external-connect-servers`, slock #16661). */
+    suspend fun connectOwnServers(
+        channelId: ChannelId,
+        serverIds: List<String>,
+        makePrivate: Boolean,
+    ): DataResult<ExternalInviteAnswer<List<ServerConnectOutcome>>> =
+        ExternalInvitesApi(networkClient, warningLogger).connectOwnServers(channelId, serverIds, makePrivate)
+
     suspend fun pendingInvites(serverId: ServerId, priority: DataRequestPriority): DataResult<List<PendingJointInvite>> =
         execute(
             "joint_pending_invites",
