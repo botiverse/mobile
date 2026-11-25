@@ -26,7 +26,8 @@ import kotlin.time.TestTimeSource
  * 2. App returns to foreground while offline -> network recovers later (`NetworkRestored`):
  *    failed foreground refresh never consumes the 10 s freshness window (and a `NetworkRestored`
  *    arriving while a failing foreground refresh is still in flight is latched), so both
- *    incremental-sync-on (even when `sync/changes` returns 0 machine liveness rows) and
+ *    incremental-sync-on (via `sync/changes`, which carries live machine status rows since
+ *    `botiverse/slock#16266` / prod `v1.38.3`, with zero extra `/machines` fetches) and
  *    incremental-sync-off servers recover automatically to Online.
  * 3. Pre-background `/machines` refreshes cached for 25 s never suppress a post-background
  *    foreground return with `notStartedBefore = returnBoundary`, while a companion reconnect still
@@ -123,7 +124,7 @@ class ComputersLiveRefreshCoordinatorTest {
         }
 
     @Test
-    fun foregroundBeforeNetworkRecoveryRecoversOnlineStatusWhenSyncChangesHasZeroLivenessRows() =
+    fun foregroundBeforeNetworkRecoveryRecoversOnlineStatusViaSyncChangesWithoutExtraMachinesFetch() =
         runTest {
             val api = ScriptedMachinesApi()
             api.statusByServer["server-1"] = "offline"
@@ -145,29 +146,26 @@ class ComputersLiveRefreshCoordinatorTest {
 
             var clock = 1_000_000L
             val timeSource = TestTimeSource()
-            val coalescer = RaftRecentServerRefreshCoalescer(scope = backgroundScope, timeSource = timeSource)
             val freshness = MutableSharedFlow<RaftFreshnessEvent>(extraBufferCapacity = 8)
             val syncTriggers = mutableListOf<String>()
+            var extraMachinesRefreshes = 0
             val coordinator =
                 ComputersLiveRefreshCoordinator(
                     scope = backgroundScope,
                     loadedOrObservedServerIds = { computersStore.loadedOrObservedServerIds() },
                     hasLoadedOrObservedServer = computersStore::hasLoadedOrObservedServer,
                     hasActiveObservers = computersStore::hasActiveObservers,
-                    refreshMachines = { serverId, reason, window, boundary ->
-                        coalescer.runOrCoalesceWithResult(
-                            serverId = serverId,
-                            reason = reason,
-                            coalesceFreshWithin = window,
-                            notStartedBefore = boundary,
-                        ) {
-                            computersStore.reloadMachinesForSyncSucceeded(serverId)
-                        }.succeeded
+                    refreshMachines = { _, _, _, _ ->
+                        extraMachinesRefreshes += 1
+                        true
                     },
                     syncChangesPullAllowed = { true },
                     pullSyncChanges = { serverId, trigger ->
-                        // Realistic current backend: sync/changes returns 200 with 0 machine liveness rows.
+                        // botiverse/slock#16266 (live in prod v1.38.3): sync/changes carries machine
+                        // upsert rows with live status on online/offline transitions.
                         syncTriggers += "$serverId:$trigger"
+                        val onlineRow = parseSyncedComputerRow(syncedMachineJson("machine-1", "Mac Studio", "online"))!!
+                        computersStore.applySyncedMachineRows(serverId, listOf(onlineRow), deletes = emptySet())
                         true
                     },
                     nowMillis = { clock },
@@ -175,6 +173,7 @@ class ComputersLiveRefreshCoordinatorTest {
                 )
             val freshnessJob = coordinator.startFreshness(freshness)
             runCurrent()
+            val apiCallsBeforeReturn = api.calls.size
 
             // Case A: foreground refresh started while offline and failed before NetworkRestored arrived.
             val tokenA = coordinator.onExternalForegroundRefreshStarted("server-1")
@@ -183,14 +182,15 @@ class ComputersLiveRefreshCoordinatorTest {
             coordinator.onExternalForegroundRefreshCompleted("server-1", tokenA, succeeded = false)
 
             // 2 s later (< 10 s coalesce window), network recovers and computer is Online.
-            api.statusByServer["server-1"] = "online"
             clock += 2_000
             timeSource += 2_000.milliseconds
             freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.NetworkRestored))
             runCurrent()
 
             assertEquals(listOf("server-1:freshness_network"), syncTriggers)
-            assertTrue(listComputer(listStore).online, "list recovers to Online even when sync/changes carries 0 liveness rows")
+            assertEquals(0, extraMachinesRefreshes, "sync-on NetworkRestored must not fire redundant /machines fallback")
+            assertEquals(apiCallsBeforeReturn, api.calls.size)
+            assertTrue(listComputer(listStore).online, "list recovers to Online via sync/changes machine row")
 
             // A redundant NetworkRestored 1 s after the successful recovery is coalesced.
             clock += 1_000
@@ -218,6 +218,7 @@ class ComputersLiveRefreshCoordinatorTest {
                 syncTriggers,
                 "latched NetworkRestored fires as soon as the failing foreground refresh finishes",
             )
+            assertEquals(0, extraMachinesRefreshes)
 
             freshnessJob.cancel()
             listStore.clear()
@@ -393,8 +394,7 @@ class ComputersLiveRefreshCoordinatorTest {
                             computersStore.reloadMachinesForSyncSucceeded(serverId)
                         }.succeeded
                     },
-                    syncChangesPullAllowed = { true },
-                    pullSyncChanges = { _, _ -> true },
+                    syncChangesPullAllowed = { false },
                     nowMillis = { clock },
                     timeSource = timeSource,
                 )

@@ -34,8 +34,10 @@ import build.raft.app.model.hidesHumanDirectoryForViewer
 import build.raft.app.model.isAgentFallbackAvatarWireValue
 import build.raft.app.raftAvatarDiagnosticsHash
 import build.raft.app.raftAvatarDiagnosticsSource
+import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -57,6 +59,7 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.concurrent.Volatile
+import kotlin.random.Random
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -804,9 +807,103 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
             current = { _state.value.channelMemberSlices },
         )
 
-    /** This store is gone (its shell closed): its offline mirror stops. */
+    private val channelMemberObserversLock = SynchronizedObject()
+    private val activeChannelMemberObservers = mutableMapOf<SharedServerChannelMembersScope, Int>()
+    private var channelMembersFreshnessCoordinator: ChannelMembersLiveRefreshCoordinator? = null
+    private var channelMembersFreshnessJob: Job? = null
+
+    /**
+     * Subscribes this store to [freshness] so actively observed channel member rosters
+     * ([channelMemberSliceFlow]) refresh automatically on Foreground / Reconnect / NetworkRestored
+     * (#wg-mobile-feedback:#274 Phase 1). Calling again replaces any prior subscription.
+     */
+    @RaftCoreInternalApi fun startChannelMembersFreshness(
+        scope: CoroutineScope,
+        freshness: Flow<RaftFreshnessEvent> = RaftFreshnessSignal.events,
+        nowMillis: () -> Long = ::raftForegroundGateNowMillis,
+        reconnectJitterMillis: () -> Long = { reconnectRefetchJitterMillis(Random.Default) },
+        liveConnectionToken: (serverId: String) -> Long? = RaftRealtimeConnectionCauses::liveConnectionToken,
+    ): Job {
+        val coordinator =
+            ChannelMembersLiveRefreshCoordinator(
+                scope = scope,
+                observedScopes = ::observedChannelMemberScopes,
+                hasActiveObservers = ::hasActiveChannelMemberObservers,
+                refreshChannelMembers = { targetScope, _ ->
+                    val owner =
+                        AuthenticatedRouteOwner(
+                            environmentId = targetScope.environmentId,
+                            accountId = targetScope.accountId,
+                            serverId = targetScope.serverId,
+                        )
+                    val result =
+                        loadChannelMembers(
+                            owner = owner,
+                            channelId = ChannelId(targetScope.channelId),
+                            priority = DataRequestPriority.Background,
+                            force = true,
+                        )
+                    result.syncSnapshotRead() != RaftSyncSnapshotRead.Failed
+                },
+                nowMillis = nowMillis,
+                reconnectJitterMillis = reconnectJitterMillis,
+                liveConnectionToken = liveConnectionToken,
+                logger = logger,
+            )
+        val job = coordinator.startFreshness(freshness)
+        val (previousCoordinator, previousJob) =
+            synchronized(channelMemberObserversLock) {
+                val prevCoord = channelMembersFreshnessCoordinator
+                val prevJob = channelMembersFreshnessJob
+                channelMembersFreshnessCoordinator = coordinator
+                channelMembersFreshnessJob = job
+                prevCoord to prevJob
+            }
+        previousJob?.cancel()
+        previousCoordinator?.cancelAll()
+        return job
+    }
+
+    @RaftCoreInternalApi fun observedChannelMemberScopes(): Set<SharedServerChannelMembersScope> =
+        synchronized(channelMemberObserversLock) { activeChannelMemberObservers.keys.toSet() }
+
+    @RaftCoreInternalApi fun hasActiveChannelMemberObservers(scope: SharedServerChannelMembersScope): Boolean =
+        synchronized(channelMemberObserversLock) { (activeChannelMemberObservers[scope] ?: 0) > 0 }
+
+    private fun addChannelMemberObserver(scope: SharedServerChannelMembersScope) {
+        synchronized(channelMemberObserversLock) {
+            activeChannelMemberObservers[scope] = (activeChannelMemberObservers[scope] ?: 0) + 1
+        }
+    }
+
+    private fun removeChannelMemberObserver(scope: SharedServerChannelMembersScope) {
+        val unobservedCoordinator =
+            synchronized(channelMemberObserversLock) {
+                val next = (activeChannelMemberObservers[scope] ?: 0) - 1
+                if (next <= 0) {
+                    activeChannelMemberObservers.remove(scope)
+                    channelMembersFreshnessCoordinator
+                } else {
+                    activeChannelMemberObservers[scope] = next
+                    null
+                }
+            }
+        unobservedCoordinator?.onScopeUnobserved(scope)
+    }
+
+    /** This store is gone (its shell closed): its offline mirror and freshness subscription stop. */
     @RaftCoreInternalApi fun dispose() {
         channelMembersMirror?.cancel()
+        val (coordinator, job) =
+            synchronized(channelMemberObserversLock) {
+                val coord = channelMembersFreshnessCoordinator
+                val j = channelMembersFreshnessJob
+                channelMembersFreshnessCoordinator = null
+                channelMembersFreshnessJob = null
+                coord to j
+            }
+        job?.cancel()
+        coordinator?.cancelAll()
     }
 
     /**
@@ -1315,7 +1412,15 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                         )
                     )
                 } else {
-                    state.map { current -> current.channelMemberSlice(binding, channelId) }
+                    val observedScope = binding.scope(channelId)
+                    flow {
+                        if (observedScope != null) addChannelMemberObserver(observedScope)
+                        try {
+                            state.map { current -> current.channelMemberSlice(binding, channelId) }.collect(::emit)
+                        } finally {
+                            if (observedScope != null) removeChannelMemberObserver(observedScope)
+                        }
+                    }
                 }
             }
             .distinctUntilChanged()
@@ -1333,7 +1438,15 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                 if (binding == null || !binding.matches(normalizedOwner)) {
                     flowOf(normalizedOwner.emptyChannelMemberSlice(channelId))
                 } else {
-                    state.map { current -> current.channelMemberSlice(binding, channelId) }
+                    val observedScope = binding.scope(channelId)
+                    flow {
+                        if (observedScope != null) addChannelMemberObserver(observedScope)
+                        try {
+                            state.map { current -> current.channelMemberSlice(binding, channelId) }.collect(::emit)
+                        } finally {
+                            if (observedScope != null) removeChannelMemberObserver(observedScope)
+                        }
+                    }
                 }
             }
             .distinctUntilChanged()
@@ -4455,6 +4568,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
     suspend fun dropServer(serverId: ServerId) {
         val key = serverId.value.normalizedServerMembersId() ?: return
         val binding = currentDirectoryOwnerBinding(ServerId(key))
+        synchronized(channelMemberObserversLock) { channelMembersFreshnessCoordinator }?.cancelServer(key)
         processOwner(ServerId(key))?.let { owner -> processCore.invalidate(owner, reason = "server_access_lost") }
         jointActors?.clearServer(ServerId(key))
         mutex.withLock {
@@ -4514,6 +4628,12 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                         ownedBySuccessor(scope.environmentId, scope.accountId, slice.ownerWriteGeneration)
                     }
             )
+        synchronized(channelMemberObserversLock) { channelMembersFreshnessCoordinator }?.cancelWhere { scope ->
+            environment == null ||
+                account == null ||
+                scope.environmentId.normalizedChannelMembersEnvironmentId() != environment ||
+                scope.accountId.normalizedServerMembersId() != account
+        }
         pruneChannelPeerPresenceTransports()
         synchronized(recencyLock) { serverRecency.retainAll(keptEntries.keys) }
         clearScopedReadCaches()

@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -384,5 +385,192 @@ class SharedAgentActivityOverviewStoreTest {
         repository.calls.last().result.complete(page(turn("t1", 3_000)))
         runCurrent()
         assertEquals(listOf("e1"), store.state.value.operatorEvents.map { it.id }, "a failed reload keeps the events shown")
+    }
+
+    @Test
+    fun observedStoreCatchesUpOnForegroundReconnectAndNetworkRestoredWithoutBurningWindowOnFailure() = runTest {
+        val repository = FakeRepository()
+        val freshness = MutableSharedFlow<RaftFreshnessEvent>(extraBufferCapacity = 16)
+        var clock = 1_000_000L
+        val store =
+            SharedAgentActivityOverviewStore(
+                repository = repository,
+                scope = backgroundScope,
+                freshness = freshness,
+                nowMillis = { clock },
+                liveConnectionToken = { null },
+            )
+        val observer = Any()
+        store.dispatch(AgentActivityOverviewIntent.ObserveFreshness(observer, serverId = "server-1"))
+        store.dispatch(AgentActivityOverviewIntent.Open(agent))
+        runCurrent()
+        repository.calls[0].result.complete(page(turn("t1", 1_000)))
+        runCurrent()
+        assertEquals(listOf("t1"), keys(store))
+
+        // 1. Foreground fails while offline: existing turns stay shown, refreshing stays false,
+        //    and the 10 s coalescing window is NOT burned.
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Foreground))
+        runCurrent()
+        assertEquals(2, repository.calls.size)
+        assertEquals(DataRequestPriority.Background, repository.calls[1].priority)
+        assertEquals(false, store.state.value.refreshing, "silent catch-up does not show pull-to-refresh")
+        repository.calls[1].result.complete(DataResult.Error(ScreenError("activity_offline")))
+        runCurrent()
+        assertEquals(AgentActivityOverviewStatus.Loaded, store.state.value.status)
+        assertEquals(listOf("t1"), keys(store), "failed catch-up keeps existing turns")
+
+        // 2 s later (< 10 s coalesce window): NetworkRestored retries immediately and updates turns.
+        clock += 2_000L
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.NetworkRestored))
+        runCurrent()
+        assertEquals(3, repository.calls.size, "failed foreground must not block NetworkRestored")
+        assertEquals(DataRequestPriority.Background, repository.calls[2].priority)
+        repository.calls[2].result.complete(page(turn("t2", 2_000), turn("t1", 1_000)))
+        runCurrent()
+        assertEquals(listOf("t2", "t1"), keys(store))
+
+        // Redundant NetworkRestored 1 s after a successful catch-up coalesces inside 10 s.
+        clock += 1_000L
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.NetworkRestored))
+        runCurrent()
+        assertEquals(3, repository.calls.size)
+
+        // 2. Reconnect for another server is ignored; own-server new transport epoch refreshes even inside 10 s.
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Reconnect, serverId = "server-2", transportEpoch = 1L))
+        runCurrent()
+        assertEquals(3, repository.calls.size)
+
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Reconnect, serverId = "server-1", transportEpoch = 2L))
+        runCurrent()
+        assertEquals(4, repository.calls.size)
+        repository.calls[3].result.complete(page(turn("t3", 3_000), turn("t2", 2_000), turn("t1", 1_000)))
+        runCurrent()
+        assertEquals(listOf("t3", "t2", "t1"), keys(store))
+
+        // Duplicate Reconnect for the same transport epoch (`rooms:joined` after `connected`) is ignored.
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Reconnect, serverId = "server-1", transportEpoch = 2L))
+        runCurrent()
+        assertEquals(4, repository.calls.size)
+    }
+
+    @Test
+    fun midFlightNetworkRestoredDuringFailingForegroundCatchUpFiresFollowUpImmediately() = runTest {
+        val repository = FakeRepository()
+        val freshness = MutableSharedFlow<RaftFreshnessEvent>(extraBufferCapacity = 16)
+        var clock = 1_000_000L
+        val store =
+            SharedAgentActivityOverviewStore(
+                repository = repository,
+                scope = backgroundScope,
+                freshness = freshness,
+                nowMillis = { clock },
+                liveConnectionToken = { null },
+            )
+        store.dispatch(AgentActivityOverviewIntent.ObserveFreshness(Any(), serverId = "server-1"))
+        store.dispatch(AgentActivityOverviewIntent.Open(agent))
+        runCurrent()
+        repository.calls[0].result.complete(page(turn("t1", 1_000)))
+        runCurrent()
+
+        // Foreground starts and hangs; NetworkRestored arrives mid-flight -> latched (single-flight).
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Foreground))
+        runCurrent()
+        assertEquals(2, repository.calls.size)
+
+        clock += 1_500L
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.NetworkRestored))
+        runCurrent()
+        assertEquals(2, repository.calls.size, "single-flight latches NetworkRestored while Foreground is running")
+
+        // Hanging Foreground fails -> latched NetworkRestored fires immediately and recovers.
+        clock += 500L
+        repository.calls[1].result.complete(DataResult.Error(ScreenError("activity_timeout")))
+        runCurrent()
+        assertEquals(3, repository.calls.size, "latched NetworkRestored fires once failing Foreground finishes")
+        assertEquals(listOf("t1"), keys(store), "existing turns remain shown during recovery")
+
+        repository.calls[2].result.complete(page(turn("t2", 2_000), turn("t1", 1_000)))
+        runCurrent()
+        assertEquals(listOf("t2", "t1"), keys(store))
+    }
+
+    @Test
+    fun unobservedOrHiddenStoreDoesNotTriggerSpuriousCatchUpRefreshes() = runTest {
+        val repository = FakeRepository()
+        val freshness = MutableSharedFlow<RaftFreshnessEvent>(extraBufferCapacity = 16)
+        var clock = 1_000_000L
+        val store =
+            SharedAgentActivityOverviewStore(
+                repository = repository,
+                scope = backgroundScope,
+                freshness = freshness,
+                nowMillis = { clock },
+                liveConnectionToken = { null },
+            )
+        // Loaded without any registered freshness observer -> events must be ignored.
+        store.dispatch(AgentActivityOverviewIntent.Open(agent))
+        runCurrent()
+        repository.calls[0].result.complete(page(turn("t1", 1_000)))
+        runCurrent()
+
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Foreground))
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.NetworkRestored))
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Reconnect, serverId = "server-1", transportEpoch = 1L))
+        runCurrent()
+        assertEquals(1, repository.calls.size, "unsubscribed store must not trigger catch-up")
+
+        // Observe then cover page (`SetPageVisible(false)`): no refresh while hidden, catches up once visible again.
+        val observer = Any()
+        store.dispatch(AgentActivityOverviewIntent.ObserveFreshness(observer, serverId = "server-1"))
+        store.dispatch(AgentActivityOverviewIntent.SetPageVisible(false))
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Foreground))
+        runCurrent()
+        assertEquals(1, repository.calls.size, "covered page must not fetch while hidden")
+
+        store.dispatch(AgentActivityOverviewIntent.SetPageVisible(true))
+        runCurrent()
+        assertEquals(2, repository.calls.size, "held freshness event fires once page becomes visible")
+        repository.calls[1].result.complete(page(turn("t2", 2_000), turn("t1", 1_000)))
+        runCurrent()
+        assertEquals(listOf("t2", "t1"), keys(store))
+
+        // Unsubscribe observer (switched to Settings tab) -> subsequent freshness events trigger nothing.
+        store.dispatch(AgentActivityOverviewIntent.StopObservingFreshness(observer))
+        clock += RAFT_FRESHNESS_COALESCE_MILLIS + 1L
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Foreground))
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.NetworkRestored))
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Reconnect, serverId = "server-1", transportEpoch = 2L))
+        runCurrent()
+        assertEquals(2, repository.calls.size, "unsubscribed store must not trigger catch-up")
+    }
+
+    @Test
+    fun failedInitialOverviewLoadRecoversOnFreshnessSignal() = runTest {
+        val repository = FakeRepository()
+        val freshness = MutableSharedFlow<RaftFreshnessEvent>(extraBufferCapacity = 16)
+        val store =
+            SharedAgentActivityOverviewStore(
+                repository = repository,
+                scope = backgroundScope,
+                freshness = freshness,
+                nowMillis = { 1_000_000L },
+                liveConnectionToken = { null },
+            )
+        store.dispatch(AgentActivityOverviewIntent.ObserveFreshness(Any(), serverId = "server-1"))
+        store.dispatch(AgentActivityOverviewIntent.Open(agent))
+        runCurrent()
+        repository.calls[0].result.complete(DataResult.Error(ScreenError("activity_offline")))
+        runCurrent()
+        assertEquals(AgentActivityOverviewStatus.Error("activity_offline"), store.state.value.status)
+
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.NetworkRestored))
+        runCurrent()
+        assertEquals(2, repository.calls.size)
+        assertEquals(AgentActivityOverviewStatus.Loading, store.state.value.status)
+        repository.calls[1].result.complete(page(turn("t1", 1_000)))
+        runCurrent()
+        assertEquals(AgentActivityOverviewStatus.Loaded, store.state.value.status)
+        assertEquals(listOf("t1"), keys(store))
     }
 }

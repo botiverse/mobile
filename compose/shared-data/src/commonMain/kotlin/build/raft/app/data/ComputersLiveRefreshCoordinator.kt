@@ -9,7 +9,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -39,9 +38,10 @@ import kotlin.time.TimeSource
  *      - If that foreground refresh failed (e.g. app returned to foreground before network came
  *        back), the per-server outcome-tracked [RaftFreshnessGate] does NOT consume its 10 s window
  *        (and latches any [RaftFreshnessTrigger.NetworkRestored] arriving while the failing refresh
- *        is still in flight), so [RaftFreshnessTrigger.NetworkRestored] recovers both incremental
- *        `sync/changes` and live machine status immediately (coalescing cleanly against any already
- *        fresh `/machines` read).
+ *        is still in flight), so [RaftFreshnessTrigger.NetworkRestored] recovers via incremental
+ *        `sync/changes` immediately (since `botiverse/slock#16266`, live in prod `v1.37.0+`/`v1.38.3`,
+ *        `sync/changes` carries `machine` upsert rows with live status on online/offline flips, so no
+ *        redundant `/machines` fallback is needed here).
  *    - When incremental sync is off for the server ([syncChangesPullAllowed] is false):
  *      - [RaftFreshnessTrigger.Foreground], [RaftFreshnessTrigger.NetworkRestored], and
  *        active-observer [RaftFreshnessTrigger.Reconnect] refresh [SharedComputersStore] through
@@ -488,36 +488,15 @@ import kotlin.time.TimeSource
                         val useIncrementalSync = syncChangesPullAllowed(serverId)
                         logger(
                             "computers_freshness_refresh serverId=$serverId trigger=${trigger.wireName} " +
-                                "mode=${if (useIncrementalSync) "sync_changes+machines" else "machines"}"
+                                "mode=${if (useIncrementalSync) "sync_changes" else "machines"}"
                         )
                         val succeeded =
                             try {
                                 if (useIncrementalSync) {
-                                    // Recover both descriptive change_log rows and Redis-backed
-                                    // machine online/offline status; machinesSyncRefreshCoalescer
-                                    // skips /machines if a fresh read already succeeded.
-                                    var syncOk = false
-                                    var machinesOk = false
-                                    coroutineScope {
-                                        launch {
-                                            syncOk =
-                                                runCatchingPreservingCancellation {
-                                                    pullSyncChanges(serverId, "freshness_${trigger.wireName}")
-                                                }.getOrDefault(false)
-                                        }
-                                        launch {
-                                            machinesOk =
-                                                runCatchingPreservingCancellation {
-                                                    refreshMachines(
-                                                        serverId,
-                                                        "freshness_${trigger.wireName}",
-                                                        freshnessCoalesceWithin,
-                                                        boundary,
-                                                    )
-                                                }.getOrDefault(false)
-                                        }
-                                    }
-                                    syncOk && machinesOk
+                                    // botiverse/slock#16266 (live since v1.37.0 / prod v1.38.3) logs
+                                    // machine upsert rows with live status on online/offline flips, so
+                                    // sync/changes recovers machine status without a redundant /machines call.
+                                    pullSyncChanges(serverId, "freshness_${trigger.wireName}")
                                 } else {
                                     refreshMachines(
                                         serverId,
