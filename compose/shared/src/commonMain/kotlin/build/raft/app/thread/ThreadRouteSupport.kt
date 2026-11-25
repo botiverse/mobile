@@ -1206,6 +1206,7 @@ internal class ThreadLoadingOptimisticComposerHost(
     val accessResolution: ThreadAccessResolution,
     val replyParentAuthority: ReplyParentAuthorityStatus,
     val composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    val serverId: String? = null,
     val jointChannelId: String? = null,
     val composerLocked: Boolean = false,
     val externalFrozen: Boolean = false,
@@ -1314,11 +1315,13 @@ internal fun rememberThreadDeferredLoadingScaffoldSlots(
                 optimisticComposerHost.composerDraftViewModel,
                 loadingBaseComposerState.instanceId,
                 loadingDraftKey,
+                optimisticComposerHost.serverId,
             ) {
                 ensureThreadComposerDraftStarted(
                     composerDraftViewModel = optimisticComposerHost.composerDraftViewModel,
                     composer = loadingBaseComposerState,
                     draftKey = loadingDraftKey,
+                    serverId = optimisticComposerHost.serverId,
                 )
             }
             val loadingTimelineSlice = remember(payload) { payload.toThreadTimelineSlice() }

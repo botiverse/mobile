@@ -65,8 +65,17 @@ class RaftDraftsTest {
     private fun record(key: String, send: String, parent: String? = null, mention: String? = null) =
         SharedThreadComposerDraftRecord(key = key, sendChannelId = send, parentMessageId = parent, mentionChannelId = mention ?: send)
 
-    private fun draft(record: SharedThreadComposerDraftRecord, text: String, at: Long?) =
-        SharedThreadComposerDraftListing(record = record, text = text, editedAtEpochMillis = at)
+    private fun draft(
+        record: SharedThreadComposerDraftRecord,
+        text: String,
+        at: Long?,
+        serverId: String? = null,
+    ) = SharedThreadComposerDraftListing(
+        record = record,
+        text = text,
+        editedAtEpochMillis = at,
+        serverId = serverId,
+    )
 
     @Test
     fun placesEachKindFromWhatTheDeviceHasWithoutAsking() {
@@ -180,7 +189,7 @@ class RaftDraftsTest {
         var account = "env|user-a"
         val fetch: suspend (String, String) -> RaftDraftLookupResult = { _, id ->
             asked += account to id
-            if (account == "env|user-a") RaftDraftLookupResult.Found(RaftDraftChannelPlace(id, "channel")) else RaftDraftLookupResult.NotHere
+            if (account == "env|user-a") RaftDraftLookupResult.Found(RaftDraftChannelPlace(id, "channel")) else RaftDraftLookupResult.NotFound
         }
 
         // Signed out: nothing is asked or kept.
@@ -474,5 +483,224 @@ class RaftDraftsTest {
             RaftDraftChannelPlace("c1", "joint", jointChannelId = "j1"),
             parseRaftDraftChannelPlace("""{"id":"c1","type":"joint","jointChannelId":"j1"}"""),
         )
+    }
+
+    @Test
+    fun nonJointDraftFromAnotherServerResolvesNotHereWithoutLookup() {
+        val drafts =
+            listOf(
+                draft(root("chan-on-s2"), "channel on server 2", 100, serverId = "s2"),
+                draft(reply("thread-on-s2", "msg-2", "chan-on-s2"), "reply on server 2", 200, serverId = "s2"),
+                draft(root("task-on-s2"), "task on server 2", 300, serverId = "s2"),
+                // Draft on this server still resolves normally.
+                draft(root("general"), "channel on server 1", 400, serverId = "s1"),
+                // Legacy draft without serverId still falls back to lookup.
+                draft(root("legacy-unjoined"), "legacy draft", 500, serverId = null),
+            )
+
+        assertEquals(
+            RaftDraftPlaceResolution.NotHere,
+            root("chan-on-s2").resolveRaftDraftPlace(directory, lookups = emptyMap(), draftServerId = "s2"),
+        )
+        assertEquals(
+            RaftDraftPlaceResolution.NotHere,
+            reply("thread-on-s2", "msg-2", "chan-on-s2").resolveRaftDraftPlace(directory, lookups = emptyMap(), draftServerId = "s2"),
+        )
+
+        val listing = raftDraftListing(drafts, directory, lookups = emptyMap())
+        assertEquals(listOf(RaftDraftPlace.Conversation("general", directMessage = false)), listing.entries.map { it.place })
+        assertEquals(setOf("legacy-unjoined"), listing.lookupChannelIds)
+    }
+
+    @Test
+    fun jointChannelDraftSavedOnSiblingServerStillResolvesViaJointChannelRow() {
+        val serverADirectory =
+            RaftDraftDirectory(
+                serverId = "s1",
+                channels =
+                    mapOf(
+                        "chan-a" to
+                            HomeChannelRow(
+                                threadId = topLevelThreadId(ChannelId("chan-a")),
+                                channelId = ChannelId("chan-a"),
+                                kind = ConversationKind.Joint,
+                                name = "wg-shared",
+                                jointChannelId = "joint-42",
+                            ),
+                    ),
+            )
+        val jointRootRecord =
+            SharedThreadComposerDraftRecord(
+                key = "send=chan-b|parent=_|mention=chan-b|joint=joint-42",
+                sendChannelId = "chan-b",
+                mentionChannelId = "chan-b",
+                jointChannelId = "joint-42",
+            )
+        val jointReplyRecord =
+            SharedThreadComposerDraftRecord(
+                key = "send=thread-b|parent=msg-9|mention=chan-b|joint=joint-42",
+                sendChannelId = "thread-b",
+                parentMessageId = "msg-9",
+                mentionChannelId = "chan-b",
+                jointChannelId = "joint-42",
+            )
+        val drafts =
+            listOf(
+                draft(jointRootRecord, "joint root from s2", 100, serverId = "s2"),
+                draft(jointReplyRecord, "joint reply from s2", 200, serverId = "s2"),
+            )
+
+        val listing = raftDraftListing(drafts, serverADirectory, lookups = emptyMap())
+        assertEquals(emptySet(), listing.lookupChannelIds)
+        assertEquals(
+            listOf(
+                RaftDraftPlace.Thread("chan-a", "msg-9", threadChannelId = null),
+                RaftDraftPlace.Conversation("chan-a", directMessage = false),
+            ),
+            listing.entries.map { it.place },
+        )
+    }
+
+    @Test
+    fun legacyDraftNotFoundPersistsAcrossColdRestartWithZeroLookups() = runTest {
+        val storage = InMemoryRaftKeyValueStore()
+        val legacyDrafts = listOf(draft(root("deleted-or-other-server"), "still kept", 100, serverId = null))
+        val asked = mutableListOf<Pair<String, String>>()
+
+        // Process 1: first cold start asks once, gets 404, remembers & persists it.
+        val firstProcess = RaftDraftPlaceLookups(store = storage)
+        firstProcess.bindAccount("env|user-a")
+        val initialListing = raftDraftListing(legacyDrafts, directory, lookups = emptyMap())
+        assertEquals(setOf("deleted-or-other-server"), initialListing.lookupChannelIds)
+
+        assertTrue(
+            firstProcess.ensure("s1", initialListing.lookupChannelIds) { serverId, channelId ->
+                asked += serverId to channelId
+                RaftDraftLookupResult.NotFound
+            }
+        )
+        assertEquals(listOf("s1" to "deleted-or-other-server"), asked)
+        val firstScope = RaftDraftPlaceLookups.Scope("env|user-a", "s1")
+        assertEquals(mapOf("deleted-or-other-server" to null), firstProcess.state.value[firstScope])
+
+        // Process 2 (simulated cold restart): fresh lookups instance on the same store hydrates 404s.
+        val restartedProcess = RaftDraftPlaceLookups(store = storage)
+        restartedProcess.bindAccount("env|user-a")
+        val restartedAnswers = restartedProcess.state.value[firstScope].orEmpty()
+        assertEquals(mapOf("deleted-or-other-server" to null), restartedAnswers)
+
+        val restartedListing = raftDraftListing(legacyDrafts, directory, lookups = restartedAnswers)
+        assertEquals(0, restartedListing.count)
+        assertEquals(emptySet(), restartedListing.lookupChannelIds)
+
+        assertTrue(
+            restartedProcess.ensure("s1", listOf("deleted-or-other-server")) { serverId, channelId ->
+                asked += serverId to channelId
+                RaftDraftLookupResult.NotFound
+            }
+        )
+        assertEquals(listOf("s1" to "deleted-or-other-server"), asked)
+
+        // Persisted 404 on s1 does not block lookups on s2.
+        assertTrue(
+            restartedProcess.ensure("s2", listOf("deleted-or-other-server")) { serverId, channelId ->
+                asked += serverId to channelId
+                RaftDraftLookupResult.Found(RaftDraftChannelPlace(channelId, "channel"))
+            }
+        )
+        assertEquals(
+            listOf("s1" to "deleted-or-other-server", "s2" to "deleted-or-other-server"),
+            asked,
+        )
+    }
+
+    @Test
+    fun forbiddenLookupStaysInMemoryOnlyAndRetriesAfterColdRestart() = runTest {
+        val storage = InMemoryRaftKeyValueStore()
+        val asked = mutableListOf<String>()
+
+        // Process 1: 403 is remembered in-memory for the session, never persisted.
+        val firstProcess = RaftDraftPlaceLookups(store = storage)
+        firstProcess.bindAccount("env|user-a")
+        assertTrue(
+            firstProcess.ensure("s1", listOf("private-chan")) { _, id ->
+                asked += "p1:$id"
+                RaftDraftLookupResult.Forbidden
+            }
+        )
+        // Same session does not re-request.
+        assertTrue(
+            firstProcess.ensure("s1", listOf("private-chan")) { _, id ->
+                asked += "p1-repeat:$id"
+                RaftDraftLookupResult.Forbidden
+            }
+        )
+        assertEquals(listOf("p1:private-chan"), asked)
+        assertNull(storage.getString(RaftDraftPlaceNotFoundStorageKey))
+
+        // Process 2 (cold restart): 403 was not persisted, so re-invited private channel recovers.
+        val restartedProcess = RaftDraftPlaceLookups(store = storage)
+        restartedProcess.bindAccount("env|user-a")
+        assertNull(restartedProcess.state.value[RaftDraftPlaceLookups.Scope("env|user-a", "s1")])
+
+        assertTrue(
+            restartedProcess.ensure("s1", listOf("private-chan")) { _, id ->
+                asked += "p2:$id"
+                RaftDraftLookupResult.Found(RaftDraftChannelPlace(id, "private"))
+            }
+        )
+        assertEquals(listOf("p1:private-chan", "p2:private-chan"), asked)
+        assertEquals(
+            RaftDraftChannelPlace("private-chan", "private"),
+            restartedProcess.state.value[RaftDraftPlaceLookups.Scope("env|user-a", "s1")]?.get("private-chan"),
+        )
+    }
+
+    @Test
+    fun bindAccountSignOutAndAccountSwitchClearPersistedNotFoundMisses() = runTest {
+        val storage = InMemoryRaftKeyValueStore()
+        val lookups = RaftDraftPlaceLookups(store = storage)
+        lookups.bindAccount("env|user-a")
+        lookups.ensure("s1", listOf("gone-1")) { _, _ -> RaftDraftLookupResult.NotFound }
+        assertTrue(storage.getString(RaftDraftPlaceNotFoundStorageKey)?.contains("gone-1") == true)
+
+        // Sign-out wipes persisted 404 misses.
+        lookups.bindAccount(null)
+        assertNull(storage.getString(RaftDraftPlaceNotFoundStorageKey))
+        assertEquals(emptyMap(), lookups.state.value)
+
+        // Re-binding account A after sign-out starts clean (no stale persisted misses).
+        lookups.bindAccount("env|user-a")
+        assertEquals(emptyMap(), lookups.state.value)
+
+        // Persist again, then switch directly to account B: wipes persisted misses too.
+        lookups.ensure("s1", listOf("gone-2")) { _, _ -> RaftDraftLookupResult.NotFound }
+        assertTrue(storage.getString(RaftDraftPlaceNotFoundStorageKey)?.contains("gone-2") == true)
+        lookups.bindAccount("env|user-b")
+        assertNull(storage.getString(RaftDraftPlaceNotFoundStorageKey))
+        assertEquals(emptyMap(), lookups.state.value)
+
+        // Cold restart binding a different account purges stale persisted misses left by the previous account.
+        lookups.ensure("s1", listOf("gone-b")) { _, _ -> RaftDraftLookupResult.NotFound }
+        assertTrue(storage.getString(RaftDraftPlaceNotFoundStorageKey)?.contains("gone-b") == true)
+        val restartedForA = RaftDraftPlaceLookups(store = storage)
+        restartedForA.bindAccount("env|user-a")
+        assertNull(storage.getString(RaftDraftPlaceNotFoundStorageKey))
+        assertEquals(emptyMap(), restartedForA.state.value)
+    }
+
+    @Test
+    fun persistedNotFoundMissesStayBoundedKeepingMostRecentEntries() = runTest {
+        val storage = InMemoryRaftKeyValueStore()
+        val firstProcess = RaftDraftPlaceLookups(store = storage, maxPersistedNotFoundPerServer = 3)
+        firstProcess.bindAccount("env|user-a")
+        for (index in 1..5) {
+            firstProcess.ensure("s1", listOf("c$index")) { _, _ -> RaftDraftLookupResult.NotFound }
+        }
+
+        val restarted = RaftDraftPlaceLookups(store = storage, maxPersistedNotFoundPerServer = 3)
+        restarted.bindAccount("env|user-a")
+        val scope = RaftDraftPlaceLookups.Scope("env|user-a", "s1")
+        assertEquals(setOf("c3", "c4", "c5"), restarted.state.value[scope]?.keys)
     }
 }

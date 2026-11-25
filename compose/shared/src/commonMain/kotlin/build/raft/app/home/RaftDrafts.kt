@@ -54,11 +54,13 @@ import build.raft.app.data.RaftDraftChannelPlace
 import build.raft.app.data.RaftDraftPlaceKind
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.extractQuoteReplyPreviewText
 import build.raft.app.data.formatTaskConversationRef
 import build.raft.app.data.parseRaftDraftChannelPlace
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.RaftTimeContext
@@ -88,6 +90,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import build.raft.designsystem.components.RaftEmptyState
 import build.raft.designsystem.components.RaftEmptyStateDefaults
 
@@ -199,11 +203,21 @@ private val RaftDraftTopLevelChannelTypes = setOf("channel", "private", "joint")
 /**
  * Places [this] draft on the directory's server. [lookups] holds the answers of `GET /channels/:id`
  * for this server: a value is the channel, a null value is "not here" (404/403); no entry is unasked.
+ *
+ * When [draftServerId] is known and differs from [directory.serverId], non-joint drafts resolve
+ * directly to [RaftDraftPlaceResolution.NotHere] with zero network lookups. Joint-channel drafts
+ * ([jointChannelId] non-blank) intentionally bypass that short-circuit so participating sibling
+ * servers resolve them onto their local projection via [RaftDraftDirectory.jointChannelRow].
  */
 internal fun SharedThreadComposerDraftRecord.resolveRaftDraftPlace(
     directory: RaftDraftDirectory,
     lookups: Map<String, RaftDraftChannelPlace?>,
+    draftServerId: String? = null,
 ): RaftDraftPlaceResolution {
+    val normalizedDraftServerId = draftServerId?.trim()?.takeIf { it.isNotBlank() }
+    if (jointChannelId.isNullOrBlank() && normalizedDraftServerId != null && normalizedDraftServerId != directory.serverId) {
+        return RaftDraftPlaceResolution.NotHere
+    }
     val parentMessage = parentMessageId?.takeIf { it.isNotBlank() }
     if (parentMessage != null) {
         // A reply: `mention` is the thread's parent channel, `send` its stream (the parent itself
@@ -327,7 +341,7 @@ internal fun raftDraftListing(
     val lookupIds = linkedSetOf<String>()
     drafts.forEach { draft ->
         if (draft.text.isBlank()) return@forEach
-        when (val resolution = draft.record.resolveRaftDraftPlace(directory, lookups)) {
+        when (val resolution = draft.record.resolveRaftDraftPlace(directory, lookups, draftServerId = draft.serverId)) {
             is RaftDraftPlaceResolution.Placed ->
                 entries += RaftDraftEntry(draft.record.key, draft.text, draft.editedAtEpochMillis, resolution.place)
             is RaftDraftPlaceResolution.NeedsLookup -> lookupIds += resolution.channelId
@@ -365,8 +379,11 @@ private val RaftDraftEntryOrder =
 internal sealed interface RaftDraftLookupResult {
     data class Found(val place: RaftDraftChannelPlace) : RaftDraftLookupResult
 
-    /** 404 / 403: not this server's, gone, or not readable. Remembered. */
-    data object NotHere : RaftDraftLookupResult
+    /** 404: not this server's or deleted (channel UUIDs never move servers or resurrect). Persisted. */
+    data object NotFound : RaftDraftLookupResult
+
+    /** 403: not readable right now (e.g. removed from a private channel). Remembered in-memory only. */
+    data object Forbidden : RaftDraftLookupResult
 
     /** Offline, 5xx, 429, a body that isn't a channel: asked again later. */
     data object Failed : RaftDraftLookupResult
@@ -388,19 +405,51 @@ internal suspend fun RaftNetworkClient.fetchRaftDraftChannelPlace(serverId: Stri
     return when {
         response.isSuccessful ->
             parseRaftDraftChannelPlace(response.bodyText)?.let(RaftDraftLookupResult::Found) ?: RaftDraftLookupResult.Failed
-        response.code == 404 || response.code == 403 -> RaftDraftLookupResult.NotHere
+        response.code == 404 -> RaftDraftLookupResult.NotFound
+        response.code == 403 -> RaftDraftLookupResult.Forbidden
         else -> RaftDraftLookupResult.Failed
     }
 }
 
+/** Shared-preference key holding persisted 404 misses for the currently signed-in account. */
+internal const val RaftDraftPlaceNotFoundStorageKey: String = "drafts:placeNotFound.v1"
+
+/** Cap persisted 404 misses per `(account, serverId)` scope (most recent kept) so storage stays bounded. */
+internal const val RaftDraftPlaceNotFoundMaxPerServer: Int = 256
+
+private const val RaftDraftPlaceNotFoundMaxServers: Int = 64
+
+@Serializable
+private data class PersistedDraftPlaceNotFoundDocument(
+    val account: String,
+    val byServer: Map<String, List<String>> = emptyMap(),
+)
+
+private val draftPlaceNotFoundJson = Json { ignoreUnknownKeys = true }
+
 /**
  * The server's answers about draft conversations, per signed-in account and server (a draft's
- * conversation doesn't move, but what one account may read another may not). Answers live only while
- * their account is bound: [bindAccount] with another account, or none (sign-out), drops them all, as
- * the account's drafts are dropped (SharedThreadComposerDraftAccounts). At most [maxConcurrent]
- * lookups run at once across callers.
+ * conversation doesn't move, but what one account may read another may not).
+ *
+ * Confirmed HTTP `404` ([RaftDraftLookupResult.NotFound]) misses are persisted per `(account, serverId)`
+ * across cold starts when [store] / [storeProvider] is available, capped at [maxPersistedNotFoundPerServer]
+ * most-recent channel ids per server. HTTP `403` ([RaftDraftLookupResult.Forbidden]) misses stay
+ * in-memory only so re-invited private channels recover after a restart.
+ *
+ * Answers live only while their account is bound: [bindAccount] with another account, or none
+ * (sign-out), drops both in-memory answers and persisted `404` misses, matching
+ * [SharedThreadComposerDraftAccounts]. At most [maxConcurrent] lookups run at once across callers.
  */
-internal class RaftDraftPlaceLookups(maxConcurrent: Int = 3) {
+internal class RaftDraftPlaceLookups(
+    maxConcurrent: Int = 3,
+    store: SharedPreferenceStore? = null,
+    private val storeProvider: () -> SharedPreferenceStore? = { store },
+    private val maxPersistedNotFoundPerServer: Int = RaftDraftPlaceNotFoundMaxPerServer,
+) {
+    init {
+        require(maxPersistedNotFoundPerServer > 0) { "maxPersistedNotFoundPerServer must be positive" }
+    }
+
     /** Whose answers: the draft account's storage token (environment + user) and the server. */
     data class Scope(val account: String, val serverId: String)
 
@@ -408,21 +457,58 @@ internal class RaftDraftPlaceLookups(maxConcurrent: Int = 3) {
     private val inFlight = mutableSetOf<Pair<Scope, String>>()
     private val semaphore = Semaphore(maxConcurrent)
     private var boundAccount: String? = null
+    private val boundAccountFlow = MutableStateFlow<String?>(null)
+    /** Persisted 404 misses for [boundAccount], per serverId, oldest first. Guarded by [lock]. */
+    private val persistedNotFoundByServer = LinkedHashMap<String, LinkedHashSet<String>>()
     private val answers = MutableStateFlow<Map<Scope, Map<String, RaftDraftChannelPlace?>>>(emptyMap())
 
     /** (account, server) -> channelId -> answer (null: not here). Only the bound account's are kept. */
     val state: StateFlow<Map<Scope, Map<String, RaftDraftChannelPlace?>>> = answers.asStateFlow()
 
+    /** The currently bound account storage token, or null while unbound / signed out. */
+    val boundAccountState: StateFlow<String?> = boundAccountFlow.asStateFlow()
+
     /** The bound account's scope on [serverId]; null while no account is bound (nothing is asked). */
     fun scope(serverId: String): Scope? = synchronized(lock) { boundAccount }?.let { Scope(it, serverId) }
 
-    /** The signed-in account is now [account] (null: signed out). Another account's answers go. */
+    /**
+     * The signed-in account is now [account] (null: signed out).
+     * - First binding in a process hydrates persisted 404 misses belonging to [account] (and wipes
+     *   stale misses from any different prior account).
+     * - Switching accounts or signing out clears both in-memory answers and persisted 404 misses.
+     */
     fun bindAccount(account: String?) {
+        val normalized = account?.trim()?.takeIf { it.isNotBlank() }
         synchronized(lock) {
-            if (account == boundAccount) return
-            boundAccount = account
+            val previous = boundAccount
+            if (normalized == null) {
+                boundAccount = null
+                inFlight.clear()
+                persistedNotFoundByServer.clear()
+                answers.value = emptyMap()
+                boundAccountFlow.value = null
+                clearPersistedNotFoundLocked()
+                return
+            }
+            if (normalized == previous) return
+            boundAccount = normalized
             inFlight.clear()
-            answers.value = emptyMap()
+            persistedNotFoundByServer.clear()
+            if (previous != null) {
+                clearPersistedNotFoundLocked()
+                answers.value = emptyMap()
+                boundAccountFlow.value = normalized
+                return
+            }
+            val restored = loadPersistedNotFoundLocked(normalized)
+            persistedNotFoundByServer.putAll(restored)
+            answers.value =
+                restored.entries
+                    .filter { (_, ids) -> ids.isNotEmpty() }
+                    .associate { (serverId, ids) ->
+                        Scope(normalized, serverId) to ids.associateWith { null }
+                    }
+            boundAccountFlow.value = normalized
         }
     }
 
@@ -455,12 +541,16 @@ internal class RaftDraftPlaceLookups(maxConcurrent: Int = 3) {
                             val answer =
                                 when (result) {
                                     is RaftDraftLookupResult.Found -> result.place
-                                    RaftDraftLookupResult.NotHere -> null
+                                    RaftDraftLookupResult.NotFound,
+                                    RaftDraftLookupResult.Forbidden -> null
                                     RaftDraftLookupResult.Failed -> return@async false
                                 }
                             synchronized(lock) {
                                 if (boundAccount == scope.account) {
                                     answers.update { all -> all + (scope to (all[scope].orEmpty() + (id to answer))) }
+                                    if (result is RaftDraftLookupResult.NotFound) {
+                                        recordPersistedNotFoundLocked(scope.account, scope.serverId, id)
+                                    }
                                 }
                             }
                             true
@@ -471,6 +561,79 @@ internal class RaftDraftPlaceLookups(maxConcurrent: Int = 3) {
                 synchronized(lock) { toAsk.forEach { id -> inFlight -= scope to id } }
             }
         return results.all { it }
+    }
+
+    private fun loadPersistedNotFoundLocked(expectedAccount: String): LinkedHashMap<String, LinkedHashSet<String>> {
+        val prefs = runCatching(storeProvider).getOrNull() ?: return LinkedHashMap()
+        val raw = runCatching { prefs.getString(RaftDraftPlaceNotFoundStorageKey) }.getOrNull() ?: return LinkedHashMap()
+        if (raw.isBlank()) return LinkedHashMap()
+        val decoded =
+            runCatching {
+                draftPlaceNotFoundJson.decodeFromString(PersistedDraftPlaceNotFoundDocument.serializer(), raw)
+            }.getOrNull()
+        if (decoded == null || decoded.account != expectedAccount) {
+            clearPersistedNotFoundLocked()
+            return LinkedHashMap()
+        }
+        val restored = LinkedHashMap<String, LinkedHashSet<String>>()
+        decoded.byServer.entries.forEach { (rawServerId, rawIds) ->
+            val serverId = rawServerId.trim().takeIf { it.isNotBlank() } ?: return@forEach
+            val ids =
+                rawIds
+                    .asSequence()
+                    .map(String::trim)
+                    .filter(String::isNotBlank)
+                    .distinct()
+                    .toList()
+                    .takeLast(maxPersistedNotFoundPerServer)
+            if (ids.isNotEmpty()) {
+                restored[serverId] = LinkedHashSet(ids)
+            }
+        }
+        while (restored.size > RaftDraftPlaceNotFoundMaxServers) {
+            val oldestServer = restored.keys.firstOrNull() ?: break
+            restored.remove(oldestServer)
+        }
+        return restored
+    }
+
+    private fun recordPersistedNotFoundLocked(account: String, serverId: String, channelId: String) {
+        val normalizedServer = serverId.trim().takeIf { it.isNotBlank() } ?: return
+        val normalizedChannel = channelId.trim().takeIf { it.isNotBlank() } ?: return
+        val ids = persistedNotFoundByServer.remove(normalizedServer) ?: LinkedHashSet()
+        ids.remove(normalizedChannel)
+        ids.add(normalizedChannel)
+        while (ids.size > maxPersistedNotFoundPerServer) {
+            val oldest = ids.firstOrNull() ?: break
+            ids.remove(oldest)
+        }
+        persistedNotFoundByServer[normalizedServer] = ids
+        while (persistedNotFoundByServer.size > RaftDraftPlaceNotFoundMaxServers) {
+            val oldestServer = persistedNotFoundByServer.keys.firstOrNull() ?: break
+            persistedNotFoundByServer.remove(oldestServer)
+        }
+        savePersistedNotFoundLocked(account)
+    }
+
+    private fun savePersistedNotFoundLocked(account: String) {
+        val prefs = runCatching(storeProvider).getOrNull() ?: return
+        val encoded =
+            if (persistedNotFoundByServer.isEmpty()) {
+                null
+            } else {
+                val doc =
+                    PersistedDraftPlaceNotFoundDocument(
+                        account = account,
+                        byServer = persistedNotFoundByServer.mapValues { (_, ids) -> ids.toList() },
+                    )
+                draftPlaceNotFoundJson.encodeToString(PersistedDraftPlaceNotFoundDocument.serializer(), doc)
+            }
+        runCatching { prefs.putString(RaftDraftPlaceNotFoundStorageKey, encoded) }
+    }
+
+    private fun clearPersistedNotFoundLocked() {
+        val prefs = runCatching(storeProvider).getOrNull() ?: return
+        runCatching { prefs.putString(RaftDraftPlaceNotFoundStorageKey, null) }
     }
 }
 
@@ -497,7 +660,10 @@ internal fun rememberRaftDraftDirectory(source: RaftDraftsSource?, snapshot: Hom
 }
 
 /** The app's one lookup cache (Home's count and the Drafts list read the same answers). */
-internal val SharedRaftDraftPlaceLookups = RaftDraftPlaceLookups()
+internal val SharedRaftDraftPlaceLookups =
+    RaftDraftPlaceLookups(
+        storeProvider = { runCatching { raftSharedPreferenceStore() }.getOrNull() },
+    )
 
 internal const val RaftDraftLookupRetryMillis = 30_000L
 
@@ -520,13 +686,15 @@ internal fun rememberRaftDraftListing(
     val recordsKnown by draftPersistSlice.activeDraftRecordsKnown.collectAsState()
     val drafts = remember(draftPersistSlice, records, refreshTick) { draftPersistSlice.draftListings() }
     val allAnswers by lookups.state.collectAsState()
-    val serverAnswers = lookups.scope(directory.serverId)?.let { allAnswers[it] }.orEmpty()
+    val boundAccount by lookups.boundAccountState.collectAsState()
+    val serverAnswers =
+        boundAccount?.let { account -> allAnswers[RaftDraftPlaceLookups.Scope(account, directory.serverId)] }.orEmpty()
     val listing =
         remember(drafts, directory, serverAnswers, recordsKnown) {
             raftDraftListing(drafts, directory, serverAnswers).copy(recordsKnown = recordsKnown)
         }
-    if (networkClient != null) {
-        LaunchedEffect(directory.serverId, listing.lookupChannelIds, networkClient) {
+    if (networkClient != null && boundAccount != null) {
+        LaunchedEffect(boundAccount, directory.serverId, listing.lookupChannelIds, networkClient) {
             val ids = listing.lookupChannelIds
             if (ids.isEmpty()) return@LaunchedEffect
             while (!lookups.ensure(directory.serverId, ids) { serverId, id -> networkClient.fetchRaftDraftChannelPlace(serverId, id) }) {

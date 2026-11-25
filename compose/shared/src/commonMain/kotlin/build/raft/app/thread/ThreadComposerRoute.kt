@@ -517,16 +517,22 @@ internal fun ensureThreadComposerDraftStarted(
     composerDraftViewModel: SharedThreadComposerDraftViewModel,
     composer: RaftThreadComposerPayload,
     draftKey: String?,
+    serverId: String? = null,
 ) {
     val normalizedDraftKey = draftKey?.takeIf { it.isNotBlank() }
+    val normalizedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }
     val current = composerDraftViewModel.state.value
     if (current.instanceId == composer.instanceId && current.draftKey == normalizedDraftKey) {
+        if (normalizedServerId != null && current.serverId != normalizedServerId) {
+            composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.SetServerId(normalizedServerId))
+        }
         return
     }
     composerDraftViewModel.dispatch(
         SharedThreadComposerDraftIntent.Start(
             composer = composer,
             draftKey = normalizedDraftKey,
+            serverId = normalizedServerId,
         )
     )
 }
