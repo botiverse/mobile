@@ -12,27 +12,28 @@ internal data class SharedThreadDurableLastKnownResult(
     val scope: SyncScopeKey? = null,
 )
 
-/** An older page served from the durable V2 window (offline stand-in or online proven segment). */
+/** An older page served strictly from inside a proven contiguous durable V2 segment (or legacy window). */
 internal data class SharedThreadDurableOlderPage(
     val messages: List<RaftThreadMessageItem>,
     val pageSize: Int,
     val canLoadMoreBefore: Boolean,
     /** The page reaches the conversation's first message: nothing older is stored and the window starts there. */
     val reachedOldest: Boolean,
-    /** Phase 2d: derived inline gaps inside this page or between it and the previous oldest visible seq. */
-    val gaps: List<ThreadTimelineGap> = emptyList(),
-    /** Phase 2d: true when `beforeSeq - 1` lies inside a proven contiguous segment (safe for online local paging). */
+    /** Whether more older rows remain stored inside the SAME proven contiguous segment. */
+    val hasOlderStored: Boolean = false,
+    /** Phase 2d: true when `beforeSeq - 1` lies inside a proven contiguous segment (safe for local paging). */
     val insideProvenSegment: Boolean = false,
     val scope: SyncScopeKey? = null,
 )
 
-/** A newer page served from the durable V2 window (offline anchored island or online proven segment). */
+/** A newer page served strictly from inside a proven contiguous durable V2 segment. */
 internal data class SharedThreadDurableNewerPage(
     val messages: List<RaftThreadMessageItem>,
     val pageSize: Int,
     val canLoadMoreAfter: Boolean,
     val reachedHead: Boolean,
-    val gaps: List<ThreadTimelineGap> = emptyList(),
+    /** Whether more newer rows remain stored inside the SAME proven contiguous segment. */
+    val hasNewerStored: Boolean = false,
     val insideProvenSegment: Boolean = false,
     val scope: SyncScopeKey? = null,
 )

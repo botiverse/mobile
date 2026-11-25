@@ -629,9 +629,6 @@ internal class SharedThreadStore(
             SharedThreadIntent.LoadNewer -> {
                 scope.launch { loadNewer() }
             }
-            is SharedThreadIntent.FillTimelineGap -> {
-                scope.launch { fillTimelineGap(intent.afterSeq, intent.beforeSeq) }
-            }
             SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq -> {
                 scope.launch { refreshLatestAfterVisibleMaxSeq() }
             }
@@ -726,7 +723,6 @@ internal class SharedThreadStore(
             SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
             SharedThreadIntent.LoadNewer -> loadNewer()
-            is SharedThreadIntent.FillTimelineGap -> fillTimelineGap(intent.afterSeq, intent.beforeSeq)
             SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq -> refreshLatestAfterVisibleMaxSeq()
             is SharedThreadIntent.RecoverRealtimeGap -> recoverRealtimeGap(intent.serverSeq)
         }
@@ -2152,24 +2148,46 @@ internal class SharedThreadStore(
                         result.blocker.traceId
                     )
                 }
-            }.copy(
-                backgroundRefreshing = false,
+            }.let { base ->
                 // A durable last-known frame survives only a transient failure; any canonical answer
                 // (content, empty, no permission) replaces it and clears the stand-in flag.
-                durableLastKnown =
+                val nextDurableLastKnown =
                     (if (result is DataResult.Error) errorBase else latest).durableLastKnown &&
                         when (result) {
                             is DataResult.Error -> true
                             is DataResult.Empty -> result.reason != EmptyReason.NoMessages
                             else -> false
-                        },
-                mainLoadFailed =
+                        }
+                val nextMainLoadFailed =
                     when (result) {
                         is DataResult.Error -> true
                         is DataResult.Empty -> result.reason != EmptyReason.NoMessages
                         else -> false
-                    },
-            )
+                    }
+                if (nextDurableLastKnown && nextMainLoadFailed) {
+                    // #proj-mobile:#388: once the initial load fails offline, keep paging open ONLY
+                    // when more stored rows remain inside the SAME proven contiguous SQLite segment;
+                    // otherwise close cleanly while preserving `durableReachedOldest` so the single
+                    // outer boundary row renders "Older messages are not available offline".
+                    val offlineCanLoadMoreBefore = base.canLoadMoreBefore && base.durableHasOlderStored
+                    val offlineCanLoadMoreAfter = base.canLoadMoreAfter && base.durableHasNewerStored
+                    base.copy(
+                        backgroundRefreshing = false,
+                        durableLastKnown = true,
+                        mainLoadFailed = true,
+                        canLoadMoreBefore = offlineCanLoadMoreBefore,
+                        canLoadMoreAfter = offlineCanLoadMoreAfter,
+                        olderMessagesStatus = if (offlineCanLoadMoreBefore) base.olderMessagesStatus else "idle",
+                        newerMessagesStatus = if (offlineCanLoadMoreAfter) base.newerMessagesStatus else "idle",
+                    )
+                } else {
+                    base.copy(
+                        backgroundRefreshing = false,
+                        durableLastKnown = nextDurableLastKnown,
+                        mainLoadFailed = nextMainLoadFailed,
+                    )
+                }
+            }
         var committedPayload: RaftThreadScreenPayload? = null
         val committed =
             initialAccessStateMutex.withLock<Boolean?> {
@@ -2746,8 +2764,6 @@ internal class SharedThreadStore(
             }
         }
     }
-
-    private suspend fun fillTimelineGap(afterSeq: Long, beforeSeq: Long) = threadPaging.fillTimelineGap(afterSeq, beforeSeq)
 
     suspend fun loadNewer(): ThreadNewerPageLoadOutcome = threadRealtimeGapRecovery.loadNewer()
 
@@ -3996,9 +4012,10 @@ private fun RaftThreadScreenPayload.withDurableTimelineOverlay(
         backgroundRefreshing = durable.backgroundRefreshing,
         durableLastKnown = durable.durableLastKnown,
         messages = durable.messages,
-        timelineGaps = durable.timelineGaps,
         canLoadMoreBefore = durable.canLoadMoreBefore,
         durableReachedOldest = durable.durableReachedOldest,
+        durableHasOlderStored = durable.durableHasOlderStored,
+        durableHasNewerStored = durable.durableHasNewerStored,
         canLoadMoreAfter = durable.canLoadMoreAfter,
         olderMessagesStatus = durable.olderMessagesStatus,
         newerMessagesStatus = durable.newerMessagesStatus,

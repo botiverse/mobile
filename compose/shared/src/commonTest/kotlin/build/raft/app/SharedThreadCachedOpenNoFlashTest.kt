@@ -1315,7 +1315,6 @@ class SharedThreadCachedOpenNoFlashTest {
         return ThreadDurableTimelinePage(
             scope = SyncScopeKey(partition(ownerA), channelId, scopeKind),
             envelopes = envelopes,
-            gaps = emptyList(),
             cursor =
                 PersistedCursor(
                     latestSeq = sorted.maxOf { it.first.second },

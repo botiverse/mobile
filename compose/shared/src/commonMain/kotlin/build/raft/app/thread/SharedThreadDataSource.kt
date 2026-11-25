@@ -881,7 +881,6 @@ internal class SharedThreadDataSource(
         beforeSeq: Long,
         expectedOwnerScopeId: String?,
         replyParent: ThreadDurableReplyParent? = null,
-        crossGaps: Boolean = false,
         allowLegacyStandIn: Boolean = false,
     ): SharedThreadDurableOlderPage? =
         durableCacheGateway.durableOlderPageIfCurrent(
@@ -890,7 +889,6 @@ internal class SharedThreadDataSource(
             beforeSeq,
             expectedOwnerScopeId,
             replyParent,
-            crossGaps,
             allowLegacyStandIn,
         )
 
@@ -900,7 +898,6 @@ internal class SharedThreadDataSource(
         afterSeq: Long,
         expectedOwnerScopeId: String?,
         replyParent: ThreadDurableReplyParent? = null,
-        crossGaps: Boolean = false,
     ): SharedThreadDurableNewerPage? =
         durableCacheGateway.durableNewerPageIfCurrent(
             routeIdentity,
@@ -908,7 +905,6 @@ internal class SharedThreadDataSource(
             afterSeq,
             expectedOwnerScopeId,
             replyParent,
-            crossGaps,
         )
 
     suspend fun rememberedReplyThreadAccessFailure(

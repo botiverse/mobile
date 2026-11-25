@@ -151,24 +151,6 @@ data class CanonicalMessageV2Coverage(
 }
 
 /**
- * Message storage design 2026-10-27 (Phase 2d): a derived (never persisted) discontinuity between two
- * adjacent returned messages in ascending seq order. Either at least one of [afterSeq] / [beforeSeq]
- * is loose (belongs to no segment), or they belong to two different segments, and at least one
- * integer seq exists strictly between them (`afterSeq + 1 < beforeSeq`), so missing messages may
- * exist in `(afterSeq, beforeSeq)`.
- */
-data class CanonicalMessageV2TimelineGap(
-    val afterSeq: Long,
-    val beforeSeq: Long,
-) {
-    init {
-        require(afterSeq >= 0L && beforeSeq > afterSeq && beforeSeq - 1L > afterSeq) {
-            "timeline gap ($afterSeq, $beforeSeq) must leave at least one seq strictly between endpoints"
-        }
-    }
-}
-
-/**
  * Pure segment algebra (design §2, I3). Every function takes and returns NORMALIZED lists: sorted by
  * lowSeq, no two segments overlapping or touching (h1 + 1 == l2 touches; h1 + 2 == l2 leaves a one-seq gap).
  */
@@ -248,44 +230,8 @@ object CanonicalMessageV2SegmentAlgebra {
         }
 
     /**
-     * Phase 2d: derive timeline gaps between adjacent [ascendingSeqs] from normalized [segments] (never persisted).
-     *
-     * Adjacent seqs `(a, b)` with `a < b` have NO gap iff:
-     * - `b == a + 1L` (no integer seq exists strictly between them), OR
-     * - both belong to the same segment (`memberOf(segments, a)` is non-null and equals `memberOf(segments, b)`).
-     * Otherwise missing messages may exist in `(a, b)` and a [CanonicalMessageV2TimelineGap] is emitted.
-     */
-    fun deriveGaps(
-        ascendingSeqs: List<Long>,
-        segments: List<CanonicalMessageV2Segment>,
-    ): List<CanonicalMessageV2TimelineGap> {
-        require(isNormalized(segments)) { "segments are not normalized" }
-        if (ascendingSeqs.size < 2) return emptyList()
-        val gaps = mutableListOf<CanonicalMessageV2TimelineGap>()
-        var previousSeq = ascendingSeqs[0]
-        var previousSegment = memberOf(segments, previousSeq)
-        for (index in 1 until ascendingSeqs.size) {
-            val currentSeq = ascendingSeqs[index]
-            require(currentSeq >= previousSeq) {
-                "ascendingSeqs must be non-decreasing ($previousSeq followed by $currentSeq)"
-            }
-            val currentSegment = memberOf(segments, currentSeq)
-            if (
-                currentSeq > previousSeq &&
-                currentSeq - 1L > previousSeq &&
-                (previousSegment == null || previousSegment != currentSegment)
-            ) {
-                gaps += CanonicalMessageV2TimelineGap(afterSeq = previousSeq, beforeSeq = currentSeq)
-            }
-            previousSeq = currentSeq
-            previousSegment = currentSegment
-        }
-        return gaps
-    }
-
-    /**
      * Phase 2d: the segment covering `beforeSeq - 1L` (if any), proving that stored facts strictly below
-     * [beforeSeq] down to `segment.effectiveLowSeq` are contiguous with [beforeSeq] (safe for online local paging).
+     * [beforeSeq] down to `segment.effectiveLowSeq` are contiguous with [beforeSeq] (safe for local paging).
      * For `beforeSeq == 1L`, returns the segment iff `0L in segment` (i.e. `reachesOldest == true`, proving
      * no older messages exist on the server); returns `null` when `beforeSeq <= 0L` or at a segment's unclosed edge.
      */

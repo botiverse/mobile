@@ -25,12 +25,8 @@ internal fun RaftThreadScreenPayload.preserveStableTimelineFrom(
     refreshObservedMessageIds: Set<String>? = null,
     sendEchoMatchPolicy: ThreadSendEchoMatchPolicy = ThreadSendEchoMatchPolicy.LegacyCompatible
 ): RaftThreadScreenPayload {
-    // A previous payload with derived inline timeline gaps is a discontinuous multi-island
-    // offline view, not a contiguous expanded window: merging a fresh canonical page into it
-    // would glue separated islands together while dropping the gap rows.
     val visibleWindowMessages =
         if (
-            previous.timelineGaps.isEmpty() &&
             (canLoadMoreBefore || previous.canLoadMoreBefore) &&
             messages.shouldRetainExpandedTimelineWindowFrom(previous.messages)
         ) {

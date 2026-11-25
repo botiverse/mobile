@@ -109,7 +109,6 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             clock = 500L
             val newest = assertNotNull(reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Newest(limit = 5)))
             assertEquals(listOf(11L, 12L, 13L, 14L, 15L), newest.envelopes.map { it.fact.seq })
-            assertTrue(newest.gaps.isEmpty())
             assertTrue(newest.hasOlderStored)
             assertFalse(newest.hasNewerStored)
             assertFalse(newest.reachesOldest)
@@ -119,11 +118,10 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
 
             // Reading the older page [6..10] also stays bounded and avoids row 1.
             val middle = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(11L, limit = 5, crossGaps = false)),
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(11L, limit = 5)),
             )
             assertEquals(listOf(6L, 7L, 8L, 9L, 10L), middle.envelopes.map { it.fact.seq })
             assertTrue(middle.insideProvenSegment)
-            assertTrue(middle.gaps.isEmpty())
             assertTrue(middle.hasOlderStored)
             assertTrue(middle.hasNewerStored)
             assertFalse(middle.reachesOldest)
@@ -132,14 +130,14 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             // Reaching the poisoned row 1 inside the requested window fails closed (returns null) and logs.
             val logs = mutableListOf<String>()
             val loggingReader = CanonicalMessageV2DurableLastKnownReader(countingStore, logger = logs::add)
-            assertNull(loggingReader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(6L, limit = 5, crossGaps = false)))
+            assertNull(loggingReader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(6L, limit = 5)))
             assertTrue(logs.single().contains("outcome=poisoned"), logs.toString())
             assertEquals(0, countingStore.restoreCalls)
         }
     }
 
     @Test
-    fun beforeAndAfterPagingRespectsSegmentBoundariesOnlineAndCrossesIslandsWithGapsOffline() = withFreshDatabase { database ->
+    fun beforeAndAfterPagingStayStrictlyInsideProvenContiguousSegmentsAndNeverBridgeIslands() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 10L })
         val scope = SyncScopeKey(partitionA, "channel-a", "channel")
         val reader = CanonicalMessageV2DurableLastKnownReader(store)
@@ -161,81 +159,62 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                 userDriven = true,
             )
 
-            // Online interior read inside head (beforeSeq=24, limit=10): stops at head lower edge [20..23],
-            // never leaks lower island [1..5], zero gaps.
-            val onlineInterior = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(24L, limit = 10, crossGaps = false)),
+            // Interior read inside head (beforeSeq=24, limit=10): stops at head lower edge [20..23],
+            // never leaks lower island [1..5], reports hasOlderStored=false (no more rows inside head).
+            val interior = assertNotNull(
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(24L, limit = 10)),
             )
-            assertEquals(listOf(20L, 21L, 22L, 23L), onlineInterior.envelopes.map { it.fact.seq })
-            assertTrue(onlineInterior.insideProvenSegment)
-            assertTrue(onlineInterior.gaps.isEmpty())
-            assertTrue(onlineInterior.hasOlderStored, "lower island still sits on disk")
-            assertFalse(onlineInterior.reachesOldest)
+            assertEquals(listOf(20L, 21L, 22L, 23L), interior.envelopes.map { it.fact.seq })
+            assertTrue(interior.insideProvenSegment)
+            assertFalse(interior.hasOlderStored, "lower island across a gap is NOT inside the contiguous head segment")
+            assertFalse(interior.reachesOldest)
 
-            // Online at head lower edge (beforeSeq=20): not inside proven segment -> empty so caller fetches network,
-            // while still accurately reporting hasOlderStored = true (lower island sits on disk).
-            val onlineEdge = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 10, crossGaps = false)),
+            // At head lower edge (beforeSeq=20): empty + insideProvenSegment=false + hasOlderStored=false.
+            val edge = assertNotNull(
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 10)),
             )
-            assertTrue(onlineEdge.envelopes.isEmpty())
-            assertFalse(onlineEdge.insideProvenSegment)
-            assertTrue(onlineEdge.hasOlderStored)
-            assertFalse(onlineEdge.reachesOldest)
+            assertTrue(edge.envelopes.isEmpty())
+            assertFalse(edge.insideProvenSegment)
+            assertFalse(edge.hasOlderStored)
+            assertTrue(edge.hasNewerStored)
+            assertFalse(edge.reachesOldest)
 
-            // Offline at head lower edge (beforeSeq=20, crossGaps=true): crosses into lower island [1..5]
-            // and emits boundary gap (5, 20), with reachesOldest=true!
-            val offlineCross = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 10, crossGaps = true)),
-            )
-            assertEquals(listOf(1L, 2L, 3L, 4L, 5L), offlineCross.envelopes.map { it.fact.seq })
-            assertEquals(listOf(CanonicalMessageV2TimelineGap(afterSeq = 5L, beforeSeq = 20L)), offlineCross.gaps)
-            assertFalse(offlineCross.hasOlderStored)
-            assertTrue(offlineCross.reachesOldest)
-
-            // Online at seq=1 on reachesOldest=true lower island closes paging with 0 network calls!
+            // At seq=1 on reachesOldest=true lower island closes paging with 0 network calls!
             val seqOneReached = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(1L, limit = 10, crossGaps = false)),
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(1L, limit = 10)),
             )
             assertTrue(seqOneReached.envelopes.isEmpty())
             assertTrue(seqOneReached.insideProvenSegment)
             assertTrue(seqOneReached.reachesOldest)
 
             // Symmetric After paging from lower island:
-            // Online inside lower island (afterSeq=2): returns [3..5] without crossing into [20..25].
-            val onlineAfterInterior = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(2L, limit = 10, crossGaps = false)),
+            // Inside lower island (afterSeq=2): returns [3..5] without crossing into [20..25], hasNewerStored=false.
+            val afterInterior = assertNotNull(
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(2L, limit = 10)),
             )
-            assertEquals(listOf(3L, 4L, 5L), onlineAfterInterior.envelopes.map { it.fact.seq })
-            assertTrue(onlineAfterInterior.insideProvenSegment)
-            assertTrue(onlineAfterInterior.gaps.isEmpty())
-            assertTrue(onlineAfterInterior.hasNewerStored)
-            assertFalse(onlineAfterInterior.reachesHead)
+            assertEquals(listOf(3L, 4L, 5L), afterInterior.envelopes.map { it.fact.seq })
+            assertTrue(afterInterior.insideProvenSegment)
+            assertFalse(afterInterior.hasNewerStored, "upper island across a gap is NOT inside the lower segment")
+            assertFalse(afterInterior.reachesHead)
 
-            // Online at lower island upper edge (afterSeq=5): empty + insideProvenSegment=false + hasNewerStored=true.
-            val onlineAfterEdge = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(5L, limit = 10, crossGaps = false)),
+            // At lower island upper edge (afterSeq=5): empty + insideProvenSegment=false + hasNewerStored=false.
+            val afterEdge = assertNotNull(
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(5L, limit = 10)),
             )
-            assertTrue(onlineAfterEdge.envelopes.isEmpty())
-            assertFalse(onlineAfterEdge.insideProvenSegment)
-            assertTrue(onlineAfterEdge.hasNewerStored)
-            assertFalse(onlineAfterEdge.reachesHead)
+            assertTrue(afterEdge.envelopes.isEmpty())
+            assertFalse(afterEdge.insideProvenSegment)
+            assertTrue(afterEdge.hasOlderStored)
+            assertFalse(afterEdge.hasNewerStored)
+            assertFalse(afterEdge.reachesHead)
 
-            // Offline at lower island upper edge (afterSeq=5, crossGaps=true): crosses into [20..25] with gap (5, 20) and reachesHead=true!
-            val offlineAfterCross = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(5L, limit = 10, crossGaps = true)),
-            )
-            assertEquals(listOf(20L, 21L, 22L, 23L, 24L, 25L), offlineAfterCross.envelopes.map { it.fact.seq })
-            assertEquals(listOf(CanonicalMessageV2TimelineGap(afterSeq = 5L, beforeSeq = 20L)), offlineAfterCross.gaps)
-            assertFalse(offlineAfterCross.hasNewerStored)
-            assertTrue(offlineAfterCross.reachesHead)
-
-            // After(head.highSeq, crossGaps=true) at verified head reports reachesHead=true.
+            // After(head.highSeq) at upper edge of head: empty + insideProvenSegment=false + hasNewerStored=false.
             val afterHead = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(25L, limit = 10, crossGaps = true)),
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(25L, limit = 10)),
             )
             assertTrue(afterHead.envelopes.isEmpty())
+            assertFalse(afterHead.insideProvenSegment)
+            assertTrue(afterHead.hasOlderStored)
             assertFalse(afterHead.hasNewerStored)
-            assertTrue(afterHead.reachesHead)
         }
     }
 
@@ -256,7 +235,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                 userDriven = true,
             )
             val unreached = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(10L, limit = 10, crossGaps = false)),
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(10L, limit = 10)),
             )
             assertTrue(unreached.envelopes.isEmpty())
             assertTrue(unreached.insideProvenSegment)
@@ -271,7 +250,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                 userDriven = true,
             )
             val reached = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(10L, limit = 10, crossGaps = false)),
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(10L, limit = 10)),
             )
             assertTrue(reached.envelopes.isEmpty())
             assertTrue(reached.insideProvenSegment)
@@ -308,14 +287,13 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                 ),
             )
             assertEquals(listOf(52L, 55L, 58L), anchored.envelopes.map { it.fact.seq })
-            assertTrue(anchored.gaps.isEmpty())
             assertTrue(anchored.hasOlderStored)
             assertTrue(anchored.hasNewerStored)
             assertFalse(anchored.reachesOldest)
             assertFalse(anchored.reachesHead)
             assertTrue(anchored.insideProvenSegment)
 
-            // Poison seq 58 strictly above anchor: afterCount = 0 must STILL succeed via non-decoding hasFactAfter.
+            // Poison seq 58 strictly above anchor: afterCount = 0 must STILL succeed via non-decoding lowestFactSeqAfter.
             database.queries.updateCanonicalFact(
                 seq = 58L,
                 createdAt = "2026-07-16T00:00:00.000Z",
@@ -380,10 +358,9 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             )
 
             // readTimeline(Newest(5)) stays strictly inside head [10..20] up to head.highSeq (never splicing
-            // unproven loose fact 120 or context island [100..110] with a mid-timeline gap).
+            // unproven loose fact 120 or context island [100..110]).
             val newest = assertNotNull(reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Newest(limit = 5)))
             assertEquals(listOf(16L, 17L, 18L, 19L, 20L), newest.envelopes.map { it.fact.seq })
-            assertTrue(newest.gaps.isEmpty(), "unanchored Newest must stay gap-free inside head: ${newest.gaps}")
             assertTrue(newest.hasOlderStored)
             assertTrue(newest.reachesHead)
             assertTrue(newest.insideProvenSegment)
@@ -426,14 +403,13 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             )
             val looseOnly = assertNotNull(reader.readTimeline(partitionA, "channel-b", ThreadDurableTimelineAnchor.Newest(limit = 5)))
             assertEquals(listOf(50L), looseOnly.envelopes.map { it.fact.seq })
-            assertTrue(looseOnly.gaps.isEmpty())
-            assertFalse(looseOnly.hasOlderStored, "skipped newer island above 50 must not mark hasOlderStored=true")
+            assertFalse(looseOnly.hasOlderStored)
             assertFalse(looseOnly.insideProvenSegment)
         }
     }
 
     @Test
-    fun newestTimelineStaysGapFreeAcrossLowerIslandsLooseFactsAndAbsorbsLooseFactsAfterLatestRefresh() = withFreshDatabase { database ->
+    fun newestTimelineStaysContiguousAcrossLowerIslandsLooseFactsAndAbsorbsLooseFactsAfterLatestRefresh() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 10L })
         val scope = SyncScopeKey(partitionA, "channel-a", "channel")
         val reader = CanonicalMessageV2DurableLastKnownReader(store)
@@ -470,28 +446,28 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                 userDriven = false,
             )
 
-            // 1. Unanchored Newest(10) returns strictly contiguous head [20..24] with zero gaps,
-            //    keeping hasOlderStored=true so explicit offline LoadOlder can still cross into [1..5].
+            // 1. Unanchored Newest(10) returns strictly contiguous head [20..24], with hasOlderStored=false
+            //    because no more older rows exist inside head [20..24] (lower island [1..5] is across a gap).
             val newestBeforeRefresh = assertNotNull(
                 reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Newest(limit = 10)),
             )
             assertEquals(listOf(20L, 21L, 22L, 23L, 24L), newestBeforeRefresh.envelopes.map { it.fact.seq })
-            assertTrue(newestBeforeRefresh.gaps.isEmpty())
-            assertTrue(newestBeforeRefresh.hasOlderStored, "lower island [1..5] must remain reachable via offline Before")
+            assertFalse(newestBeforeRefresh.hasOlderStored, "lower island [1..5] is NOT inside contiguous head [20..24]")
             assertFalse(newestBeforeRefresh.reachesOldest)
             assertTrue(newestBeforeRefresh.reachesHead)
             assertTrue(newestBeforeRefresh.insideProvenSegment)
 
-            // 2. Explicit offline Before(20, crossGaps=true) still crosses into lower island [1..5] with gap (5, 20).
-            val offlineOlder = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 10, crossGaps = true)),
+            // 2. Before(20) at head lower edge never bridges into lower island [1..5].
+            val atEdge = assertNotNull(
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 10)),
             )
-            assertEquals(listOf(1L, 2L, 3L, 4L, 5L), offlineOlder.envelopes.map { it.fact.seq })
-            assertEquals(listOf(CanonicalMessageV2TimelineGap(afterSeq = 5L, beforeSeq = 20L)), offlineOlder.gaps)
-            assertTrue(offlineOlder.reachesOldest)
+            assertTrue(atEdge.envelopes.isEmpty())
+            assertFalse(atEdge.insideProvenSegment)
+            assertFalse(atEdge.hasOlderStored)
+            assertFalse(atEdge.reachesOldest)
 
             // 3. Online refresh commits Latest coverage [25..65] covering through 65: merges with head [20..24]
-            //    into [20..65] and absorbs loose realtime facts 50 & 65 with zero residual gaps!
+            //    into [20..65] and absorbs loose realtime facts 50 & 65 cleanly!
             store.applyCoverage(
                 scope = scope,
                 envelopes = listOf(envelope(25L), envelope(50L), envelope(65L)),
@@ -503,13 +479,12 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                 reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Newest(limit = 10)),
             )
             assertEquals(listOf(20L, 21L, 22L, 23L, 24L, 25L, 50L, 65L), newestAfterRefresh.envelopes.map { it.fact.seq })
-            assertTrue(newestAfterRefresh.gaps.isEmpty(), "Latest coverage must absorb loose facts cleanly: ${newestAfterRefresh.gaps}")
-            assertTrue(newestAfterRefresh.hasOlderStored)
+            assertFalse(newestAfterRefresh.hasOlderStored, "all rows inside head [20..65] are already in the page")
             assertTrue(newestAfterRefresh.reachesHead)
             assertTrue(newestAfterRefresh.insideProvenSegment)
 
             // 4. Headless scope with non-consecutive loose facts [50, 55, 62] returns only gap-free newest [62],
-            //    while consecutive loose facts [61, 62] return both [61, 62] with zero gaps and hasOlderStored=true.
+            //    while consecutive loose facts [61, 62] return both [61, 62] with hasOlderStored=false.
             val scopeC = SyncScopeKey(partitionA, "channel-c", "channel")
             fun envC(seq: Long) = CanonicalMessageEnvelopeV2(
                 fact = fact(seq).copy(id = "channel-c-message-$seq"),
@@ -526,18 +501,16 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                 reader.readTimeline(partitionA, "channel-c", ThreadDurableTimelineAnchor.Newest(limit = 5)),
             )
             assertEquals(listOf(62L), nonConsecutiveLoose.envelopes.map { it.fact.seq })
-            assertTrue(nonConsecutiveLoose.gaps.isEmpty())
-            assertTrue(nonConsecutiveLoose.hasOlderStored)
+            assertFalse(nonConsecutiveLoose.hasOlderStored)
             assertFalse(nonConsecutiveLoose.insideProvenSegment)
 
-            // Offline Before(62, crossGaps=true) on a headless scope with only unsegmented loose facts
-            // never splices loose facts row-by-row into stacked gaps (#proj-mobile:#386 P0-1).
-            val offlineLooseOlder = assertNotNull(
-                reader.readTimeline(partitionA, "channel-c", ThreadDurableTimelineAnchor.Before(62L, limit = 5, crossGaps = true)),
+            // Before(62) on a headless scope with only unsegmented loose facts never splices loose facts.
+            val looseOlder = assertNotNull(
+                reader.readTimeline(partitionA, "channel-c", ThreadDurableTimelineAnchor.Before(62L, limit = 5)),
             )
-            assertTrue(offlineLooseOlder.envelopes.isEmpty(), "loose facts must not be bridged across gaps: ${offlineLooseOlder.envelopes}")
-            assertTrue(offlineLooseOlder.gaps.isEmpty())
-            assertFalse(offlineLooseOlder.hasOlderStored)
+            assertTrue(looseOlder.envelopes.isEmpty(), "loose facts must not be bridged across gaps: ${looseOlder.envelopes}")
+            assertFalse(looseOlder.hasOlderStored)
+            assertFalse(looseOlder.insideProvenSegment)
 
             // Adding consecutive loose fact 61 makes [61, 62] provably gap-free.
             store.applyCoverage(
@@ -551,8 +524,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                 reader.readTimeline(partitionA, "channel-c", ThreadDurableTimelineAnchor.Newest(limit = 5)),
             )
             assertEquals(listOf(61L, 62L), consecutiveLoose.envelopes.map { it.fact.seq })
-            assertTrue(consecutiveLoose.gaps.isEmpty())
-            assertTrue(consecutiveLoose.hasOlderStored)
+            assertFalse(consecutiveLoose.hasOlderStored)
         }
     }
 
@@ -584,7 +556,6 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             )
             val emptyPage = assertNotNull(reader.readTimeline(partitionA, "channel-empty", ThreadDurableTimelineAnchor.Newest(limit = 5)))
             assertTrue(emptyPage.envelopes.isEmpty())
-            assertTrue(emptyPage.gaps.isEmpty())
             assertFalse(emptyPage.hasOlderStored)
             assertTrue(emptyPage.reachesOldest)
             assertTrue(emptyPage.reachesHead)
@@ -602,14 +573,12 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             )
             val maxHeadOne = assertNotNull(reader.readTimeline(partitionA, "channel-max-head", ThreadDurableTimelineAnchor.Newest(limit = 1)))
             assertEquals(listOf(maxSeq), maxHeadOne.envelopes.map { it.fact.seq })
-            assertTrue(maxHeadOne.gaps.isEmpty())
             assertTrue(maxHeadOne.hasOlderStored)
             assertTrue(maxHeadOne.reachesHead)
             assertTrue(maxHeadOne.insideProvenSegment)
 
             val maxHeadMany = assertNotNull(reader.readTimeline(partitionA, "channel-max-head", ThreadDurableTimelineAnchor.Newest(limit = 5)))
             assertEquals(listOf(maxSeq - 2L, maxSeq - 1L, maxSeq), maxHeadMany.envelopes.map { it.fact.seq })
-            assertTrue(maxHeadMany.gaps.isEmpty())
             assertFalse(maxHeadMany.hasOlderStored)
             assertTrue(maxHeadMany.reachesHead)
 
@@ -626,8 +595,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             )
             val maxLoosePage = assertNotNull(reader.readTimeline(partitionA, "channel-max-loose", ThreadDurableTimelineAnchor.Newest(limit = 5)))
             assertEquals(listOf(maxSeq), maxLoosePage.envelopes.map { it.fact.seq })
-            assertTrue(maxLoosePage.gaps.isEmpty())
-            assertTrue(maxLoosePage.hasOlderStored)
+            assertFalse(maxLoosePage.hasOlderStored)
             assertEquals(
                 setOf(build.raft.app.canonical.message.MessageAggregateField.Reactions),
                 maxLoosePage.unknownFieldsByFactId[maxLooseFact.fact.id],
@@ -657,8 +625,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             )
             val poisonedLoosePage = assertNotNull(reader.readTimeline(partitionA, "channel-poison-loose", ThreadDurableTimelineAnchor.Newest(limit = 5)))
             assertEquals(listOf(62L), poisonedLoosePage.envelopes.map { it.fact.seq })
-            assertTrue(poisonedLoosePage.gaps.isEmpty())
-            assertTrue(poisonedLoosePage.hasOlderStored)
+            assertFalse(poisonedLoosePage.hasOlderStored)
 
             val touchingScope = SyncScopeKey(partitionA, "channel-touching-island", "channel")
             store.applyCoverage(
@@ -677,8 +644,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             )
             val touchingPage = assertNotNull(reader.readTimeline(partitionA, "channel-touching-island", ThreadDurableTimelineAnchor.Newest(limit = 5)))
             assertEquals(listOf(62L), touchingPage.envelopes.map { it.fact.seq })
-            assertTrue(touchingPage.gaps.isEmpty())
-            assertTrue(touchingPage.hasOlderStored)
+            assertFalse(touchingPage.hasOlderStored)
 
             // 5. unknownFieldsByFactId filters out lower-island rows excluded below head.effectiveLowSeq.
             val unknownFilterScope = SyncScopeKey(partitionA, "channel-unknown-filter", "channel")
@@ -703,7 +669,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             val filteredPage = assertNotNull(reader.readTimeline(partitionA, "channel-unknown-filter", ThreadDurableTimelineAnchor.Newest(limit = 10)))
             assertEquals(listOf(20L), filteredPage.envelopes.map { it.fact.seq })
             assertEquals(setOf(headFact.fact.id), filteredPage.unknownFieldsByFactId.keys)
-            assertTrue(filteredPage.hasOlderStored)
+            assertFalse(filteredPage.hasOlderStored)
         }
     }
 
@@ -855,25 +821,27 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             assertTrue(newest.reachesHead)
             assertTrue(newest.insideProvenSegment)
 
-            // Extreme boundary anchors report opposite-direction presence accurately without overflow.
+            // Extreme boundary anchors never overflow.
             val beforeMin = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(Long.MIN_VALUE, limit = 5, crossGaps = true)),
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(Long.MIN_VALUE, limit = 5)),
             )
             assertTrue(beforeMin.envelopes.isEmpty())
             assertFalse(beforeMin.hasOlderStored)
-            assertTrue(beforeMin.hasNewerStored)
+            assertFalse(beforeMin.hasNewerStored)
+            assertFalse(beforeMin.insideProvenSegment)
 
             val afterMax = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(Long.MAX_VALUE, limit = 5, crossGaps = true)),
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(Long.MAX_VALUE, limit = 5)),
             )
             assertTrue(afterMax.envelopes.isEmpty())
-            assertTrue(afterMax.hasOlderStored)
+            assertFalse(afterMax.hasOlderStored)
             assertFalse(afterMax.hasNewerStored)
+            assertFalse(afterMax.insideProvenSegment)
         }
     }
 
     @Test
-    fun aroundMessageIdInsideProvenSegmentStaysGapFreeExcludesOutsideFactsAndPreservesOfflinePagingFlags() =
+    fun aroundMessageIdInsideProvenSegmentStaysContiguousExcludesOutsideFactsAndReportsInSegmentFlags() =
         withFreshDatabase { database ->
             val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 10L })
             val reader = CanonicalMessageV2DurableLastKnownReader(store)
@@ -915,8 +883,8 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                     unknownFieldsByFactId = mapOf("message-12" to reactions, "message-40" to reactions),
                 )
 
-                // Large beforeCount / afterCount stays strictly inside [20..25] with gaps=emptyList(),
-                // preserves hasOlderStored / hasNewerStored for offline island crossing, and filters unknownFields.
+                // Large beforeCount / afterCount stays strictly inside [20..25], reports in-segment
+                // hasOlderStored=false / hasNewerStored=false, and filters unknownFields.
                 val inSegment = assertNotNull(
                     reader.readTimeline(
                         partition = partitionA,
@@ -925,40 +893,29 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                     ),
                 )
                 assertEquals(listOf(20L, 21L, 22L, 23L, 24L, 25L), inSegment.envelopes.map { it.fact.seq })
-                assertTrue(inSegment.gaps.isEmpty(), "anchored in-segment open must be gap-free: ${inSegment.gaps}")
-                assertTrue(inSegment.hasOlderStored)
-                assertTrue(inSegment.hasNewerStored)
+                assertFalse(inSegment.hasOlderStored)
+                assertFalse(inSegment.hasNewerStored)
                 assertFalse(inSegment.reachesOldest)
                 assertFalse(inSegment.reachesHead)
                 assertTrue(inSegment.insideProvenSegment)
                 assertEquals(setOf("message-22"), inSegment.unknownFieldsByFactId.keys)
 
-                // Explicit offline Before / After with crossGaps=true bridges only proven segments and
-                // skips unsegmented loose realtime facts (12, 40) so stacked gaps never appear (#proj-mobile:#386 P0-1).
-                val offlineOlder = assertNotNull(
-                    reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 10, crossGaps = true)),
+                // Before(20) / After(25) at segment edges NEVER cross into lower/upper islands or loose facts.
+                val edgeOlder = assertNotNull(
+                    reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 10)),
                 )
-                assertEquals(listOf(1L, 2L, 3L, 4L, 5L), offlineOlder.envelopes.map { it.fact.seq })
-                assertEquals(
-                    listOf(
-                        CanonicalMessageV2TimelineGap(afterSeq = 5L, beforeSeq = 20L),
-                    ),
-                    offlineOlder.gaps,
+                assertTrue(edgeOlder.envelopes.isEmpty())
+                assertFalse(edgeOlder.insideProvenSegment)
+                assertFalse(edgeOlder.hasOlderStored)
+                assertFalse(edgeOlder.reachesOldest)
+
+                val edgeNewer = assertNotNull(
+                    reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(25L, limit = 10)),
                 )
-                assertFalse(offlineOlder.hasOlderStored)
-                assertTrue(offlineOlder.reachesOldest)
-                val offlineNewer = assertNotNull(
-                    reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(25L, limit = 10, crossGaps = true)),
-                )
-                assertEquals(listOf(60L, 61L, 62L, 63L, 64L, 65L), offlineNewer.envelopes.map { it.fact.seq })
-                assertEquals(
-                    listOf(
-                        CanonicalMessageV2TimelineGap(afterSeq = 25L, beforeSeq = 60L),
-                    ),
-                    offlineNewer.gaps,
-                )
-                assertFalse(offlineNewer.hasNewerStored)
-                assertTrue(offlineNewer.reachesHead)
+                assertTrue(edgeNewer.envelopes.isEmpty())
+                assertFalse(edgeNewer.insideProvenSegment)
+                assertFalse(edgeNewer.hasNewerStored)
+                assertFalse(edgeNewer.reachesHead)
 
                 // Anchor right on segment boundaries (20 and 25) isolates poisoned outside facts (12 and 40).
                 for (poisonSeq in listOf(12L, 40L)) {
@@ -983,8 +940,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                     ),
                 )
                 assertEquals(listOf(20L, 21L, 22L), atLowEdge.envelopes.map { it.fact.seq })
-                assertTrue(atLowEdge.gaps.isEmpty())
-                assertTrue(atLowEdge.hasOlderStored)
+                assertFalse(atLowEdge.hasOlderStored)
                 assertTrue(atLowEdge.hasNewerStored)
 
                 val atHighEdge = assertNotNull(
@@ -995,9 +951,8 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                     ),
                 )
                 assertEquals(listOf(23L, 24L, 25L), atHighEdge.envelopes.map { it.fact.seq })
-                assertTrue(atHighEdge.gaps.isEmpty())
                 assertTrue(atHighEdge.hasOlderStored)
-                assertTrue(atHighEdge.hasNewerStored)
+                assertFalse(atHighEdge.hasNewerStored)
 
                 // Segment with reachesOldest=true and headAtVerify=true and no outside facts preserves both flags,
                 // and Long.MAX_VALUE anchor inside a max-seq segment works without overflow.
@@ -1022,7 +977,6 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                     ),
                 )
                 assertEquals(listOf(maxSeq - 2L, maxSeq - 1L, maxSeq), anchoredMax.envelopes.map { it.fact.seq })
-                assertTrue(anchoredMax.gaps.isEmpty())
                 assertFalse(anchoredMax.hasOlderStored)
                 assertFalse(anchoredMax.hasNewerStored)
                 assertTrue(anchoredMax.reachesOldest)
@@ -1076,9 +1030,8 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                     ),
                 )
                 assertEquals(listOf(105L), sparseLoose.envelopes.map { it.fact.seq })
-                assertTrue(sparseLoose.gaps.isEmpty(), "loose anchored open must never emit mid-timeline gaps: ${sparseLoose.gaps}")
-                assertTrue(sparseLoose.hasOlderStored)
-                assertTrue(sparseLoose.hasNewerStored)
+                assertFalse(sparseLoose.hasOlderStored)
+                assertFalse(sparseLoose.hasNewerStored)
                 assertFalse(sparseLoose.reachesOldest)
                 assertFalse(sparseLoose.reachesHead)
                 assertFalse(sparseLoose.insideProvenSegment)
@@ -1107,9 +1060,8 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                     ),
                 )
                 assertEquals(listOf(105L), sparsePoisonIsolated.envelopes.map { it.fact.seq })
-                assertTrue(sparsePoisonIsolated.gaps.isEmpty())
-                assertTrue(sparsePoisonIsolated.hasOlderStored)
-                assertTrue(sparsePoisonIsolated.hasNewerStored)
+                assertFalse(sparsePoisonIsolated.hasOlderStored)
+                assertFalse(sparsePoisonIsolated.hasNewerStored)
 
                 // 2. Consecutive loose run [104, 105, 106] bounded by touching segments [100..103] and [107..110]:
                 //    stops at both segment boundaries without crossing or decoding touching poisoned segment rows.
@@ -1162,9 +1114,8 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                     ),
                 )
                 assertEquals(listOf(104L, 105L, 106L), consecutiveRun.envelopes.map { it.fact.seq })
-                assertTrue(consecutiveRun.gaps.isEmpty())
-                assertTrue(consecutiveRun.hasOlderStored)
-                assertTrue(consecutiveRun.hasNewerStored)
+                assertFalse(consecutiveRun.hasOlderStored)
+                assertFalse(consecutiveRun.hasNewerStored)
                 assertFalse(consecutiveRun.insideProvenSegment)
 
                 // Respects beforeCount / afterCount caps inside the consecutive run.
@@ -1176,9 +1127,8 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                     ),
                 )
                 assertEquals(listOf(105L, 106L), cappedRun.envelopes.map { it.fact.seq })
-                assertTrue(cappedRun.gaps.isEmpty())
-                assertTrue(cappedRun.hasOlderStored)
-                assertTrue(cappedRun.hasNewerStored)
+                assertFalse(cappedRun.hasOlderStored)
+                assertFalse(cappedRun.hasNewerStored)
 
                 // 3. Loose anchor at Long.MAX_VALUE with consecutive Long.MAX_VALUE - 1 works without overflow.
                 val maxLooseScope = SyncScopeKey(partitionA, "channel-loose-max", "channel")
@@ -1198,7 +1148,6 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                     ),
                 )
                 assertEquals(listOf(maxSeq - 1L, maxSeq), anchoredMaxLoose.envelopes.map { it.fact.seq })
-                assertTrue(anchoredMaxLoose.gaps.isEmpty())
                 assertFalse(anchoredMaxLoose.hasOlderStored)
                 assertFalse(anchoredMaxLoose.hasNewerStored)
                 assertFalse(anchoredMaxLoose.insideProvenSegment)
@@ -1260,7 +1209,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
     )
 
     @Test
-    fun offlineCrossGapsNeverSplicesMultipleLooseRealtimeFactsIntoStackedGaps() = withFreshDatabase { database ->
+    fun beforeAndAfterAtEdgesWithMultipleIslandsAndLooseFactsNeverCrossGaps() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 100L })
         val reader = CanonicalMessageV2DurableLastKnownReader(store)
         val scope = SyncScopeKey(partitionA, "channel-a", "channel")
@@ -1296,30 +1245,31 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                 userDriven = false,
             )
 
-            // Before(20, crossGaps=true) must bridge straight into [1..5] with ONE gap (5, 20), NOT 6 stacked gaps.
+            // Before(20) at middle island lower edge never bridges into loose facts or [1..5].
             val older = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 20, crossGaps = true)),
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 20)),
             )
-            assertEquals(listOf(1L, 2L, 3L, 4L, 5L), older.envelopes.map { it.fact.seq })
-            assertEquals(listOf(CanonicalMessageV2TimelineGap(afterSeq = 5L, beforeSeq = 20L)), older.gaps)
+            assertTrue(older.envelopes.isEmpty())
+            assertFalse(older.insideProvenSegment)
             assertFalse(older.hasOlderStored)
-            assertTrue(older.reachesOldest)
+            assertFalse(older.reachesOldest)
 
-            // After(25, crossGaps=true) must bridge straight into [60..65] with ONE gap (25, 60), NOT 6 stacked gaps.
+            // After(25) at middle island upper edge never bridges into loose facts or [60..65].
             val newer = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(25L, limit = 20, crossGaps = true)),
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(25L, limit = 20)),
             )
-            assertEquals(listOf(60L, 61L, 62L, 63L, 64L, 65L), newer.envelopes.map { it.fact.seq })
-            assertEquals(listOf(CanonicalMessageV2TimelineGap(afterSeq = 25L, beforeSeq = 60L)), newer.gaps)
+            assertTrue(newer.envelopes.isEmpty())
+            assertFalse(newer.insideProvenSegment)
             assertFalse(newer.hasNewerStored)
-            assertTrue(newer.reachesHead)
+            assertFalse(newer.reachesHead)
 
-            // Limited read inside a lower segment reports hasOlderStored=true when more segmented rows remain.
+            // Limited read strictly inside lower island [1..5] reports hasOlderStored=true when more
+            // rows remain inside the same contiguous segment [1..5].
             val partialOlder = assertNotNull(
-                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 3, crossGaps = true)),
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(6L, limit = 3)),
             )
             assertEquals(listOf(3L, 4L, 5L), partialOlder.envelopes.map { it.fact.seq })
-            assertEquals(listOf(CanonicalMessageV2TimelineGap(afterSeq = 5L, beforeSeq = 20L)), partialOlder.gaps)
+            assertTrue(partialOlder.insideProvenSegment)
             assertTrue(partialOlder.hasOlderStored)
             assertFalse(partialOlder.reachesOldest)
         }

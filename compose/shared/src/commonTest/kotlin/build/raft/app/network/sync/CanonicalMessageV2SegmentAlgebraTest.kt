@@ -1,6 +1,5 @@
 package build.raft.app.network.sync
 
-import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.deriveGaps
 import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.head
 import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.provenSegmentAfter
 import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.provenSegmentBefore
@@ -10,7 +9,6 @@ import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.trimBelow
 import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.union
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -98,50 +96,6 @@ class CanonicalMessageV2SegmentAlgebraTest {
             CanonicalMessageV2Coverage.fromContextPage(listOf(7), hasOlder = false, historyLimited = true)!!.reachesOldest,
         )
         assertNull(CanonicalMessageV2Coverage.fromContextPage(emptyList(), hasOlder = false, historyLimited = false))
-    }
-
-    @Test
-    fun deriveGapsSkipsSameSegmentAndConsecutiveSeqsAndEmitsGapsAcrossIslandsOrLooseFacts() {
-        val segments = listOf(
-            seg(1, 10, oldest = true, source = CanonicalMessageV2SegmentSource.Context),
-            seg(20, 30, head = true, source = CanonicalMessageV2SegmentSource.Latest),
-        )
-        // Inside one segment (even sparse seqs 2, 5, 9): no gaps.
-        assertEquals(emptyList(), deriveGaps(listOf(2L, 5L, 9L), segments))
-        // Across two disjoint segments: gap between the boundary facts (9, 21).
-        assertEquals(
-            listOf(CanonicalMessageV2TimelineGap(afterSeq = 9L, beforeSeq = 21L)),
-            deriveGaps(listOf(2L, 9L, 21L, 29L), segments),
-        )
-        // Loose fact between islands (seq 15): gaps on both sides.
-        assertEquals(
-            listOf(
-                CanonicalMessageV2TimelineGap(afterSeq = 9L, beforeSeq = 15L),
-                CanonicalMessageV2TimelineGap(afterSeq = 15L, beforeSeq = 21L),
-            ),
-            deriveGaps(listOf(9L, 15L, 21L), segments),
-        )
-        // Loose fact strictly above head: gap when non-consecutive (30 -> 35), NO gap when consecutive (30 -> 31).
-        assertEquals(
-            listOf(CanonicalMessageV2TimelineGap(afterSeq = 30L, beforeSeq = 35L)),
-            deriveGaps(listOf(25L, 30L, 35L), segments),
-        )
-        assertEquals(emptyList(), deriveGaps(listOf(25L, 30L, 31L), segments))
-        // Two loose facts with a gap between them vs consecutive loose facts.
-        assertEquals(
-            listOf(CanonicalMessageV2TimelineGap(afterSeq = 40L, beforeSeq = 42L)),
-            deriveGaps(listOf(40L, 42L), emptyList()),
-        )
-        assertEquals(emptyList(), deriveGaps(listOf(40L, 41L), emptyList()))
-        // Empty and single-element lists never emit gaps.
-        assertEquals(emptyList(), deriveGaps(emptyList(), segments))
-        assertEquals(emptyList(), deriveGaps(listOf(21L), segments))
-        // Overflow-safe at Long.MAX_VALUE and strict validation on unsorted / unnormalized / zero-width gaps.
-        assertEquals(emptyList(), deriveGaps(listOf(Long.MAX_VALUE - 1L, Long.MAX_VALUE), emptyList()))
-        assertEquals(emptyList(), deriveGaps(listOf(Long.MAX_VALUE, Long.MAX_VALUE), emptyList()))
-        assertFailsWith<IllegalArgumentException> { CanonicalMessageV2TimelineGap(afterSeq = 10L, beforeSeq = 11L) }
-        assertFailsWith<IllegalArgumentException> { deriveGaps(listOf(20L, 10L), segments) }
-        assertFailsWith<IllegalArgumentException> { deriveGaps(listOf(10L, 20L), listOf(seg(10, 20), seg(15, 25))) }
     }
 
     @Test

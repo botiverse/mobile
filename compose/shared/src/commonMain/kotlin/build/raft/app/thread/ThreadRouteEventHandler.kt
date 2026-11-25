@@ -303,12 +303,6 @@ internal class ThreadRouteEventHandler(
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
                     return@ThreadPageContent
                 }
-                if (action == ThreadFillTimelineGapAction) {
-                    parseThreadTimelineGapKey(itemId)?.let { (afterSeq, beforeSeq) ->
-                        threadViewModel.dispatch(SharedThreadIntent.FillTimelineGap(afterSeq, beforeSeq))
-                    }
-                    return@ThreadPageContent
-                }
                 if (!threadEventAllowed(renderSlice.writeActionsEnabled, action, limitLocked = threadLimitLocked)) {
                     bridge.log("thread_write_action_blocked action=$action reason=${if (threadLimitLocked) "channel_limit_locked" else "read_only_access_fallback"}")
                     return@ThreadPageContent

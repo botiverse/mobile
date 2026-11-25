@@ -197,17 +197,17 @@ internal class ThreadRealtimeGapRecovery(
         var outcome: ThreadNewerPageLoadOutcome = ThreadNewerPageLoadOutcome.Ignored
         try {
             val localContext = dataSource.captureReplyCacheProducerContext()
+            val expectedOwnerScopeId = visiblePayloadOwnerScopeId
             val localNewerPage =
                 localContext?.let { context ->
                     dataSource.durableNewerPageIfCurrent(
                         routeIdentity = initial.resolveThreadRouteIdentity(),
                         context = context,
                         afterSeq = afterSeq,
-                        expectedOwnerScopeId = visiblePayloadOwnerScopeId,
+                        expectedOwnerScopeId = expectedOwnerScopeId,
                         replyParent = initial.durableReplyParentOrNull(),
-                        crossGaps = initial.durableLastKnown && initial.mainLoadFailed,
                     )
-                }?.takeIf { (initial.durableLastKnown && initial.mainLoadFailed) || it.insideProvenSegment }
+                }?.takeIf { it.insideProvenSegment }
             if (localNewerPage != null) {
                 realtimeGapRecoveryMutex.withLock {
                     val active =
@@ -246,9 +246,16 @@ internal class ThreadRealtimeGapRecovery(
                             return@reducePayloadPatch latestPayload
                         }
                         appliedToCurrentRoute = true
+                        val nextCanLoadMoreAfter =
+                            if (latestPayload.durableLastKnown && latestPayload.mainLoadFailed) {
+                                localNewerPage.hasNewerStored
+                            } else {
+                                localNewerPage.canLoadMoreAfter
+                            }
                         if (localNewerPage.messages.isEmpty()) {
                             latestPayload.copy(
-                                canLoadMoreAfter = localNewerPage.canLoadMoreAfter,
+                                canLoadMoreAfter = nextCanLoadMoreAfter,
+                                durableHasNewerStored = localNewerPage.hasNewerStored,
                                 newerMessagesStatus = "idle",
                             )
                         } else {
@@ -260,26 +267,16 @@ internal class ThreadRealtimeGapRecovery(
                                         pageSize = localNewerPage.pageSize,
                                     )
                                     .preserveStableTimelineFrom(latestPayload)
-                            val withGaps =
-                                merged.copy(
-                                    canLoadMoreAfter = localNewerPage.canLoadMoreAfter,
-                                    timelineGaps =
-                                        reconcileThreadTimelineGaps(
-                                            existingGaps = latestPayload.timelineGaps,
-                                            addedGaps =
-                                                if (initial.durableLastKnown && initial.mainLoadFailed) {
-                                                    localNewerPage.gaps
-                                                } else {
-                                                    emptyList()
-                                                },
-                                            messages = merged.messages,
-                                        ),
-                                )
+                                    .copy(
+                                        canLoadMoreAfter = nextCanLoadMoreAfter,
+                                        durableHasNewerStored = localNewerPage.hasNewerStored,
+                                        newerMessagesStatus = "idle",
+                                    )
                             if (latestPayload.durableLastKnown) {
-                                withGaps
+                                merged
                             } else {
-                                committedForCache = withGaps
-                                withGaps
+                                committedForCache = merged
+                                merged
                                     .withRouteContext(initial)
                                     .preserveStableTimelineFrom(latestPayload)
                             }
@@ -326,6 +323,50 @@ internal class ThreadRealtimeGapRecovery(
                                     )
                         }
                     }
+                }
+            } else if (initial.durableLastKnown && initial.mainLoadFailed) {
+                realtimeGapRecoveryMutex.withLock {
+                    loadNewerState?.takeIf { state -> state.id == loadId } ?: return@withLock
+                    val ownerStillCurrent =
+                        localContext != null &&
+                            localContext.provenance.threadPayloadOwnerScopeId == expectedOwnerScopeId
+                    val currentPayload = currentState().payload
+                    if (
+                        ownerStillCurrent &&
+                        currentPayload.durableLastKnown &&
+                        currentPayload.mainLoadFailed &&
+                        staleTokenStillCurrent(staleToken, "thread_page", "newer_offline_segment_edge", initial, currentPayload) &&
+                        routeStillCurrent(initial, "thread_page", "newer_offline_segment_edge", currentPayload)
+                    ) {
+                        reducePayloadPatch(cachePayload = false) { latestPayload ->
+                            if (
+                                !latestPayload.durableLastKnown ||
+                                !latestPayload.mainLoadFailed ||
+                                !staleTokenStillCurrent(staleToken, "thread_page", "newer_offline_segment_edge", initial, latestPayload) ||
+                                !routeStillCurrent(initial, "thread_page", "newer_offline_segment_edge", latestPayload)
+                            ) {
+                                return@reducePayloadPatch latestPayload
+                            }
+                            latestPayload.copy(
+                                canLoadMoreAfter = false,
+                                durableHasNewerStored = false,
+                                newerMessagesStatus = "idle",
+                            )
+                        }
+                        outcome = ThreadNewerPageLoadOutcome.Empty
+                    } else if (
+                        currentPayload.newerMessagesStatus == "loading" &&
+                        currentPayload.isUsableCachedPayloadForRoute(initial)
+                    ) {
+                        reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
+                            if (latestPayload.newerMessagesStatus == "loading") {
+                                latestPayload.copy(newerMessagesStatus = "idle")
+                            } else {
+                                latestPayload
+                            }
+                        }
+                    }
+                    loadNewerState = null
                 }
             } else {
                 val result = dataSource.fetchNewerThreadPayload(initial, afterSeq)
@@ -374,7 +415,7 @@ internal class ThreadRealtimeGapRecovery(
                     val nextPayload =
                         when (result) {
                             is DataResult.Content -> {
-                                val mergedRaw =
+                                val merged =
                                     currentPayload
                                         .mergePagedMessages(
                                             pageMessages = result.data.payload.messages,
@@ -383,15 +424,6 @@ internal class ThreadRealtimeGapRecovery(
                                             rawServerRowCount = result.data.rawServerRowCount,
                                         )
                                         .preserveStableTimelineFrom(currentPayload)
-                                val merged =
-                                    mergedRaw.copy(
-                                        timelineGaps =
-                                            reconcileThreadTimelineGaps(
-                                                existingGaps = mergedRaw.timelineGaps,
-                                                addedGaps = emptyList(),
-                                                messages = mergedRaw.messages,
-                                            ),
-                                    )
                                 (if (currentPayload.durableLastKnown) merged else dataSource.cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId))
                                     .withRouteContext(initial)
                                     .preserveStableTimelineFrom(currentPayload)
@@ -857,16 +889,6 @@ internal class ThreadRealtimeGapRecovery(
                                     merged.copy(
                                         canLoadMoreAfter = false,
                                         newerMessagesStatus = "idle",
-                                        timelineGaps =
-                                            if (currentPayload.timelineGaps.isNotEmpty()) {
-                                                reconcileThreadTimelineGaps(
-                                                    existingGaps = currentPayload.timelineGaps,
-                                                    addedGaps = emptyList(),
-                                                    messages = merged.messages,
-                                                )
-                                            } else {
-                                                currentPayload.timelineGaps
-                                            },
                                     )
                                 }
                                 GapCatchUpDecision.ReplaceWithLatestPage -> {

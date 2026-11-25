@@ -57,7 +57,8 @@ internal fun RaftThreadScreenPayload.withContentSliceFrom(patch: RaftThreadScree
         // The content slice carries its own provenance: a network patch is never last-known.
         durableLastKnown = patch.durableLastKnown,
         durableReachedOldest = patch.durableReachedOldest,
-        timelineGaps = patch.timelineGaps,
+        durableHasOlderStored = patch.durableHasOlderStored,
+        durableHasNewerStored = patch.durableHasNewerStored,
         mainLoadFailed = patch.mainLoadFailed,
         messages = patch.messages,
         originMessage = patch.originMessage,
