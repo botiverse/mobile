@@ -1,12 +1,14 @@
 package build.raft.app.data
 
 import build.raft.app.RaftCoreInternalApi
-
+import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -86,6 +88,19 @@ sealed interface AgentActivityOverviewIntent {
     data class LiveActivityObserved(val agentId: MemberId, val activity: String?) : AgentActivityOverviewIntent
 
     /**
+     * Registers an active overview surface (Activity tab Overview or Profile Recent activity) as
+     * observing [serverId] for store-owned freshness catch-up (#wg-mobile-feedback:#274 Phase 1).
+     * Idempotent per [token]; pair with [StopObservingFreshness] on dispose.
+     */
+    data class ObserveFreshness(val token: Any, val serverId: String?) : AgentActivityOverviewIntent
+
+    /** Unregisters the overview surface identified by [token]. */
+    data class StopObservingFreshness(val token: Any) : AgentActivityOverviewIntent
+
+    /** Whether the enclosing detail page is currently visible on screen (not covered). */
+    data class SetPageVisible(val visible: Boolean) : AgentActivityOverviewIntent
+
+    /**
      * The app returned to the foreground or the realtime socket reconnected: the agent's
      * activity pushes of that time were missed. A loaded overview reloads its latest page silently
      * (Background, coalesced with a reload in flight); a failed one retries.
@@ -105,11 +120,19 @@ sealed interface AgentActivityOverviewIntent {
  * Confinement: [dispatch] and every launched job run on [scope]'s dispatcher (the UI scope in
  * production), so the private in-flight markers below are never touched concurrently.
  * Every response is fenced by the agent generation: switching agents drops late answers.
+ *
+ * Freshness (#wg-mobile-feedback:#274 Phase 1): subscribes directly to [freshness] and uses an
+ * outcome-tracked [RaftFreshnessGate] (`trackOutcome = true`) so foreground / reconnect /
+ * network-restored catch-ups run only while an overview surface is actively observing, never burn
+ * the 10 s coalescing window on a failed read, and keep existing shown turns on refresh or error.
  */
 class SharedAgentActivityOverviewStore(
     private val repository: AgentActivityOverviewRepository,
     private val scope: CoroutineScope,
     private val liveReloadDebounceMillis: Long = LIVE_RELOAD_DEBOUNCE_MILLIS,
+    private val freshness: Flow<RaftFreshnessEvent> = RaftFreshnessSignal.events,
+    private val nowMillis: () -> Long = ::raftForegroundGateNowMillis,
+    private val liveConnectionToken: (serverId: String) -> Long? = RaftRealtimeConnectionCauses::liveConnectionToken,
     private val logger: (String) -> Unit = {},
 ) {
     private val _state = MutableStateFlow(AgentActivityOverviewState())
@@ -121,6 +144,17 @@ class SharedAgentActivityOverviewStore(
     private var latestPendingPriority = DataRequestPriority.Background
     private var liveReloadJob: Job? = null
 
+    /** Active overview surface tokens -> serverId for store-owned freshness catch-up. */
+    private val freshnessObservers = LinkedHashMap<Any, String?>()
+    private var pageVisible = true
+    private val freshnessGate =
+        RaftFreshnessGate(
+            nowMillis = nowMillis,
+            trackOutcome = true,
+            liveConnectionToken = liveConnectionToken,
+        )
+    private var freshnessCatchUpInFlight = false
+
     /** The `before` cursor of the "load earlier" request in flight; null when none is. */
     private var loadMoreCursor: String? = null
 
@@ -130,14 +164,90 @@ class SharedAgentActivityOverviewStore(
     /** Bumped per operator-events request: only the latest answer applies (web effect cleanup). */
     private var operatorEventsToken = 0L
 
+    init {
+        scope.launch {
+            freshness.collect { event ->
+                onFreshnessEvent(event)
+            }
+        }
+    }
+
     fun dispatch(intent: AgentActivityOverviewIntent) {
         when (intent) {
             is AgentActivityOverviewIntent.Open -> open(intent.agentId)
             AgentActivityOverviewIntent.Refresh -> refresh()
             AgentActivityOverviewIntent.CatchUp -> catchUp()
+            is AgentActivityOverviewIntent.ObserveFreshness -> observeFreshness(intent.token, intent.serverId)
+            is AgentActivityOverviewIntent.StopObservingFreshness -> stopObservingFreshness(intent.token)
+            is AgentActivityOverviewIntent.SetPageVisible -> setPageVisible(intent.visible)
             is AgentActivityOverviewIntent.LiveActivityObserved -> observeLiveActivity(intent.agentId, intent.activity)
             AgentActivityOverviewIntent.LoadMore -> loadMore()
             is AgentActivityOverviewIntent.LoadReply -> loadReply(intent.messageId)
+        }
+    }
+
+    private fun observeFreshness(token: Any, serverId: String?) {
+        freshnessObservers[token] = serverId?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun stopObservingFreshness(token: Any) {
+        freshnessObservers.remove(token)
+        if (freshnessObservers.isEmpty() && !freshnessCatchUpInFlight) {
+            freshnessGate.reset()
+        }
+    }
+
+    private fun setPageVisible(visible: Boolean) {
+        val previous = pageVisible
+        pageVisible = visible
+        if (visible && !previous && freshnessObservers.isNotEmpty()) {
+            val current = _state.value
+            if (current.agentId != null && current.status != AgentActivityOverviewStatus.Idle) {
+                freshnessGate.onVisibilityChanged(visible = true, serverId = activeFreshnessServerId())
+                    ?.let(::startFreshnessCatchUp)
+            }
+        }
+    }
+
+    private fun activeFreshnessServerId(): String? =
+        freshnessObservers.values.lastOrNull { !it.isNullOrBlank() }
+
+    private fun isFreshnessVisible(): Boolean =
+        freshnessObservers.isNotEmpty() && pageVisible
+
+    private fun onFreshnessEvent(event: RaftFreshnessEvent) {
+        if (freshnessObservers.isEmpty()) return
+        val current = _state.value
+        if (current.agentId == null || current.status == AgentActivityOverviewStatus.Idle) return
+        val trigger = freshnessGate.onEvent(event, activeFreshnessServerId(), visible = pageVisible) ?: return
+        startFreshnessCatchUp(trigger)
+    }
+
+    private fun startFreshnessCatchUp(trigger: RaftFreshnessTrigger) {
+        when (_state.value.status) {
+            AgentActivityOverviewStatus.Loaded -> {
+                freshnessCatchUpInFlight = true
+                liveReloadJob?.cancel()
+                liveReloadJob = null
+                loadLatest(DataRequestPriority.Background)
+            }
+            is AgentActivityOverviewStatus.Error -> {
+                freshnessCatchUpInFlight = true
+                refresh()
+            }
+            AgentActivityOverviewStatus.Loading -> {
+                freshnessCatchUpInFlight = true
+                if (latestInFlight) {
+                    if (trigger == RaftFreshnessTrigger.Reconnect || trigger == RaftFreshnessTrigger.NetworkRestored) {
+                        latestPending = true
+                    }
+                } else {
+                    loadLatest(DataRequestPriority.Background)
+                }
+            }
+            AgentActivityOverviewStatus.Idle -> {
+                freshnessGate.onCatchUpCompleted(succeeded = false, visible = false)
+            }
         }
     }
 
@@ -154,6 +264,8 @@ class SharedAgentActivityOverviewStore(
         latestInFlight = false
         latestPending = false
         latestPendingPriority = DataRequestPriority.Background
+        freshnessCatchUpInFlight = false
+        freshnessGate.reset()
         loadMoreCursor = null
         lastLiveActivity = null
         _state.value = AgentActivityOverviewState(agentId = agentId, status = AgentActivityOverviewStatus.Loading)
@@ -219,20 +331,50 @@ class SharedAgentActivityOverviewStore(
         latestInFlight = true
         val requestGeneration = generation
         scope.launch {
-            val result = try {
-                repository.loadTurns(priority, agentId)
+            var succeeded = false
+            var completedNormally = false
+            try {
+                val result =
+                    try {
+                        repository.loadTurns(priority, agentId)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (error: Throwable) {
+                        logger("agent_activity_overview_load_exception type=${error::class.simpleName ?: "unknown"}")
+                        DataResult.Error(ScreenError("activity_summaries_exception", retryable = true))
+                    }
+                if (requestGeneration != generation) return@launch
+                completedNormally = true
+                succeeded = result is DataResult.Content || result is DataResult.Empty
+                applyLatest(result)
+                if (succeeded) loadOperatorEvents(priority)
             } finally {
-                if (requestGeneration == generation) latestInFlight = false
+                if (requestGeneration == generation) {
+                    latestInFlight = false
+                    if (!completedNormally) {
+                        if (freshnessCatchUpInFlight) {
+                            freshnessCatchUpInFlight = false
+                            freshnessGate.onCatchUpCompleted(succeeded = false, visible = false)
+                        }
+                        if (!latestPending) _state.update { if (it.refreshing) it.copy(refreshing = false) else it }
+                    }
+                }
             }
             if (requestGeneration != generation) return@launch
-            applyLatest(result)
-            if (result is DataResult.Content || result is DataResult.Empty) loadOperatorEvents(priority)
             if (!latestPending) _state.update { if (it.refreshing) it.copy(refreshing = false) else it }
             if (latestPending) {
                 latestPending = false
                 val nextPriority = latestPendingPriority
                 latestPendingPriority = DataRequestPriority.Background
                 loadLatest(nextPriority)
+            } else if (freshnessCatchUpInFlight) {
+                freshnessCatchUpInFlight = false
+                val followUp = freshnessGate.onCatchUpCompleted(succeeded = succeeded, visible = isFreshnessVisible())
+                if (freshnessObservers.isEmpty()) {
+                    freshnessGate.reset()
+                } else if (followUp != null) {
+                    startFreshnessCatchUp(followUp)
+                }
             }
         }
     }

@@ -460,6 +460,11 @@ internal fun MemberDetailPageContent(
                 )
             }
         }
+    LaunchedEffect(activityOverviewStore, pageVisible) {
+        activityOverviewStore?.dispatch(
+            build.raft.app.data.AgentActivityOverviewIntent.SetPageVisible(pageVisible)
+        )
+    }
     // Flag reads below follow an evaluation that lands after first frame.
     val serverFeatureFlagRevision = provider.serverFeatureFlags?.snapshotRevision?.collectAsState()?.value
     val agentDetailStoreState by provider.agentDetailStore.state.collectAsState()

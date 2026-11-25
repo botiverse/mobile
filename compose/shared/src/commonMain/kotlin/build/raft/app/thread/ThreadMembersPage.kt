@@ -479,25 +479,8 @@ private fun ThreadMembersPageScreen() {
     LaunchedEffect(serverMembersStore, liveOwner, routeOwner, route.serverId, route.channelId) {
         if (liveOwner == routeOwner) refreshMembers()
     }
-    // Membership and presence follow pushes; on foreground / socket reconnect the roster re-reads
-    // what was missed: silently (Background), keeping the rows, one reload at a time.
-    val catchUpGate = remember(serverMembersStore, routeOwner, route.channelId) { RaftCatchUpSingleFlight() }
-    RaftLiveCatchUpEffect(serverId = route.serverId.value, visible = true) { trigger ->
-        if (liveOwner != routeOwner || !catchUpGate.tryStart()) return@RaftLiveCatchUpEffect
-        bridge.log("thread_members_catch_up trigger=${trigger.wireName} channelId=${route.channelId.value}")
-        memberScope.launch {
-            try {
-                serverMembersStore.loadChannelMembers(
-                    owner = routeOwner,
-                    channelId = route.channelId,
-                    priority = DataRequestPriority.Background,
-                    force = true
-                )
-            } finally {
-                catchUpGate.finish()
-            }
-        }
-    }
+    // Foreground / socket reconnect / network-restored catch-up is owned by SharedServerMembersStore
+    // while channelMemberSliceFlow is actively observed (#wg-mobile-feedback:#274 Phase 1).
     // The signed-in person's id: the role menu never explains a demote of oneself (web `currentUserId`).
     var viewerUserId by remember(routeOwner) { mutableStateOf<String?>(null) }
     val canChangeMemberRoles =

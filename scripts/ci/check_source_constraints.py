@@ -1084,11 +1084,6 @@ FRESHNESS_LIVE_CATCH_UP_ALLOWLIST: tuple[tuple[str, int, str], ...] = (
         "#274 Phase 3: move into ArtifactsHomeStore",
     ),
     (
-        "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentActivityTab.kt",
-        1,
-        "#274 Phase 1: move into AgentActivityOverviewStore",
-    ),
-    (
         "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomePage.kt",
         1,
         "#274 Phase 3: move Tasks home catch-up into SharedTasksStore",
@@ -1097,11 +1092,6 @@ FRESHNESS_LIVE_CATCH_UP_ALLOWLIST: tuple[tuple[str, int, str], ...] = (
         "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeShellNavigation.kt",
         1,
         "#274 Phase 2: fold shell reconnect catch-up into SharedForegroundReconciler",
-    ),
-    (
-        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadMembersPage.kt",
-        1,
-        "#274 Phase 1: move channel members catch-up into ServerMembersStore",
     ),
     (
         "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPageTabs.kt",
@@ -1177,7 +1167,7 @@ def check_freshness_by_default_invariants(
 
     1. No new page-owned `RaftLiveCatchUpEffect(...)` call sites in production Kotlin: resources
        must be observed from their single per-server store and refreshed via `sync/changes` or
-       store-owned freshness coordinators. Existing 7 legacy sites are pinned in a ratchet allowlist.
+       store-owned freshness coordinators. Remaining legacy sites are pinned in a ratchet allowlist.
     2. Every new `RaftFreshnessGate(...)` construction in production Kotlin must set
        `trackOutcome = true` so a failed foreground read never consumes the 10 s coalescing window
        before `NetworkRestored` / `Reconnect` arrives. Existing 3 legacy sites are pinned in a

@@ -2242,6 +2242,8 @@ internal class RaftSharedStoreProvider private constructor(
         // Computers single-source freshness (foreground, network-restored, active-observer reconnect):
         // shares machinesSyncRefreshCoalescer with foregroundReconciler so one return reads /machines once.
         computersLiveRefreshCoordinator.startFreshness(RaftFreshnessSignal.events)
+        // Channel members freshness for actively observed slices (#wg-mobile-feedback:#274 Phase 1).
+        serverMembersStore.startChannelMembersFreshness(threadSendScope)
         // A theme changed on another device while backgrounded: read the selected server's again.
         serverAppearanceCatchUp.followAppLifecycle(RaftStaleReadRecoverySignals.foreground) {
             authStore.readSession()?.currentServerId
@@ -2929,7 +2931,9 @@ internal class RaftSharedStoreProvider private constructor(
                     actorResolve = jointActorResolve(networkClient(scope)),
                     actorResolveScope = RaftStoreThreading.newScope(),
                     incrementalSyncCoversRoster = { serverId -> syncChangesPullAllowed(serverId.value) }
-                )
+                ).also { store ->
+                    store.startChannelMembersFreshness(threadSendScope)
+                }
             }
         }
 

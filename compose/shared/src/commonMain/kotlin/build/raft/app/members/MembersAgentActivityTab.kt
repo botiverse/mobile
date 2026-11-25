@@ -31,6 +31,7 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampClockWithSeconds
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -739,9 +740,9 @@ internal fun membersAgentActivityNextBottomAnchor(
 
 /**
  * Keeps the overview's turns current while it is on screen (the Activity tab's Overview, or the
- * profile's Recent activity): loads them for [agentId], reloads when a turn finishes, and catches
- * up on what was missed in the background (web `registerActivityTrajectoryLiveReload` /
- * `registerActivityTrajectoryReconnectReload`).
+ * profile's Recent activity): loads them for [agentId], reloads when a turn finishes, and registers
+ * this surface with [build.raft.app.data.SharedAgentActivityOverviewStore] so store-owned freshness
+ * catches up on foreground / reconnect / network recovery (#wg-mobile-feedback:#274 Phase 1).
  */
 @Composable
 internal fun MembersAgentActivityOverviewEffects(
@@ -751,15 +752,18 @@ internal fun MembersAgentActivityOverviewEffects(
     liveActivity: String?,
     serverId: String?,
 ) {
+    val observerToken = remember { Any() }
+    DisposableEffect(overview, observerToken, serverId) {
+        overview.onIntent(AgentActivityOverviewIntent.ObserveFreshness(observerToken, serverId))
+        onDispose {
+            overview.onIntent(AgentActivityOverviewIntent.StopObservingFreshness(observerToken))
+        }
+    }
     LaunchedEffect(agentId) { overview.onIntent(AgentActivityOverviewIntent.Open(agentId)) }
     // A finished turn arrives with the agent leaving a busy state (web reloads on the
     // agent:activity push). The store keeps the last-seen activity, so a revisit after the
     // pager dropped this page still sees the edge; it debounces and coalesces the reload.
     LaunchedEffect(agentId, liveActivity) {
         overview.onIntent(AgentActivityOverviewIntent.LiveActivityObserved(agentId, liveActivity))
-    }
-    // Pushes missed in the background or while the socket was down: catch up on return.
-    RaftLiveCatchUpEffect(serverId = serverId, visible = true) {
-        overview.onIntent(AgentActivityOverviewIntent.CatchUp)
     }
 }
