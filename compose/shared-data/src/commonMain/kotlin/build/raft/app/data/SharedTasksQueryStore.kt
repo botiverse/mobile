@@ -27,9 +27,11 @@ import kotlin.time.Instant
  *   relation `assigned_to_me`) and Started by you (`created_by_me` and `from_my_message`, merged
  *   by the sort and cut at the earliest page end of the two). Without a status filter Mine shows
  *   unfinished work, and Started by you also what was done in the last day (`completed_since`).
- * - **Counts.** `GET /api/tasks/server/counts` per filter set: the scope's numbers under no filter
- *   (All: every task; Mine: the three Mine lanes), and the view's under its filters (none while a
- *   search is on: the web does not count a search either).
+ * - **Counts.** `GET /api/tasks/server/counts` per filter set: the scopes' numbers under no filter
+ *   in one read ([tasksQueryScopeFilters]: every task, with Mine's section totals through
+ *   `mine_done_since`, slock #16585), and the view's under its filters (none while a search is on:
+ *   the web does not count a search either). The unfiltered All view's numbers are that same read.
+ *   A server that answers it without `mine` (before #16585) has Mine counted by its three lanes.
  * - **Search.** Typed text shows at once ([TasksQueryState.searchDraft]); the server reads it once
  *   typing pauses for [SearchDebounceMs] (the web's 250 ms), at once when emptied.
  * - **Stale responses.** Every read carries its lane's or the query's generation; a response to an
@@ -261,7 +263,7 @@ class SharedTasksQueryStore(
             }
         val laneStates = nextLanes.associate { (lane, laneState) -> lane.key to laneState.copy(loading = false) }
         val listed = laneStates.values.flatMapTo(mutableSetOf()) { it.ids }
-        val neededCounts = tasksQueryCountFilters(next, current.doneSince).mapTo(mutableSetOf()) { tasksCountsKey(it) }
+        val neededCounts = tasksQueryCountFilters(next, current.doneSince, current.counts).mapTo(mutableSetOf()) { tasksCountsKey(it) }
         mutableState.value =
             current.copy(
                 query = next,
@@ -422,7 +424,7 @@ class SharedTasksQueryStore(
             countsRefreshJob = null
             pendingCountsRefreshWhileHidden = false
         }
-        val needed = tasksQueryCountFilters(state.value.query, state.value.doneSince)
+        val needed = tasksQueryCountFilters(state.value.query, state.value.doneSince, state.value.counts)
         val now = nowEpochMillis()
         var minThrottledWaitMs: Long? = null
         needed.forEach { filters ->
@@ -469,6 +471,11 @@ class SharedTasksQueryStore(
                                 mutableState.value = current.copy(counts = current.counts + (key to result.counts), countsError = null)
                             } else if (current.countsError != null) {
                                 mutableState.value = current.copy(countsError = null)
+                            }
+                            // A server from before slock #16585 left Mine's totals out of the scopes'
+                            // read: Mine is counted by its three lanes instead (read the ones missing).
+                            if (result.counts.mine == null && key == tasksCountsKey(tasksQueryScopeFilters(state.value.doneSince))) {
+                                if (visible) loadCounts(priority) else pendingCountsRefreshWhileHidden = true
                             }
                         }
                         is ServerTaskCountsResult.Error -> {
@@ -649,7 +656,7 @@ class SharedTasksQueryStore(
         if (countsRefreshJob?.isActive == true) return
         val now = nowEpochMillis()
         val dirtyKeys =
-            tasksQueryCountFilters(state.value.query, state.value.doneSince)
+            tasksQueryCountFilters(state.value.query, state.value.doneSince, state.value.counts)
                 .map { tasksCountsKey(it) }
                 .filter { key -> countJobRevisions[key] != countsLiveRevision || !state.value.counts.containsKey(key) }
         if (dirtyKeys.isEmpty()) return
@@ -869,29 +876,65 @@ fun tasksCountsKey(filters: ServerTaskBoardFilters): String =
     serverTaskFilterQuery(filters).joinToString("&") { (key, value) -> "$key=$value" }
 
 /**
- * The filter sets the counts read: the scopes under no filter (All: everything; Mine: its three
- * lanes), then the view's lanes under the current filters unless a search is on.
+ * The scopes' read (web useTasksPageCounts `allWithMineFilters`, slock #16585): every task under no
+ * filter, asking in the same read for Mine's section totals ([ServerTaskCounts.mine]) with Started
+ * by you's day of Done bound [doneSince].
  */
-fun tasksQueryCountFilters(query: TasksPageQuery, doneSince: String): List<ServerTaskBoardFilters> {
-    val all = ServerTaskBoardFilters()
-    val mine = tasksQueryLanes(TasksPageQuery(scope = TasksPageScope.Mine), doneSince).map { it.filters }
-    val view = if (query.search.isNotEmpty()) emptyList() else tasksQueryLanes(query, doneSince).map { it.filters }
-    return (listOf(all) + mine + view).distinctBy { tasksCountsKey(it) }
+fun tasksQueryScopeFilters(doneSince: String): ServerTaskBoardFilters =
+    ServerTaskBoardFilters(mineDoneSince = doneSince.takeIf { it.isNotEmpty() })
+
+/**
+ * The filter set whose read holds [filters]' counts: the unfiltered All view is the scopes' read
+ * (its columns and relations do not depend on `mine_done_since`); any other is its own.
+ */
+fun tasksCountsReadFilters(filters: ServerTaskBoardFilters, doneSince: String): ServerTaskBoardFilters =
+    if (filters == ServerTaskBoardFilters()) tasksQueryScopeFilters(doneSince) else filters
+
+/**
+ * The filter sets the counts read: the scopes' read ([tasksQueryScopeFilters]), Mine's three
+ * unfiltered lanes only once that read landed without Mine's totals (a server before slock
+ * #16585), then the view's lanes under the current filters unless a search is on.
+ */
+fun tasksQueryCountFilters(
+    query: TasksPageQuery,
+    doneSince: String,
+    counts: Map<String, ServerTaskCounts>,
+): List<ServerTaskBoardFilters> {
+    val scopes = tasksQueryScopeFilters(doneSince)
+    val scopesRead = counts[tasksCountsKey(scopes)]
+    val mine =
+        if (scopesRead != null && scopesRead.mine == null) {
+            tasksQueryLanes(TasksPageQuery(scope = TasksPageScope.Mine), doneSince).map { it.filters }
+        } else {
+            emptyList()
+        }
+    val view =
+        if (query.search.isNotEmpty()) emptyList() else tasksQueryLanes(query, doneSince).map { tasksCountsReadFilters(it.filters, doneSince) }
+    return (listOf(scopes) + mine + view).distinctBy { tasksCountsKey(it) }
 }
 
-/** The scopes' numbers under no filter (null while unread). */
+/** The counts read for [filters] ([tasksCountsReadFilters]), null while unread. */
+private fun TasksQueryState.countsOf(filters: ServerTaskBoardFilters): ServerTaskCounts? =
+    counts[tasksCountsKey(tasksCountsReadFilters(filters, doneSince))]
+
+/**
+ * The scopes' numbers under no filter (null while unread): All from the scopes' read; Mine from its
+ * totals in that read, or (a server before slock #16585) its three lanes summed.
+ */
 fun TasksQueryState.scopeCounts(): Map<TasksPageScope, Int?> {
-    val mine = tasksQueryLanes(TasksPageQuery(scope = TasksPageScope.Mine), doneSince).map { counts[it.key]?.total }
+    val scopes = counts[tasksCountsKey(tasksQueryScopeFilters(doneSince))]
+    val mineLanes = tasksQueryLanes(TasksPageQuery(scope = TasksPageScope.Mine), doneSince).map { counts[it.key]?.total }
+    val mineByLanes = if (mineLanes.any { it == null }) null else mineLanes.sumOf { it ?: 0 }
     return mapOf(
-        TasksPageScope.All to counts[tasksCountsKey(ServerTaskBoardFilters())]?.total,
-        TasksPageScope.Mine to if (mine.any { it == null }) null else mine.sumOf { it ?: 0 },
+        TasksPageScope.All to scopes?.total,
+        TasksPageScope.Mine to (scopes?.mine?.total ?: mineByLanes),
     )
 }
 
 /** Per board status, the counts of the current view (null while unread or searching). */
 fun TasksQueryState.viewStatusCounts(): Map<TaskStatus, Int>? {
     if (query.search.isNotEmpty()) return null
-    val read = lanes.map { counts[it.key] ?: return null }
+    val read = lanes.map { countsOf(it.filters) ?: return null }
     return ServerTaskBoardStatuses.associateWith { status -> read.sumOf { it.statuses[status] ?: 0 } }
 }
 
@@ -901,7 +944,7 @@ fun TasksQueryState.sections(): List<TasksQuerySectionRows> {
     return order.map { section ->
         val sectionLanes = lanes.filter { it.section == section }
         val states = sectionLanes.map { laneStates[it.key] ?: TasksLaneState() }
-        val counted = if (query.search.isNotEmpty()) null else sectionLanes.map { counts[it.key]?.total }
+        val counted = if (query.search.isNotEmpty()) null else sectionLanes.map { countsOf(it.filters)?.total }
         TasksQuerySectionRows(
             section = section,
             rows = mergedLaneRows(sectionLanes, states),

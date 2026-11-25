@@ -31,7 +31,6 @@ import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.RaftLocalPreferenceStore
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.ScreenLoadState
-import build.raft.app.data.ServerTaskBoardFilters
 import build.raft.app.data.ServerTaskCounts
 import build.raft.app.data.ServerTaskRelation
 import build.raft.app.data.TaskWireDto
@@ -45,6 +44,7 @@ import build.raft.app.data.TasksUiState
 import build.raft.app.data.TasksViewMode
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.data.tasksCountsKey
+import build.raft.app.data.tasksQueryScopeFilters
 import build.raft.app.data.tasksQueryLanes
 import build.raft.app.data.toTaskSummary
 import build.raft.app.model.RaftTimeContext
@@ -267,14 +267,15 @@ private fun sampleAllTasks(): List<TaskSummary> =
 
 private fun allScopeQueryState(rows: List<TaskSummary>): TasksQueryState {
     val query = TasksPageQuery(scope = TasksPageScope.All)
-    val lanes = tasksQueryLanes(query, doneSince = "2026-11-19T12:00:00Z")
+    val doneSince = "2026-11-19T12:00:00Z"
+    val lanes = tasksQueryLanes(query, doneSince = doneSince)
     val lane = lanes.single()
     val counts = ServerTaskCounts(statuses = mapOf(TaskStatus.InProgress to 3, TaskStatus.Todo to 3, TaskStatus.Done to 1, TaskStatus.Backlog to 1), relations = emptyMap())
     return TasksQueryState(
         query = query,
         started = true,
         viewerId = "user-viewer",
-        doneSince = "2026-11-19T12:00:00Z",
+        doneSince = doneSince,
         lanes = lanes,
         laneStates =
             mapOf(
@@ -286,7 +287,7 @@ private fun allScopeQueryState(rows: List<TaskSummary>): TasksQueryState {
                     ),
             ),
         tasks = rows.associateBy { it.id.value },
-        counts = mapOf(tasksCountsKey(ServerTaskBoardFilters()) to counts),
+        counts = mapOf(tasksCountsKey(tasksQueryScopeFilters(doneSince)) to counts),
     )
 }
 
@@ -319,7 +320,7 @@ private fun mineScopeQueryState(
                 assignedLane.key to ServerTaskCounts(statuses = mapOf(TaskStatus.InProgress to assigned.size), relations = emptyMap()),
                 createdLane.key to ServerTaskCounts(statuses = mapOf(TaskStatus.Todo to started.size), relations = emptyMap()),
                 fromMsgLane.key to ServerTaskCounts(statuses = emptyMap(), relations = emptyMap()),
-                tasksCountsKey(ServerTaskBoardFilters()) to ServerTaskCounts(statuses = mapOf(TaskStatus.InProgress to all.size), relations = emptyMap()),
+                tasksCountsKey(tasksQueryScopeFilters(doneSince)) to ServerTaskCounts(statuses = mapOf(TaskStatus.InProgress to all.size), relations = emptyMap()),
             ),
     )
 }

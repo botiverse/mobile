@@ -55,6 +55,32 @@ class TasksServerQueryApiTest {
     }
 
     @Test
+    fun countsReadMineTotalsWhenTheServerAnswersThem() {
+        // tasks.serverBoardFilters.api.test.ts (#16585): `mine_done_since` adds Mine's section totals.
+        val withMine = canonicalCounts.dropLast(1) + ""","mine":{"assigned":2,"created":3,"from_my_message":1}}"""
+        assertEquals(ServerTaskMineCounts(assigned = 2, created = 3, fromMyMessage = 1), parseSharedServerTaskCounts(withMine)!!.mine)
+        assertEquals(6, parseSharedServerTaskCounts(withMine)!!.mine!!.total)
+        // An older server leaves it out; the rest of the answer still reads.
+        val old = parseSharedServerTaskCounts(canonicalCounts)!!
+        assertNull(old.mine)
+        assertEquals(11, old.total)
+        // As the web reads it: an object or nothing; a missing, negative or non-numeric field is 0.
+        assertNull(parseSharedServerTaskCounts(canonicalCounts.dropLast(1) + ""","mine":null}""")!!.mine)
+        assertNull(parseSharedServerTaskCounts(canonicalCounts.dropLast(1) + ""","mine":"soon"}""")!!.mine)
+        assertEquals(
+            ServerTaskMineCounts(assigned = 0, created = 0, fromMyMessage = 4),
+            parseSharedServerTaskCounts(canonicalCounts.dropLast(1) + ""","mine":{"assigned":"2","created":-1,"from_my_message":4}}""")!!.mine,
+        )
+    }
+
+    @Test
+    fun mineDoneSinceIsSentOnlyWhenAsked() {
+        val asked = serverTaskFilterQuery(ServerTaskBoardFilters(mineDoneSince = "2026-11-24T20:00:00Z"))
+        assertEquals(listOf("mine_done_since" to "2026-11-24T20:00:00Z"), asked)
+        assertEquals(emptyList(), serverTaskFilterQuery(ServerTaskBoardFilters(mineDoneSince = "")))
+    }
+
+    @Test
     fun countsRejectGuessedWrappers() {
         assertNull(parseSharedServerTaskCounts("""{"data":$canonicalCounts}"""))
         assertNull(parseSharedServerTaskCounts("""{"counts":{"inProgress":3}}"""))

@@ -235,7 +235,7 @@ class SharedTasksQueryStoreTest {
         val lanes = tasksQueryLanes(query, doneSince)
         val counts =
             mapOf(
-                tasksCountsKey(ServerTaskBoardFilters()) to FakeTasksQueryRepository.zeroCounts(mapOf(TaskStatus.Todo to 4, TaskStatus.Done to 6)),
+                tasksCountsKey(tasksQueryScopeFilters(doneSince)) to FakeTasksQueryRepository.zeroCounts(mapOf(TaskStatus.Todo to 4, TaskStatus.Done to 6)),
                 lanes.single().key to FakeTasksQueryRepository.zeroCounts(mapOf(TaskStatus.Todo to 4)),
             )
         val state = TasksQueryState(query = query, started = true, doneSince = doneSince, lanes = lanes, counts = counts)
@@ -314,6 +314,61 @@ class SharedTasksQueryStoreTest {
         runCurrent()
         assertEquals(ViewerId, store.state.value.viewerId)
         assertEquals(listOf("mine"), store.state.value.rowIds())
+    }
+
+    @Test
+    fun theMineTabNumberComesWithTheScopesReadOnAServerThatBundlesIt() = runTest {
+        // slock #16585: one unfiltered read answers every task and, through mine_done_since, Mine's sections.
+        val repository =
+            FakeTasksQueryRepository(
+                counts = { filters ->
+                    val counts =
+                        if (filters.mineDoneSince != null) {
+                            FakeTasksQueryRepository.zeroCounts(mapOf(TaskStatus.Todo to 7, TaskStatus.Done to 3))
+                                .copy(mine = ServerTaskMineCounts(assigned = 2, created = 3, fromMyMessage = 1))
+                        } else {
+                            // Anything else would be a stale Mine lane; it must not be what the tab shows.
+                            FakeTasksQueryRepository.zeroCounts(mapOf(TaskStatus.Todo to 99))
+                        }
+                    ServerTaskCountsResult.Counts(counts)
+                },
+            )
+        val store = store(repository, InMemoryTasksPageQueryPreferences(savedScope = TasksPageScope.All))
+        store.start()
+        runCurrent()
+
+        val state = store.state.value
+        // The bound sent is Started by you's day of Done, the same instant its lanes use.
+        assertEquals(state.doneSince, repository.countCalls.first().mineDoneSince)
+        assertEquals(10, state.scopeCounts()[TasksPageScope.All])
+        assertEquals(6, state.scopeCounts()[TasksPageScope.Mine])
+        // The unfiltered All view is that same read.
+        assertEquals("10", state.headNumber())
+        assertEquals(mapOf(TaskStatus.Backlog to 0, TaskStatus.Todo to 7, TaskStatus.InProgress to 0, TaskStatus.Done to 3, TaskStatus.Closed to 0), state.viewStatusCounts())
+    }
+
+    @Test
+    fun aServerBeforeBundledCountsStillShowsTheMineTabFromItsLanes() = runTest {
+        // A server before slock #16585 ignores mine_done_since and leaves `mine` out.
+        val repository =
+            FakeTasksQueryRepository(
+                counts = { filters ->
+                    val todo =
+                        when (filters.relation) {
+                            ServerTaskRelation.AssignedToMe -> 2
+                            ServerTaskRelation.CreatedByMe -> 3
+                            ServerTaskRelation.FromMyMessage -> 1
+                            null -> 10
+                        }
+                    ServerTaskCountsResult.Counts(FakeTasksQueryRepository.zeroCounts(mapOf(TaskStatus.Todo to todo)))
+                },
+            )
+        val store = store(repository, InMemoryTasksPageQueryPreferences(savedScope = TasksPageScope.All))
+        store.start()
+        runCurrent()
+
+        assertEquals(10, store.state.value.scopeCounts()[TasksPageScope.All])
+        assertEquals(6, store.state.value.scopeCounts()[TasksPageScope.Mine])
     }
 
     @Test
