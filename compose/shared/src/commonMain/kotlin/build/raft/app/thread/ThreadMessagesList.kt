@@ -590,6 +590,35 @@ private fun ThreadMessagesListContent(
             )
     val showReplyEmptyState =
         renderPayload.messages.isEmpty() && renderPayload.originStatus != "none" && !showReplyLoadingSkeleton
+    val replyLoadingSkeletonVisible = showReplyLoadingSkeleton && renderPayload.loadingIndicatorRevealed
+    // #proj-mobile:#390: Older and newer paging stay parallel in SharedThreadStore while the
+    // timeline UI renders at most one boundary loading indicator at any moment. Covers both
+    // older-loading branches (canLoadMoreBefore && olderMessagesStatus == "loading" and durable
+    // stand-in loading where spec.loading == true) and newer loading (canLoadMoreAfter &&
+    // newerMessagesStatus == "loading"). Note: showReplyLoadingSkeleton only runs when
+    // messages.isEmpty() (mutually exclusive with older boundary items and store-driven loadNewer),
+    // and originStatus == "loading" in ThreadOriginCard is a plain-text parent placeholder (no
+    // spinner) rather than a timeline boundary loader.
+    val olderBoundaryStatusSpec =
+        if (renderPayload.hasThreadHistoryBoundaryItem()) {
+            threadOlderMessagesStatusSpec(renderPayload)
+        } else {
+            null
+        }
+    val olderBoundaryLoading =
+        olderBoundaryStatusSpec?.loading == true &&
+            !(renderPayload.canLoadMoreBefore && renderPayload.olderMessagesStatus == "error") &&
+            (renderPayload.canLoadMoreBefore || historyPaywall == null)
+    val newerBoundaryLoading =
+        !replyLoadingSkeletonVisible &&
+            renderPayload.canLoadMoreAfter &&
+            renderPayload.newerMessagesStatus == "loading"
+    val visibleBoundaryLoadingSlot =
+        rememberVisibleThreadBoundaryLoadingSlot(
+            threadInstanceKey = threadInstanceKey,
+            olderLoading = olderBoundaryLoading,
+            newerLoading = newerBoundaryLoading,
+        )
     val lazyItemCount =
         threadMessagesLazyItemCount(
             originStatus = renderPayload.originStatus,
@@ -4180,9 +4209,11 @@ private fun ThreadMessagesListContent(
                                 onClick = { onThreadEvent("retryLoadOlder", null, null, null) }
                             )
                         renderPayload.canLoadMoreBefore ->
-                            threadOlderMessagesStatusSpec(renderPayload)?.let { spec ->
-                                ThreadHistoryStatusRow(spec, loadingRevealDelayMs = 0L)
-                            }
+                            olderBoundaryStatusSpec
+                                .visibleForBoundaryLoadingSlot(visibleBoundaryLoadingSlot)
+                                ?.let { spec ->
+                                    ThreadHistoryStatusRow(spec, loadingRevealDelayMs = 0L)
+                                }
                         historyPaywall != null ->
                             ThreadHistoryPaywall(
                                 scope = renderPayload.historyPaywallScope(),
@@ -4192,9 +4223,11 @@ private fun ThreadMessagesListContent(
                                 onUpgrade = { onThreadEvent(ThreadOpenPlanBillingEvent, null, null, null) }
                             )
                         else ->
-                            threadOlderMessagesStatusSpec(renderPayload)?.let { spec ->
-                                ThreadHistoryStatusRow(spec, loadingRevealDelayMs = 0L)
-                            }
+                            olderBoundaryStatusSpec
+                                .visibleForBoundaryLoadingSlot(visibleBoundaryLoadingSlot)
+                                ?.let { spec ->
+                                    ThreadHistoryStatusRow(spec, loadingRevealDelayMs = 0L)
+                                }
                     }
                     }
                 }
@@ -4689,7 +4722,12 @@ private fun ThreadMessagesListContent(
                 item(key = ThreadNewerMessagesListItemKey) {
                     ThreadNewerMessagesBoundaryRow(
                         newerMessagesStatus = renderPayload.newerMessagesStatus,
-                        onRetry = { requestNewerPage("retryLoadNewer") }
+                        onRetry = { requestNewerPage("retryLoadNewer") },
+                        suppressLoadingIndicator =
+                            shouldSuppressThreadNewerBoundaryLoading(
+                                visibleLoadingSlot = visibleBoundaryLoadingSlot,
+                                replyLoadingSkeletonVisible = replyLoadingSkeletonVisible,
+                            ),
                     )
                 }
             }
