@@ -1,8 +1,11 @@
 package build.raft.app.shared
 
+import android.content.Context
 import build.hands.update.HandsUpdateStatus
 import build.hands.update.INSTALL_PERMISSION_REQUIRED
 import build.hands.update.models.UpdateCheckResponse
+import build.raft.app.BuildConfig
+import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.data.RaftAppUpdatePermissionResumeRepository
 import build.raft.app.data.SharedSettingsUpdateTransactionState
 import java.util.concurrent.atomic.AtomicBoolean
@@ -76,6 +79,146 @@ internal fun UpdateCheckResponse.handsUpdateDisplaySizes(deltaEnabled: Boolean):
     )
 }
 
+/**
+ * Retires the legacy `preview` channel (#proj-mobile:#370): any build configured for `preview`
+ * normalizes to `main` at runtime so existing `preview` installs that upgrade to the final 1.31.0
+ * transition release automatically follow `main` going forward.
+ */
+internal fun normalizeHandsReleaseChannel(channel: String): String {
+    val trimmed = channel.trim().lowercase()
+    return if (trimmed == HANDS_DELTA_PREVIEW_CHANNEL) HANDS_DELTA_MAIN_CHANNEL else trimmed
+}
+
+internal fun normalizeHandsRuntimeOverrideChannel(overrideChannel: String?): String? =
+    when (overrideChannel?.trim()?.lowercase()) {
+        HANDS_DELTA_MAIN_CHANNEL -> HANDS_DELTA_MAIN_CHANNEL
+        HANDS_DELTA_RELEASE_ALPHA_CHANNEL -> HANDS_DELTA_RELEASE_ALPHA_CHANNEL
+        else -> null
+    }
+
+/**
+ * Whether this build supports switching between Hands `main` and `alpha` at runtime without
+ * reinstalling: production direct-install APKs (`build.raft.app` / `raft-android`) only.
+ * Play builds, standalone `build.raft.app.alpha`, debug, and connectedTest stay locked.
+ */
+internal fun handsRuntimeChannelSwitchSupported(
+    apkUpdateEnabled: Boolean,
+    buildApplicationId: String,
+    runtimePackageName: String,
+    defaultAppSlug: String,
+    defaultChannel: String,
+): Boolean =
+    apkUpdateEnabled &&
+        buildApplicationId == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
+        runtimePackageName == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
+        defaultAppSlug == HANDS_DELTA_PRODUCTION_APP_SLUG &&
+        defaultChannel.trim().lowercase() in setOf(
+            HANDS_DELTA_MAIN_CHANNEL,
+            HANDS_DELTA_PREVIEW_CHANNEL,
+            HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+        )
+
+internal fun resolveHandsEffectiveChannel(
+    configuredChannel: String,
+    overrideChannel: String?,
+    switchSupported: Boolean,
+): String {
+    val normalizedDefault = normalizeHandsReleaseChannel(configuredChannel)
+    if (!switchSupported) return normalizedDefault
+    return normalizeHandsRuntimeOverrideChannel(overrideChannel) ?: normalizedDefault
+}
+
+internal class RaftHandsUpdateChannelStore(context: Context) {
+    private val preferences =
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    fun readOverrideChannel(): String? =
+        normalizeHandsRuntimeOverrideChannel(preferences.getString(KEY_OVERRIDE_CHANNEL, null))
+
+    fun writeOverrideChannel(channel: String): String? {
+        val normalized = normalizeHandsRuntimeOverrideChannel(channel) ?: return null
+        preferences.edit().putString(KEY_OVERRIDE_CHANNEL, normalized).apply()
+        return normalized
+    }
+
+    private companion object {
+        const val PREFS_NAME = "raft_hands_update_channel"
+        const val KEY_OVERRIDE_CHANNEL = "override_channel"
+    }
+}
+
+internal fun handsRuntimeChannelSwitchSupportedForRuntime(context: Context): Boolean =
+    handsRuntimeChannelSwitchSupported(
+        apkUpdateEnabled = BuildConfig.HANDS_APK_UPDATE_ENABLED,
+        buildApplicationId = BuildConfig.APPLICATION_ID,
+        runtimePackageName = context.packageName,
+        defaultAppSlug = BuildConfig.HANDS_APP_SLUG,
+        defaultChannel = BuildConfig.HANDS_CHANNEL,
+    )
+
+internal fun handsEffectiveReleaseChannelForRuntime(context: Context): String {
+    val switchSupported = handsRuntimeChannelSwitchSupportedForRuntime(context)
+    val overrideChannel =
+        if (switchSupported) {
+            runCatching { RaftHandsUpdateChannelStore(context).readOverrideChannel() }.getOrNull()
+        } else {
+            null
+        }
+    return resolveHandsEffectiveChannel(
+        configuredChannel = BuildConfig.HANDS_CHANNEL,
+        overrideChannel = overrideChannel,
+        switchSupported = switchSupported,
+    )
+}
+
+internal fun handsUpdateRouteForRuntime(context: Context): HandsUpdateRoute {
+    val switchSupported = handsRuntimeChannelSwitchSupportedForRuntime(context)
+    val overrideChannel =
+        if (switchSupported) {
+            runCatching { RaftHandsUpdateChannelStore(context).readOverrideChannel() }.getOrNull()
+        } else {
+            null
+        }
+    val effectiveDeltaChannel =
+        if (BuildConfig.HANDS_DELTA_APP_SLUG == HANDS_DELTA_PRODUCTION_APP_SLUG) {
+            resolveHandsEffectiveChannel(
+                configuredChannel = BuildConfig.HANDS_DELTA_CHANNEL,
+                overrideChannel = overrideChannel,
+                switchSupported = switchSupported,
+            )
+        } else {
+            BuildConfig.HANDS_DELTA_CHANNEL
+        }
+    val allowed =
+        handsDeltaUpdateAllowed(
+            configuredEnabled = BuildConfig.HANDS_DELTA_UPDATE_ENABLED,
+            apkUpdateEnabled = BuildConfig.HANDS_APK_UPDATE_ENABLED,
+            buildApplicationId = BuildConfig.APPLICATION_ID,
+            runtimePackageName = context.packageName,
+            appSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
+            channel = effectiveDeltaChannel,
+        )
+    if (BuildConfig.HANDS_DELTA_UPDATE_ENABLED && !allowed) {
+        RaftAppLog.infoAlways(
+            "SlockHandsUpdate",
+            "hands_delta_gate_denied buildApplicationId=${BuildConfig.APPLICATION_ID} " +
+                "runtimePackageName=${context.packageName} " +
+                "apkUpdateEnabled=${BuildConfig.HANDS_APK_UPDATE_ENABLED} " +
+                "appSlug=${BuildConfig.HANDS_DELTA_APP_SLUG} " +
+                "channel=$effectiveDeltaChannel"
+        )
+    }
+    return resolveHandsUpdateRoute(
+        deltaEnabled = allowed,
+        defaultAppSlug = BuildConfig.HANDS_APP_SLUG,
+        defaultChannel = BuildConfig.HANDS_CHANNEL,
+        deltaAppSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
+        deltaChannel = BuildConfig.HANDS_DELTA_CHANNEL,
+        overrideChannel = overrideChannel,
+        channelSwitchSupported = switchSupported,
+    )
+}
+
 internal fun handsDeltaUpdateMode(
     appSlug: String,
     channel: String
@@ -86,7 +229,7 @@ internal fun handsDeltaUpdateMode(
         appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_RELEASE_ALPHA_CHANNEL ->
             HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA
         appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_PREVIEW_CHANNEL ->
-            HANDS_UPDATE_MODE_PREVIEW_DELTA
+            HANDS_UPDATE_MODE_MAIN_DELTA
         appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_MAIN_CHANNEL ->
             HANDS_UPDATE_MODE_MAIN_DELTA
         else -> null
@@ -97,21 +240,39 @@ internal fun resolveHandsUpdateRoute(
     defaultAppSlug: String,
     defaultChannel: String,
     deltaAppSlug: String,
-    deltaChannel: String
+    deltaChannel: String,
+    overrideChannel: String? = null,
+    channelSwitchSupported: Boolean = false,
 ): HandsUpdateRoute {
-    val deltaMode = if (deltaEnabled) handsDeltaUpdateMode(deltaAppSlug, deltaChannel) else null
+    val effectiveDefaultChannel =
+        resolveHandsEffectiveChannel(
+            configuredChannel = defaultChannel,
+            overrideChannel = overrideChannel,
+            switchSupported = channelSwitchSupported,
+        )
+    val effectiveDeltaChannel =
+        if (deltaAppSlug == HANDS_DELTA_PRODUCTION_APP_SLUG) {
+            resolveHandsEffectiveChannel(
+                configuredChannel = deltaChannel,
+                overrideChannel = overrideChannel,
+                switchSupported = channelSwitchSupported,
+            )
+        } else {
+            deltaChannel
+        }
+    val deltaMode = if (deltaEnabled) handsDeltaUpdateMode(deltaAppSlug, effectiveDeltaChannel) else null
     return if (deltaMode != null) {
         HandsUpdateRoute(
             mode = deltaMode,
             appSlug = deltaAppSlug,
-            channel = deltaChannel,
+            channel = effectiveDeltaChannel,
             deltaEnabled = true
         )
     } else {
         HandsUpdateRoute(
             mode = HANDS_UPDATE_MODE_FULL_APK,
             appSlug = defaultAppSlug,
-            channel = defaultChannel,
+            channel = effectiveDefaultChannel,
             deltaEnabled = false
         )
     }

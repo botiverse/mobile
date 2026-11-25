@@ -130,6 +130,20 @@ object RaftInstallChannelUpdatesHost {
 /** The platform's built-in channel when the host installed none (iOS: App Store lookup). */
 @RaftCoreInternalApi expect fun raftPlatformInstallChannelUpdates(): RaftInstallChannelUpdates?
 
+const val RAFT_EARLY_ACCESS_GUIDE_GOOGLE_PLAY_BETA = "google_play_beta"
+const val RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_JOIN = "ios_testflight_join"
+const val RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_ACTIVE = "ios_testflight_active"
+const val RAFT_GOOGLE_PLAY_BETA_URL = "https://play.google.com/apps/testing/build.raft.app"
+const val RAFT_IOS_TESTFLIGHT_JOIN_URL = "https://testflight.apple.com/join/JvM5wXuc"
+
+/** Platform-native early-access enrollment info when the host bridge does not supply one (iOS). */
+@RaftCoreInternalApi data class RaftEarlyAccessPlatformGuide(
+    val kind: String,
+    val url: String,
+)
+
+@RaftCoreInternalApi expect fun raftPlatformEarlyAccessGuide(): RaftEarlyAccessPlatformGuide?
+
 /** What the app shows for the minimum build gate. */
 sealed interface RaftMinBuildGateDecision {
     /** No gate: flag off or unreadable, build at or above the threshold, or not decided yet. */

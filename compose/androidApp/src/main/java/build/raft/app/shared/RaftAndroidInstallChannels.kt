@@ -46,22 +46,7 @@ internal class RaftAndroidHandsInstallChannel(private val context: Context) : Ra
     override suspend fun latest(): RaftInstallChannelLatest {
         if (BuildConfig.HANDS_BASE_URL.isBlank()) return RaftInstallChannelLatest.Unknown
         if (!RaftServicesPrivacyGate.allowsAutomatic()) return RaftInstallChannelLatest.Unknown
-        val route =
-            resolveHandsUpdateRoute(
-                deltaEnabled =
-                    handsDeltaUpdateAllowed(
-                        configuredEnabled = BuildConfig.HANDS_DELTA_UPDATE_ENABLED,
-                        apkUpdateEnabled = BuildConfig.HANDS_APK_UPDATE_ENABLED,
-                        buildApplicationId = BuildConfig.APPLICATION_ID,
-                        runtimePackageName = context.packageName,
-                        appSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
-                        channel = BuildConfig.HANDS_DELTA_CHANNEL,
-                    ),
-                defaultAppSlug = BuildConfig.HANDS_APP_SLUG,
-                defaultChannel = BuildConfig.HANDS_CHANNEL,
-                deltaAppSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
-                deltaChannel = BuildConfig.HANDS_DELTA_CHANNEL,
-            )
+        val route = handsUpdateRouteForRuntime(context)
         val response =
             withContext(Dispatchers.IO) {
                 HandsClient(BuildConfig.HANDS_BASE_URL).checkForUpdate(

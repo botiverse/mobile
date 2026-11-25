@@ -812,6 +812,12 @@ internal fun SettingsNativeDetailPageContent(
                     onOpenApiEnvironment = onOpenApiEnvironmentPage,
                     onOpenDiagnostics = onOpenDiagnosticsPage,
                     onOpenDeveloper = onOpenDeveloperPage,
+                    session = session,
+                    onToggleEarlyAccessChannel = { enableAlpha ->
+                        onSettingsIntent(
+                            SharedSettingsIntent.SetHandsUpdateChannel(if (enableAlpha) "alpha" else "main")
+                        )
+                    },
                 )
             SettingsNativeDetailPage.OpenSourceLicenses ->
                 SharedSettingsOpenSourceLicensesContent(

@@ -2,7 +2,11 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
+import build.raft.app.data.DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL
 import build.raft.app.data.DEVELOPER_ACTION_HANDS_UPDATE_CHECK
+import build.raft.app.data.RAFT_EARLY_ACCESS_GUIDE_GOOGLE_PLAY_BETA
+import build.raft.app.data.RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_ACTIVE
+import build.raft.app.data.RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_JOIN
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
@@ -42,7 +46,11 @@ internal fun SharedSettingsAboutContent(
     onOpenDiagnostics: () -> Unit,
     onSendFeedback: (() -> Unit)? = null,
     /** Settings › Developer, opened by tapping the version row [SettingsDeveloperUnlockTapCount] times. */
-    onOpenDeveloper: (() -> Unit)? = null
+    onOpenDeveloper: (() -> Unit)? = null,
+    /** Signed-in session for gating Botiverse internal early-access enrollment (#proj-mobile:#370). */
+    session: StoredAuthSession? = null,
+    /** Toggle Android direct-install runtime channel between `alpha` (true) and `main` (false). */
+    onToggleEarlyAccessChannel: ((Boolean) -> Unit)? = null
 ) {
     val versionTaps = remember { SettingsDeveloperUnlockTaps() }
     val snapshot =
@@ -60,18 +68,25 @@ internal fun SharedSettingsAboutContent(
     LaunchedEffect(releaseNotesUrl) {
         releaseNotesUrl.takeIf(String::isNotBlank)?.let { onPrefetchReleaseNotes(it) }
     }
+    val developer = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
+    val earlyAccessOption =
+        settingsAboutEarlyAccessOption(
+            session = session,
+            developer = developer,
+            updateCheck = updateCheck,
+            actionState = actionState,
+            canToggleHandsChannel = onToggleEarlyAccessChannel != null
+        )
     val aboutPayload =
         snapshot.toAboutPayload(
             webUrl = webUrl,
             errorStrings = localizedErrorPresentationStrings(),
             updateCheck = updateCheck,
             actionState = actionState,
-            connectedServerHost = settingsAboutConnectedServerHost(
-                (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
-            ),
+            connectedServerHost = settingsAboutConnectedServerHost(developer),
+            earlyAccessOption = earlyAccessOption,
             copy = settingsAboutPayloadCopy()
         )
-    val developer = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
     val environmentStatus =
         when (developerState) {
             ScreenLoadState.Loading -> stringResource(Res.string.settings_state_loading)
@@ -109,8 +124,12 @@ internal fun SharedSettingsAboutContent(
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
         when (action) {
             "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
-            SETTINGS_ABOUT_SOURCE_CODE_ACTION ->
+            SETTINGS_ABOUT_SOURCE_CODE_ACTION, SETTINGS_ABOUT_EARLY_ACCESS_EXTERNAL_ACTION ->
                 settingsAboutExternalUrl(action, value, webUrl)?.let(onOpenUrl)
+            SETTINGS_ABOUT_EARLY_ACCESS_TOGGLE_ACTION ->
+                (earlyAccessOption as? SettingsAboutEarlyAccessOption.HandsAlphaToggle)?.let { option ->
+                    onToggleEarlyAccessChannel?.invoke(!option.enabled)
+                }
             DEVELOPER_ACTION_HANDS_UPDATE_CHECK -> onCheckHandsUpdate()
             "openSourceLicenses" -> onOpenSourceLicenses()
             "copyEnvironmentInfo" -> onCopyEnvironmentInfo()
@@ -126,6 +145,71 @@ internal const val SETTINGS_ABOUT_FEEDBACK_ACTION = "sendFeedback"
 internal const val SETTINGS_ABOUT_VERSION_ROW = "version"
 internal const val SETTINGS_ABOUT_CONNECTED_SERVER_ROW = "connectedServer"
 internal const val SETTINGS_ABOUT_SOURCE_CODE_ACTION = "openSourceCode"
+internal const val SETTINGS_ABOUT_EARLY_ACCESS_TOGGLE_ACTION = "toggleEarlyAccessChannel"
+internal const val SETTINGS_ABOUT_EARLY_ACCESS_EXTERNAL_ACTION = "openEarlyAccessProgram"
+internal const val SETTINGS_ABOUT_BOTIVERSE_SERVER_SLUG = "botiverse"
+
+/**
+ * Early-access enrollment option surfaced in Settings › About for `botiverse` server members on
+ * official Raft (plus anyone already opted into the Hands `alpha` channel so they can always opt
+ * back out to `main`), replacing the retired `preview` channel (#proj-mobile:#370).
+ */
+internal sealed interface SettingsAboutEarlyAccessOption {
+    data class HandsAlphaToggle(
+        val enabled: Boolean,
+        val busy: Boolean = false
+    ) : SettingsAboutEarlyAccessOption
+
+    data class ExternalProgram(
+        val kind: String,
+        val url: String,
+        val alreadyActive: Boolean = false
+    ) : SettingsAboutEarlyAccessOption
+}
+
+internal fun settingsAboutIsBotiverseMember(
+    session: StoredAuthSession?,
+    developer: SharedSettingsDeveloperSnapshot?
+): Boolean {
+    if (session == null || developer == null) return false
+    // Official Raft production API only — never match a self-hosted server that chose slug "botiverse".
+    if (developer.apiBaseUrl.isBlank() || settingsAboutConnectedServerHost(developer) != null) return false
+    if (session.selectedServerSlug.orEmpty().trim().equals(SETTINGS_ABOUT_BOTIVERSE_SERVER_SLUG, ignoreCase = true)) {
+        return true
+    }
+    return session.servers.any { server ->
+        server.slug.orEmpty().trim().equals(SETTINGS_ABOUT_BOTIVERSE_SERVER_SLUG, ignoreCase = true)
+    }
+}
+
+internal fun settingsAboutEarlyAccessOption(
+    session: StoredAuthSession?,
+    developer: SharedSettingsDeveloperSnapshot?,
+    updateCheck: SharedSettingsUpdateCheckSnapshot?,
+    actionState: SharedSettingsActionState?,
+    canToggleHandsChannel: Boolean = true
+): SettingsAboutEarlyAccessOption? {
+    val effectiveUpdate = updateCheck ?: developer?.updateCheck ?: return null
+    val isBotiverseMember = settingsAboutIsBotiverseMember(session, developer)
+    val channel = effectiveUpdate.updateChannel.trim().lowercase()
+    val switchSupported = effectiveUpdate.updateChannelSwitchSupported && canToggleHandsChannel
+    val alphaActive = switchSupported && channel == "alpha"
+    if (switchSupported && (isBotiverseMember || alphaActive)) {
+        return SettingsAboutEarlyAccessOption.HandsAlphaToggle(
+            enabled = alphaActive,
+            busy = actionState?.action == DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL && actionState.inProgress
+        )
+    }
+    if (!isBotiverseMember) return null
+    val guideKind = effectiveUpdate.earlyAccessGuideKind.trim()
+    val guideUrl = effectiveUpdate.earlyAccessGuideUrl.trim()
+    if (guideKind.isBlank() || !guideUrl.startsWith("https://")) return null
+    return SettingsAboutEarlyAccessOption.ExternalProgram(
+        kind = guideKind,
+        url = guideUrl,
+        alreadyActive = guideKind == RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_ACTIVE
+    )
+}
 
 /** The app's own source repository, opened from Settings › About › Source code. */
 internal const val RAFT_MOBILE_SOURCE_CODE_URL = "https://github.com/botiverse/mobile"
@@ -182,6 +266,8 @@ internal fun SharedSettingsAboutSnapshot.settingsAboutVersionValue(unknown: Stri
 internal fun settingsAboutExternalUrl(action: String, value: String?, webUrl: String): String? =
     when (action) {
         SETTINGS_ABOUT_SOURCE_CODE_ACTION -> value.orEmpty().ifBlank { RAFT_MOBILE_SOURCE_CODE_URL }
+        SETTINGS_ABOUT_EARLY_ACCESS_EXTERNAL_ACTION ->
+            value.orEmpty().trim().takeIf { it.startsWith("https://") }
         else -> null
     }
 
@@ -284,6 +370,15 @@ internal data class SettingsAboutPayloadCopy(
     /** The copy row carries the environment only; app logs go with Feedback. */
     val copyEnvironmentHint: String = "To include logs, send them with Feedback.",
     val copy: String = "Copy",
+    val earlyAccessTitle: String = "Early access",
+    val earlyAccessAlphaOffDetail: String = "Receive pre-release Raft updates directly from the alpha channel.",
+    val earlyAccessAlphaActiveDetail: String = "Receiving pre-release updates from the alpha channel. Turn off to rejoin Stable on the next public release.",
+    val earlyAccessPlayBetaDetail: String = "Join the Google Play beta program to receive pre-release Raft updates.",
+    val earlyAccessIosTestFlightJoinDetail: String = "Join Raft on TestFlight to receive pre-release iOS builds.",
+    val earlyAccessIosTestFlightActiveDetail: String = "Running Raft on TestFlight and receiving pre-release iOS builds.",
+    val earlyAccessJoin: String = "Join",
+    val earlyAccessAlphaBadge: String = "Alpha",
+    val earlyAccessTestFlightBadge: String = "TestFlight",
 )
 
 @Composable
@@ -319,6 +414,15 @@ private fun settingsAboutPayloadCopy(): SettingsAboutPayloadCopy {
         copyEnvironment = stringResource(Res.string.settings_about_action_copy_environment),
         copyEnvironmentHint = stringResource(Res.string.settings_diagnostics_logs_via_feedback_hint),
         copy = stringResource(Res.string.settings_about_action_copy),
+        earlyAccessTitle = stringResource(Res.string.settings_about_early_access_title),
+        earlyAccessAlphaOffDetail = stringResource(Res.string.settings_about_early_access_alpha_off_detail),
+        earlyAccessAlphaActiveDetail = stringResource(Res.string.settings_about_early_access_alpha_active_detail),
+        earlyAccessPlayBetaDetail = stringResource(Res.string.settings_about_early_access_play_beta_detail),
+        earlyAccessIosTestFlightJoinDetail = stringResource(Res.string.settings_about_early_access_ios_testflight_join_detail),
+        earlyAccessIosTestFlightActiveDetail = stringResource(Res.string.settings_about_early_access_ios_testflight_active_detail),
+        earlyAccessJoin = stringResource(Res.string.settings_about_early_access_action_join),
+        earlyAccessAlphaBadge = stringResource(Res.string.settings_about_early_access_badge_alpha),
+        earlyAccessTestFlightBadge = stringResource(Res.string.settings_about_early_access_badge_testflight),
     )
 }
 
@@ -341,6 +445,8 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
     actionState: SharedSettingsActionState? = null,
     /** The self-hosted or other non-official server's host ([settingsAboutConnectedServerHost]); null hides the row. */
     connectedServerHost: String? = null,
+    /** Optional Botiverse early-access enrollment row (#proj-mobile:#370). */
+    earlyAccessOption: SettingsAboutEarlyAccessOption? = null,
     copy: SettingsAboutPayloadCopy = SettingsAboutPayloadCopy()
 ): RaftSharedSettingsPayload {
     val raftLabel = "Raft"
@@ -411,6 +517,67 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                         enabled = !updateCheckBusy
                                     )
                                 )
+                            }
+                            when (earlyAccessOption) {
+                                is SettingsAboutEarlyAccessOption.HandsAlphaToggle -> {
+                                    add(
+                                        RaftSharedSettingsRow(
+                                            key = SETTINGS_ABOUT_EARLY_ACCESS_TOGGLE_ACTION,
+                                            iconName = RaftLucideIconName.FlaskConical,
+                                            title = copy.earlyAccessTitle,
+                                            detail =
+                                                if (earlyAccessOption.enabled) {
+                                                    copy.earlyAccessAlphaActiveDetail
+                                                } else {
+                                                    copy.earlyAccessAlphaOffDetail
+                                                },
+                                            badgeLabel =
+                                                if (earlyAccessOption.enabled) {
+                                                    copy.earlyAccessAlphaBadge
+                                                } else {
+                                                    ""
+                                                },
+                                            toggleValue = earlyAccessOption.enabled,
+                                            loading = earlyAccessOption.busy,
+                                            enabled = !earlyAccessOption.busy
+                                        )
+                                    )
+                                }
+                                is SettingsAboutEarlyAccessOption.ExternalProgram -> {
+                                    val detailText =
+                                        when (earlyAccessOption.kind) {
+                                            RAFT_EARLY_ACCESS_GUIDE_GOOGLE_PLAY_BETA -> copy.earlyAccessPlayBetaDetail
+                                            RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_ACTIVE -> copy.earlyAccessIosTestFlightActiveDetail
+                                            RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_JOIN -> copy.earlyAccessIosTestFlightJoinDetail
+                                            else -> copy.earlyAccessPlayBetaDetail
+                                        }
+                                    val statusText =
+                                        when (earlyAccessOption.kind) {
+                                            RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_ACTIVE -> copy.open
+                                            RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_JOIN -> copy.earlyAccessTestFlightBadge
+                                            else -> copy.earlyAccessJoin
+                                        }
+                                    add(
+                                        RaftSharedSettingsRow(
+                                            key = SETTINGS_ABOUT_EARLY_ACCESS_EXTERNAL_ACTION,
+                                            iconName = RaftLucideIconName.FlaskConical,
+                                            title = copy.earlyAccessTitle,
+                                            detail = detailText,
+                                            value = earlyAccessOption.url,
+                                            badgeLabel =
+                                                if (earlyAccessOption.alreadyActive) {
+                                                    copy.earlyAccessTestFlightBadge
+                                                } else {
+                                                    ""
+                                                },
+                                            status = statusText,
+                                            enabled = true,
+                                            copyValue = earlyAccessOption.url,
+                                            external = true
+                                        )
+                                    )
+                                }
+                                null -> Unit
                             }
                             add(
                                 RaftSharedSettingsRow(

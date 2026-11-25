@@ -18,6 +18,17 @@ import platform.Foundation.currentLocale
 
 @RaftCoreInternalApi actual fun raftPlatformInstallChannelUpdates(): RaftInstallChannelUpdates? = RaftAppStoreInstallChannel
 
+@RaftCoreInternalApi actual fun raftPlatformEarlyAccessGuide(): RaftEarlyAccessPlatformGuide? =
+    RaftEarlyAccessPlatformGuide(
+        kind =
+            if (raftIsTestFlightInstall()) {
+                RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_ACTIVE
+            } else {
+                RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_JOIN
+            },
+        url = RAFT_IOS_TESTFLIGHT_JOIN_URL,
+    )
+
 /**
  * The App Store as the iOS install channel of the minimum build gate: the public lookup
  * (`https://itunes.apple.com/lookup?bundleId=`) for this bundle in the device's region (then
@@ -67,4 +78,12 @@ private fun raftIsAppStoreInstall(): Boolean =
         val receipt = NSBundle.mainBundle.appStoreReceiptURL ?: return@runCatching false
         val path = receipt.path ?: return@runCatching false
         receipt.lastPathComponent == "receipt" && NSFileManager.defaultManager.fileExistsAtPath(path)
+    }.getOrDefault(false)
+
+@Suppress("DEPRECATION")
+private fun raftIsTestFlightInstall(): Boolean =
+    runCatching {
+        val receipt = NSBundle.mainBundle.appStoreReceiptURL ?: return@runCatching false
+        val path = receipt.path ?: return@runCatching false
+        receipt.lastPathComponent == "sandboxReceipt" && NSFileManager.defaultManager.fileExistsAtPath(path)
     }.getOrDefault(false)
