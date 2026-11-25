@@ -41,6 +41,13 @@ on:
         description: "Bundle version MAJOR.MINOR.PATCH (MAJOR > 0)"
         required: false
         default: "1.0.0"
+      # Internal test builds only: never added to workflow_call, so github-release.yml public DMGs
+      # can never expose local diagnostic feature-flag overrides.
+      enable_diagnostic_overrides:
+        description: "Internal test builds only: enable local diagnostic feature-flag overrides in Raft.app"
+        required: false
+        type: boolean
+        default: false
   # workflow_dispatch only registers once this file reaches the default branch; until then,
   # pushing an edit of THIS FILE on a branch is the trigger (scoped so ordinary source pushes
   # never burn a macOS runner).
@@ -132,11 +139,30 @@ jobs:
         working-directory: compose
         env:
           RAFT_DESKTOP_VERSION: ${{ inputs.version || '1.0.0' }}
+          RAFT_DESKTOP_DIAGNOSTIC_OVERRIDES: ${{ format('{0}', inputs.enable_diagnostic_overrides) == 'true' && 'true' || 'false' }}
         run: |
           set -euo pipefail
-          ./gradlew :desktopApp:createDistributable \
-            -Praft.desktop.version="$RAFT_DESKTOP_VERSION" \
-            --no-daemon --console=plain --stacktrace
+          GRADLE_ARGS=(
+            :desktopApp:createDistributable
+            "-Praft.desktop.version=${RAFT_DESKTOP_VERSION}"
+            --no-daemon
+            --console=plain
+            --stacktrace
+          )
+          if [ "${RAFT_DESKTOP_DIAGNOSTIC_OVERRIDES}" = "true" ]; then
+            echo "Diagnostic feature-flag overrides: ENABLED (internal test build)"
+            GRADLE_ARGS+=(-Praft.desktop.diagnosticOverrides=true)
+          else
+            echo "Diagnostic feature-flag overrides: disabled"
+          fi
+          ./gradlew "${GRADLE_ARGS[@]}"
+          CFG="desktopApp/build/compose/binaries/main/app/Raft.app/Contents/app/Raft.cfg"
+          test -f "$CFG"
+          if [ "${RAFT_DESKTOP_DIAGNOSTIC_OVERRIDES}" = "true" ]; then
+            grep -q -- '-Draft\.desktop\.diagnosticOverrides=true' "$CFG"
+          else
+            ! grep -q -- 'raft\.desktop\.diagnosticOverrides' "$CFG"
+          fi
 
       - name: Ad-hoc sign the app and package dmg
         working-directory: compose/desktopApp/build/compose/binaries/main

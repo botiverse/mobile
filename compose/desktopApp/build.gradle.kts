@@ -95,6 +95,11 @@ tasks.matching { it.name in setOf("test", "run", "createDistributable", "createR
 
 // macOS requires MAJOR.MINOR.PATCH with MAJOR > 0 for the bundle version.
 val raftDesktopVersion = providers.gradleProperty("raft.desktop.version").orElse("1.0.0")
+val raftDesktopDiagnosticOverrides =
+    providers
+        .gradleProperty("raft.desktop.diagnosticOverrides")
+        .map { it.trim().equals("true", ignoreCase = true) }
+        .orElse(false)
 val raftDesktopBuild =
     providers.gradleProperty("raft.desktop.build").orElse(
         raftDesktopVersion.map { version ->
@@ -149,11 +154,14 @@ compose.desktop {
     application {
         mainClass = "build.raft.app.desktop.MainKt"
         jvmArgs +=
-            listOf(
-                "-Dapple.awt.application.name=Raft",
-                "-Draft.desktop.version=${raftDesktopVersion.get()}",
-                "-Draft.desktop.build=${raftDesktopBuild.get()}",
-            )
+            buildList {
+                add("-Dapple.awt.application.name=Raft")
+                add("-Draft.desktop.version=${raftDesktopVersion.get()}")
+                add("-Draft.desktop.build=${raftDesktopBuild.get()}")
+                if (raftDesktopDiagnosticOverrides.get()) {
+                    add("-Draft.desktop.diagnosticOverrides=true")
+                }
+            }
         // Skiko calls System.gc() every 30 s while frames are drawn (skiko.gc.auto, to release native
         // Skia memory); on G1 that is a stop-the-world full collection of the whole heap, which the
         // freeze's sample caught (VM_G1CollectFull). Run those as concurrent cycles instead.
