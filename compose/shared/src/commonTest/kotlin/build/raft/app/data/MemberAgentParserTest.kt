@@ -46,7 +46,8 @@ class MemberAgentParserTest {
                 """
                 [
                   {"id":"channel-1","name":"general","description":"Team updates","type":"channel","createdAt":"2026-06-01T00:00:00Z","archivedAt":null,"activityMuted":false,"muteFromSeq":null},
-                  {"id":"channel-2","name":"private-ops","description":null,"type":"private","createdAt":"2026-06-02T00:00:00Z","archivedAt":null,"activityMuted":true,"muteFromSeq":7}
+                  {"id":"channel-2","name":"private-ops","description":null,"type":"private","createdAt":"2026-06-02T00:00:00Z","archivedAt":null,"activityMuted":true,"muteFromSeq":7},
+                  {"id":"channel-3","name":"agent-lounge","description":null,"type":"channel","createdAt":"2026-06-03T00:00:00Z","archivedAt":null,"activityMuted":false,"muteFromSeq":null,"loungeAgentId":"agent-1"}
                 ]
                 """.trimIndent(),
                 MemberId("agent-1")
@@ -54,12 +55,15 @@ class MemberAgentParserTest {
         )
 
         assertEquals("agent-1", channels.agentId.value)
-        assertEquals(2, channels.channels.size)
-        assertEquals("general", channels.channels.first().name)
-        assertEquals(false, channels.channels.first().activityMuted)
-        assertEquals("private", channels.channels.last().type)
-        assertEquals(true, channels.channels.last().activityMuted)
-        assertEquals(7L, channels.channels.last().muteFromSeq)
+        assertEquals(3, channels.channels.size)
+        assertEquals("general", channels.channels[0].name)
+        assertEquals(false, channels.channels[0].activityMuted)
+        assertNull(channels.channels[0].loungeAgentId)
+        assertEquals("private", channels.channels[1].type)
+        assertEquals(true, channels.channels[1].activityMuted)
+        assertEquals(7L, channels.channels[1].muteFromSeq)
+        assertNull(channels.channels[1].loungeAgentId)
+        assertEquals("agent-1", channels.channels[2].loungeAgentId)
     }
 
     @Test

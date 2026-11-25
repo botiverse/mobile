@@ -1315,7 +1315,9 @@ data class AgentChannelSummary(
     val createdAt: String? = null,
     val archivedAt: String? = null,
     val activityMuted: Boolean = false,
-    val muteFromSeq: Long? = null
+    val muteFromSeq: Long? = null,
+    /** Set when this row is an agent's Lounge (slock #16325). */
+    val loungeAgentId: String? = null
 )
 
 data class AgentReminderSummary(

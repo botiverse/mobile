@@ -161,6 +161,7 @@ import kotlinx.serialization.Serializable
     val archivedAt: String? = null,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
+    val loungeAgentId: String? = null,
 )
 
 @Serializable
@@ -240,7 +241,7 @@ import kotlinx.serialization.Serializable
             },
         channels =
             detail.channels.map {
-                StoredAgentChannel(it.id, it.name, it.description, it.type, it.createdAt, it.archivedAt, it.activityMuted, it.muteFromSeq)
+                StoredAgentChannel(it.id, it.name, it.description, it.type, it.createdAt, it.archivedAt, it.activityMuted, it.muteFromSeq, it.loungeAgentId)
             },
         reminders =
             detail.reminders.map {
@@ -378,7 +379,7 @@ private fun AgentDetailSummary.toStored(): StoredAgentSummary =
                     directMessages.map { AgentDmSummary(id = it.id, peerId = it.peerId, peerName = it.peerName, peerAvatarUrl = it.peerAvatarUrl, lastMessageAt = it.lastMessageAt) },
                 channels =
                     channels.map {
-                        AgentChannelSummary(it.id, it.name, it.description, it.type, it.createdAt, it.archivedAt, it.activityMuted, it.muteFromSeq)
+                        AgentChannelSummary(it.id, it.name, it.description, it.type, it.createdAt, it.archivedAt, it.activityMuted, it.muteFromSeq, it.loungeAgentId)
                     },
                 reminders =
                     reminders.map {

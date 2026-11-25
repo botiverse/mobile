@@ -399,6 +399,7 @@ private data class WireAgentChannelMembership(
     val archivedAt: String? = null,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
+    val loungeAgentId: String? = null,
 )
 
 private fun WireAgentChannelMembership.toDomain(): AgentChannelSummary =
@@ -411,6 +412,7 @@ private fun WireAgentChannelMembership.toDomain(): AgentChannelSummary =
         archivedAt = archivedAt,
         activityMuted = activityMuted,
         muteFromSeq = muteFromSeq,
+        loungeAgentId = loungeAgentId?.trim()?.takeIf { it.isNotEmpty() },
     )
 
 @Serializable

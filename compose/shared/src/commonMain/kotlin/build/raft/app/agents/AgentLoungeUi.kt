@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import build.raft.app.data.AGENT_LOUNGE_FEATURE_FLAG_KEY
 import build.raft.app.data.AgentLoungeApi
 import build.raft.app.data.AgentLoungeOpenResult
@@ -60,9 +61,12 @@ import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftReadOnlyComposer
-import build.raft.designsystem.components.RaftSegment
-import build.raft.designsystem.components.RaftSegmentedControl
-import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
+import build.raft.designsystem.components.RaftStatusDot
+import build.raft.designsystem.components.RaftStatusSize
+import build.raft.designsystem.components.RaftStatusVariant
+import build.raft.designsystem.components.RaftTab
+import build.raft.designsystem.components.RaftTabStrip
+import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -239,67 +243,96 @@ internal fun formatAgentLoungeSwitchBadge(unread: AgentLoungeSwitchUnread): Stri
 
 /**
  * Under-header 2-tab switch (`Lounge | Private`) sitting directly below the conversation header,
- * switching in place between an agent's public Lounge and private 1-on-1 DM.
+ * matching the compact left-aligned Task v2 [RaftTabStrip] pattern and using Raft's pink
+ * [RaftUnreadCount] / [RaftStatusDot] unread language on the inactive tab.
  */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun AgentLoungeConversationTabStrip(
     switch: AgentLoungeConversationSwitch,
     modifier: Modifier = Modifier,
     wideWindow: Boolean = raftWindowWide(),
 ) {
-    val colors = RaftTheme.colors
     val loungeLabel = stringResource(Res.string.agent_lounge_label)
     val privateLabel = stringResource(Res.string.agent_lounge_private_label)
-    val loungeBadge = formatAgentLoungeSwitchBadge(switch.loungeUnread)
-    val privateBadge = formatAgentLoungeSwitchBadge(switch.privateUnread)
-    Column(
-        modifier = modifier.fillMaxWidth().background(colors.layerCanvas).testTag(AgentLoungeTestTags.TabStrip),
+    val loungeSelected = switch.activeSide == AgentLoungeConversationSide.Lounge
+    val privateSelected = switch.activeSide == AgentLoungeConversationSide.Private
+    RaftTabStrip(
+        modifier = modifier.fillMaxWidth().testTag(AgentLoungeTestTags.TabStrip),
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .raftSafeAreaHorizontalPadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-        ) {
-            RaftSegmentedControl(
-                modifier = if (wideWindow) Modifier else Modifier.fillMaxWidth(),
-            ) {
-                val segmentModifier = if (wideWindow) Modifier else Modifier.weight(1f)
-                RaftSegment(
-                    text = loungeLabel,
-                    selected = switch.activeSide == AgentLoungeConversationSide.Lounge,
-                    onClick = {
-                        if (switch.activeSide != AgentLoungeConversationSide.Lounge && !switch.switching) {
-                            switch.onSelectLounge()
-                        }
-                    },
-                    modifier = segmentModifier.testTag(AgentLoungeTestTags.TabLounge),
-                    count = loungeBadge,
-                    enabled = !switch.switching || switch.activeSide == AgentLoungeConversationSide.Lounge,
-                    icon = { RaftContentLucideIcon(AgentLoungeIcon, size = 16.dp) },
+        AgentLoungeConversationTab(
+            label = loungeLabel,
+            selected = loungeSelected,
+            enabled = !switch.switching || loungeSelected,
+            iconName = AgentLoungeIcon,
+            unread = switch.loungeUnread,
+            testTag = AgentLoungeTestTags.TabLounge,
+            onClick = {
+                if (!loungeSelected && !switch.switching) {
+                    switch.onSelectLounge()
+                }
+            },
+        )
+        AgentLoungeConversationTab(
+            label = privateLabel,
+            selected = privateSelected,
+            enabled = !switch.switching || privateSelected,
+            iconName = RaftLucideIconName.Lock,
+            unread = switch.privateUnread,
+            testTag = AgentLoungeTestTags.TabPrivate,
+            onClick = {
+                if (!privateSelected && !switch.switching) {
+                    switch.onSelectPrivate()
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun AgentLoungeConversationTab(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    iconName: RaftLucideIconName,
+    unread: AgentLoungeSwitchUnread,
+    testTag: String,
+    onClick: () -> Unit,
+) {
+    val showUnread = !selected && (unread.count > 0 || unread.dot)
+    Box(
+        modifier = if (showUnread) Modifier.padding(end = 6.dp) else Modifier,
+    ) {
+        RaftTab(
+            text = label,
+            selected = selected,
+            onClick = onClick,
+            modifier = Modifier.testTag(testTag),
+            enabled = enabled,
+            icon = { RaftContentLucideIcon(iconName, size = 16.dp) },
+        )
+        if (showUnread) {
+            if (unread.count > 0) {
+                RaftUnreadCount(
+                    count = unread.count,
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 4.dp, y = (-4).dp)
+                            .zIndex(1f),
                 )
-                RaftSegment(
-                    text = privateLabel,
-                    selected = switch.activeSide == AgentLoungeConversationSide.Private,
-                    onClick = {
-                        if (switch.activeSide != AgentLoungeConversationSide.Private && !switch.switching) {
-                            switch.onSelectPrivate()
-                        }
-                    },
-                    modifier = segmentModifier.testTag(AgentLoungeTestTags.TabPrivate),
-                    count = privateBadge,
-                    enabled = !switch.switching || switch.activeSide == AgentLoungeConversationSide.Private,
-                    icon = { RaftContentLucideIcon(RaftLucideIconName.Lock, size = 16.dp) },
+            } else {
+                RaftStatusDot(
+                    variant = RaftStatusVariant.Accent,
+                    size = RaftStatusSize.Sm,
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = (-2).dp, y = 2.dp)
+                            .zIndex(1f),
                 )
             }
         }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(colors.lineSeam.compositeOver(colors.layerCanvas)),
-        )
     }
 }
 

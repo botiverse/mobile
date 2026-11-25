@@ -397,10 +397,13 @@ private fun MembersAgentChatTabContent(
     }
 }
 
+internal fun membersAgentChannelRowIcon(channel: AgentChannelSummary): RaftLucideIconName =
+    if (!channel.loungeAgentId.isNullOrBlank()) AgentLoungeIcon else channel.type.threadChannelHeaderIcon()
+
 @Composable
 private fun MembersAgentChannelRow(channel: AgentChannelSummary, divider: Boolean = false) {
-    // raft-ui ListRow (plain): the channel's 20dp icon, its name, its description (up to 2
-    // lines); a muted channel ends with the bell-off icon and a soft Muted tag.
+    // raft-ui ListRow (plain): the channel's 20dp icon (sofa for an agent's Lounge, slock #16325),
+    // its name, its description (up to 2 lines); a muted channel ends with the bell-off icon and a soft Muted tag.
     RaftListRow(
         title = channel.name,
         variant = RaftListRowVariant.Plain,
@@ -408,7 +411,7 @@ private fun MembersAgentChannelRow(channel: AgentChannelSummary, divider: Boolea
         description = channel.description?.takeIf { it.isNotBlank() },
         wrapDescription = true,
         descriptionMaxLines = 2,
-        leading = { RaftContentLucideIcon(channel.type.threadChannelHeaderIcon(), size = 20.dp) },
+        leading = { RaftContentLucideIcon(membersAgentChannelRowIcon(channel), size = 20.dp) },
         trailing = if (channel.activityMuted) {
             {
                 RaftContentLucideIcon(RaftLucideIconName.BellOff)

@@ -259,6 +259,24 @@ class AgentDetailOfflineTest {
         assertEquals("Other", device.cache().cachedAgentDetailFor(owner, other)?.detail?.summary?.name)
     }
 
+    @Test
+    fun cachedChannelsPreserveLoungeAgentIdAcrossRoundTrip() = runTest {
+        val device = Device(backgroundScope)
+        val cache = device.cache()
+        val withLounge =
+            detail("Atlas").copy(
+                channels =
+                    listOf(
+                        AgentChannelSummary(id = "c1", name = "general", type = "channel"),
+                        AgentChannelSummary(id = "l1", name = "atlas-lounge", type = "channel", loungeAgentId = AGENT.value),
+                    ),
+            )
+        cache.write(owner.agentDetailCacheKey(AGENT), cached(withLounge), cache.ticket())
+
+        val restored = device.cache().cachedAgentDetailFor(owner, AGENT)
+        assertEquals(listOf(null, AGENT.value), restored?.detail?.channels?.map { it.loungeAgentId })
+    }
+
     private val owner = sharedAgentDetailOwner(ENVIRONMENT, "user-1", ServerId(SERVER))!!
 
     private fun detail(name: String): AgentDetailSnapshot =
