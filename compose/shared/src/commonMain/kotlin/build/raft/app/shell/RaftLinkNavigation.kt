@@ -29,6 +29,7 @@ import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
+import kotlinx.coroutines.flow.StateFlow
 
 internal enum class RaftLinkOpenIntent {
     Ordinary,
@@ -324,7 +325,48 @@ internal class RaftLinkNavigator(
     )? = null,
     /** Cancels any pending cold-cache installed-App lookup when a newer navigation starts. */
     private val cancelPendingInstalledAppLookup: () -> Unit = {},
+    /** Reactive revision counter for the installed-App origins cache so link marks update when warmed. */
+    private val installedAppRevision: (() -> StateFlow<Long>)? = null,
 ) {
+    internal fun installedAppRevisionFlow(): StateFlow<Long>? = installedAppRevision?.invoke()
+
+    /**
+     * Returns true when [rawUrl] is currently known to open inside Raft as an installed App
+     * (botiverse/slock #16676 `useOpensAsAppTab`): in-app browser supported, non-billing, and
+     * matched in the warmed installed-App origins cache.
+     */
+    internal fun opensAsInstalledAppInRaft(rawUrl: String): Boolean {
+        val lookup = lookupInstalledAppSync ?: return false
+        if (!supportsInAppBrowser()) return false
+        val decision = resolveRaftLinkOpenDecision(rawUrl, LinkOpenMode.InAppBrowser)
+        if (decision.target == RaftLinkOpenTarget.Rejected) return false
+        if (isAppStoreRestrictedPurchaseUrl(decision.url)) return false
+        val candidateOrigin = candidateAppEntryScopeOrigin(decision.url) ?: return false
+        val sync = lookup(candidateOrigin)
+        return sync is RaftInstalledAppSyncLookup.Matched &&
+            sync.match.origin == candidateOrigin &&
+            sync.serverId.isNotBlank()
+    }
+
+    /**
+     * Returns true when a link button on an App link card for [cardUrl] targeting [targetUrl]
+     * opens inside Raft rather than leaving Raft (botiverse/slock #16676 `LinkCardActions`):
+     * either [targetUrl] is on [cardUrl]'s own App-entry origin, or [opensAsInstalledAppInRaft].
+     */
+    internal fun canOpenAppLinkCardInRaft(
+        cardUrl: String,
+        targetUrl: String = cardUrl,
+    ): Boolean {
+        if (!supportsInAppBrowser()) return false
+        val decision = resolveRaftLinkOpenDecision(targetUrl, LinkOpenMode.InAppBrowser)
+        if (decision.target == RaftLinkOpenTarget.Rejected) return false
+        if (isAppStoreRestrictedPurchaseUrl(decision.url)) return false
+        val targetOrigin = candidateAppEntryScopeOrigin(decision.url) ?: return false
+        val cardOrigin = candidateAppEntryScopeOrigin(cardUrl)
+        if (cardOrigin != null && cardOrigin == targetOrigin) return true
+        return opensAsInstalledAppInRaft(decision.url)
+    }
+
     /**
      * Returns the candidate App entry scope origin for [url] when this platform supports the in-app
      * browser and [url] is an external https (or debug loopback) origin outside Raft's own hosts.
@@ -776,6 +818,10 @@ internal fun rememberRaftLinkNavigator(
                     null
                 },
             cancelPendingInstalledAppLookup = { pendingInstalledAppGate?.cancel() },
+            installedAppRevision =
+                cleanInstalledAppServerId?.let {
+                    { RaftSharedStoreRegistry.get(bridge).installedAppOriginsCache.revision }
+                },
         )
     }
 }
@@ -806,6 +852,40 @@ private fun WarmInstalledAppOriginsEffect(
 }
 
 internal val LocalRaftLinkNavigator = staticCompositionLocalOf<RaftLinkNavigator?> { null }
+
+/**
+ * Whether tapping [url] is currently known to open inside Raft as an installed App (slock #16676),
+ * so links such as View service or message card buttons omit the trailing ↗ mark.
+ */
+@Composable
+internal fun rememberRaftLinkOpensInRaft(url: String?): Boolean {
+    if (url.isNullOrBlank()) return false
+    val navigator = LocalRaftLinkNavigator.current ?: return false
+    val revisionFlow = navigator.installedAppRevisionFlow()
+    if (revisionFlow != null) {
+        @Suppress("UNUSED_VARIABLE")
+        val revision by revisionFlow.collectAsState()
+    }
+    return navigator.opensAsInstalledAppInRaft(url)
+}
+
+/**
+ * Whether an App link card's link to [targetUrl] (on [cardUrl]'s card) leaves Raft and should show
+ * a trailing ↗ mark (slock #16676). Defaults to true when no [LocalRaftLinkNavigator] is installed.
+ */
+@Composable
+internal fun rememberRaftAppLinkCardLeavesRaft(
+    cardUrl: String,
+    targetUrl: String = cardUrl,
+): Boolean {
+    val navigator = LocalRaftLinkNavigator.current ?: return true
+    val revisionFlow = navigator.installedAppRevisionFlow()
+    if (revisionFlow != null) {
+        @Suppress("UNUSED_VARIABLE")
+        val revision by revisionFlow.collectAsState()
+    }
+    return !navigator.canOpenAppLinkCardInRaft(cardUrl = cardUrl, targetUrl = targetUrl)
+}
 
 /**
  * The one way a page opens a link (artin, Hands ff72869f): Compose's [LocalUriHandler] default starts its own

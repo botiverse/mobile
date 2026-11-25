@@ -254,13 +254,19 @@ internal fun MembersAgentAppGrantsCard(
             }
         }
         group.homepageUrl?.takeIf { it.isNotBlank() }?.let { homepageUrl ->
+            val leavesRaft = !rememberRaftLinkOpensInRaft(homepageUrl)
             RaftButton(
                 text = stringResource(Res.string.member_action_view_service),
                 onClick = { onOpenUrl(homepageUrl) },
                 modifier = Modifier.fillMaxWidth(),
                 size = RaftButtonSize.Lg,
-                // raft-ui 0.26 (#758): an app's homepage leaves Raft: ↗ in the trailing icon's place.
-                trailingIcon = { RaftContentLucideIcon(RaftLucideIconName.ArrowUpRight, size = 18.dp) }
+                // raft-ui 0.26 (#758) & slock #16676: show ↗ only when the click leaves Raft.
+                trailingIcon =
+                    if (leavesRaft) {
+                        { RaftContentLucideIcon(RaftLucideIconName.ArrowUpRight, size = 18.dp) }
+                    } else {
+                        null
+                    },
             )
         }
     }

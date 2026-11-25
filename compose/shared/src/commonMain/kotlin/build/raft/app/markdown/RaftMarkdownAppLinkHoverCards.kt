@@ -16,6 +16,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import build.raft.app.RaftAppLinkCardView
 import build.raft.app.raftAppLinkCardOpenButton
+import build.raft.app.rememberRaftAppLinkCardLeavesRaft
 import build.raft.app.data.AppLinkResult
 import build.raft.designsystem.components.RaftPreviewCardDefaults
 import build.raft.designsystem.components.RaftPreviewCardPopup
@@ -89,12 +90,13 @@ internal class RaftMarkdownAppLinkHoverCards(
                 // The item card is a popover card of its own (RaftAppLinkCardView draws its surface).
                 // An item card: 400 wide (raft-ui `PreviewCardContent size="item"`, raft-design #939).
                 RaftPreviewCardPopup(state = state, anchor = anchors[index], width = RaftPreviewCardDefaults.ItemWidth, surface = false) {
+                    val leavesRaft = rememberRaftAppLinkCardLeavesRaft(cardUrl = card.url)
                     RaftAppLinkCardView(
                         card = card,
                         onAction = {},
                         buttons =
                             listOf(
-                                raftAppLinkCardOpenButton(card) { address ->
+                                raftAppLinkCardOpenButton(card, leavesRaft = leavesRaft) { address ->
                                     state.dismiss()
                                     uriHandler.openUri(address)
                                 },

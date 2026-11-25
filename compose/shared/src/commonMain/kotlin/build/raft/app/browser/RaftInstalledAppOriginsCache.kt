@@ -8,6 +8,9 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.TimeSource
@@ -74,6 +77,10 @@ internal class RaftInstalledAppOriginsCache(
     private val serverGenerations = HashMap<String, Long>()
     private val entries = HashMap<CacheKey, CacheEntry>()
     private val inFlight = HashMap<CacheKey, InFlightFetch>()
+    private val _revision = MutableStateFlow(0L)
+
+    /** Monotonic counter bumped whenever cached origins change so UI link indicators re-evaluate. */
+    val revision: StateFlow<Long> = _revision.asStateFlow()
 
     fun lookupSync(
         appScope: RaftInstalledAppScope,
@@ -177,20 +184,24 @@ internal class RaftInstalledAppOriginsCache(
     ) {
         val cleanAccount = accountId?.trim()?.takeIf { it.isNotEmpty() }
         val cleanEnv = environmentKey?.trim()?.takeIf { it.isNotEmpty() }
+        var bumped = false
         val toCancel =
             synchronized(lock) {
                 val next = if (cleanAccount != null && cleanEnv != null) cleanAccount to cleanEnv else null
                 if (next == null || (activeAccountEnv != null && activeAccountEnv != next)) {
+                    bumped = entries.isNotEmpty()
                     clearLocked().also { activeAccountEnv = next }
                 } else {
                     emptyList()
                 }
             }
+        if (bumped) _revision.value += 1L
         toCancel.forEach { it.cancel() }
     }
 
     fun dropServer(serverId: String) {
         val cleanServer = serverId.trim().takeIf { it.isNotEmpty() } ?: return
+        var bumped = false
         val toCancel =
             synchronized(lock) {
                 serverGenerations[cleanServer] = (serverGenerations[cleanServer] ?: 0L) + 1L
@@ -198,6 +209,7 @@ internal class RaftInstalledAppOriginsCache(
                 while (entryIterator.hasNext()) {
                     if (entryIterator.next().serverId == cleanServer) {
                         entryIterator.remove()
+                        bumped = true
                     }
                 }
                 val cancelled = mutableListOf<Deferred<*>>()
@@ -211,15 +223,19 @@ internal class RaftInstalledAppOriginsCache(
                 }
                 cancelled
             }
+        if (bumped) _revision.value += 1L
         toCancel.forEach { it.cancel() }
     }
 
     fun clearAll() {
+        var bumped = false
         val toCancel =
             synchronized(lock) {
                 activeAccountEnv = null
+                bumped = entries.isNotEmpty()
                 clearLocked()
             }
+        if (bumped) _revision.value += 1L
         toCancel.forEach { it.cancel() }
     }
 
@@ -230,8 +246,10 @@ internal class RaftInstalledAppOriginsCache(
         val next = accountId to environmentKey
         val current = activeAccountEnv
         if (current != null && current != next) {
+            val hadEntries = entries.isNotEmpty()
             val cancelled = clearLocked()
             activeAccountEnv = next
+            if (hadEntries) _revision.value += 1L
             return cancelled
         }
         if (current == null) {
@@ -266,6 +284,7 @@ internal class RaftInstalledAppOriginsCache(
                             null
                         }
                     if (result != null && result.complete) {
+                        var stored = false
                         synchronized(lock) {
                             val scopeStillValid =
                                 globalGeneration == capturedGlobalGen &&
@@ -277,8 +296,10 @@ internal class RaftInstalledAppOriginsCache(
                                         origins = result.origins,
                                         expiresAtMs = nowMillis() + ttlMillis,
                                     )
+                                stored = true
                             }
                         }
+                        if (stored) _revision.value += 1L
                     }
                     result
                 } finally {

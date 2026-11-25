@@ -173,6 +173,7 @@ private fun RaftMessageCardLink(button: RaftLinkCardV2Element.Button, onOpenUrl:
     val url = (button.action as? RaftLinkCardButtonAction.Navigate)?.url ?: return
     val domain = appLinkDomain(url)?.let { raftAppLinkKeepEnd(it, 40) } ?: return
     val reason = button.disabledReason
+    val leavesRaft = !rememberRaftLinkOpensInRaft(url)
     RaftTooltip(text = if (reason != null) "${button.label}\n$reason" else "${button.label} · $domain") {
         RaftButton(
             text = button.label,
@@ -180,7 +181,12 @@ private fun RaftMessageCardLink(button: RaftLinkCardV2Element.Button, onOpenUrl:
             onClick = { onOpenUrl(url) },
             variant = if (button.variant == RaftLinkCardButtonVariant.Ghost) RaftButtonVariant.Ghost else RaftButtonVariant.Default,
             enabled = reason == null,
-            trailingIcon = if (reason == null) { { RaftGlyphIcon(RaftGlyph.ArrowUpRight, size = 16.dp) } } else null,
+            trailingIcon =
+                if (reason == null && leavesRaft) {
+                    { RaftGlyphIcon(RaftGlyph.ArrowUpRight, size = 16.dp) }
+                } else {
+                    null
+                },
         )
     }
 }

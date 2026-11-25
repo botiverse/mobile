@@ -382,9 +382,108 @@ class RaftBrowserSignInApiTest {
             api.findInstalledAppByOrigin(serverId = "srv-1", targetOrigin = "https://stamp.build"),
         )
         assertEquals(
-            setOf("integrations/clients" to "srv-1", "integrations/marketplace" to "srv-1"),
+            setOf(
+                "integrations/app-origins" to "srv-1",
+                "integrations/clients" to "srv-1",
+                "integrations/marketplace" to "srv-1",
+            ),
             requestedPaths.toSet(),
         )
+    }
+
+    @Test
+    fun fetchInstalledAppOriginsUsesServerAppOriginsEndpointWithIconsAndFailsClosed() = runTest {
+        val requestedPaths = mutableListOf<Pair<String, String?>>()
+        val appOriginsBody =
+            """
+            {
+              "origins": [
+                "https://stamp.build",
+                "https://preview.example.test",
+                "http://insecure.example.test",
+                "https://stamp.build/with-path"
+              ],
+              "icons": {
+                "https://stamp.build": "/api/integration-logos/stamp/a.webp",
+                "https://preview.example.test": "https://api.raft.build/logos/preview.png",
+                "https://unrelated.example.test": "/api/integration-logos/other/x.webp"
+              }
+            }
+            """.trimIndent()
+        val modernClient =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse {
+                    requestedPaths += path to serverIdOverride?.value
+                    return when (path) {
+                        "integrations/app-origins" -> HomeNetworkResponse(code = 200, bodyText = appOriginsBody)
+                        else -> error("modern server must not fall back to $path")
+                    }
+                }
+            }
+        val api =
+            NetworkRaftBrowserSignInApi(
+                networkClient = modernClient,
+                resolveLogoUrl = { logo -> if (logo.startsWith("/")) "https://api.raft.build$logo" else logo },
+            )
+        val fetched = assertNotNull(api.fetchInstalledAppOrigins("srv-1"))
+        assertTrue(fetched.complete)
+        assertEquals(listOf<Pair<String, String?>>("integrations/app-origins" to "srv-1"), requestedPaths)
+        assertEquals(setOf("https://stamp.build", "https://preview.example.test"), fetched.origins.keys)
+        assertEquals(
+            RaftInstalledAppOriginMatch(
+                origin = "https://stamp.build",
+                appName = null,
+                logoUrl = "https://api.raft.build/api/integration-logos/stamp/a.webp",
+            ),
+            fetched.origins["https://stamp.build"],
+        )
+        assertEquals(
+            RaftInstalledAppOriginMatch(
+                origin = "https://preview.example.test",
+                appName = null,
+                logoUrl = "https://api.raft.build/logos/preview.png",
+            ),
+            fetched.origins["https://preview.example.test"],
+        )
+
+        // Pre-#16687 servers omit `icons`; origins still parse cleanly with null logoUrl.
+        val originsOnly =
+            assertNotNull(parseInstalledAppOriginsEndpointResponse("""{"origins":["https://vault.example.test"]}"""))
+        assertEquals(
+            RaftInstalledAppOriginMatch(origin = "https://vault.example.test", appName = null, logoUrl = null),
+            originsOnly["https://vault.example.test"],
+        )
+
+        // Malformed or missing `origins` fails closed (null) rather than poisoning negative cache.
+        assertNull(parseInstalledAppOriginsEndpointResponse("""{"icons":{}}"""))
+        assertNull(parseInstalledAppOriginsEndpointResponse("not-json"))
+        assertNull(parseInstalledAppOriginsEndpointResponse(""))
+
+        // Non-404/405 failure (e.g. 503) fails closed immediately without fanning out to legacy endpoints.
+        val serverErrorPaths = mutableListOf<String>()
+        val serverErrorClient =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse {
+                    serverErrorPaths += path
+                    return HomeNetworkResponse(code = 503, bodyText = null)
+                }
+            }
+        assertNull(NetworkRaftBrowserSignInApi(serverErrorClient).fetchInstalledAppOrigins("srv-1"))
+        assertEquals(listOf("integrations/app-origins"), serverErrorPaths)
     }
 
     @Test

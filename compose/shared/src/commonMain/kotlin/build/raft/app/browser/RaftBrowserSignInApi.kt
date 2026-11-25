@@ -14,6 +14,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /*
  * Native "Log in with Raft" API and installed-app entry verification (#proj-workspace:#356).
@@ -38,6 +41,7 @@ import kotlinx.serialization.json.Json
 private const val RAFT_OAUTH_CLIENT_LOOKUP_PATH = "oauth/clients/lookup"
 private const val RAFT_OAUTH_AUTHORIZE_HUMAN_PATH = "oauth/authorize/human"
 private const val RAFT_OAUTH_AUTHORIZE_ACCOUNT_PATH = "oauth/authorize/account"
+private const val RAFT_INTEGRATIONS_APP_ORIGINS_PATH = "integrations/app-origins"
 private const val RAFT_INTEGRATIONS_CLIENTS_PATH = "integrations/clients"
 private const val RAFT_INTEGRATIONS_MARKETPLACE_PATH = "integrations/marketplace"
 
@@ -340,6 +344,38 @@ internal class NetworkRaftBrowserSignInApi(
     ): RaftInstalledAppOriginsFetchResult? {
         val cleanServerId = serverId.trim().takeIf { it.isNotEmpty() } ?: return null
         val server = ServerId(cleanServerId)
+        // Prefer server-authoritative GET integrations/app-origins (botiverse/slock #16668, #16687):
+        // single lightweight read returning link-preview + verified homepage origins and served icons,
+        // already filtering disabled/suspended Apps and guest account-mode Apps.
+        val appOriginsResponse =
+            try {
+                networkClient.request(
+                    priority = DataRequestPriority.Foreground,
+                    path = RAFT_INTEGRATIONS_APP_ORIGINS_PATH,
+                    method = "GET",
+                    serverIdOverride = server,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                return null
+            }
+        if (appOriginsResponse.isSuccessful) {
+            val parsed =
+                parseInstalledAppOriginsEndpointResponse(
+                    body = appOriginsResponse.bodyText,
+                    resolveLogoUrl = resolveLogoUrl,
+                ) ?: return null
+            return RaftInstalledAppOriginsFetchResult(
+                origins = parsed,
+                complete = true,
+            )
+        }
+        // Only older servers before slock #16668 lack /integrations/app-origins (404/405); any other
+        // error (5xx, 401/403) fails closed without fanning out to two fallback reads.
+        if (appOriginsResponse.code != 404 && appOriginsResponse.code != 405) {
+            return null
+        }
         val (clientsResponse, marketplaceResponse) =
             coroutineScope {
                 val clients =
@@ -557,6 +593,54 @@ internal fun parseRaftBrowserSignInApproveResponse(
                 )
         }
     return DataResult.Content(outcome)
+}
+
+/**
+ * Parses `GET integrations/app-origins` (botiverse/slock #16668, #16687):
+ * `{ "origins": ["https://..."], "icons"?: { "https://...": "/api/integration-logos/..." } }`.
+ *
+ * Returns null if the body is missing, not a JSON object, or lacks an `origins` array so callers
+ * fail closed without poisoning the cache. `icons` is optional (absent on pre-#16687 servers).
+ */
+internal fun parseInstalledAppOriginsEndpointResponse(
+    body: String?,
+    resolveLogoUrl: (String) -> String? = { it },
+): Map<String, RaftInstalledAppOriginMatch>? {
+    if (body.isNullOrBlank()) return null
+    val root =
+        try {
+            raftBrowserSignInJson.parseToJsonElement(body) as? JsonObject
+        } catch (_: SerializationException) {
+            null
+        } ?: return null
+    val originsArray = root["origins"] as? JsonArray ?: return null
+    val iconsObject = root["icons"] as? JsonObject
+    val result = LinkedHashMap<String, RaftInstalledAppOriginMatch>()
+    for (element in originsArray) {
+        val rawOrigin = (element as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim() ?: continue
+        val parsed = raftBrowserUrlOf(rawOrigin)?.takeIf { it.userInfo == null && it.origin == rawOrigin } ?: continue
+        val allowedScheme =
+            parsed.scheme == "https" ||
+                (parsed.scheme == "http" && parsed.host in RaftBrowserDebugLoopbackHosts)
+        if (!allowedScheme) continue
+        val normalizedOrigin = parsed.origin
+        val rawIcon =
+            (iconsObject?.get(normalizedOrigin) as? JsonPrimitive)
+                ?.takeIf { it.isString }
+                ?.content
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        val resolvedIcon = rawIcon?.let(resolveLogoUrl)?.trim()?.takeIf { it.isNotEmpty() }
+        if (normalizedOrigin !in result) {
+            result[normalizedOrigin] =
+                RaftInstalledAppOriginMatch(
+                    origin = normalizedOrigin,
+                    appName = null,
+                    logoUrl = resolvedIcon,
+                )
+        }
+    }
+    return result
 }
 
 /**
