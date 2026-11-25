@@ -127,6 +127,7 @@ internal sealed interface ThreadForwardBundleDetailIntent {
 }
 
 internal interface ThreadForwardBundleDetailRepository {
+    fun peek(route: ThreadForwardBundleRoute): ForwardMessageBundle? = null
     suspend fun load(route: ThreadForwardBundleRoute): DataResult<ForwardMessageBundle>
 }
 
@@ -134,6 +135,9 @@ internal class RealThreadForwardBundleDetailRepository(
     private val messageStore: SharedThreadMessageStore,
     private val conversationRepository: ConversationRepository
 ) : ThreadForwardBundleDetailRepository {
+    override fun peek(route: ThreadForwardBundleRoute): ForwardMessageBundle? =
+        messageStore.get(route.serverId, route.channelId, route.messageId)?.forwardBundle
+
     override suspend fun load(route: ThreadForwardBundleRoute): DataResult<ForwardMessageBundle> {
         val resolution =
             messageStore.resolve(route.serverId, route.channelId, route.messageId) {
@@ -169,9 +173,15 @@ internal class AuthenticatedThreadForwardBundleDetailRepository(
     private val authStore: RaftAuthSessionStore,
     owner: build.raft.app.data.AuthenticatedRouteOwner,
     gateway: AuthenticatedRouteAuthorityGateway,
+    private val candidateCacheScopeIdProvider: () -> String? = { null },
     private val logger: (String) -> Unit = {},
 ) : ThreadForwardBundleDetailRepository {
     private val runner = AuthenticatedRouteOperationRunner(owner, gateway)
+
+    override fun peek(route: ThreadForwardBundleRoute): ForwardMessageBundle? {
+        val scopeId = candidateCacheScopeIdProvider()?.takeIf { it.isNotBlank() } ?: return null
+        return messageStore.getScoped(scopeId, route.channelId, route.messageId)?.forwardBundle
+    }
 
     override suspend fun load(route: ThreadForwardBundleRoute): DataResult<ForwardMessageBundle> =
         runner.run { receipt, networkClient ->
@@ -235,7 +245,15 @@ internal class ThreadForwardBundleDetailStore(
     private val repository: ThreadForwardBundleDetailRepository,
     private val scope: CoroutineScope
 ) {
-    private val mutableState = MutableStateFlow(ThreadForwardBundleDetailState())
+    private val mutableState =
+        MutableStateFlow(
+            repository.peek(route)?.let { cachedBundle ->
+                ThreadForwardBundleDetailState(
+                    status = ThreadForwardBundleDetailStatus.Content,
+                    bundle = cachedBundle,
+                )
+            } ?: ThreadForwardBundleDetailState()
+        )
     val state: StateFlow<ThreadForwardBundleDetailState> = mutableState.asStateFlow()
 
     private var loadJob: Job? = null
@@ -255,7 +273,23 @@ internal class ThreadForwardBundleDetailStore(
         loadJob?.cancel()
         generation += 1
         val requestGeneration = generation
-        mutableState.value = ThreadForwardBundleDetailState(status = ThreadForwardBundleDetailStatus.Loading)
+        val current = mutableState.value
+        val warmBundle =
+            when (current.status) {
+                ThreadForwardBundleDetailStatus.Content -> current.bundle
+                ThreadForwardBundleDetailStatus.Loading -> repository.peek(route)
+                ThreadForwardBundleDetailStatus.Empty,
+                ThreadForwardBundleDetailStatus.Error -> if (!force) repository.peek(route) else null
+            }
+        mutableState.value =
+            if (warmBundle != null) {
+                ThreadForwardBundleDetailState(
+                    status = ThreadForwardBundleDetailStatus.Content,
+                    bundle = warmBundle,
+                )
+            } else {
+                ThreadForwardBundleDetailState(status = ThreadForwardBundleDetailStatus.Loading)
+            }
         loadJob =
             scope.launch {
                 val result =

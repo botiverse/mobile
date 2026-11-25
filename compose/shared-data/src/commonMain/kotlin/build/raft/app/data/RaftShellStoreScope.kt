@@ -239,8 +239,26 @@ import kotlinx.serialization.json.Json
     private val _disposed = MutableStateFlow(false)
     val disposed: StateFlow<Boolean> = _disposed.asStateFlow()
 
+    // Lock-free published snapshot of the latest mutex-committed authority state and generation
+    // for synchronous read-only cache peeks (e.g. forward bundle Frame-1 peek).
+    private val publishedAuthority = MutableStateFlow<Pair<SelectionAuthorityState, Long>?>(null)
+
     init {
         onSelectionChanged(_selectedServerId.value)
+    }
+
+    @RaftCoreInternalApi fun peekSelectionGeneration(
+        principalId: String,
+        serverId: String,
+    ): Long? {
+        if (_disposed.value) return null
+        val (state, generation) = publishedAuthority.value ?: return null
+        val cleanPrincipal = principalId.trim().takeIf { it.isNotEmpty() } ?: return null
+        val cleanServer = serverId.trim().takeIf { it.isNotEmpty() } ?: return null
+        if (state.ownerUserId != cleanPrincipal || state.serverId != cleanServer || !state.initialized) {
+            return null
+        }
+        return generation
     }
 
     fun isSelected(serverId: String?): Boolean {
@@ -415,6 +433,7 @@ import kotlinx.serialization.json.Json
                 selectedServerSlug = session.servers.firstOrNull { it.id == serverId }?.slug
             }
             advanceAuthorityAndMutationIfChanged(before)
+            publishAuthorityStateLocked()
             syncDurableSelectionEpochLocked(
                 principalId = principalId,
                 authGeneration = authGeneration,
@@ -495,13 +514,22 @@ import kotlinx.serialization.json.Json
         )
 
     private fun advanceAuthorityIfChanged(before: SelectionAuthorityState) {
-        if (authorityState() != before) authorityGeneration += 1L
+        val current = authorityState()
+        if (current != before) authorityGeneration += 1L
+        publishedAuthority.value = current to authorityGeneration
     }
 
     private fun advanceAuthorityAndMutationIfChanged(before: SelectionAuthorityState) {
-        if (authorityState() == before) return
-        authorityGeneration += 1L
-        mutationRevision += 1L
+        val current = authorityState()
+        if (current != before) {
+            authorityGeneration += 1L
+            mutationRevision += 1L
+        }
+        publishedAuthority.value = current to authorityGeneration
+    }
+
+    private fun publishAuthorityStateLocked() {
+        publishedAuthority.value = authorityState() to authorityGeneration
     }
 
     @RaftCoreInternalApi suspend fun captureMutationRevision(): Long = mutex.withLock { mutationRevision }
@@ -699,6 +727,7 @@ import kotlinx.serialization.json.Json
 
     @RaftCoreInternalApi fun dispose() {
         onSelectionChanged(null)
+        publishedAuthority.value = null
         _disposed.value = true
     }
 }

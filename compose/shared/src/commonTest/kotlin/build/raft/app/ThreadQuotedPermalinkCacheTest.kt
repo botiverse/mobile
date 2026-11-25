@@ -226,4 +226,112 @@ class ThreadQuotedPermalinkCacheTest {
         assertNull(cache.peek(viewerB1.userId, viewerB1.serverId, "chan-1", "msg-inflight"))
         assertNull(cache.peek(viewerA2.userId, viewerA2.serverId, "chan-1", "msg-s2"))
     }
+
+    @Test
+    fun definitiveUnavailableCachesForShortTtlWhileTransientFailuresStayUncachedAndClearFencesNegativeEntries() = runTest {
+        val timeSource = TestTimeSource()
+        val cache =
+            ThreadQuotedPermalinkCache(
+                maxEntries = 10,
+                ttl = 5.minutes,
+                negativeTtl = 60.seconds,
+                timeSource = timeSource,
+            )
+        var calls = 0
+
+        // Definitive 404/403 is cached as KnownUnavailable for negativeTtl (60s).
+        val first =
+            cache.getOrFetchOutcome(
+                viewerProvider = { viewerA1 },
+                channelId = "chan-1",
+                messageId = "msg-404",
+            ) {
+                calls += 1
+                ThreadQuotedPermalinkFetchOutcome.DefinitiveUnavailable
+            }
+        assertNull(first)
+        assertEquals(1, calls)
+        assertEquals(
+            ThreadQuotedPermalinkCacheLookup.KnownUnavailable,
+            cache.peekLookup(viewerA1.userId, viewerA1.serverId, "chan-1", "msg-404"),
+        )
+        // Other viewers/servers remain isolated (Miss).
+        assertEquals(
+            ThreadQuotedPermalinkCacheLookup.Miss,
+            cache.peekLookup(viewerB1.userId, viewerB1.serverId, "chan-1", "msg-404"),
+        )
+
+        // Second call within 60s skips network.
+        timeSource += 59.seconds
+        val second =
+            cache.getOrFetchOutcome(
+                viewerProvider = { viewerA1 },
+                channelId = "chan-1",
+                messageId = "msg-404",
+            ) {
+                calls += 1
+                ThreadQuotedPermalinkFetchOutcome.Loaded(quotedMessage("msg-404"))
+            }
+        assertNull(second)
+        assertEquals(1, calls)
+
+        // After 60s TTL expiry, peekLookup returns Miss and re-fetch succeeds.
+        timeSource += 1.seconds
+        assertEquals(
+            ThreadQuotedPermalinkCacheLookup.Miss,
+            cache.peekLookup(viewerA1.userId, viewerA1.serverId, "chan-1", "msg-404"),
+        )
+        val recovered = quotedMessage("msg-404", body = "Restored")
+        val third =
+            cache.getOrFetchOutcome(
+                viewerProvider = { viewerA1 },
+                channelId = "chan-1",
+                messageId = "msg-404",
+            ) {
+                calls += 1
+                ThreadQuotedPermalinkFetchOutcome.Loaded(recovered)
+            }
+        assertEquals(recovered, third)
+        assertEquals(2, calls)
+        assertEquals(
+            ThreadQuotedPermalinkCacheLookup.Hit(recovered),
+            cache.peekLookup(viewerA1.userId, viewerA1.serverId, "chan-1", "msg-404"),
+        )
+
+        // Transient 5xx/network failure is NEVER cached.
+        var transientCalls = 0
+        val transientFirst =
+            cache.getOrFetchOutcome(
+                viewerProvider = { viewerA1 },
+                channelId = "chan-1",
+                messageId = "msg-503",
+            ) {
+                transientCalls += 1
+                ThreadQuotedPermalinkFetchOutcome.TransientFailure
+            }
+        assertNull(transientFirst)
+        assertEquals(1, transientCalls)
+        assertEquals(
+            ThreadQuotedPermalinkCacheLookup.Miss,
+            cache.peekLookup(viewerA1.userId, viewerA1.serverId, "chan-1", "msg-503"),
+        )
+
+        // dropServer and clear evict negative entries too.
+        cache.putUnavailable(viewerA1.userId, viewerA1.serverId, "chan-1", "msg-403-a")
+        cache.putUnavailable(viewerA2.userId, viewerA2.serverId, "chan-1", "msg-403-b")
+        cache.dropServer(serverId = "server-1", accountUserId = "user-a")
+        assertEquals(
+            ThreadQuotedPermalinkCacheLookup.Miss,
+            cache.peekLookup(viewerA1.userId, viewerA1.serverId, "chan-1", "msg-403-a"),
+        )
+        assertEquals(
+            ThreadQuotedPermalinkCacheLookup.KnownUnavailable,
+            cache.peekLookup(viewerA2.userId, viewerA2.serverId, "chan-1", "msg-403-b"),
+        )
+        cache.clear()
+        assertEquals(
+            ThreadQuotedPermalinkCacheLookup.Miss,
+            cache.peekLookup(viewerA2.userId, viewerA2.serverId, "chan-1", "msg-403-b"),
+        )
+    }
 }

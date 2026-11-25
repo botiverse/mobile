@@ -21,32 +21,71 @@ internal const val ThreadInlineAttachmentUrlBatchDebounceMillis = 30L
 
 internal data class ThreadInlineImageFallbackState(
     val requestedAttachmentIds: Set<String> = emptySet(),
-    val resolvedUrls: Map<String, String> = emptyMap()
+    val resolvedUrls: Map<String, String> = emptyMap(),
+    val failedAttachmentIds: Set<String> = emptySet(),
 ) {
     fun beginRequest(attachmentId: String): Pair<ThreadInlineImageFallbackState, Boolean> {
-        if (attachmentId.isBlank() || attachmentId in requestedAttachmentIds) return this to false
-        return copy(requestedAttachmentIds = requestedAttachmentIds + attachmentId) to true
+        val cleanId = attachmentId.trim()
+        if (cleanId.isEmpty() || cleanId in requestedAttachmentIds) return this to false
+        return copy(
+            requestedAttachmentIds = requestedAttachmentIds + cleanId,
+            failedAttachmentIds = failedAttachmentIds - cleanId,
+        ) to true
     }
 
     fun resolve(attachmentId: String, url: String): ThreadInlineImageFallbackState {
+        val cleanId = attachmentId.trim()
         val cleanUrl = url.trim()
-        if (attachmentId.isBlank() || cleanUrl.isBlank()) return this
-        return copy(resolvedUrls = resolvedUrls + (attachmentId to cleanUrl))
+        if (cleanId.isEmpty() || cleanUrl.isEmpty()) return this
+        return copy(
+            resolvedUrls = resolvedUrls + (cleanId to cleanUrl),
+            failedAttachmentIds = failedAttachmentIds - cleanId,
+        )
     }
 
     fun resolveAll(urlsByAttachmentId: Map<String, String>): ThreadInlineImageFallbackState {
         if (urlsByAttachmentId.isEmpty()) return this
         val next = LinkedHashMap(resolvedUrls)
+        var nextFailed = failedAttachmentIds
         var changed = false
         urlsByAttachmentId.forEach { (id, rawUrl) ->
             val cleanId = id.trim()
             val cleanUrl = rawUrl.trim()
-            if (cleanId.isNotEmpty() && cleanUrl.isNotEmpty() && next[cleanId] != cleanUrl) {
-                next[cleanId] = cleanUrl
-                changed = true
+            if (cleanId.isNotEmpty() && cleanUrl.isNotEmpty()) {
+                if (next[cleanId] != cleanUrl) {
+                    next[cleanId] = cleanUrl
+                    changed = true
+                }
+                if (cleanId in nextFailed) {
+                    nextFailed = nextFailed - cleanId
+                    changed = true
+                }
             }
         }
-        return if (changed) copy(resolvedUrls = next) else this
+        return if (changed) copy(resolvedUrls = next, failedAttachmentIds = nextFailed) else this
+    }
+
+    fun markFailed(attachmentIds: Collection<String>): ThreadInlineImageFallbackState {
+        if (attachmentIds.isEmpty()) return this
+        val additions =
+            attachmentIds.mapNotNull { id ->
+                val cleanId = id.trim()
+                cleanId.takeIf { it.isNotEmpty() && it !in resolvedUrls && it !in failedAttachmentIds }
+            }
+        if (additions.isEmpty()) return this
+        return copy(failedAttachmentIds = failedAttachmentIds + additions)
+    }
+
+    fun markFailed(attachmentId: String): ThreadInlineImageFallbackState =
+        markFailed(listOf(attachmentId))
+
+    fun clearFailed(attachmentId: String): ThreadInlineImageFallbackState {
+        val cleanId = attachmentId.trim()
+        if (cleanId.isEmpty() || (cleanId !in failedAttachmentIds && cleanId !in requestedAttachmentIds)) return this
+        return copy(
+            requestedAttachmentIds = requestedAttachmentIds - cleanId,
+            failedAttachmentIds = failedAttachmentIds - cleanId,
+        )
     }
 
     fun invalidate(attachmentId: String, expectedUrl: String? = null): ThreadInlineImageFallbackState {
@@ -56,7 +95,8 @@ internal data class ThreadInlineImageFallbackState(
         if (expectedUrl != null && current != null && current != expectedUrl.trim()) return this
         return copy(
             requestedAttachmentIds = requestedAttachmentIds - cleanId,
-            resolvedUrls = resolvedUrls - cleanId
+            resolvedUrls = resolvedUrls - cleanId,
+            failedAttachmentIds = failedAttachmentIds - cleanId,
         )
     }
 }
@@ -100,6 +140,26 @@ internal class ThreadInlineAttachmentUrlBatcher(
         writeState(nextState)
         if (!shouldRequest) return
         enqueue(cleanId)
+    }
+
+    /** Synchronous cache peek safe for Frame 1 composition (avoids 1-frame blank flash on re-entry). */
+    fun peekCachedUrl(attachmentId: String): String? {
+        val cleanId = attachmentId.trim()
+        if (cleanId.isEmpty()) return null
+        val owner = ownerProvider()?.normalizedOrNull() ?: return null
+        return urlCache.get(RaftFilePreviewAttachmentUrlCacheKey(owner, cleanId, "inline"))
+    }
+
+    /** Clears a failed/stale inline fallback state and re-requests the URL (explicit tap-to-retry). */
+    fun retry(attachmentId: String) {
+        val cleanId = attachmentId.trim()
+        if (cleanId.isEmpty()) return
+        synchronized(lock) { retriedIds.remove(cleanId) }
+        ownerProvider()?.normalizedOrNull()?.let { owner ->
+            urlCache.invalidate(RaftFilePreviewAttachmentUrlCacheKey(owner, cleanId, "inline"))
+        }
+        writeState(readState().invalidate(cleanId))
+        request(cleanId)
     }
 
     /** Drops a cached inline URL that failed to load (e.g. expired signature) and re-requests once. */
@@ -163,7 +223,14 @@ internal class ThreadInlineAttachmentUrlBatcher(
                             fetchBatch(missing)
                         } catch (cancellation: CancellationException) {
                             throw cancellation
-                        } catch (_: Throwable) {
+                        } catch (throwable: Throwable) {
+                            if (ownerProvider()?.normalizedOrNull() == owner) {
+                                writeState(readState().markFailed(missing))
+                            }
+                            logger(
+                                "thread_inline_image_fallback status=batch_exception count=${missing.size} " +
+                                    "reason=${throwable::class.simpleName ?: "unknown"}"
+                            )
                             continue
                         }
                     val currentOwner = ownerProvider()?.normalizedOrNull()
@@ -189,15 +256,19 @@ internal class ThreadInlineAttachmentUrlBatcher(
                                     }
                                 }
                             }
-                            if (resolvedUrls.isNotEmpty()) {
-                                writeState(readState().resolveAll(resolvedUrls))
+                            val unresolved = missing.filter { id -> id !in resolvedUrls }
+                            val before = readState()
+                            val after = before.resolveAll(resolvedUrls).markFailed(unresolved)
+                            if (after != before) {
+                                writeState(after)
                             }
                             logger(
                                 "thread_inline_image_fallback status=batch_resolved " +
-                                    "requested=${missing.size} resolved=${resolvedUrls.size}"
+                                    "requested=${missing.size} resolved=${resolvedUrls.size} unresolved=${unresolved.size}"
                             )
                         }
                         is ThreadApiResult.Failure -> {
+                            writeState(readState().markFailed(missing))
                             logger(
                                 "thread_inline_image_fallback status=batch_failed count=${missing.size} " +
                                     "code=${response.code} contractCode=${response.contractCode.orEmpty()}"
@@ -279,6 +350,8 @@ internal data class ThreadInlineImageFallbackHost(
     val state: ThreadInlineImageFallbackState,
     val requestFallback: (attachmentId: String) -> Unit,
     val onFallbackError: ((attachmentId: String, failedUrl: String) -> Unit)? = null,
+    val retryFallback: ((attachmentId: String) -> Unit)? = null,
+    val peekCachedUrl: ((attachmentId: String) -> String?)? = null,
 )
 
 internal val LocalThreadInlineImageFallbackHost =

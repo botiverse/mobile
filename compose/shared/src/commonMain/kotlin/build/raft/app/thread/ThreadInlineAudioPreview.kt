@@ -46,6 +46,12 @@ import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.data.AuthenticatedRouteOwner
+import build.raft.app.data.ThreadApiResult
+import build.raft.app.data.ThreadAttachmentOpenTarget
+import build.raft.app.data.normalizedOrNull
+import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
@@ -101,8 +107,80 @@ internal fun Map<String, ThreadInlineAudioPreviewUiState>.canRequestInlineAudioP
 
 internal data class ThreadInlineAudioPreviewHost(
     val states: Map<String, ThreadInlineAudioPreviewUiState>,
-    val requestPreview: (attachmentId: String, force: Boolean) -> Unit
+    val requestPreview: (attachmentId: String, force: Boolean) -> Unit,
+    val peekCachedUrl: ((attachmentId: String) -> String?)? = null,
 )
+
+/**
+ * Shared inline-audio URL resolution (#proj-mobile:#386 P1-2):
+ * - invalidates [urlCache] on forced retry (`force = true`),
+ * - serves warm URLs from [urlCache] without a network fetch when `!force`,
+ * - guards [fetch] with [runCatchingPreservingCancellation] so a thrown exception always settles
+ *   to [ThreadInlineAudioPreviewStatus.Error] instead of sticking in `Loading`, and
+ * - stores resolved URLs + `expiresAt` into [urlCache] only when the route owner did not change.
+ */
+internal suspend fun runThreadInlineAudioPreviewFetch(
+    attachmentId: String,
+    force: Boolean,
+    ownerProvider: () -> AuthenticatedRouteOwner?,
+    urlCache: RaftFilePreviewAttachmentUrlCache = raftFilePreviewAttachmentUrlCache(),
+    fetch: suspend () -> ThreadApiResult<ThreadAttachmentOpenTarget>,
+    onState: (ThreadInlineAudioPreviewUiState) -> Unit,
+    onAuthRequired: () -> Unit = {},
+) {
+    val cleanId = attachmentId.trim()
+    if (cleanId.isEmpty()) return
+    val startOwner = ownerProvider()?.normalizedOrNull()
+    if (force && startOwner != null) {
+        urlCache.invalidate(RaftFilePreviewAttachmentUrlCacheKey(startOwner, cleanId, "inline"))
+    } else if (!force && startOwner != null) {
+        urlCache.get(RaftFilePreviewAttachmentUrlCacheKey(startOwner, cleanId, "inline"))?.let { cachedUrl ->
+            onState(
+                ThreadInlineAudioPreviewUiState(
+                    status = ThreadInlineAudioPreviewStatus.Ready,
+                    url = cachedUrl,
+                )
+            )
+            return
+        }
+    }
+    onState(ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Loading))
+    val result = runCatchingPreservingCancellation { fetch() }
+    val response =
+        result.getOrElse {
+            onState(ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error))
+            return
+        }
+    when (response) {
+        is ThreadApiResult.Success -> {
+            val url = response.data.url.trim()
+            if (url.isNotBlank()) {
+                if (startOwner != null && ownerProvider()?.normalizedOrNull() == startOwner) {
+                    urlCache.put(
+                        key = RaftFilePreviewAttachmentUrlCacheKey(startOwner, cleanId, "inline"),
+                        url = url,
+                        expiresAtEpochMillis = parseRaftTimestampEpochMillisOrNull(response.data.expiresAt),
+                    )
+                }
+                onState(
+                    ThreadInlineAudioPreviewUiState(
+                        status = ThreadInlineAudioPreviewStatus.Ready,
+                        url = url,
+                        expiresAt = response.data.expiresAt,
+                    )
+                )
+            } else {
+                onState(ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error))
+            }
+        }
+        is ThreadApiResult.Failure -> {
+            onState(ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error))
+            if (response.code == 401) {
+                onAuthRequired()
+            }
+        }
+    }
+}
 
 internal val LocalThreadInlineAudioPreviewHost =
     compositionLocalOf<ThreadInlineAudioPreviewHost?> { null }
@@ -161,9 +239,20 @@ internal fun ThreadInlineAudioAttachmentCard(
     onDownload: () -> Unit
 ) {
     val host = LocalThreadInlineAudioPreviewHost.current
-    val previewState = host?.states?.get(attachment.id)
+    val cachedUrl =
+        remember(attachment.id, host?.peekCachedUrl) {
+            host?.peekCachedUrl?.invoke(attachment.id)?.trim()?.takeIf { it.isNotEmpty() }
+        }
+    val previewState =
+        host?.states?.get(attachment.id)
+            ?: cachedUrl?.let { url ->
+                ThreadInlineAudioPreviewUiState(
+                    status = ThreadInlineAudioPreviewStatus.Ready,
+                    url = url,
+                )
+            }
 
-    LaunchedEffect(attachment.id, host != null) {
+    LaunchedEffect(attachment.id, host != null, previewState == null) {
         if (previewState == null) {
             host?.requestPreview?.invoke(attachment.id, false)
         }

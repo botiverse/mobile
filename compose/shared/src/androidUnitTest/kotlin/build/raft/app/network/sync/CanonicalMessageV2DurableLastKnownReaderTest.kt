@@ -530,11 +530,14 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             assertTrue(nonConsecutiveLoose.hasOlderStored)
             assertFalse(nonConsecutiveLoose.insideProvenSegment)
 
-            // Offline Before(62, crossGaps=true) can still reach earlier loose facts [50, 55].
+            // Offline Before(62, crossGaps=true) on a headless scope with only unsegmented loose facts
+            // never splices loose facts row-by-row into stacked gaps (#proj-mobile:#386 P0-1).
             val offlineLooseOlder = assertNotNull(
                 reader.readTimeline(partitionA, "channel-c", ThreadDurableTimelineAnchor.Before(62L, limit = 5, crossGaps = true)),
             )
-            assertEquals(listOf(50L, 55L), offlineLooseOlder.envelopes.map { it.fact.seq })
+            assertTrue(offlineLooseOlder.envelopes.isEmpty(), "loose facts must not be bridged across gaps: ${offlineLooseOlder.envelopes}")
+            assertTrue(offlineLooseOlder.gaps.isEmpty())
+            assertFalse(offlineLooseOlder.hasOlderStored)
 
             // Adding consecutive loose fact 61 makes [61, 62] provably gap-free.
             store.applyCoverage(
@@ -930,29 +933,32 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                 assertTrue(inSegment.insideProvenSegment)
                 assertEquals(setOf("message-22"), inSegment.unknownFieldsByFactId.keys)
 
-                // Explicit offline Before / After with crossGaps=true still crosses out into loose facts / islands.
+                // Explicit offline Before / After with crossGaps=true bridges only proven segments and
+                // skips unsegmented loose realtime facts (12, 40) so stacked gaps never appear (#proj-mobile:#386 P0-1).
                 val offlineOlder = assertNotNull(
                     reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 10, crossGaps = true)),
                 )
-                assertEquals(listOf(1L, 2L, 3L, 4L, 5L, 12L), offlineOlder.envelopes.map { it.fact.seq })
+                assertEquals(listOf(1L, 2L, 3L, 4L, 5L), offlineOlder.envelopes.map { it.fact.seq })
                 assertEquals(
                     listOf(
-                        CanonicalMessageV2TimelineGap(afterSeq = 5L, beforeSeq = 12L),
-                        CanonicalMessageV2TimelineGap(afterSeq = 12L, beforeSeq = 20L),
+                        CanonicalMessageV2TimelineGap(afterSeq = 5L, beforeSeq = 20L),
                     ),
                     offlineOlder.gaps,
                 )
+                assertFalse(offlineOlder.hasOlderStored)
+                assertTrue(offlineOlder.reachesOldest)
                 val offlineNewer = assertNotNull(
                     reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(25L, limit = 10, crossGaps = true)),
                 )
-                assertEquals(listOf(40L, 60L, 61L, 62L, 63L, 64L, 65L), offlineNewer.envelopes.map { it.fact.seq })
+                assertEquals(listOf(60L, 61L, 62L, 63L, 64L, 65L), offlineNewer.envelopes.map { it.fact.seq })
                 assertEquals(
                     listOf(
-                        CanonicalMessageV2TimelineGap(afterSeq = 25L, beforeSeq = 40L),
-                        CanonicalMessageV2TimelineGap(afterSeq = 40L, beforeSeq = 60L),
+                        CanonicalMessageV2TimelineGap(afterSeq = 25L, beforeSeq = 60L),
                     ),
                     offlineNewer.gaps,
                 )
+                assertFalse(offlineNewer.hasNewerStored)
+                assertTrue(offlineNewer.reachesHead)
 
                 // Anchor right on segment boundaries (20 and 25) isolates poisoned outside facts (12 and 40).
                 for (poisonSeq in listOf(12L, 40L)) {
@@ -1252,6 +1258,72 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
         fact = fact(seq),
         context = CanonicalConversationContextV2.TopLevel(TopLevelScopeRefV2.Channel("server-a", "channel-a")),
     )
+
+    @Test
+    fun offlineCrossGapsNeverSplicesMultipleLooseRealtimeFactsIntoStackedGaps() = withFreshDatabase { database ->
+        val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 100L })
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
+        val scope = SyncScopeKey(partitionA, "channel-a", "channel")
+
+        runBlocking {
+            store.applyCoverage(
+                scope = scope,
+                envelopes = (1L..5L).map(::envelope),
+                coverage = CanonicalMessageV2Coverage(1L, 5L, reachesOldest = true, headAtVerify = false, CanonicalMessageV2SegmentSource.Older),
+                revAtRequest = 0L,
+                userDriven = true,
+            )
+            store.applyCoverage(
+                scope = scope,
+                envelopes = (20L..25L).map(::envelope),
+                coverage = CanonicalMessageV2Coverage(20L, 25L, reachesOldest = false, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
+                revAtRequest = 0L,
+                userDriven = false,
+            )
+            store.applyCoverage(
+                scope = scope,
+                envelopes = (60L..65L).map(::envelope),
+                coverage = CanonicalMessageV2Coverage(60L, 65L, reachesOldest = false, headAtVerify = true, CanonicalMessageV2SegmentSource.Latest),
+                revAtRequest = 0L,
+                userDriven = true,
+            )
+            // Five unsegmented loose WS facts between [1..5] and [20..25], and five between [20..25] and [60..65].
+            store.applyCoverage(
+                scope = scope,
+                envelopes = listOf(10L, 12L, 14L, 16L, 18L, 30L, 35L, 40L, 45L, 50L).map(::envelope),
+                coverage = null,
+                revAtRequest = 0L,
+                userDriven = false,
+            )
+
+            // Before(20, crossGaps=true) must bridge straight into [1..5] with ONE gap (5, 20), NOT 6 stacked gaps.
+            val older = assertNotNull(
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 20, crossGaps = true)),
+            )
+            assertEquals(listOf(1L, 2L, 3L, 4L, 5L), older.envelopes.map { it.fact.seq })
+            assertEquals(listOf(CanonicalMessageV2TimelineGap(afterSeq = 5L, beforeSeq = 20L)), older.gaps)
+            assertFalse(older.hasOlderStored)
+            assertTrue(older.reachesOldest)
+
+            // After(25, crossGaps=true) must bridge straight into [60..65] with ONE gap (25, 60), NOT 6 stacked gaps.
+            val newer = assertNotNull(
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(25L, limit = 20, crossGaps = true)),
+            )
+            assertEquals(listOf(60L, 61L, 62L, 63L, 64L, 65L), newer.envelopes.map { it.fact.seq })
+            assertEquals(listOf(CanonicalMessageV2TimelineGap(afterSeq = 25L, beforeSeq = 60L)), newer.gaps)
+            assertFalse(newer.hasNewerStored)
+            assertTrue(newer.reachesHead)
+
+            // Limited read inside a lower segment reports hasOlderStored=true when more segmented rows remain.
+            val partialOlder = assertNotNull(
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 3, crossGaps = true)),
+            )
+            assertEquals(listOf(3L, 4L, 5L), partialOlder.envelopes.map { it.fact.seq })
+            assertEquals(listOf(CanonicalMessageV2TimelineGap(afterSeq = 5L, beforeSeq = 20L)), partialOlder.gaps)
+            assertTrue(partialOlder.hasOlderStored)
+            assertFalse(partialOlder.reachesOldest)
+        }
+    }
 
     private fun withFreshDatabase(block: (RaftSqlDatabase) -> Unit) {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)

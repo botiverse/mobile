@@ -9,6 +9,7 @@ import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.normalizedOrNull
+import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.resources.desc
 import build.raft.app.resources.resolve
@@ -414,33 +415,97 @@ internal class ThreadRouteAttachmentActions(
         }
     }
 
+    fun inlineVideoPreviewHost(): ThreadInlineVideoPreviewHost =
+        ThreadInlineVideoPreviewHost(
+            states = inlineVideoPreviewStates,
+            requestPreview = ::requestInlineVideoPreview,
+            peekCachedUrl = ::peekCachedInlineAttachmentUrl,
+        )
+
+    fun inlineAudioPreviewHost(): ThreadInlineAudioPreviewHost =
+        ThreadInlineAudioPreviewHost(
+            states = inlineAudioPreviewStates,
+            requestPreview = ::requestInlineAudioPreview,
+            peekCachedUrl = ::peekCachedInlineAttachmentUrl,
+        )
+
+    fun inlineImageFallbackHost(): ThreadInlineImageFallbackHost =
+        ThreadInlineImageFallbackHost(
+            state = inlineImageFallbackState,
+            requestFallback = ::requestInlineImageFallback,
+            onFallbackError = ::handleInlineImageFallbackError,
+            retryFallback = ::retryInlineImageFallback,
+            peekCachedUrl = ::peekCachedInlineImageUrl,
+        )
+
+    fun peekCachedInlineAttachmentUrl(attachmentId: String): String? {
+        val cleanId = attachmentId.trim()
+        if (cleanId.isEmpty()) return null
+        val owner = routeOwnerProvider()?.normalizedOrNull() ?: return null
+        return raftFilePreviewAttachmentUrlCache()
+            .get(RaftFilePreviewAttachmentUrlCacheKey(owner, cleanId, "inline"))
+    }
+
+    fun peekCachedInlineImageUrl(attachmentId: String): String? =
+        inlineImageUrlBatcher?.peekCachedUrl(attachmentId) ?: peekCachedInlineAttachmentUrl(attachmentId)
+
     fun requestInlineImageFallback(attachmentId: String) {
         val batcher = inlineImageUrlBatcher
         if (batcher != null) {
             batcher.request(attachmentId)
             return
         }
-        val (nextState, shouldRequest) = inlineImageFallbackState.beginRequest(attachmentId)
+        val cleanId = attachmentId.trim()
+        if (cleanId.isEmpty()) return
+        peekCachedInlineAttachmentUrl(cleanId)?.let { cachedUrl ->
+            val (begun, _) = inlineImageFallbackState.beginRequest(cleanId)
+            inlineImageFallbackState = begun.resolve(cleanId, cachedUrl)
+            bridge.log("thread_inline_image_fallback status=cache_hit attachmentId=${cleanId.take(8)}")
+            return
+        }
+        val (nextState, shouldRequest) = inlineImageFallbackState.beginRequest(cleanId)
         inlineImageFallbackState = nextState
         if (!shouldRequest) return
-        bridge.log("thread_inline_image_fallback status=start attachmentId=${attachmentId.take(8)}")
+        val startOwner = routeOwnerProvider()?.normalizedOrNull()
+        bridge.log("thread_inline_image_fallback status=start attachmentId=${cleanId.take(8)}")
         coroutineScope.launch {
-            when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
+            val result =
+                runCatchingPreservingCancellation {
+                    dataSource.attachmentUrl(DataRequestPriority.Visible, cleanId, disposition = "inline")
+                }
+            val response =
+                result.getOrElse { throwable ->
+                    inlineImageFallbackState = inlineImageFallbackState.markFailed(cleanId)
+                    bridge.log(
+                        "thread_inline_image_fallback status=exception attachmentId=${cleanId.take(8)} " +
+                            "reason=${throwable::class.simpleName ?: "unknown"}"
+                    )
+                    return@launch
+                }
+            when (response) {
                 is ThreadApiResult.Success -> {
-                    routeOwnerProvider()?.normalizedOrNull()?.let { owner ->
-                        raftFilePreviewAttachmentUrlCache().put(
-                            key = RaftFilePreviewAttachmentUrlCacheKey(owner, attachmentId.trim(), "inline"),
-                            url = response.data.url,
-                            expiresAtEpochMillis = parseRaftTimestampEpochMillisOrNull(response.data.expiresAt),
-                        )
+                    val resolvedUrl = response.data.url.trim()
+                    if (resolvedUrl.isNotEmpty()) {
+                        val currentOwner = routeOwnerProvider()?.normalizedOrNull()
+                        if (startOwner != null && currentOwner == startOwner) {
+                            raftFilePreviewAttachmentUrlCache().put(
+                                key = RaftFilePreviewAttachmentUrlCacheKey(startOwner, cleanId, "inline"),
+                                url = resolvedUrl,
+                                expiresAtEpochMillis = parseRaftTimestampEpochMillisOrNull(response.data.expiresAt),
+                            )
+                        }
+                        inlineImageFallbackState =
+                            inlineImageFallbackState.resolve(cleanId, resolvedUrl)
+                        bridge.log("thread_inline_image_fallback status=resolved attachmentId=${cleanId.take(8)}")
+                    } else {
+                        inlineImageFallbackState = inlineImageFallbackState.markFailed(cleanId)
+                        bridge.log("thread_inline_image_fallback status=empty_url attachmentId=${cleanId.take(8)}")
                     }
-                    inlineImageFallbackState =
-                        inlineImageFallbackState.resolve(attachmentId, response.data.url)
-                    bridge.log("thread_inline_image_fallback status=resolved attachmentId=${attachmentId.take(8)}")
                 }
                 is ThreadApiResult.Failure -> {
+                    inlineImageFallbackState = inlineImageFallbackState.markFailed(cleanId)
                     bridge.log(
-                        "thread_inline_image_fallback status=failed attachmentId=${attachmentId.take(8)} " +
+                        "thread_inline_image_fallback status=failed attachmentId=${cleanId.take(8)} " +
                             "code=${response.code} contractCode=${response.contractCode.orEmpty()}"
                     )
                 }
@@ -450,6 +515,22 @@ internal class ThreadRouteAttachmentActions(
 
     fun handleInlineImageFallbackError(attachmentId: String, failedUrl: String) {
         inlineImageUrlBatcher?.invalidateAndRetry(attachmentId, failedUrl)
+    }
+
+    fun retryInlineImageFallback(attachmentId: String) {
+        val batcher = inlineImageUrlBatcher
+        if (batcher != null) {
+            batcher.retry(attachmentId)
+            return
+        }
+        val cleanId = attachmentId.trim()
+        if (cleanId.isEmpty()) return
+        routeOwnerProvider()?.normalizedOrNull()?.let { owner ->
+            raftFilePreviewAttachmentUrlCache()
+                .invalidate(RaftFilePreviewAttachmentUrlCacheKey(owner, cleanId, "inline"))
+        }
+        inlineImageFallbackState = inlineImageFallbackState.invalidate(cleanId)
+        requestInlineImageFallback(cleanId)
     }
 
     private fun currentInlineImageUrlsFor(attachments: Collection<RaftThreadAttachmentItem>): Map<String, String> {
@@ -750,42 +831,47 @@ internal class ThreadRouteAttachmentActions(
     }
 
     fun requestInlineAudioPreview(attachmentId: String, force: Boolean = false) {
-        if (attachmentId.isBlank()) return
+        val cleanId = attachmentId.trim()
+        if (cleanId.isEmpty()) return
         if (inlineAudioPreviewStates[attachmentId]?.status == ThreadInlineAudioPreviewStatus.Loading) return
         if (!force && !inlineAudioPreviewStates.canRequestInlineAudioPreview(attachmentId)) return
+        val startOwner = routeOwnerProvider()?.normalizedOrNull()
+        val urlCache = raftFilePreviewAttachmentUrlCache()
+        if (!force && startOwner != null) {
+            urlCache.get(RaftFilePreviewAttachmentUrlCacheKey(startOwner, cleanId, "inline"))?.let { cachedUrl ->
+                inlineAudioPreviewStates =
+                    inlineAudioPreviewStates +
+                        (attachmentId to ThreadInlineAudioPreviewUiState(
+                            status = ThreadInlineAudioPreviewStatus.Ready,
+                            url = cachedUrl,
+                        ))
+                return
+            }
+        }
+        // Mark Loading synchronously to prevent duplicate concurrent launches before the coroutine starts.
         inlineAudioPreviewStates =
             inlineAudioPreviewStates +
                 (attachmentId to ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Loading))
         coroutineScope.launch {
-            when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
-                is ThreadApiResult.Success -> {
-                    val url = response.data.url.trim()
-                    inlineAudioPreviewStates =
-                        inlineAudioPreviewStates +
-                            (attachmentId to
-                                if (url.isNotBlank()) {
-                                    ThreadInlineAudioPreviewUiState(
-                                        status = ThreadInlineAudioPreviewStatus.Ready,
-                                        url = url,
-                                        expiresAt = response.data.expiresAt
-                                    )
-                                } else {
-                                    ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error)
-                                })
-                }
-                is ThreadApiResult.Failure -> {
-                    inlineAudioPreviewStates =
-                        inlineAudioPreviewStates +
-                            (attachmentId to ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error))
-                    if (response.code == 401) {
-                        routeAuthRequired("auth_required")
-                    }
-                }
-            }
+            runThreadInlineAudioPreviewFetch(
+                attachmentId = attachmentId,
+                force = force,
+                ownerProvider = routeOwnerProvider,
+                urlCache = urlCache,
+                fetch = { dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline") },
+                onState = { state -> inlineAudioPreviewStates = inlineAudioPreviewStates + (attachmentId to state) },
+                onAuthRequired = { routeAuthRequired("auth_required") },
+            )
         }
     }
     fun requestInlineVideoPreview(attachmentId: String, force: Boolean = false) {
-        if (attachmentId.isBlank()) return
+        val cleanId = attachmentId.trim()
+        if (cleanId.isEmpty()) return
+        val startOwner = routeOwnerProvider()?.normalizedOrNull()
+        val urlCache = raftFilePreviewAttachmentUrlCache()
+        if (force && startOwner != null) {
+            urlCache.invalidate(RaftFilePreviewAttachmentUrlCacheKey(startOwner, cleanId, "inline"))
+        }
         val running = inlineVideoPreviewJobs[attachmentId]?.isActive == true
         if (running) {
             // A retry is waiting out its backoff: a forced request (tap, realtime update) runs it now.
@@ -793,13 +879,31 @@ internal class ThreadRouteAttachmentActions(
             return
         }
         if (!force && !inlineVideoPreviewStates.canRequestInlineVideoPreview(attachmentId)) return
+        if (!force && startOwner != null) {
+            urlCache.get(RaftFilePreviewAttachmentUrlCacheKey(startOwner, cleanId, "inline"))?.let { cachedUrl ->
+                inlineVideoPreviewStates =
+                    inlineVideoPreviewStates +
+                        (attachmentId to ThreadInlineVideoPreviewUiState(
+                            status = ThreadInlineVideoPreviewStatus.Ready,
+                            url = cachedUrl,
+                        ))
+                return
+            }
+        }
         inlineVideoPreviewJobs[attachmentId] =
             coroutineScope.launch {
                 val outcome =
                     runThreadInlineVideoPreviewFetch(
                         policy = ThreadInlineVideoRetryPolicy.Default,
                         fetch = {
-                            dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline").toInlineVideoFetchOutcome()
+                            runCatchingPreservingCancellation {
+                                dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")
+                            }.fold(
+                                onSuccess = { it.toInlineVideoFetchOutcome() },
+                                onFailure = {
+                                    ThreadInlineVideoFetchOutcome.Failed(0, ThreadInlineVideoFailureKind.Transient)
+                                },
+                            )
                         },
                         awaitRetry = { delayMs ->
                             withTimeoutOrNull(delayMs) {
@@ -810,6 +914,17 @@ internal class ThreadRouteAttachmentActions(
                             inlineVideoPreviewStates = inlineVideoPreviewStates + (attachmentId to state)
                         }
                     )
+                if (
+                    outcome is ThreadInlineVideoFetchOutcome.Ready &&
+                    startOwner != null &&
+                    routeOwnerProvider()?.normalizedOrNull() == startOwner
+                ) {
+                    urlCache.put(
+                        key = RaftFilePreviewAttachmentUrlCacheKey(startOwner, cleanId, "inline"),
+                        url = outcome.url,
+                        expiresAtEpochMillis = parseRaftTimestampEpochMillisOrNull(outcome.expiresAt),
+                    )
+                }
                 if (outcome is ThreadInlineVideoFetchOutcome.Failed && outcome.code == 401) {
                     routeAuthRequired("auth_required")
                 }

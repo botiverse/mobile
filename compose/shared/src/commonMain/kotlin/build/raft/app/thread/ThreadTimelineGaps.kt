@@ -223,7 +223,8 @@ internal fun ThreadTimelineGapRow(
                             Res.string.thread_state_loading_older.desc()
                         },
                     loading = true,
-                )
+                ),
+                loadingRevealDelayMs = 0L,
             )
         gap.status == "error" && !durableLastKnown ->
             ThreadInlineActionRow(

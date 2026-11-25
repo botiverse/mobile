@@ -205,9 +205,9 @@ internal class ThreadRealtimeGapRecovery(
                         afterSeq = afterSeq,
                         expectedOwnerScopeId = visiblePayloadOwnerScopeId,
                         replyParent = initial.durableReplyParentOrNull(),
-                        crossGaps = initial.durableLastKnown,
+                        crossGaps = initial.durableLastKnown && initial.mainLoadFailed,
                     )
-                }?.takeIf { initial.durableLastKnown || it.insideProvenSegment }
+                }?.takeIf { (initial.durableLastKnown && initial.mainLoadFailed) || it.insideProvenSegment }
             if (localNewerPage != null) {
                 realtimeGapRecoveryMutex.withLock {
                     val active =
@@ -266,7 +266,12 @@ internal class ThreadRealtimeGapRecovery(
                                     timelineGaps =
                                         reconcileThreadTimelineGaps(
                                             existingGaps = latestPayload.timelineGaps,
-                                            addedGaps = localNewerPage.gaps,
+                                            addedGaps =
+                                                if (initial.durableLastKnown && initial.mainLoadFailed) {
+                                                    localNewerPage.gaps
+                                                } else {
+                                                    emptyList()
+                                                },
                                             messages = merged.messages,
                                         ),
                                 )
@@ -840,18 +845,30 @@ internal class ThreadRealtimeGapRecovery(
                         val currentIds = currentPayload.messages.mapTo(mutableSetOf()) { it.id }
                         val next =
                             when (decision) {
-                                GapCatchUpDecision.MergeAtNewestEdge ->
-                                    currentPayload
-                                        .mergePagedMessages(
-                                            pageMessages = pageMessages,
-                                            before = false,
-                                            pageSize = catchUpResult.data.requestedPageSize
-                                        )
-                                        .preserveStableTimelineFrom(currentPayload)
-                                        .copy(
-                                            canLoadMoreAfter = false,
-                                            newerMessagesStatus = "idle",
-                                        )
+                                GapCatchUpDecision.MergeAtNewestEdge -> {
+                                    val merged =
+                                        currentPayload
+                                            .mergePagedMessages(
+                                                pageMessages = pageMessages,
+                                                before = false,
+                                                pageSize = catchUpResult.data.requestedPageSize
+                                            )
+                                            .preserveStableTimelineFrom(currentPayload)
+                                    merged.copy(
+                                        canLoadMoreAfter = false,
+                                        newerMessagesStatus = "idle",
+                                        timelineGaps =
+                                            if (currentPayload.timelineGaps.isNotEmpty()) {
+                                                reconcileThreadTimelineGaps(
+                                                    existingGaps = currentPayload.timelineGaps,
+                                                    addedGaps = emptyList(),
+                                                    messages = merged.messages,
+                                                )
+                                            } else {
+                                                currentPayload.timelineGaps
+                                            },
+                                    )
+                                }
                                 GapCatchUpDecision.ReplaceWithLatestPage -> {
                                     // Messages that reached this timeline by realtime WHILE the request
                                     // was in flight (not on screen when it was made, not on the page)

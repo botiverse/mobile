@@ -5,6 +5,7 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
@@ -18,24 +19,42 @@ internal const val THREAD_QUOTED_PERMALINK_CACHE_MAX_ENTRIES: Int = 200
 internal val THREAD_QUOTED_PERMALINK_CACHE_TTL: Duration = 5.minutes
 
 /**
- * Process-memory LRU cache of resolved [ThreadQuotedPermalinkMessage]s (#proj-mobile:#383):
+ * Short TTL for definitive 404/403 refusals (#proj-mobile:#386 P1-3) so scrolling back or
+ * reopening a thread renders Unavailable immediately without flashing "Loading message…" or
+ * hammering the server. Transient 5xx/network errors are never cached.
+ */
+internal val THREAD_QUOTED_PERMALINK_NEGATIVE_CACHE_TTL: Duration = 60.seconds
+
+internal sealed interface ThreadQuotedPermalinkFetchOutcome {
+    data class Loaded(val message: ThreadQuotedPermalinkMessage) : ThreadQuotedPermalinkFetchOutcome
+    /** Definitive refusal (404/403/missing target) eligible for short negative caching. */
+    data object DefinitiveUnavailable : ThreadQuotedPermalinkFetchOutcome
+    /** Transient failure (5xx/429/network/401) or already-memoized history_limited: never cached here. */
+    data object TransientFailure : ThreadQuotedPermalinkFetchOutcome
+}
+
+/**
+ * Process-memory LRU cache of resolved [ThreadQuotedPermalinkMessage]s (#proj-mobile:#383) and
+ * short-TTL definitive 404/403 negative entries (#proj-mobile:#386):
  * - keyed by `(accountUserId, serverId, channelId, messageId)` so another account or server on the
  *   same device never sees a previous viewer's quoted messages;
- * - bounded at [maxEntries] entries with true LRU eviction (hits promote recency) and a soft
- *   [ttl] measured via [timeSource];
+ * - bounded at [maxEntries] entries with true LRU eviction (hits promote recency) and soft
+ *   [ttl] / [negativeTtl] measured via [timeSource];
  * - cleared on sign-out, account switch, or environment switch ([clear]), and per lost server
  *   ([dropServer]), with a monotonic generation guard so in-flight fetches started before eviction
  *   cannot repopulate cleared state;
- * - never caches transient `Unavailable` / `null` failures so retries still work.
+ * - never caches transient 5xx/network failures so retries still work.
  */
 internal class ThreadQuotedPermalinkCache(
     private val maxEntries: Int = THREAD_QUOTED_PERMALINK_CACHE_MAX_ENTRIES,
     private val ttl: Duration = THREAD_QUOTED_PERMALINK_CACHE_TTL,
+    private val negativeTtl: Duration = THREAD_QUOTED_PERMALINK_NEGATIVE_CACHE_TTL,
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) {
     init {
         require(maxEntries > 0) { "maxEntries must be positive" }
         require(!ttl.isNegative() && ttl > Duration.ZERO) { "ttl must be positive" }
+        require(!negativeTtl.isNegative() && negativeTtl > Duration.ZERO) { "negativeTtl must be positive" }
     }
 
     private data class Key(
@@ -52,32 +71,57 @@ internal class ThreadQuotedPermalinkCache(
 
     private val lock = SynchronizedObject()
     private val entries = LinkedHashMap<Key, Entry>()
+    private val negativeEntries = LinkedHashMap<Key, TimeMark>()
     private var generation: Long = 0L
 
     fun currentGeneration(): Long = synchronized(lock) { generation }
 
     /**
+     * Synchronous tri-state cache lookup safe to call inside Compose `remember(...)` on Frame 1.
+     */
+    fun peekLookup(
+        accountUserId: String?,
+        serverId: String?,
+        channelId: String?,
+        messageId: String?,
+    ): ThreadQuotedPermalinkCacheLookup {
+        val key = keyOf(accountUserId, serverId, channelId, messageId) ?: return ThreadQuotedPermalinkCacheLookup.Miss
+        return synchronized(lock) {
+            val existing = entries[key]
+            if (existing != null) {
+                if (existing.cachedAt.elapsedNow() >= ttl) {
+                    entries.remove(key)
+                } else {
+                    entries.remove(key)
+                    entries[key] = existing
+                    return@synchronized ThreadQuotedPermalinkCacheLookup.Hit(existing.message)
+                }
+            }
+            val negativeAt = negativeEntries[key]
+            if (negativeAt != null) {
+                if (negativeAt.elapsedNow() >= negativeTtl) {
+                    negativeEntries.remove(key)
+                } else {
+                    negativeEntries.remove(key)
+                    negativeEntries[key] = negativeAt
+                    return@synchronized ThreadQuotedPermalinkCacheLookup.KnownUnavailable
+                }
+            }
+            ThreadQuotedPermalinkCacheLookup.Miss
+        }
+    }
+
+    /**
      * Synchronous cache lookup safe to call inside Compose `remember(...)` on Frame 1. Returns
-     * `null` on miss, missing viewer/message scope, or TTL expiration.
+     * `null` on miss, known-unavailable, missing viewer/message scope, or TTL expiration.
      */
     fun peek(
         accountUserId: String?,
         serverId: String?,
         channelId: String?,
         messageId: String?,
-    ): ThreadQuotedPermalinkMessage? {
-        val key = keyOf(accountUserId, serverId, channelId, messageId) ?: return null
-        return synchronized(lock) {
-            val existing = entries[key] ?: return@synchronized null
-            if (existing.cachedAt.elapsedNow() >= ttl) {
-                entries.remove(key)
-                return@synchronized null
-            }
-            entries.remove(key)
-            entries[key] = existing
-            existing.message
-        }
-    }
+    ): ThreadQuotedPermalinkMessage? =
+        (peekLookup(accountUserId, serverId, channelId, messageId) as? ThreadQuotedPermalinkCacheLookup.Hit)?.message
 
     /**
      * Stores [message] under `(accountUserId, serverId, channelId, messageId)` unless scope is
@@ -94,11 +138,36 @@ internal class ThreadQuotedPermalinkCache(
         val key = keyOf(accountUserId, serverId, channelId, messageId) ?: return
         synchronized(lock) {
             if (expectedGeneration != null && generation != expectedGeneration) return
+            negativeEntries.remove(key)
             entries.remove(key)
             entries[key] = Entry(message = message, cachedAt = timeSource.markNow())
             while (entries.size > maxEntries) {
                 val oldestKey = entries.keys.firstOrNull() ?: break
                 entries.remove(oldestKey)
+            }
+        }
+    }
+
+    /**
+     * Stores a short-TTL negative entry for a definitive 404/403 refusal unless scope is
+     * incomplete or [expectedGeneration] no longer matches the current cache generation.
+     */
+    fun putUnavailable(
+        accountUserId: String?,
+        serverId: String?,
+        channelId: String?,
+        messageId: String?,
+        expectedGeneration: Long? = null,
+    ) {
+        val key = keyOf(accountUserId, serverId, channelId, messageId) ?: return
+        synchronized(lock) {
+            if (expectedGeneration != null && generation != expectedGeneration) return
+            entries.remove(key)
+            negativeEntries.remove(key)
+            negativeEntries[key] = timeSource.markNow()
+            while (negativeEntries.size > maxEntries) {
+                val oldestKey = negativeEntries.keys.firstOrNull() ?: break
+                negativeEntries.remove(oldestKey)
             }
         }
     }
@@ -113,39 +182,89 @@ internal class ThreadQuotedPermalinkCache(
         channelId: String?,
         messageId: String,
         fetch: suspend (RaftQuotedPermalinkViewer?) -> ThreadQuotedPermalinkMessage?,
+    ): ThreadQuotedPermalinkMessage? =
+        getOrFetchOutcome(
+            viewerProvider = viewerProvider,
+            channelId = channelId,
+            messageId = messageId,
+        ) { viewer ->
+            val resolved = fetch(viewer)
+            if (resolved != null) {
+                ThreadQuotedPermalinkFetchOutcome.Loaded(resolved)
+            } else {
+                ThreadQuotedPermalinkFetchOutcome.TransientFailure
+            }
+        }
+
+    /**
+     * Tri-state resolver supporting short-TTL negative caching for definitive 404/403 refusals
+     * while keeping transient 5xx/network failures uncached so retries succeed.
+     */
+    suspend fun getOrFetchOutcome(
+        viewerProvider: suspend () -> RaftQuotedPermalinkViewer?,
+        channelId: String?,
+        messageId: String,
+        fetch: suspend (RaftQuotedPermalinkViewer?) -> ThreadQuotedPermalinkFetchOutcome,
     ): ThreadQuotedPermalinkMessage? {
         val viewer = viewerProvider()
         if (viewer != null) {
-            peek(
-                accountUserId = viewer.userId,
-                serverId = viewer.serverId,
-                channelId = channelId,
-                messageId = messageId,
-            )?.let { return it }
+            when (
+                val cached =
+                    peekLookup(
+                        accountUserId = viewer.userId,
+                        serverId = viewer.serverId,
+                        channelId = channelId,
+                        messageId = messageId,
+                    )
+            ) {
+                is ThreadQuotedPermalinkCacheLookup.Hit -> return cached.message
+                ThreadQuotedPermalinkCacheLookup.KnownUnavailable -> return null
+                ThreadQuotedPermalinkCacheLookup.Miss -> Unit
+            }
         }
         val startGeneration = currentGeneration()
-        val resolved = fetch(viewer) ?: return null
-        if (viewer != null) {
-            val currentViewer = viewerProvider()
-            if (currentViewer?.userId != viewer.userId || currentViewer?.serverId != viewer.serverId) {
-                return null
+        return when (val outcome = fetch(viewer)) {
+            is ThreadQuotedPermalinkFetchOutcome.Loaded -> {
+                if (viewer != null) {
+                    val currentViewer = viewerProvider()
+                    if (currentViewer?.userId != viewer.userId || currentViewer?.serverId != viewer.serverId) {
+                        return null
+                    }
+                    put(
+                        accountUserId = viewer.userId,
+                        serverId = viewer.serverId,
+                        channelId = channelId,
+                        messageId = messageId,
+                        message = outcome.message,
+                        expectedGeneration = startGeneration,
+                    )
+                }
+                outcome.message
             }
-            put(
-                accountUserId = viewer.userId,
-                serverId = viewer.serverId,
-                channelId = channelId,
-                messageId = messageId,
-                message = resolved,
-                expectedGeneration = startGeneration,
-            )
+            ThreadQuotedPermalinkFetchOutcome.DefinitiveUnavailable -> {
+                if (viewer != null) {
+                    val currentViewer = viewerProvider()
+                    if (currentViewer?.userId == viewer.userId && currentViewer?.serverId == viewer.serverId) {
+                        putUnavailable(
+                            accountUserId = viewer.userId,
+                            serverId = viewer.serverId,
+                            channelId = channelId,
+                            messageId = messageId,
+                            expectedGeneration = startGeneration,
+                        )
+                    }
+                }
+                null
+            }
+            ThreadQuotedPermalinkFetchOutcome.TransientFailure -> null
         }
-        return resolved
     }
 
     /** Clears every cached entry (sign-out, account switch, or environment switch) and fences in-flight writes. */
     fun clear() {
         synchronized(lock) {
             entries.clear()
+            negativeEntries.clear()
             generation += 1L
         }
     }
@@ -160,6 +279,13 @@ internal class ThreadQuotedPermalinkCache(
                 val key = iterator.next().key
                 if (key.serverId == cleanServerId && (cleanAccountId == null || key.accountUserId == cleanAccountId)) {
                     iterator.remove()
+                }
+            }
+            val negativeIterator = negativeEntries.entries.iterator()
+            while (negativeIterator.hasNext()) {
+                val key = negativeIterator.next().key
+                if (key.serverId == cleanServerId && (cleanAccountId == null || key.accountUserId == cleanAccountId)) {
+                    negativeIterator.remove()
                 }
             }
             generation += 1L

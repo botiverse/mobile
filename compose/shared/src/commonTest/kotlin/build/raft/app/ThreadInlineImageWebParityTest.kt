@@ -208,4 +208,80 @@ class ThreadInlineImageWebParityTest {
             )
         assertFalse(raftImageDiskEntryFresh(noCacheMeta, expires = true, nowEpochMillis = 1_000_001L))
     }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun batchFailuresExceptionsAndOmissionsMarkFailedWithRetryAndSyncPeekWorksOnFrame1() = runTest {
+        val urlCache = RaftFilePreviewAttachmentUrlCache()
+        var state = ThreadInlineImageFallbackState()
+        var mode = "partial"
+        var batchCalls = 0
+        val batcher =
+            ThreadInlineAttachmentUrlBatcher(
+                coroutineScope = this,
+                ownerProvider = { owner },
+                urlCache = urlCache,
+                fetchBatch = { ids ->
+                    batchCalls += 1
+                    when (mode) {
+                        "partial" ->
+                            ThreadApiResult.Success(
+                                mapOf(
+                                    "att-ok" to ThreadAttachmentOpenTarget("https://r2.example/att-ok.png", null),
+                                    "att-blank" to ThreadAttachmentOpenTarget("   ", null),
+                                )
+                            )
+                        "failure" -> ThreadApiResult.Failure(code = 500, contractCode = "internal")
+                        "throw" -> throw IllegalStateException("network boom")
+                        else ->
+                            ThreadApiResult.Success(
+                                ids.associateWith { id ->
+                                    ThreadAttachmentOpenTarget("https://r2.example/$id-recovered.png", null)
+                                }
+                            )
+                    }
+                },
+                readState = { state },
+                writeState = { state = it },
+                debounceMillis = 10L,
+            )
+
+        // 1. Success omitting att-missing and returning blank url for att-blank marks both failed.
+        listOf("att-ok", "att-blank", "att-missing").forEach(batcher::request)
+        advanceUntilIdle()
+        assertEquals("https://r2.example/att-ok.png", state.resolvedUrls["att-ok"])
+        assertEquals("https://r2.example/att-ok.png", batcher.peekCachedUrl("att-ok"))
+        assertFalse("att-ok" in state.failedAttachmentIds)
+        assertTrue("att-blank" in state.failedAttachmentIds)
+        assertTrue("att-missing" in state.failedAttachmentIds)
+        assertTrue(
+            threadInlineImageShowsFailure(
+                sourceCount = 0,
+                failedSources = 0,
+                awaitingRemoteFallback = false,
+            ),
+            "failed attachment must show failed placeholder instead of blank forever",
+        )
+
+        // 2. API Failure marks requested IDs failed.
+        mode = "failure"
+        batcher.request("att-fail")
+        advanceUntilIdle()
+        assertTrue("att-fail" in state.failedAttachmentIds)
+
+        // 3. Non-cancellation exception marks requested IDs failed instead of hanging blank forever.
+        mode = "throw"
+        batcher.request("att-throw")
+        advanceUntilIdle()
+        assertTrue("att-throw" in state.failedAttachmentIds)
+
+        // 4. Explicit retry clears failed state and resolves when backend recovers.
+        mode = "recover"
+        batcher.retry("att-throw")
+        advanceUntilIdle()
+        assertFalse("att-throw" in state.failedAttachmentIds)
+        assertEquals("https://r2.example/att-throw-recovered.png", state.resolvedUrls["att-throw"])
+        assertEquals("https://r2.example/att-throw-recovered.png", batcher.peekCachedUrl("att-throw"))
+        assertEquals(4, batchCalls)
+    }
 }

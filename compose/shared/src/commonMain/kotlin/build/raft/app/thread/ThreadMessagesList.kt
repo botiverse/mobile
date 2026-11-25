@@ -4194,7 +4194,7 @@ private fun ThreadMessagesListContent(
                             )
                         else ->
                             threadOlderMessagesStatusSpec(renderPayload)?.let { spec ->
-                                ThreadHistoryStatusRow(spec)
+                                ThreadHistoryStatusRow(spec, loadingRevealDelayMs = 0L)
                             }
                     }
                     }
@@ -4419,7 +4419,7 @@ private fun ThreadMessagesListContent(
                             onFillGap = { target ->
                                 onThreadEvent(ThreadFillTimelineGapAction, target.key, null, null)
                             },
-                            replyThread = renderPayload.replyThreadSurface,
+                            replyThread = renderPayload.replyThreadSurface || renderPayload.taskConversationSurface,
                         )
                     }
                     dateDividerDay?.let { day ->

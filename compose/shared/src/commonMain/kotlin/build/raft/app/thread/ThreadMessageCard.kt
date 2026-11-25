@@ -742,17 +742,19 @@ private fun ThreadMessageCardContent(
                 )?.parsed
             }
         }
-    val initialCachedQuotedPermalink =
+    val initialQuotedPermalinkLookup =
         remember(message.id, message.body, currentServerSlug, initialQuotedPermalinkTarget, quotedPermalinkLookup) {
             initialQuotedPermalinkTarget?.let { target -> quotedPermalinkLookup?.invoke(target) }
+                ?: ThreadQuotedPermalinkCacheLookup.Miss
         }
     val quotedPermalinkState =
-        remember(message.id, message.body, currentServerSlug, hasQuotedPermalinkLoader, initialCachedQuotedPermalink) {
+        remember(message.id, message.body, currentServerSlug, hasQuotedPermalinkLoader, initialQuotedPermalinkLookup) {
             mutableStateOf<ThreadQuotedPermalinkUiState?>(
-                when {
-                    initialCachedQuotedPermalink != null -> initialCachedQuotedPermalink.toQuotedPermalinkUiState()
-                    initialQuotedPermalinkTarget != null -> ThreadQuotedPermalinkUiState.Loading
-                    else -> null
+                when (initialQuotedPermalinkLookup) {
+                    is ThreadQuotedPermalinkCacheLookup.Hit -> initialQuotedPermalinkLookup.message.toQuotedPermalinkUiState()
+                    ThreadQuotedPermalinkCacheLookup.KnownUnavailable -> ThreadQuotedPermalinkUiState.Unavailable
+                    ThreadQuotedPermalinkCacheLookup.Miss ->
+                        if (initialQuotedPermalinkTarget != null) ThreadQuotedPermalinkUiState.Loading else null
                 }
             )
         }
@@ -764,7 +766,7 @@ private fun ThreadMessageCardContent(
         quotedPermalinkLoader,
         quotedPermalinkLookup,
         initialQuotedPermalinkTarget,
-        initialCachedQuotedPermalink,
+        initialQuotedPermalinkLookup,
     ) {
         val loader = quotedPermalinkLoader ?: return@LaunchedEffect
         val target = initialQuotedPermalinkTarget
@@ -782,17 +784,35 @@ private fun ThreadMessageCardContent(
             }
             return@LaunchedEffect
         }
-        val cached = initialCachedQuotedPermalink ?: quotedPermalinkLookup?.invoke(target)
-        if (cached != null) {
-            quotedPermalinkState.value = cached.toQuotedPermalinkUiState()
-            return@LaunchedEffect
+        val cached =
+            if (initialQuotedPermalinkLookup != ThreadQuotedPermalinkCacheLookup.Miss) {
+                initialQuotedPermalinkLookup
+            } else {
+                quotedPermalinkLookup?.invoke(target) ?: ThreadQuotedPermalinkCacheLookup.Miss
+            }
+        when (cached) {
+            is ThreadQuotedPermalinkCacheLookup.Hit -> {
+                quotedPermalinkState.value = cached.message.toQuotedPermalinkUiState()
+                return@LaunchedEffect
+            }
+            ThreadQuotedPermalinkCacheLookup.KnownUnavailable -> {
+                quotedPermalinkState.value = ThreadQuotedPermalinkUiState.Unavailable
+                return@LaunchedEffect
+            }
+            ThreadQuotedPermalinkCacheLookup.Miss -> Unit
         }
         if (quotedPermalinkState.value == null) {
             quotedPermalinkState.value = ThreadQuotedPermalinkUiState.Loading
         }
         quotedPermalinkState.value =
-            loader(target)?.toQuotedPermalinkUiState()
-                ?: ThreadQuotedPermalinkUiState.Unavailable
+            try {
+                loader(target)?.toQuotedPermalinkUiState()
+                    ?: ThreadQuotedPermalinkUiState.Unavailable
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                ThreadQuotedPermalinkUiState.Unavailable
+            }
     }
     val jointAuthor =
         rememberRaftJointActor(

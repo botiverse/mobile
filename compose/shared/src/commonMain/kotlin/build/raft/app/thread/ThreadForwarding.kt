@@ -778,12 +778,15 @@ private fun ThreadForwardBundleScreen() {
     val resolvedMessageBodyTextStyle = rememberRaftMessageBodyTextStyle(selectedMessageBodyFontSize)
     val repository =
         if (routeOwner != null && route != null && routeOwner.serverId == route.serverId.value) {
-            remember(sharedStores, authStore, routeOwner, authorityGateway) {
+            remember(sharedStores, storeScope, authStore, routeOwner, authorityGateway) {
                 AuthenticatedThreadForwardBundleDetailRepository(
                     messageStore = sharedStores.threadMessageStore,
                     authStore = authStore,
                     owner = routeOwner,
                     gateway = authorityGateway,
+                    candidateCacheScopeIdProvider = {
+                        sharedStores.currentAuthenticatedRouteCandidateCacheScopeId(storeScope, routeOwner)
+                    },
                     logger = { message -> bridge.log("thread_forward_bundle_repository $message") },
                 )
             }

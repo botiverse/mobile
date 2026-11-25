@@ -1698,6 +1698,124 @@ def check_ios_webview_media_capture_tcc_guard(
         )
 
 
+DURABLE_CROSS_GAPS_CALL = re.compile(
+    r"(?<!\bfun\s)\b(durableOlderPage\w*|durableNewerPage\w*|readBeforeTimeline|readAfterTimeline)\s*\("
+)
+CROSS_GAPS_ARG = re.compile(r"\bcrossGaps\s*=")
+BARE_DURABLE_LAST_KNOWN = re.compile(r"\.\s*durableLastKnown\b")
+POSITIVE_MAIN_LOAD_FAILED = re.compile(r"(?<![!.\w])(?:\w+\s*\.\s*)?mainLoadFailed\b")
+NEGATED_MAIN_LOAD_FAILED = re.compile(r"!\s*(?:\w+\s*\.\s*)?mainLoadFailed\b")
+THREAD_TIMELINE_ALPHA_ROW_FILES = (
+    "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadTimelineRows.kt",
+    "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadTimelineGaps.kt",
+)
+ALPHA_MODIFIER_CALL = re.compile(r"\.\s*alpha\s*\(")
+ALPHA_ZERO_LITERAL = re.compile(r"\b0(?:\.0+)?[fF]\b")
+
+
+def _extract_paren_body(text: str, open_paren_index: int) -> str:
+    """Return the inner text of the balanced `(...)` starting at `open_paren_index`."""
+    depth = 0
+    for idx in range(open_paren_index, len(text)):
+        ch = text[idx]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return text[open_paren_index + 1 : idx]
+    return text[open_paren_index + 1 :]
+
+
+def _extract_named_arg_value(args_text: str, value_start: int) -> str:
+    """Return the RHS expression of a named argument up to the next top-level `,` or end."""
+    depth_paren = 0
+    depth_bracket = 0
+    depth_brace = 0
+    for idx in range(value_start, len(args_text)):
+        ch = args_text[idx]
+        if ch == "(":
+            depth_paren += 1
+        elif ch == ")":
+            depth_paren -= 1
+        elif ch == "[":
+            depth_bracket += 1
+        elif ch == "]":
+            depth_bracket -= 1
+        elif ch == "{":
+            depth_brace += 1
+        elif ch == "}":
+            depth_brace -= 1
+        elif ch == "," and depth_paren == 0 and depth_bracket == 0 and depth_brace == 0:
+            return args_text[value_start:idx].strip()
+    return args_text[value_start:].strip()
+
+
+def check_no_online_cross_gaps(common_main_sources: dict[str, str]) -> None:
+    """Incident: #proj-mobile:#386 P0-1 — online stand-in paging crossed SQLite gaps.
+
+    Passing `crossGaps = true` or bare `crossGaps = *.durableLastKnown` (without gating on
+    `mainLoadFailed`) while initial network refresh is still in flight splices lower islands
+    into the online timeline and produces stacked "Loading older messages…" gap rows.
+    """
+    seen_calls = 0
+    for name in sorted(common_main_sources):
+        code = _kotlin_code_only(common_main_sources[name])
+        for match in DURABLE_CROSS_GAPS_CALL.finditer(code):
+            line_start = code.rfind("\n", 0, match.start()) + 1
+            prefix = code[line_start : match.start()]
+            if re.search(r"\bfun\s+$", prefix):
+                continue
+            seen_calls += 1
+            open_paren = match.end() - 1
+            args_text = _extract_paren_body(code, open_paren)
+            for arg_match in CROSS_GAPS_ARG.finditer(args_text):
+                expr = re.sub(r"\s+", " ", _extract_named_arg_value(args_text, arg_match.end()))
+                line = code.count("\n", 0, match.start() + arg_match.start()) + 1
+                if expr == "true":
+                    raise Violation(
+                        f"online crossGaps (#proj-mobile:#386): {name}:{line} calls "
+                        f"{match.group(1)} with literal `crossGaps = true`; gate gap crossing "
+                        "strictly on offline stand-in (`durableLastKnown && mainLoadFailed`)"
+                    )
+                if BARE_DURABLE_LAST_KNOWN.search(expr) and (
+                    not POSITIVE_MAIN_LOAD_FAILED.search(expr)
+                    or NEGATED_MAIN_LOAD_FAILED.search(expr)
+                ):
+                    raise Violation(
+                        f"online crossGaps (#proj-mobile:#386): {name}:{line} calls "
+                        f"{match.group(1)} with `crossGaps = {expr}` (bare durableLastKnown "
+                        "without `mainLoadFailed`); gate strictly on `durableLastKnown && mainLoadFailed`"
+                    )
+    if seen_calls == 0:
+        raise Violation(
+            "online crossGaps (#proj-mobile:#386): scan never reached durableOlderPage*/durableNewerPage* calls"
+        )
+
+
+def check_no_alpha_zero_loading_row(common_main_sources: dict[str, str]) -> None:
+    """Incident: Hands a7842ad1 / #proj-mobile:#386 P0-2 — transparent alpha(0f) loading row.
+
+    Hiding a loading status row with `.alpha(if (...) 1f else 0f)` reserves ~34dp of invisible
+    blank space between messages for 600ms. Render immediately (`loadingRevealDelayMs = 0L`) or
+    collapse to 0dp when unrevealed instead.
+    """
+    for rel in THREAD_TIMELINE_ALPHA_ROW_FILES:
+        if rel not in common_main_sources:
+            raise Violation(f"alpha-zero loading row (#proj-mobile:#386): missing {rel}")
+        code = _kotlin_code_only(common_main_sources[rel])
+        for match in ALPHA_MODIFIER_CALL.finditer(code):
+            inner = _extract_paren_body(code, match.end() - 1)
+            if ALPHA_ZERO_LITERAL.search(inner):
+                line = code.count("\n", 0, match.start()) + 1
+                snippet = re.sub(r"\s+", " ", inner).strip()
+                raise Violation(
+                    f"alpha-zero loading row (#proj-mobile:#386): {rel}:{line} uses "
+                    f"`.alpha({snippet})` which reserves invisible blank layout height; "
+                    "render immediately or collapse to 0dp instead"
+                )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -1732,6 +1850,11 @@ def run(root: Path) -> None:
             name: text for name, text in prod_kotlin.items() if "/src/iosMain/" in name
         },
     )
+    common_main_kotlin = {
+        name: text for name, text in prod_kotlin.items() if "/src/commonMain/" in name
+    }
+    check_no_online_cross_gaps(common_main_kotlin)
+    check_no_alpha_zero_loading_row(common_main_kotlin)
     check_native_safe_test_names(_native_test_sources(root))
     check_no_top_level_or_object_snapshot_state(_top_level_snapshot_state_sources(root))
     check_date_time_di_invariants(_date_time_di_sources(root))
@@ -2339,6 +2462,67 @@ com.apple.SignInWithApple = {
                 f"self-test: iOS WebView TCC guard accepted {(bad_plist, bad_loc, bad_kt)!r}"
             )
 
+    good_cross_gaps = {
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPaging.kt": (
+            "// durableOlderPageIfCurrent(crossGaps = true) in comment is ignored\n"
+            'val note = "durableNewerPageIfCurrent(crossGaps = initial.durableLastKnown)"\n'
+            "fun durableOlderPageIfCurrent(crossGaps: Boolean = false) {}\n"
+            "val p = dataSource.durableOlderPageIfCurrent(ctx, crossGaps = existing.durableLastKnown && existing.mainLoadFailed)\n"
+            "val q = dataSource.durableOlderPageIfCurrent(ctx, crossGaps = false)\n"
+            "val r = dataSource.durableNewerPageIfCurrent(ctx, crossGaps = initial.durableLastKnown && initial.mainLoadFailed)\n"
+        ),
+    }
+    check_no_online_cross_gaps(good_cross_gaps)
+    for bad_cross in (
+        {"compose/shared/src/commonMain/kotlin/A.kt": "val x = 1\n"},
+        {"compose/shared/src/commonMain/kotlin/A.kt": "ds.durableOlderPageIfCurrent(ctx, crossGaps = true)\n"},
+        {"compose/shared/src/commonMain/kotlin/A.kt": "ds.durableNewerPageIfCurrent(ctx, crossGaps = true)\n"},
+        {"compose/shared/src/commonMain/kotlin/A.kt": "ds.durableOlderPageIfCurrent(ctx, crossGaps = existing.durableLastKnown)\n"},
+        {"compose/shared/src/commonMain/kotlin/A.kt": "ds.durableNewerPageIfCurrent(ctx, crossGaps = initial.durableLastKnown)\n"},
+        {"compose/shared/src/commonMain/kotlin/A.kt": "ds.durableOlderPageIfCurrent(ctx, crossGaps = existing.durableLastKnown && !existing.mainLoadFailed)\n"},
+        {"compose/shared/src/commonMain/kotlin/A.kt": "readBeforeTimeline(scope, cursor, segments, crossGaps = true)\n"},
+        {"compose/shared/src/commonMain/kotlin/A.kt": "readAfterTimeline(scope, cursor, segments, crossGaps = state.durableLastKnown)\n"},
+    ):
+        try:
+            check_no_online_cross_gaps(bad_cross)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: online crossGaps checker accepted {bad_cross!r}")
+
+    good_alpha_rows = {
+        THREAD_TIMELINE_ALPHA_ROW_FILES[0]: (
+            "// Modifier.alpha(if (loadingRevealed) 1f else 0f) in comment is ignored\n"
+            "val c = RaftColor.TextBlack.copy(alpha = 0.4f)\n"
+            "Box(modifier = Modifier.fillMaxWidth())\n"
+        ),
+        THREAD_TIMELINE_ALPHA_ROW_FILES[1]: (
+            "ThreadHistoryStatusRow(spec, loadingRevealDelayMs = 0L)\n"
+        ),
+    }
+    check_no_alpha_zero_loading_row(good_alpha_rows)
+    for bad_alpha in (
+        {THREAD_TIMELINE_ALPHA_ROW_FILES[0]: good_alpha_rows[THREAD_TIMELINE_ALPHA_ROW_FILES[0]]},
+        {
+            **good_alpha_rows,
+            THREAD_TIMELINE_ALPHA_ROW_FILES[0]: "Column(Modifier.alpha(if (loadingRevealed) 1f else 0f)) {}\n",
+        },
+        {
+            **good_alpha_rows,
+            THREAD_TIMELINE_ALPHA_ROW_FILES[0]: "Column(Modifier.alpha(if (!loadingRevealed) 0.0f else 1f)) {}\n",
+        },
+        {
+            **good_alpha_rows,
+            THREAD_TIMELINE_ALPHA_ROW_FILES[1]: "Column(Modifier.alpha(0f)) {}\n",
+        },
+    ):
+        try:
+            check_no_alpha_zero_loading_row(bad_alpha)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: alpha-zero loading row checker accepted {bad_alpha!r}")
+
     print("check_source_constraints self-test passed")
 
 
@@ -2362,7 +2546,8 @@ def main(argv: list[str]) -> int:
         "#wg-mobile-sync:bf308ade desktop Wry off-EDT gateway, "
         "#wg-mobile-feedback:#274 freshness by default, "
         "dm:@artin:#6 web-container security & module boundary invariants, "
-        "#wg-mobile-feedback:#308 iOS WebView media capture TCC guard)"
+        "#wg-mobile-feedback:#308 iOS WebView media capture TCC guard, "
+        "#proj-mobile:#386 no online crossGaps & no alpha-zero loading row)"
     )
     return 0
 

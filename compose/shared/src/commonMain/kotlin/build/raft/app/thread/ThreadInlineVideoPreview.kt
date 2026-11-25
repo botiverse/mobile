@@ -105,7 +105,8 @@ internal fun ThreadInlineVideoPreviewUiState?.shouldRetryOnAttachmentUpdate(): B
 
 internal data class ThreadInlineVideoPreviewHost(
     val states: Map<String, ThreadInlineVideoPreviewUiState>,
-    val requestPreview: (attachmentId: String, force: Boolean) -> Unit
+    val requestPreview: (attachmentId: String, force: Boolean) -> Unit,
+    val peekCachedUrl: ((attachmentId: String) -> String?)? = null,
 )
 
 internal val LocalThreadInlineVideoPreviewHost =
@@ -150,9 +151,20 @@ internal fun ThreadInlineVideoAttachmentCard(
     onOpenPreview: (() -> Unit)? = null
 ) {
     val host = LocalThreadInlineVideoPreviewHost.current
-    val previewState = host?.states?.get(attachment.id)
+    val cachedUrl =
+        remember(attachment.id, host?.peekCachedUrl) {
+            host?.peekCachedUrl?.invoke(attachment.id)?.trim()?.takeIf { it.isNotEmpty() }
+        }
+    val previewState =
+        host?.states?.get(attachment.id)
+            ?: cachedUrl?.let { url ->
+                ThreadInlineVideoPreviewUiState(
+                    status = ThreadInlineVideoPreviewStatus.Ready,
+                    url = url,
+                )
+            }
 
-    LaunchedEffect(attachment.id, host != null) {
+    LaunchedEffect(attachment.id, host != null, previewState == null) {
         if (previewState == null) {
             host?.requestPreview?.invoke(attachment.id, false)
         }

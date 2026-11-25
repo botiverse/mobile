@@ -40,7 +40,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import build.raft.designsystem.components.RaftHoverTier
 import androidx.compose.ui.semantics.contentDescription
@@ -54,7 +53,6 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import build.raft.designsystem.components.raftClickable
 
-private val ThreadNewerMessagesBoundaryHeight = 36.dp
 private val ThreadSystemMessageTimeColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.4f)
 private val ThreadSystemMessageBodyColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.5f)
 
@@ -177,18 +175,16 @@ internal fun ThreadNewerMessagesBoundaryRow(
         )
         return
     }
-    Box(
-        modifier = Modifier.fillMaxWidth().height(ThreadNewerMessagesBoundaryHeight),
-        contentAlignment = Alignment.Center
-    ) {
-        if (newerMessagesStatus == "loading") {
-            Text(
-                text = spec.label.localized(),
-                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                color = RaftColor.TextMutedGray
-            )
-        }
+    if (newerMessagesStatus == "loading") {
+        ThreadHistoryStatusRow(
+            spec = ThreadHistoryStatusSpec(label = spec.label, loading = true),
+            loadingRevealDelayMs = 0L,
+        )
+        return
     }
+    // Keep the LazyColumn slot when idle (index arithmetic stays invariant) at 0dp height so
+    // anchored opens never show a 36dp blank white band below the last message (#proj-mobile:#386).
+    Box(modifier = Modifier.fillMaxWidth())
 }
 
 @Composable
@@ -213,21 +209,24 @@ internal fun ThreadHistoryStatusRow(
     loadingRevealDelayMs: Long = ThreadStandInLoadingRevealDelayMs,
     spinnerStillStep: Int? = null
 ) {
-    // A load that answers within the delay replaces the frame without the spinner ever showing; the
-    // row keeps its height meanwhile, so revealing it moves nothing.
-    var loadingRevealed by remember(spec.loading) { mutableStateOf(!spec.loading || loadingRevealDelayMs <= 0L) }
+    // Collapse to 0dp while waiting out any non-zero delay so a hidden loading row never reserves
+    // invisible blank height (Hands a7842ad1 / #proj-mobile:#386).
+    var loadingRevealed by remember(spec.loading, loadingRevealDelayMs) {
+        mutableStateOf(!spec.loading || loadingRevealDelayMs <= 0L)
+    }
     if (!loadingRevealed) {
-        LaunchedEffect(Unit) {
+        LaunchedEffect(spec.loading, loadingRevealDelayMs) {
             delay(loadingRevealDelayMs)
             loadingRevealed = true
         }
+        Box(modifier = Modifier.fillMaxWidth())
+        return
     }
     Column(
         modifier =
             Modifier.fillMaxWidth()
                 .raftSafeAreaHorizontalPadding()
-                .padding(horizontal = RaftAppSpacing.Md, vertical = 8.dp)
-                .alpha(if (loadingRevealed) 1f else 0f),
+                .padding(horizontal = RaftAppSpacing.Md, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Row(
@@ -345,8 +344,15 @@ internal data class ThreadQuotedPermalinkMessage(
 
 internal typealias ThreadQuotedPermalinkLoader = suspend (ParsedRaftPermalink) -> ThreadQuotedPermalinkMessage?
 
-/** Synchronous cache lookup for already-loaded quoted permalinks (zero Frame 1 loading flash). */
-internal typealias ThreadQuotedPermalinkLookup = (ParsedRaftPermalink) -> ThreadQuotedPermalinkMessage?
+/** Tri-state synchronous cache lookup for quoted permalinks (zero Frame 1 loading flash). */
+internal sealed interface ThreadQuotedPermalinkCacheLookup {
+    data class Hit(val message: ThreadQuotedPermalinkMessage) : ThreadQuotedPermalinkCacheLookup
+    data object KnownUnavailable : ThreadQuotedPermalinkCacheLookup
+    data object Miss : ThreadQuotedPermalinkCacheLookup
+}
+
+/** Synchronous cache lookup for already-loaded or known-unavailable quoted permalinks. */
+internal typealias ThreadQuotedPermalinkLookup = (ParsedRaftPermalink) -> ThreadQuotedPermalinkCacheLookup
 
 /**
  * The loader behind the quoted-permalink card. SharedThreadRouteContent is at the JVM argument

@@ -1284,7 +1284,8 @@ internal class SharedThreadDataSource(
         beforeSeq: Long,
         expectedOwnerScopeId: String?,
         replyParent: ThreadDurableReplyParent? = null,
-        crossGaps: Boolean = true,
+        crossGaps: Boolean = false,
+        allowLegacyStandIn: Boolean = false,
     ): SharedThreadDurableOlderPage? {
         val channelId = routeIdentity.timelineChannelId
         fun refuse(reason: String): SharedThreadDurableOlderPage? {
@@ -1369,7 +1370,7 @@ internal class SharedThreadDataSource(
             )
         }
         if (reader.supportsTimelineReads) return refuse("no_frame")
-        if (!crossGaps) return refuse("no_timeline_reader")
+        if (!crossGaps && !allowLegacyStandIn) return refuse("no_timeline_reader")
         val page =
             when (admission) {
                 DurableScopeAdmission.TopLevel -> reader.readBefore(partition, channelId, beforeSeq, pageSize)
@@ -1401,6 +1402,7 @@ internal class SharedThreadDataSource(
             pageSize = pageSize,
             canLoadMoreBefore = canLoadMoreBefore,
             reachedOldest = !canLoadMoreBefore,
+            insideProvenSegment = true,
         )
     }
 
