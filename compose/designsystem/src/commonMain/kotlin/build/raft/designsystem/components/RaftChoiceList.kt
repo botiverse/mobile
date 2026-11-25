@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -58,6 +59,27 @@ object RaftChoiceListDefaults {
     /** `pr-11`: the end of a row with an action keeps 44dp for it. */
     val ActionInset: Dp = 44.dp
 }
+
+/** raft-ui ChoiceList `search`: when the search field shows above the frame. */
+enum class RaftChoiceListSearch {
+    /**
+     * `search="always"`: people recall what they want, such as a person they know by name (Add
+     * members), so the field shows at any count.
+     */
+    Always,
+
+    /**
+     * `search="auto"`: people recognise the right row by comparing what the rows say, so the field
+     * shows only above [RaftChoiceListDefaults.SearchAbove] items; back to that many or fewer, it
+     * goes, and its text with it.
+     */
+    Auto,
+}
+
+/** The frame's border: `line-hairline`, or `danger-strong` while [invalid] and [enabled] (disabled wins). */
+@Composable
+private fun raftChoiceListFrameBorder(invalid: Boolean, enabled: Boolean) =
+    if (invalid && enabled) RaftTheme.colors.dangerStrong else RaftTheme.colors.lineHairline
 
 /**
  * One row of a [RaftChoiceList] or [RaftMultiChoiceList]: its [value], [label] (also what the
@@ -114,6 +136,14 @@ class RaftChoiceListGroup(val value: String, val label: String)
  *   order, as in [RaftMultiChoiceList] (raft-ui ChoiceList `groups`: Pi's "Sign in with an
  *   account" / "Use an API key"), items of no known group last with no heading.
  *
+ * - [onItemClick]: every tap on an enabled row, the chosen one included, after any
+ *   [onValueChange]. [onValueChange] only reports a new choice; a question card that moves on
+ *   when an option is tapped needs the tap itself, so tapping the already-chosen answer again
+ *   (after going back) moves on too (web ActionCardChoiceField's row click).
+ * - [invalid]: the frame's border turns `danger-strong`, as an invalid field's control does
+ *   (raft-ui Field "Invalid"; the web's question card passes `border-danger-strong` to its
+ *   ChoiceList). Disabled wins over invalid.
+ *
  * raft-ui holds no copy: every word is the caller's. Deviation: the touch sizes always apply
  * (a phone app). Several choices, a footer and `fill`: [RaftMultiChoiceList].
  */
@@ -131,9 +161,10 @@ fun <T> RaftChoiceList(
     initialQuery: String = "",
     action: (@Composable (RaftChoiceListItem<T>) -> Unit)? = null,
     groups: List<RaftChoiceListGroup> = emptyList(),
+    onItemClick: ((T) -> Unit)? = null,
+    invalid: Boolean = false,
 ) {
     val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
     val searchable = items.size > RaftChoiceListDefaults.SearchAbove
     var query by remember { mutableStateOf(initialQuery) }
     LaunchedEffect(searchable) { if (!searchable) query = "" }
@@ -172,7 +203,7 @@ fun <T> RaftChoiceList(
             Modifier
                 .fillMaxWidth()
                 .background(colors.layerCard, frameShape)
-                .border(RaftStroke.Hairline, colors.lineHairline, frameShape)
+                .border(RaftStroke.Hairline, raftChoiceListFrameBorder(invalid, enabled), frameShape)
                 .then(if (searchable) Modifier.heightIn(max = RaftChoiceListDefaults.ScrollMaxHeight) else Modifier)
                 .then(if (searchable) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                 .padding(4.dp),
@@ -192,7 +223,10 @@ fun <T> RaftChoiceList(
                                     selected = item.value == value,
                                     enabled = enabled && item.enabled,
                                     multiple = false,
-                                    onClick = { if (item.value != value) onValueChange(item.value) },
+                                    onClick = {
+                                        if (item.value != value) onValueChange(item.value)
+                                        onItemClick?.invoke(item.value)
+                                    },
                                     action = action,
                                 )
                             }
@@ -206,13 +240,16 @@ fun <T> RaftChoiceList(
 }
 
 /**
- * raft-ui ChoiceList with `multiple` and `search="always"` (choice-list.md, "Add Members"): a
- * checkbox on each row, [values] the chosen ones; the whole row ticks or unticks it.
+ * raft-ui ChoiceList with `multiple` (choice-list.md, "Add Members"): a checkbox on each row,
+ * [values] the chosen ones; the whole row ticks or unticks it.
  *
- * - The search field always shows (people recall a name), never takes focus by itself (a touch
- *   screen), and its text is the caller's ([query], [onQueryChange]) so a [footer] or
- *   [noMatchLabel] can quote it. Rows match their `searchText` (else `label`) case-insensitively,
- *   or, when the caller runs its own search, [matchedValues] in its order.
+ * - [search]: [RaftChoiceListSearch.Always] (the default, `search="always"`: people recall a
+ *   name) shows the search field at any count; [RaftChoiceListSearch.Auto] only above
+ *   [RaftChoiceListDefaults.SearchAbove] items, clearing [query] when the items drop back.
+ * - The search field never takes focus by itself (a touch screen), and its text is the caller's
+ *   ([query], [onQueryChange]) so a [footer] or [noMatchLabel] can quote it. Rows match their
+ *   `searchText` (else `label`) case-insensitively, or, when the caller runs its own search,
+ *   [matchedValues] in its order.
  * - The rows chosen when the search text last changed stay first within their own group (Agents,
  *   Humans), ahead of that group's other matches; searching never changes the choice.
  * - [groups]: each item names its group; rows come under their group's heading (`text-caption`
@@ -222,6 +259,11 @@ fun <T> RaftChoiceList(
  *   them (the way to make what isn't listed: "Create Agent").
  * - [fill]: the list takes the height it is given (pass a weight in [modifier]) and its rows
  *   scroll inside it; otherwise the rows scroll past 288dp.
+ * - [lazy] false: the rows are a plain column, for a short list inside a form that scrolls
+ *   itself (a question card's options). It is as tall as its rows, as raft-ui's frame is without
+ *   a search field, and scrolls past 288dp only while the search field shows (or takes the given
+ *   height with [fill]). [lazy] true (the default) is a lazy list, always held to 288dp.
+ * - [invalid]: the frame's border turns `danger-strong` (see [RaftChoiceList]).
  * - No items: [emptyLabel] in the frame and no rows; nothing matching: [noMatchLabel] under the
  *   chosen rows.
  */
@@ -242,76 +284,131 @@ fun <T> RaftMultiChoiceList(
     matchedValues: List<T>? = null,
     fill: Boolean = false,
     footer: (@Composable () -> Unit)? = null,
+    search: RaftChoiceListSearch = RaftChoiceListSearch.Always,
+    lazy: Boolean = true,
+    invalid: Boolean = false,
 ) {
     val colors = RaftTheme.colors
-    val needle = query.trim().lowercase()
+    val searchable = search == RaftChoiceListSearch.Always || items.size > RaftChoiceListDefaults.SearchAbove
+    // The field goes with its text: no search on rows no one can see filtered.
+    LaunchedEffect(searchable) { if (!searchable && query.isNotEmpty()) onQueryChange("") }
+    val needle = if (searchable) query.trim().lowercase() else ""
     // Taken when the text changes, not when the choice does: a row never moves under the finger.
     val pinned = remember(needle) { values }
     val entries = raftMultiChoiceListEntries(items, pinned, needle, matchedValues, groups)
     val noMatches = needle.isNotEmpty() && entries.none { it is RaftChoiceListEntry.Row && it.item.value !in pinned }
     val frameShape = RoundedCornerShape(RaftRadius.Container)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        RaftTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = searchPlaceholder,
-            enabled = enabled,
-            leading = { RaftGlyphIcon(RaftGlyph.Search, size = 18.dp) },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            trailingAction =
-                if (query.isNotEmpty()) {
-                    { RaftTextFieldClearAction(onClear = { onQueryChange("") }, label = clearSearchLabel, enabled = enabled) }
-                } else {
-                    null
-                },
-        )
+        if (searchable) {
+            RaftTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = searchPlaceholder,
+                enabled = enabled,
+                leading = { RaftGlyphIcon(RaftGlyph.Search, size = 18.dp) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                trailingAction =
+                    if (query.isNotEmpty()) {
+                        { RaftTextFieldClearAction(onClear = { onQueryChange("") }, label = clearSearchLabel, enabled = enabled) }
+                    } else {
+                        null
+                    },
+            )
+        }
         Column(
             Modifier
                 .fillMaxWidth()
                 .then(if (fill) Modifier.weight(1f) else Modifier)
                 .background(colors.layerCard, frameShape)
-                .border(RaftStroke.Hairline, colors.lineHairline, frameShape),
+                .border(RaftStroke.Hairline, raftChoiceListFrameBorder(invalid, enabled), frameShape),
         ) {
-            val rows: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
-                if (items.isEmpty()) {
-                    item(key = "empty") { ChoiceListNote(emptyLabel) }
-                } else {
-                    entries.forEach { entry ->
-                        when (entry) {
-                            is RaftChoiceListEntry.Heading ->
-                                item(key = "group:${entry.group.value}") { ChoiceListHeading(entry.group.label) }
-                            is RaftChoiceListEntry.Row -> {
-                                val row = entry.item
-                                item(key = "row:${row.value}") {
-                                    ChoiceListRow(
-                                        item = row,
-                                        selected = row.value in values,
-                                        enabled = enabled && row.enabled,
-                                        multiple = true,
-                                        onClick = { onValuesChange(if (row.value in values) values - row.value else values + row.value) },
-                                        action = null,
-                                    )
+            val toggle: (RaftChoiceListItem<T>) -> Unit = { row ->
+                onValuesChange(if (row.value in values) values - row.value else values + row.value)
+            }
+            if (!lazy) {
+                val scrolls = fill || searchable
+                val scrollState = rememberScrollState()
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(
+                            when {
+                                fill -> Modifier.weight(1f)
+                                searchable -> Modifier.heightIn(max = RaftChoiceListDefaults.ScrollMaxHeight)
+                                else -> Modifier
+                            },
+                        )
+                        // raft-ui 0.60 ScrollArea: the list's overlay scrollbar, as the lazy list's.
+                        .then(if (scrolls) Modifier.raftScrollbar(scrollState).verticalScroll(scrollState) else Modifier)
+                        .padding(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    if (items.isEmpty()) {
+                        ChoiceListNote(emptyLabel)
+                    } else {
+                        entries.forEach { entry ->
+                            when (entry) {
+                                is RaftChoiceListEntry.Heading -> ChoiceListHeading(entry.group.label)
+                                is RaftChoiceListEntry.Row -> {
+                                    val row = entry.item
+                                    key(row.value) {
+                                        ChoiceListRow(
+                                            item = row,
+                                            selected = row.value in values,
+                                            enabled = enabled && row.enabled,
+                                            multiple = true,
+                                            onClick = { toggle(row) },
+                                            action = null,
+                                        )
+                                    }
                                 }
                             }
                         }
+                        if (noMatches) ChoiceListNote(noMatchLabel)
                     }
-                    if (noMatches) item(key = "no-match") { ChoiceListNote(noMatchLabel) }
                 }
+            } else {
+                val rows: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
+                    if (items.isEmpty()) {
+                        item(key = "empty") { ChoiceListNote(emptyLabel) }
+                    } else {
+                        entries.forEach { entry ->
+                            when (entry) {
+                                is RaftChoiceListEntry.Heading ->
+                                    item(key = "group:${entry.group.value}") { ChoiceListHeading(entry.group.label) }
+                                is RaftChoiceListEntry.Row -> {
+                                    val row = entry.item
+                                    item(key = "row:${row.value}") {
+                                        ChoiceListRow(
+                                            item = row,
+                                            selected = row.value in values,
+                                            enabled = enabled && row.enabled,
+                                            multiple = true,
+                                            onClick = { toggle(row) },
+                                            action = null,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (noMatches) item(key = "no-match") { ChoiceListNote(noMatchLabel) }
+                    }
+                }
+                val listState = rememberLazyListState()
+                LazyColumn(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .then(if (fill) Modifier.weight(1f) else Modifier.heightIn(max = RaftChoiceListDefaults.ScrollMaxHeight))
+                            // raft-ui 0.60 ScrollArea: the list's overlay scrollbar.
+                            .raftScrollbar(listState),
+                    state = listState,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    content = rows,
+                )
             }
-            val listState = rememberLazyListState()
-            LazyColumn(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .then(if (fill) Modifier.weight(1f) else Modifier.heightIn(max = RaftChoiceListDefaults.ScrollMaxHeight))
-                        // raft-ui 0.60 ScrollArea: the list's overlay scrollbar.
-                        .raftScrollbar(listState),
-                state = listState,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-                content = rows,
-            )
             if (footer != null) {
                 Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam))
                 Box(Modifier.fillMaxWidth().padding(4.dp)) { footer() }
