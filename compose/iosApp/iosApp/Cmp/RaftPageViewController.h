@@ -45,6 +45,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL raftSideActionsShown;
 /** Keeps the Swift RaftIosSideActionHost alive with the page. */
 @property (nonatomic, strong, nullable) id raftSideActionHost;
+/** Keeps the iOS 26+ native Liquid Glass Home server switcher host alive with the page (#proj-mobile:#369). */
+@property (nonatomic, strong, nullable) id raftNativeServerSwitcherHost;
 /** PROTOTYPE: called after layout / appearance (reason), for the large-title scroll mirror. */
 @property (nonatomic, copy, nullable) void (^raftNativeNavBarLayoutHook)(NSString *reason);
 

@@ -67,6 +67,18 @@ callable build.raft.app.RaftNativeNavBarRegistry.*
 callable build.raft.app.RaftNativeNavBarRegistry.Companion.*
 callable build.raft.app.RaftNativeNavBarTypography.*
 callable build.raft.app.RaftNativeNavBarTypography.Companion.*
+callable build.raft.app.RaftNativeServerSwitcherAction.*
+callable build.raft.app.RaftNativeServerSwitcherAction.Companion.*
+callable build.raft.app.RaftNativeServerSwitcherBridge.*
+callable build.raft.app.RaftNativeServerSwitcherBridge.Companion.*
+function build.raft.app.RaftNativeServerSwitcherListener.onNativeServerSwitcherStateChanged
+callable build.raft.app.RaftNativeServerSwitcherListener.Companion.*
+callable build.raft.app.RaftNativeServerSwitcherRegistry.*
+callable build.raft.app.RaftNativeServerSwitcherRegistry.Companion.*
+callable build.raft.app.RaftNativeServerSwitcherRow.*
+callable build.raft.app.RaftNativeServerSwitcherRow.Companion.*
+callable build.raft.app.RaftNativeServerSwitcherState.*
+callable build.raft.app.RaftNativeServerSwitcherState.Companion.*
 callable build.raft.app.RaftNativeTabBarAvatar.*
 callable build.raft.app.RaftNativeTabBarAvatar.Companion.*
 callable build.raft.app.RaftNativeTabBarBridge.*
@@ -372,6 +384,7 @@ callable kotlin.Throwable.*
 callable kotlin.Throwable.Companion.*
 callable kotlin.Triple.*
 callable kotlin.Triple.Companion.*
+callable build.raft.app.RaftNativeServerSwitcherHostIdPageDataKey
 callable build.raft.app.RaftNativeTabBarHostIdPageDataKey
 callable build.raft.app.RaftSideActionHostIdPageDataKey
 callable build.raft.app.raftComposerImagePasteClaim

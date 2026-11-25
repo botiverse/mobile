@@ -3641,33 +3641,56 @@ private fun RaftStructuralHomeShellContent(
                         )
                     }
                 } else {
-                    // Preserve the legacy popover boundary when the opt-in is disabled:
-                    // the shell bottom inset/tab surface remains outside the dismiss host.
-                    RaftFloatingOverlayHost(
-                        onDismiss = onServerSwitcherDismiss,
-                        modifier = Modifier.padding(bottom = bottomContentPadding),
-                        dismissActivationDelayMillis = RaftFloatingOverlayClickTriggeredDismissDelayMillis
-                    ) { _ ->
-                        ServerSwitcherPanel(
+                    val nativeServerSwitcher =
+                        LocalRaftNativeServerSwitcherBridge.current.takeUnless { serverSwitcherInTopBar }
+                    if (nativeServerSwitcher != null) {
+                        // iOS 26+ (#proj-mobile:#369): render the Home server switcher as a real
+                        // native UIKit Liquid Glass (`UIGlassEffect`) popover anchored in-place to
+                        // the top-left server capsule above the Compose Metal canvas.
+                        RaftNativeServerSwitcherPublisher(
+                            bridge = nativeServerSwitcher,
                             servers = servers,
                             currentServerId = currentServerId,
                             pendingServerId = pendingServerId,
                             prefersChineseCommunity = prefersChineseCommunity,
                             labels = labels,
+                            anchorTopPt = homeServerSwitcherPanelTopOffset(overlayTopSafeArea, bellInColumn).value.toDouble(),
+                            anchorStartPt = HomeServerSwitcherMenuInset.value.toDouble(),
                             onServerSelected = onServerSelected,
                             onServerOrderChange = onServerOrderChange,
                             onCreateServerClick = onCreateServerClick,
                             onInviteHumanClick = onInviteHumanClick,
-                            modifier =
-                                Modifier
-                                    .padding(
-                                        top = homeServerSwitcherPanelTopOffset(overlayTopSafeArea, bellInColumn),
-                                        start = HomeServerSwitcherMenuInset,
-                                        end = HomeServerSwitcherMenuInset
-                                    )
-                                    // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
-                                    .clickable(onClick = {})
+                            onDismiss = onServerSwitcherDismiss,
                         )
+                    } else {
+                        // Preserve the legacy popover boundary when the opt-in is disabled:
+                        // the shell bottom inset/tab surface remains outside the dismiss host.
+                        RaftFloatingOverlayHost(
+                            onDismiss = onServerSwitcherDismiss,
+                            modifier = Modifier.padding(bottom = bottomContentPadding),
+                            dismissActivationDelayMillis = RaftFloatingOverlayClickTriggeredDismissDelayMillis
+                        ) { _ ->
+                            ServerSwitcherPanel(
+                                servers = servers,
+                                currentServerId = currentServerId,
+                                pendingServerId = pendingServerId,
+                                prefersChineseCommunity = prefersChineseCommunity,
+                                labels = labels,
+                                onServerSelected = onServerSelected,
+                                onServerOrderChange = onServerOrderChange,
+                                onCreateServerClick = onCreateServerClick,
+                                onInviteHumanClick = onInviteHumanClick,
+                                modifier =
+                                    Modifier
+                                        .padding(
+                                            top = homeServerSwitcherPanelTopOffset(overlayTopSafeArea, bellInColumn),
+                                            start = HomeServerSwitcherMenuInset,
+                                            end = HomeServerSwitcherMenuInset
+                                        )
+                                        // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
+                                        .clickable(onClick = {})
+                            )
+                        }
                     }
                 }
             }

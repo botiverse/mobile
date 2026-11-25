@@ -30,12 +30,22 @@ import shared
         var hostPageData = pageData
         hostPageData.removeValue(forKey: RaftIosTabBarController.hostIdPageDataKey)
         var nativeTabBar: (hostId: String, bridge: RaftNativeTabBarBridge)?
+        hostPageData.removeValue(forKey: RaftNativeServerSwitcherKt.RaftNativeServerSwitcherHostIdPageDataKey)
+        var nativeServerSwitcher: (hostId: String, bridge: RaftNativeServerSwitcherBridge)?
         if RaftIosTabBarController.hostsNativeTabBar(pageName: pageName) {
             let hostId = UUID().uuidString
             let bridge = RaftNativeTabBarBridge()
             RaftNativeTabBarRegistry.shared.register(hostId: hostId, bridge: bridge)
             hostPageData[RaftIosTabBarController.hostIdPageDataKey] = hostId
             nativeTabBar = (hostId, bridge)
+            // iOS 26+ only (#proj-mobile:#369): default-on in-place Liquid Glass Home server switcher.
+            if #available(iOS 26.0, *) {
+                let switcherHostId = UUID().uuidString
+                let switcherBridge = RaftNativeServerSwitcherBridge()
+                RaftNativeServerSwitcherRegistry.shared.register(hostId: switcherHostId, bridge: switcherBridge)
+                hostPageData[RaftNativeServerSwitcherKt.RaftNativeServerSwitcherHostIdPageDataKey] = switcherHostId
+                nativeServerSwitcher = (switcherHostId, switcherBridge)
+            }
         }
         // PROTOTYPE (native nav bar): pages whose head is the real UINavigationBar.
         hostPageData.removeValue(forKey: RaftNativeNavBarHostIdPageDataKeyName)
@@ -63,6 +73,13 @@ import shared
         if #available(iOS 27.1, *), let sideActions {
             container.raftSideActionHost = RaftIosSideActionHost(
                 controller: container, bridge: sideActions.bridge, hostId: sideActions.hostId
+            )
+        }
+        if #available(iOS 26.0, *), let nativeServerSwitcher {
+            container.raftNativeServerSwitcherHost = RaftIosServerSwitcherHost(
+                controller: container,
+                bridge: nativeServerSwitcher.bridge,
+                hostId: nativeServerSwitcher.hostId
             )
         }
         if let nativeNavBar = nativeNavBar {
