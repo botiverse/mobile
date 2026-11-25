@@ -917,7 +917,7 @@ class SharedServerMembersStoreTest {
                     agent("self", "Niko"),
                     agent("held", "Sage"),
                     agent("paused", "Pausey").copy(assistantPausedAt = "2026-11-25T10:00:00Z"),
-                    agent("blocked", "OldComp").copy(agentBlockedReason = "computer_offline"),
+                    agent("blocked", "OldComp").copy(agentBlockedReason = "computer_access_revoked"),
                     agent("readiness", "HeldReady").copy(
                         agentReadiness = AgentReadiness(state = "blocked", primary = AgentReadinessFact(code = "computer_offline"))
                     ),
