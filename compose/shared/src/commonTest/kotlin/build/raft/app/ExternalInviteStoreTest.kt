@@ -7,7 +7,9 @@ import build.raft.app.data.GuestAcceptance
 import build.raft.app.data.InviteApprover
 import build.raft.app.data.InviteConnectOptions
 import build.raft.app.data.InviteConnectableServer
+import build.raft.app.data.InviteOpenChannel
 import build.raft.app.data.InviteOptions
+import build.raft.app.data.InvitePublicChannel
 import build.raft.app.data.InviteServerProgress
 import build.raft.app.data.InviteServerSelection
 import build.raft.app.data.InviteeAnswer
@@ -21,6 +23,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -37,7 +40,9 @@ internal class FakeExternalInviteDataSource(
     var cancelAnswer: DataResult<InviteeAnswer<Unit>> = DataResult.Content(InviteeAnswer.Ok(Unit))
     var getCalls = 0
     val connectCalls = mutableListOf<List<InviteServerSelection>>()
+    val connectMakePrivateCalls = mutableListOf<Boolean>()
     val newServerCalls = mutableListOf<Pair<String, String>>()
+    val newServerMakePrivateCalls = mutableListOf<Boolean>()
     val cancelCalls = mutableListOf<String?>()
 
     override suspend fun get(): DataResult<InviteeAnswer<ExternalInviteForInvitee>> {
@@ -47,9 +52,17 @@ internal class FakeExternalInviteDataSource(
 
     override suspend fun acceptAsGuest() = guestAnswer
 
-    override suspend fun connectServers(servers: List<InviteServerSelection>) = connectAnswer.also { connectCalls += servers }
+    override suspend fun connectServers(servers: List<InviteServerSelection>, makePrivate: Boolean) =
+        connectAnswer.also {
+            connectCalls += servers
+            connectMakePrivateCalls += makePrivate
+        }
 
-    override suspend fun connectNewServer(name: String, slug: String) = newServerAnswer.also { newServerCalls += name to slug }
+    override suspend fun connectNewServer(name: String, slug: String, makePrivate: Boolean) =
+        newServerAnswer.also {
+            newServerCalls += name to slug
+            newServerMakePrivateCalls += makePrivate
+        }
 
     override suspend fun cancelRequest(requestId: String?) = cancelAnswer.also { cancelCalls += requestId }
 }
@@ -269,5 +282,106 @@ class ExternalInviteStoreTest {
         assertEquals(NewServerFieldError.SlugPattern, newServerFieldErrors("x", "1team").slug)
         assertNull(newServerFieldErrors("x", "team-1").slug)
         assertEquals("my-team-", toServerSlug("My Team!"))
+    }
+
+    @Test
+    fun hostMemberAlreadyInChannelCanOpenChannelDirectly() = runTest {
+        val source = FakeExternalInviteDataSource()
+        source.page =
+            DataResult.Content(
+                InviteeAnswer.Ok(
+                    inviteTestPage(guest = false).copy(
+                        alreadyInChannel = true,
+                        openChannel = InviteOpenChannel("host-1", "ch-launch", "launch"),
+                    )
+                )
+            )
+        val store = loaded(source)
+        store.dispatch(ExternalInviteIntent.OpenInChannel)
+        assertEquals(listOf<ExternalInviteEffect>(ExternalInviteEffect.OpenChannel("host-1", "ch-launch")), store.state.value.effects)
+    }
+
+    @Test
+    fun publicChannelAdminSendsMakePrivateAndBlocksNeedsApprovalServers() = runTest {
+        val source = FakeExternalInviteDataSource()
+        source.page =
+            DataResult.Content(
+                InviteeAnswer.Ok(
+                    inviteTestPage(guest = false).copy(
+                        publicChannel = InvitePublicChannel(canMakePrivate = true),
+                    )
+                )
+            )
+        val store = loaded(source)
+        assertTrue(store.state.value.isPublicChannel)
+        assertTrue(store.state.value.makePrivate)
+        assertFalse(store.state.value.publicRefused)
+
+        store.dispatch(ExternalInviteIntent.ShowConnect)
+        // s2 needsApproval is disallowed on a public channel; s3 is atLimit; only s1 can be picked.
+        store.dispatch(ExternalInviteIntent.SetPicked(listOf("s1", "s2", "s3")))
+        assertEquals(listOf("s1"), store.state.value.pickedServerIds)
+
+        store.dispatch(ExternalInviteIntent.Connect)
+        runCurrent()
+        assertEquals(listOf(true), source.connectMakePrivateCalls)
+
+        // New server also sends makePrivate = true.
+        store.dispatch(ExternalInviteIntent.ShowNewServer)
+        store.dispatch(ExternalInviteIntent.SetNewServerName("Beta Team"))
+        store.dispatch(ExternalInviteIntent.CreateServer)
+        runCurrent()
+        assertEquals(listOf(true), source.newServerMakePrivateCalls)
+    }
+
+    @Test
+    fun publicChannelConfirmAndAdminRefusalsRereadInPlaceAndPruneApprovalPicks() = runTest {
+        val source = FakeExternalInviteDataSource()
+        val store = loaded(source)
+        store.dispatch(ExternalInviteIntent.ShowConnect)
+        store.dispatch(ExternalInviteIntent.SetPicked(listOf("s1", "s2")))
+
+        // Channel became public while the page was open: 409 channel_public_confirm_required re-reads in place.
+        source.connectAnswer =
+            DataResult.Content(InviteeAnswer.Refused(InviteeRefusal(409, "channel_public_confirm_required", traceId = TraceId)))
+        source.page =
+            DataResult.Content(
+                InviteeAnswer.Ok(inviteTestPage(guest = false).copy(publicChannel = InvitePublicChannel(canMakePrivate = true)))
+            )
+        // Select direct server s1 and connect.
+        store.dispatch(ExternalInviteIntent.SetPicked(listOf("s1")))
+        store.dispatch(ExternalInviteIntent.Connect)
+        runCurrent()
+
+        assertEquals(InviteeMessage.ChannelPublicNow, store.state.value.error?.message)
+        assertTrue(store.state.value.makePrivate)
+
+        // Retry now carries makePrivate = true.
+        source.connectAnswer = DataResult.Content(InviteeAnswer.Ok(listOf(ServerConnectOutcome.Connected("s1", "p1"))))
+        store.dispatch(ExternalInviteIntent.Connect)
+        runCurrent()
+        assertEquals(listOf(false, true), source.connectMakePrivateCalls)
+
+        // 403 channel_public_admin_required re-reads in place and prunes needsApproval picks; Back lands on publicRefused.
+        val nonAdminSource = FakeExternalInviteDataSource()
+        val nonAdminStore = loaded(nonAdminSource)
+        nonAdminStore.dispatch(ExternalInviteIntent.ShowConnect)
+        nonAdminStore.dispatch(ExternalInviteIntent.SetPicked(listOf("s1", "s2")))
+        nonAdminSource.connectAnswer =
+            DataResult.Content(InviteeAnswer.Refused(InviteeRefusal(403, "channel_public_admin_required", traceId = TraceId)))
+        nonAdminSource.page =
+            DataResult.Content(
+                InviteeAnswer.Ok(inviteTestPage(guest = false).copy(publicChannel = InvitePublicChannel(canMakePrivate = false)))
+            )
+        // Pick direct server s1 then force refusal from server.
+        nonAdminStore.dispatch(ExternalInviteIntent.SetPicked(listOf("s1")))
+        nonAdminStore.dispatch(ExternalInviteIntent.Connect)
+        runCurrent()
+
+        assertEquals(InviteeMessage.ChannelPublic, nonAdminStore.state.value.error?.message)
+        assertTrue(nonAdminStore.state.value.publicRefused)
+        nonAdminStore.dispatch(ExternalInviteIntent.ShowOptions)
+        assertEquals(InviteStep.Options, nonAdminStore.state.value.step)
+        assertTrue(nonAdminStore.state.value.publicRefused)
     }
 }

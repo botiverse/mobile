@@ -117,6 +117,10 @@ internal enum class InviteeMessage {
 
     /** The connecting server already has a channel of this name, live or archived (web #15570). */
     ChannelNameTaken,
+    /** Public channel: only a host owner or admin may make it private (slock #16635). */
+    ChannelPublic,
+    /** Public channel: connecting makes it private; confirm by connecting again (slock #16635). */
+    ChannelPublicNow,
     Busy,
     TooManyAttempts,
     Generic,
@@ -180,6 +184,8 @@ private fun inviteeKnownCodeMessage(
         "connect_in_progress" -> InviteeMessage.ConnectInProgress
         "channel_archived" -> InviteeMessage.Archived
         "channel_name_taken" -> InviteeMessage.ChannelNameTaken
+        "channel_public_admin_required" -> InviteeMessage.ChannelPublic
+        "channel_public_confirm_required" -> InviteeMessage.ChannelPublicNow
         "channel_conversion_in_progress", "channel_conversion_fence_conflict", "channel_conversion_ledger_conflict" -> InviteeMessage.Busy
         else -> if (status == 429) InviteeMessage.TooManyAttempts else null
     }
@@ -369,6 +375,15 @@ internal data class ExternalInviteState(
             val slots = invite?.options?.connect?.slotsLeft ?: return null
             return if (servers.count { !it.atLimit } > slots) maxOf(0, slots - pickedServers.size) else null
         }
+
+    /** True when the invite's channel is public (a member's invite leaves it public, slock #16635). */
+    val isPublicChannel: Boolean get() = invite?.publicChannel != null
+
+    /** True when the viewer may make the public channel private by connecting (`makePrivate: true`). */
+    val makePrivate: Boolean get() = invite?.publicChannel?.canMakePrivate == true
+
+    /** True when the channel is public and the viewer cannot make it private. */
+    val publicRefused: Boolean get() = invite?.publicChannel?.let { !it.canMakePrivate } == true
 }
 
 internal sealed interface ExternalInviteIntent {
@@ -413,6 +428,9 @@ internal sealed interface ExternalInviteIntent {
     /** Connecting / connected: open the landing channel, else the server. */
     data object OpenServer : ExternalInviteIntent
 
+    /** Member already in the channel (`alreadyInChannel` + `openChannel`): open `#channel` on the host server. */
+    data object OpenInChannel : ExternalInviteIntent
+
     /** A progress row (its channel when connect-servers named it, else its server). */
     data class OpenProgress(val serverId: String, val channelId: String?) : ExternalInviteIntent
 
@@ -430,9 +448,16 @@ internal interface ExternalInviteDataSource {
 
     suspend fun acceptAsGuest(): DataResult<InviteeAnswer<GuestAcceptance>>
 
-    suspend fun connectServers(servers: List<InviteServerSelection>): DataResult<InviteeAnswer<List<ServerConnectOutcome>>>
+    suspend fun connectServers(
+        servers: List<InviteServerSelection>,
+        makePrivate: Boolean = false,
+    ): DataResult<InviteeAnswer<List<ServerConnectOutcome>>>
 
-    suspend fun connectNewServer(name: String, slug: String): DataResult<InviteeAnswer<NewServerConnectResult>>
+    suspend fun connectNewServer(
+        name: String,
+        slug: String,
+        makePrivate: Boolean = false,
+    ): DataResult<InviteeAnswer<NewServerConnectResult>>
 
     suspend fun cancelRequest(requestId: String?): DataResult<InviteeAnswer<Unit>>
 }
@@ -448,9 +473,11 @@ internal class RealExternalInviteDataSource(
 
     override suspend fun acceptAsGuest() = api.acceptAsGuest(token)
 
-    override suspend fun connectServers(servers: List<InviteServerSelection>) = api.connectServers(token, servers)
+    override suspend fun connectServers(servers: List<InviteServerSelection>, makePrivate: Boolean) =
+        api.connectServers(token, servers, makePrivate)
 
-    override suspend fun connectNewServer(name: String, slug: String) = api.connectNewServer(token, name, slug)
+    override suspend fun connectNewServer(name: String, slug: String, makePrivate: Boolean) =
+        api.connectNewServer(token, name, slug, makePrivate)
 
     override suspend fun cancelRequest(requestId: String?) = api.cancelRequest(token, requestId)
 }
@@ -519,6 +546,10 @@ internal class ExternalInviteStore(
             ExternalInviteIntent.DismissCancel -> mutableState.update { if (it.busy) it else it.copy(cancelConfirm = null) }
             ExternalInviteIntent.ConfirmCancel -> cancelRequest()
             ExternalInviteIntent.OpenServer -> openServer()
+            ExternalInviteIntent.OpenInChannel ->
+                mutableState.value.invite?.openChannel?.let { open ->
+                    emit(ExternalInviteEffect.OpenChannel(open.serverId, open.channelId))
+                }
             is ExternalInviteIntent.OpenProgress -> {
                 val effect =
                     intent.channelId?.let { ExternalInviteEffect.OpenChannel(intent.serverId, it) }
@@ -612,6 +643,28 @@ internal class ExternalInviteStore(
         val state = mutableState.value
         val (message, serverWords) = resolveInviteeRefusal(refusal, action, state.myServer(serverId), serverId)
         mutableState.update { it.copy(error = InviteeError(message, serverId, target, refusal.traceId, serverWords)) }
+        // Web handleFailure (slock #16643): the channel was made public (or role changed) since the
+        // page read it; re-read in place so retry sends makePrivate: true or Back lands on refused options.
+        if (refusal.code == "channel_public_confirm_required" || refusal.code == "channel_public_admin_required") {
+            scope.launch {
+                val fresh = (dataSource.get() as? DataResult.Content)?.data as? InviteeAnswer.Ok ?: return@launch
+                val refreshed = fresh.value
+                mutableState.update { current ->
+                    val nextPicked =
+                        if (refreshed.publicChannel != null) {
+                            val allowed =
+                                refreshed.options?.connect?.servers.orEmpty()
+                                    .filter { !it.atLimit && !it.needsApproval }
+                                    .map { it.id }
+                                    .toSet()
+                            current.pickedServerIds.filter { it in allowed }
+                        } else {
+                            current.pickedServerIds
+                        }
+                    current.copy(invite = refreshed, pickedServerIds = nextPicked)
+                }
+            }
+        }
     }
 
     @Suppress("UNUSED_PARAMETER")
@@ -634,7 +687,8 @@ internal class ExternalInviteStore(
 
     private fun setPicked(ids: List<String>) {
         val state = mutableState.value
-        val allowed = state.servers.filter { !it.atLimit }.map { it.id }.toSet()
+        // On a public channel, servers needing approval cannot be chosen (the server refuses every approval request there).
+        val allowed = state.servers.filter { !it.atLimit && !(state.isPublicChannel && it.needsApproval) }.map { it.id }.toSet()
         var picked = ids.filter { it in allowed }.distinct()
         // At 0 slots the rest can't be checked (web: each says why).
         val slots = state.invite?.options?.connect?.slotsLeft
@@ -679,7 +733,7 @@ internal class ExternalInviteStore(
         run {
             val before = mutableState.value
             val names = before.pickedServers.associate { it.id to it.name }
-            val result = dataSource.connectServers(selections)
+            val result = dataSource.connectServers(selections, before.makePrivate)
             val answer = (result as? DataResult.Content)?.data
             when (answer) {
                 is InviteeAnswer.Ok -> {
@@ -731,7 +785,7 @@ internal class ExternalInviteStore(
         }
         mutableState.update { it.copy(fieldErrors = NewServerFieldErrors()) }
         run {
-            val result = dataSource.connectNewServer(name, slug)
+            val result = dataSource.connectNewServer(name, slug, state.makePrivate)
             when (val answer = (result as? DataResult.Content)?.data) {
                 is InviteeAnswer.Ok -> {
                     emit(ExternalInviteEffect.ServersChanged)

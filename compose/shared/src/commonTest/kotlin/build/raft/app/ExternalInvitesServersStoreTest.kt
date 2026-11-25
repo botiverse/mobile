@@ -34,11 +34,23 @@ class ExternalInvitesServersStoreTest {
             ownServersAnswer = DataResult.Content(ExternalInviteAnswer.Ok(OwnConnectableServers(servers.toList())))
         }
 
-    private fun TestScope.opened(source: FakeExternalInvitesDataSource, joint: Boolean = false): ExternalInvitesStore {
+    private fun TestScope.opened(
+        source: FakeExternalInvitesDataSource,
+        joint: Boolean = false,
+        loadOwnServers: Boolean = true,
+    ): ExternalInvitesStore {
         val store = ExternalInvitesStore(this, source)
-        store.dispatch(ExternalInvitesIntent.OpenDialog(joint = joint))
+        store.dispatch(ExternalInvitesIntent.OpenDialog(joint = joint, loadOwnServers = loadOwnServers))
         runCurrent()
         return store
+    }
+
+    @Test
+    fun defaultOpenDialogSkipsInlineOwnServersLoadInV5() = runTest {
+        val plain = source(ownServer("s2", "Beta"), ownServer("s3", "Gamma"))
+        val store = opened(plain, loadOwnServers = false)
+        assertEquals(emptyList(), store.state.value.dialog?.servers)
+        assertEquals(0, plain.ownServersCalls)
     }
 
     @Test
@@ -323,7 +335,7 @@ class ExternalInvitesServersStoreTest {
         val mutations = mutableListOf<Boolean>()
         val store = ExternalInvitesStore(this, source, onChannelMutated = { mutations += it })
         store.dispatch(ExternalInvitesIntent.Load)
-        store.dispatch(ExternalInvitesIntent.OpenDialog(joint = false))
+        store.dispatch(ExternalInvitesIntent.OpenDialog(joint = false, loadOwnServers = true))
         runCurrent()
         store.dispatch(ExternalInvitesIntent.SetText("new@example.com"))
         store.dispatch(ExternalInvitesIntent.SetServers(setOf("s2")))

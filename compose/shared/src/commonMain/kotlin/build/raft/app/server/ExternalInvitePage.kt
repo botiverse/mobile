@@ -59,6 +59,7 @@ import build.raft.designsystem.components.RaftMultiChoiceList
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -78,6 +79,10 @@ internal const val ExternalInviteCommitTag = "external-invite-commit"
 internal const val ExternalInviteAcceptErrorTag = "external-invite-accept-error"
 internal const val ExternalInviteNoticeTag = "external-invite-notice"
 internal const val ExternalInviteCancelConfirmTag = "external-invite-cancel-confirm"
+internal const val ExternalInvitePublicRefusedTag = "external-invite-public-refused"
+internal const val ExternalInviteBecomesPrivateTag = "external-invite-becomes-private"
+internal const val ExternalInviteOpenChannelTag = "external-invite-open-channel"
+internal const val ExternalInviteConnectPublicApprovalTag = "external-invite-connect-public-approval"
 
 /** Identity only (the Route / PageData rule): the invite's token; the page reads the invite itself. */
 internal fun externalInvitePageData(token: String): JSONObject =
@@ -232,6 +237,8 @@ internal fun inviteeMessageDesc(message: InviteeMessage, target: String, channel
         InviteeMessage.ConnectInProgress -> Res.string.external_invite_error_connect_in_progress.format(channel)
         InviteeMessage.Archived -> Res.string.external_invite_error_archived.format(channel)
         InviteeMessage.ChannelNameTaken -> Res.string.external_invite_error_channel_name_taken.format(target, channel)
+        InviteeMessage.ChannelPublic -> Res.string.external_invite_error_channel_public.format(channel)
+        InviteeMessage.ChannelPublicNow -> Res.string.external_invite_error_channel_public_now.format(channel)
         InviteeMessage.Busy -> Res.string.external_invite_error_busy.format(channel)
         InviteeMessage.TooManyAttempts -> Res.string.external_invite_error_too_many_attempts.desc()
         InviteeMessage.Generic -> Res.string.external_invite_error_generic.desc()
@@ -275,6 +282,16 @@ internal fun ExternalInviteContent(state: ExternalInviteState, email: String, on
                 )
                 RaftTraceIdNote(error.traceId)
             }
+        }
+    }
+    val becomesPrivateBanner: @Composable () -> Unit = {
+        if (state.makePrivate) {
+            RaftBanner(
+                description = stringResource(Res.string.external_invite_public_channel_becomes_private, values.channel),
+                status = RaftBannerStatus.Warning,
+                size = RaftBannerSize.Sm,
+                modifier = Modifier.fillMaxWidth().testTag(ExternalInviteBecomesPrivateTag),
+            )
         }
     }
     val signOut: @Composable () -> Unit = {
@@ -376,17 +393,24 @@ internal fun ExternalInviteContent(state: ExternalInviteState, email: String, on
                 signOut()
             }
         }
-        is InviteStep.Progress ->
-            InviteFrame(
-                stringResource(if (invite?.status == "pending") Res.string.external_invite_title else Res.string.external_invite_progress_title, values.channel),
-                stringResource(Res.string.external_invite_progress_description, values.channel),
-                signedIn,
-            ) {
-                InviteProgressList(state, values, onIntent)
-                errorBanner()
-                if (invite?.status == "pending") InviteWaysInRows(state, values, onIntent)
-                signOut()
+        is InviteStep.Progress -> {
+            if (invite?.status == "pending") {
+                InviteOptionsStep(state, values, signedIn, signOut, onIntent) {
+                    if (step.chosen.isNotEmpty()) InviteProgressList(state, values, onIntent)
+                    errorBanner()
+                }
+            } else {
+                InviteFrame(
+                    stringResource(Res.string.external_invite_progress_title, values.channel),
+                    stringResource(Res.string.external_invite_progress_description, values.channel),
+                    signedIn,
+                ) {
+                    InviteProgressList(state, values, onIntent)
+                    errorBanner()
+                    signOut()
+                }
             }
+        }
         InviteStep.Guest ->
             InviteFrame(
                 stringResource(Res.string.external_invite_guest_title),
@@ -401,35 +425,106 @@ internal fun ExternalInviteContent(state: ExternalInviteState, email: String, on
                     onBack = { onIntent(ExternalInviteIntent.ShowOptions) },
                 )
             }
-        InviteStep.Connect -> InviteConnectStep(state, values, signedIn, errorBanner, onIntent)
+        InviteStep.Connect -> InviteConnectStep(state, values, signedIn, becomesPrivateBanner, errorBanner, onIntent)
         is InviteStep.Approval -> InviteApprovalStep(state, step, signedIn, errorBanner, onIntent)
-        InviteStep.NewServer -> InviteNewServerStep(state, values, signedIn, errorBanner, onIntent)
-        InviteStep.Options ->
-            InviteFrame(
-                stringResource(Res.string.external_invite_title, values.channel),
-                stringResource(Res.string.external_invite_invited_by, values.inviter, values.server),
-                signedIn,
-            ) {
-                val notice =
-                    when {
-                        state.connectFailedNotice ->
-                            state.serverName(state.connectFailedServerId)?.let { stringResource(Res.string.external_invite_notice_connect_failed, it) }
-                                ?: stringResource(Res.string.external_invite_notice_connect_failed_unnamed)
-                        invite?.lastRequest?.status == "rejected" ->
-                            stringResource(Res.string.external_invite_notice_declined, invite?.lastRequest?.serverName.orEmpty())
-                        else -> null
-                    }
-                notice?.let {
-                    RaftBanner(
-                        description = it,
-                        status = RaftBannerStatus.Info,
-                        size = RaftBannerSize.Sm,
-                        modifier = Modifier.fillMaxWidth().testTag(ExternalInviteNoticeTag),
+        InviteStep.NewServer -> InviteNewServerStep(state, values, signedIn, becomesPrivateBanner, errorBanner, onIntent)
+        InviteStep.Options -> InviteOptionsStep(state, values, signedIn, signOut, onIntent)
+    }
+}
+
+/**
+ * Web options page (and pending progress fallthrough): handles host members already in the channel
+ * (`alreadyInChannel` + `openChannel`), invites without a guest option (`noGuestWay`), and public
+ * channels the viewer cannot make private (`publicRefused`).
+ */
+@Composable
+private fun InviteOptionsStep(
+    state: ExternalInviteState,
+    values: InviteValues,
+    signedIn: String?,
+    signOut: @Composable () -> Unit,
+    onIntent: (ExternalInviteIntent) -> Unit,
+    progressHeader: (@Composable () -> Unit)? = null,
+) {
+    val invite = state.invite
+    val publicRefused = state.publicRefused
+    val canGuest = invite?.options?.guest == true
+    val canConnect = state.servers.isNotEmpty() && !publicRefused
+    val canCreateServer = invite?.options?.newServer == true && !publicRefused
+    val inChannel = invite?.alreadyInChannel == true
+    val noGuestWay =
+        invite?.status == "pending" &&
+            !canGuest &&
+            !inChannel &&
+            !invite.channelFull &&
+            invite.publicChannel == null &&
+            (canConnect || canCreateServer)
+    val title =
+        stringResource(
+            if (inChannel) Res.string.external_invite_in_channel_title else Res.string.external_invite_title,
+            values.channel,
+        )
+    val description =
+        when {
+            inChannel -> stringResource(Res.string.external_invite_in_channel_description)
+            noGuestWay -> stringResource(Res.string.external_invite_invited_by_no_guest, values.inviter, values.server)
+            else -> stringResource(Res.string.external_invite_invited_by, values.inviter, values.server)
+        }
+    InviteFrame(title, description, signedIn) {
+        if (publicRefused) {
+            RaftBanner(
+                description = stringResource(Res.string.external_invite_error_channel_public, values.channel),
+                status = RaftBannerStatus.Info,
+                size = RaftBannerSize.Sm,
+                modifier = Modifier.fillMaxWidth().testTag(ExternalInvitePublicRefusedTag),
+            )
+        }
+        val lastRequest = invite?.lastRequest
+        val notice =
+            when {
+                state.connectFailedNotice ->
+                    state.serverName(state.connectFailedServerId)?.let { stringResource(Res.string.external_invite_notice_connect_failed, it) }
+                        ?: stringResource(Res.string.external_invite_notice_connect_failed_unnamed)
+                lastRequest?.status == "rejected" ->
+                    stringResource(Res.string.external_invite_notice_declined, lastRequest.serverName)
+                else -> null
+            }
+        notice?.let {
+            RaftBanner(
+                description = it,
+                status = RaftBannerStatus.Info,
+                size = RaftBannerSize.Sm,
+                modifier = Modifier.fillMaxWidth().testTag(ExternalInviteNoticeTag),
+            )
+        }
+        progressHeader?.invoke()
+        if (!publicRefused) {
+            InviteWaysInRows(state, values, onIntent)
+        }
+        val openChannel = invite?.openChannel
+        if (inChannel && openChannel != null) {
+            val openLabel =
+                stringResource(
+                    Res.string.external_invite_open_server,
+                    "#${openChannel.channelName.removePrefix("#")}",
+                )
+            if (publicRefused) {
+                InviteWideButton(
+                    text = openLabel,
+                    variant = RaftButtonVariant.Default,
+                    modifier = Modifier.testTag(ExternalInviteOpenChannelTag),
+                ) { onIntent(ExternalInviteIntent.OpenInChannel) }
+            } else {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    RaftTextLink(
+                        text = openLabel,
+                        onClick = { onIntent(ExternalInviteIntent.OpenInChannel) },
+                        modifier = Modifier.testTag(ExternalInviteOpenChannelTag),
                     )
                 }
-                InviteWaysInRows(state, values, onIntent)
-                signOut()
             }
+        }
+        signOut()
     }
 }
 
@@ -561,11 +656,13 @@ private fun InviteConnectStep(
     state: ExternalInviteState,
     values: InviteValues,
     signedIn: String?,
+    becomesPrivateBanner: @Composable () -> Unit,
     errorBanner: @Composable () -> Unit,
     onIntent: (ExternalInviteIntent) -> Unit,
 ) {
     val picked = state.pickedServers
     val slotsLeft = state.connectSlotsLeft
+    val publicChannel = state.isPublicChannel
     val needsApproval = stringResource(Res.string.external_invite_connect_needs_approval)
     val atLimit = stringResource(Res.string.external_invite_connect_at_limit)
     val noSlot = stringResource(Res.string.external_invite_connect_no_slot)
@@ -573,7 +670,8 @@ private fun InviteConnectStep(
     val items =
         state.servers.map { server ->
             val slug = (server.slug ?: state.myServer(server.id)?.slug)?.let { "/$it" }
-            val blockedBySlots = slotsLeft == 0 && server.id !in state.pickedServerIds && !server.atLimit
+            val blockedByPublicApproval = publicChannel && server.needsApproval
+            val blockedBySlots = slotsLeft == 0 && server.id !in state.pickedServerIds && !server.atLimit && !blockedByPublicApproval
             val detail =
                 when {
                     server.atLimit -> atLimit
@@ -584,9 +682,15 @@ private fun InviteConnectStep(
                 value = server.id,
                 label = server.name,
                 descriptions = listOf(AnnotatedString(detail)).filter { it.isNotEmpty() },
-                enabled = !server.atLimit && !blockedBySlots,
+                enabled = !server.atLimit && !blockedBySlots && !blockedByPublicApproval,
                 searchText = "${server.name} ${server.slug.orEmpty()}",
             )
+        }
+    val publicApprovalServers =
+        if (publicChannel) {
+            state.servers.filter { !it.atLimit && it.needsApproval }.map { it.name }.filter(String::isNotBlank)
+        } else {
+            emptyList()
         }
     InviteFrame(
         stringResource(Res.string.external_invite_connect_title),
@@ -620,6 +724,20 @@ private fun InviteConnectStep(
                 enabled = !state.busy,
             )
         }
+        if (publicApprovalServers.isNotEmpty()) {
+            RaftBanner(
+                description =
+                    stringResource(
+                        Res.string.external_invite_connect_needs_approval_public,
+                        jointInviteNames(publicApprovalServers),
+                        values.channel,
+                    ),
+                status = RaftBannerStatus.Info,
+                size = RaftBannerSize.Sm,
+                modifier = Modifier.fillMaxWidth().testTag(ExternalInviteConnectPublicApprovalTag),
+            )
+        }
+        becomesPrivateBanner()
         errorBanner()
         InviteStepActions(
             label =
@@ -724,6 +842,7 @@ private fun InviteNewServerStep(
     state: ExternalInviteState,
     values: InviteValues,
     signedIn: String?,
+    becomesPrivateBanner: @Composable () -> Unit,
     errorBanner: @Composable () -> Unit,
     onIntent: (ExternalInviteIntent) -> Unit,
 ) {
@@ -761,6 +880,7 @@ private fun InviteNewServerStep(
                 invalid = state.fieldErrors.slug != null,
             )
         }
+        becomesPrivateBanner()
         errorBanner()
         if (kept != null) {
             InviteWideButton(stringResource(Res.string.external_invite_open_server, state.serverName(kept.id) ?: kept.name)) {

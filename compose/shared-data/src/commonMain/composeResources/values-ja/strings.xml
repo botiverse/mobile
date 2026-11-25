@@ -4136,6 +4136,7 @@
     <string name="joint_member_connect_commit_one">接続</string>
     <string name="joint_member_connect_connecting">接続中…</string>
     <string name="joint_member_connect_description">あなたがオーナーまたは管理者のサーバーは、すぐに接続されます。ホストの %1$s の承認は不要です。サーバーが接続されたことは、チャンネル内のメッセージでお知らせします。</string>
+    <string name="joint_member_connect_description_host_admin">あなたがオーナーまたは管理者のサーバーは、招待なしですぐに接続されます。チャンネルには、サーバーが接続されたことを知らせるメッセージが表示されます。</string>
     <string name="joint_member_connect_error_already_connected">%1$s はすでに接続されています。</string>
     <string name="joint_member_connect_error_archived">%1$s はアーカイブされました。</string>
     <string name="joint_member_connect_error_channel_name_taken">%1$s にはすでに %2$s という名前のチャンネルがあります。%1$s でそのチャンネルの名前を変更してから、もう一度接続してください。</string>
@@ -5608,15 +5609,18 @@
     <string name="channel_external_invite_emails_label">メールアドレスで招待</string>
     <string name="channel_external_invite_emails_placeholder">alex@example.com, sam@example.org, …</string>
     <string name="channel_external_invite_emails_join_by_link">Raft のアカウントがなくても、参加用リンクがメールで届きます。</string>
+    <string name="channel_external_invite_emails_audience">参加用のメールが届きます。Raft のアカウントがなくても参加でき、見られるのは %1$s だけです（以前のメッセージも含みます）。</string>
     <string name="channel_external_invite_too_many">一度に招待できるのは %1$d 件までです。%2$d 件を削除してください。</string>
     <string name="channel_external_invite_next">次へ</string>
     <string name="channel_external_invite_checking">確認中…</string>
     <string name="channel_external_invite_back">戻る</string>
-    <string name="channel_external_invite_review_intro">招待リンクの有効期間は %1$d 日間です。招待された人は、ゲストとして参加するか、自分のサーバーを接続してエージェントやチームメイトを参加させることができます。</string>
+    <string name="channel_external_invite_review_intro">招待リンクの有効期間は %1$d 日間です。招待された人はこのチャンネルに参加できます。チームでも Raft を使っている場合は、自分のサーバーを接続することもできます。</string>
+    <string name="channel_external_invite_group_invited">メールで招待します</string>
+    <string name="channel_external_invite_group_not_sent">送信されません</string>
     <string name="channel_external_invite_status_will_invite">招待予定</string>
-    <string name="channel_external_invite_status_already_invited">招待済み · 新しい招待は送信されません</string>
+    <string name="channel_external_invite_status_already_invited">招待済み</string>
     <string name="channel_external_invite_status_will_add">すでに %1$s のメンバー · 直接追加されます</string>
-    <string name="channel_external_invite_status_already_in_channel">このチャンネルに参加済み · 招待は送信されません</string>
+    <string name="channel_external_invite_status_already_in_channel">このチャンネルに参加済み</string>
     <string name="channel_external_invite_status_member_in_channel">このチャンネルに参加済み</string>
     <string name="channel_external_invite_invite_to_connect">サーバー接続に招待</string>
     <string name="channel_external_invite_status_guest_elsewhere">%1$s のゲスト · サーバーの接続に招待します</string>
@@ -5624,7 +5628,8 @@
     <string name="channel_external_invite_status_guest_elsewhere_hint">%1$s では、ゲストが参加できるチャンネルは 1 つだけなので、ゲストとしてここに参加することはできません。この招待から、所属するサーバーを接続するか、新しくサーバーを作成して参加できます。</string>
     <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">%1$s では、ゲストが参加できるチャンネルは 1 つだけなので、ゲストとしてここに参加することはできません。この招待から、所属するサーバーを接続するか、新しくサーバーを作成して参加できます。</string>
     <string name="channel_external_invite_status_duplicate">重複しています · 招待は 1 回だけ送信されます</string>
-    <string name="channel_external_invite_status_invalid">無効なメールアドレス · 招待は送信されません</string>
+    <string name="channel_external_invite_status_invalid">メールアドレスではありません</string>
+    <string name="channel_external_invite_status_self">あなた自身です</string>
     <string name="channel_external_invite_commit">招待</string>
     <string name="channel_external_invite_sending">送信中…</string>
     <string name="channel_external_invite_nothing_to_send">このリストには招待できる人がいません。戻って修正してください。</string>
@@ -5648,6 +5653,7 @@
     <string name="channel_external_invite_error_not_found">このチャンネルでは現在、外部招待を送信できません。</string>
     <string name="channel_external_invite_error_generic">問題が発生しました。もう一度お試しください。</string>
     <string name="channel_external_invite_servers_label">所属しているサーバーを接続</string>
+    <string name="channel_external_invite_connect_servers_link">所属しているサーバーを接続</string>
     <string name="channel_external_invite_servers_search">サーバーを検索</string>
     <string name="channel_external_invite_servers_clear_search">検索をクリア</string>
     <string name="channel_external_invite_servers_no_match">一致する項目がありません</string>
@@ -5664,6 +5670,10 @@
     <string name="channel_external_invite_server_refused_party_limit">%1$s はゲストが多すぎるため、他のサーバーを接続できません。外部チャンネルに参加できるのは、サーバーとゲストを合わせて最大 %2$d までです。一部のゲストを削除してから、もう一度お試しください。</string>
     <string name="external_invite_title">%1$s に参加</string>
     <string name="external_invite_invited_by">%2$s の %1$s から招待されました。</string>
+    <string name="external_invite_invited_by_no_guest">%2$s の %1$s から招待されました。ゲストとしては参加できないため、サーバーで参加してください。</string>
+    <string name="external_invite_in_channel_title">%1$s に参加済みです</string>
+    <string name="external_invite_in_channel_description">チームメイトやエージェントも参加させるには、サーバーを接続してください。</string>
+    <string name="external_invite_public_channel_becomes_private">接続すると、%1$s は非公開になります。</string>
     <string name="external_invite_sign_out">ログアウト</string>
     <string name="external_invite_back">戻る</string>
     <string name="external_invite_retry">再試行</string>
@@ -5677,7 +5687,7 @@
     <string name="external_invite_wrong_account_description">招待が送信されたメールアドレスでログインしてください。すでにそのメールアドレスでログインしている場合は、招待が取り消されたか、期限切れになった可能性があります。</string>
     <string name="external_invite_wrong_account_sent_to">この招待は %1$s 宛てに送信されました。そのアドレスでログインすると承諾できます。</string>
     <string name="external_invite_option_guest">ゲストとして参加</string>
-    <string name="external_invite_option_guest_description">このチャンネルにだけ自分で参加し、そこにいる人間やエージェントと一緒に作業します。</string>
+    <string name="external_invite_option_guest_description">このチャンネルにだけ自分で参加します。以前のメッセージも見られます。</string>
     <string name="external_invite_option_connect">サーバーを接続</string>
     <string name="external_invite_option_connect_description">所属しているサーバーから、チームメイトやエージェントを参加させます。</string>
     <string name="external_invite_option_new_server">新しいサーバーを作成</string>
@@ -5699,6 +5709,7 @@
     <string name="external_invite_connect_search">サーバーを検索</string>
     <string name="external_invite_connect_needs_approval">承認が必要</string>
     <string name="external_invite_connect_at_limit">外部チャンネルの上限に達しています</string>
+    <string name="external_invite_connect_needs_approval_public">%1$s の承認が必要ですが、%2$s は公開チャンネルです。</string>
     <string name="external_invite_connect_commit_unpicked">接続</string>
     <string name="external_invite_connect_commit">%1$s を接続</string>
     <string name="external_invite_connect_commit_many_other">%1$d 件のサーバーを接続</string>
@@ -5760,6 +5771,8 @@
     <string name="external_invite_error_guest_unavailable">%1$s は他のサーバーと共有されているため、現時点ではゲストとして参加できません。参加するには、サーバーを接続してください。</string>
     <string name="external_invite_error_already_member">すでに %1$s のメンバーです。%1$s の管理者に、%2$s への追加を依頼してください。</string>
     <string name="external_invite_error_guest_elsewhere">すでに別のチャンネルのゲストであるため、ゲストとして %1$s に参加することはできません。代わりに、サーバーを接続するか作成してください。</string>
+    <string name="external_invite_error_channel_public">%1$s は公開チャンネルです。先にオーナーまたは管理者に非公開にしてもらってください。</string>
+    <string name="external_invite_error_channel_public_now">%1$s は現在公開チャンネルのため、接続すると非公開になります。続けるには、もう一度接続してください。</string>
     <string name="external_invite_error_channel_full">%1$s は満員です。%2$s に枠を空けてもらってから、もう一度このリンクを開いてください。</string>
     <string name="external_invite_error_deployment_user_limit">この Raft Community Edition の環境には、Raft ライセンスの上限である 5 人がすでに登録されています。上限を超えて利用するには、contact@raft.build までメールで別途ライセンスをお申し込みください。</string>
     <string name="external_invite_error_invalid_server">%1$s は %2$s に接続できません。別のサーバーを選んでください。</string>

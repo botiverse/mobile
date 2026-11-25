@@ -299,4 +299,29 @@ internal class FakeJointConnectionsDataSource(
         connectNewServerGate?.await()
         return connectNewServerResult
     }
+
+    var ownConnectableServersResult: DataResult<build.raft.app.data.ExternalInviteAnswer<build.raft.app.data.OwnConnectableServers>> =
+        DataResult.Content(build.raft.app.data.ExternalInviteAnswer.Ok(build.raft.app.data.OwnConnectableServers()))
+    var ownConnectableServersGate: CompletableDeferred<Unit>? = null
+    var ownConnectableServersCalls = 0
+
+    override suspend fun ownConnectableServers(): DataResult<build.raft.app.data.ExternalInviteAnswer<build.raft.app.data.OwnConnectableServers>> {
+        ownConnectableServersCalls += 1
+        ownConnectableServersGate?.await()
+        return ownConnectableServersResult
+    }
+
+    var connectOwnServersResult: DataResult<build.raft.app.data.ExternalInviteAnswer<List<build.raft.app.data.ServerConnectOutcome>>> =
+        DataResult.Content(build.raft.app.data.ExternalInviteAnswer.Ok(emptyList()))
+    var connectOwnServersGate: CompletableDeferred<Unit>? = null
+    val connectOwnServersCalls = mutableListOf<Pair<List<String>, Boolean>>()
+
+    override suspend fun connectOwnServers(
+        serverIds: List<String>,
+        makePrivate: Boolean,
+    ): DataResult<build.raft.app.data.ExternalInviteAnswer<List<build.raft.app.data.ServerConnectOutcome>>> {
+        connectOwnServersCalls += serverIds to makePrivate
+        connectOwnServersGate?.await()
+        return connectOwnServersResult
+    }
 }

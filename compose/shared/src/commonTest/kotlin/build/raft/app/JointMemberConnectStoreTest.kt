@@ -1,6 +1,10 @@
 package build.raft.app
 
 import build.raft.app.data.DataResult
+import build.raft.app.data.ExternalInviteAnswer
+import build.raft.app.data.ExternalInviteRefusal
+import build.raft.app.data.InviteApprover
+import build.raft.app.data.InviteConnectableServer
 import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.JointChannelRole
 import build.raft.app.data.JointChannelServer
@@ -9,6 +13,7 @@ import build.raft.app.data.MemberConnectNewServerResponse
 import build.raft.app.data.MemberConnectOwnerRef
 import build.raft.app.data.MemberConnectResponse
 import build.raft.app.data.MemberConnectServerLimit
+import build.raft.app.data.OwnConnectableServers
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.model.ChannelId
@@ -478,6 +483,155 @@ class JointMemberConnectStoreTest {
         assertFalse(computerForm.kept)
         assertEquals(listOf(MemberConnectLine.Request(MemberConnectMessage.GuestHasComputer)), computerForm.lines)
         computerStore.clear()
+    }
+
+    @Test
+    fun memberConnectRowsOncePrivateReturnsEligibleServersOnlyForPublicChannels() {
+        val publicChannel = privateTestConnections().copy(isPrivate = false)
+        val rows = memberConnectRowsOncePrivate(publicChannel.memberConnectChannel(), memberTestAccount())
+        assertEquals(listOf("srv-alpha", "srv-host", "srv-mine", "srv-zed"), rows.map { it.server.id })
+        assertTrue(rows.all { it.state == MemberConnectRowState.Eligible })
+
+        // Private, joint, #all, archived, unjoined all return empty from memberConnectRowsOncePrivate.
+        listOf(
+            privateTestConnections(),
+            memberTestConnections(),
+            publicChannel.copy(channelName = "all"),
+            publicChannel.copy(archived = true),
+            publicChannel.copy(joined = false),
+        ).forEach { conn ->
+            assertEquals(emptyList(), memberConnectRowsOncePrivate(conn.memberConnectChannel(), memberTestAccount()), "$conn")
+        }
+    }
+
+    @Test
+    fun openFromExternalInviteOnPrivateChannelShowsOnlyEligibleAndUsesMemberRoute() = runTest {
+        val dataSource =
+            FakeJointConnectionsDataSource(connections = privateTestConnections()).apply {
+                memberConnectResult =
+                    DataResult.Content(
+                        MemberConnectResponse.Answered(listOf(ServerConnectOutcome.Connected("srv-alpha", "c1")), traceId = null)
+                    )
+            }
+        val store = memberStore(dataSource)
+        store.dispatch(JointChannelConnectionsIntent.OpenFromExternalInvite(publicChannel = null))
+        runCurrent()
+
+        val sheet = assertNotNull(store.state.value.memberConnectSheet)
+        assertTrue(sheet.hostAdmin)
+        assertTrue(sheet.eligibleOnly)
+        assertFalse(sheet.hostConnect)
+        assertFalse(sheet.locked)
+        assertEquals(1, dataSource.memberConnectLimitsCalls)
+        assertEquals(0, dataSource.ownConnectableServersCalls)
+        // NotAdmin srv-member is hidden when opened from Invite people outside.
+        assertEquals(listOf("srv-alpha", "srv-host", "srv-mine", "srv-zed"), store.state.value.memberConnectDisplayRows.map { it.server.id })
+
+        store.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(setOf("srv-alpha")))
+        store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect)
+        runCurrent()
+        assertEquals(listOf(listOf("srv-alpha")), dataSource.memberConnectCalls)
+        assertEquals(emptyList(), dataSource.connectOwnServersCalls)
+        assertNull(store.state.value.memberConnectSheet)
+        store.clear()
+    }
+
+    @Test
+    fun openFromExternalInviteOnPublicChannelForAdminUsesHostRouteWithMakePrivate() = runTest {
+        val publicConn = privateTestConnections().copy(isPrivate = false, channelName = "launch-week")
+        val dataSource =
+            FakeJointConnectionsDataSource(connections = publicConn).apply {
+                ownConnectableServersResult =
+                    DataResult.Content(
+                        ExternalInviteAnswer.Ok(
+                            OwnConnectableServers(
+                                listOf(
+                                    InviteConnectableServer(id = "srv-alpha", name = "Alpha Co", slug = "alpha-co", canConnectDirectly = true),
+                                    InviteConnectableServer(
+                                        id = "srv-zed",
+                                        name = "Zed Co",
+                                        slug = "zed-co",
+                                        canConnectDirectly = true,
+                                        atLimit = true,
+                                        canUpgrade = false,
+                                        owners = listOf(InviteApprover("o1", "Pat")),
+                                    ),
+                                    // needsApproval / non-direct server must be filtered out of hostConnect display rows.
+                                    InviteConnectableServer(id = "srv-mine", name = "Mine Co", slug = "mine-co", canConnectDirectly = false, needsApproval = true),
+                                )
+                            )
+                        )
+                    )
+                connectOwnServersResult =
+                    DataResult.Content(
+                        ExternalInviteAnswer.Ok(
+                            listOf(ServerConnectOutcome.Refused("srv-alpha", 409, "free_external_limit", "Host limit", limitSide = "host")),
+                            traceId = TRACE,
+                        )
+                    )
+            }
+        val store = memberStore(dataSource)
+        store.dispatch(JointChannelConnectionsIntent.OpenFromExternalInvite(publicChannel = PublicChannelConnect(canMakePrivate = true)))
+        runCurrent()
+
+        val sheet = assertNotNull(store.state.value.memberConnectSheet)
+        assertTrue(sheet.hostConnect)
+        assertFalse(sheet.locked)
+        assertTrue(store.state.value.memberConnectToPrivate)
+        assertEquals(0, dataSource.memberConnectLimitsCalls)
+        assertEquals(1, dataSource.ownConnectableServersCalls)
+        assertEquals(listOf("srv-alpha", "srv-zed"), store.state.value.memberConnectDisplayRows.map { it.server.id })
+        assertEquals(true, sheet.limits["srv-zed"]?.atLimit)
+        assertEquals(listOf(MemberConnectOwnerRef("o1", "Pat")), sheet.limits["srv-zed"]?.owners)
+
+        store.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(setOf("srv-alpha", "srv-zed")))
+        assertEquals(setOf("srv-alpha"), store.state.value.memberConnectSheet?.selected)
+        store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect)
+        runCurrent()
+
+        assertEquals(emptyList(), dataSource.memberConnectCalls)
+        assertEquals(listOf(listOf("srv-alpha") to true), dataSource.connectOwnServersCalls)
+        assertEquals(
+            listOf(MemberConnectLine.Refused("srv-alpha", MemberConnectMessage.HostFreeLimit)),
+            store.state.value.memberConnectSheet?.lines,
+        )
+
+        // Whole-request host refusal maps through resolveHostConnectRequestLine.
+        dataSource.connectOwnServersResult =
+            DataResult.Content(ExternalInviteAnswer.Refused(ExternalInviteRefusal(409, "channel_archived", "archived", traceId = TRACE)))
+        store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect)
+        runCurrent()
+        assertEquals(
+            listOf(MemberConnectLine.Request(MemberConnectMessage.HostArchived)),
+            store.state.value.memberConnectSheet?.lines,
+        )
+        assertEquals(true, store.state.value.memberConnectSheet?.closed)
+        store.clear()
+    }
+
+    @Test
+    fun openFromExternalInviteOnPublicChannelForNonAdminIsLockedAndMakesNoNetworkCalls() = runTest {
+        val publicConn = privateTestConnections().copy(isPrivate = false, channelName = "launch-week")
+        val dataSource = FakeJointConnectionsDataSource(connections = publicConn)
+        val store = memberStore(dataSource)
+        store.dispatch(JointChannelConnectionsIntent.OpenFromExternalInvite(publicChannel = PublicChannelConnect(canMakePrivate = false)))
+        runCurrent()
+
+        val sheet = assertNotNull(store.state.value.memberConnectSheet)
+        assertTrue(sheet.locked)
+        assertFalse(sheet.hostConnect)
+        // Neither member options route (which refuses public channels) nor host route is called.
+        assertEquals(0, dataSource.memberConnectLimitsCalls)
+        assertEquals(0, dataSource.ownConnectableServersCalls)
+        assertTrue(store.state.value.memberConnectDisplayRows.none { store.state.value.memberConnectRowSelectable(it) })
+
+        store.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(setOf("srv-alpha")))
+        assertEquals(emptySet(), store.state.value.memberConnectSheet?.selected)
+        store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect)
+        runCurrent()
+        assertEquals(emptyList(), dataSource.memberConnectCalls)
+        assertEquals(emptyList(), dataSource.connectOwnServersCalls)
+        store.clear()
     }
 
     private fun TestScope.memberStore(

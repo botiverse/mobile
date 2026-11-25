@@ -157,12 +157,12 @@ internal sealed interface CreateExternalChannelIntent {
     /** External chosen: "Your servers", once (web `useOwnConnectableServers(external)`). */
     data object LoadServers : CreateExternalChannelIntent
 
+    /** Signed-in viewer's email, so older servers without `preview.self` still mark it "That's you". */
+    data class SetOwnEmail(val email: String?) : CreateExternalChannelIntent
+
     data class SetText(val text: String) : CreateExternalChannelIntent
 
     data class SetServers(val serverIds: Set<String>) : CreateExternalChannelIntent
-
-    /** A member's "Invite to connect their server" box on the review. */
-    data class SetConnectInvite(val email: String, val checked: Boolean) : CreateExternalChannelIntent
 
     /** Step 2's Create and Invite: the review, nothing created. */
     data object Review : CreateExternalChannelIntent
@@ -192,9 +192,10 @@ internal class CreateExternalChannelStore(
         when (intent) {
             CreateExternalChannelIntent.Start -> start()
             CreateExternalChannelIntent.LoadServers -> loadServers()
+            is CreateExternalChannelIntent.SetOwnEmail ->
+                updateInvite { it.copy(ownEmail = intent.email?.trim()?.takeIf(String::isNotEmpty)) }
             is CreateExternalChannelIntent.SetText -> updateInvite { if (it.busy) it else it.copy(text = intent.text, failure = null) }
             is CreateExternalChannelIntent.SetServers -> updateInvite { if (it.busy) it else it.copy(serverIds = intent.serverIds) }
-            is CreateExternalChannelIntent.SetConnectInvite -> updateInvite { it.withConnectInvite(intent.email, intent.checked) }
             CreateExternalChannelIntent.Review -> review()
             CreateExternalChannelIntent.BackToPeople ->
                 mutableState.update {
@@ -253,7 +254,7 @@ internal class CreateExternalChannelStore(
             val answer = (result as? DataResult.Content)?.data
             updateInvite { current ->
                 when (answer) {
-                    is ExternalInviteAnswer.Ok -> current.copy(busy = false, preview = answer.value, noConnectInvite = emptySet())
+                    is ExternalInviteAnswer.Ok -> current.copy(busy = false, preview = answer.value)
                     is ExternalInviteAnswer.Refused -> current.copy(busy = false, failure = answer.refusal.toFailure())
                     null -> current.copy(busy = false, failure = result.externalInviteFailureOf())
                 }

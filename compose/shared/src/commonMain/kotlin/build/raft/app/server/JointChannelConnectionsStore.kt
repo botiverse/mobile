@@ -6,7 +6,10 @@ import build.raft.app.data.AuthenticatedRouteOperationRunner
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.ExternalInviteAnswer
 import build.raft.app.data.JointChannelConnections
+import build.raft.app.data.MemberConnectOwnerRef
+import build.raft.app.data.OwnConnectableServers
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.RaftDurableSnapshotKey
 import build.raft.app.data.RaftKeyedSnapshotCache
@@ -120,9 +123,41 @@ internal data class JointChannelConnectionsState(
     val memberConnectRows: List<MemberConnectRow>
         get() = memberConnectRows(connections?.memberConnectChannel(), memberConnectAccount)
 
-    /** Server rows shown in the sheet: [memberConnectRows] plus any member-only `askServers` (slock #16361). */
+    /**
+     * Web `AddExternalMemberDialog` `connectRows` (slock #16643/#16661): eligible rows for
+     * private/joint channels, or `memberConnectRowsOncePrivate` for a public channel (`!isJoint && !isPrivate`).
+     */
+    val memberConnectInviteRows: List<MemberConnectRow>
+        get() {
+            val channel = connections?.memberConnectChannel() ?: return emptyList()
+            return if (!channel.isJoint && !channel.isPrivate) {
+                memberConnectRowsOncePrivate(channel, memberConnectAccount)
+            } else {
+                memberConnectRows.filter { it.state == MemberConnectRowState.Eligible }
+            }
+        }
+
+    /**
+     * Server rows shown in the sheet:
+     * - From Invite people outside ([MemberConnectSheet.eligibleOnly]): eligible rows only, and on
+     *   a public channel for host admin ([MemberConnectSheet.hostConnect]) narrowed to the host's
+     *   own directly connectable servers once loaded (web `shownRows`).
+     * - Otherwise: [memberConnectRows] plus any member-only `askServers` (slock #16361).
+     */
     val memberConnectDisplayRows: List<MemberConnectRow>
-        get() = memberConnectDisplayRows(memberConnectRows, memberConnectSheet?.askServers.orEmpty())
+        get() {
+            val sheet = memberConnectSheet
+            if (sheet?.eligibleOnly == true) {
+                val base = memberConnectInviteRows
+                val directIds = sheet.hostOwnDirectServerIds
+                return if (sheet.hostConnect && directIds != null) {
+                    base.filter { it.server.id in directIds }
+                } else {
+                    base
+                }
+            }
+            return memberConnectDisplayRows(memberConnectRows, sheet?.askServers.orEmpty())
+        }
 
     /** Web `memberConnect.available`: the ⋯ or Connect row, only with a server to connect. */
     val memberConnectAvailable: Boolean
@@ -144,9 +179,9 @@ internal data class JointChannelConnectionsState(
                 conversionInProgress = connections?.conversionInProgress == true,
             )
 
-    /** The connect is to a private channel: it becomes shared (web `channelType === "private"`). */
+    /** The connect is to a private (or public-made-private) channel: it becomes shared (web `channelType === "private"`). */
     val memberConnectToPrivate: Boolean
-        get() = connections?.let { !it.isJoint && it.isPrivate } == true
+        get() = connections?.let { !it.isJoint && (it.isPrivate || memberConnectSheet?.hostConnect == true) } == true
 
     /** Web `memberConnectHostName`: the host row's name, else this server's. */
     val memberConnectHostName: String
@@ -154,10 +189,11 @@ internal data class JointChannelConnectionsState(
             displayServers.firstOrNull { it.role == JointChannelRole.Host }?.let { it.name.ifBlank { it.slug } }
                 ?: memberConnectAccount?.currentServerName.orEmpty()
 
-    /** Web `guest`: a Guest of the host bound to this channel; connecting ends that seat. */
+    /** Web `guest`: a Guest of the host bound to this channel; connecting ends that seat (never true for hostAdmin). */
     val memberConnectGuest: Boolean
         get() =
-            memberConnectAccount?.currentServerRole == "guest" &&
+            memberConnectSheet?.hostAdmin != true &&
+                memberConnectAccount?.currentServerRole == "guest" &&
                 (memberConnectToPrivate || connections?.jointRole == JointChannelRole.Host)
 
     /** A row of the sheet as it reads now: a refusal may have changed it. */
@@ -174,10 +210,11 @@ internal data class JointChannelConnectionsState(
         return sheet.limits[row.server.id]
     }
 
-    /** Web ChoiceList `disabled`: only an eligible row not connected yet and not at Free limit, while the route is open. */
+    /** Web ChoiceList `disabled`: only an eligible row not connected yet, not locked, and not at Free limit, while the route is open. */
     fun memberConnectRowSelectable(row: MemberConnectRow): Boolean {
         val sheet = memberConnectSheet ?: return false
         return !sheet.closed &&
+            !sheet.locked &&
             row.server.id !in sheet.done &&
             memberConnectRowState(row) == MemberConnectRowState.Eligible &&
             memberConnectLimit(row)?.atLimit != true
@@ -221,6 +258,8 @@ internal sealed interface JointChannelConnectionsIntent {
     data object OpenMemberConnect : JointChannelConnectionsIntent
     /** Guest's Connect your servers entry (slock #16375/#16389): opens with Guest helper line + Create a server and connect. */
     data object OpenGuestMemberConnect : JointChannelConnectionsIntent
+    /** Invite people outside's quiet footer link "Connect your servers" (slock #16643/#16661). */
+    data class OpenFromExternalInvite(val publicChannel: PublicChannelConnect? = null) : JointChannelConnectionsIntent
     /** The sheet's × / Cancel / Close (ignored while a request runs). */
     data object DismissMemberConnect : JointChannelConnectionsIntent
     data class SetMemberConnectSelection(val serverIds: Set<String>) : JointChannelConnectionsIntent
@@ -251,6 +290,13 @@ internal interface JointChannelConnectionsDataSource {
         DataResult.Error(ScreenError(code = "unsupported", retryable = false))
     suspend fun listMemberConnectLimits(): Map<String, MemberConnectServerLimit> = emptyMap()
     suspend fun listMemberConnectOptions(): MemberConnectOptions = MemberConnectOptions(limits = listMemberConnectLimits())
+    suspend fun ownConnectableServers(): DataResult<ExternalInviteAnswer<OwnConnectableServers>> =
+        DataResult.Content(ExternalInviteAnswer.Ok(OwnConnectableServers()))
+    suspend fun connectOwnServers(
+        serverIds: List<String>,
+        makePrivate: Boolean,
+    ): DataResult<ExternalInviteAnswer<List<ServerConnectOutcome>>> =
+        DataResult.Error(ScreenError(code = "unsupported", retryable = false))
 }
 
 internal class RealJointChannelConnectionsDataSource(
@@ -295,6 +341,15 @@ internal class RealJointChannelConnectionsDataSource(
             }
         return (result as? DataResult.Content)?.data ?: MemberConnectOptions()
     }
+
+    override suspend fun ownConnectableServers(): DataResult<ExternalInviteAnswer<OwnConnectableServers>> =
+        runner.run { _, networkClient -> repository(networkClient).ownConnectableServers() }
+
+    override suspend fun connectOwnServers(
+        serverIds: List<String>,
+        makePrivate: Boolean,
+    ): DataResult<ExternalInviteAnswer<List<ServerConnectOutcome>>> =
+        runner.run { _, networkClient -> repository(networkClient).connectOwnServers(route.channelId, serverIds, makePrivate) }
 
     private fun repository(networkClient: build.raft.app.data.RaftNetworkClient) =
         RealJointChannelRepository(networkClient) { logger("joint_connections $it") }
@@ -353,6 +408,7 @@ internal class JointChannelConnectionsStore(
     val state: StateFlow<JointChannelConnectionsState> = mutableState.asStateFlow()
 
     private var loadGeneration = 0L
+    private var loadedFromNetwork = cacheSlot?.cache?.peek(cacheSlot.key) != null
     private var loadJob: Job? = null
     private var actionJob: Job? = null
     private var memberConnectLimitsJob: Job? = null
@@ -363,7 +419,7 @@ internal class JointChannelConnectionsStore(
             JointChannelConnectionsIntent.Refresh -> load(force = true)
             is JointChannelConnectionsIntent.SeedChannel -> {
                 val current = mutableState.value
-                if (current.connections == null) {
+                if (current.connections == null || (!loadedFromNetwork && current.memberConnectSheet == null)) {
                     mutableState.value =
                         current.copy(
                             status = JointChannelConnectionsLoadStatus.Content,
@@ -389,6 +445,25 @@ internal class JointChannelConnectionsStore(
                     fetchMemberConnectOptions()
                 }
             }
+            is JointChannelConnectionsIntent.OpenFromExternalInvite -> {
+                val current = mutableState.value
+                val rows = current.memberConnectInviteRows
+                if (current.memberConnectSheet == null && current.actionInFlight == null && rows.isNotEmpty()) {
+                    val sheet =
+                        MemberConnectSheet(
+                            guestEntry = false,
+                            hostAdmin = true,
+                            eligibleOnly = true,
+                            publicChannel = intent.publicChannel,
+                        )
+                    mutableState.value = current.copy(memberConnectSheet = sheet)
+                    when {
+                        intent.publicChannel == null -> fetchMemberConnectOptions()
+                        intent.publicChannel.canMakePrivate -> fetchHostOwnConnectableServers()
+                        // Public channel non-admin: neither route is called (member route refuses public channels).
+                    }
+                }
+            }
             JointChannelConnectionsIntent.DismissMemberConnect -> {
                 val current = mutableState.value
                 if (current.memberConnectSheet != null && !current.memberConnectSheet.anyBusy) {
@@ -400,8 +475,8 @@ internal class JointChannelConnectionsStore(
             is JointChannelConnectionsIntent.SetMemberConnectSelection -> {
                 val current = mutableState.value
                 val sheet = current.memberConnectSheet
-                if (sheet != null && !sheet.busy) {
-                    val selectable = current.memberConnectRows.filter(current::memberConnectRowSelectable).map { it.server.id }.toSet()
+                if (sheet != null && !sheet.busy && !sheet.locked) {
+                    val selectable = current.memberConnectDisplayRows.filter(current::memberConnectRowSelectable).map { it.server.id }.toSet()
                     val next = intent.serverIds.filter { it in selectable }.toSet()
                     if (next != sheet.selected) mutableState.value = current.copy(memberConnectSheet = sheet.copy(selected = next))
                 }
@@ -503,6 +578,7 @@ internal class JointChannelConnectionsStore(
                     // Cold start: the durable row paints before the network answers.
                     slot.cache.read(slot.key)?.let { cached ->
                         if (generation == loadGeneration && mutableState.value.connections == null) {
+                            loadedFromNetwork = true
                             mutableState.value = mutableState.value.withSnapshot(cached).copy(refreshing = true)
                         }
                     }
@@ -526,7 +602,10 @@ internal class JointChannelConnectionsStore(
                 val previous = mutableState.value
                 mutableState.value =
                     when (result) {
-                        is DataResult.Content -> previous.withSnapshot(result.data)
+                        is DataResult.Content -> {
+                            loadedFromNetwork = true
+                            previous.withSnapshot(result.data)
+                        }
                         else -> {
                             val failure = result.toJointChannelFailure()
                             when {
@@ -594,9 +673,10 @@ internal class JointChannelConnectionsStore(
         val current = mutableState.value
         val sheet = current.memberConnectSheet ?: return
         if (current.status != JointChannelConnectionsLoadStatus.Content || current.actionInFlight != null) return
-        if (sheet.busy || sheet.closed || sheet.selected.isEmpty()) return
+        if (sheet.busy || sheet.closed || sheet.locked || sheet.selected.isEmpty()) return
+        val hostConnect = sheet.hostConnect
         val chosen = sheet.selected.toList()
-        val names = current.memberConnectRows.associate { it.server.id to it.server.name.ifBlank { it.server.slug } }
+        val names = current.memberConnectDisplayRows.associate { it.server.id to it.server.name.ifBlank { it.server.slug } }
         mutableState.value =
             current.copy(
                 actionInFlight = JointChannelConnectionsAction.MemberConnect,
@@ -604,25 +684,73 @@ internal class JointChannelConnectionsStore(
                 effect = null,
             )
         launchAction {
-            val result = runCall { dataSource.connectMyServers(chosen) }
+            val outcomesAnswer: Pair<List<ServerConnectOutcome>, String?>?
+            val refusalLineAndClosed: Pair<MemberConnectLine.Request, Boolean>?
+            val refusalTraceId: String?
+            if (hostConnect) {
+                val result = runCall { dataSource.connectOwnServers(chosen, makePrivate = true) }
+                val answer = (result as? DataResult.Content)?.data
+                when (answer) {
+                    is ExternalInviteAnswer.Ok -> {
+                        outcomesAnswer = answer.value to answer.traceId
+                        refusalLineAndClosed = null
+                        refusalTraceId = null
+                    }
+                    is ExternalInviteAnswer.Refused -> {
+                        outcomesAnswer = null
+                        refusalLineAndClosed =
+                            resolveHostConnectRequestLine(
+                                status = answer.refusal.status,
+                                code = answer.refusal.code,
+                                error = answer.refusal.error,
+                                traceId = answer.refusal.traceId,
+                            )
+                        refusalTraceId = answer.refusal.traceId
+                    }
+                    null -> {
+                        outcomesAnswer = null
+                        val trace =
+                            when (result) {
+                                is DataResult.Error -> result.error.traceId
+                                is DataResult.NoPermission -> result.blocker.traceId
+                                else -> null
+                            }
+                        refusalLineAndClosed = resolveHostConnectRequestLine(status = null, code = null, error = null, traceId = trace)
+                        refusalTraceId = trace
+                    }
+                }
+            } else {
+                val result = runCall { dataSource.connectMyServers(chosen) }
+                val answer = (result as? DataResult.Content)?.data
+                when (answer) {
+                    is MemberConnectResponse.Answered -> {
+                        outcomesAnswer = answer.servers to answer.traceId
+                        refusalLineAndClosed = null
+                        refusalTraceId = null
+                    }
+                    is MemberConnectResponse.Refused -> {
+                        outcomesAnswer = null
+                        refusalLineAndClosed =
+                            resolveMemberConnectRequestLine(answer.status, answer.code, answer.error, answer.traceId)
+                        refusalTraceId = answer.traceId
+                    }
+                    null -> {
+                        outcomesAnswer = null
+                        val trace =
+                            when (result) {
+                                is DataResult.Error -> result.error.traceId
+                                is DataResult.NoPermission -> result.blocker.traceId
+                                else -> null
+                            }
+                        refusalLineAndClosed = resolveMemberConnectRequestLine(status = null, code = null, error = null, traceId = null)
+                        refusalTraceId = trace
+                    }
+                }
+            }
             val previous = mutableState.value
             val open = previous.memberConnectSheet ?: sheet
-            val answer = (result as? DataResult.Content)?.data
-            if (answer !is MemberConnectResponse.Answered) {
-                val (requestLine, closed) =
-                    when (answer) {
-                        is MemberConnectResponse.Refused ->
-                            resolveMemberConnectRequestLine(answer.status, answer.code, answer.error, answer.traceId)
-                        else ->
-                            resolveMemberConnectRequestLine(status = null, code = null, error = null, traceId = null)
-                    }
-                val traceId =
-                    when {
-                        answer is MemberConnectResponse.Refused -> answer.traceId
-                        result is DataResult.Error -> result.error.traceId
-                        result is DataResult.NoPermission -> result.blocker.traceId
-                        else -> null
-                    }
+            if (outcomesAnswer == null) {
+                val (requestLine, closed) = refusalLineAndClosed ?: (MemberConnectLine.Request(MemberConnectMessage.Generic) to false)
                 mutableState.value =
                     previous.copy(
                         actionInFlight = null,
@@ -630,14 +758,14 @@ internal class JointChannelConnectionsStore(
                             open.copy(
                                 busy = false,
                                 lines = listOf(requestLine),
-                                traceId = traceId,
+                                traceId = refusalTraceId,
                                 closed = open.closed || closed,
                                 selected = open.selected.filterNot { open.limits[it]?.atLimit == true }.toSet(),
                             ),
                     )
                 return@launchAction
             }
-            val outcomes = answer.servers
+            val (outcomes, answerTraceId) = outcomesAnswer
             val connected = outcomes.filterIsInstance<ServerConnectOutcome.Connected>().map { it.serverId }
             val connecting = outcomes.filterIsInstance<ServerConnectOutcome.Connecting>().map { it.serverId }
             val refused = outcomes.filterIsInstance<ServerConnectOutcome.Refused>()
@@ -668,7 +796,7 @@ internal class JointChannelConnectionsStore(
                         val lines =
                             buildList {
                                 if (went.isNotEmpty()) add(MemberConnectLine.Connected(went))
-                                refused.forEach { add(memberConnectRefusedLine(it)) }
+                                refused.forEach { add(if (hostConnect) hostConnectRefusedLine(it) else memberConnectRefusedLine(it)) }
                             }
                         val rowStates =
                             open.rowStates +
@@ -687,7 +815,7 @@ internal class JointChannelConnectionsStore(
                                     done = open.done + went,
                                     rowStates = rowStates,
                                     lines = lines,
-                                    traceId = answer.traceId,
+                                    traceId = answerTraceId,
                                     selected = open.selected.filter { it in retry }.toSet(),
                                 ),
                         )
@@ -880,6 +1008,59 @@ internal class JointChannelConnectionsStore(
                 }
             }
         }
+    }
+
+    /**
+     * Web `useOwnConnectableServers(hostConnect)` (slock #16661): on a public channel for host
+     * owner/admin, loads `GET channels/external-connect-servers` (never `connect-my-servers`, which
+     * refuses public channels), filters rows to directly connectable servers, and reads each
+     * server's Free-plan limit.
+     */
+    private fun fetchHostOwnConnectableServers() {
+        memberConnectLimitsJob?.cancel()
+        memberConnectLimitsJob =
+            scope.launch {
+                val ownServers =
+                    try {
+                        ((dataSource.ownConnectableServers() as? DataResult.Content)?.data as? ExternalInviteAnswer.Ok)?.value?.servers.orEmpty()
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        emptyList()
+                    }
+                val current = mutableState.value
+                val open = current.memberConnectSheet ?: return@launch
+                if (!open.hostConnect || ownServers.isEmpty()) return@launch
+                val directIds = ownServers.filter { it.canConnectDirectly }.map { it.id }.toSet()
+                val limits =
+                    ownServers.associate { server ->
+                        server.id to
+                            MemberConnectServerLimit(
+                                serverId = server.id,
+                                atLimit = server.atLimit,
+                                canUpgrade = server.canUpgrade,
+                                owners =
+                                    server.owners.map { owner ->
+                                        MemberConnectOwnerRef(id = owner.id, name = owner.name, avatarUrl = owner.avatarUrl)
+                                    },
+                            )
+                    }
+                val nextSelected =
+                    if (open.busy) {
+                        open.selected
+                    } else {
+                        open.selected.filter { id -> id in directIds && limits[id]?.atLimit != true }.toSet()
+                    }
+                mutableState.value =
+                    current.copy(
+                        memberConnectSheet =
+                            open.copy(
+                                limits = limits,
+                                hostOwnDirectServerIds = directIds,
+                                selected = nextSelected,
+                            ),
+                    )
+            }
     }
 
     private fun fetchMemberConnectOptions() {

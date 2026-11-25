@@ -4136,6 +4136,7 @@
     <string name="joint_member_connect_commit_one">连接</string>
     <string name="joint_member_connect_connecting">连接中…</string>
     <string name="joint_member_connect_description">你是所有者或管理员的服务器会直接连入。不需要征得托管方 %1$s 同意，频道里会发一条消息说明这个服务器已连接。</string>
+    <string name="joint_member_connect_description_host_admin">你是所有者或管理员的服务器会直接连入，不需要邀请。频道里会发一条消息说明这个服务器已连接。</string>
     <string name="joint_member_connect_error_already_connected">%1$s 已经连接。</string>
     <string name="joint_member_connect_error_archived">%1$s 已归档。</string>
     <string name="joint_member_connect_error_channel_name_taken">%1$s 已经有一个叫 %2$s 的频道。请先在 %1$s 里给那个频道改名，再重新连接。</string>
@@ -5608,15 +5609,18 @@
     <string name="channel_external_invite_emails_label">通过邮箱邀请</string>
     <string name="channel_external_invite_emails_placeholder">alex@example.com, sam@example.org, …</string>
     <string name="channel_external_invite_emails_join_by_link">每个人都会收到一封带加入链接的邮件，还没有 Raft 账号也可以。</string>
+    <string name="channel_external_invite_emails_audience">他们会收到一封加入邮件，没有 Raft 账户也可以，并且只能看到 %1$s，包括以前的消息。</string>
     <string name="channel_external_invite_too_many">一次最多 %1$d 个邮箱，请删掉 %2$d 个。</string>
     <string name="channel_external_invite_next">下一步</string>
     <string name="channel_external_invite_checking">检查中…</string>
     <string name="channel_external_invite_back">返回</string>
-    <string name="channel_external_invite_review_intro">邀请链接 %1$d 天内有效。对方可以作为访客加入，或连接自己的服务器，带上他们的 Agent 和队友。</string>
+    <string name="channel_external_invite_review_intro">邀请链接 %1$d 天内有效。每个人都可以加入这个频道；如果对方团队也在用 Raft，也可以连接自己的服务器。</string>
+    <string name="channel_external_invite_group_invited">将通过邮件邀请</string>
+    <string name="channel_external_invite_group_not_sent">未发送</string>
     <string name="channel_external_invite_status_will_invite">将发送邀请</string>
-    <string name="channel_external_invite_status_already_invited">已邀请过 · 不再发送新邀请</string>
+    <string name="channel_external_invite_status_already_invited">已邀请过</string>
     <string name="channel_external_invite_status_will_add">已在 %1$s 中 · 直接加入</string>
-    <string name="channel_external_invite_status_already_in_channel">已在此频道中 · 不发送邀请</string>
+    <string name="channel_external_invite_status_already_in_channel">已在此频道中</string>
     <string name="channel_external_invite_status_member_in_channel">已在此频道中</string>
     <string name="channel_external_invite_invite_to_connect">邀请对方连接自己的服务器</string>
     <string name="channel_external_invite_status_guest_elsewhere">已是 %1$s 的访客 · 邀请其连接服务器</string>
@@ -5624,7 +5628,8 @@
     <string name="channel_external_invite_status_guest_elsewhere_hint">在 %1$s 里，一位访客只能加入一个频道，所以对方不能作为访客加入这里。收到邀请后，对方可以连接自己所在的服务器，或新建一个服务器来加入。</string>
     <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">在 %1$s 里，一位访客只能加入一个频道，所以对方不能作为访客加入这里。收到邀请后，对方可以连接自己所在的服务器，或新建一个服务器来加入。</string>
     <string name="channel_external_invite_status_duplicate">重复填写 · 只发送一个邀请</string>
-    <string name="channel_external_invite_status_invalid">不是有效的邮箱 · 不发送邀请</string>
+    <string name="channel_external_invite_status_invalid">不是邮箱地址</string>
+    <string name="channel_external_invite_status_self">这是你自己</string>
     <string name="channel_external_invite_commit">邀请</string>
     <string name="channel_external_invite_sending">发送中…</string>
     <string name="channel_external_invite_nothing_to_send">列表里没有可以邀请的人。请返回修改。</string>
@@ -5648,6 +5653,7 @@
     <string name="channel_external_invite_error_not_found">这个频道现在不能发送外部邀请。</string>
     <string name="channel_external_invite_error_generic">出了点问题，请重试。</string>
     <string name="channel_external_invite_servers_label">连接你的服务器</string>
+    <string name="channel_external_invite_connect_servers_link">连接你的服务器</string>
     <string name="channel_external_invite_servers_search">搜索服务器</string>
     <string name="channel_external_invite_servers_clear_search">清除搜索</string>
     <string name="channel_external_invite_servers_no_match">没有匹配项</string>
@@ -5664,6 +5670,10 @@
     <string name="channel_external_invite_server_refused_party_limit">%1$s 的访客太多，无法再连接其他服务器。外部频道的服务器和访客加起来最多 %2$d 个。请先移除部分访客，再重试。</string>
     <string name="external_invite_title">加入 %1$s</string>
     <string name="external_invite_invited_by">%1$s 从 %2$s 邀请了你。</string>
+    <string name="external_invite_invited_by_no_guest">%1$s 从 %2$s 邀请了你。你不能作为访客加入，请改用服务器加入。</string>
+    <string name="external_invite_in_channel_title">你已在 %1$s 中</string>
+    <string name="external_invite_in_channel_description">想把队友和 Agent 也带进来，就连接一个服务器。</string>
+    <string name="external_invite_public_channel_becomes_private">连接后，%1$s 会变为私有频道。</string>
     <string name="external_invite_sign_out">退出登录</string>
     <string name="external_invite_back">返回</string>
     <string name="external_invite_retry">重试</string>
@@ -5677,7 +5687,7 @@
     <string name="external_invite_wrong_account_description">请用收到邀请的邮箱登录。如果已经是这个邮箱，邀请可能已被撤回或已过期。</string>
     <string name="external_invite_wrong_account_sent_to">这个邀请是发给 %1$s 的。用这个邮箱登录后即可接受。</string>
     <string name="external_invite_option_guest">作为访客加入</string>
-    <string name="external_invite_option_guest_description">以你自己的身份只加入这一个频道，与频道里的人和 Agent 协作。</string>
+    <string name="external_invite_option_guest_description">以你自己的身份只加入这一个频道，包括以前的消息。</string>
     <string name="external_invite_option_connect">连接一个服务器</string>
     <string name="external_invite_option_connect_description">从你所在的服务器带上队友和 Agent。</string>
     <string name="external_invite_option_new_server">创建新服务器</string>
@@ -5699,6 +5709,7 @@
     <string name="external_invite_connect_search">搜索服务器</string>
     <string name="external_invite_connect_needs_approval">需要批准</string>
     <string name="external_invite_connect_at_limit">已达外部频道上限</string>
+    <string name="external_invite_connect_needs_approval_public">需要 %1$s 批准，而 %2$s 是公开频道。</string>
     <string name="external_invite_connect_commit_unpicked">连接</string>
     <string name="external_invite_connect_commit">连接 %1$s</string>
     <string name="external_invite_connect_commit_many_other">连接 %1$d 个服务器</string>
@@ -5760,6 +5771,8 @@
     <string name="external_invite_error_guest_unavailable">%1$s 已与其他服务器共享，暂时不能接收访客。请连接一个服务器加入。</string>
     <string name="external_invite_error_already_member">你已经是 %1$s 的成员。请那里的管理员把你加入 %2$s。</string>
     <string name="external_invite_error_guest_elsewhere">你已是另一个频道的访客，不能作为访客加入 %1$s。请改为连接或创建一个服务器。</string>
+    <string name="external_invite_error_channel_public">%1$s 是公开频道。请先让所有者或管理员把它设为私有。</string>
+    <string name="external_invite_error_channel_public_now">%1$s 现在是公开频道，连接后会变为私有。再连接一次即可继续。</string>
     <string name="external_invite_error_channel_full">%1$s 已满。请 %2$s 腾出名额后，再打开这个链接。</string>
     <string name="external_invite_error_deployment_user_limit">这个 Raft 社区版部署已有 5 人，达到 Raft 许可证的上限。如需超出，请发邮件至 contact@raft.build 申请单独的许可证。</string>
     <string name="external_invite_error_invalid_server">%1$s 不能连接到 %2$s，请选择其他服务器。</string>

@@ -57,6 +57,8 @@ data class InviteConnectableServer(
     /** The Free plan's one external channel keeps it out: listed, not chosen. */
     val atLimit: Boolean = false,
     val canUpgrade: Boolean = false,
+    /** At its limit: who can upgrade it (`owners`). Absent from an older server. */
+    val owners: List<InviteApprover> = emptyList(),
 )
 
 @Serializable
@@ -105,6 +107,18 @@ data class AcceptedExternalInvite(
     val channelName: String = "",
 )
 
+@Serializable
+data class InviteOpenChannel(
+    val serverId: String,
+    val channelId: String,
+    val channelName: String = "",
+)
+
+@Serializable
+data class InvitePublicChannel(
+    val canMakePrivate: Boolean = false,
+)
+
 /** The invite page (web `ExternalInviteForInvitee`). */
 @Serializable
 data class ExternalInviteForInvitee(
@@ -128,10 +142,27 @@ data class ExternalInviteForInvitee(
     val invitedEmailMasked: String? = null,
     val options: InviteOptions? = null,
     val channelFull: Boolean = false,
+    /**
+     * The invitee is a member of the host server (not a Guest) already in the channel (slock #16635):
+     * the page reads "You're in #channel" with [openChannel] alongside connect options. Absent from older servers.
+     */
+    val alreadyInChannel: Boolean = false,
+    /** With [alreadyInChannel]: the channel to open ("Open #channel") on the host server. */
+    val openChannel: InviteOpenChannel? = null,
+    /**
+     * The channel is public (a member's invite leaves it public, slock #16635): connecting a server
+     * makes it private, which only an owner or admin of the host in the channel may do ([InvitePublicChannel.canMakePrivate],
+     * confirmed with `makePrivate: true`); anyone else is refused `channel_public_admin_required`.
+     */
+    val publicChannel: InvitePublicChannel? = null,
 )
 
 @Serializable
 data class GuestAcceptance(val serverId: String, val channelId: String)
+
+/** `POST external-invites/:token/connect`: connected now (200), or the channel is converted first (202). */
+@Serializable
+data class InviteConnectResult(val state: String = "", val serverId: String? = null, val channelId: String? = null)
 
 /** connect-new-server: connected now, or the channel is converted first. */
 @Serializable
@@ -141,10 +172,13 @@ data class NewServerConnectResult(val state: String = "", val serverId: String, 
 @RaftCoreInternalApi data class InviteServerSelection(val serverId: String, val approverUserId: String? = null)
 
 @Serializable
-private data class InviteConnectServersBody(val servers: List<InviteServerSelection>)
+private data class InviteConnectBody(val serverId: String, val makePrivate: Boolean? = null)
 
 @Serializable
-private data class InviteNewServerBody(val name: String, val slug: String)
+private data class InviteConnectServersBody(val servers: List<InviteServerSelection>, val makePrivate: Boolean? = null)
+
+@Serializable
+private data class InviteNewServerBody(val name: String, val slug: String, val makePrivate: Boolean? = null)
 
 @Serializable
 private data class InviteCancelRequestBody(val requestId: String? = null)
@@ -186,6 +220,10 @@ sealed interface InviteeAnswer<out T> {
     runCatching { inviteeJson.decodeFromString(GuestAcceptance.serializer(), bodyText) }.getOrNull()
         ?.takeIf { it.serverId.isNotBlank() && it.channelId.isNotBlank() }
 
+@RaftCoreInternalApi fun parseSharedInviteConnectResult(bodyText: String): InviteConnectResult? =
+    runCatching { inviteeJson.decodeFromString(InviteConnectResult.serializer(), bodyText) }.getOrNull()
+        ?.takeIf { it.state == "connecting" || (!it.serverId.isNullOrBlank() && !it.channelId.isNullOrBlank()) }
+
 @RaftCoreInternalApi fun parseSharedNewServerConnectResult(bodyText: String): NewServerConnectResult? =
     runCatching { inviteeJson.decodeFromString(NewServerConnectResult.serializer(), bodyText) }.getOrNull()
         ?.takeIf { it.serverId.isNotBlank() }
@@ -207,11 +245,27 @@ sealed interface InviteeAnswer<out T> {
     )
 }
 
-@RaftCoreInternalApi fun buildSharedInviteConnectServersBody(servers: List<InviteServerSelection>): String =
-    inviteeJson.encodeToString(InviteConnectServersBody.serializer(), InviteConnectServersBody(servers))
+@RaftCoreInternalApi fun buildSharedInviteConnectBody(serverId: String, makePrivate: Boolean = false): String =
+    inviteeJson.encodeToString(InviteConnectBody.serializer(), InviteConnectBody(serverId, makePrivate.takeIf { it }))
 
-@RaftCoreInternalApi fun buildSharedInviteNewServerBody(name: String, slug: String): String =
-    inviteeJson.encodeToString(InviteNewServerBody.serializer(), InviteNewServerBody(name, slug))
+@RaftCoreInternalApi fun buildSharedInviteConnectServersBody(
+    servers: List<InviteServerSelection>,
+    makePrivate: Boolean = false,
+): String =
+    inviteeJson.encodeToString(
+        InviteConnectServersBody.serializer(),
+        InviteConnectServersBody(servers, makePrivate.takeIf { it }),
+    )
+
+@RaftCoreInternalApi fun buildSharedInviteNewServerBody(
+    name: String,
+    slug: String,
+    makePrivate: Boolean = false,
+): String =
+    inviteeJson.encodeToString(
+        InviteNewServerBody.serializer(),
+        InviteNewServerBody(name, slug, makePrivate.takeIf { it }),
+    )
 
 @RaftCoreInternalApi fun buildSharedInviteCancelRequestBody(requestId: String?): String =
     inviteeJson.encodeToString(InviteCancelRequestBody.serializer(), InviteCancelRequestBody(requestId))
@@ -231,23 +285,33 @@ sealed interface InviteeAnswer<out T> {
     suspend fun acceptAsGuest(token: String) =
         call("guest", DataRequestPriority.Foreground, "${base(token)}/accept-as-guest", "POST", "{}", ::parseSharedGuestAcceptance)
 
-    suspend fun connectServers(token: String, servers: List<InviteServerSelection>) =
+    suspend fun connect(token: String, serverId: String, makePrivate: Boolean = false) =
+        call(
+            "connect",
+            DataRequestPriority.Foreground,
+            "${base(token)}/connect",
+            "POST",
+            buildSharedInviteConnectBody(serverId, makePrivate),
+            ::parseSharedInviteConnectResult,
+        )
+
+    suspend fun connectServers(token: String, servers: List<InviteServerSelection>, makePrivate: Boolean = false) =
         call(
             "connect_servers",
             DataRequestPriority.Foreground,
             "${base(token)}/connect-servers",
             "POST",
-            buildSharedInviteConnectServersBody(servers),
+            buildSharedInviteConnectServersBody(servers, makePrivate),
             ::parseSharedMemberConnectOutcomes,
         )
 
-    suspend fun connectNewServer(token: String, name: String, slug: String) =
+    suspend fun connectNewServer(token: String, name: String, slug: String, makePrivate: Boolean = false) =
         call(
             "new_server",
             DataRequestPriority.Foreground,
             "${base(token)}/connect-new-server",
             "POST",
-            buildSharedInviteNewServerBody(name, slug),
+            buildSharedInviteNewServerBody(name, slug, makePrivate),
             ::parseSharedNewServerConnectResult,
         )
 

@@ -3957,6 +3957,7 @@
     <string name="joint_member_connect_commit_one">Conectar</string>
     <string name="joint_member_connect_connecting">Conectando…</string>
     <string name="joint_member_connect_description">Servidores em que você é proprietário ou administrador se conectam agora. %1$s, o anfitrião, não é consultado. Uma mensagem no canal informa que o servidor foi conectado.</string>
+    <string name="joint_member_connect_description_host_admin">Os servidores em que você é proprietário ou administrador são conectados na hora, sem convite. Uma mensagem no canal informa que o servidor foi conectado.</string>
     <string name="joint_member_connect_error_already_connected">%1$s já está conectado.</string>
     <string name="joint_member_connect_error_archived">%1$s foi arquivado.</string>
     <string name="joint_member_connect_error_channel_name_taken">%1$s já tem um canal chamado %2$s. Renomeie esse canal em %1$s e conecte novamente.</string>
@@ -5425,15 +5426,18 @@
     <string name="channel_external_invite_emails_label">Convidar por e-mail</string>
     <string name="channel_external_invite_emails_placeholder">alex@example.com, sam@example.org, …</string>
     <string name="channel_external_invite_emails_join_by_link">Cada pessoa recebe um e-mail com um link para entrar, mesmo sem conta no Raft.</string>
+    <string name="channel_external_invite_emails_audience">As pessoas recebem um e-mail para entrar, com ou sem conta no Raft, e veem só %1$s, incluindo as mensagens anteriores.</string>
     <string name="channel_external_invite_too_many">No máximo %1$d e-mails por vez. Remova %2$d.</string>
     <string name="channel_external_invite_next">Avançar</string>
     <string name="channel_external_invite_checking">Verificando…</string>
     <string name="channel_external_invite_back">Voltar</string>
-    <string name="channel_external_invite_review_intro">O link de convite vale por %1$d dias. As pessoas podem entrar com acesso de convidado ou conectar o próprio servidor para trazer seus agentes e colegas de equipe.</string>
+    <string name="channel_external_invite_review_intro">O link de convite vale por %1$d dias. Cada pessoa pode entrar neste canal ou, se a equipe dela também usa o Raft, conectar o próprio servidor.</string>
+    <string name="channel_external_invite_group_invited">Convidados por e-mail</string>
+    <string name="channel_external_invite_group_not_sent">Não enviados</string>
     <string name="channel_external_invite_status_will_invite">Convite será enviado</string>
-    <string name="channel_external_invite_status_already_invited">Convite já enviado · sem novo convite</string>
+    <string name="channel_external_invite_status_already_invited">Já convidado</string>
     <string name="channel_external_invite_status_will_add">Já está em %1$s · adição direta</string>
-    <string name="channel_external_invite_status_already_in_channel">Já está neste canal · sem convite</string>
+    <string name="channel_external_invite_status_already_in_channel">Já está neste canal</string>
     <string name="channel_external_invite_status_member_in_channel">Já está neste canal</string>
     <string name="channel_external_invite_invite_to_connect">Convidar para conectar o próprio servidor</string>
     <string name="channel_external_invite_status_guest_elsewhere">Convidado em %1$s · receberá convite para conectar um servidor</string>
@@ -5441,7 +5445,8 @@
     <string name="channel_external_invite_status_guest_elsewhere_hint">Em %1$s, cada convidado só pode estar em um canal, então essa pessoa não pode entrar aqui como convidado. Com este convite, ela pode entrar conectando um servidor do qual participa ou criando um.</string>
     <string name="channel_external_invite_status_guest_elsewhere_unnamed_hint">Em %1$s, cada convidado só pode estar em um canal, então essa pessoa não pode entrar aqui como convidado. Com este convite, ela pode entrar conectando um servidor do qual participa ou criando um.</string>
     <string name="channel_external_invite_status_duplicate">Aparece mais de uma vez · um único convite</string>
-    <string name="channel_external_invite_status_invalid">E-mail inválido · sem convite</string>
+    <string name="channel_external_invite_status_invalid">Não é um endereço de e-mail</string>
+    <string name="channel_external_invite_status_self">É você</string>
     <string name="channel_external_invite_commit">Convidar</string>
     <string name="channel_external_invite_sending">Enviando…</string>
     <string name="channel_external_invite_nothing_to_send">Ninguém desta lista pode receber convite. Volte para alterá-la.</string>
@@ -5465,6 +5470,7 @@
     <string name="channel_external_invite_error_not_found">Este canal não pode receber convites externos agora.</string>
     <string name="channel_external_invite_error_generic">Algo deu errado. Tente novamente.</string>
     <string name="channel_external_invite_servers_label">Conectar seus servidores</string>
+    <string name="channel_external_invite_connect_servers_link">Conectar seus servidores</string>
     <string name="channel_external_invite_servers_search">Pesquisar servidores</string>
     <string name="channel_external_invite_servers_clear_search">Limpar pesquisa</string>
     <string name="channel_external_invite_servers_no_match">Nenhum resultado</string>
@@ -5481,6 +5487,10 @@
     <string name="channel_external_invite_server_refused_party_limit">%1$s tem convidados demais para que outro servidor se conecte. Um canal externo aceita no máximo %2$d servidores e convidados no total. Remova alguns convidados e tente novamente.</string>
     <string name="external_invite_title">Entrar em %1$s</string>
     <string name="external_invite_invited_by">%1$s, de %2$s, convidou você.</string>
+    <string name="external_invite_invited_by_no_guest">%1$s, de %2$s, convidou você. Você não pode entrar como convidado, então entre com um servidor.</string>
+    <string name="external_invite_in_channel_title">Você já está em %1$s</string>
+    <string name="external_invite_in_channel_description">Para trazer também seus colegas de equipe e agentes, conecte um servidor.</string>
+    <string name="external_invite_public_channel_becomes_private">%1$s vai se tornar privado após a conexão.</string>
     <string name="external_invite_sign_out">Sair</string>
     <string name="external_invite_back">Voltar</string>
     <string name="external_invite_retry">Tentar novamente</string>
@@ -5494,7 +5504,7 @@
     <string name="external_invite_wrong_account_description">Entre com o endereço de e-mail para o qual o convite foi enviado. Se você já fez isso, o convite pode ter sido revogado ou ter expirado.</string>
     <string name="external_invite_wrong_account_sent_to">Este convite foi enviado para %1$s. Entre com esse endereço para aceitá-lo.</string>
     <string name="external_invite_option_guest">Entrar como convidado</string>
-    <string name="external_invite_option_guest_description">Entre apenas neste canal, com sua conta, para trabalhar com as pessoas e os agentes que estão nele.</string>
+    <string name="external_invite_option_guest_description">Entre apenas neste canal, com sua conta, incluindo as mensagens anteriores.</string>
     <string name="external_invite_option_connect">Conectar um servidor</string>
     <string name="external_invite_option_connect_description">Traga seus colegas de equipe e agentes de um servidor do qual você faz parte.</string>
     <string name="external_invite_option_new_server">Criar novo servidor</string>
@@ -5516,6 +5526,7 @@
     <string name="external_invite_connect_search">Pesquisar servidores</string>
     <string name="external_invite_connect_needs_approval">Requer aprovação</string>
     <string name="external_invite_connect_at_limit">No limite de canais externos</string>
+    <string name="external_invite_connect_needs_approval_public">Você precisaria da aprovação de %1$s, e %2$s é público.</string>
     <string name="external_invite_connect_commit_unpicked">Conectar</string>
     <string name="external_invite_connect_commit">Conectar %1$s</string>
     <string name="external_invite_connect_commit_many_other">Conectar %1$d servidores</string>
@@ -5577,6 +5588,8 @@
     <string name="external_invite_error_guest_unavailable">%1$s é compartilhado com outros servidores, então ainda não aceita convidados. Conecte um servidor para entrar nele.</string>
     <string name="external_invite_error_already_member">Você já é membro de %1$s. Peça a um administrador de lá que adicione você a %2$s.</string>
     <string name="external_invite_error_guest_elsewhere">Você já tem acesso de convidado em outro canal, então não pode entrar em %1$s como convidado. Em vez disso, conecte ou crie um servidor.</string>
+    <string name="external_invite_error_channel_public">%1$s é público. Peça primeiro a um proprietário ou administrador para torná-lo privado.</string>
+    <string name="external_invite_error_channel_public_now">%1$s agora é público, então a conexão vai torná-lo privado. Conecte de novo para continuar.</string>
     <string name="external_invite_error_channel_full">%1$s está cheio. Peça a %2$s que libere uma vaga. Depois, abra este link de novo.</string>
     <string name="external_invite_error_deployment_user_limit">Esta implantação do Raft Community Edition já tem 5 pessoas, o limite da Raft License. Para ir além disso, envie um e-mail para contact@raft.build e peça uma licença separada.</string>
     <string name="external_invite_error_invalid_server">Não é possível conectar %1$s a %2$s. Escolha outro servidor.</string>

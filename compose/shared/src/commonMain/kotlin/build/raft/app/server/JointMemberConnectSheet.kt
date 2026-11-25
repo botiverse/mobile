@@ -61,6 +61,8 @@ internal const val JointMemberConnectNewServerNameTag = "member-connect-new-serv
 internal const val JointMemberConnectNewServerSlugTag = "member-connect-new-server-slug"
 internal const val JointMemberConnectUpgradeTag = "member-connect-upgrade"
 internal const val JointMemberConnectAskOwnerTag = "member-connect-ask-owner"
+internal const val JointMemberConnectBecomesPrivateTag = "member-connect-becomes-private"
+internal const val JointMemberConnectPublicRefusedTag = "member-connect-public-refused"
 
 /**
  * Web ConnectedServersMenu: the ⋯ at the end of Connected servers' heading with one item,
@@ -140,6 +142,17 @@ internal fun jointMemberConnectMessage(message: MemberConnectMessage, target: St
             stringResource(Res.string.joint_member_connect_error_joint_party_limit, channel, JOINT_CHANNEL_MAX_SERVERS, host)
         MemberConnectMessage.ConnectInProgress -> stringResource(Res.string.joint_member_connect_error_connect_in_progress, channel)
         MemberConnectMessage.Busy -> stringResource(Res.string.joint_member_connect_error_busy, channel)
+        MemberConnectMessage.HostFreeLimit -> stringResource(Res.string.channel_external_invite_error_free_limit)
+        MemberConnectMessage.HostPartyLimit ->
+            stringResource(Res.string.channel_external_invite_server_refused_party_limit, channel, JOINT_CHANNEL_MAX_SERVERS)
+        MemberConnectMessage.HostChannelFull -> stringResource(Res.string.channel_external_invite_error_channel_full)
+        MemberConnectMessage.HostMembershipRequired -> stringResource(Res.string.channel_external_invite_error_membership_required)
+        MemberConnectMessage.HostArchived -> stringResource(Res.string.channel_external_invite_error_archived)
+        MemberConnectMessage.HostNotInvitable -> stringResource(Res.string.channel_external_invite_error_not_invitable)
+        MemberConnectMessage.HostConnecting -> stringResource(Res.string.channel_external_invite_error_connecting)
+        MemberConnectMessage.HostDailyCap -> stringResource(Res.string.channel_external_invite_error_daily_cap)
+        MemberConnectMessage.HostNotFound -> stringResource(Res.string.channel_external_invite_error_not_found)
+        MemberConnectMessage.HostForbidden -> stringResource(Res.string.channel_external_invite_error_forbidden)
         MemberConnectMessage.Generic -> stringResource(Res.string.joint_member_connect_error_generic)
     }
 
@@ -156,6 +169,7 @@ internal fun JointMemberConnectSheet(
     onDismiss: () -> Unit,
     onSelectionChange: (Set<String>) -> Unit,
     onSubmit: () -> Unit,
+    onBack: (() -> Unit)? = null,
     onUpgradeServer: (serverId: String) -> Unit = {},
     offersUpgrade: Boolean = settingsBillingOffersUpgrade(),
     onOpenCreateServer: () -> Unit = {},
@@ -174,7 +188,7 @@ internal fun JointMemberConnectSheet(
             form = newServer,
             channel = channel,
             host = host,
-            onDismiss = onDismiss,
+            onDismiss = onBack ?: onDismiss,
             onBack = onCloseCreateServer,
             onNameChange = onNewServerNameChange,
             onSlugChange = onNewServerSlugChange,
@@ -188,6 +202,7 @@ internal fun JointMemberConnectSheet(
         channel = channel,
         host = host,
         onDismiss = onDismiss,
+        onBack = onBack,
         onSelectionChange = onSelectionChange,
         onSubmit = onSubmit,
         onUpgradeServer = onUpgradeServer,
@@ -203,6 +218,7 @@ private fun JointMemberConnectListSheet(
     channel: String,
     host: String,
     onDismiss: () -> Unit,
+    onBack: (() -> Unit)?,
     onSelectionChange: (Set<String>) -> Unit,
     onSubmit: () -> Unit,
     onUpgradeServer: (serverId: String) -> Unit,
@@ -303,17 +319,27 @@ private fun JointMemberConnectListSheet(
         } else {
             stringResource(Res.string.joint_member_connect_commit_many, sheet.selected.size)
         }
+    val dismissAction = onBack ?: onDismiss
     RaftDesignSystemTheme {
         RaftDialogSheet(
-            onDismissRequest = { if (!sheet.busy) onDismiss() },
+            onDismissRequest = { if (!sheet.busy) dismissAction() },
             title = stringResource(Res.string.joint_member_connect_title),
             commitLabel = if (sheet.busy) stringResource(Res.string.joint_member_connect_connecting) else commitLabel,
             onCommit = onSubmit,
-            commitEnabled = sheet.selected.isNotEmpty() && !sheet.closed && !sheet.busy,
+            commitEnabled = sheet.selected.isNotEmpty() && !sheet.closed && !sheet.locked && !sheet.busy,
             commitLoading = sheet.busy,
             closeLabel = stringResource(Res.string.common_close),
-            cancelLabel = stringResource(if (sheet.done.isNotEmpty()) Res.string.common_close else Res.string.common_cancel),
+            cancelLabel =
+                stringResource(
+                    when {
+                        sheet.done.isNotEmpty() -> Res.string.common_close
+                        onBack != null -> Res.string.channel_external_invite_back
+                        else -> Res.string.common_cancel
+                    }
+                ),
             closeEnabled = !sheet.busy,
+            onBack = if (onBack != null && sheet.done.isEmpty()) onBack else null,
+            backLabel = stringResource(Res.string.channel_external_invite_back),
             modifier = Modifier.testTag(JointMemberConnectSheetTag),
         ) {
             Column(
@@ -328,11 +354,34 @@ private fun JointMemberConnectListSheet(
                         color = RaftTheme.colors.foregroundMuted,
                     )
                 }
-                RaftText(
-                    stringResource(Res.string.joint_member_connect_description, host),
-                    style = RaftTheme.typography.callout,
-                    color = RaftTheme.colors.foregroundMuted,
-                )
+                when {
+                    sheet.hostConnect ->
+                        RaftText(
+                            stringResource(Res.string.external_invite_public_channel_becomes_private, channel),
+                            modifier = Modifier.testTag(JointMemberConnectBecomesPrivateTag),
+                            style = RaftTheme.typography.callout,
+                            color = RaftTheme.colors.foregroundMuted,
+                        )
+                    sheet.locked ->
+                        RaftText(
+                            stringResource(Res.string.external_invite_error_channel_public, channel),
+                            modifier = Modifier.testTag(JointMemberConnectPublicRefusedTag),
+                            style = RaftTheme.typography.callout,
+                            color = RaftTheme.colors.foregroundMuted,
+                        )
+                    sheet.hostAdmin ->
+                        RaftText(
+                            stringResource(Res.string.joint_member_connect_description_host_admin),
+                            style = RaftTheme.typography.callout,
+                            color = RaftTheme.colors.foregroundMuted,
+                        )
+                    else ->
+                        RaftText(
+                            stringResource(Res.string.joint_member_connect_description, host),
+                            style = RaftTheme.typography.callout,
+                            color = RaftTheme.colors.foregroundMuted,
+                        )
+                }
                 if (sheet.lines.isNotEmpty()) {
                     JointMemberConnectLinesBanner(
                         lines = sheet.lines,
