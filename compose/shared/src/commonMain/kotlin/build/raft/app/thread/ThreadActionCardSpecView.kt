@@ -267,6 +267,10 @@ internal fun ThreadActionCardSpecView(
     val displayLocale = rememberActionCardDisplayLocale()
     val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
     val effectiveCard = card.expiredAsOf(nowMillis)
+    // An ended card's local form drafts go (web `EndedCardFormDrafts`).
+    LaunchedEffect(messageId, effectiveCard.isExecuted, effectiveCard.hasEnded) {
+        if (effectiveCard.isExecuted || effectiveCard.hasEnded) clearActionCardFormDrafts(messageId)
+    }
     val migrateAgentAccess =
         if (!effectiveCard.isExecuted && !effectiveCard.hasEnded && effectiveCard.isAgentMigrateAction()) {
             host.evaluateMigrateAgentAccess(effectiveCard)

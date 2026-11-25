@@ -2,29 +2,41 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
@@ -43,6 +55,7 @@ import build.raft.app.data.ActionCardSpecChannelScope
 import build.raft.app.data.ActionCardSpecChoiceField
 import build.raft.app.data.ActionCardSpecForm
 import build.raft.app.data.cardCodePoints
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.isActionCardBlank
 import build.raft.app.data.ActionCardSpecKnownField
 import build.raft.app.data.ActionCardSpecMemberKind
@@ -63,7 +76,10 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftDialog
+import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftMessageActionCardActions
@@ -79,11 +95,15 @@ import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftFieldError
 import build.raft.designsystem.components.RaftFieldItem
 import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * What the pickers of an action card form choose from: the client's own store, no extra
@@ -139,6 +159,17 @@ internal data class ActionCardFormCandidates(
  * [submitting] the inputs are disabled, the commit is busy, × is disabled (web `closeDisabled`)
  * and the sheet does not close.
  */
+/** How long after a page turn a press still belongs to the one that turned it (web `PAGE_TURN_SETTLE_MS`). */
+internal const val ACTION_CARD_FORM_PAGE_TURN_SETTLE_MS: Long = 500L
+
+internal const val ACTION_CARD_FORM_UNDO_ROW_TAG: String = "action_card_form_undo_row"
+internal const val ACTION_CARD_FORM_DISCARD_DIALOG_TAG: String = "action_card_form_discard_dialog"
+
+private class ActionCardLatestValuesBox(
+    var lastComposed: Map<String, ActionCardFormValue>,
+    var values: Map<String, ActionCardFormValue> = lastComposed,
+)
+
 @Composable
 internal fun RaftActionCardFormSheet(
     form: ActionCardSpecForm,
@@ -153,42 +184,303 @@ internal fun RaftActionCardFormSheet(
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     fieldErrorsTraceId: String? = null,
     formErrorTraceId: String? = null,
+    /** False once the card is done, frozen or out of this viewer's hands: commit & Undo wait disabled. */
+    canSubmit: Boolean = true,
+    /** Local draft storage key ([actionCardFormDraftKey]), or null (closing with edits confirms discard). */
+    draftKey: String? = null,
+    /** A question card's form (`question:ask`, spec §5.10): single-choice tap advances, lone single choice hides commit, submit waits 1.5 s with Undo. */
+    question: Boolean = false,
+    /** Clock in ms for the page-turn settle guard ([ACTION_CARD_FORM_PAGE_TURN_SETTLE_MS]). */
+    nowMillis: () -> Long = ::defaultNowMillis,
 ) {
     RaftDesignSystemTheme {
         val locale = rememberActionCardFormDisplayLocale()
-        val state = rememberActionCardFormSheetState(form, fieldErrors)
+        val knownFields = remember(form) { form.fields.filterIsInstance<ActionCardSpecKnownField>() }
+        val initialValues = remember(form) { initialActionCardFormValues(form) }
+        val restoredDraft =
+            remember(form, draftKey) {
+                draftKey?.let(::readActionCardFormDraft)?.let { restoreActionCardFormDraft(form, it) }
+            }
+        var pendingRestoredValues by remember(form, draftKey) { mutableStateOf(restoredDraft?.values) }
+        if (pendingRestoredValues != null && sameActionCardFormValues(form, values, pendingRestoredValues!!)) {
+            pendingRestoredValues = null
+        }
+        val effectiveValues = pendingRestoredValues ?: values
+        val currentOnValuesChange by rememberUpdatedState(onValuesChange)
+        LaunchedEffect(form, draftKey) {
+            pendingRestoredValues?.let { restored ->
+                if (sameActionCardFormValues(form, values, restored)) {
+                    pendingRestoredValues = null
+                } else {
+                    currentOnValuesChange(restored)
+                }
+            }
+        }
+        val state = rememberActionCardFormSheetState(form, fieldErrors, initialPage = restoredDraft?.page ?: 0, nowMillis = nowMillis, draftKey = draftKey)
         // A server problem under a field of another page turns to that page.
         LaunchedEffect(fieldErrors) { state.showServerIssuePage() }
+        val scope = rememberCoroutineScope()
+        val latestValuesBox = remember(form, draftKey) { ActionCardLatestValuesBox(effectiveValues) }
+        if (effectiveValues != latestValuesBox.lastComposed) {
+            latestValuesBox.lastComposed = effectiveValues
+            latestValuesBox.values = effectiveValues
+        }
+        var submittedCleanly by remember(form, draftKey) { mutableStateOf(false) }
+        var wasSubmitting by remember(form, draftKey) { mutableStateOf(submitting) }
+        LaunchedEffect(submitting, fieldErrors, formError) {
+            if ((wasSubmitting && !submitting) || fieldErrors.isNotEmpty() || !formError.isNullOrBlank()) {
+                submittedCleanly = false
+            }
+            wasSubmitting = submitting
+        }
+        val currentCanSubmit by rememberUpdatedState(canSubmit)
+        val currentSubmitting by rememberUpdatedState(submitting)
+        val currentOnSubmit by rememberUpdatedState(onSubmit)
+        val submitNow: (Map<String, ActionCardFormValue>) -> Unit = { submitted ->
+            if (currentCanSubmit && !currentSubmitting) {
+                submittedCleanly = true
+                if (draftKey != null) removeActionCardFormDraft(draftKey)
+                currentOnSubmit(submitted)
+            }
+        }
+        // Question cards wait 1.5 s with "Submitted · Undo"; closing or going to background flushes immediately.
+        val undoable = rememberQuestionUndoableSubmit(draftKey ?: form) { submitNow(it) }
+        LaunchedEffect(undoable, canSubmit, question) {
+            if (!canSubmit || !question) undoable.undo()
+        }
+        val waiting = question && undoable.waiting && canSubmit
+        val busy = submitting || waiting
+        val dirty =
+            remember(knownFields, effectiveValues, initialValues) {
+                knownFields.any { field -> !sameActionCardFormValue(effectiveValues[field.name], initialValues[field.name]) }
+            }
+        val hasDraftState = dirty || state.page > 0
+        val saveDraft: () -> Boolean = {
+            if (draftKey == null || !canSubmit) {
+                false
+            } else if (!hasDraftState) {
+                removeActionCardFormDraft(draftKey)
+                false
+            } else {
+                writeActionCardFormDraft(draftKey, ActionCardFormDraft(page = state.page, values = effectiveValues))
+            }
+        }
+        LaunchedEffect(draftKey, canSubmit, state.page, effectiveValues, submittedCleanly) {
+            if (!submittedCleanly) saveDraft()
+        }
+        var confirmDiscard by remember(form, draftKey) { mutableStateOf(false) }
+        var advanceJob by remember(form, draftKey) { mutableStateOf<Job?>(null) }
+        val cancelAdvance = {
+            advanceJob?.cancel()
+            advanceJob = null
+        }
+        LaunchedEffect(state.page) { cancelAdvance() }
+        DisposableEffect(Unit) { onDispose { cancelAdvance() } }
+        val fieldTargets =
+            remember(state.page, state.pageFields) {
+                LinkedHashMap<String, Pair<FocusRequester, BringIntoViewRequester>>()
+            }
+        val startSubmit: (Map<String, ActionCardFormValue>) -> Unit = { submitted ->
+            if (question) undoable.start(submitted) else submitNow(submitted)
+        }
+        val commitNow: (Map<String, ActionCardFormValue>) -> Unit = { currentValues ->
+            if (!busy && canSubmit) state.commit(currentValues, submitting = busy, onSubmit = startSubmit)
+        }
+        val advanceFrom: (String) -> Unit = { fieldName ->
+            val names = state.pageFields.map { it.name }
+            val index = names.indexOf(fieldName)
+            if (index >= 0) {
+                val nextName = names.getOrNull(index + 1)
+                if (nextName == null) {
+                    commitNow(latestValuesBox.values)
+                } else {
+                    fieldTargets[nextName]?.let { (focusRequester, bringIntoView) ->
+                        scope.launch {
+                            runCatching { bringIntoView.bringIntoView() }
+                            runCatching { focusRequester.requestFocus() }
+                        }
+                    }
+                }
+            }
+        }
+        // A tap within a page turn's settle time still chooses the option, nothing more (web ActionCardFormSheet).
+        val onChoicePicked: ((String) -> Unit)? =
+            if (question) {
+                { fieldName ->
+                    if (!busy && canSubmit && !state.justTurned()) {
+                        cancelAdvance()
+                        advanceJob =
+                            scope.launch {
+                                delay(QUESTION_CHOICE_PICK_HIGHLIGHT_MS)
+                                advanceJob = null
+                                if (!currentSubmitting && !undoable.waiting && currentCanSubmit) {
+                                    val current = latestValuesBox.values[fieldName] as? ActionCardFormValue.Choice
+                                    if (current?.other == null) advanceFrom(fieldName)
+                                }
+                            }
+                    }
+                }
+            } else {
+                null
+            }
+        val onFieldEnter: (String) -> Unit = { fieldName ->
+            cancelAdvance()
+            if (question) {
+                if (!busy && canSubmit) advanceFrom(fieldName)
+            } else {
+                commitNow(latestValuesBox.values)
+            }
+        }
+        val onFieldValueChange: (String, ActionCardFormValue) -> Unit = { name, value ->
+            if (!busy && canSubmit) {
+                submittedCleanly = false
+                pendingRestoredValues = null
+                state.edited(name)
+                val nextValues = latestValuesBox.values + (name to value)
+                latestValuesBox.values = nextValues
+                onValuesChange(nextValues)
+            }
+        }
+        val requestClose: () -> Unit = {
+            when {
+                // Closing while an answer waits for Undo sends it now; the sheet closes once it is in.
+                waiting -> undoable.flush()
+                submitting -> Unit
+                else -> {
+                    // A kept draft is not lost by closing: nothing to confirm.
+                    val kept = saveDraft()
+                    if (dirty && !kept) confirmDiscard = true else onDismiss()
+                }
+            }
+        }
         val nextLabel = stringResource(Res.string.action_card_question_next)
+        // A lone single choice answers the form when tapped: no commit button until Other… is chosen or sending (§5.10).
+        val tapSubmits = question && actionCardTapSubmitsForm(knownFields, effectiveValues)
+        val commitLabel =
+            if (waiting || (tapSubmits && !submitting)) {
+                null
+            } else {
+                state.commitLabel(effectiveValues, locale, nextLabel)
+            }
         RaftDialogSheet(
-            onDismissRequest = { if (!submitting) onDismiss() },
+            onDismissRequest = requestClose,
             title = form.title.render(locale),
-            commitLabel = state.commitLabel(values, locale, nextLabel),
-            onCommit = { state.commit(values, submitting, onSubmit) },
+            commitLabel = commitLabel,
+            onCommit = {
+                cancelAdvance()
+                commitNow(latestValuesBox.values)
+            },
+            commitEnabled = canSubmit && !busy,
             commitLoading = submitting,
             closeLabel = stringResource(Res.string.common_close),
             cancelLabel = stringResource(Res.string.common_cancel),
             closeEnabled = !submitting,
-            onBack = if (state.page > 0) ({ state.back() }) else null,
+            onBack =
+                if (state.page > 0 && !waiting) {
+                    {
+                        cancelAdvance()
+                        submittedCleanly = false
+                        state.back(busy = busy)
+                    }
+                } else {
+                    null
+                },
             backLabel = stringResource(Res.string.action_card_question_back),
         ) {
             ActionCardFormBody(
-                form,
-                values,
-                onValuesChange,
-                state,
-                submitting,
-                candidates,
-                formError,
-                locale,
-                agentStatusResolver,
-                fieldErrorsTraceId,
-                formErrorTraceId,
-            ) {
-                state.commit(values, submitting, onSubmit)
+                form = form,
+                values = effectiveValues,
+                onFieldValueChange = onFieldValueChange,
+                state = state,
+                enabled = !busy && canSubmit,
+                candidates = candidates,
+                formError = formError,
+                locale = locale,
+                agentStatusResolver = agentStatusResolver,
+                issuesTraceId = fieldErrorsTraceId,
+                formErrorTraceId = formErrorTraceId,
+                onFieldEnter = onFieldEnter,
+                onChoicePicked = onChoicePicked,
+                onOtherSelected = if (question) ({ cancelAdvance() }) else null,
+                fieldTargets = fieldTargets,
+                applyImePadding = !waiting,
+            )
+            if (waiting) {
+                RaftSeparator()
+                ActionCardQuestionSubmittedUndoBar(
+                    onUndo = { undoable.undo() },
+                    modifier = Modifier.imePadding(),
+                )
             }
         }
+        if (confirmDiscard) {
+            ActionCardFormDiscardDialog(
+                onKeepEditing = { confirmDiscard = false },
+                onDiscard = {
+                    confirmDiscard = false
+                    onDismiss()
+                },
+            )
+        }
     }
+}
+
+/** "Submitted · Undo" bar inside a `question:ask` modal sheet while its 1.5 s Undo wait runs (web `QuestionSubmittedUndo`). */
+@Composable
+private fun ActionCardQuestionSubmittedUndoBar(
+    onUndo: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .testTag(ACTION_CARD_FORM_UNDO_ROW_TAG)
+                .semantics { liveRegion = LiveRegionMode.Polite },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        RaftText(
+            stringResource(Res.string.action_card_question_submitted) + " ·",
+            style = RaftTheme.typography.callout,
+            color = RaftTheme.colors.foregroundMuted,
+        )
+        RaftButton(
+            text = stringResource(Res.string.action_card_question_undo),
+            onClick = onUndo,
+            variant = RaftButtonVariant.Ghost,
+        )
+    }
+}
+
+/** Closing a dirty form without a kept draft confirms discard first (web `ActionCardFormSheet` discard dialog). */
+@Composable
+private fun ActionCardFormDiscardDialog(
+    onKeepEditing: () -> Unit,
+    onDiscard: () -> Unit,
+) {
+    RaftDialog(
+        onDismissRequest = onKeepEditing,
+        title = stringResource(Res.string.member_avatar_discard_title),
+        modifier = Modifier.testTag(ACTION_CARD_FORM_DISCARD_DIALOG_TAG),
+        size = RaftDialogSize.Sm,
+        description = stringResource(Res.string.member_avatar_discard_body),
+        footer = {
+            RaftButton(
+                text = stringResource(Res.string.member_avatar_keep_editing),
+                onClick = onKeepEditing,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg,
+            )
+            RaftButton(
+                text = stringResource(Res.string.member_avatar_discard),
+                onClick = onDiscard,
+                variant = RaftButtonVariant.Danger,
+                size = RaftButtonSize.Lg,
+            )
+        },
+    )
 }
 
 /** The phone sheet's surface without its window, for screenshot fixtures. */
@@ -208,12 +500,15 @@ internal fun RaftActionCardFormSheetSurfaceForFixture(
     tried: Boolean = false,
     fieldErrorsTraceId: String? = null,
     formErrorTraceId: String? = null,
+    question: Boolean = false,
 ) {
     val state = rememberActionCardFormSheetState(form, fieldErrors, initialPage = page, initialTried = tried)
+    val knownFields = remember(form) { form.fields.filterIsInstance<ActionCardSpecKnownField>() }
+    val tapSubmits = question && actionCardTapSubmitsForm(knownFields, values)
     val nextLabel = stringResource(Res.string.action_card_question_next)
     RaftDialogSheetSurface(
         title = form.title.render(displayLocale),
-        commitLabel = state.commitLabel(values, displayLocale, nextLabel),
+        commitLabel = if (tapSubmits && !submitting) null else state.commitLabel(values, displayLocale, nextLabel),
         onCommit = {},
         onClose = {},
         modifier = modifier,
@@ -224,28 +519,34 @@ internal fun RaftActionCardFormSheetSurfaceForFixture(
         backLabel = stringResource(Res.string.action_card_question_back),
     ) {
         ActionCardFormBody(
-            form,
-            values,
-            {},
-            state,
-            submitting,
-            candidates,
-            formError,
-            displayLocale,
-            EmptyRaftAgentStatusResolver,
-            fieldErrorsTraceId,
-            formErrorTraceId,
-        ) {}
+            form = form,
+            values = values,
+            onFieldValueChange = { _, _ -> },
+            state = state,
+            enabled = !submitting,
+            candidates = candidates,
+            formError = formError,
+            locale = displayLocale,
+            agentStatusResolver = EmptyRaftAgentStatusResolver,
+            issuesTraceId = fieldErrorsTraceId,
+            formErrorTraceId = formErrorTraceId,
+            onFieldEnter = {},
+        )
     }
 }
 
-/** The sheet's own state: the client check's issues and which fields were edited since the server's. */
-private class ActionCardFormSheetState(
+/** Plain mutable holder for the last page-turn timestamp (web `turnedAtRef`: not observed by composition). */
+internal class ActionCardPageTurnRef(var turnedAtMillis: Long? = null)
+
+/** The sheet's own state: client issues, edits since server issues, paging, and page-turn settle guard. */
+internal class ActionCardFormSheetState(
     private val form: ActionCardSpecForm,
     private val serverIssues: List<ActionCardFormIssue>,
     clientIssuesState: MutableState<List<ActionCardFormIssue>>,
     private val pageState: MutableState<Int>,
     triedPagesState: MutableState<Set<Int>>,
+    private val turnRef: ActionCardPageTurnRef = ActionCardPageTurnRef(),
+    private val nowMillis: () -> Long = ::defaultNowMillis,
 ) {
     private var clientIssues by clientIssuesState
     private var editedSinceServer by mutableStateOf(emptySet<String>())
@@ -272,12 +573,24 @@ private class ActionCardFormSheetState(
     private var triedPages by triedPagesState
     val pendingShown: Boolean get() = page in triedPages
 
+    /** Whether a page turn happened within [ACTION_CARD_FORM_PAGE_TURN_SETTLE_MS] (web `justTurned`). */
+    fun justTurned(): Boolean {
+        val at = turnRef.turnedAtMillis ?: return false
+        return nowMillis() - at < ACTION_CARD_FORM_PAGE_TURN_SETTLE_MS
+    }
+
+    /** Turns to [next] and starts the settle window so a stray second tap cannot advance or submit the new page. */
+    internal fun turnPage(next: Int) {
+        turnRef.turnedAtMillis = nowMillis()
+        page = next
+    }
+
     /** The commit's label: Next before the last page, else the form's (with `submitLabels`, the chosen one's). */
     fun commitLabel(values: Map<String, ActionCardFormValue>, locale: String, nextLabel: String): String =
         if (lastPage) form.submitLabelFor(values).render(locale) else nextLabel
 
-    fun back() {
-        if (page > 0) page -= 1
+    fun back(busy: Boolean = false) {
+        if (!busy && page > 0) turnPage(page - 1)
     }
 
     /** The first page with a server problem under one of its fields (none: the page stays). */
@@ -285,7 +598,7 @@ private class ActionCardFormSheetState(
 
     private fun showPageOfIssue(issues: List<ActionCardFormIssue>) {
         val first = pages.indexOfFirst { candidate -> candidate.fields.any { field -> issues.any { it.field == field.name } } }
-        if (first >= 0 && first != page) page = first
+        if (first >= 0 && first != page) turnPage(first)
     }
 
     fun edited(name: String) {
@@ -296,20 +609,27 @@ private class ActionCardFormSheetState(
     /**
      * The commit, and Enter in a text field: Next checks only this page's fields (the problems of the
      * other pages stay as they were) and turns the page; on the last page everything is checked and
-     * submitted, a problem on another page turning to it. Nothing while submitting; while a required
-     * Choice of this page is unanswered, only what it lacks shows under it.
+     * submitted, a problem on another page turning to it. Nothing while submitting or within the
+     * page-turn settle window; while a required Choice of this page is unanswered, what it lacks
+     * shows under it together with any other client issues on this page (web `handleSubmit`).
      */
     fun commit(values: Map<String, ActionCardFormValue>, submitting: Boolean, onSubmit: (Map<String, ActionCardFormValue>) -> Unit) {
-        if (submitting) return
+        if (submitting || justTurned()) return
         if (pending(values)) {
             triedPages = triedPages + page
+            val names = pageFields.mapTo(HashSet()) { it.name }
+            val choices = pageFields.filterIsInstance<ActionCardSpecChoiceField>().mapTo(HashSet()) { it.name }
+            val others =
+                checkActionCardFormValues(form.copy(fields = pageFields), values)
+                    .filter { it.field == null || it.field !in choices }
+            clientIssues = clientIssues.filter { it.field == null || it.field !in names } + others
             return
         }
         if (!lastPage) {
             val names = pageFields.mapTo(HashSet()) { it.name }
             val pageIssues = checkActionCardFormValues(form.copy(fields = pageFields), values)
             clientIssues = clientIssues.filter { it.field == null || it.field !in names } + pageIssues
-            if (pageIssues.isEmpty()) page += 1
+            if (pageIssues.isEmpty()) turnPage(page + 1)
             return
         }
         val issues = checkActionCardFormValues(form, values)
@@ -340,33 +660,37 @@ private fun rememberActionCardFormSheetState(
     fieldErrors: List<ActionCardFormIssue>,
     initialPage: Int = 0,
     initialTried: Boolean = false,
+    nowMillis: () -> Long = ::defaultNowMillis,
+    draftKey: String? = null,
 ): ActionCardFormSheetState {
-    val clientIssues = remember(form) { mutableStateOf(emptyList<ActionCardFormIssue>()) }
-    val page = remember(form) { mutableStateOf(initialPage) }
-    val triedPages = remember(form) { mutableStateOf(if (initialTried) setOf(initialPage) else emptySet()) }
-    return remember(form, fieldErrors, clientIssues, page, triedPages) { ActionCardFormSheetState(form, fieldErrors, clientIssues, page, triedPages) }
+    val clientIssues = remember(form, draftKey) { mutableStateOf(emptyList<ActionCardFormIssue>()) }
+    val page = remember(form, draftKey) { mutableStateOf(initialPage) }
+    val triedPages = remember(form, draftKey) { mutableStateOf(if (initialTried) setOf(initialPage) else emptySet()) }
+    val turnRef = remember(form, draftKey) { ActionCardPageTurnRef() }
+    return remember(form, fieldErrors, clientIssues, page, triedPages, turnRef, nowMillis) {
+        ActionCardFormSheetState(form, fieldErrors, clientIssues, page, triedPages, turnRef, nowMillis)
+    }
 }
 
 @Composable
 private fun ColumnScope.ActionCardFormBody(
     form: ActionCardSpecForm,
     values: Map<String, ActionCardFormValue>,
-    onValuesChange: (Map<String, ActionCardFormValue>) -> Unit,
+    onFieldValueChange: (String, ActionCardFormValue) -> Unit,
     state: ActionCardFormSheetState,
-    submitting: Boolean,
+    enabled: Boolean,
     candidates: ActionCardFormCandidates,
     formError: String?,
     locale: String,
     agentStatusResolver: RaftAgentStatusResolver,
     issuesTraceId: String?,
     formErrorTraceId: String?,
-    onEnter: () -> Unit,
+    onFieldEnter: (String) -> Unit,
+    onChoicePicked: ((String) -> Unit)? = null,
+    onOtherSelected: (() -> Unit)? = null,
+    fieldTargets: MutableMap<String, Pair<FocusRequester, BringIntoViewRequester>>? = null,
+    applyImePadding: Boolean = true,
 ) {
-    val enabled = !submitting
-    val update = { name: String, value: ActionCardFormValue ->
-        state.edited(name)
-        onValuesChange(values + (name to value))
-    }
     val scroll = rememberScrollState()
     // A page turn starts at the top of the new page.
     LaunchedEffect(state.page) { scroll.scrollTo(0) }
@@ -374,7 +698,7 @@ private fun ColumnScope.ActionCardFormBody(
         Modifier
             .fillMaxWidth()
             .weight(1f, fill = false)
-            .imePadding()
+            .then(if (applyImePadding) Modifier.imePadding() else Modifier)
             .verticalScroll(scroll)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -405,9 +729,30 @@ private fun ColumnScope.ActionCardFormBody(
         }
         // A form with an unsupported field never opens (its button reads "Open in web").
         state.pageFields.forEach { field ->
-            val error = state.issueFor(field.name)?.message?.render(locale)
-            ActionCardFormField(field, values[field.name], { update(field.name, it) }, error, enabled, candidates, locale, agentStatusResolver, onEnter, state.pendingShown)
-            if (traceSpot == ActionCardTraceIdSpot.UnderField(field.name)) RaftTraceIdNote(issuesTraceId)
+            key(state.page, field.name) {
+                val focusRequester = remember { FocusRequester() }
+                val bringIntoView = remember { BringIntoViewRequester() }
+                fieldTargets?.put(field.name, focusRequester to bringIntoView)
+                val error = state.issueFor(field.name)?.message?.render(locale)
+                Box(Modifier.fillMaxWidth().bringIntoViewRequester(bringIntoView)) {
+                    ActionCardFormField(
+                        field = field,
+                        value = values[field.name],
+                        onValueChange = { onFieldValueChange(field.name, it) },
+                        error = error,
+                        enabled = enabled,
+                        candidates = candidates,
+                        locale = locale,
+                        agentStatusResolver = agentStatusResolver,
+                        onEnter = { onFieldEnter(field.name) },
+                        showPending = state.pendingShown,
+                        onPicked = onChoicePicked?.let { picked -> { picked(field.name) } },
+                        onOtherSelected = onOtherSelected,
+                        focusRequester = focusRequester,
+                    )
+                }
+                if (traceSpot == ActionCardTraceIdSpot.UnderField(field.name)) RaftTraceIdNote(issuesTraceId)
+            }
         }
     }
 }
@@ -424,17 +769,21 @@ private fun ActionCardFormField(
     agentStatusResolver: RaftAgentStatusResolver,
     onEnter: () -> Unit,
     showPending: Boolean,
+    onPicked: (() -> Unit)? = null,
+    onOtherSelected: (() -> Unit)? = null,
+    focusRequester: FocusRequester? = null,
 ) {
     val label = field.label.render(locale)
     val description = field.description?.render(locale)
     val placeholder = field.placeholder?.render(locale)
+    val focusModifier = if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier
     when (field) {
         is ActionCardSpecTextInputField ->
             RaftField(label = label, description = description, error = error, enabled = enabled, required = field.required == true) {
                 RaftTextField(
                     value = (value as? ActionCardFormValue.Text)?.value.orEmpty(),
                     onValueChange = { onValueChange(ActionCardFormValue.Text(it)) },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().then(focusModifier),
                     placeholder = placeholder,
                 )
             }
@@ -444,7 +793,7 @@ private fun ActionCardFormField(
                 RaftTextarea(
                     value = (value as? ActionCardFormValue.Text)?.value.orEmpty(),
                     onValueChange = { onValueChange(ActionCardFormValue.Text(it)) },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().then(focusModifier),
                     placeholder = placeholder,
                     limit = field.maxLength,
                     minHeight = actionCardFormTextareaHeight(rows),
@@ -464,7 +813,7 @@ private fun ActionCardFormField(
                     onValueChange = { onValueChange(ActionCardFormValue.Text(it)) },
                     title = label,
                     emptyText = { query -> noMatches.replace("\u0001", query.trim()) },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().then(focusModifier),
                     placeholder = placeholder.orEmpty(),
                     searchPlaceholder = stringResource(Res.string.action_card_form_options_search),
                 )
@@ -475,6 +824,7 @@ private fun ActionCardFormField(
                     RaftSwitch(
                         checked = (value as? ActionCardFormValue.Toggle)?.value ?: field.default ?: false,
                         onCheckedChange = { onValueChange(ActionCardFormValue.Toggle(it)) },
+                        modifier = focusModifier,
                         enabled = enabled,
                         label = label,
                     )
@@ -490,7 +840,10 @@ private fun ActionCardFormField(
                 enabled = enabled,
                 locale = locale,
                 onEnter = onEnter,
+                onPicked = onPicked,
                 showPending = showPending,
+                onOtherSelected = onOtherSelected,
+                firstControlFocusRequester = focusRequester,
             )
         is ActionCardSpecPickerField ->
             RaftField(label = label, description = description, error = error, enabled = enabled, required = field.required == true) {
@@ -560,17 +913,20 @@ internal fun ActionCardChoiceField(
     showLabel: Boolean = true,
     confirmInActions: Boolean = false,
     confirmLoading: Boolean = false,
+    onOtherSelected: (() -> Unit)? = null,
+    firstControlFocusRequester: FocusRequester? = null,
 ) {
     val other = field.other
     val otherLabel = other?.let { questionOtherLabel(it.label, locale) }
     val otherChosen = other != null && value.other != null
     // What a deselected Other had: choosing it again brings the text back.
-    var otherDraft by remember { mutableStateOf(value.other.orEmpty()) }
+    var otherDraft by remember(field.name) { mutableStateOf(value.other.orEmpty()) }
     // Other was just chosen by a tap: its input takes focus once drawn.
-    var focusOther by remember { mutableStateOf(false) }
+    var focusOther by remember(field.name) { mutableStateOf(false) }
     // A required Choice speaks only to someone who can answer it, once they tried to go on, and not over an issue.
     val pending = if (field.required == true && enabled && showPending && error == null) actionCardChoicePending(value) else null
     val label = field.label.render(locale)
+    val firstFocusModifier = if (firstControlFocusRequester != null) Modifier.focusRequester(firstControlFocusRequester) else Modifier
     RaftField(
         label = if (!showLabel) null else if (number != null) "$number. $label" else label,
         description = field.description?.render(locale),
@@ -595,11 +951,12 @@ internal fun ActionCardChoiceField(
                         onClick = { if (enabled && !confirmLoading) press() },
                         enabled = enabled || confirmLoading,
                         loading = confirmLoading,
+                        modifier = firstFocusModifier,
                     )
                 }
                 if (confirmInActions) RaftMessageActionCardActions { button() } else button()
             } else if (field.multiple) {
-                field.options.forEach { option ->
+                field.options.forEachIndexed { index, option ->
                     RaftCheckboxRow(
                         label = option.label.render(locale),
                         checked = option.value in value.selected,
@@ -608,6 +965,7 @@ internal fun ActionCardChoiceField(
                             val next = field.options.map { it.value }.filter { if (it == option.value) checked else it in value.selected }
                             onValueChange(ActionCardFormValue.Choice(next, value.other))
                         },
+                        modifier = if (index == 0) firstFocusModifier else Modifier,
                         description = option.description?.render(locale),
                         enabled = enabled,
                     )
@@ -617,16 +975,26 @@ internal fun ActionCardChoiceField(
                         label = otherLabel.orEmpty(),
                         checked = otherChosen,
                         onCheckedChange = { checked ->
-                            if (checked) focusOther = true
+                            if (checked) {
+                                focusOther = true
+                                onOtherSelected?.invoke()
+                            }
                             onValueChange(ActionCardFormValue.Choice(value.selected, if (checked) value.other ?: otherDraft else null))
                         },
+                        modifier = if (field.options.isEmpty()) firstFocusModifier else Modifier,
                         description = other.description?.render(locale),
                         enabled = enabled,
                     )
                 }
             } else {
+                val focusIndex =
+                    if (!otherChosen) {
+                        field.options.indexOfFirst { it.value in value.selected }.takeIf { it >= 0 } ?: 0
+                    } else {
+                        -1
+                    }
                 RaftRadioGroup {
-                    field.options.forEach { option ->
+                    field.options.forEachIndexed { index, option ->
                         RaftRadioRow(
                             label = option.label.render(locale),
                             selected = !otherChosen && option.value in value.selected,
@@ -634,6 +1002,7 @@ internal fun ActionCardChoiceField(
                                 onValueChange(ActionCardFormValue.Choice(listOf(option.value)))
                                 onPicked?.invoke()
                             },
+                            modifier = if (index == focusIndex) firstFocusModifier else Modifier,
                             description = option.description?.render(locale),
                             enabled = enabled,
                         )
@@ -643,11 +1012,13 @@ internal fun ActionCardChoiceField(
                             label = otherLabel.orEmpty(),
                             selected = otherChosen,
                             onClick = {
+                                focusOther = true
+                                onOtherSelected?.invoke()
                                 if (!otherChosen) {
-                                    focusOther = true
                                     onValueChange(ActionCardFormValue.Choice(emptyList(), value.other ?: otherDraft))
                                 }
                             },
+                            modifier = if (focusIndex < 0 || field.options.isEmpty()) firstFocusModifier else Modifier,
                             description = other.description?.render(locale),
                             enabled = enabled,
                         )
@@ -666,6 +1037,7 @@ internal fun ActionCardChoiceField(
                     focus = focusOther,
                     onFocusHandled = { focusOther = false },
                     onEnter = onEnter,
+                    enabled = enabled,
                 )
             }
             if (pending != null) {
@@ -694,11 +1066,12 @@ internal fun ActionCardConfirmButton(
     onClick: () -> Unit,
     enabled: Boolean,
     loading: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     RaftButton(
         text = label,
         onClick = onClick,
-        modifier = Modifier.semantics { selected = chosen },
+        modifier = modifier.semantics { selected = chosen },
         variant = RaftButtonVariant.Default,
         enabled = enabled,
         loading = loading,
@@ -719,11 +1092,12 @@ internal fun ActionCardChoiceOtherInput(
     focus: Boolean,
     onFocusHandled: () -> Unit,
     onEnter: () -> Unit,
+    enabled: Boolean = true,
 ) {
     var field by remember { mutableStateOf(TextFieldValue(text)) }
     LaunchedEffect(text) { if (field.text != text) field = TextFieldValue(text, TextRange(text.length)) }
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(focus) {
         if (focus) {
             runCatching { focusRequester.requestFocus() }
             onFocusHandled()
@@ -738,6 +1112,7 @@ internal fun ActionCardChoiceOtherInput(
         },
         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
         placeholder = placeholder,
+        enabled = enabled,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = { if (actionCardOtherEnterConfirms(field.composition)) onEnter() }),
     )

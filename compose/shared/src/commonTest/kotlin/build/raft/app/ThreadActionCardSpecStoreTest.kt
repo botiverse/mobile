@@ -433,4 +433,31 @@ class ThreadActionCardSpecStoreTest {
         assertNull(h.store.state.value.form)
         assertEquals(listOf("m-1" to executed), h.applied)
     }
+
+    @Test
+    fun formDraftsClearWhenFormSubmitsOrCardEnds() = runTest {
+        forgetActionCardFormDrafts()
+        try {
+            val h = Harness(this)
+            val spec = spec("fill" to form)
+            val key1 = assertNotNull(actionCardFormDraftKey("user-1", "m-draft-1", "details"))
+            val key2 = assertNotNull(actionCardFormDraftKey("user-1", "m-draft-2", "details"))
+            writeActionCardFormDraft(key1, ActionCardFormDraft(page = 0, values = mapOf("title" to ActionCardFormValue.Text("Draft 1"))))
+            writeActionCardFormDraft(key2, ActionCardFormDraft(page = 0, values = mapOf("title" to ActionCardFormValue.Text("Draft 2"))))
+
+            // Successful submit clears the submitted card's drafts and keeps other cards' drafts.
+            h.store.dispatch(ThreadActionCardSpecIntent.Press("m-draft-1", "fill", card(), spec))
+            h.answer(DataResult.Content(ActionCardExecuteOutcome.Executed(card(state = "executed"))))
+            h.store.dispatch(ThreadActionCardSpecIntent.SubmitForm(mapOf("title" to ActionCardFormValue.Text("Sent"))))
+            runCurrent()
+            assertNull(readActionCardFormDraft(key1))
+            assertNotNull(readActionCardFormDraft(key2))
+
+            // Realtime end (executed/expired/withdrawn) clears that card's drafts too.
+            h.store.dispatch(ThreadActionCardSpecIntent.CardUpdated("m-draft-2", card(state = "expired")))
+            assertNull(readActionCardFormDraft(key2))
+        } finally {
+            forgetActionCardFormDrafts()
+        }
+    }
 }

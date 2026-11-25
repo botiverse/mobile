@@ -1068,6 +1068,7 @@ internal class ThreadActionCardSpecStore(
         if (form.submitting || form.card.isExecuted || form.card.isFrozen) return
         if (form.card.expiredAsOf(nowMillis()).hasEnded) {
             applyCard(form.messageId, form.card.expiredAsOf(nowMillis()))
+            clearActionCardFormDrafts(form.messageId)
             update { it.copy(form = null) }
             return
         }
@@ -1086,7 +1087,10 @@ internal class ThreadActionCardSpecStore(
                 return@launch
             }
             when (val settled = settle(form.messageId, form.card, result)) {
-                null -> if (open != null) update { it.copy(form = null) }
+                null -> {
+                    clearActionCardFormDrafts(form.messageId)
+                    if (open != null) update { it.copy(form = null) }
+                }
                 else -> if (open != null) update { it.copy(form = open.copy(submitting = false, issues = emptyList(), issuesTraceId = null, error = settled)) }
             }
         }
@@ -1121,6 +1125,7 @@ internal class ThreadActionCardSpecStore(
      * its own submit runs, the answer decides.
      */
     private fun cardUpdated(messageId: String, card: ThreadActionCard) {
+        if (card.isExecuted || card.hasEnded) clearActionCardFormDrafts(messageId)
         val current = _state.value
         val handledElsewhere = card.isExecuted || card.isFrozen
         val confirmOpen = current.confirm?.takeIf { it.messageId == messageId && it.card != card }
