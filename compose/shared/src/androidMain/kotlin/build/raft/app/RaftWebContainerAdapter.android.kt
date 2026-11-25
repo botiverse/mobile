@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
 import build.raft.app.data.MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY
 import build.raft.app.data.RaftSharedStoreRegistry
@@ -145,6 +146,15 @@ internal actual fun RaftWebContainerPlatformScope(
     modifier: Modifier,
     content: @Composable () -> Unit,
 ) {
+    val effectiveKey =
+        if (config.effectiveStoragePartition == RaftWebViewStoragePartition.IsolatedThirdParty) null else config.keepAliveKey
+    DisposableEffect(config.url, config.diagnosticsSurface, effectiveKey) {
+        RaftAndroidWebViewKeepAlive.abortInFlightPrewarmForForeground(
+            foregroundSurface = config.diagnosticsSurface,
+            foregroundKeepAliveKey = effectiveKey,
+        )
+        onDispose {}
+    }
     if (LocalAndroidWebFileChooser.current != null) {
         content()
     } else {

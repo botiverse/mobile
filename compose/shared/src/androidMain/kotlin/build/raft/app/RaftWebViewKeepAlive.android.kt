@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.MutableContextWrapper
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
@@ -30,10 +31,22 @@ import kotlinx.coroutines.withTimeoutOrNull
 internal object RaftAndroidWebViewKeepAlive {
     private const val LOG_TAG = "SlockWebViewKeepAlive"
     private const val KEEP_ALIVE_MS = 5 * 60 * 1000L
+    /**
+     * Safety ceiling for a parked background prewarm (e.g. `raft-app-warm`) to reach
+     * `onPageFinished`. If it has not finished by then, abort and drop it so a slow/stuck
+     * background load cannot clog Android's single Chromium renderer process for tens of seconds.
+     */
+    internal const val PREWARM_LOAD_TIMEOUT_MS = 12_000L
 
     private var parked: RaftAndroidSandboxWebView? = null
+    private var parkedPrewarmStartedAtMs: Long = 0L
     private val handler by lazy { Handler(Looper.getMainLooper()) }
     private val expire = Runnable { drop("expired") }
+    private val prewarmLoadTimeout = Runnable { abortInFlightPrewarmOnTimeout() }
+
+    internal var nowMs: () -> Long = { SystemClock.elapsedRealtime() }
+    internal var prewarmLoadTimeoutMs: Long = PREWARM_LOAD_TIMEOUT_MS
+    internal var logInfo: (String) -> Unit = { message -> raftLogInfo(LOG_TAG, message) }
 
     /** The view parked under [key] (now owned by the caller), or null. A view under another key or failed load is destroyed. */
     fun take(
@@ -46,7 +59,9 @@ internal object RaftAndroidWebViewKeepAlive {
         dropIfOtherThemeMode()
         val view = parked ?: return null
         handler.removeCallbacks(expire)
+        handler.removeCallbacks(prewarmLoadTimeout)
         parked = null
+        parkedPrewarmStartedAtMs = 0L
         if (
             view.isDestroyed ||
             view.mainFrameLoadFailed ||
@@ -61,11 +76,11 @@ internal object RaftAndroidWebViewKeepAlive {
                     else -> "other_key"
                 }
             view.destroy()
-            raftLogInfo(LOG_TAG, "keep_alive result=dropped reason=$reason")
+            logInfo("keep_alive result=dropped reason=$reason")
             return null
         }
         view.attachFromKeepAlive(hostContext, events)
-        raftLogInfo(LOG_TAG, "keep_alive result=reused")
+        logInfo("keep_alive result=reused")
         return view
     }
 
@@ -80,12 +95,14 @@ internal object RaftAndroidWebViewKeepAlive {
         ) {
             if (parked === view) {
                 handler.removeCallbacks(expire)
+                handler.removeCallbacks(prewarmLoadTimeout)
                 parked = null
+                parkedPrewarmStartedAtMs = 0L
             }
             if (view.mainFrameLoadFailed) {
-                raftLogInfo(LOG_TAG, "keep_alive result=refused reason=load_error")
+                logInfo("keep_alive result=refused reason=load_error")
             } else if (view.hasPendingRenderProcessRestore) {
-                raftLogInfo(LOG_TAG, "keep_alive result=refused reason=render_process_gone")
+                logInfo("keep_alive result=refused reason=render_process_gone")
             }
             return false
         }
@@ -94,8 +111,15 @@ internal object RaftAndroidWebViewKeepAlive {
         view.detachForKeepAlive()
         parked = view
         handler.removeCallbacks(expire)
+        handler.removeCallbacks(prewarmLoadTimeout)
         handler.postDelayed(expire, KEEP_ALIVE_MS)
-        raftLogInfo(LOG_TAG, "keep_alive result=parked")
+        if (view.isMainFrameLoadInFlight) {
+            parkedPrewarmStartedAtMs = nowMs()
+            handler.postDelayed(prewarmLoadTimeout, prewarmLoadTimeoutMs)
+        } else {
+            parkedPrewarmStartedAtMs = 0L
+        }
+        logInfo("keep_alive result=parked")
         return true
     }
 
@@ -125,10 +149,66 @@ internal object RaftAndroidWebViewKeepAlive {
             )
         view.applyConfig(config)
         if (park(view)) {
-            raftLogInfo(LOG_TAG, "keep_alive result=prewarmed")
+            logInfo("keep_alive result=prewarmed")
         } else {
             view.destroy()
         }
+    }
+
+    /**
+     * Yields any still-loading parked prewarm when a user-initiated foreground WebView opens on
+     * Android (e.g. `settings_marketplace`, `in_app_browser`). A cleanly finished parked view
+     * (`!isMainFrameLoadInFlight`) is preserved so normal warm-hit reuse stays intact, and a
+     * foreground page opening for the exact same [foregroundKeepAliveKey] keeps its own entry to
+     * adopt via [take].
+     */
+    fun abortInFlightPrewarmForForeground(
+        foregroundSurface: String,
+        foregroundKeepAliveKey: String? = null,
+    ): Boolean {
+        if (Looper.myLooper() != Looper.getMainLooper()) return false
+        val view = parked ?: return false
+        if (foregroundKeepAliveKey != null && view.keepAliveKey == foregroundKeepAliveKey) return false
+        if (!view.isMainFrameLoadInFlight) return false
+        val elapsedMs =
+            if (parkedPrewarmStartedAtMs > 0L) (nowMs() - parkedPrewarmStartedAtMs).coerceAtLeast(0L) else -1L
+        handler.removeCallbacks(expire)
+        handler.removeCallbacks(prewarmLoadTimeout)
+        parked = null
+        parkedPrewarmStartedAtMs = 0L
+        view.destroy()
+        logInfo(
+            "keep_alive result=aborted_for_foreground reason=prewarm_aborted_for_foreground " +
+                "surface=${sanitizeKeepAliveSurfaceToken(foregroundSurface)} elapsedMs=$elapsedMs",
+        )
+        return true
+    }
+
+    /** Clears the prewarm load timeout once a parked view finishes its main-frame load cleanly. */
+    fun onParkedLoadFinished(view: RaftAndroidSandboxWebView) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            handler.post { onParkedLoadFinished(view) }
+            return
+        }
+        if (parked !== view) return
+        handler.removeCallbacks(prewarmLoadTimeout)
+        parkedPrewarmStartedAtMs = 0L
+    }
+
+    private fun abortInFlightPrewarmOnTimeout() {
+        val view = parked ?: return
+        if (!view.isMainFrameLoadInFlight) {
+            parkedPrewarmStartedAtMs = 0L
+            return
+        }
+        val elapsedMs =
+            if (parkedPrewarmStartedAtMs > 0L) (nowMs() - parkedPrewarmStartedAtMs).coerceAtLeast(0L) else -1L
+        handler.removeCallbacks(expire)
+        handler.removeCallbacks(prewarmLoadTimeout)
+        parked = null
+        parkedPrewarmStartedAtMs = 0L
+        view.destroy()
+        logInfo("keep_alive result=aborted_timeout reason=prewarm_load_timeout elapsedMs=$elapsedMs")
     }
 
     fun kept(key: String): RaftAndroidSandboxWebView? {
@@ -159,18 +239,31 @@ internal object RaftAndroidWebViewKeepAlive {
         }
         if (parked !== view) return
         handler.removeCallbacks(expire)
+        handler.removeCallbacks(prewarmLoadTimeout)
         parked = null
+        parkedPrewarmStartedAtMs = 0L
         view.destroy()
-        raftLogInfo(LOG_TAG, "keep_alive result=dropped reason=$reason")
+        logInfo("keep_alive result=dropped reason=$reason")
     }
 
     fun drop(reason: String) {
         handler.removeCallbacks(expire)
+        handler.removeCallbacks(prewarmLoadTimeout)
+        parkedPrewarmStartedAtMs = 0L
         val view = parked ?: return
         parked = null
         view.destroy()
-        raftLogInfo(LOG_TAG, "keep_alive result=dropped reason=$reason")
+        logInfo("keep_alive result=dropped reason=$reason")
     }
+
+    internal fun resetTestHooks() {
+        nowMs = { SystemClock.elapsedRealtime() }
+        prewarmLoadTimeoutMs = PREWARM_LOAD_TIMEOUT_MS
+        logInfo = { message -> raftLogInfo(LOG_TAG, message) }
+    }
+
+    private fun sanitizeKeepAliveSurfaceToken(surface: String): String =
+        surface.trim().filter { it.isLetterOrDigit() || it == '_' || it == '-' }.ifEmpty { "unknown" }
 }
 
 internal actual fun raftWebViewKeptDocument(key: String): RaftWebViewKeptDocument? =

@@ -1,11 +1,15 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -147,11 +151,89 @@ class SharedHomeStoreServerSwitchTest {
         h.close()
     }
 
+    @Test
+    fun lifecycleRetiredDuringServerSwitchDoesNotCountFailureAndRecoversOnForeground() = runTest {
+        // Hands a118ec6f: screen lock / backgrounding mid-server-switch retires in-flight
+        // GET /api/channels/dm (or GET /api/channels) with code=0 + network_request_lifecycle_retired.
+        // Unlock/foreground must land on the target server with its DM list loaded and ZERO failure toast.
+        listOf(true, false).forEach { failDirectMessages ->
+            val h = harness(timeoutMillis = 15_000L)
+            val retiredResponse =
+                HomeNetworkResponse(
+                    code = 0,
+                    bodyText = null,
+                    errorBodyText = RAFT_NETWORK_LIFECYCLE_RETIRED_CODE,
+                )
+            if (failDirectMessages) {
+                h.api.directMessagesResponses["server-2"] = retiredResponse
+            } else {
+                h.api.channelsResponses["server-2"] = retiredResponse
+            }
+
+            h.store.accept(SharedHomeIntent.SelectServer("server-2"))
+
+            assertNull(h.switch().pendingServerId, "failDirectMessages=$failDirectMessages: pending cleared")
+            assertEquals("server-2", h.switch().selectedServerId, "target server selection preserved")
+            assertEquals("server-2", h.auth.readSession()?.currentServerId, "auth authority stays on target server")
+            assertNull(h.switch().failedServerId, "lifecycle retirement is not a switch failure")
+            assertEquals(0, h.switch().failureCount, "no failure toast count bump: ${h.logs.joinToString("\n")}")
+            assertFalse(h.refreshing(), "no stuck spinner")
+            assertTrue(
+                h.logs.any { "home_server_switch_deferred reason=lifecycle_retired" in it },
+                h.logs.joinToString("\n"),
+            )
+
+            // Phone stays locked for 76 seconds (well past the 15s switch watchdog timeout):
+            // watchdog must have been cancelled so failureCount remains 0.
+            advanceTimeBy(76_000L)
+            runCurrent()
+            assertEquals(0, h.switch().failureCount, "watchdog must not fire after lifecycle retirement")
+
+            // User unlocks phone -> foreground reconcile loads target server cleanly with its DM list.
+            h.api.directMessagesResponses.remove("server-2")
+            h.api.channelsResponses.remove("server-2")
+            h.store.accept(SharedHomeIntent.ForegroundRefresh)
+
+            assertEquals("server-2", h.serverId(), "must land on target server after foreground reconcile")
+            assertEquals(listOf("dm-server-2"), h.directMessageIds(), "target server DM list must be loaded")
+            assertNull(h.switch().pendingServerId)
+            assertNull(h.switch().failedServerId)
+            assertEquals(0, h.switch().failureCount, "ZERO failure toast after recovery: ${h.logs.joinToString("\n")}")
+            assertFalse(h.refreshing())
+            h.close()
+        }
+    }
+
+    @Test
+    fun realNetworkErrorsDuringServerSwitchStillCountFailure() = runTest {
+        val realFailures =
+            listOf(
+                "plain_http_0" to HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = null),
+                "timeout" to HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = """{"error":"network_timeout"}"""),
+                "mutation_unknown" to HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = "network_request_mutation_outcome_unknown"),
+                "http_500" to HomeNetworkResponse(code = 500, bodyText = null, errorBodyText = """{"error":"internal"}"""),
+            )
+        realFailures.forEach { (label, response) ->
+            val h = harness()
+            h.api.directMessagesResponses["server-2"] = response
+
+            h.store.accept(SharedHomeIntent.SelectServer("server-2"))
+
+            assertNull(h.switch().pendingServerId, "$label: pending cleared")
+            assertEquals("server-2", h.switch().failedServerId, "$label: failed server recorded")
+            assertEquals(1, h.switch().failureCount, "$label: real network error must still bump failureCount")
+            assertFalse(h.refreshing(), "$label: no stuck spinner")
+            h.close()
+        }
+    }
+
     private enum class Outcome { Content, Error, Throw }
 
     /** Home API per server: answers, fails, throws, or waits on a gate. */
     private class SwitchHomeApi : RaftHomeApi {
         val outcomes = mutableMapOf<String, Outcome>()
+        val channelsResponses = mutableMapOf<String, HomeNetworkResponse>()
+        val directMessagesResponses = mutableMapOf<String, HomeNetworkResponse>()
         private val gates = mutableMapOf<String, CompletableDeferred<Unit>>()
 
         fun gate(serverId: String): CompletableDeferred<Unit> = CompletableDeferred<Unit>().also { gates[serverId] = it }
@@ -170,11 +252,11 @@ class SharedHomeStoreServerSwitchTest {
         override suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
             gates.remove(serverId.value)?.await()
             if (outcomes[serverId.value] == Outcome.Throw) throw IllegalStateException("server unreachable")
-            return RootEmptyHomeApi.channels(priority)
+            return channelsResponses[serverId.value] ?: RootEmptyHomeApi.channels(priority)
         }
 
         override suspend fun directMessages(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
-            RootEmptyHomeApi.directMessages(priority)
+            directMessagesResponses[serverId.value] ?: RootEmptyHomeApi.directMessages(priority)
 
         override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
             RootEmptyHomeApi.channelUnreadCounts(priority)
@@ -193,6 +275,13 @@ class SharedHomeStoreServerSwitchTest {
         fun switch(): HomeServerSwitchState = store.state.value.serverSwitchState
 
         fun serverId(): String? = (store.state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
+
+        fun directMessageIds(): List<String> =
+            (store.state.value.content as? SharedHomeContentState.Content)
+                ?.snapshot
+                ?.directMessages
+                ?.map { it.channelId.value }
+                .orEmpty()
 
         fun refreshing(): Boolean = (store.state.value.content as? SharedHomeContentState.Content)?.contentRefreshing == true
 
@@ -223,7 +312,7 @@ class SharedHomeStoreServerSwitchTest {
                         }
                     ),
                 scope = scope,
-                diagnosticsLogger = { line -> if ("switch" in line || "drop" in line) logs += line },
+                diagnosticsLogger = { line -> if ("switch" in line || "drop" in line || "retired" in line) logs += line },
                 serverSwitchTimeoutMillis = timeoutMillis,
             )
         store.accept(SharedHomeIntent.Start)
@@ -242,7 +331,15 @@ class SharedHomeStoreServerSwitchTest {
                     presence = Presence.Active
                 ),
             channels = emptyList(),
-            directMessages = emptyList(),
+            directMessages =
+                listOf(
+                    ConversationSummary(
+                        threadId = ThreadId("dm-${serverId.value}"),
+                        channelId = ChannelId("dm-${serverId.value}"),
+                        kind = ConversationKind.DirectMessage,
+                        name = "Peer ${serverId.value}",
+                    ).toHomeDirectMessageRow()
+                ),
             unreadTotal = 0
         )
 }

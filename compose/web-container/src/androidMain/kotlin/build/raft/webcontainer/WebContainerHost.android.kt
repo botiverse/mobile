@@ -81,8 +81,14 @@ val LocalAndroidWebFileChooser = staticCompositionLocalOf<WebContainerAndroidFil
 
 /** Process-wide Android keep-alive pool and isolation-scope lifecycle coordinator. */
 object WebContainerAndroidKeepAlive {
+    /** Safety ceiling for a parked background prewarm to finish loading before being aborted. */
+    const val PREWARM_LOAD_TIMEOUT_MS = 12_000L
+
     private val pool = WebContainerKeepAlivePool<WebContainerAndroidView>()
     internal val scopeManager = WebIsolationScopeManager()
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
+    private val prewarmTimeouts = LinkedHashMap<WebContainerAndroidView, Runnable>()
+    internal var prewarmLoadTimeoutMs: Long = PREWARM_LOAD_TIMEOUT_MS
 
     internal fun take(
         key: WebContainerPoolKey,
@@ -94,6 +100,7 @@ object WebContainerAndroidKeepAlive {
         fileChooser: WebContainerAndroidFileChooser?,
     ): WebContainerAndroidView? {
         val view = pool.take(key) ?: return null
+        cancelPrewarmTimeout(view)
         view.attachFromKeepAlive(
             hostContext = hostContext,
             nextEvents = events,
@@ -105,16 +112,63 @@ object WebContainerAndroidKeepAlive {
         return view
     }
 
-    internal fun park(view: WebContainerAndroidView): Boolean {
+    internal fun park(
+        view: WebContainerAndroidView,
+        telemetrySink: WebContainerTelemetrySink? = null,
+    ): Boolean {
         val key = view.currentPoolKey() ?: return false
         if (scopeManager.hasPendingDeletion(view.isolationScope)) {
             return false
         }
         view.detachForKeepAlive()
-        return pool.park(key, view)
+        val parked = pool.park(key, view)
+        if (parked && view.isLoadInFlight()) {
+            armPrewarmTimeout(view, telemetrySink)
+        } else {
+            cancelPrewarmTimeout(view)
+        }
+        return parked
     }
 
-    internal fun dropIfSame(view: WebContainerAndroidView): Boolean = pool.dropIfSame(view)
+    internal fun dropIfSame(view: WebContainerAndroidView): Boolean {
+        cancelPrewarmTimeout(view)
+        return pool.dropIfSame(view)
+    }
+
+    internal fun onParkedLoadFinished(view: WebContainerAndroidView) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post { cancelPrewarmTimeout(view) }
+            return
+        }
+        cancelPrewarmTimeout(view)
+    }
+
+    /**
+     * Aborts and destroys any parked prewarm whose main-frame load is still in flight so a
+     * slow/stuck background warm-up cannot starve a foreground WebView on Android's shared
+     * Chromium renderer process. Already finished parked views are preserved for warm-hit reuse.
+     */
+    fun abortInFlightPrewarmForForeground(
+        foregroundSurface: String,
+        exceptKey: WebContainerPoolKey? = null,
+        telemetrySink: WebContainerTelemetrySink? = null,
+    ): Int {
+        if (Looper.myLooper() != Looper.getMainLooper()) return 0
+        val aborted = pool.abortInFlightLoads(exceptKey = exceptKey)
+        pruneInactivePrewarmTimeouts()
+        if (aborted > 0) {
+            val sanitizedSurface =
+                foregroundSurface.trim().filter { it.isLetterOrDigit() || it == '_' || it == '-' }.ifEmpty { "unknown" }
+            telemetrySink?.onEvent(
+                WebContainerTelemetryEvent.PoolEvent(
+                    action = "prewarm_aborted_for_foreground",
+                    keepAliveKey = sanitizedSurface,
+                    poolSizeAfter = pool.size,
+                ),
+            )
+        }
+        return aborted
+    }
 
     /** Returns a read-only snapshot of the healthy parked document matching the given pool key. */
     fun keptDocument(
@@ -174,7 +228,7 @@ object WebContainerAndroidKeepAlive {
                 telemetrySink = telemetrySink,
                 fileChooser = null,
             )
-        if (park(view)) {
+        if (park(view, telemetrySink = telemetrySink)) {
             return true
         }
         view.destroy()
@@ -182,10 +236,14 @@ object WebContainerAndroidKeepAlive {
     }
 
     /** Evicts pooled views under OS memory pressure (`onTrimMemory`). */
-    fun onMemoryPressure(level: WebMemoryTrimLevel): Int = pool.onMemoryPressure(level)
+    fun onMemoryPressure(level: WebMemoryTrimLevel): Int =
+        pool.onMemoryPressure(level).also { pruneInactivePrewarmTimeouts() }
 
     /** Destroys all pooled views immediately. */
-    fun clearAll(): Int = pool.clearAll()
+    fun clearAll(): Int {
+        clearAllPrewarmTimeouts()
+        return pool.clearAll()
+    }
 
     internal fun clearIsolationScope(
         scope: WebIsolationScope,
@@ -193,9 +251,53 @@ object WebContainerAndroidKeepAlive {
     ): WebIsolationClearResult =
         scopeManager.clearIsolationScope(
             scope = scope,
-            evictPooled = { pool.evictScope(it) },
+            evictPooled = { target ->
+                pool.evictScope(target).also { pruneInactivePrewarmTimeouts() }
+            },
             deletePlatformStore = deletePlatformStore,
         )
+
+    private fun armPrewarmTimeout(
+        view: WebContainerAndroidView,
+        telemetrySink: WebContainerTelemetrySink?,
+    ) {
+        cancelPrewarmTimeout(view)
+        val runnable =
+            Runnable {
+                prewarmTimeouts.remove(view)
+                if (!view.isLoadInFlight()) return@Runnable
+                if (pool.dropIfSame(view)) {
+                    telemetrySink?.onEvent(
+                        WebContainerTelemetryEvent.PoolEvent(
+                            action = "prewarm_aborted_timeout",
+                            keepAliveKey = view.currentPoolKey()?.keepAliveKey ?: "unknown",
+                            poolSizeAfter = pool.size,
+                        ),
+                    )
+                }
+            }
+        prewarmTimeouts[view] = runnable
+        mainHandler.postDelayed(runnable, prewarmLoadTimeoutMs)
+    }
+
+    private fun cancelPrewarmTimeout(view: WebContainerAndroidView) {
+        prewarmTimeouts.remove(view)?.let { mainHandler.removeCallbacks(it) }
+    }
+
+    private fun pruneInactivePrewarmTimeouts() {
+        val stale = prewarmTimeouts.entries.filter { (view, _) -> !view.isHealthy() }.map { it.key }
+        for (view in stale) {
+            cancelPrewarmTimeout(view)
+        }
+    }
+
+    private fun clearAllPrewarmTimeouts() {
+        val runnables = prewarmTimeouts.values.toList()
+        prewarmTimeouts.clear()
+        for (runnable in runnables) {
+            mainHandler.removeCallbacks(runnable)
+        }
+    }
 }
 
 @Composable
@@ -222,6 +324,11 @@ internal actual fun WebContainerPlatformHost(
                             isDarkTheme = config.isDarkTheme,
                         )
                     }
+            WebContainerAndroidKeepAlive.abortInFlightPrewarmForForeground(
+                foregroundSurface = config.surfaceId,
+                exceptKey = poolKey,
+                telemetrySink = telemetrySink,
+            )
             val reused =
                 poolKey?.let { key ->
                     WebContainerAndroidKeepAlive.take(
@@ -254,7 +361,7 @@ internal actual fun WebContainerPlatformHost(
             view.bindController(controller)
         },
         onRelease = { view ->
-            if (!WebContainerAndroidKeepAlive.park(view)) {
+            if (!WebContainerAndroidKeepAlive.park(view, telemetrySink = telemetrySink)) {
                 view.destroy()
             }
         },
@@ -351,6 +458,9 @@ internal class WebContainerAndroidView(
 
     override fun isHealthy(): Boolean =
         !destroyed && !mainFrameLoadFailed && !isolatedProfileUnavailable
+
+    override fun isLoadInFlight(): Boolean =
+        !destroyed && !mainFrameLoadFailed && loadedSrc.isNotBlank() && (currentLoading || lastSuccessfulUrl.isBlank())
 
     internal fun keptSnapshot(): WebContainerKeptSnapshot? {
         if (!isHealthy()) return null
@@ -539,6 +649,7 @@ internal class WebContainerAndroidView(
         if (destroyed) return
         destroyed = true
         parkedForKeepAlive = false
+        WebContainerAndroidKeepAlive.onParkedLoadFinished(this)
         fileChooser = null
         mainHandler.removeCallbacks(watchdogTickRunnable)
         boundController?.unbindDispatcher(this)
@@ -903,6 +1014,9 @@ internal class WebContainerAndroidView(
                         if (lastSuccessfulUrl != currentUrl) {
                             lastSuccessfulUrl = currentUrl
                             events.onLoadSuccess()
+                        }
+                        if (parkedForKeepAlive) {
+                            WebContainerAndroidKeepAlive.onParkedLoadFinished(this@WebContainerAndroidView)
                         }
                     }
                     events.onUrlChange(currentUrl)

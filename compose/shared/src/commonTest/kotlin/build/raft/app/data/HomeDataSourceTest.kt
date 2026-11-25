@@ -56,6 +56,49 @@ class HomeDataSourceTest {
     }
 
     @Test
+    fun homePayloadTagsLifecycleRetiredCodeZeroWithoutMisclassifyingRealNetworkErrors() = runBlocking {
+        fun apiWithDmResponse(dmResponse: HomeNetworkResponse) =
+            object : RaftHomeApi {
+                override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
+                    HomeNetworkResponse(code = 200, bodyText = "[]")
+
+                override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse = dmResponse
+
+                override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
+                    HomeNetworkResponse(code = 200, bodyText = EMPTY_CHANNEL_UNREAD_SUMMARY_BODY)
+
+                override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
+                    HomeNetworkResponse(code = 200, bodyText = "[]")
+            }
+
+        val retiredResult =
+            RaftHomeApiClient(
+                apiWithDmResponse(
+                    HomeNetworkResponse(
+                        code = 0,
+                        bodyText = null,
+                        errorBodyText = RAFT_NETWORK_LIFECYCLE_RETIRED_CODE,
+                    )
+                )
+            ).homePayload(ServerId("server-1"), DataRequestPriority.Visible)
+        val retiredError = assertIs<DataResult.Error>(retiredResult).error
+        assertEquals("home_http_0", retiredError.code)
+        assertEquals(RAFT_NETWORK_LIFECYCLE_RETIRED_CODE, retiredError.serverCode)
+        assertTrue(retiredError.isLifecycleRetired())
+
+        listOf(
+            HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = null),
+            HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = """{"error":"network_timeout"}"""),
+            HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = "network_request_mutation_outcome_unknown"),
+            HomeNetworkResponse(code = 500, bodyText = null, errorBodyText = RAFT_NETWORK_LIFECYCLE_RETIRED_CODE),
+        ).forEach { response ->
+            val result = RaftHomeApiClient(apiWithDmResponse(response)).homePayload(ServerId("server-1"), DataRequestPriority.Visible)
+            val error = assertIs<DataResult.Error>(result).error
+            assertFalse(error.isLifecycleRetired(), "must not mark $response as lifecycle_retired")
+        }
+    }
+
+    @Test
     fun offlineComputersNeverSurfaceHomeAlertsWithoutSuppressingOutdatedAlerts() = runBlocking {
         val machinesBody =
             """

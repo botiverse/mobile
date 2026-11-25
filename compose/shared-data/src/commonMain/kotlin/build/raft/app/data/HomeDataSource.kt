@@ -990,6 +990,15 @@ private fun <T> HomeNetworkResponse.decodeHomeBody(
     }
 }
 
+@RaftCoreInternalApi const val RAFT_NETWORK_LIFECYCLE_RETIRED_CODE: String = "network_request_lifecycle_retired"
+
+@RaftCoreInternalApi fun HomeNetworkResponse.isLifecycleRetired(): Boolean =
+    code == 0 && errorBodyText?.contains(RAFT_NETWORK_LIFECYCLE_RETIRED_CODE) == true
+
+@RaftCoreInternalApi fun ScreenError.isLifecycleRetired(): Boolean =
+    serverCode == RAFT_NETWORK_LIFECYCLE_RETIRED_CODE ||
+        code == RAFT_NETWORK_LIFECYCLE_RETIRED_CODE
+
 private fun <T> HomeNetworkResponse.toHomeApiFailure(serverMessage: String?): DataResult<T> =
     if (code == 401 || code == 403) {
         DataResult.NoPermission(PermissionBlocker(code = "home_http_$code", serverMessage = serverMessage))
@@ -999,7 +1008,10 @@ private fun <T> HomeNetworkResponse.toHomeApiFailure(serverMessage: String?): Da
                 code = "home_http_$code",
                 retryable = true,
                 serverMessage = serverMessage,
-                serverCode = RwOverloadedErrorCode.takeIf { isRwOverloaded() } ?: RwUnconfiguredErrorCode.takeIf { isRwUnconfigured() },
+                serverCode =
+                    RAFT_NETWORK_LIFECYCLE_RETIRED_CODE.takeIf { isLifecycleRetired() }
+                        ?: RwOverloadedErrorCode.takeIf { isRwOverloaded() }
+                        ?: RwUnconfiguredErrorCode.takeIf { isRwUnconfigured() },
                 retryAfterSeconds = raftRetryAfterSecondsIfRwOverloaded()
             )
         )
