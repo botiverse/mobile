@@ -52,7 +52,7 @@ object RaftMessageAttachmentCardDefaults {
  *   cut with an ellipsis.
  * - Meta line (`MessageAttachmentMeta`), pushed to the bottom, Space Mono `text-mono-meta` in
  *   `foreground-hint`: [meta] (the kind, or a status such as "Downloading · 64%") truncates
- *   first; then " · [metaSize]" and " · [MessageSquare 12dp] [commentCount]" keep their width.
+ *   first; then " · [metaSize]" and " · [Comment 12dp] [commentCount]" keep their width.
  *   [actions] (`MessageAttachmentMetaEnd`, one or two [RaftMessageAttachmentAction]) sit at its
  *   end, 4dp apart.
  * - [loading]: an xs [RaftSpinner] in the actions' place while the file opens.
@@ -141,11 +141,11 @@ fun RaftMessageAttachmentCard(
                     MetaText("·")
                     MetaText(metaSize)
                 }
-                // Web `attachment-comment-count`: "· [MessageSquare 12] N" (`gap-1`).
+                // Web `attachment-comment-count`: "· [CommentIcon 12] N" (`gap-1`).
                 if (commentCount > 0) {
                     MetaText("·")
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RaftGlyphIcon(RaftGlyph.MessageSquare, size = 12.dp, color = colors.foregroundHint)
+                        RaftGlyphIcon(RaftGlyph.Comment, size = 12.dp, color = colors.foregroundHint)
                         MetaText(commentCount.toString())
                     }
                 }
