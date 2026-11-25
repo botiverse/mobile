@@ -117,6 +117,7 @@ import build.raft.designsystem.components.RaftInboxItemLeadingBadge
 import build.raft.designsystem.components.RaftInboxItemLeadingDefaults
 import build.raft.designsystem.components.RaftTaskStatusBadge
 import build.raft.designsystem.components.RaftTaskStatusBadgeSize
+import build.raft.designsystem.components.RaftTaskStatusPixel
 import build.raft.designsystem.components.RaftMentionMarker
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.RaftQuietUnreadDot
@@ -132,9 +133,11 @@ import androidx.compose.ui.graphics.Shape
 /*
  * Activity conversation list, the only Activity layout: the KMP port of the web
  * `ThreadsInbox` `layout="list"` branch (slock packages/web/src/components/thread/ThreadsInbox.tsx,
- * raft-ui InboxItem density="compact"). One row per conversation: a leading avatar or channel tile, the
- * name, a one-line preview as on the web (artin 2026-11-23, db45cd71: phones try one line in 1.29; they reserved two
- * lines before, #3653), the time and the unread count, in the order the server lists them.
+ * raft-ui InboxItem density="compact"). On phones / compact width (`ActivityRowLayout.phone`,
+ * raft-design#1433 / #triage:#586 / #proj-mobile:#372 Option A, replacing 1.29's one-line trial #5434):
+ * top-aligned leading avatar or channel tile, up to two preview lines whose height follows content
+ * (56dp 1-line, 76dp 2-line), `#channel ·` in hint ink, and pixel-only task status. Wide lists keep
+ * the single-line `InboxItemLine` layout (centered avatar, status badge, 1 preview line).
  *
  * This file is presentation only. Opening, Done, read/unread and the press-and-hold menu stay the
  * Activity list's own intents (SharedActivityList); this layout never changes how Done is applied. The
@@ -905,12 +908,12 @@ private val ConversationDividerStart = 64.dp
 private val ConversationSenderAvatar = 19.dp
 
 /**
- * How an Activity row is laid out: the web's row at every width (ThreadsInbox
- * `RaftInboxItem density="compact"`, a list cell; raft-design patterns/lists.md and
+ * How an Activity row is laid out: the compact list cell (raft-design patterns/lists.md and
  * components/inbox-item.md): the state drawn on one rounded shape inset [shapeInset] from both sides
  * of the column, the content [contentPadX] inside that shape, [padY] above and below it, rows
- * [rowGap] apart and no line between them. Every width shows one excerpt line, as the web does (artin
- * 2026-11-23, db45cd71: phones try one line in 1.29; they reserved two lines before, #3653 and 2026-11-20).
+ * [rowGap] apart and no line between them. Phones / compact width use the two-line preview
+ * (`twoLinePreview = true`, `previewLines = 2`, `reservePreviewLines = false`; raft-design#1433 /
+ * #proj-mobile:#372 Option A); wide lists keep the single-line `InboxItemLine` (`previewLines = 1`).
  */
 @Immutable
 internal data class ActivityRowLayout(
@@ -922,8 +925,16 @@ internal data class ActivityRowLayout(
     val padY: Dp,
     /** The row's least height (`pointer-coarse:min-h-14`). */
     val minHeight: Dp,
-    /** The excerpt's lines, each reserved. */
+    /** Maximum excerpt lines (2 on phone, 1 on wide). */
     val previewLines: Int,
+    /** When true, always reserve [previewLines] vertical slots; when false, height follows laid-out lines. */
+    val reservePreviewLines: Boolean = false,
+    /**
+     * Phone / compact two-line preview layout (raft-design#1433 `InboxItemPreview`): top-aligned
+     * leading avatar/tile, `#channel ·` in `foregroundHint`, and pixel-only task status in marks.
+     * False on wide lists, which keep the single-line `InboxItemLine` layout.
+     */
+    val twoLinePreview: Boolean = false,
     /** A hairline between two adjacent rows (none in the web's list cells: lists.md "lists have no dividers"). */
     val dividers: Boolean,
     /** Between two rows (the list's `gap-0.5`). */
@@ -940,28 +951,31 @@ internal data class ActivityRowLayout(
 
     companion object {
         /**
-         * The phone's row: the web's compact list cell with one excerpt line. The shape 8dp in, the
-         * content 12dp inside it (20dp from the screen's edge); by touch 8dp above and below and at
-         * least 56dp tall (`pointer-coarse:min-h-14 pointer-coarse:py-2`); under a mouse or trackpad in
-         * a narrow window 12dp above and below with no minimum (`py-3`, `md:pointer-fine` only from
-         * 768); rows 2dp apart with no line between them.
+         * The phone's row: compact list cell with the two-line preview (raft-design#1433): up to two
+         * excerpt lines whose height follows content, top-aligned leading visual, `#channel ·` in
+         * hint colour, and pixel-only task status. The shape is 8dp in, the content 12dp inside it
+         * (20dp from the screen's edge); 8dp above and below, at least 56dp tall by touch (56dp for
+         * 1-line body, 76dp for 2-line); rows 2dp apart with no line between them.
          */
         fun phone(pointerInput: RaftPointerInput): ActivityRowLayout =
             ActivityRowLayout(
                 shapeInset = 8.dp,
                 contentPadX = 12.dp,
-                padY = if (pointerInput == RaftPointerInput.Fine) 12.dp else 8.dp,
+                padY = 8.dp,
                 minHeight = if (pointerInput == RaftPointerInput.Fine) 0.dp else 56.dp,
-                previewLines = 1,
+                previewLines = 2,
+                reservePreviewLines = false,
+                twoLinePreview = true,
                 dividers = false,
                 rowGap = 2.dp,
                 listTop = 8.dp,
             )
 
         /**
-         * The web's compact list cell: shape 8dp in, content 12dp inside it by touch (20dp from the
-         * column's edge) and 8dp inside it under a mouse or trackpad (16dp); 8dp above and below, at
-         * least 56dp tall by touch; one excerpt line; rows 2dp apart with no line between them.
+         * The wide list cell (`InboxItemLine`, raft-design#1433): shape 8dp in, content 12dp inside
+         * it by touch (20dp from the column's edge) and 8dp inside it under a mouse or trackpad (16dp);
+         * 8dp above and below, at least 56dp tall by touch; one excerpt line, centered avatar, and
+         * the `sm` task status badge; rows 2dp apart with no line between them.
          */
         fun wide(pointerInput: RaftPointerInput): ActivityRowLayout =
             ActivityRowLayout(
@@ -970,6 +984,8 @@ internal data class ActivityRowLayout(
                 padY = 8.dp,
                 minHeight = if (pointerInput == RaftPointerInput.Fine) 0.dp else 56.dp,
                 previewLines = 1,
+                reservePreviewLines = true,
+                twoLinePreview = false,
                 dividers = false,
                 rowGap = 2.dp,
                 listTop = 8.dp,
@@ -1061,9 +1077,9 @@ internal fun ActivityConversationListRow(
     val typography = RaftTheme.typography
     val hairline = colors.lineHairline
     val rowShape = layout.shape
-    // Every row is the same height (artin): one title line and two excerpt lines, each a slot of its
-    // style's line height, so a one-line excerpt still reserves its second line and a task badge, an
-    // inline face or a fallback CJK glyph cannot make one row taller than its neighbours.
+    // One title line and up to [layout.previewLines] excerpt lines, each a fixed slot of its style's
+    // line height so an inline face, mark, or CJK fallback glyph never shifts a line box; height
+    // follows the laid-out line count when [layout.reservePreviewLines] is false (56dp 1-line, 76dp 2-line).
     val density = LocalDensity.current
     val titleLine = with(density) { typography.subhead.lineHeight.toDp() }
     val bodyLine = with(density) { typography.callout.lineHeight.toDp() }
@@ -1193,7 +1209,7 @@ internal fun ActivityConversationListRow(
                         .heightIn(min = layout.minHeight)
                         .padding(start = layout.contentPadX, end = layout.contentPadX + doneRoom, top = layout.padY, bottom = layout.padY),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = if (layout.twoLinePreview) Alignment.Top else Alignment.CenterVertically,
             ) {
                 ActivityConversationLeading(model, item.channelName, agentStatusResolver)
                 Column(modifier = Modifier.weight(1f)) {
@@ -1276,8 +1292,9 @@ internal fun ActivityConversationListRow(
                                 )
                             }.orEmpty()
                         }
-                    // Line 2: the excerpt, [ActivityRowLayout.previewLines] lines (one), the marks beside
-                    // its first line only, so they never narrow a longer excerpt (Drafts uses two).
+                    // Line 2+: the excerpt, up to [ActivityRowLayout.previewLines] lines (height follows
+                    // content when `!layout.reservePreviewLines`), the marks beside its first line only so
+                    // line 2 uses full width.
                     val senderText =
                         when (val sender = model.sender) {
                             ActivityConversationSender.System -> systemLabel
@@ -1287,10 +1304,12 @@ internal fun ActivityConversationListRow(
                             null -> null
                         }
                     val senderStyle = SpanStyle(fontWeight = FontWeight.SemiBold, color = colors.foreground)
+                    val channelStyle = if (layout.twoLinePreview) SpanStyle(color = colors.foregroundHint) else null
                     val bodyText =
                         model.objectLine?.let { line -> activityObjectBodyText(line, senderStyle) }
                             ?: activityConversationBodyText(
                                 channelLabel = visibleThreadChannelText,
+                                channelStyle = channelStyle,
                                 sender = senderText,
                                 preview = model.preview?.toAnnotatedString() ?: AnnotatedString(fallback),
                                 senderStyle = senderStyle,
@@ -1309,7 +1328,14 @@ internal fun ActivityConversationListRow(
                         inlineContent = inlineContent,
                         lineHeight = bodyLine,
                         maxLines = layout.previewLines,
-                        marks = { ActivityConversationMarks(model, marksHeight = bodyLine) },
+                        reserveLines = layout.reservePreviewLines,
+                        marks = {
+                            ActivityConversationMarks(
+                                model = model,
+                                marksHeight = bodyLine,
+                                taskStatusPixelOnly = layout.twoLinePreview,
+                            )
+                        },
                     )
                 }
             }
@@ -1408,28 +1434,36 @@ internal fun activityRowDoneLabel(item: InboxItem, model: ActivityConversationRo
 }
 
 /**
- * [ActivityExcerptBesideMarks]' default, which the Drafts panel's excerpt uses: it wraps to a second line before it
- * ellipsizes, and a one-line body still reserves both lines. Activity rows pass their layout's one line
- * ([ActivityRowLayout.previewLines]).
+ * Default maximum excerpt lines for [ActivityExcerptBesideMarks]: wraps to a second line before
+ * ellipsizing. Drafts keeps `reserveLines = true`; Activity rows pass `reserveLines = false`
+ * ([ActivityRowLayout.reservePreviewLines]) so 1-line previews stay compact.
  */
 internal const val ActivityConversationPreviewMaxLines = 2
 
 internal const val ActivityConversationSenderAvatarInlineId = "activity-conversation-sender-avatar"
 
 /**
- * The body, up to [ActivityConversationPreviewMaxLines] lines: "#channel · " (thread rows), the sender's
- * face (inline placeholder [ActivityConversationSenderAvatarInlineId]), "Sender: " in semibold
- * `foreground` (raft-ui `InboxItemSender`), then the preview. One string, so it wraps and ellipsizes together.
+ * The body, up to [ActivityConversationPreviewMaxLines] lines: "#channel · " (thread/task rows,
+ * optionally styled in [channelStyle] e.g. `foregroundHint`), the sender's face (inline placeholder
+ * [ActivityConversationSenderAvatarInlineId]), "Sender: " in semibold `foreground` (raft-ui
+ * `InboxItemSender`), then the preview. One string, so it wraps and ellipsizes together.
  */
 internal fun activityConversationBodyText(
     sender: String?,
     preview: AnnotatedString,
     senderStyle: SpanStyle = SpanStyle(fontWeight = FontWeight.SemiBold),
     channelLabel: String? = null,
+    channelStyle: SpanStyle? = null,
     senderAvatar: Boolean = false,
 ): AnnotatedString =
     buildAnnotatedString {
-        if (!channelLabel.isNullOrBlank()) append("$channelLabel ")
+        if (!channelLabel.isNullOrBlank()) {
+            if (channelStyle != null) {
+                withStyle(channelStyle) { append("$channelLabel ") }
+            } else {
+                append("$channelLabel ")
+            }
+        }
         if (senderAvatar && !sender.isNullOrBlank()) {
             appendInlineContent(ActivityConversationSenderAvatarInlineId, alternateText = " ")
         }
@@ -1612,7 +1646,11 @@ private fun ActivityConversationTimeFallback(item: InboxItem, timeContext: RaftT
 
 /** raft-ui `InboxItemMarks` (draft, mention, muted / unread count), beside the excerpt's first line. */
 @Composable
-private fun ActivityConversationMarks(model: ActivityConversationRowModel, marksHeight: Dp) {
+private fun ActivityConversationMarks(
+    model: ActivityConversationRowModel,
+    marksHeight: Dp,
+    taskStatusPixelOnly: Boolean = false,
+) {
     val colors = RaftTheme.colors
     if (
         !model.hasDraft && !model.showMentionMarker && !model.muted && !model.showUnreadCount &&
@@ -1626,13 +1664,29 @@ private fun ActivityConversationMarks(model: ActivityConversationRowModel, marks
         verticalAlignment = Alignment.CenterVertically,
     ) {
         model.taskStatusMark?.let { status ->
-            // web ThreadsInbox: a task row's status sits at the start of the marks (`StatusBadge sm`),
-            // before the draft mark and the unread count, so it never takes room from the title.
-            RaftTaskStatusBadge(
-                status = status.raftTaskStatus(),
-                text = status.localizedLabel(),
-                size = RaftTaskStatusBadgeSize.Sm,
-            )
+            if (taskStatusPixelOnly) {
+                // raft-design#1433 / #proj-mobile:#372 Option A (phone two-line preview): a task row's
+                // status in the marks is only the 10dp colour pixel so line 1 keeps room for the
+                // message; screen readers still read its localized label.
+                val statusLabel = status.localizedLabel()
+                Box(
+                    modifier =
+                        Modifier.semantics {
+                            contentDescription = statusLabel
+                            role = Role.Image
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    RaftTaskStatusPixel(status = status.raftTaskStatus())
+                }
+            } else {
+                // Wide single-line `InboxItemLine`: keep the `sm` status badge before draft/unread.
+                RaftTaskStatusBadge(
+                    status = status.raftTaskStatus(),
+                    text = status.localizedLabel(),
+                    size = RaftTaskStatusBadgeSize.Sm,
+                )
+            }
         }
         if (model.hasDraft) {
             val draftDescription = stringResource(Res.string.activity_list_draft_description)
@@ -1674,13 +1728,13 @@ internal fun ActivityConversationRowModel.unreadCountLabel(): String? =
  * a single-topology line-box exclusion layout primitive.
  *
  * Every line occupies an exact fixed vertical slot of height `slotHeight` (derived from
- * [lineHeight] and [style.lineHeight]), so the total height is strictly `slotHeight * maxLines`
- * whether [marks] are present (unread) or absent (read), whether the excerpt has one or two lines,
- * whether it contains CJK fallback glyphs, or whether it embeds inline placeholders (sender face /
- * draft icon). Both line 1 and the remaining lines are measured once per pass with the same
- * CJK-trimmed [TextStyle] and drawn directly on one canvas with inline content placed at the
- * measured placeholder rects, so toggling read/unread smoothly changes line 1's exclusion width
- * without switching layout branches or shifting any row height or baseline.
+ * [lineHeight] and [style.lineHeight]), so an inline placeholder (sender face / draft icon), a mark,
+ * or a CJK fallback glyph never inflates a line box. When [reserveLines] is `true` (default, e.g.
+ * Drafts), total height is strictly `slotHeight * maxLines`; when `false` (Activity rows), total
+ * height follows the laid-out line count (`slotHeight * actualLines`, in `1..maxLines`). Both line 1
+ * and the remaining lines are measured once per pass with the same CJK-trimmed [TextStyle] and drawn
+ * directly on one canvas with inline content placed at the measured placeholder rects, so line 2 uses
+ * the full width while [marks] stay at the end of line 1.
  */
 @Composable
 internal fun ActivityExcerptBesideMarks(
@@ -1691,8 +1745,10 @@ internal fun ActivityExcerptBesideMarks(
     color: Color,
     inlineContent: Map<String, InlineTextContent>,
     lineHeight: Dp,
-    /** The excerpt's lines, each reserved; one: the excerpt ellipsizes on the marks' line. */
+    /** Maximum excerpt lines; one: the excerpt ellipsizes on the marks' line. */
     maxLines: Int = ActivityConversationPreviewMaxLines,
+    /** When true, always reserve [maxLines] slots; when false, height follows the laid-out line count. */
+    reserveLines: Boolean = true,
     /** Optional test hook reporting the laid-out line split `(line1Text, restText)` after each measure. */
     onLineSplit: ((firstLine: String, rest: String?) -> Unit)? = null,
     marks: @Composable () -> Unit,
@@ -1717,7 +1773,6 @@ internal fun ActivityExcerptBesideMarks(
                 lineHeight.roundToPx(),
                 if (resolvedStyle.lineHeight.isSp) resolvedStyle.lineHeight.roundToPx() else 0,
             )
-        val totalHeight = slotHeight * clampedMaxLines
         val marksPlaceables = subcompose("marks", marks).map { it.measure(Constraints()) }
         val marksWidth = marksPlaceables.sumOf { it.width }
         val plan =
@@ -1733,6 +1788,15 @@ internal fun ActivityExcerptBesideMarks(
                 maxLines = clampedMaxLines,
                 isRtl = layoutDirection == LayoutDirection.Rtl,
             )
+        val actualLines =
+            if (reserveLines) {
+                clampedMaxLines
+            } else if (plan.rest != null) {
+                (1 + plan.rest.lineCount).coerceAtMost(clampedMaxLines)
+            } else {
+                1
+            }
+        val totalHeight = slotHeight * actualLines
         onLineSplit?.invoke(plan.firstLineText, plan.restText)
         val textCanvas =
             subcompose("text") {
