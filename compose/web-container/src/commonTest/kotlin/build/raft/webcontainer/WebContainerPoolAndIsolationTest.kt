@@ -76,6 +76,32 @@ class WebContainerPoolAndIsolationTest {
     }
 
     @Test
+    fun keepAlivePoolPeekInspectsWithoutRemovingAndEvictsUnhealthyOrExpired() {
+        var now = 1_000L
+        val pool = WebContainerKeepAlivePool<FakePooledContainer>(maxEntries = 2, ttlMs = 5_000L, nowMs = { now })
+        val scope = WebIsolationScope.Default
+        val k1 = WebContainerPoolKey("k1", scope, isDarkTheme = false)
+        val k2 = WebContainerPoolKey("k2", scope, isDarkTheme = false)
+        val c1 = FakePooledContainer(scope)
+        val c2 = FakePooledContainer(scope)
+
+        assertTrue(pool.park(k1, c1))
+        assertTrue(pool.park(k2, c2))
+        assertSame(c1, pool.peek(k1))
+        assertEquals(2, pool.size)
+
+        c1.healthy = false
+        assertNull(pool.peek(k1))
+        assertTrue(c1.destroyed)
+        assertEquals(1, pool.size)
+
+        now += 5_001L
+        assertNull(pool.peek(k2))
+        assertTrue(c2.destroyed)
+        assertEquals(0, pool.size)
+    }
+
+    @Test
     fun keepAlivePoolRespondsToMemoryPressure() {
         val pool = WebContainerKeepAlivePool<FakePooledContainer>(maxEntries = 4, ttlMs = 60_000L, nowMs = { 0L })
         val scope = WebIsolationScope.Default

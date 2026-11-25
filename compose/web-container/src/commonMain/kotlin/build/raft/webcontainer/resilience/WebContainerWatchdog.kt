@@ -44,6 +44,9 @@ sealed interface WebContainerWatchdogEvent {
 
     data class LoadFailed(val generation: Int, val reason: String) : WebContainerWatchdogEvent
 
+    /** In-flight navigation was cleanly handed off (e.g. converted to a download) without failing the existing page. */
+    data class LoadCancelled(val generation: Int) : WebContainerWatchdogEvent
+
     data class RenderProcessGone(val didCrash: Boolean) : WebContainerWatchdogEvent
 
     data object Reset : WebContainerWatchdogEvent
@@ -78,6 +81,7 @@ class WebContainerWatchdog(
     private var loadStartedAtMs: Long = -1L
     private var finishedAtMs: Long = -1L
     private var probeRequestedForGen: Int = -1
+    private var hasPreviouslyCommitted: Boolean = false
     private val recentRecoveryTimestampsMs = ArrayDeque<Long>()
 
     val recentRecoveryCount: Int
@@ -94,6 +98,7 @@ class WebContainerWatchdog(
                 loadStartedAtMs = -1L
                 finishedAtMs = -1L
                 probeRequestedForGen = -1
+                hasPreviouslyCommitted = false
                 recentRecoveryTimestampsMs.clear()
                 WebContainerWatchdogAction.None
             }
@@ -109,6 +114,7 @@ class WebContainerWatchdog(
 
             is WebContainerWatchdogEvent.PageCommitted -> {
                 if (event.generation != activeGeneration) return WebContainerWatchdogAction.None
+                hasPreviouslyCommitted = true
                 if (phase == WebContainerPhase.Loading || phase == WebContainerPhase.Recovering) {
                     phase = WebContainerPhase.Committed
                 }
@@ -172,6 +178,15 @@ class WebContainerWatchdog(
                 if (event.generation != activeGeneration) return WebContainerWatchdogAction.None
                 phase = WebContainerPhase.Failed
                 WebContainerWatchdogAction.EmitTerminalError(event.reason)
+            }
+
+            is WebContainerWatchdogEvent.LoadCancelled -> {
+                if (event.generation != activeGeneration) return WebContainerWatchdogAction.None
+                if (phase == WebContainerPhase.Loading) {
+                    loadStartedAtMs = -1L
+                    phase = if (hasPreviouslyCommitted) WebContainerPhase.Ready else WebContainerPhase.Idle
+                }
+                WebContainerWatchdogAction.None
             }
 
             is WebContainerWatchdogEvent.RenderProcessGone -> {

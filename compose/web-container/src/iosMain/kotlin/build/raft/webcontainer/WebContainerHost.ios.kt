@@ -21,14 +21,24 @@ import build.raft.webcontainer.resource.WebResourceInterceptor
 import build.raft.webcontainer.resource.WebResourceRequest
 import build.raft.webcontainer.resource.isValidIosCustomScheme
 import kotlinx.cinterop.CEnum
+import kotlinx.cinterop.CFunction
+import kotlinx.cinterop.COpaquePointer
+import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.interpretObjCPointerOrNull
+import kotlinx.cinterop.invoke
 import kotlinx.cinterop.objcPtr
+import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.staticCFunction
+import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import platform.CoreGraphics.CGRect
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.*
 import platform.UIKit.UIColor
@@ -37,10 +47,14 @@ import platform.UIKit.UIViewAutoresizingFlexibleHeight
 import platform.UIKit.UIViewAutoresizingFlexibleWidth
 import platform.WebKit.WKAudiovisualMediaTypeAll
 import platform.WebKit.WKContentWorld
+import platform.WebKit.WKDownload
+import platform.WebKit.WKDownloadDelegateProtocol
 import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationAction
 import platform.WebKit.WKNavigationActionPolicy
 import platform.WebKit.WKNavigationDelegateProtocol
+import platform.WebKit.WKNavigationResponse
+import platform.WebKit.WKNavigationResponsePolicy
 import platform.WebKit.WKScriptMessage
 import platform.WebKit.WKScriptMessageHandlerWithReplyProtocol
 import platform.WebKit.WKUIDelegateProtocol
@@ -56,6 +70,14 @@ import platform.WebKit.WKWindowFeatures
 import platform.darwin.NSObject
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
+import platform.objc.class_addMethod
+import platform.objc.class_getInstanceMethod
+import platform.objc.class_getSuperclass
+import platform.objc.method_getImplementation
+import platform.objc.method_getTypeEncoding
+import platform.objc.object_getClass
+import platform.objc.sel_registerName
+import platform.posix.memcpy
 
 @Composable
 internal actual fun WebContainerPlatformHost(
@@ -172,6 +194,8 @@ internal class WebContainerIosHost(
     private val navDelegate = WebContainerIosNavigationDelegate(this)
     private val jsbReplyHandler = WebContainerIosJsbReplyHandler(this)
     private var activeSchemeHandler: WebContainerIosSchemeHandler? = null
+    private val activeDownloads = mutableListOf<WebContainerIosDownloadDelegate>()
+    private var downloadCancelledUrl: String? = null
 
     init {
         container.backgroundColor = UIColor.whiteColor
@@ -229,13 +253,13 @@ internal class WebContainerIosHost(
                 prev.jsbPolicy != next.jsbPolicy ||
                 prev.documentStartScripts != next.documentStartScripts ||
                 prev.offlineBundle != next.offlineBundle ||
-                prev.backgroundArgb != next.backgroundArgb ||
-                prev.isDarkTheme != next.isDarkTheme
+                (!pagePainted && (prev.backgroundArgb != next.backgroundArgb || prev.isDarkTheme != next.isDarkTheme))
         val urlChanged = prev == null || prev.url.trim() != next.url.trim()
 
         config = next
         chainState.configureBudget(next.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0)
         webView?.allowsBackForwardNavigationGestures = next.allowsBackForwardNavigationGestures
+        (webView as? WebContainerIosWebView)?.showsFormAccessoryBar = next.showsFormAccessoryBar
 
         if (needsRebuild) {
             // Tear down existing WKWebView BEFORE switching registered active scope so deferred
@@ -280,6 +304,11 @@ internal class WebContainerIosHost(
         pendingHostLoadUrl = null
         pendingHostLoadIsReissue = false
         hostCancelledUrl = null
+        downloadCancelledUrl = null
+        for (download in activeDownloads.toList()) {
+            download.cancelAndCleanup()
+        }
+        activeDownloads.clear()
         activeSchemeHandler?.invalidate()
         activeSchemeHandler = null
         val previous = webView ?: return
@@ -361,7 +390,7 @@ internal class WebContainerIosHost(
         if (cfg.allowScripts) {
             cfg.offlineBundle?.let { bundle ->
                 val bundleOrigins = defaultOriginSet
-                if (bundleOrigins.isNotEmpty() || bundle.iosCustomScheme != null) {
+                if (bundleOrigins.isNotEmpty()) {
                     val script = JsbBootstrapScripts.buildOfflineBundleScript(bundle, allowedOrigins = bundleOrigins)
                     if (script.isNotBlank()) {
                         userContentController.addUserScript(
@@ -414,7 +443,8 @@ internal class WebContainerIosHost(
             configuration.setURLSchemeHandler(handler, forURLScheme = customScheme.trim().lowercase())
         }
 
-        val nextView = WKWebView(frame = container.bounds, configuration = configuration)
+        val nextView = WebContainerIosWebView(frame = container.bounds, configuration = configuration)
+        nextView.showsFormAccessoryBar = cfg.showsFormAccessoryBar
         nextView.navigationDelegate = navDelegate
         nextView.UIDelegate = navDelegate
         nextView.allowsBackForwardNavigationGestures = cfg.allowsBackForwardNavigationGestures
@@ -612,6 +642,7 @@ internal class WebContainerIosHost(
                 if (locked != null && activeOrigin != locked) return
                 val initialOrigin = parseWebContainerOrigin(cfg.url)
                 if (initialOrigin != null && activeOrigin != initialOrigin) return
+                if (!cfg.navigationPolicy.allowNavigation && !isSameDocumentIgnoringFragment(cfg.url.trim(), activeUrl)) return
                 view.evaluateJavaScript(command.script, completionHandler = null)
             }
             WebContainerCommand.ProbeContent -> probeDocumentContent(view, loadGeneration)
@@ -715,12 +746,18 @@ internal class WebContainerIosHost(
         val frameOrigin = parseWebContainerOrigin(rawSecOrigin)
         val docUrl = activeView.URL?.absoluteString.orEmpty()
         val docOrigin = parseWebContainerOrigin(docUrl)
+        val cfg = config
+        val fencedDocumentAllowed =
+            cfg == null ||
+                cfg.navigationPolicy.allowNavigation ||
+                (docUrl.isNotEmpty() && isSameDocumentIgnoringFragment(cfg.url.trim(), docUrl))
         // Fail closed: opaque/sandboxed frames (frameOrigin == null) NEVER inherit main-frame docOrigin,
-        // and main-frame calls must match WKWebView.URL when both are present.
+        // main-frame calls must match WKWebView.URL when both are present, and fenced allowNavigation=false
+        // hosts reject pushState-diverged documents.
         val verifiedOrigin =
             when {
                 frameOrigin == null -> null
-                isMainFrame && (docOrigin == null || frameOrigin != docOrigin) -> null
+                isMainFrame && (docOrigin == null || frameOrigin != docOrigin || !fencedDocumentAllowed) -> null
                 else -> frameOrigin
             }
         dispatcher.dispatch(
@@ -744,6 +781,14 @@ internal class WebContainerIosHost(
         val cfg = config ?: return WKNavigationActionPolicy.WKNavigationActionPolicyCancel
         val targetUrl = action.request.URL?.absoluteString.orEmpty()
         val targetFrame = action.targetFrame
+        if (events.onDownloadRequested != null && action.shouldPerformDownload) {
+            val fromMainOrNewWindow = targetFrame == null || targetFrame.mainFrame
+            if (fromMainOrNewWindow && isAllowedIosDownload(targetUrl, cfg)) {
+                return WKNavigationActionPolicy.WKNavigationActionPolicyDownload
+            }
+            notifyNavigationBlocked(targetUrl, "download_blocked")
+            return WKNavigationActionPolicy.WKNavigationActionPolicyCancel
+        }
         if (targetFrame == null) {
             if (!cfg.navigationPolicy.allowNewWindows) {
                 notifyNavigationBlocked(targetUrl, "new_window_blocked")
@@ -834,6 +879,7 @@ internal class WebContainerIosHost(
 
     internal fun didStartProvisional(source: WKWebView) {
         if (disposed || !isSameObjCObject(source, webView)) return
+        downloadCancelledUrl = null
         jsbDispatcher?.cancelInFlight("main_frame_navigation")
         loadGeneration += 1
         currentLoading = true
@@ -848,6 +894,7 @@ internal class WebContainerIosHost(
     internal fun didCommit(source: WKWebView) {
         if (disposed || !isSameObjCObject(source, webView)) return
         hostCancelledUrl = null
+        downloadCancelledUrl = null
         currentUrl = source.URL?.absoluteString ?: currentUrl
         chainState.markCommitted()
         watchdog.onEvent(WebContainerWatchdogEvent.PageCommitted(loadGeneration), webContainerMonotonicMillis())
@@ -866,6 +913,7 @@ internal class WebContainerIosHost(
     internal fun didFinish(source: WKWebView) {
         if (disposed || !isSameObjCObject(source, webView)) return
         hostCancelledUrl = null
+        downloadCancelledUrl = null
         currentUrl = source.URL?.absoluteString ?: currentUrl
         currentTitle = source.title ?: currentTitle
         currentLoading = false
@@ -883,12 +931,74 @@ internal class WebContainerIosHost(
         notifyNavigationState(force = false)
     }
 
+    internal fun decideResponsePolicy(
+        source: WKWebView,
+        response: WKNavigationResponse,
+    ): WKNavigationResponsePolicy {
+        if (disposed || !isSameObjCObject(source, webView) || events.onDownloadRequested == null) {
+            return WKNavigationResponsePolicy.WKNavigationResponsePolicyAllow
+        }
+        val cfg = config ?: return WKNavigationResponsePolicy.WKNavigationResponsePolicyCancel
+        val disposition = (response.response as? NSHTTPURLResponse)?.valueForHTTPHeaderField("Content-Disposition")
+        val isAttachment = disposition?.trim()?.lowercase()?.startsWith("attachment") == true
+        if (!isAttachment && response.canShowMIMEType) {
+            return WKNavigationResponsePolicy.WKNavigationResponsePolicyAllow
+        }
+        val respUrl = response.response.URL?.absoluteString.orEmpty()
+        if (!response.forMainFrame || !isAllowedIosDownload(respUrl, cfg)) {
+            if (response.forMainFrame) {
+                notifyNavigationBlocked(respUrl, "download_blocked")
+            }
+            return WKNavigationResponsePolicy.WKNavigationResponsePolicyCancel
+        }
+        return WKNavigationResponsePolicy.WKNavigationResponsePolicyDownload
+    }
+
+    internal fun didBecomeDownload(
+        source: WKWebView,
+        download: WKDownload,
+    ) {
+        if (disposed || !isSameObjCObject(source, webView) || events.onDownloadRequested == null) {
+            download.cancel(null)
+            return
+        }
+        downloadCancelledUrl = download.originalRequest?.URL?.absoluteString.orEmpty()
+        val delegate = WebContainerIosDownloadDelegate(this, download)
+        activeDownloads += delegate
+        download.delegate = delegate
+    }
+
+    internal fun finishDownload(
+        delegate: WebContainerIosDownloadDelegate,
+        result: WebDownloadResult,
+    ) {
+        activeDownloads.removeAll { it === delegate }
+        if (activeDownloads.isEmpty()) {
+            downloadCancelledUrl = null
+        }
+        if (disposed) return
+        events.onDownloadRequested?.invoke(result)
+    }
+
     internal fun didFail(
         source: WKWebView,
         error: NSError,
     ) {
         if (disposed || !isSameObjCObject(source, webView)) return
         val failingUrl = error.userInfo[NSURLErrorFailingURLStringErrorKey] as? String
+        val cancelledDownloadUrl = downloadCancelledUrl
+        val isDownloadInterrupt =
+            cancelledDownloadUrl != null &&
+                error.domain == "WebKitErrorDomain" &&
+                error.code == 102L &&
+                (failingUrl.isNullOrEmpty() || cancelledDownloadUrl.isEmpty() || failingUrl == cancelledDownloadUrl)
+        if (isDownloadInterrupt) {
+            downloadCancelledUrl = null
+            currentLoading = false
+            watchdog.onEvent(WebContainerWatchdogEvent.LoadCancelled(loadGeneration), webContainerMonotonicMillis())
+            notifyNavigationState(force = false)
+            return
+        }
         val isCancelled =
             (error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled) ||
                 (error.domain == "WebKitErrorDomain" && error.code == 102L &&
@@ -934,6 +1044,10 @@ internal class WebContainerIosHost(
                     initialUrl = cfg.url,
                     candidateUrl = currentUrl,
                     policy = cfg.navigationPolicy,
+                    isAllowedCandidate = { candidate ->
+                        cfg.navigationPolicy.allowNavigation ||
+                            isSameDocumentIgnoringFragment(cfg.url.trim(), candidate)
+                    },
                 )
             rebuildWebView(cfg, restoreUrl = restoreUrl)
         } else {
@@ -1018,6 +1132,30 @@ private class WebContainerIosNavigationDelegate(
         decisionHandler: (WKNavigationActionPolicy) -> Unit,
     ) {
         decisionHandler(owner.decideNavigationPolicy(webView, decidePolicyForNavigationAction))
+    }
+
+    override fun webView(
+        webView: WKWebView,
+        decidePolicyForNavigationResponse: WKNavigationResponse,
+        decisionHandler: (WKNavigationResponsePolicy) -> Unit,
+    ) {
+        decisionHandler(owner.decideResponsePolicy(webView, decidePolicyForNavigationResponse))
+    }
+
+    override fun webView(
+        webView: WKWebView,
+        navigationAction: WKNavigationAction,
+        didBecomeDownload: WKDownload,
+    ) {
+        owner.didBecomeDownload(webView, didBecomeDownload)
+    }
+
+    override fun webView(
+        webView: WKWebView,
+        navigationResponse: WKNavigationResponse,
+        didBecomeDownload: WKDownload,
+    ) {
+        owner.didBecomeDownload(webView, didBecomeDownload)
     }
 
     @ObjCSignatureOverride
@@ -1142,6 +1280,186 @@ private fun iosColorFromArgb(argb: Int): UIColor =
         blue = (argb and 0xFF) / 255.0,
         alpha = ((argb ushr 24) and 0xFF) / 255.0,
     )
+
+private val IosDownloadAllowedSchemes: Set<String> = setOf("http", "https", "blob", "data")
+
+private fun isAllowedIosDownload(
+    url: String,
+    cfg: WebContainerConfig,
+): Boolean {
+    val scheme = extractUrlScheme(url) ?: return false
+    if (scheme !in IosDownloadAllowedSchemes) return false
+    if (scheme == "http" || scheme == "https") {
+        val allowedSchemes = cfg.navigationPolicy.normalizedAllowedSchemes
+        if (allowedSchemes.isNotEmpty() && scheme !in allowedSchemes) return false
+        val locked = cfg.navigationPolicy.lockedMainFrameOrigin
+        if (locked != null && parseWebContainerOrigin(url) != locked) return false
+    }
+    return true
+}
+
+/**
+ * Container-owned `WKWebView` subclass honoring [WebContainerConfig.showsFormAccessoryBar] via a
+ * runtime Objective-C `inputAccessoryView` override on this subclass only (zero private WebKit
+ * class usage).
+ */
+internal class WebContainerIosWebView(
+    frame: CValue<CGRect>,
+    configuration: WKWebViewConfiguration,
+) : WKWebView(frame = frame, configuration = configuration) {
+    var showsFormAccessoryBar: Boolean = false
+
+    init {
+        WebContainerIosAccessoryHook.install(this)
+    }
+}
+
+private typealias WebContainerIosObjCGetter = CFunction<(COpaquePointer?, COpaquePointer?) -> COpaquePointer?>
+
+private object WebContainerIosAccessoryHook {
+    private const val SELECTOR = "inputAccessoryView"
+    private var installed = false
+    private var inherited: CPointer<WebContainerIosObjCGetter>? = null
+
+    fun install(view: WebContainerIosWebView) {
+        if (installed) return
+        installed = true
+        val selector = sel_registerName(SELECTOR)
+        val ownClass = object_getClass(view)
+        val inheritedMethod = class_getInstanceMethod(class_getSuperclass(ownClass), selector)
+        inherited = method_getImplementation(inheritedMethod)?.reinterpret()
+        val implementation =
+            staticCFunction { self: COpaquePointer?, cmd: COpaquePointer? ->
+                val webView = self?.let { interpretObjCPointerOrNull<WebContainerIosWebView>(it.rawValue) }
+                if (webView?.showsFormAccessoryBar == true) inherited?.invoke(self, cmd) else null
+            }
+        class_addMethod(
+            ownClass,
+            selector,
+            implementation.reinterpret(),
+            method_getTypeEncoding(inheritedMethod)?.toKString() ?: "@@:",
+        )
+    }
+}
+
+/**
+ * Streams one `WKDownload` into a private temporary directory, validates [WEB_CONTAINER_DOWNLOAD_MAX_BYTES],
+ * delivers bytes via [WebContainerIosHost.finishDownload], and unconditionally deletes the temp directory.
+ */
+internal class WebContainerIosDownloadDelegate(
+    private val owner: WebContainerIosHost,
+    private val download: WKDownload,
+) : NSObject(), WKDownloadDelegateProtocol {
+    private var destination: NSURL? = null
+    private var fileName: String = "download"
+    private var mimeType: String? = null
+    private var finished: Boolean = false
+
+    fun cancelAndCleanup() {
+        finished = true
+        download.delegate = null
+        download.cancel(null)
+        cleanupTempFolder()
+    }
+
+    override fun download(
+        download: WKDownload,
+        decideDestinationUsingResponse: NSURLResponse,
+        suggestedFilename: String,
+        completionHandler: (NSURL?) -> Unit,
+    ) {
+        if (finished) {
+            completionHandler(null)
+            return
+        }
+        val expected = decideDestinationUsingResponse.expectedContentLength
+        if (expected > WEB_CONTAINER_DOWNLOAD_MAX_BYTES) {
+            completionHandler(null)
+            finish(WebDownloadResult.Failed("too_large"))
+            return
+        }
+        mimeType = decideDestinationUsingResponse.MIMEType
+        val disposition = (decideDestinationUsingResponse as? NSHTTPURLResponse)?.valueForHTTPHeaderField("Content-Disposition")
+        fileName =
+            resolveWebDownloadFileName(
+                pageFileName = suggestedFilename,
+                contentDisposition = disposition,
+                url = decideDestinationUsingResponse.URL?.absoluteString.orEmpty(),
+                mimeType = mimeType,
+            )
+        val folder =
+            NSURL.fileURLWithPath(NSTemporaryDirectory())
+                .URLByAppendingPathComponent("raft-wc-downloads", isDirectory = true)
+                ?.URLByAppendingPathComponent(NSUUID().UUIDString, isDirectory = true)
+        if (folder == null || !NSFileManager.defaultManager.createDirectoryAtURL(folder, true, null, null)) {
+            completionHandler(null)
+            finish(WebDownloadResult.Failed("storage_prepare"))
+            return
+        }
+        val target = folder.URLByAppendingPathComponent(fileName, isDirectory = false)
+        if (target == null) {
+            NSFileManager.defaultManager.removeItemAtURL(folder, null)
+            completionHandler(null)
+            finish(WebDownloadResult.Failed("storage_prepare"))
+            return
+        }
+        destination = target
+        completionHandler(target)
+    }
+
+    override fun downloadDidFinish(download: WKDownload) {
+        val target = destination
+        val fileSize =
+            target?.path?.let { path ->
+                (NSFileManager.defaultManager.attributesOfItemAtPath(path, null)?.get(NSFileSize) as? NSNumber)?.longLongValue
+            } ?: -1L
+        if (fileSize > WEB_CONTAINER_DOWNLOAD_MAX_BYTES) {
+            cleanupTempFolder()
+            finish(WebDownloadResult.Failed("too_large"))
+            return
+        }
+        val data: NSData? = target?.let { NSData.create(contentsOfURL = it) }
+        cleanupTempFolder()
+        val result =
+            when {
+                data == null -> WebDownloadResult.Failed("read_failed")
+                data.length > WEB_CONTAINER_DOWNLOAD_MAX_BYTES.toULong() -> WebDownloadResult.Failed("too_large")
+                else -> WebDownloadResult.Bytes(data.toWebContainerByteArray(), fileName, mimeType)
+            }
+        finish(result)
+    }
+
+    override fun download(
+        download: WKDownload,
+        didFailWithError: NSError,
+        resumeData: NSData?,
+    ) {
+        cleanupTempFolder()
+        finish(WebDownloadResult.Failed("download_failed code=${didFailWithError.code}"))
+    }
+
+    private fun cleanupTempFolder() {
+        val target = destination ?: return
+        destination = null
+        target.URLByDeletingLastPathComponent?.let { folder ->
+            NSFileManager.defaultManager.removeItemAtURL(folder, null)
+        }
+    }
+
+    private fun finish(result: WebDownloadResult) {
+        if (finished) return
+        finished = true
+        owner.finishDownload(this, result)
+    }
+}
+
+private fun NSData.toWebContainerByteArray(): ByteArray {
+    val size = length.toInt()
+    if (size <= 0) return ByteArray(0)
+    val out = ByteArray(size)
+    out.usePinned { pinned -> memcpy(pinned.addressOf(0), bytes, length) }
+    return out
+}
 
 private fun iosNavigationTypeRaw(action: WKNavigationAction): Long =
     when (val navType: Any = action.navigationType) {

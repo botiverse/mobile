@@ -307,6 +307,13 @@ sealed interface WebDownloadResult {
         }
     }
 
+    data class Url(
+        val url: String,
+        val pageFileName: String? = null,
+        val contentDisposition: String? = null,
+        val mimeType: String? = null,
+    ) : WebDownloadResult
+
     data class Failed(val reason: String) : WebDownloadResult
 }
 

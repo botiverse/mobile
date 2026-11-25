@@ -447,11 +447,13 @@ class DesktopWebContainerHostController(
             is WebContainerCommand.EvaluateJavaScript -> {
                 if (!config.allowScripts || command.script.isBlank()) return
                 if (command.script.length > config.maxRuntimeJavaScriptLength) return
-                val activeOrigin = parseWebContainerOrigin(currentState.url) ?: return
+                val activeUrl = currentState.url
+                val activeOrigin = parseWebContainerOrigin(activeUrl) ?: return
                 val locked = config.navigationPolicy.lockedMainFrameOrigin
                 if (locked != null && activeOrigin != locked) return
                 val initialOrigin = parseWebContainerOrigin(config.url)
                 if (initialOrigin != null && activeOrigin != initialOrigin) return
+                if (!config.navigationPolicy.allowNavigation && !isSameDocumentIgnoringFragment(config.url.trim(), activeUrl)) return
                 activeSession.evaluateJavaScript(command.script, null)
             }
             WebContainerCommand.ProbeContent -> probeContent(loadGeneration)

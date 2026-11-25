@@ -5,7 +5,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import build.raft.app.data.MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY
@@ -27,15 +29,24 @@ import build.raft.webcontainer.WebIsolationScope
 import build.raft.webcontainer.WebNavigationPolicy
 import build.raft.webcontainer.WebNavigationStarter
 import build.raft.webcontainer.WebNavigationState
+import build.raft.webcontainer.WebOfflineBundleDescriptor
 import build.raft.webcontainer.WebRequestHeaderRule
 import build.raft.webcontainer.jsb.JsbErrorCode
 import build.raft.webcontainer.jsb.JsbPolicy
 import build.raft.webcontainer.jsb.JsbRegistry
 import build.raft.webcontainer.jsb.JsbResult
+import build.raft.webcontainer.jsb.JsbStandardCapabilities
+import build.raft.webcontainer.jsb.JsbStandardEvents
+import build.raft.webcontainer.jsb.JsbStandardHost
+import build.raft.webcontainer.jsb.JsbThemeInfo
+import build.raft.webcontainer.jsb.buildThemeChangedEventPayload
+import build.raft.webcontainer.jsb.registerStandardCapabilities
 import build.raft.webcontainer.parseWebContainerOrigin
 import build.raft.webcontainer.pool.WebContainerTelemetryEvent
 import build.raft.webcontainer.pool.WebContainerTelemetrySink
 import build.raft.webcontainer.rememberWebContainerController
+import build.raft.webcontainer.resource.CompositeWebResourceInterceptor
+import build.raft.webcontainer.resource.WebResourceInterceptor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.JsonObject
@@ -61,6 +72,25 @@ private val FailClosedMalformedOriginLock = WebContainerOrigin(scheme = "https",
  * - `true` / `false`: forces the container path on or off for the subtree (tests / previews).
  */
 internal val LocalRaftUseWebContainer = staticCompositionLocalOf<Boolean?> { null }
+
+/**
+ * Optional host implementation of `:web-container`'s standard JSB capability pack (`app.info`,
+ * `ui.theme`, `ui.haptic`, `ui.clipboard`, `ui.toast`, `nav.openExternal`, `nav.close`,
+ * `auth.status`). Granted strictly on trusted [RaftWebViewStoragePartition.Default] surfaces.
+ */
+internal val LocalRaftWebContainerJsbHost = staticCompositionLocalOf<JsbStandardHost?> { null }
+
+/** Optional custom resource interceptor layered ahead of platform document caches. */
+internal val LocalRaftWebContainerResourceInterceptor = staticCompositionLocalOf<WebResourceInterceptor?> { null }
+
+/** Offline bundle descriptor + local asset interceptor pair supplied to a surface subtree. */
+internal data class RaftWebContainerOfflineBundleSpec(
+    val descriptor: WebOfflineBundleDescriptor,
+    val interceptor: WebResourceInterceptor,
+)
+
+/** Optional offline bundle spec wired into [WebContainerConfig.offlineBundle] and resource interception. */
+internal val LocalRaftWebContainerOfflineBundle = staticCompositionLocalOf<RaftWebContainerOfflineBundleSpec?> { null }
 
 /**
  * Side-effect-free resolution of [MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY] safe to call during
@@ -194,7 +224,11 @@ internal fun isFatalWebContainerWatchdogReason(reason: String): Boolean =
  * isolation boundaries, navigation locks, origin-scoped headers, or legacy `window.RaftHost`
  * compatibility.
  */
-internal fun RaftWebViewConfig.toWebContainerConfig(isDarkTheme: Boolean): WebContainerConfig {
+internal fun RaftWebViewConfig.toWebContainerConfig(
+    isDarkTheme: Boolean,
+    standardJsbCapabilities: Set<String> = emptySet(),
+    offlineBundle: WebOfflineBundleDescriptor? = null,
+): WebContainerConfig {
     val isolationScope =
         when (effectiveStoragePartition) {
             RaftWebViewStoragePartition.Default -> WebIsolationScope.Default
@@ -232,12 +266,29 @@ internal fun RaftWebViewConfig.toWebContainerConfig(isDarkTheme: Boolean): WebCo
             }
         }
     val enableLegacyHostJsb = hostEventsEnabled && allowScripts && scriptOrigins.isNotEmpty()
+    // Standard capabilities are strictly limited to trusted Default-partition surfaces.
+    val effectiveStandardCapabilities =
+        if (
+            allowScripts &&
+            !malformedMainFrameOrigin &&
+            scriptOrigins.isNotEmpty() &&
+            effectiveStoragePartition == RaftWebViewStoragePartition.Default
+        ) {
+            standardJsbCapabilities
+        } else {
+            emptySet()
+        }
+    val grantedCapabilities =
+        buildSet {
+            if (enableLegacyHostJsb) add(RAFT_WEB_CONTAINER_LEGACY_HOST_CAPABILITY)
+            addAll(effectiveStandardCapabilities)
+        }
     val jsbPolicy =
-        if (enableLegacyHostJsb) {
+        if (grantedCapabilities.isNotEmpty()) {
             JsbPolicy(
                 enabled = true,
                 allowedOrigins = scriptOrigins,
-                grantedCapabilities = setOf(RAFT_WEB_CONTAINER_LEGACY_HOST_CAPABILITY),
+                grantedCapabilities = grantedCapabilities,
             )
         } else {
             JsbPolicy.Disabled
@@ -267,6 +318,16 @@ internal fun RaftWebViewConfig.toWebContainerConfig(isDarkTheme: Boolean): WebCo
         }
     val effectiveKeepAliveKey =
         if (effectiveStoragePartition == RaftWebViewStoragePartition.IsolatedThirdParty) null else keepAliveKey
+    val effectiveOfflineBundle =
+        if (
+            !malformedMainFrameOrigin &&
+            scriptOrigins.isNotEmpty() &&
+            effectiveStoragePartition == RaftWebViewStoragePartition.Default
+        ) {
+            offlineBundle
+        } else {
+            null
+        }
     return WebContainerConfig(
         url = url,
         surfaceId = diagnosticsSurface,
@@ -294,8 +355,54 @@ internal fun RaftWebViewConfig.toWebContainerConfig(isDarkTheme: Boolean): WebCo
             ),
         jsbPolicy = jsbPolicy,
         documentStartScripts = scripts,
+        offlineBundle = effectiveOfflineBundle,
         maxRuntimeJavaScriptLength = RaftWebViewMaxRuntimeJavaScriptLength,
     )
+}
+
+/**
+ * Pure Kotlin JSB registry combining legacy `raft.host.emit` (when [hostEventsEnabled]) with
+ * `:web-container`'s standard capability pack (when [standardHost] is supplied).
+ */
+internal fun buildRaftWebContainerJsbRegistry(
+    hostEventsEnabled: Boolean,
+    dispatchRawHostMessage: (String) -> Unit,
+    standardHost: JsbStandardHost? = null,
+): JsbRegistry {
+    if (!hostEventsEnabled && standardHost == null) return JsbRegistry.Empty
+    val registry = JsbRegistry()
+    if (hostEventsEnabled) {
+        registry.register(
+            method = RAFT_WEB_CONTAINER_LEGACY_HOST_METHOD,
+            requiredCapabilities = setOf(RAFT_WEB_CONTAINER_LEGACY_HOST_CAPABILITY),
+        ) { _, params ->
+            val kind = (params["kind"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.trim().orEmpty()
+            if (kind.isEmpty()) {
+                return@register JsbResult.Failure(JsbErrorCode.INVALID_PARAMS, "Missing non-empty 'kind'")
+            }
+            val payloadElement = params["payload"]
+            val payloadObj =
+                when (payloadElement) {
+                    null -> JsonObject(emptyMap())
+                    is JsonObject -> payloadElement
+                    else -> return@register JsbResult.Failure(JsbErrorCode.INVALID_PARAMS, "'payload' must be a JSON object")
+                }
+            val wire =
+                buildJsonObject {
+                    put("kind", kind)
+                    put("payload", payloadObj)
+                }.toString()
+            if (raftDecodeWebViewHostMessage(wire) == null) {
+                return@register JsbResult.Failure(JsbErrorCode.INVALID_PARAMS, "Unsupported host event kind '$kind'")
+            }
+            dispatchRawHostMessage(wire)
+            JsbResult.Success(buildJsonObject { put("accepted", true) })
+        }
+    }
+    if (standardHost != null) {
+        registry.registerStandardCapabilities(standardHost)
+    }
+    return registry
 }
 
 /**
@@ -306,35 +413,12 @@ internal fun RaftWebViewConfig.toWebContainerConfig(isDarkTheme: Boolean): WebCo
 internal fun buildRaftLegacyHostJsbRegistry(
     hostEventsEnabled: Boolean,
     dispatchRawHostMessage: (String) -> Unit,
-): JsbRegistry {
-    if (!hostEventsEnabled) return JsbRegistry.Empty
-    return JsbRegistry().register(
-        method = RAFT_WEB_CONTAINER_LEGACY_HOST_METHOD,
-        requiredCapabilities = setOf(RAFT_WEB_CONTAINER_LEGACY_HOST_CAPABILITY),
-    ) { _, params ->
-        val kind = (params["kind"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.trim().orEmpty()
-        if (kind.isEmpty()) {
-            return@register JsbResult.Failure(JsbErrorCode.INVALID_PARAMS, "Missing non-empty 'kind'")
-        }
-        val payloadElement = params["payload"]
-        val payloadObj =
-            when (payloadElement) {
-                null -> JsonObject(emptyMap())
-                is JsonObject -> payloadElement
-                else -> return@register JsbResult.Failure(JsbErrorCode.INVALID_PARAMS, "'payload' must be a JSON object")
-            }
-        val wire =
-            buildJsonObject {
-                put("kind", kind)
-                put("payload", payloadObj)
-            }.toString()
-        if (raftDecodeWebViewHostMessage(wire) == null) {
-            return@register JsbResult.Failure(JsbErrorCode.INVALID_PARAMS, "Unsupported host event kind '$kind'")
-        }
-        dispatchRawHostMessage(wire)
-        JsbResult.Success(buildJsonObject { put("accepted", true) })
-    }
-}
+): JsbRegistry =
+    buildRaftWebContainerJsbRegistry(
+        hostEventsEnabled = hostEventsEnabled,
+        dispatchRawHostMessage = dispatchRawHostMessage,
+        standardHost = null,
+    )
 
 internal fun WebNavigationStarter.toRaftSignInStarter(): RaftSignInStarter =
     when (this) {
@@ -363,8 +447,26 @@ internal fun WebNavigationState.toRaftWebViewNavigationState(): RaftWebViewNavig
 internal fun WebDownloadResult.toRaftWebViewDownload(): RaftWebViewDownload =
     when (this) {
         is WebDownloadResult.Bytes -> RaftWebViewDownload.Bytes(data, fileName, mimeType)
+        is WebDownloadResult.Url -> RaftWebViewDownload.Url(url, pageFileName, contentDisposition, mimeType)
         is WebDownloadResult.Failed -> RaftWebViewDownload.Failed(reason)
     }
+
+/** Composes offline-bundle, custom, and platform document-cache interceptors in precedence order. */
+internal fun buildRaftWebContainerResourceInterceptor(
+    surfaceId: String,
+    offlineBundleInterceptor: WebResourceInterceptor? = null,
+    customInterceptor: WebResourceInterceptor? = null,
+    platformInterceptor: WebResourceInterceptor? = null,
+    telemetrySink: WebContainerTelemetrySink? = RaftWebContainerTelemetrySink,
+): WebResourceInterceptor? {
+    val chain = listOfNotNull(offlineBundleInterceptor, customInterceptor, platformInterceptor)
+    if (chain.isEmpty()) return null
+    return CompositeWebResourceInterceptor(
+        interceptors = chain,
+        surfaceId = surfaceId,
+        telemetrySink = telemetrySink,
+    )
+}
 
 /** Translates legacy [RaftWebViewController] string commands onto [WebContainerController]. */
 internal fun dispatchRaftCommandToWebContainer(
@@ -491,6 +593,9 @@ internal expect fun RaftWebContainerPlatformScope(
 )
 
 @Composable
+internal expect fun rememberRaftWebContainerPlatformResourceInterceptor(): WebResourceInterceptor?
+
+@Composable
 internal fun RaftWebContainerAdaptedHost(
     config: RaftWebViewConfig,
     events: RaftWebViewEvents,
@@ -498,14 +603,50 @@ internal fun RaftWebContainerAdaptedHost(
     modifier: Modifier,
 ) {
     val isDarkTheme = RaftAppThemeState.isDark
-    val containerConfig = remember(config, isDarkTheme) { config.toWebContainerConfig(isDarkTheme = isDarkTheme) }
+    val standardJsbHost = LocalRaftWebContainerJsbHost.current
+    val offlineBundleSpec = LocalRaftWebContainerOfflineBundle.current
+    val customResourceInterceptor = LocalRaftWebContainerResourceInterceptor.current
+    val platformResourceInterceptor = rememberRaftWebContainerPlatformResourceInterceptor()
+    val standardJsbCapabilities =
+        remember(standardJsbHost, config.effectiveStoragePartition) {
+            if (standardJsbHost != null && config.effectiveStoragePartition == RaftWebViewStoragePartition.Default) {
+                JsbStandardCapabilities.All
+            } else {
+                emptySet()
+            }
+        }
+    val containerConfig =
+        remember(config, isDarkTheme, standardJsbCapabilities, offlineBundleSpec?.descriptor) {
+            config.toWebContainerConfig(
+                isDarkTheme = isDarkTheme,
+                standardJsbCapabilities = standardJsbCapabilities,
+                offlineBundle = offlineBundleSpec?.descriptor,
+            )
+        }
     val containerController = rememberWebContainerController()
     val committedTracker = remember(config.url, config.effectiveStoragePartition) { RaftWebContainerCommittedStateTracker() }
     val jsbRegistry =
-        remember(config.hostEventsEnabled, events) {
-            buildRaftLegacyHostJsbRegistry(
+        remember(config.hostEventsEnabled, events, standardJsbHost, standardJsbCapabilities) {
+            buildRaftWebContainerJsbRegistry(
                 hostEventsEnabled = config.hostEventsEnabled,
                 dispatchRawHostMessage = { raw -> events.dispatchHostMessage(raw) },
+                standardHost = if (standardJsbCapabilities.isNotEmpty()) standardJsbHost else null,
+            )
+        }
+    val effectiveOfflineBundleInterceptor =
+        if (containerConfig.offlineBundle != null) offlineBundleSpec?.interceptor else null
+    val resourceInterceptor =
+        remember(
+            config.diagnosticsSurface,
+            effectiveOfflineBundleInterceptor,
+            customResourceInterceptor,
+            platformResourceInterceptor,
+        ) {
+            buildRaftWebContainerResourceInterceptor(
+                surfaceId = config.diagnosticsSurface,
+                offlineBundleInterceptor = effectiveOfflineBundleInterceptor,
+                customInterceptor = customResourceInterceptor,
+                platformInterceptor = platformResourceInterceptor,
             )
         }
     DisposableEffect(controller, containerController) {
@@ -514,6 +655,21 @@ internal fun RaftWebContainerAdaptedHost(
             dispatchRaftCommandToWebContainer(command, containerController)
         }
         onDispose { controller.unbindCommandDispatcher(owner) }
+    }
+    var lastEmittedDarkTheme by remember { mutableStateOf(isDarkTheme) }
+    val themeJsbGranted =
+        containerConfig.jsbPolicy.isEffectivelyEnabled &&
+            JsbStandardCapabilities.UI_THEME in containerConfig.jsbPolicy.grantedCapabilities
+    LaunchedEffect(isDarkTheme, themeJsbGranted) {
+        if (lastEmittedDarkTheme != isDarkTheme) {
+            lastEmittedDarkTheme = isDarkTheme
+            if (themeJsbGranted) {
+                containerController.emitJsbEvent(
+                    JsbStandardEvents.THEME_CHANGED,
+                    buildThemeChangedEventPayload(JsbThemeInfo(isDark = isDarkTheme)),
+                )
+            }
+        }
     }
     val hasDownloadHandler = events.onDownloadRequested != null
     val hasCatchHandler = events.catchesMainFrameNavigation != null
@@ -594,6 +750,7 @@ internal fun RaftWebContainerAdaptedHost(
             events = containerEvents,
             controller = containerController,
             jsbRegistry = jsbRegistry,
+            resourceInterceptor = resourceInterceptor,
             telemetrySink = RaftWebContainerTelemetrySink,
         )
     }

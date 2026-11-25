@@ -4,13 +4,16 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.MutableContextWrapper
 import android.graphics.Bitmap
+import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.ViewGroup
+import android.webkit.DownloadListener
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -20,6 +23,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.ScriptHandler
@@ -33,6 +37,7 @@ import build.raft.webcontainer.jsb.JsbRegistry
 import build.raft.webcontainer.jsb.JsbResult
 import build.raft.webcontainer.jsb.JsbWireCodec
 import build.raft.webcontainer.pool.WebContainerKeepAlivePool
+import build.raft.webcontainer.pool.WebContainerKeptSnapshot
 import build.raft.webcontainer.pool.WebContainerPoolKey
 import build.raft.webcontainer.pool.WebContainerTelemetryEvent
 import build.raft.webcontainer.pool.WebContainerTelemetrySink
@@ -49,7 +54,30 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import java.io.ByteArrayInputStream
+import kotlin.math.roundToInt
+import kotlin.random.Random
+
+/**
+ * Host-supplied Android `<input type="file">` launcher for [WebContainerView].
+ *
+ * Implementations own [callback] (matching `WebChromeClient.onShowFileChooser`): when returning
+ * `false` without launching a chooser, the implementation invokes `callback.onReceiveValue(null)`.
+ */
+fun interface WebContainerAndroidFileChooser {
+    fun launch(
+        context: Context,
+        params: WebChromeClient.FileChooserParams,
+        callback: ValueCallback<Array<Uri>>,
+    ): Boolean
+}
+
+/** Optional CompositionLocal supplying an Android file-chooser bridge to [WebContainerView]. */
+val LocalAndroidWebFileChooser = staticCompositionLocalOf<WebContainerAndroidFileChooser?> { null }
 
 /** Process-wide Android keep-alive pool and isolation-scope lifecycle coordinator. */
 object WebContainerAndroidKeepAlive {
@@ -63,6 +91,7 @@ object WebContainerAndroidKeepAlive {
         jsbRegistry: JsbRegistry,
         resourceInterceptor: WebResourceInterceptor?,
         telemetrySink: WebContainerTelemetrySink?,
+        fileChooser: WebContainerAndroidFileChooser?,
     ): WebContainerAndroidView? {
         val view = pool.take(key) ?: return null
         view.attachFromKeepAlive(
@@ -71,6 +100,7 @@ object WebContainerAndroidKeepAlive {
             nextRegistry = jsbRegistry,
             nextInterceptor = resourceInterceptor,
             nextTelemetry = telemetrySink,
+            nextFileChooser = fileChooser,
         )
         return view
     }
@@ -85,6 +115,71 @@ object WebContainerAndroidKeepAlive {
     }
 
     internal fun dropIfSame(view: WebContainerAndroidView): Boolean = pool.dropIfSame(view)
+
+    /** Returns a read-only snapshot of the healthy parked document matching the given pool key. */
+    fun keptDocument(
+        keepAliveKey: String,
+        isolationScope: WebIsolationScope = WebIsolationScope.Default,
+        isDarkTheme: Boolean = false,
+    ): WebContainerKeptSnapshot? {
+        if (Looper.myLooper() != Looper.getMainLooper()) return null
+        val trimmedKey = keepAliveKey.trim()
+        if (trimmedKey.isEmpty() || isolationScope is WebIsolationScope.Ephemeral) return null
+        val key = WebContainerPoolKey(trimmedKey, isolationScope, isDarkTheme)
+        return pool.peek(key)?.keptSnapshot()
+    }
+
+    /**
+     * Evaluates [script] in the top-level document of a healthy parked container when its active
+     * origin strictly matches [expectedOrigin] and the page has finished loading.
+     */
+    fun evaluateInKept(
+        keepAliveKey: String,
+        expectedOrigin: WebContainerOrigin,
+        script: String,
+        isolationScope: WebIsolationScope = WebIsolationScope.Default,
+        isDarkTheme: Boolean = false,
+    ): Boolean {
+        if (Looper.myLooper() != Looper.getMainLooper()) return false
+        val trimmedKey = keepAliveKey.trim()
+        if (trimmedKey.isEmpty() || isolationScope is WebIsolationScope.Ephemeral) return false
+        val key = WebContainerPoolKey(trimmedKey, isolationScope, isDarkTheme)
+        return pool.peek(key)?.evaluateInTopDocument(expectedOrigin, script) == true
+    }
+
+    /**
+     * Prewarms and immediately parks a [WebContainerAndroidView] for [config] on the main thread,
+     * swapping the Activity context to `applicationContext` upon parking so no Activity leaks.
+     */
+    fun prewarm(
+        context: Context,
+        config: WebContainerConfig,
+        jsbRegistry: JsbRegistry = JsbRegistry.Empty,
+        resourceInterceptor: WebResourceInterceptor? = null,
+        telemetrySink: WebContainerTelemetrySink? = null,
+    ): Boolean {
+        if (Looper.myLooper() != Looper.getMainLooper()) return false
+        val keyStr = config.keepAliveKey?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        if (config.isolationScope is WebIsolationScope.Ephemeral) return false
+        if (scopeManager.hasPendingDeletion(config.isolationScope)) return false
+        val poolKey = WebContainerPoolKey(keyStr, config.isolationScope, config.isDarkTheme)
+        if (pool.peek(poolKey) != null) return true
+        val view =
+            WebContainerAndroidView(
+                context = MutableContextWrapper(context),
+                initialConfig = config,
+                events = WebContainerEvents(),
+                jsbRegistry = jsbRegistry,
+                resourceInterceptor = resourceInterceptor,
+                telemetrySink = telemetrySink,
+                fileChooser = null,
+            )
+        if (park(view)) {
+            return true
+        }
+        view.destroy()
+        return false
+    }
 
     /** Evicts pooled views under OS memory pressure (`onTrimMemory`). */
     fun onMemoryPressure(level: WebMemoryTrimLevel): Int = pool.onMemoryPressure(level)
@@ -113,11 +208,13 @@ internal actual fun WebContainerPlatformHost(
     telemetrySink: WebContainerTelemetrySink?,
     modifier: Modifier,
 ) {
+    val fileChooser = LocalAndroidWebFileChooser.current
     AndroidView(
         factory = { context ->
             val poolKey =
                 config.keepAliveKey
-                    ?.takeIf { it.isNotBlank() && config.isolationScope !is WebIsolationScope.Ephemeral }
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() && config.isolationScope !is WebIsolationScope.Ephemeral }
                     ?.let { key ->
                         WebContainerPoolKey(
                             keepAliveKey = key,
@@ -134,6 +231,7 @@ internal actual fun WebContainerPlatformHost(
                         jsbRegistry = jsbRegistry,
                         resourceInterceptor = resourceInterceptor,
                         telemetrySink = telemetrySink,
+                        fileChooser = fileChooser,
                     )
                 }
             reused ?: WebContainerAndroidView(
@@ -143,12 +241,14 @@ internal actual fun WebContainerPlatformHost(
                 jsbRegistry = jsbRegistry,
                 resourceInterceptor = resourceInterceptor,
                 telemetrySink = telemetrySink,
+                fileChooser = fileChooser,
             )
         },
         modifier = modifier,
         update = { view ->
             view.events = events
             view.telemetrySink = telemetrySink
+            view.fileChooser = fileChooser
             view.updateRuntimeHooks(jsbRegistry, resourceInterceptor)
             view.applyConfig(config)
             view.bindController(controller)
@@ -184,6 +284,7 @@ internal class WebContainerAndroidView(
     private var jsbRegistry: JsbRegistry,
     @Volatile private var resourceInterceptor: WebResourceInterceptor?,
     @Volatile var telemetrySink: WebContainerTelemetrySink?,
+    var fileChooser: WebContainerAndroidFileChooser? = null,
 ) : FrameLayout(context), WebPooledContainer {
     private var webView: WebView = WebView(context)
     @Volatile private var destroyed: Boolean = false
@@ -208,6 +309,8 @@ internal class WebContainerAndroidView(
     private var mainFrameLoadFailed: Boolean = false
     private var lastSuccessfulUrl: String = ""
     private var pagePainted: Boolean = false
+    private var desktopModeScaleApplied: Boolean = false
+    private var desktopModeScaleRetryScheduled: Boolean = false
 
     private val chainState = WebNavigationChainState()
     private val navigationStateRelay = WebNavigationStateRelay()
@@ -217,7 +320,12 @@ internal class WebContainerAndroidView(
 
     private var jsbDispatcher: JsbDispatcher? = null
     private var activeJsbPortName: String? = null
+    private var activeJsbOriginRules: Set<String> = emptySet()
     private val documentStartHandlers = mutableListOf<ScriptHandler>()
+    private val pendingBlobDownloads = LinkedHashMap<String, WebContainerBlobDownloadAssembler>()
+    private var downloadBridgeOrigin: String? = null
+    private var downloadNameScriptHandler: ScriptHandler? = null
+    private val downloadJson = Json { ignoreUnknownKeys = true }
     private var boundController: WebContainerController? = null
 
     private val watchdogTickRunnable =
@@ -244,9 +352,40 @@ internal class WebContainerAndroidView(
     override fun isHealthy(): Boolean =
         !destroyed && !mainFrameLoadFailed && !isolatedProfileUnavailable
 
+    internal fun keptSnapshot(): WebContainerKeptSnapshot? {
+        if (!isHealthy()) return null
+        return WebContainerKeptSnapshot(
+            configuredUrl = config.url,
+            currentUrl = webView.url.orEmpty().ifBlank { currentUrl },
+            loaded = !currentLoading && lastSuccessfulUrl.isNotBlank(),
+        )
+    }
+
+    internal fun evaluateInTopDocument(
+        expectedOrigin: WebContainerOrigin,
+        script: String,
+    ): Boolean {
+        if (!isHealthy() || !config.allowScripts || script.isBlank()) return false
+        if (script.length > config.maxRuntimeJavaScriptLength) return false
+        if (currentLoading || lastSuccessfulUrl.isBlank()) return false
+        val activeUrl = webView.url.orEmpty()
+        if (activeUrl.isBlank()) return false
+        val activeOrigin = parseWebContainerOrigin(activeUrl) ?: return false
+        val lockedOrigin = config.navigationPolicy.lockedMainFrameOrigin
+        if (activeOrigin != expectedOrigin) return false
+        if (lockedOrigin != null && activeOrigin != lockedOrigin) return false
+        if (!config.navigationPolicy.allowNavigation && !isSameDocumentIgnoringFragment(config.url.trim(), activeUrl)) {
+            return false
+        }
+        webView.evaluateJavascript(script, null)
+        return true
+    }
+
     internal fun currentPoolKey(): WebContainerPoolKey? {
-        val key = config.keepAliveKey?.takeIf { it.isNotBlank() } ?: return null
+        val key = config.keepAliveKey?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         if (isolationScope is WebIsolationScope.Ephemeral) return null
+        // Never park a WebView whose live theme diverged from its Chromium construction theme.
+        if (config.isDarkTheme != isDarkTheme) return null
         return WebContainerPoolKey(
             keepAliveKey = key,
             isolationScope = isolationScope,
@@ -261,7 +400,7 @@ internal class WebContainerAndroidView(
         resourceInterceptor = nextInterceptor
         if (jsbRegistry !== nextRegistry) {
             jsbRegistry = nextRegistry
-            rebindJsbBridge()
+            rebuildJsbDispatcher()
         }
     }
 
@@ -275,9 +414,10 @@ internal class WebContainerAndroidView(
     fun applyConfig(next: WebContainerConfig) {
         if (destroyed) return
         val previous = config
-        val scopeChanged = configured && previous.isolationScope != next.isolationScope
+        val wasConfigured = configured
+        val scopeChanged = wasConfigured && previous.isolationScope != next.isolationScope
         val scriptsChanged =
-            !configured ||
+            !wasConfigured ||
                 previous.allowScripts != next.allowScripts ||
                 previous.jsbPolicy != next.jsbPolicy ||
                 previous.documentStartScripts != next.documentStartScripts ||
@@ -285,17 +425,29 @@ internal class WebContainerAndroidView(
                 previous.backgroundArgb != next.backgroundArgb ||
                 previous.isDarkTheme != next.isDarkTheme ||
                 previous.desktopViewportMode != next.desktopViewportMode
+        val jsbTransportChanged =
+            !wasConfigured ||
+                previous.allowScripts != next.allowScripts ||
+                previous.jsbPolicy.isEffectivelyEnabled != next.jsbPolicy.isEffectivelyEnabled ||
+                previous.jsbPolicy.portName != next.jsbPolicy.portName ||
+                previous.jsbPolicy.allowedOrigins != next.jsbPolicy.allowedOrigins
+        val jsbPolicyChanged =
+            !wasConfigured ||
+                previous.allowScripts != next.allowScripts ||
+                previous.jsbPolicy != next.jsbPolicy
         val settingsChanged =
-            !configured ||
+            !wasConfigured ||
                 previous.allowScripts != next.allowScripts ||
                 previous.domStorageEnabled != next.domStorageEnabled ||
                 previous.cacheEnabled != next.cacheEnabled ||
                 previous.allowPinchZoom != next.allowPinchZoom ||
                 previous.desktopViewportMode != next.desktopViewportMode
-        val urlChanged = !configured || previous.url.trim() != next.url.trim()
+        val desktopModeChanged = wasConfigured && previous.desktopViewportMode != next.desktopViewportMode
+        val urlChanged = !wasConfigured || previous.url.trim() != next.url.trim()
+        val desiredDownloadOrigin = resolveDesiredDownloadOrigin(next)
+        val downloadBridgeChanged = !wasConfigured || desiredDownloadOrigin != downloadBridgeOrigin
 
         config = next
-        isDarkTheme = next.isDarkTheme
         configured = true
         chainState.configureBudget(next.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0)
 
@@ -315,13 +467,26 @@ internal class WebContainerAndroidView(
         }
         if (scriptsChanged) {
             rebindDocumentStartScripts()
+        }
+        if (jsbTransportChanged) {
             rebindJsbBridge()
+        } else if (jsbPolicyChanged) {
+            rebuildJsbDispatcher()
+        }
+        if (downloadBridgeChanged) {
+            rebindDownloadBridge()
+        }
+        if (desktopModeChanged || (!wasConfigured && next.desktopViewportMode)) {
+            applyDesktopModeScale()
         }
         if (!pagePainted) {
             webView.setBackgroundColor(effectivePlaceholderColor(next.backgroundArgb, painted = false))
         }
         if (urlChanged) {
             loadConfiguredUrl(overrideUrl = null)
+        } else if (desktopModeChanged && !isolatedProfileUnavailable && webView.url != null) {
+            mainFrameLoadFailed = false
+            webView.reload()
         }
     }
 
@@ -329,9 +494,13 @@ internal class WebContainerAndroidView(
         boundController?.unbindDispatcher(this)
         boundController = null
         events = WebContainerEvents()
+        fileChooser = null
         parkedForKeepAlive = true
         mainHandler.removeCallbacks(watchdogTickRunnable)
+        jsbRegistry = JsbRegistry.Empty
         jsbDispatcher?.cancelInFlight("parked_for_keep_alive")
+        jsbDispatcher = null
+        pendingBlobDownloads.clear()
         (parent as? ViewGroup)?.removeView(this)
         (context as? MutableContextWrapper)?.baseContext = context.applicationContext
         unregisterActiveScope()
@@ -343,12 +512,19 @@ internal class WebContainerAndroidView(
         nextRegistry: JsbRegistry,
         nextInterceptor: WebResourceInterceptor?,
         nextTelemetry: WebContainerTelemetrySink?,
+        nextFileChooser: WebContainerAndroidFileChooser?,
     ) {
         (context as? MutableContextWrapper)?.baseContext = hostContext
         parkedForKeepAlive = false
         events = nextEvents
         telemetrySink = nextTelemetry
-        updateRuntimeHooks(nextRegistry, nextInterceptor)
+        fileChooser = nextFileChooser
+        resourceInterceptor = nextInterceptor
+        jsbRegistry = nextRegistry
+        rebuildJsbDispatcher()
+        if (resolveDesiredDownloadOrigin(config) != downloadBridgeOrigin) {
+            rebindDownloadBridge()
+        }
         registerActiveScope(isolationScope)
         navigationStateRelay.reset()
         notifyNavigationState(force = true)
@@ -363,11 +539,13 @@ internal class WebContainerAndroidView(
         if (destroyed) return
         destroyed = true
         parkedForKeepAlive = false
+        fileChooser = null
         mainHandler.removeCallbacks(watchdogTickRunnable)
         boundController?.unbindDispatcher(this)
         boundController = null
         jsbDispatcher?.cancelInFlight("container_destroyed")
         removeJsbBridge()
+        removeDownloadBridge()
         clearDocumentStartScripts()
         hostScope.cancel()
         runCatching {
@@ -375,6 +553,7 @@ internal class WebContainerAndroidView(
             webView.loadUrl(ABOUT_BLANK_URL)
             webView.webChromeClient = null
             webView.webViewClient = WebViewClient()
+            webView.setDownloadListener(null)
             removeView(webView)
             webView.destroy()
         }
@@ -422,11 +601,13 @@ internal class WebContainerAndroidView(
         nextIsolationScope: WebIsolationScope = isolationScope,
     ) {
         removeJsbBridge()
+        removeDownloadBridge()
         clearDocumentStartScripts()
         runCatching {
             webView.stopLoading()
             webView.webChromeClient = null
             webView.webViewClient = WebViewClient()
+            webView.setDownloadListener(null)
             removeView(webView)
             webView.destroy()
         }
@@ -443,6 +624,9 @@ internal class WebContainerAndroidView(
         currentProgress = 0
         currentLoading = false
         pagePainted = false
+        isDarkTheme = config.isDarkTheme
+        desktopModeScaleApplied = false
+        desktopModeScaleRetryScheduled = false
         chainState.reset(clearCommitted = true)
         navigationStateRelay.reset()
 
@@ -451,8 +635,10 @@ internal class WebContainerAndroidView(
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         configureWebView()
         applyWebSettings()
+        applyDesktopModeScale()
         rebindDocumentStartScripts()
         rebindJsbBridge()
+        rebindDownloadBridge()
         if (loadAfterRecreate) {
             loadConfiguredUrl(overrideUrl = restoreUrl)
         }
@@ -521,6 +707,38 @@ internal class WebContainerAndroidView(
                     }
                     return false
                 }
+
+                override fun onShowFileChooser(
+                    view: WebView?,
+                    filePathCallback: ValueCallback<Array<Uri>>?,
+                    fileChooserParams: FileChooserParams?,
+                ): Boolean {
+                    if (filePathCallback == null) return false
+                    var delivered = false
+                    val singleShotCallback =
+                        ValueCallback<Array<Uri>> { uris ->
+                            if (!delivered) {
+                                delivered = true
+                                filePathCallback.onReceiveValue(uris)
+                            }
+                        }
+                    if (destroyed || fileChooserParams == null) {
+                        singleShotCallback.onReceiveValue(null)
+                        return false
+                    }
+                    val chooser = fileChooser
+                    if (chooser == null) {
+                        singleShotCallback.onReceiveValue(null)
+                        return false
+                    }
+                    val launched =
+                        runCatching { chooser.launch(context, fileChooserParams, singleShotCallback) }
+                            .getOrDefault(false)
+                    if (!launched) {
+                        singleShotCallback.onReceiveValue(null)
+                    }
+                    return launched
+                }
             }
 
         webView.webViewClient =
@@ -562,6 +780,10 @@ internal class WebContainerAndroidView(
                                 initialUrl = config.url,
                                 candidateUrl = currentUrl,
                                 policy = config.navigationPolicy,
+                                isAllowedCandidate = { candidate ->
+                                    config.navigationPolicy.allowNavigation ||
+                                        isSameDocumentIgnoringFragment(config.url.trim(), candidate)
+                                },
                             )
                         } else {
                             null
@@ -724,6 +946,29 @@ internal class WebContainerAndroidView(
                     )
                 }
 
+                override fun doUpdateVisitedHistory(
+                    view: WebView?,
+                    url: String?,
+                    isReload: Boolean,
+                ) {
+                    if (destroyed) return
+                    super.doUpdateVisitedHistory(view, url, isReload)
+                    val target = url.orEmpty()
+                    if (target.isBlank() || target.equals(ABOUT_BLANK_URL, ignoreCase = true)) return
+                    val scheme = extractUrlScheme(target) ?: return
+                    val allowedSchemes = config.navigationPolicy.normalizedAllowedSchemes
+                    if (allowedSchemes.isNotEmpty() && scheme !in allowedSchemes) return
+                    val locked = config.navigationPolicy.lockedMainFrameOrigin
+                    if (locked != null && parseWebContainerOrigin(target) != locked) return
+                    if (!config.navigationPolicy.allowNavigation && !isSameDocumentIgnoringFragment(config.url.trim(), target)) {
+                        return
+                    }
+                    currentUrl = target
+                    currentTitle = view?.title.orEmpty().ifBlank { currentTitle }
+                    events.onUrlChange(target)
+                    notifyNavigationState()
+                }
+
                 override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                     if (destroyed || request == null) return null
                     val cfg = config
@@ -799,6 +1044,7 @@ internal class WebContainerAndroidView(
                     super.onReceivedError(view, request, error)
                     if (request?.isForMainFrame == true) {
                         mainFrameLoadFailed = true
+                        lastSuccessfulUrl = ""
                         currentLoading = false
                         val reason =
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -826,6 +1072,7 @@ internal class WebContainerAndroidView(
                     handler?.cancel()
                     if (destroyed) return
                     mainFrameLoadFailed = true
+                    lastSuccessfulUrl = ""
                     currentLoading = false
                     val reason = "ssl_error_${error?.primaryError ?: -1}"
                     watchdog.onEvent(
@@ -838,7 +1085,38 @@ internal class WebContainerAndroidView(
                         WebContainerAndroidKeepAlive.dropIfSame(this@WebContainerAndroidView)
                     }
                 }
+
+                override fun onReceivedHttpError(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                    errorResponse: WebResourceResponse?,
+                ) {
+                    super.onReceivedHttpError(view, request, errorResponse)
+                    if (destroyed || request?.isForMainFrame != true) return
+                    val statusCode = errorResponse?.statusCode ?: -1
+                    if (statusCode >= 400) {
+                        mainFrameLoadFailed = true
+                        lastSuccessfulUrl = ""
+                        watchdog.onEvent(
+                            WebContainerWatchdogEvent.LoadFailed(loadGeneration, "http_$statusCode"),
+                            webContainerMonotonicMillis(),
+                        )
+                        if (parkedForKeepAlive) {
+                            WebContainerAndroidKeepAlive.dropIfSame(this@WebContainerAndroidView)
+                        }
+                    }
+                }
             }
+        webView.setDownloadListener(
+            DownloadListener { url, _, contentDisposition, mimeType, _ ->
+                if (destroyed) return@DownloadListener
+                if (events.onDownloadRequested == null) {
+                    notifyNavigationBlocked(url.orEmpty(), "download_unhandled")
+                    return@DownloadListener
+                }
+                startPageDownload(url.orEmpty(), contentDisposition, mimeType)
+            },
+        )
     }
 
     private fun evaluateAndApplyOverride(
@@ -915,11 +1193,12 @@ internal class WebContainerAndroidView(
             registerDocumentStartScript(JsbBootstrapScripts.DesktopViewportMetaScript, rules)
         }
         config.offlineBundle?.let { bundle ->
-            val rules = defaultOriginStrings.ifEmpty { setOf("*") }
-            registerDocumentStartScript(
-                JsbBootstrapScripts.buildOfflineBundleScript(bundle, allowedOrigins = defaultOriginSet),
-                rules,
-            )
+            if (defaultOriginSet.isNotEmpty()) {
+                registerDocumentStartScript(
+                    JsbBootstrapScripts.buildOfflineBundleScript(bundle, allowedOrigins = defaultOriginSet),
+                    defaultOriginStrings,
+                )
+            }
         }
         if (config.jsbPolicy.isEffectivelyEnabled) {
             val originRules = config.jsbPolicy.allowedOrigins.mapTo(LinkedHashSet()) { it.asOriginString() }
@@ -967,25 +1246,54 @@ internal class WebContainerAndroidView(
         documentStartHandlers.clear()
     }
 
-    private fun rebindJsbBridge() {
-        removeJsbBridge()
+    private fun rebuildJsbDispatcher() {
+        jsbDispatcher?.cancelInFlight("jsb_rebound")
         val policy = config.jsbPolicy
-        if (!config.allowScripts || !policy.isEffectivelyEnabled) return
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) return
+        jsbDispatcher =
+            if (!destroyed && !parkedForKeepAlive && config.allowScripts && policy.isEffectivelyEnabled) {
+                JsbDispatcher(
+                    policy = policy,
+                    registry = jsbRegistry,
+                    scope = hostScope,
+                    surfaceId = config.surfaceId,
+                    isolationScope = isolationScope,
+                    telemetrySinkProvider = { telemetrySink },
+                )
+            } else {
+                null
+            }
+    }
 
-        val dispatcher =
-            JsbDispatcher(
-                policy = policy,
-                registry = jsbRegistry,
-                scope = hostScope,
-                surfaceId = config.surfaceId,
-                isolationScope = isolationScope,
-                telemetrySinkProvider = { telemetrySink },
-            )
+    private fun rebindJsbBridge() {
+        val policy = config.jsbPolicy
+        if (!config.allowScripts || !policy.isEffectivelyEnabled) {
+            removeJsbBridge()
+            return
+        }
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            removeJsbBridge()
+            return
+        }
         val allowedOriginRules = policy.allowedOrigins.mapTo(LinkedHashSet()) { it.asOriginString() }
+        if (activeJsbPortName == policy.portName && activeJsbOriginRules == allowedOriginRules) {
+            rebuildJsbDispatcher()
+            return
+        }
+        removeJsbBridge()
+        rebuildJsbDispatcher()
         val listener =
             WebViewCompat.WebMessageListener { view, message, sourceOrigin, isMainFrame, replyProxy ->
-                if (destroyed) return@WebMessageListener
+                if (destroyed || parkedForKeepAlive) {
+                    runCatching {
+                        replyProxy.postMessage(
+                            JsbWireCodec.encodeResponse(
+                                null,
+                                JsbResult.Failure(JsbErrorCode.BRIDGE_DISABLED, "Container is inactive"),
+                            ),
+                        )
+                    }
+                    return@WebMessageListener
+                }
                 if (message.type != WebMessageCompat.TYPE_STRING) {
                     runCatching {
                         replyProxy.postMessage(
@@ -998,34 +1306,219 @@ internal class WebContainerAndroidView(
                     return@WebMessageListener
                 }
                 val raw = runCatching { message.data }.getOrNull() ?: return@WebMessageListener
-                val origin = parseWebContainerOrigin(sourceOrigin.toString())
-                val docUrl = view.url.orEmpty().ifBlank { currentUrl }
+                val dispatcher = jsbDispatcher
+                if (dispatcher == null) {
+                    val quickId = JsbWireCodec.extractBestEffortCallId(raw)
+                    runCatching {
+                        replyProxy.postMessage(
+                            JsbWireCodec.encodeResponse(
+                                quickId,
+                                JsbResult.Failure(JsbErrorCode.BRIDGE_DISABLED, "JSB disabled"),
+                            ),
+                        )
+                    }
+                    return@WebMessageListener
+                }
+                val activeUrl = view.url.orEmpty()
+                val rawOrigin = parseWebContainerOrigin(sourceOrigin.toString())
+                val fencedDocumentAllowed =
+                    config.navigationPolicy.allowNavigation ||
+                        (activeUrl.isNotEmpty() && isSameDocumentIgnoringFragment(config.url.trim(), activeUrl))
+                val verifiedOrigin = if (isMainFrame && !fencedDocumentAllowed) null else rawOrigin
+                val docUrl = activeUrl.ifBlank { currentUrl }
                 dispatcher.dispatch(
                     rawPayload = raw,
-                    origin = origin,
+                    origin = verifiedOrigin,
                     documentUrl = docUrl,
                     isMainFrame = isMainFrame,
                 ) { replyJson ->
-                    if (!destroyed) {
+                    if (!destroyed && !parkedForKeepAlive) {
                         runCatching { replyProxy.postMessage(replyJson) }
                     }
                 }
             }
         runCatching {
             WebViewCompat.addWebMessageListener(webView, policy.portName, allowedOriginRules, listener)
-            jsbDispatcher = dispatcher
             activeJsbPortName = policy.portName
+            activeJsbOriginRules = allowedOriginRules
         }
     }
 
     private fun removeJsbBridge() {
         jsbDispatcher?.cancelInFlight("bridge_rebound")
         jsbDispatcher = null
+        activeJsbOriginRules = emptySet()
         val port = activeJsbPortName ?: return
         activeJsbPortName = null
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
             runCatching { WebViewCompat.removeWebMessageListener(webView, port) }
         }
+    }
+
+    private fun resolveDesiredDownloadOrigin(cfg: WebContainerConfig = config): String? {
+        val shouldInstall =
+            cfg.allowScripts &&
+                (events.onDownloadRequested != null ||
+                    !cfg.keepAliveKey.isNullOrBlank() ||
+                    cfg.navigationPolicy.lockedMainFrameOrigin != null)
+        if (!shouldInstall) return null
+        val candidate = parseWebContainerOrigin(cfg.url) ?: return null
+        if (candidate.scheme != "http" && candidate.scheme != "https") return null
+        val locked = cfg.navigationPolicy.lockedMainFrameOrigin
+        if (locked != null && candidate != locked) return null
+        return candidate.asOriginString()
+    }
+
+    private fun rebindDownloadBridge() {
+        val originRule = resolveDesiredDownloadOrigin()
+        if (originRule == null) {
+            removeDownloadBridge()
+            return
+        }
+        if (downloadBridgeOrigin == originRule) return
+        removeDownloadBridge()
+        if (
+            !WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
+            !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
+        ) {
+            return
+        }
+        runCatching {
+            val listener =
+                WebViewCompat.WebMessageListener { _, message, sourceOrigin, isMainFrame, _ ->
+                    if (destroyed || parkedForKeepAlive || events.onDownloadRequested == null || !isMainFrame) {
+                        return@WebMessageListener
+                    }
+                    val normalizedSource = parseWebContainerOrigin(sourceOrigin.toString())?.asOriginString()
+                    if (normalizedSource != originRule) return@WebMessageListener
+                    if (message.type != WebMessageCompat.TYPE_STRING) return@WebMessageListener
+                    val raw = runCatching { message.data }.getOrNull() ?: return@WebMessageListener
+                    handleDownloadMessage(raw)
+                }
+            WebViewCompat.addWebMessageListener(
+                webView,
+                WEB_CONTAINER_DOWNLOAD_PORT_NAME,
+                setOf(originRule),
+                listener,
+            )
+            downloadBridgeOrigin = originRule
+            downloadNameScriptHandler =
+                WebViewCompat.addDocumentStartJavaScript(
+                    webView,
+                    WEB_CONTAINER_DOWNLOAD_NAME_HOOK_SCRIPT,
+                    setOf(originRule),
+                )
+        }
+    }
+
+    private fun removeDownloadBridge() {
+        if (downloadBridgeOrigin != null && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            runCatching { WebViewCompat.removeWebMessageListener(webView, WEB_CONTAINER_DOWNLOAD_PORT_NAME) }
+        }
+        downloadBridgeOrigin = null
+        runCatching { downloadNameScriptHandler?.remove() }
+        downloadNameScriptHandler = null
+        pendingBlobDownloads.clear()
+    }
+
+    private fun startPageDownload(
+        url: String,
+        contentDisposition: String?,
+        mimeType: String?,
+    ) {
+        val report = events.onDownloadRequested ?: return
+        val pageOrigin = parseWebContainerOrigin(currentUrl.ifBlank { loadedSrc })
+        val liveOrigin = parseWebContainerOrigin(webView.url.orEmpty())
+        val locked = config.navigationPolicy.lockedMainFrameOrigin
+        val trustedPage =
+            pageOrigin != null &&
+                liveOrigin != null &&
+                liveOrigin == pageOrigin &&
+                (locked == null || liveOrigin == locked)
+        val lower = url.lowercase()
+        when {
+            lower.startsWith("blob:") || lower.startsWith("data:") -> {
+                if (
+                    !trustedPage ||
+                    !config.allowScripts ||
+                    downloadBridgeOrigin == null ||
+                    liveOrigin.asOriginString() != downloadBridgeOrigin
+                ) {
+                    report(WebDownloadResult.Failed("no_port"))
+                    return
+                }
+                val token = "d" + Random.nextLong().toULong().toString(16)
+                if (pendingBlobDownloads.size >= 4) {
+                    pendingBlobDownloads.remove(pendingBlobDownloads.keys.first())
+                }
+                pendingBlobDownloads[token] = WebContainerBlobDownloadAssembler(token, url)
+                webView.evaluateJavascript(buildWebContainerBlobReadScript(url, token), null)
+            }
+            (lower.startsWith("https:") || lower.startsWith("http:")) &&
+                trustedPage && parseWebContainerOrigin(url) == liveOrigin -> {
+                if (!config.allowScripts) {
+                    report(WebDownloadResult.Url(url, null, contentDisposition, mimeType))
+                    return
+                }
+                val urlLiteral = JsonPrimitive(url).toString()
+                val queryScript =
+                    "(function(){var n=window.__raftWcDownloadNames||window.__raftDownloadNames;return (n&&n[$urlLiteral])||'';})()"
+                webView.evaluateJavascript(queryScript) { value ->
+                    if (destroyed) return@evaluateJavascript
+                    val pageName =
+                        value?.let { raw ->
+                            runCatching {
+                                (downloadJson.parseToJsonElement(raw) as? JsonPrimitive)
+                                    ?.takeIf { it.isString }
+                                    ?.contentOrNull
+                                    ?.takeIf { it.isNotBlank() }
+                            }.getOrNull()
+                        }
+                    events.onDownloadRequested?.invoke(
+                        WebDownloadResult.Url(url, pageName, contentDisposition, mimeType),
+                    )
+                }
+            }
+            else -> notifyNavigationBlocked(url, "download_off_origin")
+        }
+    }
+
+    private fun handleDownloadMessage(raw: String) {
+        val root = runCatching { downloadJson.parseToJsonElement(raw) as? JsonObject }.getOrNull() ?: return
+        val token = (root["t"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull ?: return
+        val assembler = pendingBlobDownloads[token] ?: return
+        val result = assembler.accept(root) ?: return
+        pendingBlobDownloads.remove(token)
+        events.onDownloadRequested?.invoke(result)
+    }
+
+    private fun applyDesktopModeScale() {
+        if (destroyed) return
+        if (!config.desktopViewportMode) {
+            if (desktopModeScaleApplied) {
+                webView.setInitialScale(0)
+                webView.zoomOut()
+                desktopModeScaleApplied = false
+            }
+            return
+        }
+        val viewWidthPx = webView.width
+        if (viewWidthPx <= 0) {
+            if (!desktopModeScaleRetryScheduled) {
+                desktopModeScaleRetryScheduled = true
+                webView.post {
+                    desktopModeScaleRetryScheduled = false
+                    applyDesktopModeScale()
+                }
+            }
+            return
+        }
+        val density = resources.displayMetrics.density
+        if (density <= 0f) return
+        val widthDp = viewWidthPx / density
+        val percent = ((widthDp * 100.0) / 1280.0).roundToInt().coerceIn(20, 100)
+        webView.setInitialScale(percent)
+        desktopModeScaleApplied = true
     }
 
     private fun loadConfiguredUrl(overrideUrl: String?) {
@@ -1122,6 +1615,7 @@ internal class WebContainerAndroidView(
                 if (locked != null && activeOrigin != locked) return
                 val initialOrigin = parseWebContainerOrigin(config.url)
                 if (initialOrigin != null && activeOrigin != initialOrigin) return
+                if (!config.navigationPolicy.allowNavigation && !isSameDocumentIgnoringFragment(config.url.trim(), activeUrl)) return
                 webView.evaluateJavascript(command.script, null)
             }
             WebContainerCommand.ProbeContent -> probeDocumentContent(loadGeneration)
