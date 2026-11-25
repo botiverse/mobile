@@ -491,4 +491,75 @@ class RaftLinkNavigationTest {
             opened,
         )
     }
+
+    @Test
+    fun opensAsInstalledAppInRaftAndAppCardLinkLeavesRaftMatchWebRules() {
+        val mobileNavigator =
+            RaftLinkNavigator(
+                modeProvider = { LinkOpenMode.SystemBrowser },
+                openInAppBrowser = { true },
+                openExternalBrowser = {},
+                onRejected = {},
+                supportsInAppBrowser = { true },
+                isAppStoreRestrictedPurchaseUrl = { it.contains("stripe.com") },
+                raftHostsProvider = { setOf("app.raft.build") },
+                debugBuild = false,
+                lookupInstalledAppSync = { origin ->
+                    if (origin == "https://stamp.build") {
+                        RaftInstalledAppSyncLookup.Matched(
+                            RaftInstalledAppOriginMatch("https://stamp.build", "Stamp"),
+                            "srv-1",
+                        )
+                    } else {
+                        RaftInstalledAppSyncLookup.KnownNotInstalled
+                    }
+                },
+            )
+        assertTrue(mobileNavigator.opensAsInstalledAppInRaft("https://stamp.build/pulls/7"))
+        assertFalse(mobileNavigator.opensAsInstalledAppInRaft("https://github.com/botiverse/mobile"))
+        assertFalse(mobileNavigator.opensAsInstalledAppInRaft("https://app.raft.build/settings"))
+        assertFalse(mobileNavigator.opensAsInstalledAppInRaft("https://checkout.stripe.com/pay"))
+
+        // App link card buttons: own origin or installed App opens in Raft (no ↗); other external links leave Raft.
+        assertTrue(
+            mobileNavigator.canOpenAppLinkCardInRaft(
+                cardUrl = "https://github.com/botiverse/mobile/pull/1",
+                targetUrl = "https://github.com/botiverse/mobile/pull/1/files",
+            ),
+        )
+        assertTrue(
+            mobileNavigator.canOpenAppLinkCardInRaft(
+                cardUrl = "https://github.com/botiverse/mobile/pull/1",
+                targetUrl = "https://stamp.build/github/botiverse/mobile/pull/1",
+            ),
+        )
+        assertFalse(
+            mobileNavigator.canOpenAppLinkCardInRaft(
+                cardUrl = "https://github.com/botiverse/mobile/pull/1",
+                targetUrl = "https://docs.example.org/guide",
+            ),
+        )
+
+        // Desktop / hosts without in-app browser always report links as leaving Raft (keep ↗).
+        val desktopNavigator =
+            RaftLinkNavigator(
+                modeProvider = { LinkOpenMode.SystemBrowser },
+                openInAppBrowser = { false },
+                openExternalBrowser = {},
+                onRejected = {},
+                supportsInAppBrowser = { false },
+                raftHostsProvider = { setOf("app.raft.build") },
+                debugBuild = false,
+                lookupInstalledAppSync = { origin ->
+                    RaftInstalledAppSyncLookup.Matched(RaftInstalledAppOriginMatch(origin, "Stamp"), "srv-1")
+                },
+            )
+        assertFalse(desktopNavigator.opensAsInstalledAppInRaft("https://stamp.build/pulls/7"))
+        assertFalse(
+            desktopNavigator.canOpenAppLinkCardInRaft(
+                cardUrl = "https://stamp.build/pulls/7",
+                targetUrl = "https://stamp.build/pulls/7",
+            ),
+        )
+    }
 }

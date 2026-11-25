@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,13 +65,17 @@ internal fun ThreadAppLinkBlockCard(
     val block = card.block ?: return
     val maxWidth = threadAppLinkBlockCardMaxWidth(raftWindowWidth())
     val host = remember(card.url) { appLinkDomain(card.url)?.let(::raftAppLinkAsciiHost).orEmpty() }
-    val openLink = raftAppLinkOpenLinkButton { openUri(card.url) }
+    val linkNavigator = LocalRaftLinkNavigator.current
+    linkNavigator?.installedAppRevisionFlow()?.collectAsState()
+    val openLinkLeavesRaft = linkNavigator?.canOpenAppLinkCardInRaft(card.url, card.url) != true
+    val openLink = raftAppLinkOpenLinkButton(leavesRaft = openLinkLeavesRaft) { openUri(card.url) }
     val press = rememberThreadAppLinkCardPress(card, actions)
     val buttons =
         block.card.blockCardButtons(
             card.url,
             openUri,
             openLink,
+            leavesRaftForUrl = { targetUrl -> linkNavigator?.canOpenAppLinkCardInRaft(card.url, targetUrl) != true },
             read = press::readButton,
         ) { button, action -> press.button(button, action) }
     RaftDesignSystemTheme {
@@ -138,6 +143,7 @@ internal fun RaftAppLinkCardV2.blockCardButtons(
     url: String,
     openUri: (String) -> Unit,
     openLink: RaftPreviewCardButton,
+    leavesRaftForUrl: (String) -> Boolean = { true },
     read: (RaftLinkCardV2Element.Button) -> RaftPreviewCardButton? = { null },
     execute: (RaftLinkCardV2Element.Button, RaftLinkCardButtonAction.Execute) -> RaftPreviewCardButton? = { _, _ -> null },
 ): List<RaftPreviewCardButton> {
@@ -151,6 +157,7 @@ internal fun RaftAppLinkCardV2.blockCardButtons(
                 kind = RaftPreviewCardButtonKind.Link,
                 onClick = { openUri(action.url) },
                 frameless = button.variant == RaftLinkCardButtonVariant.Ghost,
+                leavesRaft = leavesRaftForUrl(action.url),
                 disabledReason = button.disabledReason,
                 opensItem = action.url == url,
             )

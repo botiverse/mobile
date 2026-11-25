@@ -101,24 +101,34 @@ internal fun RaftAppLinkCardView(
  * link of the App's own comes first and an App's actions keep the row.
  */
 @Composable
-internal fun raftAppLinkOpenLinkButton(onOpenLink: () -> Unit): RaftPreviewCardButton =
+internal fun raftAppLinkOpenLinkButton(
+    leavesRaft: Boolean = true,
+    onOpenLink: () -> Unit,
+): RaftPreviewCardButton =
     RaftPreviewCardButton(
         label = stringResource(Res.string.thread_link_preview_open_link),
         kind = RaftPreviewCardButtonKind.Link,
+        leavesRaft = leavesRaft,
         onClick = onOpenLink,
     )
 
 /**
  * The button a chip's card offers for [card] ([onOpen] gets the address to open): Open Link to the
  * link, or, for a `connect_account` answer, Connect account to the App's connect URL, the card's
- * one button. A link out of Raft (↗), bordered.
+ * one button. Connect account always leaves Raft (↗); Open Link omits ↗ when it opens in Raft
+ * (slock #16676).
  */
 @Composable
-internal fun raftAppLinkCardOpenButton(card: AppLinkResult.Card, onOpen: (String) -> Unit): RaftPreviewCardButton {
-    val connectUrl = card.connectUrl ?: return raftAppLinkOpenLinkButton { onOpen(card.url) }
+internal fun raftAppLinkCardOpenButton(
+    card: AppLinkResult.Card,
+    leavesRaft: Boolean = true,
+    onOpen: (String) -> Unit,
+): RaftPreviewCardButton {
+    val connectUrl = card.connectUrl ?: return raftAppLinkOpenLinkButton(leavesRaft = leavesRaft) { onOpen(card.url) }
     return RaftPreviewCardButton(
         label = stringResource(Res.string.thread_link_preview_connect_action),
         kind = RaftPreviewCardButtonKind.Link,
+        leavesRaft = true,
         onClick = { onOpen(connectUrl) },
     )
 }

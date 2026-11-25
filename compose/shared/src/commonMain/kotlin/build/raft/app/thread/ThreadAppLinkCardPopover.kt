@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -208,6 +209,11 @@ internal fun ThreadAppLinkCardPopoverHost(
             resolveInstalledAppAsync = cards.resolveInstalledAppAsync,
         )
     }
+    val linkNavigator = LocalRaftLinkNavigator.current
+    val revisionFlow = linkNavigator?.installedAppRevisionFlow()
+    if (revisionFlow != null) {
+        revisionFlow.collectAsState()
+    }
     Modal(onWillDismiss = { cards.close() }) {
         RaftDesignSystemTheme {
             ThreadAppLinkCardPopover(
@@ -219,6 +225,7 @@ internal fun ThreadAppLinkCardPopoverHost(
                     card.chipCardButtons(
                         openUri = openAddress,
                         openLink = openLink,
+                        leavesRaftForUrl = { targetUrl -> linkNavigator?.canOpenAppLinkCardInRaft(card.url, targetUrl) != true },
                         read = { button -> press?.readButton(button) },
                     ) { button, action -> press?.button(button, action) }
                 },
@@ -261,11 +268,12 @@ private fun rememberThreadAppLinkChipCardPresses(
 internal fun AppLinkResult.Card.chipCardButtons(
     openUri: (String) -> Unit,
     openLink: RaftPreviewCardButton,
+    leavesRaftForUrl: (String) -> Boolean = { true },
     read: (RaftLinkCardV2Element.Button) -> RaftPreviewCardButton? = { null },
     execute: (RaftLinkCardV2Element.Button, RaftLinkCardButtonAction.Execute) -> RaftPreviewCardButton? = { _, _ -> null },
 ): List<RaftPreviewCardButton> {
     val tree = cardV2 ?: return listOf(openLink)
-    return tree.blockCardButtons(url, openUri, openLink, read, execute)
+    return tree.blockCardButtons(url, openUri, openLink, leavesRaftForUrl, read, execute)
 }
 
 /**
@@ -290,11 +298,12 @@ internal fun ThreadAppLinkCardPopover(
     details: List<RaftPreviewCardDetail> = emptyList(),
 ) {
     // onOpenLink opens the card's address: the link, or a connect_account card's connect URL.
+    val openLinkLeavesRaft = rememberRaftAppLinkCardLeavesRaft(cardUrl = card.url)
     val openLink =
         if (card.connectUrl != null) {
-            raftAppLinkCardOpenButton(card) { onOpenLink() }
+            raftAppLinkCardOpenButton(card, leavesRaft = openLinkLeavesRaft) { onOpenLink() }
         } else {
-            raftAppLinkOpenLinkButton(onOpenLink)
+            raftAppLinkOpenLinkButton(leavesRaft = openLinkLeavesRaft, onOpenLink = onOpenLink)
         }
     ThreadAppLinkCardPopoverFrame(key = card.url, anchor = anchor, onDismiss = onDismiss) { modifier ->
         RaftAppLinkCardView(
