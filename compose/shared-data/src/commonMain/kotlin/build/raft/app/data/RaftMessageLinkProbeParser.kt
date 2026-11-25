@@ -7,9 +7,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
 /**
- * `GET /api/channels/:id` read as a message-link access probe: the id, channel type, forum sort
- * flag, and (for `type = "thread"` rows, slock #15879) the parent channel and parent message ids
- * needed to open the thread under its parent conversation.
+ * `GET /api/channels/:id` read as a message-link access probe: the id, channel type, and
+ * (for `type = "thread"` rows, slock #15879) the parent channel and parent message ids needed to
+ * open the thread under its parent conversation.
  * botiverse/slock packages/server/src/routes/channels.ts `channelRouter.get("/:id")` answers the
  * channel row itself (`{ id, type, name, parentChannelId, parentMessageId, … }`, populating the
  * parent ids on joint-thread projections via `resolveThreadParent`), and 404
@@ -19,7 +19,6 @@ import kotlinx.serialization.json.JsonObject
 private data class RaftMessageLinkChannelProbeWire(
     val id: String = "",
     val type: String = "",
-    val threadSort: String? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
 )
@@ -27,7 +26,6 @@ private data class RaftMessageLinkChannelProbeWire(
 @RaftCoreInternalApi data class RaftMessageLinkChannelProbe(
     val id: String,
     val type: String,
-    val threadSort: String? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
 )
@@ -43,7 +41,6 @@ private val messageLinkProbeJson = Json { ignoreUnknownKeys = true }
     return RaftMessageLinkChannelProbe(
         id = wire.id,
         type = wire.type.lowercase(),
-        threadSort = wire.threadSort,
         parentChannelId = wire.parentChannelId?.trim()?.takeIf(String::isNotBlank),
         parentMessageId = wire.parentMessageId?.trim()?.takeIf(String::isNotBlank),
     )

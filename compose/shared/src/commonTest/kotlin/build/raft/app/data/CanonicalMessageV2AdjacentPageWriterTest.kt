@@ -146,7 +146,7 @@ class CanonicalMessageV2AdjacentPageWriterTest {
 
     @Test
     fun thePageWithoutAWindowNamesNoScopeAndIsNotWritten() = runBlocking {
-        // An older server, or a `by-activity` page (a forum channel): no scope key, no range.
+        // An older server, or a page without a seq window: no scope key, no range.
         val h = harness()
         h.seedWindow()
         h.writer.extendWithAdjacentPage(

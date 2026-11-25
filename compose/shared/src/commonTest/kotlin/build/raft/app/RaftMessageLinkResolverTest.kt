@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
+import build.raft.app.data.RaftMessageContextPageRequest
+import build.raft.app.data.RaftMessageContextPageSink
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedWindowNavigationCoordinator
@@ -319,6 +321,35 @@ class RaftMessageLinkResolverTest {
         val ordinaryOffline = FakeMessageLinkNetwork(channel = HomeNetworkResponse(0, null))
         assertIs<RaftMessageLinkResolution.Open>(RaftMessageLinkResolver(ordinaryOffline).resolve(link(), servers))
         assertEquals(1, ordinaryOffline.requests.count { it.path == "channels/$cid" })
+    }
+
+    @Test
+    fun resolvedChannelLinkOffersContextPageAndIgnoresUnknownChannelFields() = runTest {
+        val offered = mutableListOf<Triple<String, String?, String?>>()
+        val sink =
+            object : RaftMessageContextPageSink {
+                override suspend fun beginRequest(serverId: String?): RaftMessageContextPageRequest =
+                    object : RaftMessageContextPageRequest {
+                        override val serverId: String = serverId.orEmpty()
+
+                        override fun offer(bodyText: String, channelId: String?, channelType: String?) {
+                            offered += Triple(bodyText, channelId, channelType)
+                        }
+                    }
+            }
+        val body = contextBody(mid)
+        val channelWithExtraField =
+            """{"id":"$cid","name":"release-notes","type":"channel","serverId":"$serverId","legacyFlag":"activity"}"""
+        val network =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, channelWithExtraField),
+                context = HomeNetworkResponse(200, body),
+            )
+
+        assertIs<RaftMessageLinkResolution.Open>(
+            RaftMessageLinkResolver(network, contextPageSink = sink).resolve(link(msg = mid), servers)
+        )
+        assertEquals(listOf<Triple<String, String?, String?>>(Triple(body, cid, "channel")), offered)
     }
 
     private fun link(
