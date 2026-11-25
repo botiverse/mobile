@@ -342,6 +342,7 @@ jobs:
             RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
             RAFT_IOS_VERSION_NAME="$RAFT_SIM_VERSION_NAME" \
             RAFT_IOS_VERSION_CODE="$RAFT_SIM_VERSION_CODE" \
+            RAFT_GIT_COMMIT="$RAFT_GIT_COMMIT" \
             build-for-testing > "$log" 2>&1
           status=$?
           tail -60 "$log"

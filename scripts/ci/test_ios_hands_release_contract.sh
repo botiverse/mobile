@@ -51,3 +51,17 @@ for bad in ("main", "release/1.29.0-android", "release/1.29.0-ios-extra", "agent
         raise SystemExit(f"Audit tag branch regex must reject {bad!r}: {match.group(1)}")
 print("iOS audit tag branch regex guard: PASS")
 PY
+
+# Simulator carrier builds must pass RAFT_GIT_COMMIT explicitly to xcodebuild so
+# stamp_hands_build_metadata.sh stamps HandsBuildCommit (exporting only to GITHUB_ENV
+# is stripped by Xcode build-phase isolation, causing export_ios_simulator_app.sh to fail).
+python3 - <<'PY'
+from pathlib import Path
+
+sim_workflow = Path(".github/workflows/ios-simulator-app.yml").read_text()
+if 'RAFT_GIT_COMMIT="$RAFT_GIT_COMMIT"' not in sim_workflow:
+    raise SystemExit(
+        'ios-simulator-app.yml must pass RAFT_GIT_COMMIT="$RAFT_GIT_COMMIT" to xcodebuild'
+    )
+print("iOS Simulator HandsBuildCommit xcodebuild guard: PASS")
+PY
