@@ -157,7 +157,7 @@ jobs:
           # :verifyComposeFoundationPatch: the patched foundation AAR, byte for byte (compose/build.gradle.kts).
           # PR #5683 moved SQLDelight from :shared to :shared-data; detect dynamically so older refs still build.
           SQLDELIGHT_TASK=":shared:generateSqlDelightInterface"
-          if [ -d compose/shared-data/src/commonMain/sqldelight ]; then
+          if [ -d shared-data/src/commonMain/sqldelight ]; then
             SQLDELIGHT_TASK=":shared-data:generateSqlDelightInterface"
           fi
           ./gradlew \
