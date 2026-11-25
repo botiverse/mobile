@@ -2806,6 +2806,10 @@
     <string name="settings_notifications_keep_connection_detail">在背景保持 Raft 連線，即可收到訊息通知。開啟後會常駐一則「Raft 正在接收訊息」通知，並增加耗電。</string>
     <string name="settings_notifications_direct_keep_connection_title">背景常駐連線</string>
     <string name="settings_notifications_direct_keep_connection_detail">在 Google 推送無法連線的網路環境下，保持 Raft 背景連線以接收訊息通知。開啟後會常駐一則「Raft 正在接收訊息」通知，並增加耗電。</string>
+    <string name="settings_notifications_play_push_unreachable_title">目前網路無法連線 Google 推送</string>
+    <string name="settings_notifications_play_push_unreachable_body">目前網路無法連線至 Google 推送服務，背景訊息通知可能會延遲或無法送達。在此網路下保持 Raft 運作或允許其背景執行有助於接收訊息。</string>
+    <string name="settings_notifications_direct_fcm_fallback_active_title">已自動啟用背景常駐連線</string>
+    <string name="settings_notifications_direct_fcm_fallback_active_body">偵測到目前網路無法連線 Google 推送，Raft 已自動保持背景連線以送達訊息通知。當 Google 推送恢復可連線時將自動切換回系統推送。</string>
     <string name="settings_notifications_battery_optimization_title">允許在背景執行</string>
     <string name="settings_notifications_battery_optimization_detail">為 Raft 關閉電池最佳化，避免系統中斷背景連線。部分手機還需要在應用程式啟動管理或背景活動設定中允許 Raft。</string>
     <string name="settings_notifications_battery_optimization_allowed">已允許</string>

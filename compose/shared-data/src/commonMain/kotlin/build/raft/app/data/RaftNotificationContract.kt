@@ -183,7 +183,8 @@ fun raftAndroidNotificationChannelKind(category: String?, mentioned: Boolean = f
 enum class RaftPushMessageType(val wireName: String) {
     Alert("alert"),
     Sync("sync"),
-    Retract("retract");
+    Retract("retract"),
+    Probe("probe");
 
     companion object {
         /**

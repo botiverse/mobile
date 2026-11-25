@@ -183,6 +183,34 @@ internal object AndroidPushRegistration {
         deliverFirebaseInstallationId(context, firebaseInstallationId)
     }
 
+    /**
+     * Re-triggers Firebase registration / FID delivery after the server's reachability probe
+     * answered `not_sent` with `reRegister == true` (e.g. `token_unregistered`). Safe no-op when
+     * FCM is unavailable or deferred on this device.
+     */
+    fun requestReRegister(context: Context, reason: String) {
+        val appContext = context.applicationContext
+        if (registrationSkippedReason != null) return
+        RaftAppLog.w(TAG, "fcm_reregister_requested reason=$reason")
+        val firebaseRegistrar = registerFirebaseForTests
+        if (firebaseRegistrar != null) {
+            firebaseRegistrar(appContext)
+            return
+        }
+        runCatching {
+            FirebaseMessaging.getInstance().register()
+            FirebaseInstallations.getInstance().id
+                .addOnSuccessListener { fid ->
+                    if (!fid.isNullOrBlank()) onFirebaseInstallationId(appContext, fid)
+                }
+                .addOnFailureListener { error ->
+                    RaftAppLog.w(TAG, "fcm_reregister_fid_unavailable errorType=${error::class.simpleName ?: "unknown"}")
+                }
+        }.onFailure { error ->
+            RaftAppLog.i(TAG, "fcm_reregister_unavailable errorType=${error::class.simpleName ?: "unknown"}")
+        }
+    }
+
     private fun deliverFirebaseInstallationId(context: Context, firebaseInstallationId: String) {
         registrationSkippedReason?.let { skipped ->
             RaftAppLog.w(TAG, "fcm_installation_id_ignored reason=$skipped")

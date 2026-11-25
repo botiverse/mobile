@@ -2809,6 +2809,10 @@
     <string name="settings_notifications_keep_connection_detail">在后台保持 Raft 连接，即可收到消息通知。开启后会常驻一条“Raft 正在接收消息”通知，并增加耗电。</string>
     <string name="settings_notifications_direct_keep_connection_title">后台常驻连接</string>
     <string name="settings_notifications_direct_keep_connection_detail">在 Google 推送无法连接的网络下，保持 Raft 后台连接以接收消息通知。开启后会常驻一条“Raft 正在接收消息”通知，并增加耗电。</string>
+    <string name="settings_notifications_play_push_unreachable_title">当前网络无法连接 Google 推送</string>
+    <string name="settings_notifications_play_push_unreachable_body">当前网络无法连接到 Google 推送服务，后台消息通知可能会延迟或无法送达。在此网络下保持 Raft 运行或允许其后台运行有助于接收消息。</string>
+    <string name="settings_notifications_direct_fcm_fallback_active_title">已自动启用后台常驻连接</string>
+    <string name="settings_notifications_direct_fcm_fallback_active_body">检测到当前网络无法连接 Google 推送，Raft 已自动保持后台连接以送达消息通知。当 Google 推送恢复可达时将自动切换回系统推送。</string>
     <string name="settings_notifications_battery_optimization_title">允许后台运行</string>
     <string name="settings_notifications_battery_optimization_detail">为 Raft 关闭电池优化，避免系统中断后台连接。部分手机还需要在应用启动管理或后台活动设置中允许 Raft。</string>
     <string name="settings_notifications_battery_optimization_allowed">已允许</string>

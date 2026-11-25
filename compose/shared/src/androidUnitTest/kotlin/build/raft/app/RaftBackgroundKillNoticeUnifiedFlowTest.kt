@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onNodeWithTag
@@ -26,6 +27,7 @@ import build.raft.app.data.RaftBackgroundKillNotice
 import build.raft.app.data.RaftBackgroundKillNoticeHost
 import build.raft.app.data.RaftBackgroundKillNoticeHostRegistry
 import build.raft.app.data.RaftBackgroundWhitelistGuide
+import build.raft.app.data.RaftFcmProbeUiStatus
 import build.raft.app.data.RaftNotificationLevelStore
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.ServerPushMode
@@ -234,6 +236,63 @@ class RaftBackgroundKillNoticeUnifiedFlowTest {
             onNodeWithTag(SETTINGS_NOTIFICATIONS_DIRECT_GMS_OVERRIDE_ROW_TAG).assertDoesNotExist()
             onNodeWithTag(SETTINGS_NOTIFICATIONS_BATTERY_OPTIMIZATION_ROW_TAG).assertDoesNotExist()
             onNodeWithTag(SETTINGS_NOTIFICATIONS_VENDOR_BACKGROUND_ROW_TAG).assertDoesNotExist()
+            onNodeWithTag(SETTINGS_NOTIFICATIONS_PLAY_FCM_UNREACHABLE_NOTICE_TAG).assertDoesNotExist()
+            onNodeWithTag(SETTINGS_NOTIFICATIONS_DIRECT_FCM_FALLBACK_ACTIVE_NOTICE_TAG).assertDoesNotExist()
+        }
+
+    @Test
+    fun notificationsPageShowsDismissiblePlayNoticeWhenFcmProbedUnreachable() =
+        runRobolectricComposeUiTest {
+            val controls =
+                RecordingBackgroundControls(
+                    offered = false,
+                    canOverrideWithForegroundService = false,
+                    canRequestBattery = false,
+                    guide = RaftBackgroundWhitelistGuide.AppDetails,
+                    exempt = false,
+                    initialFcmProbeUiStatus = RaftFcmProbeUiStatus.PlayPushUnreachableNotice,
+                )
+            RaftBackgroundConnectionControlsRegistry.controls = controls
+
+            setContent {
+                NotificationsTestHost(foregroundKeepAliveEnabled = false)
+            }
+
+            onNodeWithTag(SETTINGS_NOTIFICATIONS_DIRECT_GMS_OVERRIDE_ROW_TAG).assertDoesNotExist()
+            onNodeWithTag(SETTINGS_NOTIFICATIONS_DIRECT_FCM_FALLBACK_ACTIVE_NOTICE_TAG).assertDoesNotExist()
+            onNodeWithTag(SETTINGS_NOTIFICATIONS_PLAY_FCM_UNREACHABLE_NOTICE_TAG).assertIsDisplayed()
+
+            // Clicking the dismiss button inside the Play notice invokes dismissPlayFcmUnreachableNotice and hides it.
+            onNode(
+                hasClickAction() and hasAnyAncestor(hasTestTag(SETTINGS_NOTIFICATIONS_PLAY_FCM_UNREACHABLE_NOTICE_TAG))
+            ).performClick()
+            waitForIdle()
+
+            assertEquals(1, controls.playNoticeDismisses)
+            onNodeWithTag(SETTINGS_NOTIFICATIONS_PLAY_FCM_UNREACHABLE_NOTICE_TAG).assertDoesNotExist()
+        }
+
+    @Test
+    fun notificationsPageShowsDirectAutoFallbackActiveBannerOnDirectApk() =
+        runRobolectricComposeUiTest {
+            val controls =
+                RecordingBackgroundControls(
+                    offered = false,
+                    canOverrideWithForegroundService = true,
+                    canRequestBattery = true,
+                    guide = RaftBackgroundWhitelistGuide.VendorSettings,
+                    exempt = false,
+                    initialFcmProbeUiStatus = RaftFcmProbeUiStatus.DirectAutoFallbackActive,
+                )
+            RaftBackgroundConnectionControlsRegistry.controls = controls
+
+            setContent {
+                NotificationsTestHost(foregroundKeepAliveEnabled = false)
+            }
+
+            onNodeWithTag(SETTINGS_NOTIFICATIONS_PLAY_FCM_UNREACHABLE_NOTICE_TAG).assertDoesNotExist()
+            onNodeWithTag(SETTINGS_NOTIFICATIONS_DIRECT_FCM_FALLBACK_ACTIVE_NOTICE_TAG).assertIsDisplayed()
+            onNodeWithTag(SETTINGS_NOTIFICATIONS_DIRECT_GMS_OVERRIDE_ROW_TAG).assertIsDisplayed()
         }
 
     private class RecordingBackgroundControls(
@@ -243,11 +302,14 @@ class RaftBackgroundKillNoticeUnifiedFlowTest {
         private val exempt: Boolean,
         private val canOverrideWithForegroundService: Boolean = false,
         initialDirectGmsOverride: Boolean = false,
+        initialFcmProbeUiStatus: RaftFcmProbeUiStatus = RaftFcmProbeUiStatus.None,
     ) : RaftBackgroundConnectionControls {
         var batteryRequests: Int = 0
         var vendorSettingsRequests: Int = 0
+        var playNoticeDismisses: Int = 0
         val directGmsOverrideChanges = mutableListOf<Boolean>()
         private val mutableDirectGmsOverrideState = MutableStateFlow(initialDirectGmsOverride)
+        private val mutableFcmProbeUiStatusState = MutableStateFlow(initialFcmProbeUiStatus)
 
         override fun isOffered(): Boolean = offered
         override fun canOverrideWithForegroundService(): Boolean = canOverrideWithForegroundService
@@ -256,6 +318,11 @@ class RaftBackgroundKillNoticeUnifiedFlowTest {
             if (!canOverrideWithForegroundService) return
             mutableDirectGmsOverrideState.value = enabled
             directGmsOverrideChanges += enabled
+        }
+        override val fcmProbeUiStatusState: StateFlow<RaftFcmProbeUiStatus> = mutableFcmProbeUiStatusState
+        override fun dismissPlayFcmUnreachableNotice() {
+            playNoticeDismisses += 1
+            mutableFcmProbeUiStatusState.value = RaftFcmProbeUiStatus.None
         }
         override fun canRequestBatteryOptimizationExemption(): Boolean = canRequestBattery
         override fun whitelistGuide(): RaftBackgroundWhitelistGuide = guide

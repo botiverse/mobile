@@ -9,7 +9,10 @@ import android.os.PowerManager
 import build.raft.app.core.data.auth.AndroidAppScopeMMKV
 import build.raft.app.data.RaftBackgroundConnectionControls
 import build.raft.app.data.RaftBackgroundWhitelistGuide
+import build.raft.app.data.RaftFcmProbeUiStatus
+import build.raft.app.push.AndroidFcmReachabilityController
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,6 +47,8 @@ internal class RaftAndroidBackgroundConnectionControls(
             AndroidRealtimeKeepAliveController.setDirectGmsKeepAliveOverrideEnabled(appContext, enabled)
         }
     },
+    private val fcmProbeUiStatusProvider: (Context) -> RaftFcmProbeUiStatus = AndroidFcmReachabilityController::currentUiStatus,
+    private val dismissPlayFcmUnreachableNoticeAction: (Context) -> Unit = AndroidFcmReachabilityController::dismissPlayUnreachableNotice,
     private val vendorProvider: () -> AndroidOemVendor = { RaftAndroidVendorWhitelist.resolveVendor() },
     private val intentLauncher: (Intent) -> Unit = { intent -> context.applicationContext.startActivity(intent) },
 ) : RaftBackgroundConnectionControls {
@@ -59,6 +64,8 @@ internal class RaftAndroidBackgroundConnectionControls(
             directGmsKeepAliveOverrideAllowedProvider(appContext) && !noPlayServicesFallbackProvider(appContext)
         }.getOrDefault(false)
 
+    private val directGmsOverrideStateLock = Any()
+    private val directGmsOverrideStateVersion = AtomicLong(0L)
     private val directGmsOverrideState = MutableStateFlow(false)
     private val directGmsOverrideStateView = directGmsOverrideState.asStateFlow()
     private val initialOverrideRefreshScheduled = AtomicBoolean(false)
@@ -66,30 +73,95 @@ internal class RaftAndroidBackgroundConnectionControls(
     override val directGmsKeepAliveOverrideState: StateFlow<Boolean>
         get() {
             if (initialOverrideRefreshScheduled.compareAndSet(false, true)) {
-                refreshScope.launch { refreshDirectGmsKeepAliveOverrideStatus() }
+                val scheduledVersion = directGmsOverrideStateVersion.get()
+                refreshScope.launch { refreshDirectGmsKeepAliveOverrideStatus(expectedVersion = scheduledVersion) }
             }
             return directGmsOverrideStateView
         }
 
     /** Called on startup IO and activity resume to keep the UI toggle aligned with stored state. */
     fun refreshDirectGmsKeepAliveOverrideStatus() {
+        refreshDirectGmsKeepAliveOverrideStatus(expectedVersion = directGmsOverrideStateVersion.get())
+    }
+
+    private fun refreshDirectGmsKeepAliveOverrideStatus(expectedVersion: Long) {
         initialOverrideRefreshScheduled.set(true)
-        directGmsOverrideState.value =
+        if (directGmsOverrideStateVersion.get() != expectedVersion) return
+        val resolved =
             if (canOverrideWithForegroundService()) {
                 runCatching { directGmsKeepAliveOverrideEnabledProvider(appContext) }.getOrDefault(false)
             } else {
                 false
             }
+        synchronized(directGmsOverrideStateLock) {
+            if (directGmsOverrideStateVersion.get() == expectedVersion) {
+                directGmsOverrideState.value = resolved
+            }
+        }
     }
 
     override fun setDirectGmsKeepAliveOverrideEnabled(enabled: Boolean) {
         if (!canOverrideWithForegroundService()) {
-            directGmsOverrideState.value = false
+            synchronized(directGmsOverrideStateLock) {
+                directGmsOverrideStateVersion.incrementAndGet()
+                directGmsOverrideState.value = false
+            }
             return
         }
         initialOverrideRefreshScheduled.set(true)
-        directGmsOverrideState.value = enabled
+        synchronized(directGmsOverrideStateLock) {
+            directGmsOverrideStateVersion.incrementAndGet()
+            directGmsOverrideState.value = enabled
+        }
         directGmsKeepAliveOverrideSetter(appContext, enabled)
+    }
+
+    private val fcmProbeUiStatusLock = Any()
+    private val fcmProbeUiStatusVersion = AtomicLong(0L)
+    private val fcmProbeUiStatus = MutableStateFlow(RaftFcmProbeUiStatus.None)
+    private val fcmProbeUiStatusView = fcmProbeUiStatus.asStateFlow()
+    private val initialFcmProbeRefreshScheduled = AtomicBoolean(false)
+
+    override val fcmProbeUiStatusState: StateFlow<RaftFcmProbeUiStatus>
+        get() {
+            if (initialFcmProbeRefreshScheduled.compareAndSet(false, true)) {
+                val scheduledVersion = fcmProbeUiStatusVersion.get()
+                refreshScope.launch { refreshFcmReachabilityStatus(expectedVersion = scheduledVersion) }
+            }
+            return fcmProbeUiStatusView
+        }
+
+    /** Called on startup IO, activity resume, and reachability state transitions. */
+    fun refreshFcmReachabilityStatus() {
+        refreshFcmReachabilityStatus(expectedVersion = fcmProbeUiStatusVersion.get())
+    }
+
+    private fun refreshFcmReachabilityStatus(expectedVersion: Long) {
+        initialFcmProbeRefreshScheduled.set(true)
+        if (fcmProbeUiStatusVersion.get() != expectedVersion) return
+        val resolved =
+            if (isOffered()) {
+                RaftFcmProbeUiStatus.None
+            } else {
+                runCatching { fcmProbeUiStatusProvider(appContext) }.getOrDefault(RaftFcmProbeUiStatus.None)
+            }
+        synchronized(fcmProbeUiStatusLock) {
+            if (fcmProbeUiStatusVersion.get() == expectedVersion) {
+                fcmProbeUiStatus.value = resolved
+            }
+        }
+    }
+
+    override fun dismissPlayFcmUnreachableNotice() {
+        initialFcmProbeRefreshScheduled.set(true)
+        synchronized(fcmProbeUiStatusLock) {
+            fcmProbeUiStatusVersion.incrementAndGet()
+            if (fcmProbeUiStatus.value == RaftFcmProbeUiStatus.PlayPushUnreachableNotice) {
+                fcmProbeUiStatus.value = RaftFcmProbeUiStatus.None
+            }
+        }
+        runCatching { dismissPlayFcmUnreachableNoticeAction(appContext) }
+        refreshFcmReachabilityStatus()
     }
 
     override fun canRequestBatteryOptimizationExemption(): Boolean =

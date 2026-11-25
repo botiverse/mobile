@@ -4266,6 +4266,7 @@ internal class RaftSharedStoreProvider private constructor(
                                 ProcessDiagnosticFeatureFlagOverrides.registry.clearObservations()
                                 build.raft.app.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
                                 build.raft.app.RaftScreenshotFeedbackRuntime.controller.onEligibilityLost()
+                                RaftFcmProbeHost.onSignedOut()
                                 processServerMembersCore.invalidateAll(reason = "cleared")
                                 activityUnreadSummaryStore.invalidateAll(reason = "cleared")
                             }
@@ -4287,6 +4288,7 @@ internal class RaftSharedStoreProvider private constructor(
                         build.raft.app.nav.RaftNav3StackFlag.recordServerEvaluation(sharedPreferenceStore, key, enabled)
                         build.raft.app.nav.RaftIosNativeNavFlag.recordServerEvaluation(sharedPreferenceStore, key, enabled)
                         if (key == MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY) RaftAppSettingsSnapshotReport.onIosNativeNavFlagRead()
+                        if (key == MOBILE_FCM_PROBE_FEATURE_FLAG_KEY) RaftFcmProbeHost.onFeatureFlagChanged()
                     },
                 )
             // An offline cold start may read last-known flags before the binding is known (they read
@@ -4298,11 +4300,13 @@ internal class RaftSharedStoreProvider private constructor(
                     .collect {
                         serverFeatureFlags.onLastKnownBindingChanged()
                         build.raft.app.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
+                        RaftFcmProbeHost.onFeatureFlagChanged()
                     }
             }
             CoroutineScope(SupervisorJob()).launch {
                 serverFeatureFlags.snapshotRevision.collect {
                     build.raft.app.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
+                    RaftFcmProbeHost.onFeatureFlagChanged()
                 }
             }
             val attachmentCommentsReadCacheV2 = AttachmentCommentsReadCacheV2()

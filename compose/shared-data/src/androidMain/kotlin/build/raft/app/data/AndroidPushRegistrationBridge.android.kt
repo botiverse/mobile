@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.ServerId
 import build.raft.app.raftLogInfo
 import build.raft.app.raftLogWarn
 import kotlin.concurrent.Volatile
@@ -142,6 +143,42 @@ object RaftAndroidPushRegistrationBridge {
     fun installationIdOrNull(): String? =
         runCatching { coordinator?.currentInstallationId() }.getOrNull()
 
+    fun hasSettledRegistrationSnapshot(): Boolean =
+        runCatching { coordinator?.hasSettledRegistrationSnapshot() == true }.getOrDefault(false)
+
+    /** Lock-free read of `mobile_fcm_probe_v0` for the active selected server (default OFF). */
+    fun isFcmProbeFeatureFlagEnabled(): Boolean =
+        runCatching {
+            val provider = RaftDataStoreRegistry.currentOrNull() ?: return@runCatching false
+            val serverId =
+                provider.authStore.readCommittedSessionSnapshot()
+                    ?.currentServerId
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let(::ServerId)
+                    ?: return@runCatching false
+            provider.serverFeatureFlags.isEnabled(serverId, MOBILE_FCM_PROBE_FEATURE_FLAG_KEY)
+        }.getOrDefault(false)
+
+    /** Lock-free `(environment|serverId)` key scoping HTTP 404 probe-unsupported state. */
+    fun currentProbeServerKeyOrNull(): String? =
+        runCatching {
+            val provider = RaftDataStoreRegistry.currentOrNull() ?: return@runCatching null
+            val env = provider.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+            val serverId =
+                provider.authStore.readCommittedSessionSnapshot()
+                    ?.currentServerId
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: return@runCatching null
+            "$env|$serverId"
+        }.getOrNull()
+
+    suspend fun sendReachabilityProbe(probeId: String): RaftPushProbeResult {
+        val runtime = coordinator ?: return RaftPushProbeResult.Inconclusive("bridge_not_installed")
+        return runtime.sendReachabilityProbe(probeId)
+    }
+
     private fun createCoordinator(): RaftPushRegistrationCoordinator {
         val store =
             RaftSharedKeyValueStoreProvider.create(
@@ -162,7 +199,8 @@ object RaftAndroidPushRegistrationBridge {
             },
             deviceStateProvider = raftPushDeviceStateProvider(),
             infoLogger = { message -> raftLogInfo(PUSH_LOG_TAG, "$message provider=fcm") },
-            warningLogger = { message -> raftLogWarn(PUSH_LOG_TAG, "$message provider=fcm") }
+            warningLogger = { message -> raftLogWarn(PUSH_LOG_TAG, "$message provider=fcm") },
+            onRegistrationConfirmed = { RaftFcmProbeHost.onPushRegistrationReady() },
         )
     }
 }

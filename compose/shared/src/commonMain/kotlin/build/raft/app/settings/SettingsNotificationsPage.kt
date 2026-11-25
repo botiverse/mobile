@@ -47,6 +47,7 @@ import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.RaftBackgroundConnectionControls
 import build.raft.app.data.RaftBackgroundConnectionControlsRegistry
 import build.raft.app.data.RaftBackgroundWhitelistGuide
+import build.raft.app.data.RaftFcmProbeUiStatus
 import build.raft.app.data.RaftNotificationAccountSettings
 import build.raft.app.data.RaftNotificationAccountSettingsPatch
 import build.raft.app.data.RaftNotificationAccountSettingsStore
@@ -58,6 +59,8 @@ import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.raftCurrentTimeZoneId
 import build.raft.app.data.raftNowEpochMillis
 import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftListRow
@@ -345,6 +348,10 @@ private fun SettingsPushStatusCard(
         if (actionState?.action in setOf(MOBILE_ACTION_PERMISSION, MOBILE_ACTION_SETTINGS) && actionState?.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
+        val backgroundControls = remember { RaftBackgroundConnectionControlsRegistry.installedControls() }
+        if (backgroundControls != null) {
+            SettingsFcmProbeStatusBanner(backgroundControls)
+        }
         RaftListRowGroup {
             Box(Modifier.fillMaxWidth().settingsSearchAnchor("push-notifications")) {
                 SettingsNotificationSwitchRow(
@@ -356,7 +363,6 @@ private fun SettingsPushStatusCard(
                     onCheckedChange = onNotificationPreferenceChange
                 )
             }
-            val backgroundControls = remember { RaftBackgroundConnectionControlsRegistry.installedControls() }
             val backgroundPlan =
                 remember(backgroundControls) {
                     settingsNotificationsBackgroundControlsPlan(
@@ -732,6 +738,43 @@ internal const val SETTINGS_NOTIFICATIONS_BACKGROUND_KEEP_ALIVE_ANCHOR = "backgr
 internal const val SETTINGS_NOTIFICATIONS_DIRECT_GMS_OVERRIDE_ROW_TAG = "settings_notifications_direct_gms_override_row"
 internal const val SETTINGS_NOTIFICATIONS_BATTERY_OPTIMIZATION_ROW_TAG = "settings_notifications_battery_optimization_row"
 internal const val SETTINGS_NOTIFICATIONS_VENDOR_BACKGROUND_ROW_TAG = "settings_notifications_vendor_background_row"
+internal const val SETTINGS_NOTIFICATIONS_PLAY_FCM_UNREACHABLE_NOTICE_TAG = "settings_notifications_play_fcm_unreachable_notice"
+internal const val SETTINGS_NOTIFICATIONS_DIRECT_FCM_FALLBACK_ACTIVE_NOTICE_TAG = "settings_notifications_direct_fcm_fallback_active_notice"
+
+/**
+ * Surfaces the probed FCM reachability status (`mobile_fcm_probe_v0`, `#proj-mobile:#379`):
+ * - Google Play build + probed unreachable: gentle dismissible notice explaining Google push
+ *   notifications cannot be reached on the current network (without mentioning sideloading).
+ * - Direct-install APK + automatic fallback active: non-dismissible status banner reflecting that
+ *   the automatic background connection is active.
+ * - Flag off / reachable / no-GMS / non-Android: renders nothing.
+ */
+@Composable
+private fun SettingsFcmProbeStatusBanner(controls: RaftBackgroundConnectionControls) {
+    val probeStatus by controls.fcmProbeUiStatusState.collectAsState()
+    when (probeStatus) {
+        RaftFcmProbeUiStatus.None -> Unit
+        RaftFcmProbeUiStatus.PlayPushUnreachableNotice -> {
+            RaftBanner(
+                title = stringResource(Res.string.settings_notifications_play_push_unreachable_title),
+                description = stringResource(Res.string.settings_notifications_play_push_unreachable_body),
+                status = RaftBannerStatus.Info,
+                onDismiss = { controls.dismissPlayFcmUnreachableNotice() },
+                dismissLabel = stringResource(Res.string.common_dismiss),
+                modifier = Modifier.fillMaxWidth().testTag(SETTINGS_NOTIFICATIONS_PLAY_FCM_UNREACHABLE_NOTICE_TAG),
+            )
+        }
+        RaftFcmProbeUiStatus.DirectAutoFallbackActive -> {
+            RaftBanner(
+                title = stringResource(Res.string.settings_notifications_direct_fcm_fallback_active_title),
+                description = stringResource(Res.string.settings_notifications_direct_fcm_fallback_active_body),
+                status = RaftBannerStatus.Info,
+                onDismiss = null,
+                modifier = Modifier.fillMaxWidth().testTag(SETTINGS_NOTIFICATIONS_DIRECT_FCM_FALLBACK_ACTIVE_NOTICE_TAG),
+            )
+        }
+    }
+}
 
 internal enum class SettingsNotificationsBackgroundKeepAliveMode {
     /** Non-Android hosts (iOS / desktop) with no background keep-alive controls. */

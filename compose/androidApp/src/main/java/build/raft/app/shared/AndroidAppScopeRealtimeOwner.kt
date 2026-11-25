@@ -41,6 +41,9 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
 import build.raft.app.model.ServerId
 import build.raft.app.network.updateRaftProcessNetworkVisibility
+import build.raft.app.push.AndroidFcmReachabilityController
+import build.raft.app.push.androidNetworkSnapshotFrom
+import build.raft.app.push.queryActiveAndroidNetworkSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -132,6 +135,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 flushHiddenNetworkCallbackSummary()
                 installedApplicationContext?.let { context ->
                     onAppShown(context, source = "process_activity_started")
+                    AndroidFcmReachabilityController.onAppForegrounded(context)
                     // Back in front: register the default-network callback and read current status
                     // off the main thread on the serialized connectivity IO lane so foreground resume
                     // never blocks Frame 1 on ConnectivityManager Binder IPCs.
@@ -159,6 +163,9 @@ internal object AndroidAppScopeRealtimeOwner {
                 RaftRatingPrompt.onAppBackground()
                 RaftResumeFrameProbe.onAppHidden()
                 onAppHidden(source = "process_activity_stopped")
+                installedApplicationContext?.let { context ->
+                    AndroidFcmReachabilityController.onAppBackgrounded(context)
+                }
                 val coordinator = networkCallbackCoordinator
                 if (coordinator != null) {
                     // Off-main on the serialized connectivity IO lane: evaluate the no-Play-services
@@ -257,6 +264,16 @@ internal object AndroidAppScopeRealtimeOwner {
             override fun onAvailable(network: Network) {
                 countNetworkCallback(AndroidNetworkCallbackKind.Available)
                 onNetworkAvailable(appContext)
+                val capabilities =
+                    runCatching {
+                        (appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)
+                            ?.getNetworkCapabilities(network)
+                    }.getOrNull()
+                AndroidFcmReachabilityController.onNetworkChanged(
+                    context = appContext,
+                    snapshot = androidNetworkSnapshotFrom(network, capabilities),
+                    source = "network_available",
+                )
             }
 
             override fun onCapabilitiesChanged(
@@ -265,6 +282,11 @@ internal object AndroidAppScopeRealtimeOwner {
             ) {
                 countNetworkCallback(AndroidNetworkCallbackKind.Capabilities)
                 onNetworkCapabilitiesChanged(appContext, networkCapabilities)
+                AndroidFcmReachabilityController.onNetworkChanged(
+                    context = appContext,
+                    snapshot = androidNetworkSnapshotFrom(network, networkCapabilities),
+                    source = "network_capabilities_changed",
+                )
             }
 
             override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
@@ -275,6 +297,11 @@ internal object AndroidAppScopeRealtimeOwner {
             override fun onLost(network: Network) {
                 countNetworkCallback(AndroidNetworkCallbackKind.Lost)
                 onNetworkLost(appContext)
+                AndroidFcmReachabilityController.onNetworkChanged(
+                    context = appContext,
+                    snapshot = queryActiveAndroidNetworkSnapshot(appContext),
+                    source = "network_lost",
+                )
             }
         }
 

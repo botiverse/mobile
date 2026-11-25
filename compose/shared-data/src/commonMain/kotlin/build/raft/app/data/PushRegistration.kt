@@ -7,6 +7,7 @@ import build.raft.app.raftLogWarn
 import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -254,6 +255,94 @@ private data class PushRegistrationUpsertResponseBody(
     val registration: PushRegistrationUpsertRegistrationBody? = null,
 )
 
+@Serializable
+private data class PushReachabilityProbeRequestBody(
+    val probeId: String,
+)
+
+@Serializable
+private data class PushReachabilityProbeResponseBody(
+    val ok: Boolean? = null,
+    val probeId: String? = null,
+    val status: String? = null,
+    val reason: String? = null,
+    val reRegister: Boolean? = null,
+    val retryAfterSeconds: Long? = null,
+)
+
+/**
+ * Outcome of `POST /api/push/registrations/:installationId/probe` (`#proj-mobile:#379`).
+ *
+ * - ONLY [Sent] starts the 15-second miss timer.
+ * - [NotSent] NEVER counts as an FCM miss; when [NotSent.reRegister] is true (or `reason == "token_unregistered"`),
+ *   the client triggers its existing push re-registration flow. When [NotSent.retryAfterSeconds] is
+ *   present (e.g. `reason == "rate_limited"`), the client honors it as a floor on the next retry delay.
+ * - [Unsupported] (HTTP 404) marks the server as not supporting probing for the current session/TTL.
+ * - [Inconclusive] (network error / 5xx / timeout / malformed) NEVER counts as an FCM miss.
+ */
+sealed interface RaftPushProbeResult {
+    data class Sent(val probeId: String) : RaftPushProbeResult
+
+    data class NotSent(
+        val reason: String,
+        val reRegister: Boolean,
+        val retryAfterSeconds: Long? = null,
+    ) : RaftPushProbeResult
+
+    data object Unsupported : RaftPushProbeResult
+
+    data class Inconclusive(val reason: String) : RaftPushProbeResult
+}
+
+/** Encodes `{ "probeId": "<client-generated-uuid>" }` for the silent FCM reachability probe route. */
+fun encodeRaftPushProbeRequest(probeId: String): String =
+    pushRegistrationJson.encodeToString(PushReachabilityProbeRequestBody(probeId = probeId))
+
+/** Pure response parser for `POST /api/push/registrations/:installationId/probe`. */
+fun parseRaftPushProbeResponse(
+    code: Int,
+    bodyText: String?,
+    expectedProbeId: String,
+): RaftPushProbeResult {
+    if (code == 404) return RaftPushProbeResult.Unsupported
+    if (code !in 200..299 || bodyText.isNullOrBlank()) {
+        return RaftPushProbeResult.Inconclusive("http_$code")
+    }
+    val decoded =
+        try {
+            pushDeliveryStatusJson.decodeFromString<PushReachabilityProbeResponseBody>(bodyText)
+        } catch (_: SerializationException) {
+            return RaftPushProbeResult.Inconclusive("malformed_body")
+        } catch (_: IllegalArgumentException) {
+            return RaftPushProbeResult.Inconclusive("malformed_body")
+        }
+    if (decoded.ok != true) {
+        return RaftPushProbeResult.Inconclusive("not_ok")
+    }
+    val status = decoded.status?.trim()?.lowercase()
+    return when (status) {
+        "sent" -> {
+            val echoedId = decoded.probeId?.trim()
+            if (!echoedId.isNullOrEmpty() && echoedId != expectedProbeId) {
+                RaftPushProbeResult.Inconclusive("probe_id_mismatch")
+            } else {
+                RaftPushProbeResult.Sent(expectedProbeId)
+            }
+        }
+        "not_sent" -> {
+            val reason = decoded.reason?.trim()?.takeIf { it.isNotEmpty() } ?: "not_sent"
+            val reRegister = decoded.reRegister == true || reason == "token_unregistered"
+            val retryAfterSeconds = decoded.retryAfterSeconds?.takeIf { it > 0L }
+            RaftPushProbeResult.NotSent(
+                reason = reason,
+                reRegister = reRegister,
+                retryAfterSeconds = retryAfterSeconds,
+            )
+        }
+        else -> RaftPushProbeResult.Inconclusive("unknown_status")
+    }
+}
+
 /**
  * The environment key of a delivery-status answer: the API base URL without surrounding blanks or a
  * trailing slash. Both the writer and the background reader go through this.
@@ -265,6 +354,8 @@ fun normalizedPushEnvironmentId(raw: String?): String? =
     suspend fun upsert(payloadJson: String): HomeNetworkResponse
     suspend fun unbind(installationId: String): HomeNetworkResponse
     suspend fun deliveryStatus(installationId: String): HomeNetworkResponse
+    suspend fun probe(installationId: String, payloadJson: String): HomeNetworkResponse =
+        HomeNetworkResponse(code = 404, bodyText = null)
 }
 
 @RaftCoreInternalApi class RaftPushRegistrationNetworkApi(
@@ -291,6 +382,14 @@ fun normalizedPushEnvironmentId(raw: String?): String? =
             path = "push/delivery-status",
             method = "GET",
             query = listOf("installationId" to installationId)
+        )
+
+    override suspend fun probe(installationId: String, payloadJson: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Background,
+            path = "push/registrations/$installationId/probe",
+            method = "POST",
+            bodyText = payloadJson
         )
 }
 
@@ -437,7 +536,8 @@ private object PlatformRaftIosRemoteNotificationsController : RaftIosRemoteNotif
      */
     private val deviceStateRetryDelaysMillis: List<Long> = PUSH_DEVICE_STATE_RETRY_DELAYS_MILLIS,
     private val infoLogger: (String) -> Unit = {},
-    private val warningLogger: (String) -> Unit = {}
+    private val warningLogger: (String) -> Unit = {},
+    private val onRegistrationConfirmed: (() -> Unit)? = null,
 ) : RaftPushRegistrationLifecycleSink {
     private val mutex = Mutex()
 
@@ -714,6 +814,71 @@ private object PlatformRaftIosRemoteNotificationsController : RaftIosRemoteNotif
 
     fun currentInstallationId(): String? =
         store.getString(INSTALLATION_ID_KEY)?.takeIf { it.isNotBlank() }
+
+    /** Lock-free snapshot: true when this installation already has a confirmed registration stored. */
+    fun hasSettledRegistrationSnapshot(): Boolean {
+        if (providerUnavailableReason != null || registrationSuspended || unbindInProgress) return false
+        val installationId = currentInstallationId() ?: return false
+        val registered = store.getString(LAST_REGISTERED_PAYLOAD_KEY)?.takeIf { it.isNotBlank() } ?: return false
+        val boundUserId = store.getString(LAST_BOUND_USER_ID_KEY)?.takeIf { it.isNotBlank() } ?: return false
+        return installationId.isNotBlank() && registered.isNotBlank() && boundUserId.isNotBlank()
+    }
+
+    /**
+     * Issues `POST /api/push/registrations/:installationId/probe` with `{ "probeId": probeId }`
+     * (generated by the caller BEFORE the HTTP call so an FCM arriving first still matches).
+     *
+     * Never throws for network errors (returns [RaftPushProbeResult.Inconclusive]); rethrows
+     * [CancellationException]. If the server answers `not_sent` with `reRegister == true` (or
+     * `reason == "token_unregistered"`), triggers the existing re-registration path (bounded once
+     * per registered payload to prevent infinite loops).
+     */
+    suspend fun sendReachabilityProbe(probeId: String): RaftPushProbeResult {
+        val cleanProbeId = probeId.trim()
+        if (cleanProbeId.isEmpty()) return RaftPushProbeResult.Inconclusive("blank_probe_id")
+        if (providerUnavailableReason != null || registrationSuspended || unbindInProgress) {
+            return RaftPushProbeResult.Inconclusive("registration_unavailable")
+        }
+        val installationId = currentInstallationId() ?: return RaftPushProbeResult.Inconclusive("missing_installation_id")
+        val session = currentSession()
+        val userId = session?.user?.id?.takeIf { it.isNotBlank() }
+        val serverId = session?.currentServerId?.takeIf { it.isNotBlank() }
+        if (userId == null || serverId == null) {
+            return RaftPushProbeResult.Inconclusive("missing_session")
+        }
+        val api = apiProvider() ?: return RaftPushProbeResult.Inconclusive("shared_runtime_unavailable")
+        val settled = mutex.withLock { registrationSettledFor(userId) }
+        if (!settled) {
+            return RaftPushProbeResult.Inconclusive("registration_not_settled")
+        }
+        val response =
+            try {
+                api.probe(installationId = installationId, payloadJson = encodeRaftPushProbeRequest(cleanProbeId))
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                warningLogger("probe_result result=network_error errorType=${error::class.simpleName ?: "unknown"}")
+                return RaftPushProbeResult.Inconclusive("network_error")
+            }
+        val result = parseRaftPushProbeResponse(response.code, response.bodyText, expectedProbeId = cleanProbeId)
+        when (result) {
+            is RaftPushProbeResult.Sent ->
+                infoLogger("probe_result result=sent")
+            is RaftPushProbeResult.NotSent -> {
+                warningLogger("probe_result result=not_sent reason=${result.reason} reRegister=${result.reRegister}")
+                if (result.reRegister) {
+                    mutex.withLock {
+                        repairServerMissingRegistrationLocked(reason = "probe_${result.reason}")
+                    }
+                }
+            }
+            RaftPushProbeResult.Unsupported ->
+                infoLogger("probe_result result=unsupported code=404")
+            is RaftPushProbeResult.Inconclusive ->
+                warningLogger("probe_result result=inconclusive reason=${result.reason} code=${response.code}")
+        }
+        return result
+    }
 
     override fun installationIdOrNull(): String? = currentInstallationId()
 
@@ -1008,6 +1173,7 @@ private object PlatformRaftIosRemoteNotificationsController : RaftIosRemoteNotif
             store.putString(LAST_REGISTERED_AT_KEY, clockMillis().toString())
             forceNextUpsert = false
             infoLogger("registration_result result=success trigger=$reason")
+            onRegistrationConfirmed?.invoke()
             if (currentEnvironmentId != null) {
                 scope.launch { refreshDeliveryStatus(reason = "registration_upsert", force = true) }
             }

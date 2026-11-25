@@ -27,6 +27,13 @@ internal object RaftBackgroundConnectionPolicy {
          * the foreground connection service on GMS devices when FCM is unreachable. Default false.
          */
         val directGmsKeepAliveOverrideEnabled: Boolean = false,
+        /**
+         * Automatic FCM reachability fallback (`mobile_fcm_probe_v0`, `#proj-mobile:#379`): true
+         * when silent end-to-end FCM probing confirmed FCM unreachable on the current network (and
+         * until FCM is proven reachable again past the anti-flap dwell time). Always ignored unless
+         * [directGmsKeepAliveOverrideAllowed] is true (direct-install APKs only; never on Play).
+         */
+        val fcmAutoFallbackActive: Boolean = false,
     )
 
     internal sealed interface Decision {
@@ -47,8 +54,21 @@ internal object RaftBackgroundConnectionPolicy {
     ): Boolean = !fcmUnavailable && directGmsKeepAliveOverrideAllowed && directGmsKeepAliveOverrideEnabled
 
     /**
-     * The service only runs when either Play services is unavailable (automatic fallback with the
-     * keep-alive switch on) or a direct-install APK user explicitly enabled the GMS override, and
+     * Defense-in-depth gate for automatic FCM-unreachable fallback (`mobile_fcm_probe_v0`).
+     * True ONLY on direct-install APKs whose manifest ships [RaftBackgroundConnectionService] when
+     * GMS is available and probing confirmed FCM unreachable. Always false on Google Play builds
+     * and on no-GMS devices.
+     */
+    fun isDirectGmsAutoFallbackActive(
+        fcmUnavailable: Boolean,
+        directGmsKeepAliveOverrideAllowed: Boolean,
+        fcmAutoFallbackRequested: Boolean,
+    ): Boolean = !fcmUnavailable && directGmsKeepAliveOverrideAllowed && fcmAutoFallbackRequested
+
+    /**
+     * The service only runs when Play services is unavailable (automatic no-GMS fallback with the
+     * keep-alive switch on), a direct-install APK user explicitly enabled the GMS override, OR
+     * direct-install automatic FCM-unreachable fallback (`mobile_fcm_probe_v0`) is active, and
      * only while signed in with notifications allowed (without notification permission the
      * service's own notification would be hidden too). Google Play builds always stop with
      * `play_services_available`.
@@ -60,8 +80,14 @@ internal object RaftBackgroundConnectionPolicy {
                 directGmsKeepAliveOverrideAllowed = inputs.directGmsKeepAliveOverrideAllowed,
                 directGmsKeepAliveOverrideEnabled = inputs.directGmsKeepAliveOverrideEnabled,
             )
+        val gmsAutoFallbackActive =
+            isDirectGmsAutoFallbackActive(
+                fcmUnavailable = inputs.fcmUnavailable,
+                directGmsKeepAliveOverrideAllowed = inputs.directGmsKeepAliveOverrideAllowed,
+                fcmAutoFallbackRequested = inputs.fcmAutoFallbackActive,
+            )
         return when {
-            !inputs.fcmUnavailable && !gmsOverrideActive -> Decision.Stop("play_services_available")
+            !inputs.fcmUnavailable && !gmsOverrideActive && !gmsAutoFallbackActive -> Decision.Stop("play_services_available")
             inputs.fcmUnavailable && !inputs.keepAlivePreferenceEnabled -> Decision.Stop("preference_disabled")
             !inputs.signedIn -> Decision.Stop("signed_out")
             !inputs.messageNotificationsEnabled -> Decision.Stop("message_notifications_disabled")

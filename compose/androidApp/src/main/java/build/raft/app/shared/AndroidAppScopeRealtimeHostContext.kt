@@ -32,6 +32,8 @@ import build.raft.app.data.realtime.SocketIoRealtimeClient
 import build.raft.app.data.realtime.raftRealtimeSocketTransport
 import build.raft.app.data.realtime.realtimeRawPayloadJson
 import build.raft.app.model.ChannelId
+import build.raft.app.push.AndroidFcmReachabilityController
+import build.raft.app.push.FcmReachabilityStatus
 import build.raft.app.push.RaftPlayServicesAvailability
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
@@ -539,20 +541,41 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         }
 
 
+        /**
+         * Decides whether the background Socket.IO path should skip posting a local notification
+         * because remote FCM push is actively delivering.
+         *
+         * - When [fcmProbeEnabled] (`mobile_fcm_probe_v0`) is OFF (or server returned 404): exact
+         *   pre-probe behavior (`!fcmUnavailable && !directGmsKeepAliveOverrideActive && policyRemotePushActive`).
+         * - When [fcmProbeEnabled] is ON (`#proj-mobile:#379`, Tenny rule `msg=85eae7f0`): skipping
+         *   local Socket.IO notifications requires **probed FCM reachability**
+         *   ([FcmReachabilityStatus.Reachable]), NOT merely `fcmRegistered == true`. Whenever FCM
+         *   is probed [FcmReachabilityStatus.Unreachable] (or still [FcmReachabilityStatus.Unknown]
+         *   / [FcmReachabilityStatus.Probing]), local notifications are NOT suppressed; if FCM also
+         *   delivers the same message, [AndroidUnreadNotificationPoster] deduplicates by `messageId`
+         *   with `setOnlyAlertOnce(true)`.
+         */
         internal fun shouldTreatRemotePushAsActive(
             fcmUnavailable: Boolean,
             directGmsKeepAliveOverrideActive: Boolean,
             policyRemotePushActive: Boolean,
-        ): Boolean = !fcmUnavailable && !directGmsKeepAliveOverrideActive && policyRemotePushActive
+            fcmProbeEnabled: Boolean = false,
+            fcmReachability: FcmReachabilityStatus = FcmReachabilityStatus.Unknown,
+        ): Boolean {
+            if (fcmUnavailable || directGmsKeepAliveOverrideActive || !policyRemotePushActive) return false
+            if (fcmProbeEnabled && fcmReachability != FcmReachabilityStatus.Reachable) return false
+            return true
+        }
 
         /**
          * FCM delivers this server's tray notifications (the server's stored delivery-status answer for
          * this environment, user and installation says fcmActive for the event's server), so posting here
          * would show a duplicate. Any unknown input, or a read failure, keeps the local post.
          *
-         * When Play services is absent OR the user opted into the direct-install GMS keep-alive override
-         * (because FCM is unreachable on their network), local realtime notifications still post; if FCM
-         * also delivers the same message, [AndroidUnreadNotificationPoster] deduplicates by messageId.
+         * When Play services is absent, OR the user opted into the direct-install GMS keep-alive
+         * override, OR `mobile_fcm_probe_v0` is enabled without probed [FcmReachabilityStatus.Reachable],
+         * local realtime notifications still post; if FCM also delivers the same message,
+         * [AndroidUnreadNotificationPoster] deduplicates by messageId with `setOnlyAlertOnce(true)`.
          */
         private suspend fun isRemotePushActive(
             appContext: Context,
@@ -563,8 +586,20 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 val fcmUnavailable = RaftPlayServicesAvailability.isFcmUnavailable(appContext)
                 val directGmsOverrideActive =
                     !fcmUnavailable && AndroidRealtimeKeepAliveController.isDirectGmsKeepAliveOverrideActive(appContext)
+                val fcmProbeEnabled =
+                    !fcmUnavailable && AndroidFcmReachabilityController.isFeatureEnabled(appContext)
+                val fcmReachability =
+                    if (fcmProbeEnabled) {
+                        AndroidFcmReachabilityController.currentReachabilityStatus()
+                    } else {
+                        FcmReachabilityStatus.Unknown
+                    }
                 val policyRemotePushActive =
-                    if (fcmUnavailable || directGmsOverrideActive) {
+                    if (
+                        fcmUnavailable ||
+                        directGmsOverrideActive ||
+                        (fcmProbeEnabled && fcmReachability != FcmReachabilityStatus.Reachable)
+                    ) {
                         false
                     } else {
                         RaftRealtimeAppScopePolicy.isRemotePushActive(
@@ -580,6 +615,8 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                     fcmUnavailable = fcmUnavailable,
                     directGmsKeepAliveOverrideActive = directGmsOverrideActive,
                     policyRemotePushActive = policyRemotePushActive,
+                    fcmProbeEnabled = fcmProbeEnabled,
+                    fcmReachability = fcmReachability,
                 )
             } catch (cancellation: CancellationException) {
                 throw cancellation

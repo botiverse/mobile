@@ -65,6 +65,7 @@ class RaftNotificationContractTest {
         assertEquals(RaftPushMessageType.Alert, RaftPushMessageType.fromWire(""))
         assertEquals(RaftPushMessageType.Sync, RaftPushMessageType.fromWire("sync"))
         assertEquals(RaftPushMessageType.Retract, RaftPushMessageType.fromWire("retract"))
+        assertEquals(RaftPushMessageType.Probe, RaftPushMessageType.fromWire("probe"))
         assertNull(RaftPushMessageType.fromWire("future_type"))
     }
 

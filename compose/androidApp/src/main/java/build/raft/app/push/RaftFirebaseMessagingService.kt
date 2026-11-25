@@ -41,13 +41,20 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
             return
         }
         when (raftFcmMessageDecision(data, alertsEnabled = { RaftNotificationAlertsPreference.isEnabled(applicationContext) })) {
+            RaftFcmMessageDecision.Probe -> {
+                val probeId = data["probeId"]?.trim().orEmpty()
+                AndroidFcmReachabilityController.onProbeReceived(applicationContext, probeId)
+                RaftAppLog.i(TAG, "fcm_message_handled type=probe probeIdPresent=${probeId.isNotEmpty()}")
+            }
             RaftFcmMessageDecision.Retract -> {
+                AndroidFcmReachabilityController.onRealFcmDelivered(applicationContext, source = "retract")
                 val retract = parseRaftFcmNotificationRetract(data)
                 val closed = retract?.let { AndroidUnreadNotificationPoster.retract(applicationContext, it) } ?: 0
                 applyServerBadge(data)
                 RaftAppLog.i(TAG, "fcm_message_handled type=retract parsed=${retract != null} closed=$closed")
             }
             RaftFcmMessageDecision.Sync -> {
+                AndroidFcmReachabilityController.onRealFcmDelivered(applicationContext, source = "sync")
                 // The launcher badge follows the tray (setNumber); a per-server sync updates that server's summary.
                 applyServerBadge(data)
                 RaftAppLog.i(TAG, "fcm_message_handled type=sync")
@@ -55,12 +62,16 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
             RaftFcmMessageDecision.DropUnknownType ->
                 RaftAppLog.i(TAG, "fcm_message_dropped reason=unknown_type")
             RaftFcmMessageDecision.DropAlertsDisabled -> {
+                AndroidFcmReachabilityController.onRealFcmDelivered(applicationContext, source = "alert_disabled")
                 // The second guard: the server already stops alerting a registration with alertsEnabled=false.
                 RaftAppLog.i(TAG, "fcm_message_suppressed reason=alerts_disabled")
                 // A Settings test answered at once instead of waiting out the 15 s.
                 data["testId"]?.takeIf { it.isNotBlank() }?.let { RaftNotificationTestAck.ack(it, shown = false) }
             }
-            RaftFcmMessageDecision.Alert -> postAlert(data)
+            RaftFcmMessageDecision.Alert -> {
+                AndroidFcmReachabilityController.onRealFcmDelivered(applicationContext, source = "alert")
+                postAlert(data)
+            }
         }
     }
 
@@ -122,18 +133,21 @@ internal enum class RaftFcmMessageDecision {
     Alert,
     Retract,
     Sync,
+    Probe,
     DropUnknownType,
     DropAlertsDisabled
 }
 
 /**
  * What one FCM data message does. [alertsEnabled] (the device's notifications switch) is read only
- * for an alert: a retraction or sync still applies when alerts are off, so a read conversation does
- * not linger and the badge stays right.
+ * for an alert: a retraction, sync or silent reachability probe still applies when alerts are off,
+ * so a read conversation does not linger, the badge stays right, and silent reachability probes
+ * confirm transport health without ever posting a notification.
  */
 internal fun raftFcmMessageDecision(data: Map<String, String>, alertsEnabled: () -> Boolean): RaftFcmMessageDecision =
     when (RaftPushMessageType.fromWire(data["type"])) {
         null -> RaftFcmMessageDecision.DropUnknownType
+        RaftPushMessageType.Probe -> RaftFcmMessageDecision.Probe
         RaftPushMessageType.Retract -> RaftFcmMessageDecision.Retract
         RaftPushMessageType.Sync -> RaftFcmMessageDecision.Sync
         RaftPushMessageType.Alert ->
