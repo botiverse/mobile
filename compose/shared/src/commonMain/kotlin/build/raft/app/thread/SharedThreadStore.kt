@@ -21,7 +21,6 @@ import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.withInboxFetchReason
 import build.raft.app.data.map
 import build.raft.app.data.realtime.isSyncHorizonReset
-import build.raft.app.data.realtime.RealtimeVisibleStreamGapPolicy
 import build.raft.app.data.realtime.RealtimeVisibleStreamGapRequest
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -35,11 +34,9 @@ import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.ThreadReplyUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.SyncResumeResponse
-import build.raft.app.network.sync.CanonicalMessageV2EnterBaseline
 import build.raft.app.network.sync.CanonicalMessageV2ThreadJoinConfirmed
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.SyncScopeKey
-import build.raft.app.network.sync.ThreadDurablePageDirection
 import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.ThreadDurableEnterTicket
 import build.raft.app.network.sync.ThreadDurableEnteredPage
@@ -355,7 +352,6 @@ internal class SharedThreadStore(
     private var routeStaleTokenValue = MviStaleToken.Initial.value
     private var nextThreadRepliesRebaselineGeneration: Long = 0L
     private val initialAccessStateMutex = Mutex()
-    private val realtimeGapRecoveryMutex = Mutex()
     private val inFlightRealtimeFoldLock = SynchronizedObject()
     private val inFlightRealtimeFolds = mutableListOf<InFlightRealtimeFold>()
 
@@ -425,7 +421,6 @@ internal class SharedThreadStore(
             )
         }
     }
-    private var realtimeGapRecoveryState: RealtimeGapRecoveryState? = null
     // The catch-up launched off the realtime authority lock ([launchRealtimeGapRecovery]); cancelled by [clear].
     private var realtimeGapRecoveryJob: Job? = null
     /** Test injection point: sees every catch-up job [launchRealtimeGapRecovery] starts, in launch order. */
@@ -451,13 +446,48 @@ internal class SharedThreadStore(
             routeStillCurrent = ::routeStillCurrent,
             launchSecondaryTimelineRefresh = ::launchSecondaryTimelineRefresh,
         )
-    private var loadNewerState: LoadNewerState? = null
-    private var nextRealtimeGapRecoveryId: Long = 0L
-    // Feedback 4409cbc5: a resume catch-up that fails was never asked again, so the thread kept showing its
-    // cached messages until the user left. Counts retryable catch-up failures; a fresh resume bumps the generation.
-    private var gapCatchUpRetryableFailures: Long = 0L
-    private var resumeCatchUpGeneration: Long = 0L
-    private var nextLoadNewerId: Long = 0L
+    /**
+     * Newer pages and realtime gap recovery (resume / heartbeat / join-ack catch-up); see
+     * [ThreadRealtimeGapRecovery]. It owns [realtimeGapRecoveryMutex] and the state it guards
+     * ([realtimeGapRecoveryState], [loadNewerState]). Realtime folding ([applyRealtimeEvent]), the
+     * join-ack check and refresh still read them here, through the accessors below, under the same Mutex.
+     * [realtimeGapRecoveryJob] stays here: [clear] cancels it.
+     */
+    private val threadRealtimeGapRecovery =
+        ThreadRealtimeGapRecovery(
+            dataSource = dataSource,
+            scope = scope,
+            diagnosticsLogger = diagnosticsLogger,
+            threadPaging = threadPaging,
+            currentState = { _state.value },
+            currentRouteStaleToken = { routeStaleToken },
+            currentVisiblePayloadOwnerScopeId = { visiblePayloadOwnerScopeId },
+            currentViewportFollowsLatest = { viewportFollowsLatest },
+            getRealtimeGapRecoveryJob = { realtimeGapRecoveryJob },
+            setRealtimeGapRecoveryJob = { realtimeGapRecoveryJob = it },
+            currentOnRealtimeGapRecoveryLaunchedForTest = { onRealtimeGapRecoveryLaunchedForTest },
+            reducePayloadPatch = ::reducePayloadPatch,
+            staleTokenStillCurrent = ::staleTokenStillCurrent,
+            routeStillCurrent = ::routeStillCurrent,
+            launchSecondaryTimelineRefresh = ::launchSecondaryTimelineRefresh,
+            markConversationAccessLost = ::markConversationAccessLost,
+        )
+    private val realtimeGapRecoveryMutex: Mutex
+        get() = threadRealtimeGapRecovery.realtimeGapRecoveryMutex
+    private var realtimeGapRecoveryState: RealtimeGapRecoveryState?
+        get() = threadRealtimeGapRecovery.realtimeGapRecoveryState
+        set(value) {
+            threadRealtimeGapRecovery.realtimeGapRecoveryState = value
+        }
+    private val loadNewerState: LoadNewerState?
+        get() = threadRealtimeGapRecovery.loadNewerState
+    private var nextRealtimeGapRecoveryId: Long
+        get() = threadRealtimeGapRecovery.nextRealtimeGapRecoveryId
+        set(value) {
+            threadRealtimeGapRecovery.nextRealtimeGapRecoveryId = value
+        }
+    private val gapCatchUpRetryableFailures: Long
+        get() = threadRealtimeGapRecovery.gapCatchUpRetryableFailures
     /** See [setViewportFollowsLatest]. */
     private var viewportFollowsLatest: Boolean = true
     private val pendingReactionRealtimeGuards = mutableMapOf<String, PendingReactionRealtimeGuard>()
@@ -468,7 +498,7 @@ internal class SharedThreadStore(
         val staleToken: MviStaleToken,
     )
 
-    private data class RealtimeGapRecoveryState(
+    internal data class RealtimeGapRecoveryState(
         val id: Long,
         val routeIdentity: ThreadRouteIdentity,
         val staleToken: MviStaleToken,
@@ -482,7 +512,7 @@ internal class SharedThreadStore(
         var backfillAfterRecovery: Boolean = false,
     )
 
-    private data class LoadNewerState(
+    internal data class LoadNewerState(
         val id: Long,
         val routeIdentity: ThreadRouteIdentity,
         val staleToken: MviStaleToken,
@@ -4373,7 +4403,7 @@ internal class SharedThreadStore(
         }
     }
 
-    private data class ReplyCountRealtimeGap(
+    internal data class ReplyCountRealtimeGap(
         val replyCount: Int
     )
 
@@ -4504,351 +4534,7 @@ internal class SharedThreadStore(
 
     private suspend fun fillTimelineGap(afterSeq: Long, beforeSeq: Long) = threadPaging.fillTimelineGap(afterSeq, beforeSeq)
 
-    suspend fun loadNewer(): ThreadNewerPageLoadOutcome {
-        val initial = _state.value.payload
-        if (!initial.canLoadMoreAfter || initial.newerMessagesStatus == "loading") {
-            return ThreadNewerPageLoadOutcome.Ignored
-        }
-        val afterSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()
-        if (afterSeq == null) {
-            reducePayloadPatch { currentPayload ->
-                currentPayload.copy(newerMessagesStatus = "error", errorCode = "missing_after_seq")
-            }
-            return ThreadNewerPageLoadOutcome.Failed
-        }
-        val staleToken = routeStaleToken
-        val routeIdentity = initial.realtimeGapRouteIdentity()
-        val loadId =
-            realtimeGapRecoveryMutex.withLock {
-                val currentPayload = _state.value.payload
-                val active = loadNewerState
-                val activeRecovery = realtimeGapRecoveryState
-                if (
-                    !staleToken.isCurrent(routeStaleToken) ||
-                    currentPayload.realtimeGapRouteIdentity() != routeIdentity ||
-                    (
-                        active != null &&
-                            active.routeIdentity == routeIdentity &&
-                            active.staleToken == staleToken
-                    ) ||
-                    (
-                        activeRecovery != null &&
-                            activeRecovery.routeIdentity == routeIdentity &&
-                            activeRecovery.staleToken == staleToken
-                    )
-                ) {
-                    null
-                } else {
-                    val id = ++nextLoadNewerId
-                    loadNewerState =
-                        LoadNewerState(
-                            id = id,
-                            routeIdentity = routeIdentity,
-                            staleToken = staleToken,
-                        )
-                    reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
-                        latestPayload.copy(newerMessagesStatus = "loading", errorCode = null)
-                    }
-                    id
-                }
-            } ?: return ThreadNewerPageLoadOutcome.Ignored
-        var successorRecovery: Pair<RaftThreadScreenPayload, RealtimeVisibleStreamGapRequest>? = null
-        var outcome: ThreadNewerPageLoadOutcome = ThreadNewerPageLoadOutcome.Ignored
-        try {
-            val localContext = dataSource.captureReplyCacheProducerContext()
-            val localNewerPage =
-                localContext?.let { context ->
-                    dataSource.durableNewerPageIfCurrent(
-                        routeIdentity = initial.resolveThreadRouteIdentity(),
-                        context = context,
-                        afterSeq = afterSeq,
-                        expectedOwnerScopeId = visiblePayloadOwnerScopeId,
-                        replyParent = initial.durableReplyParentOrNull(),
-                        crossGaps = initial.durableLastKnown,
-                    )
-                }?.takeIf { initial.durableLastKnown || it.insideProvenSegment }
-            if (localNewerPage != null) {
-                realtimeGapRecoveryMutex.withLock {
-                    val active =
-                        loadNewerState
-                            ?.takeIf { state -> state.id == loadId }
-                            ?: return@withLock
-                    val currentPayload = _state.value.payload
-                    if (
-                        !staleTokenStillCurrent(staleToken, "thread_page", "newer_local_apply", initial, currentPayload) ||
-                        !routeStillCurrent(initial, "thread_page", "newer_local_apply", currentPayload) ||
-                        currentPayload.durableLastKnown != initial.durableLastKnown
-                    ) {
-                        if (
-                            currentPayload.newerMessagesStatus == "loading" &&
-                            currentPayload.isUsableCachedPayloadForRoute(initial)
-                        ) {
-                            reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
-                                if (latestPayload.newerMessagesStatus == "loading") {
-                                    latestPayload.copy(newerMessagesStatus = "idle")
-                                } else {
-                                    latestPayload
-                                }
-                            }
-                        }
-                        loadNewerState = null
-                        return@withLock
-                    }
-                    val existingIds = currentPayload.messages.mapTo(mutableSetOf()) { it.id }
-                    var appliedToCurrentRoute = false
-                    var committedForCache: RaftThreadScreenPayload? = null
-                    reducePayloadPatch(cachePayload = false) { latestPayload ->
-                        if (
-                            !staleTokenStillCurrent(staleToken, "thread_page", "newer_local_commit", initial, latestPayload) ||
-                            !routeStillCurrent(initial, "thread_page", "newer_local_commit", latestPayload)
-                        ) {
-                            return@reducePayloadPatch latestPayload
-                        }
-                        appliedToCurrentRoute = true
-                        if (localNewerPage.messages.isEmpty()) {
-                            latestPayload.copy(
-                                canLoadMoreAfter = localNewerPage.canLoadMoreAfter,
-                                newerMessagesStatus = "idle",
-                            )
-                        } else {
-                            val merged =
-                                latestPayload
-                                    .mergePagedMessages(
-                                        pageMessages = localNewerPage.messages,
-                                        before = false,
-                                        pageSize = localNewerPage.pageSize,
-                                    )
-                                    .preserveStableTimelineFrom(latestPayload)
-                            val withGaps =
-                                merged.copy(
-                                    canLoadMoreAfter = localNewerPage.canLoadMoreAfter,
-                                    timelineGaps =
-                                        reconcileThreadTimelineGaps(
-                                            existingGaps = latestPayload.timelineGaps,
-                                            addedGaps = localNewerPage.gaps,
-                                            messages = merged.messages,
-                                        ),
-                                )
-                            if (latestPayload.durableLastKnown) {
-                                withGaps
-                            } else {
-                                committedForCache = withGaps
-                                withGaps
-                                    .withRouteContext(initial)
-                                    .preserveStableTimelineFrom(latestPayload)
-                            }
-                        }
-                    }
-                    if (appliedToCurrentRoute) {
-                        localNewerPage.scope?.let { readScope ->
-                            scope.launch { dataSource.touchDurableUserAccess(readScope) }
-                        }
-                        committedForCache?.let { committed ->
-                            dataSource.cacheCanonicalPayload(committed, visiblePayloadOwnerScopeId)
-                        }
-                        val appliedIds = _state.value.payload.messages.mapTo(mutableSetOf()) { it.id }
-                        val addedMessageIds =
-                            localNewerPage.messages
-                                .map { it.id }
-                                .filter { id -> id.isNotBlank() && id !in existingIds && id in appliedIds }
-                                .distinct()
-                        outcome =
-                            if (addedMessageIds.isEmpty()) {
-                                ThreadNewerPageLoadOutcome.Empty
-                            } else {
-                                ThreadNewerPageLoadOutcome.Applied(addedMessageIds)
-                            }
-                    }
-                    loadNewerState = null
-                    val pageMaxSeq = localNewerPage.messages.mapNotNull { it.seq }.maxOrNull() ?: afterSeq
-                    val pendingTarget = active.pendingTargetSeq
-                    if (appliedToCurrentRoute && pendingTarget != null && pendingTarget > pageMaxSeq) {
-                        val streamChannelId =
-                            currentPayload.sourceThreadId
-                                ?.takeIf { it.isNotBlank() }
-                                ?.let(::ChannelId)
-                                ?: currentPayload.streamChannelId
-                                    ?.takeIf { it.isNotBlank() }
-                                    ?.let(::ChannelId)
-                        if (streamChannelId != null) {
-                            successorRecovery =
-                                _state.value.payload to
-                                    RealtimeVisibleStreamGapRequest(
-                                        channelId = streamChannelId,
-                                        sinceSeq = pageMaxSeq,
-                                        serverSeq = pendingTarget,
-                                    )
-                        }
-                    }
-                }
-            } else {
-                val result = dataSource.fetchNewerThreadPayload(initial, afterSeq)
-                realtimeGapRecoveryMutex.withLock {
-                    val active =
-                        loadNewerState
-                            ?.takeIf { state -> state.id == loadId }
-                            ?: return@withLock
-                    val currentPayload = _state.value.payload
-                    if (
-                        !staleTokenStillCurrent(
-                            staleToken,
-                            "thread_page",
-                            "newer_after_fetch",
-                            initial,
-                            currentPayload,
-                        ) ||
-                        !routeStillCurrent(
-                            initial,
-                            "thread_page",
-                            "newer_after_fetch",
-                            currentPayload,
-                        )
-                    ) {
-                        if (
-                            currentPayload.newerMessagesStatus == "loading" &&
-                            currentPayload.isUsableCachedPayloadForRoute(initial)
-                        ) {
-                            reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
-                                if (latestPayload.newerMessagesStatus == "loading") {
-                                    latestPayload.copy(newerMessagesStatus = "idle")
-                                } else {
-                                    latestPayload
-                                }
-                            }
-                        }
-                        loadNewerState = null
-                        return@withLock
-                    }
-                    val pageMaxSeq =
-                        when (result) {
-                            is DataResult.Content ->
-                                result.data.payload.messages.mapNotNull { message -> message.seq }.maxOrNull() ?: afterSeq
-                            else -> afterSeq
-                        }
-                    val nextPayload =
-                        when (result) {
-                            is DataResult.Content -> {
-                                val mergedRaw =
-                                    currentPayload
-                                        .mergePagedMessages(
-                                            pageMessages = result.data.payload.messages,
-                                            before = false,
-                                            pageSize = result.data.requestedPageSize,
-                                            rawServerRowCount = result.data.rawServerRowCount,
-                                        )
-                                        .preserveStableTimelineFrom(currentPayload)
-                                val merged =
-                                    mergedRaw.copy(
-                                        timelineGaps =
-                                            reconcileThreadTimelineGaps(
-                                                existingGaps = mergedRaw.timelineGaps,
-                                                addedGaps = emptyList(),
-                                                messages = mergedRaw.messages,
-                                            ),
-                                    )
-                                (if (currentPayload.durableLastKnown) merged else dataSource.cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId))
-                                    .withRouteContext(initial)
-                                    .preserveStableTimelineFrom(currentPayload)
-                            }
-                            is DataResult.Empty ->
-                                currentPayload.copy(canLoadMoreAfter = false, newerMessagesStatus = "idle")
-                            is DataResult.Error ->
-                                currentPayload.copy(newerMessagesStatus = "error", errorCode = result.error.code, errorTraceId = result.error.traceId)
-                            is DataResult.NoPermission ->
-                                currentPayload.copy(newerMessagesStatus = "error", errorCode = result.blocker.code, errorTraceId = result.blocker.traceId)
-                        }
-                    var appliedToCurrentRoute = false
-                    reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
-                        if (
-                            !staleTokenStillCurrent(
-                                staleToken,
-                                "thread_page",
-                                "newer_apply",
-                                initial,
-                                latestPayload,
-                            ) ||
-                            !routeStillCurrent(
-                                initial,
-                                "thread_page",
-                                "newer_apply",
-                                latestPayload,
-                            )
-                        ) {
-                            return@reducePayloadPatch latestPayload
-                        }
-                        appliedToCurrentRoute = true
-                        latestPayload.withThreadContentProjectionFrom(nextPayload)
-                    }
-                    if (appliedToCurrentRoute && result is DataResult.Content) {
-                        threadPaging.launchDurableWindowExtension(initial, result.data, ThreadDurablePageDirection.Newer, afterSeq)
-                    }
-                    if (appliedToCurrentRoute) {
-                        outcome =
-                            when (result) {
-                                is DataResult.Content -> {
-                                    val existingIds = currentPayload.messages.mapTo(mutableSetOf()) { it.id }
-                                    val appliedIds = _state.value.payload.messages.mapTo(mutableSetOf()) { it.id }
-                                    val addedMessageIds =
-                                        result.data.payload.messages
-                                            .map { it.id }
-                                            .filter { id -> id.isNotBlank() && id !in existingIds && id in appliedIds }
-                                            .distinct()
-                                    if (addedMessageIds.isEmpty()) {
-                                        ThreadNewerPageLoadOutcome.Empty
-                                    } else {
-                                        ThreadNewerPageLoadOutcome.Applied(addedMessageIds)
-                                    }
-                                }
-                                is DataResult.Empty -> ThreadNewerPageLoadOutcome.Empty
-                                is DataResult.Error,
-                                is DataResult.NoPermission -> ThreadNewerPageLoadOutcome.Failed
-                            }
-                    }
-                    loadNewerState = null
-                    val pendingTarget = active.pendingTargetSeq
-                    if (pendingTarget != null && pendingTarget > pageMaxSeq) {
-                        val streamChannelId =
-                            currentPayload.sourceThreadId
-                                ?.takeIf { it.isNotBlank() }
-                                ?.let(::ChannelId)
-                                ?: currentPayload.streamChannelId
-                                    ?.takeIf { it.isNotBlank() }
-                                    ?.let(::ChannelId)
-                        if (streamChannelId != null) {
-                            successorRecovery =
-                                _state.value.payload to
-                                    RealtimeVisibleStreamGapRequest(
-                                        channelId = streamChannelId,
-                                        sinceSeq = pageMaxSeq,
-                                        serverSeq = pendingTarget,
-                                    )
-                        }
-                    }
-                }
-            }
-        } finally {
-            realtimeGapRecoveryMutex.withLock {
-                val active = loadNewerState?.takeIf { state -> state.id == loadId }
-                if (active != null) {
-                    loadNewerState = null
-                    val currentPayload = _state.value.payload
-                    if (
-                        active.staleToken == routeStaleToken &&
-                        active.routeIdentity == currentPayload.realtimeGapRouteIdentity() &&
-                        currentPayload.newerMessagesStatus == "loading"
-                    ) {
-                        reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
-                            latestPayload.copy(newerMessagesStatus = "idle")
-                        }
-                    }
-                }
-            }
-        }
-        successorRecovery?.let { (successorInitial, request) ->
-            recoverRealtimeGap(successorInitial, request, staleToken)
-        }
-        return outcome
-    }
+    suspend fun loadNewer(): ThreadNewerPageLoadOutcome = threadRealtimeGapRecovery.loadNewer()
 
     /**
      * Replaces a focused/windowed timeline with the canonical tail in one request.
@@ -4929,590 +4615,26 @@ internal class SharedThreadStore(
         return outcome
     }
 
-    private suspend fun recoverRealtimeGap(serverSeq: Long) {
-        val initial = _state.value.payload
-        val staleToken = routeStaleToken
-        val streamChannelId =
-            initial.sourceThreadId
-                ?.takeIf { it.isNotBlank() }
-                ?.let(::ChannelId)
-                ?: initial.streamChannelId
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let(::ChannelId)
-        val nextRequest =
-            RealtimeVisibleStreamGapPolicy.syncRequest(
-                channelId = streamChannelId,
-                visibleMaxSeq = initial.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L,
-                serverSeq = serverSeq,
-                loading = false,
-            ) ?: return
-        // Heartbeats arrive through the realtime sink, under the realtime authority lock.
-        recoverRealtimeGap(initial, nextRequest, staleToken, launchCatchUp = true)
-    }
+    private suspend fun recoverRealtimeGap(serverSeq: Long) = threadRealtimeGapRecovery.recoverRealtimeGap(serverSeq)
 
-    private suspend fun recoverRealtimeGapFromVisibleTail(replyCountGap: ReplyCountRealtimeGap) {
-        val initial = _state.value.payload
-        val staleToken = routeStaleToken
-        val streamChannelId =
-            initial.sourceThreadId
-                ?.takeIf { it.isNotBlank() }
-                ?.let(::ChannelId)
-                ?: initial.streamChannelId
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let(::ChannelId)
-                ?: return
-        val sinceSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()?.takeIf { it > 0L } ?: return
-        if (initial.newerMessagesStatus == "loading") return
-        recoverRealtimeGap(
-            initial = initial,
-            initialRequest =
-                RealtimeVisibleStreamGapRequest(
-                    channelId = streamChannelId,
-                    sinceSeq = sinceSeq,
-                    serverSeq = sinceSeq + replyCountGap.replyCount.toLong().coerceAtLeast(1L)
-            ),
-            staleToken = staleToken,
-            // Reached from [applyRealtimeEvent], under the realtime authority lock.
-            launchCatchUp = true,
-        )
-    }
+    private suspend fun recoverRealtimeGapFromVisibleTail(replyCountGap: ReplyCountRealtimeGap) =
+        threadRealtimeGapRecovery.recoverRealtimeGapFromVisibleTail(replyCountGap)
 
-    private suspend fun refreshLatestAfterVisibleMaxSeq(retryAttempt: Int = 0) {
-        val generation = if (retryAttempt == 0) ++resumeCatchUpGeneration else resumeCatchUpGeneration
-        val initial = _state.value.payload
-        val staleToken = routeStaleToken
-        val streamChannelId =
-            initial.sourceThreadId
-                ?.takeIf { it.isNotBlank() }
-                ?.let(::ChannelId)
-                ?: initial.streamChannelId
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let(::ChannelId)
-                ?: return
-        val sinceSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()?.takeIf { it > 0L } ?: return
-        if (initial.newerMessagesStatus == "loading") return
-        val failuresBefore = gapCatchUpRetryableFailures
-        recoverRealtimeGap(
-            initial = initial,
-            initialRequest =
-                RealtimeVisibleStreamGapRequest(
-                    channelId = streamChannelId,
-                    sinceSeq = sinceSeq,
-                    serverSeq = sinceSeq + 1L
-                ),
-            staleToken = staleToken,
-            // Replies posted while backgrounded are not top-level messages, so the sync above can come
-            // back empty while reply counts are stale (ad1df6b7): always re-read the reply summaries.
-            backfillAfterRecovery = true,
-        )
-        if (gapCatchUpRetryableFailures == failuresBefore || retryAttempt >= RESUME_CATCH_UP_MAX_RETRIES) return
-        if (!staleToken.isCurrent(routeStaleToken)) return
-        diagnosticsLogger?.invoke(
-            "thread_resume_catchup_retry_scheduled threadId=${initial.sourceThreadId.orEmpty()} " +
-                "attempt=${retryAttempt + 1}"
-        )
-        scope.launch {
-            delay(resumeCatchUpRetryDelayMs(retryAttempt))
-            // A newer resume already asked again; the route changing is checked by the refresh itself.
-            if (generation != resumeCatchUpGeneration || !staleToken.isCurrent(routeStaleToken)) return@launch
-            refreshLatestAfterVisibleMaxSeq(retryAttempt + 1)
-        }
-    }
+    private suspend fun refreshLatestAfterVisibleMaxSeq() = threadRealtimeGapRecovery.refreshLatestAfterVisibleMaxSeq()
 
     private suspend fun recoverRealtimeGap(
         initial: RaftThreadScreenPayload,
         initialRequest: RealtimeVisibleStreamGapRequest,
         staleToken: MviStaleToken,
-        backfillAfterRecovery: Boolean = false,
-        /**
-         * `true` when called under the realtime authority lock (the realtime sink): the recovery is
-         * registered here and its catch-up fetch runs on the store scope, so the lock is not held for the
-         * network round trip. `false` (resume) awaits the catch-up, which the retry accounting needs.
-         */
-        launchCatchUp: Boolean = false,
-    ) {
-        // The page is leaving: a catch-up already proved this account can no longer read it (web
-        // #12696 stops the heartbeat's sync for a channel it was removed from).
-        if (_state.value.conversationAccessLost) return
-        val routeIdentity = initial.realtimeGapRouteIdentity()
-        var requestSnapshot: RaftThreadScreenPayload? = null
-        val recoveryId =
-            realtimeGapRecoveryMutex.withLock {
-                val currentPayload = _state.value.payload
-                if (
-                    !staleToken.isCurrent(routeStaleToken) ||
-                    currentPayload.realtimeGapRouteIdentity() != routeIdentity ||
-                    !routeStillCurrent(
-                        initial,
-                        "thread_realtime_gap",
-                        "start",
-                        currentPayload,
-                    )
-                ) {
-                    return@withLock null
-                }
-                val active = realtimeGapRecoveryState
-                val pagination = loadNewerState
-                if (
-                    active != null &&
-                    active.routeIdentity == routeIdentity &&
-                    active.staleToken == staleToken
-                ) {
-                    if (initialRequest.serverSeq > active.targetSeq) {
-                        active.targetSeq = initialRequest.serverSeq
-                        active.targetVersion += 1L
-                    }
-                    if (backfillAfterRecovery) active.backfillAfterRecovery = true
-                    null
-                } else if (
-                    pagination != null &&
-                    pagination.routeIdentity == routeIdentity &&
-                    pagination.staleToken == staleToken
-                ) {
-                    if (initialRequest.serverSeq > (pagination.pendingTargetSeq ?: 0L)) {
-                        pagination.pendingTargetSeq = initialRequest.serverSeq
-                    }
-                    null
-                } else {
-                    val id = ++nextRealtimeGapRecoveryId
-                    realtimeGapRecoveryState =
-                        RealtimeGapRecoveryState(
-                            id = id,
-                            routeIdentity = routeIdentity,
-                            staleToken = staleToken,
-                            targetSeq = initialRequest.serverSeq,
-                            targetVersion = 1L,
-                            backfillAfterRecovery = backfillAfterRecovery,
-                        )
-                    requestSnapshot = currentPayload
-                    reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
-                        latestPayload.copy(newerMessagesStatus = "loading", errorCode = null)
-                    }
-                    id
-                }
-            } ?: return
-        val snapshot = requestSnapshot ?: return
-        if (launchCatchUp) {
-            launchRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId, snapshot)
-        } else {
-            runRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId, snapshot)
-        }
-    }
+    ) = threadRealtimeGapRecovery.recoverRealtimeGap(initial, initialRequest, staleToken)
 
-    /**
-     * Runs [runRealtimeGapRecovery] on the store scope instead of the caller. Used where the caller holds
-     * the process-wide realtime authority lock (Hands bc6e392e): the recovery is already registered in
-     * [realtimeGapRecoveryState], so live events applied while the fetch is in flight join it through the
-     * `in_flight_gap` branch of [applyRealtimeEvent], and the result merges under the same recovery
-     * mutex and stale-token / route fences as before.
-     */
     private fun launchRealtimeGapRecovery(
         initial: RaftThreadScreenPayload,
         initialRequest: RealtimeVisibleStreamGapRequest,
         staleToken: MviStaleToken,
         recoveryId: Long,
         requestSnapshot: RaftThreadScreenPayload,
-    ) {
-        val job =
-            scope.launch(start = CoroutineStart.LAZY) {
-                try {
-                    runRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId, requestSnapshot)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (throwable: Throwable) {
-                    // Inline, this propagated into the realtime sink; on the store scope it would reach the
-                    // uncaught handler. The recovery's finally has already released its state.
-                    diagnosticsLogger?.invoke(
-                        "thread_realtime_gap_recovery_failed threadId=${initial.sourceThreadId.orEmpty()} " +
-                            "reason=${throwable::class.simpleName ?: "unknown"}"
-                    )
-                }
-            }
-        realtimeGapRecoveryJob = job
-        onRealtimeGapRecoveryLaunchedForTest?.invoke(job)
-        job.start()
-    }
-
-    /**
-     * Gap catch-up (task #168 step 1, product decision "option A"): at most TWO latest-page requests
-     * ([SharedThreadDataSource.fetchGapCatchUpLatestPage]) — the thread page size first, the 200 page
-     * only when the anchor is not on it — and never a loop. Small vs large gap is the explicit FACT
-     * "does the page contain the anchor message" — the newest server-backed message this timeline had
-     * when the request was made ([gapCatchUpAnchorMessageId]). Seqs are server-global and never decide
-     * it. The page that ended the decision is the one merged / shown / offered to the durable window.
-     *
-     * - Anchor on the page (small gap): the page overlaps the timeline, so it is merged as before
-     *   (no hole). The durable window is offered the page and extends its newest edge.
-     * - Anchor absent (large gap): the missing span is wider than one page. When the viewport
-     *   follows the latest message the timeline is replaced by the page the way channel open does
-     *   (older paging fills the rest); when the user has scrolled up, the visible timeline is kept
-     *   and only marked as detached from the tail (`canLoadMoreAfter`), so the existing ↓ button
-     *   ([jumpToLatest]) or newer paging takes them forward without yanking the viewport. The
-     *   durable window is replaced by the page either way (`window_replaced`).
-     *
-     * The final response either commits under the recovery mutex or nothing changes: a failure at
-     * either step, a stale route or a cancellation leaves the timeline (and the durable window) as it was.
-     */
-    private suspend fun runRealtimeGapRecovery(
-        initial: RaftThreadScreenPayload,
-        @Suppress("UNUSED_PARAMETER") initialRequest: RealtimeVisibleStreamGapRequest,
-        staleToken: MviStaleToken,
-        recoveryId: Long,
-        /**
-         * The timeline as it was when this recovery was registered. The request (anchor, known ids) is
-         * built from it rather than from the payload at fetch start: once the fetch runs off the realtime
-         * lock, live events may land in between through `in_flight_gap`, and a newer live message must
-         * not become the anchor (it would hide the hole below it) nor count as "known before the fetch".
-         */
-        requestSnapshot: RaftThreadScreenPayload,
-    ) {
-        // Set when the response merged (or replaced in) messages the timeline did not have. Resume
-        // arrivals land here, but nothing else re-triggers the secondary (thread summary / followed)
-        // refresh that the initial route load performs (task #317).
-        var mergedNewArrivals = false
-        // Copied from this recovery's state while it is live: a resume that coalesced into it may have set it.
-        var backfillRequested = false
-        var durableOffer: SharedThreadPageFetchResult? = null
-        // Task #168 step 3: registered before the first fetch; handed to the durable write or abandoned.
-        var durableBaseline: CanonicalMessageV2EnterBaseline? = null
-        // Message storage Phase 2b: the durable write revision before the catch-up's fetch (its page's revAtRequest).
-        var durableRevAtRequest: Long? = null
-        var recoveryCompleted = false
-        // Set when the catch-up answered that this account lost the conversation (removed from the
-        // channel: web's exact denials, see [isChannelAccessDenial]); the page then leaves, as after refresh.
-        var accessLost = false
-        var accessProvenance: ReplyCacheProvenance? = null
-        try {
-            val requestPayload =
-                realtimeGapRecoveryMutex.withLock {
-                    val active =
-                        realtimeGapRecoveryState
-                            ?.takeIf { state -> state.id == recoveryId }
-                            ?: return@withLock null
-                    val currentPayload = _state.value.payload
-                    if (
-                        !staleToken.isCurrent(routeStaleToken) ||
-                        active.routeIdentity != currentPayload.realtimeGapRouteIdentity() ||
-                        !routeStillCurrent(
-                            initial,
-                            "thread_realtime_gap",
-                            "before_fetch",
-                            currentPayload,
-                        )
-                    ) {
-                        realtimeGapRecoveryState = null
-                        return@withLock null
-                    }
-                    requestSnapshot
-                } ?: return
-            accessProvenance = dataSource.currentReplyCacheProvenance()
-            val anchorMessageId = requestPayload.gapCatchUpAnchorMessageId()
-            val requestMessageIds = requestPayload.messages.mapTo(mutableSetOf()) { it.id }
-            // Two steps, one outcome (nothing is committed before the decision is final): the cheap page
-            // first; only when the anchor is not on it, the enter snapshot's page. Either step failing
-            // ends the recovery with no timeline change.
-            durableBaseline =
-                dataSource.beginDurableLatestPageBaselineIfCurrent(
-                    initial.resolveThreadRouteIdentity(),
-                    initial.durableReplyParentOrNull(),
-                )
-            durableRevAtRequest = dataSource.durableLocalRevIfCurrent()
-            val narrow = dataSource.fetchGapCatchUpLatestPage(requestPayload, wide = false)
-            val anchorOnNarrowPage =
-                narrow is DataResult.Content &&
-                    anchorMessageId != null &&
-                    narrow.data.payload.messages.any { message -> message.id == anchorMessageId }
-            val result =
-                if (narrow is DataResult.Content && !anchorOnNarrowPage && narrow.data.payload.messages.isNotEmpty()) {
-                    dataSource.fetchGapCatchUpLatestPage(requestPayload, wide = true)
-                } else {
-                    narrow
-                }
-            val catchUpSteps = if (result === narrow) 1 else 2
-            realtimeGapRecoveryMutex.withLock {
-                val recovery =
-                    realtimeGapRecoveryState
-                        ?.takeIf { state -> state.id == recoveryId }
-                        ?: return@withLock
-                // Read before any branch below clears the state; a resume that coalesced mid-fetch set it.
-                if (recovery.backfillAfterRecovery) backfillRequested = true
-                realtimeGapRecoveryState = null
-                val currentPayload = _state.value.payload
-                if (
-                    !staleTokenStillCurrent(
-                        staleToken,
-                        "thread_realtime_gap",
-                        "after_fetch",
-                        initial,
-                        currentPayload,
-                    ) ||
-                    !routeStillCurrent(
-                        initial,
-                        "thread_realtime_gap",
-                        "after_fetch",
-                        currentPayload,
-                    )
-                ) {
-                    return@withLock
-                }
-                // An empty latest page answers nothing about the gap (it carries no anchor to test and no
-                // message to show): it is handled like the repository's `Empty`, the timeline is kept.
-                val catchUpResult =
-                    if (result is DataResult.Content && result.data.payload.messages.isEmpty()) {
-                        DataResult.Empty(EmptyReason.NoMessages)
-                    } else {
-                        result
-                    }
-                when (catchUpResult) {
-                    is DataResult.Content -> {
-                        val pageMessages = catchUpResult.data.payload.messages
-                        val decision =
-                            gapCatchUpDecision(
-                                anchorMessageId = anchorMessageId,
-                                pageMessageIds = pageMessages.map { it.id },
-                                // A focused / context window (`canLoadMoreAfter`) is already detached
-                                // from the tail; a large gap never swaps it for the latest page.
-                                timelineAtTail = !requestPayload.canLoadMoreAfter,
-                                viewportFollowsLatest = viewportFollowsLatest,
-                            )
-                        val currentIds = currentPayload.messages.mapTo(mutableSetOf()) { it.id }
-                        val next =
-                            when (decision) {
-                                GapCatchUpDecision.MergeAtNewestEdge ->
-                                    currentPayload
-                                        .mergePagedMessages(
-                                            pageMessages = pageMessages,
-                                            before = false,
-                                            pageSize = catchUpResult.data.requestedPageSize
-                                        )
-                                        .preserveStableTimelineFrom(currentPayload)
-                                        .copy(
-                                            canLoadMoreAfter = false,
-                                            newerMessagesStatus = "idle",
-                                        )
-                                GapCatchUpDecision.ReplaceWithLatestPage -> {
-                                    // Messages that reached this timeline by realtime WHILE the request
-                                    // was in flight (not on screen when it was made, not on the page)
-                                    // are newer than the page snapshot: keep them on top of it.
-                                    val arrivedDuringFetch =
-                                        currentPayload.messages.filter { message ->
-                                            message.id !in requestMessageIds &&
-                                                message.seq != null &&
-                                                pageMessages.none { it.id == message.id }
-                                        }
-                                    catchUpResult.data.payload
-                                        .copy(
-                                            messages =
-                                                (pageMessages + arrivedDuringFetch)
-                                                    .distinctBy { it.id }
-                                                    .sortedByThreadTimeline(),
-                                            status = "content",
-                                            errorCode = null,
-                                            errorServerMessage = null,
-                                            errorTraceId = null,
-                                            canLoadMoreAfter = false,
-                                            newerMessagesStatus = "idle",
-                                            olderMessagesStatus = "idle",
-                                        )
-                                        .withRouteContext(initial)
-                                        .preserveStableTimelineFrom(currentPayload)
-                                }
-                                GapCatchUpDecision.DetachFromTail ->
-                                    currentPayload.copy(
-                                        canLoadMoreAfter = true,
-                                        newerMessagesStatus = "idle",
-                                    )
-                            }
-                        val selected =
-                            (if (next.durableLastKnown) next else dataSource.cacheCanonicalPayload(next, visiblePayloadOwnerScopeId))
-                                .withRouteContext(initial)
-                                .preserveStableTimelineFrom(currentPayload)
-                        var applied = false
-                        reducePayloadPatch { latestPayload ->
-                            if (
-                                !staleTokenStillCurrent(
-                                    staleToken,
-                                    "thread_realtime_gap",
-                                    "apply",
-                                    initial,
-                                    latestPayload,
-                                ) ||
-                                !routeStillCurrent(
-                                    initial,
-                                    "thread_realtime_gap",
-                                    "apply",
-                                    latestPayload,
-                                )
-                            ) {
-                                return@reducePayloadPatch latestPayload
-                            }
-                            applied = true
-                            latestPayload.withThreadContentProjectionFrom(selected)
-                        }
-                        val added = pageMessages.count { message -> message.id !in currentIds }
-                        diagnosticsLogger?.invoke(
-                            "thread_gap_catchup threadId=${initial.sourceThreadId.orEmpty()} " +
-                                "decision=${decision.wireName} anchorOnPage=${anchorMessageId != null && pageMessages.any { it.id == anchorMessageId }} " +
-                                "steps=$catchUpSteps pageMessages=${pageMessages.size} added=$added applied=$applied"
-                        )
-                        if (!applied) return@withLock
-                        if (decision != GapCatchUpDecision.DetachFromTail && added > 0) {
-                            mergedNewArrivals = true
-                        }
-                        // The durable window is offered the page whenever it brought something the
-                        // timeline lacked (an all-known page — the common heartbeat case — writes nothing).
-                        // With a realtime baseline registered the page is always offered: committing it is
-                        // what makes the viewed channel's window continuous again (task #168 step 3).
-                        if (added > 0 || durableBaseline != null) durableOffer = catchUpResult.data
-                    }
-                    is DataResult.Empty -> {
-                        reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
-                            latestPayload.copy(
-                                canLoadMoreAfter = false,
-                                newerMessagesStatus = "idle",
-                            )
-                        }
-                    }
-                    is DataResult.Error -> {
-                        if (catchUpResult.isChannelAccessDenial()) {
-                            accessLost = true
-                            markConversationAccessLost(catchUpResult.error.code)
-                        } else {
-                            if (catchUpResult.error.retryable) gapCatchUpRetryableFailures += 1L
-                            reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
-                                latestPayload.copy(
-                                    newerMessagesStatus = "error",
-                                    errorCode = catchUpResult.error.code,
-                                    errorTraceId = catchUpResult.error.traceId,
-                                )
-                            }
-                        }
-                    }
-                    is DataResult.NoPermission -> {
-                        if (catchUpResult.isChannelAccessDenial()) {
-                            accessLost = true
-                            markConversationAccessLost(catchUpResult.blocker.code)
-                        } else {
-                            reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
-                                latestPayload.copy(
-                                    newerMessagesStatus = "error",
-                                    errorCode = catchUpResult.blocker.code,
-                                    errorTraceId = catchUpResult.blocker.traceId,
-                                )
-                            }
-                        }
-                    }
-                }
-                if (accessLost) {
-                    diagnosticsLogger?.invoke(
-                        "thread_gap_catchup_access_lost threadId=${initial.sourceThreadId.orEmpty()} " +
-                            "result=${catchUpResult.diagnosticsResultReason()}"
-                    )
-                }
-            }
-            recoveryCompleted = true
-        } finally {
-            // A failure or cancellation never reaches the durable write below.
-            if (!recoveryCompleted) durableBaseline?.let { dataSource.abandonDurableLatestPageBaseline(it) }
-            // NonCancellable: a cancelled launched recovery ([clear]) must still release its state, or a
-            // leaked owner would park later gaps and the join catch-up (`catch_up_in_flight`).
-            withContext(NonCancellable) {
-                realtimeGapRecoveryMutex.withLock {
-                    val active = realtimeGapRecoveryState?.takeIf { state -> state.id == recoveryId }
-                    if (active?.backfillAfterRecovery == true) backfillRequested = true
-                    if (active != null) {
-                        realtimeGapRecoveryState = null
-                        val currentPayload = _state.value.payload
-                        if (
-                            active.staleToken == routeStaleToken &&
-                            active.routeIdentity == currentPayload.realtimeGapRouteIdentity() &&
-                            currentPayload.newerMessagesStatus == "loading"
-                        ) {
-                            reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
-                                latestPayload.copy(newerMessagesStatus = "idle")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        val offer = durableOffer
-        if (offer != null) {
-            launchDurableLatestPageWrite(initial, offer, durableBaseline, durableRevAtRequest)
-        } else {
-            durableBaseline?.let { dataSource.abandonDurableLatestPageBaseline(it) }
-        }
-        if (accessLost) {
-            // Same as refresh: drop memory + durable cache for this conversation; no backfill follows.
-            accessProvenance?.let { provenance -> dataSource.evictLostConversationAccess(initial, provenance) }
-            return
-        }
-        if (!mergedNewArrivals && !backfillRequested) return
-        val latest = _state.value.payload
-        if (
-            !staleTokenStillCurrent(
-                staleToken,
-                "thread_secondary_backfill",
-                "after_gap_recovery",
-                initial,
-                latest,
-            ) ||
-            !routeStillCurrent(
-                initial,
-                "thread_secondary_backfill",
-                "after_gap_recovery",
-                latest,
-            )
-        ) {
-            return
-        }
-        diagnosticsLogger?.invoke(
-            "thread_secondary_backfill threadId=${initial.sourceThreadId.orEmpty()} " +
-                "trigger=${if (mergedNewArrivals) "resume_gap" else "resume"}"
-        )
-        launchSecondaryTimelineRefresh(initial, staleToken, fetchReason = InboxFetchReason.Visibility)
-    }
-
-    /**
-     * Offline cache gap catch-up entry (task #168 step 1): offer the applied catch-up page to the
-     * durable V2 window. Fire-and-forget on the store scope like the paging extender: it never
-     * touches the visible payload, and a failure is only logged.
-     */
-    private fun launchDurableLatestPageWrite(
-        routePayload: RaftThreadScreenPayload,
-        fetched: SharedThreadPageFetchResult,
-        baseline: CanonicalMessageV2EnterBaseline? = null,
-        revAtRequest: Long? = null,
-    ) {
-        val routeIdentity = routePayload.resolveThreadRouteIdentity()
-        val replyParent = routePayload.durableReplyParentOrNull()
-        // With a baseline, UNDISPATCHED: the body (and its finally) always runs, so the baseline is always
-        // closed even when the scope is already cancelled. Without one, unchanged.
-        scope.launch(start = if (baseline != null) CoroutineStart.UNDISPATCHED else CoroutineStart.DEFAULT) {
-            try {
-                val durablePage = fetched.durablePage
-                if (durablePage == null) {
-                    baseline?.let { dataSource.abandonDurableLatestPageBaseline(it) }
-                    return@launch
-                }
-                dataSource.applyDurableLatestPageIfCurrent(
-                    routeIdentity = routeIdentity,
-                    context = durablePage.context,
-                    rawPage = durablePage.rawPage,
-                    replyParent = replyParent,
-                    baseline = baseline,
-                    headEpochAtRequest = durablePage.headEpochAtRequest,
-                    revAtRequest = revAtRequest,
-                )
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (throwable: Throwable) {
-                diagnosticsLogger?.invoke(
-                    "thread_durable_latest_page_failed reason=${throwable::class.simpleName ?: "unknown"}"
-                )
-            }
-        }
-    }
+    ) = threadRealtimeGapRecovery.launchRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId, requestSnapshot)
 
     /**
      * Viewport fact reported by the thread list (task #168 step 1): `true` while the list follows
