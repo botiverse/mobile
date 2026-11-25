@@ -22,7 +22,7 @@ class RaftArtifactViewerHostHeadTest {
     private val id = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
     private val other = "pt_0b6d3c1e-9a2f-4c7e-8d11-2f3a4b5c6d7e"
     private val channel = "c0c0c0c0-0000-4000-8000-000000000001"
-    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,copy-link,share-link&hostOpen=message"
+    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,open-in-browser,copy-link,share-link&hostOpen=message"
     private val maya = RaftArtifactViewerScope(web, env, "user-maya", "server-northwind")
     private val token = "access-token-1"
 

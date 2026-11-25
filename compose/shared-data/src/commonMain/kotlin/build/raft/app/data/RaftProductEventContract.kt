@@ -667,6 +667,26 @@ data class RaftPageViewedProperties(
     @SerialName("settings_tab") val settingsTab: RaftSettingsTab? = null,
 )
 
+/** Action on the temporary Artifact viewer "Open in browser" entry (`artifact_open_in_browser`, #proj-mobile:#364). */
+@Serializable
+enum class RaftArtifactOpenInBrowserAction(val wire: String) {
+    @SerialName("shown") Shown("shown"),
+    @SerialName("clicked") Clicked("clicked"),
+}
+
+/** Which bar hosted the Artifact viewer "Open in browser" entry (`artifact_open_in_browser`, #proj-mobile:#364). */
+@Serializable
+enum class RaftArtifactOpenInBrowserSurface(val wire: String) {
+    @SerialName("native_bar") NativeBar("native_bar"),
+    @SerialName("web_bar") WebBar("web_bar"),
+}
+
+@Serializable
+data class RaftArtifactOpenInBrowserProperties(
+    val action: RaftArtifactOpenInBrowserAction,
+    val surface: RaftArtifactOpenInBrowserSurface,
+)
+
 /** One typed registry event. [name] is the registry key; properties are encoded from the typed DTO. */
 sealed class RaftProductEvent<P>(val name: String, private val serializer: KSerializer<P>) {
     abstract val properties: P
@@ -747,6 +767,13 @@ sealed class RaftProductEvent<P>(val name: String, private val serializer: KSeri
 
     data class PageViewed(override val properties: RaftPageViewedProperties) :
         RaftProductEvent<RaftPageViewedProperties>("page_viewed", RaftPageViewedProperties.serializer())
+
+    /** Artifact viewer temporary "Open in browser" button exposure / click (#proj-mobile:#364). */
+    data class ArtifactOpenInBrowser(override val properties: RaftArtifactOpenInBrowserProperties) :
+        RaftProductEvent<RaftArtifactOpenInBrowserProperties>(
+            "artifact_open_in_browser",
+            RaftArtifactOpenInBrowserProperties.serializer(),
+        )
 }
 
 /** One page identity as `page_viewed` reports it. */

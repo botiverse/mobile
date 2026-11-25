@@ -508,12 +508,23 @@ internal class BridgeModule : Module() {
         callNativeMethod("toast", methodArgs, null)
     }
 
-    /** [inBrowser]: `browser: true`, a web browser even for a Raft link (HostLinkCapability.openUrlInBrowser). */
-    fun openUrl(url: String, mimeType: String? = null, inBrowser: Boolean = false) {
+    /**
+     * [inBrowser]: `browser: true`, a web browser even for a Raft link (HostLinkCapability.openUrlInBrowser).
+     * [externalBrowser]: `externalBrowser: true`, hand off directly to the OS external browser (on iOS,
+     * `UIApplication.openURL` instead of `SFSafariViewController` so Safari shares cookies/sessions and
+     * does not cover Raft full-screen).
+     */
+    fun openUrl(
+        url: String,
+        mimeType: String? = null,
+        inBrowser: Boolean = false,
+        externalBrowser: Boolean = false,
+    ) {
         val methodArgs = JSONObject()
         methodArgs.put("url", url)
         mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
         if (inBrowser) methodArgs.put("browser", true)
+        if (externalBrowser) methodArgs.put("externalBrowser", true)
         callNativeMethod("openUrl", methodArgs, null)
     }
 

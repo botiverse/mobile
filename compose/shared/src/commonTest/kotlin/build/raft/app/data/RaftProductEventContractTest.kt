@@ -80,6 +80,8 @@ class RaftProductEventContractTest {
         val ActivityActions =
             listOf("open_menu", "mark_read", "mark_unread", "done", "follow", "unfollow", "mute", "unmute", "unfollow_artifact")
         val ActivityActionSurfaces = listOf("row_menu", "row_button")
+        val ArtifactOpenInBrowserActions = listOf("shown", "clicked")
+        val ArtifactOpenInBrowserSurfaces = listOf("native_bar", "web_bar")
     }
 
     @Test
@@ -110,6 +112,10 @@ class RaftProductEventContractTest {
                     (ActivityActions to RaftActivityAction.entries.map { it.wire }),
                 "ACTIVITY_ACTION_SURFACES@$PinnedHeadSidebarActivitySlockSha" to
                     (ActivityActionSurfaces to RaftActivityActionSurface.entries.map { it.wire }),
+                "artifact_open_in_browser.action" to
+                    (ArtifactOpenInBrowserActions to RaftArtifactOpenInBrowserAction.entries.map { it.wire }),
+                "artifact_open_in_browser.surface" to
+                    (ArtifactOpenInBrowserSurfaces to RaftArtifactOpenInBrowserSurface.entries.map { it.wire }),
             )
         cases.forEach { (name, lists) ->
             assertEquals(lists.first.toSet(), lists.second.toSet(), "$name drifted from slock@$PinnedSlockSha")
@@ -322,6 +328,32 @@ class RaftProductEventContractTest {
             assertNull(requests[0].body)
             assertEquals("android", Json.parseToJsonElement(requests[1].body!!).jsonObject.getValue("source").jsonPrimitive.content)
         }
+
+    @Test
+    fun artifactOpenInBrowserEncodesExactSchema() {
+        val shown =
+            RaftProductEvent.ArtifactOpenInBrowser(
+                RaftArtifactOpenInBrowserProperties(
+                    action = RaftArtifactOpenInBrowserAction.Shown,
+                    surface = RaftArtifactOpenInBrowserSurface.WebBar,
+                )
+            )
+        assertEquals("artifact_open_in_browser", shown.name)
+        val shownJson = shown.encodeProperties()
+        assertEquals("shown", shownJson.getValue("action").jsonPrimitive.content)
+        assertEquals("web_bar", shownJson.getValue("surface").jsonPrimitive.content)
+
+        val clicked =
+            RaftProductEvent.ArtifactOpenInBrowser(
+                RaftArtifactOpenInBrowserProperties(
+                    action = RaftArtifactOpenInBrowserAction.Clicked,
+                    surface = RaftArtifactOpenInBrowserSurface.NativeBar,
+                )
+            )
+        val clickedJson = clicked.encodeProperties()
+        assertEquals("clicked", clickedJson.getValue("action").jsonPrimitive.content)
+        assertEquals("native_bar", clickedJson.getValue("surface").jsonPrimitive.content)
+    }
 
     private data class RecordedProductRequest(
         val priority: DataRequestPriority,

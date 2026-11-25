@@ -4574,6 +4574,7 @@
     <string name="artifacts_column_title">Artifact</string>
     <string name="artifacts_viewer_unavailable_title">打不開這個 Artifact</string>
     <string name="artifacts_viewer_unavailable_body">它不存在，或者你沒有權限查看。</string>
+    <string name="artifacts_viewer_open_in_browser">在瀏覽器中開啟</string>
     <string name="activity_list_object_home">· %1$s</string>
     <string name="activity_action_unfollow_artifact">取消追蹤</string>
     <string name="activity_unfollowed_artifact">已取消追蹤 %1$s</string>

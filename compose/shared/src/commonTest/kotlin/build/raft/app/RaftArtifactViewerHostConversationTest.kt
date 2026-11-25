@@ -19,7 +19,7 @@ class RaftArtifactViewerHostConversationTest {
     private val id = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
     private val other = "pt_0b6d3c1e-9a2f-4c7e-8d11-2f3a4b5c6d7e"
     private val channel = "c0c0c0c0-0000-4000-8000-000000000001"
-    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,copy-link,share-link&hostOpen=message"
+    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,open-in-browser,copy-link,share-link&hostOpen=message"
     private val maya = RaftArtifactViewerScope(web, env, "user-maya", "server-northwind")
     private val token = "access-token-1"
 
@@ -75,7 +75,7 @@ class RaftArtifactViewerHostConversationTest {
             ArtifactLinkTarget(other, 4),
             raftArtifactViewerSwitchesInPlace(raftArtifactViewerNavigation("$web/s/acme/artifacts/$other/v/4?$embed", web, id), channel),
         )
-        // Then the address is this viewer's Artifact: it stays (Desktop Mode, Copy link follow it).
+        // Then the address is this viewer's Artifact: it stays (Desktop Mode, Open in Browser, Copy link follow it).
         assertEquals(RaftArtifactViewerNavigation.Stay(null), raftArtifactViewerNavigation(picked, web, other))
         // Its Back still closes the viewer in one step.
         assertEquals(RaftArtifactViewerNavigation.Close, raftArtifactViewerNavigation("$picked#host=close", web, other))

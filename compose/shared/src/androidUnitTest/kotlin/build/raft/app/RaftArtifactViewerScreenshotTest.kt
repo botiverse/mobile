@@ -21,11 +21,12 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The in-app Artifact viewer's title bar ("two bars", owner decision 2026-11-10; #proj-workspace:#395
- * removed Open in Browser): Back, the title, and a ⋮ with Desktop Mode (when offered) over the web
- * page, which draws its own toolbar and ⋯ menu. States: the bar (phone width with Desktop Mode
- * offered -> ⋮ visible), the one-bar page toolbar, and the state a 403/404 puts in place of the page
- * (Desktop Mode not offered -> ⋮ hidden). Verify / record as [RaftRobolectricScreenshot].
+ * The in-app Artifact viewer's title bar ("two bars", owner decision 2026-11-10; #proj-mobile:#364
+ * restored Open in Browser as a top-right icon button): Back, the title, Open in Browser (while
+ * viewing), and a ⋮ with Desktop Mode (when offered) over the web page, which draws its own
+ * toolbar and ⋯ menu. States: the bar (phone width with Open in Browser + Desktop Mode offered ->
+ * external-link button and ⋮ visible), the one-bar page toolbar, and the state a 403/404 puts in
+ * place of the page (not viewing -> both hidden). Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -51,7 +52,7 @@ class RaftArtifactViewerScreenshotTest {
 
 private const val Title = "q4-launch-plan.html"
 
-private val Actions = RaftArtifactViewerBarActions(onToggleDesktopMode = {})
+private val Actions = RaftArtifactViewerBarActions(onToggleDesktopMode = {}, onOpenInBrowser = {})
 
 @Composable
 private fun Viewer(desktopMode: Boolean? = false, pageDrawsBar: Boolean = false, overlay: (@Composable () -> Unit)? = null) {

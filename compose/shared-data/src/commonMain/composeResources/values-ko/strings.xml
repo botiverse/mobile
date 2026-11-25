@@ -4574,6 +4574,7 @@
     <string name="artifacts_column_title">Artifact</string>
     <string name="artifacts_viewer_unavailable_title">이 Artifact를 열 수 없어요</string>
     <string name="artifacts_viewer_unavailable_body">존재하지 않거나 볼 권한이 없어요.</string>
+    <string name="artifacts_viewer_open_in_browser">브라우저에서 열기</string>
     <string name="activity_list_object_home">· %1$s</string>
     <string name="activity_action_unfollow_artifact">팔로우 취소</string>
     <string name="activity_unfollowed_artifact">%1$s 팔로우를 취소했어요</string>
