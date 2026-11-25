@@ -20,9 +20,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.MAX_INLINE_QUOTES_PER_MESSAGE
 import build.raft.app.data.MessageQuoteSegment
-import build.raft.app.data.QUOTE_REPLY_FEATURE_FLAG_KEY
 import build.raft.app.data.SharedResolvedQuotesStore
-import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.buildWholeMessageQuoteExcerpt
@@ -32,20 +30,17 @@ import build.raft.app.data.isQuoteReplyMessageId
 import build.raft.app.data.messageCardRevisionOf
 import build.raft.app.data.parseMessageQuoteSegments
 import build.raft.app.data.quoteChipExcerpt
-import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.serializeInlineQuoteReply
 import build.raft.app.model.ResolvedInlineQuote
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 
 /*
- * Quote replies in a message (web `quote_reply_v0`, botiverse/slock #15536 / #16027 / #16210):
- * - Gated behind `QUOTE_REPLY_FEATURE_FLAG_KEY` (`quote_reply_v0`): off, messages render as plain
- *   Markdown without resolved-quote fetches, message menu hides Quote, selection quotes insert
- *   plain blockquotes, and the composer stays single-textarea.
- * - On: each server-verified quote block renders as a one-line quote chip (avatar, semibold author,
- *   truncated excerpt; tapping jumps to the quoted message); unverified/degraded blocks keep their
- *   excerpt as a plain Markdown blockquote without the `> msg=<id>` line.
+ * Quote replies in a message (botiverse/slock #15536 / #16027 / #16210):
+ * - Each server-verified quote block renders as a one-line quote chip (avatar, semibold author,
+ *   truncated excerpt; tapping jumps to the quoted message).
+ * - Unverified/degraded blocks keep their excerpt as a plain Markdown blockquote without the
+ *   `> msg=<id>` line.
  */
 
 /**
@@ -55,13 +50,12 @@ import build.raft.app.resources.*
 internal val LocalThreadResolvedQuotesStore = compositionLocalOf<SharedResolvedQuotesStore?> { null }
 
 /**
- * Ambient quote-reply capabilities for a conversation page (feature-flag gate, avatar lookup,
- * composer quote insertion queue, feedback toasts, and jump callback). Kept in one object so
+ * Ambient quote-reply capabilities for a conversation page (avatar lookup, composer quote
+ * insertion queue, feedback toasts, and jump callback). Kept in one object so
  * `SharedThreadRouteContentContent` stays well below its JVM bytecode ceiling.
  */
 @Stable
 internal class ThreadQuoteReplyHost(
-    enabled: Boolean = false,
     avatarLookup: ThreadQuoteChipAvatarLookup = ThreadQuoteChipAvatarLookup.Empty,
     onJumpToQuotedMessage: ((String) -> Unit)? = null,
     onFallbackPlainQuote: ((String) -> Unit)? = null,
@@ -69,8 +63,6 @@ internal class ThreadQuoteReplyHost(
     lookupMessageById: (String) -> RaftThreadMessageItem? = { null },
     loadedMessagesProvider: () -> List<RaftThreadMessageItem> = { emptyList() },
 ) {
-    var enabled by mutableStateOf(enabled)
-        private set
     var avatarLookup by mutableStateOf(avatarLookup)
         private set
     var onJumpToQuotedMessage by mutableStateOf(onJumpToQuotedMessage)
@@ -85,7 +77,6 @@ internal class ThreadQuoteReplyHost(
     private var insertNonceCounter: Int = 0
 
     internal fun update(
-        enabled: Boolean,
         avatarLookup: ThreadQuoteChipAvatarLookup,
         onJumpToQuotedMessage: ((String) -> Unit)?,
         onFallbackPlainQuote: ((String) -> Unit)?,
@@ -93,7 +84,6 @@ internal class ThreadQuoteReplyHost(
         lookupMessageById: (String) -> RaftThreadMessageItem?,
         loadedMessagesProvider: () -> List<RaftThreadMessageItem>,
     ) {
-        this.enabled = enabled
         this.avatarLookup = avatarLookup
         this.onJumpToQuotedMessage = onJumpToQuotedMessage
         this.onFallbackPlainQuoteFn = onFallbackPlainQuote
@@ -104,7 +94,7 @@ internal class ThreadQuoteReplyHost(
 
     fun requestInsertQuote(insert: ThreadComposerQuoteInsert) {
         val quote = insert.quote
-        if (enabled && quote != null && quote.excerpt.isNotBlank()) {
+        if (quote != null && quote.excerpt.isNotBlank()) {
             ThreadComposerQuoteMetaCache.remember(quote)
             insertNonceCounter += 1
             pendingInsertRequest = ThreadComposerInsertQuoteRequest(nonce = insertNonceCounter, quote = quote)
@@ -136,7 +126,6 @@ internal val LocalThreadQuoteReplyHost = compositionLocalOf { ThreadQuoteReplyHo
  */
 @Composable
 internal fun rememberThreadQuoteReplyHost(
-    featureFlags: SharedServerFeatureFlags,
     serverId: String?,
     renderedThread: RaftThreadScreenPayload,
     timelineMessages: List<RaftThreadMessageItem>,
@@ -148,7 +137,6 @@ internal fun rememberThreadQuoteReplyHost(
     bridge: BridgeModule,
 ): ThreadQuoteReplyHost {
     val cleanServerId = serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId)
-    val enabled = rememberServerFeatureLatched(featureFlags, cleanServerId, QUOTE_REPLY_FEATURE_FLAG_KEY)
     val duplicateToastLabel = stringResource(Res.string.thread_quote_reply_duplicate)
     val limitToastLabel = stringResource(Res.string.thread_quote_reply_limit_reached, MAX_INLINE_QUOTES_PER_MESSAGE)
     val currentDuplicateLabel by rememberUpdatedState(duplicateToastLabel)
@@ -215,7 +203,6 @@ internal fun rememberThreadQuoteReplyHost(
         }
     val host = remember { ThreadQuoteReplyHost() }
     host.update(
-        enabled = enabled,
         avatarLookup = avatarLookup,
         onJumpToQuotedMessage = jumpToQuoted,
         onFallbackPlainQuote = fallbackPlainQuote,
@@ -278,11 +265,11 @@ internal fun threadQuoteReplyCardTestTag(blockIndex: Int): String = "thread_quot
 
 /**
  * A message body with its quote replies (web QuoteReplyBlocks). [markdown] draws a piece of Markdown
- * as the message body does; when `quote_reply_v0` is off ([quoteReplyEnabled] false) or a body has
- * no same-conversation quote block, it is drawn by [markdown] whole with zero extra work.
- * [resolvedQuotes]: the message's own ([RaftThreadMessageItem.resolvedQuotes]); null reads them
- * from [LocalThreadResolvedQuotesStore]. [onJumpToQuotedMessage] gets the quoted message's id; null
- * leaves the chips non-interactive (a share image, a preview).
+ * as the message body does; when a body has no same-conversation quote block, it is drawn by
+ * [markdown] whole with zero extra work. [resolvedQuotes]: the message's own
+ * ([RaftThreadMessageItem.resolvedQuotes]); null reads them from [LocalThreadResolvedQuotesStore].
+ * [onJumpToQuotedMessage] gets the quoted message's id; null leaves the chips non-interactive (a
+ * share image, a preview).
  */
 @Composable
 internal fun ThreadQuoteReplyBody(
@@ -292,19 +279,18 @@ internal fun ThreadQuoteReplyBody(
     onJumpToQuotedMessage: ((String) -> Unit)?,
     modifier: Modifier = Modifier,
     alignEnd: Boolean = false,
-    quoteReplyEnabled: Boolean = LocalThreadQuoteReplyHost.current.enabled,
     avatarLookup: ThreadQuoteChipAvatarLookup = LocalThreadQuoteReplyHost.current.avatarLookup,
     markdown: @Composable (String) -> Unit,
 ) {
     val segments =
-        remember(body, quoteReplyEnabled) {
-            if (quoteReplyEnabled && hasSameConversationQuoteRef(body)) parseMessageQuoteSegments(body) else null
+        remember(body) {
+            if (hasSameConversationQuoteRef(body)) parseMessageQuoteSegments(body) else null
         }
     if (segments == null || segments.none { it is MessageQuoteSegment.QuoteBlock }) {
         markdown(body)
         return
     }
-    val quotes = rememberThreadResolvedQuotes(messageId, body, resolvedQuotes, quoteReplyEnabled)
+    val quotes = rememberThreadResolvedQuotes(messageId, body, resolvedQuotes)
     val blocks = remember(segments, quotes) { threadQuoteReplyBlocks(segments, quotes) }
     val only = blocks.singleOrNull()
     if (only is ThreadQuoteReplyBlock.Markdown) {
@@ -335,16 +321,14 @@ internal fun ThreadQuoteReplyBody(
 
 /**
  * The quotes of a message: its own when it came with them, else what the viewer's store read for it
- * (`GET /messages/:id/resolved-quotes`), asked once per message and words when `quote_reply_v0` is on.
+ * (`GET /messages/:id/resolved-quotes`), asked once per message and words.
  */
 @Composable
 private fun rememberThreadResolvedQuotes(
     messageId: String,
     body: String,
     resolvedQuotes: Map<String, ResolvedInlineQuote>?,
-    quoteReplyEnabled: Boolean,
 ): Map<String, ResolvedInlineQuote> {
-    if (!quoteReplyEnabled) return emptyMap()
     if (resolvedQuotes != null) return resolvedQuotes
     val store = LocalThreadResolvedQuotesStore.current
     val serverId = LocalThreadViewerServerId.current?.takeIf { it.isNotBlank() }
@@ -447,13 +431,12 @@ internal fun threadSelectionQuoteInsert(
     markdown: String,
     message: RaftThreadMessageItem?,
     authorName: String? = null,
-    quoteReplyEnabled: Boolean,
     isPartialOverride: Boolean? = null,
 ): ThreadComposerQuoteInsert {
     val cleanSelection = selectedText.trim()
     val fallbackSource = cleanSelection.ifBlank { threadSelectTextSheetText(markdown) }
     val fallbackMarkdown = formatThreadMessageQuote(fallbackSource)
-    if (!quoteReplyEnabled || message == null || !message.canQuoteReply()) {
+    if (message == null || !message.canQuoteReply()) {
         return ThreadComposerQuoteInsert(quote = null, fallbackMarkdown = fallbackMarkdown)
     }
     val isPartial = isPartialOverride ?: cleanSelection.isNotEmpty()

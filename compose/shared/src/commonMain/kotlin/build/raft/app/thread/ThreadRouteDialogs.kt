@@ -153,7 +153,6 @@ internal fun ThreadRouteDialogs(
                                     markdown = message.body,
                                     message = message,
                                     authorName = localizedSenderName,
-                                    quoteReplyEnabled = quoteReplyHost.enabled,
                                 )
                             bridge.log(
                                 "thread_select_text_quote messageId=${message.id} target=${quoteTarget.name} " +
@@ -163,7 +162,7 @@ internal fun ThreadRouteDialogs(
                         }
                     },
                 // A sent message's quote points at it (web MessageSelectTextDrawer `messageId`).
-                quoteMessageId = message.id.takeIf { quoteReplyHost.enabled && message.canQuoteReply() }
+                quoteMessageId = message.id.takeIf { message.canQuoteReply() }
             )
         }
     }

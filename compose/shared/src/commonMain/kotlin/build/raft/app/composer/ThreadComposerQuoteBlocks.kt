@@ -48,8 +48,8 @@ import build.raft.app.resources.*
 
 /*
  * Interleaved multi-quote composer body (botiverse/slock #16027 / #16059 / #16210,
- * `ComposerQuoteBlocks.tsx`): rendered inside the composer card whenever `quote_reply_v0` is on
- * and `controller.isSegmented` (`quoteCount >= 1`).
+ * `ComposerQuoteBlocks.tsx`): rendered inside the composer card whenever
+ * `controller.isSegmented` (`quoteCount >= 1`).
  */
 
 // not a token: matches web `ComposerQuoteBlocks` `max-h-[34dvh] sm:max-h-[38vh]` bounded scroll container.

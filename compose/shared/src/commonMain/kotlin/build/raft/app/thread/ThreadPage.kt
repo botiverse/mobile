@@ -6307,7 +6307,6 @@ private fun SharedThreadRouteContentContent(
             }
         val quoteReplyHost =
             rememberThreadQuoteReplyHost(
-                featureFlags = sharedStores.serverFeatureFlags,
                 serverId = currentServerId,
                 renderedThread = renderedThread,
                 timelineMessages = renderedTimelineSlice.messages,

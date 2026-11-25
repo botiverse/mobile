@@ -126,8 +126,8 @@ internal class ThreadInPlaceTextSelectionHost(
     var quoteIntoComposer by mutableStateOf<((String) -> Unit)?>(null)
 
     /**
-     * Structured quote-reply insertion (quote_reply_v0 multi-quote chips) with plain-blockquote
-     * fallback when the flag is off. Null when the page shows no composer.
+     * Structured quote-reply insertion (multi-quote chips) with plain-blockquote fallback when a
+     * message cannot be quoted (e.g. unsent local message). Null when the page shows no composer.
      */
     var insertQuoteIntoComposer by mutableStateOf<((ThreadComposerQuoteInsert) -> Unit)?>(null)
 
@@ -857,7 +857,6 @@ internal fun ThreadInPlaceSelectableBody(
                                             selectedText = selected,
                                             markdown = sourceMessage?.body ?: fullMessageText.orEmpty(),
                                             message = sourceMessage,
-                                            quoteReplyEnabled = quoteReplyHost.enabled,
                                             isPartialOverride = !coversAll,
                                         )
                                     diagnosticsLogger(
@@ -866,12 +865,7 @@ internal fun ThreadInPlaceSelectableBody(
                                     )
                                     insertQuoteIntoComposer(insert)
                                 } else {
-                                    val text =
-                                        if (quoteReplyHost.enabled) {
-                                            threadSelectionQuote(selected, controller.messageId)
-                                        } else {
-                                            formatThreadMessageQuote(selected)
-                                        }
+                                    val text = threadSelectionQuote(selected, controller.messageId)
                                     diagnosticsLogger(
                                         "thread_in_place_selection_quote messageId=${controller.messageId} chars=${text.length}"
                                     )

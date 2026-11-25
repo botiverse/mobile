@@ -32,11 +32,12 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * Quote replies in a message row (web `quote_reply_v0`, botiverse/slock #16210):
+ * Quote replies in a message row (botiverse/slock #16210):
  * - Verified quotes render as one-line chips (avatar when unambiguous, author, single-line excerpt
  *   prefixed with `…` only for partial quotes) and tap jumps to the quoted message.
  * - Unverified quotes stay plain blockquotes without the `> msg=<id>` line.
- * - When `quote_reply_v0` is off, no chip is rendered and the raw body passes through.
+ * - Plain messages (including ordinary blockquotes without a `> msg=<id>` ref) pass through as
+ *   plain Markdown without rendering a quote chip.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -59,7 +60,6 @@ class ThreadQuoteReplyCardUiTest {
 
     private fun ComposeUiTest.showRow(
         message: RaftThreadMessageItem,
-        quoteReplyEnabled: Boolean = true,
         avatarLookup: ThreadQuoteChipAvatarLookup = ThreadQuoteChipAvatarLookup.Empty,
         onJump: (String) -> Unit = {},
     ) {
@@ -68,9 +68,8 @@ class ThreadQuoteReplyCardUiTest {
         setContent {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
             val host =
-                remember(quoteReplyEnabled, avatarLookup, onJump) {
+                remember(avatarLookup, onJump) {
                     ThreadQuoteReplyHost(
-                        enabled = quoteReplyEnabled,
                         avatarLookup = avatarLookup,
                         onJumpToQuotedMessage = onJump,
                     )
@@ -170,7 +169,7 @@ class ThreadQuoteReplyCardUiTest {
     @Test
     fun unverifiedQuoteStaysPlainBlockquoteWithoutRefLine() =
         runRobolectricComposeUiTest {
-            showRow(reply(emptyMap()), quoteReplyEnabled = true)
+            showRow(reply(emptyMap()))
             val unverifiedTexts = shownTexts()
             assertFalse(chipShown(), "unverified quote must not render a chip")
             assertTrue(unverifiedTexts.any { Excerpt in it }, "keeps excerpt as plain quote: $unverifiedTexts")
@@ -178,19 +177,17 @@ class ThreadQuoteReplyCardUiTest {
         }
 
     @Test
-    fun disabledFlagRendersNoQuoteChip() =
+    fun plainMessagePassesThroughWithoutQuoteChip() =
         runRobolectricComposeUiTest {
-            val verified =
-                ResolvedInlineQuote(
-                    messageId = QuotedId,
-                    shortId = "54a733de",
-                    authorName = "Alice",
-                    authorType = "user",
-                    createdAt = "2026-11-22T08:00:00.000Z",
-                    isPartial = true,
+            val plain =
+                reply(emptyMap()).copy(
+                    body = "> Plain blockquote without ref\n\nOrdinary follow-up text.",
                 )
-            showRow(reply(mapOf("0" to verified)), quoteReplyEnabled = false)
-            assertFalse(chipShown(), "flag off must never render a quote chip")
+            showRow(plain)
+            val texts = shownTexts()
+            assertFalse(chipShown(), "plain message must not render a quote chip")
+            assertTrue(texts.any { "Plain blockquote without ref" in it }, "keeps plain blockquote: $texts")
+            assertTrue(texts.any { "Ordinary follow-up text." in it }, "keeps message text: $texts")
         }
 
     private companion object {

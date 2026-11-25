@@ -161,9 +161,6 @@ class SharedServerFeatureFlagsTest {
         assertTrue(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertTrue(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
         assertFalse(MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
-        // botiverse/slock #16210 / #16027: inline quote reply chips + multi-quote composer (default off).
-        assertEquals("quote_reply_v0", QUOTE_REPLY_FEATURE_FLAG_KEY)
-        assertFalse(QUOTE_REPLY_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
         // #proj-mobile:#379: Android silent FCM reachability probe + dual-engine fallback (default off).
         assertEquals("mobile_fcm_probe_v0", MOBILE_FCM_PROBE_FEATURE_FLAG_KEY)
         assertFalse(MOBILE_FCM_PROBE_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
@@ -177,7 +174,6 @@ class SharedServerFeatureFlagsTest {
                 MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY,
                 MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY,
                 MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY,
-                QUOTE_REPLY_FEATURE_FLAG_KEY,
                 MOBILE_FCM_PROBE_FEATURE_FLAG_KEY,
             )
         ) {
