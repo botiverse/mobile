@@ -148,6 +148,7 @@ import kotlinx.serialization.Serializable
 import build.raft.app.network.sync.decodeCanonicalMessageWire
 import build.raft.app.network.sync.ProductionFace
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonNull
@@ -155,6 +156,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlin.time.TimeSource
 
 /**
@@ -454,6 +456,8 @@ class RealtimeEventMapper(
                     ?.let { ActivityChanged(ServerId(it.serverId), it.source) }
             RealtimeSocketEvents.ActivityDoneUpdated ->
                 element.parseActivityDoneUpdatedOrNull()
+            RealtimeSocketEvents.RailPlacesUpdated ->
+                element.parseRailPlacesUpdatedOrNull()
             RealtimeSocketEvents.JointInvitesChanged ->
                 decodeOrNull(ServerListChangedDto.serializer(), element)
                     ?.takeIf { it.serverId.isNotBlank() }
@@ -1151,6 +1155,26 @@ private fun JsonObject.parseActivityDoneUpdatedOrNull(): ActivityDoneUpdated? {
         objectKind = objectKind,
         done = done,
         position = position,
+    )
+}
+
+/**
+ * Strict parser for `rail_places:updated` (botiverse/slock #16682 `routes/servers.ts`
+ * `emitRailPlacesUpdated`): `{ serverId, places, placesVersion }`.
+ */
+private fun JsonObject.parseRailPlacesUpdatedOrNull(): build.raft.app.model.RailPlacesUpdated? {
+    val serverId =
+        (this["serverId"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+            ?: return null
+    val placesArray = this["places"] as? JsonArray ?: return null
+    val versionPrimitive = (this["placesVersion"] as? JsonPrimitive)?.takeIf { !it.isString } ?: return null
+    val placesVersion =
+        versionPrimitive.intOrNull?.takeIf { it >= 0 && versionPrimitive.content == it.toString() }
+            ?: return null
+    return build.raft.app.model.RailPlacesUpdated(
+        serverId = ServerId(serverId),
+        places = build.raft.app.data.parseRaftRailPlacesArray(placesArray),
+        placesVersion = placesVersion,
     )
 }
 

@@ -1063,6 +1063,90 @@ internal fun AppShellRailTabOrderEffects(
     }
 }
 
+/**
+ * Wires per-server rail places (`GET/PATCH /servers/:id/sidebar-order`, `rail_places:updated`,
+ * `permission-updates:changed`, foreground/reconnect freshness, and conflict/error toasts;
+ * botiverse/slock #16682 + #16684, #wg-mobile-sync:#294). Kept outside `RaftAppShellReadyContent`
+ * to preserve its JVM method-size budget.
+ */
+@Composable
+@NonRestartableComposable
+internal fun AppShellRailPlacesEffects(
+    bridge: build.raft.app.base.BridgeModule,
+    readySession: StoredAuthSession?,
+    readyServerId: String?,
+    navRailActive: Boolean,
+    sidebarOrder: build.raft.app.data.SettingsServerSidebarOrderSnapshot?,
+    appShellRealtimeDomainEventOwner: build.raft.app.data.SharedRealtimeDomainEventOwner,
+    railPlacesStore: build.raft.app.data.SharedRailPlacesStore,
+    railPlacesStateState: State<build.raft.app.data.SharedRailPlacesState>,
+) {
+    val railPlacesState by railPlacesStateState
+    val accountId = readySession?.user?.id
+    LaunchedEffect(railPlacesStore, accountId) {
+        railPlacesStore.setAccount(accountId)
+    }
+    LaunchedEffect(railPlacesStore, readyServerId) {
+        railPlacesStore.setActiveServer(readyServerId)
+    }
+    LaunchedEffect(railPlacesStore, navRailActive) {
+        railPlacesStore.setRailShown(navRailActive)
+    }
+    LaunchedEffect(railPlacesStore, readyServerId, sidebarOrder?.railPlaces) {
+        val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        railPlacesStore.applySidebarOrderSnapshot(serverId, sidebarOrder?.railPlaces)
+    }
+    LaunchedEffect(railPlacesStore, navRailActive) {
+        if (!navRailActive) return@LaunchedEffect
+        build.raft.app.data.RaftFreshnessSignal.events.collect { event ->
+            val targetServerId =
+                when (event.trigger) {
+                    build.raft.app.data.RaftFreshnessTrigger.Reconnect -> event.serverId ?: railPlacesStore.state.value.activeServerId
+                    build.raft.app.data.RaftFreshnessTrigger.Foreground,
+                    build.raft.app.data.RaftFreshnessTrigger.NetworkRestored -> railPlacesStore.state.value.activeServerId
+                }
+            if (!targetServerId.isNullOrBlank()) {
+                railPlacesStore.reloadAsync(targetServerId)
+            }
+        }
+    }
+    DisposableEffect(appShellRealtimeDomainEventOwner, railPlacesStore) {
+        val sink =
+            build.raft.app.data.RealtimeGuardedActiveThreadSink { eventServerId, event ->
+                when (event) {
+                    is build.raft.app.model.RailPlacesUpdated -> {
+                        if (event.serverId.value == eventServerId) {
+                            railPlacesStore.applyRealtimeUpdated(event)
+                        }
+                    }
+                    is build.raft.app.model.PermissionUpdatesChanged -> {
+                        if (event.serverId.value == eventServerId) {
+                            railPlacesStore.onPermissionUpdatesChanged(eventServerId)
+                        }
+                    }
+                    else -> Unit
+                }
+            }
+        appShellRealtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
+        onDispose { appShellRealtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
+    }
+    val saveFailedText = stringResource(Res.string.rail_places_save_failed)
+    val conflictText = stringResource(Res.string.rail_places_conflict)
+    LaunchedEffect(railPlacesState.effect) {
+        when (val effect = railPlacesState.effect) {
+            is build.raft.app.data.SharedRailPlacesEffect.SaveFailed -> {
+                bridge.errorToast(saveFailedText, effect.traceId)
+                railPlacesStore.consumeEffect()
+            }
+            is build.raft.app.data.SharedRailPlacesEffect.Conflict -> {
+                bridge.toast(conflictText)
+                railPlacesStore.consumeEffect()
+            }
+            null -> Unit
+        }
+    }
+}
+
 // Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
 @Composable
 @NonRestartableComposable

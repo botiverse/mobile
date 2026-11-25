@@ -2435,7 +2435,10 @@ data class SettingsServerSidebarOrderSnapshot(
     val customSections: List<SettingsServerSidebarCustomSection> = emptyList(),
     val sectionOrder: List<String> = emptyList(),
     val sectionPlacements: List<SettingsServerSidebarSectionPlacement> = emptyList(),
-    val sectionsVersion: Long = 0L
+    val sectionsVersion: Long = 0L,
+    // #wg-mobile-sync:#294 (slock #16682): per-server rail places (`places`, `placesVersion`,
+    // `placeableApps`), null on older servers that do not send `places`.
+    val railPlaces: RaftRailPlacesSnapshot? = null
 )
 
 @Serializable

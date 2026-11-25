@@ -54,7 +54,63 @@ internal fun List<RaftBottomTabItemPayload>.orderedLikeRailTabOrder(order: List<
 
 /** The rail's reordering: [onOrderChange] gets the drawn items' keys in their new order. */
 @Immutable
-internal data class RaftRailTabReorder(val onOrderChange: (List<String>) -> Unit)
+internal data class RaftRailTabReorder(
+    val onOrderChange: (List<String>) -> Unit,
+    /** Keys fixed at the top of the rail (e.g. Search, Chat, Activity) that cannot be dragged. */
+    val fixedKeys: Set<String> = emptySet(),
+)
+
+/** Fixed rail item keys (app-side keys) for per-server rail places (#wg-mobile-sync:#294). */
+internal val RaftRailPlacesFixedItemKeys: Set<String> =
+    setOf(AppShellRailSearchKey, RaftAppDestination.Chat.id, RaftAppDestination.Activity.id)
+
+/**
+ * Projects the wide rail items from a server's per-server [snapshot] (botiverse/slock #16682 +
+ * #16684): fixed tabs ([RaftRailPlacesFixedItemKeys], in [builtInItems]'s order) come first,
+ * followed by each place in [snapshot] — built-in places gated by [builtInItems] (flags/role) and
+ * installed App places rendered with their icon and never marked selected.
+ */
+internal fun projectRailItemsFromServerPlaces(
+    builtInItems: List<RaftBottomTabItemPayload>,
+    snapshot: build.raft.app.data.RaftRailPlacesSnapshot,
+    resolveIconUrl: (String?) -> String?,
+): List<RaftBottomTabItemPayload> {
+    val fixedItems = builtInItems.filter { it.key in RaftRailPlacesFixedItemKeys }
+    val builtInByPlaceId =
+        builtInItems
+            .filter { it.key !in RaftRailPlacesFixedItemKeys }
+            .mapNotNull { item -> raftRailTabIdForKey(item.key)?.let { placeId -> placeId to item } }
+            .toMap()
+    val placeItems =
+        snapshot.places.mapNotNull { place ->
+            when {
+                place.isBuiltIn -> builtInByPlaceId[place.key]
+                place.isApp -> {
+                    val app = place.app ?: return@mapNotNull null
+                    RaftBottomTabItemPayload(
+                        key = place.key,
+                        label = app.name,
+                        iconName = RaftLucideIconName.Blocks,
+                        selected = false,
+                        enabled = true,
+                        isAppPlace = true,
+                        avatarSource = resolveIconUrl(app.iconUrl),
+                        avatarFallbackLabel = app.name,
+                    )
+                }
+                else -> null
+            }
+        }
+    return fixedItems + placeItems
+}
+
+/** Maps a rail item key (built-in or `app:<clientId>`) to its wire place key, or null for fixed tabs. */
+internal fun raftRailPlaceKeyForItemKey(key: String): String? =
+    if (key in RaftRailPlacesFixedItemKeys) {
+        null
+    } else {
+        build.raft.app.data.canonicalRaftRailPlaceKey(raftRailTabIdForKey(key) ?: key)
+    }
 
 internal const val RaftRailReorderableTabTagPrefix = "rail-tab-"
 
@@ -62,6 +118,7 @@ internal const val RaftRailReorderableTabTagPrefix = "rail-tab-"
  * The rail's destinations, draggable (web SortableRailTabs). A finger or mouse that moves 6dp
  * ([RaftReorderDefaults.DragDistance], dnd-kit's distance) lifts a tab at once, and a 500ms hold
  * lifts it too; it moves up and down only and stays within the rail; letting go saves the order.
+ * Items in [RaftRailTabReorder.fixedKeys] stay pinned first and are never draggable.
  * A tap or click still opens the tab. A screen reader gets Move up / Move down; a keyboard picks
  * the focused tab up with Space, moves it with the arrows, drops it with Space and cancels with
  * Escape (Enter still opens it), with the web's announcements.
@@ -73,9 +130,13 @@ internal fun RaftRailReorderableTabs(
     reorder: RaftRailTabReorder,
 ) {
     val metrics = RaftAppRailDefaults.metrics
-    val state = rememberRaftReorderState(items.map { it.key }, gap = metrics.itemGap, clampToEnds = true)
-    val byKey = items.associateBy { it.key }
+    val fixedItems = remember(items, reorder.fixedKeys) { items.filter { it.key in reorder.fixedKeys } }
+    val movableItems = remember(items, reorder.fixedKeys) { items.filter { it.key !in reorder.fixedKeys } }
+    val fixedItemKeys = remember(fixedItems) { fixedItems.map { it.key } }
+    val state = rememberRaftReorderState(movableItems.map { it.key }, gap = metrics.itemGap, clampToEnds = true)
+    val byKey = movableItems.associateBy { it.key }
     val commit by rememberUpdatedState(reorder.onOrderChange)
+    val commitWithFixed: (List<String>) -> Unit = { movedKeys -> commit(fixedItemKeys + movedKeys) }
     val moveUp = stringResource(Res.string.rail_tab_move_up)
     val moveDown = stringResource(Res.string.rail_tab_move_down)
     var announcement by remember { mutableStateOf("") }
@@ -87,6 +148,15 @@ internal fun RaftRailReorderableTabs(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(metrics.itemGap),
         ) {
+            fixedItems.forEach { item ->
+                key(item.key) {
+                    RaftNavigationRailTabItem(
+                        item = item,
+                        onSelect = onSelect,
+                        modifier = Modifier.testTag(RaftRailReorderableTabTagPrefix + item.key),
+                    )
+                }
+            }
             state.order.forEach { itemKey ->
                 val item = byKey[itemKey] ?: return@forEach
                 key(itemKey) {
@@ -99,10 +169,10 @@ internal fun RaftRailReorderableTabs(
                                 .raftReorderableItem(
                                     state = state,
                                     key = itemKey,
-                                    onOrderChange = { commit(it) },
+                                    onOrderChange = commitWithFixed,
                                     moveUpLabel = moveUp,
                                     moveDownLabel = moveDown,
-                                    enabled = items.size > 1,
+                                    enabled = movableItems.size > 1,
                                     dragDistance = RaftReorderDefaults.DragDistance,
                                 )
                                 .raftRailTabKeyboardReorder(
@@ -111,7 +181,7 @@ internal fun RaftRailReorderableTabs(
                                     pickup = keyboardPickup,
                                     nameOf = nameOf,
                                     announce = { announcement = it },
-                                    commit = { commit(it) },
+                                    commit = commitWithFixed,
                                 ),
                     )
                 }

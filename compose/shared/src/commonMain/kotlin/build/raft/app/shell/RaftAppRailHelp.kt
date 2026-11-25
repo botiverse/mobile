@@ -42,6 +42,7 @@ internal fun RaftAppRailHelpOverlay(
     bottomInset: Dp,
     onDocumentation: () -> Unit,
     onFeedback: () -> Unit,
+    onEditNavigationBar: (() -> Unit)? = null,
 ) {
     if (!open) return
     RaftBackHandler(enabled = true, label = "rail_help_menu", onBack = onDismiss)
@@ -61,6 +62,13 @@ internal fun RaftAppRailHelpOverlay(
                             ).raftFloatingContentClickTarget(),
                     header = { RaftMenuLabel(stringResource(Res.string.rail_help_menu_title)) },
                 ) {
+                    if (onEditNavigationBar != null) {
+                        RaftMenuItem(
+                            text = stringResource(Res.string.rail_places_edit),
+                            onClick = onEditNavigationBar,
+                            leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.SlidersHorizontal, size = 14.dp) },
+                        )
+                    }
                     RaftMenuItem(
                         text = stringResource(Res.string.rail_help_documentation),
                         onClick = onDocumentation,

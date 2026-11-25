@@ -1878,6 +1878,17 @@ data class PermissionUpdatesChanged(
     val serverId: ServerId,
 ) : RealtimeEvent
 
+/**
+ * `rail_places:updated` (botiverse/slock #16682 `routes/servers.ts` `emitRailPlacesUpdated`), sent
+ * to the person's own room (`user:<id>`) when their per-server rail places change on any client.
+ */
+@Serializable
+data class RailPlacesUpdated(
+    val serverId: ServerId,
+    val places: List<build.raft.app.data.RaftRailPlace>,
+    val placesVersion: Int,
+) : RealtimeEvent
+
 @Serializable
 data class AgentCreated(
     val agent: AgentProfile
