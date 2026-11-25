@@ -191,7 +191,14 @@ object AndroidWebContainerStartup {
                 currentState = AndroidWebContainerStartupState.READY
                 pendingCallbacks.toList().also { pendingCallbacks.clear() }
             }
-        runCatching { telemetrySink?.onEvent(WebContainerTelemetryEvent.StartupCompleted(elapsedMs)) }
+        runCatching {
+            telemetrySink?.onEvent(
+                WebContainerTelemetryEvent.StartupCompleted(
+                    elapsedMs = elapsedMs,
+                    engine = ANDROID_WEBVIEW_ENGINE,
+                ),
+            )
+        }
         listeners.forEach { listener -> runCatching { listener(true, null) } }
     }
 
@@ -208,7 +215,14 @@ object AndroidWebContainerStartup {
                 currentState = AndroidWebContainerStartupState.FAILED
                 pendingCallbacks.toList().also { pendingCallbacks.clear() }
             }
-        runCatching { telemetrySink?.onEvent(WebContainerTelemetryEvent.StartupFailed(reason)) }
+        runCatching {
+            telemetrySink?.onEvent(
+                WebContainerTelemetryEvent.StartupFailed(
+                    reason = reason,
+                    engine = ANDROID_WEBVIEW_ENGINE,
+                ),
+            )
+        }
         listeners.forEach { listener -> runCatching { listener(false, reason) } }
     }
 

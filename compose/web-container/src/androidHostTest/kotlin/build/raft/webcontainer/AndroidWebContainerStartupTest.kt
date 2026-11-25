@@ -84,6 +84,10 @@ class AndroidWebContainerStartupTest {
             assertEquals(2, results.size)
             assertTrue(results.all { !it.first && it.second?.contains("MissingWebViewPackageException") == true })
             assertEquals(1, telemetry.count { it is WebContainerTelemetryEvent.StartupFailed })
+            assertEquals(
+                "android_webview",
+                telemetry.filterIsInstance<WebContainerTelemetryEvent.StartupFailed>().single().engine,
+            )
 
             // Subsequent call after FAILED can retry cleanly and transition to READY.
             val retryDone = CountDownLatch(1)
@@ -112,6 +116,10 @@ class AndroidWebContainerStartupTest {
             assertEquals(true to null, retryOutcome)
             assertEquals(AndroidWebContainerStartupState.READY, AndroidWebContainerStartup.state)
             assertEquals(1, telemetry.count { it is WebContainerTelemetryEvent.StartupCompleted })
+            assertEquals(
+                "android_webview",
+                telemetry.filterIsInstance<WebContainerTelemetryEvent.StartupCompleted>().single().engine,
+            )
 
             // Once READY, callers receive immediate success without re-invoking startUpWebView.
             var alreadyReadyResult: Boolean? = null

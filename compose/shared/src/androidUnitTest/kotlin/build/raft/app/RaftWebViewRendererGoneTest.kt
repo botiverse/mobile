@@ -4,6 +4,7 @@ import android.app.Activity
 import android.os.Looper
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
+import build.raft.webcontainer.pool.WebContainerTelemetryEvent
 import java.time.Duration
 import org.junit.After
 import org.junit.Before
@@ -134,6 +135,85 @@ class RaftWebViewRendererGoneTest {
         val rebuilt = viewer.innerWebView()
         assertTrue(rebuilt.client().onRenderProcessGone(rebuilt, crash), "the rebuilt WebView claims the next death")
         assertNotSame(rebuilt, viewer.innerWebView())
+    }
+
+    @Test
+    fun webContainerRendererCrashCoalescesWithWarmInstanceAndTagsParkedContainers() {
+        RaftWebViewRendererGone.appContext = RuntimeEnvironment.getApplication()
+        val warm = Warm()
+        val crash = detail(didCrash = true, priority = WebView.RENDERER_PRIORITY_IMPORTANT)
+
+        // Container telemetry and legacy warmup WebView both fire in the same main-thread turn.
+        RaftWebContainerTelemetrySink.onEvent(
+            WebContainerTelemetryEvent.RenderProcessGone(
+                surfaceId = "artifact_viewer",
+                didCrash = true,
+                recovered = true,
+                attempt = 1,
+                rendererPriorityAtExit = WebView.RENDERER_PRIORITY_IMPORTANT,
+                parked = false,
+                engine = "android_webview",
+            ),
+        )
+        assertTrue(warm.view.client().onRenderProcessGone(warm.view, crash))
+
+        assertTrue(tickets.isEmpty(), "coalesces until end of main-thread turn")
+        endOfTurn()
+        assertEquals(1, tickets.size, "one shared renderer crash across container + warmup = one ticket")
+        val (message, extras) = tickets.single()
+        assertEquals("webview_renderer_gone", extras["crash_type"])
+        assertEquals(false, extras["crash_fatal"])
+        assertEquals(true, extras["crash_did_crash"])
+        assertEquals(WebView.RENDERER_PRIORITY_IMPORTANT, extras["crash_renderer_priority_at_exit"])
+        assertEquals("important", extras["crash_renderer_priority"])
+        assertEquals("warmup,web_container:artifact_viewer", extras["webview_surfaces"])
+        assertEquals(2, extras["webview_count"])
+        val text = message + extras.values.joinToString(" ")
+        assertFalse(text.contains("http") || text.contains("secret"), "no URL/token in ticket: $text")
+
+        // Parked container system reclaim (didCrash=false) files no Hands ticket.
+        RaftWebContainerTelemetrySink.onEvent(
+            WebContainerTelemetryEvent.RenderProcessGone(
+                surfaceId = "artifact_viewer",
+                didCrash = false,
+                recovered = true,
+                attempt = 0,
+                rendererPriorityAtExit = WebView.RENDERER_PRIORITY_WAIVED,
+                parked = true,
+                engine = "android_webview",
+            ),
+        )
+        endOfTurn()
+        assertEquals(1, tickets.size, "system reclaim must not file a Hands ticket")
+
+        // Parked container crash after the 1-minute cooldown tags the surface as parked and strips URLs.
+        RaftWebViewRendererGone.clock = { System.currentTimeMillis() + 120_000L }
+        RaftWebContainerTelemetrySink.onEvent(
+            WebContainerTelemetryEvent.RenderProcessGone(
+                surfaceId = "https://secret.example/page?token=abc",
+                didCrash = true,
+                recovered = true,
+                attempt = 0,
+                rendererPriorityAtExit = WebView.RENDERER_PRIORITY_BOUND,
+                parked = true,
+                engine = "android_webview",
+            ),
+        )
+        endOfTurn()
+        assertEquals(2, tickets.size)
+        val (parkedMsg, parkedExtras) = tickets.last()
+        assertEquals("web_container:other:parked", parkedExtras["webview_surfaces"])
+        val parkedText = parkedMsg + parkedExtras.values.joinToString(" ")
+        assertFalse(
+            parkedText.contains("secret") || parkedText.contains("token") || parkedText.contains("http"),
+            "non-code surfaceId must collapse to 'other' with zero URL/token leak: $parkedText",
+        )
+
+        // Verify common priority labels match Android SDK WebView constants.
+        assertEquals("waived", raftWebContainerRendererPriorityLabel(WebView.RENDERER_PRIORITY_WAIVED))
+        assertEquals("bound", raftWebContainerRendererPriorityLabel(WebView.RENDERER_PRIORITY_BOUND))
+        assertEquals("important", raftWebContainerRendererPriorityLabel(WebView.RENDERER_PRIORITY_IMPORTANT))
+        assertEquals("web_container:artifact_viewer:parked", formatWebContainerHandsSurface("artifact_viewer", parked = true))
     }
 }
 

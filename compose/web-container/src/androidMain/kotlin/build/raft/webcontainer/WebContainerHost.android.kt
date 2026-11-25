@@ -82,12 +82,31 @@ fun interface WebContainerAndroidFileChooser {
 /** Optional CompositionLocal supplying an Android file-chooser bridge to [WebContainerView]. */
 val LocalAndroidWebFileChooser = staticCompositionLocalOf<WebContainerAndroidFileChooser?> { null }
 
+internal const val ANDROID_WEBVIEW_ENGINE: String = "android_webview"
+
 /** Process-wide Android keep-alive pool and isolation-scope lifecycle coordinator. */
 object WebContainerAndroidKeepAlive {
     /** Safety ceiling for a parked background prewarm to finish loading before being aborted. */
     const val PREWARM_LOAD_TIMEOUT_MS = 12_000L
 
-    private val pool = WebContainerKeepAlivePool<WebContainerAndroidView>()
+    @Volatile
+    private var poolTelemetrySink: WebContainerTelemetrySink? = null
+
+    private val pool =
+        WebContainerKeepAlivePool<WebContainerAndroidView>(
+            telemetrySink =
+                WebContainerTelemetrySink { event ->
+                    runCatching {
+                        val attributed =
+                            if (event is WebContainerTelemetryEvent.PoolEvent && event.engine == null) {
+                                event.copy(engine = ANDROID_WEBVIEW_ENGINE)
+                            } else {
+                                event
+                            }
+                        poolTelemetrySink?.onEvent(attributed)
+                    }
+                },
+        )
     internal val scopeManager = WebIsolationScopeManager()
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
     private val prewarmTimeouts = LinkedHashMap<WebContainerAndroidView, Runnable>()
@@ -102,6 +121,7 @@ object WebContainerAndroidKeepAlive {
         telemetrySink: WebContainerTelemetrySink?,
         fileChooser: WebContainerAndroidFileChooser?,
     ): WebContainerAndroidView? {
+        if (telemetrySink != null) poolTelemetrySink = telemetrySink
         val view = pool.take(key) ?: return null
         cancelPrewarmTimeout(view)
         view.attachFromKeepAlive(
@@ -119,6 +139,10 @@ object WebContainerAndroidKeepAlive {
         view: WebContainerAndroidView,
         telemetrySink: WebContainerTelemetrySink? = null,
     ): Boolean {
+        if (telemetrySink != null) {
+            poolTelemetrySink = telemetrySink
+            view.ensureTelemetrySink(telemetrySink)
+        }
         val key = view.currentPoolKey() ?: return false
         if (scopeManager.hasPendingDeletion(view.isolationScope)) {
             return false
@@ -126,7 +150,7 @@ object WebContainerAndroidKeepAlive {
         view.detachForKeepAlive()
         val parked = pool.park(key, view)
         if (parked && view.isLoadInFlight()) {
-            armPrewarmTimeout(view, telemetrySink)
+            armPrewarmTimeout(view, telemetrySink ?: poolTelemetrySink)
         } else {
             cancelPrewarmTimeout(view)
         }
@@ -157,18 +181,22 @@ object WebContainerAndroidKeepAlive {
         telemetrySink: WebContainerTelemetrySink? = null,
     ): Int {
         if (Looper.myLooper() != Looper.getMainLooper()) return 0
+        if (telemetrySink != null) poolTelemetrySink = telemetrySink
         val aborted = pool.abortInFlightLoads(exceptKey = exceptKey)
         pruneInactivePrewarmTimeouts()
         if (aborted > 0) {
             val sanitizedSurface =
                 foregroundSurface.trim().filter { it.isLetterOrDigit() || it == '_' || it == '-' }.ifEmpty { "unknown" }
-            telemetrySink?.onEvent(
-                WebContainerTelemetryEvent.PoolEvent(
-                    action = "prewarm_aborted_for_foreground",
-                    keepAliveKey = sanitizedSurface,
-                    poolSizeAfter = pool.size,
-                ),
-            )
+            runCatching {
+                (telemetrySink ?: poolTelemetrySink)?.onEvent(
+                    WebContainerTelemetryEvent.PoolEvent(
+                        action = "prewarm_aborted_for_foreground",
+                        keepAliveKey = sanitizedSurface,
+                        poolSizeAfter = pool.size,
+                        engine = ANDROID_WEBVIEW_ENGINE,
+                    ),
+                )
+            }
         }
         return aborted
     }
@@ -219,6 +247,7 @@ object WebContainerAndroidKeepAlive {
         val keyStr = config.keepAliveKey?.trim()?.takeIf { it.isNotEmpty() } ?: return false
         if (config.isolationScope is WebIsolationScope.Ephemeral) return false
         if (scopeManager.hasPendingDeletion(config.isolationScope)) return false
+        if (telemetrySink != null) poolTelemetrySink = telemetrySink
         val poolKey = WebContainerPoolKey(keyStr, config.isolationScope, config.isDarkTheme)
         if (pool.peek(poolKey) != null) return true
         val view =
@@ -245,7 +274,9 @@ object WebContainerAndroidKeepAlive {
     /** Destroys all pooled views immediately. */
     fun clearAll(): Int {
         clearAllPrewarmTimeouts()
-        return pool.clearAll()
+        val cleared = pool.clearAll()
+        poolTelemetrySink = null
+        return cleared
     }
 
     internal fun clearIsolationScope(
@@ -270,13 +301,16 @@ object WebContainerAndroidKeepAlive {
                 prewarmTimeouts.remove(view)
                 if (!view.isLoadInFlight()) return@Runnable
                 if (pool.dropIfSame(view)) {
-                    telemetrySink?.onEvent(
-                        WebContainerTelemetryEvent.PoolEvent(
-                            action = "prewarm_aborted_timeout",
-                            keepAliveKey = view.currentPoolKey()?.keepAliveKey ?: "unknown",
-                            poolSizeAfter = pool.size,
-                        ),
-                    )
+                    runCatching {
+                        (telemetrySink ?: poolTelemetrySink)?.onEvent(
+                            WebContainerTelemetryEvent.PoolEvent(
+                                action = "prewarm_aborted_timeout",
+                                keepAliveKey = view.currentPoolKey()?.keepAliveKey ?: "unknown",
+                                poolSizeAfter = pool.size,
+                                engine = ANDROID_WEBVIEW_ENGINE,
+                            ),
+                        )
+                    }
                 }
             }
         prewarmTimeouts[view] = runnable
@@ -655,6 +689,12 @@ internal class WebContainerAndroidView(
         }
     }
 
+    internal fun ensureTelemetrySink(sink: WebContainerTelemetrySink) {
+        if (telemetrySink == null) {
+            telemetrySink = sink
+        }
+    }
+
     internal fun detachForKeepAlive() {
         boundController?.unbindDispatcher(this)
         boundController = null
@@ -913,13 +953,27 @@ internal class WebContainerAndroidView(
             object : WebViewClient() {
                 override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
                     if (destroyed) return true
-                    val didCrash =
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            detail?.didCrash() == true
-                        } else {
-                            false
-                        }
+                    val api26 = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    val didCrash = api26 && detail?.didCrash() == true
+                    val rendererPriority = if (api26 && detail != null) detail.rendererPriorityAtExit() else null
                     jsbDispatcher?.cancelInFlight("render_process_gone")
+                    if (parkedForKeepAlive) {
+                        runCatching {
+                            telemetrySink?.onEvent(
+                                WebContainerTelemetryEvent.RenderProcessGone(
+                                    surfaceId = config.surfaceId,
+                                    didCrash = didCrash,
+                                    recovered = true,
+                                    attempt = 0,
+                                    rendererPriorityAtExit = rendererPriority,
+                                    parked = true,
+                                    engine = ANDROID_WEBVIEW_ENGINE,
+                                ),
+                            )
+                        }
+                        WebContainerAndroidKeepAlive.dropIfSame(this@WebContainerAndroidView)
+                        return true
+                    }
                     events.onContentProcessGone(didCrash)
                     val action =
                         watchdog.onEvent(
@@ -930,17 +984,18 @@ internal class WebContainerAndroidView(
                     val attempt =
                         (action as? WebContainerWatchdogAction.TriggerRecoveryReload)?.recoveryAttempt
                             ?: watchdog.recentRecoveryCount
-                    telemetrySink?.onEvent(
-                        WebContainerTelemetryEvent.RenderProcessGone(
-                            surfaceId = config.surfaceId,
-                            didCrash = didCrash,
-                            recovered = shouldRecover,
-                            attempt = attempt,
-                        ),
-                    )
-                    if (parkedForKeepAlive) {
-                        WebContainerAndroidKeepAlive.dropIfSame(this@WebContainerAndroidView)
-                        return true
+                    runCatching {
+                        telemetrySink?.onEvent(
+                            WebContainerTelemetryEvent.RenderProcessGone(
+                                surfaceId = config.surfaceId,
+                                didCrash = didCrash,
+                                recovered = shouldRecover,
+                                attempt = attempt,
+                                rendererPriorityAtExit = rendererPriority,
+                                parked = false,
+                                engine = ANDROID_WEBVIEW_ENGINE,
+                            ),
+                        )
                     }
                     val restoreUrl =
                         if (shouldRecover && loadedSrc.isNotBlank()) {
@@ -1829,12 +1884,15 @@ internal class WebContainerAndroidView(
             is WebContainerWatchdogAction.RequestDomProbe -> probeDocumentContent(action.generation)
             is WebContainerWatchdogAction.TriggerRecoveryReload -> Unit
             is WebContainerWatchdogAction.EmitTerminalError -> {
-                telemetrySink?.onEvent(
-                    WebContainerTelemetryEvent.WatchdogTerminalError(
-                        surfaceId = config.surfaceId,
-                        reason = action.reason,
-                    ),
-                )
+                runCatching {
+                    telemetrySink?.onEvent(
+                        WebContainerTelemetryEvent.WatchdogTerminalError(
+                            surfaceId = config.surfaceId,
+                            reason = action.reason,
+                            engine = ANDROID_WEBVIEW_ENGINE,
+                        ),
+                    )
+                }
                 events.onWatchdogTerminalError(action.reason)
             }
         }

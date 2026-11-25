@@ -228,13 +228,15 @@ class WebContainerKeepAlivePool<T : WebPooledContainer>(
     }
 
     private fun emitPoolEvent(action: String, key: String) {
-        telemetrySink?.onEvent(
-            WebContainerTelemetryEvent.PoolEvent(
-                action = action,
-                keepAliveKey = key,
-                poolSizeAfter = entries.size,
-            ),
-        )
+        runCatching {
+            telemetrySink?.onEvent(
+                WebContainerTelemetryEvent.PoolEvent(
+                    action = action,
+                    keepAliveKey = key,
+                    poolSizeAfter = entries.size,
+                ),
+            )
+        }
     }
 }
 
@@ -329,9 +331,15 @@ class WebIsolationScopeManager(
 
 /** Structured container observability events (never contain raw query tokens or user PII). */
 sealed interface WebContainerTelemetryEvent {
-    data class StartupCompleted(val elapsedMs: Long) : WebContainerTelemetryEvent
+    data class StartupCompleted(
+        val elapsedMs: Long,
+        val engine: String? = null,
+    ) : WebContainerTelemetryEvent
 
-    data class StartupFailed(val reason: String) : WebContainerTelemetryEvent
+    data class StartupFailed(
+        val reason: String,
+        val engine: String? = null,
+    ) : WebContainerTelemetryEvent
 
     data class NavigationBlocked(
         val surfaceId: String,
@@ -344,11 +352,15 @@ sealed interface WebContainerTelemetryEvent {
         val didCrash: Boolean,
         val recovered: Boolean,
         val attempt: Int,
+        val rendererPriorityAtExit: Int? = null,
+        val parked: Boolean = false,
+        val engine: String? = null,
     ) : WebContainerTelemetryEvent
 
     data class WatchdogTerminalError(
         val surfaceId: String,
         val reason: String,
+        val engine: String? = null,
     ) : WebContainerTelemetryEvent
 
     data class JsbCallCompleted(
@@ -371,6 +383,7 @@ sealed interface WebContainerTelemetryEvent {
         val action: String,
         val keepAliveKey: String,
         val poolSizeAfter: Int,
+        val engine: String? = null,
     ) : WebContainerTelemetryEvent
 
     data class IsolationScopeCleared(

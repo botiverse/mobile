@@ -129,6 +129,10 @@ interface DesktopWebSessionCallbacks {
 interface DesktopWebSession {
     val component: Component
 
+    /** Stable engine identifier for container tracing/diagnostics (e.g. `macos_wkwebview`, `desktop_wry`). */
+    val engineName: String
+        get() = "desktop_web"
+
     fun start()
 
     fun setVisible(visible: Boolean)
@@ -372,6 +376,16 @@ class DesktopWebContainerHostController(
                 if (disposed) return
                 currentState = currentState.copy(isLoading = false)
                 watchdog.onEvent(WebContainerWatchdogEvent.LoadFailed(loadGeneration, reason), nowMs())
+                if (reason == MacOsNativeWebSession.NATIVE_CREATE_FAILED_REASON) {
+                    runCatching {
+                        activeTelemetrySink?.onEvent(
+                            WebContainerTelemetryEvent.StartupFailed(
+                                reason = reason,
+                                engine = activeEngineName,
+                            ),
+                        )
+                    }
+                }
                 events.onLoadFailure(reason)
                 notifyNavigationState(force = false)
             }
@@ -385,14 +399,18 @@ class DesktopWebContainerHostController(
                 val attempt =
                     (action as? WebContainerWatchdogAction.TriggerRecoveryReload)?.recoveryAttempt
                         ?: watchdog.recentRecoveryCount
-                activeTelemetrySink?.onEvent(
-                    WebContainerTelemetryEvent.RenderProcessGone(
-                        surfaceId = config.surfaceId,
-                        didCrash = didCrash,
-                        recovered = recovered,
-                        attempt = attempt,
-                    ),
-                )
+                runCatching {
+                    activeTelemetrySink?.onEvent(
+                        WebContainerTelemetryEvent.RenderProcessGone(
+                            surfaceId = config.surfaceId,
+                            didCrash = didCrash,
+                            recovered = recovered,
+                            attempt = attempt,
+                            parked = false,
+                            engine = activeEngineName,
+                        ),
+                    )
+                }
                 if (recovered) {
                     val restoreUrl =
                         sanitizeRendererRestoreUrl(
@@ -504,12 +522,23 @@ class DesktopWebContainerHostController(
 
     val session: DesktopWebSession? = engine.createSession(config, callbacks)
 
+    private val activeEngineName: String
+        get() = session?.engineName ?: "desktop_web"
+
     val component: Component?
         get() = session?.component
 
     fun start() {
         val activeSession = session
         if (activeSession == null) {
+            runCatching {
+                activeTelemetrySink?.onEvent(
+                    WebContainerTelemetryEvent.StartupFailed(
+                        reason = "desktop_engine_unavailable",
+                        engine = "desktop_web",
+                    ),
+                )
+            }
             events.onLoadFailure("desktop_engine_unavailable")
             return
         }
@@ -647,12 +676,15 @@ class DesktopWebContainerHostController(
             is WebContainerWatchdogAction.RequestDomProbe -> probeContent(action.generation)
             is WebContainerWatchdogAction.TriggerRecoveryReload -> Unit
             is WebContainerWatchdogAction.EmitTerminalError -> {
-                activeTelemetrySink?.onEvent(
-                    WebContainerTelemetryEvent.WatchdogTerminalError(
-                        surfaceId = config.surfaceId,
-                        reason = action.reason,
-                    ),
-                )
+                runCatching {
+                    activeTelemetrySink?.onEvent(
+                        WebContainerTelemetryEvent.WatchdogTerminalError(
+                            surfaceId = config.surfaceId,
+                            reason = action.reason,
+                            engine = activeEngineName,
+                        ),
+                    )
+                }
                 events.onWatchdogTerminalError(action.reason)
             }
         }

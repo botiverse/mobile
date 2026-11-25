@@ -5,8 +5,11 @@ import android.content.MutableContextWrapper
 import android.os.Looper
 import android.os.SystemClock
 import android.view.View
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
 import build.raft.webcontainer.jsb.JsbRegistry
+import build.raft.webcontainer.pool.WebContainerTelemetryEvent
+import build.raft.webcontainer.pool.WebContainerTelemetrySink
 import build.raft.webcontainer.resilience.WebContainerPhase
 import build.raft.webcontainer.resilience.WebContainerWatchdogPolicy
 import java.time.Duration
@@ -55,6 +58,7 @@ class AndroidWebContainerWatchdogLifecycleTest {
                 stallTimeoutMs = 15_000L,
                 blankProbeDelayMs = 1_500L,
             ),
+        telemetrySink: WebContainerTelemetrySink? = null,
     ): Pair<Activity, WebContainerAndroidView> {
         val controller = Robolectric.buildActivity(Activity::class.java).create()
         val activity = controller.get()
@@ -65,7 +69,7 @@ class AndroidWebContainerWatchdogLifecycleTest {
                 events = events,
                 jsbRegistry = JsbRegistry.Empty,
                 resourceInterceptor = null,
-                telemetrySink = null,
+                telemetrySink = telemetrySink,
                 fileChooser = null,
                 watchdogPolicy = policy,
                 nowMs = SystemClock::uptimeMillis,
@@ -193,5 +197,73 @@ class AndroidWebContainerWatchdogLifecycleTest {
             terminalErrors,
             "attached=${host.isAttachedToWindow} winVis=${host.windowVisibility} phase=${host.watchdogPhase} bg=${host.isWatchdogBackgrounded} sched=${host.isWatchdogTickScheduled} t=${SystemClock.uptimeMillis()}",
         )
+    }
+
+    @Test
+    fun renderProcessGoneEmitsPriorityParkedAndEngineForForegroundAndParkedContainers() {
+        val telemetry = mutableListOf<WebContainerTelemetryEvent>()
+        val terminalErrors = mutableListOf<String>()
+        val config =
+            WebContainerConfig(
+                url = "https://app.raft.build/artifacts/t1",
+                surfaceId = "artifact_viewer",
+                isolationScope = WebIsolationScope.Default,
+                allowScripts = false,
+                keepAliveKey = "rp-telemetry-test",
+            )
+        val (_, host) =
+            createAttachedHost(
+                events = WebContainerEvents(onWatchdogTerminalError = { terminalErrors += it }),
+                config = config,
+                telemetrySink = WebContainerTelemetrySink { telemetry += it },
+            )
+        val webView = host.getChildAt(0) as WebView
+        val client = shadowOf(webView).webViewClient
+        client.onPageStarted(webView, config.url, null)
+        client.onPageFinished(webView, config.url)
+
+        val fgCrash =
+            object : RenderProcessGoneDetail() {
+                override fun didCrash(): Boolean = true
+
+                override fun rendererPriorityAtExit(): Int = WebView.RENDERER_PRIORITY_IMPORTANT
+            }
+        assertTrue(client.onRenderProcessGone(webView, fgCrash))
+        val fgEvent = telemetry.filterIsInstance<WebContainerTelemetryEvent.RenderProcessGone>().single()
+        assertEquals("artifact_viewer", fgEvent.surfaceId)
+        assertTrue(fgEvent.didCrash)
+        assertTrue(fgEvent.recovered)
+        assertEquals(1, fgEvent.attempt)
+        assertEquals(WebView.RENDERER_PRIORITY_IMPORTANT, fgEvent.rendererPriorityAtExit)
+        assertFalse(fgEvent.parked)
+        assertEquals("android_webview", fgEvent.engine)
+
+        // Park the recreated view in the real keep-alive pool and verify parked renderer death
+        // evicts & destroys it cleanly while emitting parked=true and PoolEvent("dropped").
+        val sink = WebContainerTelemetrySink { telemetry += it }
+        assertTrue(WebContainerAndroidKeepAlive.park(host, telemetrySink = sink))
+        assertTrue(WebContainerAndroidKeepAlive.keptDocument(config.keepAliveKey!!) != null)
+        telemetry.clear()
+        val parkedView = host.getChildAt(0) as WebView
+        val parkedKill =
+            object : RenderProcessGoneDetail() {
+                override fun didCrash(): Boolean = false
+
+                override fun rendererPriorityAtExit(): Int = WebView.RENDERER_PRIORITY_WAIVED
+            }
+        assertTrue(shadowOf(parkedView).webViewClient.onRenderProcessGone(parkedView, parkedKill))
+        val parkedEvent = telemetry.filterIsInstance<WebContainerTelemetryEvent.RenderProcessGone>().single()
+        assertFalse(parkedEvent.didCrash)
+        assertTrue(parkedEvent.recovered)
+        assertEquals(0, parkedEvent.attempt)
+        assertEquals(WebView.RENDERER_PRIORITY_WAIVED, parkedEvent.rendererPriorityAtExit)
+        assertTrue(parkedEvent.parked)
+        assertEquals("android_webview", parkedEvent.engine)
+        val droppedPool = telemetry.filterIsInstance<WebContainerTelemetryEvent.PoolEvent>().single()
+        assertEquals("dropped", droppedPool.action)
+        assertEquals("android_webview", droppedPool.engine)
+        assertTrue(WebContainerAndroidKeepAlive.keptDocument(config.keepAliveKey!!) == null)
+        assertTrue(shadowOf(parkedView).wasDestroyCalled())
+        assertTrue(terminalErrors.isEmpty())
     }
 }

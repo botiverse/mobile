@@ -9,6 +9,7 @@ import android.webkit.WebView
 import build.raft.app.RaftDetachedWebViewClient
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import build.raft.app.isRaftAndroidWebContainerEnabledSnapshot
+import build.raft.app.raftWebContainerTelemetrySink
 import build.raft.webcontainer.AndroidWebContainerStartup
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -128,6 +129,7 @@ internal object RaftAndroidWebViewWarmup {
         }
         return AndroidWebContainerStartup.startUpAsync(
             context = androidContext,
+            telemetrySink = raftWebContainerTelemetrySink(),
             onCompleted = onCompleted,
         )
     }

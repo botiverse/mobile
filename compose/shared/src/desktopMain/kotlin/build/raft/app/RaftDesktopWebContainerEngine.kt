@@ -18,6 +18,7 @@ import build.raft.webcontainer.evaluateMainFrameNavigation
 import build.raft.webcontainer.isAllowedSubframeUrl
 import build.raft.webcontainer.jsb.JsbBootstrapScripts
 import build.raft.webcontainer.parseWebContainerOrigin
+import build.raft.webcontainer.pool.WebContainerTelemetryEvent
 import build.raft.webcontainer.resource.WebResourceInterceptor
 import java.awt.Component
 import java.io.File
@@ -34,6 +35,8 @@ private val RaftDesktopWebContainerOnWindows: Boolean =
 
 private val RaftDesktopWebContainerOnMacOs: Boolean =
     System.getProperty("os.name").orEmpty().lowercase().let { it.contains("mac") || it.contains("darwin") }
+
+internal actual fun onRaftWebContainerPlatformTelemetry(event: WebContainerTelemetryEvent) = Unit
 
 @Composable
 internal actual fun rememberRaftWebContainerPlatformResourceInterceptor(): WebResourceInterceptor? = null
@@ -219,6 +222,8 @@ class RaftDesktopWryWebSession(
 ) : DesktopWebSession {
     override val component: Component
         get() = bridge.component
+
+    override val engineName: String = "desktop_wry"
 
     @Volatile private var disposed: Boolean = false
     @Volatile private var verifySoon: Boolean = false

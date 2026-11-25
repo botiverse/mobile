@@ -47,6 +47,7 @@ internal object RaftWebViewRendererGoneReporter {
                 clientKey = clientKey,
             )
         }
+        RaftWebViewRendererGone.appContext = appContext
         RaftWebViewRendererGone.dailyStore =
             PreferencesDailyStore(appContext.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE))
         RaftWebViewRendererGone.ticketSink = ticketSink@{ message, extras, done ->

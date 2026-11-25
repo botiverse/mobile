@@ -18,6 +18,7 @@ import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.webcontainer.LocalAndroidWebFileChooser
 import build.raft.webcontainer.WebContainerAndroidFileChooser
+import build.raft.webcontainer.pool.WebContainerTelemetryEvent
 import build.raft.webcontainer.resource.WebResourceInterceptor
 import build.raft.webcontainer.resource.WebResourceResponseData
 import build.raft.webcontainer.resource.WebResourceSource
@@ -135,6 +136,32 @@ internal val RaftAndroidMainDocumentResourceInterceptor =
             source = WebResourceSource.HOST_CACHE,
         )
     }
+
+private val WebContainerHandsSurfacePattern = Regex("^[A-Za-z0-9_-]{1,48}$")
+
+internal fun formatWebContainerHandsSurface(
+    surfaceId: String,
+    parked: Boolean = false,
+): String {
+    val trimmed = surfaceId.trim()
+    val clean =
+        when {
+            trimmed.isEmpty() -> "default"
+            WebContainerHandsSurfacePattern.matches(trimmed) -> trimmed
+            else -> "other"
+        }
+    return if (parked) "web_container:$clean:parked" else "web_container:$clean"
+}
+
+internal actual fun onRaftWebContainerPlatformTelemetry(event: WebContainerTelemetryEvent) {
+    if (event is WebContainerTelemetryEvent.RenderProcessGone) {
+        RaftWebViewRendererGone.recordSignal(
+            surface = formatWebContainerHandsSurface(event.surfaceId, parked = event.parked),
+            didCrash = event.didCrash,
+            rendererPriorityAtExit = event.rendererPriorityAtExit ?: -1,
+        )
+    }
+}
 
 @Composable
 internal actual fun rememberRaftWebContainerPlatformResourceInterceptor(): WebResourceInterceptor? =

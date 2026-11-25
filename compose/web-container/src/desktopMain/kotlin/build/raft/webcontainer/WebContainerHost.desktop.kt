@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import build.raft.webcontainer.jsb.JsbRegistry
+import build.raft.webcontainer.pool.WebContainerTelemetryEvent
 import build.raft.webcontainer.pool.WebContainerTelemetrySink
 import build.raft.webcontainer.resource.WebResourceInterceptor
 import kotlinx.coroutines.delay
@@ -41,6 +42,14 @@ internal actual fun WebContainerPlatformHost(
     val engine = LocalDesktopWebEngine.current
     if (engine == null) {
         LaunchedEffect(config.url) {
+            runCatching {
+                telemetrySink?.onEvent(
+                    WebContainerTelemetryEvent.StartupFailed(
+                        reason = "desktop_engine_unavailable",
+                        engine = "desktop_web",
+                    ),
+                )
+            }
             events.onLoadFailure("desktop_engine_unavailable")
         }
         Box(modifier = modifier)
