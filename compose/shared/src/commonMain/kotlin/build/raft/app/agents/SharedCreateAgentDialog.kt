@@ -28,12 +28,17 @@ import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.appendRaftTextLink
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.AnnotatedString
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
@@ -343,16 +348,24 @@ internal fun rememberCreateAgentMachineQuotaLines(
 ): Map<String, String> =
     rememberRuntimeQuotaLines(access, remember(machines, runtimeId) { machines.map { it.quotaRequest(runtimeId) } })
 
-/** The computer picker's options, each with its quota line as the description. */
+/** The computer picker's options, combining each computer's owner description and quota line. */
 internal fun createAgentMachineChoiceOptions(
     items: List<CreateAgentDropdownItem>,
     quotaLines: Map<String, String>
 ): List<RaftComboboxOption<String>> =
-    items.map { item -> RaftComboboxOption(item.id, item.label, description = quotaLines[item.id], enabled = item.enabled) }
+    items.map { item ->
+        val description =
+            listOfNotNull(
+                item.description?.trim()?.takeIf { it.isNotEmpty() },
+                quotaLines[item.id]?.trim()?.takeIf { it.isNotEmpty() }
+            ).joinToString("\n").ifBlank { null }
+        RaftComboboxOption(item.id, item.label, description = description, enabled = item.enabled)
+    }
 
 internal data class CreateAgentDropdownItem(
     val id: String,
     val label: String,
+    val description: String? = null,
     val custom: Boolean = false,
     val enabled: Boolean = true
 )
@@ -388,6 +401,7 @@ internal fun createAgentMachineDropdownItems(
         CreateAgentDropdownItem(
             id = machine.id,
             label = machine.name + if (isOffline) offlineSuffix else "",
+            description = machine.description?.trim()?.takeIf { it.isNotEmpty() },
             enabled = !isOffline && !blockedByRequired
         )
     }
@@ -474,6 +488,8 @@ internal fun SharedCreateAgentDialog(
      */
     autoJoinChannelName: String? = null,
     runtimeFormV2Override: RuntimeFormV2Access? = null,
+    /** Optional override for tests/fixtures so Advanced env-var copying stays store-free when injected. */
+    envVarsCopyOverride: RuntimeEnvVarsCopySource? = null,
     errorFieldKeys: Set<String> = emptySet(),
     takenAgentNames: List<String> = emptyList(),
     /** iOS view-only Billing: "View your plan" on the agent-limit banner (and [errorMessage] when [errorOffersViewPlan]). */
@@ -700,6 +716,16 @@ internal fun SharedCreateAgentDialog(
     val seatLimitReached = !agentCapReached && seatLimit?.reached == true
     val atLimit = agentCapReached || seatLimitReached
     val selectedMachine = machines.firstOrNull { it.id == selectedMachineId }
+    val envVarsCopy =
+        envVarsCopyOverride
+            ?: rememberSameComputerEnvVarCopySource(
+                formStore = createAgentFormStore,
+                serverId = cleanCreateAgentServerId,
+                machineId = availableSelectedMachineId,
+                machineName = selectedMachine?.name,
+                targetRuntimeId = runtime,
+                enabled = !skipsComputer,
+            )
     val selectedMachineRuntimeIds =
         normalizeCreateAgentRuntimeIds(
             selectedMachine?.runtimes.orEmpty().filterNot { it == "builtin" } +
@@ -1030,7 +1056,8 @@ internal fun SharedCreateAgentDialog(
                                     advancedOpen = advancedOpen,
                                     onAdvancedOpenChange = { advancedOpen = it },
                                     enabled = !submitting,
-                                    sourceRefresh = v2SourceRefresh
+                                    sourceRefresh = v2SourceRefresh,
+                                    envVarsCopy = envVarsCopy
                                 )
                             }
                         }
@@ -1348,77 +1375,101 @@ internal fun MachinePicker(
     onSelectHosted: () -> Unit = {},
     onSelect: (String) -> Unit
 ) {
-    RaftField(
-        label = stringResource(Res.string.agent_create_label_computer),
-        modifier = Modifier.fillMaxWidth(),
-        description =
-            when {
-                hostedSelected -> stringResource(Res.string.agent_create_hosted_hint)
-                !requiredComputer.isNullOrBlank() ->
-                    Res.string.agent_create_hint_required_computer.format(listOf(requiredComputer)).localized()
-                !suggestedComputer.isNullOrBlank() ->
-                    Res.string.agent_create_hint_suggested_computer.format(listOf(suggestedComputer)).localized()
-                else -> null
-            },
-        enabled = enabled,
-        required = true,
-        reserveMessage = true
-    ) {
+    val selectedComputerNote =
+        if (hostedSelected) {
+            null
+        } else {
+            machines.firstOrNull { it.id == selectedMachineId }?.description?.trim()?.takeIf { it.isNotEmpty() }
+        }
+    val fieldDescription =
         when {
-            machinesLoading -> Text(
-                text = stringResource(Res.string.agent_create_state_computers_loading),
-                style = RaftType.Caption,
-                color = RaftColor.TextMutedGray
-            )
-            !machinesErrorMessage.isNullOrBlank() ->
-                RaftBanner(
-                    description = machinesErrorMessage,
-                    status = RaftBannerStatus.Warning,
-                    action = {
-                        RaftButton(
-                            text = stringResource(Res.string.common_retry),
-                            onClick = onRetry,
-                            variant = RaftButtonVariant.Default,
-                            size = RaftButtonSize.Md,
+            hostedSelected -> stringResource(Res.string.agent_create_hosted_hint)
+            !requiredComputer.isNullOrBlank() ->
+                Res.string.agent_create_hint_required_computer.format(listOf(requiredComputer)).localized()
+            !suggestedComputer.isNullOrBlank() ->
+                Res.string.agent_create_hint_suggested_computer.format(listOf(suggestedComputer)).localized()
+            else -> null
+        }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        RaftField(
+            label = stringResource(Res.string.agent_create_label_computer),
+            modifier = Modifier.fillMaxWidth(),
+            description = fieldDescription,
+            enabled = enabled,
+            required = true,
+            reserveMessage = selectedComputerNote == null
+        ) {
+            when {
+                machinesLoading -> Text(
+                    text = stringResource(Res.string.agent_create_state_computers_loading),
+                    style = RaftType.Caption,
+                    color = RaftColor.TextMutedGray
+                )
+                !machinesErrorMessage.isNullOrBlank() ->
+                    RaftBanner(
+                        description = machinesErrorMessage,
+                        status = RaftBannerStatus.Warning,
+                        action = {
+                            RaftButton(
+                                text = stringResource(Res.string.common_retry),
+                                onClick = onRetry,
+                                variant = RaftButtonVariant.Default,
+                                size = RaftButtonSize.Md,
+                                enabled = enabled,
+                                leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
+                            )
+                        }
+                    )
+                machines.isEmpty() && hostedOption == null ->
+                    RaftBanner(
+                        description = stringResource(Res.string.agent_create_state_computers_empty),
+                        status = RaftBannerStatus.Info
+                    )
+                else -> {
+                    val machineItems =
+                        createAgentMachineDropdownItems(
+                            machines = machines,
+                            requiredComputer = requiredComputer,
+                            offlineSuffix = stringResource(Res.string.agent_create_suffix_offline)
+                        )
+                    // Web CreateAgentDialog: a select at any count (artin 2026-11-02: no radios), raft-ui
+                    // ComboboxSelect — the list under the trigger up to ten, a searchable sheet above.
+                    // Each computer carries its owner description and the chosen runtime's quota line.
+                    val quotaLines = rememberCreateAgentMachineQuotaLines(usageAccess, machines, runtimeId)
+                    val computerLabel = stringResource(Res.string.agent_create_label_computer)
+                    val noMatches = stringResource(Res.string.runtime_picker_no_matches, "\u0001")
+                    CompositionLocalProvider(LocalRaftFieldState provides RaftFieldState(enabled = enabled, label = computerLabel, required = true, inField = true)) {
+                        RaftCombobox(
+                            value = if (hostedSelected) CREATE_AGENT_HOSTED_CHOICE else selectedMachineId,
+                            options =
+                                createAgentMachineChoiceOptions(machineItems, quotaLines) +
+                                    listOfNotNull(hostedOption?.let { RaftComboboxOption(CREATE_AGENT_HOSTED_CHOICE, it) }),
+                            onValueChange = { id -> if (id == CREATE_AGENT_HOSTED_CHOICE) onSelectHosted() else onSelect(id) },
+                            emptyText = { query -> noMatches.replace("\u0001", query) },
+                            placeholder = stringResource(Res.string.agent_create_placeholder_select_computer),
+                            title = computerLabel,
+                            searchPlaceholder = stringResource(Res.string.runtime_picker_search),
                             enabled = enabled,
-                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
+                            label = computerLabel
                         )
                     }
-                )
-            machines.isEmpty() && hostedOption == null ->
-                RaftBanner(
-                    description = stringResource(Res.string.agent_create_state_computers_empty),
-                    status = RaftBannerStatus.Info
-                )
-            else -> {
-                val machineItems =
-                    createAgentMachineDropdownItems(
-                        machines = machines,
-                        requiredComputer = requiredComputer,
-                        offlineSuffix = stringResource(Res.string.agent_create_suffix_offline)
-                    )
-                // Web CreateAgentDialog: a select at any count (artin 2026-11-02: no radios), raft-ui
-                // ComboboxSelect — the list under the trigger up to ten, a searchable sheet above.
-                // Each computer carries the chosen runtime's quota line.
-                val quotaLines = rememberCreateAgentMachineQuotaLines(usageAccess, machines, runtimeId)
-                val computerLabel = stringResource(Res.string.agent_create_label_computer)
-                val noMatches = stringResource(Res.string.runtime_picker_no_matches, "\u0001")
-                CompositionLocalProvider(LocalRaftFieldState provides RaftFieldState(enabled = enabled, label = computerLabel, required = true, inField = true)) {
-                    RaftCombobox(
-                        value = if (hostedSelected) CREATE_AGENT_HOSTED_CHOICE else selectedMachineId,
-                        options =
-                            createAgentMachineChoiceOptions(machineItems, quotaLines) +
-                                listOfNotNull(hostedOption?.let { RaftComboboxOption(CREATE_AGENT_HOSTED_CHOICE, it) }),
-                        onValueChange = { id -> if (id == CREATE_AGENT_HOSTED_CHOICE) onSelectHosted() else onSelect(id) },
-                        emptyText = { query -> noMatches.replace("\u0001", query) },
-                        placeholder = stringResource(Res.string.agent_create_placeholder_select_computer),
-                        title = computerLabel,
-                        searchPlaceholder = stringResource(Res.string.runtime_picker_search),
-                        enabled = enabled,
-                        label = computerLabel
-                    )
                 }
             }
+        }
+        // Web CreateAgentDialog `ComputerNoteHint` (#16578, #triage:#620): show the chosen computer's
+        // owner note whole under the closed Computer field (wrapping, never truncated), for ordinary,
+        // suggested, and required picks.
+        if (selectedComputerNote != null) {
+            RaftText(
+                text = selectedComputerNote,
+                style = RaftTheme.typography.caption,
+                color = RaftTheme.colors.foregroundHint,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = if (fieldDescription == null) 6.dp else 2.dp)
+                        .testTag("create-agent-selected-computer-description")
+            )
         }
     }
 }
@@ -1515,6 +1566,13 @@ private fun rememberCreateAgentEnvVarEditor(keyboardOptions: KeyboardOptions): R
         onBlur = {}
     )
 
+private data class EnvVarsCopyFeedback(
+    val agentName: String,
+    val addedCount: Int,
+    val keptKeys: List<String>,
+)
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun EnvVarsEditor(
     entries: List<Pair<String, String>>,
@@ -1523,8 +1581,18 @@ internal fun EnvVarsEditor(
     label: String? = null,
     required: Boolean = false,
     /** Help under the label, above the rows (web RuntimeEnvVarsField). */
-    hint: (@Composable () -> Unit)? = null
+    hint: (@Composable () -> Unit)? = null,
+    /** #16606: same-Computer agents whose Advanced env vars can be appended into this field. */
+    copySource: RuntimeEnvVarsCopySource? = null
 ) {
+    val currentResetKey = copySource?.resetKey
+    var prevResetKey by remember { mutableStateOf(currentResetKey) }
+    var copyFeedback by remember { mutableStateOf<EnvVarsCopyFeedback?>(null) }
+    if (prevResetKey != currentResetKey) {
+        prevResetKey = currentResetKey
+        if (copyFeedback != null) copyFeedback = null
+    }
+    val activeFeedback = if (prevResetKey == currentResetKey) copyFeedback else null
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         val groupLabel = label ?: stringResource(Res.string.agent_create_label_environment_variables)
         // A group of key/value fields: no one control to say "required", so the group's label says it.
@@ -1596,20 +1664,73 @@ internal fun EnvVarsEditor(
                 }
             }
         }
-        Box(
-            modifier =
-                Modifier
-                    .raftClickable(
-                        enabled = enabled,
-                        onClick = { onChange(entries + ("" to "")) },
-                        shape = RoundedCornerShape(RaftRadius.Control),
-                    )
-                    .padding(vertical = 4.dp)
-        ) {
-            Text(
-                text = stringResource(Res.string.agent_create_action_add_env_var),
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray
+        val hasCopyCandidates = copySource != null && copySource.candidates.isNotEmpty()
+        val addButton: @Composable () -> Unit = {
+            Box(
+                modifier =
+                    Modifier
+                        .raftClickable(
+                            enabled = enabled,
+                            onClick = { onChange(entries + ("" to "")) },
+                            shape = RoundedCornerShape(RaftRadius.Control),
+                        )
+                        .padding(vertical = 4.dp)
+            ) {
+                Text(
+                    text = stringResource(Res.string.agent_create_action_add_env_var),
+                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                    color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray
+                )
+            }
+        }
+        if (hasCopyCandidates && copySource != null) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                addButton()
+                CopyEnvVarsFromAgentMenu(
+                    candidates = copySource.candidates,
+                    computerName = copySource.computerName,
+                    enabled = enabled,
+                    onPick = { candidate ->
+                        val merged =
+                            mergeCopiedEnvVars(
+                                current = entries.map { (k, v) -> CopyableEnvVarEntry(k, v) },
+                                source = candidate.entries,
+                            )
+                        if (merged.addedCount > 0) {
+                            onChange(merged.next.map { it.key to it.value })
+                        }
+                        copyFeedback =
+                            EnvVarsCopyFeedback(
+                                agentName = candidate.name,
+                                addedCount = merged.addedCount,
+                                keptKeys = merged.keptKeys,
+                            )
+                    },
+                )
+            }
+        } else {
+            addButton()
+        }
+        if (activeFeedback != null) {
+            RaftText(
+                text =
+                    copyEnvVarsFeedbackText(
+                        agentName = activeFeedback.agentName,
+                        addedCount = activeFeedback.addedCount,
+                        keptKeys = activeFeedback.keptKeys,
+                    ),
+                style = RaftTheme.typography.caption,
+                color = RaftTheme.colors.foregroundMuted,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .testTag("env-vars-copy-status")
+                        .semantics { liveRegion = LiveRegionMode.Polite },
             )
         }
     }

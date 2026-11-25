@@ -23,5 +23,7 @@ data class AgentMigrationComputer(
     val attachedByCurrentUser: Boolean = false,
     val creatorUserId: String? = null,
     /** The viewer's own Computer (attached or owned, [build.raft.app.data.raftIsMyComputer]): listed first. */
-    val mine: Boolean = false
+    val mine: Boolean = false,
+    /** The note the Computer's owner wrote about it (botiverse/slock #16578). */
+    val description: String? = null
 )

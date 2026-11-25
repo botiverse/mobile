@@ -42,8 +42,18 @@ class CreateExternalAgentScreenshotTest {
 
     @Test
     fun entryMenuLight() =
-        capture("channel.members.add.create-menu", RaftAppAppearance.Light) {
-            CompositionLocalProvider(LocalThreadAddMemberCreateMenuPreview provides true) { AddMemberEntryContent(canCreateAgents = true) }
+        english {
+            RaftRobolectricScreenshot.capture(
+                "channel.members.add.create-menu",
+                RaftAppAppearance.Light,
+                reportDir = "build/reports/home-screenshots",
+                activities = activities,
+                root = { ShadowDialog.getLatestDialog()?.window?.decorView },
+            ) {
+                Page {
+                    CompositionLocalProvider(LocalThreadAddMemberCreateMenuPreview provides true) { AddMemberEntryContent(canCreateAgents = true) }
+                }
+            }
         }
 
     @Test

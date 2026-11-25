@@ -375,7 +375,7 @@ internal fun MembersAgentRuntimeConfigSection(
 
     fun showRuntimeConfigApplyNotice(notice: MembersRuntimeConfigApplyNotice) {
         if (toastHost == null) {
-            onUnavailableAction(applyCopy.title(member.displayName))
+            onUnavailableAction(applyCopy.title(notice.kind, member.displayName))
             return
         }
         showMembersRuntimeConfigApplyNotice(toastHost, notice, member.displayName, applyCopy)
@@ -613,6 +613,8 @@ internal fun MembersAgentRuntimeConfigSection(
                 (store?.loadRuntimeCatalog(session.authority.serverId.value, machineId) as? DataResult.Content)?.data
             },
             agentRuntimeOptions = agentRuntimeOptions,
+            createAgentFormStore = createAgentFormStore,
+            machineName = (summary?.machineName ?: member.membersComputerName)?.takeIf { it.isNotBlank() },
             onSave = ::saveRuntimeConfigV2
         )
     }
@@ -986,26 +988,36 @@ internal fun membersRuntimeFormV2UpdateRequest(
 internal class MembersRuntimeConfigApplyCopy(
     /** "%1$s's settings saved". */
     private val savedTitleTemplate: String,
-    val appliedNow: String,
+    /** "%1$s's settings applied". */
+    private val appliedTitleTemplate: String,
     val appliesWhenIdle: String,
     val newSessionWhenIdle: String
 ) {
-    fun title(agentName: String): String = savedTitleTemplate.membersFormat(agentName)
+    fun title(kind: MembersRuntimeConfigApplyKind, agentName: String): String =
+        when (kind) {
+            MembersRuntimeConfigApplyKind.Applied -> appliedTitleTemplate.membersFormat(agentName)
+            MembersRuntimeConfigApplyKind.Saved,
+            MembersRuntimeConfigApplyKind.WhenIdle,
+            MembersRuntimeConfigApplyKind.NewSessionWhenIdle -> savedTitleTemplate.membersFormat(agentName)
+        }
 }
 
 @Composable
 internal fun membersRuntimeConfigApplyCopy(): MembersRuntimeConfigApplyCopy =
     MembersRuntimeConfigApplyCopy(
         savedTitleTemplate = membersStringTemplate(Res.string.member_runtime_config_saved_title),
-        appliedNow = stringResource(Res.string.member_runtime_config_applied_now),
+        appliedTitleTemplate = membersStringTemplate(Res.string.member_runtime_config_applied_title),
         appliesWhenIdle = stringResource(Res.string.member_runtime_config_applies_when_idle),
         newSessionWhenIdle = stringResource(Res.string.member_runtime_config_new_session_when_idle)
     )
 
 /**
- * Web `announceRuntimeConfigApply` (botiverse/slock #15669 / #15714, Raft DS › Toast): a plain
- * success toast whose title names the agent and whose description says when the change applies,
- * with no manual restart button.
+ * Web `announceRuntimeConfigApply` (botiverse/slock #15669 / #15714 / #16556, `#proj-runtime:#101`,
+ * Raft DS › Toast):
+ * - `Applied`: single-line confirmation toast ("<name>'s settings applied", no subtitle).
+ * - `Saved`: single-line saved toast ("<name>'s settings saved", no subtitle).
+ * - `WhenIdle` / `NewSessionWhenIdle`: saved title + subtitle saying it applies after the current
+ *   message and inviting a Raft Computer update for instant switching.
  */
 internal fun showMembersRuntimeConfigApplyNotice(
     host: RaftToastHostState,
@@ -1015,19 +1027,20 @@ internal fun showMembersRuntimeConfigApplyNotice(
 ): Long {
     val description =
         when (notice.kind) {
-            MembersRuntimeConfigApplyKind.AppliedNow -> copy.appliedNow
+            MembersRuntimeConfigApplyKind.Applied,
+            MembersRuntimeConfigApplyKind.Saved -> null
             MembersRuntimeConfigApplyKind.WhenIdle -> copy.appliesWhenIdle
             MembersRuntimeConfigApplyKind.NewSessionWhenIdle -> copy.newSessionWhenIdle
         }
     return host.show(
-        title = copy.title(agentName),
+        title = copy.title(notice.kind, agentName),
         description = description,
         intent = RaftToastIntent.Success
     )
 }
 
 /** When a saved runtime config change applies, as the saved notice says it. */
-internal enum class MembersRuntimeConfigApplyKind { AppliedNow, WhenIdle, NewSessionWhenIdle }
+internal enum class MembersRuntimeConfigApplyKind { Applied, Saved, WhenIdle, NewSessionWhenIdle }
 
 /** The saved notice: when the saved change applies. */
 internal data class MembersRuntimeConfigApplyNotice(
@@ -1035,11 +1048,12 @@ internal data class MembersRuntimeConfigApplyNotice(
 )
 
 /**
- * Web `announceRuntimeConfigApply` (botiverse/slock #15669 / #15714, `#proj-runtime:#80`):
- * - `applied` / `restarted` on an active agent: plain confirmation that it applied immediately.
- * - `when_idle` (older Computer without `agent:config-interrupt-v1` while busy): plain confirmation
- *   that it switches automatically after the current turn.
- * - `saved` or inactive: no restart prompt.
+ * Web `announceRuntimeConfigApply` (botiverse/slock #15669 / #15714 / #16556, `#proj-runtime:#101`):
+ * - `applied` / `restarted` on an active agent: single-line applied confirmation.
+ * - `applied` / `restarted` on an inactive agent, or `saved`: single-line saved confirmation.
+ * - `when_idle` (older Computer without `agent:config-interrupt-v1` while busy): saved title +
+ *   subtitle saying it applies after the current message and inviting a Raft Computer update.
+ * - `null` (older server): no toast.
  */
 internal fun membersRuntimeConfigApplyNotice(
     configApply: AgentConfigApply?,
@@ -1047,8 +1061,13 @@ internal fun membersRuntimeConfigApplyNotice(
     newSession: Boolean
 ): MembersRuntimeConfigApplyNotice? {
     if (configApply == AgentConfigApply.Applied || configApply == AgentConfigApply.Restarted) {
-        if (!agentActive) return null
-        return MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.AppliedNow)
+        val kind =
+            if (agentActive) MembersRuntimeConfigApplyKind.Applied
+            else MembersRuntimeConfigApplyKind.Saved
+        return MembersRuntimeConfigApplyNotice(kind)
+    }
+    if (configApply == AgentConfigApply.Saved) {
+        return MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.Saved)
     }
     if (configApply != AgentConfigApply.WhenIdle) return null
     val kind =

@@ -15,6 +15,7 @@ import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.data.RuntimeFormV2Availability
+import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedCreateAgentRuntimeCatalog
 import build.raft.app.data.ExistingAgentRuntimeOptions
 import build.raft.app.data.SharedCreateAgentRuntimeOption
@@ -79,6 +80,12 @@ internal fun MembersAgentRuntimeFormV2Dialog(
      * from the server catalog; without them the catalog decides (#proj-runtime:#57).
      */
     agentRuntimeOptions: ExistingAgentRuntimeOptions? = null,
+    /** Store used to load same-Computer agents for Advanced env-var copying (slock #16606). */
+    createAgentFormStore: SharedCreateAgentFormStore? = null,
+    /** The Computer's display name for the copy menu heading; falls back to "this Computer". */
+    machineName: String? = null,
+    /** Optional override for tests/fixtures so the copy menu stays store-free when injected. */
+    envVarsCopyOverride: RuntimeEnvVarsCopySource? = null,
     /**
      * [newSession]: the change runs on a new session (a runtime switch, or a Codex model change),
      * so Restart now resets the session (web AgentProfileInfo `newSession`, botiverse/slock #13372).
@@ -134,6 +141,16 @@ internal fun MembersAgentRuntimeFormV2Dialog(
 
     // Read here: dialog content is hosted at the page root, outside the route's usage access.
     val quotaMachine = machineId?.let { RuntimeQuotaMachine(it, access = LocalMembersRuntimeAccountUsageAccess.current) }
+    val envVarsCopy =
+        envVarsCopyOverride
+            ?: rememberSameComputerEnvVarCopySource(
+                formStore = createAgentFormStore,
+                serverId = access.serverId.value,
+                machineId = machineId,
+                machineName = machineName,
+                targetRuntimeId = selectedRuntimeId,
+                excludeAgentId = agentId.value,
+            )
     // The one commit: the footer's Save on a wide window, the phone sheet's head button.
     val commitLabel =
         if (saving) stringResource(Res.string.member_action_saving)
@@ -250,7 +267,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                                 advancedOpen = advancedOpen,
                                 onAdvancedOpenChange = { advancedOpen = it },
                                 enabled = !saving,
-                                sourceRefresh = sourceRefresh
+                                sourceRefresh = sourceRefresh,
+                                envVarsCopy = envVarsCopy
                             )
                         }
                     }

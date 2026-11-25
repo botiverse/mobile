@@ -2,14 +2,25 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,12 +28,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.ComputerSizeStatus
@@ -38,6 +53,7 @@ import build.raft.designsystem.components.RaftAvatarGroupCount
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftChoiceList
+import build.raft.designsystem.components.RaftChoiceListDefaults
 import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
@@ -45,6 +61,9 @@ import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowText
 import build.raft.designsystem.components.RaftPreviewCard
+import build.raft.designsystem.components.RaftRadio
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.rememberRaftPreviewCardState
 import build.raft.designsystem.components.RaftSeparator
@@ -53,6 +72,8 @@ import build.raft.designsystem.components.RaftSheetSurface
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftRadius
+import build.raft.designsystem.tokens.RaftStroke
 
 /*
  * The Move dialog's target list (web TargetComputerList / targetComputerInfo /
@@ -189,9 +210,39 @@ private fun agentMigrationQuotaLine(parts: List<RuntimeQuotaLinePart>): Annotate
 }
 
 /**
- * The target list: the [targets] (and the cloud when [hostedOption] is given) as a
- * [RaftChoiceList], each computer with its quota line for [agentRuntime] (where [usage] lets the
- * viewer read it) and its own line, and an info button opening its details in a sheet.
+ * Web `targetMetaLines` (botiverse/slock #16578): joins usage and computer info on one line when
+ * the computer also has an owner description (which takes the first line and wraps whole).
+ */
+internal fun agentMigrationCombinedUsageAndInfoLine(
+    usageLine: AnnotatedString?,
+    infoLine: String?,
+): AnnotatedString? =
+    when {
+        usageLine != null && !infoLine.isNullOrBlank() ->
+            buildAnnotatedString {
+                append(usageLine)
+                append(" · ")
+                append(infoLine)
+            }
+        usageLine != null -> usageLine
+        !infoLine.isNullOrBlank() -> AnnotatedString(infoLine)
+        else -> null
+    }
+
+private data class AgentMigrationWrappingTargetRow(
+    val id: String,
+    val label: String,
+    val enabled: Boolean,
+    val description: String?,
+    val usageLine: AnnotatedString?,
+    val infoLine: String?,
+)
+
+/**
+ * The target list: the [targets] (and the cloud when [hostedOption] is given), each computer with
+ * its owner description (when set, shown whole and wrapping, botiverse/slock #16578), its quota
+ * line for [agentRuntime] (where [usage] lets the viewer read it) and its own info line, and an
+ * info button opening its details in a sheet.
  */
 @Composable
 internal fun AgentMigrationTargetList(
@@ -221,44 +272,88 @@ internal fun AgentMigrationTargetList(
     val quota = rememberRuntimeQuotaLoads(usage, requests)
     val quotaLines = rememberRuntimeQuotaLineParts(quota)
     val infoCopy = rememberAgentMigrationTargetInfoCopy()
-    val items =
-        targets.map { computer ->
-            RaftChoiceListItem(
-                value = computer.id,
-                label = computer.name,
-                // Web: an offline computer can't receive the agent, so it shows but can't be chosen.
-                enabled = computer.online,
-                descriptions =
-                    listOfNotNull(
-                        quotaLines[computer.id]?.let { agentMigrationQuotaLine(it) },
-                        agentMigrationTargetInfoLine(computer, infoCopy)?.let(::AnnotatedString)
-                    )
-            )
-        } + listOfNotNull(hostedOption?.let { RaftChoiceListItem(value = HOSTED_TARGET_CHOICE, label = it) })
+    val anyDescription = targets.any { !it.description.isNullOrBlank() }
     var details by remember { mutableStateOf<String?>(null) }
-    RaftChoiceList(
-        items = items,
-        value = selected,
-        onValueChange = onSelect,
-        searchPlaceholder = stringResource(Res.string.agent_migration_target_search),
-        clearSearchLabel = stringResource(Res.string.agent_migration_target_clear_search),
-        noMatchLabel = stringResource(Res.string.agent_migration_target_no_matches),
-        emptyLabel = stringResource(Res.string.agent_migration_detail_no_other_attached_computer),
-        enabled = enabled,
-        initialQuery = initialQuery,
-        action = { item ->
-            // The cloud has no details.
-            if (item.value != HOSTED_TARGET_CHOICE) {
-                RaftIconButton(
-                    onClick = { details = item.value },
-                    tooltip = stringResource(Res.string.agent_migration_target_details, item.label),
-                    variant = RaftButtonVariant.Ghost
-                ) {
-                    RaftGlyphIcon(RaftGlyph.Info, size = 18.dp)
+    val searchPlaceholder = stringResource(Res.string.agent_migration_target_search)
+    val clearSearchLabel = stringResource(Res.string.agent_migration_target_clear_search)
+    val noMatchLabel = stringResource(Res.string.agent_migration_target_no_matches)
+    val emptyLabel = stringResource(Res.string.agent_migration_detail_no_other_attached_computer)
+
+    if (!anyDescription) {
+        val items =
+            targets.map { computer ->
+                RaftChoiceListItem(
+                    value = computer.id,
+                    label = computer.name,
+                    // Web: an offline computer can't receive the agent, so it shows but can't be chosen.
+                    enabled = computer.online,
+                    descriptions =
+                        listOfNotNull(
+                            quotaLines[computer.id]?.let { agentMigrationQuotaLine(it) },
+                            agentMigrationTargetInfoLine(computer, infoCopy)?.let(::AnnotatedString)
+                        )
+                )
+            } + listOfNotNull(hostedOption?.let { RaftChoiceListItem(value = HOSTED_TARGET_CHOICE, label = it) })
+        RaftChoiceList(
+            items = items,
+            value = selected,
+            onValueChange = onSelect,
+            searchPlaceholder = searchPlaceholder,
+            clearSearchLabel = clearSearchLabel,
+            noMatchLabel = noMatchLabel,
+            emptyLabel = emptyLabel,
+            enabled = enabled,
+            initialQuery = initialQuery,
+            action = { item ->
+                // The cloud has no details.
+                if (item.value != HOSTED_TARGET_CHOICE) {
+                    RaftIconButton(
+                        onClick = { details = item.value },
+                        tooltip = stringResource(Res.string.agent_migration_target_details, item.label),
+                        variant = RaftButtonVariant.Ghost
+                    ) {
+                        RaftGlyphIcon(RaftGlyph.Info, size = 18.dp)
+                    }
                 }
             }
-        }
-    )
+        )
+    } else {
+        val rows =
+            targets.map { computer ->
+                AgentMigrationWrappingTargetRow(
+                    id = computer.id,
+                    label = computer.name,
+                    enabled = computer.online,
+                    description = computer.description?.trim()?.takeIf { it.isNotEmpty() },
+                    usageLine = quotaLines[computer.id]?.let { agentMigrationQuotaLine(it) },
+                    infoLine = agentMigrationTargetInfoLine(computer, infoCopy),
+                )
+            } +
+                listOfNotNull(
+                    hostedOption?.let {
+                        AgentMigrationWrappingTargetRow(
+                            id = HOSTED_TARGET_CHOICE,
+                            label = it,
+                            enabled = true,
+                            description = null,
+                            usageLine = null,
+                            infoLine = null,
+                        )
+                    }
+                )
+        AgentMigrationWrappingTargetChoiceList(
+            rows = rows,
+            selected = selected,
+            enabled = enabled,
+            searchPlaceholder = searchPlaceholder,
+            clearSearchLabel = clearSearchLabel,
+            noMatchLabel = noMatchLabel,
+            emptyLabel = emptyLabel,
+            initialQuery = initialQuery,
+            onSelect = onSelect,
+            onOpenDetails = { details = it },
+        )
+    }
     val timeContext = currentRaftTimeContextProvider?.current
     targets.firstOrNull { it.id == details }?.let { computer ->
         val state = agentMigrationTargetUsageState(computer.id, quota)
@@ -267,6 +362,213 @@ internal fun AgentMigrationTargetList(
             title = computer.name,
             content = { AgentMigrationTargetDetailsContent(computer, agentRuntime, state, timeContext, computerAgents) }
         )
+    }
+}
+
+/**
+ * Local radio choice list matching [RaftChoiceList] layout while rendering each computer's owner
+ * description whole and wrapping without truncation (botiverse/slock #16578, #triage:#620).
+ */
+@Composable
+private fun AgentMigrationWrappingTargetChoiceList(
+    rows: List<AgentMigrationWrappingTargetRow>,
+    selected: String?,
+    enabled: Boolean,
+    searchPlaceholder: String,
+    clearSearchLabel: String,
+    noMatchLabel: String,
+    emptyLabel: String,
+    initialQuery: String,
+    onSelect: (String) -> Unit,
+    onOpenDetails: (String) -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val searchable = rows.size > RaftChoiceListDefaults.SearchAbove
+    var query by remember { mutableStateOf(initialQuery) }
+    var pinned by remember { mutableStateOf(selected) }
+    LaunchedEffect(searchable) {
+        if (!searchable && query.isNotEmpty()) {
+            query = ""
+            pinned = selected
+        }
+    }
+    val needle = if (searchable) query.trim().lowercase() else ""
+    val visible =
+        if (needle.isEmpty()) {
+            rows
+        } else {
+            val chosen = rows.firstOrNull { it.id == pinned }
+            val matches = rows.filter { it.id != pinned && it.label.lowercase().contains(needle) }
+            listOfNotNull(chosen) + matches
+        }
+    val noMatches = needle.isNotEmpty() && visible.none { it.label.lowercase().contains(needle) }
+    val frameShape = RoundedCornerShape(RaftRadius.Container)
+
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (searchable) {
+            RaftTextField(
+                value = query,
+                onValueChange = { next ->
+                    query = next
+                    pinned = selected
+                },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = searchPlaceholder,
+                enabled = enabled,
+                leading = { RaftGlyphIcon(RaftGlyph.Search, size = 16.dp) },
+                trailingAction =
+                    if (query.isNotEmpty()) {
+                        {
+                            RaftTextFieldClearAction(
+                                onClear = {
+                                    query = ""
+                                    pinned = selected
+                                },
+                                label = clearSearchLabel,
+                                enabled = enabled,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            )
+        }
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(colors.layerCard, frameShape)
+                    .border(RaftStroke.Hairline, colors.lineHairline, frameShape)
+                    .padding(4.dp)
+                    .then(
+                        if (searchable) {
+                            Modifier
+                                .heightIn(max = RaftChoiceListDefaults.ScrollMaxHeight)
+                                .verticalScroll(rememberScrollState())
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .selectableGroup(),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            when {
+                rows.isEmpty() ->
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
+                        RaftText(emptyLabel, style = typography.callout, color = colors.foregroundHint)
+                    }
+                else -> {
+                    visible.forEach { row ->
+                        key(row.id) {
+                            val rowEnabled = enabled && row.enabled
+                            val isSelected = row.id == selected
+                            val hasAction = row.id != HOSTED_TARGET_CHOICE
+                            val metaColor = if (rowEnabled) colors.foregroundMuted else colors.foregroundDisabled
+                            val source = remember { MutableInteractionSource() }
+                            Box(Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .selectable(
+                                                selected = isSelected,
+                                                interactionSource = source,
+                                                indication = null,
+                                                enabled = rowEnabled,
+                                                role = Role.RadioButton,
+                                                onClick = { onSelect(row.id) },
+                                            )
+                                            .heightIn(min = RaftChoiceListDefaults.RowMinHeight)
+                                            .padding(
+                                                start = 10.dp,
+                                                end = if (hasAction) RaftChoiceListDefaults.ActionInset else 10.dp,
+                                                top = 10.dp,
+                                                bottom = 10.dp,
+                                            ),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.Top,
+                                ) {
+                                    RaftRadio(selected = isSelected, onClick = null, enabled = rowEnabled)
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                                    ) {
+                                        RaftText(
+                                            text = row.label,
+                                            style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                                            color = if (rowEnabled) colors.foreground else colors.foregroundDisabled,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        if (row.description != null) {
+                                            // Full plain-text description wraps without ellipsis (#triage:#620).
+                                            RaftText(
+                                                text = row.description,
+                                                style = typography.footnote,
+                                                color = metaColor,
+                                                modifier = Modifier.testTag("agent-migration-target-description-${row.id}"),
+                                            )
+                                            agentMigrationCombinedUsageAndInfoLine(row.usageLine, row.infoLine)?.let { secondLine ->
+                                                RaftText(
+                                                    text = secondLine,
+                                                    style = typography.footnote,
+                                                    color = metaColor,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.testTag("agent-migration-target-info-${row.id}"),
+                                                )
+                                            }
+                                        } else {
+                                            row.usageLine?.let { usageText ->
+                                                RaftText(
+                                                    text = usageText,
+                                                    style = typography.footnote,
+                                                    color = metaColor,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                            }
+                                            row.infoLine?.let { infoText ->
+                                                RaftText(
+                                                    text = infoText,
+                                                    style = typography.footnote,
+                                                    color = metaColor,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.testTag("agent-migration-target-info-${row.id}"),
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                if (hasAction) {
+                                    Box(
+                                        Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(top = 6.dp, end = 4.dp),
+                                    ) {
+                                        RaftIconButton(
+                                            onClick = { onOpenDetails(row.id) },
+                                            tooltip = stringResource(Res.string.agent_migration_target_details, row.label),
+                                            variant = RaftButtonVariant.Ghost,
+                                        ) {
+                                            RaftGlyphIcon(RaftGlyph.Info, size = 18.dp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (noMatches) {
+                        Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
+                            RaftText(noMatchLabel, style = typography.callout, color = colors.foregroundHint)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
