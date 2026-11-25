@@ -54,16 +54,32 @@ class MarkdownMermaidScreenshotTest {
     @Config(sdk = [34], qualifiers = "w390dp-h600dp-xxhdpi")
     fun labelsFitTheirBoxes() =
         RaftRobolectricScreenshot.capture("markdown.mermaid.phone", RaftAppAppearance.Light, reportDir = "build/reports/home-screenshots", activities = activities) {
-            DiagramMessage()
+            DiagramMessage(DiagramBody)
+        }
+
+    // Gantt dates in a dayjs format and a `vert` marker: a code block before mermaid-native 0.1.21.
+    @Test
+    @Config(sdk = [34], qualifiers = "w390dp-h600dp-xxhdpi")
+    fun ganttWithDayjsDatesAndMarker() =
+        RaftRobolectricScreenshot.capture("markdown.mermaid.gantt.phone", RaftAppAppearance.Light, reportDir = "build/reports/home-screenshots", activities = activities) {
+            DiagramMessage(GanttBody)
+        }
+
+    // Block shapes and thick / dotted links: a code block before mermaid-native 0.1.21.
+    @Test
+    @Config(sdk = [34], qualifiers = "w390dp-h600dp-xxhdpi")
+    fun blockShapesAndLinks() =
+        RaftRobolectricScreenshot.capture("markdown.mermaid.block.phone", RaftAppAppearance.Light, reportDir = "build/reports/home-screenshots", activities = activities) {
+            DiagramMessage(BlockBody)
         }
 
     @Composable
-    private fun DiagramMessage() {
+    private fun DiagramMessage(body: String) {
         CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
             RaftDesignSystemTheme {
                 Column(Modifier.fillMaxSize().background(RaftColor.Canvas).padding(12.dp)) {
                     RaftMarkdownBody(
-                        body = DiagramBody,
+                        body = body,
                         modifier = Modifier.fillMaxWidth(),
                         isTagValid = { true },
                     )
@@ -81,6 +97,31 @@ class MarkdownMermaidScreenshotTest {
                 "end\n" +
                 "B --> C[WWW MMM]\n" +
                 "B --> D[illicit]\n" +
+                "```"
+
+        const val GanttBody =
+            "```mermaid\n" +
+                "gantt\n" +
+                "title Release week\n" +
+                "dateFormat DD/MM/YYYY\n" +
+                "axisFormat %d %b\n" +
+                "section Library\n" +
+                "Fix parsers :a1, 23/11/2026, 2d\n" +
+                "Publish :a2, after a1, 1d\n" +
+                "Freeze :vert, v1, 25/11/2026, 0d\n" +
+                "section App\n" +
+                "Upgrade :b1, after a2, 1d\n" +
+                "```"
+
+        const val BlockBody =
+            "```mermaid\n" +
+                "block-beta\n" +
+                "columns 3\n" +
+                "A([\"Request\"]) space B{{\"Check\"}}\n" +
+                "space:3\n" +
+                "space:2 C((\"Done\"))\n" +
+                "A ==> B\n" +
+                "B -.-> C\n" +
                 "```"
     }
 }
