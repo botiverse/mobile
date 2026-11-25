@@ -53,9 +53,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onVisibilityChanged
 import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.image.raftImageMayBeAnimated
+import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.RaftMessageImageDimensions
 import build.raft.designsystem.components.RaftMessageImageFit
 import build.raft.designsystem.components.RaftMessageImageGallery
+import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.theme.LocalRaftColors
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.contentDescription
@@ -216,7 +218,12 @@ internal fun ThreadImageAttachmentContent(
     fit: RaftMessageImageFit
 ) {
     val fallbackHost = LocalThreadInlineImageFallbackHost.current
-    val fallbackUrl = fallbackHost?.state?.resolvedUrls?.get(attachment.id)
+    val fallbackFailed = fallbackHost != null && attachment.id in fallbackHost.state.failedAttachmentIds
+    val fallbackUrl =
+        fallbackHost?.state?.resolvedUrls?.get(attachment.id)
+            ?: remember(attachment.id, fallbackHost?.peekCachedUrl, fallbackFailed) {
+                if (fallbackFailed) null else fallbackHost?.peekCachedUrl?.invoke(attachment.id)?.trim()?.takeIf { it.isNotEmpty() }
+            }
     // An image this device just uploaded renders from its local copy (by attachment id), so the
     // canonical message neither re-downloads it nor asks for the signed inline URL. A GIF / WebP
     // moves to its server thumbnail once the message has one, to play it (see below).
@@ -232,8 +239,9 @@ internal fun ThreadImageAttachmentContent(
             mayAnimate = mayAnimate
         )
     val fallbackHostAvailable = fallbackHost != null
-    LaunchedEffect(attachment.id, sourcePlan.requestRemoteFallback, fallbackHostAvailable) {
-        if (fallbackHostAvailable && sourcePlan.requestRemoteFallback) {
+    val shouldRequestRemoteFallback = sourcePlan.requestRemoteFallback && !fallbackFailed
+    LaunchedEffect(attachment.id, shouldRequestRemoteFallback, fallbackHostAvailable) {
+        if (fallbackHostAvailable && shouldRequestRemoteFallback) {
             fallbackHost?.requestFallback?.invoke(attachment.id)
         }
     }
@@ -245,7 +253,7 @@ internal fun ThreadImageAttachmentContent(
         threadInlineImageShowsFailure(
             sourceCount = sourceCount,
             failedSources = failedSources,
-            awaitingRemoteFallback = sourcePlan.requestRemoteFallback && fallbackHostAvailable
+            awaitingRemoteFallback = shouldRequestRemoteFallback && fallbackHostAvailable
         )
     // A GIF's thumbnail is an animated WebP (slock #16159): it plays as the web's <img> does, but
     // only while the tile is on screen and its page is the one shown (not a kept-alive tab or a
@@ -302,7 +310,16 @@ internal fun ThreadImageAttachmentContent(
             }
         }
     )
-    if (failed) ThreadImageAttachmentFailedPlaceholder()
+    if (failed) {
+        val retryAction =
+            fallbackHost?.retryFallback?.let { retry ->
+                {
+                    failedSources = 0
+                    retry(attachment.id)
+                }
+            }
+        ThreadImageAttachmentFailedPlaceholder(onRetry = retryAction)
+    }
 }
 
 /**
@@ -320,9 +337,21 @@ internal fun threadInlineImageShowsFailure(sourceCount: Int, failedSources: Int,
  * `bg-fill-muted` with a 20dp ImageOff in `foreground-hint`, never a broken-image glyph.
  */
 @Composable
-private fun ThreadImageAttachmentFailedPlaceholder() {
+private fun ThreadImageAttachmentFailedPlaceholder(
+    onRetry: (() -> Unit)? = null,
+) {
     Box(
-        modifier = Modifier.fillMaxSize().background(RaftColor.FillMuted),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(RaftColor.FillMuted)
+                .then(
+                    if (onRetry != null) {
+                        Modifier.raftClickable(onClick = onRetry, tier = RaftHoverTier.Subtle)
+                    } else {
+                        Modifier
+                    }
+                ),
         contentAlignment = Alignment.Center
     ) {
         RaftLucideIcon(

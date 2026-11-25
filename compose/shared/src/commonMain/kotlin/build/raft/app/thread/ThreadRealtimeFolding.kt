@@ -444,7 +444,7 @@ internal class ThreadRealtimeFolding(
                         ) {
                             matchingPagination.pendingTargetSeq = missingThroughSeq
                         }
-                        val merged =
+                        val folded =
                             currentPayload
                                 .copy(canLoadMoreAfter = false)
                                 .applyRealtimeEvent(
@@ -459,7 +459,21 @@ internal class ThreadRealtimeFolding(
                                 .preserveStableTimelineFrom(
                                     previous = currentPayload,
                                     preserveSelectedReactions = false,
-                                ).copy(canLoadMoreAfter = currentPayload.canLoadMoreAfter)
+                                )
+                        val merged =
+                            folded.copy(
+                                canLoadMoreAfter = currentPayload.canLoadMoreAfter,
+                                timelineGaps =
+                                    if (currentPayload.timelineGaps.isNotEmpty()) {
+                                        reconcileThreadTimelineGaps(
+                                            existingGaps = currentPayload.timelineGaps,
+                                            addedGaps = emptyList(),
+                                            messages = folded.messages,
+                                        )
+                                    } else {
+                                        folded.timelineGaps
+                                    },
+                            )
                         fun commitGapMerged(accepted: Map<String, ThreadRepliesAcceptedProjection>): Boolean {
                             val commitMerged =
                                 merged.withAcceptedThreadRepliesProjection(
@@ -550,11 +564,24 @@ internal class ThreadRealtimeFolding(
                         replyCountGap = replyCountGap,
                     )
                 }
-                val stableSelected =
+                val preserved =
                     merged.preserveStableTimelineFrom(
                         previous = currentPayload,
                         preserveSelectedReactions = false,
                     )
+                val stableSelected =
+                    if (currentPayload.timelineGaps.isNotEmpty()) {
+                        preserved.copy(
+                            timelineGaps =
+                                reconcileThreadTimelineGaps(
+                                    existingGaps = currentPayload.timelineGaps,
+                                    addedGaps = emptyList(),
+                                    messages = preserved.messages,
+                                ),
+                        )
+                    } else {
+                        preserved
+                    }
                 // task #562 (agreed with KMP-专家/HanXin, adjusting #231's A'): the
                 // first-frame candidate is a read-only SNAPSHOT of the live store's
                 // merged state — a single merge algorithm, written through after the

@@ -125,11 +125,12 @@ internal class ThreadPaging(
         var settled = false
         reducePayloadPatch { currentPayload -> currentPayload.copy(olderMessagesStatus = "loading", errorCode = null) }
         try {
-            // Task #168 step 2b / Phase 2d:
-            // - While the offline stand-in is shown, older pages come from SQLite (crossing into lower islands
-            //   with derived gaps) before asking the network.
-            // - Online, older pages inside a proven contiguous SQLite segment are served directly from disk
-            //   with zero network RTT; at a segment edge we fetch `before=beforeSeq` from the server.
+            // Task #168 step 2b / Phase 2d / #proj-mobile:#386:
+            // - While the offline stand-in is shown (`durableLastKnown && mainLoadFailed`), older pages come
+            //   from SQLite (crossing into lower proven segments with derived gaps) before asking the network.
+            // - While online refresh is still in flight (`durableLastKnown && !mainLoadFailed`) or once online,
+            //   older pages inside a proven contiguous SQLite segment are served directly from disk with zero
+            //   network RTT (`crossGaps = false`); at a segment edge we fetch `before=beforeSeq` from the server.
             if (existing.durableLastKnown) {
                 when (loadOlderFromDurableStandIn(existing, beforeSeq, staleToken)) {
                     LocalOlderPageResult.Applied -> {
@@ -291,34 +292,46 @@ internal class ThreadPaging(
                 // The stand-in on screen belongs to the owner it was read for; another owner never pages it.
                 expectedOwnerScopeId = visiblePayloadOwnerScopeId,
                 replyParent = existing.durableReplyParentOrNull(),
-                crossGaps = true,
+                crossGaps = existing.durableLastKnown && existing.mainLoadFailed,
+                allowLegacyStandIn = true,
             ) ?: return LocalOlderPageResult.NotServed
+        val allowGapCrossing = existing.durableLastKnown && existing.mainLoadFailed
+        if (!allowGapCrossing && !page.insideProvenSegment) return LocalOlderPageResult.NotServed
         var applied = false
         reducePayloadPatch { currentPayload ->
             if (
                 !currentPayload.durableLastKnown ||
+                (allowGapCrossing && !currentPayload.mainLoadFailed) ||
                 !staleTokenStillCurrent(staleToken, "thread_page", "durable_older_apply", existing, currentPayload) ||
                 !routeStillCurrent(existing, "thread_page", "durable_older_apply", currentPayload)
             ) {
                 return@reducePayloadPatch currentPayload
             }
             applied = true
-            val merged =
-                currentPayload.mergePagedMessages(
-                    pageMessages = page.messages,
-                    before = true,
-                    pageSize = page.pageSize,
+            if (page.messages.isEmpty()) {
+                currentPayload.copy(
+                    canLoadMoreBefore = page.canLoadMoreBefore,
+                    durableReachedOldest = page.reachedOldest,
+                    olderMessagesStatus = "idle",
                 )
-            merged.copy(
-                canLoadMoreBefore = page.canLoadMoreBefore,
-                durableReachedOldest = page.reachedOldest,
-                timelineGaps =
-                    reconcileThreadTimelineGaps(
-                        existingGaps = currentPayload.timelineGaps,
-                        addedGaps = page.gaps,
-                        messages = merged.messages,
-                    ),
-            )
+            } else {
+                val merged =
+                    currentPayload.mergePagedMessages(
+                        pageMessages = page.messages,
+                        before = true,
+                        pageSize = page.pageSize,
+                    )
+                merged.copy(
+                    canLoadMoreBefore = page.canLoadMoreBefore,
+                    durableReachedOldest = page.reachedOldest,
+                    timelineGaps =
+                        reconcileThreadTimelineGaps(
+                            existingGaps = currentPayload.timelineGaps,
+                            addedGaps = if (allowGapCrossing) page.gaps else emptyList(),
+                            messages = merged.messages,
+                        ),
+                )
+            }
         }
         if (applied) {
             page.scope?.let { readScope ->
@@ -494,6 +507,7 @@ internal class ThreadPaging(
                                     status = "content",
                                     messages = mergedMessages,
                                     timelineGaps = nextGaps,
+                                    mainLoadFailed = false,
                                 )
                                 .preserveStableTimelineFrom(currentPayload)
                         if (currentPayload.durableLastKnown) {
@@ -507,6 +521,7 @@ internal class ThreadPaging(
                     }
                     is DataResult.Empty ->
                         currentPayload.copy(
+                            mainLoadFailed = false,
                             timelineGaps =
                                 currentPayload.timelineGaps.filterNot {
                                     it.afterSeq == afterSeq && it.beforeSeq == beforeSeq

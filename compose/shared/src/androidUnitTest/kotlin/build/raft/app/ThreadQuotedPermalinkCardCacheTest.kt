@@ -86,7 +86,7 @@ class ThreadQuotedPermalinkCardCacheTest {
             neverFinishes.await()
         }
         val lookup: ThreadQuotedPermalinkLookup = { target ->
-            cache.peek(viewer.userId, viewer.serverId, target.channelId.value, target.messageId.value)
+            cache.peekLookup(viewer.userId, viewer.serverId, target.channelId.value, target.messageId.value)
         }
 
         val root =
@@ -122,7 +122,7 @@ class ThreadQuotedPermalinkCardCacheTest {
             }
         }
         val lookup: ThreadQuotedPermalinkLookup = { target ->
-            cache.peek(viewer.userId, viewer.serverId, target.channelId.value, target.messageId.value)
+            cache.peekLookup(viewer.userId, viewer.serverId, target.channelId.value, target.messageId.value)
         }
         val mountEpoch = mutableStateOf(0)
 
@@ -168,7 +168,7 @@ class ThreadQuotedPermalinkCardCacheTest {
             neverFinishes.await()
         }
         val lookup: ThreadQuotedPermalinkLookup = { target ->
-            cache.peek(viewer.userId, viewer.serverId, target.channelId.value, target.messageId.value)
+            cache.peekLookup(viewer.userId, viewer.serverId, target.channelId.value, target.messageId.value)
         }
 
         val root =
@@ -185,6 +185,61 @@ class ThreadQuotedPermalinkCardCacheTest {
         assertFalse(texts.any { QuotedBody in it }, "retracted quote must not show original body: $texts")
         assertFalse(texts.any { "Loading message" in it }, "cached retracted quote must never flash Loading: $texts")
         assertEquals(0, loaderCalls, "cached retracted hit must invoke loader 0 times")
+    }
+
+    @Test
+    fun knownUnavailableNegativeCacheRendersUnavailableImmediatelyWithoutLoadingOrLoaderCall() {
+        val cache = ThreadQuotedPermalinkCache()
+        val viewer = RaftQuotedPermalinkViewer(userId = "user-a", serverId = "server-1", plan = "free")
+        cache.putUnavailable(viewer.userId, viewer.serverId, QuotedChannelId, QuotedMessageId)
+
+        var loaderCalls = 0
+        val neverFinishes = CompletableDeferred<ThreadQuotedPermalinkMessage?>()
+        val loader: ThreadQuotedPermalinkLoader = {
+            loaderCalls += 1
+            neverFinishes.await()
+        }
+        val lookup: ThreadQuotedPermalinkLookup = { target ->
+            cache.peekLookup(viewer.userId, viewer.serverId, target.channelId.value, target.messageId.value)
+        }
+
+        val root =
+            render {
+                CompositionLocalProvider(
+                    LocalThreadQuotedPermalinkLoader provides loader,
+                    LocalThreadQuotedPermalinkLookup provides lookup,
+                ) {
+                    MessageRow("neg-cached-row", RaftLinkMessage)
+                }
+            }
+
+        val texts = root.textsUnder("neg-cached-row")
+        assertFalse(texts.any { "Loading message" in it }, "negative-cached unavailable quote must never flash Loading: $texts")
+        assertEquals(0, loaderCalls, "negative cache hit must invoke loader 0 times")
+    }
+
+    @Test
+    fun throwingQuotedPermalinkLoaderSettlesToUnavailableInsteadOfStuckLoading() {
+        var loaderCalls = 0
+        val loader: ThreadQuotedPermalinkLoader = {
+            loaderCalls += 1
+            throw IllegalStateException("boom")
+        }
+        val lookup: ThreadQuotedPermalinkLookup = { ThreadQuotedPermalinkCacheLookup.Miss }
+
+        val root =
+            render {
+                CompositionLocalProvider(
+                    LocalThreadQuotedPermalinkLoader provides loader,
+                    LocalThreadQuotedPermalinkLookup provides lookup,
+                ) {
+                    MessageRow("throwing-row", RaftLinkMessage)
+                }
+            }
+
+        val texts = root.textsUnder("throwing-row")
+        assertEquals(1, loaderCalls)
+        assertFalse(texts.any { "Loading message" in it }, "throwing loader must settle to Unavailable, not stay Loading: $texts")
     }
 
     private fun render(content: @Composable () -> Unit): View {

@@ -109,12 +109,11 @@ import build.raft.app.RaftCoreInternalApi
     return AuthenticatedRouteOwner(environmentId = environment, accountId = account, serverId = server)
 }
 
-/**
- * Process-local candidate-cache namespace for one authenticated route owner.
- * Length prefixes keep arbitrary custom environment URLs/account ids from
- * aliasing each other without persisting any token or generation witness.
- */
-@RaftCoreInternalApi fun AuthenticatedRouteAuthorityReceipt.candidateCacheScopeId(): String {
+@RaftCoreInternalApi fun authenticatedRouteCandidateCacheScopeId(
+    owner: AuthenticatedRouteOwner,
+    authGeneration: Long,
+    selectionGeneration: Long,
+): String {
     val normalizedOwner = owner.normalizedOrNull() ?: return "invalid-authenticated-route-owner"
     return buildString {
         append("authenticated-route:")
@@ -135,5 +134,17 @@ import build.raft.app.RaftCoreInternalApi
         append(selectionGeneration)
     }
 }
+
+/**
+ * Process-local candidate-cache namespace for one authenticated route owner.
+ * Length prefixes keep arbitrary custom environment URLs/account ids from
+ * aliasing each other without persisting any token or generation witness.
+ */
+@RaftCoreInternalApi fun AuthenticatedRouteAuthorityReceipt.candidateCacheScopeId(): String =
+    authenticatedRouteCandidateCacheScopeId(
+        owner = owner,
+        authGeneration = authGeneration,
+        selectionGeneration = selectionGeneration,
+    )
 
 @RaftCoreInternalApi fun String.normalizedEnvironmentId(): String = trim().trimEnd('/')

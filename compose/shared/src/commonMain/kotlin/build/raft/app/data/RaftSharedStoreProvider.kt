@@ -2778,6 +2778,60 @@ internal class RaftSharedStoreProvider private constructor(
     }
 
     /**
+     * Synchronous viewer (userId, serverId, plan) for Frame-1 quoted-permalink cache and
+     * `RaftQuotedPermalinkHistoryLimitedMemo` lookups without touching the session mutex.
+     */
+    internal fun currentQuotedPermalinkViewer(
+        scope: RaftShellStoreScope,
+    ): RaftQuotedPermalinkViewer? {
+        val owner = currentAuthenticatedRouteOwner(scope) ?: return null
+        val session = authStore.readCommittedSessionSnapshot()
+        val plan =
+            session
+                ?.takeIf { it.user.id.trim() == owner.accountId }
+                ?.servers
+                ?.firstOrNull { it.id == owner.serverId }
+                ?.plan
+        return RaftQuotedPermalinkViewer(
+            userId = owner.accountId,
+            serverId = owner.serverId,
+            plan = plan,
+        )
+    }
+
+    /**
+     * Synchronous generation-fenced candidate cache scope id matching
+     * [AuthenticatedRouteAuthorityReceipt.candidateCacheScopeId] for lock-free Frame-1 peeks.
+     * Fails closed (`null`) if the environment, account, server, or shell authority does not match.
+     */
+    internal fun currentAuthenticatedRouteCandidateCacheScopeId(
+        scope: RaftShellStoreScope,
+        owner: AuthenticatedRouteOwner,
+    ): String? {
+        val normalizedOwner = owner.normalizedOrNull() ?: return null
+        val authContext = replyCacheAuthContext.value ?: return null
+        val environmentId = apiEnvironmentStore.current().apiBaseUrl.normalizedEnvironmentId()
+        if (
+            environmentId != normalizedOwner.environmentId ||
+            authContext.environmentId.normalizedEnvironmentId() != normalizedOwner.environmentId ||
+            authContext.accountId.trim() != normalizedOwner.accountId
+        ) {
+            return null
+        }
+        val selectedStore = selectedServerStores.get(scope) ?: return null
+        val selectionGeneration =
+            selectedStore.peekSelectionGeneration(
+                principalId = normalizedOwner.accountId,
+                serverId = normalizedOwner.serverId,
+            ) ?: return null
+        return authenticatedRouteCandidateCacheScopeId(
+            owner = normalizedOwner,
+            authGeneration = authContext.authorityGeneration,
+            selectionGeneration = selectionGeneration,
+        )
+    }
+
+    /**
      * The member's look (theme + decorations) on this shell's selected server, from the stored
      * session: the persisted value at once on a cold start, then every change (server list
      * refresh, appearance-settings save, `appearance:updated`, server switch). Raft Yellow while

@@ -840,16 +840,30 @@ private fun ThreadPageScreen(
     val quotedPermalinkLookup: ThreadQuotedPermalinkLookup =
         remember(sharedStores, storeScope) {
             { target ->
-                val owner = sharedStores.currentAuthenticatedRouteOwner(storeScope)
-                if (owner == null) {
-                    null
+                val viewer = sharedStores.currentQuotedPermalinkViewer(storeScope)
+                if (viewer == null) {
+                    ThreadQuotedPermalinkCacheLookup.Miss
                 } else {
-                    sharedStores.quotedPermalinkCache.peek(
-                        accountUserId = owner.accountId,
-                        serverId = owner.serverId,
-                        channelId = target.channelId.value,
-                        messageId = target.messageId.value,
-                    )
+                    val cached =
+                        sharedStores.quotedPermalinkCache.peekLookup(
+                            accountUserId = viewer.userId,
+                            serverId = viewer.serverId,
+                            channelId = target.channelId.value,
+                            messageId = target.messageId.value,
+                        )
+                    if (cached != ThreadQuotedPermalinkCacheLookup.Miss) {
+                        cached
+                    } else if (
+                        RaftQuotedPermalinkHistoryLimitedMemo.App.answer(
+                            viewer = viewer,
+                            channelId = target.channelId.value,
+                            messageId = target.messageId.value,
+                        ) != null
+                    ) {
+                        ThreadQuotedPermalinkCacheLookup.KnownUnavailable
+                    } else {
+                        ThreadQuotedPermalinkCacheLookup.Miss
+                    }
                 }
             }
         }
@@ -859,11 +873,12 @@ private fun ThreadPageScreen(
             val loader: ThreadQuotedPermalinkLoader = { target ->
                 val messageId = target.messageId.value
                 val channelId = target.channelId.value
-                sharedStores.quotedPermalinkCache.getOrFetch(
+                sharedStores.quotedPermalinkCache.getOrFetchOutcome(
                     viewerProvider = { authStore.readSession()?.quotedPermalinkViewer() },
                     channelId = channelId,
                     messageId = messageId,
                 ) { viewer ->
+                    var failureHttpCode: Int? = null
                     // #proj-mobile:#274: a quote behind the Free plan's history window is answered from
                     // the memo, not asked again each time its row comes on screen.
                     val read =
@@ -871,20 +886,38 @@ private fun ThreadPageScreen(
                             viewer = viewer,
                             channelId = channelId,
                             messageId = messageId,
-                        ) { client.messageContext(messageId, channelId) }
+                        ) {
+                            client.messageContext(messageId, channelId).also { apiResult ->
+                                if (apiResult is ThreadApiResult.Failure) {
+                                    failureHttpCode = apiResult.code
+                                }
+                            }
+                        }
                     when (read) {
                         is RaftQuotedPermalinkContextRead.Page -> {
                             val payload = read.payload
                             val targetId = payload.targetMessageId?.value ?: messageId
-                            payload.messages
-                                .firstOrNull { it.id.value == targetId }
-                                ?.toRaftThreadMessageItem(null)
-                                ?.let { item -> ThreadQuotedPermalinkMessage(item, channelArchived = payload.channelArchived) }
+                            val found =
+                                payload.messages
+                                    .firstOrNull { it.id.value == targetId }
+                                    ?.toRaftThreadMessageItem(null)
+                                    ?.let { item -> ThreadQuotedPermalinkMessage(item, channelArchived = payload.channelArchived) }
+                            if (found != null) {
+                                ThreadQuotedPermalinkFetchOutcome.Loaded(found)
+                            } else {
+                                ThreadQuotedPermalinkFetchOutcome.DefinitiveUnavailable
+                            }
                         }
-                        // Behind the history window, as any other miss: no quote card, the link says
-                        // it is unavailable (the app has no older-quote card yet).
-                        is RaftQuotedPermalinkContextRead.HistoryLimited,
-                        RaftQuotedPermalinkContextRead.Unavailable -> null
+                        // Behind the history window: already persisted in RaftQuotedPermalinkHistoryLimitedMemo
+                        // (keyed by plan so a Free->Pro upgrade re-fetches immediately).
+                        is RaftQuotedPermalinkContextRead.HistoryLimited ->
+                            ThreadQuotedPermalinkFetchOutcome.TransientFailure
+                        RaftQuotedPermalinkContextRead.Unavailable ->
+                            if (failureHttpCode == 403 || failureHttpCode == 404) {
+                                ThreadQuotedPermalinkFetchOutcome.DefinitiveUnavailable
+                            } else {
+                                ThreadQuotedPermalinkFetchOutcome.TransientFailure
+                            }
                     }
                 }
             }
@@ -6448,22 +6481,9 @@ private fun SharedThreadRouteContentContent(
                             renderedThread.streamChannelId.takeIf { renderedThread.surfaceKind != RaftThreadSurfaceKind.ReplyThread },
                         bridge = bridge,
                     ),
-                LocalThreadInlineVideoPreviewHost provides
-                    ThreadInlineVideoPreviewHost(
-                        states = inlineVideoPreviewStates,
-                        requestPreview = ::requestInlineVideoPreview
-                    ),
-                LocalThreadInlineAudioPreviewHost provides
-                    ThreadInlineAudioPreviewHost(
-                        states = inlineAudioPreviewStates,
-                        requestPreview = ::requestInlineAudioPreview
-                    ),
-                LocalThreadInlineImageFallbackHost provides
-                    ThreadInlineImageFallbackHost(
-                        state = inlineImageFallbackState,
-                        requestFallback = ::requestInlineImageFallback,
-                        onFallbackError = ::handleInlineImageFallbackError,
-                    ),
+                LocalThreadInlineVideoPreviewHost provides threadRouteAttachmentActions.inlineVideoPreviewHost(),
+                LocalThreadInlineAudioPreviewHost provides threadRouteAttachmentActions.inlineAudioPreviewHost(),
+                LocalThreadInlineImageFallbackHost provides threadRouteAttachmentActions.inlineImageFallbackHost(),
                 LocalThreadAttachmentDownloadHost provides attachmentDownloadHost,
                 LocalRaftMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
                 LocalRaftMarkdownTaskStatuses provides markdownTaskStatuses,

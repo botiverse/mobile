@@ -24,7 +24,15 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.compat.json.JSONObject
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -177,6 +185,89 @@ class ThreadForwardBundleDetailStoreTest {
         val reply = "> Status page banner goes live at 9:00 PT\n> msg=c54e1234\n\nCan we move it to 8:30?"
         val preview = ForwardMessageBundle(messages = listOf(forwardItem("message-1", reply))).inlinePreviewMessages().single()
         assertEquals("> Status page banner goes live at 9:00 PT\n\nCan we move it to 8:30?", preview.body)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun warmScopedCacheStartsInContentAndRevalidatesWithoutFlashingLoading() = runTest {
+        val route = threadForwardBundleRoute()
+        val messageStore = SharedThreadMessageStore()
+        val gateway = FixedForwardBundleGateway(
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse = error("warm cache must not hit network")
+            }
+        )
+        val receipt = requireNotNull(gateway.capture(owner()))
+        val scopeId = build.raft.app.data.authenticatedRouteCandidateCacheScopeId(
+            owner = receipt.owner,
+            authGeneration = receipt.authGeneration,
+            selectionGeneration = receipt.selectionGeneration,
+        )
+        val cached = cachedMessage(route, body = "Instant bundle body")
+        messageStore.upsertScoped(scopeId, route.channelId, cached)
+
+        val revalidationGate = CompletableDeferred<Unit>()
+        var revalidationResult: DataResult<ForwardMessageBundle> = DataResult.Content(requireNotNull(cached.forwardBundle))
+        val repository =
+            AuthenticatedThreadForwardBundleDetailRepository(
+                messageStore = messageStore,
+                authStore = authenticatedStore(),
+                owner = owner(),
+                gateway = gateway,
+                candidateCacheScopeIdProvider = { scopeId },
+            )
+        val gatedRepo =
+            object : ThreadForwardBundleDetailRepository {
+                override fun peek(route: ThreadForwardBundleRoute): ForwardMessageBundle? = repository.peek(route)
+                override suspend fun load(route: ThreadForwardBundleRoute): DataResult<ForwardMessageBundle> {
+                    revalidationGate.await()
+                    return revalidationResult
+                }
+            }
+
+        val storeJob = SupervisorJob()
+        val storeScope = CoroutineScope(coroutineContext + storeJob)
+        val store = ThreadForwardBundleDetailStore(route = route, repository = gatedRepo, scope = storeScope)
+        // Frame 1: immediately Content with zero Loading flash.
+        assertEquals(ThreadForwardBundleDetailStatus.Content, store.state.value.status)
+        assertEquals(cached.forwardBundle, store.state.value.bundle)
+
+        // Revalidation via Retry keeps Content on screen instead of flashing Loading.
+        store.dispatch(ThreadForwardBundleDetailIntent.Retry)
+        runCurrent()
+        assertEquals(ThreadForwardBundleDetailStatus.Content, store.state.value.status)
+        assertEquals(cached.forwardBundle, store.state.value.bundle)
+
+        // If revalidation discovers authority loss, state still transitions to Error.
+        revalidationResult = build.raft.app.data.authenticatedRouteAuthorityChanged()
+        revalidationGate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(ThreadForwardBundleDetailStatus.Error, store.state.value.status)
+        assertEquals(AUTHENTICATED_ROUTE_AUTHORITY_CHANGED, store.state.value.errorCode)
+
+        // Explicit user Retry from Error transitions back to Loading.
+        val retryStore =
+            ThreadForwardBundleDetailStore(
+                route = route,
+                repository =
+                    object : ThreadForwardBundleDetailRepository {
+                        override fun peek(route: ThreadForwardBundleRoute): ForwardMessageBundle? = null
+                        override suspend fun load(route: ThreadForwardBundleRoute): DataResult<ForwardMessageBundle> {
+                            CompletableDeferred<Unit>().await()
+                            return DataResult.Content(requireNotNull(cached.forwardBundle))
+                        }
+                    },
+                scope = storeScope,
+            )
+        assertEquals(ThreadForwardBundleDetailStatus.Loading, retryStore.state.value.status)
+        storeJob.cancelAndJoin()
     }
 
     private fun threadForwardBundleRoute(): ThreadForwardBundleRoute =

@@ -208,7 +208,7 @@ import kotlinx.coroutines.launch
             dispatch(TaskConversationDetailsIntent.HistoryStarted(task.id, task.revision, stamp))
             requestHistory(task.id)
         }
-        val sourceId = task.taskHeadSourceMessageId()
+        val sourceId = task.taskHeadSourceMessageId().takeIf { channelId != null }
         if (sourceId != current.sourceMessageId || (sourceId != null && current.source is TaskDetailLoad.Idle)) {
             dispatch(TaskConversationDetailsIntent.SourceStarted(sourceId))
             if (sourceId != null && channelId != null) {
@@ -219,7 +219,7 @@ import kotlinx.coroutines.launch
                 }
             }
         }
-        val hostId = task.hostMessageId
+        val hostId = task.hostMessageId.takeIf { channelId != null }
         if (hostId != current.hostMessageId || (hostId != null && current.earlierDiscussion is TaskDetailLoad.Idle)) {
             dispatch(TaskConversationDetailsIntent.EarlierStarted(hostId))
             if (hostId != null && channelId != null) {

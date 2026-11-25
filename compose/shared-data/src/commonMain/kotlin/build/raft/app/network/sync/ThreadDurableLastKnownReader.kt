@@ -886,8 +886,10 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
                 unknownFieldsByFactId = raw.unknownFieldsByFactId.filterKeys { it in keptIds },
             )
         }
-        val raw = store.readFactsBefore(scope, beforeSeq = anchor.beforeSeq, limit = anchor.limit)
-        val seqs = raw.envelopes.map { it.fact.seq }
+        // #proj-mobile:#386 P0-1: offline gap-crossing only bridges rows belonging to proven segments,
+        // never splicing individual unsegmented loose realtime facts row-by-row into N stacked gap rows.
+        val segmented = readSegmentedFactsBefore(scope, segments, beforeSeq = anchor.beforeSeq, limit = anchor.limit)
+        val seqs = segmented.envelopes.map { it.fact.seq }
         // Include anchor.beforeSeq as upper boundary so a jump from upper segment into a lower island emits the gap between them.
         val gaps =
             if (seqs.isEmpty()) {
@@ -900,20 +902,139 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
                 provenSegment?.reachesOldest == true ||
                     CanonicalMessageV2SegmentAlgebra.memberOf(segments, anchor.beforeSeq)?.reachesOldest == true
             } else {
-                CanonicalMessageV2SegmentAlgebra.reachesOldestAt(seqs.first(), segments, raw.hasMoreStored)
+                CanonicalMessageV2SegmentAlgebra.reachesOldestAt(seqs.first(), segments, segmented.hasMoreEligible)
             }
         return ThreadDurableTimelinePage(
             scope = scope,
-            envelopes = raw.envelopes,
+            envelopes = segmented.envelopes,
             gaps = gaps,
             cursor = cursor,
             segments = segments,
-            hasOlderStored = raw.hasMoreStored,
+            hasOlderStored = segmented.hasMoreEligible,
             hasNewerStored = hasNewerStored,
             reachesOldest = reachesOldest,
             reachesHead = false,
             insideProvenSegment = provenSegment != null,
-            unknownFieldsByFactId = raw.unknownFieldsByFactId,
+            unknownFieldsByFactId = segmented.unknownFieldsByFactId,
+        )
+    }
+
+    private data class BoundedSegmentedFactsResult(
+        val envelopes: List<CanonicalMessageEnvelopeV2>,
+        val hasMoreEligible: Boolean,
+        val unknownFieldsByFactId: Map<String, Set<MessageAggregateField>>,
+    )
+
+    private suspend fun readSegmentedFactsBefore(
+        scope: SyncScopeKey,
+        segments: List<CanonicalMessageV2Segment>,
+        beforeSeq: Long,
+        limit: Int,
+    ): BoundedSegmentedFactsResult {
+        if (beforeSeq == Long.MIN_VALUE || segments.isEmpty()) {
+            return BoundedSegmentedFactsResult(emptyList(), hasMoreEligible = false, unknownFieldsByFactId = emptyMap())
+        }
+        val collectedDesc = mutableListOf<CanonicalMessageEnvelopeV2>()
+        val unknowns = mutableMapOf<String, Set<MessageAggregateField>>()
+        var hasMoreEligible = false
+        for (segment in segments.asReversed()) {
+            if (segment.isEmptyBaseline || segment.effectiveLowSeq >= beforeSeq) continue
+            val segUpperSeq = minOf(segment.highSeq, beforeSeq - 1L)
+            val highestInSeg = store.highestFactSeqBefore(scope, beforeSeq = segUpperSeq + 1L)
+            if (highestInSeg == null || highestInSeg < segment.effectiveLowSeq) continue
+            if (collectedDesc.size >= limit) {
+                hasMoreEligible = true
+                break
+            }
+            val remaining = limit - collectedDesc.size
+            val span =
+                if (segUpperSeq - segment.effectiveLowSeq >= remaining.toLong()) {
+                    remaining
+                } else {
+                    (segUpperSeq - segment.effectiveLowSeq + 1L).toInt()
+                }
+            val raw = store.readFactsBefore(scope, beforeSeq = segUpperSeq + 1L, limit = span)
+            val inSeg =
+                raw.envelopes
+                    .filter { it.fact.seq in segment.effectiveLowSeq..segUpperSeq }
+                    .takeLast(remaining)
+            if (inSeg.isEmpty()) continue
+            for (index in inSeg.lastIndex downTo 0) {
+                val envelope = inSeg[index]
+                collectedDesc += envelope
+                raw.unknownFieldsByFactId[envelope.fact.id]?.let { unknowns[envelope.fact.id] = it }
+            }
+            if (collectedDesc.size >= limit) {
+                val lowestTaken = inSeg.first().fact.seq
+                if (
+                    lowestTaken > segment.effectiveLowSeq &&
+                    store.highestFactSeqBefore(scope, beforeSeq = lowestTaken)?.let { it >= segment.effectiveLowSeq } == true
+                ) {
+                    hasMoreEligible = true
+                    break
+                }
+            }
+        }
+        return BoundedSegmentedFactsResult(
+            envelopes = collectedDesc.asReversed(),
+            hasMoreEligible = hasMoreEligible,
+            unknownFieldsByFactId = unknowns,
+        )
+    }
+
+    private suspend fun readSegmentedFactsAfter(
+        scope: SyncScopeKey,
+        segments: List<CanonicalMessageV2Segment>,
+        afterSeq: Long,
+        limit: Int,
+    ): BoundedSegmentedFactsResult {
+        if (afterSeq == Long.MAX_VALUE || segments.isEmpty()) {
+            return BoundedSegmentedFactsResult(emptyList(), hasMoreEligible = false, unknownFieldsByFactId = emptyMap())
+        }
+        val collectedAsc = mutableListOf<CanonicalMessageEnvelopeV2>()
+        val unknowns = mutableMapOf<String, Set<MessageAggregateField>>()
+        var hasMoreEligible = false
+        for (segment in segments) {
+            if (segment.isEmptyBaseline || segment.highSeq <= afterSeq) continue
+            val segLowerSeq = maxOf(segment.effectiveLowSeq, afterSeq + 1L)
+            val lowestInSeg = store.lowestFactSeqAfter(scope, afterSeq = segLowerSeq - 1L)
+            if (lowestInSeg == null || lowestInSeg > segment.highSeq) continue
+            if (collectedAsc.size >= limit) {
+                hasMoreEligible = true
+                break
+            }
+            val remaining = limit - collectedAsc.size
+            val span =
+                if (segment.highSeq - segLowerSeq >= remaining.toLong()) {
+                    remaining
+                } else {
+                    (segment.highSeq - segLowerSeq + 1L).toInt()
+                }
+            val raw = store.readFactsAfter(scope, afterSeq = segLowerSeq - 1L, limit = span)
+            val inSeg =
+                raw.envelopes
+                    .filter { it.fact.seq in segLowerSeq..segment.highSeq }
+                    .take(remaining)
+            if (inSeg.isEmpty()) continue
+            for (envelope in inSeg) {
+                collectedAsc += envelope
+                raw.unknownFieldsByFactId[envelope.fact.id]?.let { unknowns[envelope.fact.id] = it }
+            }
+            if (collectedAsc.size >= limit) {
+                val highestTaken = inSeg.last().fact.seq
+                if (
+                    highestTaken < segment.highSeq &&
+                    store.lowestFactSeqAfter(scope, afterSeq = highestTaken)?.let { it <= segment.highSeq } == true
+                ) {
+                    hasMoreEligible = true
+                    break
+                }
+            }
+        }
+        return BoundedSegmentedFactsResult(
+            envelopes = collectedAsc,
+            hasMoreEligible = hasMoreEligible,
+            unknownFieldsByFactId = unknowns,
         )
     }
 
@@ -970,8 +1091,9 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
                 unknownFieldsByFactId = raw.unknownFieldsByFactId.filterKeys { it in keptIds },
             )
         }
-        val raw = store.readFactsAfter(scope, afterSeq = anchor.afterSeq, limit = anchor.limit)
-        val seqs = raw.envelopes.map { it.fact.seq }
+        // #proj-mobile:#386 P0-1: offline gap-crossing only bridges rows belonging to proven segments.
+        val segmented = readSegmentedFactsAfter(scope, segments, afterSeq = anchor.afterSeq, limit = anchor.limit)
+        val seqs = segmented.envelopes.map { it.fact.seq }
         val gaps =
             if (seqs.isEmpty()) {
                 emptyList()
@@ -983,20 +1105,20 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
                 provenSegment?.headAtVerify == true ||
                     CanonicalMessageV2SegmentAlgebra.memberOf(segments, anchor.afterSeq)?.headAtVerify == true
             } else {
-                CanonicalMessageV2SegmentAlgebra.reachesHeadAt(seqs.last(), segments, raw.hasMoreStored)
+                CanonicalMessageV2SegmentAlgebra.reachesHeadAt(seqs.last(), segments, segmented.hasMoreEligible)
             }
         return ThreadDurableTimelinePage(
             scope = scope,
-            envelopes = raw.envelopes,
+            envelopes = segmented.envelopes,
             gaps = gaps,
             cursor = cursor,
             segments = segments,
             hasOlderStored = hasOlderStored,
-            hasNewerStored = raw.hasMoreStored,
+            hasNewerStored = segmented.hasMoreEligible,
             reachesOldest = false,
             reachesHead = reachesHead,
             insideProvenSegment = provenSegment != null,
-            unknownFieldsByFactId = raw.unknownFieldsByFactId,
+            unknownFieldsByFactId = segmented.unknownFieldsByFactId,
         )
     }
 
