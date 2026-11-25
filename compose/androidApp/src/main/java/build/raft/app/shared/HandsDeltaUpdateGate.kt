@@ -5,7 +5,7 @@ import build.hands.update.HandsUpdateStatus
 import build.hands.update.INSTALL_PERMISSION_REQUIRED
 import build.hands.update.models.UpdateCheckResponse
 import build.raft.app.BuildConfig
-import build.raft.app.RaftAppLog
+import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.data.RaftAppUpdatePermissionResumeRepository
 import build.raft.app.data.SharedSettingsUpdateTransactionState
 import java.util.concurrent.atomic.AtomicBoolean

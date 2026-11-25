@@ -283,7 +283,7 @@ data class SharedSettingsUpdateCheckSnapshot(
     val earlyAccessGuideUrl: String = ""
 )
 
-internal fun SharedSettingsUpdateCheckSnapshot.preservingChannelMetadataFrom(
+fun SharedSettingsUpdateCheckSnapshot.preservingChannelMetadataFrom(
     fallback: SharedSettingsUpdateCheckSnapshot
 ): SharedSettingsUpdateCheckSnapshot =
     copy(
