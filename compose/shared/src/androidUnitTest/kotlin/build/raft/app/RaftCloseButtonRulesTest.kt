@@ -139,6 +139,7 @@ class RaftCloseButtonRulesTest {
                 "app/settings/SettingsHomeSearchPanel.kt" to Allowed(1, "a recent search's remove, $Remove"),
                 "app/settings/SettingsStandaloneWebViewHost.kt" to Allowed(1, TextButton),
                 "app/shell/RaftForegroundBannerHost.kt" to Allowed(1, "an in-app banner's dismiss, $Dismiss"),
+                "app/shell/RaftRailPlacesEditDialog.kt" to Allowed(1, "a rail place row's remove, $Remove"),
                 "app/tasks/SharedTasksPage.kt" to Allowed(1, "Clear all, $Clear"),
                 "app/tasks/SharedTasksQueryToolbar.kt" to Allowed(1, "Clear all, $Clear"),
                 "app/tasks/TaskCreateFromMessageDialog.kt" to Allowed(1, "a title row's remove, $Remove"),

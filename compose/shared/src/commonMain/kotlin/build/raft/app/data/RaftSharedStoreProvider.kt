@@ -2048,6 +2048,18 @@ internal class RaftSharedStoreProvider private constructor(
     }
 
     /**
+     * Per-server rail places (`GET/PATCH /servers/:id/sidebar-order` + `rail_places:updated`,
+     * botiverse/slock #16682 + #16684): built-ins and installed App places after fixed Chat & Activity.
+     */
+    val railPlacesStore: SharedRailPlacesStore by lazy {
+        SharedRailPlacesStore(
+            dataSource = NetworkRailPlacesDataSource(networkClient),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
+            logger = sharedInfoLogger("SlockRailPlaces", "rail_places"),
+        )
+    }
+
+    /**
      * Whether the assistant's otter shows over every page: an account setting (`auth/me`
      * `assistantOtterVisible`), read once per account by the otter or the owner's section.
      */
@@ -2275,6 +2287,7 @@ internal class RaftSharedStoreProvider private constructor(
         }
         // Another device may have reordered the rail's tabs while backgrounded: read them again.
         railTabOrderStore.followAppLifecycle(RaftStaleReadRecoverySignals.foreground)
+        railPlacesStore.followAppLifecycle(RaftStaleReadRecoverySignals.foreground)
         // App start: read this environment's client config (and again on each environment change).
         clientConfigStore.start()
         // The feedback unread dot: read for whoever is signed in (now and after each sign-in); none signed out.

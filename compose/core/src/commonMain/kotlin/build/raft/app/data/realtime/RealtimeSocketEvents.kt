@@ -127,6 +127,13 @@ object RealtimeSocketEvents {
     const val NotificationPrefsUpdated = GeneratedRealtimeContract.SocketEvent.NotificationPrefsUpdated
     const val PinnedUpdated = GeneratedRealtimeContract.SocketEvent.PinnedUpdated
 
+    /**
+     * `rail_places:updated` (botiverse/slock #16682 `routes/servers.ts` `emitRailPlacesUpdated`):
+     * the person changed their per-server rail places (`places`, `placesVersion`) on another
+     * client. Sent to `user:<id>` with `{ serverId, places, placesVersion }`.
+     */
+    const val RailPlacesUpdated = GeneratedRealtimeContract.SocketEvent.RailPlacesUpdated
+
     // task #459: server-qualified notification stream, emitted to the caller's
     // `user:<id>` room at the sendPushNotifications call point (server PR
     // #4233, staging 31042ed06).

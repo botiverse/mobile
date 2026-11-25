@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.raftSlot
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
@@ -124,6 +125,8 @@ internal data class RaftBottomTabItemPayload(
     val avatarSource: String? = null,
     /** The server's initial, drawn on the app's ink tile when there is no avatar image. */
     val avatarFallbackLabel: String? = null,
+    /** Whether this rail item represents an installed App place (`app:<clientId>`, slock #16684). */
+    val isAppPlace: Boolean = false,
 )
 
 internal enum class RaftTabBarPresentation {
@@ -742,7 +745,13 @@ private fun raftNavRailAttentionDescriptions(): (String) -> String {
 
 @Composable
 private fun RaftNavigationRailIcon(item: RaftBottomTabItemPayload, glyph: RaftConversationKindGlyph?, ink: Color) {
-    if (raftNavShowsOttie(RaftNavPresentation.Rail, item.key)) {
+    if (item.isAppPlace) {
+        RaftConnectedAppLogo(
+            name = item.avatarFallbackLabel ?: item.label,
+            logoUrl = item.avatarSource,
+            size = RaftAvatarSize.Sm,
+        )
+    } else if (raftNavShowsOttie(RaftNavPresentation.Rail, item.key)) {
         // web OttieRailAvatar: a 28dp face where the other items have a 20dp glyph, centred on
         // the icon box and overhanging it; in full colour in either sticker (not the item's ink).
         HomeAssistantFace(Modifier.requiredSize(RaftRailOttieFaceSize), size = RaftRailOttieFaceSize)
