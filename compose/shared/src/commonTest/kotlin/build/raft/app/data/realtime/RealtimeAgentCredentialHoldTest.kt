@@ -4,6 +4,7 @@ import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentDeliveryHoldReason
 import build.raft.app.model.AgentProviderLimitHoldKind
+import build.raft.app.model.AgentProviderLimitWindow
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberPresenceUpdated
 import kotlin.test.Test
@@ -168,5 +169,54 @@ class RealtimeAgentCredentialHoldTest {
             )
         assertEquals(true, clearedCoarse.coarseState)
         assertNull(clearedCoarse.deliveryHold)
+    }
+
+    @Test
+    fun activityAndCoarseStatePreserveScopedDeliveryHoldModelWindowAndResetsAtMs() {
+        val scopedWire =
+            """{ "reason": "provider_limit", "detail": "quota_exhausted", "untilMs": 1782370830000, "since": 1782367000000, "model": "Fable", "window": "seven_day", "resetsAtMs": 1782370800000 }"""
+        val expected =
+            AgentDeliveryHold(
+                reason = AgentDeliveryHoldReason.ProviderLimit,
+                providerLimitDetail = AgentProviderLimitHoldKind.QuotaExhausted,
+                untilMs = 1782370830000L,
+                since = 1782367000000L,
+                model = "Fable",
+                window = AgentProviderLimitWindow.SevenDay,
+                resetsAtMs = 1782370800000L,
+            )
+        val detailed =
+            map(
+                """
+                {
+                  "agentId": "agent-held",
+                  "activity": "working",
+                  "detail": "Running tests",
+                  "detailKind": "running_command",
+                  "timestamp": 1782367200000,
+                  "serverSeq": 13,
+                  "deliveryHold": $scopedWire
+                }
+                """.trimIndent()
+            )
+        assertEquals(expected, detailed.deliveryHold)
+
+        val coarse =
+            assertIs<MemberPresenceUpdated>(
+                RealtimeEventMapper().map(
+                    RealtimeSocketEvents.AgentActivityState,
+                    """
+                    {
+                      "agentId": "agent-held",
+                      "state": "busy",
+                      "activity": "working",
+                      "timestamp": 1782367200000,
+                      "serverSeq": 14,
+                      "deliveryHold": $scopedWire
+                    }
+                    """.trimIndent()
+                )
+            )
+        assertEquals(expected, coarse.deliveryHold)
     }
 }

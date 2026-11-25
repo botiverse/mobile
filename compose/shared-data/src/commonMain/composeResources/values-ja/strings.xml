@@ -5103,6 +5103,13 @@
     <string name="agent_status_delivery_hold_usage_limit_until">%1$s の使用量の上限に達しました（%2$s まで）</string>
     <string name="agent_status_delivery_hold_rate_limit">%1$s のレート制限中、まもなく再試行します</string>
     <string name="agent_status_delivery_hold_rate_limit_until">%1$s のレート制限中、%2$s に再試行します</string>
+    <string name="agent_status_delivery_hold_window_limit">%1$s の %2$s 上限に達しました</string>
+    <string name="agent_status_delivery_hold_window_limit_resets">%1$s の %2$s 上限に達しました（%3$s にリセット）</string>
+    <string name="agent_status_delivery_hold_window_five_hour">5 時間</string>
+    <string name="agent_status_delivery_hold_window_weekly">週間</string>
+    <string name="agent_status_delivery_hold_window_weekly_opus">週間 Opus</string>
+    <string name="agent_status_delivery_hold_window_weekly_sonnet">週間 Sonnet</string>
+    <string name="agent_status_delivery_hold_window_extra_usage">追加利用</string>
     <string name="agent_status_computer_access_revoked">コンピューターのアクセスが取り消されました。コンピューターを再接続するか、エージェントを別のコンピューターに移動してください</string>
     <string name="agent_revoked_reattach">%1$s を再接続：そのマシンで %2$s を実行し、オーナーまたは管理者のアカウントでログインを承認します。承認した人がその接続者になります。</string>
     <string name="agent_revoked_move">または、このエージェントを別のコンピューターに移動します。</string>

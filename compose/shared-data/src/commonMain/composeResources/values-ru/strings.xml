@@ -4895,6 +4895,13 @@
     <string name="agent_status_delivery_hold_usage_limit_until">Лимит использования %1$s исчерпан, до %2$s</string>
     <string name="agent_status_delivery_hold_rate_limit">Ограничение частоты %1$s, скоро повторная попытка</string>
     <string name="agent_status_delivery_hold_rate_limit_until">Ограничение частоты %1$s, повторная попытка в %2$s</string>
+    <string name="agent_status_delivery_hold_window_limit">Лимит %1$s (%2$s) исчерпан</string>
+    <string name="agent_status_delivery_hold_window_limit_resets">Лимит %1$s (%2$s), сброс %3$s</string>
+    <string name="agent_status_delivery_hold_window_five_hour">5 часов</string>
+    <string name="agent_status_delivery_hold_window_weekly">недельный</string>
+    <string name="agent_status_delivery_hold_window_weekly_opus">недельный Opus</string>
+    <string name="agent_status_delivery_hold_window_weekly_sonnet">недельный Sonnet</string>
+    <string name="agent_status_delivery_hold_window_extra_usage">дополнительное использование</string>
     <string name="agent_status_computer_access_revoked">Доступ компьютера отозван: подключите компьютер снова или перенесите агента</string>
     <string name="agent_revoked_reattach">Подключите %1$s снова: на той машине выполните %2$s и подтвердите вход с аккаунта владельца или администратора. Подтвердивший станет тем, кто его подключил.</string>
     <string name="agent_revoked_move">Или перенесите этого агента на другой компьютер.</string>

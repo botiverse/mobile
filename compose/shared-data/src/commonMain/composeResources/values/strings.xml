@@ -5104,6 +5104,13 @@
     <string name="agent_status_delivery_hold_usage_limit_until">%1$s usage limit reached, until %2$s</string>
     <string name="agent_status_delivery_hold_rate_limit">%1$s rate limit, retrying soon</string>
     <string name="agent_status_delivery_hold_rate_limit_until">%1$s rate limit, retrying %2$s</string>
+    <string name="agent_status_delivery_hold_window_limit">%1$s %2$s limit reached</string>
+    <string name="agent_status_delivery_hold_window_limit_resets">%1$s %2$s limit, resets %3$s</string>
+    <string name="agent_status_delivery_hold_window_five_hour">5-hour</string>
+    <string name="agent_status_delivery_hold_window_weekly">weekly</string>
+    <string name="agent_status_delivery_hold_window_weekly_opus">weekly Opus</string>
+    <string name="agent_status_delivery_hold_window_weekly_sonnet">weekly Sonnet</string>
+    <string name="agent_status_delivery_hold_window_extra_usage">extra usage</string>
     <string name="agent_status_computer_access_revoked">Computer access revoked: reattach the computer or move the agent</string>
     <string name="agent_revoked_reattach">Reattach %1$s: on that machine, run %2$s and approve the sign-in with an owner or admin account. Whoever approves becomes its Attached by.</string>
     <string name="agent_revoked_move">Or move this agent to another computer.</string>

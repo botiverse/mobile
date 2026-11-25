@@ -5103,6 +5103,13 @@
     <string name="agent_status_delivery_hold_usage_limit_until">%1$s 用量已达上限，%2$s 恢复</string>
     <string name="agent_status_delivery_hold_rate_limit">%1$s 触发限流，稍后重试</string>
     <string name="agent_status_delivery_hold_rate_limit_until">%1$s 触发限流，%2$s 重试</string>
+    <string name="agent_status_delivery_hold_window_limit">%1$s %2$s额度已用完</string>
+    <string name="agent_status_delivery_hold_window_limit_resets">%1$s %2$s额度已用完，%3$s 重置</string>
+    <string name="agent_status_delivery_hold_window_five_hour">5 小时</string>
+    <string name="agent_status_delivery_hold_window_weekly">每周</string>
+    <string name="agent_status_delivery_hold_window_weekly_opus">每周 Opus</string>
+    <string name="agent_status_delivery_hold_window_weekly_sonnet">每周 Sonnet</string>
+    <string name="agent_status_delivery_hold_window_extra_usage">额外用量</string>
     <string name="agent_status_computer_access_revoked">Computer 访问权限已撤销：请重新加入这台 Computer，或把 Agent 迁走</string>
     <string name="agent_revoked_reattach">重新加入 %1$s：在那台机器上运行 %2$s，并用所有者或管理员的账号批准登录。批准的人会成为它的授权人。</string>
     <string name="agent_revoked_move">或者把这个 Agent 迁到另一台 Computer。</string>
