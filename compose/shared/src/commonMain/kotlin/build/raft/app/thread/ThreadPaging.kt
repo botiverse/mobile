@@ -10,8 +10,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * Older-page loading (network, offline stand-in and proven SQLite segment), inline timeline-gap
- * fills and the durable window extension of an applied page, for [SharedThreadStore].
+ * Older-page loading (network, offline stand-in and proven contiguous SQLite segment) and the
+ * durable window extension of an applied page, for [SharedThreadStore].
  *
  * The store dispatches into it on its own scope and it starts no scope or Job of its own (the
  * fire-and-forget durable writes launch on the store's scope, as before). Store state is read and
@@ -125,12 +125,15 @@ internal class ThreadPaging(
         var settled = false
         reducePayloadPatch { currentPayload -> currentPayload.copy(olderMessagesStatus = "loading", errorCode = null) }
         try {
-            // Task #168 step 2b / Phase 2d / #proj-mobile:#386:
-            // - While the offline stand-in is shown (`durableLastKnown && mainLoadFailed`), older pages come
-            //   from SQLite (crossing into lower proven segments with derived gaps) before asking the network.
-            // - While online refresh is still in flight (`durableLastKnown && !mainLoadFailed`) or once online,
-            //   older pages inside a proven contiguous SQLite segment are served directly from disk with zero
-            //   network RTT (`crossGaps = false`); at a segment edge we fetch `before=beforeSeq` from the server.
+            // Task #168 step 2b / Phase 2d / #proj-mobile:#388:
+            // - A timeline on screen is ALWAYS one single contiguous slice of messages: local paging
+            //   serves strictly from inside a proven contiguous SQLite segment (never bridging gaps).
+            // - While offline (`durableLastKnown && mainLoadFailed`), hitting the contiguous segment
+            //   edge closes older paging cleanly (`canLoadMoreBefore = false`, preserving
+            //   `durableReachedOldest`) so the single outer boundary row shows "Older messages are not
+            //   available offline" instead of hitting network or inserting mid-timeline gap rows.
+            // - While online (or while initial refresh is still in flight), hitting the segment edge
+            //   fetches `before=beforeSeq` from the server seamlessly.
             if (existing.durableLastKnown) {
                 when (loadOlderFromDurableStandIn(existing, beforeSeq, staleToken)) {
                     LocalOlderPageResult.Applied -> {
@@ -161,7 +164,7 @@ internal class ThreadPaging(
             val nextPayload =
                 when (result) {
                     is DataResult.Content -> {
-                        val mergedRaw =
+                        val merged =
                             latest
                                 .mergePagedMessages(
                                     pageMessages = result.data.payload.messages,
@@ -170,15 +173,6 @@ internal class ThreadPaging(
                                     rawServerRowCount = result.data.rawServerRowCount,
                                 )
                                 .preserveStableTimelineFrom(latest)
-                        val merged =
-                            mergedRaw.copy(
-                                timelineGaps =
-                                    reconcileThreadTimelineGaps(
-                                        existingGaps = mergedRaw.timelineGaps,
-                                        addedGaps = emptyList(),
-                                        messages = mergedRaw.messages,
-                                    ),
-                            )
                         // A stand-in (durable rows) is never committed to the memory payload cache: a memory
                         // candidate outranks the durable frame on the next entry as "network-fresh".
                         (if (latest.durableLastKnown) merged else dataSource.cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId))
@@ -272,46 +266,78 @@ internal class ThreadPaging(
     }
 
     /**
-     * Task #168 step 2b: serve one older page of the offline stand-in from the durable window. Returns
-     * `true` when the request is handled here (served, or dropped because the stand-in was replaced
-     * meanwhile), `false` when the window has nothing to give and the caller should ask the network.
-     * Reads only; the merged payload is not cached, and the online refresh still replaces the whole
-     * stand-in including these pages.
+     * Task #168 step 2b / #proj-mobile:#388: serve one older page of the durable stand-in strictly
+     * from inside its proven contiguous SQLite segment (or legacy window). While offline
+     * (`mainLoadFailed`), reaching the segment edge closes older paging cleanly without bridging
+     * disconnected islands or hitting the network so the single outer boundary row renders
+     * "Older messages are not available offline". While online (`!mainLoadFailed`), a segment edge
+     * returns [LocalOlderPageResult.NotServed] so [loadOlder] fetches from the server seamlessly.
      */
     private suspend fun loadOlderFromDurableStandIn(
         existing: RaftThreadScreenPayload,
         beforeSeq: Long,
         staleToken: MviStaleToken,
     ): LocalOlderPageResult {
-        val context = dataSource.captureReplyCacheProducerContext() ?: return LocalOlderPageResult.NotServed
+        val context =
+            dataSource.captureReplyCacheProducerContext()
+                ?: return if (existing.mainLoadFailed) LocalOlderPageResult.Dropped else LocalOlderPageResult.NotServed
+        val expectedOwnerScopeId = visiblePayloadOwnerScopeId
         val page =
             dataSource.durableOlderPageIfCurrent(
                 routeIdentity = existing.resolveThreadRouteIdentity(),
                 context = context,
                 beforeSeq = beforeSeq,
                 // The stand-in on screen belongs to the owner it was read for; another owner never pages it.
-                expectedOwnerScopeId = visiblePayloadOwnerScopeId,
+                expectedOwnerScopeId = expectedOwnerScopeId,
                 replyParent = existing.durableReplyParentOrNull(),
-                crossGaps = existing.durableLastKnown && existing.mainLoadFailed,
                 allowLegacyStandIn = true,
-            ) ?: return LocalOlderPageResult.NotServed
-        val allowGapCrossing = existing.durableLastKnown && existing.mainLoadFailed
-        if (!allowGapCrossing && !page.insideProvenSegment) return LocalOlderPageResult.NotServed
+            )
+        if (page == null) {
+            if (context.provenance.threadPayloadOwnerScopeId != expectedOwnerScopeId) {
+                return LocalOlderPageResult.Dropped
+            }
+            if (!existing.mainLoadFailed) return LocalOlderPageResult.NotServed
+            var closed = false
+            reducePayloadPatch { currentPayload ->
+                if (
+                    !currentPayload.durableLastKnown ||
+                    !currentPayload.mainLoadFailed ||
+                    !staleTokenStillCurrent(staleToken, "thread_page", "durable_older_segment_edge", existing, currentPayload) ||
+                    !routeStillCurrent(existing, "thread_page", "durable_older_segment_edge", currentPayload)
+                ) {
+                    return@reducePayloadPatch currentPayload
+                }
+                closed = true
+                currentPayload.copy(
+                    canLoadMoreBefore = false,
+                    durableHasOlderStored = false,
+                    olderMessagesStatus = "idle",
+                )
+            }
+            return if (closed) LocalOlderPageResult.Applied else LocalOlderPageResult.Dropped
+        }
+        if (!page.insideProvenSegment) return LocalOlderPageResult.NotServed
         var applied = false
         reducePayloadPatch { currentPayload ->
             if (
                 !currentPayload.durableLastKnown ||
-                (allowGapCrossing && !currentPayload.mainLoadFailed) ||
                 !staleTokenStillCurrent(staleToken, "thread_page", "durable_older_apply", existing, currentPayload) ||
                 !routeStillCurrent(existing, "thread_page", "durable_older_apply", currentPayload)
             ) {
                 return@reducePayloadPatch currentPayload
             }
             applied = true
+            val nextCanLoadMoreBefore =
+                if (currentPayload.mainLoadFailed) {
+                    page.hasOlderStored
+                } else {
+                    page.canLoadMoreBefore
+                }
             if (page.messages.isEmpty()) {
                 currentPayload.copy(
-                    canLoadMoreBefore = page.canLoadMoreBefore,
+                    canLoadMoreBefore = nextCanLoadMoreBefore,
                     durableReachedOldest = page.reachedOldest,
+                    durableHasOlderStored = page.hasOlderStored,
                     olderMessagesStatus = "idle",
                 )
             } else {
@@ -322,14 +348,10 @@ internal class ThreadPaging(
                         pageSize = page.pageSize,
                     )
                 merged.copy(
-                    canLoadMoreBefore = page.canLoadMoreBefore,
+                    canLoadMoreBefore = nextCanLoadMoreBefore,
                     durableReachedOldest = page.reachedOldest,
-                    timelineGaps =
-                        reconcileThreadTimelineGaps(
-                            existingGaps = currentPayload.timelineGaps,
-                            addedGaps = if (allowGapCrossing) page.gaps else emptyList(),
-                            messages = merged.messages,
-                        ),
+                    durableHasOlderStored = page.hasOlderStored,
+                    olderMessagesStatus = "idle",
                 )
             }
         }
@@ -348,7 +370,7 @@ internal class ThreadPaging(
     }
 
     /**
-     * Phase 2d: online older paging inside a proven contiguous SQLite segment (`crossGaps = false`).
+     * Phase 2d: online older paging inside a proven contiguous SQLite segment.
      * Returns [LocalOlderPageResult.Applied] when disk satisfied the page (or proved the channel's oldest
      * boundary) without a network request, [LocalOlderPageResult.Dropped] when the route became stale or
      * replaced while reading, or [LocalOlderPageResult.NotServed] at a segment edge so [loadOlder] fetches
@@ -367,7 +389,6 @@ internal class ThreadPaging(
                 beforeSeq = beforeSeq,
                 expectedOwnerScopeId = visiblePayloadOwnerScopeId,
                 replyParent = existing.durableReplyParentOrNull(),
-                crossGaps = false,
             ) ?: return LocalOlderPageResult.NotServed
         if (!page.insideProvenSegment) return LocalOlderPageResult.NotServed
         var applied = false
@@ -386,6 +407,7 @@ internal class ThreadPaging(
                     currentPayload.copy(
                         canLoadMoreBefore = false,
                         durableReachedOldest = true,
+                        durableHasOlderStored = false,
                         olderMessagesStatus = "idle",
                     )
                 } else {
@@ -400,12 +422,7 @@ internal class ThreadPaging(
                     combined.copy(
                         canLoadMoreBefore = page.canLoadMoreBefore,
                         durableReachedOldest = page.reachedOldest,
-                        timelineGaps =
-                            reconcileThreadTimelineGaps(
-                                existingGaps = currentPayload.timelineGaps,
-                                addedGaps = emptyList(),
-                                messages = combined.messages,
-                            ),
+                        durableHasOlderStored = page.hasOlderStored,
                     )
                 }
             committedForCache = merged
@@ -429,155 +446,6 @@ internal class ThreadPaging(
                     "served=0 reason=replaced_or_stale"
             )
             return LocalOlderPageResult.Dropped
-        }
-    }
-
-    /**
-     * Phase 2d: fetch older messages from the server to bridge or shrink an inline timeline gap
-     * `(afterSeq, beforeSeq)` and persist the fetched page to SQLite so segments coalesce.
-     */
-    suspend fun fillTimelineGap(afterSeq: Long, beforeSeq: Long) {
-        val existing = currentState().payload
-        val targetGap =
-            existing.timelineGaps.firstOrNull { it.afterSeq == afterSeq && it.beforeSeq == beforeSeq }
-                ?: return
-        if (targetGap.status == "loading") return
-        val staleToken = routeStaleToken
-        reducePayloadPatch { currentPayload ->
-            if (
-                !staleTokenStillCurrent(staleToken, "thread_page", "gap_fill_start", existing, currentPayload) ||
-                !routeStillCurrent(existing, "thread_page", "gap_fill_start", currentPayload)
-            ) {
-                return@reducePayloadPatch currentPayload
-            }
-            currentPayload.copy(
-                timelineGaps =
-                    currentPayload.timelineGaps.map { gap ->
-                        if (gap.afterSeq == afterSeq && gap.beforeSeq == beforeSeq) {
-                            gap.copy(status = "loading")
-                        } else {
-                            gap
-                        }
-                    },
-            )
-        }
-        var applied = false
-        var committedForCache: RaftThreadScreenPayload? = null
-        try {
-            val result = dataSource.fetchOlderThreadPayload(existing, beforeSeq)
-            val latest = currentState().payload
-            if (
-                !staleTokenStillCurrent(staleToken, "thread_page", "gap_fill_after_fetch", existing, latest) ||
-                !routeStillCurrent(existing, "thread_page", "gap_fill_after_fetch", latest)
-            ) {
-                return
-            }
-            reducePayloadPatch(cachePayload = false) { currentPayload ->
-                if (
-                    !staleTokenStillCurrent(staleToken, "thread_page", "gap_fill_apply", existing, currentPayload) ||
-                    !routeStillCurrent(existing, "thread_page", "gap_fill_apply", currentPayload)
-                ) {
-                    return@reducePayloadPatch currentPayload
-                }
-                applied = true
-                when (result) {
-                    is DataResult.Content -> {
-                        val pageMessages = result.data.payload.messages
-                        val baseMessages =
-                            currentPayload.messages
-                                .absorbingCanonicalSendEchoes(pageMessages)
-                                .withIncomingDelegatedLabels(pageMessages)
-                                .withKnownRetractionsFrom(pageMessages)
-                                .withNewerServerCopiesFrom(pageMessages)
-                        val incoming = pageMessages.filterNot { candidate -> baseMessages.any { it.id == candidate.id } }
-                        val mergedMessages = (baseMessages + incoming).distinctBy { it.id }.sortedByThreadTimeline()
-                        val nextGaps =
-                            reconcileThreadTimelineGapsAfterFill(
-                                existingGaps = currentPayload.timelineGaps,
-                                filledAfterSeq = afterSeq,
-                                filledBeforeSeq = beforeSeq,
-                                fetchedPageMessages = pageMessages,
-                                requestedPageSize = result.data.requestedPageSize,
-                                mergedMessages = mergedMessages,
-                                rawServerRowCount = result.data.rawServerRowCount,
-                            )
-                        val updated =
-                            currentPayload
-                                .copy(
-                                    status = "content",
-                                    messages = mergedMessages,
-                                    timelineGaps = nextGaps,
-                                    mainLoadFailed = false,
-                                )
-                                .preserveStableTimelineFrom(currentPayload)
-                        if (currentPayload.durableLastKnown) {
-                            updated
-                        } else {
-                            committedForCache = updated
-                            updated
-                                .withRouteContext(existing)
-                                .preserveStableTimelineFrom(currentPayload)
-                        }
-                    }
-                    is DataResult.Empty ->
-                        currentPayload.copy(
-                            mainLoadFailed = false,
-                            timelineGaps =
-                                currentPayload.timelineGaps.filterNot {
-                                    it.afterSeq == afterSeq && it.beforeSeq == beforeSeq
-                                },
-                        )
-                    is DataResult.Error,
-                    is DataResult.NoPermission ->
-                        currentPayload.copy(
-                            timelineGaps =
-                                currentPayload.timelineGaps.map { gap ->
-                                    if (gap.afterSeq == afterSeq && gap.beforeSeq == beforeSeq) {
-                                        gap.copy(status = "error")
-                                    } else {
-                                        gap
-                                    }
-                                },
-                        )
-                }
-            }
-            if (applied) {
-                committedForCache?.let { committed ->
-                    dataSource.cacheCanonicalPayload(committed, visiblePayloadOwnerScopeId)
-                }
-            }
-            val appliedPayload = currentState().payload
-            if (
-                applied &&
-                result is DataResult.Content &&
-                staleToken.isCurrent(routeStaleToken) &&
-                routeStillCurrent(existing, "thread_page", "gap_fill_secondary", appliedPayload)
-            ) {
-                launchSecondaryTimelineRefresh(appliedPayload, staleToken, fetchReason = InboxFetchReason.Manual)
-                launchDurableWindowExtension(existing, result.data, ThreadDurablePageDirection.Older, beforeSeq)
-            }
-        } finally {
-            if (!applied) {
-                reducePayloadPatch { currentPayload ->
-                    if (
-                        currentPayload.isUsableCachedPayloadForRoute(existing) &&
-                        currentPayload.timelineGaps.any { it.afterSeq == afterSeq && it.beforeSeq == beforeSeq && it.status == "loading" }
-                    ) {
-                        currentPayload.copy(
-                            timelineGaps =
-                                currentPayload.timelineGaps.map { gap ->
-                                    if (gap.afterSeq == afterSeq && gap.beforeSeq == beforeSeq && gap.status == "loading") {
-                                        gap.copy(status = "idle")
-                                    } else {
-                                        gap
-                                    }
-                                },
-                        )
-                    } else {
-                        currentPayload
-                    }
-                }
-            }
         }
     }
 }

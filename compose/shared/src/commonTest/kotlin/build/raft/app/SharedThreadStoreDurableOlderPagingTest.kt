@@ -90,8 +90,11 @@ class SharedThreadStoreDurableOlderPagingTest {
     }
 
     @Test
-    fun windowNotReachingTheChannelStartKeepsPagingOpenForTheNetwork() = runTest {
+    fun windowNotReachingTheChannelStartStopsCleanlyOfflineWithOuterBoundaryAndRestoresOnlineOnRefresh() = runTest {
         // Twin of the test above: identical 120 facts, but the cursor says older history exists.
+        // #proj-mobile:#388: offline stops cleanly at the contiguous cached window edge with the
+        // single outer "Older messages are not available offline" boundary row (no failed network
+        // retry spam), and reconnecting via Refresh restores online older paging seamlessly.
         val logs = mutableListOf<String>()
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + scopeJob)
@@ -102,18 +105,30 @@ class SharedThreadStoreDurableOlderPagingTest {
         repeat(3) { store.accept(SharedThreadIntent.LoadOlder) }
         val exhausted = store.state.value.payload
         assertEquals(120, exhausted.messages.size)
-        assertTrue(exhausted.canLoadMoreBefore, "the window ends but the channel does not")
-        assertEquals(1, api.channelMessageCalls, "only the (failed) refresh so far")
+        assertFalse(exhausted.canLoadMoreBefore, "offline closes paging cleanly at contiguous window edge")
+        assertFalse(exhausted.durableReachedOldest, "window does not reach the start")
+        assertEquals("idle", exhausted.olderMessagesStatus)
+        assertEquals(
+            Res.string.thread_offline_older_unavailable.desc(),
+            threadOlderMessagesStatusSpec(exhausted)?.label,
+            "single outer boundary row says older messages are unavailable offline",
+        )
+        assertEquals(1, api.channelMessageCalls, "only the (failed) initial refresh went to the network")
 
-        // The next older load finds nothing on disk and goes to the network as before (offline: fails).
+        // Additional LoadOlder while offline stays a clean no-op with 0 extra network attempts.
         store.accept(SharedThreadIntent.LoadOlder)
-        assertEquals(2, api.channelMessageCalls, "the older page went to the network")
-        val failed = store.state.value.payload
-        assertEquals("error", failed.olderMessagesStatus)
-        assertTrue(failed.canLoadMoreBefore, "the retry row stays available")
-        assertFalse(failed.durableReachedOldest, "same arithmetic, but the window does not reach the start")
-        assertEquals(120, failed.messages.size)
-        assertTrue(logs.any { "served=0 reason=exhausted" in it }, logs.toString())
+        assertEquals(1, api.channelMessageCalls)
+        assertEquals("idle", store.state.value.payload.olderMessagesStatus)
+        assertFalse(store.state.value.payload.canLoadMoreBefore)
+        assertFalse(store.state.value.payload.durableReachedOldest)
+
+        // Connectivity returns -> Refresh replaces the offline stand-in and restores online paging.
+        api.failChannelMessages = false
+        store.accept(SharedThreadIntent.Refresh)
+        val reconnected = store.state.value.payload
+        assertFalse(reconnected.durableLastKnown)
+        assertFalse(reconnected.mainLoadFailed)
+        assertEquals(2, api.channelMessageCalls)
         scopeJob.cancelAndJoin()
     }
 

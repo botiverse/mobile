@@ -469,7 +469,6 @@ internal sealed interface SharedThreadIntent {
     data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
     data object LoadNewer : SharedThreadIntent
-    data class FillTimelineGap(val afterSeq: Long, val beforeSeq: Long) : SharedThreadIntent
     data object RefreshLatestAfterVisibleMaxSeq : SharedThreadIntent
     data class RecoverRealtimeGap(val serverSeq: Long) : SharedThreadIntent
 }

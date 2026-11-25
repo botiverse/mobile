@@ -28,7 +28,6 @@ import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.CanonicalConversationContextV2
 import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
 import build.raft.app.network.sync.CanonicalMessageNodeV2
-import build.raft.app.network.sync.CanonicalMessageV2TimelineGap
 import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.PersistedCursor
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
@@ -39,6 +38,9 @@ import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.ThreadDurableTimelineAnchor
 import build.raft.app.network.sync.ThreadDurableTimelinePage
 import build.raft.app.network.sync.TopLevelScopeRefV2
+import build.raft.app.resources.Res
+import build.raft.app.resources.desc
+import build.raft.app.resources.thread_offline_older_unavailable
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -46,7 +48,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -57,22 +58,24 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Batch 1 contract tests for #proj-mobile:#386:
- * - P0-1: online stand-in paging (`durableLastKnown && !mainLoadFailed`) never passes `crossGaps = true`
- *   for either `LoadOlder` or `LoadNewer`.
- * - P1-1: `MergeAtNewestEdge` and `applyRealtimeEvent` reconcile `timelineGaps` when bridging messages arrive.
- * - P1-2: inline audio preview caches resolved URLs in `RaftFilePreviewAttachmentUrlCache`, invalidates
+ * Contract tests for #proj-mobile:#386 & #proj-mobile:#388:
+ * - Online stand-in paging (`durableLastKnown && !mainLoadFailed`) never bridges gaps and seamlessly
+ *   fetches from the server at segment edges for both `LoadOlder` and `LoadNewer`.
+ * - Offline stand-in paging (`durableLastKnown && mainLoadFailed`) stays strictly inside its proven
+ *   contiguous segment, stops cleanly at the segment edge with the single outer
+ *   "Older messages are not available offline" boundary row (zero network spam, zero stuck spinner),
+ *   and restores online older paging cleanly once connectivity returns via `Refresh`.
+ * - Inline audio preview caches resolved URLs in `RaftFilePreviewAttachmentUrlCache`, invalidates
  *   on forced retry, and settles exceptions to `Error` (never stuck `Loading`).
- * - P2-2: successful network `fillTimelineGap` clears `mainLoadFailed = false`.
- * - P2-3: `TaskConversationDetailsViewModel` guards `SourceStarted` / `EarlierStarted` on `channelId != null`
+ * - `TaskConversationDetailsViewModel` guards `SourceStarted` / `EarlierStarted` on `channelId != null`
  *   so missing `channelId` never sticks `source` or `earlierDiscussion` in `Loading` forever.
  */
 class ThreadDurableGapContractTest {
     @Test
-    fun onlineStandInLoadOlderAndLoadNewerNeverCrossGapsWhileInitialRefreshIsInFlight() = runTest {
+    fun onlineStandInLoadOlderAndLoadNewerFetchAtSegmentEdgeWithoutBridgingGaps() = runTest {
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + scopeJob)
-        val observedCrossGaps = mutableListOf<Pair<String, Boolean>>()
+        val observedAnchors = mutableListOf<String>()
         val refreshStarted = CompletableDeferred<Unit>()
         val releaseRefresh = CompletableDeferred<Unit>()
         val api =
@@ -98,25 +101,17 @@ class ThreadDurableGapContractTest {
                         is ThreadDurableTimelineAnchor.AroundMessageId ->
                             timelinePage(
                                 seqs = 15L..25L,
-                                hasOlderStored = true,
-                                hasNewerStored = true,
+                                hasOlderStored = false,
+                                hasNewerStored = false,
                                 insideProvenSegment = true,
                             )
                         is ThreadDurableTimelineAnchor.Before -> {
-                            observedCrossGaps += "before" to anchor.crossGaps
-                            assertFalse(
-                                anchor.crossGaps,
-                                "online stand-in LoadOlder while refresh is in flight must pass crossGaps=false",
-                            )
-                            timelinePage(seqs = emptyList(), hasOlderStored = true, insideProvenSegment = false)
+                            observedAnchors += "before:${anchor.beforeSeq}"
+                            timelinePage(seqs = emptyList(), hasOlderStored = false, insideProvenSegment = false)
                         }
                         is ThreadDurableTimelineAnchor.After -> {
-                            observedCrossGaps += "after" to anchor.crossGaps
-                            assertFalse(
-                                anchor.crossGaps,
-                                "online stand-in LoadNewer while refresh is in flight must pass crossGaps=false",
-                            )
-                            timelinePage(seqs = emptyList(), hasNewerStored = true, insideProvenSegment = false)
+                            observedAnchors += "after:${anchor.afterSeq}"
+                            timelinePage(seqs = emptyList(), hasNewerStored = false, insideProvenSegment = false)
                         }
                         else -> null
                     }
@@ -128,19 +123,20 @@ class ThreadDurableGapContractTest {
         val firstFrame = store.state.value.payload
         assertTrue(firstFrame.durableLastKnown)
         assertFalse(firstFrame.mainLoadFailed)
-        assertTrue(firstFrame.timelineGaps.isEmpty())
+        assertTrue(firstFrame.canLoadMoreBefore)
+        assertTrue(firstFrame.canLoadMoreAfter)
 
-        // Both LoadOlder and LoadNewer while online refresh is in flight must use crossGaps=false
-        // and fall through to network at segment edge without injecting stacked gap rows.
+        // Both LoadOlder and LoadNewer while online refresh is in flight hit the segment edge
+        // and fall through to network seamlessly without bridging gaps.
         store.accept(SharedThreadIntent.LoadOlder)
-        assertTrue(store.state.value.payload.timelineGaps.isEmpty())
         assertEquals(listOf(15L), api.beforeSeqs)
+        assertEquals((10L..25L).toList(), store.state.value.payload.messages.mapNotNull { it.seq })
 
         store.accept(SharedThreadIntent.LoadNewer)
-        assertTrue(store.state.value.payload.timelineGaps.isEmpty())
         assertEquals(listOf(25L), api.afterSeqs)
+        assertEquals((10L..30L).toList(), store.state.value.payload.messages.mapNotNull { it.seq })
 
-        assertEquals(listOf("before" to false, "after" to false), observedCrossGaps)
+        assertEquals(listOf("before:15", "after:25"), observedAnchors)
 
         releaseRefresh.complete(Unit)
         startJob.join()
@@ -148,7 +144,7 @@ class ThreadDurableGapContractTest {
     }
 
     @Test
-    fun realtimeEventAndMergeAtNewestEdgeReconcileTimelineGapsAndGapFillClearsMainLoadFailed() = runTest {
+    fun offlineStandInStopsCleanlyAtContiguousSegmentEdgeWithOuterBoundaryAndRecoversOnReconnect() = runTest {
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + scopeJob)
         val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
@@ -164,17 +160,21 @@ class ThreadDurableGapContractTest {
                 ): ThreadDurableTimelinePage? =
                     when (anchor) {
                         is ThreadDurableTimelineAnchor.Newest ->
-                            timelinePage(seqs = 20L..25L, hasOlderStored = true, reachesHead = true)
-                        is ThreadDurableTimelineAnchor.Before -> {
-                            assertTrue(anchor.crossGaps, "offline stand-in LoadOlder crosses proven segments")
                             timelinePage(
-                                seqs = 1L..5L,
-                                gaps = listOf(CanonicalMessageV2TimelineGap(afterSeq = 5L, beforeSeq = 20L)),
+                                seqs = 20L..25L,
+                                hasOlderStored = true,
+                                reachesOldest = false,
+                                reachesHead = true,
+                                insideProvenSegment = true,
+                            )
+                        is ThreadDurableTimelineAnchor.Before ->
+                            // Simulates reaching segment edge when older row lookup discovers no contiguous rows.
+                            timelinePage(
+                                seqs = emptyList(),
                                 hasOlderStored = false,
-                                reachesOldest = true,
+                                reachesOldest = false,
                                 insideProvenSegment = false,
                             )
-                        }
                         else -> null
                     }
             }
@@ -182,71 +182,36 @@ class ThreadDurableGapContractTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
         assertTrue(store.state.value.payload.durableLastKnown)
         assertTrue(store.state.value.payload.mainLoadFailed)
+        assertTrue(store.state.value.payload.canLoadMoreBefore)
+        assertEquals(1, api.channelMessageCalls)
+
+        // Offline LoadOlder at segment edge closes canLoadMoreBefore cleanly without bridging gaps
+        // or calling the network, rendering the single outer offline boundary row.
+        store.accept(SharedThreadIntent.LoadOlder)
+        val stopped = store.state.value.payload
+        assertEquals((20L..25L).toList(), stopped.messages.mapNotNull { it.seq })
+        assertFalse(stopped.canLoadMoreBefore)
+        assertFalse(stopped.durableReachedOldest)
+        assertEquals("idle", stopped.olderMessagesStatus)
+        assertEquals(1, api.channelMessageCalls, "offline segment edge must not hit network")
+        assertTrue(api.beforeSeqs.isEmpty())
+        val outerSpec = assertNotNull(threadOlderMessagesStatusSpec(stopped))
+        assertEquals(Res.string.thread_offline_older_unavailable.desc(), outerSpec.label)
+        assertFalse(outerSpec.loading)
+
+        // Connectivity returns: Refresh replaces the stand-in and restores normal online older paging.
+        api.failChannelMessages = false
+        api.bodyText = messagesJson((20L..49L).toList(), historyLimited = true)
+        api.olderBodyText = messagesJson((10L..19L).toList(), historyLimited = false)
+        store.accept(SharedThreadIntent.Refresh)
+        val reconnected = store.state.value.payload
+        assertFalse(reconnected.durableLastKnown)
+        assertFalse(reconnected.mainLoadFailed)
+        assertTrue(reconnected.canLoadMoreBefore)
 
         store.accept(SharedThreadIntent.LoadOlder)
-        assertEquals(listOf(ThreadTimelineGap(5L, 20L, status = "idle")), store.state.value.payload.timelineGaps)
-
-        // P1-1a: MessageNew arriving strictly inside an existing gap (5, 20) reconciles timelineGaps.
-        store.accept(
-            SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
-                    message =
-                        Message(
-                            id = MessageId("rt-12"),
-                            threadId = ThreadId("channel-1"),
-                            channelId = ChannelId("channel-1"),
-                            author =
-                                MemberProfile(
-                                    id = MemberId("u-a"),
-                                    displayName = "Owner A",
-                                    handle = "owner-a",
-                                    kind = MemberKind.Human,
-                                    presence = Presence.Active,
-                                ),
-                            seq = 12L,
-                            timestampLabel = "2026-05-19T16:12:00Z",
-                            body = "bridge 12",
-                        )
-                )
-            )
-        )
-        assertTrue(
-            store.state.value.payload.timelineGaps.isEmpty(),
-            "realtime message strictly inside gap must reconcile timelineGaps: ${store.state.value.payload.timelineGaps}",
-        )
-
-        // P2-2: Fresh offline store with gap (5, 20) -> successful FillTimelineGap clears mainLoadFailed = false.
-        val store2 = SharedThreadStore(dataSource(backgroundScope, api, reader), scope = scope)
-        store2.accept(SharedThreadIntent.Start(basePayload()))
-        store2.accept(SharedThreadIntent.LoadOlder)
-        assertTrue(store2.state.value.payload.mainLoadFailed)
-        assertEquals(listOf(ThreadTimelineGap(5L, 20L, status = "idle")), store2.state.value.payload.timelineGaps)
-
-        api.failChannelMessages = false
-        api.olderBodyText = messagesJson((10L..19L).toList())
-        store2.accept(SharedThreadIntent.FillTimelineGap(afterSeq = 5L, beforeSeq = 20L))
-        assertFalse(
-            store2.state.value.payload.mainLoadFailed,
-            "successful network fillTimelineGap must clear mainLoadFailed so remaining gaps aren't mislabeled offline",
-        )
-
-        // P1-1b: Gap catch-up MergeAtNewestEdge also reconciles existing timelineGaps when merged page bridges them.
-        val store3 = SharedThreadStore(dataSource(backgroundScope, api, reader), scope = scope)
-        api.failChannelMessages = true
-        store3.accept(SharedThreadIntent.Start(basePayload()))
-        store3.accept(SharedThreadIntent.LoadOlder)
-        assertEquals(listOf(ThreadTimelineGap(5L, 20L, status = "idle")), store3.state.value.payload.timelineGaps)
-
-        api.failChannelMessages = false
-        // Latest page contains anchor v2-25 (triggers MergeAtNewestEdge) AND seq 12 inside (5, 20).
-        api.catchUpBodyTexts += messagesJson(listOf(12L, 20L, 21L, 22L, 23L, 24L, 25L, 26L))
-        store3.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 26L))
-        runCurrent()
-        assertEquals(1, api.catchUpCalls, "gap recovery must invoke catchUpChannelMessages")
-        assertTrue(
-            store3.state.value.payload.timelineGaps.isEmpty(),
-            "MergeAtNewestEdge must reconcile bridged timelineGaps: ${store3.state.value.payload.timelineGaps}",
-        )
+        assertEquals(listOf(20L), api.beforeSeqs)
+        assertEquals((10L..49L).toList(), store.state.value.payload.messages.mapNotNull { it.seq })
         scopeJob.cancelAndJoin()
     }
 
@@ -395,7 +360,6 @@ class ThreadDurableGapContractTest {
 
     private fun timelinePage(
         seqs: Iterable<Long>,
-        gaps: List<CanonicalMessageV2TimelineGap> = emptyList(),
         hasOlderStored: Boolean = false,
         hasNewerStored: Boolean = false,
         reachesOldest: Boolean = false,
@@ -429,7 +393,6 @@ class ThreadDurableGapContractTest {
                         context = CanonicalConversationContextV2.TopLevel(TopLevelScopeRefV2.Channel("server-1", "channel-1")),
                     )
                 },
-            gaps = gaps,
             cursor =
                 PersistedCursor(
                     latestSeq = sorted.maxOrNull(),
@@ -448,7 +411,7 @@ class ThreadDurableGapContractTest {
         )
     }
 
-    private fun messagesJson(seqs: List<Long>): String {
+    private fun messagesJson(seqs: List<Long>, historyLimited: Boolean = false): String {
         val items =
             seqs.joinToString(",") { seq ->
                 """
@@ -465,7 +428,7 @@ class ThreadDurableGapContractTest {
                 }
                 """.trimIndent()
             }
-        return """{"historyLimited": false, "messages": [$items]}"""
+        return """{"historyLimited": $historyLimited, "messages": [$items]}"""
     }
 
     private fun dataSource(

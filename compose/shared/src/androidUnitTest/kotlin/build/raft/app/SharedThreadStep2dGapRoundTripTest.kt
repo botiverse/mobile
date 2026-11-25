@@ -46,6 +46,10 @@ import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
 import build.raft.app.network.sync.SyncScopeKey
 import build.raft.app.network.sync.TopLevelScopeRefV2
+import build.raft.app.resources.Res
+import build.raft.app.resources.desc
+import build.raft.app.resources.thread_offline_older_unavailable
+import build.raft.app.resources.thread_state_beginning_conversation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,15 +63,17 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Phase 2d PR 2 (#proj-mobile:#240) real-SQLite round trip:
- * disjoint segments `[1..10]` and `[51..80]` -> offline LoadOlder crosses islands and emits inline
- * gap `(10, 51)` -> FillTimelineGap bridges the missing pages and persists them via
+ * Phase 2d PR 2 (#proj-mobile:#240) / #proj-mobile:#388 real-SQLite round trip:
+ * disjoint segments `[1..10]` and `[51..80]` -> offline open stays strictly inside `[51..80]` and
+ * stops cleanly at the contiguous segment edge with the outer "Older messages are not available
+ * offline" boundary row (NEVER bridging across the gap into `[1..10]`) -> reconnect `Refresh`
+ * restores online paging -> online `LoadOlder` fetches `[21..50]` then `[11..20]` and persists via
  * [CanonicalMessageV2AdjacentPageWriter] so SQLite segments coalesce into `[1..80]` -> a subsequent
- * cold offline open pages `80 -> 1` with zero gaps.
+ * cold offline open walks `80 -> 1` cleanly all the way to "Beginning of conversation".
  */
 class SharedThreadStep2dGapRoundTripTest {
     @Test
-    fun offlineIslandGapBridgesAndCoalescesInSqliteSoNextColdOfflineOpenHasZeroGaps() = withFreshDatabase { database ->
+    fun offlineDisjointSegmentsStopAtOuterBoundaryAndOnlinePagingCoalescesSqliteForNextColdOfflineOpen() = withFreshDatabase { database ->
         runBlocking {
             val logs = java.util.concurrent.CopyOnWriteArrayList<String>()
             val sqlStore = SqlDelightCanonicalMessageV2Store(database = database, now = { 1_000L })
@@ -120,7 +126,9 @@ class SharedThreadStep2dGapRoundTripTest {
             )
             assertEquals(2, sqlStore.readSegments(scopeKey).size)
 
-            // Phase 1: Cold offline open paints [51..80]; offline LoadOlder crosses into [1..10] with gap (10, 51).
+            // Phase 1: Cold offline open paints strictly contiguous head [51..80]; never bridges
+            // across the unverified gap into [1..10], closes older paging cleanly with the single
+            // outer "Older messages are not available offline" boundary row.
             val repo =
                 SharedThreadStoreTestFakes.FakeConversationRepository(
                     threadResult = DataResult.Error(ScreenError(code = "offline", retryable = true)),
@@ -145,40 +153,51 @@ class SharedThreadStep2dGapRoundTripTest {
                     scope = phase1Scope,
                 )
             phase1Store.accept(SharedThreadIntent.Start(basePayload()))
-            assertTrue(phase1Store.state.value.payload.durableLastKnown)
-            assertEquals((51L..80L).toList(), phase1Store.state.value.payload.messages.mapNotNull { it.seq })
-            assertTrue(phase1Store.state.value.payload.timelineGaps.isEmpty())
+            val offlineStart = phase1Store.state.value.payload
+            assertTrue(offlineStart.durableLastKnown)
+            assertTrue(offlineStart.mainLoadFailed)
+            assertEquals((51L..80L).toList(), offlineStart.messages.mapNotNull { it.seq })
+            assertFalse(offlineStart.canLoadMoreBefore)
+            assertFalse(offlineStart.durableReachedOldest)
+            assertEquals("idle", offlineStart.olderMessagesStatus)
+            assertEquals(
+                Res.string.thread_offline_older_unavailable.desc(),
+                threadOlderMessagesStatusSpec(offlineStart)?.label,
+            )
 
+            // Offline LoadOlder stays strictly on [51..80] without bridging [1..10].
             phase1Store.accept(SharedThreadIntent.LoadOlder)
-            val crossed = phase1Store.state.value.payload
-            assertEquals((1L..10L) + (51L..80L), crossed.messages.mapNotNull { it.seq })
-            assertEquals(listOf(ThreadTimelineGap(10L, 51L, status = "idle")), crossed.timelineGaps)
-            assertFalse(crossed.canLoadMoreBefore)
+            assertEquals((51L..80L).toList(), phase1Store.state.value.payload.messages.mapNotNull { it.seq })
+            assertFalse(phase1Store.state.value.payload.canLoadMoreBefore)
+            assertFalse(phase1Store.state.value.payload.durableReachedOldest)
 
-            // Phase 2: Connectivity returns. First FillTimelineGap(10, 51) fetches 21..50 (full 30-row page),
-            // shrinks gap to (10, 21), and persists [21..50] to SQLite.
+            // Phase 2: Connectivity returns. Refresh restores online older paging; scrolling older
+            // fetches [21..50] then [11..20] sequentially from the server and persists them to SQLite,
+            // coalescing [1..10] + [11..20] + [21..50] + [51..80] into ONE contiguous segment [1..80]!
+            repo.threadResult = DataResult.Content(olderSnapshot(seqs = (51L..80L).toList(), coveredAfterSeq = 50L, coveredThroughSeq = 80L))
+            phase1Store.accept(SharedThreadIntent.Refresh)
+            assertFalse(phase1Store.state.value.payload.durableLastKnown)
+            assertTrue(phase1Store.state.value.payload.canLoadMoreBefore)
+
             repo.olderResult = DataResult.Content(olderSnapshot(seqs = (21L..50L).toList(), coveredAfterSeq = 20L, coveredThroughSeq = 50L))
-            phase1Store.accept(SharedThreadIntent.FillTimelineGap(afterSeq = 10L, beforeSeq = 51L))
-            assertEquals(listOf(ThreadTimelineGap(10L, 21L, status = "idle")), phase1Store.state.value.payload.timelineGaps)
+            phase1Store.accept(SharedThreadIntent.LoadOlder)
+            assertEquals((21L..80L).toList(), phase1Store.state.value.payload.messages.mapNotNull { it.seq })
             awaitLogCount(logs, "canonical_v2_adjacent_page", expected = 1)
 
-            // Second FillTimelineGap(10, 21) fetches 11..20 (short page), bridges gap completely, and coalesces
-            // [1..10] + [11..20] + [21..50] + [51..80] into one contiguous segment [1..80] in SQLite!
             repo.olderResult = DataResult.Content(olderSnapshot(seqs = (11L..20L).toList(), coveredAfterSeq = 10L, coveredThroughSeq = 20L))
-            phase1Store.accept(SharedThreadIntent.FillTimelineGap(afterSeq = 10L, beforeSeq = 21L))
-            assertTrue(phase1Store.state.value.payload.timelineGaps.isEmpty())
-            assertEquals((1L..80L).toList(), phase1Store.state.value.payload.messages.mapNotNull { it.seq })
+            phase1Store.accept(SharedThreadIntent.LoadOlder)
+            assertEquals((11L..80L).toList(), phase1Store.state.value.payload.messages.mapNotNull { it.seq })
             awaitLogCount(logs, "canonical_v2_adjacent_page", expected = 2)
             phase1Job.cancelAndJoin()
 
             val coalescedSegments = sqlStore.readSegments(scopeKey)
-            assertEquals(1, coalescedSegments.size, "segments must coalesce after gap bridge: $coalescedSegments ($logs)")
+            assertEquals(1, coalescedSegments.size, "segments must coalesce after online older paging bridges them: $coalescedSegments ($logs)")
             assertEquals(1L, coalescedSegments.single().lowSeq)
             assertEquals(80L, coalescedSegments.single().highSeq)
             assertTrue(coalescedSegments.single().reachesOldest)
             assertTrue(coalescedSegments.single().headAtVerify)
 
-            // Phase 3: Fresh cold offline open over the same SQLite DB walks 80 -> 1 with 0 timeline gaps.
+            // Phase 3: Fresh cold offline open over the same SQLite DB walks 80 -> 1 seamlessly.
             val phase3Job = SupervisorJob()
             val phase3Scope = CoroutineScope(coroutineContext + phase3Job)
             val phase3Store =
@@ -196,19 +215,21 @@ class SharedThreadStep2dGapRoundTripTest {
                 )
             phase3Store.accept(SharedThreadIntent.Start(basePayload()))
             assertEquals((51L..80L).toList(), phase3Store.state.value.payload.messages.mapNotNull { it.seq })
-            assertTrue(phase3Store.state.value.payload.timelineGaps.isEmpty())
+            assertTrue(phase3Store.state.value.payload.canLoadMoreBefore)
 
             phase3Store.accept(SharedThreadIntent.LoadOlder)
             assertEquals((21L..80L).toList(), phase3Store.state.value.payload.messages.mapNotNull { it.seq })
-            assertTrue(phase3Store.state.value.payload.timelineGaps.isEmpty())
             assertTrue(phase3Store.state.value.payload.canLoadMoreBefore)
 
             phase3Store.accept(SharedThreadIntent.LoadOlder)
             val finalOffline = phase3Store.state.value.payload
             assertEquals((1L..80L).toList(), finalOffline.messages.mapNotNull { it.seq })
-            assertTrue(finalOffline.timelineGaps.isEmpty())
             assertFalse(finalOffline.canLoadMoreBefore)
             assertTrue(finalOffline.durableReachedOldest)
+            assertEquals(
+                Res.string.thread_state_beginning_conversation.desc(),
+                threadOlderMessagesStatusSpec(finalOffline)?.label,
+            )
             phase3Job.cancelAndJoin()
         }
     }

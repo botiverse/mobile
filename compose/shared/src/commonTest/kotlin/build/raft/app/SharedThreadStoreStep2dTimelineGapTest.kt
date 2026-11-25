@@ -30,7 +30,6 @@ import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.CanonicalConversationContextV2
 import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
 import build.raft.app.network.sync.CanonicalMessageNodeV2
-import build.raft.app.network.sync.CanonicalMessageV2TimelineGap
 import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.MessageRefV2
 import build.raft.app.network.sync.PersistedCursor
@@ -47,6 +46,9 @@ import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.ThreadDurableTimelineAnchor
 import build.raft.app.network.sync.ThreadDurableTimelinePage
 import build.raft.app.network.sync.TopLevelScopeRefV2
+import build.raft.app.resources.Res
+import build.raft.app.resources.desc
+import build.raft.app.resources.thread_offline_older_unavailable
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -68,108 +70,13 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Phase 2d PR 2 (#proj-mobile:#240): bounded SQLite timeline reads, online proven-segment local
- * paging, offline island crossing with derived inline timeline gaps, Q5 gap filling, and anchored
- * cold opens / offline jumps.
+ * Phase 2d PR 2 (#proj-mobile:#240) / #proj-mobile:#388: bounded contiguous SQLite timeline reads,
+ * online proven-segment local paging, offline contiguous segment-edge boundaries (zero middle gaps),
+ * and anchored cold opens / offline jumps.
  */
 class SharedThreadStoreStep2dTimelineGapTest {
     @Test
-    fun gapKeyParsingReconciliationMultiGapSpilloverAndPendingSendAttachmentHold() {
-        assertEquals(10L to 25L, parseThreadTimelineGapKey("10:25"))
-        assertEquals(0L to 2L, parseThreadTimelineGapKey(" 0:2 "))
-        assertNull(parseThreadTimelineGapKey(null))
-        assertNull(parseThreadTimelineGapKey(""))
-        assertNull(parseThreadTimelineGapKey("10:11"))
-        assertNull(parseThreadTimelineGapKey("-1:5"))
-        assertNull(parseThreadTimelineGapKey("bad"))
-
-        val msgs =
-            listOf(
-                messageItem("m-10", seq = 10L),
-                messageItem("local-pending", seq = null),
-                messageItem("m-30", seq = 30L),
-                messageItem("m-50", seq = 50L),
-            )
-        val initialGaps =
-            reconcileThreadTimelineGaps(
-                existingGaps = listOf(ThreadTimelineGap(10L, 30L, status = "error")),
-                addedGaps = listOf(ThreadTimelineGap(10L, 30L, status = "idle"), ThreadTimelineGap(30L, 50L, status = "idle")),
-                messages = msgs,
-            )
-        assertEquals(
-            listOf(
-                ThreadTimelineGap(10L, 30L, status = "error"),
-                ThreadTimelineGap(30L, 50L, status = "idle"),
-            ),
-            initialGaps,
-        )
-        assertNull(threadTimelineGapAboveMessage(msgs, 0, initialGaps))
-        assertNull(threadTimelineGapAboveMessage(msgs, 1, initialGaps), "local pending send never carries a gap")
-        assertEquals(ThreadTimelineGap(10L, 30L, status = "error"), threadTimelineGapAboveMessage(msgs, 2, initialGaps))
-        assertEquals(ThreadTimelineGap(30L, 50L, status = "idle"), threadTimelineGapAboveMessage(msgs, 3, initialGaps))
-
-        // Full page shrinks gap (10, 80) -> (10, 50); short page bridges and removes it.
-        val fullFetched = (50L..79L).map { seq -> messageItem("m-$seq", seq = seq) }
-        val mergedAfterFirst = (listOf(messageItem("m-10", seq = 10L)) + fullFetched + listOf(messageItem("m-80", seq = 80L)))
-        val shrunk =
-            reconcileThreadTimelineGapsAfterFill(
-                existingGaps = listOf(ThreadTimelineGap(10L, 80L, status = "loading")),
-                filledAfterSeq = 10L,
-                filledBeforeSeq = 80L,
-                fetchedPageMessages = fullFetched,
-                requestedPageSize = 30,
-                mergedMessages = mergedAfterFirst,
-            )
-        assertEquals(listOf(ThreadTimelineGap(10L, 50L, status = "idle")), shrunk)
-
-        val shortFetched = (20L..25L).map { seq -> messageItem("m-$seq", seq = seq) }
-        val mergedAfterSecond = (listOf(messageItem("m-10", seq = 10L)) + shortFetched + fullFetched + listOf(messageItem("m-80", seq = 80L)))
-        val bridged =
-            reconcileThreadTimelineGapsAfterFill(
-                existingGaps = shrunk,
-                filledAfterSeq = 10L,
-                filledBeforeSeq = 50L,
-                fetchedPageMessages = shortFetched,
-                requestedPageSize = 30,
-                mergedMessages = mergedAfterSecond,
-            )
-        assertTrue(bridged.isEmpty(), "short page proves no more messages remain in the gap: $bridged")
-
-        // Multi-gap spillover (HIGH-2): islands [1..10], [40..45], [100..120], [140..150].
-        // Filling (45, 100) returns a full 30-message page [25..38, 40..45, 50..59] that spills past
-        // 40 into (10, 40): (45, 100) is bridged, (10, 40) MUST shrink to (10, 25) instead of being
-        // silently dropped, and (120, 140) strictly above 100 stays untouched.
-        val spilloverFetched =
-            ((25L..38L) + (40L..45L) + (50L..59L)).map { seq -> messageItem("m-$seq", seq = seq) }
-        assertEquals(30, spilloverFetched.size)
-        val spilloverMerged =
-            ((1L..10L) + (25L..38L) + (40L..45L) + (50L..59L) + (100L..120L) + (140L..150L))
-                .map { seq -> messageItem("m-$seq", seq = seq) }
-        val afterSpillover =
-            reconcileThreadTimelineGapsAfterFill(
-                existingGaps =
-                    listOf(
-                        ThreadTimelineGap(10L, 40L, status = "idle"),
-                        ThreadTimelineGap(45L, 100L, status = "loading"),
-                        ThreadTimelineGap(120L, 140L, status = "error"),
-                    ),
-                filledAfterSeq = 45L,
-                filledBeforeSeq = 100L,
-                fetchedPageMessages = spilloverFetched,
-                requestedPageSize = 30,
-                mergedMessages = spilloverMerged,
-            )
-        assertEquals(
-            listOf(
-                ThreadTimelineGap(10L, 25L, status = "idle"),
-                ThreadTimelineGap(120L, 140L, status = "error"),
-            ),
-            afterSpillover,
-        )
-    }
-
-    @Test
-    fun systemMessageFoldsNeverMergeAcrossATimelineGap() {
+    fun systemMessageFoldsGroupContiguousSystemMessages() {
         val sysMessages =
             listOf(
                 messageItem("s1", seq = 10L, messageType = "System", body = "Alice claimed #1 \"A\""),
@@ -177,15 +84,11 @@ class SharedThreadStoreStep2dTimelineGapTest {
                 messageItem("s3", seq = 40L, messageType = "System", body = "Bob claimed #2 \"B\""),
                 messageItem("s4", seq = 41L, messageType = "System", body = "Bob moved #2 \"B\" to Done"),
             )
-        val mergedWithoutGap = threadSystemMessageFolds(sysMessages, emptyList())
+        val folded = threadSystemMessageFolds(sysMessages)
         assertEquals(
             listOf("s1", "s2", "s3", "s4"),
-            (mergedWithoutGap[0] as ThreadSystemMessageFold.Summary).memberIds,
+            (folded[0] as ThreadSystemMessageFold.Summary).memberIds,
         )
-
-        val splitAcrossGap = threadSystemMessageFolds(sysMessages, listOf(ThreadTimelineGap(11L, 40L)))
-        assertEquals(listOf("s1", "s2"), (splitAcrossGap[0] as ThreadSystemMessageFold.Summary).memberIds)
-        assertEquals(listOf("s3", "s4"), (splitAcrossGap[2] as ThreadSystemMessageFold.Summary).memberIds)
     }
 
     @Test
@@ -203,7 +106,6 @@ class SharedThreadStoreStep2dTimelineGapTest {
             TimelineFakeReader { anchor ->
                 when (anchor) {
                     is ThreadDurableTimelineAnchor.Before -> {
-                        assertFalse(anchor.crossGaps, "online LoadOlder must never cross gaps")
                         when (anchor.beforeSeq) {
                             61L ->
                                 timelinePage(
@@ -222,7 +124,6 @@ class SharedThreadStoreStep2dTimelineGapTest {
                         }
                     }
                     is ThreadDurableTimelineAnchor.After -> {
-                        assertFalse(anchor.crossGaps, "online LoadNewer must never cross gaps")
                         when (anchor.afterSeq) {
                             80L ->
                                 // Even if SQLite persisted `reachesHead = true` (yesterday's headAtVerify),
@@ -363,10 +264,16 @@ class SharedThreadStoreStep2dTimelineGapTest {
     }
 
     @Test
-    fun offlineLoadOlderCrossesIntoLowerIslandAndFillTimelineGapShrinksBridgesAndRecordsErrors() = runTest {
+    fun offlineLoadOlderPagesContiguousSegmentOnlyStopsAtOuterBoundaryAndPersistsOnOnlineReconnect() = runTest {
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + scopeJob)
-        val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
+        val offlineError = DataResult.Error(ScreenError(code = "offline", retryable = true))
+        val extender = RecordingPageExtender()
+        val repo =
+            SharedThreadStoreTestFakes.FakeConversationRepository(
+                threadResult = offlineError,
+                olderResult = DataResult.Content(repoSnapshot((41L..60L).toList())),
+            )
         val reader =
             TimelineFakeReader { anchor ->
                 when (anchor) {
@@ -378,79 +285,23 @@ class SharedThreadStoreStep2dTimelineGapTest {
                             reachesHead = true,
                             insideProvenSegment = true,
                         )
-                    is ThreadDurableTimelineAnchor.Before -> {
-                        assertTrue(anchor.crossGaps, "offline LoadOlder crosses into lower islands")
-                        assertEquals(91L, anchor.beforeSeq)
-                        timelinePage(
-                            seqs = 11L..40L,
-                            gaps = listOf(CanonicalMessageV2TimelineGap(afterSeq = 40L, beforeSeq = 91L)),
-                            hasOlderStored = false,
-                            reachesOldest = true,
-                            insideProvenSegment = false,
-                        )
-                    }
-                    else -> null
-                }
-            }
-        val store = SharedThreadStore(dataSource(backgroundScope, api, reader), scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        assertTrue(store.state.value.payload.durableLastKnown)
-        assertTrue(store.state.value.payload.mainLoadFailed)
-        assertTrue(store.state.value.payload.timelineGaps.isEmpty())
-
-        // Offline LoadOlder crosses into lower stored island 11..40 and emits derived gap (40, 91).
-        store.accept(SharedThreadIntent.LoadOlder)
-        val crossed = store.state.value.payload
-        assertEquals((11L..40L) + (91L..120L), crossed.messages.mapNotNull { it.seq })
-        assertEquals(listOf(ThreadTimelineGap(40L, 91L, status = "idle")), crossed.timelineGaps)
-        assertEquals(crossed.timelineGaps, store.state.value.timelineSlice.timelineGaps)
-        assertFalse(crossed.canLoadMoreBefore)
-        assertTrue(crossed.durableReachedOldest)
-
-        // Filling the gap while still offline marks the gap error without losing it.
-        store.accept(SharedThreadIntent.FillTimelineGap(afterSeq = 40L, beforeSeq = 91L))
-        assertEquals(listOf(ThreadTimelineGap(40L, 91L, status = "error")), store.state.value.payload.timelineGaps)
-
-        // Connectivity returns: first full page (30 messages 61..90) shrinks gap to (40, 61).
-        api.failChannelMessages = false
-        api.olderBodyText = messagesJson((61..90).map { it.toLong() })
-        store.accept(SharedThreadIntent.FillTimelineGap(afterSeq = 40L, beforeSeq = 91L))
-        assertEquals(listOf(91L), api.beforeSeqs)
-        assertEquals(listOf(ThreadTimelineGap(40L, 61L, status = "idle")), store.state.value.payload.timelineGaps)
-        assertEquals((11L..40L) + (61L..120L), store.state.value.payload.messages.mapNotNull { it.seq })
-
-        // Second page (short page 45..60) proves the remainder and bridges the gap completely.
-        api.olderBodyText = messagesJson((45..60).map { it.toLong() })
-        store.accept(SharedThreadIntent.FillTimelineGap(afterSeq = 40L, beforeSeq = 61L))
-        assertEquals(listOf(91L, 61L), api.beforeSeqs)
-        assertTrue(store.state.value.payload.timelineGaps.isEmpty())
-        assertEquals((11L..40L) + (45L..120L), store.state.value.payload.messages.mapNotNull { it.seq })
-        scopeJob.cancelAndJoin()
-    }
-
-    @Test
-    fun fillTimelineGapPersistsAdjacentPageHandlesEmptyDuplicateAndStaleTokenDrop() = runTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + scopeJob)
-        val offlineError = DataResult.Error(ScreenError(code = "offline", retryable = true))
-        val extender = RecordingPageExtender()
-        val repo =
-            SharedThreadStoreTestFakes.FakeConversationRepository(
-                threadResult = offlineError,
-                olderResult = DataResult.Content(repoSnapshot((61L..90L).toList())),
-            )
-        val reader =
-            TimelineFakeReader { anchor ->
-                when (anchor) {
-                    is ThreadDurableTimelineAnchor.Newest ->
-                        timelinePage(seqs = 91L..120L, hasOlderStored = true, reachesHead = true)
                     is ThreadDurableTimelineAnchor.Before ->
-                        timelinePage(
-                            seqs = 11L..40L,
-                            gaps = listOf(CanonicalMessageV2TimelineGap(40L, 91L)),
-                            reachesOldest = true,
-                            insideProvenSegment = false,
-                        )
+                        when (anchor.beforeSeq) {
+                            91L ->
+                                timelinePage(
+                                    seqs = 61L..90L,
+                                    hasOlderStored = false,
+                                    reachesOldest = false,
+                                    insideProvenSegment = true,
+                                )
+                            else ->
+                                timelinePage(
+                                    seqs = emptyList(),
+                                    hasOlderStored = false,
+                                    reachesOldest = false,
+                                    insideProvenSegment = false,
+                                )
+                        }
                     else -> null
                 }
             }
@@ -466,70 +317,37 @@ class SharedThreadStoreStep2dTimelineGapTest {
                 scope = scope,
             )
         store.accept(SharedThreadIntent.Start(basePayload()))
+        assertTrue(store.state.value.payload.durableLastKnown)
+        assertTrue(store.state.value.payload.mainLoadFailed)
+        assertTrue(store.state.value.payload.canLoadMoreBefore)
+
+        // Offline LoadOlder serves contiguous [61..90] from disk, then closes paging cleanly at the
+        // segment edge (hasOlderStored=false, reachesOldest=false) with the outer offline boundary row.
         store.accept(SharedThreadIntent.LoadOlder)
-        assertEquals(listOf(ThreadTimelineGap(40L, 91L, status = "idle")), store.state.value.payload.timelineGaps)
+        val atEdge = store.state.value.payload
+        assertEquals((61L..120L).toList(), atEdge.messages.mapNotNull { it.seq })
+        assertFalse(atEdge.canLoadMoreBefore)
+        assertFalse(atEdge.durableReachedOldest)
+        assertEquals("idle", atEdge.olderMessagesStatus)
+        assertEquals(
+            Res.string.thread_offline_older_unavailable.desc(),
+            threadOlderMessagesStatusSpec(atEdge)?.label,
+        )
 
-        // 1. Positive fill invokes durablePageExtender.extendWithAdjacentPage with direction=Older, anchorSeq=91L.
-        store.accept(SharedThreadIntent.FillTimelineGap(afterSeq = 40L, beforeSeq = 91L))
+        // Connectivity returns -> Refresh clears durableLastKnown & restores online paging;
+        // online LoadOlder at segment edge fetches [41..60] from server and extends durable storage.
+        repo.threadResult = DataResult.Content(repoSnapshot((91L..120L).toList()))
+        store.accept(SharedThreadIntent.Refresh)
+        val reconnected = store.state.value.payload
+        assertFalse(reconnected.durableLastKnown)
+        assertFalse(reconnected.mainLoadFailed)
+        assertTrue(reconnected.canLoadMoreBefore)
+        assertEquals((61L..120L).toList(), reconnected.messages.mapNotNull { it.seq })
+
+        store.accept(SharedThreadIntent.LoadOlder)
         runCurrent()
-        assertEquals(listOf(ThreadDurablePageDirection.Older to 91L), extender.calls)
-        assertEquals(listOf(ThreadTimelineGap(40L, 61L, status = "idle")), store.state.value.payload.timelineGaps)
-
-        // 2. DataResult.Empty removes the gap cleanly.
-        repo.olderResult = DataResult.Empty(EmptyReason.NoMessages)
-        store.accept(SharedThreadIntent.FillTimelineGap(afterSeq = 40L, beforeSeq = 61L))
-        runCurrent()
-        assertTrue(store.state.value.payload.timelineGaps.isEmpty())
-
-        // 3. Duplicate FillTimelineGap while loading is ignored + stale-token drop prevents splicing old results.
-        val fillStarted = CompletableDeferred<Unit>()
-        val releaseFill = CompletableDeferred<Unit>()
-        val suspendingRepo =
-            object : build.raft.app.data.ConversationRepository by repo {
-                var olderCalls = 0
-                override suspend fun loadOlderMessages(
-                    threadId: ThreadId,
-                    beforeSeq: Long,
-                    limit: Int,
-                ): DataResult<ThreadSnapshot> {
-                    olderCalls += 1
-                    fillStarted.complete(Unit)
-                    releaseFill.await()
-                    return DataResult.Content(repoSnapshot((70L..80L).toList()))
-                }
-            }
-        val staleStore =
-            SharedThreadStore(
-                dataSource(
-                    storeScope = backgroundScope,
-                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
-                    reader = reader,
-                    conversationRepository = suspendingRepo,
-                ),
-                scope = scope,
-            )
-        staleStore.accept(SharedThreadIntent.Start(basePayload()))
-        staleStore.accept(SharedThreadIntent.LoadOlder)
-        assertEquals(listOf(ThreadTimelineGap(40L, 91L, status = "idle")), staleStore.state.value.payload.timelineGaps)
-
-        val fillJob = launch { staleStore.accept(SharedThreadIntent.FillTimelineGap(afterSeq = 40L, beforeSeq = 91L)) }
-        fillStarted.await()
-        assertEquals("loading", staleStore.state.value.payload.timelineGaps.single().status)
-        // Duplicate while loading must be ignored.
-        staleStore.accept(SharedThreadIntent.FillTimelineGap(afterSeq = 40L, beforeSeq = 91L))
-        assertEquals(1, suspendingRepo.olderCalls, "duplicate FillTimelineGap while loading must be ignored")
-
-        // Advance stale token via Refresh (returning fresh 100..120) while gap fill is still in flight.
-        repo.threadResult = DataResult.Content(repoSnapshot((100L..120L).toList()))
-        staleStore.accept(SharedThreadIntent.Refresh)
-        assertEquals((100L..120L).toList(), staleStore.state.value.payload.messages.mapNotNull { it.seq })
-        assertTrue(staleStore.state.value.payload.timelineGaps.isEmpty())
-
-        // Release stale gap fill: staleTokenStillCurrent must drop it so 70..80 are never spliced in.
-        releaseFill.complete(Unit)
-        fillJob.join()
-        assertEquals((100L..120L).toList(), staleStore.state.value.payload.messages.mapNotNull { it.seq })
-        assertTrue(staleStore.state.value.payload.timelineGaps.isEmpty())
+        assertEquals(listOf(ThreadDurablePageDirection.Older to 61L), extender.calls)
+        assertEquals((41L..120L).toList(), store.state.value.payload.messages.mapNotNull { it.seq })
         scopeJob.cancelAndJoin()
     }
 
@@ -552,7 +370,7 @@ class SharedThreadStoreStep2dTimelineGapTest {
                         if (anchor.messageId == "v2-20") {
                             timelinePage(
                                 seqs = 15L..25L,
-                                hasOlderStored = true,
+                                hasOlderStored = false,
                                 hasNewerStored = true,
                                 reachesOldest = false,
                                 reachesHead = false,
@@ -561,15 +379,20 @@ class SharedThreadStoreStep2dTimelineGapTest {
                             null
                         }
                     is ThreadDurableTimelineAnchor.After ->
-                        if (anchor.crossGaps && anchor.afterSeq == 25L) {
+                        if (anchor.afterSeq == 25L) {
                             timelinePage(
-                                seqs = 50L..60L,
-                                gaps = listOf(CanonicalMessageV2TimelineGap(afterSeq = 25L, beforeSeq = 50L)),
+                                seqs = 26L..35L,
                                 hasNewerStored = false,
                                 reachesHead = false,
+                                insideProvenSegment = true,
                             )
                         } else {
-                            null
+                            timelinePage(
+                                seqs = emptyList(),
+                                hasNewerStored = false,
+                                reachesHead = false,
+                                insideProvenSegment = false,
+                            )
                         }
                     else -> null
                 }
@@ -612,34 +435,23 @@ class SharedThreadStoreStep2dTimelineGapTest {
         val anchored = anchoredStore.state.value.payload
         assertTrue(anchored.durableLastKnown)
         assertEquals((15L..25L).toList(), anchored.messages.mapNotNull { it.seq })
-        assertTrue(anchored.canLoadMoreAfter)
+        assertFalse(anchored.canLoadMoreBefore, "offline anchored open with hasOlderStored=false closes older paging cleanly")
+        assertTrue(anchored.canLoadMoreAfter, "more contiguous newer rows remain inside segment")
         assertEquals("Cached subtitle", anchored.subtitle)
         assertEquals(ThreadAccessResolution.Resolved, anchoredStore.state.value.accessResolution)
         assertTrue(anchoredStore.state.value.writeActionsEnabled, "durable anchored overlay preserves verified cached write access")
 
-        // Offline LoadNewer crosses into upper stored island without polluting memory cache.
+        // Offline LoadNewer pages strictly inside the same contiguous segment [26..35] without
+        // polluting memory cache, and closes canLoadMoreAfter cleanly at the segment edge.
         anchoredStore.accept(SharedThreadIntent.LoadNewer)
         val afterOfflineNewer = anchoredStore.state.value.payload
         assertTrue(afterOfflineNewer.durableLastKnown)
-        assertEquals((15L..25L) + (50L..60L), afterOfflineNewer.messages.mapNotNull { it.seq })
-        assertEquals(listOf(ThreadTimelineGap(25L, 50L, status = "idle")), afterOfflineNewer.timelineGaps)
+        assertEquals((15L..35L).toList(), afterOfflineNewer.messages.mapNotNull { it.seq })
+        assertFalse(afterOfflineNewer.canLoadMoreAfter, "offline LoadNewer closes cleanly at contiguous segment edge")
+        assertEquals("idle", afterOfflineNewer.newerMessagesStatus)
         assertEquals(listOf("v2-120"), ds.cachedPayload("channel-1", serverId = "server-1")?.messages?.map { it.id })
 
-        // HIGH-5: LoadNewer cancellation on durable stand-in (finally resets newerMessagesStatus="idle")
-        // AND realtime events arriving on durable stand-in MUST never overwrite the memory cache.
-        api.failChannelMessages = false
-        api.afterMessagesStarted = CompletableDeferred()
-        api.releaseAfterMessages = CompletableDeferred()
-        val cancelJob = launch { anchoredStore.accept(SharedThreadIntent.LoadNewer) }
-        api.afterMessagesStarted!!.await()
-        cancelJob.cancelAndJoin()
-        assertEquals("idle", anchoredStore.state.value.payload.newerMessagesStatus)
-        assertEquals(
-            listOf("v2-120"),
-            ds.cachedPayload("channel-1", serverId = "server-1")?.messages?.map { it.id },
-            "cancelled LoadNewer on durable stand-in must not pollute memory cache",
-        )
-
+        // Realtime events arriving on a durable stand-in MUST never overwrite the memory cache.
         anchoredStore.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
                 MessageNew(
@@ -668,6 +480,33 @@ class SharedThreadStoreStep2dTimelineGapTest {
             ds.cachedPayload("channel-1", serverId = "server-1")?.messages?.map { it.id },
             "realtime fold on durable stand-in must not pollute memory cache",
         )
+
+        // HIGH-5: LoadNewer cancellation on online durable stand-in (finally resets newerMessagesStatus="idle")
+        // must never overwrite the memory cache while the online refresh is still in flight.
+        val cancelRefreshStarted = CompletableDeferred<Unit>()
+        val releaseCancelRefresh = CompletableDeferred<Unit>()
+        api.failChannelMessages = false
+        api.channelMessagesStarted = cancelRefreshStarted
+        api.releaseChannelMessages = releaseCancelRefresh
+        api.afterMessagesStarted = CompletableDeferred()
+        api.releaseAfterMessages = CompletableDeferred()
+        val cancelStore = SharedThreadStore(ds, scope = scope)
+        val cancelStartJob = launch { cancelStore.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "v2-20"))) }
+        cancelRefreshStarted.await()
+        // Advance to segment edge [15..35] while online refresh is in flight, then cancel network LoadNewer.
+        cancelStore.accept(SharedThreadIntent.LoadNewer)
+        assertEquals((15L..35L).toList(), cancelStore.state.value.payload.messages.mapNotNull { it.seq })
+        val cancelJob = launch { cancelStore.accept(SharedThreadIntent.LoadNewer) }
+        api.afterMessagesStarted!!.await()
+        cancelJob.cancelAndJoin()
+        assertEquals("idle", cancelStore.state.value.payload.newerMessagesStatus)
+        assertEquals(
+            listOf("v2-120"),
+            ds.cachedPayload("channel-1", serverId = "server-1")?.messages?.map { it.id },
+            "cancelled LoadNewer on durable stand-in must not pollute memory cache",
+        )
+        releaseCancelRefresh.complete(Unit)
+        cancelStartJob.join()
         scopeJob.cancelAndJoin()
     }
 
@@ -867,7 +706,6 @@ class SharedThreadStoreStep2dTimelineGapTest {
         releaseContext.complete(Unit)
         onlineJumpJob.join()
         assertFalse(onlineJumpStore.state.value.payload.durableLastKnown, "online context refresh clears durableLastKnown")
-        assertTrue(onlineJumpStore.state.value.payload.timelineGaps.isEmpty())
         scopeJob.cancelAndJoin()
     }
 
@@ -997,7 +835,6 @@ class SharedThreadStoreStep2dTimelineGapTest {
 
     private fun timelinePage(
         seqs: Iterable<Long>,
-        gaps: List<CanonicalMessageV2TimelineGap> = emptyList(),
         hasOlderStored: Boolean = false,
         hasNewerStored: Boolean = false,
         reachesOldest: Boolean = false,
@@ -1011,7 +848,6 @@ class SharedThreadStoreStep2dTimelineGapTest {
         return ThreadDurableTimelinePage(
             scope = SyncScopeKey(partition(ownerA), scopeId, scopeKind),
             envelopes = sorted.map { seq -> envelope(seq, scopeId = scopeId, replyParent = replyParent) },
-            gaps = gaps,
             cursor =
                 PersistedCursor(
                     latestSeq = sorted.maxOrNull(),

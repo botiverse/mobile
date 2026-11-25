@@ -516,7 +516,8 @@ internal class ThreadDurableCacheGateway(
                         routePayload.asRefreshEmpty(routePayload).copy(
                             durableLastKnown = true,
                             durableReachedOldest = timelinePage.reachesOldest,
-                            timelineGaps = emptyList(),
+                            durableHasOlderStored = false,
+                            durableHasNewerStored = false,
                         ),
                     scope = timelinePage.scope,
                 )
@@ -531,12 +532,6 @@ internal class ThreadDurableCacheGateway(
                     }
                     .sortedByThreadTimeline()
             if (messages.isEmpty()) return null
-            val gaps =
-                reconcileThreadTimelineGaps(
-                    existingGaps = emptyList(),
-                    addedGaps = timelinePage.gaps.map { it.toThreadTimelineGap() },
-                    messages = messages,
-                )
             val canLoadMoreBefore = timelinePage.hasOlderStored || !timelinePage.reachesOldest
             val canLoadMoreAfter =
                 if (focusedId != null && !fellBackToNewestForMissingAnchor) {
@@ -546,7 +541,7 @@ internal class ThreadDurableCacheGateway(
                 }
             diagnosticsLogger(
                 "thread_durable_last_known threadId=$channelId outcome=${if (focusedId != null && !fellBackToNewestForMissingAnchor) "anchored_frame" else "frame"} " +
-                    "scopeKind=${timelinePage.scope.scopeKind} messages=${messages.size} gaps=${gaps.size} " +
+                    "scopeKind=${timelinePage.scope.scopeKind} messages=${messages.size} " +
                     "latestSeq=${timelinePage.cursor.latestSeq} canLoadMoreBefore=$canLoadMoreBefore canLoadMoreAfter=$canLoadMoreAfter"
             )
             return SharedThreadDurableLastKnownResult(
@@ -556,9 +551,15 @@ internal class ThreadDurableCacheGateway(
                         backgroundRefreshing = false,
                         durableLastKnown = true,
                         messages = messages,
-                        timelineGaps = gaps,
                         canLoadMoreBefore = canLoadMoreBefore,
                         durableReachedOldest = !canLoadMoreBefore,
+                        durableHasOlderStored = timelinePage.hasOlderStored,
+                        durableHasNewerStored =
+                            if (focusedId != null && !fellBackToNewestForMissingAnchor) {
+                                timelinePage.hasNewerStored
+                            } else {
+                                false
+                            },
                         canLoadMoreAfter = canLoadMoreAfter,
                         olderMessagesStatus = "idle",
                         newerMessagesStatus = "idle",
@@ -617,7 +618,8 @@ internal class ThreadDurableCacheGateway(
         // Task #168 step 2b: older paging stays open while the window holds older facts than the ones
         // shown, or the window itself does not reach the channel's start (an online retry may still
         // fetch them). Loading older on the stand-in reads the window first (`durableOlderPageIfCurrent`).
-        val canLoadMoreBefore = window.size > shownEnvelopes.size || !frame.cursor.hasLoadedOldest
+        val hasOlderInWindow = window.size > shownEnvelopes.size
+        val canLoadMoreBefore = hasOlderInWindow || !frame.cursor.hasLoadedOldest
         diagnosticsLogger(
             "thread_durable_last_known threadId=$channelId outcome=frame scopeKind=${frame.scope.scopeKind} " +
                 "messages=${messages.size} stored=${frame.envelopes.size} latestSeq=${frame.cursor.latestSeq} " +
@@ -630,9 +632,10 @@ internal class ThreadDurableCacheGateway(
                     backgroundRefreshing = false,
                     durableLastKnown = true,
                     messages = messages,
-                    timelineGaps = emptyList(),
                     canLoadMoreBefore = canLoadMoreBefore,
                     durableReachedOldest = !canLoadMoreBefore,
+                    durableHasOlderStored = hasOlderInWindow,
+                    durableHasNewerStored = false,
                     canLoadMoreAfter = false,
                     olderMessagesStatus = "idle",
                     newerMessagesStatus = "idle",
@@ -643,11 +646,9 @@ internal class ThreadDurableCacheGateway(
     }
 
     /**
-     * Older page from the durable V2 timeline (Phase 2d):
-     * - When [crossGaps] is `false` (online live timeline), serves strictly from inside a proven
-     *   contiguous SQLite segment (`insideProvenSegment == true`) without touching the network.
-     * - When [crossGaps] is `true` (offline stand-in), crosses into lower stored islands and returns
-     *   derived [SharedThreadDurableOlderPage.gaps].
+     * Older page from the durable V2 timeline (Phase 2d / #proj-mobile:#388):
+     * serves strictly from inside a proven contiguous SQLite segment (`insideProvenSegment == true`)
+     * without bridging across unproven gaps into disconnected lower islands.
      */
     internal suspend fun durableOlderPageIfCurrent(
         routeIdentity: ThreadRouteIdentity,
@@ -655,13 +656,12 @@ internal class ThreadDurableCacheGateway(
         beforeSeq: Long,
         expectedOwnerScopeId: String?,
         replyParent: ThreadDurableReplyParent? = null,
-        crossGaps: Boolean = false,
         allowLegacyStandIn: Boolean = false,
     ): SharedThreadDurableOlderPage? {
         val channelId = routeIdentity.timelineChannelId
         fun refuse(reason: String): SharedThreadDurableOlderPage? {
             diagnosticsLogger(
-                "thread_durable_older_page threadId=${channelId.orEmpty()} served=0 reason=$reason beforeSeq=$beforeSeq crossGaps=$crossGaps"
+                "thread_durable_older_page threadId=${channelId.orEmpty()} served=0 reason=$reason beforeSeq=$beforeSeq"
             )
             return null
         }
@@ -685,7 +685,6 @@ internal class ThreadDurableCacheGateway(
             ThreadDurableTimelineAnchor.Before(
                 beforeSeq = beforeSeq,
                 limit = pageSize,
-                crossGaps = crossGaps,
             )
         val timelinePage =
             when (admission) {
@@ -697,7 +696,7 @@ internal class ThreadDurableCacheGateway(
         if (timelinePage != null) {
             if (!isCurrentReplyCacheProvenance(context.provenance)) return refuse("identity_changed")
             if (timelinePage.scope.scopeKind !in allowedScopeKinds) return refuse("surface_mismatch")
-            if (!crossGaps && !timelinePage.insideProvenSegment) return refuse("segment_edge")
+            if (!timelinePage.insideProvenSegment) return refuse("segment_edge")
             val messages =
                 timelinePage.envelopes.mapNotNull { envelope ->
                     envelope.toThreadMessageItem(
@@ -706,17 +705,17 @@ internal class ThreadDurableCacheGateway(
                     )
                 }.sortedByThreadTimeline()
             if (messages.isEmpty()) {
-                if (timelinePage.envelopes.isEmpty() && !crossGaps && timelinePage.insideProvenSegment && timelinePage.reachesOldest) {
+                if (timelinePage.envelopes.isEmpty() && timelinePage.insideProvenSegment && timelinePage.reachesOldest) {
                     diagnosticsLogger(
                         "thread_durable_older_page threadId=$channelId served=0 reason=proven_reached_oldest " +
-                            "beforeSeq=$beforeSeq crossGaps=false scopeKind=${timelinePage.scope.scopeKind}"
+                            "beforeSeq=$beforeSeq scopeKind=${timelinePage.scope.scopeKind}"
                     )
                     return SharedThreadDurableOlderPage(
                         messages = emptyList(),
                         pageSize = pageSize,
                         canLoadMoreBefore = false,
                         reachedOldest = true,
-                        gaps = emptyList(),
+                        hasOlderStored = false,
                         insideProvenSegment = true,
                         scope = timelinePage.scope,
                     )
@@ -724,24 +723,23 @@ internal class ThreadDurableCacheGateway(
                 return refuse(if (timelinePage.reachesOldest) "exhausted_at_oldest" else "exhausted")
             }
             val canLoadMoreBefore = timelinePage.hasOlderStored || !timelinePage.reachesOldest
-            val gaps = if (crossGaps) timelinePage.gaps.map { it.toThreadTimelineGap() } else emptyList()
             diagnosticsLogger(
                 "thread_durable_older_page threadId=$channelId served=${messages.size} reason=" +
                     (if (timelinePage.hasOlderStored) "more_stored" else if (timelinePage.reachesOldest) "reached_oldest" else "window_end") +
-                    " beforeSeq=$beforeSeq crossGaps=$crossGaps gaps=${gaps.size} canLoadMoreBefore=$canLoadMoreBefore scopeKind=${timelinePage.scope.scopeKind}"
+                    " beforeSeq=$beforeSeq canLoadMoreBefore=$canLoadMoreBefore scopeKind=${timelinePage.scope.scopeKind}"
             )
             return SharedThreadDurableOlderPage(
                 messages = messages,
                 pageSize = pageSize,
                 canLoadMoreBefore = canLoadMoreBefore,
                 reachedOldest = !canLoadMoreBefore,
-                gaps = gaps,
+                hasOlderStored = timelinePage.hasOlderStored,
                 insideProvenSegment = timelinePage.insideProvenSegment,
                 scope = timelinePage.scope,
             )
         }
         if (reader.supportsTimelineReads) return refuse("no_frame")
-        if (!crossGaps && !allowLegacyStandIn) return refuse("no_timeline_reader")
+        if (!allowLegacyStandIn) return refuse("no_timeline_reader")
         val page =
             when (admission) {
                 DurableScopeAdmission.TopLevel -> reader.readBefore(partition, channelId, beforeSeq, pageSize)
@@ -773,12 +771,14 @@ internal class ThreadDurableCacheGateway(
             pageSize = pageSize,
             canLoadMoreBefore = canLoadMoreBefore,
             reachedOldest = !canLoadMoreBefore,
+            hasOlderStored = page.hasOlderStored,
             insideProvenSegment = true,
         )
     }
 
     /**
-     * Newer page from the durable V2 timeline (Phase 2d): symmetric mirror of [durableOlderPageIfCurrent].
+     * Newer page from the durable V2 timeline (Phase 2d / #proj-mobile:#388): symmetric mirror of
+     * [durableOlderPageIfCurrent], serving strictly inside a proven contiguous SQLite segment.
      */
     internal suspend fun durableNewerPageIfCurrent(
         routeIdentity: ThreadRouteIdentity,
@@ -786,12 +786,11 @@ internal class ThreadDurableCacheGateway(
         afterSeq: Long,
         expectedOwnerScopeId: String?,
         replyParent: ThreadDurableReplyParent? = null,
-        crossGaps: Boolean = false,
     ): SharedThreadDurableNewerPage? {
         val channelId = routeIdentity.timelineChannelId
         fun refuse(reason: String): SharedThreadDurableNewerPage? {
             diagnosticsLogger(
-                "thread_durable_newer_page threadId=${channelId.orEmpty()} served=0 reason=$reason afterSeq=$afterSeq crossGaps=$crossGaps"
+                "thread_durable_newer_page threadId=${channelId.orEmpty()} served=0 reason=$reason afterSeq=$afterSeq"
             )
             return null
         }
@@ -815,7 +814,6 @@ internal class ThreadDurableCacheGateway(
             ThreadDurableTimelineAnchor.After(
                 afterSeq = afterSeq,
                 limit = pageSize,
-                crossGaps = crossGaps,
             )
         val timelinePage =
             when (admission) {
@@ -826,7 +824,7 @@ internal class ThreadDurableCacheGateway(
             } ?: return refuse("no_timeline_reader")
         if (!isCurrentReplyCacheProvenance(context.provenance)) return refuse("identity_changed")
         if (timelinePage.scope.scopeKind !in allowedScopeKinds) return refuse("surface_mismatch")
-        if (!crossGaps && !timelinePage.insideProvenSegment) return refuse("segment_edge")
+        if (!timelinePage.insideProvenSegment) return refuse("segment_edge")
         val messages =
             timelinePage.envelopes.mapNotNull { envelope ->
                 envelope.toThreadMessageItem(
@@ -836,28 +834,20 @@ internal class ThreadDurableCacheGateway(
             }.sortedByThreadTimeline()
         if (messages.isEmpty()) {
             // Unlike `reachesOldest` (history start is immutable), `reachesHead` only records that
-            // highSeq was head when last verified. Online (`!crossGaps`) always falls through to
-            // the network when no newer messages exist locally so server messages posted since then
-            // are never hidden.
+            // highSeq was head when last verified. Online callers always fall through to the network
+            // when no newer messages exist locally so server messages posted since then are never hidden.
             return refuse(if (timelinePage.reachesHead) "exhausted_at_head" else "exhausted")
         }
-        val canLoadMoreAfter =
-            if (crossGaps) {
-                timelinePage.hasNewerStored || !timelinePage.reachesHead
-            } else {
-                true
-            }
-        val gaps = if (crossGaps) timelinePage.gaps.map { it.toThreadTimelineGap() } else emptyList()
         diagnosticsLogger(
             "thread_durable_newer_page threadId=$channelId served=${messages.size} afterSeq=$afterSeq " +
-                "crossGaps=$crossGaps gaps=${gaps.size} canLoadMoreAfter=$canLoadMoreAfter scopeKind=${timelinePage.scope.scopeKind}"
+                "hasNewerStored=${timelinePage.hasNewerStored} scopeKind=${timelinePage.scope.scopeKind}"
         )
         return SharedThreadDurableNewerPage(
             messages = messages,
             pageSize = pageSize,
-            canLoadMoreAfter = canLoadMoreAfter,
-            reachedHead = if (crossGaps) !canLoadMoreAfter else false,
-            gaps = gaps,
+            canLoadMoreAfter = true,
+            reachedHead = timelinePage.reachesHead,
+            hasNewerStored = timelinePage.hasNewerStored,
             insideProvenSegment = timelinePage.insideProvenSegment,
             scope = timelinePage.scope,
         )

@@ -54,10 +54,19 @@ internal data class RaftThreadScreenPayload(
      */
     val durableReachedOldest: Boolean = false,
     /**
-     * Message storage design 2026-10-27 (Phase 2d): derived inline timeline gaps between stored
-     * message islands. Reconstructed from SQLite segments on bounded reads; never persisted.
+     * #proj-mobile:#388: whether more older stored rows remain inside the SAME proven contiguous
+     * SQLite segment below the currently shown stand-in slice. Meaningful only with [durableLastKnown];
+     * gates offline older paging when [mainLoadFailed] flips true so offline views stop cleanly at
+     * the contiguous segment edge with the single outer boundary row.
      */
-    val timelineGaps: List<ThreadTimelineGap> = emptyList(),
+    @Transient
+    val durableHasOlderStored: Boolean = false,
+    /**
+     * #proj-mobile:#388: symmetric mirror of [durableHasOlderStored] for anchored offline stand-in
+     * newer paging inside the same proven contiguous segment.
+     */
+    @Transient
+    val durableHasNewerStored: Boolean = false,
     /**
      * True while the last main timeline load (not a page of older/newer messages) failed transiently —
      * a network error or an unusable answer. Set and cleared only by the refresh result, so recovery

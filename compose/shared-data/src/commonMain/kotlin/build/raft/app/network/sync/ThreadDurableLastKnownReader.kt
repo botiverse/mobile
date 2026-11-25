@@ -19,25 +19,24 @@ import kotlinx.coroutines.CancellationException
 )
 
 /**
- * Message storage design 2026-10-27 (Phase 2d): bounded timeline read anchor.
+ * Message storage design 2026-10-27 (Phase 2d) / #proj-mobile:#388: bounded contiguous timeline
+ * read anchor. Every timeline read returns strictly ONE contiguous slice of messages — never
+ * bridging across unverified SQLite gaps or splicing disconnected islands together.
  *
  * - [Newest]: newest [limit] contiguous facts for an unanchored open. When a head segment exists, reads
  *   strictly inside that head segment up to `head.highSeq` (never splicing unproven loose realtime facts
- *   above head or disconnected lower islands below head, so normal opens never emit mid-timeline gaps;
- *   online refresh fetches and absorbs newer messages at the bottom, and explicit offline [Before] still
- *   crosses into lower stored islands). When no head segment exists, skips non-head islands and returns
- *   only the newest consecutive gap-free run of loose facts (or empty baseline).
- * - [Before]: newest [limit] facts strictly below [beforeSeq]. When [crossGaps] is `false` (online local
- *   paging), stays strictly inside the contiguous segment covering `beforeSeq - 1`; when `true` (offline),
- *   crosses into lower stored islands and derives boundary/internal gaps.
- * - [After]: symmetric mirror strictly above [afterSeq].
- * - [AroundMessageId]: gap-free window centered on [messageId] (`beforeCount` older + anchor +
+ *   above head or disconnected lower islands below head). When no head segment exists, skips non-head
+ *   islands and returns only the newest consecutive gap-free run of loose facts (or empty baseline).
+ * - [Before]: newest [limit] facts strictly below [beforeSeq] inside the proven contiguous segment
+ *   covering `beforeSeq - 1`. At an unclosed segment edge (`insideProvenSegment == false`), returns an
+ *   empty page without crossing into lower islands.
+ * - [After]: symmetric mirror strictly above [afterSeq] inside the proven contiguous segment covering
+ *   `afterSeq + 1`.
+ * - [AroundMessageId]: contiguous window centered on [messageId] (`beforeCount` older + anchor +
  *   `afterCount` newer), resolving via `selectFactLocationById` so island-only scopes open locally
- *   without a head segment. Mirrors [Newest]: when the anchor sits inside a proven contiguous segment,
- *   reads strictly inside that segment; when the anchor is a loose fact, returns only the anchor and
- *   any strictly consecutive loose facts (`prevSeq == lowestSeq - 1`, `nextSeq == highestSeq + 1`),
- *   guaranteeing `gaps = emptyList()` on Frame 1 while preserving accurate `hasOlderStored` /
- *   `hasNewerStored` for explicit offline [Before] / [After] (`crossGaps = true`) island crossing.
+ *   without a head segment. When the anchor sits inside a proven contiguous segment, reads strictly
+ *   inside that segment; when the anchor is a loose fact, returns only the anchor and any strictly
+ *   consecutive loose facts (`prevSeq == lowestSeq - 1`, `nextSeq == highestSeq + 1`).
  */
 @RaftCoreInternalApi sealed interface ThreadDurableTimelineAnchor {
     data class Newest(
@@ -51,7 +50,6 @@ import kotlinx.coroutines.CancellationException
     data class Before(
         val beforeSeq: Long,
         val limit: Int,
-        val crossGaps: Boolean = true,
     ) : ThreadDurableTimelineAnchor {
         init {
             require(limit > 0) { "limit must be positive" }
@@ -61,7 +59,6 @@ import kotlinx.coroutines.CancellationException
     data class After(
         val afterSeq: Long,
         val limit: Int,
-        val crossGaps: Boolean = true,
     ) : ThreadDurableTimelineAnchor {
         init {
             require(limit > 0) { "limit must be positive" }
@@ -81,13 +78,16 @@ import kotlinx.coroutines.CancellationException
 }
 
 /**
- * Message storage design 2026-10-27 (Phase 2d): one bounded SQLite timeline read result with derived
- * (never persisted) [gaps] and exact proven boundary flags.
+ * Message storage design 2026-10-27 (Phase 2d) / #proj-mobile:#388: one bounded contiguous SQLite
+ * timeline read result with exact in-segment availability and proven boundary flags.
+ *
+ * [hasOlderStored] and [hasNewerStored] strictly reflect whether more stored envelopes exist
+ * **within the same proven contiguous segment** (never across an unproven gap in a disconnected
+ * island).
  */
 @RaftCoreInternalApi data class ThreadDurableTimelinePage(
     val scope: SyncScopeKey,
     val envelopes: List<CanonicalMessageEnvelopeV2>,
-    val gaps: List<CanonicalMessageV2TimelineGap>,
     val cursor: PersistedCursor,
     val segments: List<CanonicalMessageV2Segment>,
     val hasOlderStored: Boolean,
@@ -112,7 +112,7 @@ import kotlinx.coroutines.CancellationException
  * and identity-strict: they never mutate `lastUserAccessAtMs` or touch the baseline coordinator, and answer
  * `null` for every non-positive case (no committed baseline, ambiguous scope kind, or poisoned scope).
  * Phase 2d bounded entries ([readTimeline], [readReplyThreadTimeline]) read at most the requested window
- * via SQLite `LIMIT`, derive timeline gaps from stored segments, and record user access via [touchUserAccess]
+ * via SQLite `LIMIT` strictly within a single contiguous slice, and record user access via [touchUserAccess]
  * (either inline when `touchUserAccess = true` or deferred off-Main by the caller when `touchUserAccess = false`).
  *
  * A committed baseline with no facts is a frame with empty [ThreadDurableLastKnownFrame.envelopes]
@@ -177,7 +177,7 @@ import kotlinx.coroutines.CancellationException
         get() = false
 
     /**
-     * Phase 2d: bounded timeline read for a top-level scope, returning stored facts + derived gaps
+     * Phase 2d: bounded contiguous timeline read for a top-level scope, returning stored facts
      * without scanning the whole scope. Set [touchUserAccess] to `false` on UI-thread opens when the
      * caller will invoke [touchUserAccess] asynchronously off-Main after provenance/surface validation.
      * Default returns `null` for minimal test fakes.
@@ -661,13 +661,31 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
         }
     }
 
+    private suspend fun hasFactInSegmentBefore(
+        scope: SyncScopeKey,
+        segment: CanonicalMessageV2Segment,
+        beforeSeq: Long,
+    ): Boolean {
+        if (beforeSeq <= segment.effectiveLowSeq) return false
+        val prevSeq = store.highestFactSeqBefore(scope, beforeSeq = beforeSeq) ?: return false
+        return prevSeq >= segment.effectiveLowSeq
+    }
+
+    private suspend fun hasFactInSegmentAfter(
+        scope: SyncScopeKey,
+        segment: CanonicalMessageV2Segment,
+        afterSeq: Long,
+    ): Boolean {
+        if (afterSeq >= segment.highSeq) return false
+        val nextSeq = store.lowestFactSeqAfter(scope, afterSeq = afterSeq) ?: return false
+        return nextSeq <= segment.highSeq
+    }
+
     /**
      * Normal unanchored open when a head segment exists: read strictly inside [head] up to
      * `head.highSeq` so unproven loose realtime facts above head and disconnected lower islands
-     * below head are never spliced into Frame 1 with mid-timeline gaps. Online refresh loads
-     * newer messages at the bottom and absorbs loose facts into [head]; explicit offline
-     * [ThreadDurableTimelineAnchor.Before] (`crossGaps = true`) still crosses into lower islands
-     * because [ThreadDurableTimelinePage.hasOlderStored] reflects facts below [head].
+     * below head are never spliced into the timeline. [ThreadDurableTimelinePage.hasOlderStored]
+     * strictly reflects whether more stored rows remain inside [head] below the returned window.
      */
     private suspend fun readNewestHeadSegmentTimeline(
         scope: SyncScopeKey,
@@ -680,7 +698,6 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
             return ThreadDurableTimelinePage(
                 scope = scope,
                 envelopes = emptyList(),
-                gaps = emptyList(),
                 cursor = cursor,
                 segments = segments,
                 hasOlderStored = false,
@@ -713,27 +730,33 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
             }
         val envelopes = raw.envelopes.filter { it.fact.seq >= head.effectiveLowSeq }
         val keptIds = envelopes.mapTo(HashSet()) { it.fact.id }
-        val hasOlderStored = raw.hasMoreStored || envelopes.size < raw.envelopes.size
+        val hasOlderInSegment =
+            if (envelopes.isEmpty() || envelopes.size < raw.envelopes.size || !raw.hasMoreStored) {
+                false
+            } else {
+                hasFactInSegmentBefore(scope, head, beforeSeq = envelopes.first().fact.seq)
+            }
         if (envelopes.isEmpty()) {
             // Re-verify cursor if a non-empty head yielded 0 facts (guards against torn read during concurrent clearScope).
             if (store.readCursor(scope) == null) return null
-            // Never report an empty channel stand-in when a non-empty-baseline head has older facts or hasn't proven oldest.
-            if (!head.reachesOldest || hasOlderStored) return null
+            // Never report an empty channel stand-in when a non-empty-baseline head hasn't proven oldest
+            // or still has stored facts below head.effectiveLowSeq (e.g. torn/unmerged data).
+            val hasAnyStoredBelowHead = raw.hasMoreStored || raw.envelopes.isNotEmpty()
+            if (!head.reachesOldest || hasAnyStoredBelowHead) return null
         }
         val seqs = envelopes.map { it.fact.seq }
         return ThreadDurableTimelinePage(
             scope = scope,
             envelopes = envelopes,
-            gaps = emptyList(),
             cursor = cursor,
             segments = segments,
-            hasOlderStored = hasOlderStored,
+            hasOlderStored = hasOlderInSegment,
             hasNewerStored = false,
             reachesOldest =
                 if (seqs.isEmpty()) {
-                    head.reachesOldest && !hasOlderStored
+                    head.reachesOldest && !hasOlderInSegment
                 } else {
-                    CanonicalMessageV2SegmentAlgebra.reachesOldestAt(seqs.first(), segments, hasOlderStored)
+                    CanonicalMessageV2SegmentAlgebra.reachesOldestAt(seqs.first(), segments, hasOlderInSegment)
                 },
             reachesHead =
                 if (seqs.isEmpty()) {
@@ -749,8 +772,8 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
     /**
      * Normal unanchored open when no head segment exists (`head == null`): skip all non-head
      * islands and return only the newest consecutive gap-free run of loose facts (`prevSeq ==
-     * lowestSeq - 1`), guaranteeing zero mid-timeline gaps on Frame 1 while preserving
-     * [ThreadDurableTimelinePage.hasOlderStored] for offline [ThreadDurableTimelineAnchor.Before].
+     * lowestSeq - 1`). Because loose facts do not belong to a proven segment, [ThreadDurableTimelinePage.hasOlderStored]
+     * is `false` (local paging never crosses unproven gaps).
      */
     private suspend fun readNewestLooseOnlyTimeline(
         scope: SyncScopeKey,
@@ -793,7 +816,6 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
             return ThreadDurableTimelinePage(
                 scope = scope,
                 envelopes = emptyList(),
-                gaps = emptyList(),
                 cursor = cursor,
                 segments = segments,
                 hasOlderStored = false,
@@ -817,14 +839,12 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
             lowestSeq = prevSeq
         }
         val envelopes = collectedDesc.asReversed()
-        val hasOlderStored = store.hasFactBefore(scope, envelopes.first().fact.seq)
         return ThreadDurableTimelinePage(
             scope = scope,
             envelopes = envelopes,
-            gaps = emptyList(),
             cursor = cursor,
             segments = segments,
-            hasOlderStored = hasOlderStored,
+            hasOlderStored = false,
             hasNewerStored = false,
             reachesOldest = false,
             reachesHead = false,
@@ -840,201 +860,53 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
         anchor: ThreadDurableTimelineAnchor.Before,
     ): ThreadDurableTimelinePage {
         val provenSegment = CanonicalMessageV2SegmentAlgebra.provenSegmentBefore(segments, anchor.beforeSeq)
-        val hasNewerStored =
-            if (anchor.beforeSeq == Long.MIN_VALUE) {
-                store.hasFactAfter(scope, Long.MIN_VALUE) || store.hasFactBefore(scope, Long.MIN_VALUE + 1L)
-            } else {
-                store.hasFactAfter(scope, anchor.beforeSeq - 1L)
-            }
-        if (!anchor.crossGaps) {
-            if (provenSegment == null) {
-                val hasOlderStored = store.hasFactBefore(scope, anchor.beforeSeq)
-                return ThreadDurableTimelinePage(
-                    scope = scope,
-                    envelopes = emptyList(),
-                    gaps = emptyList(),
-                    cursor = cursor,
-                    segments = segments,
-                    hasOlderStored = hasOlderStored,
-                    hasNewerStored = hasNewerStored,
-                    reachesOldest = false,
-                    reachesHead = false,
-                    insideProvenSegment = false,
-                )
-            }
-            val raw = store.readFactsBefore(scope, beforeSeq = anchor.beforeSeq, limit = anchor.limit)
-            val inSegment = raw.envelopes.filter { it.fact.seq >= provenSegment.effectiveLowSeq }
-            val keptIds = inSegment.mapTo(HashSet()) { it.fact.id }
-            val hasOlderStored = raw.hasMoreStored || inSegment.size < raw.envelopes.size
-            val reachesOldest =
-                if (inSegment.isEmpty()) {
-                    provenSegment.reachesOldest && !hasOlderStored
-                } else {
-                    CanonicalMessageV2SegmentAlgebra.reachesOldestAt(inSegment.first().fact.seq, segments, hasOlderStored)
-                }
+        if (provenSegment == null) {
+            val anchorSegment = CanonicalMessageV2SegmentAlgebra.memberOf(segments, anchor.beforeSeq)
+            val hasNewerInAnchorSegment =
+                anchorSegment != null &&
+                    anchor.beforeSeq > Long.MIN_VALUE &&
+                    hasFactInSegmentAfter(scope, anchorSegment, afterSeq = anchor.beforeSeq - 1L)
             return ThreadDurableTimelinePage(
                 scope = scope,
-                envelopes = inSegment,
-                gaps = emptyList(),
+                envelopes = emptyList(),
                 cursor = cursor,
                 segments = segments,
-                hasOlderStored = hasOlderStored,
-                hasNewerStored = hasNewerStored,
-                reachesOldest = reachesOldest,
+                hasOlderStored = false,
+                hasNewerStored = hasNewerInAnchorSegment,
+                reachesOldest = false,
                 reachesHead = false,
-                insideProvenSegment = true,
-                unknownFieldsByFactId = raw.unknownFieldsByFactId.filterKeys { it in keptIds },
+                insideProvenSegment = false,
             )
         }
-        // #proj-mobile:#386 P0-1: offline gap-crossing only bridges rows belonging to proven segments,
-        // never splicing individual unsegmented loose realtime facts row-by-row into N stacked gap rows.
-        val segmented = readSegmentedFactsBefore(scope, segments, beforeSeq = anchor.beforeSeq, limit = anchor.limit)
-        val seqs = segmented.envelopes.map { it.fact.seq }
-        // Include anchor.beforeSeq as upper boundary so a jump from upper segment into a lower island emits the gap between them.
-        val gaps =
-            if (seqs.isEmpty()) {
-                emptyList()
+        val raw = store.readFactsBefore(scope, beforeSeq = anchor.beforeSeq, limit = anchor.limit)
+        val inSegment = raw.envelopes.filter { it.fact.seq >= provenSegment.effectiveLowSeq }
+        val keptIds = inSegment.mapTo(HashSet()) { it.fact.id }
+        val hasOlderInSegment =
+            if (inSegment.isEmpty() || inSegment.size < raw.envelopes.size || !raw.hasMoreStored) {
+                false
             } else {
-                CanonicalMessageV2SegmentAlgebra.deriveGaps(seqs + anchor.beforeSeq, segments)
+                hasFactInSegmentBefore(scope, provenSegment, beforeSeq = inSegment.first().fact.seq)
             }
+        val hasNewerInSegment =
+            anchor.beforeSeq > Long.MIN_VALUE &&
+                hasFactInSegmentAfter(scope, provenSegment, afterSeq = anchor.beforeSeq - 1L)
         val reachesOldest =
-            if (seqs.isEmpty()) {
-                provenSegment?.reachesOldest == true ||
-                    CanonicalMessageV2SegmentAlgebra.memberOf(segments, anchor.beforeSeq)?.reachesOldest == true
+            if (inSegment.isEmpty()) {
+                provenSegment.reachesOldest
             } else {
-                CanonicalMessageV2SegmentAlgebra.reachesOldestAt(seqs.first(), segments, segmented.hasMoreEligible)
+                CanonicalMessageV2SegmentAlgebra.reachesOldestAt(inSegment.first().fact.seq, segments, hasOlderInSegment)
             }
         return ThreadDurableTimelinePage(
             scope = scope,
-            envelopes = segmented.envelopes,
-            gaps = gaps,
+            envelopes = inSegment,
             cursor = cursor,
             segments = segments,
-            hasOlderStored = segmented.hasMoreEligible,
-            hasNewerStored = hasNewerStored,
+            hasOlderStored = hasOlderInSegment,
+            hasNewerStored = hasNewerInSegment,
             reachesOldest = reachesOldest,
             reachesHead = false,
-            insideProvenSegment = provenSegment != null,
-            unknownFieldsByFactId = segmented.unknownFieldsByFactId,
-        )
-    }
-
-    private data class BoundedSegmentedFactsResult(
-        val envelopes: List<CanonicalMessageEnvelopeV2>,
-        val hasMoreEligible: Boolean,
-        val unknownFieldsByFactId: Map<String, Set<MessageAggregateField>>,
-    )
-
-    private suspend fun readSegmentedFactsBefore(
-        scope: SyncScopeKey,
-        segments: List<CanonicalMessageV2Segment>,
-        beforeSeq: Long,
-        limit: Int,
-    ): BoundedSegmentedFactsResult {
-        if (beforeSeq == Long.MIN_VALUE || segments.isEmpty()) {
-            return BoundedSegmentedFactsResult(emptyList(), hasMoreEligible = false, unknownFieldsByFactId = emptyMap())
-        }
-        val collectedDesc = mutableListOf<CanonicalMessageEnvelopeV2>()
-        val unknowns = mutableMapOf<String, Set<MessageAggregateField>>()
-        var hasMoreEligible = false
-        for (segment in segments.asReversed()) {
-            if (segment.isEmptyBaseline || segment.effectiveLowSeq >= beforeSeq) continue
-            val segUpperSeq = minOf(segment.highSeq, beforeSeq - 1L)
-            val highestInSeg = store.highestFactSeqBefore(scope, beforeSeq = segUpperSeq + 1L)
-            if (highestInSeg == null || highestInSeg < segment.effectiveLowSeq) continue
-            if (collectedDesc.size >= limit) {
-                hasMoreEligible = true
-                break
-            }
-            val remaining = limit - collectedDesc.size
-            val span =
-                if (segUpperSeq - segment.effectiveLowSeq >= remaining.toLong()) {
-                    remaining
-                } else {
-                    (segUpperSeq - segment.effectiveLowSeq + 1L).toInt()
-                }
-            val raw = store.readFactsBefore(scope, beforeSeq = segUpperSeq + 1L, limit = span)
-            val inSeg =
-                raw.envelopes
-                    .filter { it.fact.seq in segment.effectiveLowSeq..segUpperSeq }
-                    .takeLast(remaining)
-            if (inSeg.isEmpty()) continue
-            for (index in inSeg.lastIndex downTo 0) {
-                val envelope = inSeg[index]
-                collectedDesc += envelope
-                raw.unknownFieldsByFactId[envelope.fact.id]?.let { unknowns[envelope.fact.id] = it }
-            }
-            if (collectedDesc.size >= limit) {
-                val lowestTaken = inSeg.first().fact.seq
-                if (
-                    lowestTaken > segment.effectiveLowSeq &&
-                    store.highestFactSeqBefore(scope, beforeSeq = lowestTaken)?.let { it >= segment.effectiveLowSeq } == true
-                ) {
-                    hasMoreEligible = true
-                    break
-                }
-            }
-        }
-        return BoundedSegmentedFactsResult(
-            envelopes = collectedDesc.asReversed(),
-            hasMoreEligible = hasMoreEligible,
-            unknownFieldsByFactId = unknowns,
-        )
-    }
-
-    private suspend fun readSegmentedFactsAfter(
-        scope: SyncScopeKey,
-        segments: List<CanonicalMessageV2Segment>,
-        afterSeq: Long,
-        limit: Int,
-    ): BoundedSegmentedFactsResult {
-        if (afterSeq == Long.MAX_VALUE || segments.isEmpty()) {
-            return BoundedSegmentedFactsResult(emptyList(), hasMoreEligible = false, unknownFieldsByFactId = emptyMap())
-        }
-        val collectedAsc = mutableListOf<CanonicalMessageEnvelopeV2>()
-        val unknowns = mutableMapOf<String, Set<MessageAggregateField>>()
-        var hasMoreEligible = false
-        for (segment in segments) {
-            if (segment.isEmptyBaseline || segment.highSeq <= afterSeq) continue
-            val segLowerSeq = maxOf(segment.effectiveLowSeq, afterSeq + 1L)
-            val lowestInSeg = store.lowestFactSeqAfter(scope, afterSeq = segLowerSeq - 1L)
-            if (lowestInSeg == null || lowestInSeg > segment.highSeq) continue
-            if (collectedAsc.size >= limit) {
-                hasMoreEligible = true
-                break
-            }
-            val remaining = limit - collectedAsc.size
-            val span =
-                if (segment.highSeq - segLowerSeq >= remaining.toLong()) {
-                    remaining
-                } else {
-                    (segment.highSeq - segLowerSeq + 1L).toInt()
-                }
-            val raw = store.readFactsAfter(scope, afterSeq = segLowerSeq - 1L, limit = span)
-            val inSeg =
-                raw.envelopes
-                    .filter { it.fact.seq in segLowerSeq..segment.highSeq }
-                    .take(remaining)
-            if (inSeg.isEmpty()) continue
-            for (envelope in inSeg) {
-                collectedAsc += envelope
-                raw.unknownFieldsByFactId[envelope.fact.id]?.let { unknowns[envelope.fact.id] = it }
-            }
-            if (collectedAsc.size >= limit) {
-                val highestTaken = inSeg.last().fact.seq
-                if (
-                    highestTaken < segment.highSeq &&
-                    store.lowestFactSeqAfter(scope, afterSeq = highestTaken)?.let { it <= segment.highSeq } == true
-                ) {
-                    hasMoreEligible = true
-                    break
-                }
-            }
-        }
-        return BoundedSegmentedFactsResult(
-            envelopes = collectedAsc,
-            hasMoreEligible = hasMoreEligible,
-            unknownFieldsByFactId = unknowns,
+            insideProvenSegment = true,
+            unknownFieldsByFactId = raw.unknownFieldsByFactId.filterKeys { it in keptIds },
         )
     }
 
@@ -1045,80 +917,53 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
         anchor: ThreadDurableTimelineAnchor.After,
     ): ThreadDurableTimelinePage {
         val provenSegment = CanonicalMessageV2SegmentAlgebra.provenSegmentAfter(segments, anchor.afterSeq)
-        val hasOlderStored =
-            if (anchor.afterSeq == Long.MAX_VALUE) {
-                store.hasFactBefore(scope, Long.MAX_VALUE) || store.hasFactAfter(scope, Long.MAX_VALUE - 1L)
-            } else {
-                store.hasFactBefore(scope, anchor.afterSeq + 1L)
-            }
-        if (!anchor.crossGaps) {
-            if (provenSegment == null) {
-                val hasNewerStored = store.hasFactAfter(scope, anchor.afterSeq)
-                return ThreadDurableTimelinePage(
-                    scope = scope,
-                    envelopes = emptyList(),
-                    gaps = emptyList(),
-                    cursor = cursor,
-                    segments = segments,
-                    hasOlderStored = hasOlderStored,
-                    hasNewerStored = hasNewerStored,
-                    reachesOldest = false,
-                    reachesHead = false,
-                    insideProvenSegment = false,
-                )
-            }
-            val raw = store.readFactsAfter(scope, afterSeq = anchor.afterSeq, limit = anchor.limit)
-            val inSegment = raw.envelopes.filter { it.fact.seq <= provenSegment.highSeq }
-            val keptIds = inSegment.mapTo(HashSet()) { it.fact.id }
-            val hasNewerStored = raw.hasMoreStored || inSegment.size < raw.envelopes.size
-            val reachesHead =
-                if (inSegment.isEmpty()) {
-                    provenSegment.headAtVerify && !hasNewerStored
-                } else {
-                    CanonicalMessageV2SegmentAlgebra.reachesHeadAt(inSegment.last().fact.seq, segments, hasNewerStored)
-                }
+        if (provenSegment == null) {
+            val anchorSegment = CanonicalMessageV2SegmentAlgebra.memberOf(segments, anchor.afterSeq)
+            val hasOlderInAnchorSegment =
+                anchorSegment != null &&
+                    anchor.afterSeq < Long.MAX_VALUE &&
+                    hasFactInSegmentBefore(scope, anchorSegment, beforeSeq = anchor.afterSeq + 1L)
             return ThreadDurableTimelinePage(
                 scope = scope,
-                envelopes = inSegment,
-                gaps = emptyList(),
+                envelopes = emptyList(),
                 cursor = cursor,
                 segments = segments,
-                hasOlderStored = hasOlderStored,
-                hasNewerStored = hasNewerStored,
+                hasOlderStored = hasOlderInAnchorSegment,
+                hasNewerStored = false,
                 reachesOldest = false,
-                reachesHead = reachesHead,
-                insideProvenSegment = true,
-                unknownFieldsByFactId = raw.unknownFieldsByFactId.filterKeys { it in keptIds },
+                reachesHead = false,
+                insideProvenSegment = false,
             )
         }
-        // #proj-mobile:#386 P0-1: offline gap-crossing only bridges rows belonging to proven segments.
-        val segmented = readSegmentedFactsAfter(scope, segments, afterSeq = anchor.afterSeq, limit = anchor.limit)
-        val seqs = segmented.envelopes.map { it.fact.seq }
-        val gaps =
-            if (seqs.isEmpty()) {
-                emptyList()
+        val raw = store.readFactsAfter(scope, afterSeq = anchor.afterSeq, limit = anchor.limit)
+        val inSegment = raw.envelopes.filter { it.fact.seq <= provenSegment.highSeq }
+        val keptIds = inSegment.mapTo(HashSet()) { it.fact.id }
+        val hasNewerInSegment =
+            if (inSegment.isEmpty() || inSegment.size < raw.envelopes.size || !raw.hasMoreStored) {
+                false
             } else {
-                CanonicalMessageV2SegmentAlgebra.deriveGaps(listOf(anchor.afterSeq) + seqs, segments)
+                hasFactInSegmentAfter(scope, provenSegment, afterSeq = inSegment.last().fact.seq)
             }
+        val hasOlderInSegment =
+            anchor.afterSeq < Long.MAX_VALUE &&
+                hasFactInSegmentBefore(scope, provenSegment, beforeSeq = anchor.afterSeq + 1L)
         val reachesHead =
-            if (seqs.isEmpty()) {
-                provenSegment?.headAtVerify == true ||
-                    CanonicalMessageV2SegmentAlgebra.memberOf(segments, anchor.afterSeq)?.headAtVerify == true
+            if (inSegment.isEmpty()) {
+                provenSegment.headAtVerify
             } else {
-                CanonicalMessageV2SegmentAlgebra.reachesHeadAt(seqs.last(), segments, segmented.hasMoreEligible)
+                CanonicalMessageV2SegmentAlgebra.reachesHeadAt(inSegment.last().fact.seq, segments, hasNewerInSegment)
             }
         return ThreadDurableTimelinePage(
             scope = scope,
-            envelopes = segmented.envelopes,
-            gaps = gaps,
+            envelopes = inSegment,
             cursor = cursor,
             segments = segments,
-            hasOlderStored = hasOlderStored,
-            hasNewerStored = segmented.hasMoreEligible,
+            hasOlderStored = hasOlderInSegment,
+            hasNewerStored = hasNewerInSegment,
             reachesOldest = false,
             reachesHead = reachesHead,
-            insideProvenSegment = provenSegment != null,
-            unknownFieldsByFactId = segmented.unknownFieldsByFactId,
+            insideProvenSegment = true,
+            unknownFieldsByFactId = raw.unknownFieldsByFactId.filterKeys { it in keptIds },
         )
     }
 
@@ -1146,10 +991,9 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
     /**
      * Anchored open when the anchor sits inside a proven contiguous segment: read strictly inside
      * `[anchorSegment.effectiveLowSeq..anchorSegment.highSeq]` so disconnected loose facts and
-     * other islands are never spliced into Frame 1 with mid-timeline gaps, while preserving
-     * accurate [ThreadDurableTimelinePage.hasOlderStored] / [ThreadDurableTimelinePage.hasNewerStored]
-     * for explicit offline [ThreadDurableTimelineAnchor.Before] / [ThreadDurableTimelineAnchor.After]
-     * (`crossGaps = true`) island crossing.
+     * other islands are never spliced into the timeline. [ThreadDurableTimelinePage.hasOlderStored]
+     * and [ThreadDurableTimelinePage.hasNewerStored] strictly reflect whether more stored rows
+     * remain inside [anchorSegment].
      */
     private suspend fun readAroundMessageIdInSegmentTimeline(
         scope: SyncScopeKey,
@@ -1176,7 +1020,7 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
                 } else {
                     CanonicalMessageV2BoundedFactsPage(
                         envelopes = anchorPage.envelopes,
-                        hasMoreStored = store.hasFactBefore(scope, Long.MAX_VALUE),
+                        hasMoreStored = hasFactInSegmentBefore(scope, anchorSegment, beforeSeq = Long.MAX_VALUE),
                         unknownFieldsByFactId = anchorPage.unknownFieldsByFactId,
                     )
                 }
@@ -1193,7 +1037,7 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
             } else {
                 CanonicalMessageV2BoundedFactsPage(
                     envelopes = emptyList(),
-                    hasMoreStored = store.hasFactAfter(scope, anchorSeq),
+                    hasMoreStored = hasFactInSegmentAfter(scope, anchorSegment, afterSeq = anchorSeq),
                 )
             }
         val keptBeforeAndAnchor = beforeAndAnchor.envelopes.filter { it.fact.seq >= anchorSegment.effectiveLowSeq }
@@ -1202,18 +1046,27 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
         val envelopes = keptBeforeAndAnchor + keptAfter
         val keptIds = envelopes.mapTo(HashSet()) { it.fact.id }
         val seqs = envelopes.map { it.fact.seq }
-        val hasOlderStored = beforeAndAnchor.hasMoreStored || keptBeforeAndAnchor.size < beforeAndAnchor.envelopes.size
-        val hasNewerStored = after.hasMoreStored || keptAfter.size < after.envelopes.size
+        val hasOlderInSegment =
+            if (keptBeforeAndAnchor.size < beforeAndAnchor.envelopes.size || !beforeAndAnchor.hasMoreStored) {
+                false
+            } else {
+                hasFactInSegmentBefore(scope, anchorSegment, beforeSeq = seqs.first())
+            }
+        val hasNewerInSegment =
+            if (keptAfter.size < after.envelopes.size || !after.hasMoreStored) {
+                false
+            } else {
+                hasFactInSegmentAfter(scope, anchorSegment, afterSeq = seqs.last())
+            }
         return ThreadDurableTimelinePage(
             scope = scope,
             envelopes = envelopes,
-            gaps = emptyList(),
             cursor = cursor,
             segments = segments,
-            hasOlderStored = hasOlderStored,
-            hasNewerStored = hasNewerStored,
-            reachesOldest = CanonicalMessageV2SegmentAlgebra.reachesOldestAt(seqs.first(), segments, hasOlderStored),
-            reachesHead = CanonicalMessageV2SegmentAlgebra.reachesHeadAt(seqs.last(), segments, hasNewerStored),
+            hasOlderStored = hasOlderInSegment,
+            hasNewerStored = hasNewerInSegment,
+            reachesOldest = CanonicalMessageV2SegmentAlgebra.reachesOldestAt(seqs.first(), segments, hasOlderInSegment),
+            reachesHead = CanonicalMessageV2SegmentAlgebra.reachesHeadAt(seqs.last(), segments, hasNewerInSegment),
             insideProvenSegment = true,
             unknownFieldsByFactId = (beforeAndAnchor.unknownFieldsByFactId + after.unknownFieldsByFactId)
                 .filterKeys { it in keptIds },
@@ -1223,9 +1076,9 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
     /**
      * Anchored open when the anchor is a loose fact (`anchorSegment == null`): return only the
      * anchor and any strictly consecutive loose facts (`prevSeq == lowestSeq - 1`, `nextSeq ==
-     * highestSeq + 1`, stopping at any segment member or seq gap), guaranteeing zero mid-timeline
-     * gaps on Frame 1 while preserving accurate [ThreadDurableTimelinePage.hasOlderStored] /
-     * [ThreadDurableTimelinePage.hasNewerStored] for offline island crossing.
+     * highestSeq + 1`, stopping at any segment member or seq gap). Because loose facts do not
+     * belong to a proven segment, [ThreadDurableTimelinePage.hasOlderStored] and
+     * [ThreadDurableTimelinePage.hasNewerStored] are `false`.
      */
     private suspend fun readAroundMessageIdLooseOnlyTimeline(
         scope: SyncScopeKey,
@@ -1274,16 +1127,13 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
         }
 
         val envelopes = olderDesc.asReversed() + anchorEnvelope + newerAsc
-        val hasOlderStored = store.hasFactBefore(scope, envelopes.first().fact.seq)
-        val hasNewerStored = store.hasFactAfter(scope, envelopes.last().fact.seq)
         return ThreadDurableTimelinePage(
             scope = scope,
             envelopes = envelopes,
-            gaps = emptyList(),
             cursor = cursor,
             segments = segments,
-            hasOlderStored = hasOlderStored,
-            hasNewerStored = hasNewerStored,
+            hasOlderStored = false,
+            hasNewerStored = false,
             reachesOldest = false,
             reachesHead = false,
             insideProvenSegment = false,
