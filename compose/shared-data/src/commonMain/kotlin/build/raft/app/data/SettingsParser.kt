@@ -516,15 +516,20 @@ private fun JsonElement?.toSettingsStringMap(): Map<String, String>? =
 private fun JsonElement?.settingsString(key: String): String? =
     ((this as? JsonObject)?.get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
 
-private fun JsonObject.toSettingsComputerAgentRuntimeConfig(): SettingsComputerAgentRuntimeConfig =
-    SettingsComputerAgentRuntimeConfig(
-        runtime = settingsString("runtime"),
+private fun JsonObject.toSettingsComputerAgentRuntimeConfig(): SettingsComputerAgentRuntimeConfig {
+    val runtime = settingsString("runtime")
+    return SettingsComputerAgentRuntimeConfig(
+        runtime = runtime,
         modelKind = this["model"].settingsString("kind"),
         providerKind = this["provider"].settingsString("kind"),
         command = settingsString("command"),
         fastMode = this["mode"].settingsString("kind") == "fast",
         envVars = this["envVars"].toSettingsStringMap(),
+        codexAccess =
+            settingsString("codexAccess")
+                ?.takeIf { runtime == "codex" && isRaftCodexAccess(it) },
     )
+}
 
 @Serializable
 private data class WireServerMemberProfile(

@@ -1532,12 +1532,13 @@ private fun List<MessageMentionWireDto>?.toDomainMentions(): List<MessageMention
 private fun JsonObject.systemProvenanceOrNull(): MessageSystemProvenance? {
     if (!containsKey("systemSubtype")) return null
     fun text(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
-    val countsUnread = (get("countsUnread") as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toBooleanStrictOrNull()
+    fun bool(key: String): Boolean? = (get(key) as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toBooleanStrictOrNull()
     return MessageSystemProvenance(
         systemSubtype = text("systemSubtype"),
         causalActorType = text("causalActorType"),
         causalActorId = text("causalActorId"),
-        countsUnread = countsUnread,
+        countsUnread = bool("countsUnread"),
+        agentOnly = bool("agentOnly"),
     )
 }
 

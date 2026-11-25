@@ -247,23 +247,24 @@ class SharedActivityStoreInboxInPlaceCheckTest {
         // Caused by the reader: born read.
         f.store.dispatch(system("s-22", 22L, MessageSystemProvenance("task.lifecycle_thread", "user", "user-1")))
         assertEquals(1, unread())
-        // The followed-thread rule's uncounted subtypes.
+        // The followed-thread rule's uncounted and agents-only subtypes (slock #16677 / #16678).
         f.store.dispatch(system("s-23", 23L, MessageSystemProvenance("channel.self_unfollow_thread", "agent", "agent-1")))
         f.store.dispatch(system("s-24", 24L, MessageSystemProvenance("task.deleted_summary", null, null)))
+        f.store.dispatch(system("s-24b", 25L, MessageSystemProvenance("agent.server_role_hint", "user", "user-2", countsUnread = true, agentOnly = true)))
         assertEquals(1, unread())
         // No provenance on the frame (like a thread:updated reply): it cannot be judged, so it does not count.
-        f.store.dispatch(system("s-25", 25L, provenance = null))
+        f.store.dispatch(system("s-25", 26L, provenance = null))
         assertEquals(1, unread())
         // A null subtype with no actor still counts.
-        f.store.dispatch(system("s-26", 26L, MessageSystemProvenance(null, null, null)))
+        f.store.dispatch(system("s-26", 27L, MessageSystemProvenance(null, null, null)))
         assertEquals(2, unread())
-        assertEquals("26", f.store.state.value.items.first().latestActivitySeq, "every line still moves the row")
+        assertEquals("27", f.store.state.value.items.first().latestActivitySeq, "every line still moves the row")
 
         // An uncounted line that @-mentions the reader adds no unread but still lights the @ (web liveUnreadFields).
         f.store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
                 MessageNew(
-                    message("s-27", channelId = "thread-1", authorId = "system", seq = 27L).copy(
+                    message("s-27", channelId = "thread-1", authorId = "system", seq = 28L).copy(
                         messageType = MessageType.System,
                         mentions = listOf(MessageMention(type = "user", id = "user-1"))
                     ),
@@ -280,7 +281,7 @@ class SharedActivityStoreInboxInPlaceCheckTest {
         f.store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
                 MessageNew(
-                    message("s-28", channelId = "thread-1", authorId = "system", seq = 28L).copy(
+                    message("s-28", channelId = "thread-1", authorId = "system", seq = 29L).copy(
                         messageType = MessageType.System,
                         countsUnread = false,
                     ),
@@ -293,7 +294,7 @@ class SharedActivityStoreInboxInPlaceCheckTest {
         f.store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
                 MessageNew(
-                    message("s-29", channelId = "thread-1", authorId = "system", seq = 29L).copy(
+                    message("s-29", channelId = "thread-1", authorId = "system", seq = 30L).copy(
                         messageType = MessageType.System,
                         countsUnread = true,
                     ),
