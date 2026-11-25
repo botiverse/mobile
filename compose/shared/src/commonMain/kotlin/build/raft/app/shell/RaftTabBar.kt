@@ -13,7 +13,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -284,27 +290,48 @@ internal fun RaftBottomTabBar(
             .height(RaftBottomTabBarSpec.BarHeight)
             .background(RaftColor.Card)
     ) {
+        val currentOnSelect by rememberUpdatedState(onSelect)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight()
                 .raftSafeAreaHorizontalPadding()
-                .padding(top = RaftAppStroke.Thin + RaftBottomTabBarSpec.TopPadding)
-                // The bar's bottom padding is the bar's, under the items (web MobileNav
-                // `pb-[max(8px,…)]` on the nav): an item is 45dp, its target ends with its label.
-                .padding(bottom = RaftMobileNavDefaults.MinBottomPadding)
                 .padding(horizontal = RaftMobileNavDefaults.SidePadding)
         ) {
             items.forEach { item ->
-                if (serverTab != null && item.key == AppShellServerTabKey) {
-                    // D1a: the current-server tab draws itself (avatar, name, long press).
-                    serverTab(Modifier.weight(1f).fillMaxHeight())
-                } else {
-                    RaftBottomTabItem(
-                        item = item,
-                        onSelect = onSelect,
-                        modifier = Modifier.weight(1f).fillMaxHeight()
-                    )
+                val currentEnabled by rememberUpdatedState(item.enabled)
+                // Expand each 45dp tab's effective tap area vertically across the bar's top 7dp
+                // (seam + TopPadding) and bottom 8dp (MinBottomPadding) while keeping the inner
+                // RaftMobileNavItem / server tab at its exact 45dp visual & semantics box. Taps
+                // landing inside the inner item are consumed there first so this never double-fires;
+                // taps in the system gesture safe area below 60dp stay guarded by raftTouchBlocker.
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .pointerInput(item.key) {
+                            // raw-click: invisible vertical padding tap-forgiveness wrapper around the 45dp tab; inner DS item owns press/hover/a11y
+                            detectTapGestures {
+                                if (currentEnabled) {
+                                    currentOnSelect(item.key)
+                                }
+                            }
+                        }
+                        .padding(
+                            top = RaftAppStroke.Thin + RaftBottomTabBarSpec.TopPadding,
+                            bottom = RaftMobileNavDefaults.MinBottomPadding,
+                        )
+                ) {
+                    if (serverTab != null && item.key == AppShellServerTabKey) {
+                        // D1a: the current-server tab draws itself (avatar, name, long press).
+                        serverTab(Modifier.fillMaxSize())
+                    } else {
+                        RaftBottomTabItem(
+                            item = item,
+                            onSelect = onSelect,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
             }
         }
@@ -495,12 +522,26 @@ internal fun RaftSharedBottomTabBarBand(
     bottomSafeArea: Dp = 0.dp,
     serverTab: (@Composable (Modifier) -> Unit)? = null,
 ) {
+    val density = LocalDensity.current
+    val bandHeight = raftSharedBottomTabBarHostHeight(bottomSafeArea)
+    val selectedTabKey = items.firstOrNull { it.selected }?.key.orEmpty()
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(raftSharedBottomTabBarHostHeight(bottomSafeArea))
+            .height(bandHeight)
             .background(RaftColor.Card)
-            .raftTouchBlocker()
+            .raftTouchBlocker { offset ->
+                raftLogInfo(
+                    "SlockKuikly",
+                    "app_shell_bottom_tab_bar_unhandled_tap " +
+                        "xDp=${(offset.x / density.density).roundToInt()} " +
+                        "yDp=${(offset.y / density.density).roundToInt()} " +
+                        "barHeightDp=${RaftBottomTabBarSpec.BarHeight.value.roundToInt()} " +
+                        "bandHeightDp=${bandHeight.value.roundToInt()} " +
+                        "bottomSafeAreaDp=${bottomSafeArea.value.roundToInt()} " +
+                        "selectedTab=$selectedTabKey",
+                )
+            }
     ) {
         RaftBottomTabBar(
             items = items,
@@ -763,6 +804,14 @@ private fun RaftVerticalTabItem(
  * any press feedback (a bare `clickable` greyed the whole bar while a finger rested on it).
  */
 @Composable
-private fun Modifier.raftTouchBlocker(): Modifier =
-    // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
-    clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {})
+private fun Modifier.raftTouchBlocker(
+    onSwallowedTap: ((Offset) -> Unit)? = null,
+): Modifier {
+    val currentOnSwallowedTap by rememberUpdatedState(onSwallowedTap)
+    return pointerInput(Unit) {
+        // raw-click: tap sink, keeps taps on blank bar/safe-area space from reaching what is under it; not a control
+        detectTapGestures { offset ->
+            currentOnSwallowedTap?.invoke(offset)
+        }
+    }
+}
