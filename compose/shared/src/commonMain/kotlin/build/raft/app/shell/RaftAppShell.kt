@@ -309,7 +309,8 @@ internal fun RaftAppShellSurface(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .align(Alignment.BottomCenter),
+                                .align(Alignment.BottomCenter)
+                                .zIndex(RaftAppBottomTabBarHostZIndex),
                         enter = RaftAppShellBottomBarReturn,
                         exit = RaftAppShellBottomBarLeave
                     ) {
