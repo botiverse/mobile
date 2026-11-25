@@ -76,3 +76,16 @@ internal fun ThreadSnapshot.hasRenderableReplyThreadMessages(
             (replyThreadContentChannelId == null || message.belongsToReplyThreadContent(replyThreadContentChannelId))
     }
 }
+
+internal fun RaftThreadScreenPayload.toEmptyReplyThreadPayload(): RaftThreadScreenPayload =
+    copy(
+        status = "empty",
+        messages = emptyList(),
+        canLoadMoreBefore = false,
+        canLoadMoreAfter = false,
+        olderMessagesStatus = "idle",
+        newerMessagesStatus = "idle",
+        errorCode = null,
+        emptyTitle = ThreadReplyEmptyTitle,
+        emptyDetail = ThreadReplyEmptyDetail
+    )
