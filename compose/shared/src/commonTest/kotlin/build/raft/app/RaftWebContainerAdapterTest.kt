@@ -17,12 +17,21 @@ import build.raft.webcontainer.WebIsolationScope
 import build.raft.webcontainer.WebNavigationDecision
 import build.raft.webcontainer.WebNavigationStarter
 import build.raft.webcontainer.WebNavigationState
+import build.raft.webcontainer.WebOfflineBundleDescriptor
 import build.raft.webcontainer.evaluateMainFrameNavigation
+import build.raft.webcontainer.jsb.JsbAppInfo
+import build.raft.webcontainer.jsb.JsbCallContext
 import build.raft.webcontainer.jsb.JsbDispatcher
 import build.raft.webcontainer.jsb.JsbErrorCode
 import build.raft.webcontainer.jsb.JsbPolicy
+import build.raft.webcontainer.jsb.JsbStandardCapabilities
+import build.raft.webcontainer.jsb.JsbStandardHost
+import build.raft.webcontainer.jsb.JsbStandardMethods
 import build.raft.webcontainer.pool.WebContainerTelemetryEvent
 import build.raft.webcontainer.pool.WebIsolationClearResult
+import build.raft.webcontainer.resource.WebResourceInterceptor
+import build.raft.webcontainer.resource.WebResourceRequest
+import build.raft.webcontainer.resource.WebResourceResponseData
 import build.raft.webcontainer.resource.WebResourceSource
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -351,6 +360,19 @@ class RaftWebContainerAdapterTest {
         assertEquals("report.pdf", mappedBytes.fileName)
         assertEquals("application/pdf", mappedBytes.mimeType)
 
+        val urlDownload =
+            WebDownloadResult.Url(
+                url = "https://app.raft.build/files/report.pdf",
+                pageFileName = "report.pdf",
+                contentDisposition = "attachment; filename=report.pdf",
+                mimeType = "application/pdf",
+            ).toRaftWebViewDownload()
+        val mappedUrl = assertIs<RaftWebViewDownload.Url>(urlDownload)
+        assertEquals("https://app.raft.build/files/report.pdf", mappedUrl.url)
+        assertEquals("report.pdf", mappedUrl.pageFileName)
+        assertEquals("attachment; filename=report.pdf", mappedUrl.contentDisposition)
+        assertEquals("application/pdf", mappedUrl.mimeType)
+
         val failed = WebDownloadResult.Failed("too_large").toRaftWebViewDownload()
         assertEquals(RaftWebViewDownload.Failed("too_large"), failed)
 
@@ -431,5 +453,106 @@ class RaftWebContainerAdapterTest {
             )
         assertFalse(scopeWarn)
         assertTrue(scopeLine.contains("result=CLEARED"))
+    }
+
+    @Test
+    fun standardJsbAndOfflineBundleAreGrantedOnlyOnTrustedDefaultSurfaces() = runTest {
+        val bundle = WebOfflineBundleDescriptor(bundleId = "v2", pageSessionId = "s1", iosCustomScheme = "raft-bundle")
+        val defaultMapped =
+            baseConfig(storagePartition = RaftWebViewStoragePartition.Default, hostEventsEnabled = true)
+                .toWebContainerConfig(
+                    isDarkTheme = true,
+                    standardJsbCapabilities = JsbStandardCapabilities.All,
+                    offlineBundle = bundle,
+                )
+        assertTrue(defaultMapped.jsbPolicy.isEffectivelyEnabled)
+        assertTrue(RAFT_WEB_CONTAINER_LEGACY_HOST_CAPABILITY in defaultMapped.jsbPolicy.grantedCapabilities)
+        assertTrue(JsbStandardCapabilities.APP_INFO in defaultMapped.jsbPolicy.grantedCapabilities)
+        assertEquals(bundle, defaultMapped.offlineBundle)
+
+        // Ephemeral and IsolatedThirdParty surfaces NEVER receive standard JSB or offline bundle descriptors.
+        val thirdPartyMapped =
+            baseConfig(storagePartition = RaftWebViewStoragePartition.IsolatedThirdParty, hostEventsEnabled = false)
+                .toWebContainerConfig(
+                    isDarkTheme = false,
+                    standardJsbCapabilities = JsbStandardCapabilities.All,
+                    offlineBundle = bundle,
+                )
+        assertFalse(thirdPartyMapped.jsbPolicy.isEffectivelyEnabled)
+        assertNull(thirdPartyMapped.offlineBundle)
+
+        val ephemeralMapped =
+            baseConfig(ephemeral = true, storagePartition = null, hostEventsEnabled = false)
+                .toWebContainerConfig(
+                    isDarkTheme = false,
+                    standardJsbCapabilities = JsbStandardCapabilities.All,
+                    offlineBundle = bundle,
+                )
+        assertFalse(ephemeralMapped.jsbPolicy.isEffectivelyEnabled)
+        assertNull(ephemeralMapped.offlineBundle)
+
+        // Blank URL / mismatched origin fails closed and never exposes offline bundle descriptor.
+        val blankUrlMapped =
+            baseConfig(url = "", storagePartition = RaftWebViewStoragePartition.Default, hostEventsEnabled = false)
+                .toWebContainerConfig(
+                    isDarkTheme = false,
+                    standardJsbCapabilities = JsbStandardCapabilities.All,
+                    offlineBundle = bundle,
+                )
+        assertNull(blankUrlMapped.offlineBundle)
+        assertFalse(blankUrlMapped.jsbPolicy.isEffectivelyEnabled)
+
+        // Combined registry executes both standard JSB and legacy host events.
+        val standardHost =
+            object : JsbStandardHost {
+                override suspend fun getAppInfo(context: JsbCallContext): JsbAppInfo =
+                    JsbAppInfo(appVersion = "1.30.0", buildNumber = "1", platform = "ios")
+            }
+        val registry =
+            buildRaftWebContainerJsbRegistry(
+                hostEventsEnabled = true,
+                dispatchRawHostMessage = {},
+                standardHost = standardHost,
+            )
+        val dispatcher = JsbDispatcher(defaultMapped.jsbPolicy, registry, this)
+        var appInfoReply: String? = null
+        dispatcher.dispatch(
+            rawPayload = """{"v":1,"id":"std1","method":"${JsbStandardMethods.APP_GET_INFO}","params":{}}""",
+            origin = WebContainerOrigin("https", "app.raft.build"),
+            documentUrl = defaultMapped.url,
+            isMainFrame = true,
+        ) { appInfoReply = it }
+        advanceUntilIdle()
+        val parsed = Json.parseToJsonElement(assertNotNull(appInfoReply)).jsonObject
+        assertEquals(true, parsed["ok"]?.jsonPrimitive?.booleanOrNull)
+        assertEquals("1.30.0", parsed["data"]?.jsonObject?.get("appVersion")?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun resourceInterceptorCompositionFollowsOfflineCustomPlatformPrecedence() {
+        assertNull(buildRaftWebContainerResourceInterceptor(surfaceId = "settings"))
+
+        val events = mutableListOf<WebContainerTelemetryEvent>()
+        val offlineResp =
+            WebResourceResponseData(mimeType = "text/html", body = "offline".encodeToByteArray(), source = WebResourceSource.OFFLINE_BUNDLE)
+        val customResp =
+            WebResourceResponseData(mimeType = "text/html", body = "custom".encodeToByteArray(), source = WebResourceSource.CUSTOM_INTERCEPTOR)
+        val platformResp =
+            WebResourceResponseData(mimeType = "text/html", body = "platform".encodeToByteArray(), source = WebResourceSource.HOST_CACHE)
+
+        val composed =
+            assertNotNull(
+                buildRaftWebContainerResourceInterceptor(
+                    surfaceId = "release_notes",
+                    offlineBundleInterceptor = WebResourceInterceptor { req -> if (req.url.endsWith("/offline")) offlineResp else null },
+                    customInterceptor = WebResourceInterceptor { req -> if (req.url.endsWith("/custom")) customResp else null },
+                    platformInterceptor = WebResourceInterceptor { platformResp },
+                    telemetrySink = { events += it },
+                ),
+            )
+        assertEquals(offlineResp, composed.intercept(WebResourceRequest("https://app.raft.build/offline", isMainFrame = true)))
+        assertEquals(customResp, composed.intercept(WebResourceRequest("https://app.raft.build/custom", isMainFrame = true)))
+        assertEquals(platformResp, composed.intercept(WebResourceRequest("https://app.raft.build/other", isMainFrame = true)))
+        assertEquals(3, events.count { it is WebContainerTelemetryEvent.ResourceIntercepted && it.hit })
     }
 }

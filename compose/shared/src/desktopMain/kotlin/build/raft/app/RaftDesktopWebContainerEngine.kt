@@ -17,6 +17,7 @@ import build.raft.webcontainer.evaluateMainFrameNavigation
 import build.raft.webcontainer.isAllowedSubframeUrl
 import build.raft.webcontainer.jsb.JsbBootstrapScripts
 import build.raft.webcontainer.parseWebContainerOrigin
+import build.raft.webcontainer.resource.WebResourceInterceptor
 import java.awt.Component
 import java.io.File
 import java.security.SecureRandom
@@ -32,6 +33,9 @@ private val RaftDesktopWebContainerOnWindows: Boolean =
 
 private val RaftDesktopWebContainerOnMacOs: Boolean =
     System.getProperty("os.name").orEmpty().lowercase().let { it.contains("mac") || it.contains("darwin") }
+
+@Composable
+internal actual fun rememberRaftWebContainerPlatformResourceInterceptor(): WebResourceInterceptor? = null
 
 @Composable
 internal actual fun RaftWebContainerPlatformScope(
@@ -638,7 +642,9 @@ internal fun buildDesktopContainerInitScript(
             )
         }
         config.offlineBundle?.let { bundle ->
-            appendLine(JsbBootstrapScripts.buildOfflineBundleScript(bundle, baseOrigins))
+            if (baseOrigins.isNotEmpty()) {
+                appendLine(JsbBootstrapScripts.buildOfflineBundleScript(bundle, baseOrigins))
+            }
         }
         for (script in config.documentStartScripts) {
             val wrapped =

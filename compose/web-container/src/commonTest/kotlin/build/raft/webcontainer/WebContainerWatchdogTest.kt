@@ -119,6 +119,40 @@ class WebContainerWatchdogTest {
     }
 
     @Test
+    fun loadCancelledRestoresPriorReadyStateWithoutResettingCrashWindow() {
+        val watchdog =
+            WebContainerWatchdog(
+                WebContainerWatchdogPolicy(
+                    stallTimeoutMs = 5_000L,
+                    crashWindowMs = 60_000L,
+                    maxRecoveriesInWindow = 2,
+                ),
+            )
+        // First load cancelled before any commit -> returns to Idle without stall timeout.
+        watchdog.onEvent(WebContainerWatchdogEvent.LoadStarted(1), 0L)
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.LoadCancelled(1), 500L))
+        assertEquals(WebContainerPhase.Idle, watchdog.phase)
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 10_000L))
+
+        // Committed page experiences one recovery, then starts a navigation converted to download.
+        markReady(watchdog, gen = 2, t = 10_000L)
+        assertEquals(
+            WebContainerWatchdogAction.TriggerRecoveryReload(1),
+            watchdog.onEvent(WebContainerWatchdogEvent.RenderProcessGone(didCrash = true), 11_000L),
+        )
+        markReady(watchdog, gen = 3, t = 12_000L)
+        watchdog.onEvent(WebContainerWatchdogEvent.LoadStarted(4), 13_000L)
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.LoadCancelled(4), 13_200L))
+        assertEquals(WebContainerPhase.Ready, watchdog.phase)
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 25_000L))
+        // Prior recovery count is preserved (next crash is recovery attempt 2, not 1).
+        assertEquals(
+            WebContainerWatchdogAction.TriggerRecoveryReload(2),
+            watchdog.onEvent(WebContainerWatchdogEvent.RenderProcessGone(didCrash = true), 26_000L),
+        )
+    }
+
+    @Test
     fun navigationStateRelayDeduplicatesAndBoundsReentrancy() {
         val relay = WebNavigationStateRelay(maxReentrySteps = 3)
         val delivered = mutableListOf<WebNavigationState>()

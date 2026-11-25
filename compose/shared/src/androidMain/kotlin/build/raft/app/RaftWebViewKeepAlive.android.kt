@@ -8,6 +8,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import build.raft.webcontainer.WebContainerAndroidKeepAlive
+import build.raft.webcontainer.WebIsolationScope
+import build.raft.webcontainer.jsb.JsbStandardCapabilities
+import build.raft.webcontainer.parseWebContainerOrigin
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -153,10 +156,36 @@ internal object RaftAndroidWebViewKeepAlive {
 }
 
 internal actual fun raftWebViewKeptDocument(key: String): RaftWebViewKeptDocument? =
-    runOnMainOrNull { RaftAndroidWebViewKeepAlive.kept(key)?.keptDocument() }
+    runOnMainOrNull {
+        RaftAndroidWebViewKeepAlive.kept(key)?.keptDocument()
+            ?: WebContainerAndroidKeepAlive.keptDocument(
+                keepAliveKey = key,
+                isolationScope = WebIsolationScope.Default,
+                isDarkTheme = RaftAppThemeState.isDark,
+            )?.let { snapshot ->
+                RaftWebViewKeptDocument(
+                    src = snapshot.configuredUrl,
+                    currentUrl = snapshot.currentUrl,
+                    loaded = snapshot.loaded,
+                )
+            }
+    }
 
 internal actual fun raftWebViewEvaluateInKept(key: String, origin: String, script: String): Boolean =
-    runOnMainOrNull { RaftAndroidWebViewKeepAlive.kept(key)?.evaluateInTopDocument(origin, script) } == true
+    runOnMainOrNull {
+        if (RaftAndroidWebViewKeepAlive.kept(key)?.evaluateInTopDocument(origin, script) == true) {
+            true
+        } else {
+            val expectedOrigin = parseWebContainerOrigin(origin) ?: return@runOnMainOrNull false
+            WebContainerAndroidKeepAlive.evaluateInKept(
+                keepAliveKey = key,
+                expectedOrigin = expectedOrigin,
+                script = script,
+                isolationScope = WebIsolationScope.Default,
+                isDarkTheme = RaftAppThemeState.isDark,
+            )
+        }
+    } == true
 
 internal actual fun raftWebViewKeepAliveClear() {
     val clearAction = {
@@ -325,8 +354,59 @@ private suspend fun clearAndroidCookiesForOrigin(
 @Composable
 internal actual fun RaftWebViewPrewarmEffect(config: RaftWebViewConfig?) {
     val context = LocalContext.current
-    LaunchedEffect(config) {
-        if (config?.keepAliveKey != null) RaftAndroidWebViewKeepAlive.prewarm(context, config)
+    val useWebContainer = rememberRaftWebContainerV1Enabled()
+    val isDarkTheme = RaftAppThemeState.isDark
+    val standardJsbHost = LocalRaftWebContainerJsbHost.current
+    val offlineBundleSpec = LocalRaftWebContainerOfflineBundle.current
+    val customResourceInterceptor = LocalRaftWebContainerResourceInterceptor.current
+    val platformResourceInterceptor = rememberRaftWebContainerPlatformResourceInterceptor()
+    LaunchedEffect(
+        config,
+        useWebContainer,
+        isDarkTheme,
+        standardJsbHost,
+        offlineBundleSpec,
+        customResourceInterceptor,
+        platformResourceInterceptor,
+    ) {
+        if (config?.keepAliveKey != null) {
+            if (useWebContainer) {
+                val standardJsbCapabilities =
+                    if (standardJsbHost != null && config.effectiveStoragePartition == RaftWebViewStoragePartition.Default) {
+                        JsbStandardCapabilities.All
+                    } else {
+                        emptySet()
+                    }
+                val containerConfig =
+                    config.toWebContainerConfig(
+                        isDarkTheme = isDarkTheme,
+                        standardJsbCapabilities = standardJsbCapabilities,
+                        offlineBundle = offlineBundleSpec?.descriptor,
+                    )
+                val interceptor =
+                    buildRaftWebContainerResourceInterceptor(
+                        surfaceId = config.diagnosticsSurface,
+                        offlineBundleInterceptor = if (containerConfig.offlineBundle != null) offlineBundleSpec?.interceptor else null,
+                        customInterceptor = customResourceInterceptor,
+                        platformInterceptor = platformResourceInterceptor,
+                    )
+                val jsbRegistry =
+                    buildRaftWebContainerJsbRegistry(
+                        hostEventsEnabled = config.hostEventsEnabled,
+                        dispatchRawHostMessage = {},
+                        standardHost = if (standardJsbCapabilities.isNotEmpty()) standardJsbHost else null,
+                    )
+                WebContainerAndroidKeepAlive.prewarm(
+                    context = context,
+                    config = containerConfig,
+                    jsbRegistry = jsbRegistry,
+                    resourceInterceptor = interceptor,
+                    telemetrySink = RaftWebContainerTelemetrySink,
+                )
+            } else {
+                RaftAndroidWebViewKeepAlive.prewarm(context, config)
+            }
+        }
     }
 }
 

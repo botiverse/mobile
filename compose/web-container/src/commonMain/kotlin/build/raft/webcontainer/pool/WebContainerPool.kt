@@ -21,6 +21,13 @@ data class WebContainerPoolKey(
     }
 }
 
+/** Read-only snapshot of a parked keep-alive container's active document state. */
+data class WebContainerKeptSnapshot(
+    val configuredUrl: String,
+    val currentUrl: String,
+    val loaded: Boolean,
+)
+
 /** Platform container instance that can be parked in [WebContainerKeepAlivePool]. */
 interface WebPooledContainer {
     val isolationScope: WebIsolationScope
@@ -97,6 +104,20 @@ class WebContainerKeepAlivePool<T : WebPooledContainer>(
         entries[key] = Entry(key = key, container = container, parkedAtMs = now)
         emitPoolEvent("parked", key.keepAliveKey)
         return true
+    }
+
+    /** Inspects a healthy parked container matching [key] without removing it from the pool. */
+    fun peek(key: WebContainerPoolKey): T? {
+        val now = nowMs()
+        pruneExpired(now)
+        val entry = entries[key] ?: return null
+        if (!entry.container.isHealthy()) {
+            entries.remove(key)
+            entry.container.destroy()
+            emitPoolEvent("evict_unhealthy_on_peek", key.keepAliveKey)
+            return null
+        }
+        return entry.container
     }
 
     /** Takes a live, healthy container matching [key], or `null` if absent, expired, or unhealthy. */
