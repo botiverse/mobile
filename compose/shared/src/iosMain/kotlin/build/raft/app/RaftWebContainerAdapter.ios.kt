@@ -4,7 +4,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import build.raft.webcontainer.WebContainerIosSparePool
+import build.raft.webcontainer.pool.WebContainerTelemetryEvent
 import build.raft.webcontainer.resource.WebResourceInterceptor
+
+internal actual fun onRaftWebContainerPlatformTelemetry(event: WebContainerTelemetryEvent) = Unit
 
 @Composable
 internal actual fun rememberRaftWebContainerPlatformResourceInterceptor(): WebResourceInterceptor? = null
@@ -20,6 +23,7 @@ internal actual fun RaftWebContainerPlatformScope(
     LaunchedEffect(config.allowPinchZoom, config.useWideViewPort) {
         WebContainerIosSparePool.schedule(
             preferredIgnoresViewportScaleLimits = config.allowPinchZoom || config.useWideViewPort,
+            telemetrySink = RaftWebContainerTelemetrySink,
         )
     }
     content()

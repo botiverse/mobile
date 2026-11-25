@@ -434,10 +434,37 @@ class RaftWebContainerAdapterTest {
 
         val (goneWarn, goneLine) =
             formatWebContainerTelemetryLog(
-                WebContainerTelemetryEvent.RenderProcessGone("artifact_viewer", didCrash = true, recovered = true, attempt = 1),
+                WebContainerTelemetryEvent.RenderProcessGone(
+                    surfaceId = "artifact_viewer",
+                    didCrash = true,
+                    recovered = true,
+                    attempt = 1,
+                    rendererPriorityAtExit = 2,
+                    parked = true,
+                    engine = "android_webview",
+                ),
             )
         assertTrue(goneWarn)
         assertTrue(goneLine.contains("surface=artifact_viewer"))
+        assertTrue(goneLine.contains("parked=true"))
+        assertTrue(goneLine.contains("priority=important"))
+        assertTrue(goneLine.contains("engine=android_webview"))
+
+        val (poolOkWarn, poolOkLine) =
+            formatWebContainerTelemetryLog(
+                WebContainerTelemetryEvent.PoolEvent("reused", "k1", 0, engine = "android_webview"),
+            )
+        assertFalse(poolOkWarn)
+        assertTrue(poolOkLine.contains("action=reused"))
+        assertTrue(poolOkLine.contains("engine=android_webview"))
+
+        val (poolAnomalyWarn, poolAnomalyLine) =
+            formatWebContainerTelemetryLog(
+                WebContainerTelemetryEvent.PoolEvent("ios_spare_zombie_rebuilt", "ios_default_spare", 0, engine = "ios_wkwebview"),
+            )
+        assertTrue(poolAnomalyWarn)
+        assertTrue(poolAnomalyLine.contains("action=ios_spare_zombie_rebuilt"))
+        assertTrue(poolAnomalyLine.contains("engine=ios_wkwebview"))
 
         val (jsbWarn, jsbLine) =
             formatWebContainerTelemetryLog(

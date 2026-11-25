@@ -174,6 +174,8 @@ private data class WarmedIosSpare(
     val ignoresViewportScaleLimits: Boolean,
 )
 
+internal const val IOS_WKWEBVIEW_ENGINE: String = "ios_wkwebview"
+
 /**
  * Main-thread warm spare `WKWebView` pool for `:web-container` on iOS.
  *
@@ -196,20 +198,33 @@ object WebContainerIosSparePool {
     private const val WARM_DELAY_SECONDS = 2.0
     private const val REFILL_DELAY_SECONDS = 5.0
     private const val MAX_SPARE_IDLE_MS = 5 * 60_000L
+    private const val MAX_CONSECUTIVE_AUTO_REFILL_FAILURES = 2
     private const val SPARE_TELEMETRY_KEY = "ios_default_spare"
+    private const val SPARE_SURFACE_ID = "ios_warm_spare"
 
     private val slot = WebContainerSpareSlot<WarmedIosSpare>(retire = { retire(it.view) })
     private var preferredIgnoresViewportScaleLimits: Boolean = false
+    private var poolTelemetrySink: WebContainerTelemetrySink? = null
     private var warmupDelegate: WebContainerIosSpareWarmupDelegate? = null
     private var refillTimer: NSTimer? = null
+    private var consecutiveAutoRefillFailures: Int = 0
     private var installed: Boolean = false
 
     /** Schedules warm spare maintenance on the main thread (idempotent). */
-    fun schedule(preferredIgnoresViewportScaleLimits: Boolean = false) {
+    fun schedule(
+        preferredIgnoresViewportScaleLimits: Boolean = false,
+        telemetrySink: WebContainerTelemetrySink? = null,
+    ) {
         if (!NSThread.isMainThread) {
-            dispatch_async(dispatch_get_main_queue()) { schedule(preferredIgnoresViewportScaleLimits) }
+            dispatch_async(dispatch_get_main_queue()) {
+                schedule(preferredIgnoresViewportScaleLimits, telemetrySink)
+            }
             return
         }
+        if (telemetrySink != null) {
+            poolTelemetrySink = telemetrySink
+        }
+        consecutiveAutoRefillFailures = 0
         if (!installed || !slot.hasItem) {
             this.preferredIgnoresViewportScaleLimits = preferredIgnoresViewportScaleLimits
         }
@@ -226,6 +241,7 @@ object WebContainerIosSparePool {
             drop("background")
         }
         center.addObserverForName(UIApplicationDidBecomeActiveNotification, null, NSOperationQueue.mainQueue) { _ ->
+            consecutiveAutoRefillFailures = 0
             refillLater(WARM_DELAY_SECONDS)
         }
         refillLater(WARM_DELAY_SECONDS)
@@ -237,6 +253,10 @@ object WebContainerIosSparePool {
         telemetrySink: WebContainerTelemetrySink? = null,
     ): WebContainerIosWebView? {
         if (!NSThread.isMainThread) return null
+        if (telemetrySink != null) {
+            poolTelemetrySink = telemetrySink
+        }
+        val activeSink = telemetrySink ?: poolTelemetrySink
         val candidate =
             slot.take(maxIdleMs = MAX_SPARE_IDLE_MS) { spare ->
                 spare.ignoresViewportScaleLimits == ignoresViewportScaleLimits
@@ -249,14 +269,19 @@ object WebContainerIosSparePool {
                     slot.hasItem -> "ios_spare_warming"
                     else -> "ios_spare_miss"
                 }
-            telemetrySink?.onEvent(
-                WebContainerTelemetryEvent.PoolEvent(
-                    action = action,
-                    keepAliveKey = SPARE_TELEMETRY_KEY,
-                    poolSizeAfter = if (slot.hasItem) 1 else 0,
-                ),
-            )
-            if (installed && !slot.hasItem) refillLater(REFILL_DELAY_SECONDS)
+            runCatching {
+                activeSink?.onEvent(
+                    WebContainerTelemetryEvent.PoolEvent(
+                        action = action,
+                        keepAliveKey = SPARE_TELEMETRY_KEY,
+                        poolSizeAfter = if (slot.hasItem) 1 else 0,
+                        engine = IOS_WKWEBVIEW_ENGINE,
+                    ),
+                )
+            }
+            if (installed && !slot.hasItem && consecutiveAutoRefillFailures < MAX_CONSECUTIVE_AUTO_REFILL_FAILURES) {
+                refillLater(REFILL_DELAY_SECONDS)
+            }
             return null
         }
         val view = candidate.view
@@ -265,24 +290,34 @@ object WebContainerIosSparePool {
         val url = view.URL?.absoluteString
         if (url != WEB_CONTAINER_SPARE_BLANK_URL) {
             retire(view)
-            telemetrySink?.onEvent(
-                WebContainerTelemetryEvent.PoolEvent(
-                    action = "ios_spare_rejected_unexpected_url",
-                    keepAliveKey = SPARE_TELEMETRY_KEY,
-                    poolSizeAfter = 0,
-                ),
-            )
-            if (installed) refillLater(REFILL_DELAY_SECONDS)
+            consecutiveAutoRefillFailures += 1
+            runCatching {
+                activeSink?.onEvent(
+                    WebContainerTelemetryEvent.PoolEvent(
+                        action = "ios_spare_rejected_unexpected_url",
+                        keepAliveKey = SPARE_TELEMETRY_KEY,
+                        poolSizeAfter = 0,
+                        engine = IOS_WKWEBVIEW_ENGINE,
+                    ),
+                )
+            }
+            if (installed && consecutiveAutoRefillFailures < MAX_CONSECUTIVE_AUTO_REFILL_FAILURES) {
+                refillLater(REFILL_DELAY_SECONDS)
+            }
             return null
         }
+        consecutiveAutoRefillFailures = 0
         preferredIgnoresViewportScaleLimits = ignoresViewportScaleLimits
-        telemetrySink?.onEvent(
-            WebContainerTelemetryEvent.PoolEvent(
-                action = "ios_spare_hit",
-                keepAliveKey = SPARE_TELEMETRY_KEY,
-                poolSizeAfter = 0,
-            ),
-        )
+        runCatching {
+            activeSink?.onEvent(
+                WebContainerTelemetryEvent.PoolEvent(
+                    action = "ios_spare_hit",
+                    keepAliveKey = SPARE_TELEMETRY_KEY,
+                    poolSizeAfter = 0,
+                    engine = IOS_WKWEBVIEW_ENGINE,
+                ),
+            )
+        }
         if (installed) refillLater(REFILL_DELAY_SECONDS)
         return view
     }
@@ -332,7 +367,35 @@ object WebContainerIosSparePool {
             val delegate =
                 WebContainerIosSpareWarmupDelegate(
                     onReady = { slot.markReady(generation) },
-                    onFailedOrTerminated = { dead -> slot.invalidateIf { isSameObjCObject(it.view, dead) } },
+                    onLoadFailed = { dead ->
+                        if (slot.invalidateIf { isSameObjCObject(it.view, dead) }) {
+                            consecutiveAutoRefillFailures += 1
+                            if (installed && consecutiveAutoRefillFailures < MAX_CONSECUTIVE_AUTO_REFILL_FAILURES) {
+                                refillLater(REFILL_DELAY_SECONDS)
+                            }
+                        }
+                    },
+                    onProcessTerminated = { dead ->
+                        val evicted = slot.invalidateIf { isSameObjCObject(it.view, dead) }
+                        if (evicted) {
+                            consecutiveAutoRefillFailures += 1
+                            runCatching {
+                                poolTelemetrySink?.onEvent(
+                                    WebContainerTelemetryEvent.RenderProcessGone(
+                                        surfaceId = SPARE_SURFACE_ID,
+                                        didCrash = true,
+                                        recovered = true,
+                                        attempt = 0,
+                                        parked = true,
+                                        engine = IOS_WKWEBVIEW_ENGINE,
+                                    ),
+                                )
+                            }
+                            if (installed && consecutiveAutoRefillFailures < MAX_CONSECUTIVE_AUTO_REFILL_FAILURES) {
+                                refillLater(REFILL_DELAY_SECONDS)
+                            }
+                        }
+                    },
                 )
             warmupDelegate = delegate
             view.navigationDelegate = delegate
@@ -351,7 +414,8 @@ object WebContainerIosSparePool {
 
 private class WebContainerIosSpareWarmupDelegate(
     private val onReady: () -> Unit,
-    private val onFailedOrTerminated: (WebContainerIosWebView) -> Unit,
+    private val onLoadFailed: (WebContainerIosWebView) -> Unit,
+    private val onProcessTerminated: (WebContainerIosWebView) -> Unit,
 ) : NSObject(), WKNavigationDelegateProtocol {
     private var loadSettled = false
     private var invalidated = false
@@ -367,24 +431,32 @@ private class WebContainerIosSpareWarmupDelegate(
     override fun webView(webView: WKWebView, didFailNavigation: WKNavigation?, withError: NSError) {
         if (loadSettled || invalidated) return
         loadSettled = true
-        invalidate(webView)
+        invalidate(webView, terminated = false)
     }
 
     @ObjCSignatureOverride
     override fun webView(webView: WKWebView, didFailProvisionalNavigation: WKNavigation?, withError: NSError) {
         if (loadSettled || invalidated) return
         loadSettled = true
-        invalidate(webView)
+        invalidate(webView, terminated = false)
     }
 
     override fun webViewWebContentProcessDidTerminate(webView: WKWebView) {
         // Must still evict a ready parked spare if iOS terminates its WebContent process while idle.
-        invalidate(webView)
+        invalidate(webView, terminated = true)
     }
 
-    private fun invalidate(webView: WKWebView) {
+    private fun invalidate(
+        webView: WKWebView,
+        terminated: Boolean,
+    ) {
         if (invalidated) return
         invalidated = true
-        (webView as? WebContainerIosWebView)?.let(onFailedOrTerminated)
+        val spare = webView as? WebContainerIosWebView ?: return
+        if (terminated) {
+            onProcessTerminated(spare)
+        } else {
+            onLoadFailed(spare)
+        }
     }
 }

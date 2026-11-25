@@ -567,13 +567,16 @@ internal class WebContainerIosHost(
                     return@evaluateJavaScript
                 }
                 if (err != null && err.domain == "WKErrorDomain" && err.code == 2L) {
-                    telemetrySink?.onEvent(
-                        WebContainerTelemetryEvent.PoolEvent(
-                            action = "ios_spare_zombie_rebuilt",
-                            keepAliveKey = "ios_default_spare",
-                            poolSizeAfter = 0,
-                        ),
-                    )
+                    runCatching {
+                        telemetrySink?.onEvent(
+                            WebContainerTelemetryEvent.PoolEvent(
+                                action = "ios_spare_zombie_rebuilt",
+                                keepAliveKey = "ios_default_spare",
+                                poolSizeAfter = 0,
+                                engine = IOS_WKWEBVIEW_ENGINE,
+                            ),
+                        )
+                    }
                     config?.let { activeCfg -> rebuildWebView(activeCfg, restoreUrl = null) }
                 }
             }
@@ -1192,14 +1195,18 @@ internal class WebContainerIosHost(
         val attempt =
             (action as? WebContainerWatchdogAction.TriggerRecoveryReload)?.recoveryAttempt
                 ?: watchdog.recentRecoveryCount
-        telemetrySink?.onEvent(
-            WebContainerTelemetryEvent.RenderProcessGone(
-                surfaceId = cfg.surfaceId,
-                didCrash = true,
-                recovered = shouldRecover,
-                attempt = attempt,
-            ),
-        )
+        runCatching {
+            telemetrySink?.onEvent(
+                WebContainerTelemetryEvent.RenderProcessGone(
+                    surfaceId = cfg.surfaceId,
+                    didCrash = true,
+                    recovered = shouldRecover,
+                    attempt = attempt,
+                    parked = false,
+                    engine = IOS_WKWEBVIEW_ENGINE,
+                ),
+            )
+        }
         if (shouldRecover) {
             val restoreUrl =
                 sanitizeRendererRestoreUrl(
@@ -1288,12 +1295,15 @@ internal class WebContainerIosHost(
             is WebContainerWatchdogAction.EmitTerminalError -> {
                 val cfg = config
                 if (cfg != null) {
-                    telemetrySink?.onEvent(
-                        WebContainerTelemetryEvent.WatchdogTerminalError(
-                            surfaceId = cfg.surfaceId,
-                            reason = action.reason,
-                        ),
-                    )
+                    runCatching {
+                        telemetrySink?.onEvent(
+                            WebContainerTelemetryEvent.WatchdogTerminalError(
+                                surfaceId = cfg.surfaceId,
+                                reason = action.reason,
+                                engine = IOS_WKWEBVIEW_ENGINE,
+                            ),
+                        )
+                    }
                 }
                 events.onWatchdogTerminalError(action.reason)
             }

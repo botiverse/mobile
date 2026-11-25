@@ -5,6 +5,8 @@ package build.raft.webcontainer
 import build.raft.webcontainer.jsb.JsbPolicy
 import build.raft.webcontainer.jsb.JsbRegistry
 import build.raft.webcontainer.jsb.JsbResult
+import build.raft.webcontainer.pool.WebContainerTelemetryEvent
+import build.raft.webcontainer.pool.WebContainerTelemetrySink
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -21,7 +23,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DesktopWebEngineHostTest {
-    private class FakeDesktopWebSession : DesktopWebSession {
+    private class FakeDesktopWebSession(
+        override val engineName: String = "macos_wkwebview",
+    ) : DesktopWebSession {
         override val component: Component = JPanel()
         var started = false
         var disposed = false
@@ -100,6 +104,7 @@ class DesktopWebEngineHostTest {
                         grantedCapabilities = setOf("ping"),
                     ),
             )
+        val telemetry = mutableListOf<WebContainerTelemetryEvent>()
         var now = 1_000L
         val host =
             DesktopWebContainerHostController(
@@ -112,6 +117,7 @@ class DesktopWebEngineHostTest {
                     ),
                 jsbRegistry = registry,
                 scope = this,
+                telemetrySink = WebContainerTelemetrySink { telemetry += it },
                 nowMs = { now },
                 onReadyChanged = { readyFlag = it },
             )
@@ -150,15 +156,46 @@ class DesktopWebEngineHostTest {
         assertTrue(parsed["ok"]!!.jsonPrimitive.boolean)
         assertEquals("ok", parsed["data"]!!.jsonObject["pong"]!!.jsonPrimitive.content)
 
-        // Process termination recovers cleanly via sanitized restore URL.
+        // Process termination recovers cleanly via sanitized restore URL and tags telemetry with engineName.
         cb.onLoadFinished("https://app.raft.build/workspace?token=secret#frag")
         now += 2_000L
         host.tickWatchdog()
         cb.onProcessTerminated(didCrash = true)
         assertEquals(listOf("https://app.raft.build/workspace"), fakeSession.loadedUrls)
+        val goneEvent = telemetry.filterIsInstance<WebContainerTelemetryEvent.RenderProcessGone>().single()
+        assertEquals("desktop_test", goneEvent.surfaceId)
+        assertEquals("macos_wkwebview", goneEvent.engine)
+        assertTrue(goneEvent.didCrash)
+        assertTrue(goneEvent.recovered)
+        assertFalse(goneEvent.parked)
+
+        // Native create exhaustion emits StartupFailed telemetry with engine attribution.
+        cb.onLoadFailure(MacOsNativeWebSession.NATIVE_CREATE_FAILED_REASON)
+        val startupFail = telemetry.filterIsInstance<WebContainerTelemetryEvent.StartupFailed>().single()
+        assertEquals(MacOsNativeWebSession.NATIVE_CREATE_FAILED_REASON, startupFail.reason)
+        assertEquals("macos_wkwebview", startupFail.engine)
 
         host.dispose()
         assertTrue(fakeSession.disposed)
         assertFalse(controller.isBound)
+    }
+
+    @Test
+    fun desktopHostControllerEmitsStartupFailedTelemetryWhenEngineUnavailable() = runTest {
+        val telemetry = mutableListOf<WebContainerTelemetryEvent>()
+        val failures = mutableListOf<String>()
+        val host =
+            DesktopWebContainerHostController(
+                config = WebContainerConfig(url = "https://app.raft.build/workspace", surfaceId = "desktop_test"),
+                engine = DesktopWebEngine { _, _ -> null },
+                events = WebContainerEvents(onLoadFailure = { failures += it }),
+                scope = this,
+                telemetrySink = WebContainerTelemetrySink { telemetry += it },
+            )
+        host.start()
+        assertEquals(listOf("desktop_engine_unavailable"), failures)
+        val startupFail = telemetry.filterIsInstance<WebContainerTelemetryEvent.StartupFailed>().single()
+        assertEquals("desktop_engine_unavailable", startupFail.reason)
+        assertEquals("desktop_web", startupFail.engine)
     }
 }

@@ -552,21 +552,48 @@ internal class RaftWebContainerCommittedStateTracker {
 internal fun formatWebContainerTelemetryLog(event: WebContainerTelemetryEvent): Pair<Boolean, String> =
     when (event) {
         is WebContainerTelemetryEvent.StartupCompleted ->
-            false to "web_container_startup status=ready elapsedMs=${event.elapsedMs}"
+            false to
+                buildString {
+                    append("web_container_startup status=ready elapsedMs=${event.elapsedMs}")
+                    if (!event.engine.isNullOrBlank()) append(" engine=${event.engine}")
+                }
         is WebContainerTelemetryEvent.StartupFailed ->
-            true to "web_container_startup status=failed reason=${event.reason}"
+            true to
+                buildString {
+                    append("web_container_startup status=failed reason=${event.reason}")
+                    if (!event.engine.isNullOrBlank()) append(" engine=${event.engine}")
+                }
         is WebContainerTelemetryEvent.NavigationBlocked ->
             false to "web_container_nav_blocked surface=${event.surfaceId} reason=${event.reason} url=${event.sanitizedUrl}"
         is WebContainerTelemetryEvent.RenderProcessGone ->
-            true to "web_container_renderer_gone surface=${event.surfaceId} didCrash=${event.didCrash} recovered=${event.recovered} attempt=${event.attempt}"
+            true to
+                buildString {
+                    append(
+                        "web_container_renderer_gone surface=${event.surfaceId} " +
+                            "didCrash=${event.didCrash} recovered=${event.recovered} attempt=${event.attempt}",
+                    )
+                    if (event.parked) append(" parked=true")
+                    event.rendererPriorityAtExit?.let {
+                        append(" priority=${raftWebContainerRendererPriorityLabel(it)}")
+                    }
+                    if (!event.engine.isNullOrBlank()) append(" engine=${event.engine}")
+                }
         is WebContainerTelemetryEvent.WatchdogTerminalError ->
-            true to "web_container_watchdog_terminal surface=${event.surfaceId} reason=${event.reason}"
+            true to
+                buildString {
+                    append("web_container_watchdog_terminal surface=${event.surfaceId} reason=${event.reason}")
+                    if (!event.engine.isNullOrBlank()) append(" engine=${event.engine}")
+                }
         is WebContainerTelemetryEvent.JsbCallCompleted ->
             (!event.success) to "web_container_jsb surface=${event.surfaceId} method=${event.method} ok=${event.success} code=${event.errorCode ?: "ok"} durationMs=${event.durationMs}"
         is WebContainerTelemetryEvent.ResourceIntercepted ->
             false to "web_container_resource surface=${event.surfaceId} hit=${event.hit} source=${event.source ?: "network"} fallback=${event.fallbackReason ?: "none"} url=${event.sanitizedUrl}"
         is WebContainerTelemetryEvent.PoolEvent ->
-            false to "web_container_pool action=${event.action} size=${event.poolSizeAfter}"
+            (event.action in TracedWebContainerPoolAnomalyActions) to
+                buildString {
+                    append("web_container_pool action=${event.action} size=${event.poolSizeAfter}")
+                    if (!event.engine.isNullOrBlank()) append(" engine=${event.engine}")
+                }
         is WebContainerTelemetryEvent.IsolationScopeCleared ->
             false to "web_container_scope_cleared scope=${event.scope} evicted=${event.evictedPooledCount} result=${event.result}"
         is WebContainerTelemetryEvent.MediaCapturePermission ->
@@ -581,15 +608,29 @@ internal fun formatWebContainerTelemetryLog(event: WebContainerTelemetryEvent): 
                 }
     }
 
+/**
+ * Platform-specific crash-monitoring hook for [WebContainerTelemetryEvent] (e.g. forwarding Android
+ * renderer deaths into [RaftWebViewRendererGone] so Hands non-fatal tickets stay active under
+ * `mobile_web_container_v1`).
+ */
+internal expect fun onRaftWebContainerPlatformTelemetry(event: WebContainerTelemetryEvent)
+
 internal val RaftWebContainerTelemetrySink: WebContainerTelemetrySink =
     WebContainerTelemetrySink { event ->
-        val (isWarn, message) = formatWebContainerTelemetryLog(event)
-        if (isWarn) {
-            raftLogWarn(RAFT_WEB_CONTAINER_LOG_TAG, message)
-        } else {
-            raftLogInfo(RAFT_WEB_CONTAINER_LOG_TAG, message)
+        runCatching {
+            val (isWarn, message) = formatWebContainerTelemetryLog(event)
+            if (isWarn) {
+                raftLogWarn(RAFT_WEB_CONTAINER_LOG_TAG, message)
+            } else {
+                raftLogInfo(RAFT_WEB_CONTAINER_LOG_TAG, message)
+            }
         }
+        runCatching { RaftWebContainerTrace.report(event) }
+        runCatching { onRaftWebContainerPlatformTelemetry(event) }
     }
+
+/** Exposes Raft's process-wide container telemetry sink to host-app entry points (e.g. Android warmup). */
+fun raftWebContainerTelemetrySink(): WebContainerTelemetrySink = RaftWebContainerTelemetrySink
 
 /**
  * Platform wrapper applied around [WebContainerView] inside `:shared` (Desktop supplies the

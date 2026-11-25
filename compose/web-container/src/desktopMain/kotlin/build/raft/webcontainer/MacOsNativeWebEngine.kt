@@ -418,6 +418,8 @@ internal class MacOsNativeWebSession(
     override val component: Component
         get() = hostPanel
 
+    override val engineName: String = "macos_wkwebview"
+
     override fun start() {
         if (disposed || started) return
         started = true

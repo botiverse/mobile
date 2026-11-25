@@ -47,6 +47,10 @@ object RaftWebViewRendererGone {
             gate = null
         }
 
+    /** Application context cached when [RaftWebViewRendererGoneReporter] installs, for WebView provider labels. */
+    @Volatile
+    var appContext: Context? = null
+
     /** Test seam: runs the event flush after the current main-thread turn. */
     internal var post: (() -> Unit) -> Unit = { task -> Handler(Looper.getMainLooper()).post(task) }
 
@@ -65,27 +69,64 @@ object RaftWebViewRendererGone {
         runCatching {
             // onRenderProcessGone exists from API 26 only; the check keeps lint's NewApi quiet.
             val api26 = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-            val signal =
-                RaftWebViewRendererGoneSignal(
-                    surface = surface,
-                    didCrash = api26 && detail != null && detail.didCrash(),
-                    rendererPriorityAtExit =
-                        if (api26 && detail != null) detail.rendererPriorityAtExit() else RENDERER_PRIORITY_UNKNOWN,
-                )
-            raftLogWarn(
-                LOG_TAG,
-                "webview_renderer_gone surface=${signal.surface} didCrash=${signal.didCrash} " +
-                    "priority=${raftRendererPriorityLabel(signal.rendererPriorityAtExit)}",
+            enqueueSignal(
+                context = context,
+                signal =
+                    RaftWebViewRendererGoneSignal(
+                        surface = surface,
+                        didCrash = api26 && detail != null && detail.didCrash(),
+                        rendererPriorityAtExit =
+                            if (api26 && detail != null) detail.rendererPriorityAtExit() else RENDERER_PRIORITY_UNKNOWN,
+                    ),
             )
-            val batch = pending
-            if (batch != null) {
-                batch += signal
-                return
-            }
-            pending = mutableListOf(signal)
-            pendingProvider = context?.let { RaftAndroidWebViewProvider.label(it) } ?: "unavailable"
-            post(::flush)
         }
+    }
+
+    /**
+     * Records a renderer-gone signal from a decoupled WebView container (`compose/web-container`)
+     * into the same single-turn coalescer and Hands ticket gate as legacy WebViews. Must be called
+     * on the Android main thread (where `WebViewClient.onRenderProcessGone` runs); never throws.
+     */
+    fun recordSignal(
+        surface: String,
+        didCrash: Boolean,
+        rendererPriorityAtExit: Int = RENDERER_PRIORITY_UNKNOWN,
+        context: Context? = appContext,
+    ) {
+        runCatching {
+            enqueueSignal(
+                context = context,
+                signal =
+                    RaftWebViewRendererGoneSignal(
+                        surface = surface,
+                        didCrash = didCrash,
+                        rendererPriorityAtExit = rendererPriorityAtExit,
+                    ),
+            )
+        }
+    }
+
+    private fun enqueueSignal(
+        context: Context?,
+        signal: RaftWebViewRendererGoneSignal,
+    ) {
+        raftLogWarn(
+            LOG_TAG,
+            "webview_renderer_gone surface=${signal.surface} didCrash=${signal.didCrash} " +
+                "priority=${raftRendererPriorityLabel(signal.rendererPriorityAtExit)}",
+        )
+        val effectiveContext = context ?: appContext
+        val batch = pending
+        if (batch != null) {
+            batch += signal
+            if (pendingProvider == "unavailable" && effectiveContext != null) {
+                pendingProvider = RaftAndroidWebViewProvider.label(effectiveContext)
+            }
+            return
+        }
+        pending = mutableListOf(signal)
+        pendingProvider = effectiveContext?.let { RaftAndroidWebViewProvider.label(it) } ?: "unavailable"
+        post(::flush)
     }
 
     /** Ends the current death event: one log line, and the ticket when the gate lets it through. */
@@ -127,6 +168,7 @@ object RaftWebViewRendererGone {
     internal fun resetForTest() {
         pending = null
         pendingProvider = "unavailable"
+        appContext = null
         ticketSink = null
         dailyStore = RaftWebViewRendererGoneDailyStore.InMemory()
         post = { task -> Handler(Looper.getMainLooper()).post(task) }
