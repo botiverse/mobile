@@ -19,6 +19,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import build.raft.app.data.SharedAdaptiveWorkspaceSession
 import build.raft.app.data.visibleSideThread
 import build.raft.designsystem.focus.LocalRaftAutofocusGuard
@@ -253,6 +254,63 @@ internal class ComposerFocusHolders(
 internal val LocalComposerFocusHolders = staticCompositionLocalOf { ComposerFocusHolders.Default }
 
 /**
+ * Per-window bridge between the platform host window (e.g. Android `RaftCmpActivity`) and the
+ * Compose text inputs inside [RaftWindowFocusScope].
+ *
+ * - Tracks currently focused host-window text inputs ([hasFocusedTextInput]) so window-focus loss
+ *   clears stale editor focus only when a text input actually holds it (Hands b0d1ed9f).
+ * - Tracks in-app overlays that intentionally preserve the host keyboard (`Modal(keepsHostKeyboard = true)`,
+ *   such as thread message long-press menus), so losing Activity window focus to those in-app
+ *   dialog windows leaves composer focus and the IME untouched.
+ * - Holds the window root's Compose `FocusManager.clearFocus(force = true)` handle so the host can
+ *   clear stale Compose focus without calling `InputMethodManager.hideSoftInputFromWindow` (which
+ *   must never interfere with a system floating window's own IME).
+ *
+ * Main thread only.
+ */
+class RaftWindowInputFocusController {
+    private val focusedTextInputs = mutableSetOf<Any>()
+    private val windowFocusLossRetentionTokens = mutableSetOf<Any>()
+    private var clearComposeFocus: (() -> Unit)? = null
+
+    val hasFocusedTextInput: Boolean
+        get() = focusedTextInputs.isNotEmpty()
+
+    val isRetainingInputFocusOnWindowFocusLoss: Boolean
+        get() = windowFocusLossRetentionTokens.isNotEmpty()
+
+    fun setTextInputFocused(owner: Any, focused: Boolean) {
+        if (focused) {
+            focusedTextInputs += owner
+        } else {
+            focusedTextInputs -= owner
+        }
+    }
+
+    fun retainInputFocusOnWindowFocusLoss(token: Any) {
+        windowFocusLossRetentionTokens += token
+    }
+
+    fun releaseInputFocusRetention(token: Any) {
+        windowFocusLossRetentionTokens -= token
+    }
+
+    internal fun bindFocusClear(clear: (() -> Unit)?) {
+        clearComposeFocus = clear
+    }
+
+    fun clearComposeInputFocus(): Boolean {
+        val clear = clearComposeFocus ?: return false
+        clear()
+        return true
+    }
+}
+
+/** This window's [RaftWindowInputFocusController], or null outside a [RaftWindowFocusScope]. */
+internal val LocalRaftWindowInputFocusController =
+    staticCompositionLocalOf<RaftWindowInputFocusController?> { null }
+
+/**
  * One app window's focus bookkeeping: its own focus coordinator, autofocus guard and composer
  * focus holders, so a dialog, a focused field or a focused composer in one window never decides
  * automatic focus in another (Android's app windows, one per server, and the desktop window). Put
@@ -265,14 +323,23 @@ internal val LocalComposerFocusHolders = staticCompositionLocalOf { ComposerFocu
 fun RaftWindowFocusScope(
     modifier: Modifier = Modifier,
     coordinator: RaftFocusCoordinator? = null,
+    inputFocusController: RaftWindowInputFocusController? = null,
     content: @Composable () -> Unit,
 ) {
     val resolvedCoordinator = coordinator ?: remember { RaftFocusCoordinator() }
+    val resolvedInputFocusController = inputFocusController ?: remember { RaftWindowInputFocusController() }
     val guard = remember(resolvedCoordinator) { RaftAutofocusGuard(resolvedCoordinator) }
     val holders = remember(resolvedCoordinator) { ComposerFocusHolders(resolvedCoordinator) }
+    val rootFocusManager = LocalFocusManager.current
+    val currentRootFocusManager by rememberUpdatedState(rootFocusManager)
+    DisposableEffect(resolvedInputFocusController) {
+        resolvedInputFocusController.bindFocusClear { currentRootFocusManager.clearFocus(force = true) }
+        onDispose { resolvedInputFocusController.bindFocusClear(null) }
+    }
     CompositionLocalProvider(
         LocalRaftAutofocusGuard provides guard,
         LocalComposerFocusHolders provides holders,
+        LocalRaftWindowInputFocusController provides resolvedInputFocusController,
     ) {
         Box(modifier = modifier.raftObserveFocusInteractions(coordinator = resolvedCoordinator, forceInstall = true)) {
             CompositionLocalProvider(

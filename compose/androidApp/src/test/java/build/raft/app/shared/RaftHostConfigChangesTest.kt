@@ -24,6 +24,14 @@ class RaftHostConfigChangesTest {
             ".shared.RaftDocumentShellActivity",
         )
 
+    private val pageHostActivities =
+        listOf(
+            ".shared.RaftCmpActivity",
+            ".shared.RaftLegacyHostActivity",
+            ".shared.RaftAppShellActivity",
+            ".shared.RaftDocumentShellActivity",
+        )
+
     @Test
     fun everyPageHostHandlesUiModeLikeOrientationAndScreenSize() {
         val activities = manifestActivities()
@@ -33,6 +41,28 @@ class RaftHostConfigChangesTest {
             listOf("orientation", "screenSize", "screenLayout", "smallestScreenSize", "uiMode").forEach { change ->
                 assertTrue("$name must handle $change in place (configChanges=$handled)", change in handled)
             }
+        }
+    }
+
+    @Test
+    fun everyPageHostDeclaresStateHiddenAndAdjustResizeSoftInputMode() {
+        val activities = manifestActivities()
+        pageHostActivities.forEach { name ->
+            val activity = requireNotNull(activities[name]) { "$name missing from the manifest" }
+            val softInputFlags =
+                activity.getAttribute("android:windowSoftInputMode")
+                    .split('|')
+                    .map(String::trim)
+                    .filter(String::isNotEmpty)
+                    .toSet()
+            assertTrue(
+                "$name must include stateHidden to avoid auto-raising IME on window refocus (flags=$softInputFlags)",
+                "stateHidden" in softInputFlags,
+            )
+            assertTrue(
+                "$name must include adjustResize so Compose receives IME insets (flags=$softInputFlags)",
+                "adjustResize" in softInputFlags,
+            )
         }
     }
 

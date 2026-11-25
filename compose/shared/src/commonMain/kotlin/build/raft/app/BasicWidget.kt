@@ -4,6 +4,7 @@ package build.raft.app
 
 import build.raft.designsystem.focus.LocalRaftAutofocusTargetField
 import build.raft.designsystem.focus.LocalRaftAutofocusGuard
+import build.raft.designsystem.focus.LocalRaftFocusModalToken
 import build.raft.designsystem.focus.LocalRaftFocusRegion
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
@@ -1465,6 +1466,20 @@ fun Modal(
     // here in the page: the dialog is its own full-window layer, so it pads the whole left/right
     // inset itself. Zero outside a page shell (previews, screenshot tests).
     val horizontalSafeArea = LocalRaftWindowHorizontalSafeArea.current
+    val windowInputFocusController = LocalRaftWindowInputFocusController.current
+    val keyboardRetentionToken = remember { Any() }
+    // Registered ahead of RaftWindowDialog so the retention token is live before the Android
+    // Dialog window calls show() and shifts window focus away from RaftCmpActivity.
+    DisposableEffect(windowInputFocusController, keyboardRetentionToken, keepsHostKeyboard) {
+        if (keepsHostKeyboard) {
+            windowInputFocusController?.retainInputFocusOnWindowFocusLoss(keyboardRetentionToken)
+        }
+        onDispose {
+            if (keepsHostKeyboard) {
+                windowInputFocusController?.releaseInputFocusRetention(keyboardRetentionToken)
+            }
+        }
+    }
     // The strips stay transparent: under them is the page (its full-width canvas), and a
     // scrim bleeds over them (RaftModalDismissBarrier). Painting them would cover the ends of a
     // host tab bar while a menu is open.
@@ -1927,15 +1942,25 @@ internal fun Modifier.raftAppEditorBehavior(
     // This window's guard: a field focused in another app window never blocks this one's composer.
     val autofocusGuard = LocalRaftAutofocusGuard.current
     val focusRegion = LocalRaftFocusRegion.current
+    val windowInputFocusController = LocalRaftWindowInputFocusController.current
+    // Only host-window editors (outside a RaftWindowDialog modal) register for Activity
+    // window-focus-loss cleanup; modal editors live in their own Android Dialog window.
+    val tracksHostWindowInputFocus = LocalRaftFocusModalToken.current == null
     androidx.compose.runtime.SideEffect {
         if (!blocksComposerAutofocus) {
             if (lastFocus) autofocusGuard.setFieldFocused(focusOwner, false, focusRegion)
         } else if (lastFocus) {
             autofocusGuard.setFieldFocused(focusOwner, true, focusRegion)
         }
+        if (lastFocus) {
+            windowInputFocusController?.setTextInputFocused(focusOwner, tracksHostWindowInputFocus)
+        }
     }
-    DisposableEffect(focusOwner, autofocusGuard) {
-        onDispose { autofocusGuard.setFieldFocused(focusOwner, false, focusRegion) }
+    DisposableEffect(focusOwner, autofocusGuard, windowInputFocusController) {
+        onDispose {
+            autofocusGuard.setFieldFocused(focusOwner, false, focusRegion)
+            windowInputFocusController?.setTextInputFocused(focusOwner, false)
+        }
     }
     return this
         .raftImeEnterAction(
@@ -1957,6 +1982,9 @@ internal fun Modifier.raftAppEditorBehavior(
                     if (participatesInGlobalFocusDismiss) {
                         focusOwnerRegistry?.setFocused(focusOwner, true, focusOwnerAnchor::resolveBounds)
                     }
+                    if (tracksHostWindowInputFocus) {
+                        windowInputFocusController?.setTextInputFocused(focusOwner, true)
+                    }
                     currentOnFocus()
                     lastFocus = true
                 }
@@ -1964,6 +1992,7 @@ internal fun Modifier.raftAppEditorBehavior(
                 if (participatesInGlobalFocusDismiss) {
                     focusOwnerRegistry?.setFocused(focusOwner, false)
                 }
+                windowInputFocusController?.setTextInputFocused(focusOwner, false)
                 currentOnBlur()
                 lastFocus = false
             }

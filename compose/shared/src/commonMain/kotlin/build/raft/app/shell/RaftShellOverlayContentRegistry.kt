@@ -19,6 +19,7 @@ internal data class RaftShellOverlayContentEntry(
     val viewportGap: Float,
     val horizontalOffset: Float,
     val verticalOffset: Float,
+    val keepsHostKeyboard: Boolean = false,
     val content: @Composable (onSelected: (String) -> Unit) -> Unit,
     val onSelected: (String) -> Unit,
 )

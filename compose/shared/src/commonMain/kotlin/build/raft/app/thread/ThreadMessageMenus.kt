@@ -870,6 +870,7 @@ private fun ThreadShellAwareAnchoredPopover(
                     viewportGap = viewportGapPx,
                     horizontalOffset = 0f,
                     verticalOffset = 0f,
+                    keepsHostKeyboard = keepsHostKeyboard,
                     content = shellContent,
                     onSelected = onShellSelected,
                 )

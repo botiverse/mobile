@@ -30,6 +30,7 @@ import build.raft.app.data.RaftTelemetryPrivacy
 import build.raft.app.RaftScreenshotFeedbackRuntime
 import build.raft.app.extractScreenshotFeedbackPageContext
 import build.raft.app.RaftWindowFocusScope
+import build.raft.app.RaftWindowInputFocusController
 import build.raft.app.RaftDatabaseLaunchReadiness
 import build.raft.designsystem.focus.RaftFocusCoordinator
 import android.graphics.Matrix
@@ -831,6 +832,7 @@ internal open class RaftCmpActivity :
     private val bridge by bridgeDelegate
     private val hostEvents = RaftHostEvents()
     private val windowFocusCoordinator = RaftFocusCoordinator()
+    private val windowInputFocusController = RaftWindowInputFocusController()
     private val adaptivePaneHostDelegate =
         lazy {
             AndroidAdaptivePaneHost(
@@ -1215,7 +1217,10 @@ internal open class RaftCmpActivity :
                     // page's RaftCmpRoot uses it instead of adding its own).
                     // This window's own focus bookkeeping: another app window's dialog or focused
                     // field never decides this window's composer focus (RaftWindowFocusScope).
-                    RaftWindowFocusScope(coordinator = windowFocusCoordinator) {
+                    RaftWindowFocusScope(
+                        coordinator = windowFocusCoordinator,
+                        inputFocusController = windowInputFocusController,
+                    ) {
                         CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
                             RaftCmpToastLayer {
                                 RaftToastHostImeBottomInset()
@@ -2056,6 +2061,13 @@ internal open class RaftCmpActivity :
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
             suppressVisualKeyboard()
+        } else {
+            clearAndroidHostInputFocusOnWindowFocusLoss(
+                activity = this,
+                windowFocusCoordinator = windowFocusCoordinator,
+                windowInputFocusController = windowInputFocusController,
+                pageName = pageName,
+            )
         }
     }
 
@@ -10643,3 +10655,108 @@ internal fun androidWindowInsetsChangedPayload(
         "statusBarHidden" to insets.statusBarHidden,
         RaftCmpActivity.KEY_HOST_WINDOW_ID to hostWindowId,
     )
+
+internal data class WindowFocusLossInputClearDecision(
+    val shouldClear: Boolean,
+    val reason: String,
+)
+
+internal fun shouldClearInputFocusOnWindowFocusLoss(
+    hasWindowFocus: Boolean,
+    isFinishingOrDestroyed: Boolean,
+    retainsInputFocusForInAppOverlay: Boolean,
+    trackedTextInputFocused: Boolean,
+    composerFocused: Boolean,
+    otherHostTextFieldFocused: Boolean,
+    nativeTextEditorFocused: Boolean,
+): WindowFocusLossInputClearDecision {
+    if (hasWindowFocus) return WindowFocusLossInputClearDecision(false, "window_gained_focus")
+    if (isFinishingOrDestroyed) return WindowFocusLossInputClearDecision(false, "activity_closing")
+    if (retainsInputFocusForInAppOverlay) {
+        return WindowFocusLossInputClearDecision(false, "in_app_keyboard_retained_modal")
+    }
+    val hasFocusedInput =
+        trackedTextInputFocused ||
+            composerFocused ||
+            otherHostTextFieldFocused ||
+            nativeTextEditorFocused
+    if (!hasFocusedInput) return WindowFocusLossInputClearDecision(false, "no_focused_text_input")
+    return WindowFocusLossInputClearDecision(true, "external_window_focus_loss")
+}
+
+internal data class WindowFocusLossInputClearResult(
+    val cleared: Boolean,
+    val reason: String,
+    val composeCleared: Boolean = false,
+    val viewCleared: Boolean = false,
+    val finalFocusClassName: String = "none",
+)
+
+/**
+ * Hands b0d1ed9f (#wg-mobile-feedback:#310): clears Raft's own stale Compose/View editor focus
+ * when the host Activity loses window focus to an external window (such as a system floating
+ * window), so tapping back onto the message list does not re-raise and immediately slam the IME.
+ *
+ * Preserves focus for in-app keyboard-retaining overlays (`Modal(keepsHostKeyboard = true)`, e.g.
+ * message long-press menus), skips unrelated focus changes when no text input is focused, and
+ * never calls `hideSoftInputFromWindow` so it never interferes with another window's IME.
+ */
+internal fun clearAndroidHostInputFocusOnWindowFocusLoss(
+    activity: Activity,
+    windowFocusCoordinator: RaftFocusCoordinator,
+    windowInputFocusController: RaftWindowInputFocusController,
+    pageName: String,
+    rootFocusSinkId: Int = R.id.raft_root,
+    log: (String) -> Unit = { message -> RaftAppLog.record("SlockIme", message) },
+): WindowFocusLossInputClearResult {
+    val focusedView = activity.focusedHostView()
+    val trackedTextInputFocused = windowInputFocusController.hasFocusedTextInput
+    val composerFocused = windowFocusCoordinator.anyComposerFocused
+    val otherHostTextFieldFocused = !windowFocusCoordinator.modalOpen && windowFocusCoordinator.otherTextFieldFocused
+    val nativeTextEditorFocused = focusedView is EditText
+    val decision =
+        shouldClearInputFocusOnWindowFocusLoss(
+            hasWindowFocus = false,
+            isFinishingOrDestroyed = activity.isFinishing || activity.isDestroyed,
+            retainsInputFocusForInAppOverlay = windowInputFocusController.isRetainingInputFocusOnWindowFocusLoss,
+            trackedTextInputFocused = trackedTextInputFocused,
+            composerFocused = composerFocused,
+            otherHostTextFieldFocused = otherHostTextFieldFocused,
+            nativeTextEditorFocused = nativeTextEditorFocused,
+        )
+    if (!decision.shouldClear) {
+        return WindowFocusLossInputClearResult(
+            cleared = false,
+            reason = decision.reason,
+            finalFocusClassName = focusedView?.javaClass?.simpleName ?: "none",
+        )
+    }
+    val composeCleared = windowInputFocusController.clearComposeInputFocus()
+    val rootSink = activity.findViewById<View?>(rootFocusSinkId)
+    var viewCleared = false
+    val currentFocusedAfterCompose = activity.focusedHostView()
+    if (currentFocusedAfterCompose != null && currentFocusedAfterCompose !== rootSink) {
+        currentFocusedAfterCompose.clearFocus()
+        viewCleared = true
+    }
+    if (rootSink != null && activity.focusedHostView() !== rootSink) {
+        rootSink.requestFocus()
+    }
+    val finalFocusClassName = activity.focusedHostView()?.javaClass?.simpleName ?: "none"
+    log(
+        "window_focus_loss_clear_input_focus page=$pageName " +
+            "composerFocused=$composerFocused otherTextFocused=$otherHostTextFieldFocused " +
+            "trackedTextFocused=$trackedTextInputFocused nativeEditFocused=$nativeTextEditorFocused " +
+            "composeCleared=$composeCleared viewCleared=$viewCleared " +
+            "finalFocus=$finalFocusClassName",
+    )
+    return WindowFocusLossInputClearResult(
+        cleared = true,
+        reason = decision.reason,
+        composeCleared = composeCleared,
+        viewCleared = viewCleared,
+        finalFocusClassName = finalFocusClassName,
+    )
+}
+
+private fun Activity.focusedHostView(): View? = window?.decorView?.findFocus() ?: currentFocus
