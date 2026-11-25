@@ -1289,7 +1289,6 @@ HSPLbuild/raft/app/SharedThreadDataSource;->cachePayload(Lbuild/raft/app/RaftThr
 HSPLbuild/raft/app/SharedThreadDataSource;->captureReplyCacheProducerContext$shared_debug(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadDataSource;->fetchThreadPayload(Lbuild/raft/app/RaftThreadScreenPayload;ZZZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadDataSource;->markVisibleChannelRead(Ljava/lang/String;Ljava/lang/Long;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-HSPLbuild/raft/app/SharedThreadDataSource;->readReplyCacheIdentitySource(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadDataSource;->readReplyResolutionScope(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/SharedThreadPayloadStore;->put(Ljava/lang/String;Ljava/lang/String;Lbuild/raft/app/RaftThreadScreenPayload;)V
 HSPLbuild/raft/app/SharedThreadState;-><init>(Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/ThreadTimelineSlice;Ljava/util/Map;Ljava/util/Set;Lbuild/raft/app/ThreadAccessResolution;ZZLbuild/raft/app/ConversationAccessCandidate;ZLbuild/raft/app/ChannelProfileUpdateStatus;Ljava/lang/String;Lbuild/raft/app/LoadMembersStatus;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -1606,6 +1605,8 @@ HSPLbuild/raft/app/ThreadPayloadFetch;->fetchThreadPayloadWithResolutionScope(Lb
 HSPLbuild/raft/app/ThreadPayloadFetch;->resolveReplyThreadStream(Lbuild/raft/app/RaftThreadScreenPayload;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/ThreadReactionsKt$ThreadReactionAtlasProvider$2;->invoke(Landroidx/compose/runtime/Composer;I)V
 HSPLbuild/raft/app/ThreadReactionsKt$ThreadReactionAtlasProvider$2;->invoke(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+HSPLbuild/raft/app/ThreadReplyIdentityCapture;->readReplyCacheIdentitySource(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+HSPLbuild/raft/app/ThreadReplyIdentityCapture;->readReplyResolutionScope(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLbuild/raft/app/ThreadSecondaryHydration$launchBackgroundMembersHydration$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/ThreadSecondaryHydration$launchSecondaryTimelineRefresh$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/ThreadSecondaryHydration;->access$refreshSecondaryTimelineData(Lbuild/raft/app/ThreadSecondaryHydration;Lbuild/raft/app/RaftThreadScreenPayload;Lbuild/raft/app/data/MviStaleToken;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;

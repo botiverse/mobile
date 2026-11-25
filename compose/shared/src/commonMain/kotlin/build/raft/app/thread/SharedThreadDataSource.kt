@@ -90,11 +90,9 @@ import build.raft.app.network.sync.ThreadDurableRequestStamp
 import build.raft.app.network.sync.ThreadRepliesAcceptedProjection
 import build.raft.app.network.sync.ThreadRepliesPageIdentity
 import build.raft.app.network.sync.RaftCachedThreadReplyWindow
-import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlin.time.TimeSource
@@ -363,6 +361,15 @@ internal class SharedThreadDataSource(
             payloadCache = payloadCache,
             diagnosticsLogger = diagnosticsLogger,
         )
+    /** Samples the reply-cache identity and holds the owner it last captured; see [ThreadReplyIdentityCapture]. */
+    private val identityCapture: ThreadReplyIdentityCapture =
+        ThreadReplyIdentityCapture(
+            provenanceOwner = provenanceOwner,
+            messageStore = messageStore,
+            replyCacheIdentityAuthority = replyCacheIdentityAuthority,
+            replyCacheIdentityTransitionWaiter = replyCacheIdentityTransitionWaiter,
+            replyCacheIdentitySourceCapturedHook = { onReplyCacheIdentitySourceCapturedForTest },
+        )
     /** Action-card commands (commit, reconfirm, execute, mark executed); see [ThreadActionCardCommands]. */
     private val actionCardCommands =
         ThreadActionCardCommands(
@@ -550,15 +557,13 @@ internal class SharedThreadDataSource(
             },
             markdownReplyCacheScopeCapturedHook = { onMarkdownReplyCacheScopeCapturedForTest },
         )
-    private val cacheEnvironmentId = MutableStateFlow("")
-    private val cacheServerId = MutableStateFlow("")
-    private val cachePrincipalId = MutableStateFlow("")
-    private val cachePayloadOwnerScopeId = MutableStateFlow("")
-    private val replyCacheCaptureSequence = atomic(0L)
+    // Written only by [identityCapture]; read through it.
+    private val cacheEnvironmentId: StateFlow<String> get() = identityCapture.cacheEnvironmentId
+    private val cacheServerId: StateFlow<String> get() = identityCapture.cacheServerId
+    private val cachePrincipalId: StateFlow<String> get() = identityCapture.cachePrincipalId
+    private val cachePayloadOwnerScopeId: StateFlow<String> get() = identityCapture.cachePayloadOwnerScopeId
     internal val replyCacheProvenanceState: StateFlow<ReplyCacheProvenance?> =
         provenanceOwner.replyCacheProvenanceState
-    // The lock and the provenance it guards are owned by [provenanceOwner]; read through it.
-    private val replyCacheProvenance: StateFlow<ReplyCacheProvenance?> get() = provenanceOwner.replyCacheProvenanceState
     internal var onReplyCacheIdentitySourceCapturedForTest: (suspend () -> Unit)? = null
     internal var onMarkdownReplyCacheScopeCapturedForTest: (suspend () -> Unit)? = null
     internal var onReplyThreadAccessValidatedForTest: (suspend () -> Unit)? = null
@@ -625,73 +630,7 @@ internal class SharedThreadDataSource(
         canonicalPayload: RaftThreadScreenPayload,
     ): RaftThreadScreenPayload = provenanceOwner.restorePendingLocalSends(provenance, route, canonicalPayload)
 
-    private suspend fun readReplyResolutionScope(): ReplyResolutionScope? {
-        val captureSequence = replyCacheCaptureSequence.incrementAndGet()
-        var transitionAttempts = 0
-        while (true) {
-            var source: ThreadReplyCacheIdentitySnapshot? = null
-            var sampleAttempts = 0
-            while (source == null && sampleAttempts < 4) {
-                sampleAttempts += 1
-                val candidate = readReplyCacheIdentitySource()
-                onReplyCacheIdentitySourceCapturedForTest?.invoke()
-                val confirmed = readReplyCacheIdentitySource()
-                if (candidate == confirmed) {
-                    source = confirmed
-                    break
-                }
-            }
-            if (source != null) {
-                val provenance = publishReplyCacheProvenance(source, captureSequence)
-                cacheEnvironmentId.value = provenance.environmentId
-                cacheServerId.value = provenance.serverId
-                cachePrincipalId.value = provenance.principalId
-                cachePayloadOwnerScopeId.value = provenance.threadPayloadOwnerScopeId.orEmpty()
-                return ReplyResolutionScope(
-                    session = source.session,
-                    provenance = provenance,
-                    sharedMessageStore = messageStore != null
-                )
-            }
-
-            // A durable session can become visible before the provider-owned auth-revision collector
-            // publishes its matching immutable context or before this shell's selected-server owner
-            // converges. Retire the old token before waiting so stale page producers stay zero-write,
-            // then pass that retired authority as the only license for an A→B owner transition. Stable
-            // hybrids, environment mismatches, and missing authority remain fail-closed.
-            val transitionAnchor =
-                replyCacheProvenance.value?.let { current ->
-                    ThreadReplyCacheIdentityTransitionAnchor(
-                        environmentId = current.environmentId,
-                        principalId = current.principalId,
-                        authGeneration = current.authGeneration,
-                        selectionGeneration = current.selectionGeneration,
-                    )
-                }
-            clearReplyCacheProvenance(captureSequence)
-            val shouldRetry =
-                transitionAttempts < 4 &&
-                    replyCacheIdentityTransitionWaiter?.invoke(transitionAnchor) == true
-            if (!shouldRetry) return null
-            transitionAttempts += 1
-        }
-    }
-
-    private suspend fun readReplyCacheIdentitySource(): ThreadReplyCacheIdentitySnapshot? =
-        replyCacheIdentityAuthority()
-
-    private fun publishReplyCacheProvenance(
-        source: ThreadReplyCacheIdentitySnapshot,
-        captureSequence: Long
-    ): ReplyCacheProvenance = provenanceOwner.publishReplyCacheProvenance(source, captureSequence)
-
-    private fun clearReplyCacheProvenance(captureSequence: Long) {
-        provenanceOwner.clearReplyCacheProvenance(captureSequence)
-        cacheEnvironmentId.value = ""
-        cacheServerId.value = ""
-        cachePrincipalId.value = ""
-        cachePayloadOwnerScopeId.value = ""
-    }
+    private suspend fun readReplyResolutionScope(): ReplyResolutionScope? = identityCapture.readReplyResolutionScope()
 
     internal fun isCurrentReplyCacheProvenance(expected: ReplyCacheProvenance): Boolean =
         provenanceOwner.isCurrentReplyCacheProvenance(expected)
