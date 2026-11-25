@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.ThreadRealtimeFolding.InFlightRealtimeFold
 import build.raft.app.data.ConversationReadOnSight
 import build.raft.app.data.raftConversationReadOnSight
 import build.raft.app.data.DataResult
@@ -20,20 +20,12 @@ import build.raft.app.data.ThreadPendingSendJournalDrainStore
 import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.withInboxFetchReason
 import build.raft.app.data.map
-import build.raft.app.data.realtime.isSyncHorizonReset
 import build.raft.app.data.realtime.RealtimeVisibleStreamGapRequest
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
-import build.raft.app.model.Message
 import build.raft.app.model.MessageId
-import build.raft.app.model.MessageNew
-import build.raft.app.model.MessageUpdated
 import build.raft.app.model.RealtimeEvent
-import build.raft.app.model.RealtimeRefreshRequired
-import build.raft.app.model.ThreadReplyUpdated
-import build.raft.app.model.ThreadUpdated
-import build.raft.app.model.SyncResumeResponse
 import build.raft.app.network.sync.CanonicalMessageV2ThreadJoinConfirmed
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.SyncScopeKey
@@ -77,12 +69,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.TimeSource
-
-private data class PendingReactionRealtimeGuard(
-    val messageId: String,
-    val emoji: String,
-    val selected: Boolean
-)
 
 private const val SharedThreadFirstFrameDelayMillis = 16L
 
@@ -352,78 +338,9 @@ internal class SharedThreadStore(
     private var routeStaleTokenValue = MviStaleToken.Initial.value
     private var nextThreadRepliesRebaselineGeneration: Long = 0L
     private val initialAccessStateMutex = Mutex()
-    private val inFlightRealtimeFoldLock = SynchronizedObject()
-    private val inFlightRealtimeFolds = mutableListOf<InFlightRealtimeFold>()
-
-    /**
-     * artin #110: the live message events a refresh in flight received for its route, in arrival
-     * order. They are folded onto its answer when it lands (web merges its answer and the socket
-     * events in one store), so an edit / delete / reaction that arrived mid-flight is not lost and
-     * a generation moved only by them needs no second fetch. [complete] turns false when an event
-     * could not be held (a seq gap or a sync horizon reset): the refresh then fetches again.
-     */
-    private class InFlightRealtimeFold(val staleToken: MviStaleToken) {
-        val events = mutableListOf<InFlightRealtimeEvent>()
-        val messageIds = mutableSetOf<String>()
-        var complete = true
-    }
-
-    private class InFlightRealtimeEvent(
-        val event: RealtimeEvent,
-        val currentUserId: String?,
-        val activeReplyParentMessageId: MessageId?,
-    )
-
-    private fun beginInFlightRealtimeFold(staleToken: MviStaleToken): InFlightRealtimeFold =
-        InFlightRealtimeFold(staleToken).also { fold ->
-            synchronized(inFlightRealtimeFoldLock) { inFlightRealtimeFolds += fold }
-        }
-
-    private fun endInFlightRealtimeFold(fold: InFlightRealtimeFold) {
-        synchronized(inFlightRealtimeFoldLock) { inFlightRealtimeFolds.remove(fold) }
-    }
-
-    private fun recordInFlightRealtime(
-        staleToken: MviStaleToken,
-        event: RealtimeEvent?,
-        messageIds: Collection<String> = emptyList(),
-        currentUserId: String? = null,
-        activeReplyParentMessageId: MessageId? = null,
-    ) {
-        synchronized(inFlightRealtimeFoldLock) {
-            inFlightRealtimeFolds
-                .filter { fold -> fold.staleToken == staleToken }
-                .forEach { fold ->
-                    if (event == null) {
-                        fold.complete = false
-                    } else {
-                        fold.events += InFlightRealtimeEvent(event, currentUserId, activeReplyParentMessageId)
-                        fold.messageIds += messageIds
-                    }
-                }
-        }
-    }
-
-    private fun InFlightRealtimeFold.holdsAll(messageIds: Set<String>): Boolean =
-        synchronized(inFlightRealtimeFoldLock) { complete && this.messageIds.containsAll(messageIds) }
-
-    /** The held events replayed in order through the realtime reducer (idempotent by message id). */
-    private fun RaftThreadScreenPayload.withInFlightRealtimeFolded(buffer: InFlightRealtimeFold): RaftThreadScreenPayload {
-        val events = synchronized(inFlightRealtimeFoldLock) { buffer.events.toList() }
-        return events.fold(this) { payload, held ->
-            payload.applyRealtimeEvent(
-                event = held.event,
-                currentUserId = held.currentUserId,
-                activeReplyParentMessageId = held.activeReplyParentMessageId,
-                shouldPreserveReactionsForRealtime = { message, userId ->
-                    shouldPreserveReactionsForRealtime(message, userId)
-                },
-            )
-        }
-    }
-    // The catch-up launched off the realtime authority lock ([launchRealtimeGapRecovery]); cancelled by [clear].
+    // The catch-up launched off the realtime authority lock ([ThreadRealtimeGapRecovery.launchRealtimeGapRecovery]); cancelled by [clear].
     private var realtimeGapRecoveryJob: Job? = null
-    /** Test injection point: sees every catch-up job [launchRealtimeGapRecovery] starts, in launch order. */
+    /** Test injection point: sees every catch-up job [ThreadRealtimeGapRecovery.launchRealtimeGapRecovery] starts, in launch order. */
     internal var onRealtimeGapRecoveryLaunchedForTest: ((Job) -> Unit)? = null
     private var loadOlderState: LoadOlderState? = null
     /**
@@ -449,7 +366,7 @@ internal class SharedThreadStore(
     /**
      * Newer pages and realtime gap recovery (resume / heartbeat / join-ack catch-up); see
      * [ThreadRealtimeGapRecovery]. It owns [realtimeGapRecoveryMutex] and the state it guards
-     * ([realtimeGapRecoveryState], [loadNewerState]). Realtime folding ([applyRealtimeEvent]), the
+     * ([realtimeGapRecoveryState], [loadNewerState]). [ThreadRealtimeFolding] uses them directly; the
      * join-ack check and refresh still read them here, through the accessors below, under the same Mutex.
      * [realtimeGapRecoveryJob] stays here: [clear] cancels it.
      */
@@ -474,23 +391,47 @@ internal class SharedThreadStore(
         )
     private val realtimeGapRecoveryMutex: Mutex
         get() = threadRealtimeGapRecovery.realtimeGapRecoveryMutex
-    private var realtimeGapRecoveryState: RealtimeGapRecoveryState?
+    private val realtimeGapRecoveryState: RealtimeGapRecoveryState?
         get() = threadRealtimeGapRecovery.realtimeGapRecoveryState
-        set(value) {
-            threadRealtimeGapRecovery.realtimeGapRecoveryState = value
-        }
     private val loadNewerState: LoadNewerState?
         get() = threadRealtimeGapRecovery.loadNewerState
-    private var nextRealtimeGapRecoveryId: Long
-        get() = threadRealtimeGapRecovery.nextRealtimeGapRecoveryId
-        set(value) {
-            threadRealtimeGapRecovery.nextRealtimeGapRecoveryId = value
-        }
     private val gapCatchUpRetryableFailures: Long
         get() = threadRealtimeGapRecovery.gapCatchUpRetryableFailures
     /** See [setViewportFollowsLatest]. */
     private var viewportFollowsLatest: Boolean = true
-    private val pendingReactionRealtimeGuards = mutableMapOf<String, PendingReactionRealtimeGuard>()
+    /**
+     * Realtime folding; see [ThreadRealtimeFolding]. It owns the in-flight folds with their lock and
+     * [pendingReactionRealtimeGuards] (armed and cleared here).
+     */
+    private val threadRealtimeFolding =
+        ThreadRealtimeFolding(
+            dataSource = dataSource,
+            diagnosticsLogger = diagnosticsLogger,
+            threadRepliesSyncHost = threadRepliesSyncHost,
+            readStateProjection = readStateProjection,
+            threadVisibleRead = threadVisibleRead,
+            threadRealtimeGapRecovery = threadRealtimeGapRecovery,
+            currentState = { _state.value },
+            currentRouteStaleToken = { routeStaleToken },
+            currentVisiblePayloadOwnerScopeId = { visiblePayloadOwnerScopeId },
+            reducePayloadPatch = ::reducePayloadPatch,
+            routeStillCurrent = ::routeStillCurrent,
+            captureThreadRepliesPageIdentity = { payload -> captureThreadRepliesPageIdentity(payload) },
+            dispatch = ::dispatch,
+        )
+    private val pendingReactionRealtimeGuards: MutableMap<String, PendingReactionRealtimeGuard>
+        get() = threadRealtimeFolding.pendingReactionRealtimeGuards
+
+    private fun beginInFlightRealtimeFold(staleToken: MviStaleToken): InFlightRealtimeFold =
+        threadRealtimeFolding.beginInFlightRealtimeFold(staleToken)
+
+    private fun endInFlightRealtimeFold(fold: InFlightRealtimeFold) = threadRealtimeFolding.endInFlightRealtimeFold(fold)
+
+    private fun InFlightRealtimeFold.holdsAll(messageIds: Set<String>): Boolean =
+        with(threadRealtimeFolding) { this@holdsAll.holdsAll(messageIds) }
+
+    private fun RaftThreadScreenPayload.withInFlightRealtimeFolded(buffer: InFlightRealtimeFold): RaftThreadScreenPayload =
+        with(threadRealtimeFolding) { this@withInFlightRealtimeFolded.withInFlightRealtimeFolded(buffer) }
 
     internal data class LoadOlderState(
         val id: Long,
@@ -530,19 +471,6 @@ internal class SharedThreadStore(
         val routePayload: RaftThreadScreenPayload,
         val staleToken: MviStaleToken,
         val apply: suspend () -> Unit,
-    )
-
-    private data class RealtimeEventDecision(
-        val source: String,
-        val emitted: Boolean = false,
-        val messageCount: Int = 0,
-        val recoveryId: Long? = null,
-        val recoveryInitial: RaftThreadScreenPayload? = null,
-        val recoveryRequest: RealtimeVisibleStreamGapRequest? = null,
-        val replyCountGap: ReplyCountRealtimeGap? = null,
-        val dropped: Boolean = false,
-        /** An id-only `channel:updated` named this page's channel: re-read it (archive state included). */
-        val reloadForChannelUpdate: Boolean = false,
     )
 
     fun dispatch(intent: SharedThreadIntent) {
@@ -3979,464 +3907,11 @@ internal class SharedThreadStore(
     private suspend fun applyRealtimeEvent(
         event: RealtimeEvent,
         activeReplyParentMessageId: MessageId? = null
-    ) {
-        if (event.isSyncHorizonReset()) {
-            recordInFlightRealtime(routeStaleToken, event = null)
-            // A resume had too many late messages to send (slock #10982): re-read the latest page through
-            // the existing gap catch-up, as on a foreground resume.
-            diagnosticsLogger?.invoke("thread_sync_horizon_reset threadId=${_state.value.payload.sourceThreadId.orEmpty()}")
-            refreshLatestAfterVisibleMaxSeq()
-            return
-        }
-        val acceptedPayload = _state.value.payload
-        val eventStaleToken = routeStaleToken
-        val eventRouteIdentity = acceptedPayload.realtimeGapRouteIdentity()
-        val currentSession = dataSource.readSession()
-        val currentUserId = currentSession?.user?.id
-        if (event is PerReceiverReadStateChanged) resolvePendingMarkUnread(event, currentSession?.currentServerId)
-        val readStateOwner = if (event is PerReceiverReadStateChanged) {
-            dataSource.currentReplyCacheProvenance()?.threadPayloadOwnerScopeId
-        } else null
-        val repliesPageIdentity = captureThreadRepliesPageIdentity(acceptedPayload)
-        val decision =
-            realtimeGapRecoveryMutex.withLock {
-                val currentPayload = _state.value.payload
-                if (
-                    !eventStaleToken.isCurrent(routeStaleToken) ||
-                    currentPayload.realtimeGapRouteIdentity() != eventRouteIdentity ||
-                    !routeStillCurrent(
-                        acceptedPayload,
-                        "thread_realtime_event",
-                        "linearize",
-                        currentPayload,
-                    )
-                ) {
-                    return@withLock RealtimeEventDecision(
-                        source = "stale",
-                        messageCount = currentPayload.messages.size,
-                        dropped = true,
-                    )
-                }
-                if (event is PerReceiverReadStateChanged) {
-                    val sessionServerId = currentSession?.currentServerId
-                    val owner = visiblePayloadOwnerScopeId
-                    if (!sessionServerId.isNullOrBlank() && !currentUserId.isNullOrBlank() &&
-                        owner != null && owner == readStateOwner && (event.serverId == null || event.serverId?.value == sessionServerId)) {
-                        readStateProjection.observe(currentPayload, owner, event.scopes)
-                        val emitted = reducePayloadPatch(cachePayload = true) { payload ->
-                            readStateProjection.project(payload, owner)
-                        }
-                        return@withLock RealtimeEventDecision(source = "read_state", emitted = emitted,
-                            messageCount = currentPayload.messages.size)
-                    }
-                    return@withLock RealtimeEventDecision(source = "read_state_identity_mismatch",
-                        messageCount = currentPayload.messages.size, dropped = true)
-                }
-                if (event is RealtimeRefreshRequired) {
-                    if (!currentPayload.followsChannelUpdate(event)) {
-                        return@withLock RealtimeEventDecision(source = "none", messageCount = currentPayload.messages.size)
-                    }
-                    val archived = event.channelArchived
-                        ?: return@withLock RealtimeEventDecision(
-                            source = "channel_updated_reload",
-                            messageCount = currentPayload.messages.size,
-                            reloadForChannelUpdate = true,
-                        )
-                    // Held for a load in flight too: its answer may predate the archive.
-                    recordInFlightRealtime(
-                        staleToken = eventStaleToken,
-                        event = event,
-                        currentUserId = currentUserId,
-                        activeReplyParentMessageId = activeReplyParentMessageId,
-                    )
-                    val emitted = reducePayloadPatch(cachePayload = true) { payload ->
-                        payload.withChannelUpdateArchiveState(event)
-                    }
-                    diagnosticsLogger?.invoke(
-                        "thread_channel_archive_live channelId=${event.channelId?.value.orEmpty()} " +
-                            "archived=$archived emitted=$emitted surface=${currentPayload.surfaceKind}"
-                    )
-                    return@withLock RealtimeEventDecision(
-                        source = "channel_archive",
-                        emitted = emitted,
-                        messageCount = currentPayload.messages.size,
-                    )
-                }
-                dataSource.seedRealtimeThreadAuthorProfiles(
-                    serverId = currentSession?.currentServerId,
-                    event = event,
-                    currentUserId = currentUserId
-                )
-                val acceptedRepliesProjection =
-                    if (event is ThreadUpdated && repliesPageIdentity != null) {
-                        threadRepliesSyncHost.ingestFrame(
-                            page = repliesPageIdentity,
-                            event = event,
-                            baseline = currentPayload.inlineRepliesBaselineFor(event),
-                        )
-                    } else if (event is ThreadReplyUpdated && repliesPageIdentity != null) {
-                        // An edited (Slack-bridged) reply: rewrite its inline row under the parent.
-                        threadRepliesSyncHost.ingestReplyUpdate(
-                            page = repliesPageIdentity,
-                            event = event,
-                            baseline =
-                                currentPayload.inlineRepliesBaselineFor(event.parentMessageId, event.threadChannelId),
-                        )
-                    } else {
-                        null
-                    }
-                if (event is ThreadUpdated) {
-                    // Hands 4155f83a: the inline summary only moves when the replies host accepts
-                    // the frame; a rejected frame was invisible in diagnostics. Ids/kinds only.
-                    val envelope = event.syncCoreReplyWindow
-                    diagnosticsLogger?.invoke(
-                        "thread_replies_frame parentMessageId=${event.parentMessageId.value} " +
-                            "accepted=${acceptedRepliesProjection != null} " +
-                            "hasLatestReply=${event.latestReply != null} " +
-                            "page=${repliesPageIdentity?.let { "${it.serverId}:${it.parentScopeKind}:${it.parentScopeId}" }.orEmpty()} " +
-                            "envelope=${envelope?.let { "${it.parentScopeServerId}:${it.parentScopeKind}:${it.parentScopeId}" }.orEmpty()}"
-                    )
-                }
-                if (event is ThreadReplyUpdated && acceptedRepliesProjection != null) {
-                    dataSource.recordReplyWindows(listOf(acceptedRepliesProjection))
-                }
-                if (event is ThreadUpdated && acceptedRepliesProjection != null) {
-                    dataSource.recordReplyWindows(listOf(acceptedRepliesProjection))
-                    event.latestReply?.let { reply ->
-                        dataSource.seedAcceptedRealtimeThreadReplyAuthorProfile(
-                            serverId = currentSession?.currentServerId,
-                            reply = reply
-                        )
-                    }
-                }
-                if (event is ThreadUpdated) {
-                    readStateProjection.contentChanged(event.threadChannelId.value, event.latestReply?.seq)
-                    currentPayload.cacheThreadId()?.let { factThreadId ->
-                        dataSource.recordReplyCountRealtimeFact(
-                            threadId = factThreadId,
-                            parentMessageId = event.parentMessageId.value,
-                            fact =
-                                SharedThreadReplyCountFact(
-                                    threadChannelId = event.threadChannelId.value,
-                                    replyCount = event.replyCount,
-                                    observedAt = TimeSource.Monotonic.markNow()
-                                )
-                        )
-                    }
-                    // Hands bc6e392e: a parent in another conversation (a DM reply arriving while a
-                    // thread is open) also lands on that conversation, not only on this page.
-                    val openPageThreadId = currentPayload.cacheThreadId()
-                    dataSource.applyThreadUpdatedToParentConversation(event, openPageThreadId)?.let { patched ->
-                        diagnosticsLogger?.invoke(
-                            "thread_reply_parent_scope parentMessageId=${event.parentMessageId.value} " +
-                                "parentScopeId=${event.syncCoreReplyWindow?.parentScopeId.orEmpty()} " +
-                                "openPage=${openPageThreadId.orEmpty()} cachePatched=$patched"
-                        )
-                    }
-                    dataSource.rememberReplyParentReplyCount(
-                        parentChannelId = currentPayload.threadUpdatedParentChannelId(event),
-                        parentMessageId = event.parentMessageId.value,
-                        replyCount = event.replyCount
-                    )
-                }
-                val storeEvent =
-                    if (event is ThreadUpdated) event.copy(latestReply = null) else event
-                recordInFlightRealtime(
-                    staleToken = eventStaleToken,
-                    event = storeEvent,
-                    messageIds =
-                        when (event) {
-                            is MessageNew -> listOf(event.message.id.value)
-                            is MessageUpdated -> listOf(event.message.id.value)
-                            is SyncResumeResponse -> event.messages.map { message -> message.id.value }
-                            is ThreadUpdated -> listOfNotNull(event.latestReply?.messageId)
-                            else -> emptyList()
-                        },
-                    currentUserId = currentUserId,
-                    activeReplyParentMessageId = activeReplyParentMessageId,
-                )
-                val eventIdentity =
-                    when (event) {
-                        is MessageNew -> {
-                            val message = event.message
-                            "type=MessageNew messageId=${message.id.value} " +
-                                "threadId=${message.threadId.value} channelId=${message.channelId?.value.orEmpty()} " +
-                                "threadChannelId=${message.threadChannelId?.value.orEmpty()} " +
-                                "matches=${message.matchesSharedThread(currentPayload, activeReplyParentMessageId)}"
-                        }
-                        is ThreadUpdated -> {
-                            val parentId = event.parentMessageId.value
-                            "type=ThreadUpdated parentMessageId=$parentId " +
-                                "threadMatch=${currentPayload.messages.any { it.id == parentId } || currentPayload.originMessage?.id == parentId}"
-                        }
-                        else -> "type=${event::class.simpleName.orEmpty()}"
-                    }
-                diagnosticsLogger?.invoke(
-                    "thread_realtime_identity threadId=${currentPayload.sourceThreadId.orEmpty()} " +
-                        "cacheThreadId=${currentPayload.cacheThreadId().orEmpty()} " +
-                        "originParentMessageId=${currentPayload.originParentMessageId.orEmpty()} " +
-                        "messagesBefore=${currentPayload.messages.size} $eventIdentity"
-                )
-                val realtimeGapServerSeq =
-                    currentPayload.realtimeNewerGapServerSeq(
-                        event = event,
-                        activeReplyParentMessageId = activeReplyParentMessageId,
-                    )
-                if (realtimeGapServerSeq != null) {
-                    // Messages are missing before this one: an answer in flight cannot be completed
-                    // from the held events alone.
-                    recordInFlightRealtime(eventStaleToken, event = null)
-                    val matchingRecovery =
-                        realtimeGapRecoveryState?.takeIf { state ->
-                            state.staleToken == eventStaleToken && state.routeIdentity == eventRouteIdentity
-                        }
-                    val matchingPagination =
-                        loadNewerState?.takeIf { state ->
-                            state.staleToken == eventStaleToken && state.routeIdentity == eventRouteIdentity
-                        }
-                    if (matchingRecovery != null || matchingPagination != null) {
-                        val missingThroughSeq = (realtimeGapServerSeq - 1L).coerceAtLeast(0L)
-                        if (matchingRecovery != null && missingThroughSeq > matchingRecovery.targetSeq) {
-                            matchingRecovery.targetSeq = missingThroughSeq
-                            matchingRecovery.targetVersion += 1L
-                        }
-                        if (
-                            matchingPagination != null &&
-                            missingThroughSeq > (matchingPagination.pendingTargetSeq ?: 0L)
-                        ) {
-                            matchingPagination.pendingTargetSeq = missingThroughSeq
-                        }
-                        val merged =
-                            currentPayload
-                                .copy(canLoadMoreAfter = false)
-                                .applyRealtimeEvent(
-                                    event = storeEvent,
-                                    currentUserId = currentUserId,
-                                    activeReplyParentMessageId = activeReplyParentMessageId,
-                                    shouldPreserveReactionsForRealtime = { message, userId ->
-                                        shouldPreserveReactionsForRealtime(message, userId)
-                                    },
-                                )
-                                .withAcceptedThreadRepliesProjection(acceptedRepliesProjection)
-                                .preserveStableTimelineFrom(
-                                    previous = currentPayload,
-                                    preserveSelectedReactions = false,
-                                ).copy(canLoadMoreAfter = currentPayload.canLoadMoreAfter)
-                        fun commitGapMerged(accepted: Map<String, ThreadRepliesAcceptedProjection>): Boolean {
-                            val commitMerged =
-                                merged.withAcceptedThreadRepliesProjection(
-                                    acceptedRepliesProjection?.let { projection ->
-                                        accepted[projection.identity.parentMessageId]
-                                    },
-                                )
-                            return reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
-                                latestPayload.withThreadContentProjectionFrom(commitMerged)
-                            }
-                        }
-                        val emitted =
-                            if (acceptedRepliesProjection == null) {
-                                commitGapMerged(emptyMap())
-                            } else {
-                                threadRepliesSyncHost.withCurrentAcceptedProjections(
-                                    listOf(acceptedRepliesProjection.identity),
-                                ) { accepted -> commitGapMerged(accepted) }
-                            }
-                        return@withLock RealtimeEventDecision(
-                            source = "in_flight_gap",
-                            emitted = emitted,
-                            messageCount = merged.messages.size,
-                        )
-                    }
-                    val streamChannelId =
-                        currentPayload.sourceThreadId
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let(::ChannelId)
-                            ?: currentPayload.streamChannelId
-                                ?.takeIf { it.isNotBlank() }
-                                ?.let(::ChannelId)
-                            ?: return@withLock RealtimeEventDecision(
-                                source = "none",
-                                messageCount = currentPayload.messages.size,
-                            )
-                    val recoveryId = ++nextRealtimeGapRecoveryId
-                    realtimeGapRecoveryState =
-                        RealtimeGapRecoveryState(
-                            id = recoveryId,
-                            routeIdentity = eventRouteIdentity,
-                            staleToken = eventStaleToken,
-                            targetSeq = realtimeGapServerSeq,
-                            targetVersion = 1L,
-                        )
-                    reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
-                        latestPayload.copy(newerMessagesStatus = "loading", errorCode = null)
-                    }
-                    return@withLock RealtimeEventDecision(
-                        source = "gap",
-                        messageCount = currentPayload.messages.size,
-                        recoveryId = recoveryId,
-                        recoveryInitial = currentPayload,
-                        recoveryRequest =
-                            RealtimeVisibleStreamGapRequest(
-                                channelId = streamChannelId,
-                                sinceSeq = currentPayload.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L,
-                                serverSeq = realtimeGapServerSeq,
-                            ),
-                    )
-                }
-
-                val merged =
-                    currentPayload.applyRealtimeEvent(
-                        event = storeEvent,
-                        currentUserId = currentUserId,
-                        activeReplyParentMessageId = activeReplyParentMessageId,
-                        shouldPreserveReactionsForRealtime = { message, userId ->
-                            shouldPreserveReactionsForRealtime(message, userId)
-                        },
-                    ).withAcceptedThreadRepliesProjection(acceptedRepliesProjection)
-                val replyCountGap =
-                    merged.realtimeReplyCountGap(
-                        event = event,
-                        previous = currentPayload,
-                        activeReplyParentMessageId = activeReplyParentMessageId,
-                    )
-                if (replyCountGap != null) recordInFlightRealtime(eventStaleToken, event = null)
-                diagnosticsLogger?.invoke(
-                    "thread_realtime_fold threadId=${currentPayload.sourceThreadId.orEmpty()} " +
-                        "messagesBefore=${currentPayload.messages.size} messagesAfter=${merged.messages.size} " +
-                        "samePayload=${merged === currentPayload} replyCountGap=${replyCountGap != null}"
-                )
-                if (merged === currentPayload) {
-                    return@withLock RealtimeEventDecision(
-                        source = "none",
-                        messageCount = currentPayload.messages.size,
-                        replyCountGap = replyCountGap,
-                    )
-                }
-                val stableSelected =
-                    merged.preserveStableTimelineFrom(
-                        previous = currentPayload,
-                        preserveSelectedReactions = false,
-                    )
-                // task #562 (agreed with KMP-专家/HanXin, adjusting #231's A'): the
-                // first-frame candidate is a read-only SNAPSHOT of the live store's
-                // merged state — a single merge algorithm, written through after the
-                // reduce. Every open still forces a refresh, so any snapshot drift
-                // lives only in the first-frame window and is corrected by the
-                // canonical fetch through this same reducer. Raw events are never
-                // written; durable local-store never rides this path.
-                fun commitStableSelected(accepted: Map<String, ThreadRepliesAcceptedProjection>): Boolean {
-                    val commitSelected =
-                        stableSelected.withAcceptedThreadRepliesProjection(
-                            acceptedRepliesProjection?.let { projection ->
-                                accepted[projection.identity.parentMessageId]
-                            },
-                        )
-                    return reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
-                        latestPayload.withThreadContentProjectionFrom(commitSelected)
-                    }
-                }
-                val emitted =
-                    if (acceptedRepliesProjection == null) {
-                        commitStableSelected(emptyMap())
-                    } else {
-                        threadRepliesSyncHost.withCurrentAcceptedProjections(
-                            listOf(acceptedRepliesProjection.identity),
-                        ) { accepted -> commitStableSelected(accepted) }
-                    }
-                RealtimeEventDecision(
-                    source = "direct_latest",
-                    emitted = emitted,
-                    messageCount = stableSelected.messages.size,
-                    replyCountGap = replyCountGap,
-                )
-            }
-
-        if (decision.dropped) return
-        if (decision.reloadForChannelUpdate) {
-            diagnosticsLogger?.invoke(
-                "thread_channel_updated_reload threadId=${acceptedPayload.sourceThreadId.orEmpty()} reason=id_only_frame"
-            )
-            dispatch(SharedThreadIntent.Refresh)
-            return
-        }
-        val recoveryId = decision.recoveryId
-        val recoveryInitial = decision.recoveryInitial
-        val recoveryRequest = decision.recoveryRequest
-        if (recoveryId != null && recoveryInitial != null && recoveryRequest != null) {
-            diagnosticsLogger?.invoke(
-                "thread_realtime_gap_detected threadId=${recoveryInitial.sourceThreadId.orEmpty()} " +
-                    "visibleMaxSeq=${recoveryRequest.sinceSeq} serverSeq=${recoveryRequest.serverSeq}"
-            )
-            // The realtime sink calls this under the process-wide realtime authority lock: the gap is
-            // registered above (so later live events join it through `in_flight_gap`), and the catch-up
-            // fetch runs on the store scope (Hands bc6e392e: an inline fetch held the lock ~6 s).
-            launchRealtimeGapRecovery(
-                initial = recoveryInitial,
-                initialRequest = recoveryRequest,
-                staleToken = eventStaleToken,
-                recoveryId = recoveryId,
-                requestSnapshot = recoveryInitial,
-            )
-            return
-        }
-        if (decision.source == "none" && decision.replyCountGap == null) {
-            diagnosticsLogger?.invoke(
-                "thread_realtime_apply_result threadId=${acceptedPayload.sourceThreadId.orEmpty()} " +
-                    "source=none emitted=false messages=${decision.messageCount} reason=no_projection"
-            )
-            return
-        }
-        diagnosticsLogger?.invoke(
-            "thread_realtime_apply_result threadId=${acceptedPayload.sourceThreadId.orEmpty()} " +
-                "source=${decision.source} emitted=${decision.emitted} " +
-                "messages=${decision.messageCount} cacheWarmed=${decision.emitted}"
-        )
-        val replyCountGap = decision.replyCountGap
-        if (replyCountGap != null) {
-            diagnosticsLogger?.invoke(
-                "thread_realtime_reply_count_gap_detected threadId=${_state.value.payload.sourceThreadId.orEmpty()} " +
-                    "visibleMaxSeq=${_state.value.payload.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
-                    "loadedReplies=${_state.value.payload.loadedReplyTimelineCount()} " +
-                    "replyCount=${replyCountGap.replyCount}"
-            )
-            recoverRealtimeGapFromVisibleTail(replyCountGap)
-        }
-    }
+    ) = threadRealtimeFolding.applyRealtimeEvent(event, activeReplyParentMessageId)
 
     internal data class ReplyCountRealtimeGap(
         val replyCount: Int
     )
-
-    private fun RaftThreadScreenPayload.realtimeReplyCountGap(
-        event: RealtimeEvent,
-        previous: RaftThreadScreenPayload,
-        activeReplyParentMessageId: MessageId? = null
-    ): ReplyCountRealtimeGap? {
-        if (event !is ThreadUpdated) return null
-        if (surfaceKind != RaftThreadSurfaceKind.ReplyThread) return null
-        if (canLoadMoreAfter || newerMessagesStatus == "loading") return null
-        val visibleMaxSeq = messages.mapNotNull { it.seq }.maxOrNull() ?: 0L
-        if (visibleMaxSeq <= 0L) return null
-        val replyThreadContentChannelId = replyThreadContentChannelId() ?: return null
-        val originParentId = originParentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId)
-        val matchesThread =
-            event.threadChannelId.value == replyThreadContentChannelId &&
-                (
-                    originParentId == null ||
-                        event.parentMessageId == originParentId ||
-                        event.parentMessageId == activeReplyParentMessageId
-                    )
-        if (!matchesThread) return null
-        val loadedReplies = loadedReplyTimelineCount()
-        val previousLoadedReplies = previous.loadedReplyTimelineCount()
-        val loadedReplyDelta = (loadedReplies - previousLoadedReplies).coerceAtLeast(0)
-        val previousReplyCount =
-            previous.knownReplyCountFor(event, activeReplyParentMessageId)
-                ?: previousLoadedReplies
-        val replyDelta = event.replyCount - previousReplyCount
-        if (replyDelta <= 0 || loadedReplyDelta >= replyDelta) return null
-        return ReplyCountRealtimeGap(replyCount = event.replyCount)
-    }
 
     private fun hideVisibleRead() = threadVisibleRead.hideVisibleRead()
 
@@ -4448,9 +3923,6 @@ internal class SharedThreadStore(
 
     private fun endConversationUnreadHoldOnSend(payload: RaftThreadScreenPayload) =
         threadVisibleRead.endConversationUnreadHoldOnSend(payload)
-
-    private fun resolvePendingMarkUnread(event: PerReceiverReadStateChanged, sessionServerId: String?) =
-        threadVisibleRead.resolvePendingMarkUnread(event, sessionServerId)
 
     private suspend fun loadOlder() = threadPaging.loadOlder()
 
@@ -4617,9 +4089,6 @@ internal class SharedThreadStore(
 
     private suspend fun recoverRealtimeGap(serverSeq: Long) = threadRealtimeGapRecovery.recoverRealtimeGap(serverSeq)
 
-    private suspend fun recoverRealtimeGapFromVisibleTail(replyCountGap: ReplyCountRealtimeGap) =
-        threadRealtimeGapRecovery.recoverRealtimeGapFromVisibleTail(replyCountGap)
-
     private suspend fun refreshLatestAfterVisibleMaxSeq() = threadRealtimeGapRecovery.refreshLatestAfterVisibleMaxSeq()
 
     private suspend fun recoverRealtimeGap(
@@ -4627,14 +4096,6 @@ internal class SharedThreadStore(
         initialRequest: RealtimeVisibleStreamGapRequest,
         staleToken: MviStaleToken,
     ) = threadRealtimeGapRecovery.recoverRealtimeGap(initial, initialRequest, staleToken)
-
-    private fun launchRealtimeGapRecovery(
-        initial: RaftThreadScreenPayload,
-        initialRequest: RealtimeVisibleStreamGapRequest,
-        staleToken: MviStaleToken,
-        recoveryId: Long,
-        requestSnapshot: RaftThreadScreenPayload,
-    ) = threadRealtimeGapRecovery.launchRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId, requestSnapshot)
 
     /**
      * Viewport fact reported by the thread list (task #168 step 1): `true` while the list follows
@@ -5101,54 +4562,10 @@ internal class SharedThreadStore(
         }
     }
 
-    private fun shouldPreserveReactionsForRealtime(message: Message, currentUserId: String?): Boolean {
-        val messageId = message.id.value
-        if (message.reactions == null || pendingReactionRealtimeGuards.none { it.value.messageId == messageId }) {
-            return false
-        }
-        val incomingReactions = message.reactions.toRealtimeThreadReactionItems(currentUserId).orEmpty()
-        var preserveReactions = false
-        pendingReactionRealtimeGuards
-            .values
-            .filter { guard -> guard.messageId == messageId }
-            .forEach { guard ->
-                val incomingSelected = incomingReactions.selectedForEmoji(guard.emoji)
-                if (incomingSelected == guard.selected) {
-                    pendingReactionRealtimeGuards.remove(guard.key)
-                } else {
-                    preserveReactions = true
-                    pendingReactionRealtimeGuards.remove(guard.key)
-                    diagnosticsLogger?.invoke(
-                        "thread_realtime_reaction_frame_stale messageId=$messageId emoji=${guard.emoji} " +
-                            "expectedSelected=${guard.selected} incomingSelected=$incomingSelected"
-                    )
-                }
-            }
-        return preserveReactions
-    }
+    private fun confirmReactionRealtimeGuards(summary: MessageMutationSummary, currentUserId: String?) =
+        threadRealtimeFolding.confirmReactionRealtimeGuards(summary, currentUserId)
 
-    private fun confirmReactionRealtimeGuards(summary: MessageMutationSummary, currentUserId: String?) {
-        val messageId = summary.messageId.trim()
-        if (messageId.isBlank()) return
-        val canonicalReactions = summary.reactions.toThreadReactionItems(currentUserId)
-        pendingReactionRealtimeGuards
-            .values
-            .filter { guard -> guard.messageId == messageId }
-            .forEach { guard ->
-                if (canonicalReactions.selectedForEmoji(guard.emoji) != guard.selected) {
-                    pendingReactionRealtimeGuards.remove(guard.key)
-                }
-            }
-    }
-
-    private fun clearReactionRealtimeGuards(messageId: String) {
-        val cleanMessageId = messageId.trim()
-        if (cleanMessageId.isBlank()) return
-        pendingReactionRealtimeGuards
-            .values
-            .filter { guard -> guard.messageId == cleanMessageId }
-            .forEach { guard -> pendingReactionRealtimeGuards.remove(guard.key) }
-    }
+    private fun clearReactionRealtimeGuards(messageId: String) = threadRealtimeFolding.clearReactionRealtimeGuards(messageId)
 
     private suspend fun applyActionCard(messageId: String, card: ThreadActionCard) {
         reducePayloadPatchAndCache(cachePayload = true) { payload -> payload.withActionCard(messageId, card) }
@@ -5876,9 +5293,6 @@ internal class SharedThreadViewModel(
         super.onCleared()
     }
 }
-
-private val PendingReactionRealtimeGuard.key: String
-    get() = "$messageId\u0000$emoji"
 
 /**
  * #proj-mobile:#265: overlay a durable last-known timeline (newest page or anchored SQLite island)

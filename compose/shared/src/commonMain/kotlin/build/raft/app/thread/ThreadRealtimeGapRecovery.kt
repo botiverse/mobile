@@ -30,8 +30,8 @@ import kotlinx.coroutines.withContext
  * They move together because they share [realtimeGapRecoveryMutex] and the state it guards:
  * [loadNewerState] (incl. `pendingTargetSeq`, raised by a gap recovery while a newer page is in
  * flight) and [realtimeGapRecoveryState]. This class owns that Mutex and state. Realtime folding
- * (`applyRealtimeEvent`), the join-ack check (`catchUpAfterThreadJoinConfirmed`) and refresh are still
- * in the store and read/write them through store accessors, under the same Mutex as before.
+ * ([ThreadRealtimeFolding]), and the join-ack check (`catchUpAfterThreadJoinConfirmed`) and refresh in
+ * the store, read/write them through accessors, under the same Mutex as before.
  *
  * The store dispatches into it on its own scope and it starts no scope of its own: the catch-up job
  * and the fire-and-forget durable writes launch on the store's scope, as before. The store keeps
