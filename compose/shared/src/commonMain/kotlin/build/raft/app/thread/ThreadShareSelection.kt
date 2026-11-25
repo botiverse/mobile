@@ -472,7 +472,7 @@ private fun ThreadShareSelectionGlyph(icon: RaftLucideIconName, size: Dp) {
 }
 
 /**
- * Share preview's off-screen image (Android, desktop; see [ThreadShareImageOffscreenRenderer]):
+ * Share preview's off-screen image (Android, iOS, desktop; see [ThreadShareImageOffscreenRenderer]):
  * the image laid out at [choice]'s width ([image] null until the first one is ready, or when it
  * failed), whether a new layout is [rendering], and the width picker's change.
  */
@@ -490,7 +490,7 @@ internal fun ThreadSharePreviewModal(
     onDismiss: () -> Unit,
     onCopyMarkdown: () -> Unit,
     onDownloadImage: () -> Unit,
-    /** Non-null: the image is laid out off screen at a width the user picks (iOS: null, the native export). */
+    /** Non-null: the image is laid out off screen at a width the user picks (null: legacy native export). */
     offscreen: ThreadSharePreviewOffscreen? = null,
 ) {
     RaftUnifiedDialog(

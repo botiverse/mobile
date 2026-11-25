@@ -13,10 +13,7 @@ import org.jetbrains.skia.Picture
 import org.jetbrains.skia.PictureRecorder
 import org.jetbrains.skia.Rect
 
-// iOS still exports the share image from HRBridgeModule's native screenshot of the live rows (see
-// ThreadShareImageOffscreen.kt for what it needs before it can render off screen too).
-
-internal actual val threadShareImageRendersOffscreen: Boolean = false
+internal actual val threadShareImageRendersOffscreen: Boolean = true
 
 /**
  * A Skia picture: recording it makes each row's GraphicsLayer draw its own picture into this
