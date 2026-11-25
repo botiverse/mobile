@@ -1213,6 +1213,18 @@ private fun SettingsDedicatedPagerVisualFixtureContent(
                         settingsState.account.settingsAccountAvatarCacheIdentity(session),
                     applyTopSafeArea = false,
                     bottomContentPadding = bottomContentPadding,
+                    // As the web case: Login & security read (two-step off, no passkeys, as its
+                    // second-factor mock) and Delete account at the end.
+                    accountDeletion = SettingsAccountDeletionUi(onOpen = {}),
+                    loginSecurity =
+                        SettingsAccountLoginSecurityUi(
+                            state =
+                                build.raft.app.data.SharedAccountLoginSecurityState(
+                                    security = build.raft.app.data.AccountLoginSecurity(twoStepEnabled = false, passkeyCount = 0),
+                                ),
+                            onOpen = {},
+                            onRetry = {},
+                        ),
                     onPasswordChange = { _, _ -> },
                     onEvent = { _, _ -> },
                 )
