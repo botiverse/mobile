@@ -57,7 +57,9 @@ object IosWebContainerDataStoreRegistry {
     ): WebIsolationClearResult =
         scopeManager.clearIsolationScope(
             scope = scope,
-            evictPooled = { 0 },
+            evictPooled = { target ->
+                if (target == WebIsolationScope.Default) WebContainerIosSparePool.drop("clear_scope") else 0
+            },
             deletePlatformStore = { target -> deletePlatformStore(target, osMajorVersion) },
         )
 

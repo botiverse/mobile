@@ -57,7 +57,10 @@ import build.raft.app.RaftNativeNavBarRegistry
 import build.raft.app.RaftNativeTabBarHostIdPageDataKey
 import build.raft.app.RaftNativeTabBarRegistry
 import build.raft.app.RaftSideActionHostIdPageDataKey
+import build.raft.app.LocalRaftWebContainerJsbHost
+import build.raft.app.RaftCmpJsbStandardHost
 import build.raft.app.RaftSideActionHostRegistry
+import build.raft.app.rememberRaftCmpJsbStandardHost
 import build.raft.app.rememberRaftSideActionHost
 import build.raft.designsystem.components.LocalRaftSideActionHost
 import build.raft.app.RaftPageHorizontalSafeAreaShell
@@ -250,10 +253,24 @@ fun RaftPagerHost(
         }
     val inheritedNativeNavBar = LocalRaftNativeNavBar.current
     val inheritedNativeNavBarScript = LocalRaftNativeNavBarScript.current
+    val inheritedWebContainerJsbHost = LocalRaftWebContainerJsbHost.current
+    val defaultWebContainerJsbHost = rememberRaftCmpJsbStandardHost(host)
+    // Preserve custom/test overrides and same-host bindings, while rebinding nested split-pane
+    // RaftPagerHost instances to their own LocalRaftHost so JSB nav.close closes only that pane.
+    val webContainerJsbHost =
+        if (
+            inheritedWebContainerJsbHost != null &&
+            (inheritedWebContainerJsbHost !is RaftCmpJsbStandardHost || inheritedWebContainerJsbHost.boundHost === host)
+        ) {
+            inheritedWebContainerJsbHost
+        } else {
+            defaultWebContainerJsbHost
+        }
     CompositionLocalProvider(
         LocalViewModelStoreOwner provides viewModelStoreOwner,
         LocalActivity provides remember(pager) { RaftPageActivity(pager) },
         LocalRaftPageArgs provides args,
+        LocalRaftWebContainerJsbHost provides webContainerJsbHost,
         // The host-drawn tab bar registered for this page (iOS app shell), if any.
         LocalRaftNativeTabBarBridge provides
             remember(pager) {

@@ -20,13 +20,16 @@ import build.raft.webcontainer.WebNavigationState
 import build.raft.webcontainer.WebOfflineBundleDescriptor
 import build.raft.webcontainer.evaluateMainFrameNavigation
 import build.raft.webcontainer.jsb.JsbAppInfo
+import build.raft.webcontainer.jsb.JsbAuthStatus
 import build.raft.webcontainer.jsb.JsbCallContext
 import build.raft.webcontainer.jsb.JsbDispatcher
 import build.raft.webcontainer.jsb.JsbErrorCode
+import build.raft.webcontainer.jsb.JsbHapticStyle
 import build.raft.webcontainer.jsb.JsbPolicy
 import build.raft.webcontainer.jsb.JsbStandardCapabilities
 import build.raft.webcontainer.jsb.JsbStandardHost
 import build.raft.webcontainer.jsb.JsbStandardMethods
+import build.raft.webcontainer.jsb.JsbToastDuration
 import build.raft.webcontainer.pool.WebContainerTelemetryEvent
 import build.raft.webcontainer.pool.WebIsolationClearResult
 import build.raft.webcontainer.resource.WebResourceInterceptor
@@ -554,5 +557,95 @@ class RaftWebContainerAdapterTest {
         assertEquals(customResp, composed.intercept(WebResourceRequest("https://app.raft.build/custom", isMainFrame = true)))
         assertEquals(platformResp, composed.intercept(WebResourceRequest("https://app.raft.build/other", isMainFrame = true)))
         assertEquals(3, events.count { it is WebContainerTelemetryEvent.ResourceIntercepted && it.hit })
+    }
+
+    @Test
+    fun surfaceCapabilityMatrixFollowsLeastPrivilegeAcrossSurfacesAndPartitions() {
+        // First-party settings surfaces on Default partition receive full standard pack.
+        assertEquals(
+            JsbStandardCapabilities.All,
+            resolveRaftSurfaceStandardJsbCapabilities("settings_web_view", RaftWebViewStoragePartition.Default),
+        )
+        assertEquals(
+            JsbStandardCapabilities.All,
+            resolveRaftSurfaceStandardJsbCapabilities(SETTINGS_WEB_PAGE_DIAGNOSTICS_NAME, RaftWebViewStoragePartition.Default),
+        )
+
+        // Artifact viewer receives safe UI/nav subset and MUST NEVER receive auth.status.
+        val artifactCaps =
+            resolveRaftSurfaceStandardJsbCapabilities(RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE, RaftWebViewStoragePartition.Default)
+        assertEquals(RaftArtifactViewerStandardJsbCapabilities, artifactCaps)
+        assertFalse(JsbStandardCapabilities.AUTH_STATUS in artifactCaps)
+        assertTrue(JsbStandardCapabilities.UI_THEME in artifactCaps)
+        assertTrue(JsbStandardCapabilities.NAV_OPEN_EXTERNAL in artifactCaps)
+
+        // General browser, HTML preview, unknown surfaces, and any non-Default partition fail closed.
+        assertTrue(resolveRaftSurfaceStandardJsbCapabilities("in_app_browser", RaftWebViewStoragePartition.Default).isEmpty())
+        assertTrue(resolveRaftSurfaceStandardJsbCapabilities("file_preview_html", RaftWebViewStoragePartition.Default).isEmpty())
+        assertTrue(resolveRaftSurfaceStandardJsbCapabilities("unknown_surface", RaftWebViewStoragePartition.Default).isEmpty())
+        assertTrue(resolveRaftSurfaceStandardJsbCapabilities("settings_web_view", RaftWebViewStoragePartition.Ephemeral).isEmpty())
+        assertTrue(resolveRaftSurfaceStandardJsbCapabilities(RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE, RaftWebViewStoragePartition.Ephemeral).isEmpty())
+        assertTrue(resolveRaftSurfaceStandardJsbCapabilities("settings_web_view", RaftWebViewStoragePartition.IsolatedThirdParty).isEmpty())
+    }
+
+    @Test
+    fun cmpJsbStandardHostDelegatesAllCapabilitiesAndEnforcesAppStoreBillingGuard() = runTest {
+        val haptics = mutableListOf<JsbHapticStyle>()
+        val copied = mutableListOf<String>()
+        val toasts = mutableListOf<Pair<String, Boolean>>()
+        val opened = mutableListOf<String>()
+        var closedCount = 0
+        var appStoreBillingRules = true
+
+        val host =
+            RaftCmpJsbStandardHost(
+                readAppInfo = { JsbAppInfo("1.30.0", "13000010", "ios", "iOS 18.2", "zh-cn") },
+                isDarkTheme = { true },
+                performHaptic = { style ->
+                    haptics += style
+                    true
+                },
+                copyToPasteboard = { copied += it },
+                showToastMessage = { msg, brief -> toasts += msg to brief },
+                openExternalBrowser = { opened += it },
+                closePage = { closedCount += 1 },
+                readAuthStatus = { JsbAuthStatus(authenticated = true, accountId = "u_1", serverId = "s_1") },
+                followsAppStoreBillingRules = { appStoreBillingRules },
+                isAppStoreRestrictedPurchaseUrl = { it.contains("/billing") },
+            )
+        val ctx =
+            JsbCallContext(
+                callId = "c1",
+                method = "test",
+                origin = WebContainerOrigin("https", "app.raft.build"),
+                documentUrl = "https://app.raft.build/settings",
+                isMainFrame = true,
+                surfaceId = "settings_web_view",
+                isolationScope = WebIsolationScope.Default,
+            )
+
+        assertEquals("1.30.0", host.getAppInfo(ctx).appVersion)
+        assertEquals(true, host.getThemeInfo(ctx).isDark)
+        assertEquals(true, host.triggerHaptic(ctx, JsbHapticStyle.SELECTION))
+        assertEquals(listOf(JsbHapticStyle.SELECTION), haptics)
+        assertEquals(true, host.copyText(ctx, "hello"))
+        assertEquals(listOf("hello"), copied)
+        assertEquals(true, host.showToast(ctx, "Saved", JsbToastDuration.SHORT))
+        assertEquals(true, host.showToast(ctx, "Details", JsbToastDuration.LONG))
+        assertEquals(listOf("Saved" to true, "Details" to false), toasts)
+        assertEquals(true, host.closeContainer(ctx, "done"))
+        assertEquals(1, closedCount)
+        assertEquals(JsbAuthStatus(true, "u_1", "s_1"), host.getAuthStatus(ctx))
+
+        // App Store 3.1.1 guard blocks restricted purchase URLs on iOS while allowing normal links.
+        assertEquals(false, host.openExternalUrl(ctx, "https://app.raft.build/billing/upgrade"))
+        assertTrue(opened.isEmpty())
+        assertEquals(true, host.openExternalUrl(ctx, "https://docs.raft.build/guide"))
+        assertEquals(listOf("https://docs.raft.build/guide"), opened)
+
+        // When App Store billing rules do not apply (e.g. Android/Desktop), billing links open normally.
+        appStoreBillingRules = false
+        assertEquals(true, host.openExternalUrl(ctx, "https://app.raft.build/billing/upgrade"))
+        assertEquals(2, opened.size)
     }
 }

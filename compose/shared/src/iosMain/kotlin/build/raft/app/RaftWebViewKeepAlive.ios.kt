@@ -3,6 +3,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import build.raft.webcontainer.WebContainerIosSparePool
 import kotlin.coroutines.resume
 import kotlin.time.TimeSource
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +48,7 @@ internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<Str
             .toSet()
     val runOnMain: suspend () -> Unit = {
         runCatching { RaftIosWebViewSpare.drop("logout") }
+        runCatching { WebContainerIosSparePool.drop("logout") }
         withTimeoutOrNull(2_000L) {
             suspendCancellableCoroutine<Unit> { cont ->
                 runCatching {

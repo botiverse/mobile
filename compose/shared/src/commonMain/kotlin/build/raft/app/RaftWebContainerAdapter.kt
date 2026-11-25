@@ -608,9 +608,12 @@ internal fun RaftWebContainerAdaptedHost(
     val customResourceInterceptor = LocalRaftWebContainerResourceInterceptor.current
     val platformResourceInterceptor = rememberRaftWebContainerPlatformResourceInterceptor()
     val standardJsbCapabilities =
-        remember(standardJsbHost, config.effectiveStoragePartition) {
-            if (standardJsbHost != null && config.effectiveStoragePartition == RaftWebViewStoragePartition.Default) {
-                JsbStandardCapabilities.All
+        remember(standardJsbHost, config.diagnosticsSurface, config.effectiveStoragePartition) {
+            if (standardJsbHost != null) {
+                resolveRaftSurfaceStandardJsbCapabilities(
+                    surfaceId = config.diagnosticsSurface,
+                    partition = config.effectiveStoragePartition,
+                )
             } else {
                 emptySet()
             }

@@ -717,6 +717,21 @@ object JsbBootstrapScripts {
             "}catch(_){}})();"
     }
 
+    /**
+     * Paints a warm spare WebView's existing `about:blank` document with the container's canvas
+     * color before starting the surface's navigation so dark-mode opens never flash white.
+     */
+    fun buildBlankCanvasPaintScript(
+        backgroundArgb: Int,
+        isDark: Boolean,
+    ): String {
+        val hex = formatArgbAsCssRgb(backgroundArgb)
+        val scheme = if (isDark) "dark" else "light"
+        return "(function(){try{var r=document.documentElement;if(!r)return;" +
+            "r.style.setProperty('background-color','$hex');r.style.setProperty('color-scheme','$scheme');" +
+            "if(document.body){document.body.style.setProperty('background-color','$hex');}}catch(_){}})();"
+    }
+
     /** Desktop-width 1280px viewport meta helper (honoured natively by WKWebView & Android wide viewport). */
     const val DesktopViewportMetaScript: String =
         "(function(){if(window.top!==window.self)return;try{var m=document.querySelector('meta[name=\"viewport\"]');" +
