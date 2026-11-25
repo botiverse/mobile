@@ -49,6 +49,13 @@ sealed interface WebContainerWatchdogEvent {
 
     data class RenderProcessGone(val didCrash: Boolean) : WebContainerWatchdogEvent
 
+    /** Container became hidden/backgrounded; pauses stall timeout and DOM blank probing without consuming foreground budget. */
+    data object Backgrounded : WebContainerWatchdogEvent
+
+    /** Container returned to foreground visibility; shifts active load/finish anchors forward by background dwell time. */
+    data object Foregrounded : WebContainerWatchdogEvent
+
+    /** Resets all load, crash-window, and background-pause state back to initial [WebContainerPhase.Idle]. */
     data object Reset : WebContainerWatchdogEvent
 }
 
@@ -77,9 +84,12 @@ class WebContainerWatchdog(
         private set
     var activeGeneration: Int = 0
         private set
+    var isBackgrounded: Boolean = false
+        private set
 
     private var loadStartedAtMs: Long = -1L
     private var finishedAtMs: Long = -1L
+    private var backgroundedAtMs: Long = -1L
     private var probeRequestedForGen: Int = -1
     private var hasPreviouslyCommitted: Boolean = false
     private val recentRecoveryTimestampsMs = ArrayDeque<Long>()
@@ -95,11 +105,37 @@ class WebContainerWatchdog(
             WebContainerWatchdogEvent.Reset -> {
                 phase = WebContainerPhase.Idle
                 activeGeneration = 0
+                isBackgrounded = false
                 loadStartedAtMs = -1L
                 finishedAtMs = -1L
+                backgroundedAtMs = -1L
                 probeRequestedForGen = -1
                 hasPreviouslyCommitted = false
                 recentRecoveryTimestampsMs.clear()
+                WebContainerWatchdogAction.None
+            }
+
+            WebContainerWatchdogEvent.Backgrounded -> {
+                if (!isBackgrounded) {
+                    isBackgrounded = true
+                    backgroundedAtMs = nowMs
+                }
+                WebContainerWatchdogAction.None
+            }
+
+            WebContainerWatchdogEvent.Foregrounded -> {
+                if (isBackgrounded) {
+                    if (loadStartedAtMs >= 0L) {
+                        val pauseAnchor = maxOf(loadStartedAtMs, backgroundedAtMs)
+                        loadStartedAtMs += (nowMs - pauseAnchor).coerceAtLeast(0L)
+                    }
+                    if (finishedAtMs >= 0L) {
+                        val pauseAnchor = maxOf(finishedAtMs, backgroundedAtMs)
+                        finishedAtMs += (nowMs - pauseAnchor).coerceAtLeast(0L)
+                    }
+                    isBackgrounded = false
+                    backgroundedAtMs = -1L
+                }
                 WebContainerWatchdogAction.None
             }
 
@@ -124,12 +160,11 @@ class WebContainerWatchdog(
             is WebContainerWatchdogEvent.PageFinished -> {
                 if (event.generation != activeGeneration) return WebContainerWatchdogAction.None
                 finishedAtMs = nowMs
-                if (policy.blankProbeDelayMs == 0L) {
+                phase = WebContainerPhase.Committed
+                if (policy.blankProbeDelayMs == 0L && !isBackgrounded) {
                     probeRequestedForGen = event.generation
-                    phase = WebContainerPhase.Committed
                     WebContainerWatchdogAction.RequestDomProbe(event.generation)
                 } else {
-                    phase = WebContainerPhase.Committed
                     WebContainerWatchdogAction.None
                 }
             }
@@ -147,6 +182,7 @@ class WebContainerWatchdog(
             }
 
             WebContainerWatchdogEvent.Tick -> {
+                if (isBackgrounded) return WebContainerWatchdogAction.None
                 when (phase) {
                     WebContainerPhase.Loading -> {
                         if (loadStartedAtMs >= 0L && nowMs - loadStartedAtMs >= policy.stallTimeoutMs) {

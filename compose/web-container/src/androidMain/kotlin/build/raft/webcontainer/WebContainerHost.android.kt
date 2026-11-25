@@ -9,6 +9,7 @@ import android.net.http.SslError
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.DownloadListener
 import android.webkit.RenderProcessGoneDetail
@@ -45,9 +46,11 @@ import build.raft.webcontainer.pool.WebIsolationClearResult
 import build.raft.webcontainer.pool.WebIsolationScopeManager
 import build.raft.webcontainer.pool.WebMemoryTrimLevel
 import build.raft.webcontainer.pool.WebPooledContainer
+import build.raft.webcontainer.resilience.WebContainerPhase
 import build.raft.webcontainer.resilience.WebContainerWatchdog
 import build.raft.webcontainer.resilience.WebContainerWatchdogAction
 import build.raft.webcontainer.resilience.WebContainerWatchdogEvent
+import build.raft.webcontainer.resilience.WebContainerWatchdogPolicy
 import build.raft.webcontainer.resilience.WebNavigationStateRelay
 import build.raft.webcontainer.resource.WebResourceInterceptor
 import kotlinx.coroutines.CoroutineScope
@@ -392,10 +395,14 @@ internal class WebContainerAndroidView(
     @Volatile private var resourceInterceptor: WebResourceInterceptor?,
     @Volatile var telemetrySink: WebContainerTelemetrySink?,
     var fileChooser: WebContainerAndroidFileChooser? = null,
+    watchdogPolicy: WebContainerWatchdogPolicy = WebContainerWatchdogPolicy(),
+    private val nowMs: () -> Long = ::webContainerMonotonicMillis,
 ) : FrameLayout(context), WebPooledContainer {
     private var webView: WebView = WebView(context)
     @Volatile private var destroyed: Boolean = false
     private var parkedForKeepAlive: Boolean = false
+    private var lastWindowVisibility: Int = View.GONE
+    private var watchdogTickScheduled: Boolean = false
     private var registeredActiveScope: WebIsolationScope? = null
     private var activeEphemeralProfileName: String? = null
 
@@ -421,7 +428,10 @@ internal class WebContainerAndroidView(
 
     private val chainState = WebNavigationChainState()
     private val navigationStateRelay = WebNavigationStateRelay()
-    private val watchdog = WebContainerWatchdog()
+    private val watchdog = WebContainerWatchdog(watchdogPolicy)
+    internal val watchdogPhase: WebContainerPhase get() = watchdog.phase
+    internal val isWatchdogBackgrounded: Boolean get() = watchdog.isBackgrounded
+    internal val isWatchdogTickScheduled: Boolean get() = watchdogTickScheduled
     private val mainHandler = Handler(Looper.getMainLooper())
     private val hostScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -438,12 +448,11 @@ internal class WebContainerAndroidView(
     private val watchdogTickRunnable =
         object : Runnable {
             override fun run() {
-                if (destroyed || parkedForKeepAlive) return
-                val action = watchdog.onEvent(WebContainerWatchdogEvent.Tick, webContainerMonotonicMillis())
+                watchdogTickScheduled = false
+                if (!isWatchdogActive()) return
+                val action = watchdog.onEvent(WebContainerWatchdogEvent.Tick, nowMs())
                 handleWatchdogAction(action)
-                if (!destroyed && !parkedForKeepAlive) {
-                    mainHandler.postDelayed(this, WATCHDOG_TICK_MS)
-                }
+                scheduleWatchdogTickIfNeeded()
             }
         }
 
@@ -453,7 +462,53 @@ internal class WebContainerAndroidView(
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         configureWebView()
         applyConfig(initialConfig)
+        syncWatchdogLifecycle()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        lastWindowVisibility = windowVisibility
+        syncWatchdogLifecycle()
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        lastWindowVisibility = visibility
+        syncWatchdogLifecycle()
+    }
+
+    override fun onDetachedFromWindow() {
+        lastWindowVisibility = View.GONE
+        syncWatchdogLifecycle()
+        super.onDetachedFromWindow()
+    }
+
+    private fun isWatchdogActive(): Boolean =
+        !destroyed && !parkedForKeepAlive && isAttachedToWindow && lastWindowVisibility == View.VISIBLE
+
+    private fun syncWatchdogLifecycle() {
+        if (destroyed) {
+            cancelWatchdogTick()
+            return
+        }
+        if (isWatchdogActive()) {
+            watchdog.onEvent(WebContainerWatchdogEvent.Foregrounded, nowMs())
+            scheduleWatchdogTickIfNeeded()
+        } else {
+            watchdog.onEvent(WebContainerWatchdogEvent.Backgrounded, nowMs())
+            cancelWatchdogTick()
+        }
+    }
+
+    private fun scheduleWatchdogTickIfNeeded() {
+        if (watchdogTickScheduled || !isWatchdogActive()) return
+        watchdogTickScheduled = true
         mainHandler.postDelayed(watchdogTickRunnable, WATCHDOG_TICK_MS)
+    }
+
+    private fun cancelWatchdogTick() {
+        watchdogTickScheduled = false
+        mainHandler.removeCallbacks(watchdogTickRunnable)
     }
 
     override fun isHealthy(): Boolean =
@@ -606,7 +661,7 @@ internal class WebContainerAndroidView(
         events = WebContainerEvents()
         fileChooser = null
         parkedForKeepAlive = true
-        mainHandler.removeCallbacks(watchdogTickRunnable)
+        syncWatchdogLifecycle()
         jsbRegistry = JsbRegistry.Empty
         jsbDispatcher?.cancelInFlight("parked_for_keep_alive")
         jsbDispatcher = null
@@ -638,8 +693,10 @@ internal class WebContainerAndroidView(
         registerActiveScope(isolationScope)
         navigationStateRelay.reset()
         notifyNavigationState(force = true)
-        mainHandler.removeCallbacks(watchdogTickRunnable)
-        mainHandler.postDelayed(watchdogTickRunnable, WATCHDOG_TICK_MS)
+        if (isAttachedToWindow) {
+            lastWindowVisibility = windowVisibility
+        }
+        syncWatchdogLifecycle()
         if (!mainFrameLoadFailed && lastSuccessfulUrl.isNotBlank()) {
             events.onLoadSuccess()
         }
@@ -651,7 +708,7 @@ internal class WebContainerAndroidView(
         parkedForKeepAlive = false
         WebContainerAndroidKeepAlive.onParkedLoadFinished(this)
         fileChooser = null
-        mainHandler.removeCallbacks(watchdogTickRunnable)
+        cancelWatchdogTick()
         boundController?.unbindDispatcher(this)
         boundController = null
         jsbDispatcher?.cancelInFlight("container_destroyed")
@@ -867,7 +924,7 @@ internal class WebContainerAndroidView(
                     val action =
                         watchdog.onEvent(
                             WebContainerWatchdogEvent.RenderProcessGone(didCrash = didCrash),
-                            webContainerMonotonicMillis(),
+                            nowMs(),
                         )
                     val shouldRecover = action is WebContainerWatchdogAction.TriggerRecoveryReload
                     val attempt =
@@ -961,7 +1018,7 @@ internal class WebContainerAndroidView(
                     loadGeneration += 1
                     watchdog.onEvent(
                         WebContainerWatchdogEvent.LoadStarted(loadGeneration),
-                        webContainerMonotonicMillis(),
+                        nowMs(),
                     )
                     events.onUrlChange(target)
                     notifyNavigationState()
@@ -983,7 +1040,7 @@ internal class WebContainerAndroidView(
                         chainState.markCommitted()
                         watchdog.onEvent(
                             WebContainerWatchdogEvent.PageCommitted(loadGeneration),
-                            webContainerMonotonicMillis(),
+                            nowMs(),
                         )
                         events.onLoadCommit()
                     }
@@ -1008,7 +1065,7 @@ internal class WebContainerAndroidView(
                         val action =
                             watchdog.onEvent(
                                 WebContainerWatchdogEvent.PageFinished(loadGeneration),
-                                webContainerMonotonicMillis(),
+                                nowMs(),
                             )
                         handleWatchdogAction(action)
                         if (lastSuccessfulUrl != currentUrl) {
@@ -1168,7 +1225,7 @@ internal class WebContainerAndroidView(
                             }
                         watchdog.onEvent(
                             WebContainerWatchdogEvent.LoadFailed(loadGeneration, reason),
-                            webContainerMonotonicMillis(),
+                            nowMs(),
                         )
                         events.onLoadFailure(reason)
                         notifyNavigationState()
@@ -1191,7 +1248,7 @@ internal class WebContainerAndroidView(
                     val reason = "ssl_error_${error?.primaryError ?: -1}"
                     watchdog.onEvent(
                         WebContainerWatchdogEvent.LoadFailed(loadGeneration, reason),
-                        webContainerMonotonicMillis(),
+                        nowMs(),
                     )
                     events.onLoadFailure(reason)
                     notifyNavigationState()
@@ -1213,7 +1270,7 @@ internal class WebContainerAndroidView(
                         lastSuccessfulUrl = ""
                         watchdog.onEvent(
                             WebContainerWatchdogEvent.LoadFailed(loadGeneration, "http_$statusCode"),
-                            webContainerMonotonicMillis(),
+                            nowMs(),
                         )
                         if (parkedForKeepAlive) {
                             WebContainerAndroidKeepAlive.dropIfSame(this@WebContainerAndroidView)
@@ -1748,7 +1805,7 @@ internal class WebContainerAndroidView(
             val action =
                 watchdog.onEvent(
                     WebContainerWatchdogEvent.DomProbeResult(expectedGeneration, null),
-                    webContainerMonotonicMillis(),
+                    nowMs(),
                 )
             handleWatchdogAction(action)
             return
@@ -1760,7 +1817,7 @@ internal class WebContainerAndroidView(
             val action =
                 watchdog.onEvent(
                     WebContainerWatchdogEvent.DomProbeResult(expectedGeneration, hasContent),
-                    webContainerMonotonicMillis(),
+                    nowMs(),
                 )
             handleWatchdogAction(action)
         }

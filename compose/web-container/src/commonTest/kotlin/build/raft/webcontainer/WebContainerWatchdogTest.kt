@@ -8,7 +8,9 @@ import build.raft.webcontainer.resilience.WebContainerWatchdogPolicy
 import build.raft.webcontainer.resilience.WebNavigationStateRelay
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class WebContainerWatchdogTest {
     @Test
@@ -193,6 +195,165 @@ class WebContainerWatchdogTest {
             },
         )
         assertEquals(3, delivered.size)
+    }
+
+    @Test
+    fun backgroundedLoadingPausesStallTimeoutAndPreservesRemainingForegroundBudget() {
+        val watchdog =
+            WebContainerWatchdog(
+                WebContainerWatchdogPolicy(
+                    stallTimeoutMs = 15_000L,
+                    blankProbeDelayMs = 1_500L,
+                ),
+            )
+        watchdog.onEvent(WebContainerWatchdogEvent.LoadStarted(1), 1_000L)
+        // Spend 4s in foreground -> 11s foreground budget left.
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 5_000L))
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Backgrounded, 5_000L))
+        assertTrue(watchdog.isBackgrounded)
+
+        // Stay backgrounded for 60s (4x stallTimeoutMs): ticks must never fire errors.
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 25_000L))
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 65_000L))
+        assertEquals(WebContainerPhase.Loading, watchdog.phase)
+
+        // Return to foreground at t=65_000: must still have full 11s remaining.
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Foregrounded, 65_000L))
+        assertFalse(watchdog.isBackgrounded)
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 65_000L))
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 70_000L))
+
+        // Second background excursion of 30s after 5s more foreground (9s total foreground, 6s left).
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Backgrounded, 70_000L))
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 100_000L))
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Foregrounded, 100_000L))
+
+        // 5_999ms later (14_999ms total foreground): still loading, no premature error.
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 105_999L))
+        assertEquals(WebContainerPhase.Loading, watchdog.phase)
+
+        // Exactly at 15_000ms total foreground: stalls cleanly.
+        val timedOut = watchdog.onEvent(WebContainerWatchdogEvent.Tick, 106_000L)
+        val terminal = assertIs<WebContainerWatchdogAction.EmitTerminalError>(timedOut)
+        assertEquals("load_stall_timeout", terminal.reason)
+        assertEquals(WebContainerPhase.Failed, watchdog.phase)
+    }
+
+    @Test
+    fun backgroundedPageFinishedSuppressesDomProbeUntilForegroundDelayElapses() {
+        val watchdog =
+            WebContainerWatchdog(
+                WebContainerWatchdogPolicy(
+                    stallTimeoutMs = 15_000L,
+                    blankProbeDelayMs = 1_500L,
+                ),
+            )
+        watchdog.onEvent(WebContainerWatchdogEvent.LoadStarted(1), 0L)
+        watchdog.onEvent(WebContainerWatchdogEvent.PageFinished(1), 1_000L)
+        // Spend 500ms in foreground post-finish, then background for 30s.
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 1_500L))
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Backgrounded, 1_500L))
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 31_500L))
+
+        // Foreground at 31_500 -> remaining 1_000ms of blankProbeDelayMs runs in foreground.
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Foregrounded, 31_500L))
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 32_499L))
+        assertEquals(
+            WebContainerWatchdogAction.RequestDomProbe(1),
+            watchdog.onEvent(WebContainerWatchdogEvent.Tick, 32_500L),
+        )
+    }
+
+    @Test
+    fun loadStartedAndPageFinishedWhileBackgroundedKeepExactForegroundBudget() {
+        // Case 1: LoadStarted arrives while already backgrounded -> no overshoot or underflow.
+        val watchdog =
+            WebContainerWatchdog(
+                WebContainerWatchdogPolicy(
+                    stallTimeoutMs = 10_000L,
+                    blankProbeDelayMs = 1_500L,
+                ),
+            )
+        watchdog.onEvent(WebContainerWatchdogEvent.Backgrounded, 1_000L)
+        watchdog.onEvent(WebContainerWatchdogEvent.LoadStarted(1), 5_000L)
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 25_000L))
+
+        // Foreground at 25_000: loadStartedAtMs shifts from 5_000 by (25_000 - 5_000) to 25_000 (not 29_000!).
+        watchdog.onEvent(WebContainerWatchdogEvent.Foregrounded, 25_000L)
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 34_999L))
+        val terminal =
+            assertIs<WebContainerWatchdogAction.EmitTerminalError>(
+                watchdog.onEvent(WebContainerWatchdogEvent.Tick, 35_000L),
+            )
+        assertEquals("load_stall_timeout", terminal.reason)
+
+        // Case 2: PageFinished arrives while already backgrounded (non-zero delay).
+        watchdog.onEvent(WebContainerWatchdogEvent.LoadStarted(2), 40_000L)
+        watchdog.onEvent(WebContainerWatchdogEvent.Backgrounded, 41_000L)
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.PageFinished(2), 45_000L))
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 60_000L))
+        // Foreground at 60_000: finishedAtMs anchors at 60_000 -> probes at 61_500, not 65_500.
+        watchdog.onEvent(WebContainerWatchdogEvent.Foregrounded, 60_000L)
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 61_499L))
+        assertEquals(
+            WebContainerWatchdogAction.RequestDomProbe(2),
+            watchdog.onEvent(WebContainerWatchdogEvent.Tick, 61_500L),
+        )
+
+        // Case 3: PageFinished arrives while backgrounded with blankProbeDelayMs == 0L -> defers probe until foreground.
+        val zeroDelayWatchdog = WebContainerWatchdog(WebContainerWatchdogPolicy(blankProbeDelayMs = 0L))
+        zeroDelayWatchdog.onEvent(WebContainerWatchdogEvent.Backgrounded, 100L)
+        zeroDelayWatchdog.onEvent(WebContainerWatchdogEvent.LoadStarted(1), 200L)
+        assertEquals(
+            WebContainerWatchdogAction.None,
+            zeroDelayWatchdog.onEvent(WebContainerWatchdogEvent.PageFinished(1), 300L),
+        )
+        assertEquals(WebContainerWatchdogAction.None, zeroDelayWatchdog.onEvent(WebContainerWatchdogEvent.Tick, 10_000L))
+        zeroDelayWatchdog.onEvent(WebContainerWatchdogEvent.Foregrounded, 10_000L)
+        assertEquals(
+            WebContainerWatchdogAction.RequestDomProbe(1),
+            zeroDelayWatchdog.onEvent(WebContainerWatchdogEvent.Tick, 10_000L),
+        )
+    }
+
+    @Test
+    fun duplicateBackgroundForegroundEventsAreIdempotentAndResetClearsPauseState() {
+        val watchdog = WebContainerWatchdog(WebContainerWatchdogPolicy(stallTimeoutMs = 10_000L))
+
+        // Foregrounded before any Backgrounded is a no-op.
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Foregrounded, 500L))
+        assertFalse(watchdog.isBackgrounded)
+
+        watchdog.onEvent(WebContainerWatchdogEvent.LoadStarted(1), 1_000L)
+        // Backgrounded at 3_000 (2s elapsed), then duplicate Backgrounded at 9_000 must keep earliest anchor (3_000).
+        watchdog.onEvent(WebContainerWatchdogEvent.Backgrounded, 3_000L)
+        watchdog.onEvent(WebContainerWatchdogEvent.Backgrounded, 9_000L)
+        assertTrue(watchdog.isBackgrounded)
+
+        // Foregrounded at 23_000 -> shifts by 20_000 (from 3_000), leaving 8_000ms remaining.
+        watchdog.onEvent(WebContainerWatchdogEvent.Foregrounded, 23_000L)
+        // Duplicate Foregrounded at 28_000 must be a no-op (not re-shift!).
+        watchdog.onEvent(WebContainerWatchdogEvent.Foregrounded, 28_000L)
+        assertFalse(watchdog.isBackgrounded)
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 30_999L))
+        assertIs<WebContainerWatchdogAction.EmitTerminalError>(
+            watchdog.onEvent(WebContainerWatchdogEvent.Tick, 31_000L),
+        )
+
+        // Reset clears pause state cleanly so subsequent loads tick normally without requiring Foregrounded.
+        watchdog.onEvent(WebContainerWatchdogEvent.Backgrounded, 32_000L)
+        assertTrue(watchdog.isBackgrounded)
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Reset, 33_000L))
+        assertFalse(watchdog.isBackgrounded)
+        assertEquals(WebContainerPhase.Idle, watchdog.phase)
+
+        watchdog.onEvent(WebContainerWatchdogEvent.LoadStarted(2), 40_000L)
+        assertEquals(WebContainerWatchdogAction.None, watchdog.onEvent(WebContainerWatchdogEvent.Tick, 49_999L))
+        val terminal =
+            assertIs<WebContainerWatchdogAction.EmitTerminalError>(
+                watchdog.onEvent(WebContainerWatchdogEvent.Tick, 50_000L),
+            )
+        assertEquals("load_stall_timeout", terminal.reason)
     }
 
     private fun markReady(

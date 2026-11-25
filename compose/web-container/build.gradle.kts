@@ -26,7 +26,9 @@ kotlin {
         namespace = "build.raft.webcontainer"
         compileSdk = 37
         minSdk = 21
-        withHostTest {}
+        withHostTest {
+            isIncludeAndroidResources = true
+        }
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
@@ -57,6 +59,10 @@ kotlin {
         }
         getByName("desktopTest").dependencies {
             implementation(kotlin("test-junit"))
+        }
+        getByName("androidHostTest").dependencies {
+            implementation(libs.junit)
+            implementation(libs.robolectric)
         }
     }
 }

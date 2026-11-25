@@ -44,6 +44,10 @@ import kotlinx.coroutines.cancel
 import platform.CoreGraphics.CGRect
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.*
+import platform.UIKit.UIApplication
+import platform.UIKit.UIApplicationDidEnterBackgroundNotification
+import platform.UIKit.UIApplicationState
+import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIColor
 import platform.UIKit.UIView
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
@@ -72,6 +76,7 @@ import platform.WebKit.WKWebViewConfiguration
 import platform.WebKit.WKWebpagePreferences
 import platform.WebKit.WKWindowFeatures
 import platform.darwin.NSObject
+import platform.darwin.NSObjectProtocol
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import platform.objc.class_addMethod
@@ -209,9 +214,37 @@ internal class WebContainerIosHost(
     private var activeSchemeHandler: WebContainerIosSchemeHandler? = null
     private val activeDownloads = mutableListOf<WebContainerIosDownloadDelegate>()
     private var downloadCancelledUrl: String? = null
+    private var appInBackground: Boolean =
+        UIApplication.sharedApplication.applicationState == UIApplicationState.UIApplicationStateBackground
+    private var windowAttached: Boolean = container.window != null
+    private val lifecycleObservers = mutableListOf<NSObjectProtocol>()
 
     init {
         container.backgroundColor = UIColor.whiteColor
+        val center = NSNotificationCenter.defaultCenter
+        lifecycleObservers +=
+            center.addObserverForName(
+                name = UIApplicationDidEnterBackgroundNotification,
+                `object` = null,
+                queue = NSOperationQueue.mainQueue,
+            ) { _ ->
+                if (!disposed) {
+                    appInBackground = true
+                    syncWatchdogLifecycle()
+                }
+            }
+        lifecycleObservers +=
+            center.addObserverForName(
+                name = UIApplicationWillEnterForegroundNotification,
+                `object` = null,
+                queue = NSOperationQueue.mainQueue,
+            ) { _ ->
+                if (!disposed) {
+                    appInBackground = false
+                    syncWatchdogLifecycle(syncStateOnResume = true)
+                }
+            }
+        syncWatchdogLifecycle()
     }
 
     fun applyInitialBackground(argb: Int) {
@@ -245,13 +278,8 @@ internal class WebContainerIosHost(
 
     fun onWindowAttachmentChanged(attached: Boolean) {
         if (disposed) return
-        val view = webView ?: return
-        if (attached) {
-            startPolling(view)
-            syncObservedState(view)
-        } else {
-            stopPolling()
-        }
+        windowAttached = attached
+        syncWatchdogLifecycle(syncStateOnResume = attached)
     }
 
     fun applyConfig(next: WebContainerConfig) {
@@ -290,12 +318,21 @@ internal class WebContainerIosHost(
     fun dispose() {
         if (disposed) return
         disposed = true
+        removeLifecycleObservers()
         boundController?.unbindDispatcher(this)
         boundController = null
         jsbDispatcher?.cancelInFlight("container_disposed")
         tearDownWebView()
         hostScope.cancel()
         unregisterActiveScope()
+    }
+
+    private fun removeLifecycleObservers() {
+        val center = NSNotificationCenter.defaultCenter
+        for (observer in lifecycleObservers) {
+            center.removeObserver(observer)
+        }
+        lifecycleObservers.clear()
     }
 
     private fun registerActiveScope(scope: WebIsolationScope) {
@@ -508,7 +545,7 @@ internal class WebContainerIosHost(
         kvoObserver.attach(nextView)
         applyBackgroundVisuals(cfg)
         container.addSubview(nextView)
-        startPolling(nextView)
+        syncWatchdogLifecycle()
         if (spare != null && cfg.backgroundArgb != 0) {
             nextView.evaluateJavaScript(
                 JsbBootstrapScripts.buildBlankCanvasPaintScript(cfg.backgroundArgb, cfg.isDarkTheme),
@@ -562,14 +599,38 @@ internal class WebContainerIosHost(
         applyBackgroundVisuals(cfg)
     }
 
+    private fun isWatchdogActive(): Boolean = !disposed && windowAttached && !appInBackground
+
+    private fun syncWatchdogLifecycle(syncStateOnResume: Boolean = false) {
+        if (disposed) {
+            stopPolling()
+            return
+        }
+        if (isWatchdogActive()) {
+            watchdog.onEvent(WebContainerWatchdogEvent.Foregrounded, webContainerMonotonicMillis())
+            val view = webView
+            if (view != null) {
+                if (stateTimer == null) {
+                    startPolling(view)
+                }
+                if (syncStateOnResume) {
+                    syncObservedState(view)
+                }
+            }
+        } else {
+            watchdog.onEvent(WebContainerWatchdogEvent.Backgrounded, webContainerMonotonicMillis())
+            stopPolling()
+        }
+    }
+
     private fun startPolling(target: WKWebView) {
         stopPolling()
-        if (container.window == null) return
+        if (!isWatchdogActive()) return
         val kvoActive = kvoObserver.isAttached
         val interval = if (kvoActive) IOS_WATCHDOG_ONLY_INTERVAL_SECONDS else IOS_POLL_INTERVAL_SECONDS
         stateTimer =
             NSTimer.scheduledTimerWithTimeInterval(interval, repeats = true) { _ ->
-                if (disposed || !isSameObjCObject(target, webView)) return@scheduledTimerWithTimeInterval
+                if (!isWatchdogActive() || !isSameObjCObject(target, webView)) return@scheduledTimerWithTimeInterval
                 if (!kvoActive) {
                     syncObservedState(target)
                 }
