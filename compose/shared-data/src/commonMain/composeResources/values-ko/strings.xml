@@ -1216,6 +1216,7 @@
     <string name="thread_video_attachment_fallback_name">동영상 첨부 파일</string>
     <string name="thread_video_download_to_view">다운로드해서 보기</string>
     <string name="thread_video_open_in_preview">미리보기에서 %1$s 열기</string>
+    <string name="thread_video_download_file">%1$s 다운로드</string>
     <string name="video_player_mute">음소거</string>
     <string name="video_player_unmute">음소거 해제</string>
     <string name="video_player_volume">음량</string>

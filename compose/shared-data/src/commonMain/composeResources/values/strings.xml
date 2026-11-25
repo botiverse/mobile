@@ -1217,6 +1217,7 @@
     <string name="thread_video_attachment_fallback_name">Video attachment</string>
     <string name="thread_video_download_to_view">Download to view</string>
     <string name="thread_video_open_in_preview">Open %1$s in preview</string>
+    <string name="thread_video_download_file">Download %1$s</string>
     <string name="video_player_mute">Mute</string>
     <string name="video_player_unmute">Unmute</string>
     <string name="video_player_volume">Volume</string>

@@ -1216,6 +1216,7 @@
     <string name="thread_video_attachment_fallback_name">影片附件</string>
     <string name="thread_video_download_to_view">下載後查看</string>
     <string name="thread_video_open_in_preview">在預覽中開啟 %1$s</string>
+    <string name="thread_video_download_file">下載 %1$s</string>
     <string name="video_player_mute">靜音</string>
     <string name="video_player_unmute">取消靜音</string>
     <string name="video_player_volume">音量</string>

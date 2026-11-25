@@ -188,7 +188,8 @@ internal fun ThreadMessageAttachments(
                     attachment = first,
                     openState = attachmentOpenStates[first.id],
                     onOpen = { onOpenAttachment(first.id) },
-                    onDownload = { onDownloadAttachment(first.id) }
+                    onDownload = { onDownloadAttachment(first.id) },
+                    pending = pending
                 )
             } else {
                 @OptIn(ExperimentalLayoutApi::class)
@@ -203,7 +204,8 @@ internal fun ThreadMessageAttachments(
                             attachment = attachment,
                             openState = attachmentOpenStates[attachment.id],
                             onOpen = { onOpenAttachment(attachment.id) },
-                            onDownload = { onDownloadAttachment(attachment.id) }
+                            onDownload = { onDownloadAttachment(attachment.id) },
+                            pending = pending
                         )
                     }
                 }
@@ -367,13 +369,15 @@ private fun ThreadAttachmentChip(
     attachment: RaftThreadAttachmentItem,
     openState: ThreadAttachmentOpenUiState?,
     onOpen: () -> Unit,
-    onDownload: () -> Unit = {}
+    onDownload: () -> Unit = {},
+    pending: Boolean = false
 ) {
     if (attachment.isPreviewableVideoAttachment()) {
         ThreadInlineVideoAttachmentCard(
             attachment = attachment,
             onDownload = onDownload,
-            onOpenPreview = onOpen
+            onOpenPreview = onOpen,
+            pending = pending
         )
         return
     }
