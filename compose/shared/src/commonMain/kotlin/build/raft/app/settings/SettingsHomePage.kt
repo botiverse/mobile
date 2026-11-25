@@ -5505,7 +5505,7 @@ private fun RaftAppShellReadyContent(
                                     builtInItems = baseRailItems,
                                     snapshot = placesSnapshot,
                                     resolveIconUrl = { icon ->
-                                        icon?.let { resolveAppLinkIconUrl(it, sharedStores.apiEnvironmentStore.current().apiBaseUrl) }
+                                        icon?.let { build.raft.app.data.resolveAppLinkIconUrl(it, sharedStores.apiEnvironmentStore.current().apiBaseUrl) }
                                     },
                                 )
                             } ?: baseRailItems.orderedLikeRailTabOrder(railTabOrderState.order)
@@ -5558,7 +5558,7 @@ private fun RaftAppShellReadyContent(
                                         clientId = railAppClientId,
                                         fallbackAppName = fallbackName,
                                         resolveIconUrl = { icon ->
-                                            icon?.let { resolveAppLinkIconUrl(it, sharedStores.apiEnvironmentStore.current().apiBaseUrl) }
+                                            icon?.let { build.raft.app.data.resolveAppLinkIconUrl(it, sharedStores.apiEnvironmentStore.current().apiBaseUrl) }
                                         },
                                         onUnavailable = { unavailableRailApp = it },
                                         log = { bridge.log(it) },
@@ -5803,7 +5803,7 @@ private fun RaftAppShellReadyContent(
                             snapshot = activeRailPlacesSnapshot,
                             visibleBuiltInItems = appShellRailTabItems,
                             resolveIconUrl = { icon ->
-                                icon?.let { resolveAppLinkIconUrl(it, sharedStores.apiEnvironmentStore.current().apiBaseUrl) }
+                                icon?.let { build.raft.app.data.resolveAppLinkIconUrl(it, sharedStores.apiEnvironmentStore.current().apiBaseUrl) }
                             },
                             onDismiss = { railPlacesEditOpen = false },
                             onSave = { keys ->
