@@ -609,14 +609,14 @@ class ArtifactsHomeUiTest {
                     onView = {},
                     onOpen = { opened += it.summary.id },
                     onBack = {},
-                    cover = { r, _ ->
+                    cover = { r, _, corner ->
                         val excerpt = r.summary.excerpt
                         if (excerpt != null) {
-                            ArtifactsHomeTileCoverFrame(Alignment.TopCenter) {
-                                ArtifactCardExcerpt(excerpt, fitFrame = true)
+                            ArtifactsHomeTileCoverFrame(Alignment.TopStart) {
+                                ArtifactCardExcerpt(excerpt, fitFrame = true, corner = corner)
                             }
                         } else {
-                            ArtifactsHomeTilePlaceholder(r.summary.kind)
+                            ArtifactsHomeTilePlaceholder(r.summary.kind, corner = corner)
                         }
                     },
                 )
@@ -767,7 +767,7 @@ class ArtifactsHomeUiTest {
                         onOpen = {},
                         onBack = {},
                         currentArtifactId = "pt_2",
-                        cover = { r, _ ->
+                        cover = { r, _, corner ->
                             Box(
                                 Modifier.onGloballyPositioned { coords ->
                                     if (r.summary.id == "pt_1") firstCoverBounds = coords.boundsInRoot()
@@ -776,11 +776,11 @@ class ArtifactsHomeUiTest {
                             ) {
                                 val excerpt = r.summary.excerpt
                                 if (excerpt != null) {
-                                    ArtifactsHomeTileCoverFrame(Alignment.TopCenter) {
-                                        ArtifactCardExcerpt(excerpt, fitFrame = true)
+                                    ArtifactsHomeTileCoverFrame(Alignment.TopStart) {
+                                        ArtifactCardExcerpt(excerpt, fitFrame = true, corner = corner)
                                     }
                                 } else {
-                                    ArtifactsHomeTilePlaceholder(r.summary.kind)
+                                    ArtifactsHomeTilePlaceholder(r.summary.kind, corner = corner)
                                 }
                             }
                         },
@@ -829,14 +829,14 @@ class ArtifactsHomeUiTest {
                             onView = {},
                             onOpen = {},
                             onBack = {},
-                            cover = { r, _ ->
+                            cover = { r, _, corner ->
                                 val excerpt = r.summary.excerpt
                                 if (excerpt != null) {
-                                    ArtifactsHomeTileCoverFrame(Alignment.TopCenter) {
-                                        ArtifactCardExcerpt(excerpt, fitFrame = true)
+                                    ArtifactsHomeTileCoverFrame(Alignment.TopStart) {
+                                        ArtifactCardExcerpt(excerpt, fitFrame = true, corner = corner)
                                     }
                                 } else {
-                                    ArtifactsHomeTilePlaceholder(r.summary.kind)
+                                    ArtifactsHomeTilePlaceholder(r.summary.kind, corner = corner)
                                 }
                             },
                         )

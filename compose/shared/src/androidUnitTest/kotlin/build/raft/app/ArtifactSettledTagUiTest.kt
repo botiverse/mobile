@@ -111,7 +111,7 @@ class ArtifactSettledTagUiTest {
                             onOpen = {},
                             onCopyLink = null,
                             onSetSettled = null,
-                            cover = { r, _ -> ArtifactsHomeTilePlaceholder(r.summary.kind) },
+                            cover = { r, _, corner -> ArtifactsHomeTilePlaceholder(r.summary.kind, corner = corner) },
                         )
                         ArtifactsHomeListRow(
                             row = row,

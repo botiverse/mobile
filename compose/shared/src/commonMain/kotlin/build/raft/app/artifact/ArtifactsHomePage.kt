@@ -345,7 +345,7 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
                     bridge.copyToPasteboard(artifactWebUrl(webBaseUrl, ArtifactLinkTarget(row.summary.id)))
                     bridge.toast(copiedMessage)
                 },
-                cover = { row, dimmed -> ArtifactsHomeTileCover(row, dimmed) },
+                cover = { row, dimmed, corner -> ArtifactsHomeTileCover(row, dimmed, corner) },
                 thumbnail = { row, dimmed -> ArtifactsHomeRowThumbnail(row, dimmed) },
                 currentArtifactId = artifactPane.currentArtifactIdOrNull().takeIf { wide },
             )
@@ -353,21 +353,30 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
     }
 }
 
-/** web `ArtifactCoverPicture` `variant="tile"`: publish-check screenshot, else Markdown excerpt (`fit="frame"`), else kind glyph. */
+/**
+ * web `ArtifactCoverPicture` `variant="tile"` (slock #16751): publish-check screenshot, else
+ * Markdown excerpt (`fit="frame"`), else kind glyph. [corner] sits overlaid at top-right (`6.dp`)
+ * over a screenshot or placeholder, and wraps inside the words of a Markdown excerpt at the exact
+ * same top-right position.
+ */
 @Composable
-private fun ArtifactsHomeTileCover(row: ArtifactsHomeRow, dimmed: Boolean) {
+internal fun ArtifactsHomeTileCover(
+    row: ArtifactsHomeRow,
+    dimmed: Boolean,
+    corner: (@Composable () -> Unit)? = null,
+) {
     val summary = row.summary
     val excerpt = summary.excerpt
     when {
         summary.screenshot != null ->
-            ArtifactsHomeTileCoverFrame {
+            ArtifactsHomeTileCoverFrame(corner = corner) {
                 ArtifactsHomeScreenshotImage(row, dimmed)
             }
         excerpt != null ->
-            ArtifactsHomeTileCoverFrame(Alignment.TopCenter) {
-                ArtifactCardExcerpt(excerpt, fitFrame = true)
+            ArtifactsHomeTileCoverFrame(Alignment.TopStart) {
+                ArtifactCardExcerpt(excerpt, fitFrame = true, corner = corner)
             }
-        else -> ArtifactsHomeTilePlaceholder(summary.kind)
+        else -> ArtifactsHomeTilePlaceholder(summary.kind, corner = corner)
     }
 }
 
