@@ -114,8 +114,13 @@ kotlin {
         publishLibraryVariants("release")
     }
 
-    iosArm64()
-    iosSimulatorArm64()
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { iosTarget ->
+        // SQLDelight moved to :shared-data (#5683), so its plugin no longer appends -lsqlite3 to
+        // :shared's standalone Kotlin/Native test binaries (the app links sqlite3 via CocoaPods).
+        iosTarget.binaries.withType(org.jetbrains.kotlin.gradle.plugin.mpp.TestExecutable::class.java).configureEach {
+            linkerOpts("-lsqlite3")
+        }
+    }
 
     // Desktop (JVM, packaged for macOS by :desktopApp). Shares plain-JVM actuals with Android
     // through jvmCommonMain.
