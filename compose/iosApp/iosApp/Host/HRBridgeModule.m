@@ -3790,10 +3790,14 @@ NSString *const RaftBridgeCallbackKey = @"callback";
         return;
     }
     // HostLinkCapability.openUrlInBrowser (`browser: true`): an http(s) page in Safari inside the
-    // app, so a Raft universal link can't route back into Raft. Everything else: openURL.
+    // app, so a Raft universal link can't route back into Raft. When `externalBrowser: true` is set
+    // (e.g. Artifact viewer "Open in browser"), bypass SFSafariViewController and call
+    // UIApplication.openURL directly so Safari shares cookies/sessions and does not cover Raft
+    // full-screen. Everything else: openURL.
     NSString *scheme = url.scheme.lowercaseString;
     BOOL webUrl = [scheme isEqualToString:@"https"] || [scheme isEqualToString:@"http"];
-    if ([params[@"browser"] boolValue] && webUrl) {
+    BOOL externalBrowser = RaftBridgeBool(params[@"externalBrowser"]);
+    if (RaftBridgeBool(params[@"browser"]) && !externalBrowser && webUrl) {
         RaftBridgeRunOnMain(^{
             UIViewController *controller = [self raft_currentViewController];
             if (controller) {

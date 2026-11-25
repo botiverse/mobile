@@ -8231,10 +8231,13 @@ internal class RaftBridgeModule(
         val url = request.optString("url").takeIf { it.isNotBlank() } ?: return null
         val mimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
         val uri = Uri.parse(url)
-        // `browser: true` (BridgeModule.openUrl inBrowser): a browser even for a Raft link. Without one,
-        // the shared in-app browser rather than a plain VIEW, which Raft's own App Links route back here.
-        val inBrowser = request.optBoolean("browser", false) && mimeType == null &&
-            uri.scheme?.lowercase() in setOf("http", "https")
+        // `browser: true` / `externalBrowser: true` (BridgeModule.openUrl): a browser even for a
+        // Raft link. Without one, the shared in-app browser rather than a plain VIEW, which Raft's
+        // own App Links route back here.
+        val inBrowser =
+            (request.optBoolean("browser", false) || request.optBoolean("externalBrowser", false)) &&
+                mimeType == null &&
+                uri.scheme?.lowercase() in setOf("http", "https")
         val hostActivity = activity?.takeUnless { it.isFinishing || it.isDestroyed }
         if (
             !BuildConfig.HANDS_APK_UPDATE_ENABLED &&

@@ -4574,6 +4574,7 @@
     <string name="artifacts_column_title">Artifact</string>
     <string name="artifacts_viewer_unavailable_title">Não é possível abrir este Artifact</string>
     <string name="artifacts_viewer_unavailable_body">Ele não existe ou você não tem acesso.</string>
+    <string name="artifacts_viewer_open_in_browser">Abrir no navegador</string>
     <string name="activity_list_object_home">· %1$s</string>
     <string name="activity_action_unfollow_artifact">Deixar de seguir</string>
     <string name="activity_unfollowed_artifact">Você deixou de seguir %1$s</string>

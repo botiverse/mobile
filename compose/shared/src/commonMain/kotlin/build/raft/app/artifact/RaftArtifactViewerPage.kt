@@ -32,6 +32,9 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
+import build.raft.app.data.RaftArtifactOpenInBrowserAction
+import build.raft.app.data.RaftArtifactOpenInBrowserSurface
+import build.raft.app.data.RaftProductEvents
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.ui.raftImeBottomPx
 import build.raft.app.compat.module.RouterModule
@@ -556,8 +559,8 @@ private fun RaftArtifactViewerScreen() {
     // The conversation it was opened from (`hostConversation`): the page's title then lists the Artifacts
     // recently opened there, and picking one moves the page in place ([raftArtifactViewerSwitchesInPlace]).
     val conversationId = remember(params.toString()) { params.raftArtifactViewerConversationOrNull() }
-    // The Artifact shown: the one opened, then the one the page moved to in place (its title, Copy
-    // link, the summary read). The WebView's document is not reloaded for it ([bodyTarget]).
+    // The Artifact shown: the one opened, then the one the page moved to in place (its title, Open in
+    // Browser, Copy link, the summary read). The WebView's document is not reloaded for it ([bodyTarget]).
     var shown by remember(params.toString()) { mutableStateOf<ArtifactLinkTarget>(target) }
     // Leaving it, it is seen: a channel shown whose announcement it is reads at once (#16289 row 7).
     ChannelAnnouncementViewedEffect(host.sharedStores, host.storeScope, scope?.serverId, shown.canonicalId)
@@ -567,7 +570,7 @@ private fun RaftArtifactViewerScreen() {
             raftArtifactViewerOpenLogLine(target, scopeKnown = scope != null, webBaseUrl = webBaseUrl),
         )
     }
-    // Fallback URL when scope == null: the page as the web shows it.
+    // Open in browser / fallback URL when scope == null: the page as the web shows it.
     val pageUrl = remember(webBaseUrl, shown) { raftArtifactViewerPageUrl(webBaseUrl, shown) }
     // Desktop Mode's state for the page's own ⋯ (`hostDesktop`; null: not offered here).
     val hostDesktop: Boolean? = desktopMode.takeIf { desktopModeOffered }
@@ -579,7 +582,8 @@ private fun RaftArtifactViewerScreen() {
     var header by remember(params.toString()) { mutableStateOf(RaftArtifactViewerMemory.cache.header(scope, target.canonicalId)) }
     LaunchedEffect(Unit) { if (header != null) RaftArtifactOpenTrace.mark("header_painted", "from=card_or_cache") }
     var bodyState by remember(params.toString()) { mutableStateOf<RaftArtifactViewerBodyState>(RaftArtifactViewerBodyState.Viewing) }
-    // The version the page shows, from its address (a version picked in the page's ⋯, Back to Latest).
+    // The version the page shows, from its address (a version picked in the page's ⋯, Back to
+    // Latest): Open in Browser opens that one.
     var addressed by remember(params.toString()) { mutableStateOf<RaftArtifactViewerNavigation.Stay?>(null) }
     // Moves when the page goes from a pinned version to the latest (View latest, Back to Latest):
     // the latest may be newer than the one read on open, so it is read again.
@@ -620,6 +624,17 @@ private fun RaftArtifactViewerScreen() {
     LaunchedEffect(splashKinds, header?.kind) { splashKinds.update(header?.kind, splashOpenedAt) }
     // The page draws the only bar (`hostToolbar=1`, shown, no load error): this one is left out.
     var pageDrawsBar by remember(params.toString()) { mutableStateOf(false) }
+    // The page confirmed its single-bar "Open in browser" button is rendered (`hostOpenInBrowser=1`).
+    var webShowsOpenInBrowser by remember(params.toString()) { mutableStateOf(false) }
+    // The page content is revealed (splash gone, no load error): distinguishes genuine fallback native bar from a pre-hydration splash.
+    var bodyRevealed by remember(params.toString()) { mutableStateOf(false) }
+    // At most one `shown` per surface per Artifact viewed in this viewer instance (#proj-mobile:#364).
+    val recordedOpenInBrowserShown = remember(params.toString(), shown.canonicalId) { mutableSetOf<RaftArtifactOpenInBrowserSurface>() }
+    fun recordOpenInBrowserShownOnce(surface: RaftArtifactOpenInBrowserSurface) {
+        if (recordedOpenInBrowserShown.add(surface)) {
+            RaftProductEvents.artifactOpenInBrowser(RaftArtifactOpenInBrowserAction.Shown, surface)
+        }
+    }
 
     // Revalidate (never trusting the cached header for access): a fresh summary; unavailable (403/404)
     // replaces the screen and drops the cached copy.
@@ -700,6 +715,10 @@ private fun RaftArtifactViewerScreen() {
     val controller = rememberRaftWebViewController()
 
     val untitled = stringResource(Res.string.artifacts_activity_untitled)
+    // The link of what is shown (web `useCopyArtifactLink`: this deployment's origin, `/v/<n>` only
+    // when pinned), opened in the browser.
+    val shownLink = ArtifactLinkTarget(shown.id, if (addressed != null) addressed?.version else shown.version)
+    val shownUrl = remember(webBaseUrl, shownLink) { raftArtifactViewerPageUrl(webBaseUrl, shownLink) }
     val downloadSaved = stringResource(Res.string.file_preview_private_download_saved)
     val downloadSavedToDownloads = stringResource(Res.string.file_preview_download_saved)
     val downloadAlreadySaved = stringResource(Res.string.file_preview_download_already_saved)
@@ -721,6 +740,16 @@ private fun RaftArtifactViewerScreen() {
         desktopModePreference?.write(desktopModeChosen)
         host.bridge.log("artifact_viewer_desktop_mode on=$desktopModeChosen from=$from")
     }
+    fun openInBrowser(from: String, url: String = shownUrl) {
+        val surface = if (from == "page") RaftArtifactOpenInBrowserSurface.WebBar else RaftArtifactOpenInBrowserSurface.NativeBar
+        recordOpenInBrowserShownOnce(surface)
+        RaftProductEvents.artifactOpenInBrowser(RaftArtifactOpenInBrowserAction.Clicked, surface)
+        host.bridge.log("artifact_viewer_open_in_browser from=$from")
+        host.bridge.openUrl(url, inBrowser = true, externalBrowser = true)
+        if (shouldCloseArtifactViewerAfterBrowserHandoff(conversationId, inColumn)) {
+            closePage()
+        }
+    }
     val copiedMessage = stringResource(Res.string.common_copied)
     fun copyLink(url: String) {
         host.bridge.log("artifact_viewer_copy_link from=page")
@@ -734,10 +763,20 @@ private fun RaftArtifactViewerScreen() {
         }
     }
     val viewing = bodyState == RaftArtifactViewerBodyState.Viewing
+    val shownOpenInBrowserSurface =
+        raftArtifactOpenInBrowserShownSurface(
+            viewing = viewing,
+            pageDrawsBar = pageDrawsBar,
+            webShowsOpenInBrowser = webShowsOpenInBrowser,
+            bodyRevealed = bodyRevealed,
+        )
+    LaunchedEffect(shownOpenInBrowserSurface, shown.canonicalId) {
+        shownOpenInBrowserSurface?.let(::recordOpenInBrowserShownOnce)
+    }
     // One bar where the page draws it (`hostToolbar=1`, artin "双栏"): its toolbar has Back, the
-    // title and this bar's ⋮ items in its own ⋯. Otherwise (a web that does not, while loading, a
-    // load error, unavailable) this bar has Back, the title and a ⋮ with only what the page's own
-    // toolbar and ⋯ (under it) cannot offer; nothing shows twice.
+    // title and this bar's items in its own ⋯. Otherwise (a web that does not, while loading, a
+    // load error, unavailable) this bar has Back, the title, Open in browser (while viewing), and a
+    // ⋮ with Desktop Mode when offered; nothing shows twice.
     RaftArtifactViewerScreenFrame(
         title = header?.title?.ifBlank { untitled } ?: untitled,
         onBack = ::closePage,
@@ -748,6 +787,7 @@ private fun RaftArtifactViewerScreen() {
         actions =
             RaftArtifactViewerBarActions(
                 onToggleDesktopMode = { toggleDesktopMode("bar") },
+                onOpenInBrowser = if (viewing) ({ openInBrowser("bar") }) else null,
             ),
     ) {
         when (bodyState) {
@@ -826,6 +866,9 @@ private fun RaftArtifactViewerScreen() {
                             onHostAction = { action, version ->
                                 when (action) {
                                     RaftArtifactViewerHostAction.DesktopMode -> if (desktopModeOffered) toggleDesktopMode("page")
+                                    // The version the page shows, from the address that asked (the web sends no payload).
+                                    RaftArtifactViewerHostAction.OpenInBrowser ->
+                                        openInBrowser("page", raftArtifactViewerPageUrl(webBaseUrl, ArtifactLinkTarget(shown.id, version)))
                                     // Copied by the App: the link built from this Artifact's id and the address's
                                     // version on the viewer's own web base (never anything the page sends).
                                     RaftArtifactViewerHostAction.CopyLink ->
@@ -837,6 +880,8 @@ private fun RaftArtifactViewerScreen() {
                                 }
                             },
                             onPageDrawsBar = { pageDrawsBar = it },
+                            onWebShowsOpenInBrowser = { webShowsOpenInBrowser = it },
+                            onBodyRevealed = { bodyRevealed = it },
                             freshReloadAvailable = !freshReloadUsed,
                             splashKinds = splashKinds,
                             splashOpenedAt = splashOpenedAt,
@@ -894,6 +939,10 @@ private fun RaftArtifactViewerWebBody(
     onHostAction: (action: RaftArtifactViewerHostAction, version: Int?) -> Unit,
     /** Whether the page now draws the only bar (`hostToolbar=1`, shown, no load error). */
     onPageDrawsBar: (Boolean) -> Unit,
+    /** Whether the page confirmed its single-bar "Open in browser" button is rendered (`hostOpenInBrowser=1`, shown, no load error). */
+    onWebShowsOpenInBrowser: (Boolean) -> Unit,
+    /** Whether the page content is revealed (splash gone, visible, no load error). */
+    onBodyRevealed: (Boolean) -> Unit,
     /** One fresh load per open may replace a close ([raftArtifactViewerLeaveAction]). */
     freshReloadAvailable: Boolean,
     /** The loading splash's Artifact kind ([RaftArtifactSplashKindState]) and its opening ([RaftArtifactViewerSplashCover]). */
@@ -1001,10 +1050,12 @@ private fun RaftArtifactViewerWebBody(
     // Artifact already, says no `hostLoaded` now, and its bar is the only one from the first frame.
     // One only booted (the warm route) has drawn nothing yet: covered as a fresh load (#301, one bar).
     val keptDrewBar = remember(kept) { raftArtifactViewerKeptPageDrewBar(kept?.currentUrl) }
+    val keptShowedOpenInBrowser = remember(kept) { raftArtifactViewerKeptPageShowedOpenInBrowser(kept?.currentUrl) }
     // The page said once (this document) that its toolbar is the only bar: a web build does not
     // change under a document, and the address may lose the marker for a moment while it routes.
     // Read from the kept address at once, not a frame later (no App bar flashed over the page's).
     var pageAcked by remember { mutableStateOf(keptDrewBar) }
+    var pageOpenInBrowserAcked by remember { mutableStateOf(keptShowedOpenInBrowser) }
     // The page said its content loaded (`hostLoaded=1`, #302): the App's splash plays its ending
     // from then, and is gone after it ([splashEnded]).
     var pageLoadedAt by remember { mutableStateOf<kotlin.time.TimeMark?>(null) }
@@ -1032,6 +1083,10 @@ private fun RaftArtifactViewerWebBody(
         if (!pageAcked && raftArtifactViewerPageDrawsHostBar(url)) {
             pageAcked = true
             raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_page_bar on=true")
+        }
+        if (!pageOpenInBrowserAcked && raftArtifactViewerPageShowsOpenInBrowser(url)) {
+            pageOpenInBrowserAcked = true
+            raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_page_open_in_browser on=true")
         }
         val hostAction = raftArtifactViewerHostAction(url)
         val asksOpen = raftArtifactViewerAsksHostOpen(url)
@@ -1228,7 +1283,19 @@ private fun RaftArtifactViewerWebBody(
     }
     val currentOnPageDrawsBar by rememberUpdatedState(onPageDrawsBar)
     LaunchedEffect(drawsBar) { currentOnPageDrawsBar(drawsBar) }
-    DisposableEffect(Unit) { onDispose { currentOnPageDrawsBar(false) } }
+    val webShowsOpenInBrowser = pageOpenInBrowserAcked && visible && !loadError
+    val currentOnWebShowsOpenInBrowser by rememberUpdatedState(onWebShowsOpenInBrowser)
+    LaunchedEffect(webShowsOpenInBrowser) { currentOnWebShowsOpenInBrowser(webShowsOpenInBrowser) }
+    val bodyRevealed = loadingIndicator == RaftArtifactViewerLoadingIndicator.None && visible && !loadError
+    val currentOnBodyRevealed by rememberUpdatedState(onBodyRevealed)
+    LaunchedEffect(bodyRevealed) { currentOnBodyRevealed(bodyRevealed) }
+    DisposableEffect(Unit) {
+        onDispose {
+            currentOnPageDrawsBar(false)
+            currentOnWebShowsOpenInBrowser(false)
+            currentOnBodyRevealed(false)
+        }
+    }
     // Diagnostics: a load still covered after a while, and what the page reached when it closes.
     val latestState by rememberUpdatedState(
         "kept=${kept != null} showsTarget=$showsTarget visible=$visible documentReady=$documentReady " +
@@ -1711,6 +1778,18 @@ internal fun raftArtifactViewerSavedToast(
         result?.optString("savedTo") == "files" -> savedToFiles
         else -> saved
     }
+
+/**
+ * Whether handing an Artifact off to the external browser should close the standalone viewer page
+ * (#proj-mobile:#364): true when opened from a conversation as its own page (so switching back
+ * from the browser lands directly in that conversation, e.g. to send voice), false in a wide split
+ * column (the conversation is already visible beside it) or when opened without a conversation
+ * (Artifacts home, Activity, external link).
+ */
+internal fun shouldCloseArtifactViewerAfterBrowserHandoff(
+    conversationId: String?,
+    inColumn: Boolean,
+): Boolean = !conversationId.isNullOrBlank() && !inColumn
 
 /**
  * Hands [url] to the host's native share sheet (`shareText`, slock #16442 `hostMenu=share-link`),

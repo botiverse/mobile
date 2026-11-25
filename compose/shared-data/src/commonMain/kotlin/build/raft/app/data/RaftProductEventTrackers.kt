@@ -385,6 +385,18 @@ class RaftProductEventsRecorder(
         client.track(RaftProductEvent.DraftsItemOpened(RaftDraftsItemOpenedProperties(place)))
     }
 
+    /** Artifact viewer temporary "Open in browser" button shown or clicked (#proj-mobile:#364). */
+    fun artifactOpenInBrowser(
+        action: RaftArtifactOpenInBrowserAction,
+        surface: RaftArtifactOpenInBrowserSurface,
+    ) {
+        client.track(
+            RaftProductEvent.ArtifactOpenInBrowser(
+                RaftArtifactOpenInBrowserProperties(action = action, surface = surface)
+            )
+        )
+    }
+
     /** The app called the platform's store rating prompt after [trigger] (at most once per device). */
     fun appRatingPromptRequested(trigger: RaftAppRatingPromptTrigger) {
         client.track(RaftProductEvent.AppRatingPromptRequested(RaftAppRatingPromptRequestedProperties(trigger)))

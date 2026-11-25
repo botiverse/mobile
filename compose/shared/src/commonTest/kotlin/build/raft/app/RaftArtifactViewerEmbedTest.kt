@@ -10,9 +10,11 @@ import build.raft.app.compat.module.Module
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.data.RaftArtifactOpenInBrowserSurface
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -31,7 +33,7 @@ import kotlinx.serialization.json.JsonObject
 class RaftArtifactViewerEmbedTest {
     private val web = "https://raft-app-staging.botiverse.dev"
     private val id = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
-    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,copy-link,share-link&hostOpen=message"
+    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,open-in-browser,copy-link,share-link&hostOpen=message"
 
     @Test
     fun theViewerOpensThePageUnderTheAppTitleBar() {
@@ -90,15 +92,17 @@ class RaftArtifactViewerEmbedTest {
         val page = "$web/artifacts/$id/v/3?$embed&hostDesktop=off"
         // An App item in the page's ⋯ (`#host=<name>`): still this Artifact, at the version shown.
         assertEquals(RaftArtifactViewerHostAction.DesktopMode, raftArtifactViewerHostAction("$page#host=desktop-mode"))
+        assertEquals(RaftArtifactViewerHostAction.OpenInBrowser, raftArtifactViewerHostAction("$page#host=open-in-browser"))
+        assertEquals(RaftArtifactViewerNavigation.Stay(3), raftArtifactViewerNavigation("$page#host=open-in-browser", web, id))
         // Copy link (Hands d292d99f) and Share link (slock #16442): the page's own items ask, and the viewer stays on this Artifact.
         assertEquals(RaftArtifactViewerHostAction.CopyLink, raftArtifactViewerHostAction("$page#host=copy-link"))
         assertEquals(RaftArtifactViewerNavigation.Stay(3), raftArtifactViewerNavigation("$page#host=copy-link", web, id))
         assertEquals(RaftArtifactViewerHostAction.ShareLink, raftArtifactViewerHostAction("$page#host=share-link"))
         assertEquals(RaftArtifactViewerNavigation.Stay(3), raftArtifactViewerNavigation("$page#host=share-link", web, id))
-        // Back's `#host=close` still closes, and is no menu item; open-in-browser and other fragments are none either.
+        // Back's `#host=close` still closes, and is no menu item; unknown fragments are none either.
         assertEquals(null, raftArtifactViewerHostAction("$page#host=close"))
         assertEquals(RaftArtifactViewerNavigation.Close, raftArtifactViewerNavigation("$page#host=close", web, id))
-        for (other in listOf(page, "$page#host=open-in-browser", "$page#host=share", "$page#panel=comments", "$page#host=desktop-mode-x")) {
+        for (other in listOf(page, "$page#host=share", "$page#panel=comments", "$page#host=desktop-mode-x")) {
             assertEquals(null, raftArtifactViewerHostAction(other), other)
         }
     }
@@ -120,6 +124,7 @@ class RaftArtifactViewerEmbedTest {
         assertEquals(false, raftArtifactViewerHostActionIsNew(tap, handledUrl = tap, handledCleared = true, sinceHandledMs = 100))
         // Taken off since: the page set it again, a new tap.
         assertTrue(raftArtifactViewerHostActionIsNew(tap, handledUrl = tap, handledCleared = true, sinceHandledMs = RAFT_ARTIFACT_VIEWER_HOST_ACTION_REPEAT_MS))
+        assertTrue(raftArtifactViewerHostActionIsNew("$web/artifacts/$id?$embed#host=open-in-browser", handledUrl = tap, handledCleared = false, sinceHandledMs = 0))
         assertTrue(raftArtifactViewerHostActionIsNew("$web/artifacts/$id?$embed#host=copy-link", handledUrl = tap, handledCleared = false, sinceHandledMs = 0))
         assertTrue(raftArtifactViewerHostActionIsNew("$web/artifacts/$id?$embed#host=share-link", handledUrl = tap, handledCleared = false, sinceHandledMs = 0))
     }
@@ -210,5 +215,89 @@ class RaftArtifactViewerEmbedTest {
         } finally {
             Dispatchers.resetMain()
         }
+    }
+
+    @Test
+    fun browserHandoffClosesViewerOnlyForStandaloneConversationOpens() {
+        assertTrue(shouldCloseArtifactViewerAfterBrowserHandoff(conversationId = "c0c0c0c0-0000-4000-8000-000000000001", inColumn = false))
+        // Wide split-pane keeps the conversation visible beside the Artifact column: do not close.
+        assertFalse(shouldCloseArtifactViewerAfterBrowserHandoff(conversationId = "c0c0c0c0-0000-4000-8000-000000000001", inColumn = true))
+        // Opened outside a conversation (Artifacts home, Activity, external link): keep viewer open.
+        assertFalse(shouldCloseArtifactViewerAfterBrowserHandoff(conversationId = null, inColumn = false))
+        assertFalse(shouldCloseArtifactViewerAfterBrowserHandoff(conversationId = "", inColumn = false))
+        assertFalse(shouldCloseArtifactViewerAfterBrowserHandoff(conversationId = "   ", inColumn = false))
+        assertFalse(shouldCloseArtifactViewerAfterBrowserHandoff(conversationId = null, inColumn = true))
+    }
+
+    @Test
+    fun openUrlWireSerializesExternalBrowserOnlyWhenRequested() {
+        val calls = mutableListOf<Pair<String, String>>()
+        val transport = HostBridgeTransport { method, params, _ -> calls += method to params }
+        val capabilities = BridgeWireHostCapabilities(transport)
+        val navigator =
+            object : RaftCmpNavigator {
+                override fun openPage(pageName: String, pageData: JsonObject) = Unit
+                override fun closePage() = Unit
+            }
+        val pager =
+            object : Pager() {
+                override fun createExternalModules(): Map<String, Module> = mapOf(BridgeModule.MODULE_NAME to BridgeModule())
+            }
+        pager.pagerId = "artifact-open-url-wire-test"
+        pager.pageData = PageData(JSONObject())
+        pager.host = RaftCmpHost(capabilities, navigator, bridgeTransport = transport)
+        val bridge: BridgeModule = pager.acquireModule(BridgeModule.MODULE_NAME)
+        val link = "$web/artifacts/$id/v/3"
+
+        bridge.openUrl(link)
+        val defaultPayload = JSONObject(calls.removeAt(0).second)
+        assertEquals(link, defaultPayload.optString("url"))
+        assertFalse(defaultPayload.has("browser"))
+        assertFalse(defaultPayload.has("externalBrowser"))
+
+        bridge.openUrl(link, inBrowser = true)
+        val inBrowserPayload = JSONObject(calls.removeAt(0).second)
+        assertEquals(link, inBrowserPayload.optString("url"))
+        assertTrue(inBrowserPayload.optBoolean("browser", false))
+        assertFalse(inBrowserPayload.has("externalBrowser"))
+
+        bridge.openUrl(link, inBrowser = true, externalBrowser = true)
+        val externalPayload = JSONObject(calls.removeAt(0).second)
+        assertEquals(link, externalPayload.optString("url"))
+        assertTrue(externalPayload.optBoolean("browser", false))
+        assertTrue(externalPayload.optBoolean("externalBrowser", false))
+
+        bridge.openUrl(link, externalBrowser = true)
+        val externalOnlyPayload = JSONObject(calls.removeAt(0).second)
+        assertEquals(link, externalOnlyPayload.optString("url"))
+        assertFalse(externalOnlyPayload.has("browser"))
+        assertTrue(externalOnlyPayload.optBoolean("externalBrowser", false))
+    }
+
+    @Test
+    fun hostOpenInBrowserMarkerAndShownSurfaceRulesAvoidDenominatorPollution() {
+        val v138Url = "$web/artifacts/$id?embed=raft-settings-v1&shell=host&hostToolbar=1"
+        val v139Url = "$web/artifacts/$id?embed=raft-settings-v1&shell=host&hostToolbar=1&hostOpenInBrowser=1#top"
+        assertFalse(raftArtifactViewerPageShowsOpenInBrowser(v138Url))
+        assertTrue(raftArtifactViewerPageShowsOpenInBrowser(v139Url))
+        assertFalse(raftArtifactViewerKeptPageShowedOpenInBrowser(null))
+        assertFalse(raftArtifactViewerKeptPageShowedOpenInBrowser(v138Url))
+        assertTrue(raftArtifactViewerKeptPageShowedOpenInBrowser(v139Url))
+
+        // v1.38.3 loading (splash still up) and loaded (hostToolbar=1 without hostOpenInBrowser=1): NEVER emit shown.
+        assertNull(raftArtifactOpenInBrowserShownSurface(viewing = true, pageDrawsBar = false, webShowsOpenInBrowser = false, bodyRevealed = false))
+        assertNull(raftArtifactOpenInBrowserShownSurface(viewing = true, pageDrawsBar = true, webShowsOpenInBrowser = false, bodyRevealed = true))
+        // v1.39 web single bar confirmed hostOpenInBrowser=1: emit web_bar.
+        assertEquals(
+            RaftArtifactOpenInBrowserSurface.WebBar,
+            raftArtifactOpenInBrowserShownSurface(viewing = true, pageDrawsBar = true, webShowsOpenInBrowser = true, bodyRevealed = true),
+        )
+        // Legacy web without hostToolbar=1 once revealed: emit native_bar.
+        assertEquals(
+            RaftArtifactOpenInBrowserSurface.NativeBar,
+            raftArtifactOpenInBrowserShownSurface(viewing = true, pageDrawsBar = false, webShowsOpenInBrowser = false, bodyRevealed = true),
+        )
+        // Non-viewing states never emit.
+        assertNull(raftArtifactOpenInBrowserShownSurface(viewing = false, pageDrawsBar = false, webShowsOpenInBrowser = true, bodyRevealed = true))
     }
 }

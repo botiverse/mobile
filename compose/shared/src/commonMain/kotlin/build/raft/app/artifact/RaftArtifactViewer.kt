@@ -7,6 +7,7 @@ import build.raft.app.data.artifactCanonicalId
 import build.raft.app.data.artifactIdOrNull
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.AuthenticatedRouteOwner
+import build.raft.app.data.RaftArtifactOpenInBrowserSurface
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.isArtifactContentHost
@@ -321,6 +322,8 @@ internal val RaftArtifactViewerEmbedQuery: String =
 internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU_PARAM = "hostMenu"
 internal const val RAFT_ARTIFACT_VIEWER_HOST_DESKTOP_PARAM = "hostDesktop"
 internal const val RAFT_ARTIFACT_VIEWER_HOST_TOOLBAR_PARAM = "hostToolbar"
+/** Set by the web viewer (`replaceState`) once its single-bar "Open in browser" button is actually rendered (#proj-mobile:#364). */
+internal const val RAFT_ARTIFACT_VIEWER_HOST_OPEN_IN_BROWSER_PARAM = "hostOpenInBrowser"
 
 /**
  * The conversation the Artifact was opened from (botiverse/slock #15103, #proj-workspace:#309):
@@ -377,26 +380,29 @@ internal fun raftArtifactViewerHostHeadIn(url: String): Int? =
 internal const val RAFT_ARTIFACT_VIEWER_HOST_LOADED_PARAM = "hostLoaded"
 
 /**
- * The `#host=<name>` actions the App offers the page's controls. [CopyLink] is no item of its own:
- * a page that sees it declared routes its own Copy link here (the WebView's `navigator.clipboard`
- * write fails silently on some Android devices, Hands d292d99f), and the App copies the canonical
- * link itself. [ShareLink] (botiverse/slock #16442, #proj-workspace:#375) lets the phone Share
- * drawer's "Share to other apps" open the native system share sheet for the Artifact's canonical link.
+ * The `#host=<name>` actions the App offers the page's controls. [OpenInBrowser] hands the
+ * Artifact's canonical link directly to the OS external browser (#proj-mobile:#364). [CopyLink] is
+ * no item of its own: a page that sees it declared routes its own Copy link here (the WebView's
+ * `navigator.clipboard` write fails silently on some Android devices, Hands d292d99f), and the App
+ * copies the canonical link itself. [ShareLink] (botiverse/slock #16442, #proj-workspace:#375) lets
+ * the phone Share drawer's "Share to other apps" open the native system share sheet for the
+ * Artifact's canonical link.
  */
 internal enum class RaftArtifactViewerHostAction(val wireName: String) {
     DesktopMode("desktop-mode"),
+    OpenInBrowser("open-in-browser"),
     CopyLink("copy-link"),
     ShareLink("share-link"),
 }
 
 /** Every [RaftArtifactViewerHostAction], comma-separated (a const: [RaftArtifactViewerEmbedQuery] is read before it). */
-internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU = "desktop-mode,copy-link,share-link"
+internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU = "desktop-mode,open-in-browser,copy-link,share-link"
 
 /** What [url]'s fragment asks the App for (`#host=<request>`: the text after `host=`), or null when it asks for nothing. */
 private fun raftArtifactViewerHostRequest(url: String): String? =
     url.substringAfter('#', "").takeIf { it.startsWith("host=") }?.removePrefix("host=")
 
-/** The App action [url]'s fragment asks for (`#host=desktop-mode`, `#host=copy-link`, `#host=share-link`); null for any other. */
+/** The App action [url]'s fragment asks for (`#host=desktop-mode`, `#host=open-in-browser`, `#host=copy-link`, `#host=share-link`); null for any other. */
 internal fun raftArtifactViewerHostAction(url: String): RaftArtifactViewerHostAction? {
     val name = raftArtifactViewerHostRequest(url) ?: return null
     return RaftArtifactViewerHostAction.entries.firstOrNull { it.wireName == name }
@@ -480,6 +486,35 @@ private fun raftArtifactViewerQueryParam(url: String, name: String): String? =
 /** Whether the page at [url] draws the only bar: its toolbar with Back and the App's items (`hostToolbar=1`). */
 internal fun raftArtifactViewerPageDrawsHostBar(url: String): Boolean =
     raftArtifactViewerQueryParam(url, RAFT_ARTIFACT_VIEWER_HOST_TOOLBAR_PARAM) == "1"
+
+/** Whether the web viewer at [url] confirmed its single-bar "Open in browser" button is rendered (`hostOpenInBrowser=1`). */
+internal fun raftArtifactViewerPageShowsOpenInBrowser(url: String): Boolean =
+    raftArtifactViewerQueryParam(url, RAFT_ARTIFACT_VIEWER_HOST_OPEN_IN_BROWSER_PARAM) == "1"
+
+/** Whether a kept document already confirmed its single-bar "Open in browser" button is rendered. */
+internal fun raftArtifactViewerKeptPageShowedOpenInBrowser(keptUrl: String?): Boolean =
+    keptUrl != null && raftArtifactViewerPageShowsOpenInBrowser(keptUrl)
+
+/**
+ * Which "Open in browser" surface (if any) is genuinely exposed to the user right now for
+ * `artifact_open_in_browser` (`action=shown`, #proj-mobile:#364):
+ * - Web single bar (`web_bar`): only when the page explicitly signaled `hostOpenInBrowser=1`
+ *   while visible without load error (older webs with `hostToolbar=1` only never pollute the denominator).
+ * - Native fallback bar (`native_bar`): only when the viewer is showing content (`viewing && bodyRevealed`)
+ *   and the page did NOT take over the bar (`!pageDrawsBar`).
+ */
+internal fun raftArtifactOpenInBrowserShownSurface(
+    viewing: Boolean,
+    pageDrawsBar: Boolean,
+    webShowsOpenInBrowser: Boolean,
+    bodyRevealed: Boolean,
+): RaftArtifactOpenInBrowserSurface? =
+    when {
+        !viewing -> null
+        webShowsOpenInBrowser -> RaftArtifactOpenInBrowserSurface.WebBar
+        !pageDrawsBar && bodyRevealed -> RaftArtifactOpenInBrowserSurface.NativeBar
+        else -> null
+    }
 
 /**
  * Whether [url] carries the host-shell embed contract (`embed=raft-settings-v1` and `shell=host`,
