@@ -278,7 +278,9 @@ fun RaftAppRail(
     val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
     val metrics = if (compact != null) raftAppRailMetrics(compact) else raftAppRailMetricsFor(windowHeight)
     val hasFooter = footer != null || footerItems.isNotEmpty()
-    Row(modifier.fillMaxHeight().raftKeepsEdgeTouches()) {
+    // raft-ui's slot names (`app-rail-root`, `-nav`, `-footer`, `-item-icon`), for the
+    // visual-testing component comparison.
+    Row(Modifier.raftSlot("app-rail-root").then(modifier).fillMaxHeight().raftKeepsEdgeTouches()) {
         Column(
             Modifier
                 .fillMaxHeight()
@@ -313,7 +315,8 @@ fun RaftAppRail(
                     Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .padding(top = if (header == null) metrics.navTop + topInset else metrics.navTopUnderHeader),
+                        .padding(top = if (header == null) metrics.navTop + topInset else metrics.navTopUnderHeader)
+                        .raftSlot("app-rail-nav"),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(metrics.itemGap),
                 ) {
@@ -324,7 +327,8 @@ fun RaftAppRail(
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .padding(top = metrics.navBottom, bottom = metrics.footerBottom + bottomInset),
+                            .padding(top = metrics.navBottom, bottom = metrics.footerBottom + bottomInset)
+                            .raftSlot("app-rail-footer"),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(metrics.itemGap),
                     ) {
@@ -542,7 +546,7 @@ private fun RaftAppRailItemBox(
                 .action(source),
             contentAlignment = Alignment.Center,
         ) {
-            Box(Modifier.size(metrics.iconSize), contentAlignment = Alignment.Center) {
+            Box(Modifier.raftSlot("app-rail-item-icon").size(metrics.iconSize), contentAlignment = Alignment.Center) {
                 CompositionLocalProvider(LocalRaftContentColor provides ink) { icon(ink) }
                 if (showsAttention) {
                     // raft-ui AppRailItemAttention: the `attention` pixel, `-top-1 -right-1` on the

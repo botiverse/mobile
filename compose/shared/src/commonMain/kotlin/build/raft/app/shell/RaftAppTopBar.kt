@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSlot
 import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
@@ -88,7 +89,8 @@ internal fun RaftAppShellTopBar(
     val otherUnreadDescription = stringResource(Res.string.home_server_switcher_other_unread)
     RaftDesignSystemTheme {
         RaftTopBar(
-            modifier = modifier,
+            // The web's names (data-testid), for the visual-testing component comparison.
+            modifier = modifier.testTag("app-top-bar"),
             topInset = topSafeArea,
             // The workspace avatar on the rail's icon column under it.
             leadingStartPadding = RaftTopBarDefaults.leadingStartPaddingOverRail(raftAppRailWindowMetrics().width),
@@ -99,6 +101,7 @@ internal fun RaftAppShellTopBar(
                     RaftWorkspaceButton(
                         name = currentServer.name,
                         onClick = onWorkspaceClick,
+                        modifier = Modifier.testTag("desktop-workspace-trigger"),
                         open = serverMenuOpen,
                         nameMaxWidth =
                             if (stripShown) RaftWorkspaceButtonDefaults.NameMaxWidthBesideStrip else RaftWorkspaceButtonDefaults.NameMaxWidth,
@@ -117,7 +120,7 @@ internal fun RaftAppShellTopBar(
                                     }
                                 },
                             ) {
-                                ServerSwitcherAvatarTile(currentServer, size = RaftWorkspaceButtonDefaults.AvatarSize)
+                                Box(Modifier.raftSlot("avatar")) { ServerSwitcherAvatarTile(currentServer, size = RaftWorkspaceButtonDefaults.AvatarSize) }
                             }
                         },
                         mark =
