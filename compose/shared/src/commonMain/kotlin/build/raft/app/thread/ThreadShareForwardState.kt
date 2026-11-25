@@ -35,7 +35,7 @@ internal class ThreadShareForwardState {
     val selectedShareBounds = mutableMapOf<String, ThreadShareCaptureRect>()
     var sharePreviewImage by mutableStateOf<ThreadSharePreviewImage?>(null)
     var sharePreviewLoading by mutableStateOf(false)
-    // Android / desktop: the share image laid out off screen at the picked width (threadShareImageRendersOffscreen).
+    // Off-screen share image laid out at the picked width (threadShareImageRendersOffscreen).
     var shareImageWidthChoice by mutableStateOf(ThreadShareImageWidthChoice())
     var shareImageRenderWidthDp by mutableStateOf(ThreadShareImageDefaultWidthDp)
     var shareImageBitmap by mutableStateOf<ThreadShareRenderedImage?>(null)

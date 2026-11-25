@@ -136,7 +136,7 @@ internal fun ThreadShareImageMessageRow(
 }
 
 /**
- * Share preview's width picker (Android, desktop): the preset segments, the width they make,
+ * Share preview's width picker (Android, iOS, desktop): the preset segments, the width they make,
  * and for Custom a slider from [ThreadShareImageCustomMinWidthDp] to
  * [ThreadShareImageCustomMaxWidthDp]. [onChoiceChange] fires on every slider move; the caller
  * debounces the re-layout.
@@ -199,7 +199,7 @@ private fun ThreadShareImageWidth.labelRes() =
     }
 
 /**
- * Share preview's image (Android, desktop): [image] across the preview's width, scrolling when
+ * Share preview's image (Android, iOS, desktop): [image] across the preview's width, scrolling when
  * tall, under a spinner while a new layout is [rendering]. Before the first image, a spinner
  * with the "laying out" line.
  */

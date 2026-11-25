@@ -59,9 +59,7 @@ import kotlinx.coroutines.withContext
  * card [recordThreadShareImageRows] draws, and rasterised off the main thread. The web caps its share image at 768px and forces
  * tables to fit (slock `selectScreenshot.ts`); mobile offers that and narrower / wider widths.
  *
- * Android and desktop render this way. iOS still exports the image from its native screenshot of
- * the live rows (`exportThreadShareImage`); it switches by answering true from
- * [threadShareImageRendersOffscreen] once its GraphicsLayer snapshot and PNG save are wired.
+ * Android, iOS and desktop all render this way ([threadShareImageRendersOffscreen]).
  */
 
 /** The width presets of Share preview's picker, as the whole card's width in dp. */
@@ -382,8 +380,8 @@ internal fun ThreadShareImageOffscreenRenderer(
 internal const val ThreadShareImageFilePrefix = "raft-message-share-"
 
 /**
- * The file path of [fileRef], a `file:` URI from [RaftPngFileWriter] (Android `file:///…`, desktop
- * `file:/…`, percent-encoded), for `saveThreadShareImage`; a plain path comes back as it is.
+ * The file path of [fileRef], a `file:` URI from [RaftPngFileWriter] (Android / iOS `file:///…`,
+ * desktop `file:/…`, percent-encoded), for `saveThreadShareImage`; a plain path comes back as it is.
  */
 internal fun threadShareImageFilePath(fileRef: String): String? {
     if (fileRef.isBlank()) return null
@@ -421,6 +419,6 @@ private fun threadSharePercentDecode(value: String): String {
 
 /**
  * Whether this platform makes the share image off screen ([ThreadShareImageOffscreenRenderer],
- * with the width picker); false keeps the native screenshot of the live rows (iOS for now).
+ * with the width picker); false keeps the legacy native screenshot of the live rows.
  */
 internal expect val threadShareImageRendersOffscreen: Boolean

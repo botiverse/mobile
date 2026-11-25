@@ -54,8 +54,47 @@ class ThreadShareImageOffscreenTest {
     }
 
     @Test
+    fun offscreenShareImageIsEnabledOnThisTarget() {
+        assertTrue(threadShareImageRendersOffscreen)
+    }
+
+    @Test
+    fun widthPresetsAndCustomClampingBehavePredictably() {
+        val initial = ThreadShareImageWidthChoice()
+        assertEquals(ThreadShareImageWidth.Phone, initial.preset)
+        assertEquals(390, initial.widthDp)
+
+        val tablet = initial.select(ThreadShareImageWidth.Tablet)
+        assertEquals(600, tablet.widthDp)
+
+        val wide = tablet.select(ThreadShareImageWidth.Wide)
+        assertEquals(768, wide.widthDp)
+
+        // Switching to Custom starts from the currently shown width so the preview does not jump.
+        val customFromWide = wide.select(ThreadShareImageWidth.Custom)
+        assertEquals(ThreadShareImageWidth.Custom, customFromWide.preset)
+        assertEquals(768, customFromWide.widthDp)
+
+        assertEquals(ThreadShareImageCustomMinWidthDp, customFromWide.copy(customWidthDp = 100).widthDp)
+        assertEquals(ThreadShareImageCustomMaxWidthDp, customFromWide.copy(customWidthDp = 2400).widthDp)
+        assertEquals(520, customFromWide.copy(customWidthDp = 520).widthDp)
+    }
+
+    @Test
     fun theCacheFileRefBecomesAPath() {
         assertEquals("/data/user/0/build.raft.app/cache/raft_snapshots/a.png", threadShareImageFilePath("file:///data/user/0/build.raft.app/cache/raft_snapshots/a.png"))
+        assertEquals(
+            "/private/var/mobile/Containers/Data/Application/1234-ABCD/tmp/raft_snapshots/raft-message-share-1.png",
+            threadShareImageFilePath("file:///private/var/mobile/Containers/Data/Application/1234-ABCD/tmp/raft_snapshots/raft-message-share-1.png"),
+        )
+        assertEquals(
+            "/Users/me/Library/Developer/CoreSimulator/Devices/My Device/tmp/raft_snapshots/raft-message-share-你好.png",
+            threadShareImageFilePath("file:///Users/me/Library/Developer/CoreSimulator/Devices/My%20Device/tmp/raft_snapshots/raft-message-share-%E4%BD%A0%E5%A5%BD.png"),
+        )
+        assertEquals(
+            "/var/tmp/raft_snapshots/a.png",
+            threadShareImageFilePath("file://localhost/var/tmp/raft_snapshots/a.png"),
+        )
         assertEquals("/Users/me/Library/Application Support/Raft/cache/a.png", threadShareImageFilePath("file:/Users/me/Library/Application%20Support/Raft/cache/a.png"))
         assertEquals("/tmp/a.png", threadShareImageFilePath("/tmp/a.png"))
         assertEquals(null, threadShareImageFilePath(""))
