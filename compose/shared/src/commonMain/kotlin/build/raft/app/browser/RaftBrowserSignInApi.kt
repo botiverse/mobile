@@ -618,7 +618,12 @@ internal fun parseInstalledAppOriginsEndpointResponse(
     val result = LinkedHashMap<String, RaftInstalledAppOriginMatch>()
     for (element in originsArray) {
         val rawOrigin = (element as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim() ?: continue
-        val normalizedOrigin = raftAppEntryOriginOf(rawOrigin)?.takeIf { it == rawOrigin } ?: continue
+        val parsed = raftBrowserUrlOf(rawOrigin)?.takeIf { it.userInfo == null && it.origin == rawOrigin } ?: continue
+        val allowedScheme =
+            parsed.scheme == "https" ||
+                (parsed.scheme == "http" && parsed.host in RaftBrowserDebugLoopbackHosts)
+        if (!allowedScheme) continue
+        val normalizedOrigin = parsed.origin
         val rawIcon =
             (iconsObject?.get(normalizedOrigin) as? JsonPrimitive)
                 ?.takeIf { it.isString }
