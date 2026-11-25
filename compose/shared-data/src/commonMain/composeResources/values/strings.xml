@@ -2810,6 +2810,10 @@
     <string name="settings_notifications_keep_connection_detail">Keep Raft connected in the background to get message notifications. Shows a persistent “Raft is receiving messages” notification and uses more battery.</string>
     <string name="settings_notifications_direct_keep_connection_title">Persistent background connection</string>
     <string name="settings_notifications_direct_keep_connection_detail">Keep Raft connected in the background when Google push notifications cannot be reached. Shows a persistent “Raft is receiving messages” notification and uses more battery.</string>
+    <string name="settings_notifications_play_push_unreachable_title">Google push notifications unreachable</string>
+    <string name="settings_notifications_play_push_unreachable_body">Google push notifications cannot be reached on the current network, so background notifications may be delayed or unavailable. Keeping Raft open or allowing it to run in the background can help while you are on this network.</string>
+    <string name="settings_notifications_direct_fcm_fallback_active_title">Background connection active automatically</string>
+    <string name="settings_notifications_direct_fcm_fallback_active_body">Google push notifications cannot be reached on the current network, so Raft is keeping a background connection active to deliver message notifications. It will switch back automatically when Google push is reachable again.</string>
     <string name="settings_notifications_battery_optimization_title">Allow running in background</string>
     <string name="settings_notifications_battery_optimization_detail">Turn off battery optimization for Raft so the system does not stop the background connection. Some phones also need Raft allowed under app launch or background activity settings.</string>
     <string name="settings_notifications_battery_optimization_allowed">Allowed</string>

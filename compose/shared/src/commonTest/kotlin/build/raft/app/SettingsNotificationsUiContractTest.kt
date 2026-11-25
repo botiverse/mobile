@@ -8,6 +8,7 @@ import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.RaftBackgroundConnectionControls
 import build.raft.app.data.RaftBackgroundWhitelistGuide
+import build.raft.app.data.RaftFcmProbeUiStatus
 import build.raft.app.data.RaftNotificationAccountSettings
 import build.raft.app.data.RaftNotificationAccountSettingsPatch
 import build.raft.app.data.RaftNotificationMobileDelay
@@ -107,6 +108,9 @@ class SettingsNotificationsUiContractTest {
         assertFalse(minimalControls.directGmsKeepAliveOverrideState.value)
         minimalControls.setDirectGmsKeepAliveOverrideEnabled(true)
         assertFalse(minimalControls.directGmsKeepAliveOverrideState.value)
+        assertEquals(RaftFcmProbeUiStatus.None, minimalControls.fcmProbeUiStatusState.value)
+        minimalControls.dismissPlayFcmUnreachableNotice()
+        assertEquals(RaftFcmProbeUiStatus.None, minimalControls.fcmProbeUiStatusState.value)
 
         // iOS / desktop: no controls and no background realtime support -> hidden.
         val nonAndroid = settingsNotificationsBackgroundControlsPlan(controls = null, platformSupportsBackgroundRealtime = false)

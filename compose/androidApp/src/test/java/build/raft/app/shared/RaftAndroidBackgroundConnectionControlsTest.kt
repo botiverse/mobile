@@ -8,7 +8,16 @@ import android.content.Intent
 import android.content.pm.PackageInfo
 import android.provider.Settings
 import build.raft.app.data.RaftBackgroundWhitelistGuide
+import build.raft.app.data.RaftFcmProbeUiStatus
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -243,5 +252,148 @@ class RaftAndroidBackgroundConnectionControlsTest {
         playControls.setDirectGmsKeepAliveOverrideEnabled(true)
         assertFalse(playControls.directGmsKeepAliveOverrideState.value)
         assertTrue(playWrites.isEmpty())
+    }
+
+    @Test
+    fun fcmProbeUiStatusRefreshesAndDismissesPlayNoticeWhileStayingNoneOnNoGms() {
+        var playStatus = RaftFcmProbeUiStatus.PlayPushUnreachableNotice
+        var dismissCalls = 0
+        val playControls =
+            RaftAndroidBackgroundConnectionControls(
+                context = context,
+                batteryOptimizationExemptProvider = { false },
+                batteryOptimizationPermissionDeclaredProvider = { false },
+                noPlayServicesFallbackProvider = { false },
+                directGmsKeepAliveOverrideAllowedProvider = { false },
+                fcmProbeUiStatusProvider = { playStatus },
+                dismissPlayFcmUnreachableNoticeAction = {
+                    dismissCalls += 1
+                    playStatus = RaftFcmProbeUiStatus.None
+                },
+                vendorProvider = { AndroidOemVendor.Generic },
+                intentLauncher = {},
+            )
+        playControls.refreshFcmReachabilityStatus()
+        assertEquals(RaftFcmProbeUiStatus.PlayPushUnreachableNotice, playControls.fcmProbeUiStatusState.value)
+        playControls.dismissPlayFcmUnreachableNotice()
+        assertEquals(1, dismissCalls)
+        assertEquals(RaftFcmProbeUiStatus.None, playControls.fcmProbeUiStatusState.value)
+
+        // No-GMS device always stays None regardless of probe provider.
+        val noGmsControls =
+            RaftAndroidBackgroundConnectionControls(
+                context = context,
+                batteryOptimizationExemptProvider = { false },
+                batteryOptimizationPermissionDeclaredProvider = { true },
+                noPlayServicesFallbackProvider = { true },
+                directGmsKeepAliveOverrideAllowedProvider = { true },
+                fcmProbeUiStatusProvider = { RaftFcmProbeUiStatus.DirectAutoFallbackActive },
+                vendorProvider = { AndroidOemVendor.Huawei },
+                intentLauncher = {},
+            )
+        noGmsControls.refreshFcmReachabilityStatus()
+        assertEquals(RaftFcmProbeUiStatus.None, noGmsControls.fcmProbeUiStatusState.value)
+    }
+
+    @Test
+    fun staleInitialOverrideRefreshDoesNotClobberSubsequentToggle() {
+        val readStarted = CountDownLatch(1)
+        val allowReadReturn = CountDownLatch(1)
+        val readFinished = CountDownLatch(1)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val controls =
+                RaftAndroidBackgroundConnectionControls(
+                    context = context,
+                    refreshScope = scope,
+                    batteryOptimizationExemptProvider = { false },
+                    batteryOptimizationPermissionDeclaredProvider = { true },
+                    noPlayServicesFallbackProvider = { false },
+                    directGmsKeepAliveOverrideAllowedProvider = { true },
+                    directGmsKeepAliveOverrideEnabledProvider = {
+                        readStarted.countDown()
+                        assertTrue(allowReadReturn.await(5, TimeUnit.SECONDS))
+                        try {
+                            false
+                        } finally {
+                            readFinished.countDown()
+                        }
+                    },
+                    directGmsKeepAliveOverrideSetter = { _, _ -> },
+                    vendorProvider = { AndroidOemVendor.Vivo },
+                    intentLauncher = {},
+                )
+
+            // First observation kicks off the async initial read.
+            assertFalse(controls.directGmsKeepAliveOverrideState.value)
+            assertTrue(readStarted.await(5, TimeUnit.SECONDS))
+
+            // User enables the toggle before the stale initial read completes.
+            controls.setDirectGmsKeepAliveOverrideEnabled(true)
+            assertTrue(controls.directGmsKeepAliveOverrideState.value)
+
+            // Allow the stale initial read (returning false) to finish; it must NOT overwrite true.
+            allowReadReturn.countDown()
+            assertTrue(readFinished.await(5, TimeUnit.SECONDS))
+            runBlocking { scope.coroutineContext[Job]!!.children.toList().forEach { it.join() } }
+            assertTrue(controls.directGmsKeepAliveOverrideState.value)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun staleInitialFcmProbeRefreshDoesNotClobberPlayNoticeDismiss() {
+        val readStarted = CountDownLatch(1)
+        val allowReadReturn = CountDownLatch(1)
+        val readFinished = CountDownLatch(1)
+        var dismissed = false
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val controls =
+                RaftAndroidBackgroundConnectionControls(
+                    context = context,
+                    refreshScope = scope,
+                    batteryOptimizationExemptProvider = { false },
+                    batteryOptimizationPermissionDeclaredProvider = { false },
+                    noPlayServicesFallbackProvider = { false },
+                    directGmsKeepAliveOverrideAllowedProvider = { false },
+                    fcmProbeUiStatusProvider = {
+                        if (!dismissed && readStarted.count > 0L) {
+                            readStarted.countDown()
+                            assertTrue(allowReadReturn.await(5, TimeUnit.SECONDS))
+                            try {
+                                RaftFcmProbeUiStatus.PlayPushUnreachableNotice
+                            } finally {
+                                readFinished.countDown()
+                            }
+                        } else if (dismissed) {
+                            RaftFcmProbeUiStatus.None
+                        } else {
+                            RaftFcmProbeUiStatus.PlayPushUnreachableNotice
+                        }
+                    },
+                    dismissPlayFcmUnreachableNoticeAction = { dismissed = true },
+                    vendorProvider = { AndroidOemVendor.Generic },
+                    intentLauncher = {},
+                )
+
+            // First observation starts the async initial read.
+            assertEquals(RaftFcmProbeUiStatus.None, controls.fcmProbeUiStatusState.value)
+            assertTrue(readStarted.await(5, TimeUnit.SECONDS))
+
+            // User dismisses while the initial read is still in flight.
+            controls.dismissPlayFcmUnreachableNotice()
+            assertTrue(dismissed)
+            assertEquals(RaftFcmProbeUiStatus.None, controls.fcmProbeUiStatusState.value)
+
+            // Release the stale initial read returning PlayPushUnreachableNotice; it must not resurface.
+            allowReadReturn.countDown()
+            assertTrue(readFinished.await(5, TimeUnit.SECONDS))
+            runBlocking { scope.coroutineContext[Job]!!.children.toList().forEach { it.join() } }
+            assertEquals(RaftFcmProbeUiStatus.None, controls.fcmProbeUiStatusState.value)
+        } finally {
+            scope.cancel()
+        }
     }
 }

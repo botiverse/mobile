@@ -279,6 +279,15 @@ const val MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY: String = "mobile_web_contain
  */
 const val QUOTE_REPLY_FEATURE_FLAG_KEY: String = "quote_reply_v0"
 
+/**
+ * Android dual-engine push: end-to-end silent FCM reachability probe + automatic direct-APK
+ * foreground-service fallback/recovery + probed-reachability local notification gating + Play
+ * dismissible notice (`#proj-mobile:#379`). Per server, default OFF (unresolved evaluates false).
+ * When off or when the server answers 404 on the probe route, Android behavior stays identical to
+ * pre-probe behavior (zero probes sent, zero state transitions, zero prompts).
+ */
+const val MOBILE_FCM_PROBE_FEATURE_FLAG_KEY: String = "mobile_fcm_probe_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -320,6 +329,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY,
     // Quote replies as one-line chips + multi-quote composer (slock `quote_reply_v0`, #16027 / #16210).
     QUOTE_REPLY_FEATURE_FLAG_KEY,
+    // Android silent FCM reachability probe + dual-engine fallback (#proj-mobile:#379, default OFF).
+    MOBILE_FCM_PROBE_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,

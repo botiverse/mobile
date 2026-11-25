@@ -27,6 +27,29 @@ import kotlinx.coroutines.flow.asStateFlow
  *   management settings -> system battery optimization settings -> App Info without ever invoking
  *   `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
  */
+/**
+ * User-visible status of Android's end-to-end silent FCM reachability probe (`mobile_fcm_probe_v0`,
+ * `#proj-mobile:#379`) in Settings › Notifications.
+ *
+ * Always [None] when `mobile_fcm_probe_v0` is off, when the server does not support probing (404),
+ * on non-Android hosts, on no-GMS devices, or whenever FCM is not confirmed unreachable.
+ */
+enum class RaftFcmProbeUiStatus {
+    None,
+
+    /**
+     * Direct-install APK with GMS where `mobile_fcm_probe_v0` confirmed FCM unreachable on the
+     * current network and automatic foreground-service fallback is keeping notifications active.
+     */
+    DirectAutoFallbackActive,
+
+    /**
+     * Google Play build with GMS where `mobile_fcm_probe_v0` confirmed FCM unreachable on the
+     * current network and the user has not dismissed the notice for this network/episode.
+     */
+    PlayPushUnreachableNotice,
+}
+
 interface RaftBackgroundConnectionControls {
     /** True when this device cannot receive server push and the foreground-service fallback applies. */
     fun isOffered(): Boolean
@@ -51,6 +74,19 @@ interface RaftBackgroundConnectionControls {
      * when [canOverrideWithForegroundService] is false (including Google Play builds).
      */
     fun setDirectGmsKeepAliveOverrideEnabled(enabled: Boolean) {}
+
+    /**
+     * Current probed FCM reachability UI status (`mobile_fcm_probe_v0`). Always emits
+     * [RaftFcmProbeUiStatus.None] when the flag is off, on no-GMS devices, or on non-Android hosts.
+     */
+    val fcmProbeUiStatusState: StateFlow<RaftFcmProbeUiStatus>
+        get() = DefaultFcmProbeUiStatusState
+
+    /**
+     * Dismisses the Google Play unreachable-push notice for the current unreachable episode/network.
+     * No-op when not applicable.
+     */
+    fun dismissPlayFcmUnreachableNotice() {}
 
     /**
      * True when this build declares `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` and may launch the
@@ -98,3 +134,33 @@ object RaftBackgroundConnectionControlsRegistry {
 }
 
 private val DefaultDirectGmsKeepAliveOverrideState: StateFlow<Boolean> = MutableStateFlow(false).asStateFlow()
+private val DefaultFcmProbeUiStatusState: StateFlow<RaftFcmProbeUiStatus> =
+    MutableStateFlow(RaftFcmProbeUiStatus.None).asStateFlow()
+
+/**
+ * Lightweight host listener bridged from `:shared` / `:shared-data` to Android's FCM reachability
+ * probe controller (`mobile_fcm_probe_v0`, `#proj-mobile:#379`). Null on iOS, desktop, and tests
+ * that do not install the Android probe controller.
+ */
+interface RaftFcmProbeHostListener {
+    fun onFeatureFlagChanged()
+    fun onPushRegistrationReady()
+    fun onSignedOut()
+}
+
+object RaftFcmProbeHost {
+    @Volatile
+    var listener: RaftFcmProbeHostListener? = null
+
+    fun onFeatureFlagChanged() {
+        runCatching { listener?.onFeatureFlagChanged() }
+    }
+
+    fun onPushRegistrationReady() {
+        runCatching { listener?.onPushRegistrationReady() }
+    }
+
+    fun onSignedOut() {
+        runCatching { listener?.onSignedOut() }
+    }
+}

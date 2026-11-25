@@ -2809,6 +2809,10 @@
     <string name="settings_notifications_keep_connection_detail">Raft をバックグラウンドで接続したままにすると、メッセージ通知を受け取れます。「Raft がメッセージを受信中」という常駐通知が表示され、バッテリー消費が増えます。</string>
     <string name="settings_notifications_direct_keep_connection_title">バックグラウンド常駐接続</string>
     <string name="settings_notifications_direct_keep_connection_detail">Google プッシュ通知に届かないネットワーク環境でも、Raft のバックグラウンド接続を維持してメッセージ通知を受け取ります。「Raft がメッセージを受信中」という常駐通知が表示され、バッテリー消費が増えます。</string>
+    <string name="settings_notifications_play_push_unreachable_title">Google プッシュ通知に接続できません</string>
+    <string name="settings_notifications_play_push_unreachable_body">現在のネットワークでは Google プッシュ通知に接続できないため、バックグラウンド通知が遅れたり届かなかったりする場合があります。このネットワークでは Raft を開いたままにするか、バックグラウンド実行を許可すると受信しやすくなります。</string>
+    <string name="settings_notifications_direct_fcm_fallback_active_title">バックグラウンド常駐接続が自動で有効になっています</string>
+    <string name="settings_notifications_direct_fcm_fallback_active_body">現在のネットワークでは Google プッシュ通知に接続できないため、Raft が自動でバックグラウンド接続を維持してメッセージ通知を届けています。Google プッシュ通知が再び利用可能になると自動で切り替わります。</string>
     <string name="settings_notifications_battery_optimization_title">バックグラウンド実行を許可</string>
     <string name="settings_notifications_battery_optimization_detail">Raft の電池の最適化をオフにして、システムがバックグラウンド接続を停止しないようにします。機種によっては、アプリ起動やバックグラウンド動作の設定で Raft を許可する必要もあります。</string>
     <string name="settings_notifications_battery_optimization_allowed">許可済み</string>

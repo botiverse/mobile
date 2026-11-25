@@ -2806,6 +2806,10 @@
     <string name="settings_notifications_keep_connection_detail">Mantén Raft conectado en segundo plano para recibir notificaciones de mensajes. Muestra una notificación fija “Raft está recibiendo mensajes” y consume más batería.</string>
     <string name="settings_notifications_direct_keep_connection_title">Conexión permanente en segundo plano</string>
     <string name="settings_notifications_direct_keep_connection_detail">Mantén Raft conectado en segundo plano cuando las notificaciones push de Google no puedan llegar. Muestra una notificación fija “Raft está recibiendo mensajes” y consume más batería.</string>
+    <string name="settings_notifications_play_push_unreachable_title">No se puede acceder a las notificaciones push de Google</string>
+    <string name="settings_notifications_play_push_unreachable_body">No se puede acceder a las notificaciones push de Google en la red actual, por lo que las notificaciones en segundo plano pueden retrasarse o no llegar. Mantener Raft abierto o permitir que se ejecute en segundo plano puede ayudar mientras estés en esta red.</string>
+    <string name="settings_notifications_direct_fcm_fallback_active_title">Conexión en segundo plano activa automáticamente</string>
+    <string name="settings_notifications_direct_fcm_fallback_active_body">No se puede acceder a las notificaciones push de Google en la red actual, así que Raft mantiene una conexión en segundo plano para entregar tus notificaciones. Volverá a cambiar automáticamente cuando las notificaciones push de Google vuelvan a estar disponibles.</string>
     <string name="settings_notifications_battery_optimization_title">Permitir ejecución en segundo plano</string>
     <string name="settings_notifications_battery_optimization_detail">Desactiva la optimización de batería para Raft para que el sistema no detenga la conexión en segundo plano. En algunos teléfonos también hay que permitir Raft en la configuración de inicio de apps o de actividad en segundo plano.</string>
     <string name="settings_notifications_battery_optimization_allowed">Permitidas</string>

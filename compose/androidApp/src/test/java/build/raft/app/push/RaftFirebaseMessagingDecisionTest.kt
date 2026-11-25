@@ -18,6 +18,7 @@ class RaftFirebaseMessagingDecisionTest {
                 mapOf("serverId" to "s1") to RaftFcmMessageDecision.Alert,
                 mapOf("type" to "retract", "serverId" to "s1", "conversationId" to "c1", "throughSeq" to "4") to RaftFcmMessageDecision.Retract,
                 mapOf("type" to "sync", "badge" to "3") to RaftFcmMessageDecision.Sync,
+                mapOf("type" to "probe", "probeId" to "probe-123") to RaftFcmMessageDecision.Probe,
                 mapOf("type" to "something_new") to RaftFcmMessageDecision.DropUnknownType,
             )
         for ((data, expected) in cases) {
@@ -36,6 +37,7 @@ class RaftFirebaseMessagingDecisionTest {
         switchRead = false
         assertEquals(RaftFcmMessageDecision.Retract, raftFcmMessageDecision(mapOf("type" to "retract"), off))
         assertEquals(RaftFcmMessageDecision.Sync, raftFcmMessageDecision(mapOf("type" to "sync"), off))
+        assertEquals(RaftFcmMessageDecision.Probe, raftFcmMessageDecision(mapOf("type" to "probe", "probeId" to "p-1"), off))
         assertFalse("the switch is read only for an alert", switchRead)
     }
 

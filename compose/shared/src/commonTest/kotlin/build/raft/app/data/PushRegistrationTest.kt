@@ -892,6 +892,93 @@ class PushRegistrationTest {
         )
     }
 
+    @Test
+    fun reachabilityProbeParsesContractAndTriggersReRegistrationWhenRequested() = runBlocking {
+        // Network API route and body shape.
+        val networkClient = RecordingNetworkClient()
+        RaftPushRegistrationNetworkApi(networkClient)
+            .probe(installationId = "inst-42", payloadJson = encodeRaftPushProbeRequest("probe-abc"))
+        assertEquals(
+            listOf("""POST push/registrations/inst-42/probe body={"probeId":"probe-abc"}"""),
+            networkClient.calls
+        )
+
+        // Pure parser checks across all wire outcomes.
+        assertEquals(
+            RaftPushProbeResult.Sent("probe-1"),
+            parseRaftPushProbeResponse(200, """{"ok":true,"probeId":"probe-1","status":"sent"}""", "probe-1")
+        )
+        assertEquals(
+            RaftPushProbeResult.NotSent(reason = "token_unregistered", reRegister = true),
+            parseRaftPushProbeResponse(
+                200,
+                """{"ok":true,"probeId":"probe-1","status":"not_sent","reason":"token_unregistered","reRegister":false}""",
+                "probe-1"
+            )
+        )
+        assertEquals(
+            RaftPushProbeResult.NotSent(reason = "rate_limited", reRegister = false),
+            parseRaftPushProbeResponse(
+                200,
+                """{"ok":true,"probeId":"probe-1","status":"not_sent","reason":"rate_limited","reRegister":false}""",
+                "probe-1"
+            )
+        )
+        assertEquals(
+            RaftPushProbeResult.Unsupported,
+            parseRaftPushProbeResponse(404, """{"error":"not_found"}""", "probe-1")
+        )
+        assertEquals(
+            RaftPushProbeResult.Inconclusive("http_503"),
+            parseRaftPushProbeResponse(503, null, "probe-1")
+        )
+        assertEquals(
+            RaftPushProbeResult.Inconclusive("malformed_body"),
+            parseRaftPushProbeResponse(200, "not-json", "probe-1")
+        )
+        assertEquals(
+            RaftPushProbeResult.Inconclusive("probe_id_mismatch"),
+            parseRaftPushProbeResponse(200, """{"ok":true,"probeId":"other","status":"sent"}""", "probe-1")
+        )
+
+        // Coordinator sends probe once settled and re-upserts when server says reRegister=true.
+        val clock = TestClock()
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            deliveryStatusCoordinator(
+                currentSession = { storedSession("user-1", "server-1") },
+                api = api,
+                clock = clock,
+            )
+        coordinator.installationId("inst-1")
+        assertTrue(coordinator.registerFcm())
+        assertTrue(coordinator.hasSettledRegistrationSnapshot())
+        val upsertsBeforeProbe = api.calls.count { it.startsWith("POST ") && !it.startsWith("POST probe ") }
+
+        api.probeResponse =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText = """{"ok":true,"probeId":"probe-a","status":"sent"}"""
+            )
+        assertEquals(RaftPushProbeResult.Sent("probe-a"), coordinator.sendReachabilityProbe("probe-a"))
+        assertTrue(api.calls.any { it == """POST probe inst-1 {"probeId":"probe-a"}""" })
+
+        api.probeResponse =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText = """{"ok":true,"probeId":"probe-b","status":"not_sent","reason":"token_unregistered","reRegister":true}"""
+            )
+        assertEquals(
+            RaftPushProbeResult.NotSent(reason = "token_unregistered", reRegister = true),
+            coordinator.sendReachabilityProbe("probe-b")
+        )
+        val upsertsAfterProbe = api.calls.count { it.startsWith("POST ") && !it.startsWith("POST probe ") }
+        assertEquals(upsertsBeforeProbe + 1, upsertsAfterProbe)
+
+        api.probeResponse = HomeNetworkResponse(code = 404, bodyText = null)
+        assertEquals(RaftPushProbeResult.Unsupported, coordinator.sendReachabilityProbe("probe-c"))
+    }
+
     private fun coordinator(
         store: RaftKeyValueStore = InMemoryRaftKeyValueStore(),
         spec: RaftPushProviderSpec = RaftPushProviderSpec.Apns,
@@ -1011,12 +1098,18 @@ class PushRegistrationTest {
         var deliveryStatusResponse: HomeNetworkResponse = HomeNetworkResponse(code = 404, bodyText = null)
         var onDeliveryStatus: (() -> Unit)? = null
         var deliveryStatusRequests = 0
+        var probeResponse: HomeNetworkResponse = HomeNetworkResponse(code = 404, bodyText = null)
 
         override suspend fun deliveryStatus(installationId: String): HomeNetworkResponse {
             calls += "GET delivery-status $installationId"
             deliveryStatusRequests += 1
             onDeliveryStatus?.invoke()
             return deliveryStatusResponse
+        }
+
+        override suspend fun probe(installationId: String, payloadJson: String): HomeNetworkResponse {
+            calls += "POST probe $installationId $payloadJson"
+            return probeResponse
         }
     }
 

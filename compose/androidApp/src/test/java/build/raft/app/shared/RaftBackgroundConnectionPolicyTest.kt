@@ -205,4 +205,65 @@ class RaftBackgroundConnectionPolicyTest {
             )
         )
     }
+
+    @Test
+    fun directApkFcmAutoFallbackRunsEvenWithoutManualOverrideAndNeverRunsOnPlay() {
+        val directAutoFallback =
+            Inputs(
+                fcmUnavailable = false,
+                keepAlivePreferenceEnabled = false,
+                signedIn = true,
+                messageNotificationsEnabled = true,
+                systemNotificationsAllowed = true,
+                directGmsKeepAliveOverrideAllowed = true,
+                directGmsKeepAliveOverrideEnabled = false,
+                fcmAutoFallbackActive = true,
+            )
+        assertTrue(
+            RaftBackgroundConnectionPolicy.isDirectGmsAutoFallbackActive(
+                fcmUnavailable = false,
+                directGmsKeepAliveOverrideAllowed = true,
+                fcmAutoFallbackRequested = true,
+            )
+        )
+        assertEquals(Decision.Run, RaftBackgroundConnectionPolicy.decide(directAutoFallback))
+        assertEquals(Decision.Stop("signed_out"), RaftBackgroundConnectionPolicy.decide(directAutoFallback.copy(signedIn = false)))
+        assertEquals(
+            Decision.Stop("message_notifications_disabled"),
+            RaftBackgroundConnectionPolicy.decide(directAutoFallback.copy(messageNotificationsEnabled = false)),
+        )
+        assertEquals(
+            Decision.Stop("system_notifications_blocked"),
+            RaftBackgroundConnectionPolicy.decide(directAutoFallback.copy(systemNotificationsAllowed = false)),
+        )
+
+        // When auto-fallback turns OFF after FCM recovers, manual override ON still keeps running.
+        assertEquals(
+            Decision.Run,
+            RaftBackgroundConnectionPolicy.decide(
+                directAutoFallback.copy(
+                    directGmsKeepAliveOverrideEnabled = true,
+                    fcmAutoFallbackActive = false,
+                )
+            ),
+        )
+        // When both manual override and auto-fallback are OFF, service stops cleanly.
+        assertEquals(
+            Decision.Stop("play_services_available"),
+            RaftBackgroundConnectionPolicy.decide(directAutoFallback.copy(fcmAutoFallbackActive = false)),
+        )
+
+        // Defense-in-depth: Play build NEVER activates auto-fallback even if requested=true.
+        assertFalse(
+            RaftBackgroundConnectionPolicy.isDirectGmsAutoFallbackActive(
+                fcmUnavailable = false,
+                directGmsKeepAliveOverrideAllowed = false,
+                fcmAutoFallbackRequested = true,
+            )
+        )
+        assertEquals(
+            Decision.Stop("play_services_available"),
+            RaftBackgroundConnectionPolicy.decide(directAutoFallback.copy(directGmsKeepAliveOverrideAllowed = false)),
+        )
+    }
 }
