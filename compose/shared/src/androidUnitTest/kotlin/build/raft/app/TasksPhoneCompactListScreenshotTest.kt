@@ -16,7 +16,6 @@ import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.RaftLocalPreferenceStore
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.ScreenLoadState
-import build.raft.app.data.ServerTaskBoardFilters
 import build.raft.app.data.ServerTaskCounts
 import build.raft.app.data.ServerTaskRelation
 import build.raft.app.data.TaskWireDto
@@ -27,6 +26,7 @@ import build.raft.app.data.TasksPageScope
 import build.raft.app.data.TasksQueryState
 import build.raft.app.data.TasksUiState
 import build.raft.app.data.tasksCountsKey
+import build.raft.app.data.tasksQueryScopeFilters
 import build.raft.app.data.tasksQueryLanes
 import build.raft.app.data.toTaskSummary
 import build.raft.app.model.RaftTimeContext
@@ -168,7 +168,7 @@ private fun phoneMineQueryState(): TasksQueryState {
                 assignedLane.key to ServerTaskCounts(statuses = mapOf(TaskStatus.InProgress to 1, TaskStatus.Todo to 1), relations = emptyMap()),
                 createdLane.key to ServerTaskCounts(statuses = mapOf(TaskStatus.InProgress to 1, TaskStatus.Todo to 2, TaskStatus.Done to 1, TaskStatus.Backlog to 1), relations = emptyMap()),
                 fromMsgLane.key to ServerTaskCounts(statuses = emptyMap(), relations = emptyMap()),
-                tasksCountsKey(ServerTaskBoardFilters()) to ServerTaskCounts(statuses = mapOf(TaskStatus.InProgress to 4, TaskStatus.Todo to 5, TaskStatus.Done to 2, TaskStatus.Backlog to 1), relations = emptyMap()),
+                tasksCountsKey(tasksQueryScopeFilters(doneSince)) to ServerTaskCounts(statuses = mapOf(TaskStatus.InProgress to 4, TaskStatus.Todo to 5, TaskStatus.Done to 2, TaskStatus.Backlog to 1), relations = emptyMap()),
             ),
     )
 }

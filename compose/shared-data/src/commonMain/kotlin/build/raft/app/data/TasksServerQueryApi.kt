@@ -6,6 +6,10 @@ import build.raft.app.model.TaskStatus
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
 
 /**
  * The Tasks page's server-side query of the task board (botiverse/slock staging
@@ -31,6 +35,11 @@ import kotlinx.serialization.json.Json
  *   `countServerTasks`): the same filters, no limit / cursor / detail / sort (each a 400).
  *   Answer [ServerTaskCountsWire]: `{ counts: { backlog, todo, in_progress, done, closed },
  *   relations: { assigned_to_me, created_by_me, from_my_message } }`.
+ *   Since slock #16585 (8bde5116) a counts read may also pass `mine_done_since=<ISO>`: the answer
+ *   then adds `mine: { assigned, created, from_my_message }`, the Tasks page's Mine section totals
+ *   under every filter but `relation` (assigned: unfinished; created / from my message: unfinished
+ *   or done since that instant), in the same query. An older server ignores the parameter and
+ *   leaves `mine` out; an invalid instant is a 400 `INVALID_TASK_FILTER`.
  *
  * List params are joined with commas in a stable (sorted) order, as the web's.
  */
@@ -71,6 +80,11 @@ data class ServerTaskBoardFilters(
     val relation: ServerTaskRelation? = null,
     /** An ISO instant with its offset. */
     val completedSince: String? = null,
+    /**
+     * Counts only (slock #16585): also ask for Mine's section totals ([ServerTaskCounts.mine]),
+     * Started by you keeping what was done since this ISO instant. Page reads never set it.
+     */
+    val mineDoneSince: String? = null,
     /** The search, trimmed; blank is no search. */
     val query: String = "",
 )
@@ -91,6 +105,7 @@ fun serverTaskFilterQuery(filters: ServerTaskBoardFilters): List<Pair<String, St
         list("creator", filters.creators)
         filters.relation?.let { add("relation" to it.wire) }
         filters.completedSince?.let { add("completed_since" to it) }
+        filters.mineDoneSince?.takeIf { it.isNotEmpty() }?.let { add("mine_done_since" to it) }
         filters.query.trim().take(ServerTaskQueryMaxLength).takeIf { it.isNotEmpty() }?.let { add("q" to it) }
     }
 
@@ -114,6 +129,8 @@ fun serverTaskPageQuery(
 @RaftCoreInternalApi data class ServerTaskCountsWire(
     val counts: ServerTaskColumnCountsWire,
     val relations: ServerTaskRelationCountsWire,
+    /** Only when the read passed `mine_done_since` and the server knows it (slock #16585); read loosely. */
+    val mine: JsonElement? = null,
 )
 
 @Serializable
@@ -132,10 +149,30 @@ fun serverTaskPageQuery(
     @SerialName("from_my_message") val fromMyMessage: Int = 0,
 )
 
+/**
+ * Mine's section totals in a counts answer (slock #16585 `ServerTaskMineCounts`): Assigned to you
+ * (unfinished) and Started by you's two relations (unfinished, or done since `mine_done_since`).
+ */
+data class ServerTaskMineCounts(
+    val assigned: Int,
+    val created: Int,
+    val fromMyMessage: Int,
+) {
+    /** Started by you: created by you, or from your message. */
+    val started: Int
+        get() = created + fromMyMessage
+
+    /** The Mine tab's number: both sections. */
+    val total: Int
+        get() = assigned + started
+}
+
 /** The counts of one filter set: per board column (`in_progress` includes stored in_review rows) and per relation (open work). */
 data class ServerTaskCounts(
     val statuses: Map<TaskStatus, Int>,
     val relations: Map<ServerTaskRelation, Int>,
+    /** Mine's section totals, when the read asked for them and the server answered them (else null). */
+    val mine: ServerTaskMineCounts? = null,
 ) {
     /** Every task the filters match: the columns summed (web `totalOf`). */
     val total: Int
@@ -144,7 +181,11 @@ data class ServerTaskCounts(
 
 private val serverTaskCountsJson = Json { ignoreUnknownKeys = true }
 
-/** Parses a counts answer; null when it is not the `{ counts, relations }` shape. Negative numbers read as 0. */
+/**
+ * Parses a counts answer; null when it is not the `{ counts, relations }` shape. Negative numbers read
+ * as 0. `mine` is read as the web's `readServerTaskCounts` does: an object or nothing, a missing or
+ * non-numeric field 0.
+ */
 fun parseSharedServerTaskCounts(body: String): ServerTaskCounts? {
     val wire = runCatching { serverTaskCountsJson.decodeFromString(ServerTaskCountsWire.serializer(), body) }.getOrNull() ?: return null
     return ServerTaskCounts(
@@ -162,8 +203,19 @@ fun parseSharedServerTaskCounts(body: String): ServerTaskCounts? {
                 ServerTaskRelation.CreatedByMe to wire.relations.createdByMe.coerceAtLeast(0),
                 ServerTaskRelation.FromMyMessage to wire.relations.fromMyMessage.coerceAtLeast(0),
             ),
+        mine =
+            (wire.mine as? JsonObject)?.let { mine ->
+                ServerTaskMineCounts(
+                    assigned = mine.countField("assigned"),
+                    created = mine.countField("created"),
+                    fromMyMessage = mine.countField("from_my_message"),
+                )
+            },
     )
 }
+
+private fun JsonObject.countField(name: String): Int =
+    (this[name] as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.coerceAtLeast(0) ?: 0
 
 /** Result of a counts read. */
 sealed interface ServerTaskCountsResult {
