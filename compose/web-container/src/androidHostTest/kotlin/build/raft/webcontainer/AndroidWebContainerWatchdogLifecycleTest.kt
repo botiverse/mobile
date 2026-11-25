@@ -207,6 +207,7 @@ class AndroidWebContainerWatchdogLifecycleTest {
             WebContainerConfig(
                 url = "https://app.raft.build/artifacts/t1",
                 surfaceId = "artifact_viewer",
+                isolationScope = WebIsolationScope.Default,
                 allowScripts = false,
                 keepAliveKey = "rp-telemetry-test",
             )
