@@ -806,6 +806,10 @@ object RaftScreenshotFeedbackRuntime {
 
     private val eligibilitySignalState = MutableStateFlow(0L)
     private val activeShellTabState = MutableStateFlow<String?>(null)
+    private val bottomBarBandLock = SynchronizedObject()
+    private val bottomBarBandsByHost = linkedMapOf<Any, LinkedHashMap<Any, Float>>()
+    private val shellBottomBarBandRevisionState = MutableStateFlow(0L)
+    internal val shellBottomBarBandRevision: StateFlow<Long> = shellBottomBarBandRevisionState.asStateFlow()
 
     /** Set by Android host from `BuildConfig.SCREENSHOT_FEEDBACK_ENABLED`; false on iOS/Desktop/release. */
     @Volatile
@@ -858,6 +862,33 @@ object RaftScreenshotFeedbackRuntime {
         }
     }
 
+    internal fun setActiveShellBottomBarBandDp(hostKey: Any, token: Any, heightDp: Float?) {
+        val normalized = heightDp?.takeIf { it.isFinite() && it >= 0f }
+        synchronized(bottomBarBandLock) {
+            val existingMap = bottomBarBandsByHost[hostKey]
+            val previousMax = existingMap?.values?.maxOrNull()
+            if (normalized == null) {
+                if (existingMap == null || existingMap.remove(token) == null) return
+                if (existingMap.isEmpty()) {
+                    bottomBarBandsByHost.remove(hostKey)
+                }
+            } else {
+                val perHost = existingMap ?: LinkedHashMap<Any, Float>().also { bottomBarBandsByHost[hostKey] = it }
+                if (perHost[token] == normalized) return
+                perHost[token] = normalized
+            }
+            val nextMax = bottomBarBandsByHost[hostKey]?.values?.maxOrNull()
+            if (nextMax != previousMax) {
+                shellBottomBarBandRevisionState.value += 1L
+            }
+        }
+    }
+
+    internal fun activeShellBottomBarBandDpForHost(hostKey: Any): Float? =
+        synchronized(bottomBarBandLock) {
+            bottomBarBandsByHost[hostKey]?.values?.maxOrNull()
+        }
+
     fun currentActiveShellTab(): String? = activeShellTabState.value
 
     fun currentActivePageArgs(): RaftCmpPageArgs? =
@@ -882,7 +913,7 @@ object RaftScreenshotFeedbackRuntime {
             }
         val sessionServerId = session.currentServerId?.trim()?.takeIf { it.isNotEmpty() }
         val serverId =
-            if (activePage?.pageName == "compose_slock_app_shell") {
+            if (isScreenshotFeedbackAppShellHostPage(activePage?.pageName)) {
                 sessionServerId ?: pageServerId ?: session.servers.firstOrNull()?.id?.trim().orEmpty()
             } else {
                 pageServerId ?: sessionServerId ?: session.servers.firstOrNull()?.id?.trim().orEmpty()
