@@ -1057,6 +1057,23 @@ internal fun SettingsRouteVisualScreen() {
                 payload = appShellSettingsHomePayload(session, serverPanelPages = true),
                 onBack = {},
                 onSelect = {},
+                // The app's Settings home has Search settings on top (SettingsHomePage), as the
+                // web's has: an empty field, nothing searched.
+                search =
+                    SettingsSearchHost(
+                        state = rememberSettingsSearchState(null),
+                        context =
+                            RaftSettingsSearchContext(
+                                rowKeys = emptyList(),
+                                role = session.currentServerSummary()?.role,
+                                publicServer = false,
+                                serverSso = false,
+                                followedThreadReplies = false,
+                            ),
+                        serverName = session.currentServerSummary()?.name.orEmpty(),
+                        active = true,
+                        onOpen = {},
+                    ),
             )
         } else {
             SettingsRouteVisualFixtureDetailContent(
