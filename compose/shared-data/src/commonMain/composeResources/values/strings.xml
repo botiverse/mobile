@@ -2453,6 +2453,7 @@
     <string name="home_second_factor_recovery_cancelled">Reset cancelled. Two-step verification stays on, and we emailed you.</string>
     <string name="home_second_factor_recovery_cancel_failed">The reset wasn't cancelled. Try again.</string>
     <string name="home_notification_app_update_title">App update available</string>
+    <string name="home_notification_app_update_ready_title">Update ready to install</string>
     <string name="home_notification_app_update_body">Current version %1$s. Latest version %2$s.</string>
     <string name="app_update_view">View</string>
     <string name="app_update_retry">Retry</string>
@@ -2466,9 +2467,9 @@
     <string name="app_update_installed">Installed</string>
     <string name="app_update_update">Update</string>
     <string name="app_update_unavailable">Update information is temporarily unavailable.</string>
-    <string name="app_update_detail_available_with_size">Raft has an update (%1$s APK).</string>
-    <string name="app_update_detail_available_with_patch_size">Patch %1$s.</string>
-    <string name="app_update_detail_available_with_patch_and_full_sizes">Patch %1$s; full fallback %2$s.</string>
+    <string name="app_update_detail_available_with_size">Update size: %1$s</string>
+    <string name="app_update_detail_available_with_patch_size">Update size: %1$s</string>
+    <string name="app_update_detail_available_with_patch_and_full_sizes">Update size: %1$s</string>
     <string name="app_update_detail_available">Raft has an update.</string>
     <string name="app_update_detail_current">Raft is up to date.</string>
     <string name="app_update_version_summary">%1$s → %2$s</string>

@@ -141,7 +141,7 @@ internal fun SharedHomeNotification.toHomeNotificationItem(): RaftHomeNotificati
         actionLabel = actionLabelDesc?.localized() ?: actionLabel,
         primaryActionActive =
             id == APP_UPDATE_HOME_NOTIFICATION_ID &&
-                actionLabel.trim().lowercase() in setOf("downloading", "install"),
+                actionLabel.trim().lowercase() in setOf("install", "restart to update"),
         targetId = targetId,
         kind =
             when (kind) {

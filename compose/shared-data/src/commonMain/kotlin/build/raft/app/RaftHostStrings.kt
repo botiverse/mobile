@@ -11,17 +11,15 @@ import org.jetbrains.compose.resources.StringResource
     updateAvailable: Boolean,
     sizeLabel: String?,
     patchSizeLabel: String? = null
-): StringDesc =
-    when {
-        !updateAvailable -> StringDesc.Resource(Res.string.app_update_detail_current)
-        !patchSizeLabel.isNullOrBlank() && !sizeLabel.isNullOrBlank() ->
-            Res.string.app_update_detail_available_with_patch_and_full_sizes
-                .format(listOf(patchSizeLabel, sizeLabel))
-        !patchSizeLabel.isNullOrBlank() ->
-            Res.string.app_update_detail_available_with_patch_size.format(listOf(patchSizeLabel))
-        sizeLabel.isNullOrBlank() -> StringDesc.Resource(Res.string.app_update_detail_available)
-        else -> Res.string.app_update_detail_available_with_size.format(listOf(sizeLabel))
+): StringDesc {
+    if (!updateAvailable) return StringDesc.Resource(Res.string.app_update_detail_current)
+    val actualSizeLabel = patchSizeLabel?.takeIf { it.isNotBlank() } ?: sizeLabel?.takeIf { it.isNotBlank() }
+    return if (actualSizeLabel != null) {
+        Res.string.app_update_detail_available_with_size.format(listOf(actualSizeLabel))
+    } else {
+        StringDesc.Resource(Res.string.app_update_detail_available)
     }
+}
 
 /**
  * Localized strings for native host layers.
