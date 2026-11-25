@@ -63,6 +63,7 @@ import build.raft.designsystem.components.RaftListRowText
 import build.raft.designsystem.components.RaftPreviewCard
 import build.raft.designsystem.components.RaftRadio
 import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.rememberRaftPreviewCardState
 import build.raft.designsystem.components.RaftSeparator
@@ -419,17 +420,14 @@ private fun AgentMigrationWrappingTargetChoiceList(
                 trailingAction =
                     if (query.isNotEmpty()) {
                         {
-                            RaftIconButton(
-                                onClick = {
+                            RaftTextFieldClearAction(
+                                onClear = {
                                     query = ""
                                     pinned = selected
                                 },
-                                tooltip = clearSearchLabel,
-                                variant = RaftButtonVariant.Ghost,
+                                label = clearSearchLabel,
                                 enabled = enabled,
-                            ) {
-                                RaftGlyphIcon(RaftGlyph.X, size = 16.dp)
-                            }
+                            )
                         }
                     } else {
                         null
