@@ -61,7 +61,9 @@
             android:foregroundServiceType="dataSync" />
 
         <!-- Page host: every page renders on Compose Multiplatform (RaftCmpRouter /
-             RaftPageRegistry). adjustResize so Compose receives IME insets on every API level.
+             RaftPageRegistry). stateHidden|adjustResize so Compose receives IME insets on every
+             API level without Android auto-raising the keyboard when returning window focus
+             (e.g. from a system floating window, Hands b0d1ed9f).
              Hosts handle rotation, resizes and the OS light/dark switch (uiMode) in place:
              Compose follows the new Configuration, and recreating the host would reset the
              bottom tab and drop the open page (RaftHostConfigChangesTest). -->
@@ -70,7 +72,7 @@
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:exported="false"
             android:theme="@style/Theme.Raft.Translucent"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="stateHidden|adjustResize" />
         <!-- Pre-rename component name (Slock -> Raft), kept for Intents persisted by
              older versions: notifications, shortcuts, recents, external tools. -->
         <activity-alias
@@ -84,7 +86,7 @@
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:exported="false"
             android:theme="@style/Theme.Raft.Translucent"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="stateHidden|adjustResize" />
         <!-- Pre-rename component name (Slock -> Raft), kept for Intents persisted by
              older versions: notifications, shortcuts, recents, external tools. -->
         <activity-alias
@@ -97,7 +99,7 @@
             android:exported="false"
             android:launchMode="singleTask"
             android:theme="@style/Theme.Raft.AppShellStarting"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="stateHidden|adjustResize" />
         <!-- Pre-rename component name (Slock -> Raft), kept for Intents persisted by
              older versions: notifications, shortcuts, recents, external tools. -->
         <activity-alias
@@ -111,7 +113,7 @@
             android:exported="false"
             android:launchMode="standard"
             android:theme="@style/Theme.Raft.AppShellStarting"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="stateHidden|adjustResize" />
         <!-- Pre-rename component name (Slock -> Raft), kept for Intents persisted by
              older versions: notifications, shortcuts, recents, external tools. -->
         <activity-alias

@@ -5784,7 +5784,8 @@ private fun RaftAppShellReadyContent(
                                 horizontalOffset = customContent.horizontalOffset,
                                 verticalOffset = customContent.verticalOffset,
                                 horizontalAutoFlip = true,
-                                verticalPlacement = RaftFloatingVerticalPlacement.Auto
+                                verticalPlacement = RaftFloatingVerticalPlacement.Auto,
+                                keepsHostKeyboard = customContent.keepsHostKeyboard,
                             ) {
                                 customContent.content { id ->
                                     customContent.onSelected(id)
