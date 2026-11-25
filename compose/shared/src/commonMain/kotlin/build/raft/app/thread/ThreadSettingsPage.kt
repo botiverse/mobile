@@ -293,6 +293,7 @@ internal fun ThreadSettingsPageBody(sources: ThreadSettingsPageSources, onClose:
             onMoveSection = { moves -> panel?.onMoveSection?.invoke(moves) },
             onCreateSection = { name, emoji -> panel?.onCreateSection?.invoke(name, emoji) },
             asPage = true,
+            announcement = panel?.dmAnnouncement,
         )
     } else {
         // A channel's settings are its details page (ChannelSettingsPage.kt); this page is a DM's.

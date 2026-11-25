@@ -6718,6 +6718,29 @@ private fun SharedThreadRouteContentContent(
                         bridge.logWarn("channel_settings_archived_open_rejected reason=identity_unresolved")
                     }
                 },
+                dmAnnouncement =
+                    if (renderedThread.surfaceKind == RaftThreadSurfaceKind.DirectMessage && serverId != null && channelId != null) {
+                        val dmArchived =
+                            ((homeContent as? SharedHomeContentState.Content)?.snapshot)
+                                ?.takeIf { it.server.id == serverId }
+                                ?.directMessages
+                                ?.firstOrNull { it.channelId == channelId }
+                                ?.archived
+                                ?: renderedThread.channelArchived
+                        @Composable {
+                            DirectMessageDetailsAnnouncementSection(
+                                sharedStores = sharedStores,
+                                storeScope = storeScope,
+                                serverId = serverId.value,
+                                channelId = channelId.value,
+                                peerName = headerDisplayModel.title,
+                                archived = dmArchived,
+                                active = true,
+                            )
+                        }
+                    } else {
+                        null
+                    },
             )
         }
         // The settings drawer beyond the name form and actions (web ChannelOverflowMenu): the
@@ -6979,9 +7002,10 @@ private fun SharedThreadRouteContentContent(
                     session = currentSession,
                     active = active && threadHostForeground,
                 ),
-            // Channel announcements (channel_announcement_v0): the strip on a channel's own page (not a
-            // thread, DM or task conversation). Built here from values this lambda already captures:
-            // it is at the JVM's 255-capture limit, and one more local breaks it (BootstrapMethodError).
+            // Channel and DM announcements (channel_announcement_v0): the strip on a channel's or
+            // DM's own page (not a reply thread or task conversation). Built here from values this
+            // lambda already captures: it is at the JVM's 255-capture limit, and one more local
+            // breaks it (BootstrapMethodError).
             channelAnnouncementStrip =
                 rememberThreadChannelAnnouncementStripSlot(
                     sharedStores = sharedStores,
@@ -6990,11 +7014,13 @@ private fun SharedThreadRouteContentContent(
                     serverId = threadMembersServerId?.value,
                     channelId = threadMembersChannelId?.value,
                     channelType =
-                        renderedThread.channelKind.takeIf {
-                            renderedThread.surfaceKind == RaftThreadSurfaceKind.Channel && !renderedThread.isTaskConversationSurface()
-                        },
+                        threadAnnouncementChannelType(
+                            surfaceKind = renderedThread.surfaceKind,
+                            channelKind = renderedThread.channelKind,
+                            isTaskConversation = renderedThread.isTaskConversationSurface(),
+                        ),
                     active = active && threadHostForeground,
-                    onOpenSettings = { openSettingsPage() },
+                    channelArchived = renderedThread.channelArchived,
                 ),
             taskConversationChrome = taskConversationChrome,
             taskConversationHead = taskHeadScrollState.takeIf { taskConversationBar != null },

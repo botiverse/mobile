@@ -88,8 +88,8 @@ internal data class ThreadPageContentData(
     val taskConversationBar: (@Composable () -> Unit)? = null,
     /** A conversion to an external channel under way: its strip, before the announcement (ChannelConversionStrip.kt); null where none can show. */
     val channelConversionStrip: (@Composable () -> Unit)? = null,
-    /** Channel announcements: the strip above the timeline (ChannelAnnouncementHost.kt); null where none can show. */
-    val channelAnnouncementStrip: (@Composable () -> Unit)? = null,
+    /** Channel / DM announcements: the strip above the timeline (ChannelAnnouncementHost.kt); null where none can show. */
+    val channelAnnouncementStrip: (@Composable (onOpenSettings: () -> Unit) -> Unit)? = null,
     /** Task v2: the top bar's task title and More menu rows; null elsewhere or before the task is known. */
     val taskConversationChrome: TaskConversationHeaderChrome? = null,
     /** Task v2 on a phone: whether the head's row is in view, and the head pulled down from the bar while it is not. */
@@ -216,7 +216,7 @@ fun rememberThreadPageContentScaffoldSlots(
     agentFollowersHeader: @Composable () -> Unit = {},
     taskConversationBar: (@Composable () -> Unit)? = null,
     channelConversionStrip: (@Composable () -> Unit)? = null,
-    channelAnnouncementStrip: (@Composable () -> Unit)? = null,
+    channelAnnouncementStrip: (@Composable (onOpenSettings: () -> Unit) -> Unit)? = null,
     taskConversationChrome: TaskConversationHeaderChrome? = null,
     taskConversationHead: TaskHeadScrollState? = null,
     taskConversationFloat: (@Composable () -> Unit)? = null,
@@ -1286,8 +1286,14 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
             // A conversion to an external channel under way: before the announcement, which stays next
             // to the messages; not in a Lounge (web ChatPanel `!isLounge`).
             if (conversationLounge == null) data.channelConversionStrip?.invoke()
-            // The channel's announcement: last of the top regions, right above the timeline (raft-design channel.md).
-            data.channelAnnouncementStrip?.invoke()
+            // The channel's or DM's pinned content: last of the top regions, right above the timeline (raft-design channel.md).
+            data.channelAnnouncementStrip?.invoke {
+                if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
+                    if (!(settingsOpensAsPage && onOpenSettingsPage?.invoke() == true)) activeModal = "settings"
+                } else {
+                    onThreadEvent("openChannelSettings", null, null, null)
+                }
+            }
             val threadTabContent: @Composable ColumnScope.() -> Unit = {
             data.taskConversationBar?.invoke()
             // No tab pager around the list: dragging it left shows message times
@@ -1645,6 +1651,7 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                         messageBodyTextStyle = messageBodyTextStyle,
                         memberAvatarResolver = memberAvatarResolver,
                         memberModelLabelResolver = memberModelLabelResolver,
+                        isDm = timelineSlice.directMessageSurface,
                     )
                 } else {
                     ThreadShareImageMessageRow(
@@ -1714,6 +1721,7 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                     onToggleActivityMute = onToggleActivityMute,
                     onMoveSection = { moves -> channelSettingsPanel?.onMoveSection?.invoke(moves) },
                     onCreateSection = { name, emoji -> channelSettingsPanel?.onCreateSection?.invoke(name, emoji) },
+                    announcement = if (conversationLounge == null) channelSettingsPanel?.dmAnnouncement else null,
                 )
             }
             "sharePreview" ->

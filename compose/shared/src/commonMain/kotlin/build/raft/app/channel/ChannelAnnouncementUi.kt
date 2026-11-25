@@ -25,6 +25,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,6 +46,7 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftChoiceList
+import build.raft.designsystem.components.RaftChoiceListGroup
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.RaftChoiceListItem
@@ -266,14 +269,29 @@ private fun ChannelAnnouncementStripMenu(
 
 /** The change line in the reader's language (web `channelAnnouncementNoticeLine`). */
 @Composable
-internal fun channelAnnouncementNoticeLine(notice: ChannelAnnouncementNotice): String {
+internal fun channelAnnouncementNoticeLine(
+    notice: ChannelAnnouncementNotice,
+    isDm: Boolean = false,
+): String {
     val name = channelAnnouncementAuthorName(notice.actor.name)
     val title = notice.title
     return if (title == null) {
         when (notice.change) {
-            ChannelAnnouncementChangeKind.Set -> stringResource(Res.string.channel_announcement_event_set_untitled, name)
-            ChannelAnnouncementChangeKind.Replaced -> stringResource(Res.string.channel_announcement_event_replaced_untitled, name)
-            ChannelAnnouncementChangeKind.Removed -> stringResource(Res.string.channel_announcement_event_removed_untitled, name)
+            ChannelAnnouncementChangeKind.Set ->
+                stringResource(
+                    if (isDm) Res.string.channel_announcement_event_set_untitled_dm else Res.string.channel_announcement_event_set_untitled,
+                    name,
+                )
+            ChannelAnnouncementChangeKind.Replaced ->
+                stringResource(
+                    if (isDm) Res.string.channel_announcement_event_replaced_untitled_dm else Res.string.channel_announcement_event_replaced_untitled,
+                    name,
+                )
+            ChannelAnnouncementChangeKind.Removed ->
+                stringResource(
+                    if (isDm) Res.string.channel_announcement_event_removed_untitled_dm else Res.string.channel_announcement_event_removed_untitled,
+                    name,
+                )
         }
     } else {
         when (notice.change) {
@@ -283,6 +301,33 @@ internal fun channelAnnouncementNoticeLine(notice: ChannelAnnouncementNotice): S
         }
     }
 }
+
+/** Replace confirmation body copy, worded for a DM or a channel (web `ChannelAnnouncementField`). */
+@Composable
+internal fun channelAnnouncementReplaceBody(
+    nextTitle: String,
+    currentTitle: String,
+    channelName: String,
+    isDm: Boolean = false,
+): String =
+    if (isDm) {
+        stringResource(Res.string.channel_announcement_replace_dm_body, nextTitle, currentTitle)
+    } else {
+        stringResource(Res.string.channel_announcement_replace_body, nextTitle, currentTitle, channelName)
+    }
+
+/** Remove confirmation body copy, worded for a DM or a channel (web `ChannelAnnouncementField`). */
+@Composable
+internal fun channelAnnouncementRemoveBody(
+    currentTitle: String,
+    channelName: String,
+    isDm: Boolean = false,
+): String =
+    if (isDm) {
+        stringResource(Res.string.channel_announcement_remove_dm_body, currentTitle)
+    } else {
+        stringResource(Res.string.channel_announcement_remove_body, currentTitle, channelName)
+    }
 
 // ---- Channel details › Pinned content ------------------------------------------------------------
 
@@ -650,7 +695,7 @@ private fun ChannelAnnouncementErrorNote(error: ScreenError) {
 }
 
 /**
- * Pin / Replace pin: one of the channel's own Artifacts (a Dialog md with a ChoiceList), the
+ * Pin / Replace pin: one of the conversation's own Artifacts (a Dialog md with a ChoiceList), the
  * currently pinned Artifact left out. Pin confirms here; Replace pin goes on to its confirmation.
  */
 @Composable
@@ -664,12 +709,25 @@ internal fun ChannelAnnouncementPickerDialog(
     onShowMore: () -> Unit,
     onConfirm: (ChannelAnnouncementChoice) -> Unit,
     onDismiss: () -> Unit,
+    isDm: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     var chosen by remember { mutableStateOf<String?>(null) }
     val choices = (view as? ChannelAnnouncementPickerView.Ready)?.choices.orEmpty()
     val chosenChoice = choices.firstOrNull { it.artifactId == chosen }
+    val groupLabel =
+        if (isDm) {
+            stringResource(Res.string.channel_announcement_picker_dm_group)
+        } else {
+            stringResource(Res.string.channel_announcement_picker_group, channelName)
+        }
+    val listLabel =
+        if (isDm) {
+            stringResource(Res.string.channel_announcement_picker_dm_label, channelName)
+        } else {
+            stringResource(Res.string.channel_announcement_picker_label, channelName)
+        }
     RaftDialog(
         onDismissRequest = { if (!running) onDismiss() },
         title =
@@ -693,13 +751,29 @@ internal fun ChannelAnnouncementPickerDialog(
         },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaftText(stringResource(Res.string.channel_announcement_picker_lead, channelName), style = typography.subhead, color = colors.foregroundMuted)
+            RaftText(
+                text =
+                    if (isDm) {
+                        stringResource(Res.string.channel_announcement_picker_dm_lead, channelName)
+                    } else {
+                        stringResource(Res.string.channel_announcement_picker_lead, channelName)
+                    },
+                style = typography.subhead,
+                color = colors.foregroundMuted,
+            )
             when (view) {
                 ChannelAnnouncementPickerView.Loading ->
                     RaftText(stringResource(Res.string.channel_announcement_picker_loading), style = typography.callout, color = colors.foregroundHint)
                 ChannelAnnouncementPickerView.Failed ->
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        RaftText(stringResource(Res.string.channel_announcement_picker_failed), style = typography.callout, color = colors.foregroundMuted)
+                        RaftText(
+                            text =
+                                stringResource(
+                                    if (isDm) Res.string.channel_announcement_picker_dm_failed else Res.string.channel_announcement_picker_failed
+                                ),
+                            style = typography.callout,
+                            color = colors.foregroundMuted,
+                        )
                         RaftButton(text = stringResource(Res.string.channel_announcement_picker_retry), onClick = onRetry, variant = RaftButtonVariant.Default)
                     }
                 is ChannelAnnouncementPickerView.Ready -> {
@@ -711,6 +785,7 @@ internal fun ChannelAnnouncementPickerDialog(
                                     label = choice.title,
                                     descriptions = listOf(androidx.compose.ui.text.AnnotatedString(choice.meta)),
                                     searchText = choice.title,
+                                    group = "here",
                                     media = {
                                         RaftSlotIcon(
                                             choice.kind.lucideIcon(),
@@ -725,8 +800,15 @@ internal fun ChannelAnnouncementPickerDialog(
                         searchPlaceholder = stringResource(Res.string.channel_announcement_picker_search),
                         clearSearchLabel = stringResource(Res.string.channel_announcement_picker_clear_search),
                         noMatchLabel = stringResource(Res.string.channel_announcement_picker_no_match),
-                        emptyLabel = stringResource(Res.string.channel_announcement_picker_empty, channelName),
+                        emptyLabel =
+                            if (isDm) {
+                                stringResource(Res.string.channel_announcement_picker_dm_empty)
+                            } else {
+                                stringResource(Res.string.channel_announcement_picker_empty, channelName)
+                            },
+                        modifier = Modifier.semantics { contentDescription = listLabel },
                         enabled = !running,
+                        groups = listOf(RaftChoiceListGroup("here", groupLabel)),
                     )
                     if (view.hasMore) {
                         RaftButton(

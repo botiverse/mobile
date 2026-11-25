@@ -158,11 +158,12 @@ private fun RaftThreadSettingsAction.canonicalThreadSettingsActionId(): String? 
 
 /**
  * The DM settings: the channel settings drawer in its DM mode (web ChannelOverflowMenu for a DM,
- * task #703: the same sheet as a channel). The head is the person's or agent's name with an
- * outline "Direct message" tag at every width (web ChannelDrawerTitle); the body is the shared
- * Preferences only: Move to section, Mute where the server lets this DM be muted (a DM with an App
- * bot) or a mute is stored, then Collapse long messages, worded for a conversation. No members,
- * no Info form, no actions; Close chat stays in the Home row menu as on the web sidebar.
+ * task #703 / #proj-chat:#47: the same sheet as a channel). The head is the person's or agent's
+ * name with an outline "Direct message" tag at every width (web ChannelDrawerTitle); the body has
+ * Pinned content ([announcement], DMs only, never Agent Lounge) right above the shared Preferences:
+ * Move to section, Mute where the server lets this DM be muted (a DM with an App bot) or a mute is
+ * stored, then Collapse long messages, worded for a conversation. No members, no Info form, no
+ * actions; Close chat stays in the Home row menu as on the web sidebar.
  */
 @Composable
 internal fun ThreadDirectMessageSettingsDrawer(
@@ -179,6 +180,8 @@ internal fun ThreadDirectMessageSettingsDrawer(
     asPage: Boolean = false,
     /** False for an agent's Lounge, which uses this DM-mode drawer but is not a DM. */
     directMessageTag: Boolean = true,
+    /** DM pinned content (channel_announcement_v0); omitted for Agent Lounge. */
+    announcement: (@Composable () -> Unit)? = null,
 ) {
     ThreadSettingsSurface(
         asPage = asPage,
@@ -193,8 +196,13 @@ internal fun ThreadDirectMessageSettingsDrawer(
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
                 // web `px-4 pb-2` under the sheet body's `py-2`, on the channel drawer's margin.
-                .padding(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 16.dp)
+                .padding(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 16.dp),
+            // web `stack-y-6`: 24dp between Pinned content and Your preferences when both draw.
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
+            if (directMessageTag) {
+                announcement?.invoke()
+            }
             ThreadSettingsPreferencesSection(
                 panel =
                     ThreadChannelSettingsPanel(

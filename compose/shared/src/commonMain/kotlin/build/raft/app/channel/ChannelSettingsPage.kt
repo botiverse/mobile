@@ -945,15 +945,20 @@ private fun ChannelSettingsPageScreen() {
                         announcement =
                             if (announcementKey != null) {
                                 @Composable {
+                                    val isDm = channel.kind == ConversationKind.DirectMessage
                                     ChannelSettingsAnnouncementSection(
                                         sharedStores = sharedStores,
                                         storeScope = storeScope,
                                         key = announcementKey,
                                         channelName = channel.name,
-                                        canEdit = settingsState.permissions().editMetadata && !channel.archived && authorityAccepted,
+                                        canEdit =
+                                            (isDm || settingsState.permissions().editMetadata) &&
+                                                !channel.archived &&
+                                                authorityAccepted,
                                         active = true,
                                         // On the details' own inset, 24 from the sections around it.
                                         modifier = Modifier.fillMaxWidth(),
+                                        isDm = isDm,
                                     )
                                 }
                             } else {
