@@ -18,6 +18,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -145,6 +149,92 @@ class SettingsWebViewStallRetryUiTest {
             waitForIdle()
             onNodeWithText("Could not load this page").assertDoesNotExist()
             assertEquals(1, webViews().size)
+        }
+
+    @Test
+    fun backgroundDwellDoesNotStallAndBackgroundRenderGoneRecoversOnForegroundReturn() =
+        runRobolectricComposeUiTest {
+            val owner =
+                object : LifecycleOwner {
+                    val registry = LifecycleRegistry.createUnsafe(this)
+                    override val lifecycle: Lifecycle get() = registry
+                }.apply { registry.currentState = Lifecycle.State.RESUMED }
+            lateinit var watchdog: RaftWebViewLoadWatchdog
+            setContent {
+                Host {
+                    CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                        val controller = rememberRaftWebViewController()
+                        watchdog = remember { RaftWebViewLoadWatchdog(page = "artifact_viewer", url = url) }
+                        if (!watchdog.showsError) {
+                            RaftSandboxWebView(
+                                url = url,
+                                modifier = Modifier.fillMaxSize(),
+                                allowNavigation = true,
+                                domStorageEnabled = true,
+                                controller = controller,
+                                loadWatchdog = watchdog,
+                            )
+                        } else {
+                            SettingsWebViewErrorContent(
+                                actionLabel = "Retry",
+                                actionIcon = RaftLucideIconName.RefreshCw,
+                                body = settingsWebViewErrorBody(watchdog.state.phase),
+                                onAction = {},
+                            )
+                        }
+                    }
+                }
+            }
+            waitForIdle()
+            assertEquals(1, webViews().size)
+
+            // Part 1: Backgrounding mid-load pauses the 15s stall countdown so background dwell never stalls.
+            runOnIdle { owner.registry.currentState = Lifecycle.State.CREATED }
+            waitForIdle()
+            mainClock.advanceTimeBy(RAFT_WEB_VIEW_LOAD_STALL_TIMEOUT_MS * 2)
+            waitForIdle()
+            onNodeWithText("Could not load this page").assertDoesNotExist()
+            assertEquals(RaftWebViewLoadPhase.Loading, watchdog.state.phase)
+
+            // Return to foreground and finish loading cleanly to Ready.
+            runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
+            waitForIdle()
+            val first = webViews().single()
+            val sandbox = first.parent as RaftAndroidSandboxWebView
+            runOnUiThread {
+                val client = shadowOf(first).webViewClient
+                client.onPageStarted(first, url, null)
+                client.onPageFinished(first, url)
+                watchdog.onPageReadyMessage()
+            }
+            waitForIdle()
+            assertEquals(RaftWebViewLoadPhase.Ready, watchdog.state.phase)
+
+            // Part 2: Ready Artifact goes to background, Android kills renderer, app stays in background > 15s.
+            runOnIdle {
+                owner.registry.currentState = Lifecycle.State.CREATED
+                sandbox.dispatchWindowVisibilityChanged(View.GONE)
+                shadowOf(first).webViewClient.onRenderProcessGone(first, null)
+            }
+            waitForIdle()
+            mainClock.advanceTimeBy(RAFT_WEB_VIEW_LOAD_STALL_TIMEOUT_MS * 2)
+            waitForIdle()
+            onNodeWithText("Could not load this page").assertDoesNotExist()
+            onNodeWithText("Check your connection and try again.").assertDoesNotExist()
+            assertEquals(RaftWebViewLoadPhase.Ready, watchdog.state.phase)
+            assertEquals(0, webViews().size, "dead WebView is destroyed and replacement waits for foreground")
+
+            // User returns to foreground: WebView is recreated and watchdog re-arms with a fresh foreground load.
+            runOnIdle {
+                owner.registry.currentState = Lifecycle.State.RESUMED
+                sandbox.dispatchWindowVisibilityChanged(View.VISIBLE)
+            }
+            waitForIdle()
+            onNodeWithText("Could not load this page").assertDoesNotExist()
+            onNodeWithText("Check your connection and try again.").assertDoesNotExist()
+            assertEquals(RaftWebViewLoadPhase.Loading, watchdog.state.phase)
+            assertEquals(1, webViews().size)
+            assert(webViews().single() !== first) { "foreground resume should recreate a fresh WebView" }
         }
 
     /** Lets the load line's appear delay pass. */

@@ -9,6 +9,7 @@ import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
 import android.util.Log
+import android.view.View
 import android.webkit.ConsoleMessage
 import android.webkit.DownloadListener
 import android.webkit.RenderProcessGoneDetail
@@ -118,9 +119,21 @@ internal class RaftAndroidSandboxWebView(
     initialStoragePartition: RaftWebViewStoragePartition = RaftWebViewStoragePartition.Default,
     private val supportsMultiProfile: () -> Boolean = ::raftPlatformSupportsIsolatedWebViewProfile,
     private val applyProfile: (WebView, String) -> Unit = { view, name -> WebViewCompat.setProfile(view, name) },
+    private val isForegroundWindowForRecovery: (RaftAndroidSandboxWebView) -> Boolean = { it.isForegroundWindow() },
 ) : FrameLayout(context) {
-    private var webView = WebView(context)
+    private data class PendingRenderProcessRestore(
+        val restoreDocument: Boolean,
+        val restoreUrl: String,
+        val reason: String,
+        val notifyProcessGone: Boolean = true,
+        val controllerLoadUrl: String? = null,
+    )
+
+    private var webView: WebView? = WebView(context)
     private var destroyed: Boolean = false
+    private var pendingRenderProcessRestore: PendingRenderProcessRestore? = null
+    internal val hasPendingRenderProcessRestore: Boolean get() = pendingRenderProcessRestore != null
+    private var latestWindowVisibility: Int = View.GONE
     internal var storagePartition: RaftWebViewStoragePartition = initialStoragePartition
         private set
     /** True when [RaftWebViewStoragePartition.IsolatedThirdParty] was requested without MULTI_PROFILE: fail closed. */
@@ -225,9 +238,81 @@ internal class RaftAndroidSandboxWebView(
 
     init {
         RaftAndroidWebViewProvider.logOnce(context)
-        prepareWebViewProfile(webView)
-        addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        configureWebView()
+        val initialWebView = checkNotNull(webView)
+        prepareWebViewProfile(initialWebView)
+        addView(initialWebView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        configureWebView(initialWebView)
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        latestWindowVisibility = windowVisibility
+        if (isForegroundWindowForRecovery(this)) {
+            flushPendingRenderProcessRestore()
+        }
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        latestWindowVisibility = visibility
+        if (isForegroundWindowForRecovery(this)) {
+            flushPendingRenderProcessRestore()
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        latestWindowVisibility = View.GONE
+        super.onDetachedFromWindow()
+    }
+
+    private fun isForegroundWindow(): Boolean =
+        isAttachedToWindow && latestWindowVisibility == View.VISIBLE
+
+    private fun destroyDeadWebView(dead: WebView?) {
+        removeHostMessageListener()
+        removeDownloadSupport()
+        removeDocumentStartScript()
+        pendingRuntimeJavaScript = ""
+        val target = dead ?: webView
+        if (target === webView) webView = null
+        runCatching {
+            target?.let {
+                it.webChromeClient = null
+                it.webViewClient = WebViewClient()
+                removeView(it)
+                it.destroy()
+            }
+        }
+    }
+
+    private fun flushPendingRenderProcessRestore() {
+        if (destroyed || parkedForKeepAlive) return
+        val pending = pendingRenderProcessRestore ?: return
+        pendingRenderProcessRestore = null
+        val controllerUrl = pending.controllerLoadUrl
+        if (controllerUrl != null) {
+            diagnosticsInfo("render_process_gone_restore_resumed mode=controller_url url=${controllerUrl.formatUrlForLog()}")
+            recreateWebView(restoreCurrentDocument = false)
+            loadControllerUrl(controllerUrl)
+            return
+        }
+        val restoreUrl =
+            if (pending.restoreDocument) {
+                raftWebViewRendererGoneRestoreUrl(
+                    src,
+                    pending.restoreUrl,
+                    ::rendererGoneRestoreAllows,
+                )
+            } else {
+                ""
+            }
+        diagnosticsInfo("render_process_gone_restore_resumed url=${restoreUrl.formatUrlForLog()} shown=${restoreUrl != src}")
+        if (pending.notifyProcessGone) {
+            events.onContentProcessGone(pending.reason)
+            if (destroyed) return
+        }
+        recreateWebView(restoreCurrentDocument = pending.restoreDocument, restoreUrl = restoreUrl)
+        notifyNavigationState(force = true)
     }
 
     /** Applies the attrs in the Kuikly node's order (src last). Each setter is a no-op when unchanged. */
@@ -294,22 +379,32 @@ internal class RaftAndroidSandboxWebView(
         if (next == RaftWebViewStoragePartition.IsolatedThirdParty && !supportsMultiProfile()) {
             isolatedProfileUnavailable = true
             diagnosticsWarn("isolated_profile_unavailable reason=multi_profile_unsupported", always = true)
-            webView.stopLoading()
+            webView?.stopLoading()
             currentIsLoading = false
             return
         }
         // Chromium profiles must be attached right after WebView construction, before any load.
+        val previous = webView
         removeHostMessageListener()
         removeDownloadSupport()
         removeDocumentStartScript()
+        webView = null
         runCatching {
-            webView.stopLoading()
-            webView.webChromeClient = null
-            webView.webViewClient = WebViewClient()
-            removeView(webView)
-            webView.destroy()
+            previous?.let {
+                it.stopLoading()
+                it.webChromeClient = null
+                it.webViewClient = WebViewClient()
+                removeView(it)
+                it.destroy()
+            }
         }
-        recreateWebView(restoreCurrentDocument = false)
+        val pending = pendingRenderProcessRestore
+        if (pending != null) {
+            pendingRenderProcessRestore =
+                pending.copy(restoreDocument = false, restoreUrl = "", notifyProcessGone = false, controllerLoadUrl = null)
+        } else {
+            recreateWebView(restoreCurrentDocument = false)
+        }
     }
 
     /**
@@ -319,21 +414,22 @@ internal class RaftAndroidSandboxWebView(
      */
     private fun updatePlaceholderBackground(argb: Int) {
         placeholderBackground = argb
-        if (!pagePainted) webView.setBackgroundColor(raftWebViewBackgroundArgb(argb, painted = false))
+        if (!pagePainted) webView?.setBackgroundColor(raftWebViewBackgroundArgb(argb, painted = false))
     }
 
     private fun onPagePainted() {
         if (pagePainted) return
         pagePainted = true
-        webView.setBackgroundColor(raftWebViewBackgroundArgb(placeholderBackground, painted = true))
+        webView?.setBackgroundColor(raftWebViewBackgroundArgb(placeholderBackground, painted = true))
     }
 
     /** The kept document (keep-alive), as [RaftWebViewKeptDocument], or null when destroyed or failed. */
     internal fun keptDocument(): RaftWebViewKeptDocument? {
-        if (destroyed || mainFrameLoadFailed) return null
+        val activeWebView = webView ?: return null
+        if (destroyed || mainFrameLoadFailed || pendingRenderProcessRestore != null) return null
         return RaftWebViewKeptDocument(
             src = src,
-            currentUrl = webView.url.orEmpty().ifBlank { currentUrl },
+            currentUrl = activeWebView.url.orEmpty().ifBlank { currentUrl },
             loaded = !currentIsLoading && lastSuccessfulUrl.isNotBlank(),
         )
     }
@@ -343,12 +439,13 @@ internal class RaftAndroidSandboxWebView(
      * [origin] (never a sub-frame: `evaluateJavascript` reaches the main frame only).
      */
     internal fun evaluateInTopDocument(origin: String, script: String): Boolean {
-        if (destroyed || mainFrameLoadFailed || !allowScripts || script.isBlank()) return false
+        val activeWebView = webView ?: return false
+        if (destroyed || mainFrameLoadFailed || pendingRenderProcessRestore != null || !allowScripts || script.isBlank()) return false
         val expected = raftDocumentStartScriptOriginRule(origin) ?: return false
-        val active = raftDocumentStartScriptOriginRule(webView.url.orEmpty()) ?: return false
+        val active = raftDocumentStartScriptOriginRule(activeWebView.url.orEmpty()) ?: return false
         if (active != expected || (mainFrameOrigin != null && active != mainFrameOrigin)) return false
         if (currentIsLoading || lastSuccessfulUrl.isBlank()) return false
-        webView.evaluateJavascript(script, null)
+        activeWebView.evaluateJavascript(script, null)
         return true
     }
 
@@ -383,6 +480,7 @@ internal class RaftAndroidSandboxWebView(
         if (destroyed) return
         destroyed = true
         parkedForKeepAlive = false
+        pendingRenderProcessRestore = null
         boundController?.unbindCommandDispatcher(this)
         boundController = null
         removeHostMessageListener()
@@ -390,17 +488,24 @@ internal class RaftAndroidSandboxWebView(
         pendingRuntimeJavaScript = ""
         removeDocumentStartScript()
         diagnosticsInfo("destroy_webview loadedSrc=${loadedSrc.formatUrlForLog()}")
-        webView.stopLoading()
-        webView.loadUrl(ABOUT_BLANK_URL)
-        webView.webChromeClient = null
-        webView.webViewClient = WebViewClient()
-        removeView(webView)
-        webView.destroy()
+        val active = webView
+        webView = null
+        if (active != null) {
+            runCatching {
+                active.stopLoading()
+                active.loadUrl(ABOUT_BLANK_URL)
+                active.webChromeClient = null
+                active.webViewClient = WebViewClient()
+                removeView(active)
+                active.destroy()
+            }
+        }
     }
 
     /** [restoreUrl]: the page to load in the new WebView (the one shown, [raftWebViewRendererGoneRestoreUrl]); [src] when blank. */
     private fun recreateWebView(restoreCurrentDocument: Boolean, restoreUrl: String = "") {
         diagnosticsInfo("recreate_webview previousSrc=${src.formatUrlForLog()}")
+        pendingRenderProcessRestore = null
         loadedSrc = ""
         lastSuccessfulUrl = ""
         mainFrameLoadFailed = false
@@ -420,18 +525,20 @@ internal class RaftAndroidSandboxWebView(
         committedDocumentUrl = ""
         hasCommittedDocument = false
         resetNavigationChain()
-        webView = WebView(context)
-        prepareWebViewProfile(webView)
+        val nextWebView = WebView(context)
+        webView = nextWebView
+        prepareWebViewProfile(nextWebView)
         builtDark = RaftAppThemeState.isDark
         pagePainted = false
-        webView.setBackgroundColor(raftWebViewBackgroundArgb(placeholderBackground, painted = false))
+        nextWebView.setBackgroundColor(raftWebViewBackgroundArgb(placeholderBackground, painted = false))
         removeAllViews()
-        addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        configureWebView()
+        addView(nextWebView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        configureWebView(nextWebView)
         if (restoreCurrentDocument) restoreCurrentDocumentAfterRecreation(restoreUrl)
     }
 
     private fun restoreCurrentDocumentAfterRecreation(restoreUrl: String) {
+        val activeWebView = webView ?: return
         if (isolatedProfileUnavailable) {
             currentIsLoading = false
             notifyNavigationState(force = true)
@@ -439,11 +546,11 @@ internal class RaftAndroidSandboxWebView(
             return
         }
         if (src.isBlank()) {
-            webView.loadUrl(ABOUT_BLANK_URL)
+            activeWebView.loadUrl(ABOUT_BLANK_URL)
             notifyNavigationState(force = true)
             return
         }
-        if (!isNavigationSchemeAllowed(src)) {
+        if (!isNavigationSchemeAllowed(src) || !raftMainFrameOriginAllows(mainFrameOrigin, src)) {
             notifyNavigationBlocked(src)
             notifyNavigationState(force = true)
             return
@@ -452,8 +559,8 @@ internal class RaftAndroidSandboxWebView(
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun configureWebView() {
-        webView.settings.apply {
+    private fun configureWebView(configuredWebView: WebView) {
+        configuredWebView.settings.apply {
             javaScriptEnabled = allowScripts
             domStorageEnabled = this@RaftAndroidSandboxWebView.domStorageEnabled
             // task #188: without this Android ignores `width=` in the page's viewport meta. Both
@@ -482,10 +589,10 @@ internal class RaftAndroidSandboxWebView(
             allowUniversalAccessFromFileURLs = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
-        webView.webChromeClient =
+        configuredWebView.webChromeClient =
             object : WebChromeClient() {
                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                    if (destroyed) return
+                    if (destroyed || configuredWebView !== webView) return
                     super.onProgressChanged(view, newProgress)
                     currentProgress = newProgress.coerceIn(0, 100)
                     logProgressMilestone(currentProgress)
@@ -494,7 +601,7 @@ internal class RaftAndroidSandboxWebView(
                 }
 
                 override fun onReceivedTitle(view: WebView?, title: String?) {
-                    if (destroyed) return
+                    if (destroyed || configuredWebView !== webView) return
                     super.onReceivedTitle(view, title)
                     currentTitle = title.orEmpty()
                     currentUrl = view?.url.orEmpty().ifBlank { currentUrl }
@@ -507,7 +614,7 @@ internal class RaftAndroidSandboxWebView(
                     isUserGesture: Boolean,
                     resultMsg: android.os.Message?
                 ): Boolean {
-                    if (destroyed) return false
+                    if (destroyed || configuredWebView !== webView) return false
                     // A new window (multiple windows are off, so the engine normally navigates this
                     // one instead): the link's address, routed by the host like any blocked page.
                     val hit = view?.hitTestResult
@@ -522,7 +629,7 @@ internal class RaftAndroidSandboxWebView(
                     params: FileChooserParams?
                 ): Boolean {
                     if (filePathCallback == null) return false
-                    if (destroyed || params == null) {
+                    if (destroyed || configuredWebView !== webView || params == null) {
                         filePathCallback.onReceiveValue(null)
                         return false
                     }
@@ -536,11 +643,11 @@ internal class RaftAndroidSandboxWebView(
 
                 override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                     if (isRestrictedGenericMode()) return true
-                    if (!destroyed && consoleMessage != null) logConsoleMessage(consoleMessage)
+                    if (!destroyed && configuredWebView === webView && consoleMessage != null) logConsoleMessage(consoleMessage)
                     return super.onConsoleMessage(consoleMessage)
                 }
             }
-        webView.webViewClient =
+        configuredWebView.webViewClient =
             object : WebViewClient() {
                 /**
                  * task #6: the platform kills the whole app when a renderer process is reclaimed
@@ -549,6 +656,17 @@ internal class RaftAndroidSandboxWebView(
                  */
                 override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
                     if (destroyed) return true
+                    if (configuredWebView !== webView) {
+                        runCatching {
+                            view?.let {
+                                it.webChromeClient = null
+                                it.webViewClient = WebViewClient()
+                                removeView(it)
+                                it.destroy()
+                            }
+                        }
+                        return true
+                    }
                     // Logged and joined to the death event (one Hands ticket however many WebViews it took).
                     RaftWebViewRendererGone.record(
                         context,
@@ -561,6 +679,12 @@ internal class RaftAndroidSandboxWebView(
                             "loadedSrc=${loadedSrc.formatUrlForLog()}",
                         always = true,
                     )
+                    if (parkedForKeepAlive) {
+                        destroyDeadWebView(view)
+                        RaftAndroidWebViewKeepAlive.dropIfSame(this@RaftAndroidSandboxWebView, "render_process_gone")
+                        if (!destroyed) destroy()
+                        return true
+                    }
                     val restoreDocument = loadedSrc.isNotBlank()
                     // #300: the page it was showing (a kept Artifact viewer is routed in place from
                     // its warm src), checked against the fence before the WebView is rebuilt.
@@ -571,26 +695,33 @@ internal class RaftAndroidSandboxWebView(
                             bootstrapNavigationFence.pendingTargetUrl ?: currentUrl,
                             ::rendererGoneRestoreAllows,
                         )
+                    val reason = if (detail?.didCrash() == true) "render_process_crashed" else "render_process_killed"
+                    if (!isForegroundWindowForRecovery(this@RaftAndroidSandboxWebView)) {
+                        diagnosticsInfo(
+                            "render_process_gone_deferred url=${restoreUrl.formatUrlForLog()} " +
+                                "attached=$isAttachedToWindow windowVisibility=$latestWindowVisibility",
+                        )
+                        pendingRenderProcessRestore =
+                            PendingRenderProcessRestore(
+                                restoreDocument = restoreDocument,
+                                restoreUrl = restoreUrl,
+                                reason = reason,
+                            )
+                        destroyDeadWebView(view)
+                        return true
+                    }
                     diagnosticsInfo("render_process_gone_restore url=${restoreUrl.formatUrlForLog()} shown=${restoreUrl != src}")
                     // The host's load watchdog: an error state when the page was not up yet.
-                    events.onContentProcessGone(if (detail?.didCrash() == true) "render_process_crashed" else "render_process_killed")
-                    removeHostMessageListener()
-                    pendingRuntimeJavaScript = ""
-                    runCatching {
-                        view?.let {
-                            it.webChromeClient = null
-                            it.webViewClient = WebViewClient()
-                            removeView(it)
-                            it.destroy()
-                        }
-                    }
+                    events.onContentProcessGone(reason)
+                    destroyDeadWebView(view)
+                    if (destroyed) return true
                     recreateWebView(restoreCurrentDocument = restoreDocument, restoreUrl = restoreUrl)
                     notifyNavigationState(force = true)
                     return true
                 }
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                    if (destroyed) return
+                    if (destroyed || configuredWebView !== webView) return
                     super.onPageStarted(view, url, favicon)
                     val target = url.orEmpty()
                     loadStartedAtMs = System.currentTimeMillis()
@@ -653,7 +784,7 @@ internal class RaftAndroidSandboxWebView(
                 }
 
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    if (destroyed) return
+                    if (destroyed || configuredWebView !== webView) return
                     super.onPageFinished(view, url)
                     val target = url.orEmpty()
                     diagnosticsInfo("page_finished url=${target.formatUrlForLog()} ${loadElapsedField()}")
@@ -681,7 +812,7 @@ internal class RaftAndroidSandboxWebView(
                 }
 
                 override fun onPageCommitVisible(view: WebView?, url: String?) {
-                    if (destroyed) return
+                    if (destroyed || configuredWebView !== webView) return
                     super.onPageCommitVisible(view, url)
                     val target = url.orEmpty()
                     diagnosticsInfo("page_commit_visible url=${target.formatUrlForLog()} ${loadElapsedField()}")
@@ -705,12 +836,12 @@ internal class RaftAndroidSandboxWebView(
 
                 @Deprecated("Deprecated in Java")
                 override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean =
-                    if (destroyed) true
+                    if (destroyed || configuredWebView !== webView) true
                     else if (url?.startsWith("raft-onboarding-wake:") == true) shouldBlockMainFrameNavigation(url)
                     else shouldSilentlyBlockSubframeNavigation(url)
 
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                    if (destroyed) return true
+                    if (destroyed || configuredWebView !== webView) return true
                     val target = request?.url?.toString()
                     return if (request?.isForMainFrame == true) {
                         handleMainFrameShouldOverrideUrlLoading(view, request, target)
@@ -720,7 +851,7 @@ internal class RaftAndroidSandboxWebView(
                 }
 
                 override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
-                    if (destroyed) return
+                    if (destroyed || configuredWebView !== webView) return
                     super.doUpdateVisitedHistory(view, url, isReload)
                     val target = url.orEmpty()
                     // History API / fragment updates are same-document state changes; keep the
@@ -733,7 +864,7 @@ internal class RaftAndroidSandboxWebView(
                 }
 
                 override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                    if (destroyed) return null
+                    if (destroyed || configuredWebView !== webView) return null
                     val url = request?.url?.toString()
                     if (request?.isForMainFrame == true && wouldBlockMainFrameNavigation(url)) {
                         val blockedUrl = url.orEmpty()
@@ -751,7 +882,7 @@ internal class RaftAndroidSandboxWebView(
                     request: WebResourceRequest?,
                     error: android.webkit.WebResourceError?
                 ) {
-                    if (destroyed) return
+                    if (destroyed || configuredWebView !== webView) return
                     if (request?.isForMainFrame == true) {
                         val failedUrl = request.url?.toString().orEmpty()
                         if (isCurrentLoadHostCancelled(failedUrl) || isRecentlyRoutedBlocked(failedUrl)) {
@@ -782,7 +913,7 @@ internal class RaftAndroidSandboxWebView(
 
                 override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
                     handler?.cancel()
-                    if (destroyed) return
+                    if (destroyed || configuredWebView !== webView) return
                     mainFrameLoadFailed = true
                     lastSuccessfulUrl = ""
                     currentUrl = error?.url.orEmpty().ifBlank { currentUrl }
@@ -804,7 +935,7 @@ internal class RaftAndroidSandboxWebView(
                     errorResponse: WebResourceResponse?
                 ) {
                     super.onReceivedHttpError(view, request, errorResponse)
-                    if (destroyed || request?.isForMainFrame != true) return
+                    if (destroyed || configuredWebView !== webView || request?.isForMainFrame != true) return
                     val failedUrl = request.url?.toString().orEmpty()
                     if (isCurrentLoadHostCancelled(failedUrl) || isRecentlyRoutedBlocked(failedUrl)) return
                     val statusCode = errorResponse?.statusCode ?: -1
@@ -821,9 +952,9 @@ internal class RaftAndroidSandboxWebView(
                     }
                 }
             }
-        webView.setDownloadListener(
+        configuredWebView.setDownloadListener(
             DownloadListener { url, _, contentDisposition, mimeType, _ ->
-                if (destroyed) return@DownloadListener
+                if (destroyed || configuredWebView !== webView) return@DownloadListener
                 if (events.onDownloadRequested == null) {
                     notifyNavigationBlocked(url.orEmpty())
                     return@DownloadListener
@@ -838,7 +969,7 @@ internal class RaftAndroidSandboxWebView(
         if (allowScripts == next) return
         allowScripts = next
         if (!next) pendingRuntimeJavaScript = ""
-        webView.settings.javaScriptEnabled = next
+        webView?.settings?.javaScriptEnabled = next
     }
 
     private fun updateAllowNavigation(next: Boolean) {
@@ -848,13 +979,14 @@ internal class RaftAndroidSandboxWebView(
     private fun updateDomStorageEnabled(next: Boolean) {
         if (domStorageEnabled == next) return
         domStorageEnabled = next
-        webView.settings.domStorageEnabled = next
+        webView?.settings?.domStorageEnabled = next
     }
 
     private fun applyZoomSettings() {
-        webView.settings.setSupportZoom(true)
-        webView.settings.builtInZoomControls = useWideViewPort || allowPinchZoom
-        webView.settings.displayZoomControls = false
+        val active = webView ?: return
+        active.settings.setSupportZoom(true)
+        active.settings.builtInZoomControls = useWideViewPort || allowPinchZoom
+        active.settings.displayZoomControls = false
     }
 
     private fun updateAllowPinchZoom(next: Boolean) {
@@ -866,15 +998,16 @@ internal class RaftAndroidSandboxWebView(
     private fun updateUseWideViewPort(next: Boolean) {
         if (useWideViewPort == next) return
         useWideViewPort = next
+        val active = webView ?: return
         // task #188: gate the pair together; set the scale BEFORE the reload so the new document
         // starts fitted, and reload here (not from shared) so setting + document are one step.
-        webView.settings.useWideViewPort = next
-        webView.settings.loadWithOverviewMode = next
+        active.settings.useWideViewPort = next
+        active.settings.loadWithOverviewMode = next
         applyZoomSettings()
-        applyDesktopModeScale(webView)
-        if (!isolatedProfileUnavailable && webView.url != null) {
+        applyDesktopModeScale(active)
+        if (!isolatedProfileUnavailable && active.url != null) {
             mainFrameLoadFailed = false
-            webView.reload()
+            active.reload()
         }
     }
 
@@ -913,7 +1046,7 @@ internal class RaftAndroidSandboxWebView(
     private fun updateCacheEnabled(next: Boolean) {
         if (cacheEnabled == next) return
         cacheEnabled = next
-        webView.settings.cacheMode = if (next) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_NO_CACHE
+        webView?.settings?.cacheMode = if (next) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_NO_CACHE
     }
 
     /**
@@ -927,6 +1060,7 @@ internal class RaftAndroidSandboxWebView(
     private fun updateInjectedJavaScript(next: String) {
         if (injectedJavaScript == next) return
         injectedJavaScript = next
+        if (webView == null) return
         removeDocumentStartScript()
         if (src.isNotBlank()) installDocumentStartScript(src)
     }
@@ -936,6 +1070,13 @@ internal class RaftAndroidSandboxWebView(
         hostEventsEnabled = next
         if (src.isNotBlank()) {
             pendingRuntimeJavaScript = ""
+            val pending = pendingRenderProcessRestore
+            if (pending != null || webView == null) {
+                if (pending != null) {
+                    pendingRenderProcessRestore = pending.copy(restoreDocument = true)
+                }
+                return
+            }
             loadAllowedSrc(src)
         }
     }
@@ -945,7 +1086,7 @@ internal class RaftAndroidSandboxWebView(
         allowedNavigationSchemes = next
         val activeUrl = currentUrl.ifBlank { src }
         if (activeUrl.isNotBlank() && !isNavigationSchemeAllowed(activeUrl)) {
-            webView.stopLoading()
+            webView?.stopLoading()
             currentIsLoading = false
             notifyNavigationState()
             notifyNavigationBlocked(activeUrl)
@@ -969,15 +1110,17 @@ internal class RaftAndroidSandboxWebView(
         var forceNotify = true
         when (next.trim()) {
             RaftWebViewController.COMMAND_GO_BACK -> {
-                if (webView.canGoBack()) {
+                val active = webView
+                if (active?.canGoBack() == true) {
                     hostCancelledLoadGeneration = -1
-                    webView.goBack()
+                    active.goBack()
                 }
             }
             RaftWebViewController.COMMAND_GO_FORWARD -> {
-                if (webView.canGoForward()) {
+                val active = webView
+                if (active?.canGoForward() == true) {
                     hostCancelledLoadGeneration = -1
-                    webView.goForward()
+                    active.goForward()
                 }
             }
             RaftWebViewController.COMMAND_RELOAD -> {
@@ -987,16 +1130,22 @@ internal class RaftAndroidSandboxWebView(
                     notifyLoadFailure(RAFT_WEBVIEW_ISOLATED_PROFILE_UNAVAILABLE_REASON)
                     return
                 }
+                val active = webView
+                if (active == null || pendingRenderProcessRestore != null) {
+                    pendingRenderProcessRestore = pendingRenderProcessRestore?.copy(restoreDocument = true)
+                    if (isForegroundWindowForRecovery(this)) flushPendingRenderProcessRestore()
+                    return
+                }
                 hostCancelledLoadGeneration = -1
                 lastSuccessfulUrl = ""
                 lastLoadFailureReason = ""
                 mainFrameLoadFailed = false
                 currentProgress = 0
                 currentIsLoading = true
-                webView.reload()
+                active.reload()
             }
             RaftWebViewController.COMMAND_STOP -> {
-                webView.stopLoading()
+                webView?.stopLoading()
                 currentIsLoading = false
                 forceNotify = false
             }
@@ -1007,6 +1156,8 @@ internal class RaftAndroidSandboxWebView(
 
     private fun evaluateRuntimeJavaScript(script: String, allowQueue: Boolean = true) {
         if (destroyed || !allowScripts || script.isBlank()) return
+        val activeWebView = webView ?: return
+        if (pendingRenderProcessRestore != null) return
         if (script.length > RaftWebViewMaxRuntimeJavaScriptLength) {
             Log.w(LOG_TAG, "runtime_js result=dropped reason=oversized length=${script.length}")
             return
@@ -1033,7 +1184,7 @@ internal class RaftAndroidSandboxWebView(
             }
             return
         }
-        webView.evaluateJavascript(script, null)
+        activeWebView.evaluateJavascript(script, null)
         Log.i(LOG_TAG, "runtime_js result=applied")
     }
 
@@ -1043,11 +1194,11 @@ internal class RaftAndroidSandboxWebView(
      */
     private fun probeDocumentContent() {
         if (destroyed) return
+        val target = webView ?: return
         if (!allowScripts) {
             events.onContentProbe(null)
             return
         }
-        val target = webView
         target.evaluateJavascript(RaftWebViewContentProbeScript) { value ->
             if (!destroyed && target === webView) events.onContentProbe(raftWebViewDecodeContentProbe(value))
         }
@@ -1077,7 +1228,12 @@ internal class RaftAndroidSandboxWebView(
         lastRoutedBlockedAtMs = 0L
         resetNavigationChain()
         allowedUri = normalized.takeIf { it.isNotBlank() }?.let { runCatching { Uri.parse(it) }.getOrNull() }
+        val pending = pendingRenderProcessRestore
         if (isolatedProfileUnavailable) {
+            if (pending != null) {
+                pendingRenderProcessRestore =
+                    pending.copy(restoreDocument = false, restoreUrl = "", notifyProcessGone = false, controllerLoadUrl = null)
+            }
             currentUrl = normalized
             currentTitle = ""
             currentProgress = 0
@@ -1092,7 +1248,14 @@ internal class RaftAndroidSandboxWebView(
             currentProgress = 0
             currentIsLoading = false
             notifyNavigationState()
-            webView.loadUrl(ABOUT_BLANK_URL)
+            if (pending != null || webView == null) {
+                if (pending != null) {
+                    pendingRenderProcessRestore =
+                        pending.copy(restoreDocument = false, restoreUrl = "", notifyProcessGone = false, controllerLoadUrl = null)
+                }
+                return
+            }
+            webView?.loadUrl(ABOUT_BLANK_URL)
             return
         }
         currentUrl = normalized
@@ -1100,8 +1263,26 @@ internal class RaftAndroidSandboxWebView(
         currentProgress = 0
         currentIsLoading = false
         if (!isNavigationSchemeAllowed(normalized) || !raftMainFrameOriginAllows(mainFrameOrigin, normalized)) {
+            if (pending != null) {
+                pendingRenderProcessRestore =
+                    pending.copy(restoreDocument = false, restoreUrl = "", notifyProcessGone = false, controllerLoadUrl = null)
+            }
             notifyNavigationState()
             notifyNavigationBlocked(normalized)
+            return
+        }
+        if (pending != null || webView == null) {
+            if (pending != null) {
+                pendingRenderProcessRestore =
+                    PendingRenderProcessRestore(
+                        restoreDocument = true,
+                        restoreUrl = normalized,
+                        reason = pending.reason,
+                        notifyProcessGone = false,
+                        controllerLoadUrl = null,
+                    )
+                if (isForegroundWindowForRecovery(this)) flushPendingRenderProcessRestore()
+            }
             return
         }
         loadAllowedSrc(normalized)
@@ -1113,6 +1294,7 @@ internal class RaftAndroidSandboxWebView(
      * The src stays [loadedSrc], so the host's unchanged config does not load it over that page.
      */
     private fun loadAllowedSrc(normalized: String, documentUrl: String = normalized) {
+        val activeWebView = webView ?: return
         if (isolatedProfileUnavailable) {
             currentIsLoading = false
             notifyNavigationState(force = true)
@@ -1132,7 +1314,7 @@ internal class RaftAndroidSandboxWebView(
             val bootstrapDocumentUrl = raftInjectedJavaScriptBootstrapBaseUrl(documentUrl) ?: documentUrl
             bootstrapNavigationFence.begin(targetUrl = documentUrl)
             diagnosticsInfo("load_src bootstrap=true url=${documentUrl.formatUrlForLog()}")
-            webView.loadDataWithBaseURL(
+            activeWebView.loadDataWithBaseURL(
                 bootstrapDocumentUrl,
                 injectedJavaScriptBootstrapHtml(documentUrl),
                 "text/html",
@@ -1160,6 +1342,21 @@ internal class RaftAndroidSandboxWebView(
         if (target.isEmpty()) return
         if (wouldBlockMainFrameNavigation(target)) {
             handleBlockedMainFrameNavigation(target)
+            return
+        }
+        val pending = pendingRenderProcessRestore
+        if (pending != null || webView == null) {
+            if (pending != null) {
+                pendingRenderProcessRestore =
+                    PendingRenderProcessRestore(
+                        restoreDocument = false,
+                        restoreUrl = "",
+                        reason = pending.reason,
+                        notifyProcessGone = false,
+                        controllerLoadUrl = target,
+                    )
+                if (isForegroundWindowForRecovery(this)) flushPendingRenderProcessRestore()
+            }
             return
         }
         hostCancelledLoadGeneration = -1
@@ -1205,17 +1402,18 @@ internal class RaftAndroidSandboxWebView(
     }
 
     private fun loadUrlWithRaftHost(targetUrl: String, includeHeader: Boolean) {
+        val activeWebView = webView ?: return
         val headerValue = if (includeHeader) raftHostHeaderValueFor(targetUrl, raftHost) else null
         navChainCarriesRaftHost = headerValue != null
         if (headerValue != null) {
-            webView.loadUrl(targetUrl, mapOf(RAFT_HOST_HEADER to headerValue))
+            activeWebView.loadUrl(targetUrl, mapOf(RAFT_HOST_HEADER to headerValue))
         } else {
-            webView.loadUrl(targetUrl)
+            activeWebView.loadUrl(targetUrl)
         }
     }
 
     private fun postReissueLoad(targetView: WebView?, targetUrl: String, includeHeader: Boolean) {
-        val view = targetView ?: webView
+        val view = targetView ?: webView ?: return
         shareMainHandler.post {
             if (!destroyed && !isolatedProfileUnavailable && view === webView) {
                 loadUrlWithRaftHost(targetUrl, includeHeader = includeHeader)
@@ -1466,11 +1664,12 @@ internal class RaftAndroidSandboxWebView(
             force = force,
             isActive = { !destroyed },
             readState = {
+                val activeWebView = webView
                 RaftWebViewNavigationState(
                     url = currentUrl,
                     title = currentTitle,
-                    canGoBack = webView.canGoBack(),
-                    canGoForward = webView.canGoForward(),
+                    canGoBack = activeWebView?.canGoBack() == true,
+                    canGoForward = activeWebView?.canGoForward() == true,
                     isLoading = currentIsLoading,
                     progress = currentProgress.coerceIn(0, 100),
                     loadGeneration = loadGeneration,
@@ -1482,16 +1681,17 @@ internal class RaftAndroidSandboxWebView(
 
     private fun evaluateInjectedJavaScript(pageUrl: String? = null) {
         if (destroyed || !allowScripts) return
+        val activeWebView = webView ?: return
         val script = injectedJavaScript.takeIf { it.isNotBlank() } ?: return
-        val activeUrl = pageUrl?.takeIf { it.isNotBlank() } ?: webView.url.orEmpty()
+        val activeUrl = pageUrl?.takeIf { it.isNotBlank() } ?: activeWebView.url.orEmpty()
         val sourceOrigin = raftDocumentStartScriptOriginRule(src)
         val activeOrigin = raftDocumentStartScriptOriginRule(activeUrl)
         if (sourceOrigin == null || activeOrigin != sourceOrigin) return
-        val viewUrl = webView.url?.takeIf { it.isNotBlank() }
+        val viewUrl = activeWebView.url?.takeIf { it.isNotBlank() }
         if (viewUrl != null && raftDocumentStartScriptOriginRule(viewUrl) != sourceOrigin) return
         if (mainFrameOrigin != null && activeOrigin != mainFrameOrigin) return
         if (!allowNavigation && !isAllowedMainDocumentUrl(activeUrl)) return
-        webView.evaluateJavascript(script, null)
+        activeWebView.evaluateJavascript(script, null)
     }
 
     private fun logConsoleMessage(consoleMessage: ConsoleMessage) {
@@ -1524,6 +1724,7 @@ internal class RaftAndroidSandboxWebView(
 
     private fun installHostMessageListener(targetUrl: String) {
         removeHostMessageListener()
+        val activeWebView = webView ?: return
         if (!hostEventsEnabled ||
             !WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
             !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
@@ -1546,11 +1747,11 @@ internal class RaftAndroidSandboxWebView(
                         val activeUrl = view.url.orEmpty()
                         if (!allowNavigation && !isAllowedMainDocumentUrl(activeUrl)) return
                         val raw = message.data ?: return
-                        if (!destroyed) events.dispatchHostMessage(raw)
+                        if (!destroyed && view === webView) events.dispatchHostMessage(raw)
                     }
                 }
             hostMessageListener = listener
-            WebViewCompat.addWebMessageListener(webView, RaftWebViewHostPortName, setOf(originRule), listener)
+            WebViewCompat.addWebMessageListener(activeWebView, RaftWebViewHostPortName, setOf(originRule), listener)
             Log.i(LOG_TAG, "host_message_listener installed origin=${originRule.raftRedactedUrlForLog()}")
         }.onFailure { Log.w(LOG_TAG, "host_message_listener unavailable", it) }
     }
@@ -1565,6 +1766,7 @@ internal class RaftAndroidSandboxWebView(
      * - anything else (another origin): the blocked-navigation route, as before.
      */
     private fun startPageDownload(url: String, contentDisposition: String?, mimeType: String?) {
+        val activeWebView = webView ?: return
         val report = events.onDownloadRequested ?: return
         val pageOrigin = raftDocumentStartScriptOriginRule(currentUrl.ifBlank { loadedSrc })
         val trustedPage = pageOrigin != null && (mainFrameOrigin == null || pageOrigin == mainFrameOrigin)
@@ -1580,12 +1782,12 @@ internal class RaftAndroidSandboxWebView(
                 if (pendingBlobDownloads.size >= 4) pendingBlobDownloads.remove(pendingBlobDownloads.keys.first())
                 pendingBlobDownloads[token] = RaftWebViewBlobDownloadAssembler(token, url)
                 diagnosticsInfo("page_download kind=blob")
-                webView.evaluateJavascript(raftWebViewBlobReadScript(url, token), null)
+                activeWebView.evaluateJavascript(raftWebViewBlobReadScript(url, token), null)
             }
             (lower.startsWith("https:") || lower.startsWith("http:")) &&
                 trustedPage && raftDocumentStartScriptOriginRule(url) == pageOrigin -> {
                 diagnosticsInfo("page_download kind=same_origin")
-                webView.evaluateJavascript(
+                activeWebView.evaluateJavascript(
                     "(function(){var n=window.__raftDownloadNames;return n&&n[${build.raft.app.compat.json.JSONObject.quote(url)}]||'';})()"
                 ) { value ->
                     if (destroyed) return@evaluateJavascript
@@ -1645,7 +1847,7 @@ internal class RaftAndroidSandboxWebView(
             runCatching {
                 when (val signal = staged.signal) {
                     is RaftWebViewShareSignal.Ack ->
-                        if (current) webView.evaluateJavascript(raftWebViewShareAckScript(signal.id), null)
+                        if (current) webView?.evaluateJavascript(raftWebViewShareAckScript(signal.id), null)
                     is RaftWebViewShareSignal.Failed -> {
                         diagnosticsWarn("page_share result=failed reason=${signal.reason}")
                         settleShare(signal.id, signal.errorName)
@@ -1696,7 +1898,7 @@ internal class RaftAndroidSandboxWebView(
      * sheet is shown, or is rejected when it cannot be.
      */
     private fun presentShare(request: RaftWebViewShareRequest, folder: java.io.File?) {
-        val context = webView.context
+        val context = webView?.context ?: this.context
         val result =
             runCatching {
                 val intent =
@@ -1760,7 +1962,7 @@ internal class RaftAndroidSandboxWebView(
 
     private fun settleShare(id: String, errorName: String?) {
         if (destroyed) return
-        webView.evaluateJavascript(raftWebViewShareSettleScript(id, errorName), null)
+        webView?.evaluateJavascript(raftWebViewShareSettleScript(id, errorName), null)
     }
 
     /** A chunk of a `blob:` / `data:` save the page is reading back ([startPageDownload]). */
@@ -1779,6 +1981,7 @@ internal class RaftAndroidSandboxWebView(
 
     private fun installDownloadSupport(targetUrl: String) {
         removeDownloadSupport()
+        val activeWebView = webView ?: return
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
             !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
         ) {
@@ -1787,7 +1990,7 @@ internal class RaftAndroidSandboxWebView(
         val originRule = raftDocumentStartScriptOriginRule(targetUrl) ?: return
         if (mainFrameOrigin != null && originRule != mainFrameOrigin) return
         runCatching {
-            val session = RaftAndroidWebViewShareSession(java.io.File(webView.context.cacheDir, RaftWebViewShareStagingDirName))
+            val session = RaftAndroidWebViewShareSession(java.io.File(activeWebView.context.cacheDir, RaftWebViewShareStagingDirName))
             val listener =
                 object : WebViewCompat.WebMessageListener {
                     override fun onPostMessage(
@@ -1797,7 +2000,7 @@ internal class RaftAndroidSandboxWebView(
                         isMainFrame: Boolean,
                         replyProxy: JavaScriptReplyProxy
                     ) {
-                        if (destroyed || !isMainFrame || sourceOrigin.toString() != originRule) return
+                        if (destroyed || view !== webView || !isMainFrame || sourceOrigin.toString() != originRule) return
                         val raw = message.data ?: return
                         // A share message goes to the share thread whole; this (UI) thread neither parses nor decodes it.
                         if (raftWebViewIsShareMessage(raw)) {
@@ -1807,12 +2010,12 @@ internal class RaftAndroidSandboxWebView(
                         handleDownloadMessage(raw)
                     }
                 }
-            WebViewCompat.addWebMessageListener(webView, RaftWebViewDownloadPortName, setOf(originRule), listener)
+            WebViewCompat.addWebMessageListener(activeWebView, RaftWebViewDownloadPortName, setOf(originRule), listener)
             downloadMessageListener = listener
             shareSession = session
             downloadNameScriptHandler =
                 WebViewCompat.addDocumentStartJavaScript(
-                    webView,
+                    activeWebView,
                     RaftWebViewDownloadNameHookScript + "\n" + raftWebViewShareShimScript(),
                     setOf(originRule)
                 )
@@ -1821,7 +2024,9 @@ internal class RaftAndroidSandboxWebView(
 
     private fun removeDownloadSupport() {
         if (downloadMessageListener != null) {
-            runCatching { WebViewCompat.removeWebMessageListener(webView, RaftWebViewDownloadPortName) }
+            webView?.let { active ->
+                runCatching { WebViewCompat.removeWebMessageListener(active, RaftWebViewDownloadPortName) }
+            }
         }
         downloadMessageListener = null
         runCatching { downloadNameScriptHandler?.remove() }
@@ -1837,12 +2042,15 @@ internal class RaftAndroidSandboxWebView(
     }
 
     private fun removeHostMessageListener() {
-        runCatching { WebViewCompat.removeWebMessageListener(webView, RaftWebViewHostPortName) }
+        webView?.let { active ->
+            runCatching { WebViewCompat.removeWebMessageListener(active, RaftWebViewHostPortName) }
+        }
         hostMessageListener = null
     }
 
     private fun installDocumentStartScript(targetUrl: String): Boolean {
         removeDocumentStartScript()
+        val activeWebView = webView ?: return false
         installFirstPaintScript(targetUrl)
         val authScript = injectedJavaScript.takeIf { allowScripts && domStorageEnabled && it.isNotBlank() } ?: ""
         val bridge =
@@ -1854,7 +2062,7 @@ internal class RaftAndroidSandboxWebView(
         if (mainFrameOrigin != null && originRule != mainFrameOrigin) return false
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return false
         return runCatching {
-            documentStartScriptHandler = WebViewCompat.addDocumentStartJavaScript(webView, script, setOf(originRule))
+            documentStartScriptHandler = WebViewCompat.addDocumentStartJavaScript(activeWebView, script, setOf(originRule))
             diagnosticsInfo("document_start_script installed origin=${originRule.raftRedactedUrlForLog()} authScript=${authScript.isNotBlank()}")
             true
         }.getOrElse { error ->
@@ -1879,6 +2087,7 @@ internal class RaftAndroidSandboxWebView(
      * commit) is all there is.
      */
     private fun installFirstPaintScript(targetUrl: String) {
+        val activeWebView = webView ?: return
         if (!allowScripts || placeholderBackground == 0) return
         val originRule = raftDocumentStartScriptOriginRule(targetUrl) ?: return
         if (mainFrameOrigin != null && originRule != mainFrameOrigin) return
@@ -1886,7 +2095,7 @@ internal class RaftAndroidSandboxWebView(
         runCatching {
             firstPaintScriptHandler =
                 WebViewCompat.addDocumentStartJavaScript(
-                    webView,
+                    activeWebView,
                     raftWebViewFirstPaintThemeScript(placeholderBackground, RaftAppThemeState.isDark),
                     setOf(originRule),
                 )

@@ -1,11 +1,16 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
 
@@ -36,7 +41,12 @@ internal data class RaftWebViewLoadState(
     val phase: RaftWebViewLoadPhase = RaftWebViewLoadPhase.Loading,
     /** Load attempts in this WebView (a re-arm after a later navigation or a recovered crash adds one). */
     val attempt: Int = 1,
+    /** Start of the current active foreground timing segment (monotonic ms). */
     val startedAtMs: Long = 0L,
+    /** Foreground milliseconds accumulated on this attempt prior to the current segment. */
+    val accumulatedForegroundMs: Long = 0L,
+    /** True while the host lifecycle is backgrounded/stopped; stall countdown and probing pause. */
+    val paused: Boolean = false,
     /** The platform reported the load finished; readiness now waits for the content probe. */
     val finished: Boolean = false,
     /** The last content probe found a blank document. */
@@ -47,7 +57,15 @@ internal data class RaftWebViewLoadState(
 
     /** Whether the host should keep asking the page for content. */
     val probing: Boolean
-        get() = phase == RaftWebViewLoadPhase.Loading && finished
+        get() = phase == RaftWebViewLoadPhase.Loading && finished && !paused
+
+    /** Foreground milliseconds spent on this attempt as of [nowMs] (background dwell excluded). */
+    fun foregroundElapsedMs(nowMs: Long): Long =
+        if (paused) {
+            accumulatedForegroundMs
+        } else {
+            accumulatedForegroundMs + (nowMs - startedAtMs).coerceAtLeast(0L)
+        }
 }
 
 internal sealed interface RaftWebViewLoadEvent {
@@ -60,6 +78,10 @@ internal sealed interface RaftWebViewLoadEvent {
     data class Deadline(val attempt: Int) : RaftWebViewLoadEvent
     data class ProcessGone(val reason: String) : RaftWebViewLoadEvent
     data object LoadFailed : RaftWebViewLoadEvent
+    /** The host lifecycle left STARTED (app backgrounded or page covered). */
+    data object Backgrounded : RaftWebViewLoadEvent
+    /** The host lifecycle returned to at least STARTED. */
+    data object Foregrounded : RaftWebViewLoadEvent
 }
 
 /** One diagnostics line the transition produced (page/host are added by [RaftWebViewLoadWatchdog]). */
@@ -76,9 +98,9 @@ internal fun RaftWebViewLoadState.reduce(
     nowMs: Long,
     stallTimeoutMs: Long = RAFT_WEB_VIEW_LOAD_STALL_TIMEOUT_MS,
 ): RaftWebViewLoadTransition {
-    val elapsed = (nowMs - startedAtMs).coerceAtLeast(0L)
+    val elapsed = foregroundElapsedMs(nowMs)
     fun rearm(reason: String, warn: Boolean = false, message: String? = null): RaftWebViewLoadTransition {
-        val next = RaftWebViewLoadState(attempt = attempt + 1, startedAtMs = nowMs)
+        val next = RaftWebViewLoadState(attempt = attempt + 1, startedAtMs = nowMs, paused = paused)
         return RaftWebViewLoadTransition(
             next,
             RaftWebViewLoadLogEntry(warn, message ?: "webview_load_started reason=$reason attempt=${next.attempt}"),
@@ -96,7 +118,7 @@ internal fun RaftWebViewLoadState.reduce(
             }
         is RaftWebViewLoadEvent.Probed ->
             when {
-                !probing -> RaftWebViewLoadTransition(this)
+                phase != RaftWebViewLoadPhase.Loading || !finished -> RaftWebViewLoadTransition(this)
                 event.hasContent == false -> RaftWebViewLoadTransition(copy(probedBlank = true))
                 else ->
                     RaftWebViewLoadTransition(
@@ -125,7 +147,7 @@ internal fun RaftWebViewLoadState.reduce(
                 else -> RaftWebViewLoadTransition(this)
             }
         is RaftWebViewLoadEvent.Deadline ->
-            if (phase == RaftWebViewLoadPhase.Loading && event.attempt == attempt) {
+            if (phase == RaftWebViewLoadPhase.Loading && !paused && event.attempt == attempt) {
                 RaftWebViewLoadTransition(
                     copy(phase = RaftWebViewLoadPhase.Stalled),
                     RaftWebViewLoadLogEntry(
@@ -164,6 +186,24 @@ internal fun RaftWebViewLoadState.reduce(
                 )
             } else {
                 RaftWebViewLoadTransition(this)
+            }
+        RaftWebViewLoadEvent.Backgrounded ->
+            if (paused) {
+                RaftWebViewLoadTransition(this)
+            } else {
+                RaftWebViewLoadTransition(
+                    copy(
+                        paused = true,
+                        accumulatedForegroundMs =
+                            if (phase == RaftWebViewLoadPhase.Loading) elapsed else accumulatedForegroundMs,
+                    ),
+                )
+            }
+        RaftWebViewLoadEvent.Foregrounded ->
+            if (!paused) {
+                RaftWebViewLoadTransition(this)
+            } else {
+                RaftWebViewLoadTransition(copy(paused = false, startedAtMs = nowMs))
             }
     }
 }
@@ -211,6 +251,10 @@ internal class RaftWebViewLoadWatchdog(
 
     fun onDeadline(attempt: Int) = dispatch(RaftWebViewLoadEvent.Deadline(attempt))
 
+    fun onBackgrounded() = dispatch(RaftWebViewLoadEvent.Backgrounded)
+
+    fun onForegrounded() = dispatch(RaftWebViewLoadEvent.Foregrounded)
+
     private var lastLoading: Boolean = true
 
     fun onNavigationState(navigation: RaftWebViewNavigationState) {
@@ -220,8 +264,8 @@ internal class RaftWebViewLoadWatchdog(
         if (!loading && navigation.progress >= 100) dispatch(RaftWebViewLoadEvent.Finished)
     }
 
-    /** Time left of the current attempt's stall budget. */
-    fun remainingMs(): Long = (stallTimeoutMs - (clock() - state.startedAtMs)).coerceIn(0L, stallTimeoutMs)
+    /** Time left of the current attempt's foreground stall budget. */
+    fun remainingMs(): Long = (stallTimeoutMs - state.foregroundElapsedMs(clock())).coerceIn(0L, stallTimeoutMs)
 
     private fun dispatch(event: RaftWebViewLoadEvent) {
         val transition = state.reduce(event, clock(), stallTimeoutMs)
@@ -232,24 +276,47 @@ internal class RaftWebViewLoadWatchdog(
 
 /**
  * Runs the stall timer and the content probe of [watchdog]. Called by [RaftSandboxWebView] for
- * the WebView it composes, so the timer lives exactly as long as the WebView.
+ * the WebView it composes, so the timer lives exactly as long as the WebView. Both pause while the
+ * host lifecycle is below [Lifecycle.State.STARTED] (backgrounded or covered) so background dwell
+ * never consumes the stall budget.
  */
 @Composable
 internal fun RaftWebViewLoadWatchdogEffect(watchdog: RaftWebViewLoadWatchdog, controller: RaftWebViewController) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var foreground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(lifecycleOwner, watchdog) {
+        fun syncLifecycle() {
+            val active = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            foreground = active
+            if (active) watchdog.onForegrounded() else watchdog.onBackgrounded()
+        }
+        syncLifecycle()
+        val observer = LifecycleEventObserver { _, _ -> syncLifecycle() }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val state = watchdog.state
     // The same load, seen as a white-screen watch: first_content when it is ready, a
     // white_screen_suspect (stage webview_loading) a second in; the stall stays this watchdog's.
     RaftFirstContentWatch(
         page = watchdog.whiteScreenPage,
-        stage = raftWhiteScreenStage(webViewLoading = state.phase != RaftWebViewLoadPhase.Ready),
+        stage =
+            raftWhiteScreenStage(
+                windowVisible = foreground,
+                webViewLoading = state.phase != RaftWebViewLoadPhase.Ready,
+            ),
     )
-    LaunchedEffect(watchdog, state.attempt) {
-        if (watchdog.state.phase != RaftWebViewLoadPhase.Loading) return@LaunchedEffect
+    LaunchedEffect(watchdog, state.attempt, state.paused, foreground) {
+        if (!foreground || watchdog.state.paused || watchdog.state.phase != RaftWebViewLoadPhase.Loading) {
+            return@LaunchedEffect
+        }
         delay(watchdog.remainingMs())
         watchdog.onDeadline(state.attempt)
     }
-    LaunchedEffect(watchdog, state.attempt, state.probing) {
-        if (!state.probing) return@LaunchedEffect
+    LaunchedEffect(watchdog, state.attempt, state.probing, foreground) {
+        if (!foreground || !state.probing) return@LaunchedEffect
         while (true) {
             // Unbound (no native view yet): nothing to ask; the next round asks again.
             controller.probeDocumentContent()
