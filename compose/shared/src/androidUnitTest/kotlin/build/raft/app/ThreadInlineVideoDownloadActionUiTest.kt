@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -15,9 +16,11 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.app.compat.ui.PlayState
 import build.raft.app.components.RaftDesignSystemTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -55,7 +58,14 @@ class ThreadInlineVideoDownloadActionUiTest {
             CompositionLocalProvider(
                 LocalActivity provides RaftPageActivity(pager),
                 LocalThreadInlineVideoPreviewHost provides host,
-                LocalThreadInlineVideoPlayer provides { _, _, _, _, modifier -> Box(modifier) },
+                // A prepared player: reports its first frame at once, so no spinner keeps the test from idling.
+                LocalThreadInlineVideoPlayer provides { _, _, onPlayStateChanged, onFirstFrame, modifier ->
+                    LaunchedEffect(Unit) {
+                        onPlayStateChanged(PlayState.PAUSED)
+                        onFirstFrame()
+                    }
+                    Box(modifier)
+                },
             ) {
                 RaftDesignSystemTheme {
                     ThreadInlineVideoAttachmentCard(
@@ -95,7 +105,7 @@ class ThreadInlineVideoDownloadActionUiTest {
     fun aMessageStillSendingShowsNeitherCornerAction() = runRobolectricComposeUiTest {
         show(pending = true, calls = Calls())
 
-        assertTrue(!shown("Download clip.mp4"), "no Download while the upload is in flight")
-        assertTrue(!shown("Open clip.mp4 in preview"), "no Open in preview while the upload is in flight")
+        assertFalse(shown("Download clip.mp4"), "no Download while the upload is in flight")
+        assertFalse(shown("Open clip.mp4 in preview"), "no Open in preview while the upload is in flight")
     }
 }
