@@ -185,6 +185,40 @@ class ComputerControlApiTest {
     }
 
     @Test
+    fun upgradeRequestParsesDiskFullSizedUnsizedAndNull() = runPortableCoroutineTest {
+        val body =
+            """
+            {"machines":[
+              {"id":"m-sized","name":"Sized","status":"online","isComputer":true,"computerVersion":"1.0.53",
+               "upgradeRequest":{"id":"req-sized","targetVersion":"1.0.54","requestedAt":"2026-11-24T10:00:00.000Z","state":"failed",
+                "observedVersion":"1.0.53","reason":"disk_full","diskFull":{"neededBytes":812000000,"freeBytes":300000000}}},
+              {"id":"m-unsized","name":"Unsized","status":"online","isComputer":true,"computerVersion":"1.0.53",
+               "upgradeRequest":{"id":"req-unsized","targetVersion":"1.0.54","requestedAt":"2026-11-24T10:00:00.000Z","state":"failed",
+                "observedVersion":"1.0.53","reason":"disk_full","diskFull":{}}},
+              {"id":"m-half","name":"Half","status":"online","isComputer":true,"computerVersion":"1.0.53",
+               "upgradeRequest":{"id":"req-half","targetVersion":"1.0.54","requestedAt":"2026-11-24T10:00:00.000Z","state":"failed",
+                "observedVersion":"1.0.53","diskFull":{"neededBytes":812000000}}},
+              {"id":"m-none","name":"None","status":"online","isComputer":true,"computerVersion":"1.0.53",
+               "upgradeRequest":{"id":"req-none","targetVersion":"1.0.54","requestedAt":"2026-11-24T10:00:00.000Z","state":"failed",
+                "observedVersion":"1.0.53","diskFull":null}}
+            ]}
+            """.trimIndent()
+        val machines =
+            assertIs<DataResult.Content<ComputerListSummary>>(
+                RaftComputersApiClient(ControlComputersApi(machinesBody = body)).machines(ServerId("server-1"))
+            ).data.machines.associateBy { it.id }
+
+        val sized = SettingsComputerUpgradeDiskFullSnapshot(neededBytes = 812_000_000L, freeBytes = 300_000_000L)
+        assertEquals(sized, machines.getValue("m-sized").upgradeRequest?.diskFull)
+        assertEquals(sized, machines.getValue("m-sized").toSettingsComputerSnapshot().upgradeRequest?.diskFull)
+
+        val unsized = SettingsComputerUpgradeDiskFullSnapshot(neededBytes = null, freeBytes = null)
+        assertEquals(unsized, machines.getValue("m-unsized").upgradeRequest?.diskFull)
+        assertEquals(unsized, machines.getValue("m-half").upgradeRequest?.diskFull)
+        assertNull(machines.getValue("m-none").upgradeRequest?.diskFull)
+    }
+
+    @Test
     fun restartPostsAnEmptyBodyAndReturnsTheRequestId() = runPortableCoroutineTest {
         val api = ControlComputersApi()
         val client = RaftComputersApiClient(api)

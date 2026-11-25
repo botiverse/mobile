@@ -477,7 +477,7 @@
     <string name="settings_feedback_submission_rate_limited_body">意見回饋請求過於頻繁，請稍後再試。</string>
     <string name="settings_feedback_submission_attachment_read_body">無法讀取附件，請移除後重新附加檔案。</string>
     <string name="settings_feedback_submission_attachment_too_large_body">附件超過 %1$s 上限，請移除或選擇較小的檔案。</string>
-    <string name="settings_feedback_submission_attachment_type_body">截圖必須是 PNG、JPEG、GIF 或 WebP 圖片。</string>
+    <string name="settings_feedback_submission_attachment_type_body">附件必須是 PNG、JPEG、GIF 或 WebP 圖片，或一個診斷 .zip 檔案。</string>
     <string name="settings_feedback_submission_auth_body">意見回饋服務驗證失敗，請更新 App 或聯絡支援人員。</string>
     <string name="settings_feedback_submission_permission_title">需要權限</string>
     <string name="settings_feedback_submission_permission_body">你沒有傳送意見回饋的權限。</string>
@@ -487,7 +487,7 @@
     <string name="settings_feedback_new_meta">團隊會在工單裡回覆你。</string>
     <string name="settings_feedback_type_label">類型</string>
     <string name="settings_feedback_describe_placeholder">描述你的想法或遇到的問題…</string>
-    <string name="settings_feedback_attachment_hint">最多 %1$d 張圖片，每張不超過 %2$s。</string>
+    <string name="settings_feedback_attachment_hint">最多 %1$d 個附件（圖片或一個診斷 .zip），每個不超過 %2$s。</string>
     <string name="settings_members_title">成員</string>
     <string name="settings_language_region_title">語言與地區</string>
     <string name="settings_language_region_subtitle">語言、時區、翻譯</string>
@@ -1520,6 +1520,12 @@
     <string name="member_report_issue_runtime_transcript_hint">從 Agent 所在的電腦取得，可能取不到。</string>
     <string name="member_report_issue_machine_log_tail">電腦 runner 記錄末段</string>
     <string name="member_report_issue_machine_log_tail_disclosure">記錄檔最後幾行，可能含這台電腦上其他 Agent 的內容。</string>
+    <string name="member_report_issue_diagnostics_bundle">Computer 診斷包</string>
+    <string name="member_report_issue_diagnostics_bundle_disclosure">這台電腦的服務、安裝和升級日誌，以及這個 server 的執行日誌。日誌裡可能含有訊息或提示詞片段，會傳送給 Raft 團隊。</string>
+    <string name="member_report_issue_diagnostics_bundle_range">時間範圍</string>
+    <string name="member_report_issue_diagnostics_bundle_range_report_window">本次回報前 1 小時</string>
+    <string name="member_report_issue_diagnostics_bundle_range_last_24h">最近 24 小時</string>
+    <string name="member_report_issue_diagnostics_bundle_range_last_7d">最近 7 天</string>
     <string name="member_report_issue_title_for_agent">%1$s 的問題回報</string>
     <string name="member_report_issue_ticket_filed">我們已為這份回報建立意見回饋單，Raft 團隊的回覆會顯示在那裡。</string>
     <string name="member_report_issue_ticket_failed">回報已上傳，但無法為其建立意見回饋單。請將下方的參考資訊提供給 Raft 團隊。</string>
@@ -3177,6 +3183,7 @@
     <string name="settings_computers_workspace_modified">修改於 %1$s</string>
     <string name="settings_computers_file_count_one">%1$d 個檔案</string>
     <string name="settings_computers_file_count_many">%1$d 個檔案</string>
+    <string name="settings_computers_workspace_at_least">至少 %1$s</string>
     <string name="settings_computers_kind_computer">電腦</string>
     <string name="settings_computers_kind_daemon">daemon</string>
     <string name="settings_computers_run_offline">%1$s 台離線</string>
@@ -3300,6 +3307,8 @@
     <string name="settings_computers_upgrade_status_refused_not_allowed">目前無法從網頁升級這台電腦。</string>
     <string name="settings_computers_upgrade_status_refused_unknown">目前無法升級，請稍後再試。</string>
     <string name="settings_computers_upgrade_status_failed">升級未完成，目前仍是 v%1$s。請在那台電腦上執行 %2$s 檢查。</string>
+    <string name="settings_computers_upgrade_status_disk_full">這台電腦磁碟空間不足，升級大約需要 %1$s，現在只剩 %2$s。清出一些空間後再按「升級」。什麼都沒有變動。</string>
+    <string name="settings_computers_upgrade_status_disk_full_unsized">這台電腦磁碟空間不足。清出一些空間後再按「升級」。什麼都沒有變動。</string>
     <string name="settings_computers_upgrade_status_no_response">上次升級沒有收到電腦的回應。請在那台電腦上執行 %1$s 檢查。</string>
     <string name="settings_computers_upgrade_status_manual_fallback">也可以在那台電腦上用這個指令升級：</string>
     <string name="settings_computers_upgrade_status_reconnecting">正在升級至 v%1$s。電腦正在重新啟動，完成後會自動重新連線。</string>

@@ -477,7 +477,7 @@
     <string name="settings_feedback_submission_rate_limited_body">Se enviaron demasiadas solicitudes de comentarios. Espera un momento e inténtalo de nuevo.</string>
     <string name="settings_feedback_submission_attachment_read_body">No se pudo leer un archivo adjunto. Quítalo y vuelve a adjuntar el archivo.</string>
     <string name="settings_feedback_submission_attachment_too_large_body">Un archivo adjunto supera el límite de %1$s. Quítalo o elige un archivo más pequeño.</string>
-    <string name="settings_feedback_submission_attachment_type_body">Las capturas deben ser imágenes PNG, JPEG, GIF o WebP.</string>
+    <string name="settings_feedback_submission_attachment_type_body">Los archivos adjuntos deben ser imágenes PNG, JPEG, GIF o WebP, o un .zip de diagnóstico.</string>
     <string name="settings_feedback_submission_auth_body">Falló la autenticación de comentarios. Actualiza la app o contacta al soporte.</string>
     <string name="settings_feedback_submission_permission_title">Se necesita permiso</string>
     <string name="settings_feedback_submission_permission_body">No tienes permiso para enviar comentarios.</string>
@@ -487,7 +487,7 @@
     <string name="settings_feedback_new_meta">El equipo responde en el ticket.</string>
     <string name="settings_feedback_type_label">Tipo</string>
     <string name="settings_feedback_describe_placeholder">Describe tu idea o el error que encontraste…</string>
-    <string name="settings_feedback_attachment_hint">Hasta %1$d imágenes, de %2$s cada una como máximo.</string>
+    <string name="settings_feedback_attachment_hint">Hasta %1$d archivos adjuntos (imágenes o un .zip de diagnóstico), de %2$s cada uno como máximo.</string>
     <string name="settings_members_title">Miembros</string>
     <string name="settings_language_region_title">Idioma y región</string>
     <string name="settings_language_region_subtitle">Idioma, zona horaria, traducción</string>
@@ -1520,6 +1520,12 @@
     <string name="member_report_issue_runtime_transcript_hint">Se obtiene de la computadora del agente; puede que no tenga una.</string>
     <string name="member_report_issue_machine_log_tail">Últimas líneas del registro del runner de la computadora</string>
     <string name="member_report_issue_machine_log_tail_disclosure">Las últimas líneas del registro de esta computadora. Pueden incluir líneas de otros agentes que se ejecutan en ella.</string>
+    <string name="member_report_issue_diagnostics_bundle">Paquete de diagnóstico del Computer</string>
+    <string name="member_report_issue_diagnostics_bundle_disclosure">Registros de servicio, instalación y actualización de este equipo, más los registros del runner de este servidor. Pueden contener fragmentos de mensajes o prompts; se envían al equipo de Raft.</string>
+    <string name="member_report_issue_diagnostics_bundle_range">Intervalo</string>
+    <string name="member_report_issue_diagnostics_bundle_range_report_window">La hora previa a este reporte</string>
+    <string name="member_report_issue_diagnostics_bundle_range_last_24h">Últimas 24 horas</string>
+    <string name="member_report_issue_diagnostics_bundle_range_last_7d">Últimos 7 días</string>
     <string name="member_report_issue_title_for_agent">Reporte de problema sobre %1$s</string>
     <string name="member_report_issue_ticket_filed">Abrimos un ticket de comentarios para este reporte. Las respuestas del equipo de Raft aparecerán ahí.</string>
     <string name="member_report_issue_ticket_failed">El reporte se subió, pero no pudimos abrir un ticket de comentarios. Comparte la referencia de abajo con el equipo de Raft.</string>
@@ -3177,6 +3183,7 @@
     <string name="settings_computers_workspace_modified">Modificado el %1$s</string>
     <string name="settings_computers_file_count_one">%1$d archivo</string>
     <string name="settings_computers_file_count_many">%1$d archivos</string>
+    <string name="settings_computers_workspace_at_least">al menos %1$s</string>
     <string name="settings_computers_kind_computer">computadora</string>
     <string name="settings_computers_kind_daemon">daemon</string>
     <string name="settings_computers_run_offline">%1$s sin conexión</string>
@@ -3300,6 +3307,8 @@
     <string name="settings_computers_upgrade_status_refused_not_allowed">Esta computadora no se puede actualizar desde la web en este momento.</string>
     <string name="settings_computers_upgrade_status_refused_unknown">No se puede actualizar en este momento. Inténtalo de nuevo más tarde.</string>
     <string name="settings_computers_upgrade_status_failed">La actualización no se completó; sigue en la v%1$s. Ejecuta %2$s en esa computadora para comprobarlo.</string>
+    <string name="settings_computers_upgrade_status_disk_full">Esta computadora se quedó sin espacio en disco: la actualización necesita unos %1$s libres y quedan %2$s. Libera espacio y vuelve a hacer clic en Actualizar. No se cambió nada.</string>
+    <string name="settings_computers_upgrade_status_disk_full_unsized">Esta computadora se quedó sin espacio en disco. Libera espacio y vuelve a hacer clic en Actualizar. No se cambió nada.</string>
     <string name="settings_computers_upgrade_status_no_response">La última actualización no recibió respuesta de la computadora. Ejecuta %1$s en esa computadora para comprobarlo.</string>
     <string name="settings_computers_upgrade_status_manual_fallback">O actualízala en esa computadora con este comando:</string>
     <string name="settings_computers_upgrade_status_reconnecting">Actualizando a la v%1$s. La computadora se está reiniciando y se volverá a conectar al terminar.</string>

@@ -23,7 +23,9 @@ import build.raft.app.data.SettingsComputerReleaseNotesSnapshot
 import build.raft.app.data.SettingsComputerRestartProgress
 import build.raft.app.data.SettingsComputerRevocationSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.app.data.SettingsComputerUpgradeDiskFullSnapshot
 import build.raft.app.data.COMPUTER_RESTART_TIMED_OUT
+import build.raft.app.format.RaftFormat
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
@@ -91,8 +93,24 @@ private fun RaftComputerHelp(text: String, modifier: Modifier = Modifier) {
 
 /** Something that went wrong but can be fixed (web `DETAIL_PROBLEM_CLASS_NAME`). */
 @Composable
-private fun RaftComputerProblem(text: String) {
-    RaftText(text, style = RaftTheme.typography.footnote, color = RaftTheme.colors.warningStrong)
+private fun RaftComputerProblem(text: String, modifier: Modifier = Modifier) {
+    RaftText(text, modifier = modifier, style = RaftTheme.typography.footnote, color = RaftTheme.colors.warningStrong)
+}
+
+/** Out-of-space failure sentence (slock #16536, web `ComputerServiceActionsCard.tsx`). */
+@Composable
+internal fun raftComputerUpgradeDiskFullText(diskFull: SettingsComputerUpgradeDiskFullSnapshot): String {
+    val needed = diskFull.neededBytes
+    val free = diskFull.freeBytes
+    return if (needed != null && free != null) {
+        stringResource(
+            Res.string.settings_computers_upgrade_status_disk_full,
+            RaftFormat.diskBytes(needed),
+            RaftFormat.diskBytes(free),
+        )
+    } else {
+        stringResource(Res.string.settings_computers_upgrade_status_disk_full_unsized)
+    }
 }
 
 /** The label of one step (web `DETAIL_STEP_LABEL_CLASS_NAME`). */
@@ -378,16 +396,20 @@ private fun RaftComputerBringOnlineBlock(context: RaftComputerControlsContext) {
         val commands = context.commands
         val status = commands?.status ?: RAFT_COMPUTER_STATUS_COMMAND
         upgrade.requestOutcome?.let { outcome ->
+            val diskFull = upgrade.upgradeDiskFull
             RaftComputerProblem(
-                if (outcome.state == "failed") {
-                    stringResource(Res.string.settings_computers_upgrade_status_failed, computer.computerVersion.orEmpty(), status)
-                } else {
-                    stringResource(Res.string.settings_computers_upgrade_status_no_response, status)
-                }
+                text =
+                    when {
+                        outcome.state == "failed" && diskFull != null -> raftComputerUpgradeDiskFullText(diskFull)
+                        outcome.state == "failed" ->
+                            stringResource(Res.string.settings_computers_upgrade_status_failed, computer.computerVersion.orEmpty(), status)
+                        else -> stringResource(Res.string.settings_computers_upgrade_status_no_response, status)
+                    },
+                modifier = Modifier.testTag("computer-upgrade-request-outcome"),
             )
         }
-        if (upgrade.requestOutcome != null || upgrade.reconnect.overdue) {
-            Column {
+        if ((upgrade.requestOutcome != null && upgrade.upgradeDiskFull == null) || upgrade.reconnect.overdue) {
+            Column(Modifier.testTag("computer-upgrade-failure-manual")) {
                 RaftComputerHelp(stringResource(Res.string.settings_computers_upgrade_status_manual_fallback))
                 RaftComputerManualInstall(context)
             }
@@ -493,28 +515,33 @@ internal fun RaftComputerServiceCard(context: RaftComputerControlsContext) {
                 }
                 upgrade.releaseNotes?.let { RaftComputerReleaseNotesLink(it) }
                 val unknownUpgradeRefusal = card is RaftComputerCardState.OneClick && upgrade.refusal == RaftComputerUpgradeRefusal.Unknown
+                val diskFull = upgrade.upgradeDiskFull
                 val outcome =
                     when {
                         unknownUpgradeRefusal ->
                             upgrade.refusalMessage ?: stringResource(Res.string.settings_computers_upgrade_status_refused_unknown)
                         card !is RaftComputerCardState.Upgrading && card !is RaftComputerCardState.UpToDate && upgrade.requestOutcome != null ->
-                            if (upgrade.requestOutcome?.state == "failed") {
-                                stringResource(Res.string.settings_computers_upgrade_status_failed, computer.computerVersion.orEmpty(), status)
-                            } else {
-                                stringResource(Res.string.settings_computers_upgrade_status_no_response, status)
+                            when {
+                                upgrade.requestOutcome?.state == "failed" && diskFull != null ->
+                                    raftComputerUpgradeDiskFullText(diskFull)
+                                upgrade.requestOutcome?.state == "failed" ->
+                                    stringResource(Res.string.settings_computers_upgrade_status_failed, computer.computerVersion.orEmpty(), status)
+                                else ->
+                                    stringResource(Res.string.settings_computers_upgrade_status_no_response, status)
                             }
                         else -> null
                     }
                 if (outcome != null) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        RaftComputerProblem(outcome)
+                        RaftComputerProblem(outcome, modifier = Modifier.testTag("computer-upgrade-request-outcome"))
                         if (unknownUpgradeRefusal && upgrade.refusalTraceId != null) {
                             RaftTraceIdNote(upgrade.refusalTraceId)
                         }
                     }
                 }
-                if (outcome != null && card is RaftComputerCardState.OneClick) {
-                    Column {
+                // Out of disk space (slock #16536): freeing space is the way past it; the install command would fail the same way.
+                if (outcome != null && card is RaftComputerCardState.OneClick && diskFull == null) {
+                    Column(Modifier.testTag("computer-upgrade-failure-manual")) {
                         RaftComputerHelp(stringResource(Res.string.settings_computers_upgrade_status_manual_fallback))
                         RaftComputerManualInstall(context)
                     }

@@ -42,8 +42,24 @@ import kotlin.uuid.Uuid
 /** Server `PRODUCT_FEEDBACK_MAX_ATTACHMENTS`. */
 const val PRODUCT_FEEDBACK_MAX_ATTACHMENTS: Int = 3
 
+/** Server `PRODUCT_FEEDBACK_MAX_ATTACHMENT_BYTES` (10 MiB). */
+const val PRODUCT_FEEDBACK_MAX_ATTACHMENT_BYTES: Long = 10L * 1024L * 1024L
+
+/** Server `PRODUCT_FEEDBACK_MAX_ZIP_ATTACHMENTS` (slock #16580): at most one diagnostics `.zip` beside screenshots. */
+const val PRODUCT_FEEDBACK_MAX_ZIP_ATTACHMENTS: Int = 1
+
+/** Server `PRODUCT_FEEDBACK_MAX_ZIP_ATTACHMENT_BYTES` (10 MiB, slock #16580). */
+const val PRODUCT_FEEDBACK_MAX_ZIP_ATTACHMENT_BYTES: Long = 10L * 1024L * 1024L
+
+/** Canonical content type Hands expects for the diagnostics `.zip` (server `FEEDBACK_DIAGNOSTICS_BUNDLE_CONTENT_TYPE`). */
+@RaftCoreInternalApi const val PRODUCT_FEEDBACK_ZIP_CONTENT_TYPE: String = "application/zip"
+
 /** The image types the route accepts (server `ALLOWED_IMAGE_TYPES`). */
 @RaftCoreInternalApi val ProductFeedbackImageContentTypes = setOf("image/png", "image/jpeg", "image/gif", "image/webp")
+
+/** Browser/OS MIME labels accepted as hints for a diagnostics `.zip` (server `ZIP_LABELS`, slock #16580). */
+@RaftCoreInternalApi val ProductFeedbackZipMimeLabels =
+    setOf("application/zip", "application/x-zip-compressed", "application/x-zip", "multipart/x-zip")
 
 private val ProductFeedbackImageExtensions =
     mapOf(
@@ -64,6 +80,143 @@ private val ProductFeedbackImageExtensions =
     if (declared in ProductFeedbackImageContentTypes) return declared
     val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").trim().lowercase()
     return ProductFeedbackImageExtensions[extension]
+}
+
+/**
+ * Server `startsLikeZip` (slock #16580, routes/productFeedback.ts): local file header
+ * (`PK\x03\x04`) or empty archive end-of-central-directory (`PK\x05\x06`).
+ */
+@RaftCoreInternalApi fun isProductFeedbackZipMagicBytes(bytes: ByteArray): Boolean =
+    bytes.size >= 4 &&
+        bytes[0] == 0x50.toByte() &&
+        bytes[1] == 0x4b.toByte() &&
+        ((bytes[2] == 0x03.toByte() && bytes[3] == 0x04.toByte()) ||
+            (bytes[2] == 0x05.toByte() && bytes[3] == 0x06.toByte()))
+
+/**
+ * Whether this file carries a zip MIME label or a `.zip` filename with `application/octet-stream`
+ * (or blank MIME from mobile document pickers). The label is only a hint; bytes must also satisfy
+ * [isProductFeedbackZipMagicBytes].
+ */
+@RaftCoreInternalApi fun PlatformFile.isProductFeedbackZipCandidate(): Boolean {
+    val declared = mimeType?.substringBefore(';')?.trim()?.lowercase().orEmpty()
+    if (declared in ProductFeedbackZipMimeLabels) return true
+    val octetOrBlank = declared.isEmpty() || declared == "application/octet-stream"
+    return octetOrBlank && fileName.trim().lowercase().endsWith(".zip")
+}
+
+/**
+ * Reads up to the first 4 bytes of [file] for zip magic-byte verification without materializing a
+ * 10 MiB archive into memory. Returns null when the file cannot be read.
+ */
+@RaftCoreInternalApi suspend fun readProductFeedbackAttachmentHeaderBytes(
+    file: PlatformFile,
+    resolver: RaftPlatformFileResolver? = RaftSharedPlatformFileResolverProvider.createBinding().resolver,
+): ByteArray? {
+    if (file.bytes.isNotEmpty()) {
+        return if (file.bytes.size <= 4) file.bytes else file.bytes.copyOfRange(0, 4)
+    }
+    val ref = file.fileRef?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val activeResolver = resolver ?: return null
+    val expectedSize =
+        file.sizeBytes?.takeIf { it > 0L }
+            ?: activeResolver.statFile(ref).takeIf { it.success }?.sizeBytes
+            ?: return null
+    val source =
+        try {
+            activeResolver.openFileStream(ref, expectedSize)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            return null
+        }
+    return try {
+        val header = ByteArray(4)
+        var readTotal = 0
+        while (readTotal < 4) {
+            val chunk = source.read(4 - readTotal)
+            if (chunk.isEmpty()) break
+            val copyLen = minOf(chunk.size, 4 - readTotal)
+            chunk.copyInto(header, destinationOffset = readTotal, startIndex = 0, endIndex = copyLen)
+            readTotal += copyLen
+        }
+        if (readTotal == 4) header else header.copyOfRange(0, readTotal)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Throwable) {
+        null
+    } finally {
+        runCatching { source.close() }
+    }
+}
+
+@RaftCoreInternalApi sealed interface ProductFeedbackAttachmentResolution {
+    data class Accepted(val contentType: String, val isZip: Boolean) : ProductFeedbackAttachmentResolution
+    data object TooLarge : ProductFeedbackAttachmentResolution
+    data object InvalidType : ProductFeedbackAttachmentResolution
+}
+
+@RaftCoreInternalApi suspend fun PlatformFile.resolveProductFeedbackAttachment(
+    maxImageBytes: Long = PRODUCT_FEEDBACK_MAX_ATTACHMENT_BYTES,
+    maxZipBytes: Long = PRODUCT_FEEDBACK_MAX_ZIP_ATTACHMENT_BYTES,
+    readHeaderBytes: suspend (PlatformFile) -> ByteArray? = { readProductFeedbackAttachmentHeaderBytes(it) },
+): ProductFeedbackAttachmentResolution {
+    val effectiveSize = sizeBytes ?: bytes.takeIf { it.isNotEmpty() }?.size?.toLong()
+    val imageType = productFeedbackImageContentType()
+    if (imageType != null) {
+        return if (effectiveSize != null && effectiveSize > maxImageBytes) {
+            ProductFeedbackAttachmentResolution.TooLarge
+        } else {
+            ProductFeedbackAttachmentResolution.Accepted(imageType, isZip = false)
+        }
+    }
+    if (isProductFeedbackZipCandidate()) {
+        if (effectiveSize != null && effectiveSize > maxZipBytes) {
+            return ProductFeedbackAttachmentResolution.TooLarge
+        }
+        val header = readHeaderBytes(this) ?: return ProductFeedbackAttachmentResolution.InvalidType
+        return if (isProductFeedbackZipMagicBytes(header)) {
+            ProductFeedbackAttachmentResolution.Accepted(PRODUCT_FEEDBACK_ZIP_CONTENT_TYPE, isZip = true)
+        } else {
+            ProductFeedbackAttachmentResolution.InvalidType
+        }
+    }
+    return ProductFeedbackAttachmentResolution.InvalidType
+}
+
+@RaftCoreInternalApi sealed interface ProductFeedbackAttachmentsValidation {
+    data class Valid(val items: List<Pair<PlatformFile, String>>) : ProductFeedbackAttachmentsValidation
+    data object TooLarge : ProductFeedbackAttachmentsValidation
+    data object InvalidType : ProductFeedbackAttachmentsValidation
+}
+
+/**
+ * Validates up to [PRODUCT_FEEDBACK_MAX_ATTACHMENTS] attachments against the `POST /api/product-feedback`
+ * contract (slock #16580): PNG/JPEG/GIF/WebP images or at most one valid diagnostics `.zip` <= 10 MiB,
+ * forwarded to Hands as `application/zip`.
+ */
+@RaftCoreInternalApi suspend fun validateProductFeedbackAttachments(
+    attachments: List<PlatformFile>,
+    readHeaderBytes: suspend (PlatformFile) -> ByteArray? = { readProductFeedbackAttachmentHeaderBytes(it) },
+): ProductFeedbackAttachmentsValidation {
+    val resolved = mutableListOf<Pair<PlatformFile, String>>()
+    var zipCount = 0
+    for (file in attachments.take(PRODUCT_FEEDBACK_MAX_ATTACHMENTS)) {
+        when (val outcome = file.resolveProductFeedbackAttachment(readHeaderBytes = readHeaderBytes)) {
+            is ProductFeedbackAttachmentResolution.Accepted -> {
+                if (outcome.isZip) {
+                    zipCount += 1
+                    if (zipCount > PRODUCT_FEEDBACK_MAX_ZIP_ATTACHMENTS) {
+                        return ProductFeedbackAttachmentsValidation.InvalidType
+                    }
+                }
+                resolved += file to outcome.contentType
+            }
+            ProductFeedbackAttachmentResolution.TooLarge -> return ProductFeedbackAttachmentsValidation.TooLarge
+            ProductFeedbackAttachmentResolution.InvalidType -> return ProductFeedbackAttachmentsValidation.InvalidType
+        }
+    }
+    return ProductFeedbackAttachmentsValidation.Valid(resolved)
 }
 
 /**
@@ -121,15 +274,18 @@ class NetworkSettingsFeedbackSubmitRepository(
     /** The app version, `metadata.client_version` (a native client kind requires it). */
     private val clientVersion: String,
     private val logger: (String) -> Unit = {},
+    private val readAttachmentHeaderBytes: suspend (PlatformFile) -> ByteArray? = { readProductFeedbackAttachmentHeaderBytes(it) },
 ) : SettingsFeedbackSubmitRepository {
     override suspend fun submit(request: SettingsFeedbackSubmitRequest): FeedbackResult<String> {
         val kind = clientKind.trim()
         val files =
-            request.attachments.take(PRODUCT_FEEDBACK_MAX_ATTACHMENTS).map { file ->
-                val contentType =
-                    file.productFeedbackImageContentType()
-                        ?: return FeedbackResult.Failed(FeedbackFailure(FeedbackErrorKind.Invalid, "feedback_attachment_type_invalid"))
-                file.toProductFeedbackMultipartFile(contentType)
+            when (val validation = validateProductFeedbackAttachments(request.attachments, readAttachmentHeaderBytes)) {
+                is ProductFeedbackAttachmentsValidation.Valid ->
+                    validation.items.map { (file, contentType) -> file.toProductFeedbackMultipartFile(contentType) }
+                ProductFeedbackAttachmentsValidation.TooLarge ->
+                    return FeedbackResult.Failed(FeedbackFailure(FeedbackErrorKind.Invalid, "feedback_attachment_too_large"))
+                ProductFeedbackAttachmentsValidation.InvalidType ->
+                    return FeedbackResult.Failed(FeedbackFailure(FeedbackErrorKind.Invalid, "feedback_attachment_type_invalid"))
             }
         val response =
             try {
@@ -278,7 +434,11 @@ private data class ProductFeedbackDiagnosticsWire(
 /** The multipart `attachments` part: streamed from its file ref, else its bytes. */
 private fun PlatformFile.toProductFeedbackMultipartFile(contentType: String): MultipartFile {
     val ref = fileRef?.trim()?.takeIf { it.isNotEmpty() }
-    val name = fileName.ifBlank { "screenshot." + contentType.substringAfter('/') }
+    val name =
+        fileName.ifBlank {
+            if (contentType == PRODUCT_FEEDBACK_ZIP_CONTENT_TYPE) "diagnostics.zip"
+            else "screenshot." + contentType.substringAfter('/')
+        }
     return if (ref != null && bytes.isEmpty()) {
         MultipartFile(name = "attachments", fileName = name, mimeType = contentType, fileRef = ref, sizeBytes = sizeBytes)
     } else {
@@ -408,6 +568,7 @@ class SettingsFeedbackProxySubmitter(
     private val agentDraftSent: RaftFeedbackAgentDraftSentRepository = RaftFeedbackAgentDraftSent.repository,
     /** The current server's privacy mode, read again before the archive and before the request. */
     private val privacyMode: () -> RaftPrivacyMode = { RaftTelemetryPrivacy.state.value },
+    private val readAttachmentHeaderBytes: suspend (PlatformFile) -> ByteArray? = { readProductFeedbackAttachmentHeaderBytes(it) },
 ) {
     fun newAttempt(
         message: String,
@@ -418,12 +579,18 @@ class SettingsFeedbackProxySubmitter(
         SettingsFeedbackProxyAttempt(message = message, attachments = attachments, submissionId = newSubmissionId(), type = type, card = card)
 
     suspend fun submit(attempt: SettingsFeedbackProxyAttempt): SettingsFeedbackProxyOutcome {
-        // The route refuses the whole feedback for one non-image file (web's form takes images
-        // only): say so before uploading anything, and keep the draft for the person to fix.
-        val unsupported = attempt.attachments.count { it.productFeedbackImageContentType() == null }
-        if (unsupported > 0) {
-            logger("settings_feedback_submit_blocked reason=attachment_type count=$unsupported")
-            return SettingsFeedbackProxyOutcome.Failed(SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID, retryable = false)
+        // The route refuses the whole feedback for an unsupported file, a second .zip, or an
+        // oversized attachment (slock #16580): say so before uploading anything, and keep the draft.
+        when (validateProductFeedbackAttachments(attempt.attachments, readAttachmentHeaderBytes)) {
+            is ProductFeedbackAttachmentsValidation.Valid -> Unit
+            ProductFeedbackAttachmentsValidation.TooLarge -> {
+                logger("settings_feedback_submit_blocked reason=attachment_too_large")
+                return SettingsFeedbackProxyOutcome.Failed("settings_feedback_attachment_too_large", retryable = false)
+            }
+            ProductFeedbackAttachmentsValidation.InvalidType -> {
+                logger("settings_feedback_submit_blocked reason=attachment_type")
+                return SettingsFeedbackProxyOutcome.Failed(SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID, retryable = false)
+            }
         }
         privacyBlock(attempt, "start")?.let { return it }
         val prepared =

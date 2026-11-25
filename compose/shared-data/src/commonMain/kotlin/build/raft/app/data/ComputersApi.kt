@@ -78,6 +78,12 @@ interface RaftComputersApi {
     suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse
     suspend fun rotateMachineKey(serverId: ServerId, machineId: String): HomeNetworkResponse
     suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse
+    /** `GET servers/:id/machines/:machineId/workspaces`: [refresh] sends `?refresh=1` to bypass the daemon cache (slock #16552). */
+    suspend fun machineWorkspaces(
+        serverId: ServerId,
+        machineId: String,
+        refresh: Boolean
+    ): HomeNetworkResponse = machineWorkspaces(serverId, machineId)
     /** `POST servers/:id/machines/:machineId/runtimes/rescan` (slock #16477). */
     suspend fun rescanMachineRuntimes(serverId: ServerId, machineId: String): HomeNetworkResponse =
         error("rescanMachineRuntimes is not implemented")
@@ -316,9 +322,17 @@ interface RaftComputersApi {
         )
 
     override suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse =
+        machineWorkspaces(serverId, machineId, refresh = false)
+
+    override suspend fun machineWorkspaces(
+        serverId: ServerId,
+        machineId: String,
+        refresh: Boolean
+    ): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Visible,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/workspaces",
+            query = if (refresh) listOf("refresh" to "1") else emptyList(),
             serverIdOverride = serverId
         )
 
@@ -662,8 +676,18 @@ interface RaftComputersApi {
             ComputerApiKeyRotationSummary(apiKeyPrefix = apiKey.take(12))
         }
 
-    suspend fun machineWorkspaces(serverId: ServerId, machineId: String): DataResult<ComputerWorkspacePage> =
-        transport.machineWorkspaces(serverId, machineId).mapComputersBody(
+    suspend fun machineWorkspaces(
+        serverId: ServerId,
+        machineId: String,
+        refresh: Boolean = false
+    ): DataResult<ComputerWorkspacePage> {
+        val response =
+            if (refresh) {
+                transport.machineWorkspaces(serverId, machineId, refresh = true)
+            } else {
+                transport.machineWorkspaces(serverId, machineId)
+            }
+        return response.mapComputersBody(
             "computer_workspaces_contract_mismatch",
             kotlinx.serialization.builtins.ListSerializer(ComputerWorkspaceDto.serializer())
         ) { wire ->
@@ -674,6 +698,7 @@ interface RaftComputersApi {
                 orphanCount = wire.count { it.status == "orphan" }
             )
         }
+    }
 
     /**
      * `POST servers/:id/machines/:machineId/runtimes/rescan` (slock #16477, #587 site 4).
@@ -1218,7 +1243,8 @@ sealed interface ComputerProcJobStopResult {
     val status: String,
     val lastModified: String?,
     val agentName: String?,
-    val agentStatus: String?
+    val agentStatus: String?,
+    val partial: Boolean = false
 )
 @RaftCoreInternalApi data class ComputerWorkspacePage(
     val workspaces: List<ComputerWorkspaceSummary>,
@@ -1652,7 +1678,10 @@ private data class ComputerUpgradeRequestDto(
     val drainDeadlineAt: String? = null,
     // projectComputerUpgradeRequest `failureHint: row.outcome === "failed" ? upgradeFailureHintFromReason(row.reason) : null`
     // (packages/shared/src/index.ts ComputerUpgradeFailureHint).
-    val failureHint: ComputerUpgradeFailureHintDto? = null
+    val failureHint: ComputerUpgradeFailureHintDto? = null,
+    // projectComputerUpgradeRequest `diskFull: row.outcome === "failed" ? upgradeDiskFullFromReason(row.reason) : null`
+    // (slock #16536, packages/shared/src/computerUpgradePrefetch.ts ComputerUpgradeDiskFull).
+    val diskFull: ComputerUpgradeDiskFullDto? = null
 ) {
     fun toSnapshot(): SettingsComputerUpgradeRequestSnapshot? {
         val requestId = id?.takeIf { it.isNotBlank() } ?: return null
@@ -1669,7 +1698,27 @@ private data class ComputerUpgradeRequestDto(
             phase = phase?.trim()?.takeIf { it == "draining" || it == "installing" },
             drainingAgentIds = drainingAgentIds.orEmpty().map { it.trim() }.filter { it.isNotBlank() }.distinct(),
             drainDeadlineAt = drainDeadlineAt?.trim()?.takeIf { it.isNotBlank() },
-            failureHint = failureHint?.toSnapshot()
+            failureHint = failureHint?.toSnapshot(),
+            diskFull = diskFull?.toSnapshot()
+        )
+    }
+}
+
+/**
+ * Shared `ComputerUpgradeDiskFull` (slock #16536): `{ neededBytes?, freeBytes? }` on a failed
+ * upgrade request. Empty `{}` is an unsized out-of-space failure from the installer.
+ */
+@Serializable
+private data class ComputerUpgradeDiskFullDto(
+    val neededBytes: Double? = null,
+    val freeBytes: Double? = null
+) {
+    fun toSnapshot(): SettingsComputerUpgradeDiskFullSnapshot {
+        val needed = neededBytes?.takeIf { it.isFinite() && it >= 0.0 }?.toLong()
+        val free = freeBytes?.takeIf { it.isFinite() && it >= 0.0 }?.toLong()
+        return SettingsComputerUpgradeDiskFullSnapshot(
+            neededBytes = if (needed != null && free != null) needed else null,
+            freeBytes = if (needed != null && free != null) free else null
         )
     }
 }
@@ -1949,7 +1998,8 @@ private data class ComputerWorkspaceDto(
     val status: String,
     val lastModified: String? = null,
     val agentName: String? = null,
-    val agentStatus: String? = null
+    val agentStatus: String? = null,
+    val partial: Boolean = false
 )
 
 private fun ComputerWorkspaceDto.toSummary(): ComputerWorkspaceSummary? {
@@ -1961,7 +2011,8 @@ private fun ComputerWorkspaceDto.toSummary(): ComputerWorkspaceSummary? {
         status = status,
         lastModified = lastModified,
         agentName = agentName,
-        agentStatus = agentStatus
+        agentStatus = agentStatus,
+        partial = partial
     )
 }
 

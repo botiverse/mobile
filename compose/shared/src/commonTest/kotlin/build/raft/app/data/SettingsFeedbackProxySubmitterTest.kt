@@ -190,6 +190,40 @@ class SettingsFeedbackProxySubmitterTest {
         assertEquals(emptyList(), repository.requests)
     }
 
+    @Test
+    fun acceptsOneValidZipAndBlocksFakeOversizedOrSecondZipBeforeUploadingDiagnostics() = runTest {
+        val zipBytes = byteArrayOf(0x50, 0x4b, 0x03, 0x04, 0x14, 0x00)
+        val validZip = PlatformFile(id = "z1", fileName = "diag.zip", mimeType = "application/x-zip-compressed", sizeBytes = 2048L, bytes = zipBytes)
+        val okRepo = FakeRepository(mutableListOf(FeedbackResult.Ok("ticket-zip")))
+        val okUploads = mutableListOf<String>()
+        val okSubmitter = submitter(okRepo, okUploads)
+        assertEquals(
+            SettingsFeedbackProxyOutcome.Filed("ticket-zip"),
+            okSubmitter.submit(okSubmitter.newAttempt("With diagnostics", listOf(image, validZip))),
+        )
+        assertEquals(listOf("user-1"), okUploads)
+
+        val badCases =
+            listOf(
+                listOf(PlatformFile(id = "bad", fileName = "diag.zip", mimeType = "application/zip", sizeBytes = 128L, bytes = "fake".encodeToByteArray())) to
+                    SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID,
+                listOf(PlatformFile(id = "big", fileName = "diag.zip", mimeType = "application/zip", sizeBytes = PRODUCT_FEEDBACK_MAX_ZIP_ATTACHMENT_BYTES + 1L, bytes = zipBytes)) to
+                    "settings_feedback_attachment_too_large",
+                listOf(validZip, validZip.copy(id = "z2", fileName = "diag2.zip")) to
+                    SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID,
+            )
+        for ((files, expectedCode) in badCases) {
+            val repo = FakeRepository(mutableListOf())
+            val uploads = mutableListOf<String>()
+            val s = submitter(repo, uploads)
+            val failed = assertIs<SettingsFeedbackProxyOutcome.Failed>(s.submit(s.newAttempt("x", files)))
+            assertEquals(expectedCode, failed.code)
+            assertFalse(failed.retryable)
+            assertTrue(uploads.isEmpty())
+            assertTrue(repo.requests.isEmpty())
+        }
+    }
+
     private val card =
         SettingsFeedbackCardDraft(
             messageId = "0b6f3c8e-5d1a-4c2e-9f7a-1e2d3c4b5a69",

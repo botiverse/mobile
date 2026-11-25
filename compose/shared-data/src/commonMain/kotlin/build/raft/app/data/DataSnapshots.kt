@@ -2152,6 +2152,16 @@ data class SettingsComputerUpgradeFailureHintSnapshot(
     val scope: String? = null
 )
 
+/**
+ * Shared `ComputerUpgradeDiskFull` (slock #16536): the last web upgrade failed for lack of disk
+ * space. [neededBytes] and [freeBytes] are present when the Computer's refusal named both sizes,
+ * and null when the installer reported `disk_full` without sizes.
+ */
+data class SettingsComputerUpgradeDiskFullSnapshot(
+    val neededBytes: Long? = null,
+    val freeBytes: Long? = null
+)
+
 data class SettingsComputerUpgradeRequestSnapshot(
     val id: String,
     val targetVersion: String,
@@ -2173,7 +2183,9 @@ data class SettingsComputerUpgradeRequestSnapshot(
     /** When the drain stops waiting (ISO). */
     val drainDeadlineAt: String? = null,
     /** Server `failureHint` (a failed request only): what to run on the machine. */
-    val failureHint: SettingsComputerUpgradeFailureHintSnapshot? = null
+    val failureHint: SettingsComputerUpgradeFailureHintSnapshot? = null,
+    /** Server `diskFull` (slock #16536, a failed request only): out of disk space, no install command. */
+    val diskFull: SettingsComputerUpgradeDiskFullSnapshot? = null
 )
 
 /** `versionGate` of a machines row (slock packages/shared/src/index.ts `ComputerVersionGate`). */
@@ -2256,7 +2268,9 @@ data class SettingsComputerWorkspaceSnapshot(
     val statusLabel: String? = null,
     val lastActiveLabel: String? = null,
     val totalSizeBytes: Long? = null,
-    val fileCount: Int? = null
+    val fileCount: Int? = null,
+    /** Server `partial` (slock #16552): the bounded scan stopped early, so size and file count are lower bounds. */
+    val partial: Boolean = false
 )
 
 data class SettingsComputerAgentSnapshot(

@@ -768,7 +768,8 @@ class RealSettingsRepository(
         val serverId = selectedServerId() ?: return serverRequired()
         if (machineId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         logger("machine_detail_section_start serverId=$serverId machineId=$machineId section=workspaces trigger=user_scan")
-        val result = settingsMachineWorkspaces(serverId, machineId)
+        // Every scan here is a person's explicit Refresh: bypass the Computer's 5-min cache (slock #16552).
+        val result = settingsMachineWorkspaces(serverId, machineId, refresh = true)
         result.logMachineDetailSection(
             serverId,
             machineId,
@@ -1712,9 +1713,10 @@ class RealSettingsRepository(
 
     private suspend fun settingsMachineWorkspaces(
         serverId: String,
-        machineId: String
+        machineId: String,
+        refresh: Boolean = false
     ): DataResult<List<SettingsComputerWorkspaceSnapshot>> =
-        computersApiClient.machineWorkspaces(ServerId(serverId), machineId).mapComputerResult { page ->
+        computersApiClient.machineWorkspaces(ServerId(serverId), machineId, refresh = refresh).mapComputerResult { page ->
             val workspaces = page.workspaces.map { it.toSettingsWorkspaceSnapshot() }
             if (workspaces.isEmpty()) {
                 warningLogger("empty_items source=settings_machine_workspaces stage=list_extract root=array")
@@ -3259,7 +3261,8 @@ private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComp
         statusLabel = status,
         lastActiveLabel = lastModified,
         totalSizeBytes = totalSizeBytes,
-        fileCount = fileCount
+        fileCount = fileCount,
+        partial = partial
     )
 
 private fun <T> DataResult<T>.mapSettingsDetailError(

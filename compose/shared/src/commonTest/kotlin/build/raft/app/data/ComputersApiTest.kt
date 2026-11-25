@@ -545,6 +545,41 @@ class ComputersApiTest {
         )
     }
 
+    @Test
+    fun machineWorkspacesParsesPartialFlagAndSendsRefreshQueryWhenRequested() = runPortableCoroutineTest {
+        val queries = mutableListOf<Pair<String, List<Pair<String, String>>>>()
+        val workspacesBody =
+            """[{"directoryName":"agent-big","totalSizeBytes":4096,"lastModified":"2026-11-24T00:00:00.000Z","fileCount":200000,"status":"active","agentName":"Big","agentStatus":"active","partial":true},{"directoryName":"agent-small","totalSizeBytes":512,"lastModified":"2026-11-24T00:00:00.000Z","fileCount":3,"status":"active","agentName":"Small","agentStatus":"active"}]"""
+        val networkClient =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse {
+                    queries += path to query
+                    return HomeNetworkResponse(code = 200, bodyText = workspacesBody)
+                }
+            }
+        val client = RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
+
+        val cached = assertIs<DataResult.Content<ComputerWorkspacePage>>(client.machineWorkspaces(ServerId("server-1"), "machine-1")).data
+        val refreshed = assertIs<DataResult.Content<ComputerWorkspacePage>>(client.machineWorkspaces(ServerId("server-1"), "machine-1", refresh = true)).data
+
+        assertEquals(
+            listOf(
+                "servers/server-1/machines/machine-1/workspaces" to emptyList(),
+                "servers/server-1/machines/machine-1/workspaces" to listOf("refresh" to "1"),
+            ),
+            queries,
+        )
+        assertEquals(listOf(true, false), cached.workspaces.map { it.partial })
+        assertEquals(listOf(true, false), refreshed.workspaces.map { it.partial })
+    }
+
     // Shared with ComputerControllerPermissionsTest.
     internal class RecordingComputersApi(
         private val machinesBody: String =

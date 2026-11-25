@@ -5,6 +5,8 @@ import build.raft.app.data.SettingsComputerBroadcastPolicySnapshot
 import build.raft.app.data.SettingsComputerControlState
 import build.raft.app.data.SettingsComputerReleaseNotesSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.app.data.SettingsComputerUpgradeDiskFullSnapshot
+import build.raft.app.data.SettingsComputerUpgradeFailureHintSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRefusal
 import build.raft.app.data.SettingsComputerUpgradeRequest
 import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
@@ -193,6 +195,57 @@ class RaftComputerUpgradeModelTest {
         assertEquals("- 中文", raftComputerReleaseNotesText(notes, "zh-Hans-CN"))
         assertEquals("- English", raftComputerReleaseNotesText(notes, "ja"))
         assertEquals("- 中文", raftComputerReleaseNotesText(notes.copy(en = null), "en-US"))
+    }
+
+    @Test
+    fun diskFullUpgradeFailureSetsUpgradeDiskFullAndClearsFailureHintAndRepairAdvice() {
+        val diskFull = SettingsComputerUpgradeDiskFullSnapshot(neededBytes = 812_000_000L, freeBytes = 300_000_000L)
+        val failedRow =
+            request(id = "req-disk", state = "failed", target = "1.0.54").copy(
+                observedVersion = "1.0.53",
+                failureHint = SettingsComputerUpgradeFailureHintSnapshot(reason = "earlier_recovery_pending"),
+                diskFull = diskFull,
+            )
+        val active =
+            model(
+                computer(
+                    version = "1.0.53",
+                    latest = "1.0.54",
+                    policy = eligible("1.0.54"),
+                    upgradeAvailable = true,
+                    row = failedRow,
+                ).copy(installerRepairHint = "unrecovered_operation")
+            )
+        assertEquals(RaftComputerCardState.OneClick("1.0.54"), active.card)
+        assertEquals(diskFull, active.upgradeDiskFull)
+        assertNull(active.upgradeFailureHint)
+        assertFalse(active.recommendRepair)
+
+        // Clears once the Computer moves off the version it failed on.
+        val moved =
+            model(
+                computer(
+                    version = "1.0.53-rc.2",
+                    latest = "1.0.54",
+                    policy = eligible("1.0.54"),
+                    upgradeAvailable = true,
+                    row = failedRow,
+                )
+            )
+        assertNull(moved.upgradeDiskFull)
+
+        // Not active when one-click is unavailable.
+        val nonOneClick =
+            model(
+                computer(
+                    version = "1.0.53",
+                    latest = "1.0.54",
+                    policy = noBroadcast("broadcast_disabled"),
+                    upgradeAvailable = false,
+                    row = failedRow,
+                )
+            )
+        assertNull(nonOneClick.upgradeDiskFull)
     }
 
     private fun model(computer: SettingsComputerSnapshot, control: SettingsComputerControlState = SettingsComputerControlState()) =

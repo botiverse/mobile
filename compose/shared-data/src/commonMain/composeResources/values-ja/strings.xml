@@ -477,7 +477,7 @@
     <string name="settings_feedback_submission_rate_limited_body">フィードバックのリクエストが多すぎます。しばらく待ってから、もう一度お試しください。</string>
     <string name="settings_feedback_submission_attachment_read_body">添付ファイルを読み取れませんでした。削除してから、もう一度添付してください。</string>
     <string name="settings_feedback_submission_attachment_too_large_body">添付ファイルが %1$s の上限を超えています。削除するか、より小さいファイルを選択してください。</string>
-    <string name="settings_feedback_submission_attachment_type_body">スクリーンショットには PNG、JPEG、GIF、WebP 形式の画像を使用してください。</string>
+    <string name="settings_feedback_submission_attachment_type_body">添付ファイルは PNG、JPEG、GIF、WebP 形式の画像、または診断用 .zip ファイル 1 点にしてください。</string>
     <string name="settings_feedback_submission_auth_body">フィードバックの認証に失敗しました。アプリを更新するか、サポートにお問い合わせください。</string>
     <string name="settings_feedback_submission_permission_title">権限が必要です</string>
     <string name="settings_feedback_submission_permission_body">フィードバックを送信する権限がありません。</string>
@@ -487,7 +487,7 @@
     <string name="settings_feedback_new_meta">チームがチケットで返信します。</string>
     <string name="settings_feedback_type_label">種類</string>
     <string name="settings_feedback_describe_placeholder">アイデアや発生した不具合を入力してください…</string>
-    <string name="settings_feedback_attachment_hint">画像は %1$d 枚まで、各 %2$s まで。</string>
+    <string name="settings_feedback_attachment_hint">添付は最大 %1$d 点（画像または診断用 .zip 1 点）、各 %2$s まで。</string>
     <string name="settings_members_title">メンバー</string>
     <string name="settings_language_region_title">言語と地域</string>
     <string name="settings_language_region_subtitle">言語、タイムゾーン、翻訳</string>
@@ -1527,6 +1527,12 @@
     <string name="member_report_issue_runtime_transcript_hint">エージェントのコンピューターから取得します。ない場合もあります。</string>
     <string name="member_report_issue_machine_log_tail">マシンのランナーログ末尾</string>
     <string name="member_report_issue_machine_log_tail_disclosure">このマシンのログの末尾数行です。同じマシン上の他のエージェントの内容が含まれる場合があります。</string>
+    <string name="member_report_issue_diagnostics_bundle">Computer 診断パッケージ</string>
+    <string name="member_report_issue_diagnostics_bundle_disclosure">このコンピューターのサービス・インストール・アップグレードのログと、このサーバーのランナーログ。メッセージやプロンプトの一部が含まれる場合があり、Raft チームに送信されます。</string>
+    <string name="member_report_issue_diagnostics_bundle_range">期間</string>
+    <string name="member_report_issue_diagnostics_bundle_range_report_window">このレポートの直前 1 時間</string>
+    <string name="member_report_issue_diagnostics_bundle_range_last_24h">過去 24 時間</string>
+    <string name="member_report_issue_diagnostics_bundle_range_last_7d">過去 7 日間</string>
     <string name="member_report_issue_title_for_agent">%1$s に関する問題の報告</string>
     <string name="member_report_issue_ticket_filed">このレポートのフィードバックチケットを作成しました。Raft チームからの返信はチケットに表示されます。</string>
     <string name="member_report_issue_ticket_failed">レポートはアップロードされましたが、フィードバックチケットを作成できませんでした。下記の参照情報を Raft チームに共有してください。</string>
@@ -3356,6 +3362,7 @@
     <string name="settings_computers_workspace_modified">%1$s に更新</string>
     <string name="settings_computers_file_count_one">%1$d 個のファイル</string>
     <string name="settings_computers_file_count_many">%1$d 個のファイル</string>
+    <string name="settings_computers_workspace_at_least">%1$s 以上</string>
     <string name="settings_computers_kind_computer">コンピューター</string>
     <string name="settings_computers_kind_daemon">デーモン</string>
     <string name="settings_computers_run_offline">%1$s オフライン</string>
@@ -3479,6 +3486,8 @@
     <string name="settings_computers_upgrade_status_refused_not_allowed">現在、このコンピューターはウェブからアップグレードできません。</string>
     <string name="settings_computers_upgrade_status_refused_unknown">現在アップグレードできません。しばらくしてからもう一度お試しください。</string>
     <string name="settings_computers_upgrade_status_failed">アップグレードが完了せず、まだ v%1$s のままです。そのコンピューターで %2$s を実行して確認してください。</string>
+    <string name="settings_computers_upgrade_status_disk_full">このコンピューターのディスク空き容量が足りません。アップグレードには約 %1$s の空きが必要ですが、残りは %2$s です。空き容量を増やしてから、もう一度「アップグレード」をクリックしてください。何も変更されていません。</string>
+    <string name="settings_computers_upgrade_status_disk_full_unsized">このコンピューターのディスク空き容量が足りません。空き容量を増やしてから、もう一度「アップグレード」をクリックしてください。何も変更されていません。</string>
     <string name="settings_computers_upgrade_status_no_response">前回のアップグレードでコンピューターから応答がありませんでした。そのコンピューターで %1$s を実行して確認してください。</string>
     <string name="settings_computers_upgrade_status_manual_fallback">または、そのコンピューターで次のコマンドを実行してアップグレードできます：</string>
     <string name="settings_computers_upgrade_status_reconnecting">v%1$s にアップグレード中です。コンピューターは再起動中で、完了すると再接続されます。</string>

@@ -16,6 +16,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -26,6 +28,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.raftCardSurface
+import build.raft.app.data.AgentIssueDiagnosticsBundleRange
 import build.raft.app.data.AgentIssueReportResult
 import build.raft.app.data.AGENT_ISSUE_REPORT_PRIVACY_MODE_ON
 import build.raft.app.data.AGENT_ISSUE_REPORT_PRIVACY_MODE_UNKNOWN
@@ -42,6 +45,8 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftRadioGroup
+import build.raft.designsystem.components.RaftRadioRow
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.text.RaftText
@@ -54,7 +59,9 @@ internal data class MembersAgentIssueReportSelection(
     val includeLiveActivity: Boolean,
     val includeActivityHistory: Boolean,
     val includeRuntimeTranscript: Boolean,
-    val includeMachineLogTail: Boolean
+    val includeMachineLogTail: Boolean,
+    val includeDiagnosticsBundle: Boolean = false,
+    val diagnosticsBundleRange: AgentIssueDiagnosticsBundleRange = AgentIssueDiagnosticsBundleRange.ReportWindow
 )
 
 /**
@@ -120,6 +127,12 @@ internal fun MembersAgentIssueReportDialog(
     }
     var machineLogTailChoice by remember(agentName) { mutableStateOf<Boolean?>(null) }
     val includeMachineLogTail = membersAgentIssueMachineLogTailChecked(machineLogTailChoice, canIncludeMachineLog, ownAttachedMachine)
+    // Web #16580: Computer diagnostics bundle is attacher-only and opt-in (off by default).
+    val canIncludeDiagnosticsBundle = runtimeTranscriptAvailable && ownAttachedMachine
+    var includeDiagnosticsBundle by remember(agentName) { mutableStateOf(false) }
+    var diagnosticsBundleRange by remember(agentName) {
+        mutableStateOf(AgentIssueDiagnosticsBundleRange.ReportWindow)
+    }
     // The one commit: the footer's Submit on a wide window, the phone sheet's head button.
     val commitLabel =
         if (busy) {
@@ -138,7 +151,9 @@ internal fun MembersAgentIssueReportDialog(
                 includeLiveActivity = includeLiveActivity,
                 includeActivityHistory = includeActivityHistory,
                 includeRuntimeTranscript = includeRuntimeTranscript && runtimeTranscriptAvailable,
-                includeMachineLogTail = includeMachineLogTail
+                includeMachineLogTail = includeMachineLogTail,
+                includeDiagnosticsBundle = canIncludeDiagnosticsBundle && includeDiagnosticsBundle,
+                diagnosticsBundleRange = diagnosticsBundleRange
             )
         )
     }
@@ -236,6 +251,37 @@ internal fun MembersAgentIssueReportDialog(
                             enabled = includeRuntimeTranscript && !busy,
                             onCheckedChange = { machineLogTailChoice = it }
                         )
+                    }
+                    if (canIncludeDiagnosticsBundle) {
+                        RaftCheckboxRow(
+                            label = stringResource(Res.string.member_report_issue_diagnostics_bundle),
+                            description = stringResource(Res.string.member_report_issue_diagnostics_bundle_disclosure),
+                            checked = includeDiagnosticsBundle,
+                            enabled = includeRuntimeTranscript && !busy,
+                            onCheckedChange = { includeDiagnosticsBundle = it },
+                            modifier = Modifier.testTag(MEMBERS_AGENT_ISSUE_DIAGNOSTICS_BUNDLE_TAG)
+                        )
+                        if (includeDiagnosticsBundle && includeRuntimeTranscript) {
+                            val rangeGroupLabel = stringResource(Res.string.member_report_issue_diagnostics_bundle_range)
+                            RaftRadioGroup(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 28.dp)
+                                        .semantics { contentDescription = rangeGroupLabel }
+                                        .testTag(MEMBERS_AGENT_ISSUE_DIAGNOSTICS_BUNDLE_RANGE_TAG)
+                            ) {
+                                AgentIssueDiagnosticsBundleRange.entries.forEach { option ->
+                                    RaftRadioRow(
+                                        label = membersAgentIssueDiagnosticsBundleRangeLabel(option),
+                                        selected = diagnosticsBundleRange == option,
+                                        enabled = !busy,
+                                        onClick = { diagnosticsBundleRange = option },
+                                        modifier = Modifier.testTag("$MEMBERS_AGENT_ISSUE_DIAGNOSTICS_BUNDLE_RANGE_TAG-${option.wire}")
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -341,6 +387,19 @@ internal fun membersAgentIssueReportErrorMessage(error: ScreenError, detail: Str
 }
 
 internal const val MEMBERS_AGENT_ISSUE_PRIVACY_NOTICE_TAG = "members-agent-issue-privacy-notice"
+internal const val MEMBERS_AGENT_ISSUE_DIAGNOSTICS_BUNDLE_TAG = "report-issue-diagnostics-bundle"
+internal const val MEMBERS_AGENT_ISSUE_DIAGNOSTICS_BUNDLE_RANGE_TAG = "report-issue-diagnostics-bundle-range"
+
+@Composable
+private fun membersAgentIssueDiagnosticsBundleRangeLabel(range: AgentIssueDiagnosticsBundleRange): String =
+    when (range) {
+        AgentIssueDiagnosticsBundleRange.ReportWindow ->
+            stringResource(Res.string.member_report_issue_diagnostics_bundle_range_report_window)
+        AgentIssueDiagnosticsBundleRange.Last24h ->
+            stringResource(Res.string.member_report_issue_diagnostics_bundle_range_last_24h)
+        AgentIssueDiagnosticsBundleRange.Last7d ->
+            stringResource(Res.string.member_report_issue_diagnostics_bundle_range_last_7d)
+    }
 
 /** Why the open panel can't send (null when privacy mode is off and it may). */
 @Composable

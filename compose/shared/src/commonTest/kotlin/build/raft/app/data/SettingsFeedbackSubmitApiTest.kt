@@ -248,4 +248,88 @@ class SettingsFeedbackSubmitApiTest {
 
         assertEquals("feedback_contract_mismatch", failure.code)
     }
+
+    @Test
+    fun acceptsOneValidZipUpTo10MiBWithNormalizedApplicationZipContentType() = runTest {
+        val localHeaderZip = byteArrayOf(0x50, 0x4b, 0x03, 0x04, 0x14, 0x00)
+        val emptyArchiveZip = byteArrayOf(0x50, 0x4b, 0x05, 0x06, 0x00, 0x00)
+        val cases =
+            listOf(
+                PlatformFile("z1", "diag.zip", "application/zip", sizeBytes = 1024L, bytes = localHeaderZip),
+                PlatformFile("z2", "diag.zip", "application/x-zip-compressed", sizeBytes = 1024L, bytes = localHeaderZip),
+                PlatformFile("z3", "diag.zip", "application/octet-stream", sizeBytes = 1024L, bytes = emptyArchiveZip),
+                PlatformFile("z4", "DIAG.ZIP", null, sizeBytes = PRODUCT_FEEDBACK_MAX_ZIP_ATTACHMENT_BYTES, bytes = localHeaderZip),
+            )
+        cases.forEach { zip ->
+            val network = FakeNetwork { HomeNetworkResponse(code = 201, bodyText = receipt) }
+            val result = repository(network).submit(request(attachments = listOf(screenshot, zip)))
+            assertEquals(FeedbackResult.Ok("11111111-2222-4333-8444-555555555555"), result, zip.id)
+            assertEquals(listOf("image/png", "application/zip"), network.calls.single().files.map { it.mimeType }, zip.id)
+        }
+    }
+
+    @Test
+    fun rejectsFakeZipOversizedZipAndSecondZipBeforeNetwork() = runTest {
+        val localHeaderZip = byteArrayOf(0x50, 0x4b, 0x03, 0x04, 0x14, 0x00)
+        val fakeZip = PlatformFile("fake", "diag.zip", "application/zip", sizeBytes = 64L, bytes = "not-a-zip".encodeToByteArray())
+        val spanningHeaderZip = PlatformFile("span", "diag.zip", "application/zip", sizeBytes = 64L, bytes = byteArrayOf(0x50, 0x4b, 0x07, 0x08))
+        val oversizedZip = PlatformFile("big", "diag.zip", "application/zip", sizeBytes = PRODUCT_FEEDBACK_MAX_ZIP_ATTACHMENT_BYTES + 1L, bytes = localHeaderZip)
+        val validZipA = PlatformFile("za", "a.zip", "application/zip", sizeBytes = 512L, bytes = localHeaderZip)
+        val validZipB = PlatformFile("zb", "b.zip", "application/x-zip-compressed", sizeBytes = 512L, bytes = localHeaderZip)
+
+        val noCall = FakeNetwork { error("must not call network") }
+        assertEquals(
+            "feedback_attachment_type_invalid",
+            assertIs<FeedbackResult.Failed>(repository(noCall).submit(request(attachments = listOf(fakeZip)))).failure.code,
+        )
+        assertEquals(
+            "feedback_attachment_type_invalid",
+            assertIs<FeedbackResult.Failed>(repository(noCall).submit(request(attachments = listOf(spanningHeaderZip)))).failure.code,
+        )
+        assertEquals(
+            "feedback_attachment_too_large",
+            assertIs<FeedbackResult.Failed>(repository(noCall).submit(request(attachments = listOf(oversizedZip)))).failure.code,
+        )
+        assertEquals(
+            "feedback_attachment_type_invalid",
+            assertIs<FeedbackResult.Failed>(repository(noCall).submit(request(attachments = listOf(validZipA, validZipB)))).failure.code,
+        )
+        assertTrue(noCall.calls.isEmpty())
+    }
+
+    @Test
+    fun streamsFirstFourBytesOfFileRefZipViaPlatformResolver() = runTest {
+        val zipRef = PlatformFile("ref-zip", "export.zip", "application/octet-stream", sizeBytes = 4096L, fileRef = "file:///tmp/export.zip")
+        var maxRequested = 0
+        var closed = false
+        val resolver =
+            object : RaftPlatformFileResolver {
+                override suspend fun readFile(fileRef: String): RaftPlatformFileReadResult = error("must not read whole 10 MiB file")
+                override suspend fun statFile(fileRef: String) = RaftPlatformFileStatResult(code = 200, sizeBytes = 4096L)
+                override suspend fun openFileStream(fileRef: String, expectedSizeBytes: Long) =
+                    object : RaftPlatformFileChunkSource {
+                        private var sent = false
+                        override suspend fun read(maxBytes: Int): ByteArray {
+                            maxRequested = maxOf(maxRequested, maxBytes)
+                            if (sent) return ByteArray(0)
+                            sent = true
+                            return byteArrayOf(0x50, 0x4b, 0x03, 0x04)
+                        }
+                        override fun close() { closed = true }
+                    }
+            }
+        val network = FakeNetwork { HomeNetworkResponse(code = 201, bodyText = receipt) }
+        val repo =
+            NetworkSettingsFeedbackSubmitRepository(
+                networkClient = network,
+                clientKind = "android",
+                clientVersion = "1.31.0",
+                readAttachmentHeaderBytes = { file -> readProductFeedbackAttachmentHeaderBytes(file, resolver) },
+            )
+
+        assertEquals(FeedbackResult.Ok("11111111-2222-4333-8444-555555555555"), repo.submit(request(attachments = listOf(zipRef))))
+        assertEquals(4, maxRequested)
+        assertTrue(closed)
+        assertEquals("application/zip", network.calls.single().files.single().mimeType)
+    }
 }

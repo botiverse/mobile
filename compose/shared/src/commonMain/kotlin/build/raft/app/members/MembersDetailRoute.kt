@@ -1068,7 +1068,10 @@ internal class MemberDetailRouteProvider(
                 title = request.title,
                 locale = request.locale,
                 includeMachineLogTail = request.includeMachineLogTail,
-                canIncludeMachineLog = request.canIncludeMachineLog
+                canIncludeMachineLog = request.canIncludeMachineLog,
+                includeDiagnosticsBundle = request.includeDiagnosticsBundle,
+                canIncludeDiagnosticsBundle = request.canIncludeDiagnosticsBundle,
+                diagnosticsBundleRange = request.diagnosticsBundleRange
             )
         )
         // Web shows a failed report only inline in the panel (with its trace ID), no toast.

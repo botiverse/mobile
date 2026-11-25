@@ -1017,7 +1017,11 @@ internal fun MembersDetailContent(
         issueReportReferenceCopied = false
         reportIssueDialogOpen = true
     }
-    fun submitIssueReport(selection: MembersAgentIssueReportSelection, canIncludeMachineLog: Boolean) {
+    fun submitIssueReport(
+        selection: MembersAgentIssueReportSelection,
+        canIncludeMachineLog: Boolean,
+        canIncludeDiagnosticsBundle: Boolean,
+    ) {
         val callback = onReportAgentIssue
         if (diagnosticInFlight != null || issueReportSubmitting) return
         // The dialog was open when the answer turned "on" (or the environment changed): never send.
@@ -1043,7 +1047,10 @@ internal fun MembersDetailContent(
                         title = issueReportTitle,
                         locale = raftCurrentUiLocaleTag(),
                         includeMachineLogTail = selection.includeMachineLogTail,
-                        canIncludeMachineLog = canIncludeMachineLog
+                        canIncludeMachineLog = canIncludeMachineLog,
+                        includeDiagnosticsBundle = selection.includeDiagnosticsBundle,
+                        canIncludeDiagnosticsBundle = canIncludeDiagnosticsBundle,
+                        diagnosticsBundleRange = selection.diagnosticsBundleRange
                     )
                 val result =
                     if (sharedAgentDetailStore != null && agentDetailActions != null) {
@@ -1692,7 +1699,7 @@ internal fun MembersDetailContent(
                     },
                 errorTraceId = reportState?.error?.traceId,
                 privacyMode = privacyMode,
-                onSubmit = { selection -> submitIssueReport(selection, canIncludeMachineLog) },
+                onSubmit = { selection -> submitIssueReport(selection, canIncludeMachineLog, ownAttachedMachine) },
                 onDismiss = {
                     if (reportState?.inProgress != true) {
                         reportIssueDialogOpen = false

@@ -620,6 +620,7 @@ private data class WireSettingsMachineWorkspace(
     val directoryName: String,
     val status: String? = null,
     val lastModified: String? = null,
+    val partial: Boolean = false,
 )
 
 fun parseSharedSettingsMachineWorkspaces(
@@ -637,6 +638,7 @@ private fun WireSettingsMachineWorkspace.toSettingsComputerWorkspaceSnapshot(): 
         path = directoryName,
         statusLabel = status,
         lastActiveLabel = lastModified,
+        partial = partial,
     )
 
 @Serializable
