@@ -16,10 +16,15 @@ import java.awt.event.ComponentEvent
 import java.awt.event.HierarchyBoundsAdapter
 import java.awt.event.HierarchyEvent
 import java.awt.event.HierarchyListener
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import javax.swing.JPanel
 import javax.swing.RootPaneContainer
 import javax.swing.SwingUtilities
+import javax.swing.Timer
+import kotlin.coroutines.resume
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Parameters passed to [MacOsNativeWebBridgeOps.createSession]. */
 internal data class MacOsNativeCreateParams(
@@ -105,7 +110,10 @@ internal interface MacOsNativeWebBridgeOps {
         replyJson: String,
     )
 
-    fun clearIsolationScope(namedScopeUuid: String?)
+    fun clearIsolationScope(
+        namedScopeUuid: String?,
+        onComplete: ((Boolean) -> Unit)? = null,
+    ): () -> Unit
 
     fun disposeSession(sessionId: Long)
 }
@@ -199,8 +207,10 @@ internal object RealMacOsNativeWebBridgeOps : MacOsNativeWebBridgeOps {
         replyJson: String,
     ) = MacOsNativeWebBridge.nativeCompleteJsbReply(sessionId, replyId, replyJson)
 
-    override fun clearIsolationScope(namedScopeUuid: String?) =
-        MacOsNativeWebBridge.nativeClearIsolationScope(namedScopeUuid)
+    override fun clearIsolationScope(
+        namedScopeUuid: String?,
+        onComplete: ((Boolean) -> Unit)?,
+    ): () -> Unit = MacOsNativeWebBridge.clearIsolationScopeAsync(namedScopeUuid, onComplete)
 
     override fun disposeSession(sessionId: Long) = MacOsNativeWebBridge.nativeDisposeSession(sessionId)
 }
@@ -222,6 +232,7 @@ class MacOsNativeWebEngine internal constructor(
     private val isMacOsHost: () -> Boolean,
     private val postToEdt: (() -> Unit) -> Unit,
     private val canvasFactory: () -> Component,
+    private val scheduleRetry: (delayMs: Int, action: () -> Unit) -> (() -> Unit) = ::defaultScheduleMacOsNativeRetry,
 ) : DesktopWebEngine {
     constructor() : this(
         bridgeOps = RealMacOsNativeWebBridgeOps,
@@ -230,6 +241,7 @@ class MacOsNativeWebEngine internal constructor(
         },
         postToEdt = { SwingUtilities.invokeLater(it) },
         canvasFactory = { Canvas() },
+        scheduleRetry = ::defaultScheduleMacOsNativeRetry,
     )
 
     val isAvailable: Boolean
@@ -255,29 +267,78 @@ class MacOsNativeWebEngine internal constructor(
             bridgeOps = bridgeOps,
             postToEdt = postToEdt,
             hostCanvas = canvasFactory(),
+            scheduleRetry = scheduleRetry,
         )
     }
 
-    /** Clears website data for [scope] using the native macOS `WKWebsiteDataStore` bridge. */
+    /** Clears website data for [scope] asynchronously without awaiting completion. */
     fun clearIsolationScope(scope: WebIsolationScope): Boolean {
         if (!isAvailable) return false
         return when (scope) {
             WebIsolationScope.Default -> {
-                bridgeOps.clearIsolationScope(namedScopeUuid = null)
+                bridgeOps.clearIsolationScope(namedScopeUuid = null, onComplete = null)
                 true
             }
             WebIsolationScope.Ephemeral -> true
             is WebIsolationScope.Named -> {
-                bridgeOps.clearIsolationScope(namedScopeUuid = deriveDeterministicScopeUuid(scope.id))
+                bridgeOps.clearIsolationScope(
+                    namedScopeUuid = deriveDeterministicScopeUuid(scope.id),
+                    onComplete = null,
+                )
                 true
             }
         }
     }
 
+    /**
+     * Clears website data for [scope] using the native macOS `WKWebsiteDataStore` bridge and
+     * suspends until WebKit's `removeDataOfTypes:completionHandler:` finishes (bounded by
+     * [timeoutMs], mirroring iOS `withTimeoutOrNull(2_000L)`).
+     *
+     * @return `true` if clearing completed within [timeoutMs] (or [scope] is ephemeral),
+     *   `false` if the native engine is unavailable, failed, or timed out.
+     */
+    suspend fun clearIsolationScopeAndAwait(
+        scope: WebIsolationScope,
+        timeoutMs: Long = DEFAULT_CLEAR_TIMEOUT_MS,
+    ): Boolean {
+        if (!isAvailable) return false
+        val targetUuid =
+            when (scope) {
+                WebIsolationScope.Default -> null
+                WebIsolationScope.Ephemeral -> return true
+                is WebIsolationScope.Named -> deriveDeterministicScopeUuid(scope.id)
+            }
+        val completed =
+            withTimeoutOrNull(timeoutMs.coerceAtLeast(1L)) {
+                suspendCancellableCoroutine<Boolean> { cont ->
+                    val cancel =
+                        bridgeOps.clearIsolationScope(namedScopeUuid = targetUuid) { succeeded ->
+                            if (cont.isActive) cont.resume(succeeded)
+                        }
+                    cont.invokeOnCancellation { cancel() }
+                }
+            }
+        return completed == true
+    }
+
     companion object {
+        private const val DEFAULT_CLEAR_TIMEOUT_MS: Long = 2_000L
         private val nextSessionId = AtomicLong(0L)
         val Default: MacOsNativeWebEngine = MacOsNativeWebEngine()
     }
+}
+
+private fun defaultScheduleMacOsNativeRetry(
+    delayMs: Int,
+    action: () -> Unit,
+): () -> Unit {
+    val timer =
+        Timer(delayMs.coerceAtLeast(1)) { action() }.apply {
+            isRepeats = false
+            start()
+        }
+    return { timer.stop() }
 }
 
 internal class MacOsNativeWebSession(
@@ -287,9 +348,13 @@ internal class MacOsNativeWebSession(
     private val bridgeOps: MacOsNativeWebBridgeOps,
     private val postToEdt: (() -> Unit) -> Unit,
     private val hostCanvas: Component,
+    private val scheduleRetry: (delayMs: Int, action: () -> Unit) -> (() -> Unit) = ::defaultScheduleMacOsNativeRetry,
 ) : DesktopWebSession, MacOsNativeSessionHandler {
     private var started: Boolean = false
     private var nativeCreated: Boolean = false
+    private var nativeCreateAttempts: Int = 0
+    private var nativeCreateFailed: Boolean = false
+    private var pendingRetryCancel: (() -> Unit)? = null
     @Volatile private var disposed: Boolean = false
     private var visible: Boolean = false
     private var lastReportedBounds: IntArray? = null
@@ -412,7 +477,7 @@ internal class MacOsNativeWebSession(
         isolatedWorld: Boolean,
         callback: ((String?) -> Unit)?,
     ) {
-        if (disposed || script.isBlank()) {
+        if (disposed || nativeCreateFailed || script.isBlank()) {
             callback?.invoke(null)
             return
         }
@@ -433,6 +498,7 @@ internal class MacOsNativeWebSession(
     override fun dispose() {
         if (disposed) return
         disposed = true
+        cancelPendingRetry()
         pendingCommands.clear()
         val callbacksToCancel = pendingEvals.values.toList()
         pendingEvals.clear()
@@ -443,6 +509,11 @@ internal class MacOsNativeWebSession(
         }
     }
 
+    private fun cancelPendingRetry() {
+        pendingRetryCancel?.let { runCatching { it() } }
+        pendingRetryCancel = null
+    }
+
     /** Exposed internally for unit tests simulating native Canvas displayability without an AWT display. */
     internal fun triggerNativeAttachForTest(
         x: Int = 0,
@@ -450,18 +521,25 @@ internal class MacOsNativeWebSession(
         w: Int = 800,
         h: Int = 600,
     ): Boolean {
-        if (disposed || !started || nativeCreated) return nativeCreated
-        return performNativeCreate(x, y, w, h)
+        if (disposed || !started || nativeCreated || nativeCreateFailed) return nativeCreated
+        return performNativeCreate(x, y, w, h, retryAction = { triggerNativeAttachForTest(x, y, w, h) })
     }
 
     private fun ensureNativeCreatedIfReady() {
-        if (disposed || !started || nativeCreated) return
+        if (disposed || !started || nativeCreated || nativeCreateFailed) return
         val jawtTarget =
             hostCanvas.takeIf { it.isDisplayable }
                 ?: SwingUtilities.getWindowAncestor(hostPanel)?.takeIf { it.isDisplayable }
                 ?: return
         val bounds = computeWindowRelativeBounds()
-        performNativeCreate(bounds[0], bounds[1], bounds[2], bounds[3], jawtTarget)
+        performNativeCreate(
+            x = bounds[0],
+            y = bounds[1],
+            w = bounds[2],
+            h = bounds[3],
+            jawtTarget = jawtTarget,
+            retryAction = { ensureNativeCreatedIfReady() },
+        )
     }
 
     private fun performNativeCreate(
@@ -470,6 +548,7 @@ internal class MacOsNativeWebSession(
         w: Int,
         h: Int,
         jawtTarget: Component = hostCanvas,
+        retryAction: () -> Unit = { ensureNativeCreatedIfReady() },
     ): Boolean {
         val initialTarget =
             config.url.trim().takeIf { candidate ->
@@ -518,6 +597,7 @@ internal class MacOsNativeWebSession(
                 ),
             )
         if (created) {
+            cancelPendingRetry()
             nativeCreated = true
             val currentBounds = computeWindowRelativeBounds()
             lastReportedBounds =
@@ -533,12 +613,34 @@ internal class MacOsNativeWebSession(
             while (pendingCommands.isNotEmpty() && !disposed) {
                 pendingCommands.removeFirst().invoke()
             }
+        } else {
+            nativeCreateAttempts += 1
+            if (nativeCreateAttempts >= MAX_NATIVE_CREATE_ATTEMPTS) {
+                cancelPendingRetry()
+                nativeCreateFailed = true
+                pendingCommands.clear()
+                val callbacksToCancel = pendingEvals.values.toList()
+                pendingEvals.clear()
+                callbacksToCancel.forEach { runCatching { it(null) } }
+                if (!disposed) {
+                    callbacks.onLoadFailure(NATIVE_CREATE_FAILED_REASON)
+                }
+            } else if (!disposed) {
+                cancelPendingRetry()
+                pendingRetryCancel =
+                    scheduleRetry(NATIVE_CREATE_RETRY_DELAY_MS) {
+                        pendingRetryCancel = null
+                        if (!disposed && !nativeCreated && !nativeCreateFailed) {
+                            retryAction()
+                        }
+                    }
+            }
         }
         return created
     }
 
     private fun runWhenNativeReady(action: () -> Unit) {
-        if (disposed) return
+        if (disposed || nativeCreateFailed) return
         if (nativeCreated) {
             action()
         } else {
@@ -725,10 +827,9 @@ internal class MacOsNativeWebSession(
             )
             return
         }
-        var replied = false
+        val replied = AtomicBoolean(false)
         val replyOnce: (String) -> Unit = { replyJson ->
-            if (!replied) {
-                replied = true
+            if (replied.compareAndSet(false, true)) {
                 postToEdt {
                     bridgeOps.completeJsbReply(sessionId, replyId, replyJson)
                 }
@@ -744,7 +845,7 @@ internal class MacOsNativeWebSession(
                     reply = replyOnce,
                 )
             }
-        if (dispatchResult.isFailure && !replied) {
+        if (dispatchResult.isFailure && !replied.get()) {
             val quickId = JsbWireCodec.extractBestEffortCallId(rawPayload)
             replyOnce(
                 JsbWireCodec.encodeResponse(
@@ -772,6 +873,9 @@ internal class MacOsNativeWebSession(
         const val ACTION_ALLOW: Int = 1
         const val ACTION_REISSUE_WITH_HEADER: Int = 2
         const val ACTION_REISSUE_WITHOUT_HEADER: Int = 3
+        internal const val MAX_NATIVE_CREATE_ATTEMPTS: Int = 5
+        internal const val NATIVE_CREATE_RETRY_DELAY_MS: Int = 50
+        internal const val NATIVE_CREATE_FAILED_REASON: String = "macos_native_create_failed"
     }
 }
 

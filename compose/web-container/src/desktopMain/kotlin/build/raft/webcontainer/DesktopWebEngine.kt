@@ -399,6 +399,10 @@ class DesktopWebContainerHostController(
                             initialUrl = config.url,
                             candidateUrl = currentState.url,
                             policy = config.navigationPolicy,
+                            isAllowedCandidate = { candidate ->
+                                config.navigationPolicy.allowNavigation ||
+                                    isSameDocumentIgnoringFragment(config.url.trim(), candidate)
+                            },
                         )
                     if (restoreUrl.isNotBlank()) {
                         val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0

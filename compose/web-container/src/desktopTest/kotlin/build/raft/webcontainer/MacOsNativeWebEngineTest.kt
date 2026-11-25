@@ -56,6 +56,9 @@ class MacOsNativeWebEngineTest {
         val clearedScopes = mutableListOf<String?>()
         val disposedSessions = mutableListOf<Long>()
         var createResult: Boolean = true
+        var autoCompleteClear: Boolean = true
+        var clearSuccessResult: Boolean = true
+        val pendingClearCallbacks = mutableListOf<(Boolean) -> Unit>()
         var backCount: Int = 0
         var forwardCount: Int = 0
         var reloadCount: Int = 0
@@ -141,8 +144,18 @@ class MacOsNativeWebEngineTest {
             jsbReplies += replyId to replyJson
         }
 
-        override fun clearIsolationScope(namedScopeUuid: String?) {
+        override fun clearIsolationScope(
+            namedScopeUuid: String?,
+            onComplete: ((Boolean) -> Unit)?,
+        ): () -> Unit {
             clearedScopes += namedScopeUuid
+            if (onComplete == null) return {}
+            if (autoCompleteClear) {
+                onComplete(clearSuccessResult)
+                return {}
+            }
+            pendingClearCallbacks += onComplete
+            return { pendingClearCallbacks.remove(onComplete) }
         }
 
         override fun disposeSession(sessionId: Long) {
@@ -153,12 +166,14 @@ class MacOsNativeWebEngineTest {
     private fun createEngine(
         ops: FakeMacOsNativeBridgeOps,
         isMacOs: Boolean = true,
+        scheduleRetry: (Int, () -> Unit) -> (() -> Unit) = { _, _ -> {} },
     ): MacOsNativeWebEngine =
         MacOsNativeWebEngine(
             bridgeOps = ops,
             isMacOsHost = { isMacOs },
             postToEdt = { it() },
             canvasFactory = { JPanel() as Component },
+            scheduleRetry = scheduleRetry,
         )
 
     @Test
@@ -477,13 +492,136 @@ class MacOsNativeWebEngineTest {
         val pendingEval = ops.evals.last()
         assertFalse(pendingEval.isolatedWorld)
 
-        // 6. Content process crash triggers recovery reload back to safe initial URL.
+        // 6. Content process crash after pushState to another same-origin path while allowNavigation=false
+        //    must NOT restore the pushed path; it must fall back to the initial fenced URL.
+        handler.onStateChanged(
+            url = "https://app.raft.build/other-secret",
+            title = "Drifted",
+            canGoBack = false,
+            canGoForward = false,
+            isLoading = false,
+            progress = 100,
+        )
         handler.onProcessTerminated(didCrash = true)
-        assertTrue(ops.loadedUrls.any { it.first == "https://app.raft.build/a/1" })
+        assertEquals("https://app.raft.build/a/1", ops.loadedUrls.last().first)
+        assertTrue(ops.loadedUrls.none { it.first == "https://app.raft.build/other-secret" })
         assertTrue(telemetry.any { it is WebContainerTelemetryEvent.RenderProcessGone && it.recovered })
+
+        // 7. Complete the recovery load so the watchdog returns to Ready, then verify same-document
+        //    fragment change under allowNavigation=false DOES restore cleanly on a subsequent crash.
+        handler.onLoadStarted("https://app.raft.build/a/1")
+        handler.onLoadCommit("https://app.raft.build/a/1")
+        handler.onLoadFinished("https://app.raft.build/a/1")
+        handler.onStateChanged(
+            url = "https://app.raft.build/a/1#section-3",
+            title = "Artifact",
+            canGoBack = false,
+            canGoForward = false,
+            isLoading = false,
+            progress = 100,
+        )
+        handler.onProcessTerminated(didCrash = true)
+        assertEquals("https://app.raft.build/a/1#section-3", ops.loadedUrls.last().first)
 
         host.dispose()
         assertNull(cancelledEvalResult)
+    }
+
+    @Test
+    fun nativeCreateFailureReportsLoadFailureAfterBoundedActiveRetriesAndCancelsPendingEvals() = runTest {
+        val ops = FakeMacOsNativeBridgeOps().apply { createResult = false }
+        val scheduledRetries = ArrayDeque<() -> Unit>()
+        var cancelledRetries = 0
+        val engine =
+            createEngine(
+                ops = ops,
+                scheduleRetry = { _, action ->
+                    scheduledRetries.addLast(action)
+                    {
+                        if (scheduledRetries.remove(action)) {
+                            cancelledRetries += 1
+                        }
+                    }
+                },
+            )
+        val failures = mutableListOf<String>()
+        val host =
+            DesktopWebContainerHostController(
+                config = WebContainerConfig(url = "https://app.raft.build/a/1"),
+                engine = engine,
+                events = WebContainerEvents(onLoadFailure = { failures += it }),
+                scope = this,
+            )
+        val session = assertNotNull(host.session as? MacOsNativeWebSession)
+        host.start()
+
+        var evalResult: String? = "sentinel"
+        session.evaluateJavaScript("1+1") { evalResult = it }
+
+        // First attach failure automatically schedules an active retry (no extra Swing resize needed).
+        assertFalse(session.triggerNativeAttachForTest())
+        assertEquals(1, scheduledRetries.size)
+        assertTrue(failures.isEmpty())
+
+        // Drain scheduled retries until MAX_NATIVE_CREATE_ATTEMPTS is reached.
+        repeat(MacOsNativeWebSession.MAX_NATIVE_CREATE_ATTEMPTS - 2) {
+            scheduledRetries.removeFirst().invoke()
+            assertTrue(failures.isEmpty(), "must not emit terminal failure before retry limit")
+            assertEquals(1, scheduledRetries.size)
+        }
+        scheduledRetries.removeFirst().invoke()
+        assertEquals(listOf(MacOsNativeWebSession.NATIVE_CREATE_FAILED_REASON), failures)
+        assertTrue(scheduledRetries.isEmpty(), "no retry scheduled after terminal failure")
+        assertNull(evalResult)
+
+        // Further attach attempts are no-ops and do not re-emit onLoadFailure; new evals immediately return null.
+        assertFalse(session.triggerNativeAttachForTest())
+        assertEquals(1, failures.size)
+        var afterFailureEval: String? = "sentinel"
+        session.evaluateJavaScript("2+2") { afterFailureEval = it }
+        assertNull(afterFailureEval)
+        host.dispose()
+
+        // Disposing mid-retry cancels the pending timer cleanly.
+        val host2 =
+            DesktopWebContainerHostController(
+                config = WebContainerConfig(url = "https://app.raft.build/a/2"),
+                engine = engine,
+                events = WebContainerEvents(),
+                scope = this,
+            )
+        val session2 = assertNotNull(host2.session as? MacOsNativeWebSession)
+        host2.start()
+        assertFalse(session2.triggerNativeAttachForTest())
+        assertEquals(1, scheduledRetries.size)
+        host2.dispose()
+        assertTrue(scheduledRetries.isEmpty())
+        assertEquals(1, cancelledRetries)
+    }
+
+    @Test
+    fun clearIsolationScopeAndAwaitCompletesOnCallbackCleansUpOnTimeoutAndPropagatesFailure() = runTest {
+        val ops = FakeMacOsNativeBridgeOps()
+        val engine = createEngine(ops)
+
+        assertTrue(engine.clearIsolationScopeAndAwait(WebIsolationScope.Default, timeoutMs = 500L))
+        assertTrue(engine.clearIsolationScopeAndAwait(WebIsolationScope.Ephemeral, timeoutMs = 500L))
+        assertTrue(engine.clearIsolationScopeAndAwait(WebIsolationScope.Named("scope-a"), timeoutMs = 500L))
+        assertEquals(listOf(null, deriveDeterministicScopeUuid("scope-a")), ops.clearedScopes)
+
+        // Failed clear callback returns false (never false-positive true).
+        ops.clearSuccessResult = false
+        assertFalse(engine.clearIsolationScopeAndAwait(WebIsolationScope.Default, timeoutMs = 500L))
+        ops.clearSuccessResult = true
+
+        // When WebKit never invokes completionHandler, bounded timeout returns false AND removes pending callback.
+        ops.autoCompleteClear = false
+        assertFalse(engine.clearIsolationScopeAndAwait(WebIsolationScope.Default, timeoutMs = 50L))
+        assertTrue(ops.pendingClearCallbacks.isEmpty(), "timed-out clear must unregister its pending callback")
+
+        // Unavailable engine returns false immediately.
+        val unavailable = createEngine(FakeMacOsNativeBridgeOps(isAvailable = false))
+        assertFalse(unavailable.clearIsolationScopeAndAwait(WebIsolationScope.Default, timeoutMs = 500L))
     }
 
     @Test

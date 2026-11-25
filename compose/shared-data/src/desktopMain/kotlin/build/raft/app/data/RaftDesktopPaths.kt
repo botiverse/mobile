@@ -38,6 +38,10 @@ object RaftDesktopPaths {
         }
     }
 
+    /** Returns the desktop data directory only if it has already been initialized in this process. */
+    @RaftCoreInternalApi fun existingDataDirOrNull(): File? =
+        if (dataDirInitialized) dataDir else null
+
     /** Returns the persistent WebView data directory only if desktop storage was initialized and it exists. */
     @RaftCoreInternalApi fun existingWebViewDataDirOrNull(): File? =
         if (dataDirInitialized) File(dataDir, "webview").takeIf { it.isDirectory } else null

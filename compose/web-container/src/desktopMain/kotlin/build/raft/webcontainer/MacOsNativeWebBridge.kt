@@ -8,6 +8,7 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import javax.swing.SwingUtilities
 
 /** Per-session callback sink registered in [MacOsNativeWebBridge]. */
@@ -75,6 +76,8 @@ internal object MacOsNativeWebBridge {
     private const val LIB_FILENAME = "libraft_webcontainer_macos.dylib"
 
     private val sessions = ConcurrentHashMap<Long, MacOsNativeSessionHandler>()
+    private val nextClearId = AtomicLong(0L)
+    private val pendingClears = ConcurrentHashMap<Long, (Boolean) -> Unit>()
 
     @Volatile
     private var loadedWithoutInit: Boolean = false
@@ -96,51 +99,97 @@ internal object MacOsNativeWebBridge {
         sessions.remove(sessionId)
     }
 
+    /**
+     * Dispatches `WKWebsiteDataStore` cleanup to macOS Thread 0.
+     *
+     * When [onComplete] is `null`, runs fire-and-forget with `clearId = 0L` without allocating a
+     * [pendingClears] entry. When non-null, returns a cancellation handle that removes the pending
+     * callback immediately on timeout/coroutine cancellation, and invokes `onComplete(false)` on
+     * missing library or JNI error (never false-positive `true`).
+     */
+    fun clearIsolationScopeAsync(
+        namedScopeUuid: String?,
+        onComplete: ((Boolean) -> Unit)? = null,
+    ): () -> Unit {
+        if (!isLoaded) {
+            onComplete?.invoke(false)
+            return {}
+        }
+        if (onComplete == null) {
+            runCatching { nativeClearIsolationScope(0L, namedScopeUuid) }
+            return {}
+        }
+        val clearId = nextClearId.incrementAndGet()
+        pendingClears[clearId] = onComplete
+        try {
+            nativeClearIsolationScope(clearId, namedScopeUuid)
+        } catch (_: Throwable) {
+            pendingClears.remove(clearId)?.invoke(false)
+            return {}
+        }
+        return { pendingClears.remove(clearId) }
+    }
+
     private fun loadNativeLibraryIfMacOs(): Boolean {
         val osName = System.getProperty("os.name").orEmpty().lowercase()
         if (!osName.contains("mac") && !osName.contains("darwin")) return false
         return runCatching {
-            // Ensure AWT & libjawt.dylib are loaded in the active JVM before dlsym("JAWT_GetAWT").
+            // Ensure AWT & libjawt.dylib are loaded before probing JAWT_GetAWT.
+            val javaHome = System.getProperty("java.home")?.trim().orEmpty()
             runCatching { Toolkit.getDefaultToolkit() }
-            runCatching { System.loadLibrary("jawt") }
+            val jawtLoadedByName = runCatching { System.loadLibrary("jawt") }.isSuccess
+            if (!jawtLoadedByName && javaHome.isNotEmpty()) {
+                for (rel in listOf("lib/libjawt.dylib", "jre/lib/libjawt.dylib")) {
+                    val candidate = File(javaHome, rel)
+                    if (candidate.isFile && runCatching { System.load(candidate.absolutePath) }.isSuccess) {
+                        break
+                    }
+                }
+            }
 
             // 1. Packaged Raft.app bundle resource (already inside Raft.app/Contents/app/resources/).
+            var dylibLoaded = false
             val appResourcesDir = System.getProperty("compose.application.resources.dir")?.trim().orEmpty()
             if (appResourcesDir.isNotEmpty()) {
                 val bundled = File(appResourcesDir, LIB_FILENAME)
                 if (bundled.isFile) {
                     System.load(bundled.absolutePath)
-                    return@runCatching true
+                    dylibLoaded = true
                 }
             }
 
             // 2. Classpath resource for Gradle run / test invocations.
-            val arch = normalizeMacOsArch(System.getProperty("os.arch").orEmpty())
-            val resourcePath = "/native/darwin-$arch/$LIB_FILENAME"
-            val bytes =
-                MacOsNativeWebBridge::class.java.getResourceAsStream(resourcePath)?.use { it.readBytes() }
-                    ?: return@runCatching false
-            val sha =
-                MessageDigest.getInstance("SHA-256")
-                    .digest(bytes)
-                    .joinToString("") { "%02x".format(it) }
-                    .take(16)
-            val cacheDir = File(System.getProperty("java.io.tmpdir"), "raft-webcontainer-native-$sha")
-            cacheDir.mkdirs()
-            val target = File(cacheDir, LIB_FILENAME)
-            if (!target.isFile || target.length() != bytes.size.toLong()) {
-                val tmp = File(cacheDir, "$LIB_FILENAME.${ProcessHandle.current().pid()}.${Thread.currentThread().id}.tmp")
-                tmp.writeBytes(bytes)
-                try {
-                    Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-                } catch (_: AtomicMoveNotSupportedException) {
-                    Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                } finally {
-                    if (tmp.exists()) runCatching { tmp.delete() }
+            if (!dylibLoaded) {
+                val arch = normalizeMacOsArch(System.getProperty("os.arch").orEmpty())
+                val resourcePath = "/native/darwin-$arch/$LIB_FILENAME"
+                val bytes =
+                    MacOsNativeWebBridge::class.java.getResourceAsStream(resourcePath)?.use { it.readBytes() }
+                        ?: return@runCatching false
+                val sha =
+                    MessageDigest.getInstance("SHA-256")
+                        .digest(bytes)
+                        .joinToString("") { "%02x".format(it) }
+                        .take(16)
+                val cacheDir = File(System.getProperty("java.io.tmpdir"), "raft-webcontainer-native-$sha")
+                cacheDir.mkdirs()
+                val target = File(cacheDir, LIB_FILENAME)
+                if (!target.isFile || target.length() != bytes.size.toLong()) {
+                    val tmp =
+                        File(cacheDir, "$LIB_FILENAME.${ProcessHandle.current().pid()}.${Thread.currentThread().id}.tmp")
+                    tmp.writeBytes(bytes)
+                    try {
+                        Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                    } catch (_: AtomicMoveNotSupportedException) {
+                        Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                    } finally {
+                        if (tmp.exists()) runCatching { tmp.delete() }
+                    }
                 }
+                System.load(target.absolutePath)
             }
-            System.load(target.absolutePath)
-            true
+
+            // Fail closed if JAWT_GetAWT cannot be resolved (cleanly falls back to Wry instead of blank screen).
+            nativeProbeJawt(javaHome.takeIf { it.isNotEmpty() })
         }.getOrDefault(false)
     }
 
@@ -152,6 +201,9 @@ internal object MacOsNativeWebBridge {
         }
 
     // ---- JNI native entry points (all non-blocking / dispatch_async to Thread 0) ---------------
+
+    @JvmStatic
+    external fun nativeProbeJawt(javaHome: String?): Boolean
 
     @JvmStatic
     external fun nativeCreateSession(
@@ -231,7 +283,10 @@ internal object MacOsNativeWebBridge {
     )
 
     @JvmStatic
-    external fun nativeClearIsolationScope(namedScopeUuid: String?)
+    external fun nativeClearIsolationScope(
+        clearId: Long,
+        namedScopeUuid: String?,
+    )
 
     @JvmStatic
     external fun nativeDisposeSession(sessionId: Long)
@@ -374,5 +429,14 @@ internal object MacOsNativeWebBridge {
         url: String,
     ) {
         SwingUtilities.invokeLater { sessions[sessionId]?.onNewWindowRequested(url) }
+    }
+
+    @JvmStatic
+    fun onClearIsolationScopeComplete(clearId: Long) {
+        SwingUtilities.invokeLater {
+            pendingClears.remove(clearId)?.let { callback ->
+                runCatching { callback(true) }
+            }
+        }
     }
 }

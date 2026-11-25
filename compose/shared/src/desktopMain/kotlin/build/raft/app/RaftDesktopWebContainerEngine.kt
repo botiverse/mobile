@@ -147,7 +147,12 @@ class RaftDesktopWebContainerEngine(
     ): DesktopWebSession? {
         if (isWindowsHost()) return null
         if (isMacOsHost() && isPrimaryMacOsEngineAvailable()) {
-            primaryMacOsEngine.createSession(config, callbacks)?.let { return it }
+            primaryMacOsEngine.createSession(config, callbacks)?.let { session ->
+                if (config.isolationScope == WebIsolationScope.Default) {
+                    markDesktopMacOsNativeDefaultScopeUsed(baseDataDir())
+                }
+                return session
+            }
         }
         if (!config.allowScripts) return null
         val channelSecret = generateDesktopChannelSecret()

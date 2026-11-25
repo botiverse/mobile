@@ -7,6 +7,7 @@ import build.raft.app.RaftDesktopWebContainerEngine
 import build.raft.app.RaftDesktopWryBridge
 import build.raft.app.RaftDesktopWryPollSnapshot
 import build.raft.app.RaftDesktopWryWebSession
+import build.raft.app.clearDesktopMacOsNativeDefaultStorage
 import build.raft.app.resolveDesktopWebContainerStorage
 import build.raft.webcontainer.DesktopWebContainerHostController
 import build.raft.webcontainer.DesktopWebEngine
@@ -499,6 +500,140 @@ class RaftDesktopWebContainerEngineTest {
                     "MacOsNativeWebEngine.Default must load libraft_webcontainer_macos.dylib on macOS CI",
                 )
             }
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun macOsNativeDefaultScopeMarkerSurvivesColdRestartForLogoutCleanup() = runTest {
+        val fakeSession =
+            object : DesktopWebSession {
+                override val component: Component = JPanel()
+                override fun start() = Unit
+                override fun setVisible(visible: Boolean) = Unit
+                override fun loadUrl(url: String) = Unit
+                override fun goBack() = Unit
+                override fun goForward() = Unit
+                override fun reload() = Unit
+                override fun stopLoading() = Unit
+                override fun evaluateJavaScript(script: String, callback: ((String?) -> Unit)?) = Unit
+                override fun dispose() = Unit
+            }
+        val fakeBridge = FakeDesktopWryBridge()
+        val tempDir = Files.createTempDirectory("raft-wc-mac-marker-test").toFile()
+        try {
+            val engine =
+                RaftDesktopWebContainerEngine(
+                    bridgeFactory = RaftDesktopWebContainerBridgeFactory { _, _, _, _ -> fakeBridge },
+                    primaryMacOsEngine = DesktopWebEngine { _, _ -> fakeSession },
+                    isPrimaryMacOsEngineAvailable = { true },
+                    isWindowsHost = { false },
+                    isMacOsHost = { true },
+                    baseDataDir = { tempDir },
+                    postToEdt = { it() },
+                    autoStartPollTimer = false,
+                )
+
+            // 1. Ephemeral and Named scopes must NOT create the Default-scope marker.
+            DesktopWebContainerHostController(
+                config = WebContainerConfig(url = "https://app.raft.build/a", isolationScope = WebIsolationScope.Ephemeral),
+                engine = engine,
+                events = WebContainerEvents(),
+                scope = this,
+            ).dispose()
+            DesktopWebContainerHostController(
+                config =
+                    WebContainerConfig(
+                        url = "https://app.raft.build/b",
+                        isolationScope = WebIsolationScope.Named("raft_third_party"),
+                    ),
+                engine = engine,
+                events = WebContainerEvents(),
+                scope = this,
+            ).dispose()
+
+            var clearCalls = 0
+            // Uninitialized dataDir skips cleanly when not loaded, and still clears when already loaded.
+            assertFalse(
+                clearDesktopMacOsNativeDefaultStorage(
+                    baseDataDirProvider = { null },
+                    isAlreadyLoaded = { false },
+                    clearDefaultScope = {
+                        clearCalls += 1
+                        true
+                    },
+                ),
+            )
+            assertEquals(0, clearCalls)
+            assertTrue(
+                clearDesktopMacOsNativeDefaultStorage(
+                    baseDataDirProvider = { null },
+                    isAlreadyLoaded = { true },
+                    clearDefaultScope = {
+                        clearCalls += 1
+                        true
+                    },
+                ),
+            )
+            assertEquals(1, clearCalls)
+
+            assertFalse(
+                clearDesktopMacOsNativeDefaultStorage(
+                    baseDataDirProvider = { tempDir },
+                    isAlreadyLoaded = { false },
+                    clearDefaultScope = {
+                        clearCalls += 1
+                        true
+                    },
+                ),
+            )
+            assertEquals(1, clearCalls, "flag-OFF / unused Default scope must never trigger dlopen on logout")
+
+            // 2. Opening a Default-scope native macOS session writes the marker; cold-restart logout clears & removes it.
+            DesktopWebContainerHostController(
+                config = WebContainerConfig(url = "https://app.raft.build/settings", isolationScope = WebIsolationScope.Default),
+                engine = engine,
+                events = WebContainerEvents(),
+                scope = this,
+            ).dispose()
+
+            // First logout fails/times out -> marker stays on disk so a subsequent logout retries.
+            assertFalse(
+                clearDesktopMacOsNativeDefaultStorage(
+                    baseDataDirProvider = { tempDir },
+                    isAlreadyLoaded = { false },
+                    clearDefaultScope = {
+                        clearCalls += 1
+                        false
+                    },
+                ),
+            )
+            assertEquals(2, clearCalls)
+
+            // Next cold-restart logout succeeds -> marker is deleted so future logouts don't dlopen unnecessarily.
+            assertTrue(
+                clearDesktopMacOsNativeDefaultStorage(
+                    baseDataDirProvider = { tempDir },
+                    isAlreadyLoaded = { false },
+                    clearDefaultScope = {
+                        clearCalls += 1
+                        true
+                    },
+                ),
+            )
+            assertEquals(3, clearCalls)
+            assertFalse(
+                clearDesktopMacOsNativeDefaultStorage(
+                    baseDataDirProvider = { tempDir },
+                    isAlreadyLoaded = { false },
+                    clearDefaultScope = {
+                        clearCalls += 1
+                        true
+                    },
+                ),
+            )
+            assertEquals(3, clearCalls)
         } finally {
             tempDir.deleteRecursively()
         }

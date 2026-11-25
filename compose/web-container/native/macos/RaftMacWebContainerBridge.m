@@ -34,12 +34,44 @@ static jmethodID gOnProcessTerminated = NULL;
 static jmethodID gOnJsbMessage = NULL;
 static jmethodID gOnEvalResult = NULL;
 static jmethodID gOnNewWindowRequested = NULL;
+static jmethodID gOnClearIsolationScopeComplete = NULL;
 
 static char kRaftMacKvoContext = 0;
 static NSMutableDictionary<NSNumber *, id> *gSessions = nil;
 static NSMutableDictionary<NSString *, WKWebsiteDataStore *> *gNamedStores = nil;
 
 typedef jboolean (*RaftJawtGetAwtFn)(JNIEnv *, JAWT *);
+static RaftJawtGetAwtFn gJawtGetAwt = NULL;
+
+static RaftJawtGetAwtFn RaftResolveJawtGetAwt(NSString *javaHome) {
+    if (gJawtGetAwt != NULL) return gJawtGetAwt;
+    RaftJawtGetAwtFn fn = (RaftJawtGetAwtFn)dlsym(RTLD_DEFAULT, "JAWT_GetAWT");
+    if (fn != NULL) {
+        gJawtGetAwt = fn;
+        return fn;
+    }
+    NSMutableArray<NSString *> *candidates = [NSMutableArray array];
+    if (javaHome.length > 0) {
+        [candidates addObject:[javaHome stringByAppendingPathComponent:@"lib/libjawt.dylib"]];
+        [candidates addObject:[javaHome stringByAppendingPathComponent:@"jre/lib/libjawt.dylib"]];
+    }
+    [candidates addObject:@"@rpath/libjawt.dylib"];
+    for (NSString *path in candidates) {
+        void *handle = dlopen(path.UTF8String, RTLD_LAZY | RTLD_GLOBAL);
+        if (handle != NULL) {
+            fn = (RaftJawtGetAwtFn)dlsym(handle, "JAWT_GetAWT");
+            if (fn != NULL) {
+                gJawtGetAwt = fn;
+                return fn;
+            }
+        }
+    }
+    fn = (RaftJawtGetAwtFn)dlsym(RTLD_DEFAULT, "JAWT_GetAWT");
+    if (fn != NULL) {
+        gJawtGetAwt = fn;
+    }
+    return fn;
+}
 
 static NSString *RaftStringFromJString(JNIEnv *env, jstring value) {
     if (value == NULL) return nil;
@@ -411,7 +443,6 @@ static void RaftEnsureGlobalsOnMain(void) {
 
 - (void)handleNavigationError:(NSError *)error webView:(WKWebView *)webView {
     if (self.disposed || webView != self.webView) return;
-    self.pendingHostLoadUrl = nil;
     NSString *failingUrl = error.userInfo[NSURLErrorFailingURLStringErrorKey];
     BOOL isCancelled = ([error.domain isEqualToString:NSURLErrorDomain] && error.code == NSURLErrorCancelled)
         || ([error.domain isEqualToString:@"WebKitErrorDomain"] && error.code == 102
@@ -423,6 +454,7 @@ static void RaftEnsureGlobalsOnMain(void) {
         }
         return;
     }
+    self.pendingHostLoadUrl = nil;
     NSString *reason = [NSString stringWithFormat:@"%@:%ld", error.domain ?: @"WKError", (long)error.code];
     jlong sid = self.sessionId;
     RaftWithJniEnv(^(JNIEnv *env) {
@@ -545,16 +577,28 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
         env, gBridgeClass, "onEvalResult", "(JJLjava/lang/String;)V");
     gOnNewWindowRequested = (*env)->GetStaticMethodID(
         env, gBridgeClass, "onNewWindowRequested", "(JLjava/lang/String;)V");
+    gOnClearIsolationScopeComplete = (*env)->GetStaticMethodID(
+        env, gBridgeClass, "onClearIsolationScopeComplete", "(J)V");
 
     if (gOnNavigationDecisionRequest == NULL || gOnStateChanged == NULL || gOnLoadStarted == NULL ||
         gOnLoadCommit == NULL || gOnLoadFinished == NULL || gOnLoadFailure == NULL ||
         gOnProcessTerminated == NULL || gOnJsbMessage == NULL || gOnEvalResult == NULL ||
-        gOnNewWindowRequested == NULL) {
+        gOnNewWindowRequested == NULL || gOnClearIsolationScopeComplete == NULL) {
         (*env)->DeleteGlobalRef(env, gBridgeClass);
         gBridgeClass = NULL;
         return JNI_ERR;
     }
     return JNI_VERSION_1_8;
+}
+
+JNIEXPORT jboolean JNICALL Java_build_raft_webcontainer_MacOsNativeWebBridge_nativeProbeJawt(
+    JNIEnv *env, jclass clazz, jstring jJavaHome
+) {
+    (void)clazz;
+    @autoreleasepool {
+        NSString *javaHome = RaftStringFromJString(env, jJavaHome);
+        return (RaftResolveJawtGetAwt(javaHome) != NULL) ? JNI_TRUE : JNI_FALSE;
+    }
 }
 
 JNIEXPORT jboolean JNICALL Java_build_raft_webcontainer_MacOsNativeWebBridge_nativeCreateSession(
@@ -582,7 +626,7 @@ JNIEXPORT jboolean JNICALL Java_build_raft_webcontainer_MacOsNativeWebBridge_nat
     (void)clazz;
     if (awtCanvas == NULL) return JNI_FALSE;
 
-    RaftJawtGetAwtFn getAwt = (RaftJawtGetAwtFn)dlsym(RTLD_DEFAULT, "JAWT_GetAWT");
+    RaftJawtGetAwtFn getAwt = RaftResolveJawtGetAwt(nil);
     if (getAwt == NULL) return JNI_FALSE;
 
     JAWT awt;
@@ -928,8 +972,16 @@ JNIEXPORT void JNICALL Java_build_raft_webcontainer_MacOsNativeWebBridge_nativeC
     });
 }
 
+static void RaftNotifyClearIsolationScopeComplete(jlong clearId) {
+    if (clearId == 0) return;
+    RaftWithJniEnv(^(JNIEnv *cbEnv) {
+        if (gOnClearIsolationScopeComplete == NULL) return;
+        (*cbEnv)->CallStaticVoidMethod(cbEnv, gBridgeClass, gOnClearIsolationScopeComplete, clearId);
+    });
+}
+
 JNIEXPORT void JNICALL Java_build_raft_webcontainer_MacOsNativeWebBridge_nativeClearIsolationScope(
-    JNIEnv *env, jclass clazz, jstring jNamedScopeUuid
+    JNIEnv *env, jclass clazz, jlong clearId, jstring jNamedScopeUuid
 ) {
     (void)clazz;
     NSString *namedScopeUuid = RaftStringFromJString(env, jNamedScopeUuid);
@@ -940,7 +992,9 @@ JNIEXPORT void JNICALL Java_build_raft_webcontainer_MacOsNativeWebBridge_nativeC
         if (namedScopeUuid.length == 0) {
             [[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:allTypes
                                                        modifiedSince:epoch
-                                                   completionHandler:^{}];
+                                                   completionHandler:^{
+                RaftNotifyClearIsolationScopeComplete(clearId);
+            }];
             return;
         }
         if (@available(macOS 14.0, *)) {
@@ -952,13 +1006,23 @@ JNIEXPORT void JNICALL Java_build_raft_webcontainer_MacOsNativeWebBridge_nativeC
                             modifiedSince:epoch
                         completionHandler:^{
                     if (uuid != nil) {
-                        [WKWebsiteDataStore removeDataStoreForIdentifier:uuid completionHandler:^(__unused NSError *err) {}];
+                        [WKWebsiteDataStore removeDataStoreForIdentifier:uuid completionHandler:^(__unused NSError *err) {
+                            RaftNotifyClearIsolationScopeComplete(clearId);
+                        }];
+                    } else {
+                        RaftNotifyClearIsolationScopeComplete(clearId);
                     }
                 }];
-            } else if (uuid != nil) {
-                [WKWebsiteDataStore removeDataStoreForIdentifier:uuid completionHandler:^(__unused NSError *err) {}];
+                return;
+            }
+            if (uuid != nil) {
+                [WKWebsiteDataStore removeDataStoreForIdentifier:uuid completionHandler:^(__unused NSError *err) {
+                    RaftNotifyClearIsolationScopeComplete(clearId);
+                }];
+                return;
             }
         }
+        RaftNotifyClearIsolationScopeComplete(clearId);
     });
 }
 
