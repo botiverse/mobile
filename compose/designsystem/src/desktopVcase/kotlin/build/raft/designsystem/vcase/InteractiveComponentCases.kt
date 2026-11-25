@@ -61,6 +61,7 @@ import build.raft.designsystem.components.RaftDrawerFill
 import build.raft.designsystem.components.RaftDrawerSurface
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftFieldDescriptionPosition
 import build.raft.designsystem.components.RaftFieldItem
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftFilterChip
@@ -270,6 +271,38 @@ fun FieldGallery() {
             }
             RaftFormSection("Runtime", status = "Optional") {
                 RaftField(label = "Model") { RaftSelectTrigger("Claude Sonnet", {}) }
+            }
+        }
+    }
+}
+
+/**
+ * [RaftField] with [RaftFieldDescriptionPosition.BelowLabel] (web ActionCardChoiceField): the
+ * description under the label, above the options, and still there with the error under them.
+ */
+@VCase("ds.field.description-below-label")
+@Composable
+fun FieldDescriptionBelowLabel() {
+    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column(Modifier.width(310.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            RaftField(label = "Which time zone?", description = "All times are UTC.", descriptionPosition = RaftFieldDescriptionPosition.BelowLabel) {
+                RaftTextField("UTC", {})
+            }
+            RaftField(
+                label = "Which time zone?",
+                description = "All times are UTC.",
+                error = "Choose an option first.",
+                required = true,
+                descriptionPosition = RaftFieldDescriptionPosition.BelowLabel,
+            ) { RaftTextField("", {}, placeholder = "UTC") }
+        }
+        Column(Modifier.width(310.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Caption("The default: under the control, the error in its place")
+            RaftField(label = "Which time zone?", description = "All times are UTC.", error = "Choose an option first.") {
+                RaftTextField("", {}, placeholder = "UTC")
+            }
+            RaftField(label = "Which time zone?", description = "All times are UTC.", enabled = false, descriptionPosition = RaftFieldDescriptionPosition.BelowLabel) {
+                RaftTextField("UTC", {})
             }
         }
     }
@@ -884,6 +917,56 @@ fun DialogSheetCenteredGallery() {
             listOf("proj-uiux", "design", "launch-week", "Mahua").forEach { name ->
                 RaftText(name, Modifier.padding(horizontal = 20.dp, vertical = 10.dp), style = RaftTheme.typography.callout)
             }
+        }
+    }
+}
+
+/**
+ * [RaftDialogSheetCenteredSurface]'s footer as a question card uses it (web ActionCardFormSheet):
+ * no commit button with Cancel still there (a lone single choice), and "Submitted · Undo" at the
+ * footer's start with Cancel left out while the answer waits.
+ */
+@VCase("ds.dialog-sheet-centered.footer")
+@Composable
+fun DialogSheetCenteredFooter() {
+    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Caption("No commit button: Cancel stays")
+        RaftDialogSheetCenteredSurface(
+            title = "Which time zone?",
+            commitLabel = null,
+            onCommit = {},
+            onClose = {},
+            modifier = Modifier.width(448.dp),
+        ) {
+            RaftText("UTC", Modifier.padding(horizontal = 20.dp, vertical = 10.dp), style = RaftTheme.typography.callout)
+        }
+        Caption("footerStart \"Submitted · Undo\", cancelVisible = false, no commit")
+        RaftDialogSheetCenteredSurface(
+            title = "Which time zone?",
+            commitLabel = null,
+            onCommit = {},
+            onClose = {},
+            modifier = Modifier.width(448.dp),
+            cancelVisible = false,
+            footerStart = {
+                RaftText("Submitted · ", style = RaftTheme.typography.callout, color = RaftTheme.colors.foregroundMuted)
+                RaftButton(text = "Undo", onClick = {}, variant = RaftButtonVariant.Ghost, size = RaftButtonSize.Md)
+            },
+        ) {
+            RaftText("UTC", Modifier.padding(horizontal = 20.dp, vertical = 10.dp), style = RaftTheme.typography.callout)
+        }
+        Caption("footerStart beside Back and Next")
+        RaftDialogSheetCenteredSurface(
+            title = "Question 2 of 3",
+            commitLabel = "Next",
+            onCommit = {},
+            onClose = {},
+            modifier = Modifier.width(448.dp),
+            onBack = {},
+            backLabel = "Back",
+            footerStart = { RaftText("Draft saved", style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted) },
+        ) {
+            RaftText("UTC", Modifier.padding(horizontal = 20.dp, vertical = 10.dp), style = RaftTheme.typography.callout)
         }
     }
 }
