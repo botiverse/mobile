@@ -36,10 +36,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -146,6 +148,44 @@ internal const val RaftScreenshotFeedbackCancelButtonTag = "screenshot_feedback_
 internal const val RaftScreenshotFeedbackErrorTag = "screenshot_feedback_error"
 
 private const val APP_SHELL_ROUTE_NAME = "compose_slock_app_shell"
+internal const val SCREENSHOT_FEEDBACK_PROMPT_DEFAULT_BOTTOM_PADDING_DP = 20
+internal const val SCREENSHOT_FEEDBACK_PROMPT_FALLBACK_TAB_BAR_CLEARANCE_DP = 72
+internal const val SCREENSHOT_FEEDBACK_PROMPT_ABOVE_TAB_BAR_GAP_DP = 16
+
+internal fun isScreenshotFeedbackAppShellHostPage(pageName: String?): Boolean {
+    val normalized = pageName?.trim().orEmpty()
+    return normalized == APP_SHELL_ROUTE_NAME || normalized == RAFT_APP_SHELL_CHILD_TAB_PAGE
+}
+
+/**
+ * Resolves the prompt pill's bottom padding from the window's bottom edge for the **currently
+ * visible** host page ([hostPageName]), never the page where the screenshot was taken
+ * (`state.pageContext.pageName`):
+ * - Non-shell pages (Settings such as `compose_settings_home` / `compose_app_shell_server_page`,
+ *   Thread, Feedback, ...) sit [SCREENSHOT_FEEDBACK_PROMPT_DEFAULT_BOTTOM_PADDING_DP] above [safeBottom].
+ * - App-shell pages (`compose_slock_app_shell` and defensive match `compose_app_shell_child_tab`)
+ *   clear [activeShellBottomBarBandHeight] (already measured from the window bottom edge, including
+ *   the home indicator / Liquid Glass floating `UITabBar`) by [SCREENSHOT_FEEDBACK_PROMPT_ABOVE_TAB_BAR_GAP_DP]
+ *   when a bottom tab bar is showing, drop to the base padding when the shell reports `0.dp`
+ *   (wide rail / desktop / hidden bar), and fall back to `safeBottom + 72.dp` when no live shell
+ *   band has been reported yet.
+ */
+internal fun resolveScreenshotFeedbackPromptBottomPadding(
+    hostPageName: String?,
+    safeBottom: Dp,
+    activeShellBottomBarBandHeight: Dp? = null,
+): Dp {
+    val clampedSafeBottom = safeBottom.coerceAtLeast(0.dp)
+    val basePadding = clampedSafeBottom + SCREENSHOT_FEEDBACK_PROMPT_DEFAULT_BOTTOM_PADDING_DP.dp
+    if (!isScreenshotFeedbackAppShellHostPage(hostPageName)) return basePadding
+    return when {
+        activeShellBottomBarBandHeight == null ->
+            clampedSafeBottom + SCREENSHOT_FEEDBACK_PROMPT_FALLBACK_TAB_BAR_CLEARANCE_DP.dp
+        activeShellBottomBarBandHeight > 0.dp ->
+            maxOf(basePadding, activeShellBottomBarBandHeight + SCREENSHOT_FEEDBACK_PROMPT_ABOVE_TAB_BAR_GAP_DP.dp)
+        else -> basePadding
+    }
+}
 
 /**
  * Mounted globally inside every `RaftCmpRoot` (via `RaftCmpRouter.installOverlayProvider`).
@@ -216,6 +256,11 @@ internal fun RaftScreenshotFeedbackRootOverlay() {
     if (!isOwner) return
     val state by RaftScreenshotFeedbackRuntime.controller.state.collectAsState()
     if (state is RaftScreenshotFeedbackState.Idle) return
+    val bottomBarBandRevision by RaftScreenshotFeedbackRuntime.shellBottomBarBandRevision.collectAsState()
+    val activeBottomBarBandDp =
+        remember(host, bottomBarBandRevision) {
+            RaftScreenshotFeedbackRuntime.activeShellBottomBarBandDpForHost(host)
+        }
 
     val log: (String) -> Unit = remember { { line -> raftLogInfo("RaftScreenshotFeedback", line) } }
     val diagnosticsUploader: SettingsFeedbackDiagnosticsUploader =
@@ -292,6 +337,8 @@ internal fun RaftScreenshotFeedbackRootOverlay() {
                     },
                 )
             },
+            hostPageName = args.pageName,
+            activeShellBottomBarBandHeight = activeBottomBarBandDp?.dp,
         )
     }
 }
@@ -310,6 +357,8 @@ internal fun RaftScreenshotFeedbackOverlayContent(
     onDetachScreenshot: () -> Unit,
     onSheetDismiss: () -> Unit,
     onSubmit: () -> Unit,
+    hostPageName: String? = null,
+    activeShellBottomBarBandHeight: Dp? = null,
     modifier: Modifier = Modifier,
 ) {
     when (state) {
@@ -317,6 +366,8 @@ internal fun RaftScreenshotFeedbackOverlayContent(
         is RaftScreenshotFeedbackState.Prompting -> {
             RaftScreenshotFeedbackPromptPill(
                 state = state,
+                hostPageName = hostPageName,
+                activeShellBottomBarBandHeight = activeShellBottomBarBandHeight,
                 onTap = onPromptTap,
                 onDismiss = onPromptDismiss,
                 modifier = modifier,
@@ -338,6 +389,8 @@ internal fun RaftScreenshotFeedbackOverlayContent(
 @Composable
 private fun RaftScreenshotFeedbackPromptPill(
     state: RaftScreenshotFeedbackState.Prompting,
+    hostPageName: String?,
+    activeShellBottomBarBandHeight: Dp?,
     onTap: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -352,51 +405,77 @@ private fun RaftScreenshotFeedbackPromptPill(
             entry.animateTo(1f, tween(RaftMotion.SlideMillis, easing = RaftMotion.EaseSlide))
         }
     }
-    val bottomClearance = if (state.pageContext.pageName == APP_SHELL_ROUTE_NAME) 72.dp else 20.dp
-    val safeInsets = rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+    val safeDrawing = WindowInsets.safeDrawing
+    val horizontalSafeInsets =
+        rememberRaftStableWindowInsets(safeDrawing.only(WindowInsetsSides.Horizontal))
     val pillShape = CircleShape
 
     // Non-blocking container: no full-screen click/pointer handler so touches pass through to the page.
+    // Bottom clearance is resolved during layout (never reading rememberRaftStableWindowInsets during
+    // composition, which would loop recomposition on iOS where WindowInsets.safeDrawing allocates per read).
     Box(
         modifier =
             modifier
                 .fillMaxSize()
-                .windowInsetsPadding(safeInsets)
-                .padding(start = RaftSpacing.Lg, end = RaftSpacing.Lg, bottom = bottomClearance),
-        contentAlignment = Alignment.BottomCenter,
+                .windowInsetsPadding(horizontalSafeInsets)
+                .padding(horizontal = RaftSpacing.Lg),
     ) {
-        Row(
+        Box(
             modifier =
-                Modifier
-                    .testTag(RaftScreenshotFeedbackPromptPillTag)
-                    .widthIn(max = 384.dp)
-                    .graphicsLayer {
-                        val hidden = 1f - entry.value
-                        alpha = entry.value
-                        translationY = 24.dp.toPx() * hidden
+                Modifier.layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                    val layoutWidth = if (constraints.hasBoundedWidth) constraints.maxWidth else placeable.width
+                    val layoutHeight = if (constraints.hasBoundedHeight) constraints.maxHeight else placeable.height
+                    layout(layoutWidth, layoutHeight) {
+                        val safeBottom = safeDrawing.getBottom(this@layout).toDp()
+                        val bottomPaddingPx =
+                            resolveScreenshotFeedbackPromptBottomPadding(
+                                hostPageName = hostPageName,
+                                safeBottom = safeBottom,
+                                activeShellBottomBarBandHeight = activeShellBottomBarBandHeight,
+                            ).roundToPx()
+                        val x =
+                            Alignment.CenterHorizontally
+                                .align(placeable.width, layoutWidth, layoutDirection)
+                                .coerceAtLeast(0)
+                        val y = (layoutHeight - placeable.height - bottomPaddingPx).coerceAtLeast(0)
+                        placeable.place(x, y)
                     }
-                    .shadow(elevation = if (RaftTheme.isDark) 8.dp else 4.dp, shape = pillShape)
-                    .clip(pillShape)
-                    .background(colors.layerPopover, pillShape)
-                    .border(RaftStroke.Hairline, colors.lineSeam, pillShape)
-                    .padding(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                },
         ) {
-            RaftButton(
-                text = stringResource(Res.string.screenshot_feedback_prompt_action),
-                onClick = onTap,
-                modifier = Modifier.testTag(RaftScreenshotFeedbackPromptActionTag).weight(1f, fill = false),
-                variant = RaftButtonVariant.Ghost,
-                size = RaftButtonSize.Md,
-                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Feedback) },
-            )
-            RaftCloseButton(
-                onClick = onDismiss,
-                modifier = Modifier.testTag(RaftScreenshotFeedbackPromptDismissTag),
-                label = stringResource(Res.string.common_dismiss),
-                size = RaftCloseButtonSize.Dialog,
-            )
+            Row(
+                modifier =
+                    Modifier
+                        .testTag(RaftScreenshotFeedbackPromptPillTag)
+                        .widthIn(max = 384.dp)
+                        .graphicsLayer {
+                            val hidden = 1f - entry.value
+                            alpha = entry.value
+                            translationY = 24.dp.toPx() * hidden
+                        }
+                        .shadow(elevation = if (RaftTheme.isDark) 8.dp else 4.dp, shape = pillShape)
+                        .clip(pillShape)
+                        .background(colors.layerPopover, pillShape)
+                        .border(RaftStroke.Hairline, colors.lineSeam, pillShape)
+                        .padding(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                RaftButton(
+                    text = stringResource(Res.string.screenshot_feedback_prompt_action),
+                    onClick = onTap,
+                    modifier = Modifier.testTag(RaftScreenshotFeedbackPromptActionTag).weight(1f, fill = false),
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Md,
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Feedback) },
+                )
+                RaftCloseButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.testTag(RaftScreenshotFeedbackPromptDismissTag),
+                    label = stringResource(Res.string.common_dismiss),
+                    size = RaftCloseButtonSize.Dialog,
+                )
+            }
         }
     }
 }
@@ -644,7 +723,7 @@ internal fun localizedScreenshotFeedbackPageLabelResource(
 ): StringResource? {
     val normalizedPage = context.pageName.trim()
     val normalizedTab = context.activeTab?.trim()?.takeIf { it.isNotEmpty() }
-    if ((normalizedPage == APP_SHELL_ROUTE_NAME || normalizedPage == "compose_app_shell_child_tab") && normalizedTab != null) {
+    if ((normalizedPage == APP_SHELL_ROUTE_NAME || normalizedPage == RAFT_APP_SHELL_CHILD_TAB_PAGE) && normalizedTab != null) {
         return when (normalizedTab.lowercase()) {
             "home", "chat" -> Res.string.tab_home
             "activity", "inbox" -> Res.string.tab_activity

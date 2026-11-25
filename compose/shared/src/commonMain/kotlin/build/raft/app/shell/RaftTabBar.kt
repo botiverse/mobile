@@ -180,6 +180,47 @@ internal fun raftNativeHostTabBarContentInset(nativeBand: Dp, bottomSafeArea: Dp
     return band + RaftAppSpacing.Lg
 }
 
+/**
+ * Physical height (from the window's bottom edge, including the home-indicator safe area) of the
+ * currently visible bottom tab bar, or `0.dp` when the bar is hidden or on another edge (top/side
+ * on iPad). Mirrors [RaftNativeTabBarToastAvoidance] and [raftSharedBottomTabBarHostHeight] so
+ * overlays outside the shell's own toast layer (such as the screenshot feedback prompt pill) stay
+ * clear of the iOS 26 Liquid Glass floating `UITabBar` and Android bottom navigation bar without
+ * double-counting the bottom safe area.
+ */
+internal fun raftNativeHostActiveBottomTabBarBandHeight(
+    band: RaftNativeTabBarBand?,
+    visible: Boolean,
+    bottomSafeArea: Dp,
+): Dp =
+    when {
+        !visible -> 0.dp
+        band == null -> RaftNativeHostTabBarFallbackHeight + bottomSafeArea
+        band.edge == RaftNativeTabBarEdge.Bottom ->
+            if (band.points > 0.0) band.points.toFloat().dp else RaftNativeHostTabBarFallbackHeight + bottomSafeArea
+        else -> 0.dp
+    }
+
+@Composable
+internal fun raftAppActiveBottomTabBarBandHeight(bottomSafeArea: Dp): Dp {
+    val nativeTabBar = raftNativeTabBarBridge()
+    if (nativeTabBar != null) {
+        val band by nativeTabBar.band.collectAsState()
+        val state by nativeTabBar.state.collectAsState()
+        return raftNativeHostActiveBottomTabBarBandHeight(
+            band = band,
+            visible = state.visible,
+            bottomSafeArea = bottomSafeArea,
+        )
+    }
+    return when (raftAppTabBarRenderer()) {
+        RaftAppTabBarRenderer.NativeHost -> RaftNativeHostTabBarFallbackHeight + bottomSafeArea
+        RaftAppTabBarRenderer.IosLiquidGlass,
+        RaftAppTabBarRenderer.AndroidFloating,
+        RaftAppTabBarRenderer.SharedCompose -> raftSharedBottomTabBarHostHeight(bottomSafeArea)
+    }
+}
+
 internal fun raftAppBottomTabBarContentInset(
     renderer: RaftAppTabBarRenderer,
     bottomSafeArea: Dp

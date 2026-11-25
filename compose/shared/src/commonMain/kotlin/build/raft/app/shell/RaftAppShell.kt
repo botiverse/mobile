@@ -8,9 +8,13 @@ import build.raft.designsystem.focus.RaftFocusRegion
 import build.raft.designsystem.focus.RaftFocusRegionHost
 import build.raft.designsystem.focus.raftObserveFocusInteractions
 import build.raft.app.resources.*
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.ui.nativeEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -300,6 +304,10 @@ internal fun RaftAppShellSurface(
                         ) { shellOverlay() }
                     }
                 }
+                RaftAppShellScreenshotBottomBarReporter(
+                    bottomTabsShown = bottomTabsShown,
+                    bottomSafeArea = shellScope.bottomSafeArea,
+                )
                 if (showBottomTabs) {
                     // raft-design #620: gone at once when the keyboard opens, back with a short
                     // slide/fade up when it closes. A page that starts showing the bar (keyboard
@@ -523,6 +531,39 @@ private fun RaftAppShellNetworkBanner() {
             style = RaftType.ButtonBold,
             color = RaftColor.StickerInk,
             maxLines = 1
+        )
+    }
+}
+
+/**
+ * Leaf reporter isolating [raftAppActiveBottomTabBarBandHeight]'s `StateFlow` collections from
+ * [RaftAppShellSurface] so native tab-bar state ticks (badges, selection) never recompose the
+ * shell body, while scoping reported heights to this root's `RaftCmpHost` (`pager.host`) for
+ * multi-window safety (no-op in standalone unit tests without a `RaftCmpRoot` host).
+ */
+@Composable
+private fun RaftAppShellScreenshotBottomBarReporter(
+    bottomTabsShown: Boolean,
+    bottomSafeArea: Dp,
+) {
+    val host = (LocalActivity.current.getPager() as? Pager)?.host ?: return
+    val activeBottomBarBandDp =
+        if (bottomTabsShown) {
+            raftAppActiveBottomTabBarBandHeight(bottomSafeArea)
+        } else {
+            0.dp
+        }
+    val token = remember { Any() }
+    DisposableEffect(host, token) {
+        onDispose {
+            RaftScreenshotFeedbackRuntime.setActiveShellBottomBarBandDp(host, token, null)
+        }
+    }
+    SideEffect {
+        RaftScreenshotFeedbackRuntime.setActiveShellBottomBarBandDp(
+            hostKey = host,
+            token = token,
+            heightDp = activeBottomBarBandDp.value,
         )
     }
 }
