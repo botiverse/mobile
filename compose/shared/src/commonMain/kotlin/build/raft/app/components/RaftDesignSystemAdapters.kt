@@ -12,6 +12,7 @@ import build.raft.app.raftAppEditorBehavior
 import build.raft.app.raftPlatformHasFinePointer
 import build.raft.app.raftResolveShowKeyboardOnFocus
 import build.raft.app.raftResolvedKeyboardOptions
+import build.raft.app.rememberRaftHardwareKeyboardConnected
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
@@ -188,12 +189,13 @@ internal fun rememberRaftDesignSystemEditor(
     onFocus: () -> Unit,
     onBlur: () -> Unit
 ): RaftDesignSystemEditor {
-    val keyboardIntent = remember { RaftEditorKeyboardIntent(initialArmed = autoFocus) }
+    val keyboardIntent = remember { RaftEditorKeyboardIntent() }
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
     val effectiveShowKeyboardOnFocus =
         raftResolveShowKeyboardOnFocus(
             desktopHost = raftPlatformHasFinePointer(),
-            explicitKeyboardIntentArmed = keyboardIntent.armed,
+            hardwareKeyboardConnected = rememberRaftHardwareKeyboardConnected(),
+            suppressKeyboardOnFocus = keyboardIntent.suppressKeyboardOnFocus,
             callerOverride = keyboardOptions.showKeyboardOnFocus,
         )
     val resolvedKeyboardOptions =
@@ -207,7 +209,8 @@ internal fun rememberRaftDesignSystemEditor(
             keyboardHeightChange = keyboardHeightChange,
             focusRequester = focusRequester,
             onFocus = onFocus,
-            onBlur = onBlur
+            onBlur = onBlur,
+            keyboardIntent = keyboardIntent,
         )
     LaunchedEffect(autoFocus) {
         if (autoFocus) {

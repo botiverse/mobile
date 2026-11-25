@@ -2833,14 +2833,17 @@ internal fun ThreadComposerContentLeaf(
                         generation = suggestionPortalGeneration,
                         onFocusedChanged = { focused = it }
                     )
-                // FocusOnly system requests leave showKeyboardOnFocus = false and never raise the IME.
+                // FocusOnly system requests suppress showKeyboardOnFocus on touch-only hosts so
+                // focus moves without raising the soft keyboard (while preserving hardware CJK IME).
                 if (explicitPlan.showKeyboard) {
                     composerKeyboardIntent.focusWithKeyboard(
                         focusRequester = composerFocusRequester,
                         softwareKeyboardController = softwareKeyboardController,
                     )
                 } else {
-                    runCatching { composerFocusRequester.requestFocus() }
+                    composerKeyboardIntent.focusWithoutKeyboard(
+                        focusRequester = composerFocusRequester,
+                    )
                 }
             }
         } else if (explicitFocusRequest) {
@@ -2884,7 +2887,9 @@ internal fun ThreadComposerContentLeaf(
                         softwareKeyboardController = softwareKeyboardController,
                     )
                 } else if (!focusedByExplicit) {
-                    runCatching { composerFocusRequester.requestFocus() }
+                    composerKeyboardIntent.focusWithoutKeyboard(
+                        focusRequester = composerFocusRequester,
+                    )
                 }
             }
         }
@@ -3905,7 +3910,11 @@ internal fun ThreadComposerContentLeaf(
                                                 )
                                             }
                                         } else {
-                                            runCatching { composerFocusRequester.requestFocus() }
+                                            composerFocusScope.launch {
+                                                composerKeyboardIntent.focusWithoutKeyboard(
+                                                    focusRequester = composerFocusRequester,
+                                                )
+                                            }
                                         }
                                     }
                                 },

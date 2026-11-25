@@ -1794,56 +1794,66 @@ internal val LocalRaftDialogKeyboardHeightChange =
  * (Axis 3 of the composer/editor IME state model: Window Focus × Editor Focus & Cursor × Explicit
  * Keyboard-Show Intent).
  *
- * - On desktop hosts ([desktopHost] == true), there is no soft keyboard and the platform text
- *   input session is needed immediately on focus for hardware CJK IME composition -> `true`.
- * - On touch hosts (Android/iOS, [desktopHost] == false), passive/non-tap focus transitions
- *   (autofocus on open with a hardware keyboard, `FocusOnly` requests, window-focus regain,
- *   recomposition updates) must not auto-raise the soft keyboard -> `false` by default, and
- *   `true` only while [explicitKeyboardIntentArmed] is set. Direct user taps on state-based
- *   `BasicTextField` bypass `showKeyboardOnFocus == false` natively via
- *   `TextFieldDecoratorModifierNode.startInputSession(fromTap = true)`.
+ * - By default (`suppressKeyboardOnFocus == false`), returns `true` so semantic / accessibility
+ *   `RequestFocus` actions (TalkBack, Switch Access, instrumentation), direct taps, and connected
+ *   hardware keyboards all establish a platform `InputConnection` cleanly (including hardware CJK
+ *   IME composition). Floating-window keyboard flash prevention is handled at the platform session
+ *   boundary by [RaftWindowPlatformInputGate], without disabling normal editor focus sessions.
+ * - On touch-only hosts (`!desktopHost && !hardwareKeyboardConnected`), explicit `FocusOnly`
+ *   programmatic requests set [suppressKeyboardOnFocus] to `true` -> `showKeyboardOnFocus = false`
+ *   so focus moves without opening the soft keyboard; direct user taps still bypass it natively
+ *   via `TextFieldDecoratorModifierNode.startInputSession(fromTap = true)`.
  */
 internal fun raftResolveShowKeyboardOnFocus(
     desktopHost: Boolean,
-    explicitKeyboardIntentArmed: Boolean,
+    hardwareKeyboardConnected: Boolean,
+    suppressKeyboardOnFocus: Boolean,
     callerOverride: Boolean? = null,
-): Boolean = callerOverride ?: (desktopHost || explicitKeyboardIntentArmed)
+): Boolean = callerOverride ?: (desktopHost || hardwareKeyboardConnected || !suppressKeyboardOnFocus)
 
 /**
- * Explicit programmatic keyboard-show intent (Axis 3) for a [TextField] or design-system editor.
+ * Explicit programmatic keyboard-show / focus-only intent (Axis 3) for a [TextField] or
+ * design-system editor.
  *
- * Arming [armed] temporarily sets `KeyboardOptions(showKeyboardOnFocus = true)` around an explicit
- * programmatic focus request (`autoFocus = true`, Reply / Quote / Mention focus, image-editor
- * handoff return, blank-area composer card tap) so Compose's `TextFieldDecoratorModifierNode`
- * starts its platform input session and opens the IME. Disarming back to `false` once focus/session
- * settles calls `startInputSession(fromTap = false)` which returns early without disposing the
- * active input session, leaving the open keyboard completely undisturbed.
+ * - Default state leaves [suppressKeyboardOnFocus] `false` (`showKeyboardOnFocus = true`).
+ * - [focusWithoutKeyboard] sets [suppressKeyboardOnFocus] `true` (`showKeyboardOnFocus = false` on
+ *   touch-only hosts) before calling `requestFocus()`, keeping the soft keyboard down until the
+ *   editor blurs, receives an explicit [focusWithKeyboard], or is tapped directly.
+ * - [focusWithKeyboard] clears any prior suppression, requests focus, and invokes
+ *   `softwareKeyboardController?.show()` (waking any [RaftWindowPlatformInputGate] parked after
+ *   external window-focus loss).
  */
 @Stable
-internal class RaftEditorKeyboardIntent(initialArmed: Boolean = false) {
-    var armed: Boolean by mutableStateOf(initialArmed)
+internal class RaftEditorKeyboardIntent {
+    var suppressKeyboardOnFocus: Boolean by mutableStateOf(false)
         private set
 
     var requestGeneration: Long by mutableLongStateOf(0L)
         private set
 
-    fun arm(): Long {
-        armed = true
+    fun suppressForFocusOnly(): Long {
+        suppressKeyboardOnFocus = true
         requestGeneration += 1L
         return requestGeneration
     }
 
-    fun disarmIfCurrent(generation: Long) {
+    fun clearSuppression(): Long {
+        suppressKeyboardOnFocus = false
+        requestGeneration += 1L
+        return requestGeneration
+    }
+
+    suspend fun focusWithoutKeyboard(focusRequester: FocusRequester) {
+        val wasSuppressed = suppressKeyboardOnFocus
+        val generation = suppressForFocusOnly()
+        if (!wasSuppressed) {
+            withFrameNanos { }
+        }
         if (requestGeneration == generation) {
-            armed = false
+            runCatching { focusRequester.requestFocus() }
         }
     }
 
-    /**
-     * Arms explicit keyboard-show intent, commits `showKeyboardOnFocus = true` to the editor node
-     * before focusing, requests focus and shows the keyboard (handling both unfocused and
-     * already-focused fields), then disarms back to `false` without dropping the running session.
-     */
     suspend fun focusWithKeyboard(
         focusRequester: FocusRequester,
         softwareKeyboardController: SoftwareKeyboardController?,
@@ -1852,14 +1862,14 @@ internal class RaftEditorKeyboardIntent(initialArmed: Boolean = false) {
         if (beforeFocusDelayMs > 0L) {
             delay(beforeFocusDelayMs)
         }
-        val generation = arm()
-        try {
+        val wasSuppressed = suppressKeyboardOnFocus
+        val generation = clearSuppression()
+        if (wasSuppressed) {
             withFrameNanos { }
+        }
+        if (requestGeneration == generation) {
             runCatching { focusRequester.requestFocus() }
             softwareKeyboardController?.show()
-            withFrameNanos { }
-        } finally {
-            disarmIfCurrent(generation)
         }
     }
 }
@@ -1872,6 +1882,7 @@ internal class RaftEditorKeyboardIntent(initialArmed: Boolean = false) {
  * `rememberRaftDesignSystemEditor` / `rememberRaftTextareaEditorModifier`) share it, so a field
  * keeps the same behaviour whichever editor draws it.
  */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 internal fun Modifier.raftAppEditorBehavior(
     singleLine: Boolean,
@@ -1883,9 +1894,11 @@ internal fun Modifier.raftAppEditorBehavior(
     onBlur: () -> Unit,
     participatesInGlobalFocusDismiss: Boolean = true,
     hardwareEnterConfig: RaftHardwareEnterConfig? = null,
+    keyboardIntent: RaftEditorKeyboardIntent? = null,
 ): Modifier {
     var lastFocus by remember { mutableStateOf(false) }
     val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
+    val windowInputGate = LocalRaftWindowPlatformInputGate.current
     val focusOwner = remember { Any() }
     val focusOwnerAnchor = remember { RaftInputFocusOwnerAnchor() }
     val currentOnBlur by rememberUpdatedState(onBlur)
@@ -1897,6 +1910,15 @@ internal fun Modifier.raftAppEditorBehavior(
             if (participatesInGlobalFocusDismiss) {
                 focusOwnerRegistry?.remove(focusOwner)
             }
+        }
+    }
+    DisposableEffect(windowInputGate, keyboardIntent) {
+        if (windowInputGate != null && keyboardIntent != null) {
+            val listener: () -> Unit = { keyboardIntent.clearSuppression() }
+            windowInputGate.addKeyboardShowListener(listener)
+            onDispose { windowInputGate.removeKeyboardShowListener(listener) }
+        } else {
+            onDispose {}
         }
     }
     // A conversation composer is what an automatic focus request is for; every other field
@@ -1912,9 +1934,13 @@ internal fun Modifier.raftAppEditorBehavior(
             autofocusGuard.setFieldFocused(focusOwner, true, focusRegion)
         }
     }
-    DisposableEffect(focusOwner, autofocusGuard) {
+    DisposableEffect(focusOwner, autofocusGuard, windowInputGate, keyboardIntent) {
         onDispose {
             autofocusGuard.setFieldFocused(focusOwner, false, focusRegion)
+            if (lastFocus) {
+                windowInputGate?.onHostEditorBlurred()
+                keyboardIntent?.clearSuppression()
+            }
         }
     }
     return this
@@ -1944,6 +1970,8 @@ internal fun Modifier.raftAppEditorBehavior(
                 if (participatesInGlobalFocusDismiss) {
                     focusOwnerRegistry?.setFocused(focusOwner, false)
                 }
+                keyboardIntent?.clearSuppression()
+                windowInputGate?.onHostEditorBlurred()
                 currentOnBlur()
                 lastFocus = false
             }
@@ -1974,7 +2002,7 @@ internal fun TextField(
     participatesInGlobalFocusDismiss: Boolean = true,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     contentAlignment: Alignment = Alignment.CenterStart,
-    keyboardIntent: RaftEditorKeyboardIntent = remember { RaftEditorKeyboardIntent(initialArmed = autoFocus) },
+    keyboardIntent: RaftEditorKeyboardIntent = remember { RaftEditorKeyboardIntent() },
 ) {
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val state = rememberRaftTextFieldState(value, currentOnValueChange, traceName = "TextField")
@@ -2030,7 +2058,7 @@ internal fun TextField(
     contentAlignment: Alignment = Alignment.CenterStart,
     nativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
     hardwareEnterConfig: RaftHardwareEnterConfig? = null,
-    keyboardIntent: RaftEditorKeyboardIntent = remember { RaftEditorKeyboardIntent(initialArmed = autoFocus) },
+    keyboardIntent: RaftEditorKeyboardIntent = remember { RaftEditorKeyboardIntent() },
 ) {
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val state = rememberRaftTextFieldState(value, { next -> currentOnValueChange(next) }, traceName = "TextField")
@@ -2094,7 +2122,7 @@ internal fun TextField(
     hardwareEnterConfig: RaftHardwareEnterConfig? = null,
     inputTransformation: InputTransformation? = null,
     traceName: String = "TextField",
-    keyboardIntent: RaftEditorKeyboardIntent = remember { RaftEditorKeyboardIntent(initialArmed = autoFocus) },
+    keyboardIntent: RaftEditorKeyboardIntent = remember { RaftEditorKeyboardIntent() },
 ) {
     val nativeEditingStateBindingOwner = remember { Any() }
     val currentOnTextLayout by rememberUpdatedState(onTextLayout)
@@ -2106,7 +2134,8 @@ internal fun TextField(
     val effectiveShowKeyboardOnFocus =
         raftResolveShowKeyboardOnFocus(
             desktopHost = raftPlatformHasFinePointer(),
-            explicitKeyboardIntentArmed = keyboardIntent.armed,
+            hardwareKeyboardConnected = rememberRaftHardwareKeyboardConnected(),
+            suppressKeyboardOnFocus = keyboardIntent.suppressKeyboardOnFocus,
             callerOverride = keyboardOptions.showKeyboardOnFocus,
         )
     val resolvedKeyboardOptions =
@@ -2123,6 +2152,7 @@ internal fun TextField(
             onBlur = onBlur,
             participatesInGlobalFocusDismiss = participatesInGlobalFocusDismiss,
             hardwareEnterConfig = hardwareEnterConfig,
+            keyboardIntent = keyboardIntent,
         )
     if (nativeEditingStateReader != null) {
         SideEffect {

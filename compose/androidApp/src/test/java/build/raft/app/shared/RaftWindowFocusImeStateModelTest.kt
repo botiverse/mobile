@@ -166,10 +166,9 @@ class RaftWindowFocusImeStateModelTest {
         settle(activity)
 
         val composeRoot = requireNotNull(findComposeRoot(activity.window.decorView) as? View)
-        // Start an active platform text input session (simulating user tap / armed intent).
+        // Keep showKeyboardOnFocus = true (the production default) while active, across window
+        // focus loss, window focus regain, and imeAction recomposition.
         activity.showKeyboardOnFocus = true
-        settle(activity)
-        activity.showKeyboardOnFocus = false
         settle(activity)
         assertTrue(composeRoot.onCheckIsTextEditor())
         assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
@@ -188,7 +187,8 @@ class RaftWindowFocusImeStateModelTest {
         )
         assertNull(composeRoot.onCreateInputConnection(EditorInfo()))
 
-        // Window focus regain leaves the session parked so Android IMMS never flashes the keyboard.
+        // Window focus regain + keyboardOptions recomposition (even with showKeyboardOnFocus == true)
+        // must keep the session parked so Android IMMS never flashes the keyboard.
         controller.windowFocusChanged(true)
         activity.imeAction = ImeAction.Send
         settle(activity)
@@ -196,7 +196,10 @@ class RaftWindowFocusImeStateModelTest {
         assertTrue(activity.editorFocused)
         assertEquals("hello world", activity.textState.text.toString())
         assertEquals(TextRange(5), activity.textState.selection)
-        assertFalse(composeRoot.onCheckIsTextEditor())
+        assertFalse(
+            "imeAction recomposition after window focus regain must stay parked",
+            composeRoot.onCheckIsTextEditor(),
+        )
         assertNull(composeRoot.onCreateInputConnection(EditorInfo()))
 
         // Explicit SoftwareKeyboardController.show() (tap on composer) wakes & restarts the session.
