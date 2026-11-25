@@ -669,7 +669,7 @@ internal class RaftAndroidVideoView(
         ensureProgressTicker(progress.generation)
     }
 
-    private fun syncDurationAndBuffered(activePlayer: ExoPlayer = player ?: return) {
+    private fun syncDurationAndBuffered(activePlayer: ExoPlayer) {
         val duration = activePlayer.duration.takeIf { it > 0L } ?: 0L
         if (duration > 0L) uiState.durationMs = duration
         val buffered = activePlayer.bufferedPosition.takeIf { it >= 0L } ?: 0L
