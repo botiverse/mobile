@@ -191,7 +191,7 @@ class AgentRunningWorkersStatusTest {
             agentRunningWorkersDisplayOf(
                 status = AgentStatus.Online,
                 runningWorkers = 2,
-                blocked = AgentBlockedState.ComputerOffline,
+                blocked = AgentBlockedState.ComputerAccessRevoked,
                 nowMs = 5_000L,
             )
         )
