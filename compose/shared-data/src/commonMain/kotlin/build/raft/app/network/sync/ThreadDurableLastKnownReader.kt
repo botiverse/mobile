@@ -31,8 +31,13 @@ import kotlinx.coroutines.CancellationException
  *   paging), stays strictly inside the contiguous segment covering `beforeSeq - 1`; when `true` (offline),
  *   crosses into lower stored islands and derives boundary/internal gaps.
  * - [After]: symmetric mirror strictly above [afterSeq].
- * - [AroundMessageId]: window centered on [messageId] (`beforeCount` older + anchor + `afterCount` newer),
- *   resolving via `selectFactLocationById` so island-only scopes open locally without a head segment.
+ * - [AroundMessageId]: gap-free window centered on [messageId] (`beforeCount` older + anchor +
+ *   `afterCount` newer), resolving via `selectFactLocationById` so island-only scopes open locally
+ *   without a head segment. Mirrors [Newest]: when the anchor sits inside a proven contiguous segment,
+ *   reads strictly inside that segment; when the anchor is a loose fact, returns only the anchor and
+ *   any strictly consecutive loose facts (`prevSeq == lowestSeq - 1`, `nextSeq == highestSeq + 1`),
+ *   guaranteeing `gaps = emptyList()` on Frame 1 while preserving accurate `hasOlderStored` /
+ *   `hasNewerStored` for explicit offline [Before] / [After] (`crossGaps = true`) island crossing.
  */
 @RaftCoreInternalApi sealed interface ThreadDurableTimelineAnchor {
     data class Newest(
@@ -1008,12 +1013,39 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
             .firstOrNull { it.scopeKind == scope.scopeKind && it.scopeId == scope.scopeId }
             ?: return null
         val anchorSeq = location.seq
+        val anchorSegment = CanonicalMessageV2SegmentAlgebra.memberOf(segments, anchorSeq)
+        return if (anchorSegment != null) {
+            readAroundMessageIdInSegmentTimeline(scope, cursor, segments, anchorSegment, trimmedId, anchorSeq, anchor)
+        } else {
+            readAroundMessageIdLooseOnlyTimeline(scope, cursor, segments, trimmedId, anchorSeq, anchor)
+        }
+    }
+
+    /**
+     * Anchored open when the anchor sits inside a proven contiguous segment: read strictly inside
+     * `[anchorSegment.effectiveLowSeq..anchorSegment.highSeq]` so disconnected loose facts and
+     * other islands are never spliced into Frame 1 with mid-timeline gaps, while preserving
+     * accurate [ThreadDurableTimelinePage.hasOlderStored] / [ThreadDurableTimelinePage.hasNewerStored]
+     * for explicit offline [ThreadDurableTimelineAnchor.Before] / [ThreadDurableTimelineAnchor.After]
+     * (`crossGaps = true`) island crossing.
+     */
+    private suspend fun readAroundMessageIdInSegmentTimeline(
+        scope: SyncScopeKey,
+        cursor: PersistedCursor,
+        segments: List<CanonicalMessageV2Segment>,
+        anchorSegment: CanonicalMessageV2Segment,
+        trimmedId: String,
+        anchorSeq: Long,
+        anchor: ThreadDurableTimelineAnchor.AroundMessageId,
+    ): ThreadDurableTimelinePage? {
+        val effectiveBeforeCount = if (anchorSeq <= anchorSegment.effectiveLowSeq) 0 else anchor.beforeCount
+        val effectiveAfterCount = if (anchorSeq >= anchorSegment.highSeq) 0 else anchor.afterCount
         val beforeAndAnchor =
             if (anchorSeq == Long.MAX_VALUE) {
                 val anchorPage = store.readFactsAfter(scope, afterSeq = Long.MAX_VALUE - 1L, limit = 1)
                 if (anchorPage.envelopes.none { it.fact.id == trimmedId }) return null
-                if (anchor.beforeCount > 0) {
-                    val older = store.readFactsBefore(scope, beforeSeq = Long.MAX_VALUE, limit = anchor.beforeCount)
+                if (effectiveBeforeCount > 0) {
+                    val older = store.readFactsBefore(scope, beforeSeq = Long.MAX_VALUE, limit = effectiveBeforeCount)
                     CanonicalMessageV2BoundedFactsPage(
                         envelopes = older.envelopes + anchorPage.envelopes,
                         hasMoreStored = older.hasMoreStored,
@@ -1027,35 +1059,113 @@ const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
                     )
                 }
             } else {
-                val page = store.readFactsBefore(scope, beforeSeq = anchorSeq + 1L, limit = anchor.beforeCount + 1)
+                val page = store.readFactsBefore(scope, beforeSeq = anchorSeq + 1L, limit = effectiveBeforeCount + 1)
                 if (page.envelopes.none { it.fact.id == trimmedId }) return null
                 page
             }
         val after =
             if (anchorSeq == Long.MAX_VALUE) {
                 CanonicalMessageV2BoundedFactsPage(envelopes = emptyList(), hasMoreStored = false)
-            } else if (anchor.afterCount > 0) {
-                store.readFactsAfter(scope, afterSeq = anchorSeq, limit = anchor.afterCount)
+            } else if (effectiveAfterCount > 0) {
+                store.readFactsAfter(scope, afterSeq = anchorSeq, limit = effectiveAfterCount)
             } else {
                 CanonicalMessageV2BoundedFactsPage(
                     envelopes = emptyList(),
                     hasMoreStored = store.hasFactAfter(scope, anchorSeq),
                 )
             }
-        val envelopes = beforeAndAnchor.envelopes + after.envelopes
+        val keptBeforeAndAnchor = beforeAndAnchor.envelopes.filter { it.fact.seq >= anchorSegment.effectiveLowSeq }
+        if (keptBeforeAndAnchor.none { it.fact.id == trimmedId }) return null
+        val keptAfter = after.envelopes.filter { it.fact.seq <= anchorSegment.highSeq }
+        val envelopes = keptBeforeAndAnchor + keptAfter
+        val keptIds = envelopes.mapTo(HashSet()) { it.fact.id }
         val seqs = envelopes.map { it.fact.seq }
+        val hasOlderStored = beforeAndAnchor.hasMoreStored || keptBeforeAndAnchor.size < beforeAndAnchor.envelopes.size
+        val hasNewerStored = after.hasMoreStored || keptAfter.size < after.envelopes.size
         return ThreadDurableTimelinePage(
             scope = scope,
             envelopes = envelopes,
-            gaps = CanonicalMessageV2SegmentAlgebra.deriveGaps(seqs, segments),
+            gaps = emptyList(),
             cursor = cursor,
             segments = segments,
-            hasOlderStored = beforeAndAnchor.hasMoreStored,
-            hasNewerStored = after.hasMoreStored,
-            reachesOldest = CanonicalMessageV2SegmentAlgebra.reachesOldestAt(seqs.first(), segments, beforeAndAnchor.hasMoreStored),
-            reachesHead = CanonicalMessageV2SegmentAlgebra.reachesHeadAt(seqs.last(), segments, after.hasMoreStored),
-            insideProvenSegment = CanonicalMessageV2SegmentAlgebra.memberOf(segments, anchorSeq) != null,
-            unknownFieldsByFactId = beforeAndAnchor.unknownFieldsByFactId + after.unknownFieldsByFactId,
+            hasOlderStored = hasOlderStored,
+            hasNewerStored = hasNewerStored,
+            reachesOldest = CanonicalMessageV2SegmentAlgebra.reachesOldestAt(seqs.first(), segments, hasOlderStored),
+            reachesHead = CanonicalMessageV2SegmentAlgebra.reachesHeadAt(seqs.last(), segments, hasNewerStored),
+            insideProvenSegment = true,
+            unknownFieldsByFactId = (beforeAndAnchor.unknownFieldsByFactId + after.unknownFieldsByFactId)
+                .filterKeys { it in keptIds },
+        )
+    }
+
+    /**
+     * Anchored open when the anchor is a loose fact (`anchorSegment == null`): return only the
+     * anchor and any strictly consecutive loose facts (`prevSeq == lowestSeq - 1`, `nextSeq ==
+     * highestSeq + 1`, stopping at any segment member or seq gap), guaranteeing zero mid-timeline
+     * gaps on Frame 1 while preserving accurate [ThreadDurableTimelinePage.hasOlderStored] /
+     * [ThreadDurableTimelinePage.hasNewerStored] for offline island crossing.
+     */
+    private suspend fun readAroundMessageIdLooseOnlyTimeline(
+        scope: SyncScopeKey,
+        cursor: PersistedCursor,
+        segments: List<CanonicalMessageV2Segment>,
+        trimmedId: String,
+        anchorSeq: Long,
+        anchor: ThreadDurableTimelineAnchor.AroundMessageId,
+    ): ThreadDurableTimelinePage? {
+        val anchorPage =
+            if (anchorSeq == Long.MAX_VALUE) {
+                store.readFactsAfter(scope, afterSeq = Long.MAX_VALUE - 1L, limit = 1)
+            } else {
+                store.readFactsBefore(scope, beforeSeq = anchorSeq + 1L, limit = 1)
+            }
+        val anchorEnvelope = anchorPage.envelopes.firstOrNull { it.fact.id == trimmedId } ?: return null
+        val unknowns = mutableMapOf<String, Set<MessageAggregateField>>()
+        anchorPage.unknownFieldsByFactId[anchorEnvelope.fact.id]?.let { unknowns[anchorEnvelope.fact.id] = it }
+
+        val olderDesc = mutableListOf<CanonicalMessageEnvelopeV2>()
+        var lowestSeq = anchorEnvelope.fact.seq
+        while (olderDesc.size < anchor.beforeCount && lowestSeq > Long.MIN_VALUE) {
+            val prevSeq = store.highestFactSeqBefore(scope, beforeSeq = lowestSeq) ?: break
+            if (prevSeq != lowestSeq - 1L) break
+            if (CanonicalMessageV2SegmentAlgebra.memberOf(segments, prevSeq) != null) break
+            val prevPage = store.readFactsBefore(scope, beforeSeq = lowestSeq, limit = 1)
+            val prevEnvelope = prevPage.envelopes.singleOrNull() ?: break
+            if (prevEnvelope.fact.seq != prevSeq) break
+            olderDesc += prevEnvelope
+            prevPage.unknownFieldsByFactId[prevEnvelope.fact.id]?.let { unknowns[prevEnvelope.fact.id] = it }
+            lowestSeq = prevSeq
+        }
+
+        val newerAsc = mutableListOf<CanonicalMessageEnvelopeV2>()
+        var highestSeq = anchorEnvelope.fact.seq
+        while (newerAsc.size < anchor.afterCount && highestSeq < Long.MAX_VALUE) {
+            val nextSeq = store.lowestFactSeqAfter(scope, afterSeq = highestSeq) ?: break
+            if (nextSeq != highestSeq + 1L) break
+            if (CanonicalMessageV2SegmentAlgebra.memberOf(segments, nextSeq) != null) break
+            val nextPage = store.readFactsAfter(scope, afterSeq = highestSeq, limit = 1)
+            val nextEnvelope = nextPage.envelopes.singleOrNull() ?: break
+            if (nextEnvelope.fact.seq != nextSeq) break
+            newerAsc += nextEnvelope
+            nextPage.unknownFieldsByFactId[nextEnvelope.fact.id]?.let { unknowns[nextEnvelope.fact.id] = it }
+            highestSeq = nextSeq
+        }
+
+        val envelopes = olderDesc.asReversed() + anchorEnvelope + newerAsc
+        val hasOlderStored = store.hasFactBefore(scope, envelopes.first().fact.seq)
+        val hasNewerStored = store.hasFactAfter(scope, envelopes.last().fact.seq)
+        return ThreadDurableTimelinePage(
+            scope = scope,
+            envelopes = envelopes,
+            gaps = emptyList(),
+            cursor = cursor,
+            segments = segments,
+            hasOlderStored = hasOlderStored,
+            hasNewerStored = hasNewerStored,
+            reachesOldest = false,
+            reachesHead = false,
+            insideProvenSegment = false,
+            unknownFieldsByFactId = unknowns,
         )
     }
 

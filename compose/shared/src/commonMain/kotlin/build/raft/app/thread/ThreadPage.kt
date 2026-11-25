@@ -835,39 +835,61 @@ private fun ThreadPageScreen(
                 }
             )
         }
+    val selectedServerStore =
+        remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
+    val quotedPermalinkLookup: ThreadQuotedPermalinkLookup =
+        remember(sharedStores, storeScope) {
+            { target ->
+                val owner = sharedStores.currentAuthenticatedRouteOwner(storeScope)
+                if (owner == null) {
+                    null
+                } else {
+                    sharedStores.quotedPermalinkCache.peek(
+                        accountUserId = owner.accountId,
+                        serverId = owner.serverId,
+                        channelId = target.channelId.value,
+                        messageId = target.messageId.value,
+                    )
+                }
+            }
+        }
     val quotedPermalinkLoader: ThreadQuotedPermalinkLoader? =
-        remember(networkClient, authStore) {
+        remember(networkClient, authStore, sharedStores) {
             val client = RaftThreadApiClient(NetworkRaftThreadApi(networkClient))
             val loader: ThreadQuotedPermalinkLoader = { target ->
                 val messageId = target.messageId.value
                 val channelId = target.channelId.value
-                // #proj-mobile:#274: a quote behind the Free plan's history window is answered from
-                // the memo, not asked again each time its row comes on screen.
-                val read =
-                    RaftQuotedPermalinkHistoryLimitedMemo.App.read(
-                        viewer = authStore.readSession()?.quotedPermalinkViewer(),
-                        channelId = channelId,
-                        messageId = messageId,
-                    ) { client.messageContext(messageId, channelId) }
-                when (read) {
-                    is RaftQuotedPermalinkContextRead.Page -> {
-                        val payload = read.payload
-                        val targetId = payload.targetMessageId?.value ?: messageId
-                        payload.messages
-                            .firstOrNull { it.id.value == targetId }
-                            ?.toRaftThreadMessageItem(null)
-                            ?.let { item -> ThreadQuotedPermalinkMessage(item, channelArchived = payload.channelArchived) }
+                sharedStores.quotedPermalinkCache.getOrFetch(
+                    viewerProvider = { authStore.readSession()?.quotedPermalinkViewer() },
+                    channelId = channelId,
+                    messageId = messageId,
+                ) { viewer ->
+                    // #proj-mobile:#274: a quote behind the Free plan's history window is answered from
+                    // the memo, not asked again each time its row comes on screen.
+                    val read =
+                        RaftQuotedPermalinkHistoryLimitedMemo.App.read(
+                            viewer = viewer,
+                            channelId = channelId,
+                            messageId = messageId,
+                        ) { client.messageContext(messageId, channelId) }
+                    when (read) {
+                        is RaftQuotedPermalinkContextRead.Page -> {
+                            val payload = read.payload
+                            val targetId = payload.targetMessageId?.value ?: messageId
+                            payload.messages
+                                .firstOrNull { it.id.value == targetId }
+                                ?.toRaftThreadMessageItem(null)
+                                ?.let { item -> ThreadQuotedPermalinkMessage(item, channelArchived = payload.channelArchived) }
+                        }
+                        // Behind the history window, as any other miss: no quote card, the link says
+                        // it is unavailable (the app has no older-quote card yet).
+                        is RaftQuotedPermalinkContextRead.HistoryLimited,
+                        RaftQuotedPermalinkContextRead.Unavailable -> null
                     }
-                    // Behind the history window, as any other miss: no quote card, the link says
-                    // it is unavailable (the app has no older-quote card yet).
-                    is RaftQuotedPermalinkContextRead.HistoryLimited,
-                    RaftQuotedPermalinkContextRead.Unavailable -> null
                 }
             }
             loader
         }
-    val selectedServerStore =
-        remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
     val dataSource =
         remember(
             networkClient,
@@ -1079,6 +1101,7 @@ private fun ThreadPageScreen(
         LocalThreadAdaptiveInitiationCapture provides adaptiveInitiationCaptureHolder,
         LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
         LocalThreadQuotedPermalinkLoader provides quotedPermalinkLoader,
+        LocalThreadQuotedPermalinkLookup provides quotedPermalinkLookup,
         // Live quote replies read their resolved quotes here (ThreadQuoteReply.kt).
         LocalThreadResolvedQuotesStore provides sharedStores.resolvedQuotesStore,
     ) {

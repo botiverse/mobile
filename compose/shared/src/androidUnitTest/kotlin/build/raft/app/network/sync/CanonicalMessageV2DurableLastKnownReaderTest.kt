@@ -869,6 +869,336 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
         }
     }
 
+    @Test
+    fun aroundMessageIdInsideProvenSegmentStaysGapFreeExcludesOutsideFactsAndPreservesOfflinePagingFlags() =
+        withFreshDatabase { database ->
+            val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 10L })
+            val reader = CanonicalMessageV2DurableLastKnownReader(store)
+            val reactions = setOf(build.raft.app.canonical.message.MessageAggregateField.Reactions)
+
+            runBlocking {
+                val scope = SyncScopeKey(partitionA, "channel-a", "channel")
+                // Lower island [1..5], loose fact 12, anchor segment [20..25], loose fact 40, upper island [60..65].
+                store.applyCoverage(
+                    scope = scope,
+                    envelopes = (1L..5L).map(::envelope),
+                    coverage = CanonicalMessageV2Coverage(1L, 5L, reachesOldest = true, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
+                    revAtRequest = 0L,
+                    userDriven = false,
+                    unknownFieldsByFactId = mapOf("message-5" to reactions),
+                )
+                store.applyCoverage(
+                    scope = scope,
+                    envelopes = (20L..25L).map(::envelope),
+                    coverage = CanonicalMessageV2Coverage(20L, 25L, reachesOldest = false, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
+                    revAtRequest = 0L,
+                    userDriven = false,
+                    unknownFieldsByFactId = mapOf("message-22" to reactions),
+                )
+                store.applyCoverage(
+                    scope = scope,
+                    envelopes = (60L..65L).map(::envelope),
+                    coverage = CanonicalMessageV2Coverage(60L, 65L, reachesOldest = false, headAtVerify = true, CanonicalMessageV2SegmentSource.Latest),
+                    revAtRequest = 0L,
+                    userDriven = true,
+                    unknownFieldsByFactId = mapOf("message-60" to reactions),
+                )
+                store.applyCoverage(
+                    scope = scope,
+                    envelopes = listOf(envelope(12L), envelope(40L)),
+                    coverage = null,
+                    revAtRequest = 0L,
+                    userDriven = false,
+                    unknownFieldsByFactId = mapOf("message-12" to reactions, "message-40" to reactions),
+                )
+
+                // Large beforeCount / afterCount stays strictly inside [20..25] with gaps=emptyList(),
+                // preserves hasOlderStored / hasNewerStored for offline island crossing, and filters unknownFields.
+                val inSegment = assertNotNull(
+                    reader.readTimeline(
+                        partition = partitionA,
+                        channelId = "channel-a",
+                        anchor = ThreadDurableTimelineAnchor.AroundMessageId("message-22", beforeCount = 15, afterCount = 15),
+                    ),
+                )
+                assertEquals(listOf(20L, 21L, 22L, 23L, 24L, 25L), inSegment.envelopes.map { it.fact.seq })
+                assertTrue(inSegment.gaps.isEmpty(), "anchored in-segment open must be gap-free: ${inSegment.gaps}")
+                assertTrue(inSegment.hasOlderStored)
+                assertTrue(inSegment.hasNewerStored)
+                assertFalse(inSegment.reachesOldest)
+                assertFalse(inSegment.reachesHead)
+                assertTrue(inSegment.insideProvenSegment)
+                assertEquals(setOf("message-22"), inSegment.unknownFieldsByFactId.keys)
+
+                // Explicit offline Before / After with crossGaps=true still crosses out into loose facts / islands.
+                val offlineOlder = assertNotNull(
+                    reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 10, crossGaps = true)),
+                )
+                assertEquals(listOf(1L, 2L, 3L, 4L, 5L, 12L), offlineOlder.envelopes.map { it.fact.seq })
+                assertEquals(
+                    listOf(
+                        CanonicalMessageV2TimelineGap(afterSeq = 5L, beforeSeq = 12L),
+                        CanonicalMessageV2TimelineGap(afterSeq = 12L, beforeSeq = 20L),
+                    ),
+                    offlineOlder.gaps,
+                )
+                val offlineNewer = assertNotNull(
+                    reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(25L, limit = 10, crossGaps = true)),
+                )
+                assertEquals(listOf(40L, 60L, 61L, 62L, 63L, 64L, 65L), offlineNewer.envelopes.map { it.fact.seq })
+                assertEquals(
+                    listOf(
+                        CanonicalMessageV2TimelineGap(afterSeq = 25L, beforeSeq = 40L),
+                        CanonicalMessageV2TimelineGap(afterSeq = 40L, beforeSeq = 60L),
+                    ),
+                    offlineNewer.gaps,
+                )
+
+                // Anchor right on segment boundaries (20 and 25) isolates poisoned outside facts (12 and 40).
+                for (poisonSeq in listOf(12L, 40L)) {
+                    database.queries.updateCanonicalFact(
+                        seq = poisonSeq,
+                        createdAt = "2026-07-16T00:00:00.000Z",
+                        canonicalFactJson = "malformed-$poisonSeq",
+                        id = "message-$poisonSeq",
+                        environmentId = scope.environmentId,
+                        serverId = scope.serverId,
+                        principalId = scope.principalId,
+                        consumerId = scope.consumerId,
+                        scopeKind = scope.scopeKind,
+                        channelId = scope.scopeId,
+                    )
+                }
+                val atLowEdge = assertNotNull(
+                    reader.readTimeline(
+                        partition = partitionA,
+                        channelId = "channel-a",
+                        anchor = ThreadDurableTimelineAnchor.AroundMessageId("message-20", beforeCount = 10, afterCount = 2),
+                    ),
+                )
+                assertEquals(listOf(20L, 21L, 22L), atLowEdge.envelopes.map { it.fact.seq })
+                assertTrue(atLowEdge.gaps.isEmpty())
+                assertTrue(atLowEdge.hasOlderStored)
+                assertTrue(atLowEdge.hasNewerStored)
+
+                val atHighEdge = assertNotNull(
+                    reader.readTimeline(
+                        partition = partitionA,
+                        channelId = "channel-a",
+                        anchor = ThreadDurableTimelineAnchor.AroundMessageId("message-25", beforeCount = 2, afterCount = 10),
+                    ),
+                )
+                assertEquals(listOf(23L, 24L, 25L), atHighEdge.envelopes.map { it.fact.seq })
+                assertTrue(atHighEdge.gaps.isEmpty())
+                assertTrue(atHighEdge.hasOlderStored)
+                assertTrue(atHighEdge.hasNewerStored)
+
+                // Segment with reachesOldest=true and headAtVerify=true and no outside facts preserves both flags,
+                // and Long.MAX_VALUE anchor inside a max-seq segment works without overflow.
+                val maxScope = SyncScopeKey(partitionA, "channel-max-anchored", "channel")
+                val maxSeq = Long.MAX_VALUE
+                fun envMax(seq: Long) = CanonicalMessageEnvelopeV2(
+                    fact = fact(seq).copy(id = "max-message-$seq"),
+                    context = CanonicalConversationContextV2.TopLevel(TopLevelScopeRefV2.Channel("server-a", "channel-max-anchored")),
+                )
+                store.applyCoverage(
+                    scope = maxScope,
+                    envelopes = listOf(envMax(maxSeq - 2L), envMax(maxSeq - 1L), envMax(maxSeq)),
+                    coverage = CanonicalMessageV2Coverage(maxSeq - 2L, maxSeq, reachesOldest = true, headAtVerify = true, CanonicalMessageV2SegmentSource.Latest),
+                    revAtRequest = 0L,
+                    userDriven = true,
+                )
+                val anchoredMax = assertNotNull(
+                    reader.readTimeline(
+                        partition = partitionA,
+                        channelId = "channel-max-anchored",
+                        anchor = ThreadDurableTimelineAnchor.AroundMessageId("max-message-$maxSeq", beforeCount = 5, afterCount = 5),
+                    ),
+                )
+                assertEquals(listOf(maxSeq - 2L, maxSeq - 1L, maxSeq), anchoredMax.envelopes.map { it.fact.seq })
+                assertTrue(anchoredMax.gaps.isEmpty())
+                assertFalse(anchoredMax.hasOlderStored)
+                assertFalse(anchoredMax.hasNewerStored)
+                assertTrue(anchoredMax.reachesOldest)
+                assertTrue(anchoredMax.reachesHead)
+                assertTrue(anchoredMax.insideProvenSegment)
+            }
+        }
+
+    @Test
+    fun aroundMessageIdOnLooseFactStaysGapFreeReturnsOnlyConsecutiveLooseRunAndIsolatesPoisonAndTouchingSegments() =
+        withFreshDatabase { database ->
+            val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 10L })
+            val reader = CanonicalMessageV2DurableLastKnownReader(store)
+            val reactions = setOf(build.raft.app.canonical.message.MessageAggregateField.Reactions)
+
+            runBlocking {
+                // 1. Multiple non-consecutive loose realtime facts [100, 105, 110] with head [10..20] and upper island [200..210].
+                val sparseScope = SyncScopeKey(partitionA, "channel-loose-sparse", "channel")
+                fun envOf(channelId: String, seq: Long) = CanonicalMessageEnvelopeV2(
+                    fact = fact(seq).copy(id = "$channelId-message-$seq"),
+                    context = CanonicalConversationContextV2.TopLevel(TopLevelScopeRefV2.Channel("server-a", channelId)),
+                )
+                store.applyCoverage(
+                    scope = sparseScope,
+                    envelopes = (10L..20L).map { envOf("channel-loose-sparse", it) },
+                    coverage = CanonicalMessageV2Coverage(10L, 20L, reachesOldest = true, headAtVerify = true, CanonicalMessageV2SegmentSource.Latest),
+                    revAtRequest = 0L,
+                    userDriven = true,
+                )
+                store.applyCoverage(
+                    scope = sparseScope,
+                    envelopes = (200L..210L).map { envOf("channel-loose-sparse", it) },
+                    coverage = CanonicalMessageV2Coverage(200L, 210L, reachesOldest = false, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
+                    revAtRequest = 0L,
+                    userDriven = false,
+                )
+                store.applyCoverage(
+                    scope = sparseScope,
+                    envelopes = listOf(envOf("channel-loose-sparse", 100L), envOf("channel-loose-sparse", 105L), envOf("channel-loose-sparse", 110L)),
+                    coverage = null,
+                    revAtRequest = 0L,
+                    userDriven = false,
+                    unknownFieldsByFactId = mapOf("channel-loose-sparse-message-105" to reactions),
+                )
+
+                val sparseLoose = assertNotNull(
+                    reader.readTimeline(
+                        partition = partitionA,
+                        channelId = "channel-loose-sparse",
+                        anchor = ThreadDurableTimelineAnchor.AroundMessageId("channel-loose-sparse-message-105", beforeCount = 15, afterCount = 15),
+                    ),
+                )
+                assertEquals(listOf(105L), sparseLoose.envelopes.map { it.fact.seq })
+                assertTrue(sparseLoose.gaps.isEmpty(), "loose anchored open must never emit mid-timeline gaps: ${sparseLoose.gaps}")
+                assertTrue(sparseLoose.hasOlderStored)
+                assertTrue(sparseLoose.hasNewerStored)
+                assertFalse(sparseLoose.reachesOldest)
+                assertFalse(sparseLoose.reachesHead)
+                assertFalse(sparseLoose.insideProvenSegment)
+                assertEquals(setOf("channel-loose-sparse-message-105"), sparseLoose.unknownFieldsByFactId.keys)
+
+                // Poison non-consecutive neighbors 100 and 110: anchored read on 105 must NOT decode them.
+                for (poisonSeq in listOf(100L, 110L)) {
+                    database.queries.updateCanonicalFact(
+                        seq = poisonSeq,
+                        createdAt = "2026-07-16T00:00:00.000Z",
+                        canonicalFactJson = "malformed-loose-$poisonSeq",
+                        id = "channel-loose-sparse-message-$poisonSeq",
+                        environmentId = sparseScope.environmentId,
+                        serverId = sparseScope.serverId,
+                        principalId = sparseScope.principalId,
+                        consumerId = sparseScope.consumerId,
+                        scopeKind = sparseScope.scopeKind,
+                        channelId = sparseScope.scopeId,
+                    )
+                }
+                val sparsePoisonIsolated = assertNotNull(
+                    reader.readTimeline(
+                        partition = partitionA,
+                        channelId = "channel-loose-sparse",
+                        anchor = ThreadDurableTimelineAnchor.AroundMessageId("channel-loose-sparse-message-105", beforeCount = 15, afterCount = 15),
+                    ),
+                )
+                assertEquals(listOf(105L), sparsePoisonIsolated.envelopes.map { it.fact.seq })
+                assertTrue(sparsePoisonIsolated.gaps.isEmpty())
+                assertTrue(sparsePoisonIsolated.hasOlderStored)
+                assertTrue(sparsePoisonIsolated.hasNewerStored)
+
+                // 2. Consecutive loose run [104, 105, 106] bounded by touching segments [100..103] and [107..110]:
+                //    stops at both segment boundaries without crossing or decoding touching poisoned segment rows.
+                val consecutiveScope = SyncScopeKey(partitionA, "channel-loose-consecutive", "channel")
+                store.applyCoverage(
+                    scope = consecutiveScope,
+                    envelopes = (100L..103L).map { envOf("channel-loose-consecutive", it) },
+                    coverage = CanonicalMessageV2Coverage(100L, 103L, reachesOldest = false, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
+                    revAtRequest = 0L,
+                    userDriven = false,
+                )
+                store.applyCoverage(
+                    scope = consecutiveScope,
+                    envelopes = (107L..110L).map { envOf("channel-loose-consecutive", it) },
+                    coverage = CanonicalMessageV2Coverage(107L, 110L, reachesOldest = false, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
+                    revAtRequest = 0L,
+                    userDriven = false,
+                )
+                store.applyCoverage(
+                    scope = consecutiveScope,
+                    envelopes = listOf(
+                        envOf("channel-loose-consecutive", 104L),
+                        envOf("channel-loose-consecutive", 105L),
+                        envOf("channel-loose-consecutive", 106L),
+                    ),
+                    coverage = null,
+                    revAtRequest = 0L,
+                    userDriven = false,
+                )
+                for (poisonSeq in listOf(103L, 107L)) {
+                    database.queries.updateCanonicalFact(
+                        seq = poisonSeq,
+                        createdAt = "2026-07-16T00:00:00.000Z",
+                        canonicalFactJson = "malformed-touching-$poisonSeq",
+                        id = "channel-loose-consecutive-message-$poisonSeq",
+                        environmentId = consecutiveScope.environmentId,
+                        serverId = consecutiveScope.serverId,
+                        principalId = consecutiveScope.principalId,
+                        consumerId = consecutiveScope.consumerId,
+                        scopeKind = consecutiveScope.scopeKind,
+                        channelId = consecutiveScope.scopeId,
+                    )
+                }
+
+                val consecutiveRun = assertNotNull(
+                    reader.readTimeline(
+                        partition = partitionA,
+                        channelId = "channel-loose-consecutive",
+                        anchor = ThreadDurableTimelineAnchor.AroundMessageId("channel-loose-consecutive-message-105", beforeCount = 5, afterCount = 5),
+                    ),
+                )
+                assertEquals(listOf(104L, 105L, 106L), consecutiveRun.envelopes.map { it.fact.seq })
+                assertTrue(consecutiveRun.gaps.isEmpty())
+                assertTrue(consecutiveRun.hasOlderStored)
+                assertTrue(consecutiveRun.hasNewerStored)
+                assertFalse(consecutiveRun.insideProvenSegment)
+
+                // Respects beforeCount / afterCount caps inside the consecutive run.
+                val cappedRun = assertNotNull(
+                    reader.readTimeline(
+                        partition = partitionA,
+                        channelId = "channel-loose-consecutive",
+                        anchor = ThreadDurableTimelineAnchor.AroundMessageId("channel-loose-consecutive-message-105", beforeCount = 0, afterCount = 1),
+                    ),
+                )
+                assertEquals(listOf(105L, 106L), cappedRun.envelopes.map { it.fact.seq })
+                assertTrue(cappedRun.gaps.isEmpty())
+                assertTrue(cappedRun.hasOlderStored)
+                assertTrue(cappedRun.hasNewerStored)
+
+                // 3. Loose anchor at Long.MAX_VALUE with consecutive Long.MAX_VALUE - 1 works without overflow.
+                val maxLooseScope = SyncScopeKey(partitionA, "channel-loose-max", "channel")
+                val maxSeq = Long.MAX_VALUE
+                store.applyCoverage(
+                    scope = maxLooseScope,
+                    envelopes = listOf(envOf("channel-loose-max", maxSeq - 1L), envOf("channel-loose-max", maxSeq)),
+                    coverage = null,
+                    revAtRequest = 0L,
+                    userDriven = false,
+                )
+                val anchoredMaxLoose = assertNotNull(
+                    reader.readTimeline(
+                        partition = partitionA,
+                        channelId = "channel-loose-max",
+                        anchor = ThreadDurableTimelineAnchor.AroundMessageId("channel-loose-max-message-$maxSeq", beforeCount = 2, afterCount = 2),
+                    ),
+                )
+                assertEquals(listOf(maxSeq - 1L, maxSeq), anchoredMaxLoose.envelopes.map { it.fact.seq })
+                assertTrue(anchoredMaxLoose.gaps.isEmpty())
+                assertFalse(anchoredMaxLoose.hasOlderStored)
+                assertFalse(anchoredMaxLoose.hasNewerStored)
+                assertFalse(anchoredMaxLoose.insideProvenSegment)
+            }
+        }
+
     private class RestoreCountingStore(private val delegate: CanonicalMessageV2Store) : CanonicalMessageV2Store {
         var restoreCalls = 0
         override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame) = delegate.applySnapshot(frame)
@@ -896,6 +1226,8 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             delegate.hasFactAfter(scope, afterSeq)
         override suspend fun highestFactSeqBefore(scope: SyncScopeKey, beforeSeq: Long) =
             delegate.highestFactSeqBefore(scope, beforeSeq)
+        override suspend fun lowestFactSeqAfter(scope: SyncScopeKey, afterSeq: Long) =
+            delegate.lowestFactSeqAfter(scope, afterSeq)
         override suspend fun locateFact(partition: DurablePartitionKey, factId: String) =
             delegate.locateFact(partition, factId)
         override suspend fun touchUserAccess(scope: SyncScopeKey) = delegate.touchUserAccess(scope)

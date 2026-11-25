@@ -173,15 +173,48 @@ class SharedThreadStoreUnanchoredOpenNoMiddleGapTest {
                     ThreadPendingSendInFlightRegistry.end("rand-pending-1")
                 }
 
-                // 3. Anchored open BEFORE Latest coverage commits still locates loose fact 120 on disk.
+                // 3. Anchored open BEFORE Latest coverage commits still locates loose fact 120 on disk
+                //    with ZERO mid-timeline gaps on Frame 1 (never splicing head [10..20] + gap (20, 120)).
                 val offlineApi = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
                 val anchoredStore = SharedThreadStore(dataSource(backgroundScope, offlineApi, reader, journal), scope = storeScope)
                 anchoredStore.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "v2-120")))
                 assertTrue(anchoredStore.state.value.payload.durableLastKnown)
-                assertTrue(
-                    anchoredStore.state.value.payload.messages.any { it.id == "v2-120" },
-                    "anchored open must still locate loose fact 120 on disk",
+                assertEquals(
+                    listOf(120L),
+                    anchoredStore.state.value.payload.messages.mapNotNull { it.seq },
+                    "anchored open on loose fact 120 must show only gap-free loose anchor on Frame 1",
                 )
+                assertTrue(
+                    anchoredStore.state.value.payload.timelineGaps.isEmpty(),
+                    "anchored open Frame 1 must never emit inline timeline gaps: ${anchoredStore.state.value.payload.timelineGaps}",
+                )
+                assertTrue(anchoredStore.state.value.payload.canLoadMoreBefore)
+                assertTrue(anchoredStore.state.value.payload.canLoadMoreAfter)
+
+                // Explicit offline LoadOlder from loose anchor 120 still crosses into stored islands [10..20] and [1..5]
+                // with derived gaps (5, 10) and (20, 120).
+                anchoredStore.accept(SharedThreadIntent.LoadOlder)
+                assertEquals(
+                    (1L..5L).toList() + (10L..20L).toList() + listOf(120L),
+                    anchoredStore.state.value.payload.messages.mapNotNull { it.seq },
+                )
+                assertEquals(
+                    listOf(
+                        ThreadTimelineGap(afterSeq = 5L, beforeSeq = 10L, status = "idle"),
+                        ThreadTimelineGap(afterSeq = 20L, beforeSeq = 120L, status = "idle"),
+                    ),
+                    anchoredStore.state.value.payload.timelineGaps,
+                )
+
+                // Anchored open inside head [10..20] also stays strictly inside head with zero gaps while keeping
+                // both older lower-island [1..5] and newer loose fact 120 reachable offline.
+                val anchoredInSegmentStore = SharedThreadStore(dataSource(backgroundScope, offlineApi, reader, journal), scope = storeScope)
+                anchoredInSegmentStore.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "v2-15")))
+                assertTrue(anchoredInSegmentStore.state.value.payload.durableLastKnown)
+                assertEquals((10L..20L).toList(), anchoredInSegmentStore.state.value.payload.messages.mapNotNull { it.seq })
+                assertTrue(anchoredInSegmentStore.state.value.payload.timelineGaps.isEmpty())
+                assertTrue(anchoredInSegmentStore.state.value.payload.canLoadMoreBefore)
+                assertTrue(anchoredInSegmentStore.state.value.payload.canLoadMoreAfter)
 
                 // 4. Offline open + explicit LoadOlder still crosses into lower island [1..5] with derived gap (5, 10).
                 val offlineStore = SharedThreadStore(dataSource(backgroundScope, offlineApi, reader, journal), scope = storeScope)
