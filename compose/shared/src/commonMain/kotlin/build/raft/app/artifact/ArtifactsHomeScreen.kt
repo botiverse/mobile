@@ -105,8 +105,9 @@ internal fun ArtifactsHomeScreen(
     onOpen: (ArtifactsHomeRow) -> Unit,
     onBack: () -> Unit,
     onCopyLink: ((ArtifactsHomeRow) -> Unit)? = null,
-    /** The tile's cover: screenshot, excerpt, or placeholder (dimmed flag for grayscale). */
-    cover: @Composable (ArtifactsHomeRow, Boolean) -> Unit = { row, _ -> ArtifactsHomeTilePlaceholder(row.summary.kind) },
+    /** The tile's cover: screenshot, excerpt, or placeholder (dimmed flag + top-right corner badges). */
+    cover: @Composable (ArtifactsHomeRow, Boolean, (@Composable () -> Unit)?) -> Unit =
+        { row, _, corner -> ArtifactsHomeTilePlaceholder(row.summary.kind, corner) },
     /** The list row's 76dp 16:10 thumbnail: screenshot, excerpt, or placeholder. */
     thumbnail: @Composable (ArtifactsHomeRow, Boolean) -> Unit = { row, _ -> ArtifactsHomeRowThumbnailPlaceholder(row.summary.kind) },
     /** Artifact currently open in the wide split viewer column; null when closed or on narrow viewports. */
@@ -166,6 +167,8 @@ internal object ArtifactsHomeTags {
     const val EmptyAction = "artifacts-all-empty-action"
     const val Row = "artifacts-all-row"
     const val Tile = "artifacts-dashboard-row"
+    const val TileCorner = "artifacts-tile-corner"
+    const val TileExcerptCorner = "artifacts-tile-excerpt-corner"
     const val TileTitle = "artifacts-tile-title"
     const val TileMeta = "artifacts-tile-meta"
     const val ListMeta = "artifacts-list-meta"
@@ -698,7 +701,7 @@ private fun ArtifactsHomeList(
     onIntent: (ArtifactsHomeIntent) -> Unit,
     onOpen: (ArtifactsHomeRow) -> Unit,
     onCopyLink: ((ArtifactsHomeRow) -> Unit)?,
-    cover: @Composable (ArtifactsHomeRow, Boolean) -> Unit,
+    cover: @Composable (ArtifactsHomeRow, Boolean, (@Composable () -> Unit)?) -> Unit,
     thumbnail: @Composable (ArtifactsHomeRow, Boolean) -> Unit,
 ) {
     val rows = state.rows
@@ -1207,25 +1210,46 @@ private fun artifactsHomeFacts(row: ArtifactsHomeRow): List<String> =
 
 /** web `TileCover`'s last resort: the kind's glyph on `fill-muted`, 16:10. */
 @Composable
-internal fun ArtifactsHomeTilePlaceholder(kind: ArtifactKind) {
+internal fun ArtifactsHomeTilePlaceholder(
+    kind: ArtifactKind,
+    corner: (@Composable () -> Unit)? = null,
+) {
     val colors = RaftTheme.colors
-    ArtifactsHomeTileCoverFrame {
+    ArtifactsHomeTileCoverFrame(corner = corner) {
         RaftLucideIcon(kind.lucideIcon(), Modifier.size(28.dp), color = raftArgbHex(colors.foregroundMuted))
     }
 }
 
 /**
  * web `TileCover`'s box: every cover is the tile's width at 16:10 (`aspect-[16/10]`, review L3);
- * what doesn't fit is cut, on `fill-muted`, with a hairline under it.
+ * what doesn't fit is cut, on `fill-muted`, with a hairline under it. When [corner] is supplied,
+ * it is overlaid at top-right (`6.dp` inset, web `artifacts-tile-corner`); Markdown excerpt covers
+ * instead pass `corner` directly into [ArtifactCardExcerpt] so words wrap around it.
  */
 @Composable
-internal fun ArtifactsHomeTileCoverFrame(alignment: Alignment = Alignment.Center, content: @Composable () -> Unit) {
+internal fun ArtifactsHomeTileCoverFrame(
+    alignment: Alignment = Alignment.Center,
+    corner: (@Composable () -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
     val colors = RaftTheme.colors
     Column(Modifier.fillMaxWidth()) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(16f / 10f).clipToBounds().background(colors.fillMuted),
             contentAlignment = alignment,
-        ) { content() }
+        ) {
+            content()
+            if (corner != null) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .testTag(ArtifactsHomeTags.TileCorner),
+                ) {
+                    corner()
+                }
+            }
+        }
         Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineHairline))
     }
 }

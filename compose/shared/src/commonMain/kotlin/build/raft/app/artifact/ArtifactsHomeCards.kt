@@ -282,10 +282,12 @@ internal fun ArtifactSettledStrip(
 }
 
 /**
- * Compact grid tile (web `ArtifactTile`, slock #16137, #16357, #16418):
+ * Compact grid tile (web `ArtifactTile`, slock #16137, #16357, #16418, #16751):
  * - 16:10 cover with overlays: top-right Unfollowed (under Relevant to me) + Settled + Public
  *   (only when `home == Public`), bottom-left Mentions you / Updated pills, bottom-right combined
- *   comment badge.
+ *   comment badge. The top-right group is passed to [cover] as its `corner`: over a screenshot or
+ *   placeholder it sits overlaid at top-right (`6.dp` inset); on a Markdown excerpt the first lines
+ *   wrap around it at the exact same position.
  * - Below cover: 2-line bold title (no version badge, no standalone time line) +
  *   single meta line `Avatar + Author · [Home icon] Home`.
  * - Settled tiles under All and unfollowed tiles under Relevant to me are visually dimmed
@@ -311,7 +313,7 @@ internal fun ArtifactsHomeTile(
     onSetFollowing: ((Boolean) -> Unit)? = null,
     fillHeight: Boolean = false,
     modifier: Modifier = Modifier,
-    cover: @Composable (ArtifactsHomeRow, Boolean) -> Unit,
+    cover: @Composable (ArtifactsHomeRow, Boolean, (@Composable () -> Unit)?) -> Unit,
 ) {
     val colors = RaftTheme.colors
     val label = artifactsHomeOpenLabel(row, readerId, serverName, byOpened)
@@ -323,6 +325,22 @@ internal fun ArtifactsHomeTile(
     val hasTopRight = unfollowed || row.summary.settled != null || row.summary.home == ArtifactHome.Public
     val hasBottomLeft = row.news.mentioned || row.news.newerVersion
     val hasBottomRight = row.summary.commentCount > 0 || row.news.newComments > 0
+    val corner: (@Composable () -> Unit)? =
+        if (hasTopRight) {
+            {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (unfollowed) ArtifactUnfollowedBadge(onCover = true)
+                    row.summary.settled?.let { ArtifactCoverSettledBadge(it, readerId) }
+                    if (row.summary.home == ArtifactHome.Public) ArtifactPublicBadge(onCover = true)
+                }
+            }
+        } else {
+            null
+        }
 
     Box(
         modifier
@@ -359,20 +377,9 @@ internal fun ArtifactsHomeTile(
                 .clip(innerShape),
         ) {
             Box(Modifier.fillMaxWidth()) {
-                cover(row, dimmed)
-                if (hasTopRight || hasBottomLeft || hasBottomRight) {
+                cover(row, dimmed, corner)
+                if (hasBottomLeft || hasBottomRight) {
                     Box(Modifier.matchParentSize()) {
-                        if (hasTopRight) {
-                            FlowRow(
-                                modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                if (unfollowed) ArtifactUnfollowedBadge(onCover = true)
-                                row.summary.settled?.let { ArtifactCoverSettledBadge(it, readerId) }
-                                if (row.summary.home == ArtifactHome.Public) ArtifactPublicBadge(onCover = true)
-                            }
-                        }
                         if (hasBottomLeft) {
                             FlowRow(
                                 modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
