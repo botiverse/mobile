@@ -40,6 +40,7 @@ import kotlin.time.TimeSource
 internal data class SharedThreadComposerDraftState(
     val instanceId: String = "",
     val draftKey: String? = null,
+    val serverId: String? = null,
     val seedText: String = "",
     val seedAsTask: Boolean = false,
     /** Session-only image policy; deliberately excluded from persisted drafts. */
@@ -170,7 +171,9 @@ internal data class SharedThreadComposerDraftListing(
     val record: SharedThreadComposerDraftRecord,
     val text: String,
     /** Null for a draft saved before edit times were kept. */
-    val editedAtEpochMillis: Long?
+    val editedAtEpochMillis: Long?,
+    /** Server on which this draft was saved; null for legacy drafts saved before server metadata was kept. */
+    val serverId: String? = null,
 )
 
 /** Exact key/value image used to undo a multi-key draft transition. */
@@ -257,6 +260,7 @@ internal class SharedThreadComposerDraftPersistenceTransaction(
         structuredMentions: List<ThreadSendMessageMention>? = null,
         preserveEditedAt: Boolean = false,
         preservedEditedAtEpochMillis: Long? = null,
+        serverId: String? = null,
     ): Set<String> = owner.saveInTransaction(
         transaction = this,
         key = key,
@@ -267,6 +271,7 @@ internal class SharedThreadComposerDraftPersistenceTransaction(
         structuredMentions = structuredMentions,
         preserveEditedAt = preserveEditedAt,
         preservedEditedAtEpochMillis = preservedEditedAtEpochMillis,
+        serverId = serverId,
     )
 
     internal fun clear(key: String): Set<String> = owner.clearInTransaction(this, key)
@@ -784,7 +789,15 @@ internal class SharedThreadComposerDraftPersistence(
     }
 
     internal fun storageKeysForDraft(key: String): Set<String> =
-        setOf(textKey(key), asTaskKey(key), attachmentsKey(key), sourcesKey(key), mentionsKey(key), editedAtKey(key))
+        setOf(
+            textKey(key),
+            asTaskKey(key),
+            attachmentsKey(key),
+            sourcesKey(key),
+            mentionsKey(key),
+            editedAtKey(key),
+            serverIdKey(key),
+        )
 
     fun read(key: String): SharedThreadComposerPersistedDraft? = lock.withLock {
         val text = store.getString(textKey(key)) ?: return@withLock null
@@ -803,6 +816,10 @@ internal class SharedThreadComposerDraftPersistence(
 
     fun readEditedAtEpochMillis(key: String): Long? = lock.withLock {
         store.getString(editedAtKey(key))?.toLongOrNull()
+    }
+
+    fun readServerId(key: String): String? = lock.withLock {
+        store.getString(serverIdKey(key))?.trim()?.takeIf { it.isNotBlank() }
     }
 
     fun matchingSiblingKeys(key: String): List<String> = lock.withLock {
@@ -868,6 +885,8 @@ internal class SharedThreadComposerDraftPersistence(
         routineDiagnostics: Boolean = true,
         preserveEditedAt: Boolean = false,
         preservedEditedAtEpochMillis: Long? = null,
+        /** Server on which this draft was typed; null preserves any already-stored serverId. */
+        serverId: String? = null,
     ) {
         var durableSnapshot: SharedThreadComposerDraftStorageSnapshot? = null
         var mutation: SharedThreadComposerDraftNonTransactionalMutation? = null
@@ -889,6 +908,7 @@ internal class SharedThreadComposerDraftPersistence(
                         structuredMentions = structuredMentions,
                         preserveEditedAt = preserveEditedAt,
                         preservedEditedAtEpochMillis = preservedEditedAtEpochMillis,
+                        serverId = serverId,
                     )
                     transactionOwned = true
                     return@withLock
@@ -909,6 +929,7 @@ internal class SharedThreadComposerDraftPersistence(
                     routineDiagnostics = routineDiagnostics,
                     preserveEditedAt = preserveEditedAt,
                     preservedEditedAtEpochMillis = preservedEditedAtEpochMillis,
+                    serverId = serverId,
                 )
                 mutation =
                     SharedThreadComposerDraftNonTransactionalMutation(
@@ -947,6 +968,7 @@ internal class SharedThreadComposerDraftPersistence(
         structuredMentions: List<ThreadSendMessageMention>? = null,
         preserveEditedAt: Boolean = false,
         preservedEditedAtEpochMillis: Long? = null,
+        serverId: String? = null,
     ): Set<String> = lock.withLock {
         checkOwnsTransitionLocked(transaction)
         saveUnlocked(
@@ -958,6 +980,7 @@ internal class SharedThreadComposerDraftPersistence(
             structuredMentions = structuredMentions,
             preserveEditedAt = preserveEditedAt,
             preservedEditedAtEpochMillis = preservedEditedAtEpochMillis,
+            serverId = serverId,
         ).also { refs -> transaction.deferRetirement(key, refs) }
     }
 
@@ -981,12 +1004,16 @@ internal class SharedThreadComposerDraftPersistence(
         routineDiagnostics: Boolean = true,
         preserveEditedAt: Boolean = false,
         preservedEditedAtEpochMillis: Long? = null,
+        serverId: String? = null,
     ): Set<String> {
         val previous = readUnlocked(key)
         val persistedMentions =
             (structuredMentions ?: previous?.structuredMentions.orEmpty()).visibleStructuredMentionsIn(text)
         val persistedAttachments = uploadedAttachments.persistableThreadComposerDraftAttachments()
         val persistedSources = externalShareSources.validExternalShareComposerSources()
+        val persistedServerId =
+            serverId?.trim()?.takeIf { it.isNotBlank() }
+                ?: store.getString(serverIdKey(key))?.trim()?.takeIf { it.isNotBlank() }
         if (routineDiagnostics) safeDiagnostics(
             "thread_composer_draft_persist_save key=$key textLen=${text.length} " +
                 "textBlank=${text.isBlank()} asTask=$asTask attachments=${persistedAttachments.size} " +
@@ -1042,6 +1069,7 @@ internal class SharedThreadComposerDraftPersistence(
                     else -> nowEpochMillis().toString()
                 }
             )
+            store.putString(serverIdKey(key), persistedServerId)
             addActiveKey(key)
         } catch (error: Throwable) {
             runCatching { restoreTransitionSnapshotUnlocked(before) }
@@ -1275,6 +1303,11 @@ internal class SharedThreadComposerDraftPersistence(
                     nowEpochMillis().toString()
                 }
             )
+            store.putString(
+                serverIdKey(key),
+                source.serverId.trim().takeIf { it.isNotBlank() }
+                    ?: store.getString(serverIdKey(fallbackSourceKey ?: key))?.trim()?.takeIf { it.isNotBlank() }
+            )
             addActiveKey(key)
             siblingKeysToClear.forEach { siblingKey ->
                 storageKeysForDraft(siblingKey).forEach { storageKey ->
@@ -1388,14 +1421,15 @@ internal class SharedThreadComposerDraftPersistence(
         activeDraftRecordsUnlocked()
     }
 
-    /** Every active draft with its text and last edit, for the Drafts list. */
+    /** Every active draft with its text, last edit, and optional serverId, for the Drafts list. */
     fun draftListings(): List<SharedThreadComposerDraftListing> = lock.withLock {
         activeDraftRecordsUnlocked().mapNotNull { record ->
             val text = store.getString(textKey(record.key)) ?: return@mapNotNull null
             SharedThreadComposerDraftListing(
                 record = record,
                 text = text,
-                editedAtEpochMillis = store.getString(editedAtKey(record.key))?.toLongOrNull()
+                editedAtEpochMillis = store.getString(editedAtKey(record.key))?.toLongOrNull(),
+                serverId = store.getString(serverIdKey(record.key))?.trim()?.takeIf { it.isNotBlank() },
             )
         }
     }
@@ -1429,6 +1463,7 @@ internal class SharedThreadComposerDraftPersistence(
             store.putString(sourcesKey(key), null)
             store.putString(mentionsKey(key), null)
             store.putString(editedAtKey(key), null)
+            store.putString(serverIdKey(key), null)
             removeActiveKey(key)
         } catch (error: Throwable) {
             runCatching { restoreTransitionSnapshotUnlocked(before) }
@@ -1477,6 +1512,7 @@ internal class SharedThreadComposerDraftPersistence(
     private fun attachmentsKey(key: String): String = "$DraftStoragePrefix$key$AttachmentsSuffix"
     private fun sourcesKey(key: String): String = "$DraftStoragePrefix$key$SourcesSuffix"
     private fun editedAtKey(key: String): String = "$DraftStoragePrefix$key$EditedAtSuffix"
+    private fun serverIdKey(key: String): String = "$DraftStoragePrefix$key$ServerIdSuffix"
     private fun mentionsKey(key: String): String = "$DraftStoragePrefix$key$MentionsSuffix"
 
     private fun readStructuredMentions(key: String): List<ThreadSendMessageMention> =
@@ -1587,11 +1623,13 @@ internal class SharedThreadComposerDraftPersistence(
         const val MentionsSuffix = ":mentions"
         /** Epoch millis of the text's last edit (Drafts); absent on drafts saved before it existed. */
         const val EditedAtSuffix = ":editedAt"
+        /** Server id where this draft was saved; absent on legacy drafts saved before it existed. */
+        const val ServerIdSuffix = ":serverId"
         private val ComposerDraftJson = Json { ignoreUnknownKeys = true }
 
         /** Every row one draft key owns (the active index aside). */
         fun draftRowKeys(key: String): List<String> =
-            listOf(TextSuffix, AsTaskSuffix, AttachmentsSuffix, SourcesSuffix, MentionsSuffix, EditedAtSuffix)
+            listOf(TextSuffix, AsTaskSuffix, AttachmentsSuffix, SourcesSuffix, MentionsSuffix, EditedAtSuffix, ServerIdSuffix)
                 .map { suffix -> "$DraftStoragePrefix$key$suffix" }
     }
 }
@@ -1637,7 +1675,7 @@ private object ImmediateThreadComposerDraftPersistenceScheduler : SharedThreadCo
 
 private data class PendingThreadComposerDraftWrite(
     val generation: Long,
-    val state: SharedThreadComposerDraftState,
+    var state: SharedThreadComposerDraftState,
     var cancellation: SharedThreadComposerDraftPersistenceCancellation? = null,
     /** [RaftDraftTimingMarker] sequence of the change this write carries; 0 when no marker. */
     val timingSeq: Long = 0L,
@@ -1692,6 +1730,7 @@ internal class SharedThreadComposerDraftPersistSlice(
         val sourceKeys: List<String>,
         val saveToCurrentKey: Boolean,
         val editedAtEpochMillis: Long?,
+        val serverId: String?,
     )
 
     private val stagedUploadedAttachmentsByDraftKey =
@@ -1936,6 +1975,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                                 sourceKeys = sourceKeysToClear,
                                 saveToCurrentKey = fallbackSourceKey != null,
                                 editedAtEpochMillis = fallbackSourceKey?.let(persistence::readEditedAtEpochMillis),
+                                serverId = fallbackSourceKey?.let(persistence::readServerId),
                             )
                     } else {
                         fallbackDraftMigrationByCurrentKey.remove(draftKey)
@@ -2013,6 +2053,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                                     structuredMentions = next.structuredMentions,
                                     preserveEditedAt = true,
                                     preservedEditedAtEpochMillis = migration.editedAtEpochMillis,
+                                    serverId = next.serverId ?: migration.serverId,
                                 )
                             }
                             migration.sourceKeys
@@ -2022,6 +2063,14 @@ internal class SharedThreadComposerDraftPersistSlice(
                                     persistence.clear(sourceKey)
                                 }
                             refreshActiveDraftRecords(reason = "StartFallbackRestore")
+                        }
+                    }
+                }
+            is SharedThreadComposerDraftIntent.SetServerId ->
+                next.draftKey?.let { key ->
+                    pendingWritesByDraftKey[key]?.let { pending ->
+                        if (pending.state.serverId != next.serverId) {
+                            pending.state = pending.state.copy(serverId = next.serverId)
                         }
                     }
                 }
@@ -2289,6 +2338,7 @@ internal class SharedThreadComposerDraftPersistSlice(
             externalShareSources = state.externalShareSources,
             structuredMentions = state.structuredMentions,
             routineDiagnostics = routineDiagnostics,
+            serverId = state.serverId,
         )
         if (!state.hasPersistableThreadComposerDraft()) {
             clearMatchingSiblingDraftsLocked(key)
@@ -2781,6 +2831,7 @@ private fun SharedThreadComposerDraftState.isAdmissibleAttachmentProgress(
 private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosticsLabel(): String =
     when (this) {
         is SharedThreadComposerDraftIntent.Start -> "Start"
+        is SharedThreadComposerDraftIntent.SetServerId -> "SetServerId"
         is SharedThreadComposerDraftIntent.Change -> "Change"
         is SharedThreadComposerDraftIntent.SetOriginalImage -> "SetOriginalImage"
         is SharedThreadComposerDraftIntent.InsertMention -> "InsertMention"
@@ -2826,8 +2877,10 @@ internal fun Set<SharedThreadComposerDraftRecord>.toThreadComposerDraftDiagnosti
 internal sealed interface SharedThreadComposerDraftIntent {
     data class Start(
         val composer: RaftThreadComposerPayload,
-        val draftKey: String? = null
+        val draftKey: String? = null,
+        val serverId: String? = null,
     ) : SharedThreadComposerDraftIntent
+    data class SetServerId(val serverId: String) : SharedThreadComposerDraftIntent
     data class Change(val seedText: String? = null, val seedAsTask: Boolean? = null) : SharedThreadComposerDraftIntent
     data class SetOriginalImage(val enabled: Boolean) : SharedThreadComposerDraftIntent
     data class InsertMention(val handle: String) : SharedThreadComposerDraftIntent
@@ -2995,6 +3048,9 @@ internal class SharedThreadComposerDraftStore(
                 val sameSession =
                     current.instanceId == intent.composer.instanceId &&
                         current.draftKey == nextDraftKey
+                val nextServerId =
+                    intent.serverId?.trim()?.takeIf { it.isNotBlank() }
+                        ?: if (sameSession) current.serverId else null
                 val replaceMountedEditor =
                     sameSession &&
                         (current.seedText != intent.composer.seedText || current.seedAsTask != intent.composer.seedAsTask)
@@ -3007,6 +3063,7 @@ internal class SharedThreadComposerDraftStore(
                 SharedThreadComposerDraftState(
                     instanceId = intent.composer.instanceId,
                     draftKey = nextDraftKey,
+                    serverId = nextServerId,
                     seedText = intent.composer.seedText,
                     seedAsTask = intent.composer.seedAsTask,
                     // This preference belongs to the mounted composer session. A remount of the
@@ -3038,6 +3095,14 @@ internal class SharedThreadComposerDraftStore(
                     focusRequestNonce = intent.composer.focusRequestNonce,
                     focusRequestMeta = intent.composer.focusRequestMeta,
                 )
+            }
+            is SharedThreadComposerDraftIntent.SetServerId -> {
+                val normalized = intent.serverId.trim().takeIf { it.isNotBlank() }
+                if (normalized == null || current.serverId == normalized) {
+                    current
+                } else {
+                    current.copy(serverId = normalized)
+                }
             }
             is SharedThreadComposerDraftIntent.Change ->
                 (intent.seedText ?: current.seedText).let { nextText ->

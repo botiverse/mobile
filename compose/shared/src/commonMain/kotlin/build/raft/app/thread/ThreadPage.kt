@@ -2949,6 +2949,7 @@ private fun SharedThreadRouteContentContent(
                         accessResolution = renderSlice.accessResolution,
                         replyParentAuthority = renderSlice.replyParentAuthority,
                         composerDraftViewModel = composerDraftViewModel,
+                        serverId = loadingServerId,
                         jointChannelId = composerJointChannelId,
                         composerLocked = threadLimitLocksWrites(loadingJointBillingNotice, loadingExternalFreezeState),
                         externalFrozen = loadingExternalFreezeState == ExternalFreezeState.Active,
@@ -4462,11 +4463,13 @@ private fun SharedThreadRouteContentContent(
     // ThreadComposerRoute mounts the real editor on Frame 1 instead of flashing the resting-height
     // placeholder until a post-Frame-1 LaunchedEffect runs.
     val composerDraftKey = remember(composerSurface) { composerSurface.threadComposerDraftKey() }
-    remember(composerDraftViewModel, scopedBaseComposerState.instanceId, composerDraftKey) {
+    val composerDraftServerId = headerProjectionServerId?.value ?: currentServerId
+    remember(composerDraftViewModel, scopedBaseComposerState.instanceId, composerDraftKey, composerDraftServerId) {
         ensureThreadComposerDraftStarted(
             composerDraftViewModel = composerDraftViewModel,
             composer = scopedBaseComposerState,
             draftKey = composerDraftKey,
+            serverId = composerDraftServerId,
         )
     }
     fun currentComposerPayload(): RaftThreadComposerPayload =

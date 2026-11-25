@@ -244,7 +244,8 @@ internal class SharedThreadComposerDraftAccounts(
     val store: SharedThreadComposerDraftAccountStore,
     /** Builds a facade used only to clear rows, so temporary files retire on the normal path. */
     private val persistenceFor: (SharedPreferenceStore) -> SharedThreadComposerDraftPersistence,
-    private val diagnosticsLogger: ((String) -> Unit)? = null
+    private val diagnosticsLogger: ((String) -> Unit)? = null,
+    private val placeLookups: RaftDraftPlaceLookups = SharedRaftDraftPlaceLookups,
 ) {
     private val lock = SynchronizedObject()
     /** One facade per owner token: the facade lock registry is keyed by store identity. */
@@ -282,7 +283,7 @@ internal class SharedThreadComposerDraftAccounts(
     ) {
         val previous = synchronized(lock) { lastBound.also { lastBound = account } }
         // Drafts' GET /channels/:id answers are this account's too: another account (or none) starts empty.
-        SharedRaftDraftPlaceLookups.bindAccount(account?.storageToken)
+        placeLookups.bindAccount(account?.storageToken)
         if (previous == null && account == null) {
             // Signed out with nobody bound in this process: nothing of this process to retire.
             // ("Not known yet" never gets here: it is RaftAccountBinding.Unknown.)  Rows left by a
@@ -348,6 +349,7 @@ internal class SharedThreadComposerDraftAccounts(
         }
         if (synchronized(lock) { lastBound } == null && store.currentAccount() == null) {
             store.owners().forEach(::deleteOwner)
+            placeLookups.bindAccount(null)
         }
     }
 

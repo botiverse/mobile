@@ -102,12 +102,12 @@ class SharedThreadComposerDraftStoreTest {
         store.dispatch(SharedThreadComposerDraftIntent.Flush)
 
         assertEquals("persist on blur", persistence.read(draftKey)?.text)
-        // One save: text, asTask, attachments, sources, mentions, editedAt and the active index.
-        assertEquals(7, storage.writeCount)
+        // One save: text, asTask, attachments, sources, mentions, editedAt, serverId and the active index.
+        assertEquals(8, storage.writeCount)
 
         scheduler.runPending()
 
-        assertEquals(7, storage.writeCount)
+        assertEquals(8, storage.writeCount)
         assertEquals(0, scheduler.executedTaskCount)
     }
 
@@ -1580,6 +1580,133 @@ class SharedThreadComposerDraftStoreTest {
                 otherServerGenericLabel = "Generic.",
             ),
         )
+    }
+
+    @Test
+    fun persistedServerIdSurvivesReloadFallbackMigrationRollbackClearAndAccountWipe() {
+        val storage = InMemoryRaftKeyValueStore()
+        val persistence = SharedThreadComposerDraftPersistence(storage)
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val rootKey = "send=chan-1|parent=_|mention=chan-1"
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        // Save with serverId through Start + Change and verify reload preserves it.
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "composer-s2"),
+                draftKey = rootKey,
+                serverId = "s2",
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "draft on s2"))
+        assertEquals("s2", persistence.readServerId(rootKey))
+        assertEquals("s2", persistence.draftListings().single { it.record.key == rootKey }.serverId)
+
+        val reloaded = SharedThreadComposerDraftPersistence(storage)
+        assertEquals("s2", reloaded.readServerId(rootKey))
+        assertEquals("s2", reloaded.draftListings().single { it.record.key == rootKey }.serverId)
+
+        // A save that omits serverId preserves the existing stored serverId.
+        reloaded.save(rootKey, text = "updated without serverId", asTask = false)
+        assertEquals("s2", reloaded.readServerId(rootKey))
+
+        // SetServerId updates active state (and any pending debounced write) without touching text or syncNonce.
+        val scheduler = FakeThreadComposerDraftPersistenceScheduler()
+        val debouncedSlice = SharedThreadComposerDraftPersistSlice(reloaded, scheduler = scheduler)
+        val debouncedStore = SharedThreadComposerDraftStore(persistSlices = listOf(debouncedSlice))
+        debouncedStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "composer-late-server"),
+                draftKey = rootKey,
+                serverId = null,
+            )
+        )
+        val syncBeforeSetServer = debouncedStore.state.value.syncNonce
+        debouncedStore.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "typed before server known"))
+        debouncedStore.dispatch(SharedThreadComposerDraftIntent.SetServerId("s3"))
+        assertEquals("s3", debouncedStore.state.value.serverId)
+        assertEquals(syncBeforeSetServer, debouncedStore.state.value.syncNonce)
+        scheduler.runPending()
+        assertEquals("s3", reloaded.readServerId(rootKey))
+
+        // Transaction rollback restores the previous :serverId metadata cleanly.
+        val tx = reloaded.beginTransition(listOf(rootKey))
+        tx.save(
+            key = rootKey,
+            text = "rolled back edit",
+            asTask = false,
+            uploadedAttachments = emptyList(),
+            externalShareSources = emptyList(),
+            serverId = "s-rolled-back",
+        )
+        assertEquals("s-rolled-back", reloaded.readServerId(rootKey))
+        tx.rollback()
+        tx.release()
+        assertEquals("s3", reloaded.readServerId(rootKey))
+        assertEquals("typed before server known", reloaded.read(rootKey)?.text)
+
+        // Fallback migration preserves :serverId onto the new key and clears it from the source key.
+        val fallbackKey = "send=chan-parent|parent=msg-7|mention=chan-parent"
+        val migratedKey = "send=thread-7|parent=msg-7|mention=chan-parent"
+        reloaded.save(fallbackKey, text = "first reply", asTask = false, serverId = "s2")
+        val migrateStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        migrateStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = RaftThreadComposerPayload(instanceId = "composer-migrate"),
+                draftKey = migratedKey,
+                serverId = null,
+            )
+        )
+        assertEquals("first reply", migrateStore.state.value.seedText)
+        assertEquals("s2", reloaded.readServerId(migratedKey))
+        assertNull(reloaded.readServerId(fallbackKey))
+        assertNull(storage.getString("${SharedThreadComposerDraftPersistence.DraftStoragePrefix}$fallbackKey:serverId"))
+
+        // Clear removes :serverId from storage.
+        reloaded.clear(migratedKey)
+        assertNull(reloaded.readServerId(migratedKey))
+        assertNull(storage.getString("${SharedThreadComposerDraftPersistence.DraftStoragePrefix}$migratedKey:serverId"))
+
+        // External share staging persists source.serverId.
+        val shareKey = "send=chan-share|parent=_|mention=chan-share"
+        val shareSource = SharedThreadComposerExternalShareSource("tok-1", "acc-1", "s-share")
+        assertEquals(
+            ExternalShareComposerDraftStageResult.Staged,
+            persistSlice.stageExternalShareDraft(
+                draftKey = shareKey,
+                text = "shared note",
+                attachments = emptyList(),
+                source = shareSource,
+            ),
+        )
+        assertEquals("s-share", reloaded.readServerId(shareKey))
+
+        // Account wipe removes scoped :serverId completely.
+        val accountBase = InMemoryRaftKeyValueStore()
+        val accountA = SharedThreadComposerDraftAccount("https://api.raft.build", "user-a")
+        var liveAccount: SharedThreadComposerDraftAccount? = accountA
+        val accountStore = SharedThreadComposerDraftAccountStore(accountBase, liveAccount = { liveAccount })
+        val accountPersistence = SharedThreadComposerDraftPersistence(accountStore)
+        val accountSlice = SharedThreadComposerDraftPersistSlice(accountPersistence)
+        val accounts =
+            SharedThreadComposerDraftAccounts(
+                base = accountBase,
+                store = accountStore,
+                persistenceFor = { view -> SharedThreadComposerDraftPersistence(view) },
+                placeLookups = RaftDraftPlaceLookups(store = accountBase),
+            )
+        accounts.onAccountBinding(accountA, accountSlice)
+        accountPersistence.save(rootKey, text = "account secret", asTask = false, serverId = "s2")
+        val scopedServerIdKey =
+            SharedThreadComposerDraftAccountKeys.scopedKey(
+                accountA,
+                "${SharedThreadComposerDraftPersistence.DraftStoragePrefix}$rootKey:serverId",
+            )
+        assertEquals("s2", accountBase.getString(scopedServerIdKey))
+
+        liveAccount = null
+        accounts.onAccountBinding(account = null, slice = accountSlice)
+        assertNull(accountBase.getString(scopedServerIdKey))
     }
 
     private fun externalShareAttachment(status: String) =
