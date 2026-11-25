@@ -1,7 +1,17 @@
 package build.raft.app
 
+import build.raft.app.data.MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY
+import build.raft.app.data.RaftConversationHeaderAction
+import build.raft.app.data.RaftConversationHeaderActionSelectedProperties
+import build.raft.app.data.RaftConversationHeaderKind
+import build.raft.app.data.RaftConversationHeaderSurface
+import build.raft.app.data.RaftProductEvent
+import build.raft.app.data.RaftProductEvents
+import build.raft.app.data.ServerFeatureFlagSnapshot
+import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * #proj-mobile:#281: web Task v2 conversation head button parity (slock `useChannelHeadToggles` /
@@ -212,5 +222,289 @@ class ThreadConversationHeadActionsTest {
             listOf("thread-call", "thread-side-card-tasks", "thread-side-card-files", "thread-settings"),
             agentDmActions.drop(shown).map { it.id },
         )
+    }
+
+    @Test
+    fun phoneHeaderRemoteConfigParsesVariantsAndDefaultsCleanlyWhenOffBlankOrInvalid() {
+        assertEquals(PhoneConversationHeaderPrimaryConfig.Default, ServerFeatureFlagSnapshot.Unresolved.phoneConversationHeaderPrimaryConfig())
+        assertEquals(
+            PhoneConversationHeaderPrimaryConfig.Default,
+            ServerFeatureFlagSnapshot(
+                serverId = ServerId("s1"),
+                resolved = true,
+                values = mapOf(MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY to false),
+                variants = mapOf(MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY to "tasks,search"),
+            ).phoneConversationHeaderPrimaryConfig(),
+        )
+        assertEquals(
+            PhoneConversationHeaderPrimaryConfig.Default,
+            ServerFeatureFlagSnapshot(
+                serverId = ServerId("s1"),
+                resolved = true,
+                values = mapOf(MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY to true),
+                variants = emptyMap(),
+            ).phoneConversationHeaderPrimaryConfig(),
+        )
+        assertEquals(PhoneConversationHeaderPrimaryConfig.Default, parsePhoneConversationHeaderPrimaryConfig(null))
+        assertEquals(PhoneConversationHeaderPrimaryConfig.Default, parsePhoneConversationHeaderPrimaryConfig("   "))
+        assertEquals(PhoneConversationHeaderPrimaryConfig.Default, parsePhoneConversationHeaderPrimaryConfig(",,,"))
+        assertEquals(PhoneConversationHeaderPrimaryConfig.Default, parsePhoneConversationHeaderPrimaryConfig("bogus,unknown"))
+
+        val snapshotTasksSearch =
+            ServerFeatureFlagSnapshot(
+                serverId = ServerId("s1"),
+                resolved = true,
+                values = mapOf(MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY to true),
+                variants = mapOf(MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY to " Tasks , unknown , SEARCH , tasks "),
+            )
+        assertEquals(
+            PhoneConversationHeaderPrimaryConfig(
+                listOf(
+                    PhoneConversationHeaderPrimaryEntry.Slot(PhoneConversationHeaderActionSlot.Tasks),
+                    PhoneConversationHeaderPrimaryEntry.Slot(PhoneConversationHeaderActionSlot.Search),
+                )
+            ),
+            snapshotTasksSearch.phoneConversationHeaderPrimaryConfig(),
+        )
+        // "settings" is an alias for "details" and deduplicates against "details".
+        assertEquals(
+            PhoneConversationHeaderPrimaryConfig(
+                listOf(
+                    PhoneConversationHeaderPrimaryEntry.Slot(PhoneConversationHeaderActionSlot.Details),
+                    PhoneConversationHeaderPrimaryEntry.Slot(PhoneConversationHeaderActionSlot.Search),
+                )
+            ),
+            parsePhoneConversationHeaderPrimaryConfig("Settings, details, search"),
+        )
+        // Tokens after "none" are unreachable and truncated cleanly.
+        assertEquals(
+            PhoneConversationHeaderPrimaryConfig(
+                listOf(
+                    PhoneConversationHeaderPrimaryEntry.Slot(PhoneConversationHeaderActionSlot.Tasks),
+                    PhoneConversationHeaderPrimaryEntry.None,
+                )
+            ),
+            parsePhoneConversationHeaderPrimaryConfig("tasks, NONE, search"),
+        )
+    }
+
+    @Test
+    fun phoneHeaderRemoteConfigSelectsFirstAvailablePrimaryAndPreservesAllRemainingActionsInOrder() {
+        val channelIds = listOf("thread-search", "thread-side-card-tasks", "thread-side-card-files", "thread-settings")
+        val dmWithoutTasksIds = listOf("thread-search", "thread-side-card-files", "thread-settings")
+        val agentDmWithCallIds = listOf("thread-search", "thread-call", "thread-side-card-tasks", "thread-side-card-files", "thread-settings")
+
+        // Default: Search exposed, rest in ⋯ in canonical head order.
+        val defaultChannel = splitPhoneConversationHeaderActions(channelIds, idOf = { it })
+        assertEquals(listOf("thread-search"), defaultChannel.visible)
+        assertEquals(listOf("thread-side-card-tasks", "thread-side-card-files", "thread-settings"), defaultChannel.folded)
+
+        // "tasks,search": Channel exposes Tasks (Search folded into ⋯), DM without Tasks falls back to Search.
+        val tasksSearch = parsePhoneConversationHeaderPrimaryConfig("tasks,search")
+        val tasksChannel = splitPhoneConversationHeaderActions(channelIds, idOf = { it }, config = tasksSearch)
+        assertEquals(listOf("thread-side-card-tasks"), tasksChannel.visible)
+        assertEquals(listOf("thread-search", "thread-side-card-files", "thread-settings"), tasksChannel.folded)
+
+        val tasksDmFallback = splitPhoneConversationHeaderActions(dmWithoutTasksIds, idOf = { it }, config = tasksSearch)
+        assertEquals(listOf("thread-search"), tasksDmFallback.visible)
+        assertEquals(listOf("thread-side-card-files", "thread-settings"), tasksDmFallback.folded)
+
+        val tasksAgentDm = splitPhoneConversationHeaderActions(agentDmWithCallIds, idOf = { it }, config = tasksSearch)
+        assertEquals(listOf("thread-side-card-tasks"), tasksAgentDm.visible)
+        assertEquals(listOf("thread-search", "thread-call", "thread-side-card-files", "thread-settings"), tasksAgentDm.folded)
+
+        // "files,search": exposes Files.
+        val filesChannel =
+            splitPhoneConversationHeaderActions(channelIds, idOf = { it }, config = parsePhoneConversationHeaderPrimaryConfig("files,search"))
+        assertEquals(listOf("thread-side-card-files"), filesChannel.visible)
+        assertEquals(listOf("thread-search", "thread-side-card-tasks", "thread-settings"), filesChannel.folded)
+
+        // "details" and alias "settings": expose Details.
+        for (variant in listOf("details", "settings")) {
+            val detailsChannel =
+                splitPhoneConversationHeaderActions(channelIds, idOf = { it }, config = parsePhoneConversationHeaderPrimaryConfig(variant))
+            assertEquals(listOf("thread-settings"), detailsChannel.visible, variant)
+            assertEquals(listOf("thread-search", "thread-side-card-tasks", "thread-side-card-files"), detailsChannel.folded, variant)
+        }
+
+        // "call,search": Agent DM exposes Call; Channel without Call falls back to Search.
+        val callSearch = parsePhoneConversationHeaderPrimaryConfig("call,search")
+        val callAgentDm = splitPhoneConversationHeaderActions(agentDmWithCallIds, idOf = { it }, config = callSearch)
+        assertEquals(listOf("thread-call"), callAgentDm.visible)
+        assertEquals(listOf("thread-search", "thread-side-card-tasks", "thread-side-card-files", "thread-settings"), callAgentDm.folded)
+
+        val callChannelFallback = splitPhoneConversationHeaderActions(channelIds, idOf = { it }, config = callSearch)
+        assertEquals(listOf("thread-search"), callChannelFallback.visible)
+        assertEquals(listOf("thread-side-card-tasks", "thread-side-card-files", "thread-settings"), callChannelFallback.folded)
+
+        // Single unmatched token ("call") falls back to Search when available, else first available action.
+        val callOnly = parsePhoneConversationHeaderPrimaryConfig("call")
+        val callOnlyChannel = splitPhoneConversationHeaderActions(channelIds, idOf = { it }, config = callOnly)
+        assertEquals(listOf("thread-search"), callOnlyChannel.visible)
+        assertEquals(listOf("thread-side-card-tasks", "thread-side-card-files", "thread-settings"), callOnlyChannel.folded)
+
+        val noSearchOrCall = listOf("thread-side-card-tasks", "thread-side-card-files", "thread-settings")
+        val firstAvailableFallback = splitPhoneConversationHeaderActions(noSearchOrCall, idOf = { it }, config = callOnly)
+        assertEquals(listOf("thread-side-card-tasks"), firstAvailableFallback.visible)
+        assertEquals(listOf("thread-side-card-files", "thread-settings"), firstAvailableFallback.folded)
+
+        // "none": exposes nothing beside ⋯, folding ALL available actions (even when <= 2 actions).
+        val noneConfig = parsePhoneConversationHeaderPrimaryConfig("none")
+        val noneChannel = splitPhoneConversationHeaderActions(channelIds, idOf = { it }, config = noneConfig)
+        assertEquals(emptyList(), noneChannel.visible)
+        assertEquals(channelIds, noneChannel.folded)
+
+        val twoActions = listOf("thread-search", "thread-settings")
+        val noneTwoActions = splitPhoneConversationHeaderActions(twoActions, idOf = { it }, config = noneConfig)
+        assertEquals(emptyList(), noneTwoActions.visible)
+        assertEquals(twoActions, noneTwoActions.folded)
+
+        val noneEmpty = splitPhoneConversationHeaderActions(emptyList<String>(), idOf = { it }, config = noneConfig)
+        assertEquals(emptyList(), noneEmpty.visible)
+        assertEquals(emptyList(), noneEmpty.folded)
+
+        // "tasks,none": channel exposes Tasks; DM without Tasks hits "none" and folds everything into ⋯.
+        val tasksNone = parsePhoneConversationHeaderPrimaryConfig("tasks,none")
+        val tasksNoneChannel = splitPhoneConversationHeaderActions(channelIds, idOf = { it }, config = tasksNone)
+        assertEquals(listOf("thread-side-card-tasks"), tasksNoneChannel.visible)
+        assertEquals(listOf("thread-search", "thread-side-card-files", "thread-settings"), tasksNoneChannel.folded)
+
+        val tasksNoneDm = splitPhoneConversationHeaderActions(dmWithoutTasksIds, idOf = { it }, config = tasksNone)
+        assertEquals(emptyList(), tasksNoneDm.visible)
+        assertEquals(dmWithoutTasksIds, tasksNoneDm.folded)
+    }
+
+    @Test
+    fun nativeNavBarAnalyticsAttributesFoldedSearchToMoreMenuAndPromotedDetailsOrCallToHeader() {
+        val recorded = mutableListOf<RaftProductEvent<*>>()
+        val previous = RaftProductEvents.testEntryEventObserver
+        RaftProductEvents.testEntryEventObserver = { recorded += it }
+        try {
+            fun headerEvents(): List<RaftConversationHeaderActionSelectedProperties> =
+                recorded.filterIsInstance<RaftProductEvent.ConversationHeaderActionSelected>().map { it.properties }
+
+            val rawChannelActions =
+                listOf("thread-search", "thread-side-card-tasks", "thread-side-card-files", "thread-settings").map { id ->
+                    RaftNativeNavBarAction(id = id, label = id, systemSymbol = raftNativeNavBarSymbolFor(id), onClick = {})
+                }
+            val foldedTasksPrimary =
+                wrapThreadHeaderNativeNavBarActionsForAnalytics(
+                    actions =
+                        foldPhoneConversationNativeNavBarActions(
+                            actions = rawChannelActions,
+                            foldForPhone = true,
+                            primaryConfig = parsePhoneConversationHeaderPrimaryConfig("tasks,search"),
+                        ),
+                    conversation = RaftConversationHeaderKind.Channel,
+                    compact = true,
+                    settingsOpen = false,
+                    focusModeActive = false,
+                    threadFollowed = null,
+                    taskConversation = false,
+                )
+            // Promoted Tasks stays owned by channel_tab_selected (emits no conversation_header_action_selected).
+            foldedTasksPrimary.first { it.id == "thread-side-card-tasks" }.onClick()
+            assertTrue(headerEvents().isEmpty())
+            // Folded Search emits Search on MoreMenu; folded Details emits OpenDetails on MoreMenu.
+            foldedTasksPrimary.first { it.id == "thread-search" }.onClick()
+            foldedTasksPrimary.first { it.id == "thread-settings" }.onClick()
+            assertEquals(
+                listOf(
+                    RaftConversationHeaderActionSelectedProperties(
+                        action = RaftConversationHeaderAction.Search,
+                        surface = RaftConversationHeaderSurface.MoreMenu,
+                        conversation = RaftConversationHeaderKind.Channel,
+                        compact = true,
+                    ),
+                    RaftConversationHeaderActionSelectedProperties(
+                        action = RaftConversationHeaderAction.OpenDetails,
+                        surface = RaftConversationHeaderSurface.MoreMenu,
+                        conversation = RaftConversationHeaderKind.Channel,
+                        compact = true,
+                    ),
+                ),
+                headerEvents(),
+            )
+
+            recorded.clear()
+            // Promoted Details emits OpenDetails / CloseDetails on Header; folded Search emits Search on MoreMenu.
+            val foldedDetailsOpen =
+                wrapThreadHeaderNativeNavBarActionsForAnalytics(
+                    actions =
+                        foldPhoneConversationNativeNavBarActions(
+                            actions = rawChannelActions,
+                            foldForPhone = true,
+                            primaryConfig = parsePhoneConversationHeaderPrimaryConfig("details"),
+                        ),
+                    conversation = RaftConversationHeaderKind.Channel,
+                    compact = true,
+                    settingsOpen = true,
+                    focusModeActive = false,
+                    threadFollowed = null,
+                    taskConversation = false,
+                )
+            foldedDetailsOpen.first { it.id == "thread-settings" }.onClick()
+            foldedDetailsOpen.first { it.id == "thread-search" }.onClick()
+            assertEquals(
+                listOf(
+                    RaftConversationHeaderActionSelectedProperties(
+                        action = RaftConversationHeaderAction.CloseDetails,
+                        surface = RaftConversationHeaderSurface.Header,
+                        conversation = RaftConversationHeaderKind.Channel,
+                        compact = true,
+                    ),
+                    RaftConversationHeaderActionSelectedProperties(
+                        action = RaftConversationHeaderAction.Search,
+                        surface = RaftConversationHeaderSurface.MoreMenu,
+                        conversation = RaftConversationHeaderKind.Channel,
+                        compact = true,
+                    ),
+                ),
+                headerEvents(),
+            )
+
+            recorded.clear()
+            // Promoted Call on Agent DM emits StartCall on Header; folded Search emits Search on MoreMenu.
+            val rawAgentDmActions =
+                listOf("thread-search", "thread-call", "thread-side-card-tasks", "thread-side-card-files", "thread-settings").map { id ->
+                    RaftNativeNavBarAction(id = id, label = id, systemSymbol = raftNativeNavBarSymbolFor(id), onClick = {})
+                }
+            val foldedCallPrimary =
+                wrapThreadHeaderNativeNavBarActionsForAnalytics(
+                    actions =
+                        foldPhoneConversationNativeNavBarActions(
+                            actions = rawAgentDmActions,
+                            foldForPhone = true,
+                            primaryConfig = parsePhoneConversationHeaderPrimaryConfig("call,search"),
+                        ),
+                    conversation = RaftConversationHeaderKind.Dm,
+                    compact = true,
+                    settingsOpen = false,
+                    focusModeActive = false,
+                    threadFollowed = null,
+                    taskConversation = false,
+                )
+            foldedCallPrimary.first { it.id == "thread-call" }.onClick()
+            foldedCallPrimary.first { it.id == "thread-search" }.onClick()
+            assertEquals(
+                listOf(
+                    RaftConversationHeaderActionSelectedProperties(
+                        action = RaftConversationHeaderAction.StartCall,
+                        surface = RaftConversationHeaderSurface.Header,
+                        conversation = RaftConversationHeaderKind.Dm,
+                        compact = true,
+                    ),
+                    RaftConversationHeaderActionSelectedProperties(
+                        action = RaftConversationHeaderAction.Search,
+                        surface = RaftConversationHeaderSurface.MoreMenu,
+                        conversation = RaftConversationHeaderKind.Dm,
+                        compact = true,
+                    ),
+                ),
+                headerEvents(),
+            )
+        } finally {
+            RaftProductEvents.testEntryEventObserver = previous
+        }
     }
 }

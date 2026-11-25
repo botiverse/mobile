@@ -257,6 +257,9 @@ private fun buildThreadNativeNavBarPrefillFromPageData(
                 ?.takeIf { it.isNotBlank() }
                 ?.let { id -> scopedMembersStore?.memberProfile(sid, id)?.avatar?.wireValue }
         }
+    val phoneHeaderPrimaryConfig =
+        sharedStores?.serverFeatureFlags?.snapshotFor(serverId)?.phoneConversationHeaderPrimaryConfig()
+            ?: PhoneConversationHeaderPrimaryConfig.Default
     return buildThreadNativeNavBarPrefillHead(
         payload = payload,
         directoryProjection = directoryProjection,
@@ -266,6 +269,7 @@ private fun buildThreadNativeNavBarPrefillFromPageData(
         loungeAgentAvatarWireValue = loungeAgentAvatarWireValue,
         loungeSwitchVisible = loungeSwitchVisible,
         resolvedDmPeerAvatarWireValue = dmPeerAvatarWireValue,
+        phoneHeaderPrimaryConfig = phoneHeaderPrimaryConfig,
         strings = strings,
     )
 }
@@ -279,6 +283,7 @@ internal fun buildThreadNativeNavBarPrefillHead(
     loungeAgentAvatarWireValue: String? = null,
     loungeSwitchVisible: Boolean = false,
     resolvedDmPeerAvatarWireValue: String? = null,
+    phoneHeaderPrimaryConfig: PhoneConversationHeaderPrimaryConfig = PhoneConversationHeaderPrimaryConfig.Default,
     strings: RaftNativeNavBarPrefillStrings? = null,
 ): RaftNativeNavBarHead {
     val resolvedStrings = strings ?: defaultNativeNavBarPrefillStrings()
@@ -403,6 +408,7 @@ internal fun buildThreadNativeNavBarPrefillHead(
         foldPhoneConversationNativeNavBarActions(
             actions = rawActions,
             foldForPhone = isTopLevelConversation,
+            primaryConfig = phoneHeaderPrimaryConfig,
         )
     return RaftNativeNavBarHead(
         title = title,

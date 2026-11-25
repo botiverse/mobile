@@ -142,21 +142,30 @@ internal fun raftNativeNavBarSplit(actions: List<RaftNativeNavBarAction>): List<
 }
 
 /**
- * Phone conversation header fold (`botiverse/slock#16464`, `#proj-chat:#45`): on a phone every
- * top-level conversation head shows at most two buttons on the right — Search and `⋯` — folding
- * Call (when present), Tasks, Files, and Details & settings into `⋯` in that order. A head with
- * at most two trailing buttons and no pre-existing overflow items keeps both on the bar.
+ * Phone conversation header fold (`botiverse/slock#16464`, `#proj-chat:#45`, `#wg-mobile-sync:#13`):
+ * on a phone every top-level conversation head shows at most two buttons on the right — the
+ * server-selected primary action (default `Search`) and `⋯` — folding all other actions into `⋯`
+ * in canonical head order. When [primaryConfig] resolves to `none`, all actions fold into `⋯`.
+ * A head with at most two trailing buttons and no pre-existing overflow items keeps both on the bar
+ * unless `none` was explicitly selected.
  */
 internal fun foldPhoneConversationNativeNavBarActions(
     actions: List<RaftNativeNavBarAction>,
     foldForPhone: Boolean,
+    primaryConfig: PhoneConversationHeaderPrimaryConfig = PhoneConversationHeaderPrimaryConfig.Default,
 ): List<RaftNativeNavBarAction> {
     if (!foldForPhone) return actions
-    val trailingIndices = actions.indices.filter { actions[it].placement == RaftNativeNavBarPlacement.Trailing }
+    val trailing = actions.withIndex().filter { it.value.placement == RaftNativeNavBarPlacement.Trailing }
     val hasExplicitOverflow = actions.any { it.placement == RaftNativeNavBarPlacement.Overflow }
-    val keptCount = threadHeaderPhoneShownOwnActions(ownCount = trailingIndices.size, existingMenuItems = hasExplicitOverflow)
-    if (keptCount >= trailingIndices.size) return actions
-    val keptIndices = trailingIndices.take(keptCount).toSet()
+    val split =
+        splitPhoneConversationHeaderActions(
+            actions = trailing,
+            idOf = { it.value.id },
+            existingMenuItems = hasExplicitOverflow,
+            config = primaryConfig,
+        )
+    if (split.folded.isEmpty()) return actions
+    val keptIndices = split.visible.map { it.index }.toSet()
     return actions.mapIndexed { index, action ->
         if (action.placement == RaftNativeNavBarPlacement.Trailing && index !in keptIndices) {
             action.copy(placement = RaftNativeNavBarPlacement.Overflow)

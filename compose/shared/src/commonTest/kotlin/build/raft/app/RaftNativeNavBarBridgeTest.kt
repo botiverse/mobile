@@ -681,4 +681,148 @@ class RaftNativeNavBarBridgeTest {
         assertTrue(bridge.actionTapped("agent-conversation-profile"))
         assertEquals(1, viewedProfile)
     }
+
+    @Test
+    fun phoneHeaderRemoteConfigPromotesPrimaryActionInNativeNavBarPrefillAndBridge() {
+        val strings =
+            RaftNativeNavBarPrefillStrings(
+                replyThreadTitle = "Thread",
+                channelTitle = "Channel",
+                directMessageTitle = "Direct Message",
+                searchLabel = "Search",
+                searchInThreadLabel = "Search in thread",
+                searchInTaskLabel = "Search in task",
+                viewInChannelLabel = "View in Channel",
+                settingsLabel = "Settings",
+                openTasksLabel = "Open Tasks",
+                openFilesLabel = "Open files",
+                loungeLabel = "Lounge",
+                loungeTitleForAgent = { "$it's Lounge" },
+                channelDetailsTitle = "Details",
+                membersTitle = "Members",
+                searchChannelLabel = "Search this channel",
+                searchConversationLabel = "Search this conversation",
+                channelDetailsOpenLabel = "Channel details and settings",
+                conversationDetailsOpenLabel = "Details and settings",
+            )
+        val channelPayload =
+            RaftThreadScreenPayload(
+                instanceId = "channel-rc",
+                title = "engineering",
+                status = "content",
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = "public",
+                sourceThreadId = "channel-rc",
+                streamChannelId = "channel-rc",
+                showModeTabs = true,
+                showSettingsAction = true,
+                showTaskOpenActions = true,
+                showTaskStatusActions = true,
+            )
+
+        // 1. Prefill with "tasks,search" on a channel: Tasks is Trailing, Search (with localized label + Search icon) is in Overflow.
+        val tasksChannelHead =
+            buildThreadNativeNavBarPrefillHead(
+                payload = channelPayload,
+                phoneHeaderPrimaryConfig = parsePhoneConversationHeaderPrimaryConfig("tasks,search"),
+                strings = strings,
+            )
+        assertEquals(
+            listOf("thread-side-card-tasks"),
+            tasksChannelHead.actions.filter { it.placement == RaftNativeNavBarPlacement.Trailing }.map { it.id },
+        )
+        val overflowActions = tasksChannelHead.actions.filter { it.placement == RaftNativeNavBarPlacement.Overflow }
+        assertEquals(listOf("thread-search", "thread-side-card-files", "thread-settings"), overflowActions.map { it.id })
+        assertEquals("Search this channel", overflowActions.first().label)
+        assertEquals(RaftLucideIconName.Search, overflowActions.first().icon)
+        assertEquals("magnifyingglass", overflowActions.first().systemSymbol)
+
+        // 2. Prefill with "tasks,search" on a DM without Tasks: falls back to Search on Trailing.
+        val dmNoTasksPayload =
+            RaftThreadScreenPayload(
+                instanceId = "dm-rc",
+                title = "Alice",
+                status = "content",
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                sourceThreadId = "dm-rc",
+                streamChannelId = "dm-rc",
+                showModeTabs = true,
+                showSettingsAction = true,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                composer = RaftThreadComposerPayload(showAsTaskToggle = false),
+            )
+        val dmFallbackHead =
+            buildThreadNativeNavBarPrefillHead(
+                payload = dmNoTasksPayload,
+                phoneHeaderPrimaryConfig = parsePhoneConversationHeaderPrimaryConfig("tasks,search"),
+                strings = strings,
+            )
+        assertEquals(
+            listOf("thread-search"),
+            dmFallbackHead.actions.filter { it.placement == RaftNativeNavBarPlacement.Trailing }.map { it.id },
+        )
+        assertEquals(
+            listOf("thread-side-card-files", "thread-settings"),
+            dmFallbackHead.actions.filter { it.placement == RaftNativeNavBarPlacement.Overflow }.map { it.id },
+        )
+
+        // 3. Prefill with "none": zero Trailing buttons, all 4 actions folded into Overflow in order.
+        val noneChannelHead =
+            buildThreadNativeNavBarPrefillHead(
+                payload = channelPayload,
+                phoneHeaderPrimaryConfig = parsePhoneConversationHeaderPrimaryConfig("none"),
+                strings = strings,
+            )
+        assertEquals(
+            emptyList(),
+            noneChannelHead.actions.filter { it.placement == RaftNativeNavBarPlacement.Trailing }.map { it.id },
+        )
+        assertEquals(
+            listOf("thread-search", "thread-side-card-tasks", "thread-side-card-files", "thread-settings"),
+            noneChannelHead.actions.filter { it.placement == RaftNativeNavBarPlacement.Overflow }.map { it.id },
+        )
+
+        // 4. Bridge wire JSON carries checked=true for an active promoted Tasks toggle and dispatches taps to both Tasks and folded Search.
+        val bridge = RaftNativeNavBarBridge()
+        val recorder = Recorder()
+        bridge.attachListener(recorder)
+        val entry = RaftNativeNavBarBridge.Entry()
+        bridge.activate(entry)
+        var searchTaps = 0
+        var tasksTaps = 0
+        val openCards = ConversationSideCardsState(tasks = true, focus = ConversationSideCard.Tasks)
+        val sideToggles = ThreadHeaderSideCardToggles(tasksAvailable = true, cards = openCards, onToggle = { tasksTaps++ })
+        val liveActions =
+            foldPhoneConversationNativeNavBarActions(
+                actions =
+                    applyThreadHeaderNativeNavBarCheckedState(
+                        actions =
+                            listOf(
+                                RaftNativeNavBarAction("thread-search", "Search this channel", "magnifyingglass", { searchTaps++ }, icon = RaftLucideIconName.Search),
+                                RaftNativeNavBarAction("thread-side-card-tasks", "Close Tasks", "checklist", { sideToggles.onToggle(ConversationSideCard.Tasks) }, icon = RaftLucideIconName.ListTodo),
+                                RaftNativeNavBarAction("thread-side-card-files", "Open files", "paperclip", {}, icon = RaftLucideIconName.Paperclip),
+                                RaftNativeNavBarAction("thread-settings", "Channel details and settings", "gearshape", {}, icon = RaftLucideIconName.Settings),
+                            ),
+                        sideCardToggles = sideToggles,
+                        settingsOpen = false,
+                    ),
+                foldForPhone = true,
+                primaryConfig = parsePhoneConversationHeaderPrimaryConfig("tasks,search"),
+            )
+        bridge.publish(entry, RaftNativeNavBarHead("engineering", null, liveActions, RaftNativeNavBarTitleExtras()))
+        val rows = Json.parseToJsonElement(recorder.actions.last()).jsonArray.map { it.jsonObject }
+        val tasksRow = rows.first { it["id"] == JsonPrimitive("thread-side-card-tasks") }
+        val searchRow = rows.first { it["id"] == JsonPrimitive("thread-search") }
+        assertEquals(JsonPrimitive("trailing"), tasksRow["placement"])
+        assertEquals(JsonPrimitive(true), tasksRow["checked"])
+        assertEquals(JsonPrimitive("lucide-list-todo"), tasksRow["imageAsset"])
+        assertEquals(JsonPrimitive("overflow"), searchRow["placement"])
+        assertEquals(JsonPrimitive("Search this channel"), searchRow["label"])
+        assertEquals(JsonPrimitive("lucide-search"), searchRow["imageAsset"])
+        assertTrue(bridge.actionTapped("thread-side-card-tasks"))
+        assertTrue(bridge.actionTapped("thread-search"))
+        assertEquals(1, tasksTaps)
+        assertEquals(1, searchTaps)
+    }
 }

@@ -246,6 +246,8 @@ internal fun ThreadPageHeader(
     onStartCall: (() -> Unit)? = null,
     /** Keep prefilled iOS native nav bar buttons while LoadingShell renders before FeatureSurfaces. */
     preserveNativePrefilledActions: Boolean = false,
+    /** Server-driven primary action selection on phone headers (`mobile_phone_header_action_v0`). */
+    phoneHeaderPrimaryConfig: PhoneConversationHeaderPrimaryConfig = LocalPhoneConversationHeaderPrimaryConfig.current,
 ) {
     // Agent Lounge v0 (web ChatPanel `lounge-header`): a Lounge is headed "{Name}'s Lounge" with its
     // agent's face and the Lounge mark; no # tile, no description. A thread in it names the Lounge.
@@ -487,8 +489,14 @@ internal fun ThreadPageHeader(
         } else {
             val baseActions =
                 foldPhoneConversationNativeNavBarActions(
-                    actions = nativeSideActions.toRaftNativeNavBarActions(),
+                    actions =
+                        applyThreadHeaderNativeNavBarCheckedState(
+                            actions = nativeSideActions.toRaftNativeNavBarActions(),
+                            sideCardToggles = sideCardToggles,
+                            settingsOpen = settingsOpen,
+                        ),
                     foldForPhone = !wideWindow && isTopLevelConversation,
+                    primaryConfig = phoneHeaderPrimaryConfig,
                 )
             val withLevel =
                 if (nativeLevelTarget == null) {
@@ -920,7 +928,19 @@ internal fun ThreadPageHeader(
                     // When row tabs sit inline in a narrow column (e.g. 160dp touch with 44dp bar buttons),
                     // apply raftPaneGridHeadFit so Expand (and then Close) fold into ⋯ instead of crushing tabs.
                     // On a phone (compact width, not wide/tablet/desktop), every top-level conversation
-                    // header shows only Search + ⋯ (`botiverse/slock#16464`, `#proj-chat:#45`).
+                    // header shows the resolved primary action (default Search) + ⋯ (`botiverse/slock#16464`,
+                    // `#proj-chat:#45`, `#wg-mobile-sync:#13`).
+                    val phoneHeadSplit =
+                        if (headRowTabs == null && !wideWindow && isTopLevelConversation) {
+                            splitPhoneConversationHeaderActions(
+                                actions = ownActions,
+                                idOf = ThreadHeaderOwnActionSpec::id,
+                                existingMenuItems = hasPanelMenu,
+                                config = phoneHeaderPrimaryConfig,
+                            )
+                        } else {
+                            null
+                        }
                     val fit =
                         if (headRowTabs != null) {
                             raftPaneGridHeadFit(
@@ -937,14 +957,8 @@ internal fun ThreadPageHeader(
                                 gapDp = ThreadHeaderActionGroupSpacing.value,
                                 titleGapDp = ThreadHeaderContentSpacing.value,
                             )
-                        } else if (!wideWindow && isTopLevelConversation) {
-                            RaftPaneGridHeadFit(
-                                shownOwn =
-                                    threadHeaderPhoneShownOwnActions(
-                                        ownCount = ownActions.size,
-                                        existingMenuItems = hasPanelMenu,
-                                    ),
-                            )
+                        } else if (phoneHeadSplit != null) {
+                            RaftPaneGridHeadFit(shownOwn = phoneHeadSplit.visible.size)
                         } else {
                             RaftPaneGridHeadFit(
                                 shownOwn =
@@ -961,7 +975,7 @@ internal fun ThreadPageHeader(
                         }
                     closeInMenu = fit.closeInMenu
                     val shownOwnCount = fit.shownOwn
-                    val visibleOwnActions = ownActions.take(shownOwnCount)
+                    val visibleOwnActions = phoneHeadSplit?.visible ?: ownActions.take(shownOwnCount)
                     val foldedWindowActions =
                         buildList {
                             if (fit.expandInMenu && toggleFocus != null) {
@@ -985,7 +999,7 @@ internal fun ThreadPageHeader(
                                 )
                             }
                         }
-                    val foldedOwnActions = ownActions.drop(shownOwnCount) + foldedWindowActions
+                    val foldedOwnActions = (phoneHeadSplit?.folded ?: ownActions.drop(shownOwnCount)) + foldedWindowActions
                     val headerCompact = baseCompact || foldedOwnActions.isNotEmpty()
                     trailingCompact = headerCompact
                     val trackedFoldedOwnActions =

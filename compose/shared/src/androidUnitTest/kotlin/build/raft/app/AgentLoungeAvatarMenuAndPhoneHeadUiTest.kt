@@ -3,11 +3,16 @@ package build.raft.app
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -465,6 +470,373 @@ class AgentLoungeAvatarMenuAndPhoneHeadUiTest {
             onNodeWithContentDescription("Open Tasks").assertIsDisplayed()
             onNodeWithContentDescription("Open files").assertIsDisplayed()
             onNodeWithContentDescription("Details and settings").assertIsDisplayed()
+            onNodeWithContentDescription("Thread panel menu").assertDoesNotExist()
+        }
+
+    @Test
+    fun phoneChannelHeadPromotesTasksToggleAndFoldsSearchIntoMoreWithAnalytics() =
+        runRobolectricComposeUiTest {
+            var searches = 0
+            val toggledCards = mutableListOf<ConversationSideCard>()
+            val channelPayload =
+                RaftThreadScreenPayload(
+                    instanceId = "ch-tasks-primary",
+                    title = "proj-mobile",
+                    status = "content",
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
+                    sourceThreadId = "ch-tasks-primary",
+                    streamChannelId = "ch-tasks-primary",
+                    showModeTabs = true,
+                    showSettingsAction = true,
+                )
+            setContent {
+                val pager =
+                    remember {
+                        object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
+                    }
+                var cards by remember { mutableStateOf(ConversationSideCardsState()) }
+                CompositionLocalProvider(
+                    LocalActivity provides RaftPageActivity(pager),
+                    LocalThreadHeaderMenuEventBus provides QuietEventBus,
+                ) {
+                    RaftDesignSystemTheme {
+                        Column(Modifier.fillMaxSize()) {
+                            ThreadPageHeader(
+                                payload = channelPayload,
+                                headerDisplay =
+                                    ThreadHeaderDisplayModel(
+                                        title = "proj-mobile",
+                                        subtitle = null,
+                                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                                        channelKind = "public",
+                                    ),
+                                applyTopSafeArea = false,
+                                onBack = {},
+                                onOpenInChannel = {},
+                                onOpenMemberProfile = {},
+                                onOpenSearch = { searches++ },
+                                onShowMembers = {},
+                                onShowSettings = {},
+                                sideCardToggles =
+                                    ThreadHeaderSideCardToggles(
+                                        tasksAvailable = true,
+                                        cards = cards,
+                                        onToggle = { card ->
+                                            toggledCards += card
+                                            val wasOpen = cards.isOpen(card)
+                                            cards =
+                                                when (card) {
+                                                    ConversationSideCard.Tasks -> cards.copy(tasks = !wasOpen, focus = card.takeIf { !wasOpen })
+                                                    ConversationSideCard.Files -> cards.copy(files = !wasOpen, focus = card.takeIf { !wasOpen })
+                                                }
+                                        },
+                                    ),
+                                phoneHeaderPrimaryConfig = parsePhoneConversationHeaderPrimaryConfig("tasks,search"),
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Tasks is promoted to the standalone header toggle; Search is folded into ⋯.
+            onNodeWithContentDescription("Open Tasks").assertIsDisplayed().assertIsOff()
+            onNodeWithContentDescription("Thread panel menu").assertIsDisplayed()
+            onNodeWithContentDescription("Search this channel").assertDoesNotExist()
+            onNodeWithContentDescription("Open files").assertDoesNotExist()
+            onNodeWithContentDescription("Channel details and settings").assertDoesNotExist()
+
+            // Tapping promoted Tasks activates its toggle state and does not double-emit conversation_header_action_selected.
+            onNodeWithContentDescription("Open Tasks").performClick()
+            waitForIdle()
+            onNodeWithContentDescription("Close Tasks").assertIsDisplayed().assertIsOn()
+            assertEquals(listOf(ConversationSideCard.Tasks), toggledCards)
+            assertEquals(emptyList(), headerEvents())
+
+            // Open ⋯: Search this channel -> Open files -> Channel details and settings in canonical order.
+            onNodeWithContentDescription("Thread panel menu").performClick()
+            waitForIdle()
+            val searchTop = onNodeWithText("Search this channel").fetchSemanticsNode().boundsInRoot.top
+            val filesTop = onNodeWithText("Open files").fetchSemanticsNode().boundsInRoot.top
+            val detailsTop = onNodeWithText("Channel details and settings").fetchSemanticsNode().boundsInRoot.top
+            assert(searchTop < filesTop && filesTop < detailsTop) {
+                "expected Search this channel ($searchTop) < Open files ($filesTop) < Channel details and settings ($detailsTop)"
+            }
+            onNodeWithText("Search this channel").performClick()
+            waitForIdle()
+            assertEquals(1, searches)
+            assertEquals(
+                listOf(
+                    RaftConversationHeaderActionSelectedProperties(
+                        action = RaftConversationHeaderAction.OpenMenu,
+                        surface = RaftConversationHeaderSurface.Header,
+                        conversation = RaftConversationHeaderKind.Channel,
+                        compact = true,
+                    ),
+                    RaftConversationHeaderActionSelectedProperties(
+                        action = RaftConversationHeaderAction.Search,
+                        surface = RaftConversationHeaderSurface.MoreMenu,
+                        conversation = RaftConversationHeaderKind.Channel,
+                        compact = true,
+                    ),
+                ),
+                headerEvents(),
+            )
+        }
+
+    @Test
+    fun phoneDmWithoutTasksFallsBackToSearchWhenTasksSearchConfigured() =
+        runRobolectricComposeUiTest {
+            val dmPayload =
+                RaftThreadScreenPayload(
+                    instanceId = "dm-no-tasks",
+                    title = "Alice",
+                    status = "content",
+                    surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                    sourceThreadId = "dm-no-tasks",
+                    streamChannelId = "dm-no-tasks",
+                    showModeTabs = true,
+                    showSettingsAction = true,
+                )
+            setContent {
+                val pager =
+                    remember {
+                        object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
+                    }
+                CompositionLocalProvider(
+                    LocalActivity provides RaftPageActivity(pager),
+                    LocalThreadHeaderMenuEventBus provides QuietEventBus,
+                ) {
+                    RaftDesignSystemTheme {
+                        Column(Modifier.fillMaxSize()) {
+                            ThreadPageHeader(
+                                payload = dmPayload,
+                                headerDisplay =
+                                    ThreadHeaderDisplayModel(
+                                        title = "Alice",
+                                        subtitle = null,
+                                        surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                                        channelKind = "dm",
+                                    ),
+                                applyTopSafeArea = false,
+                                onBack = {},
+                                onOpenInChannel = {},
+                                onOpenMemberProfile = {},
+                                onOpenSearch = {},
+                                onShowMembers = {},
+                                onShowSettings = {},
+                                sideCardToggles = ThreadHeaderSideCardToggles(tasksAvailable = false, cards = ConversationSideCardsState(), onToggle = {}),
+                                phoneHeaderPrimaryConfig = parsePhoneConversationHeaderPrimaryConfig("tasks,search"),
+                            )
+                        }
+                    }
+                }
+            }
+
+            onNodeWithContentDescription("Search this conversation").assertIsDisplayed()
+            onNodeWithContentDescription("Thread panel menu").assertIsDisplayed()
+            onNodeWithContentDescription("Open Tasks").assertDoesNotExist()
+            onNodeWithContentDescription("Open files").assertDoesNotExist()
+            onNodeWithContentDescription("Details and settings").assertDoesNotExist()
+        }
+
+    @Test
+    fun phoneChannelHeadPromotesDetailsToggleWithHeaderSurfaceAnalytics() =
+        runRobolectricComposeUiTest {
+            val channelPayload =
+                RaftThreadScreenPayload(
+                    instanceId = "ch-details-primary",
+                    title = "engineering",
+                    status = "content",
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
+                    sourceThreadId = "ch-details-primary",
+                    streamChannelId = "ch-details-primary",
+                    showModeTabs = true,
+                    showSettingsAction = true,
+                )
+            setContent {
+                val pager =
+                    remember {
+                        object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
+                    }
+                var detailsOpen by remember { mutableStateOf(false) }
+                CompositionLocalProvider(
+                    LocalActivity provides RaftPageActivity(pager),
+                    LocalThreadHeaderMenuEventBus provides QuietEventBus,
+                ) {
+                    RaftDesignSystemTheme {
+                        Column(Modifier.fillMaxSize()) {
+                            ThreadPageHeader(
+                                payload = channelPayload,
+                                headerDisplay =
+                                    ThreadHeaderDisplayModel(
+                                        title = "engineering",
+                                        subtitle = null,
+                                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                                        channelKind = "public",
+                                    ),
+                                applyTopSafeArea = false,
+                                onBack = {},
+                                onOpenInChannel = {},
+                                onOpenMemberProfile = {},
+                                onOpenSearch = {},
+                                onShowMembers = {},
+                                onShowSettings = { detailsOpen = !detailsOpen },
+                                settingsOpen = detailsOpen,
+                                sideCardToggles = ThreadHeaderSideCardToggles(tasksAvailable = true, cards = ConversationSideCardsState(), onToggle = {}),
+                                phoneHeaderPrimaryConfig = parsePhoneConversationHeaderPrimaryConfig("details"),
+                            )
+                        }
+                    }
+                }
+            }
+
+            onNodeWithContentDescription("Channel details and settings").assertIsDisplayed().assertIsOff()
+            onNodeWithContentDescription("Search this channel").assertDoesNotExist()
+            onNodeWithContentDescription("Channel details and settings").performClick()
+            waitForIdle()
+            onNodeWithContentDescription("Close channel details and settings").assertIsDisplayed().assertIsOn()
+            onNodeWithContentDescription("Close channel details and settings").performClick()
+            waitForIdle()
+            assertEquals(
+                listOf(
+                    RaftConversationHeaderActionSelectedProperties(
+                        action = RaftConversationHeaderAction.OpenDetails,
+                        surface = RaftConversationHeaderSurface.Header,
+                        conversation = RaftConversationHeaderKind.Channel,
+                        compact = true,
+                    ),
+                    RaftConversationHeaderActionSelectedProperties(
+                        action = RaftConversationHeaderAction.CloseDetails,
+                        surface = RaftConversationHeaderSurface.Header,
+                        conversation = RaftConversationHeaderKind.Channel,
+                        compact = true,
+                    ),
+                ),
+                headerEvents(),
+            )
+        }
+
+    @Test
+    fun phoneChannelHeadWithNoneVariantFoldsAllActionsIntoMoreMenu() =
+        runRobolectricComposeUiTest {
+            val channelPayload =
+                RaftThreadScreenPayload(
+                    instanceId = "ch-none-primary",
+                    title = "announcements",
+                    status = "content",
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
+                    sourceThreadId = "ch-none-primary",
+                    streamChannelId = "ch-none-primary",
+                    showModeTabs = true,
+                    showSettingsAction = true,
+                )
+            setContent {
+                val pager =
+                    remember {
+                        object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
+                    }
+                CompositionLocalProvider(
+                    LocalActivity provides RaftPageActivity(pager),
+                    LocalThreadHeaderMenuEventBus provides QuietEventBus,
+                ) {
+                    RaftDesignSystemTheme {
+                        Column(Modifier.fillMaxSize()) {
+                            ThreadPageHeader(
+                                payload = channelPayload,
+                                headerDisplay =
+                                    ThreadHeaderDisplayModel(
+                                        title = "announcements",
+                                        subtitle = null,
+                                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                                        channelKind = "public",
+                                    ),
+                                applyTopSafeArea = false,
+                                onBack = {},
+                                onOpenInChannel = {},
+                                onOpenMemberProfile = {},
+                                onOpenSearch = {},
+                                onShowMembers = {},
+                                onShowSettings = {},
+                                sideCardToggles = ThreadHeaderSideCardToggles(tasksAvailable = true, cards = ConversationSideCardsState(), onToggle = {}),
+                                phoneHeaderPrimaryConfig = parsePhoneConversationHeaderPrimaryConfig("none"),
+                            )
+                        }
+                    }
+                }
+            }
+
+            onNodeWithContentDescription("Thread panel menu").assertIsDisplayed()
+            onNodeWithContentDescription("Search this channel").assertDoesNotExist()
+            onNodeWithContentDescription("Open Tasks").assertDoesNotExist()
+            onNodeWithContentDescription("Open files").assertDoesNotExist()
+            onNodeWithContentDescription("Channel details and settings").assertDoesNotExist()
+
+            onNodeWithContentDescription("Thread panel menu").performClick()
+            waitForIdle()
+            val searchTop = onNodeWithText("Search this channel").fetchSemanticsNode().boundsInRoot.top
+            val tasksTop = onNodeWithText("Open Tasks").fetchSemanticsNode().boundsInRoot.top
+            val filesTop = onNodeWithText("Open files").fetchSemanticsNode().boundsInRoot.top
+            val detailsTop = onNodeWithText("Channel details and settings").fetchSemanticsNode().boundsInRoot.top
+            assert(searchTop < tasksTop && tasksTop < filesTop && filesTop < detailsTop) {
+                "expected Search ($searchTop) < Tasks ($tasksTop) < Files ($filesTop) < Details ($detailsTop)"
+            }
+        }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w1024dp-h768dp")
+    fun wideConversationHeadIgnoresPhoneRemoteConfigAndStaysUnfolded() =
+        runRobolectricComposeUiTest {
+            val channelPayload =
+                RaftThreadScreenPayload(
+                    instanceId = "ch-wide-rc",
+                    title = "engineering",
+                    status = "content",
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
+                    sourceThreadId = "ch-wide-rc",
+                    streamChannelId = "ch-wide-rc",
+                    showModeTabs = true,
+                    showSettingsAction = true,
+                )
+            setContent {
+                val pager =
+                    remember {
+                        object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
+                    }
+                CompositionLocalProvider(
+                    LocalActivity provides RaftPageActivity(pager),
+                    LocalThreadHeaderMenuEventBus provides QuietEventBus,
+                ) {
+                    RaftDesignSystemTheme {
+                        Column(Modifier.fillMaxSize()) {
+                            ThreadPageHeader(
+                                payload = channelPayload,
+                                headerDisplay =
+                                    ThreadHeaderDisplayModel(
+                                        title = "engineering",
+                                        subtitle = null,
+                                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                                        channelKind = "public",
+                                    ),
+                                applyTopSafeArea = false,
+                                showBack = false,
+                                onBack = {},
+                                onOpenInChannel = {},
+                                onOpenMemberProfile = {},
+                                onOpenSearch = {},
+                                onShowMembers = {},
+                                onShowSettings = {},
+                                sideCardToggles = ThreadHeaderSideCardToggles(tasksAvailable = true, cards = ConversationSideCardsState(), onToggle = {}),
+                                phoneHeaderPrimaryConfig = parsePhoneConversationHeaderPrimaryConfig("none"),
+                            )
+                        }
+                    }
+                }
+            }
+
+            onNodeWithContentDescription("Search this channel").assertIsDisplayed()
+            onNodeWithContentDescription("Open Tasks").assertIsDisplayed()
+            onNodeWithContentDescription("Open files").assertIsDisplayed()
+            onNodeWithContentDescription("Channel details and settings").assertIsDisplayed()
             onNodeWithContentDescription("Thread panel menu").assertDoesNotExist()
         }
 }
