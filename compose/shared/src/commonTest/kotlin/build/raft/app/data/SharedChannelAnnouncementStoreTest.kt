@@ -616,4 +616,45 @@ class SharedChannelAnnouncementStoreTest {
             assertEquals(readsBeforeRefusal + 1, api.reads, "disabled refusal re-reads immediately")
             assertEquals(ChannelAnnouncementUnavailableReason.JointServerOff, store.current(key).unavailable)
         }
+
+    @Test
+    fun dmPinnedContentFollowsBareChannelUpdatedAndPeerCannotOpenRefusal() =
+        runTest {
+            val dmKey = ChannelAnnouncementKey("srv-1", "dm-tenny")
+            val api = FakeApi()
+            api.has = null
+            val store = store(api)
+            store.dispatch(ChannelAnnouncementIntent.Open(dmKey))
+            runCurrent()
+            assertEquals(1, api.reads)
+            assertNull(store.current(dmKey).announcement)
+
+            // Bare DB row emitted on channel:updated for a DM carries synthetic `dm:...` name and announcementArtifactId.
+            api.has = RULES
+            val dmUpdated =
+                mapper.map(
+                    RealtimeSocketEvents.ChannelUpdated,
+                    """{"channel":{"id":"dm-tenny","serverId":"srv-1","name":"dm:synthetic-internal","description":null,"type":"dm","guestVisible":false,"visitorVisible":false,"archivedAt":null,"announcementArtifactId":"$RULES","createdAt":"2026-11-01T00:00:00.000Z"}}""",
+                )!!
+            deliver(store, dmUpdated)
+            assertEquals(2, api.reads)
+            assertEquals(RULES, store.current(dmKey).announcement?.artifactId)
+
+            // 403 channel_announcement_peer_cannot_open refusal preserves the pinned content and surfaces the server sentence.
+            store.dispatch(ChannelAnnouncementIntent.Change(dmKey, OTHER))
+            runCurrent()
+            api.updates.removeFirst().complete(
+                HomeNetworkResponse(
+                    code = 403,
+                    bodyText = null,
+                    errorBodyText = """{"code":"channel_announcement_peer_cannot_open","error":"The other participant in this DM can't open that Artifact, so nothing was changed."}""",
+                    responseHeaders = mapOf("x-trace-id" to listOf("abcdef0123456789abcdef0123456789")),
+                ),
+            )
+            runCurrent()
+            assertEquals(RULES, store.current(dmKey).announcement?.artifactId)
+            val failed = assertIs<ChannelAnnouncementMutationStatus.Failed>(store.state.value.mutations[dmKey]?.status)
+            assertEquals("channel_announcement_peer_cannot_open", failed.error.serverCode)
+            assertEquals("The other participant in this DM can't open that Artifact, so nothing was changed.", failed.error.serverMessage)
+        }
 }

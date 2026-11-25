@@ -23,6 +23,7 @@ import build.raft.app.data.ChannelAnnouncementPickerIntent
 import build.raft.app.data.ChannelAnnouncementPickerState
 import build.raft.app.data.ChannelAnnouncementPickerStore
 import build.raft.app.data.ChannelAnnouncementSlice
+import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.NetworkRaftConversationArtifactsApi
 import build.raft.app.data.RaftChannelAnnouncement
 import build.raft.app.data.RaftConversationHeaderAction
@@ -56,8 +57,8 @@ import kotlinx.coroutines.flow.flowOf
  */
 
 /**
- * The channel whose announcement shows here, or null: the flag off for the server (or not yet
- * evaluated), no channel, or a channel that can't have one (a DM, a thread, a task).
+ * The channel or DM whose announcement shows here, or null: the flag off for the server (or not
+ * yet evaluated), no channel, or a conversation that can't have one (a reply thread, a task).
  */
 @Composable
 internal fun rememberChannelAnnouncementKey(
@@ -76,6 +77,52 @@ internal fun rememberChannelAnnouncementKey(
             ChannelAnnouncementKey(cleanServerId, cleanChannelId)
         }
     }
+}
+
+/**
+ * The conversation's wire type for pinned-content gating (botiverse/slock 05ad55edb):
+ * - DM (`surfaceKind == DirectMessage`): `"dm"` (covers both human DMs and agent DMs).
+ * - Channel (`surfaceKind == Channel`, not a task conversation): [channelKind] (`"channel"`,
+ *   `"private"`, `"joint"`).
+ * - Reply threads and task conversations: null (never have pinned content).
+ */
+internal fun threadAnnouncementChannelType(
+    surfaceKind: String,
+    channelKind: String?,
+    isTaskConversation: Boolean,
+): String? =
+    when {
+        isTaskConversation -> null
+        surfaceKind == RaftThreadSurfaceKind.DirectMessage -> "dm"
+        surfaceKind == RaftThreadSurfaceKind.Channel -> channelKind
+        else -> null
+    }
+
+/**
+ * Who may set, replace or remove pinned content (web ChatPanel `canEditAnnouncement`,
+ * ChannelOverflowMenu `canEdit={!channel?.archivedAt}`, botiverse/slock 05ad55edb):
+ * - In a DM (`channelType == "dm"`): either participant while the DM is not archived (no
+ *   `editChannelMetadata` needed).
+ * - In a channel (`"channel"`, `"private"`, `"joint"`): `editChannelMetadata` and not archived.
+ * - Unsupported types (threads, tasks, null): false.
+ */
+internal fun canEditChannelAnnouncement(
+    channelType: String?,
+    snapshot: HomeSnapshot?,
+    serverId: String,
+    channelId: String,
+    channelArchivedFallback: Boolean = false,
+): Boolean {
+    if (!channelTypeSupportsAnnouncement(channelType)) return false
+    val matchingSnapshot = snapshot?.takeIf { it.server.id.value == serverId }
+    if (channelType == "dm") {
+        val dmArchived =
+            matchingSnapshot?.directMessages?.firstOrNull { it.channelId.value == channelId }?.archived
+                ?: channelArchivedFallback
+        return !dmArchived
+    }
+    val channel = matchingSnapshot?.channels?.firstOrNull { it.channelId.value == channelId } ?: return false
+    return channel.channelCapabilities?.editChannelMetadata == true && !channel.archived
 }
 
 /**
@@ -190,8 +237,8 @@ internal fun channelAnnouncementWebBaseUrl(sharedStores: RaftSharedStoreProvider
     sharedSettingsResolvedWebBaseUrl(standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore))
 
 /**
- * The conversation's strip, or nothing: the flag off, a DM or thread, no announcement, or not yet
- * read. Copy link copies the Artifact's web link; Announcement settings ([onOpenSettings]) only
+ * The conversation's strip, or nothing: the flag off, a thread or task, no announcement, or not yet
+ * read. Copy link copies the Artifact's web link; Pinned content settings ([onOpenSettings]) only
  * for who may change it.
  */
 @Composable
@@ -203,6 +250,7 @@ internal fun ThreadChannelAnnouncementStrip(
     active: Boolean,
     onOpenSettings: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    conversation: RaftConversationHeaderKind = RaftConversationHeaderKind.Channel,
 ) {
     val slice = rememberChannelAnnouncementSlice(sharedStores, storeScope, key, active)
     val announcement = slice.announcement ?: return
@@ -217,7 +265,7 @@ internal fun ThreadChannelAnnouncementStrip(
             RaftProductEvents.conversationHeaderActionSelected(
                 action = RaftConversationHeaderAction.OpenAnnouncement,
                 surface = RaftConversationHeaderSurface.Announcement,
-                conversation = RaftConversationHeaderKind.Channel,
+                conversation = conversation,
                 compact = compact,
             )
             open(announcement)
@@ -226,7 +274,7 @@ internal fun ThreadChannelAnnouncementStrip(
             RaftProductEvents.conversationHeaderActionSelected(
                 action = RaftConversationHeaderAction.CopyLink,
                 surface = RaftConversationHeaderSurface.Announcement,
-                conversation = RaftConversationHeaderKind.Channel,
+                conversation = conversation,
                 compact = compact,
             )
             bridge.copyToPasteboard(artifactWebUrl(webBaseUrl, ArtifactLinkTarget(announcement.artifactId)))
@@ -238,7 +286,7 @@ internal fun ThreadChannelAnnouncementStrip(
                     RaftProductEvents.conversationHeaderActionSelected(
                         action = RaftConversationHeaderAction.OpenAnnouncementSettings,
                         surface = RaftConversationHeaderSurface.Announcement,
-                        conversation = RaftConversationHeaderKind.Channel,
+                        conversation = conversation,
                         compact = compact,
                     )
                     openSettings()
@@ -249,7 +297,7 @@ internal fun ThreadChannelAnnouncementStrip(
             RaftProductEvents.conversationHeaderActionSelected(
                 action = RaftConversationHeaderAction.OpenMenu,
                 surface = RaftConversationHeaderSurface.Announcement,
-                conversation = RaftConversationHeaderKind.Channel,
+                conversation = conversation,
                 compact = compact,
             )
         },
@@ -257,7 +305,7 @@ internal fun ThreadChannelAnnouncementStrip(
 }
 
 /**
- * The conversation page's strip as a slot, or null where none can show (the flag off, a DM,
+ * The conversation page's strip as a slot, or null where none can show (the flag off, a reply
  * thread or task conversation). Kept out of the route composable, which is at its size limit.
  */
 @Composable
@@ -269,30 +317,34 @@ internal fun rememberThreadChannelAnnouncementStripSlot(
     channelId: String?,
     channelType: String?,
     active: Boolean,
-    onOpenSettings: () -> Unit,
-): (@Composable () -> Unit)? {
+    channelArchived: Boolean = false,
+): (@Composable (onOpenSettings: () -> Unit) -> Unit)? {
     val key = rememberChannelAnnouncementKey(sharedStores.serverFeatureFlags, serverId, channelId, channelType) ?: return null
-    // Who may change it: the channel's row in Home (its capabilities), as the channel details read it.
     val homeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
     val homeState by remember(homeStore) { homeStore?.state ?: kotlinx.coroutines.flow.MutableStateFlow(null) }.collectAsState()
+    val snapshot = (homeState?.content as? SharedHomeContentState.Content)?.snapshot
     val canEdit =
-        ((homeState?.content as? SharedHomeContentState.Content)?.snapshot)
-            ?.takeIf { it.server.id.value == key.serverId }
-            ?.channels
-            ?.firstOrNull { it.channelId.value == key.channelId }
-            ?.let { it.channelCapabilities?.editChannelMetadata == true && !it.archived } == true
+        canEditChannelAnnouncement(
+            channelType = channelType,
+            snapshot = snapshot,
+            serverId = key.serverId,
+            channelId = key.channelId,
+            channelArchivedFallback = channelArchived,
+        )
+    val conversation = if (channelType == "dm") RaftConversationHeaderKind.Dm else RaftConversationHeaderKind.Channel
     val latestActive by rememberUpdatedState(active)
     val latestCanEdit by rememberUpdatedState(canEdit)
-    val latestOpenSettings by rememberUpdatedState(onOpenSettings)
+    val latestConversation by rememberUpdatedState(conversation)
     return remember(sharedStores, storeScope, bridge, key) {
-        {
+        { onOpenSettings ->
             ThreadChannelAnnouncementStrip(
                 sharedStores = sharedStores,
                 storeScope = storeScope,
                 bridge = bridge,
                 key = key,
                 active = latestActive,
-                onOpenSettings = if (latestCanEdit) ({ latestOpenSettings() }) else null,
+                onOpenSettings = if (latestCanEdit) onOpenSettings else null,
+                conversation = latestConversation,
             )
         }
     }
@@ -310,9 +362,9 @@ private sealed interface ChannelAnnouncementStep {
 }
 
 /**
- * Channel details › Pinned content, wired: the row, the picker, the confirmations, and the change
- * through the shared store (a refusal stays in its dialog with the server's sentence and the
- * trace id; success closes it).
+ * Channel or DM details › Pinned content, wired: the row, the picker, the confirmations, and the
+ * change through the shared store (a refusal stays in its dialog with the server's sentence and
+ * the trace id; success closes it).
  */
 @Composable
 internal fun ChannelSettingsAnnouncementSection(
@@ -323,6 +375,8 @@ internal fun ChannelSettingsAnnouncementSection(
     canEdit: Boolean,
     active: Boolean,
     modifier: Modifier = Modifier,
+    isDm: Boolean = false,
+    onOpened: (() -> Unit)? = null,
 ) {
     val slice = rememberChannelAnnouncementSlice(sharedStores, storeScope, key, active)
     if (key == null) return
@@ -331,7 +385,7 @@ internal fun ChannelSettingsAnnouncementSection(
     var step by remember(key) { mutableStateOf<ChannelAnnouncementStep>(ChannelAnnouncementStep.Idle) }
     val webBaseUrl = remember(sharedStores) { channelAnnouncementWebBaseUrl(sharedStores) }
     val open = rememberChannelAnnouncementOpener(webBaseUrl)
-    val name = channelName.removePrefix("#")
+    val name = if (isDm) channelName else channelName.removePrefix("#")
 
     // A change that went through closes its dialog; a refusal stays in it.
     val finished = mutation
@@ -385,7 +439,12 @@ internal fun ChannelSettingsAnnouncementSection(
     ChannelAnnouncementDetailsRow(
         slice = slice,
         canEdit = canEdit,
-        onOpen = { slice.announcement?.let(open) },
+        onOpen = {
+            slice.announcement?.let { announcement ->
+                open(announcement)
+                onOpened?.invoke()
+            }
+        },
         onSet = { if (!unavailable) step = ChannelAnnouncementStep.Pick(replacing = false) },
         onReplace = { step = ChannelAnnouncementStep.Pick(replacing = true) },
         onRemove = { step = ChannelAnnouncementStep.ConfirmRemove },
@@ -404,6 +463,7 @@ internal fun ChannelSettingsAnnouncementSection(
                     channelName = name,
                     currentId = slice.announcement?.artifactId,
                     replacing = current.replacing,
+                    isDm = isDm,
                     running = running,
                     error = error.takeIf { !current.replacing },
                     onConfirm = { choice ->
@@ -420,11 +480,11 @@ internal fun ChannelSettingsAnnouncementSection(
             ChannelAnnouncementConfirmDialog(
                 title = stringResource(Res.string.channel_announcement_replace_title),
                 body =
-                    stringResource(
-                        Res.string.channel_announcement_replace_body,
-                        current.title,
-                        slice.announcement?.title.orEmpty(),
-                        name,
+                    channelAnnouncementReplaceBody(
+                        nextTitle = current.title,
+                        currentTitle = slice.announcement?.title.orEmpty(),
+                        channelName = name,
+                        isDm = isDm,
                     ),
                 confirmLabel = stringResource(Res.string.channel_announcement_details_replace),
                 confirmTag = ChannelAnnouncementTestTags.ReplaceConfirm,
@@ -436,7 +496,12 @@ internal fun ChannelSettingsAnnouncementSection(
         ChannelAnnouncementStep.ConfirmRemove ->
             ChannelAnnouncementConfirmDialog(
                 title = stringResource(Res.string.channel_announcement_remove_title),
-                body = stringResource(Res.string.channel_announcement_remove_body, slice.announcement?.title.orEmpty(), name),
+                body =
+                    channelAnnouncementRemoveBody(
+                        currentTitle = slice.announcement?.title.orEmpty(),
+                        channelName = name,
+                        isDm = isDm,
+                    ),
                 confirmLabel = stringResource(Res.string.channel_announcement_details_remove),
                 confirmTag = ChannelAnnouncementTestTags.RemoveConfirm,
                 running = running,
@@ -447,6 +512,37 @@ internal fun ChannelSettingsAnnouncementSection(
     }
 }
 
+/**
+ * DM details › Pinned content (web `ChannelOverflowMenu` `isDmChannel`, botiverse/slock 05ad55edb):
+ * shown above Your preferences when `channel_announcement_v0` is on; either participant may pin
+ * while the DM is not archived. Never shown for an Agent Lounge.
+ */
+@Composable
+internal fun DirectMessageDetailsAnnouncementSection(
+    sharedStores: RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    serverId: String?,
+    channelId: String?,
+    peerName: String,
+    archived: Boolean,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    onOpened: (() -> Unit)? = null,
+) {
+    val key = rememberChannelAnnouncementKey(sharedStores.serverFeatureFlags, serverId, channelId, "dm") ?: return
+    ChannelSettingsAnnouncementSection(
+        sharedStores = sharedStores,
+        storeScope = storeScope,
+        key = key,
+        channelName = peerName,
+        canEdit = !archived,
+        active = active,
+        modifier = modifier,
+        isDm = true,
+        onOpened = onOpened,
+    )
+}
+
 @Composable
 private fun ChannelAnnouncementPickerRoute(
     sharedStores: RaftSharedStoreProvider,
@@ -455,6 +551,7 @@ private fun ChannelAnnouncementPickerRoute(
     channelName: String,
     currentId: String?,
     replacing: Boolean,
+    isDm: Boolean,
     running: Boolean,
     error: build.raft.app.data.ScreenError?,
     onConfirm: (ChannelAnnouncementChoice) -> Unit,
@@ -505,5 +602,6 @@ private fun ChannelAnnouncementPickerRoute(
         onShowMore = { picker.dispatch(ChannelAnnouncementPickerIntent.ShowMore) },
         onConfirm = { latestConfirm(it) },
         onDismiss = onDismiss,
+        isDm = isDm,
     )
 }

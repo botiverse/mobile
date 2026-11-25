@@ -4490,6 +4490,7 @@ private fun ThreadMessagesListContent(
                                         memberAvatarResolver = memberAvatarResolver,
                                         memberModelLabelResolver = memberModelLabelResolver,
                                         onOpenMember = onOpenMember,
+                                        isDm = renderPayload.directMessageSurface,
                                     )
                                 }
                             }
@@ -4507,6 +4508,7 @@ private fun ThreadMessagesListContent(
                                 memberAvatarResolver = memberAvatarResolver,
                                 memberModelLabelResolver = memberModelLabelResolver,
                                 onOpenMember = onOpenMember,
+                                isDm = renderPayload.directMessageSurface,
                             )
                         } else {
                             val translationUi =

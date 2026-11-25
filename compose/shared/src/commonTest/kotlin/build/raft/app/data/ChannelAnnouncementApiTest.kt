@@ -130,8 +130,8 @@ class ChannelAnnouncementApiTest {
 
     @Test
     fun channelTypesThatMayHaveOne() {
-        assertTrue(listOf("channel", "private", "joint").all(::channelTypeSupportsAnnouncement))
-        assertFalse(listOf("dm", "thread", "task", null).any(::channelTypeSupportsAnnouncement))
+        assertTrue(listOf("channel", "private", "joint", "dm").all(::channelTypeSupportsAnnouncement))
+        assertFalse(listOf("thread", "task", "lounge", "", null).any(::channelTypeSupportsAnnouncement))
     }
 
     // ---- The notice (shared/src/channelAnnouncementNotice.test.ts) ----

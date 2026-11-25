@@ -258,6 +258,8 @@ internal data class ThreadChannelSettingsPanel(
      * ArchivedNameCollisionBanner `nav.toChannel`): Open Channel, or after Unarchive ([unarchived]).
      */
     val onOpenChannel: (conversation: ThreadLaunchConversationIdentity, unarchived: Boolean) -> Unit = { _, _ -> },
+    /** DM details › Pinned content (channel_announcement_v0, botiverse/slock 05ad55edb); null outside a DM. */
+    val dmAnnouncement: (@Composable () -> Unit)? = null,
 )
 
 /** Web ChatPanel `hideAllChannelMembersButton`: #all, a member's view, a server that hides people from members. */

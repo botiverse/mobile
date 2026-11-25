@@ -4,10 +4,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -27,14 +31,17 @@ import build.raft.app.data.RaftChannelAnnouncement
 import build.raft.app.data.RaftChannelAnnouncementActor
 import build.raft.app.data.RaftChannelAnnouncementActorType
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.data.toMessageMetadata
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
-import build.raft.app.resources.StringDesc
+import build.raft.app.resources.*
 import build.raft.designsystem.text.RaftText
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -278,5 +285,248 @@ class ChannelAnnouncementUiTest {
             onNodeWithText("Pinned content").assertDoesNotExist()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsUnavailable).assertDoesNotExist()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsSet).assertDoesNotExist()
+        }
+
+    /** botiverse/slock 05ad55edb (#16563): DM picker uses DM lead, empty, failed, label and dmGroup without # or channel copy. */
+    @Test
+    fun dmPickerDialogUsesDmCopyForEmptyReadyAndFailedStates() =
+        runRobolectricComposeUiTest {
+            show {
+                ChannelAnnouncementPickerDialog(
+                    replacing = false,
+                    channelName = "Tenny",
+                    view = ChannelAnnouncementPickerView.Ready(choices = emptyList(), hasMore = false, loadingMore = false),
+                    running = false,
+                    error = null,
+                    onRetry = {},
+                    onShowMore = {},
+                    onConfirm = {},
+                    onDismiss = {},
+                    isDm = true,
+                )
+            }
+            onNodeWithText("Shown at the top of your DM with Tenny. When it’s updated, it shows as new until opened.").assertExists()
+            onNodeWithText("This DM has no Artifacts yet. Push one here, then pin it.").assertExists()
+            onNodeWithContentDescription("Pinned content in DM with Tenny").assertExists()
+            onNodeWithText("#Tenny", substring = true).assertDoesNotExist()
+        }
+
+    @Test
+    fun dmPickerReadyShowsDmGroupHeadingAndSelectsChoiceAndFailedUsesDmCopy() =
+        runRobolectricComposeUiTest {
+            val chosen = mutableListOf<ChannelAnnouncementChoice>()
+            show {
+                ChannelAnnouncementPickerDialog(
+                    replacing = true,
+                    channelName = "Tenny",
+                    view =
+                        ChannelAnnouncementPickerView.Ready(
+                            choices = listOf(ChannelAnnouncementChoice("pt_next", "Next notes", "v2 · 5m", ArtifactKind.Markdown)),
+                            hasMore = false,
+                            loadingMore = false,
+                        ),
+                    running = false,
+                    error = null,
+                    onRetry = {},
+                    onShowMore = {},
+                    onConfirm = { chosen += it },
+                    onDismiss = {},
+                    isDm = true,
+                )
+            }
+            onNodeWithText("Artifacts in this DM").assertExists()
+            onNodeWithText("Next notes").assertExists().performClick()
+            onNodeWithTag(ChannelAnnouncementTestTags.PickerConfirm).performClick()
+            runOnIdle { assertEquals(listOf("pt_next"), chosen.map { it.artifactId }) }
+        }
+
+    @Test
+    fun dmPickerFailedUsesDmFailedCopy() =
+        runRobolectricComposeUiTest {
+            show {
+                ChannelAnnouncementPickerDialog(
+                    replacing = false,
+                    channelName = "Tenny",
+                    view = ChannelAnnouncementPickerView.Failed,
+                    running = false,
+                    error = null,
+                    onRetry = {},
+                    onShowMore = {},
+                    onConfirm = {},
+                    onDismiss = {},
+                    isDm = true,
+                )
+            }
+            onNodeWithText("Couldn’t load this DM’s Artifacts.").assertExists()
+        }
+
+    @Test
+    fun dmReplaceAndRemoveConfirmDialogsUseDmBodyWithoutHashOrChannelCopy() =
+        runRobolectricComposeUiTest {
+            val rendered = mutableListOf<String>()
+            show {
+                val replaceDm = channelAnnouncementReplaceBody("Next notes", "Current notes", "Tenny", isDm = true)
+                val removeDm = channelAnnouncementRemoveBody("Current notes", "Tenny", isDm = true)
+                val replaceChannel = channelAnnouncementReplaceBody("Next notes", "Current notes", "launch", isDm = false)
+                val removeChannel = channelAnnouncementRemoveBody("Current notes", "launch", isDm = false)
+                rendered.clear()
+                rendered += listOf(replaceDm, removeDm, replaceChannel, removeChannel)
+                ChannelAnnouncementConfirmDialog(
+                    title = stringResource(Res.string.channel_announcement_replace_title),
+                    body = replaceDm,
+                    confirmLabel = stringResource(Res.string.channel_announcement_details_replace),
+                    confirmTag = ChannelAnnouncementTestTags.ReplaceConfirm,
+                    running = false,
+                    error = null,
+                    onConfirm = {},
+                    onDismiss = {},
+                )
+            }
+            onNodeWithText("“Next notes” is pinned in this DM instead. “Current notes” stays in the DM as an Artifact.").assertExists()
+            runOnIdle {
+                assertEquals(
+                    "“Next notes” is pinned in this DM instead. “Current notes” stays in the DM as an Artifact.",
+                    rendered[0],
+                )
+                assertEquals(
+                    "This DM will have nothing pinned. “Current notes” stays in the DM as an Artifact, and can be pinned again.",
+                    rendered[1],
+                )
+                assertTrue(rendered[2].contains("#launch"))
+                assertTrue(rendered[3].contains("#launch"))
+                assertFalse(rendered[0].contains("#Tenny"))
+                assertFalse(rendered[1].contains("#Tenny"))
+            }
+        }
+
+    @Test
+    fun untitledDmAndChannelNoticesRenderDistinctCopyIncludingSystemMessageRow() =
+        runRobolectricComposeUiTest {
+            val actor = RaftChannelAnnouncementActor(RaftChannelAnnouncementActorType.User, "u-ada", "Ada")
+            val grace = RaftChannelAnnouncementActor(RaftChannelAnnouncementActorType.User, "u-grace", "Grace")
+            val setUntitled = ChannelAnnouncementNotice(ChannelAnnouncementChangeKind.Set, actor, "pt_1", null)
+            val replacedUntitled = ChannelAnnouncementNotice(ChannelAnnouncementChangeKind.Replaced, actor, "pt_2", null)
+            val removedUntitled = ChannelAnnouncementNotice(ChannelAnnouncementChangeKind.Removed, actor, "pt_2", null)
+            val systemMessage =
+                RaftThreadMessageItem(
+                    id = "msg-sys-1",
+                    authorId = "system",
+                    authorName = "System",
+                    authorKind = "system",
+                    body = "@grace set the announcement.",
+                    timestampLabel = "2026-11-10T09:30:00.000Z",
+                    messageType = "system",
+                    metadata = ChannelAnnouncementNotice(ChannelAnnouncementChangeKind.Set, grace, "pt_3", null).toMessageMetadata(),
+                )
+            show {
+                RaftText(channelAnnouncementNoticeLine(setUntitled, isDm = true))
+                RaftText(channelAnnouncementNoticeLine(replacedUntitled, isDm = true))
+                RaftText(channelAnnouncementNoticeLine(removedUntitled, isDm = true))
+                RaftText(channelAnnouncementNoticeLine(setUntitled, isDm = false))
+                ThreadSystemMessageRow(
+                    message = systemMessage,
+                    timestampValue = "09:30",
+                    isDm = true,
+                )
+            }
+            onNodeWithText("Ada pinned content in this DM").assertExists()
+            onNodeWithText("Ada replaced this DM’s pinned content").assertExists()
+            onNodeWithText("Ada unpinned this DM’s pinned content").assertExists()
+            onNodeWithText("Ada pinned content in the channel").assertExists()
+            onNodeWithText("Grace pinned content in this DM").assertExists()
+        }
+
+    /** Matches web `channelPinnedContent.behavior.test.tsx`: all 8 locales define every DM key with no # or channel wording. */
+    @Test
+    fun allEightLocalesHaveDmCopyWithoutHashOrChannelWording() =
+        runRobolectricComposeUiTest {
+            val allLocales =
+                listOf(
+                    AppLocale.English,
+                    AppLocale.Spanish,
+                    AppLocale.BrazilianPortuguese,
+                    AppLocale.Russian,
+                    AppLocale.Korean,
+                    AppLocale.Japanese,
+                    AppLocale.SimplifiedChinese,
+                    AppLocale.TraditionalChinese,
+                )
+            val forbidden = Regex("""#|\bchannel\b|频道|頻道|チャンネル|채널|canal|канал""", RegexOption.IGNORE_CASE)
+            val collected = linkedMapOf<AppLocale, List<String>>()
+            var activeLocale by mutableStateOf(AppLocale.English)
+            show {
+                val locale = activeLocale
+                collected[locale] =
+                    listOf(
+                        stringResource(Res.string.channel_announcement_picker_dm_lead, "Tenny"),
+                        stringResource(Res.string.channel_announcement_picker_dm_label, "Tenny"),
+                        stringResource(Res.string.channel_announcement_picker_dm_group),
+                        stringResource(Res.string.channel_announcement_picker_dm_empty),
+                        stringResource(Res.string.channel_announcement_picker_dm_failed),
+                        stringResource(Res.string.channel_announcement_replace_dm_body, "Next", "Current"),
+                        stringResource(Res.string.channel_announcement_remove_dm_body, "Current"),
+                        stringResource(Res.string.channel_announcement_event_set_untitled_dm, "Ada"),
+                        stringResource(Res.string.channel_announcement_event_replaced_untitled_dm, "Ada"),
+                        stringResource(Res.string.channel_announcement_event_removed_untitled_dm, "Ada"),
+                    )
+            }
+            allLocales.forEach { locale ->
+                runOnUiThread {
+                    StringDesc.localeType = locale.stringDescLocaleType
+                    activeLocale = locale
+                }
+                waitForIdle()
+            }
+            runOnIdle {
+                assertEquals(8, collected.size)
+                collected.forEach { (locale, strings) ->
+                    assertEquals(10, strings.size, "locale=$locale")
+                    strings.forEach { text ->
+                        assertTrue(text.isNotBlank(), "blank DM string for locale=$locale")
+                        assertFalse(forbidden.containsMatchIn(text), "locale=$locale contains forbidden channel/hash wording: $text")
+                    }
+                }
+            }
+        }
+
+    /** Web ChannelOverflowMenu: DM details shows Pinned content above Your preferences; Agent Lounge omits it. */
+    @Test
+    fun dmDetailsShowsPinnedContentForDmAndOmitsItForAgentLounge() =
+        runRobolectricComposeUiTest {
+            var isDm by mutableStateOf(true)
+            show {
+                ThreadDirectMessageSettingsDrawer(
+                    name = if (isDm) "Tenny" else "Tenny’s Lounge",
+                    activityMuteState = null,
+                    section = null,
+                    sectionEnabled = true,
+                    longMessageCollapseSetting = null,
+                    onDismiss = {},
+                    onToggleActivityMute = null,
+                    onMoveSection = {},
+                    onCreateSection = { _, _ -> },
+                    asPage = true,
+                    directMessageTag = isDm,
+                    announcement = {
+                        ChannelAnnouncementDetailsRow(
+                            slice = ChannelAnnouncementSlice(read = true, announcement = null),
+                            canEdit = true,
+                            onOpen = {},
+                            onSet = {},
+                            onReplace = {},
+                            onRemove = {},
+                        )
+                    },
+                )
+            }
+            onNodeWithText("Pinned content").assertExists()
+            onNodeWithText("Nothing pinned").assertExists()
+            onNodeWithTag(ChannelAnnouncementTestTags.DetailsSet).assertExists()
+
+            // Agent Lounge (`directMessageTag = false`): never renders the DM pinned content slot.
+            runOnUiThread { isDm = false }
+            waitForIdle()
+            onNodeWithText("Pinned content").assertDoesNotExist()
+            onNodeWithTag(ChannelAnnouncementTestTags.Details).assertDoesNotExist()
         }
 }

@@ -82,6 +82,7 @@ internal fun ThreadSystemMessageRow(
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     memberModelLabelResolver: RaftMemberModelLabelResolver = EmptyRaftMemberModelLabelResolver,
     onOpenMember: ((MemberDetailIdentity) -> Unit)? = null,
+    isDm: Boolean = false,
 ) {
     // The assistant DM's delegated-send receipt and WeChat connected notice are cards (web MessageItem).
     if (onOpenUrl != null && ThreadAssistantDmCardRow(message, serverSlug, onOpenUrl)) return
@@ -100,10 +101,10 @@ internal fun ThreadSystemMessageRow(
     ) return
     var expanded by remember(message.id) { mutableStateOf(false) }
     val timestampLayout = remember { threadSystemMessageTimestampLayoutSpec() }
-    // A channel announcement's set, replace or remove line, in the reader's language (its text is
-    // the English record; web MessageItem `channelAnnouncementNoticeLine`).
+    // A channel or DM announcement's set, replace or remove line, in the reader's language (its
+    // text is the English record; web MessageItem `channelAnnouncementNoticeLine`).
     val announcementNotice = remember(message.metadata) { channelAnnouncementNoticeOf(message.metadata) }
-    val announcementLine = announcementNotice?.let { channelAnnouncementNoticeLine(it) }
+    val announcementLine = announcementNotice?.let { channelAnnouncementNoticeLine(it, isDm = isDm) }
     val systemBody =
         remember(message.body, message.metadata, message.systemEventType, expanded, announcementLine) {
             when {
@@ -634,6 +635,7 @@ internal fun ThreadOriginCard(
                             memberAvatarResolver = memberAvatarResolver,
                             memberModelLabelResolver = memberModelLabelResolver,
                             onOpenMember = onOpenMember,
+                            isDm = timelineSlice.directMessageSurface,
                         )
                     } else {
                         // The root message belongs to the parent scope, not this thread's read receipts.

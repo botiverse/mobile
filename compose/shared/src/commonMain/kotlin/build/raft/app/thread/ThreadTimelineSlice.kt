@@ -89,6 +89,11 @@ internal data class ThreadTimelineSlice(
      * store keep rendering loading states immediately.
      */
     val loadingIndicatorRevealed: Boolean = true,
+    /**
+     * Web MessageItem `isDmSurface`: true for a DM conversation and for a reply thread whose parent
+     * is a DM, so untitled pinned-content notices say "this DM" instead of "the channel".
+     */
+    val directMessageSurface: Boolean = false,
 ) {
     /** Derived from [surfaceKind] and [channelKind]; the menu's `reply` capability reads this single source. */
     val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
@@ -149,7 +154,12 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
         historyChannelId = (streamChannelId ?: sourceThreadId)?.trim()?.takeIf { it.isNotEmpty() },
         joined = joined,
         originHiddenTarget = threadOriginHiddenTargetOrNull(),
-        historyStartFocusRequest = historyStartFocusRequest
+        historyStartFocusRequest = historyStartFocusRequest,
+        directMessageSurface =
+            surfaceKind == RaftThreadSurfaceKind.DirectMessage ||
+                channelKind.equals("dm", ignoreCase = true) ||
+                parentSurfaceKind == RaftThreadSurfaceKind.DirectMessage ||
+                parentChannelKind.equals("dm", ignoreCase = true),
     )
 
 internal fun RaftThreadMessageItem.toThreadReplyMetadata(): ThreadReplyMetadata =

@@ -14,36 +14,40 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
 /*
- * Channel announcements (#proj-chat:#29, flag [CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY]).
+ * Channel and DM announcements (#proj-chat:#29, #proj-chat:#47, flag
+ * [CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY]).
  *
- * A channel's announcement is one Artifact homed in that channel, set by the channel's owner (one
- * of its channel admins) or a server owner or admin. Its versions are the edit history, whether a
- * person has seen it is the Artifact's own read state, and it can't be hidden ("a pin is a pin").
+ * A conversation's pinned content is one Artifact homed in that channel or DM, set by the channel's
+ * owner (one of its channel admins) or a server owner or admin on a channel, or by either
+ * participant who may send messages in a DM while it is not archived. Its versions are the edit
+ * history, whether a person has seen it is the Artifact's own read state, and it can't be hidden
+ * ("a pin is a pin").
  *
- * Contract: botiverse/slock 6a848d0a0bdbd2a5ad64fb3b8cf314245f11093c
+ * Contract: botiverse/slock 6a848d0a0bdbd2a5ad64fb3b8cf314245f11093c + 05ad55edbc65d7ff0dac3bd589233baa6d5ae0cd (#16563)
  *  - `packages/shared/src/channelAnnouncement.ts`: `ChannelAnnouncement`,
  *    `ChannelAnnouncementForPerson` (`updatedBy`, `note`, `seen`, `excerpt`),
  *    `ChannelAnnouncementNotice` and `readChannelAnnouncementNotice`,
- *    `channelTypeSupportsAnnouncement`.
+ *    `channelTypeSupportsAnnouncement` (public, private, joint channels, and DMs).
  *  - `packages/server/src/routes/channels.ts`:
  *    `GET /api/channels/:id/announcement` answers `{ announcement: ChannelAnnouncementForPerson | null }`
- *    (null also while the flag is off; 404 `channel_not_found` for a channel the person can't see,
+ *    (null also while the flag is off; 404 `channel_not_found` for a conversation the person can't see,
  *    through the unified visibility entry, #14059);
  *    `PATCH /api/channels/:id` with `{ announcement: "<artifact id>" | null }` sets, replaces or
- *    removes it (editChannelMetadata) and answers the channel, whose `announcement` is the person's
- *    announcement while the flag is on (absent while off).
+ *    removes it (`editChannelMetadata` on a channel; message-send admission on a DM) and answers
+ *    the row, whose `announcement` is the person's announcement while the flag is on (absent while off).
  *  - `packages/server/src/services/channelAnnouncements.ts` `channelAnnouncementChange`: the
  *    refusals, `{ code, error, suggestedNextAction? }` (400 `channel_announcement_invalid`,
  *    `channel_announcement_unsupported_channel`, `channel_announcement_not_in_channel`; 403
- *    `channel_announcement_disabled`, `channel_announcement_forbidden`; 404
- *    `channel_announcement_artifact_not_found`).
+ *    `channel_announcement_disabled`, `channel_announcement_forbidden`,
+ *    `channel_announcement_peer_cannot_open`; 404 `channel_announcement_artifact_not_found`).
  *  - `packages/server/src/services/channelAnnouncementMessages.ts`: a set, replacement or removal
  *    posts one system message whose `actionMetadata` is the notice ([readChannelAnnouncementNotice]).
- *  - Web: `packages/web/src/store/channelAnnouncementStore.ts` (#14039, #14069).
+ *  - Web: `packages/web/src/store/channelAnnouncementStore.ts` (#14039, #14069, #16563).
  */
 
-/** Channel types that may have an announcement (`channelTypeSupportsAnnouncement`): never a DM, thread or task. */
-fun channelTypeSupportsAnnouncement(type: String?): Boolean = type == "channel" || type == "private" || type == "joint"
+/** Conversation types that may have an announcement (`channelTypeSupportsAnnouncement`): public, private and joint channels, and DMs (never a thread or task). */
+fun channelTypeSupportsAnnouncement(type: String?): Boolean =
+    type == "channel" || type == "private" || type == "joint" || type == "dm"
 
 /**
  * Why a channel can't have an announcement now, beside `announcement: null` as
