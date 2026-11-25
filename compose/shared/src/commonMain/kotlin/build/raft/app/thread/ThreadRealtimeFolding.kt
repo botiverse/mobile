@@ -41,8 +41,8 @@ internal data class PendingReactionRealtimeGuard(
  * linearizing Mutex and the gap state it guards stay owned by [ThreadRealtimeGapRecovery]: this class locks
  * that same Mutex instance, at the same points, through the accessors below.
  *
- * It runs on the caller's coroutine and thread (the realtime sink may call it off main), and starts no
- * scope, Job or lock of its own. Store state is read only through [currentState] and the other getters, at
+ * It runs on the caller's coroutine and thread (the realtime sink may call it off main), and adds no new
+ * scope, Job or lock. Store state is read only through [currentState] and the other getters, at
  * each use; writes go through the store's `reducePayloadPatch`, and route checks call the store's.
  */
 internal class ThreadRealtimeFolding(
