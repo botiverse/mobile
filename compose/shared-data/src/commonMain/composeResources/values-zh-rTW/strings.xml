@@ -2728,7 +2728,7 @@
     <string name="settings_mobile_link_open_mode_system_browser">預設瀏覽器</string>
     <string name="settings_mobile_link_open_mode_in_app_browser">內建瀏覽器</string>
     <string name="in_app_browser_title">瀏覽器</string>
-    <string name="in_app_browser_forward">轉傳</string>
+    <string name="in_app_browser_forward">前進</string>
     <string name="in_app_browser_reload">重新載入</string>
     <string name="in_app_browser_open_system">在預設瀏覽器中開啟</string>
     <string name="in_app_browser_invalid_link">無法開啟這個連結。</string>

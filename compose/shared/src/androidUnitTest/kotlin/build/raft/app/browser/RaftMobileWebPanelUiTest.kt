@@ -18,8 +18,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -293,5 +296,73 @@ class RaftMobileWebPanelUiTest {
         val fullscreenPixels = onRoot().captureToImage().toPixelMap()
         assertEquals(expectedCanvas, fullscreenPixels[sampleX, safeAreaY])
         assertEquals(expectedCanvas, fullscreenPixels[sampleX, stripRowY])
+    }
+
+    @Test
+    fun bottomBarBackAndForwardReflectHistoryAndInvokeCallbacks() = runRobolectricComposeUiTest {
+        val history = mutableListOf("https://deck.example/page-1")
+        var index by mutableStateOf(0)
+        val callbacks = mutableListOf<String>()
+
+        setContent {
+            RaftDesignSystemTheme {
+                val canGoBack = index > 0
+                val canGoForward = index < history.lastIndex
+                RaftMobileWebPanelBottomBar(
+                    isRaftApp = true,
+                    currentUrl = history[index],
+                    appName = "Deck",
+                    appLogoUrl = null,
+                    signedInAsName = "artin",
+                    canGoBack = canGoBack,
+                    canGoForward = canGoForward,
+                    onGoBack = {
+                        callbacks += "back"
+                        if (index > 0) index -= 1
+                    },
+                    onGoForward = {
+                        callbacks += "forward"
+                        if (index < history.lastIndex) index += 1
+                    },
+                    onClose = { callbacks += "close" },
+                    onShare = {},
+                    onCopyLink = {},
+                    onOpenInBrowser = null,
+                )
+            }
+        }
+
+        // Initial page 1: both Back and Forward are visible and disabled; app identity remains visible.
+        onNodeWithTag(RAFT_WEB_PANEL_APP_NAME_TAG).assertIsDisplayed()
+        onNodeWithTag(RAFT_WEB_PANEL_SIGNED_IN_LABEL_TAG).assertIsDisplayed()
+        onNodeWithTag(RAFT_WEB_PANEL_BACK_BUTTON_TAG).assertIsDisplayed()
+        onNodeWithTag(RAFT_WEB_PANEL_FORWARD_BUTTON_TAG).assertIsDisplayed()
+        onNodeWithContentDescription("Back").assertIsDisplayed().assertIsNotEnabled()
+        onNodeWithContentDescription("Forward").assertIsDisplayed().assertIsNotEnabled()
+        onNodeWithContentDescription("Back").performClick()
+        onNodeWithContentDescription("Forward").performClick()
+        assertEquals(emptyList(), callbacks)
+
+        // Navigate from page 1 -> page 2: Back enabled, Forward disabled.
+        runOnIdle {
+            history += "https://deck.example/page-2"
+            index = 1
+        }
+        onNodeWithContentDescription("Back").assertIsEnabled()
+        onNodeWithContentDescription("Forward").assertIsNotEnabled()
+
+        // Tap Back -> returns to page 1; Back disabled, Forward enabled.
+        onNodeWithContentDescription("Back").performClick()
+        runOnIdle { assertEquals("https://deck.example/page-1", history[index]) }
+        onNodeWithContentDescription("Back").assertIsNotEnabled()
+        onNodeWithContentDescription("Forward").assertIsEnabled()
+
+        // Tap Forward -> returns to page 2; Back enabled, Forward disabled.
+        onNodeWithContentDescription("Forward").performClick()
+        runOnIdle { assertEquals("https://deck.example/page-2", history[index]) }
+        onNodeWithContentDescription("Back").assertIsEnabled()
+        onNodeWithContentDescription("Forward").assertIsNotEnabled()
+
+        assertEquals(listOf("back", "forward"), callbacks)
     }
 }
