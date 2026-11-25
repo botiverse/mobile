@@ -77,7 +77,9 @@ fun raftComponentTokens(scale: RaftScale, pointerInput: RaftPointerInput): RaftU
  * The control metrics for a window of [scale] used by [pointerInput] ([raftComponentTokens]). With a finger, a wide
  * window ([RaftScale.Wide]: a tablet, an unfolded Duo, a phone held sideways at 744 and up) takes the short head
  * ([RaftControlMetrics.MobileShortHead], 48): the screen has room for more of the content, not for taller heads
- * (artin, #wg-mobile-sync:#265). The bar buttons keep their size.
+ * (artin, #wg-mobile-sync:#265). Its bar buttons are 36 with a 20 glyph (not the phone's 44 and 22), so they
+ * sit in the 48 head with 6 above and below; raft-design #1416 names this raft-ui's `wideTouch` context
+ * (`header-height` 48, `bar-button-size` 36, `bar-icon-size` 20), not yet in a published raft-ui.
  */
 fun raftControlMetrics(scale: RaftScale, pointerInput: RaftPointerInput): RaftControlMetrics =
     when {
