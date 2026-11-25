@@ -221,13 +221,8 @@ private fun rememberMemberDetailRouteProvider(
     val createAgentFormStore = remember(sharedStores, storeScope) {
         sharedStores.createAgentFormStore(storeScope)
     }
-    val runtimeAccountUsageStore = remember(computersApiClient) {
-        SharedRuntimeAccountUsageStore(
-            client = computersApiClient,
-            currentIdentity = {
-                sharedStores.computersOwner(storeScope)
-            }
-        )
+    val runtimeAccountUsageStore = remember(sharedStores, storeScope) {
+        sharedStores.runtimeAccountUsageStore(storeScope)
     }
     val activityOverviewRepository = remember(networkClient) {
         build.raft.app.data.RealAgentActivityOverviewRepository(
@@ -294,6 +289,7 @@ private fun rememberMemberDetailRouteProvider(
             runtimeAccountUsageStore = runtimeAccountUsageStore,
             serverFeatureFlags = sharedStores.serverFeatureFlags,
             activityOverviewRepository = activityOverviewRepository,
+            agentActivityOverviewCache = sharedStores.agentActivityOverviewCache,
             agentControlsApi = agentControlsApi,
             agentDetailCache = sharedStores.agentDetailCache,
             agentUpdatedSignals = sharedStores.agentUpdatedSignals,
@@ -450,13 +446,30 @@ internal fun MemberDetailPageContent(
         mutableStateOf<MembersAgentActivityLoadState>(MembersAgentActivityLoadState.Idle)
     }
     var agentActivityRequestGeneration by remember { mutableStateOf(0L) }
+    val activityOverviewServerId =
+        (routeState as? MemberDetailRouteState.Agent)?.server?.id
+            ?: memberIdentity?.sourceServerId
+            ?: activeServerId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId)
     val activityOverviewStore =
-        remember(provider, memberIdentity) {
+        remember(provider, memberIdentity, activityOverviewServerId) {
             provider.activityOverviewRepository?.let { repository ->
                 build.raft.app.data.SharedAgentActivityOverviewStore(
                     repository = repository,
                     scope = routeScope,
-                    logger = { message -> bridge.log("member_detail_$message") }
+                    logger = { message -> bridge.log("member_detail_$message") },
+                    snapshotCache = provider.agentActivityOverviewCache,
+                    cacheKeyFor = { agentId ->
+                        val binding = provider.accountBinding()
+                        val env = binding?.first ?: provider.apiEnvironmentStore.current().apiBaseUrl
+                        val accountId = binding?.second
+                        build.raft.app.data.agentActivityOverviewCacheKey(
+                            environmentId = env,
+                            accountId = accountId,
+                            serverId = activityOverviewServerId?.value,
+                            agentId = agentId,
+                        )
+                    },
+                    initialAgentId = memberIdentity?.takeIf { it.kind == MemberKind.Agent }?.memberId,
                 )
             }
         }

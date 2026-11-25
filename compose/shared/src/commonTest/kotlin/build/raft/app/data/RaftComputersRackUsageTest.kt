@@ -7,6 +7,8 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 /**
  * Tenny's request rules for the Computers page's runtime usage reads, on virtual time: at most 4
@@ -30,6 +32,61 @@ class RaftComputersRackUsageTest {
         // The pulled read is cached again: the visit does not read it a third time.
         visit.open(keys) { _, _ -> }
         assertEquals(2, api.calls.size)
+    }
+
+    @Test
+    fun frame1PeekSyncShowsWarmUsageWithoutNetworkAndFiltersByOwnerAndServer() = runTest {
+        val api = SlowUsageApi(latencyMillis = 0L)
+        var liveOwner: SharedComputersOwner? = owner
+        val sharedStore =
+            SharedRuntimeAccountUsageStore(
+                client = RaftComputersApiClient(api),
+                currentIdentity = { liveOwner },
+                clock = RaftEpochMillisSource { testScheduler.currentTime },
+                currentIdentitySync = { liveOwner },
+            )
+        val authComputer = computer("m1", runtimes = listOf("claude"), canView = true)
+        val firstVisit = RaftComputersRackUsageSession(sharedStore)
+        firstVisit.open(raftComputersRackUsageKeys(owner, "s1", listOf(authComputer))) { _, _ -> }
+        assertEquals(1, api.calls.size)
+
+        // Revisit with first-frame cached computers (permissions not yet attached -> canView = false).
+        val cachedFirstFrame = listOf(computer("m1", runtimes = listOf("claude"), canView = false))
+        assertTrue(raftComputersRackUsageKeys(owner, "s1", cachedFirstFrame).isEmpty(), "network reads still wait for canView")
+        val peekKeys = raftComputersRackPeekUsageKeys(owner, "s1", cachedFirstFrame, includeUnpermissionedCached = true)
+        assertEquals(1, peekKeys.size)
+
+        val revisit = RaftComputersRackUsageSession(sharedStore)
+        val peeked = revisit.peekSync(peekKeys, allowExpiredLoaded = true)
+        assertEquals(1, api.calls.size, "Frame-1 peek must not trigger network requests")
+        val loaded = assertIs<RuntimeAccountUsageLoad.Loaded>(peeked[peekKeys.single()])
+
+        // Merging peeked + live drops Superseded and entries from another owner or server, and lets live win.
+        val otherOwnerKey = peekKeys.single().copy(owner = owner.copy(accountId = "user-2"))
+        val otherServerKey = peekKeys.single().copy(serverId = "s2")
+        val mergedPeekOnly =
+            raftComputersRackUsageLoadsForOwner(
+                peeked = peeked + (otherOwnerKey to loaded) + (otherServerKey to loaded),
+                live = mapOf(peekKeys.single() to RuntimeAccountUsageLoad.Superseded),
+                owner = owner,
+                serverId = "s1",
+            )
+        assertEquals(setOf("m1"), mergedPeekOnly.keys)
+        assertEquals(loaded, mergedPeekOnly["m1"]?.get(RuntimeAccountUsageProvider.Claude))
+
+        val liveOverride = RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Missing)
+        val mergedWithLive =
+            raftComputersRackUsageLoadsForOwner(
+                peeked = peeked,
+                live = mapOf(peekKeys.single() to liveOverride),
+                owner = owner,
+                serverId = "s1",
+            )
+        assertEquals(liveOverride, mergedWithLive["m1"]?.get(RuntimeAccountUsageProvider.Claude))
+
+        // Account switch / sign-out immediately blocks Frame-1 peek.
+        liveOwner = owner.copy(sessionGeneration = "gen-2")
+        assertTrue(revisit.peekSync(peekKeys, allowExpiredLoaded = true).isEmpty())
     }
 
     private fun TestScope.store(api: SlowUsageApi) =

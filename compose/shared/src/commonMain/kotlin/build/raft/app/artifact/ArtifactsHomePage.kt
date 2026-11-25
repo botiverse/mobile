@@ -41,6 +41,7 @@ import build.raft.app.data.ArtifactsHomeIntent
 import build.raft.app.data.ArtifactsHomePreferenceRepository
 import build.raft.app.data.ArtifactsHomeRow
 import build.raft.app.data.ArtifactsHomeSettledSeenRepository
+import build.raft.app.data.ArtifactsHomeSnapshotCache
 import build.raft.app.data.ArtifactsHomeSort
 import build.raft.app.data.ArtifactsHomeSource
 import build.raft.app.data.ArtifactsHomeState
@@ -103,6 +104,10 @@ internal class ArtifactsHomeViewModel(
     settledSeenRepository: ArtifactsHomeSettledSeenRepository,
     ownFollowEvents: SharedFlow<ArtifactOwnFollowEvent>? = null,
     onOwnFollowCommitted: (serverId: String, artifactId: String, following: Boolean) -> Unit = { _, _, _ -> },
+    snapshotCache: ArtifactsHomeSnapshotCache? = null,
+    environmentIdProvider: () -> String = { "" },
+    initialServerId: String? = null,
+    initialReaderId: String? = null,
 ) : ViewModel() {
     val store =
         SharedArtifactsHomeStore(
@@ -115,6 +120,10 @@ internal class ArtifactsHomeViewModel(
             settledSeenRepository = settledSeenRepository,
             ownFollowEvents = ownFollowEvents,
             onOwnFollowCommitted = onOwnFollowCommitted,
+            snapshotCache = snapshotCache,
+            environmentIdProvider = environmentIdProvider,
+            initialServerId = initialServerId,
+            initialReaderId = initialReaderId,
         )
     val state: StateFlow<ArtifactsHomeState> get() = store.state
 
@@ -151,20 +160,6 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val prefsRepository = remember { ArtifactsHomePreferenceRepository(raftSharedPreferenceStore()) }
     var prefs by remember { mutableStateOf(prefsRepository.read()) }
-    val viewModel: ArtifactsHomeViewModel =
-        viewModel(key = "artifacts-home-${storeScope.shellInstanceId}") {
-            ArtifactsHomeViewModel(
-                source = NetworkRaftArtifactsDashboardApi(networkClient).asArtifactsHomeSource(),
-                initialSort = prefs.sort,
-                onSortChosen = { sort -> prefsRepository.write(prefsRepository.read().copy(sort = sort)) },
-                logger = { bridge.log(it) },
-                filterRepository = sharedStores.artifactsHomeFilterRepository,
-                settledSeenRepository = sharedStores.artifactsHomeSettledSeenRepository,
-                ownFollowEvents = sharedStores.artifactFollowStore.events,
-                onOwnFollowCommitted = { srv, id, following -> sharedStores.artifactFollowStore.reportOwnFollow(srv, id, following) },
-            )
-        }
-    val state by viewModel.state.collectAsState()
     val initialSession =
         remember(sharedStores, storeScope) {
             val committed = sharedStores.authStore.readCommittedSessionSnapshot()
@@ -177,6 +172,30 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
                 resolved = committedReader != null,
             )
         }
+    val flags = sharedStores.serverFeatureFlags
+    val initialFlagEnabled =
+        remember(initialSession.serverId, flags) {
+            val sid = initialSession.serverId
+            sid != null && flags.isEnabled(ServerId(sid), WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY)
+        }
+    val viewModel: ArtifactsHomeViewModel =
+        viewModel(key = "artifacts-home-${storeScope.shellInstanceId}") {
+            ArtifactsHomeViewModel(
+                source = NetworkRaftArtifactsDashboardApi(networkClient).asArtifactsHomeSource(),
+                initialSort = prefs.sort,
+                onSortChosen = { sort -> prefsRepository.write(prefsRepository.read().copy(sort = sort)) },
+                logger = { bridge.log(it) },
+                filterRepository = sharedStores.artifactsHomeFilterRepository,
+                settledSeenRepository = sharedStores.artifactsHomeSettledSeenRepository,
+                ownFollowEvents = sharedStores.artifactFollowStore.events,
+                onOwnFollowCommitted = { srv, id, following -> sharedStores.artifactFollowStore.reportOwnFollow(srv, id, following) },
+                snapshotCache = sharedStores.artifactsHomeSnapshotCache,
+                environmentIdProvider = { sharedStores.apiEnvironmentStore.current().apiBaseUrl },
+                initialServerId = initialSession.serverId?.takeIf { initialSession.resolved && initialFlagEnabled },
+                initialReaderId = initialSession.readerId,
+            )
+        }
+    val state by viewModel.state.collectAsState()
     val session by produceState(initialSession, authStore) {
         suspend fun read() {
             val read = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
@@ -200,7 +219,6 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
     }
     val serverId = session.serverId
     // workspace_artifacts_v0, live (web `useServerFeatureFlag`): unknown while it loads.
-    val flags = sharedStores.serverFeatureFlags
     val revision by flags.snapshotRevision.collectAsState()
     val flagEnabled = remember(serverId, revision) { serverId != null && flags.isEnabled(ServerId(serverId), WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY) }
     val flagPending = remember(serverId, revision) { serverId == null || flags.isDecisionPending(ServerId(serverId), WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY) }

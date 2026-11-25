@@ -340,6 +340,7 @@ internal class MemberDetailRouteProvider(
     val computersOwner: suspend () -> SharedComputersOwner? = { null },
     val serverFeatureFlags: build.raft.app.data.SharedServerFeatureFlags? = null,
     val activityOverviewRepository: build.raft.app.data.AgentActivityOverviewRepository? = null,
+    val agentActivityOverviewCache: build.raft.app.data.AgentActivityOverviewSnapshotCache? = null,
     val agentControlsApi: RaftAgentControlsApi? = null,
     /** Data-layer plan step 5: last canonical agent details, keyed by account + server + agent. */
     val agentDetailCache: build.raft.app.data.RaftAgentDetailCache? = null,
@@ -954,6 +955,7 @@ internal class MemberDetailRouteProvider(
             }
         // A deleted agent's page must not come back from the cache (memory or disk).
         if (action == MembersAgentLifecycleAction.Delete && result is DataResult.Content && result.data.success) {
+            agentActivityOverviewCache?.evictAgent(serverId.value, agentId)
             currentAgentDetailOwner(serverId)?.let { owner -> agentDetailCache?.evict(owner.agentDetailCacheKey(agentId)) }
         }
         return result

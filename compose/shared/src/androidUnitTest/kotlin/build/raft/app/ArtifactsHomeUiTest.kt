@@ -5,9 +5,12 @@ import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,19 +50,30 @@ import build.raft.app.data.ArtifactSettled
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactsHomeActor
 import build.raft.app.data.ArtifactsHomeBehalf
+import build.raft.app.data.ArtifactsHomeCachedSnapshot
+import build.raft.app.data.ArtifactsHomeConversation
 import build.raft.app.data.ArtifactsHomeCounts
 import build.raft.app.data.ArtifactsHomeIntent
+import build.raft.app.data.ArtifactsHomeLoad
 import build.raft.app.data.ArtifactsHomeNews
+import build.raft.app.data.ArtifactsHomePage
 import build.raft.app.data.ArtifactsHomePlace
 import build.raft.app.data.ArtifactsHomeQuery
 import build.raft.app.data.ArtifactsHomeRow
 import build.raft.app.data.ArtifactsHomeScope
+import build.raft.app.data.ArtifactsHomeSettlement
+import build.raft.app.data.ArtifactsHomeSnapshotCache
 import build.raft.app.data.ArtifactsHomeSort
+import build.raft.app.data.ArtifactsHomeSource
 import build.raft.app.data.ArtifactsHomeState
 import build.raft.app.data.ArtifactsHomeStatus
 import build.raft.app.data.ArtifactsHomeStatusFilter
 import build.raft.app.data.ArtifactsHomeView
+import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.SharedArtifactsHomeStore
+import build.raft.app.data.artifactsHomeSnapshotCacheKey
 import build.raft.app.data.stringDescLocaleType
+import kotlinx.coroutines.CompletableDeferred
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.resources.StringDesc
@@ -888,6 +902,94 @@ class ArtifactsHomeUiTest {
             assertTrue(foundHairline, "grid skeleton tile border must render with lineHairline")
             assertTrue(!foundSeam, "grid skeleton tile border must not render with darker lineSeam")
         }
+    }
+
+    @Test
+    fun warmSnapshotCacheRendersCachedRowsOnFrameOneWithoutSkeletonFlash() = runRobolectricComposeUiTest {
+        val cache = ArtifactsHomeSnapshotCache()
+        val cachedRow = row("pt_cached", "Launch plan.html", updatedAt = "2026-11-18T08:00:00.000Z")
+        val cacheKey =
+            artifactsHomeSnapshotCacheKey(
+                environmentId = "https://api.example",
+                readerId = "me",
+                serverId = "s-1",
+                query = ArtifactsHomeQuery(),
+            )!!
+        cache.put(
+            cacheKey,
+            ArtifactsHomeCachedSnapshot(
+                rows = listOf(cachedRow),
+                nextCursor = null,
+                counts = ArtifactsHomeCounts(total = 1, filtered = 1, relevant = 0),
+                countsNarrowed = false,
+                rowsByOpened = true,
+                settledEnabled = false,
+                knownAuthors = emptyMap(),
+            ),
+        )
+        val pendingRefresh = CompletableDeferred<ArtifactsHomeLoad<ArtifactsHomePage>>()
+        val hangingApi =
+            object : ArtifactsHomeSource {
+                override suspend fun page(
+                    serverId: String,
+                    query: ArtifactsHomeQuery,
+                    cursor: String?,
+                    priority: DataRequestPriority,
+                ): ArtifactsHomeLoad<ArtifactsHomePage> = pendingRefresh.await()
+
+                override suspend fun authors(serverId: String, q: String): ArtifactsHomeLoad<List<ArtifactsHomeActor>> =
+                    ArtifactsHomeLoad.Ok(emptyList())
+
+                override suspend fun conversations(serverId: String, q: String): ArtifactsHomeLoad<List<ArtifactsHomeConversation>> =
+                    ArtifactsHomeLoad.Ok(emptyList())
+
+                override suspend fun setSettled(serverId: String, artifactId: String, settled: Boolean): ArtifactsHomeLoad<ArtifactsHomeSettlement> =
+                    ArtifactsHomeLoad.Ok(ArtifactsHomeSettlement(null))
+
+                override suspend fun setFollowing(serverId: String, artifactId: String, following: Boolean): ArtifactsHomeLoad<Boolean> =
+                    ArtifactsHomeLoad.Ok(following)
+            }
+
+        setContent {
+            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
+            val scope = rememberCoroutineScope()
+            val store =
+                remember {
+                    SharedArtifactsHomeStore(
+                        api = hangingApi,
+                        scope = scope,
+                        snapshotCache = cache,
+                        environmentIdProvider = { "https://api.example" },
+                        initialServerId = "s-1",
+                        initialReaderId = "me",
+                    )
+                }
+            LaunchedEffect(store) {
+                store.dispatch(ArtifactsHomeIntent.Start("s-1", "me"))
+            }
+            val state by store.state.collectAsState()
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext),
+            ) {
+                ArtifactsHomeScreen(
+                    state = state,
+                    view = ArtifactsHomeView.List,
+                    readerId = "me",
+                    serverName = "Northwind Labs",
+                    wide = false,
+                    onIntent = store::dispatch,
+                    onView = {},
+                    onOpen = {},
+                    onBack = {},
+                )
+            }
+        }
+        waitForIdle()
+        // Frame 1 immediately displays the cached artifact row with zero skeleton placeholders while refresh is pending.
+        onAllNodesWithTag(ArtifactsHomeTags.Skeleton).assertCountEquals(0)
+        onAllNodesWithTag(ArtifactsHomeTags.Row).assertCountEquals(1)
+        onNodeWithText("Launch plan", useUnmergedTree = true).assertIsDisplayed()
     }
 
     private fun assertPixelNear(expected: Color, actualArgb: Int, label: String, maxDelta: Int = 10) {

@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -102,6 +104,48 @@ sealed interface FeedbackTicketSyncEvent {
 }
 
 /**
+ * Owner/environment-scoped identity for caching the Settings › Feedback ticket list across visits
+ * so reopening "My Feedback" renders warm rows on Frame 1 while refreshing in the background.
+ */
+data class FeedbackTicketsListCacheKey(
+    val environmentId: String,
+    val accountId: String,
+)
+
+fun feedbackTicketsListCacheKey(environmentId: String?, accountId: String?): FeedbackTicketsListCacheKey? {
+    val cleanEnv = environmentId?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() } ?: return null
+    val cleanAccount = accountId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return FeedbackTicketsListCacheKey(environmentId = cleanEnv, accountId = cleanAccount)
+}
+
+/** Cached ticket list snapshot for Frame-1 warm rendering. */
+data class FeedbackTicketsListSnapshot(
+    val tickets: List<FeedbackTicket>,
+    val nextCursor: String?,
+)
+
+/**
+ * In-memory, owner/environment-scoped snapshot cache for [SettingsFeedbackTicketsStore].
+ * Cleared on sign-out and account switch; isolated by both environment and account so switching
+ * either never displays another subject's tickets.
+ */
+class SettingsFeedbackTicketsListCache {
+    private val lock = SynchronizedObject()
+    private var entry: Pair<FeedbackTicketsListCacheKey, FeedbackTicketsListSnapshot>? = null
+
+    fun peek(key: FeedbackTicketsListCacheKey): FeedbackTicketsListSnapshot? =
+        synchronized(lock) { entry?.takeIf { it.first == key }?.second }
+
+    fun put(key: FeedbackTicketsListCacheKey, snapshot: FeedbackTicketsListSnapshot) {
+        synchronized(lock) { entry = key to snapshot }
+    }
+
+    fun clear() {
+        synchronized(lock) { entry = null }
+    }
+}
+
+/**
  * The native Settings › Feedback ticket list and ticket (the web page's FeedbackWorkspace, with
  * the same reads, rules and order): list with status tabs, pull to refresh, "Load More"; a ticket
  * with its thread, "Load More Replies", a reply, and close with a reason.
@@ -136,8 +180,25 @@ class SettingsFeedbackTicketsStore(
     initialDetail: FeedbackTicketDetailState? = null,
     /** Called when a ticket read, reply, or close completes so a parent list page can sync in-memory. */
     private val onTicketSynced: (FeedbackTicketSyncEvent) -> Unit = {},
+    /** Warm list snapshot seeded on Frame 0 so revisiting "My Feedback" renders immediately while refreshing. */
+    initialListSnapshot: FeedbackTicketsListSnapshot? = null,
+    /** Called whenever the ready ticket list updates so the owner-scoped snapshot cache stays fresh. */
+    private val onListSnapshotUpdated: (FeedbackTicketsListSnapshot) -> Unit = {},
 ) {
-    private val mutableState = MutableStateFlow(SettingsFeedbackTicketsState(detail = initialDetail))
+    private val mutableState =
+        MutableStateFlow(
+            SettingsFeedbackTicketsState(
+                list =
+                    initialListSnapshot?.let { cached ->
+                        FeedbackTicketsListState(
+                            phase = FeedbackTicketsListPhase.Ready,
+                            tickets = cached.tickets,
+                            nextCursor = cached.nextCursor,
+                        )
+                    } ?: FeedbackTicketsListState(),
+                detail = initialDetail,
+            )
+        )
     val state: StateFlow<SettingsFeedbackTicketsState> = mutableState.asStateFlow()
 
     private var started = false
@@ -171,7 +232,13 @@ class SettingsFeedbackTicketsStore(
                     if (mutableState.value.showAgentHint == sent) mutableState.update { it.copy(showAgentHint = !sent) }
                 }
             }
-            loadList(mode = ListLoad.Initial)
+            val startMode =
+                if (mutableState.value.list.phase == FeedbackTicketsListPhase.Ready) {
+                    ListLoad.Refresh
+                } else {
+                    ListLoad.Initial
+                }
+            loadList(mode = startMode)
         }
         initialTicketId?.trim()?.takeIf { it.isNotEmpty() }?.let { openTicket(it, initialSummary = initialSummary) }
     }
@@ -179,10 +246,10 @@ class SettingsFeedbackTicketsStore(
     /** Pull to refresh, the page reappearing: re-reads the first page (when list is active) and the open ticket. */
     fun refresh() {
         if (started && listEnabled) {
-            if (mutableState.value.list.phase == FeedbackTicketsListPhase.Ready) {
-                loadList(mode = ListLoad.Refresh)
-            } else {
-                loadList(mode = ListLoad.Initial)
+            when (mutableState.value.list.phase) {
+                FeedbackTicketsListPhase.Ready -> loadList(mode = ListLoad.Refresh)
+                FeedbackTicketsListPhase.Loading -> if (listJob?.isActive != true) loadList(mode = ListLoad.Initial)
+                FeedbackTicketsListPhase.Failed -> loadList(mode = ListLoad.Initial)
             }
         }
         if (mutableState.value.detail?.detail != null) refreshTicket()
@@ -207,6 +274,7 @@ class SettingsFeedbackTicketsStore(
             if (state.list.phase != FeedbackTicketsListPhase.Ready) return@update state
             state.copy(list = state.list.copy(tickets = state.list.tickets.updatedWith(ticket, markRead = true)))
         }
+        publishListSnapshotIfReady()
     }
 
     /** Applies a reply or close mutation observed by a pushed detail stack page above this list. */
@@ -214,6 +282,14 @@ class SettingsFeedbackTicketsStore(
         mutableState.update { state ->
             if (state.list.phase != FeedbackTicketsListPhase.Ready) return@update state
             state.copy(list = state.list.copy(tickets = state.list.tickets.upserted(ticket, reply)))
+        }
+        publishListSnapshotIfReady()
+    }
+
+    private fun publishListSnapshotIfReady() {
+        val list = mutableState.value.list
+        if (list.phase == FeedbackTicketsListPhase.Ready) {
+            onListSnapshotUpdated(FeedbackTicketsListSnapshot(tickets = list.tickets, nextCursor = list.nextCursor))
         }
     }
 
@@ -289,6 +365,7 @@ class SettingsFeedbackTicketsStore(
                                                 )
                                         )
                                     }
+                                    publishListSnapshotIfReady()
                                     logger("settings_feedback_tickets_list_ready count=${read.page.tickets.size} more=${read.page.nextCursor != null}")
                                     return@launch
                                 }
@@ -426,6 +503,7 @@ class SettingsFeedbackTicketsStore(
                             )
                         }
                         if (cursor == null) {
+                            publishListSnapshotIfReady()
                             onTicketRead(read.ticket.source ?: source, read.unreadTotal)
                             onTicketSynced(FeedbackTicketSyncEvent.Read(read.ticket))
                         }
@@ -491,6 +569,7 @@ class SettingsFeedbackTicketsStore(
                                 list = next?.let { state.list.copy(tickets = state.list.tickets.upserted(it.ticket, result.value)) } ?: state.list,
                             )
                         }
+                        publishListSnapshotIfReady()
                         syncedTicket?.let { onTicketSynced(FeedbackTicketSyncEvent.Replied(it, result.value)) }
                         // Read it again as the web does after a reply (the server's own view of it).
                         loadTicket(mode = TicketLoad.Refresh)
@@ -542,6 +621,7 @@ class SettingsFeedbackTicketsStore(
                                 list = closed?.let { state.list.copy(tickets = state.list.tickets.upserted(it.ticket, null)) } ?: state.list,
                             )
                         }
+                        publishListSnapshotIfReady()
                         syncedTicket?.let { onTicketSynced(FeedbackTicketSyncEvent.Closed(it)) }
                         loadTicket(mode = TicketLoad.Refresh)
                     }

@@ -2469,7 +2469,7 @@ private fun RaftStructuralHomeShellContent(
     val jointChannelSectionSelection = sidebarSelection.sectionSelection(RaftHomeConversationSection.JointChannel)
     val directMessageSectionSelection = sidebarSelection.sectionSelection(RaftHomeConversationSection.DirectMessage)
     val pinnedSectionSelection = sidebarSelection.sectionSelection(RaftHomeConversationSection.Pinned)
-    val pullToRefreshEnabled = homePullToRefreshEnabled(contentRefreshEnabled)
+    val pullToRefreshEnabled = homePullToRefreshEnabled(contentRefreshEnabled && !showLoadingSkeletons)
     val lazyItemCount =
         homeLazyItemCount(
             channelsCount = displayedChannels.size,

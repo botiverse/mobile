@@ -264,10 +264,24 @@ internal fun rememberShellRuntimeAccountUsageAccess(): MembersRuntimeAccountUsag
     val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val store = remember(sharedStores, storeScope) { sharedStores.runtimeAccountUsageStore(storeScope) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
-    val tracker = remember(sharedStores, storeScope) { MembersRuntimeAccountUsageOwnerTracker { sharedStores.computersOwner(storeScope) } }
+    val initialSession = remember(sharedStores) { sharedStores.authStore.readCommittedSessionSnapshot() }
+    val initialOwner = remember(sharedStores, storeScope) { sharedStores.computersOwnerSync(storeScope) }
+    val tracker =
+        remember(sharedStores, storeScope) {
+            MembersRuntimeAccountUsageOwnerTracker(initialOwner = initialOwner) { sharedStores.computersOwner(storeScope) }
+        }
     val computersStore = remember(sharedStores, storeScope) { sharedStores.computersStore(storeScope) }
-    var serverId by remember(authStore) { mutableStateOf<String?>(null) }
-    var viewer by remember(authStore) { mutableStateOf<build.raft.app.data.RuntimeAccountUsageViewer?>(null) }
+    var serverId by
+        remember(authStore) {
+            mutableStateOf(
+                sharedStores.currentSelectedServerIdOrNull(storeScope)
+                    ?: initialSession?.currentServerId?.trim()?.takeIf { it.isNotEmpty() }
+            )
+        }
+    var viewer by
+        remember(authStore) {
+            mutableStateOf(build.raft.app.data.runtimeAccountUsageViewerFor(initialSession))
+        }
     LaunchedEffect(tracker, authStore) {
         suspend fun read() {
             val session = authStore.readSession()
@@ -371,7 +385,7 @@ internal class ComputerRuntimeUsageController(
     private val followUpAttempts: Int = COMPUTER_RUNTIME_USAGE_FOLLOW_UP_ATTEMPTS,
     private val nowMillis: () -> Long = ::defaultNowMillis,
 ) {
-    var load by mutableStateOf<RuntimeAccountUsageLoad?>(null)
+    var load by mutableStateOf(store.peekSync(key, allowExpiredLoaded = true))
         private set
     var loading by mutableStateOf(false)
         private set

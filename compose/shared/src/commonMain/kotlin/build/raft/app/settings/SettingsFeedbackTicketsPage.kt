@@ -308,9 +308,20 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
                 null
             }
         }
+    val apiEnvironment by sharedStores.apiEnvironmentStore.state.collectAsState()
+    val listCacheKey =
+        remember(sharedStores, apiEnvironment.apiBaseUrl, storeScope) {
+            sharedStores.feedbackTicketsListCacheKeySync()
+        }
     var skipNextResumeRefresh by remember { mutableStateOf(false) }
     val store =
-        remember(networkClient, scope, initialTicketId, detailOnly, syncScope) {
+        remember(networkClient, scope, initialTicketId, detailOnly, syncScope, listCacheKey) {
+            val initialListSnapshot =
+                if (!detailOnly && listCacheKey != null) {
+                    sharedStores.feedbackTicketsListCache.peek(listCacheKey)
+                } else {
+                    null
+                }
             SettingsFeedbackTicketsStore(
                 repository = NetworkSettingsFeedbackTicketsRepository(networkClient, raftFeedbackWebViewClientKind(), bridge::log),
                 scope = scope,
@@ -329,6 +340,13 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
                 onTicketSynced = { event ->
                     if (detailOnly) {
                         SettingsFeedbackTicketSyncBus.publish(syncScope, event)
+                    }
+                },
+                initialListSnapshot = initialListSnapshot,
+                onListSnapshotUpdated = { snapshot ->
+                    val currentKey = sharedStores.feedbackTicketsListCacheKeySync()
+                    if (!detailOnly && listCacheKey != null && currentKey == listCacheKey) {
+                        sharedStores.feedbackTicketsListCache.put(listCacheKey, snapshot)
                     }
                 },
             )
@@ -844,6 +862,7 @@ private fun FeedbackTicketList(
         RaftStorePullToRefreshBox(
             refreshing = list.refreshing,
             onRefresh = actions.onRefresh,
+            enabled = list.phase != FeedbackTicketsListPhase.Loading,
             modifier = Modifier.weight(1f).fillMaxWidth(),
         ) {
             LazyColumn(

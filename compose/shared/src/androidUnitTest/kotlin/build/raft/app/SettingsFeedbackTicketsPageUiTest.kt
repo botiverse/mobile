@@ -7,8 +7,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -21,6 +23,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -43,6 +47,9 @@ import build.raft.app.data.FeedbackTicketKind
 import build.raft.app.data.FeedbackTicketListRead
 import build.raft.app.data.FeedbackTicketPage
 import build.raft.app.data.FeedbackTicketStatus
+import build.raft.app.data.FeedbackTicketsListPhase
+import build.raft.app.data.FeedbackTicketsListSnapshot
+import build.raft.app.data.FeedbackTicketsListState
 import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SettingsFeedbackTicketsRepository
@@ -60,6 +67,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.junit.Rule
@@ -102,11 +110,12 @@ class SettingsFeedbackTicketsPageUiTest {
     private class FakeRepository(
         var list: FeedbackResult<FeedbackTicketListRead>,
         val details: Map<String, FeedbackTicketDetail> = emptyMap(),
+        val listGate: CompletableDeferred<FeedbackResult<FeedbackTicketListRead>>? = null,
     ) : SettingsFeedbackTicketsRepository {
         val replies = mutableListOf<Pair<String, String>>()
         val extraComments = mutableListOf<FeedbackComment>()
 
-        override suspend fun listTickets(cursor: String?, limit: Int) = list
+        override suspend fun listTickets(cursor: String?, limit: Int) = listGate?.await() ?: list
 
         override suspend fun ticket(ticketId: String, commentCursor: String?, commentLimit: Int, source: String?): FeedbackResult<FeedbackTicketDetail> {
             val detail = details.getValue(ticketId)
@@ -387,6 +396,86 @@ class SettingsFeedbackTicketsPageUiTest {
             assertNull(SettingsFeedbackTicketSummaryCache.take("shell-1:srv-a", crash.id))
         } finally {
             SettingsFeedbackTicketSummaryCache.clear()
+        }
+    }
+
+    @Test
+    fun pullToRefreshIsDisabledDuringInitialLoadingAndEnabledOnceReady() {
+        runRobolectricComposeUiTest {
+            var refreshCalls = 0
+            var state by mutableStateOf(
+                SettingsFeedbackTicketsState(
+                    list = FeedbackTicketsListState(phase = FeedbackTicketsListPhase.Loading),
+                ),
+            )
+            setContent {
+                Host {
+                    SettingsFeedbackTicketsScreen(
+                        state = state,
+                        timeContext = timeContext,
+                        actions = SettingsFeedbackTicketsActions(onRefresh = { refreshCalls += 1 }),
+                        replyComposer = { _, _, _, _, _, _ -> },
+                    )
+                }
+            }
+            waitForIdle()
+            onNodeWithText("Loading feedback").assertIsDisplayed()
+
+            // Pulling down during initial Loading must NOT trigger onRefresh.
+            onNodeWithTag(SettingsFeedbackTicketsListTag).performTouchInput {
+                swipeDown(startY = top + 40f, endY = bottom - 40f, durationMillis = 300L)
+            }
+            waitForIdle()
+            assertEquals(0, refreshCalls, "pull-to-refresh must stay disabled during initial Loading")
+
+            // Once Ready, the same pull gesture triggers onRefresh.
+            state =
+                SettingsFeedbackTicketsState(
+                    list =
+                        FeedbackTicketsListState(
+                            phase = FeedbackTicketsListPhase.Ready,
+                            tickets = listOf(crash),
+                        ),
+                )
+            waitForIdle()
+            onNodeWithText("Crash on launch").assertIsDisplayed()
+            onNodeWithTag(SettingsFeedbackTicketsListTag).performTouchInput {
+                swipeDown(startY = top + 40f, endY = bottom - 40f, durationMillis = 300L)
+            }
+            waitForIdle()
+            assertEquals(1, refreshCalls, "pull-to-refresh must work once Ready")
+        }
+    }
+
+    @Test
+    fun warmListSnapshotRendersCachedTicketsOnFrameOneWhileRefreshing() {
+        runRobolectricComposeUiTest {
+            val gate = CompletableDeferred<FeedbackResult<FeedbackTicketListRead>>()
+            val repository = FakeRepository(list = pageOf(crash), listGate = gate)
+            setContent {
+                val scope = rememberCoroutineScope()
+                val store =
+                    remember {
+                        SettingsFeedbackTicketsStore(
+                            repository = repository,
+                            scope = scope,
+                            initialListSnapshot = FeedbackTicketsListSnapshot(tickets = listOf(crash), nextCursor = null),
+                        ).also { it.start() }
+                    }
+                val state by store.state.collectAsState()
+                Host {
+                    SettingsFeedbackTicketsScreen(
+                        state = state,
+                        timeContext = timeContext,
+                        actions = SettingsFeedbackTicketsActions(),
+                        replyComposer = { _, _, _, _, _, _ -> },
+                    )
+                }
+            }
+            waitForIdle()
+            // Even before the network gate completes, cached tickets render with no full-screen Loading flash.
+            onNodeWithText("Crash on launch").assertIsDisplayed()
+            onAllNodesWithText("Loading feedback").assertCountEquals(0)
         }
     }
 

@@ -903,6 +903,7 @@ internal class RaftSharedStoreProvider private constructor(
 
     /** Realtime `agent:deleted` for the current account: its cached detail page (memory and disk) goes. */
     internal suspend fun evictAgentDetail(serverId: String, agentId: String) {
+        agentActivityOverviewCache.evictAgent(serverId, MemberId(agentId))
         val (environmentId, accountId) = currentAccountBindingOrNull() ?: return
         val owner = sharedAgentDetailOwner(environmentId, accountId, ServerId(serverId)) ?: return
         agentDetailCache.evict(owner.agentDetailCacheKey(MemberId(agentId)))
@@ -917,6 +918,15 @@ internal class RaftSharedStoreProvider private constructor(
     /** Per-(account, server) persisted Artifacts home filters and settled-seen state (#proj-workspace:#381). */
     internal val artifactsHomeFilterRepository = ArtifactsHomeFilterRepository(sharedPreferenceStore)
     internal val artifactsHomeSettledSeenRepository = ArtifactsHomeSettledSeenRepository(sharedPreferenceStore)
+
+    /** Owner/server/agent-scoped LRU snapshot cache for Agent Activity Overview Frame-1 warm renders (#proj-mobile:#386). */
+    internal val agentActivityOverviewCache = AgentActivityOverviewSnapshotCache()
+
+    /** Owner/environment-scoped snapshot cache for Settings › Feedback ticket list Frame-1 warm renders (#proj-mobile:#386). */
+    internal val feedbackTicketsListCache = SettingsFeedbackTicketsListCache()
+
+    /** Owner/server/query-scoped LRU snapshot cache for Artifacts Home Frame-1 warm renders (#proj-mobile:#386). */
+    internal val artifactsHomeSnapshotCache = ArtifactsHomeSnapshotCache()
 
     /** The account's local data on sign-out and on server-access loss (see the class). */
     private val accountLocalData =
@@ -949,6 +959,12 @@ internal class RaftSharedStoreProvider private constructor(
                 build.raft.app.RaftArtifactViewerMemory.clear()
                 build.raft.app.raftWebViewKeepAliveClear()
                 RaftModelLabelCatalogs.clear()
+                // Non-thread screen warm caches (#proj-mobile:#386): cleared synchronously on sign-out.
+                shellRuntimeAccountUsageStores.entries().forEach { (_, store) -> store.clearSync() }
+                agentActivityOverviewCache.clear()
+                feedbackTicketsListCache.clear()
+                artifactsHomeSnapshotCache.clear()
+                build.raft.app.SettingsFeedbackTicketSummaryCache.clear()
             },
             logger = sharedInfoLogger("CanonicalMessageV2Store", "canonical_v2_access_evict"),
             besideMemory = besideMemoryRepository,
@@ -2315,6 +2331,9 @@ internal class RaftSharedStoreProvider private constructor(
                 if (allComputersStores().isEmpty()) computersDurableStore.evictServer(grant.serverId, lostAccountId)
                 jointConnectionsCache.dropServer(grant.serverId, lostAccountId)
                 agentDetailCache.dropServer(grant.serverId, lostAccountId)
+                agentActivityOverviewCache.dropServer(grant.serverId)
+                artifactsHomeSnapshotCache.dropServer(grant.serverId)
+                shellRuntimeAccountUsageStores.entries().forEach { (_, store) -> store.dropServerSync(grant.serverId) }
                 // Tasks lists leave memory before the offline wipe below, so the offline mirror cannot store them again.
                 tasksDataStore.dropServer(grant.serverId)
                 syncCursorStore.clearServer(grant.serverId, lostAccountId)
@@ -3101,6 +3120,38 @@ internal class RaftSharedStoreProvider private constructor(
             sharedComputersOwner(session, apiEnvironmentStore.current().apiBaseUrl, authLoginGeneration(scope).current())
         }
 
+    /**
+     * Synchronous Frame-1 computers cache owner from the committed session snapshot + live binding.
+     * Returns null when signed out or when the live process auth binding disagrees with the committed
+     * session / current API environment, preventing cross-account or cross-environment peeks.
+     */
+    internal fun computersOwnerSync(scope: RaftShellStoreScope): SharedComputersOwner? {
+        val session = authStore.readCommittedSessionSnapshot() ?: return null
+        val env = apiEnvironmentStore.current().apiBaseUrl
+        val binding = currentAccountBindingOrNull()
+        if (binding != null &&
+            (binding.first.trim().trimEnd('/') != env.trim().trimEnd('/') ||
+                binding.second.trim() != session.user.id.trim())
+        ) {
+            return null
+        }
+        return sharedComputersOwner(session, env, authLoginGeneration(scope).current())
+    }
+
+    /** Synchronous owner/environment cache key for Settings › Feedback tickets list. */
+    internal fun feedbackTicketsListCacheKeySync(): FeedbackTicketsListCacheKey? {
+        val env = apiEnvironmentStore.current().apiBaseUrl
+        val binding = currentAccountBindingOrNull()
+        val accountId =
+            if (binding != null) {
+                if (binding.first.trim().trimEnd('/') != env.trim().trimEnd('/')) return null
+                binding.second
+            } else {
+                authStore.readCommittedSessionSnapshot()?.user?.id
+            }
+        return feedbackTicketsListCacheKey(env, accountId)
+    }
+
     private suspend fun computersOwnerBinding(scope: RaftShellStoreScope): RaftAccountBinding<SharedComputersOwner> =
         authStore(scope).readAccountBinding { session ->
             sharedComputersOwner(session, apiEnvironmentStore.current().apiBaseUrl, authLoginGeneration(scope).current())
@@ -3163,6 +3214,7 @@ internal class RaftSharedStoreProvider private constructor(
                 client = RaftComputersApiClient(RaftComputersNetworkApi(networkClient(scope))),
                 currentIdentity = { computersOwner(scope) },
                 detachedScope = threadSendScope,
+                currentIdentitySync = { computersOwnerSync(scope) },
             )
         }
 
@@ -3915,7 +3967,7 @@ internal class RaftSharedStoreProvider private constructor(
         shellAgentTypingStores.remove(scope)?.close()
         shellAgentDetailStores.remove(scope)
         shellComputersStores.remove(scope)?.dispatch(SharedComputersIntent.Clear)
-        shellRuntimeAccountUsageStores.remove(scope)
+        shellRuntimeAccountUsageStores.remove(scope)?.clearSync()
         shellChannelAnnouncementStores.remove(scope)?.dispatch(ChannelAnnouncementIntent.Reset)
         shellChannelConversionStores.remove(scope)?.dispatch(ChannelConversionIntent.Reset)
         shellMyAssistantStores.remove(scope)

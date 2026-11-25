@@ -4,6 +4,8 @@ import build.raft.app.RaftCoreInternalApi
 import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -115,6 +117,102 @@ sealed interface AgentActivityOverviewIntent {
 }
 
 /**
+ * Strict owner/server/agent cache identity for warm Agent Activity Overview snapshots.
+ * Every dimension must be non-blank; switching environment, account, server, or agent never
+ * reuses another subject's cached turns or replies.
+ */
+@RaftCoreInternalApi data class AgentActivityOverviewCacheKey(
+    val environmentId: String,
+    val accountId: String,
+    val serverId: String,
+    val agentId: MemberId,
+)
+
+@RaftCoreInternalApi fun agentActivityOverviewCacheKey(
+    environmentId: String?,
+    accountId: String?,
+    serverId: String?,
+    agentId: MemberId?,
+): AgentActivityOverviewCacheKey? {
+    val cleanEnv = environmentId?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() } ?: return null
+    val cleanAccount = accountId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val cleanServer = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val cleanAgent = agentId?.value?.trim()?.takeIf { it.isNotEmpty() }?.let(::MemberId) ?: return null
+    return AgentActivityOverviewCacheKey(
+        environmentId = cleanEnv,
+        accountId = cleanAccount,
+        serverId = cleanServer,
+        agentId = cleanAgent,
+    )
+}
+
+/** Settled overview snapshot persisted in memory for warm Frame-1 rendering on revisit. */
+@RaftCoreInternalApi data class AgentActivityOverviewCachedSnapshot(
+    val agentId: MemberId,
+    val turns: List<AgentActivityTurn>,
+    val next: String?,
+    val running: AgentActivityTurn?,
+    val operatorEvents: List<AgentOperatorEvent>,
+    val replies: Map<MessageId, AgentActivityReplyState.Ready>,
+)
+
+/**
+ * Bounded, owner/server/agent-scoped LRU snapshot cache for [SharedAgentActivityOverviewStore].
+ * Synchronous [peek] seeds Frame 1 on revisit while the store refreshes silently in the background;
+ * cleared on sign-out / account switch, per-server on lost access, and per-agent on deletion.
+ */
+@RaftCoreInternalApi class AgentActivityOverviewSnapshotCache(
+    private val maxEntries: Int = DEFAULT_MAX_ENTRIES,
+) {
+    private val lock = SynchronizedObject()
+    private val entries = LinkedHashMap<AgentActivityOverviewCacheKey, AgentActivityOverviewCachedSnapshot>()
+
+    fun peek(key: AgentActivityOverviewCacheKey): AgentActivityOverviewCachedSnapshot? =
+        synchronized(lock) {
+            val value = entries.remove(key) ?: return@synchronized null
+            entries[key] = value
+            value
+        }
+
+    fun put(key: AgentActivityOverviewCacheKey, snapshot: AgentActivityOverviewCachedSnapshot) {
+        synchronized(lock) {
+            entries.remove(key)
+            entries[key] = snapshot
+            val limit = maxEntries.coerceAtLeast(1)
+            while (entries.size > limit) {
+                val oldestKey = entries.entries.firstOrNull()?.key ?: break
+                entries.remove(oldestKey)
+            }
+        }
+    }
+
+    fun evict(key: AgentActivityOverviewCacheKey) {
+        synchronized(lock) { entries.remove(key) }
+    }
+
+    fun evictAgent(serverId: String, agentId: MemberId) {
+        val cleanServer = serverId.trim()
+        val cleanAgent = agentId.value.trim()
+        synchronized(lock) {
+            entries.keys.removeAll { it.serverId == cleanServer && it.agentId.value == cleanAgent }
+        }
+    }
+
+    fun dropServer(serverId: String) {
+        val cleanServer = serverId.trim()
+        synchronized(lock) { entries.keys.removeAll { it.serverId == cleanServer } }
+    }
+
+    fun clear() {
+        synchronized(lock) { entries.clear() }
+    }
+
+    companion object {
+        const val DEFAULT_MAX_ENTRIES: Int = 16
+    }
+}
+
+/**
  * MVI store for the agent Activity tab overview (web `AgentActivityOverview`).
  *
  * Confinement: [dispatch] and every launched job run on [scope]'s dispatcher (the UI scope in
@@ -134,10 +232,14 @@ class SharedAgentActivityOverviewStore(
     private val nowMillis: () -> Long = ::raftForegroundGateNowMillis,
     private val liveConnectionToken: (serverId: String) -> Long? = RaftRealtimeConnectionCauses::liveConnectionToken,
     private val logger: (String) -> Unit = {},
+    private val snapshotCache: AgentActivityOverviewSnapshotCache? = null,
+    private val cacheKeyFor: ((MemberId) -> AgentActivityOverviewCacheKey?)? = null,
+    initialAgentId: MemberId? = null,
 ) {
-    private val _state = MutableStateFlow(AgentActivityOverviewState())
+    private val _state = MutableStateFlow(initialOverviewState(initialAgentId, snapshotCache, cacheKeyFor))
     val state: StateFlow<AgentActivityOverviewState> = _state.asStateFlow()
 
+    private var seededFromCache = _state.value.status == AgentActivityOverviewStatus.Loaded
     private var generation = 0L
     private var latestInFlight = false
     private var latestPending = false
@@ -254,10 +356,16 @@ class SharedAgentActivityOverviewStore(
     private fun open(agentId: MemberId) {
         val current = _state.value
         if (current.agentId == agentId && current.status != AgentActivityOverviewStatus.Idle) {
+            if (seededFromCache) {
+                seededFromCache = false
+                loadLatest(DataRequestPriority.Background)
+                return
+            }
             // Revisit: what is shown may be stale. Loading or Error already has its own path.
             if (current.status == AgentActivityOverviewStatus.Loaded) scheduleLiveReload()
             return
         }
+        seededFromCache = false
         generation += 1
         liveReloadJob?.cancel()
         liveReloadJob = null
@@ -268,8 +376,14 @@ class SharedAgentActivityOverviewStore(
         freshnessGate.reset()
         loadMoreCursor = null
         lastLiveActivity = null
-        _state.value = AgentActivityOverviewState(agentId = agentId, status = AgentActivityOverviewStatus.Loading)
-        loadLatest(DataRequestPriority.Visible)
+        val cached = cacheKeyFor?.invoke(agentId)?.let { snapshotCache?.peek(it) }
+        if (cached != null) {
+            _state.value = cached.toLoadedState()
+            loadLatest(DataRequestPriority.Background)
+        } else {
+            _state.value = AgentActivityOverviewState(agentId = agentId, status = AgentActivityOverviewStatus.Loading)
+            loadLatest(DataRequestPriority.Visible)
+        }
     }
 
     private fun refresh() {
@@ -381,7 +495,7 @@ class SharedAgentActivityOverviewStore(
 
     private fun applyLatest(result: DataResult<AgentActivityTurnPage>) {
         when (result) {
-            is DataResult.Content ->
+            is DataResult.Content -> {
                 _state.update {
                     val head = if (it.status == AgentActivityOverviewStatus.Loaded) {
                         mergeAgentActivityHead(it.turns, it.next, result.data)
@@ -398,7 +512,9 @@ class SharedAgentActivityOverviewStore(
                         loadingMore = loadMoreCursor != null,
                     )
                 }
-            is DataResult.Empty ->
+                persistSnapshotToCache()
+            }
+            is DataResult.Empty -> {
                 _state.update {
                     it.copy(
                         turns = emptyList(),
@@ -408,8 +524,13 @@ class SharedAgentActivityOverviewStore(
                         loadingMore = loadMoreCursor != null,
                     )
                 }
+                persistSnapshotToCache()
+            }
             is DataResult.Error -> failLatest(result.error.code)
-            is DataResult.NoPermission -> failLatest(result.blocker.code)
+            is DataResult.NoPermission -> {
+                evictCurrentFromCache()
+                failLatest(result.blocker.code)
+            }
         }
     }
 
@@ -430,31 +551,48 @@ class SharedAgentActivityOverviewStore(
         _state.update { it.copy(loadingMore = true) }
         val requestGeneration = generation
         scope.launch {
-            val result = try {
-                repository.loadTurns(DataRequestPriority.Visible, agentId, before = cursor)
-            } finally {
-                if (requestGeneration == generation) loadMoreCursor = null
-            }
-            if (requestGeneration != generation) return@launch
-            _state.update { state ->
-                // A reload that landed meanwhile replaced the list; this page no longer follows it.
-                if (state.next != cursor) return@update state.copy(loadingMore = false)
-                when (result) {
-                    is DataResult.Content -> {
-                        val known = state.turns.mapTo(HashSet()) { it.key }
-                        state.copy(
-                            turns = state.turns + result.data.turns.filter { it.key !in known },
-                            next = result.data.next,
-                            loadingMore = false,
-                        )
+            var settled = false
+            try {
+                val result =
+                    try {
+                        repository.loadTurns(DataRequestPriority.Visible, agentId, before = cursor)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (error: Throwable) {
+                        logger("agent_activity_overview_load_more_exception type=${error::class.simpleName ?: "unknown"}")
+                        DataResult.Error(ScreenError("activity_summaries_more_exception", retryable = true))
                     }
-                    is DataResult.Empty -> state.copy(next = null, loadingMore = false)
-                    // Web drops a failed "load earlier" silently; the button stays for another try.
-                    is DataResult.Error, is DataResult.NoPermission -> state.copy(loadingMore = false)
+                if (requestGeneration != generation) return@launch
+                loadMoreCursor = null
+                _state.update { state ->
+                    // A reload that landed meanwhile replaced the list; this page no longer follows it.
+                    if (state.next != cursor) return@update state.copy(loadingMore = false)
+                    when (result) {
+                        is DataResult.Content -> {
+                            val known = state.turns.mapTo(HashSet()) { it.key }
+                            state.copy(
+                                turns = state.turns + result.data.turns.filter { it.key !in known },
+                                next = result.data.next,
+                                loadingMore = false,
+                            )
+                        }
+                        is DataResult.Empty -> state.copy(next = null, loadingMore = false)
+                        // Web drops a failed "load earlier" silently; the button stays for another try.
+                        is DataResult.Error, is DataResult.NoPermission -> state.copy(loadingMore = false)
+                    }
+                }
+                settled = true
+                // The held turns reach further back now: so do the events.
+                if (result is DataResult.Content || result is DataResult.Empty) {
+                    persistSnapshotToCache()
+                    loadOperatorEvents(DataRequestPriority.Visible)
+                }
+            } finally {
+                if (requestGeneration == generation) {
+                    loadMoreCursor = null
+                    if (!settled) _state.update { if (it.loadingMore) it.copy(loadingMore = false) else it }
                 }
             }
-            // The held turns reach further back now: so do the events.
-            if (result is DataResult.Content || result is DataResult.Empty) loadOperatorEvents(DataRequestPriority.Visible)
         }
     }
 
@@ -470,11 +608,22 @@ class SharedAgentActivityOverviewStore(
         val token = ++operatorEventsToken
         val requestGeneration = generation
         scope.launch {
-            val result = repository.loadOperatorEvents(priority, agentId, since)
+            val result =
+                try {
+                    repository.loadOperatorEvents(priority, agentId, since)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (error: Throwable) {
+                    logger("agent_activity_overview_operator_events_exception type=${error::class.simpleName ?: "unknown"}")
+                    DataResult.Error(ScreenError("activity_operator_events_exception", retryable = true))
+                }
             if (requestGeneration != generation || token != operatorEventsToken) return@launch
             when (result) {
-                is DataResult.Content -> _state.update {
-                    if (it.operatorEvents == result.data.events) it else it.copy(operatorEvents = result.data.events)
+                is DataResult.Content -> {
+                    _state.update {
+                        if (it.operatorEvents == result.data.events) it else it.copy(operatorEvents = result.data.events)
+                    }
+                    persistSnapshotToCache()
                 }
                 is DataResult.Empty -> Unit
                 is DataResult.Error -> logger("agent_activity_overview_operator_events_failed code=${result.error.code}")
@@ -490,21 +639,98 @@ class SharedAgentActivityOverviewStore(
         _state.update { it.copy(replies = it.replies + (messageId to AgentActivityReplyState.Loading)) }
         val requestGeneration = generation
         scope.launch {
-            val reply = repository.loadReply(DataRequestPriority.Visible, messageId)
-            if (requestGeneration != generation) return@launch
-            val replyState = if (reply == AgentActivityTurnReply.Failed) {
-                logger("agent_activity_overview_reply_failed")
-                AgentActivityReplyState.Failed
-            } else {
-                AgentActivityReplyState.Ready(reply)
+            var settled = false
+            try {
+                val reply =
+                    try {
+                        repository.loadReply(DataRequestPriority.Visible, messageId)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (error: Throwable) {
+                        logger("agent_activity_overview_reply_exception type=${error::class.simpleName ?: "unknown"}")
+                        AgentActivityTurnReply.Failed
+                    }
+                if (requestGeneration != generation) return@launch
+                val replyState = if (reply == AgentActivityTurnReply.Failed) {
+                    logger("agent_activity_overview_reply_failed")
+                    AgentActivityReplyState.Failed
+                } else {
+                    AgentActivityReplyState.Ready(reply)
+                }
+                _state.update { it.copy(replies = it.replies + (messageId to replyState)) }
+                settled = true
+                if (replyState is AgentActivityReplyState.Ready) persistSnapshotToCache()
+            } finally {
+                if (!settled && requestGeneration == generation) {
+                    _state.update { state ->
+                        if (state.replies[messageId] == AgentActivityReplyState.Loading) {
+                            state.copy(replies = state.replies - messageId)
+                        } else {
+                            state
+                        }
+                    }
+                }
             }
-            _state.update { it.copy(replies = it.replies + (messageId to replyState)) }
         }
+    }
+
+    private fun persistSnapshotToCache() {
+        val cache = snapshotCache ?: return
+        val current = _state.value
+        val agentId = current.agentId ?: return
+        if (current.status != AgentActivityOverviewStatus.Loaded) return
+        val key = cacheKeyFor?.invoke(agentId) ?: return
+        val readyReplies = LinkedHashMap<MessageId, AgentActivityReplyState.Ready>()
+        current.replies.forEach { (id, state) ->
+            if (state is AgentActivityReplyState.Ready) readyReplies[id] = state
+        }
+        cache.put(
+            key,
+            AgentActivityOverviewCachedSnapshot(
+                agentId = agentId,
+                turns = current.turns,
+                next = current.next,
+                running = current.running,
+                operatorEvents = current.operatorEvents,
+                replies = readyReplies,
+            ),
+        )
+    }
+
+    private fun evictCurrentFromCache() {
+        val cache = snapshotCache ?: return
+        val agentId = _state.value.agentId ?: return
+        val key = cacheKeyFor?.invoke(agentId) ?: return
+        cache.evict(key)
     }
 
     companion object {
         /** Web `registerActivityTrajectoryLiveReload` debounce. */
         const val LIVE_RELOAD_DEBOUNCE_MILLIS: Long = 250L
+
+        private fun initialOverviewState(
+            initialAgentId: MemberId?,
+            snapshotCache: AgentActivityOverviewSnapshotCache?,
+            cacheKeyFor: ((MemberId) -> AgentActivityOverviewCacheKey?)?,
+        ): AgentActivityOverviewState {
+            if (initialAgentId == null || snapshotCache == null || cacheKeyFor == null) {
+                return AgentActivityOverviewState()
+            }
+            val key = cacheKeyFor(initialAgentId) ?: return AgentActivityOverviewState()
+            val cached = snapshotCache.peek(key) ?: return AgentActivityOverviewState()
+            return cached.toLoadedState()
+        }
+
+        private fun AgentActivityOverviewCachedSnapshot.toLoadedState(): AgentActivityOverviewState =
+            AgentActivityOverviewState(
+                agentId = agentId,
+                turns = turns,
+                next = next,
+                status = AgentActivityOverviewStatus.Loaded,
+                running = running,
+                operatorEvents = operatorEvents,
+                replies = replies,
+            )
     }
 }
 

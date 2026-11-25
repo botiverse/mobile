@@ -701,6 +701,9 @@ internal fun MembersDetailContent(
     var loadedWorkspaceDirs by remember(member.id.value) { mutableStateOf<Map<String, List<RaftWorkspaceNode>>>(emptyMap()) }
     var loadingWorkspaceDirs by remember(member.id.value) { mutableStateOf<Set<String>>(emptySet()) }
     var workspaceDirErrors by remember(member.id.value) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    // Hoisted above TabPager so Usage and App Events survive horizontal tab disposal (#proj-mobile:#386).
+    val usageTabState = remember(member.id.value, currentServerId) { MembersAgentUsageTabState() }
+    val appEventsState = remember(member.id.value, currentServerId) { MembersAgentAppEventsState() }
     LaunchedEffect(member.id.value, initialVisualMode) {
         when (initialVisualMode) {
             MembersAgentDetailVisualMode.LifecycleActions -> {
@@ -1260,6 +1263,7 @@ internal fun MembersDetailContent(
                             agentsApiClient = agentsApiClient,
                             timeContext = timeContext,
                             onOpenComputer = onOpenComputer,
+                            state = usageTabState,
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {
@@ -1452,6 +1456,7 @@ internal fun MembersDetailContent(
                                             appEventsLoader = agentAppEventsLoader,
                                             appEventLoader = agentAppEventLoader,
                                             appAccess = remoteControls?.appAccess,
+                                            appEventsState = appEventsState,
                                             // Web AgentAppAccessTab: `px-5`.
                                             modifier = Modifier.padding(horizontal = MembersAgentProfileInset)
                                         )

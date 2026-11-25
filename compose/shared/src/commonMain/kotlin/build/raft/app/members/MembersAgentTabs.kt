@@ -945,7 +945,8 @@ internal fun MembersAgentAppsTab(
     appEventLoader: MembersAgentAppEventLoader?,
     modifier: Modifier = Modifier,
     /** Revoke access and per-grant Revoke (web AgentAppAccessTab); null offers neither. */
-    appAccess: MembersAgentAppAccessBinding? = null
+    appAccess: MembersAgentAppAccessBinding? = null,
+    appEventsState: MembersAgentAppEventsState = remember(agentId) { MembersAgentAppEventsState() },
 ) {
     // Web AgentAppAccessTab (`stack-y-6`): the Apps section, then App events.
     // Not in the app yet: Grant Access (its picker, scopes and MCP connection), MCP App rows and
@@ -962,7 +963,8 @@ internal fun MembersAgentAppsTab(
             agentId = agentId,
             loader = appEventsLoader,
             detailLoader = appEventLoader,
-            timeContext = timeContext
+            timeContext = timeContext,
+            state = appEventsState,
         )
     }
 }

@@ -2,6 +2,8 @@ package build.raft.app.data
 
 import build.raft.app.RaftCoreInternalApi
 
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
@@ -36,6 +38,87 @@ import kotlinx.coroutines.launch
  *   viewer is open or Load More has extended the list. Closing the viewer always reads again.
  * - 403 ARTIFACTS_NOT_ENABLED: [ArtifactsHomeStatus.Off].
  */
+/**
+ * Strict owner/server/query identity for caching Artifacts Home first-page snapshots across visits
+ * so reopening Artifacts Home renders warm cards on Frame 1 without flashing skeletons.
+ */
+@RaftCoreInternalApi data class ArtifactsHomeSnapshotCacheKey(
+    val environmentId: String,
+    val readerId: String,
+    val serverId: String,
+    val query: ArtifactsHomeQuery,
+)
+
+@RaftCoreInternalApi fun artifactsHomeSnapshotCacheKey(
+    environmentId: String?,
+    readerId: String?,
+    serverId: String?,
+    query: ArtifactsHomeQuery,
+): ArtifactsHomeSnapshotCacheKey? {
+    val cleanEnv = environmentId?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() } ?: return null
+    val cleanReader = readerId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val cleanServer = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return ArtifactsHomeSnapshotCacheKey(
+        environmentId = cleanEnv,
+        readerId = cleanReader,
+        serverId = cleanServer,
+        query = query,
+    )
+}
+
+@RaftCoreInternalApi data class ArtifactsHomeCachedSnapshot(
+    val rows: List<ArtifactsHomeRow>,
+    val nextCursor: String?,
+    val counts: ArtifactsHomeCounts?,
+    val countsNarrowed: Boolean,
+    val rowsByOpened: Boolean,
+    val settledEnabled: Boolean,
+    val knownAuthors: Map<String, ArtifactsHomeActor>,
+)
+
+/**
+ * Bounded, owner/server/query-scoped LRU cache for Artifacts Home first-page snapshots.
+ * Cleared on sign-out / account switch and per-server on lost access or `ArtifactsHomeLoad.Off`.
+ */
+@RaftCoreInternalApi class ArtifactsHomeSnapshotCache(
+    private val maxEntries: Int = DEFAULT_MAX_ENTRIES,
+) {
+    private val lock = SynchronizedObject()
+    private val entries = LinkedHashMap<ArtifactsHomeSnapshotCacheKey, ArtifactsHomeCachedSnapshot>()
+
+    fun peek(key: ArtifactsHomeSnapshotCacheKey): ArtifactsHomeCachedSnapshot? =
+        synchronized(lock) {
+            val value = entries.remove(key) ?: return@synchronized null
+            entries[key] = value
+            value
+        }
+
+    fun put(key: ArtifactsHomeSnapshotCacheKey, snapshot: ArtifactsHomeCachedSnapshot) {
+        synchronized(lock) {
+            entries.remove(key)
+            entries[key] = snapshot
+            val limit = maxEntries.coerceAtLeast(1)
+            while (entries.size > limit) {
+                val oldestKey = entries.entries.firstOrNull()?.key ?: break
+                entries.remove(oldestKey)
+            }
+        }
+    }
+
+    fun dropServer(serverId: String) {
+        val cleanServer = serverId.trim()
+        synchronized(lock) { entries.keys.removeAll { it.serverId == cleanServer } }
+    }
+
+    fun clear() {
+        synchronized(lock) { entries.clear() }
+    }
+
+    companion object {
+        const val DEFAULT_MAX_ENTRIES: Int = 16
+    }
+}
+
 @RaftCoreInternalApi class SharedArtifactsHomeStore(
     private val api: ArtifactsHomeSource,
     private val scope: CoroutineScope,
@@ -49,13 +132,31 @@ import kotlinx.coroutines.launch
     private val ownFollowEvents: SharedFlow<ArtifactOwnFollowEvent>? = null,
     /** Reports a Follow/Unfollow committed here to the shared follow store so message cards sync. */
     private val onOwnFollowCommitted: (serverId: String, artifactId: String, following: Boolean) -> Unit = { _, _, _ -> },
+    /** Owner/server/query-scoped LRU cache for Frame-1 warm rendering on revisit. */
+    private val snapshotCache: ArtifactsHomeSnapshotCache? = null,
+    /** Environment id provider for [snapshotCache] scoping (non-blank enables caching). */
+    private val environmentIdProvider: () -> String = { "" },
+    /** Optional initial server/reader known synchronously on Frame 1 to seed from [snapshotCache]. */
+    initialServerId: String? = null,
+    initialReaderId: String? = null,
 ) {
-    private val mutableState = MutableStateFlow(ArtifactsHomeState(query = ArtifactsHomeQuery(sort = initialSort)))
+    private val initialSeed =
+        seedArtifactsHomeState(
+            serverId = initialServerId,
+            readerId = initialReaderId,
+            initialSort = initialSort,
+            filterRepository = filterRepository,
+            settledSeenRepository = settledSeenRepository,
+            snapshotCache = snapshotCache,
+            environmentId = environmentIdProvider(),
+        )
+    private val mutableState = MutableStateFlow(initialSeed.state)
     val state: StateFlow<ArtifactsHomeState> = mutableState.asStateFlow()
 
     private val mutableEvents = MutableSharedFlow<ArtifactsHomeEvent>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val events: SharedFlow<ArtifactsHomeEvent> = mutableEvents.asSharedFlow()
 
+    private var seededFromCache = initialSeed.seededFromCache
     private var generation = 0
     private var reloadGeneration = 0
     private var readJob: Job? = null
@@ -65,14 +166,14 @@ import kotlinx.coroutines.launch
     private var ownFollowObserveJob: Job? = null
 
     /** What the rows on screen were read with: their cursor continues only that. */
-    private var shownQuery: ArtifactsHomeQuery? = null
+    private var shownQuery: ArtifactsHomeQuery? = initialSeed.shownQuery
     private var shownGeneration = 0
 
     /** The sort of the last read that answered: where a re-sort that fails goes back to. */
     private var answeredSort: ArtifactsHomeSort = initialSort
 
     /** The filter (sort aside) and server the rows on screen were read for. */
-    private var readFor: String? = null
+    private var readFor: String? = initialSeed.readFor
 
     private var activityRead: ActivityRead = ActivityRead.Idle
 
@@ -185,7 +286,15 @@ import kotlinx.coroutines.launch
         val current = mutableState.value
         val cleanReader = readerId?.trim()?.takeIf { it.isNotEmpty() }
         val scopeChanged = serverId != current.serverId || cleanReader != current.readerId
-        if (!scopeChanged && current.status != ArtifactsHomeStatus.Idle) return
+        if (!scopeChanged && current.status != ArtifactsHomeStatus.Idle) {
+            if (seededFromCache && serverId != null) {
+                seededFromCache = false
+                read(keepRows = true)
+            }
+            return
+        }
+        seededFromCache = false
+        var keepSeededRows = false
         if (scopeChanged) {
             // An answer still on its way is the old server's: it must never land under the new one
             // (review H2), even while the new one's flag is still unknown (Start(null)).
@@ -227,25 +336,60 @@ import kotlinx.coroutines.launch
                     sort = current.query.sort,
                     relevant = persisted.relevant,
                 )
-            mutableState.value =
-                ArtifactsHomeState(
-                    serverId = serverId,
-                    readerId = cleanReader,
-                    reloadGeneration = reloadGeneration,
-                    query = restoredQuery,
-                    search = persisted.search,
-                    authorActor = persisted.authorActor,
-                    statusFilter = persisted.status,
-                    settledEnabled = rememberedSettled,
-                )
-            shownQuery = null
-            readFor = null
+            val cached =
+                if (serverId != null) {
+                    artifactsHomeSnapshotCacheKey(
+                        environmentId = environmentIdProvider(),
+                        readerId = cleanReader,
+                        serverId = serverId,
+                        query = restoredQuery,
+                    )?.let { snapshotCache?.peek(it) }
+                } else {
+                    null
+                }
+            if (cached != null) {
+                keepSeededRows = true
+                mutableState.value =
+                    ArtifactsHomeState(
+                        serverId = serverId,
+                        readerId = cleanReader,
+                        reloadGeneration = reloadGeneration,
+                        status = ArtifactsHomeStatus.Ok,
+                        query = restoredQuery,
+                        search = persisted.search,
+                        authorActor = persisted.authorActor,
+                        knownAuthors = cached.knownAuthors,
+                        statusFilter = persisted.status,
+                        settledEnabled = cached.settledEnabled || rememberedSettled,
+                        rows = cached.rows,
+                        nextCursor = cached.nextCursor,
+                        counts = cached.counts,
+                        countsNarrowed = cached.countsNarrowed,
+                        rowsByOpened = cached.rowsByOpened,
+                    )
+                shownQuery = restoredQuery
+                readFor = filterKey(serverId, restoredQuery)
+            } else {
+                mutableState.value =
+                    ArtifactsHomeState(
+                        serverId = serverId,
+                        readerId = cleanReader,
+                        reloadGeneration = reloadGeneration,
+                        query = restoredQuery,
+                        search = persisted.search,
+                        authorActor = persisted.authorActor,
+                        statusFilter = persisted.status,
+                        settledEnabled = rememberedSettled,
+                    )
+                shownQuery = null
+                readFor = null
+            }
             if (serverId != null) {
                 maybeResolveLegacyAuthor(serverId, persisted.author, persisted.authorActor)
             }
         }
         if (serverId == null) return
-        read(keepRows = false, keepCounts = false)
+        read(keepRows = keepSeededRows, keepCounts = keepSeededRows)
     }
 
     /**
@@ -346,6 +490,7 @@ import kotlinx.coroutines.launch
     private fun filterKey(serverId: String?, query: ArtifactsHomeQuery): String = "$serverId|${query.copy(sort = ArtifactsHomeSort.Default)}"
 
     private fun read(keepRows: Boolean, keepCounts: Boolean = true, sortOnly: Boolean = false): Job? {
+        seededFromCache = false
         val current = mutableState.value
         val serverId = current.serverId ?: return null
         val query = current.query
@@ -401,7 +546,7 @@ import kotlinx.coroutines.launch
                             settledSeenRepository?.observe(latest.readerId, serverId, rowHasSettled, rowsLoaded)
                                 ?: if (rowsLoaded) rowHasSettled else latest.settledEnabled
                         val mergedKnown = mergeKnownAuthors(latest.knownAuthors, mergedRows.map { it.author })
-                        mutableState.value =
+                        val nextState =
                             latest.copy(
                                 status = ArtifactsHomeStatus.Ok,
                                 rows = mergedRows,
@@ -414,8 +559,13 @@ import kotlinx.coroutines.launch
                                 extended = false,
                                 error = null,
                             )
+                        mutableState.value = nextState
+                        persistSnapshotToCache(nextState, query)
                     }
-                    ArtifactsHomeLoad.Off -> mutableState.value = latest.copy(status = ArtifactsHomeStatus.Off, error = null)
+                    ArtifactsHomeLoad.Off -> {
+                        snapshotCache?.dropServer(serverId)
+                        mutableState.value = latest.copy(status = ArtifactsHomeStatus.Off, error = null)
+                    }
                     is ArtifactsHomeLoad.Missing, is ArtifactsHomeLoad.Failed -> {
                         val error = load.errorOrNull() ?: ScreenError("artifacts_home_failed")
                         mutableState.value = latest.copy(status = ArtifactsHomeStatus.Failed, error = error)
@@ -456,8 +606,12 @@ import kotlinx.coroutines.launch
                                     row
                                 }
                             }
-                        mutableState.value = latest.copy(rows = updatedRows, settlingIds = remaining)
-                        if (!latest.extended) read(keepRows = true)
+                        val nextState = latest.copy(rows = updatedRows, settlingIds = remaining)
+                        mutableState.value = nextState
+                        if (!latest.extended) {
+                            persistSnapshotToCache(nextState, nextState.query)
+                            read(keepRows = true)
+                        }
                     }
                     else -> {
                         val error = load.errorOrNull()
@@ -548,7 +702,9 @@ import kotlinx.coroutines.launch
             }
         val updatedRows = withOwnFollows(rows, mapOf(matchedId to following))
         if (updatedRows != rows || nextUnfollowed != current.unfollowedIds) {
-            mutableState.value = current.copy(rows = updatedRows, unfollowedIds = nextUnfollowed)
+            val nextState = current.copy(rows = updatedRows, unfollowedIds = nextUnfollowed)
+            mutableState.value = nextState
+            if (!nextState.extended) persistSnapshotToCache(nextState, nextState.query)
         }
     }
 
@@ -688,11 +844,43 @@ import kotlinx.coroutines.launch
             }
     }
 
+    private fun persistSnapshotToCache(state: ArtifactsHomeState, query: ArtifactsHomeQuery) {
+        val cache = snapshotCache ?: return
+        val rows = state.rows ?: return
+        if (state.status == ArtifactsHomeStatus.Off) return
+        val key =
+            artifactsHomeSnapshotCacheKey(
+                environmentId = environmentIdProvider(),
+                readerId = state.readerId,
+                serverId = state.serverId,
+                query = query,
+            ) ?: return
+        cache.put(
+            key,
+            ArtifactsHomeCachedSnapshot(
+                rows = rows,
+                nextCursor = state.nextCursor,
+                counts = state.counts,
+                countsNarrowed = state.countsNarrowed,
+                rowsByOpened = state.rowsByOpened,
+                settledEnabled = state.settledEnabled,
+                knownAuthors = state.knownAuthors,
+            ),
+        )
+    }
+
     private enum class ActivityRead { Idle, Reading, Queued }
 
     private data class RetainedUnfollowedItem(
         val row: ArtifactsHomeRow,
         val afterId: String?,
+    )
+
+    private data class InitialSeed(
+        val state: ArtifactsHomeState,
+        val seededFromCache: Boolean,
+        val shownQuery: ArtifactsHomeQuery?,
+        val readFor: String?,
     )
 
     companion object {
@@ -701,6 +889,75 @@ import kotlinx.coroutines.launch
 
         /** web `useFilterChoices` `SEARCH_DEBOUNCE_MS`. */
         const val CHOICES_DEBOUNCE_MILLIS: Long = 250
+
+        private fun seedArtifactsHomeState(
+            serverId: String?,
+            readerId: String?,
+            initialSort: ArtifactsHomeSort,
+            filterRepository: ArtifactsHomeFilterRepository?,
+            settledSeenRepository: ArtifactsHomeSettledSeenRepository?,
+            snapshotCache: ArtifactsHomeSnapshotCache?,
+            environmentId: String,
+        ): InitialSeed {
+            val cleanServer = serverId?.trim()?.takeIf { it.isNotEmpty() }
+            val cleanReader = readerId?.trim()?.takeIf { it.isNotEmpty() }
+            if (cleanServer == null || cleanReader == null || snapshotCache == null) {
+                return InitialSeed(
+                    state = ArtifactsHomeState(query = ArtifactsHomeQuery(sort = initialSort)),
+                    seededFromCache = false,
+                    shownQuery = null,
+                    readFor = null,
+                )
+            }
+            val persisted = filterRepository?.read(cleanReader, cleanServer) ?: ArtifactsHomeFilters.Default
+            val rememberedSettled = settledSeenRepository?.read(cleanReader, cleanServer) ?: false
+            val restoredQuery =
+                ArtifactsHomeQuery(
+                    place = persisted.place,
+                    author = persisted.author,
+                    q = persisted.search.trim(),
+                    sort = initialSort,
+                    relevant = persisted.relevant,
+                )
+            val key =
+                artifactsHomeSnapshotCacheKey(
+                    environmentId = environmentId,
+                    readerId = cleanReader,
+                    serverId = cleanServer,
+                    query = restoredQuery,
+                )
+            val cached = key?.let { snapshotCache.peek(it) }
+            if (cached == null) {
+                return InitialSeed(
+                    state = ArtifactsHomeState(query = ArtifactsHomeQuery(sort = initialSort)),
+                    seededFromCache = false,
+                    shownQuery = null,
+                    readFor = null,
+                )
+            }
+            return InitialSeed(
+                state =
+                    ArtifactsHomeState(
+                        serverId = cleanServer,
+                        readerId = cleanReader,
+                        status = ArtifactsHomeStatus.Ok,
+                        query = restoredQuery,
+                        search = persisted.search,
+                        authorActor = persisted.authorActor,
+                        knownAuthors = cached.knownAuthors,
+                        statusFilter = persisted.status,
+                        settledEnabled = cached.settledEnabled || rememberedSettled,
+                        rows = cached.rows,
+                        nextCursor = cached.nextCursor,
+                        counts = cached.counts,
+                        countsNarrowed = cached.countsNarrowed,
+                        rowsByOpened = cached.rowsByOpened,
+                    ),
+                seededFromCache = true,
+                shownQuery = restoredQuery,
+                readFor = "$cleanServer|${restoredQuery.copy(sort = ArtifactsHomeSort.Default)}",
+            )
+        }
 
         private fun mergeRetainedUnfollowed(
             rows: List<ArtifactsHomeRow>,

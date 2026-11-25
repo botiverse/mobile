@@ -4,6 +4,8 @@ import build.raft.app.RaftCoreInternalApi
 
 import build.raft.app.model.ServerId
 import kotlin.time.Clock
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -88,12 +90,19 @@ import kotlinx.coroutines.withContext
      * Computer instead of holding its runtime for the login's 20 min TTL.
      */
     private val detachedScope: CoroutineScope = CoroutineScope(SupervisorJob()),
+    /**
+     * Optional synchronous owner probe used to fence Frame-1 [peekSync] / [peekAllSync] reads
+     * against sign-out, account switches, and session generation changes without suspending.
+     */
+    private val currentIdentitySync: (() -> SharedComputersOwner?)? = null,
 ) {
     private val readLimiter = Semaphore(maxConcurrentReads.coerceAtLeast(1))
 
     private class Cached(val value: RuntimeAccountUsageLoad, val expiresAt: Long)
 
     private val mutex = Mutex()
+    private val cacheLock = SynchronizedObject()
+    private var cacheGeneration = 0L
     private val cache = mutableMapOf<RuntimeAccountUsageKey, Cached>()
     private val inFlight = mutableMapOf<RuntimeAccountUsageKey, CompletableDeferred<RuntimeAccountUsageLoad>>()
     private val refreshStartedAt = mutableMapOf<RuntimeAccountUsageKey, Long>()
@@ -340,19 +349,22 @@ import kotlinx.coroutines.withContext
         kind: RuntimeLimitResetKind? = null
     ): RuntimeLimitResetLoad {
         if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeLimitResetLoad.Superseded
+        val writeGeneration = synchronized(cacheLock) { cacheGeneration }
         val result = client.redeemRuntimeLimitReset(ServerId(key.serverId), key.machineId, key.provider, idempotencyKey, kind)
         if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeLimitResetLoad.Superseded
         withContext(NonCancellable) {
             mutex.withLock {
                 val snapshot = (result as? RuntimeLimitResetLoad.Done)?.reply?.snapshot
-                if (snapshot != null) {
-                    cache[key] =
-                        Cached(
-                            RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Available(stale = false, snapshot = snapshot)),
-                            clock.nowEpochMillis() + cacheMillis
-                        )
-                } else {
-                    cache.remove(key)
+                synchronized(cacheLock) {
+                    if (snapshot != null && cacheGeneration == writeGeneration) {
+                        cache[key] =
+                            Cached(
+                                RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Available(stale = false, snapshot = snapshot)),
+                                clock.nowEpochMillis() + cacheMillis
+                            )
+                    } else {
+                        cache.remove(key)
+                    }
                 }
             }
         }
@@ -376,6 +388,7 @@ import kotlinx.coroutines.withContext
         reason: RuntimeAccountUsageRefreshReason
     ): RuntimeAccountUsageRefreshLoad {
         if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeAccountUsageRefreshLoad.Superseded
+        val writeGeneration = synchronized(cacheLock) { cacheGeneration }
         val (deferred, owner, startedAt) =
             mutex.withLock {
                 refreshesInFlight[key]?.let { return@withLock Triple(it, false, 0L) }
@@ -414,11 +427,15 @@ import kotlinx.coroutines.withContext
                 val refreshed = (result as? RuntimeAccountUsageRefreshLoad.Done)?.refresh
                 val snapshot = refreshed?.snapshot
                 if (snapshot != null && refreshed.state == RuntimeAccountUsageRefreshState.Fresh) {
-                    cache[key] =
-                        Cached(
-                            RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Available(stale = false, snapshot = snapshot)),
-                            clock.nowEpochMillis() + cacheMillis
-                        )
+                    synchronized(cacheLock) {
+                        if (cacheGeneration == writeGeneration) {
+                            cache[key] =
+                                Cached(
+                                    RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Available(stale = false, snapshot = snapshot)),
+                                    clock.nowEpochMillis() + cacheMillis
+                                )
+                        }
+                    }
                 }
                 val giveWindowBack =
                     result !is RuntimeAccountUsageRefreshLoad.Done ||
@@ -436,7 +453,7 @@ import kotlinx.coroutines.withContext
 
     /** Drops the cached read for [key], so the next [read] asks the server. */
     suspend fun invalidate(key: RuntimeAccountUsageKey) {
-        mutex.withLock { cache.remove(key) }
+        mutex.withLock { synchronized(cacheLock) { cache.remove(key) } }
     }
 
     private suspend fun fetchRefresh(
@@ -458,22 +475,84 @@ import kotlinx.coroutines.withContext
         }
     }
 
+    private fun SharedComputersOwner.matchesSyncOwner(live: SharedComputersOwner?): Boolean =
+        live != null && sameIdentityAs(live) && sessionGeneration == live.sessionGeneration
+
+    /**
+     * Synchronous Frame-1 peek of [key]; never suspends or triggers a network request.
+     * Fences strictly against [currentIdentitySync] (environment + account + session generation)
+     * when configured. When [allowExpiredLoaded] is true, returns a previously-loaded snapshot
+     * past the 60 s refresh TTL so cards paint warm while refreshing in the background (never
+     * returns an expired failure or 403).
+     */
+    fun peekSync(
+        key: RuntimeAccountUsageKey,
+        allowExpiredLoaded: Boolean = false,
+    ): RuntimeAccountUsageLoad? {
+        val liveProbe = currentIdentitySync
+        if (liveProbe != null && !key.owner.matchesSyncOwner(liveProbe())) return null
+        val now = clock.nowEpochMillis()
+        return synchronized(cacheLock) {
+            val cached = cache[key] ?: return@synchronized null
+            if (cached.expiresAt > now) {
+                cached.value.takeUnless { it is RuntimeAccountUsageLoad.Superseded }
+            } else if (allowExpiredLoaded && cached.value is RuntimeAccountUsageLoad.Loaded) {
+                cached.value
+            } else {
+                null
+            }
+        }
+    }
+
+    /** Batch synchronous Frame-1 peek for [keys] under one lock acquisition; never starts a request. */
+    fun peekAllSync(
+        keys: Collection<RuntimeAccountUsageKey>,
+        allowExpiredLoaded: Boolean = false,
+    ): Map<RuntimeAccountUsageKey, RuntimeAccountUsageLoad> {
+        if (keys.isEmpty()) return emptyMap()
+        val liveProbe = currentIdentitySync
+        val liveOwner = if (liveProbe != null) liveProbe() ?: return emptyMap() else null
+        val now = clock.nowEpochMillis()
+        return synchronized(cacheLock) {
+            val out = LinkedHashMap<RuntimeAccountUsageKey, RuntimeAccountUsageLoad>()
+            for (key in keys) {
+                if (liveProbe != null && !key.owner.matchesSyncOwner(liveOwner)) continue
+                val cached = cache[key] ?: continue
+                val value =
+                    if (cached.expiresAt > now) {
+                        cached.value.takeUnless { it is RuntimeAccountUsageLoad.Superseded }
+                    } else if (allowExpiredLoaded && cached.value is RuntimeAccountUsageLoad.Loaded) {
+                        cached.value
+                    } else {
+                        null
+                    }
+                if (value != null) out[key] = value
+            }
+            out
+        }
+    }
+
     /** The cached value for [key] if it has not expired; never triggers a request. */
     suspend fun peek(key: RuntimeAccountUsageKey): RuntimeAccountUsageLoad? =
-        mutex.withLock { cache[key]?.takeIf { it.expiresAt > clock.nowEpochMillis() }?.value }
+        mutex.withLock {
+            val now = clock.nowEpochMillis()
+            synchronized(cacheLock) { cache[key]?.takeIf { it.expiresAt > now }?.value }
+        }
 
     suspend fun read(key: RuntimeAccountUsageKey, force: Boolean = false): RuntimeAccountUsageLoad {
         // Not even a cached value is served to an owner that is no longer the signed-in identity.
         if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeAccountUsageLoad.Superseded
         while (true) {
-            val (deferred, owner) = mutex.withLock {
+            val (deferred, owner, writeGeneration) = mutex.withLock {
                 if (!force) {
-                    cache[key]?.takeIf { it.expiresAt > clock.nowEpochMillis() }?.let { return it.value }
+                    val now = clock.nowEpochMillis()
+                    synchronized(cacheLock) { cache[key]?.takeIf { it.expiresAt > now }?.value }?.let { return it }
                 }
-                inFlight[key]?.let { return@withLock it to false }
+                inFlight[key]?.let { return@withLock Triple(it, false, 0L) }
                 val created = CompletableDeferred<RuntimeAccountUsageLoad>()
                 inFlight[key] = created
-                created to true
+                val gen = synchronized(cacheLock) { cacheGeneration }
+                Triple(created, true, gen)
             }
             if (!owner) {
                 try {
@@ -498,9 +577,13 @@ import kotlinx.coroutines.withContext
             withContext(NonCancellable) {
                 mutex.withLock {
                     // The result is stored under its own key only; it can never be published
-                    // for a different identity/server/Computer/provider.
+                    // for a different identity/server/Computer/provider or after a clear/drop.
                     if (result !is RuntimeAccountUsageLoad.Superseded) {
-                        cache[key] = Cached(result, clock.nowEpochMillis() + cacheMillis)
+                        synchronized(cacheLock) {
+                            if (cacheGeneration == writeGeneration) {
+                                cache[key] = Cached(result, clock.nowEpochMillis() + cacheMillis)
+                            }
+                        }
                     }
                     if (inFlight[key] === deferred) inFlight.remove(key)
                 }
@@ -510,10 +593,33 @@ import kotlinx.coroutines.withContext
         }
     }
 
+    /**
+     * Synchronously clears all cached usage snapshots and bumps the write fence generation so any
+     * in-flight read from before sign-out / account switch cannot repopulate the cache.
+     */
+    fun clearSync() {
+        synchronized(cacheLock) {
+            cacheGeneration += 1L
+            cache.clear()
+        }
+    }
+
+    /**
+     * Synchronously drops every cached usage snapshot for [serverId] (e.g. on lost server access)
+     * and bumps the write fence generation so late responses for that server cannot land.
+     */
+    fun dropServerSync(serverId: String) {
+        val clean = serverId.trim()
+        synchronized(cacheLock) {
+            cacheGeneration += 1L
+            cache.keys.removeAll { it.serverId == clean }
+        }
+    }
+
     /** Drops every cached value and refresh window, e.g. on sign-out. */
     suspend fun clear() {
         mutex.withLock {
-            cache.clear()
+            clearSync()
             refreshStartedAt.clear()
             authViews.clear()
             limitResetAttempts.clear()
