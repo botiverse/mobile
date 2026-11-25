@@ -9,6 +9,9 @@ import build.raft.app.RaftDesktopWryPollSnapshot
 import build.raft.app.RaftDesktopWryWebSession
 import build.raft.app.resolveDesktopWebContainerStorage
 import build.raft.webcontainer.DesktopWebContainerHostController
+import build.raft.webcontainer.DesktopWebEngine
+import build.raft.webcontainer.DesktopWebSession
+import build.raft.webcontainer.MacOsNativeWebEngine
 import build.raft.webcontainer.WebContainerConfig
 import build.raft.webcontainer.WebContainerEvents
 import build.raft.webcontainer.WebContainerOrigin
@@ -118,6 +121,7 @@ class RaftDesktopWebContainerEngineTest {
             val noScriptsEngine =
                 RaftDesktopWebContainerEngine(
                     bridgeFactory = factory,
+                    isPrimaryMacOsEngineAvailable = { false },
                     isWindowsHost = { false },
                     isMacOsHost = { true },
                     baseDataDir = { tempDir },
@@ -136,6 +140,7 @@ class RaftDesktopWebContainerEngineTest {
             val windowsEngine =
                 RaftDesktopWebContainerEngine(
                     bridgeFactory = factory,
+                    isPrimaryMacOsEngineAvailable = { false },
                     isWindowsHost = { true },
                     isMacOsHost = { false },
                     baseDataDir = { tempDir },
@@ -202,6 +207,7 @@ class RaftDesktopWebContainerEngineTest {
             val engine =
                 RaftDesktopWebContainerEngine(
                     bridgeFactory = RaftDesktopWebContainerBridgeFactory { _, _, _, _ -> fakeBridge },
+                    isPrimaryMacOsEngineAvailable = { false },
                     isWindowsHost = { false },
                     isMacOsHost = { true },
                     baseDataDir = { tempDir },
@@ -272,6 +278,7 @@ class RaftDesktopWebContainerEngineTest {
                             capturedInitScript = initScript
                             fakeBridge
                         },
+                    isPrimaryMacOsEngineAvailable = { false },
                     isWindowsHost = { false },
                     isMacOsHost = { true },
                     baseDataDir = { tempDir },
@@ -394,6 +401,104 @@ class RaftDesktopWebContainerEngineTest {
 
             controller.dispose()
             assertTrue(fakeBridge.disposed)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun prefersNativeMacOsEngineWhenAvailableIncludingScriptsDisabledAndFallsBackCleanly() = runTest {
+        var wryInvocations = 0
+        var primaryInvocations = 0
+        val fakePrimarySession =
+            object : DesktopWebSession {
+                override val component: Component = JPanel()
+                override fun start() = Unit
+                override fun setVisible(visible: Boolean) = Unit
+                override fun loadUrl(url: String) = Unit
+                override fun goBack() = Unit
+                override fun goForward() = Unit
+                override fun reload() = Unit
+                override fun stopLoading() = Unit
+                override fun evaluateJavaScript(script: String, callback: ((String?) -> Unit)?) = Unit
+                override fun dispose() = Unit
+            }
+        val fakeBridge = FakeDesktopWryBridge()
+        val tempDir = Files.createTempDirectory("raft-wc-mac-primary-test").toFile()
+        try {
+            // 1. Primary native macOS engine wins when available, even for allowScripts = false.
+            val primaryActiveEngine =
+                RaftDesktopWebContainerEngine(
+                    bridgeFactory =
+                        RaftDesktopWebContainerBridgeFactory { _, _, _, _ ->
+                            wryInvocations += 1
+                            fakeBridge
+                        },
+                    primaryMacOsEngine =
+                        DesktopWebEngine { _, _ ->
+                            primaryInvocations += 1
+                            fakePrimarySession
+                        },
+                    isPrimaryMacOsEngineAvailable = { true },
+                    isWindowsHost = { false },
+                    isMacOsHost = { true },
+                    baseDataDir = { tempDir },
+                    postToEdt = { it() },
+                    autoStartPollTimer = false,
+                )
+            val primaryController =
+                DesktopWebContainerHostController(
+                    config = WebContainerConfig(url = "https://files.raft.build/doc.html", allowScripts = false),
+                    engine = primaryActiveEngine,
+                    events = WebContainerEvents(),
+                    scope = this,
+                )
+            assertEquals(fakePrimarySession, primaryController.session)
+            assertEquals(1, primaryInvocations)
+            assertEquals(0, wryInvocations)
+            primaryController.dispose()
+
+            // 2. When primary macOS native bridge is absent, falls back cleanly to Wry for allowScripts = true.
+            val fallbackEngine =
+                RaftDesktopWebContainerEngine(
+                    bridgeFactory =
+                        RaftDesktopWebContainerBridgeFactory { _, _, _, _ ->
+                            wryInvocations += 1
+                            fakeBridge
+                        },
+                    primaryMacOsEngine =
+                        DesktopWebEngine { _, _ ->
+                            primaryInvocations += 1
+                            fakePrimarySession
+                        },
+                    isPrimaryMacOsEngineAvailable = { false },
+                    isWindowsHost = { false },
+                    isMacOsHost = { true },
+                    baseDataDir = { tempDir },
+                    postToEdt = { it() },
+                    autoStartPollTimer = false,
+                )
+            val fallbackController =
+                DesktopWebContainerHostController(
+                    config = WebContainerConfig(url = "https://app.raft.build/settings", allowScripts = true),
+                    engine = fallbackEngine,
+                    events = WebContainerEvents(),
+                    scope = this,
+                )
+            assertTrue(fallbackController.session is RaftDesktopWryWebSession)
+            assertEquals(1, primaryInvocations)
+            assertEquals(1, wryInvocations)
+            fallbackController.dispose()
+
+            // 3. On real macOS CI runners, MacOsNativeWebEngine.Default must load and report available.
+            val isRealMacOs =
+                System.getProperty("os.name").orEmpty().lowercase().let { it.contains("mac") || it.contains("darwin") }
+            if (isRealMacOs) {
+                assertTrue(
+                    MacOsNativeWebEngine.Default.isAvailable,
+                    "MacOsNativeWebEngine.Default must load libraft_webcontainer_macos.dylib on macOS CI",
+                )
+            }
         } finally {
             tempDir.deleteRecursively()
         }

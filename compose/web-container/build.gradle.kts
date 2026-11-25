@@ -1,3 +1,5 @@
+import java.io.File
+import org.gradle.api.tasks.Copy
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 /*
@@ -46,20 +48,107 @@ kotlin {
             implementation(libs.androidx.webkit)
             implementation(libs.androidx.core.ktx)
         }
-        val desktopMain by getting {
-            dependencies {
-                implementation(libs.kotlinx.coroutines.swing)
-            }
+        getByName("desktopMain").dependencies {
+            implementation(libs.kotlinx.coroutines.swing)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
         }
-        val desktopTest by getting {
-            dependencies {
-                implementation(kotlin("test-junit"))
-            }
+        getByName("desktopTest").dependencies {
+            implementation(kotlin("test-junit"))
         }
+    }
+}
+
+val isMacOsBuildHost: Boolean =
+    System.getProperty("os.name").orEmpty().lowercase().let { it.contains("mac") || it.contains("darwin") }
+
+val macOsBuildArch: String =
+    when (System.getProperty("os.arch").orEmpty().trim().lowercase()) {
+        "aarch64", "arm64" -> "arm64"
+        "x86_64", "amd64" -> "x86_64"
+        else -> System.getProperty("os.arch").orEmpty().trim().lowercase()
+    }
+
+val macOsNativeBridgeSource = layout.projectDirectory.file("native/macos/RaftMacWebContainerBridge.m")
+val macOsNativeResourcesRoot = layout.buildDirectory.dir("generated/macos-native-resources")
+val macOsNativeDylibOutput =
+    macOsNativeResourcesRoot.map { root ->
+        root.file("native/darwin-$macOsBuildArch/libraft_webcontainer_macos.dylib")
+    }
+
+// Builds the thin ARC Objective-C JNI/JAWT WKWebView bridge exclusively on macOS hosts (zero
+// macOS toolchain assumption on Linux/Windows CI). Ad-hoc signs the .dylib so Apple Silicon
+// tests and dev runs load it cleanly; :desktopApp stages the same binary into Raft.app resources
+// where desktop-macos-dmg.yml's `codesign --force --deep` signs and verifies it.
+val compileMacOsWebContainerNative by tasks.registering {
+    onlyIf { isMacOsBuildHost }
+    inputs.file(macOsNativeBridgeSource)
+    inputs.property("macOsBuildArch", macOsBuildArch)
+    outputs.file(macOsNativeDylibOutput)
+
+    val sourceFileProvider = macOsNativeBridgeSource
+    val outputFileProvider = macOsNativeDylibOutput
+    val arch = macOsBuildArch
+    val jdkHome = File(System.getProperty("java.home"))
+
+    doLast {
+        val srcFile = sourceFileProvider.asFile
+        val outFile = outputFileProvider.get().asFile
+        outFile.parentFile.mkdirs()
+
+        val jniInclude = jdkHome.resolve("include")
+        val darwinInclude = jniInclude.resolve("darwin")
+        check(jniInclude.resolve("jni.h").isFile && darwinInclude.resolve("jawt_md.h").isFile) {
+            "JDK JNI/JAWT headers not found under ${jdkHome.absolutePath}"
+        }
+
+        val clangCmd =
+            listOf(
+                "xcrun",
+                "--sdk",
+                "macosx",
+                "clang",
+                "-fobjc-arc",
+                "-shared",
+                "-fPIC",
+                "-O2",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-mmacosx-version-min=12.0",
+                "-arch",
+                arch,
+                "-isystem",
+                jniInclude.absolutePath,
+                "-isystem",
+                darwinInclude.absolutePath,
+                "-framework",
+                "Cocoa",
+                "-framework",
+                "WebKit",
+                "-framework",
+                "QuartzCore",
+                "-o",
+                outFile.absolutePath,
+                srcFile.absolutePath,
+            )
+        val clangProc = ProcessBuilder(clangCmd).inheritIO().start()
+        val clangExit = clangProc.waitFor()
+        check(clangExit == 0) { "clang failed compiling ${srcFile.name} (exit=$clangExit)" }
+
+        val signCmd = listOf("codesign", "--force", "--sign", "-", outFile.absolutePath)
+        val signProc = ProcessBuilder(signCmd).inheritIO().start()
+        val signExit = signProc.waitFor()
+        check(signExit == 0) { "codesign failed for ${outFile.name} (exit=$signExit)" }
+    }
+}
+
+if (isMacOsBuildHost) {
+    tasks.named<Copy>("desktopProcessResources") {
+        dependsOn(compileMacOsWebContainerNative)
+        from(macOsNativeResourcesRoot)
     }
 }
 

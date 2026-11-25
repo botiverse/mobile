@@ -9,6 +9,7 @@ import build.raft.webcontainer.DesktopWebSession
 import build.raft.webcontainer.DesktopWebSessionCallbacks
 import build.raft.webcontainer.DesktopWebSessionState
 import build.raft.webcontainer.LocalDesktopWebEngine
+import build.raft.webcontainer.MacOsNativeWebEngine
 import build.raft.webcontainer.WebContainerConfig
 import build.raft.webcontainer.WebContainerOrigin
 import build.raft.webcontainer.WebIsolationScope
@@ -43,9 +44,10 @@ internal actual fun RaftWebContainerPlatformScope(
     modifier: Modifier,
     content: @Composable () -> Unit,
 ) {
-    // Parity with RaftSandboxWebView.desktop.kt: Wry cannot disable JS, and Windows WebView2
-    // document-start script scoping ships with Phase 3's direct WebView2 engine.
-    if (!config.allowScripts || RaftDesktopWebContainerOnWindows) {
+    // Direct native macOS WKWebView supports allowScripts = false natively via WKWebpagePreferences;
+    // fallback Wry cannot disable JS, and Windows WebView2 ships in a follow-up PR.
+    val macNativeAvailable = RaftDesktopWebContainerOnMacOs && MacOsNativeWebEngine.Default.isAvailable
+    if (RaftDesktopWebContainerOnWindows || (!config.allowScripts && !macNativeAvailable)) {
         RaftDesktopOpenInBrowser(
             config.url
                 .takeIf { config.diagnosticsSurface != RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE }
@@ -112,13 +114,13 @@ fun interface RaftDesktopWebContainerBridgeFactory {
 }
 
 /**
- * Desktop [DesktopWebEngine] bridging `:web-container` onto Raft's single off-EDT
- * [RaftDesktopWryGateway] (preserving the macOS Thread 0 / AWT EDT deadlock invariant while
- * keeping `:web-container` completely free of Wry dependencies).
- *
- * Phase 3 can swap in a direct macOS `WKWebView` / Windows `WebView2` implementation of
- * [DesktopWebEngine] behind [LocalDesktopWebEngine] without changing any `:web-container` or
- * surface code.
+ * Desktop [DesktopWebEngine] routing `:web-container` sessions:
+ * - On macOS when `libraft_webcontainer_macos.dylib` is loaded, delegates directly to
+ *   [MacOsNativeWebEngine] (zero Wry/Rust/reflection/polling, full `allowScripts = false` and
+ *   `WKWebsiteDataStore(forIdentifier:)` support, non-blocking `dispatch_async` to Thread 0).
+ * - On Linux (or macOS if the native `.dylib` is unavailable), transparently falls back to Raft's
+ *   off-EDT [RaftDesktopWryGateway] while keeping `:web-container` completely free of Wry
+ *   dependencies.
  */
 class RaftDesktopWebContainerEngine(
     private val bridgeFactory: RaftDesktopWebContainerBridgeFactory =
@@ -130,6 +132,8 @@ class RaftDesktopWebContainerEngine(
                 dataDirectory = dataDirectory,
             )
         },
+    private val primaryMacOsEngine: DesktopWebEngine = MacOsNativeWebEngine.Default,
+    private val isPrimaryMacOsEngineAvailable: () -> Boolean = { MacOsNativeWebEngine.Default.isAvailable },
     private val isWindowsHost: () -> Boolean = { RaftDesktopWebContainerOnWindows },
     private val isMacOsHost: () -> Boolean = { RaftDesktopWebContainerOnMacOs },
     private val baseDataDir: () -> File = { RaftDesktopPaths.dataDir },
@@ -141,7 +145,11 @@ class RaftDesktopWebContainerEngine(
         config: WebContainerConfig,
         callbacks: DesktopWebSessionCallbacks,
     ): DesktopWebSession? {
-        if (!config.allowScripts || isWindowsHost()) return null
+        if (isWindowsHost()) return null
+        if (isMacOsHost() && isPrimaryMacOsEngineAvailable()) {
+            primaryMacOsEngine.createSession(config, callbacks)?.let { return it }
+        }
+        if (!config.allowScripts) return null
         val channelSecret = generateDesktopChannelSecret()
         val initialTarget =
             config.url.trim().takeIf { candidate ->
