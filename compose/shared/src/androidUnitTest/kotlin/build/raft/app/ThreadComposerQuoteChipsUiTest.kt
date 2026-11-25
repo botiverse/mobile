@@ -54,7 +54,6 @@ class ThreadComposerQuoteChipsUiTest {
     )
 
     private fun ComposeUiTest.showComposer(
-        enabled: Boolean = true,
         initialDraft: String = "",
         avatarLookup: ThreadQuoteChipAvatarLookup = ThreadQuoteChipAvatarLookup.Empty,
     ): Harness {
@@ -65,7 +64,6 @@ class ThreadComposerQuoteChipsUiTest {
         val events = mutableListOf<Pair<String, String?>>()
         val host =
             ThreadQuoteReplyHost(
-                enabled = enabled,
                 avatarLookup = avatarLookup,
                 onJumpToQuotedMessage = { jumps += it },
                 onQuoteFeedback = { feedbacks += it },
@@ -267,12 +265,26 @@ class ThreadComposerQuoteChipsUiTest {
         }
 
     @Test
-    fun disabledFlagStaysPlainSingleTextarea() =
+    fun plainDraftStaysSingleTextarea() =
         runRobolectricComposeUiTest {
             ThreadComposerQuoteMetaCache.clear()
             try {
-                showComposer(enabled = false, initialDraft = "> ${QuoteA.excerpt}\n> msg=11111111\n\nHi")
-                assertFalse(nodeExists(ComposerQuoteBlocksTestTag), "flag off stays single-textarea")
+                showComposer(initialDraft = "> plain blockquote\n\nHi")
+                assertFalse(nodeExists(ComposerQuoteBlocksTestTag), "plain blockquote stays single-textarea")
+            } finally {
+                ThreadComposerQuoteMetaCache.clear()
+            }
+        }
+
+    @Test
+    fun persistedQuoteDraftHydratesIntoQuoteChip() =
+        runRobolectricComposeUiTest {
+            ThreadComposerQuoteMetaCache.clear()
+            try {
+                ThreadComposerQuoteMetaCache.remember(QuoteA)
+                showComposer(initialDraft = "> ${QuoteA.excerpt}\n> msg=11111111\n\nHi")
+                assertTrue(nodeExists(ComposerQuoteBlocksTestTag), "persisted quote draft hydrates segmented composer")
+                assertTrue(nodeExists(composerQuoteChipTestTag(0)), "persisted quote draft renders chip")
             } finally {
                 ThreadComposerQuoteMetaCache.clear()
             }

@@ -83,7 +83,6 @@ class ThreadComposerImeCompositionTest {
         initialSeedText: String = "",
         memberSuggestions: List<RaftComposerMemberItem> = emptyList(),
         memberSuggestionsStatus: SharedMembersLoadStatus = SharedMembersLoadStatus.Idle,
-        quoteReplyEnabled: Boolean = false,
     ): Harness {
         val activity = activities.launch()
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
@@ -102,7 +101,7 @@ class ThreadComposerImeCompositionTest {
         val editorCommand = mutableStateOf<ThreadComposerEditorCommand?>(null)
         val insertMentionRequest = mutableStateOf<ThreadComposerInsertMentionRequest?>(null)
         val suggestionPortal = ThreadComposerSuggestionPortalState()
-        val quoteHost = ThreadQuoteReplyHost(enabled = quoteReplyEnabled)
+        val quoteHost = ThreadQuoteReplyHost()
         activity.setContent {
             val value = owner.value
             composed += value
@@ -547,7 +546,7 @@ class ThreadComposerImeCompositionTest {
                     createdAt = "2026-11-22T08:00:00.000Z",
                 )
             ThreadComposerQuoteMetaCache.remember(quote)
-            val harness = mountComposer(initialSeedText = "", quoteReplyEnabled = true)
+            val harness = mountComposer(initialSeedText = "")
             // Insert quote chip to enter segmented mode and hand focus to the trailing TextFieldState block.
             harness.quoteHost.requestInsertQuote(
                 ThreadComposerQuoteInsert(quote = quote, fallbackMarkdown = "> ${quote.excerpt}")

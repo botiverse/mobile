@@ -2611,15 +2611,13 @@ internal fun ThreadComposerContentLeaf(
     val editorSessionId = editorOwner.editorSessionId
     val editorAsTask = editorOwner.asTask
     val text = fieldState.text.toString()
-    // Quote replies v1 multi-quote interleaved composer (botiverse/slock #16027 / #16210), gated
-    // behind `quote_reply_v0` via LocalThreadQuoteReplyHost.
+    // Quote replies v1 multi-quote interleaved composer (botiverse/slock #16027 / #16210).
     val quoteReplyHost = LocalThreadQuoteReplyHost.current
     val unknownQuoteAuthor = stringResource(Res.string.thread_comments_unknown_author)
     val quoteController =
         remember(state.instanceId) {
             ThreadComposerQuoteController(
                 initialDraft = text,
-                initialEnabled = quoteReplyHost.enabled,
                 resolveQuoteMeta = { refId, excerpt ->
                     resolveQuoteMetaForDraft(
                         refId = refId,
@@ -2637,7 +2635,6 @@ internal fun ThreadComposerContentLeaf(
     }
     quoteController.syncFromExternalDraft(
         draft = text,
-        isEnabled = quoteReplyHost.enabled,
         resolveQuoteMeta = { refId, excerpt ->
             resolveQuoteMetaForDraft(
                 refId = refId,
@@ -2647,7 +2644,7 @@ internal fun ThreadComposerContentLeaf(
             )
         },
     )
-    val isSegmentedQuoteComposer = quoteReplyHost.enabled && quoteController.isSegmented
+    val isSegmentedQuoteComposer = quoteController.isSegmented
     val activeFieldState =
         if (isSegmentedQuoteComposer) {
             quoteController.activeTextFieldState() ?: fieldState
@@ -2694,7 +2691,7 @@ internal fun ThreadComposerContentLeaf(
     // without ever writing back into TextFieldState.
     LaunchedEffect(state.instanceId, editorOwner) {
         snapshotFlow {
-            if (quoteReplyHost.enabled && quoteController.isSegmented) {
+            if (quoteController.isSegmented) {
                 null
             } else {
                 editorOwner.currentSnapshot()
@@ -2724,24 +2721,22 @@ internal fun ThreadComposerContentLeaf(
     val pendingQuoteInsert = quoteReplyHost.pendingInsertRequest
     LaunchedEffect(state.instanceId, pendingQuoteInsert?.nonce) {
         val request = pendingQuoteInsert ?: return@LaunchedEffect
-        if (quoteReplyHost.enabled) {
-            val (result, serialized) = quoteController.insertQuote(request.quote, editorOwner.value)
-            when (result) {
-                is InsertQuoteResult.Duplicate -> quoteReplyHost.reportFeedback(ThreadComposerQuoteFeedback.Duplicate)
-                is InsertQuoteResult.Limit ->
-                    quoteReplyHost.reportFeedback(
-                        ThreadComposerQuoteFeedback.LimitReached(build.raft.app.data.MAX_INLINE_QUOTES_PER_MESSAGE)
+        val (result, serialized) = quoteController.insertQuote(request.quote, editorOwner.value)
+        when (result) {
+            is InsertQuoteResult.Duplicate -> quoteReplyHost.reportFeedback(ThreadComposerQuoteFeedback.Duplicate)
+            is InsertQuoteResult.Limit ->
+                quoteReplyHost.reportFeedback(
+                    ThreadComposerQuoteFeedback.LimitReached(build.raft.app.data.MAX_INLINE_QUOTES_PER_MESSAGE)
+                )
+            is InsertQuoteResult.Inserted -> {
+                if (serialized != null) {
+                    editorOwner.applyProgrammaticText(
+                        sourceSessionId = editorOwner.editorSessionId,
+                        nextText = serialized,
+                        cursor = serialized.length,
+                        publishAsSynced = true,
                     )
-                is InsertQuoteResult.Inserted -> {
-                    if (serialized != null) {
-                        editorOwner.applyProgrammaticText(
-                            sourceSessionId = editorOwner.editorSessionId,
-                            nextText = serialized,
-                            cursor = serialized.length,
-                            publishAsSynced = true,
-                        )
-                        currentOnEvent("change", serialized, currentAsTask, null)
-                    }
+                    currentOnEvent("change", serialized, currentAsTask, null)
                 }
             }
         }
@@ -3128,7 +3123,7 @@ internal fun ThreadComposerContentLeaf(
     val composerKeyboardOptions = KeyboardOptions(imeAction = threadComposerImeAction(composerUsesImeAction))
 
     fun currentActiveFieldState(): TextFieldState =
-        if (quoteReplyHost.enabled && quoteController.isSegmented) {
+        if (quoteController.isSegmented) {
             quoteController.activeTextFieldState() ?: editorOwner.textFieldState
         } else {
             editorOwner.textFieldState
@@ -3139,7 +3134,7 @@ internal fun ThreadComposerContentLeaf(
     }
 
     fun insertMentionAtCursor(handle: String): Boolean {
-        val segmentedNow = quoteReplyHost.enabled && quoteController.isSegmented
+        val segmentedNow = quoteController.isSegmented
         val liveState = currentActiveFieldState()
         val liveText = liveState.text.toString()
         val liveSelStart = minOf(liveState.selection.start, liveState.selection.end).coerceIn(0, liveText.length)

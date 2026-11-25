@@ -538,16 +538,14 @@ internal fun ThreadMessageActionMenu(
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     val reactionAtlasImage = LocalThreadReactionAtlasImage.current
-    // web MessageItem "Quote" (quote_reply_v0): gated behind `quote_reply_v0`, inserts the
-    // message's opening as a structured quote chip into this page's composer; no composer or flag
-    // off, no Quote.
+    // web MessageItem "Quote": inserts the message's opening as a structured quote chip into this
+    // page's composer; no composer, no Quote.
     val selectionHost = LocalThreadInPlaceTextSelectionHost.current
     val quoteIntoComposer = selectionHost?.quoteIntoComposer
     val insertQuoteIntoComposer = selectionHost?.insertQuoteIntoComposer
-    val quoteReplyHost = LocalThreadQuoteReplyHost.current
     val authorDisplayName = message.localizedAuthorName()
     val menuPendingQuote =
-        if (quoteReplyHost.enabled && (insertQuoteIntoComposer != null || quoteIntoComposer != null)) {
+        if (insertQuoteIntoComposer != null || quoteIntoComposer != null) {
             threadMessageMenuPendingQuote(message, authorDisplayName)
         } else {
             null

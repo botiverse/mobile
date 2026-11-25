@@ -30,7 +30,7 @@ import kotlinx.serialization.Serializable
  *
  * The persisted draft (`seedText`) stays the canonical Markdown wire format (`> <excerpt>\n> msg=<shortId>`
  * separated by `\n\n`), isomorphic with web and Agent CLI. Structured composer blocks hydrate from
- * that draft whenever `quote_reply_v0` is enabled and serialize back on every edit.
+ * that draft and serialize back on every edit.
  */
 
 @Serializable
@@ -53,8 +53,8 @@ internal data class CachedComposerQuoteMeta(
 
 /**
  * Request dispatched from message actions ("Quote", Select Text > Quote, in-place selection > Quote)
- * into the conversation composer. When `quote_reply_v0` is on and [quote] is present, inserts a
- * structured quote chip; otherwise appends [fallbackMarkdown] as a plain Markdown blockquote.
+ * into the conversation composer. When [quote] is present, inserts a structured quote chip;
+ * otherwise appends [fallbackMarkdown] as a plain Markdown blockquote.
  */
 internal data class ThreadComposerQuoteInsert(
     val quote: PendingComposerQuote?,
@@ -771,19 +771,11 @@ internal data class ComposerBlockFocusRequest(
 @Stable
 internal class ThreadComposerQuoteController(
     initialDraft: String,
-    initialEnabled: Boolean,
     resolveQuoteMeta: (refId: String, excerpt: String) -> PendingComposerQuote,
 ) {
-    private var enabled: Boolean = initialEnabled
     var lastCommittedSerialized: String = initialDraft
         private set
-    var blocks by mutableStateOf(
-        if (initialEnabled) {
-            parseDraftToComposerBlocks(initialDraft, resolveQuoteMeta)
-        } else {
-            createTextOnlyBlocks(initialDraft)
-        }
-    )
+    var blocks by mutableStateOf(parseDraftToComposerBlocks(initialDraft, resolveQuoteMeta))
         private set
     var activeTextBlockId by mutableStateOf(defaultActiveTextBlockId(blocks))
         private set
@@ -806,7 +798,7 @@ internal class ThreadComposerQuoteController(
     }
 
     val quoteCount: Int
-        get() = if (enabled) countComposerQuotes(blocks) else 0
+        get() = countComposerQuotes(blocks)
 
     val isSegmented: Boolean
         get() = quoteCount > 0
@@ -837,31 +829,20 @@ internal class ThreadComposerQuoteController(
 
     /**
      * Synchronize with an external draft change (channel switch, restored draft, Clear after Send,
-     * RestoreAfterFailure, or async feature-flag flip). Short-circuits in O(1) on plain text.
+     * or RestoreAfterFailure). Short-circuits in O(1) on plain text.
      */
     fun syncFromExternalDraft(
         draft: String,
-        isEnabled: Boolean,
         resolveQuoteMeta: (refId: String, excerpt: String) -> PendingComposerQuote,
     ) {
         val unchanged =
-            enabled == isEnabled &&
-                (
-                    lastCommittedSerialized == draft ||
-                        (!isEnabled && countComposerQuotes(blocks) == 0) ||
-                        (countComposerQuotes(blocks) == 0 && !hasSameConversationQuoteRef(draft))
-                    )
+            lastCommittedSerialized == draft ||
+                (countComposerQuotes(blocks) == 0 && !hasSameConversationQuoteRef(draft))
         if (unchanged) return
-        enabled = isEnabled
         lastCommittedSerialized = draft
         armedDeleteQuoteId = null
         duplicateFlashBlockId = null
-        val parsed =
-            if (isEnabled) {
-                parseDraftToComposerBlocks(draft, resolveQuoteMeta)
-            } else {
-                createTextOnlyBlocks(draft)
-            }
+        val parsed = parseDraftToComposerBlocks(draft, resolveQuoteMeta)
         blocks = parsed
         activeTextBlockId = defaultActiveTextBlockId(parsed)
         textFieldStatesByBlockId.clear()

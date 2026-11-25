@@ -80,7 +80,7 @@ class ThreadQuoteReplyTest {
     }
 
     @Test
-    fun structuredMenuAndSelectionQuotesRespectFlagAndWholeVsPartial() {
+    fun structuredMenuAndSelectionQuotesRespectQuotabilityAndWholeVsPartial() {
         val message =
             RaftThreadMessageItem(
                 id = sentId,
@@ -103,21 +103,30 @@ class ThreadQuoteReplyTest {
                 selectedText = "First",
                 markdown = message.body,
                 message = message,
-                quoteReplyEnabled = true,
             )
         assertNotNull(partialInsert.quote)
         assertEquals("First", partialInsert.quote?.excerpt)
         assertTrue(partialInsert.quote?.isPartial == true)
 
-        val flagOffInsert =
+        val wholeInsert =
+            threadSelectionQuoteInsert(
+                selectedText = "",
+                markdown = message.body,
+                message = message,
+            )
+        assertNotNull(wholeInsert.quote)
+        assertEquals("First line.…", wholeInsert.quote?.excerpt)
+        assertFalse(wholeInsert.quote?.isPartial == true)
+
+        // An unsent local message cannot be quoted by id and falls back to a plain blockquote.
+        val unsentInsert =
             threadSelectionQuoteInsert(
                 selectedText = "First",
                 markdown = message.body,
-                message = message,
-                quoteReplyEnabled = false,
+                message = message.copy(id = "local-send-thread-abc-1", deliveryState = ThreadMessageDeliverySending),
             )
-        assertNull(flagOffInsert.quote)
-        assertEquals("> First", flagOffInsert.fallbackMarkdown)
+        assertNull(unsentInsert.quote)
+        assertEquals("> First", unsentInsert.fallbackMarkdown)
     }
 
     @Test

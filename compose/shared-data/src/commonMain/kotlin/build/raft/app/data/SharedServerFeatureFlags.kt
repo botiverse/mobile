@@ -270,16 +270,6 @@ const val MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY: String = "mobile_screensh
 const val MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY: String = "mobile_web_container_v1"
 
 /**
- * Quote replies (botiverse/slock `packages/shared/src/featureFlags.ts`
- * `QUOTE_REPLY_FEATURE_FLAG_KEY`, #15536 / #16027 / #16210): per server, default off. On, verified
- * `> <excerpt>\n> msg=<id>` blocks render as one-line quote chips, the message menu offers Quote,
- * text-selection quotes carry `> msg=<id>`, and the composer renders quote blocks as interactive
- * multi-quote chips. Off (or unresolved), messages render as plain Markdown, selection quotes
- * insert plain blockquotes, and the composer stays single-textarea.
- */
-const val QUOTE_REPLY_FEATURE_FLAG_KEY: String = "quote_reply_v0"
-
-/**
  * Android dual-engine push: end-to-end silent FCM reachability probe + automatic direct-APK
  * foreground-service fallback/recovery + probed-reachability local notification gating + Play
  * dismissible notice (`#proj-mobile:#379`). Per server, default OFF (unresolved evaluates false).
@@ -327,8 +317,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY,
     // Standalone cross-platform Hybrid WebView Container (`compose/web-container`, default OFF).
     MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY,
-    // Quote replies as one-line chips + multi-quote composer (slock `quote_reply_v0`, #16027 / #16210).
-    QUOTE_REPLY_FEATURE_FLAG_KEY,
     // Android silent FCM reachability probe + dual-engine fallback (#proj-mobile:#379, default OFF).
     MOBILE_FCM_PROBE_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.

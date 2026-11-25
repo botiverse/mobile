@@ -3,7 +3,7 @@ package build.raft.app.data
 import build.raft.app.RaftCoreInternalApi
 
 /*
- * Quote replies (web `quote_reply_v0`, botiverse/slock #15536, #proj-chat:#34). A quote of a message
+ * Quote replies (botiverse/slock #15536, #proj-chat:#34). A quote of a message
  * in the same conversation is written into the reply's Markdown as a blockquote whose last line
  * names the quoted message:
  *
