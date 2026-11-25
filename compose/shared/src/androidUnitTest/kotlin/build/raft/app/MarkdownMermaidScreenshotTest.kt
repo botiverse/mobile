@@ -118,6 +118,7 @@ class MarkdownMermaidScreenshotTest {
                 "block-beta\n" +
                 "columns 3\n" +
                 "A([\"Request\"]) space B{{\"Check\"}}\n" +
+                "space:3\n" +
                 "space:2 C((\"Done\"))\n" +
                 "A ==> B\n" +
                 "B -.-> C\n" +
