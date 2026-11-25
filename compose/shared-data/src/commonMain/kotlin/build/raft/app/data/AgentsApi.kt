@@ -152,6 +152,8 @@ enum class AgentArchiveWorkspaceChoice(val wireValue: String) {
 
 @RaftCoreInternalApi interface RaftAgentsApi {
     suspend fun agents(): HomeNetworkResponse
+    /** `GET /agents` scoped to [serverId] (default delegates to [agents] for fakes/single-server callers). */
+    suspend fun agents(serverId: ServerId): HomeNetworkResponse = agents()
     suspend fun agent(agentId: MemberId): HomeNetworkResponse
     suspend fun createAgent(body: String): HomeNetworkResponse
     suspend fun updateAgent(agentId: MemberId, body: String): HomeNetworkResponse
@@ -229,6 +231,13 @@ enum class AgentArchiveWorkspaceChoice(val wireValue: String) {
         networkClient.request(
             priority = DataRequestPriority.Visible,
             path = "agents"
+        )
+
+    override suspend fun agents(serverId: ServerId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "agents",
+            serverIdOverride = serverId
         )
 
     override suspend fun agent(agentId: MemberId): HomeNetworkResponse =
@@ -454,6 +463,13 @@ enum class AgentArchiveWorkspaceChoice(val wireValue: String) {
 ) {
     suspend fun agents(): DataResult<AgentsPage> =
         transport.agents().mapAgentsBody(
+            "agents_list_contract_mismatch",
+            ListSerializer(AgentWireDto.serializer()),
+            diagnosticsLogger = diagnosticsLogger
+        ) { wire -> AgentsPage(agents = wire.mapNotNull { it.toSummary() }) }
+
+    suspend fun agents(serverId: ServerId): DataResult<AgentsPage> =
+        transport.agents(serverId).mapAgentsBody(
             "agents_list_contract_mismatch",
             ListSerializer(AgentWireDto.serializer()),
             diagnosticsLogger = diagnosticsLogger
@@ -884,7 +900,15 @@ enum class AgentArchiveWorkspaceChoice(val wireValue: String) {
     val hostedRuntime: AgentHostedRuntimeSnapshot? = null,
     /** What the running process reports it runs: `runtimeProfile.current.runtime` / `.model`, raw. */
     val runningRuntime: String? = null,
-    val runningModel: String? = null
+    val runningModel: String? = null,
+    /**
+     * Saved `runtimeConfig` version & `runtimeConfig.envVars` plus insertion-ordered legacy `envVars`
+     * from `GET /agents` (in-memory only, never persisted to disk cache) for same-Computer env-var
+     * copying (botiverse/slock #16606).
+     */
+    val runtimeConfigVersion: Int? = null,
+    val runtimeConfigEnvVars: Map<String, String>? = null,
+    val orderedEnvVars: Map<String, String> = emptyMap()
 )
 
 @RaftCoreInternalApi fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
@@ -1330,7 +1354,10 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         deliveryHold = parseAgentDeliveryHold(deliveryHold),
         modelLimitsDefaultsReported = modelLimits?.defaultsReported == true,
         runningRuntime = currentProfile?.runtime?.trim()?.takeIf { it.isNotEmpty() },
-        runningModel = currentProfile?.model?.trim()?.takeIf { it.isNotEmpty() }
+        runningModel = currentProfile?.model?.trim()?.takeIf { it.isNotEmpty() },
+        runtimeConfigVersion = runtimeConfig?.version,
+        runtimeConfigEnvVars = runtimeConfig?.envVars?.toOrderedAgentEnvVars(),
+        orderedEnvVars = envVars.toOrderedAgentEnvVars()
     )
 }
 
@@ -1398,7 +1425,9 @@ private data class AgentRuntimeConfigWireDto(
     /** The saved level (shared `RuntimeConfig.reasoningEffort`); Pi's `off` / `minimal` and Kimi Code's live only here. */
     val reasoningEffort: String? = null,
     /** The saved fast mode (shared `RuntimeConfig.mode`). */
-    val mode: AgentRuntimeModeWireDto? = null
+    val mode: AgentRuntimeModeWireDto? = null,
+    /** The saved Advanced env vars (`RuntimeConfig.envVars`, slock #16606). */
+    val envVars: Map<String, JsonElement>? = null
 )
 
 /**
@@ -1505,6 +1534,15 @@ private fun Map<String, JsonElement>.toAgentEnvVars(): Map<String, String> =
         }
         .sortedBy { it.first }
         .toMap()
+
+private fun Map<String, JsonElement>.toOrderedAgentEnvVars(): Map<String, String> {
+    val ordered = LinkedHashMap<String, String>()
+    for ((key, value) in entries) {
+        val cleanKey = key.trim().takeIf { it.isNotBlank() } ?: continue
+        ordered[cleanKey] = (value as? JsonPrimitive)?.contentOrNull ?: value.toString()
+    }
+    return ordered
+}
 
 private fun AgentCreatorWireDto.toDomain(): AgentCreatorSummary? {
     if (id.isBlank() || name.isBlank()) return null

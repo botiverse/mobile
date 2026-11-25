@@ -256,7 +256,8 @@ class SharedComputersStore @RaftCoreInternalApi constructor(
                         memoryStatus = it.memoryStatus,
                         attachedByCurrentUser = it.attachedByCurrentUser,
                         creatorUserId = it.creatorUserId,
-                        mine = it.isMyComputer(userId)
+                        mine = it.isMyComputer(userId),
+                        description = it.description
                     )
                 }
             }
@@ -1240,7 +1241,8 @@ private fun List<ComputerSummary>.toCreateAgentMachineOptions(userId: String?): 
             attachedByCurrentUser = machine.attachedByCurrentUser,
             creatorId = machine.creator?.id,
             usageFactsKnown = true,
-            mine = machine.isMyComputer(userId)
+            mine = machine.isMyComputer(userId),
+            description = machine.description
         )
     }
 

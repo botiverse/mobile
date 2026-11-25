@@ -11,7 +11,9 @@ package build.raft.app
     /** False when the option came without the machine list (route params): the server decides. */
     val usageFactsKnown: Boolean = false,
     /** The viewer's own Computer (attached or owned, [build.raft.app.data.raftIsMyComputer]): the default prefers it. */
-    val mine: Boolean = false
+    val mine: Boolean = false,
+    /** The note the Computer's owner wrote about it (botiverse/slock #16578). */
+    val description: String? = null
 )
 
 @RaftCoreInternalApi data class SharedCreateAgentRuntimeModelOption(

@@ -62,8 +62,29 @@ import kotlinx.coroutines.sync.withLock
     /** The last create's Computer and runtime per server; null: nothing is remembered. */
     private val lastConfigs: CreateAgentLastConfigRepository? = null,
     /** Whether [ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY] is on for a server. */
-    private val hostedRuntimeFlag: (ServerId) -> Boolean = { false }
+    private val hostedRuntimeFlag: (ServerId) -> Boolean = { false },
+    /** Whether the current viewer has server-wide agent edit permission (`editAgents`) on a server. */
+    private val canEditAgentsProvider: suspend (ServerId) -> Boolean = { false }
 ) {
+    /** Signed-in viewer's user id, for checking creator ownership on env-var copy candidates. */
+    suspend fun currentUserId(): String? =
+        (readOwnerBinding() as? RaftAccountBinding.SignedIn)?.account?.accountId
+
+    /** Whether the signed-in viewer has server-wide `editAgents` permission on [serverId]. */
+    suspend fun canEditAgents(serverId: String): Boolean {
+        val cleanServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return false
+        return runCatchingPreservingCancellation { canEditAgentsProvider(ServerId(cleanServerId)) }.getOrDefault(false)
+    }
+
+    /**
+     * Loads the server's live agent list (`GET /agents`) for same-Computer Advanced env-var copying
+     * (botiverse/slock #16606). Returns an empty list on any error or when unavailable.
+     */
+    suspend fun loadCopyableAgents(serverId: String): List<AgentSummary> {
+        val loader = runtimeFormV2Loader ?: return emptyList()
+        val cleanServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return emptyList()
+        return (loader.agents(ServerId(cleanServerId)) as? DataResult.Content)?.data.orEmpty()
+    }
     /** Whether a cloud agent can be offered without asking the server: off means nothing is probed. */
     fun hostedRuntimeFlagOn(serverId: String): Boolean =
         serverId.isNotBlank() && hostedRuntimeFlag(ServerId(serverId))

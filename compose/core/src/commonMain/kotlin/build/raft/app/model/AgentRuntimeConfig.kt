@@ -112,6 +112,82 @@ data class RuntimeConfig(
     val hostUserState: RuntimeHostUserState? = null
 )
 
+/**
+ * Env var keys owned by each runtime's own launch plan / provider config
+ * (mirrors slock `packages/shared/src/runtimeConfigEngine.ts` `CONTROLLED_RUNTIME_ENV_KEYS`
+ * + `piBuiltinModels.generated.ts` `BUILTIN_RUNTIME_HOST_PROVIDER_ENV_SCRUB_KEYS`).
+ */
+val BUILTIN_RUNTIME_CONTROLLED_ENV_KEYS: Set<String> = setOf(
+    "DEEPSEEK_API_KEY",
+    "MINIMAX_API_KEY",
+    "MINIMAX_CN_API_KEY",
+    "ZAI_API_KEY",
+    "ZAI_CODING_CN_API_KEY",
+    "MOONSHOT_API_KEY",
+    "KIMI_API_KEY",
+    "QWEN_TOKEN_PLAN_API_KEY",
+    "QWEN_TOKEN_PLAN_CN_API_KEY",
+    "QWEN_TOKEN_PLAN_TEAM_API_KEY",
+    "QWEN_TOKEN_PLAN_TEAM_CN_API_KEY",
+    "QWEN_TOKEN_PLAN_INDIVIDUAL_API_KEY",
+    "QWEN_TOKEN_PLAN_INDIVIDUAL_CN_API_KEY",
+    "OPENROUTER_API_KEY",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_OAUTH_TOKEN",
+    "GEMINI_API_KEY",
+    "XAI_API_KEY",
+    "XIAOMI_API_KEY",
+    "XIAOMI_TOKEN_PLAN_CN_API_KEY",
+    "XIAOMI_TOKEN_PLAN_SGP_API_KEY",
+    "XIAOMI_TOKEN_PLAN_AMS_API_KEY",
+    "ANT_LING_API_KEY",
+    "BASETEN_API_KEY",
+    "CEREBRAS_API_KEY",
+    "FIREWORKS_API_KEY",
+    "GROQ_API_KEY",
+    "META_API_KEY",
+    "MISTRAL_API_KEY",
+    "NVIDIA_API_KEY",
+    "OPENCODE_API_KEY",
+    "TOGETHER_API_KEY",
+    "AI_GATEWAY_API_KEY",
+    "OPENAI_BASE_URL",
+    "ANTHROPIC_BASE_URL",
+)
+
+val CONTROLLED_RUNTIME_ENV_KEYS: Map<String, Set<String>> = mapOf(
+    "builtin" to BUILTIN_RUNTIME_CONTROLLED_ENV_KEYS,
+    "claude" to setOf("ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_CUSTOM_MODEL_OPTION"),
+    "codex" to setOf("OPENAI_BASE_URL"),
+    "pi" to setOf("DEEPSEEK_API_KEY"),
+)
+
+/**
+ * Mirrors slock `isControlledRuntimeEnvKey` (runtimeConfigEngine.ts): case-insensitive check
+ * because Windows reads env var names case-insensitively.
+ */
+fun isControlledRuntimeEnvKey(runtime: String, key: String): Boolean {
+    val controlled = CONTROLLED_RUNTIME_ENV_KEYS[runtime] ?: return false
+    return key.uppercase() in controlled
+}
+
+/**
+ * Mirrors slock `stripControlledRuntimeEnvVars` (runtimeConfigEngine.ts): trims keys,
+ * drops blank keys and keys controlled by [runtime], preserving insertion order.
+ */
+fun stripControlledRuntimeEnvVars(runtime: String, envVars: Map<String, String>?): Map<String, String>? {
+    if (envVars.isNullOrEmpty()) return null
+    val normalized = LinkedHashMap<String, String>()
+    for ((rawKey, value) in envVars) {
+        val key = rawKey.trim()
+        if (key.isEmpty()) continue
+        if (isControlledRuntimeEnvKey(runtime, key)) continue
+        normalized[key] = value
+    }
+    return normalized.takeIf { it.isNotEmpty() }
+}
+
 // ── Runtimes ──
 
 /**

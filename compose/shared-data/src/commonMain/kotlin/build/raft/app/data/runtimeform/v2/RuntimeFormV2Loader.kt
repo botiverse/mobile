@@ -148,6 +148,29 @@ private val runtimeFormV2ErrorJson = Json { ignoreUnknownKeys = true }
         return RaftAgentsApiClient(transport).agent(agentId)
     }
 
+    /**
+     * Reads the server's live agent list (`GET /agents`) for same-Computer Advanced env-var copy
+     * candidates (botiverse/slock #16606). Guarded so offline/fake transports return an error
+     * instead of throwing.
+     */
+    suspend fun agents(serverId: ServerId): DataResult<List<AgentSummary>> {
+        val transport = agents ?: return failure("runtime_form_v2_agents_unavailable")
+        val result =
+            try {
+                RaftAgentsApiClient(transport).agents(serverId)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                failure("runtime_form_v2_agents_request_failed")
+            }
+        return when (result) {
+            is DataResult.Content -> DataResult.Content(result.data.agents)
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
     private suspend fun loadFrom(
         response: HomeNetworkResponse,
         serverId: ServerId,

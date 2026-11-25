@@ -7,12 +7,15 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.isToggleable
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
@@ -117,24 +120,67 @@ class ChannelAddMemberPanelUiTest {
         }
 
     @Test
-    fun theOneCreateAgentRowOpensAMenuWhoseItemsEachOpenTheirDialog() =
+    fun theOneAddAgentRowOpensAChooserDialogWithDirectEntryRows() =
         runRobolectricComposeUiTest {
             val calls = Calls()
             show(calls)
-            // One row, one auto-join line; the external item is only in the menu.
+            // One "Add agent" row, one auto-join line; chooser rows are only in the modal.
             onAllNodesWithText("Joins #design automatically after creation").assertCountEquals(1)
-            onNodeWithText("Create external agent").assertDoesNotExist()
+            onNodeWithText("Add agent").assertExists()
+            onNodeWithText("Create agent").assertDoesNotExist()
+            onNodeWithText("Connect an external agent").assertDoesNotExist()
 
-            onNodeWithText("Create agent").performClick()
-            onNodeWithText("Create external agent").assertExists()
-            // Menu order: Create agent, then Create external agent.
-            onAllNodesWithText("Create agent").assertCountEquals(2)
-            onAllNodesWithText("Create agent")[1].performClick()
+            // Clicking the row opens the centered chooser dialog (no radios, no Next button).
+            onNodeWithTag("add-member-create-agent-entry").performClick()
+            onNodeWithTag("add-member-create-agent-chooser").assertExists()
+            onNodeWithText("Create agent").assertExists()
+            onNodeWithText("Runs on your computer or cloud").assertExists()
+            onNodeWithText("Connect an external agent").assertExists()
+            onNodeWithText("Runs elsewhere, connects to Raft").assertExists()
+            onNodeWithText("Next").assertDoesNotExist()
+            onAllNodes(isSelectable()).assertCountEquals(0)
+
+            // Direct entry 1: Create agent closes chooser and opens Managed create.
+            onNodeWithTag("add-member-create-agent-chooser-hosted").performClick()
             assertEquals(listOf("" to MembersCreateAgentMode.Managed), calls.creates)
-            onNodeWithText("Create external agent").assertDoesNotExist()
+            onNodeWithTag("add-member-create-agent-chooser").assertDoesNotExist()
 
-            onNodeWithText("Create agent").performClick()
-            onNodeWithText("Create external agent").performClick()
-            assertEquals(listOf("" to MembersCreateAgentMode.Managed, "" to MembersCreateAgentMode.External), calls.creates)
+            // Direct entry 2: Connect an external agent closes chooser and opens External create.
+            onNodeWithTag("add-member-create-agent-entry").performClick()
+            onNodeWithTag("add-member-create-agent-chooser-external").performClick()
+            assertEquals(
+                listOf("" to MembersCreateAgentMode.Managed, "" to MembersCreateAgentMode.External),
+                calls.creates,
+            )
+            onNodeWithTag("add-member-create-agent-chooser").assertDoesNotExist()
+        }
+
+    @Test
+    fun addAgentRowIsHiddenWithoutCreatePermission() =
+        runRobolectricComposeUiTest {
+            val calls = Calls()
+            show(calls, canCreateAgents = false)
+            onNodeWithTag("add-member-create-agent-entry").assertDoesNotExist()
+            onNodeWithText("Add agent").assertDoesNotExist()
+        }
+
+    @Test
+    fun promotedSearchNameCarriesOnlyIntoManagedCreate() =
+        runRobolectricComposeUiTest {
+            val calls = Calls()
+            show(calls)
+            onNodeWithText("Name").performTextInput("scout")
+            onNodeWithText("Add agent “scout”").assertExists()
+
+            onNodeWithTag("add-member-create-agent-entry").performClick()
+            onNodeWithTag("add-member-create-agent-chooser-hosted").performClick()
+            assertEquals(listOf("scout" to MembersCreateAgentMode.Managed), calls.creates)
+
+            onNodeWithTag("add-member-create-agent-entry").performClick()
+            onNodeWithTag("add-member-create-agent-chooser-external").performClick()
+            assertEquals(
+                listOf("scout" to MembersCreateAgentMode.Managed, "" to MembersCreateAgentMode.External),
+                calls.creates,
+            )
         }
 }

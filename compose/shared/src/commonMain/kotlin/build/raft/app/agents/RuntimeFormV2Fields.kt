@@ -112,7 +112,9 @@ internal fun RuntimeFormV2Fields(
     advancedOpen: Boolean,
     onAdvancedOpenChange: (Boolean) -> Unit,
     enabled: Boolean,
-    sourceRefresh: RuntimeFormV2SourceRefresh? = null
+    sourceRefresh: RuntimeFormV2SourceRefresh? = null,
+    /** #16606: same-Computer agents whose Advanced env vars can be copied into the `envVars` field. */
+    envVarsCopy: RuntimeEnvVarsCopySource? = null
 ) {
     val focusManager = LocalFocusManager.current
     val visible = loaded.form.fields.filter {
@@ -144,7 +146,7 @@ internal fun RuntimeFormV2Fields(
         }
         primary.forEach { field ->
             key(field.key) {
-                RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, loaded, values, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint) {
+                RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, loaded, values, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint, envVarsCopy) {
                     focusManager.clearFocus(force = true)
                 }
             }
@@ -180,7 +182,7 @@ internal fun RuntimeFormV2Fields(
                 ) {
                 advanced.forEach { field ->
                     key(field.key) {
-                        RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, loaded, values, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint) {
+                        RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, loaded, values, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint, envVarsCopy) {
                             focusManager.clearFocus(force = true)
                         }
                     }
@@ -397,6 +399,7 @@ private fun RuntimeFormV2FieldRow(
     enabled: Boolean,
     sourceRefresh: RuntimeFormV2SourceRefresh?,
     managedHint: String?,
+    envVarsCopy: RuntimeEnvVarsCopySource?,
     clearFocus: () -> Unit
 ) {
     val current = values.text(field.key)
@@ -504,7 +507,8 @@ private fun RuntimeFormV2FieldRow(
                     label = field.label,
                     required = required,
                     // Web RuntimeEnvVarsField: the hint under the label, above the rows.
-                    hint = hint?.let { { RuntimeFormV2HintText(it) } }
+                    hint = hint?.let { { RuntimeFormV2HintText(it) } },
+                    copySource = if (field.key == "envVars") envVarsCopy else null
                 )
                 }
             }

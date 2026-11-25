@@ -39,26 +39,42 @@ class MembersRuntimeConfigApplyTest {
     }
 
     @Test
-    fun appliedAndRestartedOnAnActiveAgentShowPlainAppliedConfirmation() {
+    fun appliedAndRestartedOnAnActiveAgentShowSingleLineAppliedConfirmation() {
         assertEquals(
-            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.AppliedNow),
+            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.Applied),
             notice(AgentConfigApply.Applied, agentActive = true, newSession = false)
         )
         assertEquals(
-            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.AppliedNow),
+            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.Applied),
             notice(AgentConfigApply.Restarted, agentActive = true, newSession = false)
         )
         assertEquals(
-            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.AppliedNow),
+            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.Applied),
             notice(AgentConfigApply.Applied, agentActive = true, newSession = true)
         )
-        // Inactive agent: no notice.
-        assertNull(notice(AgentConfigApply.Applied, agentActive = false, newSession = false))
-        assertNull(notice(AgentConfigApply.Restarted, agentActive = false, newSession = false))
+        // Inactive agent or explicit saved: single-line saved confirmation (#16556).
+        assertEquals(
+            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.Saved),
+            notice(AgentConfigApply.Applied, agentActive = false, newSession = false)
+        )
+        assertEquals(
+            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.Saved),
+            notice(AgentConfigApply.Restarted, agentActive = false, newSession = false)
+        )
+        assertEquals(
+            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.Saved),
+            notice(AgentConfigApply.Saved, agentActive = true, newSession = false)
+        )
+        assertEquals(
+            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.Saved),
+            notice(AgentConfigApply.Saved, agentActive = false, newSession = false)
+        )
+        // Older server without configApply: no toast.
+        assertNull(notice(null, agentActive = true, newSession = false))
     }
 
     @Test
-    fun whenIdleOnOlderDaemonShowsAutomaticTurnEndNotice() {
+    fun whenIdleOnOlderDaemonShowsAutomaticCurrentMessageEndNotice() {
         assertEquals(
             MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.WhenIdle),
             notice(AgentConfigApply.WhenIdle, agentActive = true, newSession = false)

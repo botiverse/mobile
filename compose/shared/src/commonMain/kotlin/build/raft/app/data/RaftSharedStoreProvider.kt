@@ -3252,6 +3252,24 @@ internal class RaftSharedStoreProvider private constructor(
                 hostedRuntimeFlag = { serverId ->
                     serverFeatureFlags.isEnabled(serverId, ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY)
                 },
+                canEditAgentsProvider = { serverId ->
+                    val livePermissions =
+                        (homeStores.get(scope)?.state?.value?.content as? SharedHomeContentState.Content)
+                            ?.snapshot
+                            ?.takeIf { it.server.id == serverId }
+                            ?.server
+                            ?.permissions
+                    if (livePermissions != null) {
+                        livePermissions.canManageSettings
+                    } else {
+                        shellAuthStore.readSession()
+                            ?.servers
+                            ?.firstOrNull { it.id == serverId.value }
+                            ?.toServerSummary()
+                            ?.permissions
+                            ?.canManageSettings == true
+                    }
+                },
                 ownerProvider = {
                     shellAuthStore.readSession()?.let { session ->
                         sharedCreateAgentFormOwner(
