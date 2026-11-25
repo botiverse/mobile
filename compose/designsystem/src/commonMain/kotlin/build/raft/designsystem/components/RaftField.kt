@@ -50,6 +50,22 @@ enum class RaftFieldLabelSize {
     Md,
 }
 
+/** Where a [RaftField] puts its description. */
+enum class RaftFieldDescriptionPosition {
+    /**
+     * raft-ui `FieldDescription`: under the control, and an error takes its place (the default:
+     * every input, textarea and select).
+     */
+    BelowControl,
+
+    /**
+     * Under the label, above the control, and still there with an error (which stays under the
+     * control): the web's question-card choice (ActionCardChoiceField), where the question's
+     * description says how to read its options ("All times are UTC.") before people pick one.
+     */
+    BelowLabel,
+}
+
 /**
  * State a [RaftField] passes to the control inside it, as Base UI Field does: the
  * controls in this module ([RaftTextField], [RaftTextarea], [RaftSelectTrigger],
@@ -124,6 +140,9 @@ fun raftFieldSpokenName(label: String?, required: Boolean, requiredWord: String)
  *   keeps its label row one label line tall: [labelTrailing] (a 32dp icon button) reaches 7dp past
  *   it above and below. Stack such fields 4dp apart.
  * - [counter]: persistent text at the end of that line ("12/300"), in `text-mono-meta`.
+ * - [descriptionPosition]: [RaftFieldDescriptionPosition.BelowLabel] puts [description] under the
+ *   label, 6dp above the control, where an error doesn't replace it (a question's options, web
+ *   ActionCardChoiceField); the error keeps its place under the control.
  *
  * ```
  * RaftField(label = "Agent name", description = "Shown in chat and on tasks.") {
@@ -145,9 +164,12 @@ fun RaftField(
     saveStatus: RaftSaveStatusState? = null,
     reserveMessage: Boolean = false,
     counter: String? = null,
+    descriptionPosition: RaftFieldDescriptionPosition = RaftFieldDescriptionPosition.BelowControl,
     content: @Composable () -> Unit,
 ) {
     val invalid = error != null
+    val descriptionBelowLabel = description.takeIf { descriptionPosition == RaftFieldDescriptionPosition.BelowLabel }
+    val descriptionBelowControl = description.takeIf { descriptionPosition == RaftFieldDescriptionPosition.BelowControl }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (labelTrailing != null) {
             Row(
@@ -169,6 +191,7 @@ fun RaftField(
         } else if (label != null) {
             RaftFieldLabel(label, size = labelSize, enabled = enabled, optional = optional && !required)
         }
+        if (descriptionBelowLabel != null) RaftFieldDescription(descriptionBelowLabel, enabled = enabled)
         CompositionLocalProvider(
             LocalRaftFieldState provides RaftFieldState(invalid = invalid, enabled = enabled, label = label, error = error, required = required, inField = true),
         ) {
@@ -183,11 +206,11 @@ fun RaftField(
             }
         }
         if (reserveMessage || counter != null) {
-            RaftFieldMessageRow(description, error, counter, enabled)
+            RaftFieldMessageRow(descriptionBelowControl, error, counter, enabled)
         } else if (error != null) {
             RaftFieldError(error, enabled = enabled)
-        } else if (description != null) {
-            RaftFieldDescription(description, enabled = enabled)
+        } else if (descriptionBelowControl != null) {
+            RaftFieldDescription(descriptionBelowControl, enabled = enabled)
         }
     }
 }
