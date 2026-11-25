@@ -445,7 +445,8 @@ internal fun RaftPanelBackHeader(
     Box(
         modifier =
             // raft-ui's slot names on the head's parts, for the visual-testing component comparison.
-            Modifier.raftSlot("panel-header").then(modifier)
+            modifier
+                .raftSlot("panel-header")
                 // In a pane of the wide row laid out wider than it shows (#189 rule 2): what shows, never clipped.
                 .raftPaneGridFitHead()
                 .fillMaxWidth()
@@ -606,7 +607,8 @@ internal fun RaftTopPageHeaderFrame(
     Box(
         modifier =
             // raft-ui's `panel-header` slot, for the visual-testing component comparison.
-            Modifier.raftSlot("panel-header").then(modifier)
+            modifier
+                .raftSlot("panel-header")
                 .fillMaxWidth()
                 .height(metrics.totalHeight)
                 .background(backgroundColor)

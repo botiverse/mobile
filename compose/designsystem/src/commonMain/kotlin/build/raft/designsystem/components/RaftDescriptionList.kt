@@ -275,7 +275,7 @@ private fun DescriptionTerm(
     slotted: Boolean = true,
 ) {
     val textModifier = remember(lines) { if (lines != null) Modifier.textLineInto(lines.termBaseline, lines.termTextHeight) else Modifier }
-    Row((if (slotted) Modifier.raftSlot("description-term") else Modifier).then(modifier), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(if (slotted) modifier.raftDefaultSlot("description-term") else modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         RaftText(
             term,
             modifier = textModifier,
@@ -311,7 +311,7 @@ private fun DescriptionDetails(
                     itemVerticalAlignment = Alignment.CenterVertically,
                 ) { content() }
             },
-            modifier = Modifier.raftSlot("description-details").then(modifier),
+            modifier = modifier.raftDefaultSlot("description-details"),
             measurePolicy = remember(minHeight, lineHeight, lines) { DescriptionDetailsPolicy(minHeight, lineHeight, lines) },
         )
     }
