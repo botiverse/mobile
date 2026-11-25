@@ -1528,6 +1528,176 @@ def check_web_container_invariants(
             )
 
 
+IOS_INFO_PLIST = "compose/iosApp/iosApp/Info.plist"
+IOS_INFO_PLIST_APP_DIR = "compose/iosApp/iosApp"
+IOS_REQUIRED_MEDIA_USAGE_KEYS = (
+    "NSCameraUsageDescription",
+    "NSMicrophoneUsageDescription",
+)
+IOS_REQUIRED_INFOPLIST_LOCALES = (
+    "en",
+    "es",
+    "ja",
+    "ko",
+    "pt-BR",
+    "ru",
+    "zh-Hans",
+    "zh-Hant",
+)
+
+
+def _parse_plist_string_values(plist_xml: str, source_name: str) -> dict[str, str]:
+    try:
+        root = ET.fromstring(plist_xml)
+    except ET.ParseError as error:
+        raise Violation(f"iOS TCC guard (#wg-mobile-feedback:#308): {source_name} is invalid XML: {error}") from error
+    top_dict = root.find("dict")
+    if top_dict is None:
+        raise Violation(f"iOS TCC guard (#wg-mobile-feedback:#308): {source_name} has no top-level <dict>")
+    children = list(top_dict)
+    values: dict[str, str] = {}
+    index = 0
+    while index + 1 < len(children):
+        key_el = children[index]
+        val_el = children[index + 1]
+        if key_el.tag == "key":
+            if val_el.tag == "string":
+                values[key_el.text or ""] = val_el.text or ""
+            index += 2
+        else:
+            index += 1
+    return values
+
+
+def _parse_apple_strings(text: str) -> dict[str, str]:
+    """Parse Apple `.strings` (`"key" = "value";`) entries while ignoring `//` and `/* */` comments."""
+    n = len(text)
+    i = 0
+    tokens: list[tuple[str, str]] = []
+
+    while i < n:
+        ch = text[i]
+        if ch.isspace():
+            i += 1
+        elif text.startswith("//", i):
+            nl = text.find("\n", i)
+            i = n if nl < 0 else nl + 1
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            if end < 0:
+                break
+            i = end + 2
+        elif ch == '"':
+            i += 1
+            buf: list[str] = []
+            while i < n:
+                c = text[i]
+                if c == "\\" and i + 1 < n:
+                    buf.append(text[i + 1])
+                    i += 2
+                elif c == '"':
+                    i += 1
+                    break
+                else:
+                    buf.append(c)
+                    i += 1
+            tokens.append(("str", "".join(buf)))
+        elif ch in ("=", ";"):
+            tokens.append(("punct", ch))
+            i += 1
+        else:
+            i += 1
+
+    entries: dict[str, str] = {}
+    t = 0
+    while t + 3 < len(tokens):
+        if (
+            tokens[t][0] == "str"
+            and tokens[t + 1] == ("punct", "=")
+            and tokens[t + 2][0] == "str"
+            and tokens[t + 3] == ("punct", ";")
+        ):
+            entries[tokens[t][1]] = tokens[t + 2][1]
+            t += 4
+        else:
+            t += 1
+    return entries
+
+
+def _ios_localized_info_plists(root: Path) -> dict[str, str]:
+    app_dir = root / IOS_INFO_PLIST_APP_DIR
+    if not app_dir.is_dir():
+        raise Violation(f"iOS TCC guard (#wg-mobile-feedback:#308): missing directory {IOS_INFO_PLIST_APP_DIR}")
+    localized: dict[str, str] = {}
+    for lproj in sorted(app_dir.glob("*.lproj")):
+        if not lproj.is_dir():
+            continue
+        strings_file = lproj / "InfoPlist.strings"
+        if strings_file.is_file():
+            rel = str(strings_file.relative_to(root))
+            localized[rel] = strings_file.read_text(encoding="utf-8").replace("\r\n", "\n")
+    return localized
+
+
+def check_ios_webview_media_capture_tcc_guard(
+    info_plist: str,
+    localized_info_plists: dict[str, str],
+    ios_kotlin_sources: dict[str, str],
+) -> None:
+    """Incident: Hands iOS 22cc5a87 / 1fa0888e (#wg-mobile-feedback:#308).
+
+    A web page inside iOS `WKWebView` (e.g. Deck) requesting microphone capture triggered iOS
+    `tccd` `SIGABRT` because `NSMicrophoneUsageDescription` was absent from `Info.plist` and
+    `WKUIDelegateProtocol` did not implement `requestMediaCapturePermissionForOrigin`.
+
+    Enforces both layers of defense:
+    1. `compose/iosApp/iosApp/Info.plist` and all 8 `*.lproj/InfoPlist.strings` (plus any extra
+       `.lproj` added later) declare non-blank `NSCameraUsageDescription` and
+       `NSMicrophoneUsageDescription`.
+    2. Every iOS production `WKUIDelegateProtocol` implementation overrides
+       `requestMediaCapturePermissionForOrigin` so unguarded WebKit media prompts never reach `tccd`.
+    """
+    plist_values = _parse_plist_string_values(info_plist, IOS_INFO_PLIST)
+    for key in IOS_REQUIRED_MEDIA_USAGE_KEYS:
+        if not plist_values.get(key, "").strip():
+            raise Violation(
+                f"iOS TCC guard (#wg-mobile-feedback:#308): {IOS_INFO_PLIST} must declare a "
+                f"non-blank <string> for {key}"
+            )
+
+    for locale in IOS_REQUIRED_INFOPLIST_LOCALES:
+        expected_rel = f"{IOS_INFO_PLIST_APP_DIR}/{locale}.lproj/InfoPlist.strings"
+        if expected_rel not in localized_info_plists:
+            raise Violation(
+                f"iOS TCC guard (#wg-mobile-feedback:#308): missing required localization {expected_rel}"
+            )
+
+    for rel, text in sorted(localized_info_plists.items()):
+        entries = _parse_apple_strings(text)
+        for key in IOS_REQUIRED_MEDIA_USAGE_KEYS:
+            if not entries.get(key, "").strip():
+                raise Violation(
+                    f"iOS TCC guard (#wg-mobile-feedback:#308): {rel} must declare a non-blank "
+                    f'"{key}" = "..."; entry'
+                )
+
+    ui_delegate_files = 0
+    for name, text in sorted(ios_kotlin_sources.items()):
+        code = _kotlin_code_only(text)
+        if not re.search(r"\bWKUIDelegateProtocol\b", code):
+            continue
+        ui_delegate_files += 1
+        if "requestMediaCapturePermissionForOrigin" not in code:
+            raise Violation(
+                f"iOS TCC guard (#wg-mobile-feedback:#308): {name} implements WKUIDelegateProtocol "
+                "without overriding webView(_:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:)"
+            )
+    if ui_delegate_files == 0:
+        raise Violation(
+            "iOS TCC guard (#wg-mobile-feedback:#308): scan found no iosMain WKUIDelegateProtocol files"
+        )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -1554,6 +1724,13 @@ def run(root: Path) -> None:
         prod_java=_production_java_sources(root),
         web_container_build_gradle=read(WEB_CONTAINER_BUILD_GRADLE),
         native_sources=_web_container_native_sources(root),
+    )
+    check_ios_webview_media_capture_tcc_guard(
+        info_plist=read(IOS_INFO_PLIST),
+        localized_info_plists=_ios_localized_info_plists(root),
+        ios_kotlin_sources={
+            name: text for name, text in prod_kotlin.items() if "/src/iosMain/" in name
+        },
     )
     check_native_safe_test_names(_native_test_sources(root))
     check_no_top_level_or_object_snapshot_state(_top_level_snapshot_state_sources(root))
@@ -2064,6 +2241,104 @@ com.apple.SignInWithApple = {
                 f"self-test: web-container checker accepted {(bad_kt, bad_java, bad_gradle, bad_native)!r}"
             )
 
+    good_ios_plist = """<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>NSCameraUsageDescription</key><string>Camera usage</string>
+<key>NSMicrophoneUsageDescription</key><string>Microphone usage</string>
+</dict></plist>
+"""
+    good_ios_strings_body = (
+        '"NSCameraUsageDescription" = "Camera usage";\n'
+        '"NSMicrophoneUsageDescription" = "Microphone usage";\n'
+    )
+    good_ios_localized = {
+        f"{IOS_INFO_PLIST_APP_DIR}/{loc}.lproj/InfoPlist.strings": good_ios_strings_body
+        for loc in IOS_REQUIRED_INFOPLIST_LOCALES
+    }
+    good_ios_kt = {
+        "compose/web-container/src/iosMain/kotlin/Host.kt": (
+            "class D : NSObject(), WKUIDelegateProtocol {\n"
+            "  override fun webView(webView: WKWebView, requestMediaCapturePermissionForOrigin: WKSecurityOrigin) {}\n"
+            "}\n"
+        ),
+    }
+    check_ios_webview_media_capture_tcc_guard(good_ios_plist, good_ios_localized, good_ios_kt)
+    bad_ios_tcc_cases = (
+        # Missing NSMicrophoneUsageDescription in Info.plist
+        (
+            good_ios_plist.replace("<key>NSMicrophoneUsageDescription</key><string>Microphone usage</string>", ""),
+            good_ios_localized,
+            good_ios_kt,
+        ),
+        # Blank NSMicrophoneUsageDescription in Info.plist
+        (
+            good_ios_plist.replace("Microphone usage", "   "),
+            good_ios_localized,
+            good_ios_kt,
+        ),
+        # Missing NSCameraUsageDescription in Info.plist
+        (
+            good_ios_plist.replace("<key>NSCameraUsageDescription</key><string>Camera usage</string>", ""),
+            good_ios_localized,
+            good_ios_kt,
+        ),
+        # Missing one required locale
+        (
+            good_ios_plist,
+            {k: v for k, v in good_ios_localized.items() if "/ja.lproj/" not in k},
+            good_ios_kt,
+        ),
+        # Blank microphone entry in one locale
+        (
+            good_ios_plist,
+            {
+                **good_ios_localized,
+                f"{IOS_INFO_PLIST_APP_DIR}/ko.lproj/InfoPlist.strings": (
+                    '"NSCameraUsageDescription" = "Camera";\n"NSMicrophoneUsageDescription" = "   ";\n'
+                ),
+            },
+            good_ios_kt,
+        ),
+        # Commented-out microphone entry in one locale
+        (
+            good_ios_plist,
+            {
+                **good_ios_localized,
+                f"{IOS_INFO_PLIST_APP_DIR}/en.lproj/InfoPlist.strings": (
+                    '"NSCameraUsageDescription" = "Camera";\n// "NSMicrophoneUsageDescription" = "Mic";\n'
+                ),
+            },
+            good_ios_kt,
+        ),
+        # WKUIDelegateProtocol missing requestMediaCapturePermissionForOrigin override
+        (
+            good_ios_plist,
+            good_ios_localized,
+            {
+                "compose/shared/src/iosMain/kotlin/Bad.kt": (
+                    "class D : NSObject(), WKUIDelegateProtocol {\n"
+                    "  // requestMediaCapturePermissionForOrigin in comment does not count\n"
+                    "}\n"
+                ),
+            },
+        ),
+        # Empty iosMain scan (fail-closed)
+        (
+            good_ios_plist,
+            good_ios_localized,
+            {"compose/shared/src/iosMain/kotlin/NoDelegate.kt": "class Plain\n"},
+        ),
+    )
+    for bad_plist, bad_loc, bad_kt in bad_ios_tcc_cases:
+        try:
+            check_ios_webview_media_capture_tcc_guard(bad_plist, bad_loc, bad_kt)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(
+                f"self-test: iOS WebView TCC guard accepted {(bad_plist, bad_loc, bad_kt)!r}"
+            )
+
     print("check_source_constraints self-test passed")
 
 
@@ -2086,7 +2361,8 @@ def main(argv: list[str]) -> int:
         "dm:@artin:#2 date/time DI invariants, #proj-mobile:#319 server refusal invariants, "
         "#wg-mobile-sync:bf308ade desktop Wry off-EDT gateway, "
         "#wg-mobile-feedback:#274 freshness by default, "
-        "dm:@artin:#6 web-container security & module boundary invariants)"
+        "dm:@artin:#6 web-container security & module boundary invariants, "
+        "#wg-mobile-feedback:#308 iOS WebView media capture TCC guard)"
     )
     return 0
 

@@ -1,3 +1,4 @@
 "NSPhotoLibraryUsageDescription" = "Raft は、メッセージに添付する画像を選択するために写真ライブラリへアクセスします。";
 "NSCameraUsageDescription" = "Raft は、メッセージに添付する写真を撮影するためにカメラへアクセスします。";
+"NSMicrophoneUsageDescription" = "Raft は、Raft や Raft アプリで音声やオーディオ機能を使用するためにマイクへアクセスします。";
 "NSPhotoLibraryAddUsageDescription" = "「写真に保存」を選択すると、Raft はメッセージの画像添付ファイルを写真ライブラリに保存します。";

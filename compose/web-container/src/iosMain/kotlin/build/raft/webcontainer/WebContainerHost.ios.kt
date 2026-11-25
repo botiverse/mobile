@@ -57,14 +57,18 @@ import platform.WebKit.WKBackForwardListItem
 import platform.WebKit.WKContentWorld
 import platform.WebKit.WKDownload
 import platform.WebKit.WKDownloadDelegateProtocol
+import platform.WebKit.WKFrameInfo
+import platform.WebKit.WKMediaCaptureType
 import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationAction
 import platform.WebKit.WKNavigationActionPolicy
 import platform.WebKit.WKNavigationDelegateProtocol
 import platform.WebKit.WKNavigationResponse
 import platform.WebKit.WKNavigationResponsePolicy
+import platform.WebKit.WKPermissionDecision
 import platform.WebKit.WKScriptMessage
 import platform.WebKit.WKScriptMessageHandlerWithReplyProtocol
+import platform.WebKit.WKSecurityOrigin
 import platform.WebKit.WKUIDelegateProtocol
 import platform.WebKit.WKURLSchemeHandlerProtocol
 import platform.WebKit.WKURLSchemeTaskProtocol
@@ -1221,6 +1225,59 @@ internal class WebContainerIosHost(
         notifyNavigationBlocked(action.request.URL?.absoluteString.orEmpty(), "new_window_blocked")
     }
 
+    internal fun decideMediaCapturePermission(
+        source: WKWebView,
+        originLabel: String,
+        isMainFrame: Boolean,
+        type: WKMediaCaptureType,
+        hasUsageDescription: (String) -> Boolean = ::iosBundleHasUsageDescription,
+    ): WKPermissionDecision {
+        if (disposed || !isSameObjCObject(source, webView)) {
+            return WKPermissionDecision.WKPermissionDecisionDeny
+        }
+        val kind = type.toWebMediaCaptureKind()
+        val decision = evaluateIosWebMediaCapturePermission(kind, hasUsageDescription)
+        val surfaceId = config?.surfaceId ?: "default"
+        when (decision) {
+            IosWebMediaCaptureDecision.Prompt -> {
+                telemetrySink?.onEvent(
+                    WebContainerTelemetryEvent.MediaCapturePermission(
+                        surfaceId = surfaceId,
+                        kind = kind.name,
+                        grantedPrompt = true,
+                        reason = null,
+                        missingKeys = emptyList(),
+                        origin = originLabel,
+                        isMainFrame = isMainFrame,
+                    ),
+                )
+                val logLine =
+                    "[WebContainer][info] media_capture_permission decision=prompt surface=$surfaceId " +
+                        "kind=${kind.name} mainFrame=$isMainFrame origin=$originLabel"
+                NSLog(logLine.replace("%", "%%"))
+            }
+            is IosWebMediaCaptureDecision.Deny -> {
+                telemetrySink?.onEvent(
+                    WebContainerTelemetryEvent.MediaCapturePermission(
+                        surfaceId = surfaceId,
+                        kind = kind.name,
+                        grantedPrompt = false,
+                        reason = decision.reason,
+                        missingKeys = decision.missingKeys,
+                        origin = originLabel,
+                        isMainFrame = isMainFrame,
+                    ),
+                )
+                val logLine =
+                    "[WebContainer][warn] media_capture_permission decision=deny surface=$surfaceId " +
+                        "kind=${kind.name} reason=${decision.reason} missingKeys=${decision.missingKeys.joinToString(",")} " +
+                        "mainFrame=$isMainFrame origin=$originLabel"
+                NSLog(logLine.replace("%", "%%"))
+            }
+        }
+        return decision.toWkPermissionDecision()
+    }
+
     private fun handleWatchdogAction(action: WebContainerWatchdogAction) {
         when (action) {
             WebContainerWatchdogAction.None -> Unit
@@ -1353,6 +1410,23 @@ private class WebContainerIosNavigationDelegate(
     ): WKWebView? {
         owner.createWindowBlocked(webView, forNavigationAction)
         return null
+    }
+
+    override fun webView(
+        webView: WKWebView,
+        requestMediaCapturePermissionForOrigin: WKSecurityOrigin,
+        initiatedByFrame: WKFrameInfo,
+        type: WKMediaCaptureType,
+        decisionHandler: (WKPermissionDecision) -> Unit,
+    ) {
+        decisionHandler(
+            owner.decideMediaCapturePermission(
+                source = webView,
+                originLabel = formatIosSecurityOriginForLog(requestMediaCapturePermissionForOrigin),
+                isMainFrame = initiatedByFrame.mainFrame,
+                type = type,
+            ),
+        )
     }
 }
 

@@ -5,6 +5,12 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
+import build.raft.webcontainer.IosWebMediaCaptureDecision
+import build.raft.webcontainer.evaluateIosWebMediaCapturePermission
+import build.raft.webcontainer.formatIosSecurityOriginForLog
+import build.raft.webcontainer.iosBundleHasUsageDescription
+import build.raft.webcontainer.toWebMediaCaptureKind
+import build.raft.webcontainer.toWkPermissionDecision
 import kotlinx.cinterop.CEnum
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -24,14 +30,18 @@ import platform.WebKit.WKAudiovisualMediaTypeAll
 import platform.WebKit.WKBackForwardListItem
 import platform.WebKit.WKDownload
 import platform.WebKit.WKDownloadDelegateProtocol
+import platform.WebKit.WKFrameInfo
+import platform.WebKit.WKMediaCaptureType
 import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationAction
 import platform.WebKit.WKNavigationActionPolicy
 import platform.WebKit.WKNavigationDelegateProtocol
 import platform.WebKit.WKNavigationResponse
 import platform.WebKit.WKNavigationResponsePolicy
+import platform.WebKit.WKPermissionDecision
 import platform.WebKit.WKScriptMessage
 import platform.WebKit.WKScriptMessageHandlerProtocol
+import platform.WebKit.WKSecurityOrigin
 import platform.WebKit.WKUIDelegateProtocol
 import platform.WebKit.WKUserContentController
 import platform.WebKit.WKUserScript
@@ -1124,6 +1134,32 @@ internal class RaftIosSandboxWebView(
         notifyNavigationBlocked(action.request.URL?.absoluteString ?: "")
     }
 
+    internal fun decideMediaCapturePermission(
+        source: WKWebView,
+        originLabel: String,
+        isMainFrame: Boolean,
+        type: WKMediaCaptureType,
+        hasUsageDescription: (String) -> Boolean = ::iosBundleHasUsageDescription,
+    ): WKPermissionDecision {
+        if (disposed || !raftIsSameObjCObject(source, webView)) {
+            return WKPermissionDecision.WKPermissionDecisionDeny
+        }
+        val kind = type.toWebMediaCaptureKind()
+        val decision = evaluateIosWebMediaCapturePermission(kind, hasUsageDescription)
+        when (decision) {
+            IosWebMediaCaptureDecision.Prompt ->
+                diagnosticsInfo(
+                    "media_capture_permission decision=prompt kind=${kind.name} mainFrame=$isMainFrame origin=$originLabel",
+                )
+            is IosWebMediaCaptureDecision.Deny ->
+                diagnosticsWarn(
+                    "media_capture_permission decision=deny kind=${kind.name} reason=${decision.reason} " +
+                        "missingKeys=${decision.missingKeys.joinToString(",")} mainFrame=$isMainFrame origin=$originLabel",
+                )
+        }
+        return decision.toWkPermissionDecision()
+    }
+
     internal fun didReceiveScriptMessage(controller: WKUserContentController, message: WKScriptMessage) {
         val view = webView ?: return
         if (message.name != RaftWebViewHostPortName || !hostEventsEnabled) return
@@ -1354,6 +1390,23 @@ private class RaftIosWebViewDelegate(
     ): WKWebView? {
         owner.createWindowBlocked(webView, forNavigationAction)
         return null
+    }
+
+    override fun webView(
+        webView: WKWebView,
+        requestMediaCapturePermissionForOrigin: WKSecurityOrigin,
+        initiatedByFrame: WKFrameInfo,
+        type: WKMediaCaptureType,
+        decisionHandler: (WKPermissionDecision) -> Unit,
+    ) {
+        decisionHandler(
+            owner.decideMediaCapturePermission(
+                source = webView,
+                originLabel = formatIosSecurityOriginForLog(requestMediaCapturePermissionForOrigin),
+                isMainFrame = initiatedByFrame.mainFrame,
+                type = type,
+            ),
+        )
     }
 }
 

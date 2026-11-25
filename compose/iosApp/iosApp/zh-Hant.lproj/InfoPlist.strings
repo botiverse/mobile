@@ -1,3 +1,4 @@
 "NSPhotoLibraryUsageDescription" = "Raft 需要存取照片圖庫，以便選擇圖片並附加到訊息。";
 "NSCameraUsageDescription" = "Raft 需要存取相機，以便拍攝照片並附加到訊息。";
+"NSMicrophoneUsageDescription" = "Raft 需要存取麥克風，以便在 Raft 和 Raft 應用程式中使用語音或音訊功能。";
 "NSPhotoLibraryAddUsageDescription" = "當你選擇「儲存到照片」時，Raft 會將訊息中的圖片附件儲存到你的照片圖庫。";

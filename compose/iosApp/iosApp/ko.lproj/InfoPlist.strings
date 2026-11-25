@@ -1,3 +1,4 @@
 "NSPhotoLibraryUsageDescription" = "Raft는 메시지에 첨부할 이미지를 선택할 때 사진 보관함에 접근해요.";
 "NSCameraUsageDescription" = "Raft는 메시지에 첨부할 사진을 찍을 때 카메라에 접근해요.";
+"NSMicrophoneUsageDescription" = "Raft는 Raft 및 Raft 앱에서 음성이나 오디오 기능을 사용할 때 마이크에 접근해요.";
 "NSPhotoLibraryAddUsageDescription" = "'사진에 저장'을 선택하면 Raft가 메시지의 이미지 첨부 파일을 사진 보관함에 저장해요.";
