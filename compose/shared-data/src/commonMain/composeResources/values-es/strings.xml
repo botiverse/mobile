@@ -3583,6 +3583,8 @@
     <string name="composer_add_image">Añadir imagen</string>
     <string name="composer_take_photo">Tomar foto</string>
     <string name="composer_attach_file">Adjuntar archivo</string>
+    <string name="composer_expand">Expandir</string>
+    <string name="composer_collapse">Contraer</string>
     <string name="markdown_task_list_checkbox">Casilla de la lista de tareas</string>
     <string name="markdown_task_list_checked">Completada</string>
     <string name="markdown_task_list_unchecked">Sin completar</string>

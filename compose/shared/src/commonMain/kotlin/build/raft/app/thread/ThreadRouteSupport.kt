@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
@@ -1146,37 +1147,62 @@ internal fun ThreadRouteScaffold(
                                 if (carriesMainTabs && !headAsideForKeyboard) slots.header()
                                 // Only the conversation header carries the main pane's row tabs; body / cover headers do not.
                                 CompositionLocalProvider(build.raft.designsystem.components.LocalRaftPaneGridHeadTabs provides null) {
+                                    val composerExpandState =
+                                        remember(slots.scaffoldPlan.rootIdentity) { ThreadComposerExpandState() }
+                                    val composerExpandKey =
+                                        slots.composerDock?.args?.surface?.expandConversationKey.orEmpty()
+                                    val composerExpanded =
+                                        slots.composerDock != null &&
+                                            composerExpandState.isExpanded(
+                                                conversationKey = composerExpandKey,
+                                                canExpand = threadComposerCanExpand(expandable = true, windowWidthDp = raftWindowWidth()),
+                                            )
                                     // Keep the body+composer Column inside one persistent Box regardless of
-                                    // bodyCover so opening/closing Task v2's phone cover or switching
-                                    // LoadingShell -> FeatureSurfaces never reparents or detaches the composer.
+                                    // bodyCover or expanded composer so neither the message list nor the live
+                                    // composer ever reparents or detaches.
                                     Box(Modifier.weight(1f).fillMaxWidth()) {
-                                        Column(Modifier.fillMaxSize()) {
-                                            slots.body(this)
-                                            val composerDock = slots.composerDock
-                                            if (composerDock != null) {
-                                                val latestOnFocusChanged by rememberUpdatedState(composerDock.onFocusChanged)
-                                                val resolvedRemovedAppBot =
-                                                    rememberRaftMemberAppBot(composerDock.dmAgentPeerId)?.takeIf { it.removed }
-                                                        ?: composerDock.args.removedAppBot
-                                                ThreadComposerDock(
-                                                    edgePadding = composerDock.edgePadding,
-                                                    composerModifier =
-                                                        composerDock.composerModifier.onFocusChanged { focusState ->
-                                                            latestOnFocusChanged?.invoke(focusState.hasFocus)
+                                        CompositionLocalProvider(LocalThreadComposerExpandState provides composerExpandState) {
+                                            Column(Modifier.fillMaxSize()) {
+                                                Column(
+                                                    modifier =
+                                                        if (composerExpanded) {
+                                                            Modifier
+                                                                .fillMaxWidth()
+                                                                .height(ThreadComposerExpandedMessageListStripHeight)
+                                                        } else {
+                                                            Modifier.weight(1f).fillMaxWidth()
                                                         }
-                                                            // #338: typed in where only it fits above the keyboard, it runs the
-                                                            // wide shell's full width (raftWideKeyboardComposerOnly).
-                                                            .raftWideKeyboardComposerFocus(),
-                                                    keyboardLiftPx = composerDock.keyboardLiftPx,
                                                 ) {
-                                                    CompositionLocalProvider(
-                                                        LocalThreadComposerSuggestionPortal provides composerDock.suggestionPortal,
-                                                        LocalAgentLoungeComposerName provides composerDock.agentLoungeComposerName,
+                                                    slots.body(this)
+                                                }
+                                                val composerDock = slots.composerDock
+                                                if (composerDock != null) {
+                                                    val latestOnFocusChanged by rememberUpdatedState(composerDock.onFocusChanged)
+                                                    val resolvedRemovedAppBot =
+                                                        rememberRaftMemberAppBot(composerDock.dmAgentPeerId)?.takeIf { it.removed }
+                                                            ?: composerDock.args.removedAppBot
+                                                    ThreadComposerDock(
+                                                        modifier = if (composerExpanded) Modifier.weight(1f) else Modifier,
+                                                        edgePadding = composerDock.edgePadding,
+                                                        expanded = composerExpanded,
+                                                        composerModifier =
+                                                            composerDock.composerModifier.onFocusChanged { focusState ->
+                                                                latestOnFocusChanged?.invoke(focusState.hasFocus)
+                                                            }
+                                                                // #338: typed in where only it fits above the keyboard, it runs the
+                                                                // wide shell's full width (raftWideKeyboardComposerOnly).
+                                                                .raftWideKeyboardComposerFocus(),
+                                                        keyboardLiftPx = composerDock.keyboardLiftPx,
                                                     ) {
-                                                        ThreadComposerRouteFromArgs(
-                                                            args = composerDock.args,
-                                                            removedAppBotOverride = resolvedRemovedAppBot,
-                                                        )
+                                                        CompositionLocalProvider(
+                                                            LocalThreadComposerSuggestionPortal provides composerDock.suggestionPortal,
+                                                            LocalAgentLoungeComposerName provides composerDock.agentLoungeComposerName,
+                                                        ) {
+                                                            ThreadComposerRouteFromArgs(
+                                                                args = composerDock.args,
+                                                                removedAppBotOverride = resolvedRemovedAppBot,
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }

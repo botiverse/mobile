@@ -3583,6 +3583,8 @@
     <string name="composer_add_image">Добавить изображение</string>
     <string name="composer_take_photo">Сделать фото</string>
     <string name="composer_attach_file">Прикрепить файл</string>
+    <string name="composer_expand">Развернуть</string>
+    <string name="composer_collapse">Свернуть</string>
     <string name="markdown_task_list_checkbox">Флажок в списке задач</string>
     <string name="markdown_task_list_checked">Выполнено</string>
     <string name="markdown_task_list_unchecked">Не выполнено</string>
