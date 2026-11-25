@@ -437,7 +437,7 @@ jobs:
             *) echo "Unsupported Android variant: ${{ needs.resolve.outputs.android_variant }}" >&2; exit 1 ;;
           esac
           SQLDELIGHT_TASK=":shared:generateSqlDelightInterface"
-          if [ -d compose/shared-data/src/commonMain/sqldelight ]; then
+          if [ -d shared-data/src/commonMain/sqldelight ]; then
             SQLDELIGHT_TASK=":shared-data:generateSqlDelightInterface"
           fi
           GRADLE_ARGS=(
