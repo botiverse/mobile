@@ -19,6 +19,7 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftChoiceList
 import build.raft.designsystem.components.RaftChoiceListGroup
 import build.raft.designsystem.components.RaftChoiceListItem
+import build.raft.designsystem.components.RaftChoiceListSearch
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftIconButton
@@ -111,6 +112,77 @@ fun ChoiceListMultiple() {
             MultiCase(values = emptySet(), items = people(disabled = "agent:cindy"))
         }
     }
+}
+
+/**
+ * A question card's options in a form (web ActionCardChoiceField): single and multiple with
+ * `search="auto"` as plain columns (no search field at 5 or fewer, no frame of their own to
+ * scroll), and both invalid, their frames in `danger-strong`.
+ */
+@VCase("ds.choice-list.form", maxWidth = 1600)
+@Composable
+fun ChoiceListForm() {
+    val answers =
+        listOf(
+            RaftChoiceListItem("utc", "UTC", listOf(AnnotatedString("All times in UTC."))),
+            RaftChoiceListItem("local", "My time zone"),
+            RaftChoiceListItem("both", "Both, side by side"),
+            RaftChoiceListItem("other", "Other…"),
+        )
+    Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
+        Column(Modifier.width(358.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Caption("Single, 4 options: no search")
+            QuestionSingle(answers, value = "local")
+            Caption("Single, invalid")
+            QuestionSingle(answers, value = null, invalid = true)
+        }
+        Column(Modifier.width(358.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Caption("Multiple, search=Auto, plain column: no search")
+            QuestionMultiple(answers, values = setOf("utc", "both"))
+            Caption("Multiple, invalid")
+            QuestionMultiple(answers, values = emptySet(), invalid = true)
+        }
+        Column(Modifier.width(358.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Caption("Multiple, search=Auto, 8 options: search, scrolls past 288dp")
+            QuestionMultiple(computers(8), values = setOf("c1"))
+            Caption("Invalid but disabled: disabled wins")
+            QuestionMultiple(answers, values = emptySet(), invalid = true, enabled = false)
+        }
+    }
+}
+
+@Composable
+private fun QuestionSingle(items: List<RaftChoiceListItem<String>>, value: String?, invalid: Boolean = false) {
+    RaftChoiceList(
+        items = items,
+        value = value,
+        onValueChange = {},
+        searchPlaceholder = "Search",
+        clearSearchLabel = "Clear search",
+        noMatchLabel = "No matches",
+        emptyLabel = "No options",
+        onItemClick = {},
+        invalid = invalid,
+    )
+}
+
+@Composable
+private fun QuestionMultiple(items: List<RaftChoiceListItem<String>>, values: Set<String>, invalid: Boolean = false, enabled: Boolean = true) {
+    RaftMultiChoiceList(
+        items = items,
+        values = values,
+        onValuesChange = {},
+        query = "",
+        onQueryChange = {},
+        searchPlaceholder = "Search",
+        clearSearchLabel = "Clear search",
+        noMatchLabel = "No matches",
+        emptyLabel = "No options",
+        enabled = enabled,
+        search = RaftChoiceListSearch.Auto,
+        lazy = false,
+        invalid = invalid,
+    )
 }
 
 @Composable
