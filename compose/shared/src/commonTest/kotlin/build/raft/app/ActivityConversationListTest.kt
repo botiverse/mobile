@@ -2,6 +2,8 @@ package build.raft.app
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.unit.dp
 import build.raft.app.data.ActivityObjectRow
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
@@ -456,13 +458,66 @@ class ActivityConversationListTest {
     }
 
     @Test
-    fun activityRowsShowOneExcerptLineAtEveryWidthAsTheWeb() {
-        // artin 2026-11-23 (db45cd71): a phone's Activity row shows one excerpt line, as the web's compact
-        // inbox row and the app's wide layout already do; the row then takes the web's 56dp by touch.
-        for (scale in listOf(RaftScale.Compact, RaftScale.Wide)) {
-            for (input in RaftPointerInput.entries) {
-                assertEquals(1, ActivityRowLayout.of(scale, input).previewLines, "$scale $input")
-            }
+    fun bodyTextAppliesChannelStyleOnlyToTheChannelLabel() {
+        val hintStyle = SpanStyle(color = Color.Gray)
+        val senderStyle = SpanStyle(color = Color.Black)
+        val styled =
+            activityConversationBodyText(
+                sender = "Mahua",
+                preview = AnnotatedString("hi"),
+                senderStyle = senderStyle,
+                channelLabel = "#design ·",
+                channelStyle = hintStyle,
+                senderAvatar = true,
+            )
+        assertEquals("#design ·  Mahua: hi", styled.text)
+        val channelSpan = styled.spanStyles.firstOrNull { it.item == hintStyle }
+        assertEquals(AnnotatedString.Range(hintStyle, 0, "#design · ".length), channelSpan)
+        val senderStart = "#design ·  ".length
+        val senderSpan = styled.spanStyles.firstOrNull { it.item == senderStyle }
+        assertEquals(AnnotatedString.Range(senderStyle, senderStart, senderStart + "Mahua: ".length), senderSpan)
+
+        // Default channelStyle (null) leaves the channel label unstyled.
+        val unstyled =
+            activityConversationBodyText(
+                sender = "Mahua",
+                preview = AnnotatedString("hi"),
+                senderStyle = senderStyle,
+                channelLabel = "#design ·",
+            )
+        assertTrue(unstyled.spanStyles.none { it.start == 0 && it.end == "#design · ".length })
+
+        // Blank or missing channelLabel adds no channel span.
+        val noChannel =
+            activityConversationBodyText(
+                sender = "Mahua",
+                preview = AnnotatedString("hi"),
+                senderStyle = senderStyle,
+                channelLabel = "   ",
+                channelStyle = hintStyle,
+            )
+        assertTrue(noChannel.spanStyles.none { it.item == hintStyle })
+    }
+
+    @Test
+    fun activityPhoneRowsUseTwoLineAutoHeightPreviewWhileWideKeepsSingleLine() {
+        // raft-design#1433 / #proj-mobile:#372 Option A: phones / compact width use the two-line
+        // preview with content-following height (56dp 1-line, 76dp 2-line on touch) and 8dp padY;
+        // wide lists keep the single-line `InboxItemLine` layout.
+        for (input in RaftPointerInput.entries) {
+            val phone = ActivityRowLayout.of(RaftScale.Compact, input)
+            assertTrue(phone.twoLinePreview, "Compact $input twoLinePreview")
+            assertEquals(2, phone.previewLines, "Compact $input previewLines")
+            assertFalse(phone.reservePreviewLines, "Compact $input reservePreviewLines")
+            assertEquals(8.dp, phone.padY, "Compact $input padY")
+            assertEquals(if (input == RaftPointerInput.Fine) 0.dp else 56.dp, phone.minHeight, "Compact $input minHeight")
+
+            val wide = ActivityRowLayout.of(RaftScale.Wide, input)
+            assertFalse(wide.twoLinePreview, "Wide $input twoLinePreview")
+            assertEquals(1, wide.previewLines, "Wide $input previewLines")
+            assertTrue(wide.reservePreviewLines, "Wide $input reservePreviewLines")
+            assertEquals(8.dp, wide.padY, "Wide $input padY")
+            assertEquals(if (input == RaftPointerInput.Fine) 0.dp else 56.dp, wide.minHeight, "Wide $input minHeight")
         }
     }
 
