@@ -4270,12 +4270,26 @@ internal fun RaftComputerWorkspacesSection(
 
 @Composable
 private fun RaftComputerWorkspaceRow(workspace: SettingsComputerWorkspaceSnapshot, divider: Boolean) {
+    val sizeText =
+        raftComputerWorkspaceSize(workspace.totalSizeBytes)?.let { formatted ->
+            if (workspace.partial) {
+                stringResource(Res.string.settings_computers_workspace_at_least, formatted)
+            } else {
+                formatted
+            }
+        }
     val files =
         workspace.fileCount?.let { count ->
-            if (count == 1) {
-                stringResource(Res.string.settings_computers_file_count_one, count)
+            val formatted =
+                if (count == 1) {
+                    stringResource(Res.string.settings_computers_file_count_one, count)
+                } else {
+                    stringResource(Res.string.settings_computers_file_count_many, count)
+                }
+            if (workspace.partial) {
+                stringResource(Res.string.settings_computers_workspace_at_least, formatted)
             } else {
-                stringResource(Res.string.settings_computers_file_count_many, count)
+                formatted
             }
         }
     val modified =
@@ -4287,7 +4301,7 @@ private fun RaftComputerWorkspaceRow(workspace: SettingsComputerWorkspaceSnapsho
         title = workspace.name,
         divider = divider,
         subtitle = workspace.path,
-        description = listOfNotNull(raftComputerWorkspaceSize(workspace.totalSizeBytes), files, modified).joinToString(" · ").ifBlank { null },
+        description = listOfNotNull(sizeText, files, modified).joinToString(" · ").ifBlank { null },
         leading = {
             RaftIconTile { RaftComputersIcon(RaftLucideIconName.FolderOpen, size = RaftIconTileSize.Md.icon) }
         },

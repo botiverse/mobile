@@ -137,7 +137,10 @@ import kotlinx.coroutines.flow.update
     val title: String = "",
     val locale: String = "en",
     val includeMachineLogTail: Boolean = false,
-    val canIncludeMachineLog: Boolean = false
+    val canIncludeMachineLog: Boolean = false,
+    val includeDiagnosticsBundle: Boolean = false,
+    val canIncludeDiagnosticsBundle: Boolean = false,
+    val diagnosticsBundleRange: AgentIssueDiagnosticsBundleRange = AgentIssueDiagnosticsBundleRange.ReportWindow
 )
 
 @RaftCoreInternalApi interface SharedAgentDetailActions {

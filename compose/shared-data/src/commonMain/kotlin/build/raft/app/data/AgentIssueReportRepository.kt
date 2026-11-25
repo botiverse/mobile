@@ -65,6 +65,17 @@ private val agentIssueRequestJson = Json {
 @RaftCoreInternalApi const val AGENT_ISSUE_REPORT_PRIVACY_MODE_ON = "agent_issue_report_privacy_mode_on"
 @RaftCoreInternalApi const val AGENT_ISSUE_REPORT_PRIVACY_MODE_UNKNOWN = "agent_issue_report_privacy_mode_unknown"
 
+/**
+ * Closed range presets for Report issue's Computer diagnostics bundle (slock #16580,
+ * `FEEDBACK_DIAGNOSTICS_BUNDLE_RANGES`). The server turns the preset into `{ scope, from, to }`
+ * itself; clients never send timestamps or paths.
+ */
+@RaftCoreInternalApi enum class AgentIssueDiagnosticsBundleRange(val wire: String) {
+    ReportWindow("report_window"),
+    Last24h("last_24h"),
+    Last7d("last_7d"),
+}
+
 @RaftCoreInternalApi data class AgentIssueReportSubmission(
     val server: ServerSummary,
     val member: MemberProfile,
@@ -86,7 +97,16 @@ private val agentIssueRequestJson = Json {
      * transcript is requested; the server re-checks ownership.
      */
     val includeMachineLogTail: Boolean = false,
-    val canIncludeMachineLog: Boolean = false
+    val canIncludeMachineLog: Boolean = false,
+    /**
+     * Computer diagnostics bundle (slock #16580). Only honoured when [canIncludeDiagnosticsBundle]
+     * (the reporter attached the agent's Computer) and the runtime transcript is requested; the
+     * server re-checks ownership (`403 diagnostics_bundle_owner_required`) and daemon capability
+     * (`feedback-diagnostics-bundle:v1`).
+     */
+    val includeDiagnosticsBundle: Boolean = false,
+    val canIncludeDiagnosticsBundle: Boolean = false,
+    val diagnosticsBundleRange: AgentIssueDiagnosticsBundleRange = AgentIssueDiagnosticsBundleRange.ReportWindow
 )
 
 /**
@@ -229,6 +249,10 @@ private val agentIssueRequestJson = Json {
                                             includeMachineLogTail =
                                                 true.takeIf {
                                                     submission.canIncludeMachineLog && submission.includeMachineLogTail
+                                                },
+                                            diagnosticsBundleRange =
+                                                submission.diagnosticsBundleRange.wire.takeIf {
+                                                    submission.canIncludeDiagnosticsBundle && submission.includeDiagnosticsBundle
                                                 }
                                         )
                                 )
@@ -506,7 +530,9 @@ private data class AgentIssueTicketMetadata(
 @RaftCoreInternalApi data class AgentIssueTranscriptRequest(
     val reportGeneratedAt: String,
     /** Sent only as `true`; omitted otherwise, as web. */
-    val includeMachineLogTail: Boolean? = null
+    val includeMachineLogTail: Boolean? = null,
+    /** Closed range preset (`report_window` | `last_24h` | `last_7d`); omitted unless opted in on own machine. */
+    val diagnosticsBundleRange: String? = null
 )
 
 @Serializable

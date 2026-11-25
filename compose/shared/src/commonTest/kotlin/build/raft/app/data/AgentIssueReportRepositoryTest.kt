@@ -128,6 +128,37 @@ class AgentIssueReportRepositoryTest {
     }
 
     @Test
+    fun diagnosticsBundleRangeIsSentOnlyWhenAttacherOptedInAcrossAllClosedPresets() = runTest {
+        AgentIssueDiagnosticsBundleRange.entries.forEach { preset ->
+            val network = RecordingAgentIssueNetworkClient()
+            repository(network).submit(
+                submission(
+                    canIncludeDiagnosticsBundle = true,
+                    includeDiagnosticsBundle = true,
+                    diagnosticsBundleRange = preset,
+                )
+            )
+            val transcript = assertNotNullBody(network.transcriptBody, preset.wire)
+            assertEquals(preset.wire, transcript["diagnosticsBundleRange"]?.jsonPrimitive?.content)
+        }
+        listOf(
+            Triple(false, true, "not attacher"),
+            Triple(true, false, "unticked"),
+        ).forEach { (canInclude, include, label) ->
+            val network = RecordingAgentIssueNetworkClient()
+            repository(network).submit(
+                submission(
+                    canIncludeDiagnosticsBundle = canInclude,
+                    includeDiagnosticsBundle = include,
+                    diagnosticsBundleRange = AgentIssueDiagnosticsBundleRange.Last7d,
+                )
+            )
+            val transcript = assertNotNullBody(network.transcriptBody, label)
+            assertFalse(transcript.containsKey("diagnosticsBundleRange"), "$label: diagnosticsBundleRange must be omitted")
+        }
+    }
+
+    @Test
     fun failedTicketStillReportsTheUploadAndRetryReusesTheSubmissionId() = runTest {
         val network = RecordingAgentIssueNetworkClient(ticketResponses = mutableListOf(HomeNetworkResponse(503, """{"code":"feedback_service_unavailable"}""")))
         val repository = repository(network)
@@ -148,8 +179,10 @@ class AgentIssueReportRepositoryTest {
     @Test
     fun transcriptRequestStateFollowsTheHttpAnswer() = runTest {
         listOf(
-            HomeNetworkResponse(202, """{"accepted":true}""") to AgentIssueTranscriptRequestState.Requested,
+            HomeNetworkResponse(202, """{"accepted":true,"diagnosticsBundle":"requested"}""") to AgentIssueTranscriptRequestState.Requested,
+            HomeNetworkResponse(202, """{"accepted":true,"diagnosticsBundle":"unsupported"}""") to AgentIssueTranscriptRequestState.Requested,
             HomeNetworkResponse(403, """{"code":"machine_log_tail_owner_required"}""") to AgentIssueTranscriptRequestState.RequestFailed,
+            HomeNetworkResponse(403, """{"code":"diagnostics_bundle_owner_required"}""") to AgentIssueTranscriptRequestState.RequestFailed,
             HomeNetworkResponse(0, null) to AgentIssueTranscriptRequestState.RequestUnconfirmed
         ).forEach { (response, expected) ->
             val network = RecordingAgentIssueNetworkClient(transcriptResponse = response)
@@ -269,7 +302,10 @@ class AgentIssueReportRepositoryTest {
     private fun submission(
         machineId: String? = "machine-1",
         canIncludeMachineLog: Boolean = false,
-        includeMachineLogTail: Boolean = false
+        includeMachineLogTail: Boolean = false,
+        canIncludeDiagnosticsBundle: Boolean = false,
+        includeDiagnosticsBundle: Boolean = false,
+        diagnosticsBundleRange: AgentIssueDiagnosticsBundleRange = AgentIssueDiagnosticsBundleRange.ReportWindow
     ): AgentIssueReportSubmission =
         AgentIssueReportSubmission(
             server = ServerSummary(id = serverId, name = "Botiverse", slug = "botiverse"),
@@ -310,7 +346,10 @@ class AgentIssueReportRepositoryTest {
             title = "Issue report for Android Visual Engineer (localized)",
             locale = "zh-CN",
             includeMachineLogTail = includeMachineLogTail,
-            canIncludeMachineLog = canIncludeMachineLog
+            canIncludeMachineLog = canIncludeMachineLog,
+            includeDiagnosticsBundle = includeDiagnosticsBundle,
+            canIncludeDiagnosticsBundle = canIncludeDiagnosticsBundle,
+            diagnosticsBundleRange = diagnosticsBundleRange
         )
 }
 

@@ -6,6 +6,7 @@ import build.raft.app.data.SettingsComputerAcceptedUpgrade
 import build.raft.app.data.SettingsComputerControlState
 import build.raft.app.data.SettingsComputerReleaseNotesSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.app.data.SettingsComputerUpgradeDiskFullSnapshot
 import build.raft.app.data.SettingsComputerUpgradeFailureHintSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
 import build.raft.app.data.resolveServerRefusal
@@ -335,6 +336,13 @@ private fun raftComputerEpochMillis(iso: String?): Long? =
      * [recommendRepair] instead and leaves this null.
      */
     val upgradeFailureHint: SettingsComputerUpgradeFailureHintSnapshot? = null,
+    /**
+     * Web `upgradeDiskFull` (`ComputerUpgradeDiskFull`, slock #16536): the last web upgrade failed
+     * for lack of disk space while the Computer still runs the version it failed on. Shown instead
+     * of the generic failure without the manual install command; clears [upgradeFailureHint] and
+     * [recommendRepair].
+     */
+    val upgradeDiskFull: SettingsComputerUpgradeDiskFullSnapshot? = null,
 )
 
 @RaftCoreInternalApi fun raftComputerUpgradeModel(
@@ -413,17 +421,20 @@ private fun raftComputerEpochMillis(iso: String?): Long? =
         (fact as? RaftComputerVersionFact.Outdated)?.let { outdated ->
             computer.latestComputerReleaseNotes?.takeIf { it.version == outdated.availableVersion }
         }
-    // Web computerUpgradeHints (slock #15061): earlier_recovery_pending turns on the existing
-    // repair advice rather than the systemd-unit failure hint, and clears once the Computer moves
-    // off the version it failed on or a newer request replaces it.
-    val activeFailureHint =
-        row?.failureHint?.takeIf {
-            card is RaftComputerCardState.OneClick && requestOutcome != null && row.state == "failed" &&
-                (row.observedVersion == null || row.observedVersion == computer.computerVersion)
+    // Web computerUpgradeHints (slock #15061, #16536): diskFull clears failureHint and repair advice
+    // (freeing space is the way past it; the install command would fail the same way). Otherwise
+    // earlier_recovery_pending turns on repair advice rather than the systemd-unit failure hint,
+    // clearing once the Computer moves off the version it failed on or a newer request replaces it.
+    val activeFailedRequest =
+        row?.takeIf {
+            card is RaftComputerCardState.OneClick && requestOutcome != null && it.state == "failed" &&
+                (it.observedVersion == null || it.observedVersion == computer.computerVersion)
         }
+    val upgradeDiskFull = activeFailedRequest?.diskFull
+    val activeFailureHint = if (upgradeDiskFull != null) null else activeFailedRequest?.failureHint
     val installerRepairHint = computer.installerRepairHint == "unrecovered_operation"
     val (upgradeFailureHint, recommendRepair) =
-        if (card !is RaftComputerCardState.OneClick) {
+        if (card !is RaftComputerCardState.OneClick || upgradeDiskFull != null) {
             null to false
         } else {
             when (activeFailureHint?.reason) {
@@ -445,6 +456,7 @@ private fun raftComputerEpochMillis(iso: String?): Long? =
         releaseNotes = releaseNotes,
         recommendRepair = recommendRepair,
         upgradeFailureHint = upgradeFailureHint,
+        upgradeDiskFull = upgradeDiskFull,
     )
 }
 

@@ -21,7 +21,15 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.DataResult
 import build.raft.app.data.PlatformFile
+import build.raft.app.data.PRODUCT_FEEDBACK_MAX_ATTACHMENTS
+import build.raft.app.data.PRODUCT_FEEDBACK_MAX_ZIP_ATTACHMENTS
+import build.raft.app.data.PRODUCT_FEEDBACK_MAX_ZIP_ATTACHMENT_BYTES
+import build.raft.app.data.PRODUCT_FEEDBACK_ZIP_CONTENT_TYPE
+import build.raft.app.data.ProductFeedbackAttachmentResolution
+import build.raft.app.data.isProductFeedbackZipCandidate
 import build.raft.app.data.productFeedbackImageContentType
+import build.raft.app.data.readProductFeedbackAttachmentHeaderBytes
+import build.raft.app.data.resolveProductFeedbackAttachment
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsFeedbackProxyAttempt
 import build.raft.app.data.SettingsFeedbackProxyOutcome
@@ -39,7 +47,6 @@ import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.settingsFeedbackPrivacyCode
 import build.raft.app.data.SettingsFeedbackCardDraft
 import build.raft.app.data.SharedPreferenceStore
-import build.raft.app.data.PRODUCT_FEEDBACK_MAX_ATTACHMENTS
 import build.raft.app.data.SettingsFeedbackType
 import build.raft.app.data.SettingsHandsFeedbackSubmission
 import build.raft.app.data.SettingsHandsFeedbackDraftSnapshot
@@ -352,28 +359,46 @@ internal fun SharedHandsFeedbackContent(
     }
 
     /**
-     * Picked (or pasted) files into the form: the 10 MB cap and the 3-image limit, then a new
-     * image opens in the annotation editor. Done there replaces it in place, Cancel keeps it.
+     * Picked (or pasted) files into the form: the 10 MB cap, zip magic-byte + single-zip check
+     * when signed in (slock #16580), and the 3-attachment limit, then a new image opens in the
+     * annotation editor. Done there replaces it in place, Cancel keeps it.
      * [typeRejectedCount]: files already left out for a type the server refuses.
      */
-    fun admitAttachments(files: List<PlatformFile>, imageOnly: Boolean, typeRejectedCount: Int = 0) {
+    suspend fun admitAttachments(files: List<PlatformFile>, imageOnly: Boolean, typeRejectedCount: Int = 0) {
         val pickedFiles =
             normalizeSettingsHandsFeedbackPickerFiles(
                 files = files,
                 imageOnly = imageOnly
             )
         val before = attachmentsState.value
+        val (candidateFiles, extraTypeRejected, extraTooLarge) =
+            if (proxySubmitter != null) {
+                val admission =
+                    withContext(Dispatchers.Default) {
+                        filterSettingsHandsFeedbackProxyAttachments(
+                            existing = before,
+                            picked = pickedFiles,
+                            imageOnly = imageOnly,
+                            attachmentMaxBytes = attachmentMaxBytes,
+                        )
+                    }
+                Triple(admission.accepted, admission.typeRejectedCount, admission.tooLargeCount)
+            } else {
+                Triple(pickedFiles, 0, 0)
+            }
         val merge =
             settingsHandsFeedbackMergedAttachments(
                 existing = before,
-                picked = pickedFiles,
+                picked = candidateFiles,
                 attachmentMaxBytes = attachmentMaxBytes,
                 attachmentLimit = attachmentLimit
             )
+        val totalRejectedTooLarge = extraTooLarge + merge.rejectedCount
+        val totalTypeRejected = typeRejectedCount + extraTypeRejected
         attachments = merge.attachments
         error = when {
-            typeRejectedCount > 0 -> copy.submissionAttachmentTypeBody
-            merge.rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
+            totalRejectedTooLarge > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
+            totalTypeRejected > 0 -> copy.submissionAttachmentTypeBody
             merge.limitTrimmed -> copy.attachmentLimitTrimmed(attachmentLimit)
             else -> null
         }
@@ -407,21 +432,24 @@ internal fun SharedHandsFeedbackContent(
         }
         beginAttachmentAdmission()
         scope.launch {
-            when (val result = settingsCapabilities.pickFeedbackAttachment(imageOnly, capture)) {
-                is DataResult.Content -> admitAttachments(result.data, imageOnly = imageOnly || capture)
-                is DataResult.Empty -> Unit
-                is DataResult.Error -> error = copy.attachmentPickerFailed
-                is DataResult.NoPermission -> error = copy.attachmentPickerPermissionNeeded
+            try {
+                when (val result = settingsCapabilities.pickFeedbackAttachment(imageOnly, capture)) {
+                    is DataResult.Content -> admitAttachments(result.data, imageOnly = imageOnly || capture)
+                    is DataResult.Empty -> Unit
+                    is DataResult.Error -> error = copy.attachmentPickerFailed
+                    is DataResult.NoPermission -> error = copy.attachmentPickerPermissionNeeded
+                }
+            } finally {
+                busy = false
             }
-            busy = false
         }
     }
 
     /**
      * Images (or files) pasted into the message field, as the chat composer takes them: the ones
      * the host already read inside its paste action, else the clipboard's. They go the picked
-     * path ([admitAttachments]); signed in, a type the server refuses is left out, as the
-     * paperclip there picks images only.
+     * path ([admitAttachments]); signed in, PNG/JPEG/GIF/WebP images or one diagnostics `.zip`
+     * pass validation and unsupported types are left out.
      */
     fun pasteAttachments() {
         val hostPasted = ThreadComposerImagePasteRequests.takePending()
@@ -438,20 +466,9 @@ internal fun SharedHandsFeedbackContent(
                 "settings_hands_feedback_paste files=${pasted.size} host=${hostPasted != null}"
             )
             if (pasted.isEmpty() || busy) return@launch
-            val accepted =
-                if (proxySubmitter != null) {
-                    pasted.filter { it.productFeedbackImageContentType() != null }
-                } else {
-                    pasted
-                }
-            val typeRejectedCount = pasted.size - accepted.size
-            if (accepted.isEmpty()) {
-                error = copy.submissionAttachmentTypeBody
-                return@launch
-            }
             beginAttachmentAdmission()
             try {
-                admitAttachments(accepted, imageOnly = true, typeRejectedCount = typeRejectedCount)
+                admitAttachments(pasted, imageOnly = false)
             } finally {
                 busy = false
             }
@@ -987,9 +1004,9 @@ internal fun SharedHandsFeedbackContent(
             ThreadComposerCaptureImageAction -> pickAttachment(imageOnly = true, capture = true)
             // An image pasted into the message field (chat composer parity).
             ThreadComposerPasteAttachmentsAction -> pasteAttachments()
-            // The Raft server takes only PNG/JPEG/GIF/WebP images, so signed in the paperclip
-            // picks images too; any other file would only block the send.
-            "attachFile" -> pickAttachment(imageOnly = proxySubmitter != null)
+            // The Raft server takes PNG/JPEG/GIF/WebP images plus up to one diagnostics .zip <= 10 MiB
+            // (slock #16580), so the paperclip opens the full file picker even while signed in.
+            "attachFile" -> pickAttachment(imageOnly = false)
             "removeAttachment" ->
                 attachmentId?.let { id ->
                     val removed =
@@ -1100,7 +1117,7 @@ internal data class SettingsHandsFeedbackCopy(
     val typeLabel: String = "Type",
     val idea: String = "Idea",
     val bug: String = "Bug",
-    val attachmentHint: String = "Up to 3 images, 50 MB each.",
+    val attachmentHint: String = "Up to 3 attachments (images or one diagnostics .zip), 10 MB each.",
     val attachment: String = "Attachment",
     val attachmentLimitReached: (Int) -> String = { limit -> "You can upload up to $limit attachments at a time." },
     val attachmentTooLarge: (String) -> String = { maxSize -> "Attachments larger than $maxSize were skipped." },
@@ -1115,7 +1132,7 @@ internal data class SettingsHandsFeedbackCopy(
     val submissionRateLimitedBody: String = "Too many feedback requests were sent. Wait a moment and try again.",
     val submissionAttachmentReadBody: String = "An attachment could not be read. Remove it and attach the file again.",
     val submissionAttachmentTooLargeBody: String = "An attachment is too large. Remove it or choose a smaller file.",
-    val submissionAttachmentTypeBody: String = "Screenshots must be PNG, JPEG, GIF, or WebP images.",
+    val submissionAttachmentTypeBody: String = "Attachments must be PNG, JPEG, GIF, or WebP images, or one diagnostics .zip.",
     val submissionAuthBody: String = "Feedback authentication failed. Update the app or contact support.",
     val submissionPermissionTitle: String = "Permission needed",
     val submissionPermissionBody: String = "You do not have permission to send feedback.",
@@ -1305,6 +1322,68 @@ internal fun List<PlatformFile>.toFeedbackComposerAttachmentItems(
             uploadTransfer = if (uploading) RaftTransferProgress.notStarted() else null
         )
     }
+
+internal data class SettingsHandsFeedbackProxyAdmission(
+    val accepted: List<PlatformFile>,
+    val typeRejectedCount: Int,
+    val tooLargeCount: Int
+)
+
+/**
+ * Validates picked/pasted files for the signed-in `POST /api/product-feedback` path (slock #16580):
+ * accepts PNG/JPEG/GIF/WebP images or at most one valid `.zip` (magic bytes verified, <= 10 MiB,
+ * normalized to `application/zip`) across [existing] + [picked].
+ */
+internal suspend fun filterSettingsHandsFeedbackProxyAttachments(
+    existing: List<PlatformFile>,
+    picked: List<PlatformFile>,
+    imageOnly: Boolean,
+    attachmentMaxBytes: Long,
+    readHeaderBytes: suspend (PlatformFile) -> ByteArray? = { readProductFeedbackAttachmentHeaderBytes(it) },
+): SettingsHandsFeedbackProxyAdmission {
+    val maxZipBytes = minOf(attachmentMaxBytes, PRODUCT_FEEDBACK_MAX_ZIP_ATTACHMENT_BYTES)
+    var zipCount =
+        existing.count { file ->
+            file.productFeedbackImageContentType() == null && file.isProductFeedbackZipCandidate()
+        }
+    val accepted = mutableListOf<PlatformFile>()
+    var typeRejectedCount = 0
+    var tooLargeCount = 0
+    for (file in picked) {
+        if (imageOnly && file.productFeedbackImageContentType() == null) {
+            typeRejectedCount += 1
+            continue
+        }
+        when (
+            val resolution =
+                file.resolveProductFeedbackAttachment(
+                    maxImageBytes = attachmentMaxBytes,
+                    maxZipBytes = maxZipBytes,
+                    readHeaderBytes = readHeaderBytes,
+                )
+        ) {
+            is ProductFeedbackAttachmentResolution.Accepted -> {
+                if (resolution.isZip) {
+                    if (zipCount >= PRODUCT_FEEDBACK_MAX_ZIP_ATTACHMENTS) {
+                        typeRejectedCount += 1
+                    } else {
+                        zipCount += 1
+                        accepted += file.copy(mimeType = PRODUCT_FEEDBACK_ZIP_CONTENT_TYPE)
+                    }
+                } else {
+                    accepted += file
+                }
+            }
+            ProductFeedbackAttachmentResolution.TooLarge -> tooLargeCount += 1
+            ProductFeedbackAttachmentResolution.InvalidType -> typeRejectedCount += 1
+        }
+    }
+    return SettingsHandsFeedbackProxyAdmission(
+        accepted = accepted,
+        typeRejectedCount = typeRejectedCount,
+        tooLargeCount = tooLargeCount,
+    )
+}
 
 internal data class SettingsHandsFeedbackAttachmentMerge(
     val attachments: List<PlatformFile>,

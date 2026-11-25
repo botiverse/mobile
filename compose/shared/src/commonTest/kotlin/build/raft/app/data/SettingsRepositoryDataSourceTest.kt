@@ -1389,11 +1389,30 @@ class SettingsRepositoryDataSourceTest {
 
         assertTrue(workspaces is DataResult.Content)
         assertEquals("machine-1", network.workspacesMachineId)
+        assertEquals(listOf("refresh" to "1"), network.workspacesQuery)
         assertEquals(1, workspaces.data.size)
         assertEquals("Slock", workspaces.data.first().name)
         assertEquals("~/.slock/agents/Slock/", workspaces.data.first().path)
         assertEquals(4096L, workspaces.data.first().totalSizeBytes)
         assertEquals(12, workspaces.data.first().fileCount)
+        assertEquals(false, workspaces.data.first().partial)
+    }
+
+    @Test
+    fun scanComputerWorkspacesMapsPartialFlagAndSendsRefreshParam() = runBlocking {
+        val network =
+            FakeSettingsNetworkClient(
+                workspacesJson =
+                    """[{"directoryName":"agent-huge","totalSizeBytes":8192,"fileCount":200000,"status":"active","lastModified":"2026-11-24T00:00:00Z","agentName":"Huge","partial":true}]"""
+            )
+        val repository = RealSettingsRepository(sampleStore(), network)
+
+        val workspaces = repository.scanComputerWorkspaces("machine-1")
+
+        assertTrue(workspaces is DataResult.Content)
+        assertEquals("machine-1", network.workspacesMachineId)
+        assertEquals(listOf("refresh" to "1"), network.workspacesQuery)
+        assertEquals(true, workspaces.data.single().partial)
     }
 
     @Test
@@ -1552,6 +1571,8 @@ class SettingsRepositoryDataSourceTest {
             private set
         var workspacesMachineId: String? = null
             private set
+        var workspacesQuery: List<Pair<String, String>> = emptyList()
+            private set
         var runtimeModelsServerId: String? = null
             private set
         var runtimeModelsMachineId: String? = null
@@ -1692,6 +1713,7 @@ class SettingsRepositoryDataSourceTest {
                 normalized.matches(Regex("""servers/[^/]+/machines/[^/]+/workspaces""")) && method == "GET" -> {
                     val parts = normalized.split("/")
                     workspacesMachineId = parts[3]
+                    workspacesQuery = query
                     response(workspacesJson, workspacesResponseCode ?: responseCode)
                 }
                 normalized.matches(Regex("""servers/[^/]+/machines/[^/]+/workspaces/[^/]+""")) && method == "DELETE" -> {
