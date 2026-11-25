@@ -3481,6 +3481,15 @@
     <string name="settings_about_licenses_detail">查看 %1$s App 套件中包含的第三方程式庫。</string>
     <string name="settings_about_action_copy_environment">複製環境資訊</string>
     <string name="settings_about_action_copy">複製</string>
+    <string name="settings_about_early_access_title">搶先體驗</string>
+    <string name="settings_about_early_access_alpha_off_detail">開啟後將直接從 alpha 通道接收 Raft 搶先測試更新。</string>
+    <string name="settings_about_early_access_alpha_active_detail">目前正在接收 alpha 通道的搶先測試更新；關閉後將在下個正式版自動回到正式通道。</string>
+    <string name="settings_about_early_access_play_beta_detail">加入 Google Play 測試計畫，搶先體驗 Raft 測試版更新。</string>
+    <string name="settings_about_early_access_ios_testflight_join_detail">加入 Raft TestFlight 測試計畫，搶先體驗 iOS 測試版。</string>
+    <string name="settings_about_early_access_ios_testflight_active_detail">目前已透過 TestFlight 執行 Raft，將直接收到 iOS 搶先測試版更新。</string>
+    <string name="settings_about_early_access_action_join">加入</string>
+    <string name="settings_about_early_access_badge_alpha">Alpha</string>
+    <string name="settings_about_early_access_badge_testflight">TestFlight</string>
     <string name="settings_about_source_code">原始碼</string>
     <string name="settings_developer_title">開發者</string>
     <string name="settings_developer_detail">API 伺服器與診斷</string>

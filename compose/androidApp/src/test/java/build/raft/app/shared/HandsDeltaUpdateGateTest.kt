@@ -414,9 +414,9 @@ class HandsDeltaUpdateGateTest {
             isExactPreviewRelease ->
                 assertEquals(
                     HandsUpdateRoute(
-                        mode = HANDS_UPDATE_MODE_PREVIEW_DELTA,
+                        mode = HANDS_UPDATE_MODE_MAIN_DELTA,
                         appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
-                        channel = HANDS_DELTA_PREVIEW_CHANNEL,
+                        channel = HANDS_DELTA_MAIN_CHANNEL,
                         deltaEnabled = true
                     ),
                     route
@@ -726,9 +726,9 @@ class HandsDeltaUpdateGateTest {
         )
         assertEquals(
             HandsUpdateRoute(
-                mode = HANDS_UPDATE_MODE_PREVIEW_DELTA,
+                mode = HANDS_UPDATE_MODE_MAIN_DELTA,
                 appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
-                channel = HANDS_DELTA_PREVIEW_CHANNEL,
+                channel = HANDS_DELTA_MAIN_CHANNEL,
                 deltaEnabled = true
             ),
             resolveHandsUpdateRoute(
@@ -813,6 +813,113 @@ class HandsDeltaUpdateGateTest {
                 defaultChannel = "main",
                 deltaAppSlug = HANDS_DELTA_ALPHA_APP_SLUG,
                 deltaChannel = HANDS_DELTA_MAIN_CHANNEL
+            )
+        )
+    }
+
+    @Test
+    fun previewRetiresToMainAndRuntimeChannelOverrideSwitchesBetweenMainAndAlpha() {
+        assertEquals(HANDS_DELTA_MAIN_CHANNEL, normalizeHandsReleaseChannel("preview"))
+        assertEquals(HANDS_DELTA_MAIN_CHANNEL, normalizeHandsReleaseChannel(" PREVIEW "))
+        assertEquals(HANDS_DELTA_MAIN_CHANNEL, normalizeHandsReleaseChannel("main"))
+        assertEquals(HANDS_DELTA_RELEASE_ALPHA_CHANNEL, normalizeHandsReleaseChannel("alpha"))
+        assertEquals("debug", normalizeHandsReleaseChannel("debug"))
+
+        assertEquals(HANDS_DELTA_RELEASE_ALPHA_CHANNEL, normalizeHandsRuntimeOverrideChannel("ALPHA"))
+        assertEquals(HANDS_DELTA_MAIN_CHANNEL, normalizeHandsRuntimeOverrideChannel("main"))
+        assertNull(normalizeHandsRuntimeOverrideChannel("preview"))
+        assertNull(normalizeHandsRuntimeOverrideChannel("debug"))
+        assertNull(normalizeHandsRuntimeOverrideChannel(null))
+
+        assertTrue(
+            handsRuntimeChannelSwitchSupported(
+                apkUpdateEnabled = true,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_MAIN_CHANNEL
+            )
+        )
+        assertTrue(
+            handsRuntimeChannelSwitchSupported(
+                apkUpdateEnabled = true,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_PREVIEW_CHANNEL
+            )
+        )
+        assertFalse(
+            handsRuntimeChannelSwitchSupported(
+                apkUpdateEnabled = false,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_MAIN_CHANNEL
+            )
+        )
+        assertFalse(
+            handsRuntimeChannelSwitchSupported(
+                apkUpdateEnabled = true,
+                buildApplicationId = HANDS_DELTA_ALPHA_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_ALPHA_APPLICATION_ID,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = "debug"
+            )
+        )
+
+        // Switching a production main/preview build to alpha enables alpha_channel_delta.
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_MAIN_CHANNEL,
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_MAIN_CHANNEL,
+                overrideChannel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                channelSwitchSupported = true
+            )
+        )
+        // Switching back to main returns to main_delta even if originally built for alpha.
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_MAIN_DELTA,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_MAIN_CHANNEL,
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                overrideChannel = HANDS_DELTA_MAIN_CHANNEL,
+                channelSwitchSupported = true
+            )
+        )
+        // Unsupported builds ignore any overrideChannel.
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_ALPHA_DELTA,
+                appSlug = HANDS_DELTA_ALPHA_APP_SLUG,
+                channel = HANDS_DELTA_ALPHA_CHANNEL,
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = "debug",
+                deltaAppSlug = HANDS_DELTA_ALPHA_APP_SLUG,
+                deltaChannel = HANDS_DELTA_ALPHA_CHANNEL,
+                overrideChannel = HANDS_DELTA_MAIN_CHANNEL,
+                channelSwitchSupported = false
             )
         )
     }

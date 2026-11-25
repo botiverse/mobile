@@ -3661,6 +3661,15 @@
     <string name="settings_about_licenses_detail">Review third-party libraries included in the %1$s app package.</string>
     <string name="settings_about_action_copy_environment">Copy environment info</string>
     <string name="settings_about_action_copy">Copy</string>
+    <string name="settings_about_early_access_title">Early access</string>
+    <string name="settings_about_early_access_alpha_off_detail">Receive pre-release Raft updates directly from the alpha channel.</string>
+    <string name="settings_about_early_access_alpha_active_detail">Receiving pre-release updates from the alpha channel. Turn off to rejoin Stable on the next public release.</string>
+    <string name="settings_about_early_access_play_beta_detail">Join the Google Play beta program to receive pre-release Raft updates.</string>
+    <string name="settings_about_early_access_ios_testflight_join_detail">Join Raft on TestFlight to receive pre-release iOS builds.</string>
+    <string name="settings_about_early_access_ios_testflight_active_detail">Running Raft on TestFlight and receiving pre-release iOS builds.</string>
+    <string name="settings_about_early_access_action_join">Join</string>
+    <string name="settings_about_early_access_badge_alpha">Alpha</string>
+    <string name="settings_about_early_access_badge_testflight">TestFlight</string>
     <string name="settings_about_source_code">Source code</string>
     <string name="settings_developer_title">Developer</string>
     <string name="settings_developer_detail">API server and diagnostics</string>

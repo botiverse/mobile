@@ -3481,6 +3481,15 @@
     <string name="settings_about_licenses_detail">%1$s 앱 패키지에 포함된 서드파티 라이브러리를 확인해요.</string>
     <string name="settings_about_action_copy_environment">환경 정보 복사</string>
     <string name="settings_about_action_copy">복사</string>
+    <string name="settings_about_early_access_title">얼리 액세스</string>
+    <string name="settings_about_early_access_alpha_off_detail">alpha 채널에서 Raft 사전 출시 업데이트를 직접 받습니다.</string>
+    <string name="settings_about_early_access_alpha_active_detail">alpha 채널의 사전 출시 업데이트를 받고 있습니다. 끄면 다음 정식 릴리스에서 일반 채널로 돌아갑니다.</string>
+    <string name="settings_about_early_access_play_beta_detail">Google Play 베타 프로그램에 참여하여 Raft 사전 출시 업데이트를 받아보세요.</string>
+    <string name="settings_about_early_access_ios_testflight_join_detail">TestFlight에서 Raft 베타에 참여하여 iOS 사전 출시 빌드를 받아보세요.</string>
+    <string name="settings_about_early_access_ios_testflight_active_detail">TestFlight에서 Raft를 실행 중이며 iOS 사전 출시 빌드를 받고 있습니다.</string>
+    <string name="settings_about_early_access_action_join">참여</string>
+    <string name="settings_about_early_access_badge_alpha">Alpha</string>
+    <string name="settings_about_early_access_badge_testflight">TestFlight</string>
     <string name="settings_about_source_code">소스 코드</string>
     <string name="settings_developer_title">개발자</string>
     <string name="settings_developer_detail">API 서버 및 진단</string>

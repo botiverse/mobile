@@ -292,11 +292,35 @@ class SettingsHandsFeedbackSubmission(
             if (store != null) {
                 RaftAppUpdates.coordinator.publishSnapshot(store)
                 val developer = loadDeveloper()
-                if (developer is DataResult.Content) return DataResult.Content(developer.data.copy(updateCheck = store))
+                if (developer is DataResult.Content) {
+                    return DataResult.Content(
+                        developer.data.copy(
+                            updateCheck = store.preservingChannelMetadataFrom(developer.data.updateCheck)
+                        )
+                    )
+                }
             }
         }
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_hands_update_check_failed" }))
+        }
+        val snapshot = response.toDeveloperSnapshot()
+        RaftAppUpdates.coordinator.publishSnapshot(snapshot.updateCheck)
+        return DataResult.Content(snapshot)
+    }
+
+    override suspend fun setHandsUpdateChannel(channel: String): DataResult<SharedSettingsDeveloperSnapshot> {
+        val response =
+            settingsCapability(
+                buildJsonObject {
+                    put("action", "setHandsUpdateChannel")
+                    put("channel", channel)
+                }
+            )
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(
+                ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_hands_update_channel_failed" })
+            )
         }
         val snapshot = response.toDeveloperSnapshot()
         RaftAppUpdates.coordinator.publishSnapshot(snapshot.updateCheck)
@@ -967,6 +991,7 @@ class SettingsHandsFeedbackSubmission(
             }
         }
     val updateCheckSupported = optBoolean("updateCheckSupported", false)
+    val platformEarlyAccessGuide = raftPlatformEarlyAccessGuide()
     return SharedSettingsDeveloperSnapshot(
         environmentKey = optString("environmentKey"),
         environmentLabel = optString("environmentLabel"),
@@ -1010,7 +1035,11 @@ class SettingsHandsFeedbackSubmission(
                 errorCode = optString("updateCheckErrorCode"),
                 forceUpdate = optBoolean("updateForceUpdate", false),
                 updatePriority = optInt("updatePriority", 0),
-                stalenessDays = optLong("updateStalenessDays", -1L).takeIf { it >= 0L }?.toInt()
+                stalenessDays = optLong("updateStalenessDays", -1L).takeIf { it >= 0L }?.toInt(),
+                updateChannel = optString("updateChannel"),
+                updateChannelSwitchSupported = optBoolean("updateChannelSwitchSupported", false),
+                earlyAccessGuideKind = optString("earlyAccessGuideKind").ifBlank { platformEarlyAccessGuide?.kind.orEmpty() },
+                earlyAccessGuideUrl = optString("earlyAccessGuideUrl").ifBlank { platformEarlyAccessGuide?.url.orEmpty() }
             ),
         options = options.ifEmpty { sharedSettingsDefaultApiEnvironmentOptions() },
         feedback = optString("feedback").takeIf { it.isNotBlank() }

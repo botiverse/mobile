@@ -146,6 +146,7 @@ class SharedSettingsStoreContract(
                 is SharedSettingsIntent.SetApiEnvironment -> MviActionKey("${DEVELOPER_ACTION_API_ENVIRONMENT}:$environmentKey")
                 is SharedSettingsIntent.SaveApiEnvironment -> MviActionKey("${DEVELOPER_ACTION_API_ENVIRONMENT}:${request.key}")
                 SharedSettingsIntent.CheckHandsUpdate -> MviActionKey(DEVELOPER_ACTION_HANDS_UPDATE_CHECK)
+                is SharedSettingsIntent.SetHandsUpdateChannel -> MviActionKey(DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL)
                 else -> null
             }
     }

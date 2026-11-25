@@ -272,8 +272,26 @@ data class SharedSettingsUpdateCheckSnapshot(
     val storeChannel: String = "",
     val forceUpdate: Boolean = false,
     val updatePriority: Int = 0,
-    val stalenessDays: Int? = null
+    val stalenessDays: Int? = null,
+    /** Effective update channel reported by the host (`main`, `alpha`, `play`, etc.). */
+    val updateChannel: String = "",
+    /** True when the host supports runtime switching between `main` and `alpha` (Android direct APK). */
+    val updateChannelSwitchSupported: Boolean = false,
+    /** Optional external early-access enrollment kind (`google_play_beta`, `ios_testflight_join`, `ios_testflight_active`). */
+    val earlyAccessGuideKind: String = "",
+    /** Optional external early-access enrollment URL. */
+    val earlyAccessGuideUrl: String = ""
 )
+
+internal fun SharedSettingsUpdateCheckSnapshot.preservingChannelMetadataFrom(
+    fallback: SharedSettingsUpdateCheckSnapshot
+): SharedSettingsUpdateCheckSnapshot =
+    copy(
+        updateChannel = updateChannel.ifBlank { fallback.updateChannel },
+        updateChannelSwitchSupported = updateChannelSwitchSupported || fallback.updateChannelSwitchSupported,
+        earlyAccessGuideKind = earlyAccessGuideKind.ifBlank { fallback.earlyAccessGuideKind },
+        earlyAccessGuideUrl = earlyAccessGuideUrl.ifBlank { fallback.earlyAccessGuideUrl },
+    )
 
 enum class SharedSettingsUpdateTransactionState(val wireValue: String) {
     Unknown(""),
@@ -660,6 +678,8 @@ sealed interface SharedSettingsIntent {
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
     data class SaveApiEnvironment(val request: SharedSettingsApiEnvironmentRequest) : SharedSettingsIntent
     data object CheckHandsUpdate : SharedSettingsIntent
+    /** Switch runtime Hands release channel (`main` vs `alpha`) on Android direct-install builds. */
+    data class SetHandsUpdateChannel(val channel: String) : SharedSettingsIntent
     /** Live status refresh triggered by host Hands update events while an install/patch is in flight. */
     data object RefreshHandsUpdateStatus : SharedSettingsIntent
     data class CompleteStorageClear(
@@ -748,6 +768,9 @@ interface SharedSettingsPlatformCapabilities {
 
     suspend fun checkHandsUpdate(): DataResult<SharedSettingsDeveloperSnapshot> =
         DataResult.Error(ScreenError("settings_hands_update_check_unavailable", retryable = false))
+
+    suspend fun setHandsUpdateChannel(channel: String): DataResult<SharedSettingsDeveloperSnapshot> =
+        DataResult.Error(ScreenError("settings_hands_update_channel_unavailable", retryable = false))
 
     suspend fun checkHandsUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
         DataResult.Error(ScreenError("settings_hands_update_status_unavailable", retryable = false))
@@ -1687,6 +1710,9 @@ class SharedSettingsDataSource(
 
     suspend fun checkHandsUpdate(): DataResult<SharedSettingsDeveloperSnapshot> =
         platformCapabilities.checkHandsUpdate()
+
+    suspend fun setHandsUpdateChannel(channel: String): DataResult<SharedSettingsDeveloperSnapshot> =
+        platformCapabilities.setHandsUpdateChannel(channel)
 
     suspend fun checkHandsUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
         platformCapabilities.checkHandsUpdateStatus()
@@ -3159,6 +3185,12 @@ class SharedSettingsStore(
                         .applyDeveloperActionResult(DEVELOPER_ACTION_HANDS_UPDATE_CHECK)
                 }
             }
+            is SharedSettingsIntent.SetHandsUpdateChannel -> {
+                runAction(DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL) {
+                    dataSource.setHandsUpdateChannel(intent.channel)
+                        .applyDeveloperActionResult(DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL)
+                }
+            }
             SharedSettingsIntent.RefreshHandsUpdateStatus -> {
                 val updateResult = dataSource.checkHandsUpdateStatus()
                 if (updateResult is DataResult.Content) {
@@ -3166,7 +3198,12 @@ class SharedSettingsStore(
                     if (currentDeveloper != null) {
                         _state.value =
                             _state.value.copy(
-                                developer = ScreenLoadState.Content(currentDeveloper.copy(updateCheck = updateResult.data))
+                                developer =
+                                    ScreenLoadState.Content(
+                                        currentDeveloper.copy(
+                                            updateCheck = updateResult.data.preservingChannelMetadataFrom(currentDeveloper.updateCheck)
+                                        )
+                                    )
                             )
                     }
                 }
@@ -3405,7 +3442,9 @@ class SharedSettingsStore(
                 val developer =
                     when (updateResult) {
                         is DataResult.Content ->
-                            developerResult.data.copy(updateCheck = updateResult.data)
+                            developerResult.data.copy(
+                                updateCheck = updateResult.data.preservingChannelMetadataFrom(developerResult.data.updateCheck)
+                            )
                         is DataResult.Empty ->
                             developerResult.data.copy(
                                 updateCheck =
@@ -3414,7 +3453,7 @@ class SharedSettingsStore(
                                         statusLabel = "Check failed",
                                         detail = "Update check returned no data. Try again later.",
                                         errorCode = "update_check_empty"
-                                    )
+                                    ).preservingChannelMetadataFrom(developerResult.data.updateCheck)
                             )
                         is DataResult.Error ->
                             developerResult.data.copy(
@@ -3428,7 +3467,7 @@ class SharedSettingsStore(
                                                 "update_check_failed"
                                             },
                                         screenError = updateResult.error
-                                    )
+                                    ).preservingChannelMetadataFrom(developerResult.data.updateCheck)
                             )
                         is DataResult.NoPermission -> developerResult.data
                     }
@@ -4841,6 +4880,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
             SharedSettingsIntent.CheckHandsUpdate,
+            is SharedSettingsIntent.SetHandsUpdateChannel,
             SharedSettingsIntent.RefreshHandsUpdateStatus,
             is SharedSettingsIntent.CompleteStorageClear,
             SharedSettingsIntent.CopyDiagnostics,
@@ -5237,6 +5277,7 @@ private fun SharedSettingsState.hasContent(destination: SharedSettingsDestinatio
 @RaftCoreInternalApi const val MOBILE_ACTION_SETTINGS = "openNotificationSettings"
 @RaftCoreInternalApi const val DEVELOPER_ACTION_API_ENVIRONMENT = "apiEnvironment"
 @RaftCoreInternalApi const val DEVELOPER_ACTION_HANDS_UPDATE_CHECK = "handsUpdateCheck"
+@RaftCoreInternalApi const val DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL = "setHandsUpdateChannel"
 @RaftCoreInternalApi const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 @RaftCoreInternalApi const val MOBILE_ACTION_LANGUAGE = "language"
 @RaftCoreInternalApi const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"

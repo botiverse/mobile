@@ -25,6 +25,7 @@ import build.raft.app.shared.RaftAndroidInstallReferrer
 import build.raft.app.shared.RaftAndroidStoreReview
 import build.raft.app.shared.RaftAndroidNightMode
 import build.raft.app.shared.RaftBuildStamp
+import build.raft.app.shared.handsEffectiveReleaseChannelForRuntime
 import build.raft.app.shared.ProcessAndroidAttachmentMediaStoreCleanup
 import build.raft.app.shared.ProcessAndroidAttachmentPublicDownloads
 import build.raft.app.shared.installAndroidThreadComposerTemporaryFileRetirement
@@ -163,13 +164,14 @@ class RaftApplication : Application() {
         // Keep our `raft-build` stamp (AndroidSystemKillReporter reads it); the SDK's ANR
         // reporter reads it too, so it need not rewrite it to its own `hands-build` format.
         HandsCrash.setAnrBuildStampingEnabled(false)
+        val effectiveHandsChannel = handsEffectiveReleaseChannelForRuntime(this)
         HandsCrash.install(
             context = this,
             baseUrl = BuildConfig.HANDS_BASE_URL,
             appSlug = BuildConfig.HANDS_APP_SLUG,
             versionName = BuildConfig.VERSION_NAME,
             versionCode = BuildConfig.VERSION_CODE.toLong(),
-            channel = BuildConfig.HANDS_CHANNEL,
+            channel = effectiveHandsChannel,
             clientKey = BuildConfig.HANDS_CLIENT_KEY,
             // ANRs are filed with the hung build, read from each exit's RaftBuildStamp.
             captureAnrs = true,
@@ -190,7 +192,7 @@ class RaftApplication : Application() {
             appSlug = BuildConfig.HANDS_APP_SLUG,
             versionName = BuildConfig.VERSION_NAME,
             versionCode = BuildConfig.VERSION_CODE.toLong(),
-            channel = BuildConfig.HANDS_CHANNEL,
+            channel = effectiveHandsChannel,
             clientKey = BuildConfig.HANDS_CLIENT_KEY,
         )
         // System kills (low memory, freezer, OEM `reason=other`) leave no crash for HandsCrash to
@@ -200,7 +202,7 @@ class RaftApplication : Application() {
             context = this,
             baseUrl = BuildConfig.HANDS_BASE_URL,
             appSlug = BuildConfig.HANDS_APP_SLUG,
-            channel = BuildConfig.HANDS_CHANNEL,
+            channel = effectiveHandsChannel,
             clientKey = BuildConfig.HANDS_CLIENT_KEY,
         )
         // A WebView renderer death the app survived (every WebView handles onRenderProcessGone):
@@ -209,7 +211,7 @@ class RaftApplication : Application() {
             context = this,
             baseUrl = BuildConfig.HANDS_BASE_URL,
             appSlug = BuildConfig.HANDS_APP_SLUG,
-            channel = BuildConfig.HANDS_CHANNEL,
+            channel = effectiveHandsChannel,
             clientKey = BuildConfig.HANDS_CLIENT_KEY,
         )
         RaftStartupPhaseMarker.reached(RaftStartupPhaseMarker.Phase.ApplicationCreated)

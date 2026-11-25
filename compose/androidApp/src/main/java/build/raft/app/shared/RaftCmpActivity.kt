@@ -24,6 +24,8 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import androidx.compose.ui.graphics.toArgb
+import build.raft.app.data.RAFT_EARLY_ACCESS_GUIDE_GOOGLE_PLAY_BETA
+import build.raft.app.data.RAFT_GOOGLE_PLAY_BETA_URL
 import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.data.RaftServicesPrivacyGate
 import build.raft.app.data.RaftTelemetryPrivacy
@@ -5731,6 +5733,24 @@ internal class RaftBridgeModule(
                 }
                 return
             }
+            "setHandsUpdateChannel" -> {
+                val requestedChannel = normalizeHandsRuntimeOverrideChannel(request.optString("channel"))
+                scope.launchSettingsBridgeAction(callback) {
+                    if (!handsRuntimeChannelSwitchSupportedForRuntime(appContext) || requestedChannel == null) {
+                        mapOf("status" to "error", "code" to "settings_hands_update_channel_unsupported")
+                    } else {
+                        withContext(Dispatchers.IO) {
+                            RaftHandsUpdateChannelStore(appContext).writeOverrideChannel(requestedChannel)
+                        }
+                        handsUpdateDownloads.clear()
+                        RaftAppLog.infoAlways("SlockHandsUpdate", "channel_switched channel=$requestedChannel")
+                        emitHandsUpdateStatusEvent()
+                        runCatching { checkHandsUpdate(install = false) }
+                            .getOrElse { loadSettingsDeveloper() }
+                    }
+                }
+                return
+            }
             "loadDiagnostics" -> {
                 scope.launchSettingsBridgeAction(callback) {
                     withContext(Dispatchers.IO) { loadSettingsDiagnostics() }
@@ -6350,6 +6370,10 @@ internal class RaftBridgeModule(
                         )
                     }
                 }
+        val channelSwitchSupported = handsRuntimeChannelSwitchSupportedForRuntime(appContext)
+        val isPlayBuild =
+                !BuildConfig.HANDS_APK_UPDATE_ENABLED &&
+                        BuildConfig.APPLICATION_ID == HANDS_DELTA_PRODUCTION_APPLICATION_ID
         return mapOf(
                 "status" to "ok",
                 "environmentKey" to current.key,
@@ -6358,6 +6382,10 @@ internal class RaftBridgeModule(
                 "socketBaseUrl" to current.socketBaseUrl,
                 "webUrl" to current.webUrl,
                 "updateCheckSupported" to BuildConfig.HANDS_APK_UPDATE_ENABLED,
+                "updateChannel" to if (BuildConfig.HANDS_APK_UPDATE_ENABLED) updateRoute.channel else "play",
+                "updateChannelSwitchSupported" to channelSwitchSupported,
+                "earlyAccessGuideKind" to if (isPlayBuild) RAFT_EARLY_ACCESS_GUIDE_GOOGLE_PLAY_BETA else "",
+                "earlyAccessGuideUrl" to if (isPlayBuild) RAFT_GOOGLE_PLAY_BETA_URL else "",
                 "updateCheckStatusLabel" to
                         if (BuildConfig.HANDS_APK_UPDATE_ENABLED) "Ready" else "Disabled",
                 "updateCheckDetail" to
@@ -7406,7 +7434,7 @@ internal class RaftBridgeModule(
                     appSlug = BuildConfig.HANDS_APP_SLUG,
                     versionName = BuildConfig.VERSION_NAME,
                     versionCode = BuildConfig.VERSION_CODE.toLong(),
-                    channel = BuildConfig.HANDS_CHANNEL,
+                    channel = handsEffectiveReleaseChannelForRuntime(appContext),
                     clientKey = BuildConfig.HANDS_CLIENT_KEY,
             )
             val ticketId =
@@ -7740,7 +7768,7 @@ internal class RaftBridgeModule(
                 utcTime = utcTime,
                 localTime = localTime,
                 feedbackAppSlug = BuildConfig.HANDS_APP_SLUG,
-                feedbackChannel = BuildConfig.HANDS_CHANNEL,
+                feedbackChannel = handsEffectiveReleaseChannelForRuntime(appContext),
                 updateRoute = updateRoute,
                 deviceId = HandsDeviceId.get(appContext),
                 attachmentNames = attachmentNames
@@ -9861,37 +9889,8 @@ internal class RaftBridgeModule(
                                 }
                 )
 
-        private fun handsDeltaUpdateAllowedForRuntime(context: Context): Boolean {
-            val allowed =
-                    handsDeltaUpdateAllowed(
-                            configuredEnabled = BuildConfig.HANDS_DELTA_UPDATE_ENABLED,
-                            apkUpdateEnabled = BuildConfig.HANDS_APK_UPDATE_ENABLED,
-                            buildApplicationId = BuildConfig.APPLICATION_ID,
-                            runtimePackageName = context.packageName,
-                            appSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
-                            channel = BuildConfig.HANDS_DELTA_CHANNEL
-                    )
-            if (BuildConfig.HANDS_DELTA_UPDATE_ENABLED && !allowed) {
-                RaftAppLog.infoAlways(
-                        "SlockHandsUpdate",
-                        "hands_delta_gate_denied buildApplicationId=${BuildConfig.APPLICATION_ID} " +
-                                "runtimePackageName=${context.packageName} " +
-                                "apkUpdateEnabled=${BuildConfig.HANDS_APK_UPDATE_ENABLED} " +
-                                "appSlug=${BuildConfig.HANDS_DELTA_APP_SLUG} " +
-                                "channel=${BuildConfig.HANDS_DELTA_CHANNEL}"
-                )
-            }
-            return allowed
-        }
-
         private fun handsUpdateRouteForRuntime(context: Context): HandsUpdateRoute =
-                resolveHandsUpdateRoute(
-                        deltaEnabled = handsDeltaUpdateAllowedForRuntime(context),
-                        defaultAppSlug = BuildConfig.HANDS_APP_SLUG,
-                        defaultChannel = BuildConfig.HANDS_CHANNEL,
-                        deltaAppSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
-                        deltaChannel = BuildConfig.HANDS_DELTA_CHANNEL
-                )
+                build.raft.app.shared.handsUpdateRouteForRuntime(context)
 
         internal fun emitPlayUpdateStatusEvent() {
             emitHandsUpdateStatusEvent()
