@@ -7,6 +7,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -603,14 +604,28 @@ internal fun RaftWebContainerAdaptedHost(
     modifier: Modifier,
 ) {
     val isDarkTheme = RaftAppThemeState.isDark
-    val standardJsbHost = LocalRaftWebContainerJsbHost.current
+    val baseStandardJsbHost = LocalRaftWebContainerJsbHost.current
+    val wideDetailClose = LocalRaftSettingsWideDetailClose.current
+    val hasWideDetailClose = wideDetailClose != null
+    val latestWideDetailClose by rememberUpdatedState(wideDetailClose)
+    val standardJsbHost =
+        remember(baseStandardJsbHost, hasWideDetailClose) {
+            when {
+                baseStandardJsbHost == null -> null
+                hasWideDetailClose -> baseStandardJsbHost.withCloseOverride { latestWideDetailClose?.invoke() }
+                else -> baseStandardJsbHost
+            }
+        }
     val offlineBundleSpec = LocalRaftWebContainerOfflineBundle.current
     val customResourceInterceptor = LocalRaftWebContainerResourceInterceptor.current
     val platformResourceInterceptor = rememberRaftWebContainerPlatformResourceInterceptor()
     val standardJsbCapabilities =
-        remember(standardJsbHost, config.effectiveStoragePartition) {
-            if (standardJsbHost != null && config.effectiveStoragePartition == RaftWebViewStoragePartition.Default) {
-                JsbStandardCapabilities.All
+        remember(standardJsbHost, config.diagnosticsSurface, config.effectiveStoragePartition) {
+            if (standardJsbHost != null) {
+                resolveRaftSurfaceStandardJsbCapabilities(
+                    surfaceId = config.diagnosticsSurface,
+                    partition = config.effectiveStoragePartition,
+                )
             } else {
                 emptySet()
             }

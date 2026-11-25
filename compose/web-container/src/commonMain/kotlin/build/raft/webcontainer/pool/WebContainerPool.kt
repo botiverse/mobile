@@ -358,3 +358,153 @@ sealed interface WebContainerTelemetryEvent {
 fun interface WebContainerTelemetrySink {
     fun onEvent(event: WebContainerTelemetryEvent)
 }
+
+/** Blank warm-up document URL loaded by platform spare WebViews to spin up the engine process. */
+const val WEB_CONTAINER_SPARE_BLANK_URL: String = "about:blank"
+
+/**
+ * Pure single-slot warm spare state machine shared by platform spare pools (such as iOS
+ * `WebContainerIosSparePool`).
+ *
+ * Guarantees:
+ * - Hands out a spare only after its warm-up load matches the current generation AND has not
+ *   exceeded [maxIdleMs] (anti-stale / anti-zombie TTL).
+ * - Immediately retires a spare when its content process dies while idle ([invalidateIfSame]).
+ * - Retires any replaced or dropped spare cleanly so native delegates/views never leak.
+ */
+class WebContainerSpareSlot<T : Any>(
+    private val nowMs: () -> Long = ::webContainerMonotonicMillis,
+    private val retire: (T) -> Unit,
+) {
+    private var item: T? = null
+    private var ready: Boolean = false
+    private var readyAt: Long = 0L
+    private var generation: Int = 0
+
+    val hasItem: Boolean
+        get() = item != null
+
+    val isReady: Boolean
+        get() = item != null && ready
+
+    val readyAtMs: Long?
+        get() = if (item != null && ready) readyAt else null
+
+    /** Installs [next] as the warming spare (retiring any previous one) and returns its generation. */
+    fun put(next: T): Int {
+        item?.let(retire)
+        item = next
+        ready = false
+        readyAt = 0L
+        generation += 1
+        return generation
+    }
+
+    /** Marks the warming spare ready if [generation] matches the currently held instance. */
+    fun markReady(
+        generation: Int,
+        atMs: Long = nowMs(),
+    ): Boolean {
+        if (generation != this.generation || item == null) return false
+        ready = true
+        readyAt = atMs
+        return true
+    }
+
+    /**
+     * Retires the held spare if [predicate] matches it (used when the OS terminates a parked
+     * spare's WebContent process while idle).
+     */
+    fun invalidateIf(predicate: (T) -> Boolean): Boolean {
+        val current = item ?: return false
+        if (!predicate(current)) return false
+        item = null
+        ready = false
+        readyAt = 0L
+        generation += 1
+        retire(current)
+        return true
+    }
+
+    /**
+     * Retires the held spare if [sameInstance] confirms it matches [target] (used when the OS
+     * terminates a parked spare's WebContent process while idle).
+     */
+    fun invalidateIfSame(
+        target: T,
+        sameInstance: (T, T) -> Boolean = { a, b -> a === b },
+    ): Boolean = invalidateIf { current -> sameInstance(current, target) }
+
+    /**
+     * Takes the ready spare if healthy, within [maxIdleMs], and matching [predicate], or returns
+     * `null`. An expired ready spare is retired immediately; a healthy spare that does not match
+     * [predicate] remains parked for a compatible caller.
+     */
+    fun take(
+        maxIdleMs: Long = Long.MAX_VALUE,
+        predicate: (T) -> Boolean = { true },
+    ): T? {
+        val current = item ?: return null
+        if (!ready) return null
+        val idleMs = nowMs() - readyAt
+        if (maxIdleMs < Long.MAX_VALUE && idleMs >= maxIdleMs) {
+            item = null
+            ready = false
+            readyAt = 0L
+            generation += 1
+            retire(current)
+            return null
+        }
+        if (!predicate(current)) return null
+        item = null
+        ready = false
+        readyAt = 0L
+        return current
+    }
+
+    /** Retires the held spare (ready or warming) and returns `1` if one was retired, else `0`. */
+    fun drop(): Int {
+        val current = item ?: return 0
+        item = null
+        ready = false
+        readyAt = 0L
+        generation += 1
+        retire(current)
+        return 1
+    }
+}
+
+/**
+ * Determines whether an iOS container creation may consume the warmed `Default`-scope spare.
+ *
+ * Excludes non-Default partitions, script-disabled surfaces, custom-scheme bundles, recovery
+ * rebuilds, and surfaces with `allowsBackForwardNavigationGestures = true` (so native left-edge
+ * swipe can never navigate back into the spare's initial `about:blank` entry). Zoom compatibility
+ * (`ignoresViewportScaleLimits`) is matched strictly against the parked spare on `take()`.
+ */
+fun isIosWarmSpareEligible(
+    isolationScope: WebIsolationScope,
+    allowScripts: Boolean,
+    hasCustomScheme: Boolean,
+    allowsBackForwardNavigationGestures: Boolean,
+    isRecoveryOrRebuild: Boolean,
+): Boolean =
+    isolationScope == WebIsolationScope.Default &&
+        allowScripts &&
+        !hasCustomScheme &&
+        !allowsBackForwardNavigationGestures &&
+        !isRecoveryOrRebuild
+
+/**
+ * Returns `true` when [navigationUrl] is a leftover callback from a warm spare's initial
+ * `about:blank` warm-up document rather than the surface's configured document.
+ */
+fun shouldIgnoreWarmSpareBlankNavigation(
+    usingSpare: Boolean,
+    navigationUrl: String?,
+    configuredUrl: String,
+): Boolean {
+    if (!usingSpare || navigationUrl != WEB_CONTAINER_SPARE_BLANK_URL) return false
+    val trimmed = configuredUrl.trim()
+    return trimmed.isNotEmpty() && trimmed != WEB_CONTAINER_SPARE_BLANK_URL
+}

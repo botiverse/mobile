@@ -46,19 +46,15 @@ kotlin {
             implementation(libs.androidx.webkit)
             implementation(libs.androidx.core.ktx)
         }
-        val desktopMain by getting {
-            dependencies {
-                implementation(libs.kotlinx.coroutines.swing)
-            }
+        getByName("desktopMain").dependencies {
+            implementation(libs.kotlinx.coroutines.swing)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
         }
-        val desktopTest by getting {
-            dependencies {
-                implementation(kotlin("test-junit"))
-            }
+        getByName("desktopTest").dependencies {
+            implementation(kotlin("test-junit"))
         }
     }
 }

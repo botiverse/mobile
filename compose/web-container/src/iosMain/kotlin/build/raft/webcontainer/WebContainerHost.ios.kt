@@ -11,8 +11,11 @@ import build.raft.webcontainer.jsb.JsbErrorCode
 import build.raft.webcontainer.jsb.JsbRegistry
 import build.raft.webcontainer.jsb.JsbResult
 import build.raft.webcontainer.jsb.JsbWireCodec
+import build.raft.webcontainer.pool.WEB_CONTAINER_SPARE_BLANK_URL
 import build.raft.webcontainer.pool.WebContainerTelemetryEvent
 import build.raft.webcontainer.pool.WebContainerTelemetrySink
+import build.raft.webcontainer.pool.isIosWarmSpareEligible
+import build.raft.webcontainer.pool.shouldIgnoreWarmSpareBlankNavigation
 import build.raft.webcontainer.resilience.WebContainerWatchdog
 import build.raft.webcontainer.resilience.WebContainerWatchdogAction
 import build.raft.webcontainer.resilience.WebContainerWatchdogEvent
@@ -46,6 +49,7 @@ import platform.UIKit.UIView
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
 import platform.UIKit.UIViewAutoresizingFlexibleWidth
 import platform.WebKit.WKAudiovisualMediaTypeAll
+import platform.WebKit.WKBackForwardListItem
 import platform.WebKit.WKContentWorld
 import platform.WebKit.WKDownload
 import platform.WebKit.WKDownloadDelegateProtocol
@@ -115,6 +119,7 @@ internal fun isSameObjCObject(a: Any?, b: Any?): Boolean =
     a != null && b != null && a.objcPtr() == b.objcPtr()
 
 private const val IOS_POLL_INTERVAL_SECONDS = 0.25
+private const val IOS_WATCHDOG_ONLY_INTERVAL_SECONDS = 1.0
 private const val IOS_REVEAL_CAP_SECONDS = 1.5
 
 internal class WebContainerIosContainerView(
@@ -193,6 +198,14 @@ internal class WebContainerIosHost(
 
     private val navDelegate = WebContainerIosNavigationDelegate(this)
     private val jsbReplyHandler = WebContainerIosJsbReplyHandler(this)
+    private val kvoObserver =
+        WebContainerIosKvoObserver { observed ->
+            if (!disposed && isSameObjCObject(observed, webView)) {
+                syncObservedState(observed)
+            }
+        }
+    private var usingSpare: Boolean = false
+    private var spareCommitted: Boolean = false
     private var activeSchemeHandler: WebContainerIosSchemeHandler? = null
     private val activeDownloads = mutableListOf<WebContainerIosDownloadDelegate>()
     private var downloadCancelledUrl: String? = null
@@ -253,6 +266,7 @@ internal class WebContainerIosHost(
                 prev.jsbPolicy != next.jsbPolicy ||
                 prev.documentStartScripts != next.documentStartScripts ||
                 prev.offlineBundle != next.offlineBundle ||
+                (usingSpare && next.allowsBackForwardNavigationGestures) ||
                 (!pagePainted && (prev.backgroundArgb != next.backgroundArgb || prev.isDarkTheme != next.isDarkTheme))
         val urlChanged = prev == null || prev.url.trim() != next.url.trim()
 
@@ -299,12 +313,15 @@ internal class WebContainerIosHost(
 
     private fun tearDownWebView() {
         stopPolling()
+        kvoObserver.detach()
         revealTimer?.invalidate()
         revealTimer = null
         pendingHostLoadUrl = null
         pendingHostLoadIsReissue = false
         hostCancelledUrl = null
         downloadCancelledUrl = null
+        usingSpare = false
+        spareCommitted = false
         for (download in activeDownloads.toList()) {
             download.cancelAndCleanup()
         }
@@ -344,6 +361,7 @@ internal class WebContainerIosHost(
         cfg: WebContainerConfig,
         restoreUrl: String?,
     ) {
+        val hadPreviousView = webView != null
         tearDownWebView()
         registerActiveScope(cfg.isolationScope)
         rebuildJsbDispatcher(cfg)
@@ -354,7 +372,28 @@ internal class WebContainerIosHost(
                 cfg.navigationPolicy.lockedMainFrameOrigin?.let(::add)
             }
 
-        val userContentController = WKUserContentController()
+        val customScheme = cfg.offlineBundle?.iosCustomScheme?.takeIf(::isValidIosCustomScheme)
+        val ignoresScaleLimits = cfg.allowPinchZoom || cfg.desktopViewportMode
+        val spare =
+            if (
+                isIosWarmSpareEligible(
+                    isolationScope = cfg.isolationScope,
+                    allowScripts = cfg.allowScripts,
+                    hasCustomScheme = customScheme != null,
+                    allowsBackForwardNavigationGestures = cfg.allowsBackForwardNavigationGestures,
+                    isRecoveryOrRebuild = restoreUrl != null || hadPreviousView,
+                )
+            ) {
+                WebContainerIosSparePool.take(
+                    ignoresViewportScaleLimits = ignoresScaleLimits,
+                    telemetrySink = telemetrySink,
+                )
+            } else {
+                null
+            }
+
+        val userContentController =
+            spare?.configuration?.userContentController?.also { it.removeAllUserScripts() } ?: WKUserContentController()
         if (cfg.allowScripts && cfg.jsbPolicy.isEffectivelyEnabled) {
             val portName = cfg.jsbPolicy.portName
             // Web-accessible bridge lives in WKContentWorld.pageWorld so page JS can call window.raftBridge;
@@ -425,25 +464,31 @@ internal class WebContainerIosHost(
             }
         }
 
-        val configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = IosWebContainerDataStoreRegistry.dataStoreFor(cfg.isolationScope)
-        configuration.userContentController = userContentController
-        configuration.allowsInlineMediaPlayback = true
-        configuration.ignoresViewportScaleLimits = cfg.allowPinchZoom || cfg.desktopViewportMode
-        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-        configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeAll
-        val pagePrefs = WKWebpagePreferences()
-        pagePrefs.allowsContentJavaScript = cfg.allowScripts
-        configuration.defaultWebpagePreferences = pagePrefs
+        val nextView =
+            if (spare != null) {
+                spare.setFrame(container.bounds)
+                usingSpare = true
+                spare
+            } else {
+                val configuration = WKWebViewConfiguration()
+                configuration.websiteDataStore = IosWebContainerDataStoreRegistry.dataStoreFor(cfg.isolationScope)
+                configuration.userContentController = userContentController
+                configuration.allowsInlineMediaPlayback = true
+                configuration.ignoresViewportScaleLimits = ignoresScaleLimits
+                configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+                configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeAll
+                val pagePrefs = WKWebpagePreferences()
+                pagePrefs.allowsContentJavaScript = cfg.allowScripts
+                configuration.defaultWebpagePreferences = pagePrefs
+                if (customScheme != null) {
+                    val handler = WebContainerIosSchemeHandler(resourceInterceptor)
+                    activeSchemeHandler = handler
+                    configuration.setURLSchemeHandler(handler, forURLScheme = customScheme.trim().lowercase())
+                }
+                usingSpare = false
+                WebContainerIosWebView(frame = container.bounds, configuration = configuration)
+            }
 
-        val customScheme = cfg.offlineBundle?.iosCustomScheme
-        if (customScheme != null && isValidIosCustomScheme(customScheme)) {
-            val handler = WebContainerIosSchemeHandler(resourceInterceptor)
-            activeSchemeHandler = handler
-            configuration.setURLSchemeHandler(handler, forURLScheme = customScheme.trim().lowercase())
-        }
-
-        val nextView = WebContainerIosWebView(frame = container.bounds, configuration = configuration)
         nextView.showsFormAccessoryBar = cfg.showsFormAccessoryBar
         nextView.navigationDelegate = navDelegate
         nextView.UIDelegate = navDelegate
@@ -452,15 +497,46 @@ internal class WebContainerIosHost(
         webView = nextView
         pagePainted = false
         pageRevealed = false
+        spareCommitted = false
         currentProgress = 0
         currentLoading = false
         currentTitle = ""
         lastSuccessfulUrl = ""
         chainState.reset(clearCommitted = true)
         navigationStateRelay.reset()
+        // Attach KVO strictly after resetting per-view state/relay so initial observations stay clean.
+        kvoObserver.attach(nextView)
         applyBackgroundVisuals(cfg)
         container.addSubview(nextView)
         startPolling(nextView)
+        if (spare != null && cfg.backgroundArgb != 0) {
+            nextView.evaluateJavaScript(
+                JsbBootstrapScripts.buildBlankCanvasPaintScript(cfg.backgroundArgb, cfg.isDarkTheme),
+                null,
+                WKContentWorld.defaultClientWorld,
+                null,
+            )
+        }
+        if (spare != null) {
+            // Non-blocking anti-zombie liveness probe in isolated defaultClientWorld: if iOS killed
+            // the spare's WebContent process silently before any real document commits, seamlessly
+            // rebuild a fresh view (once committed, normal contentProcessDidTerminate watchdog owns recovery).
+            nextView.evaluateJavaScript("'1'", null, WKContentWorld.defaultClientWorld) { _, err ->
+                if (disposed || spareCommitted || pagePainted || !isSameObjCObject(nextView, webView)) {
+                    return@evaluateJavaScript
+                }
+                if (err != null && err.domain == "WKErrorDomain" && err.code == 2L) {
+                    telemetrySink?.onEvent(
+                        WebContainerTelemetryEvent.PoolEvent(
+                            action = "ios_spare_zombie_rebuilt",
+                            keepAliveKey = "ios_default_spare",
+                            poolSizeAfter = 0,
+                        ),
+                    )
+                    config?.let { activeCfg -> rebuildWebView(activeCfg, restoreUrl = null) }
+                }
+            }
+        }
         loadUrlInternal(cfg, overrideUrl = restoreUrl)
     }
 
@@ -489,10 +565,14 @@ internal class WebContainerIosHost(
     private fun startPolling(target: WKWebView) {
         stopPolling()
         if (container.window == null) return
+        val kvoActive = kvoObserver.isAttached
+        val interval = if (kvoActive) IOS_WATCHDOG_ONLY_INTERVAL_SECONDS else IOS_POLL_INTERVAL_SECONDS
         stateTimer =
-            NSTimer.scheduledTimerWithTimeInterval(IOS_POLL_INTERVAL_SECONDS, repeats = true) { _ ->
+            NSTimer.scheduledTimerWithTimeInterval(interval, repeats = true) { _ ->
                 if (disposed || !isSameObjCObject(target, webView)) return@scheduledTimerWithTimeInterval
-                syncObservedState(target)
+                if (!kvoActive) {
+                    syncObservedState(target)
+                }
                 val action = watchdog.onEvent(WebContainerWatchdogEvent.Tick, webContainerMonotonicMillis())
                 handleWatchdogAction(action)
             }
@@ -504,11 +584,23 @@ internal class WebContainerIosHost(
     }
 
     private fun syncObservedState(view: WKWebView) {
-        currentUrl = view.URL?.absoluteString ?: currentUrl
+        val observedUrl = view.URL?.absoluteString
+        if (!shouldIgnoreWarmSpareBlankNavigation(usingSpare, observedUrl, config?.url.orEmpty())) {
+            currentUrl = observedUrl ?: currentUrl
+        }
         currentTitle = view.title ?: ""
         currentProgress = (view.estimatedProgress * 100.0 + 0.5).toInt().coerceIn(0, 100)
         currentLoading = view.loading
         notifyNavigationState(force = false)
+    }
+
+    /** Excludes a warm spare's initial `about:blank` entry so Back on the first real page closes cleanly. */
+    private fun canGoBack(view: WKWebView): Boolean {
+        if (!view.canGoBack) return false
+        if (!usingSpare) return true
+        val backList = view.backForwardList.backList
+        val first = backList.firstOrNull() as? WKBackForwardListItem
+        return !(backList.size == 1 && first?.URL?.absoluteString == WEB_CONTAINER_SPARE_BLANK_URL)
     }
 
     private fun loadUrlInternal(
@@ -586,7 +678,7 @@ internal class WebContainerIosHost(
         val view = webView ?: return
         val cfg = config ?: return
         when (command) {
-            WebContainerCommand.GoBack -> if (view.canGoBack) view.goBack()
+            WebContainerCommand.GoBack -> if (canGoBack(view)) view.goBack()
             WebContainerCommand.GoForward -> if (view.canGoForward) view.goForward()
             WebContainerCommand.Reload -> view.reload()
             WebContainerCommand.Stop -> {
@@ -879,6 +971,7 @@ internal class WebContainerIosHost(
 
     internal fun didStartProvisional(source: WKWebView) {
         if (disposed || !isSameObjCObject(source, webView)) return
+        if (shouldIgnoreWarmSpareBlankNavigation(usingSpare, source.URL?.absoluteString, config?.url.orEmpty())) return
         downloadCancelledUrl = null
         jsbDispatcher?.cancelInFlight("main_frame_navigation")
         loadGeneration += 1
@@ -893,6 +986,8 @@ internal class WebContainerIosHost(
 
     internal fun didCommit(source: WKWebView) {
         if (disposed || !isSameObjCObject(source, webView)) return
+        if (shouldIgnoreWarmSpareBlankNavigation(usingSpare, source.URL?.absoluteString, config?.url.orEmpty())) return
+        spareCommitted = true
         hostCancelledUrl = null
         downloadCancelledUrl = null
         currentUrl = source.URL?.absoluteString ?: currentUrl
@@ -912,6 +1007,8 @@ internal class WebContainerIosHost(
 
     internal fun didFinish(source: WKWebView) {
         if (disposed || !isSameObjCObject(source, webView)) return
+        if (shouldIgnoreWarmSpareBlankNavigation(usingSpare, source.URL?.absoluteString, config?.url.orEmpty())) return
+        spareCommitted = true
         hostCancelledUrl = null
         downloadCancelledUrl = null
         currentUrl = source.URL?.absoluteString ?: currentUrl
@@ -1111,7 +1208,7 @@ internal class WebContainerIosHost(
                 WebNavigationState(
                     url = currentUrl,
                     title = currentTitle,
-                    canGoBack = view?.canGoBack ?: false,
+                    canGoBack = view?.let(::canGoBack) ?: false,
                     canGoForward = view?.canGoForward ?: false,
                     isLoading = currentLoading,
                     progress = currentProgress.coerceIn(0, 100),

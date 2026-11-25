@@ -9,7 +9,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import build.raft.webcontainer.WebContainerAndroidKeepAlive
 import build.raft.webcontainer.WebIsolationScope
-import build.raft.webcontainer.jsb.JsbStandardCapabilities
 import build.raft.webcontainer.parseWebContainerOrigin
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellationException
@@ -372,8 +371,11 @@ internal actual fun RaftWebViewPrewarmEffect(config: RaftWebViewConfig?) {
         if (config?.keepAliveKey != null) {
             if (useWebContainer) {
                 val standardJsbCapabilities =
-                    if (standardJsbHost != null && config.effectiveStoragePartition == RaftWebViewStoragePartition.Default) {
-                        JsbStandardCapabilities.All
+                    if (standardJsbHost != null) {
+                        resolveRaftSurfaceStandardJsbCapabilities(
+                            surfaceId = config.diagnosticsSurface,
+                            partition = config.effectiveStoragePartition,
+                        )
                     } else {
                         emptySet()
                     }

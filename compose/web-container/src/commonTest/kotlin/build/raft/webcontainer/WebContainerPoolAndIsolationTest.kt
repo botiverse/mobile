@@ -1,11 +1,16 @@
 package build.raft.webcontainer
 
+import build.raft.webcontainer.jsb.JsbBootstrapScripts
+import build.raft.webcontainer.pool.WEB_CONTAINER_SPARE_BLANK_URL
 import build.raft.webcontainer.pool.WebContainerKeepAlivePool
 import build.raft.webcontainer.pool.WebContainerPoolKey
+import build.raft.webcontainer.pool.WebContainerSpareSlot
 import build.raft.webcontainer.pool.WebIsolationClearResult
 import build.raft.webcontainer.pool.WebIsolationScopeManager
 import build.raft.webcontainer.pool.WebMemoryTrimLevel
 import build.raft.webcontainer.pool.WebPooledContainer
+import build.raft.webcontainer.pool.isIosWarmSpareEligible
+import build.raft.webcontainer.pool.shouldIgnoreWarmSpareBlankNavigation
 import build.raft.webcontainer.resource.CompositeWebResourceInterceptor
 import build.raft.webcontainer.resource.WebOfflineBundleInterceptor
 import build.raft.webcontainer.resource.WebResourceInterceptor
@@ -225,5 +230,90 @@ class WebContainerPoolAndIsolationTest {
         assertFalse(isValidIosCustomScheme("javascript"))
         assertFalse(isValidIosCustomScheme("1bad"))
         assertEquals("font/woff2", inferWebMimeType("fonts/inter.woff2"))
+    }
+
+    @Test
+    fun warmSpareSlotEnforcesGenerationTtlZombieInvalidationAndDrop() {
+        var now = 10_000L
+        val retired = mutableListOf<String>()
+        val slot = WebContainerSpareSlot<String>(nowMs = { now }, retire = { retired += it })
+
+        // Warming spare cannot be taken until its exact generation finishes.
+        val g1 = slot.put("spare-1")
+        assertTrue(slot.hasItem)
+        assertFalse(slot.isReady)
+        assertNull(slot.take())
+        assertFalse(slot.markReady(g1 - 1))
+        assertTrue(slot.markReady(g1))
+        assertTrue(slot.isReady)
+        assertEquals(10_000L, slot.readyAtMs)
+
+        // Taking hands out the ready spare and empties the slot without retiring it.
+        assertEquals("spare-1", slot.take(maxIdleMs = 60_000L))
+        assertFalse(slot.hasItem)
+        assertTrue(retired.isEmpty())
+
+        // Stale / expired ready spare is retired instead of vended.
+        val g2 = slot.put("spare-2")
+        assertTrue(slot.markReady(g2))
+        now += 60_000L
+        assertNull(slot.take(maxIdleMs = 60_000L))
+        assertEquals(listOf("spare-2"), retired)
+        assertFalse(slot.hasItem)
+
+        // Idle zombie termination evicts matching spare immediately and ignores mismatched targets.
+        val g3 = slot.put("spare-3")
+        assertTrue(slot.markReady(g3))
+        assertFalse(slot.invalidateIfSame("other-spare"))
+        assertTrue(slot.isReady)
+        assertTrue(slot.invalidateIfSame("spare-3"))
+        assertFalse(slot.hasItem)
+        assertEquals(listOf("spare-2", "spare-3"), retired)
+
+        // Taking with a false predicate leaves a healthy spare parked for compatible callers.
+        val g4 = slot.put("spare-zoom-true")
+        assertTrue(slot.markReady(g4))
+        assertNull(slot.take(maxIdleMs = 60_000L) { it.endsWith("false") })
+        assertTrue(slot.isReady)
+        assertEquals("spare-zoom-true", slot.take(maxIdleMs = 60_000L) { it.endsWith("true") })
+        assertFalse(slot.hasItem)
+
+        // Replacing retires prior spare; drop returns exact eviction count.
+        slot.put("spare-4")
+        slot.put("spare-5")
+        assertEquals(listOf("spare-2", "spare-3", "spare-4"), retired)
+        assertEquals(1, slot.drop())
+        assertEquals(0, slot.drop())
+        assertEquals(listOf("spare-2", "spare-3", "spare-4", "spare-5"), retired)
+    }
+
+    @Test
+    fun iosWarmSpareEligibilityBlankGuardAndBlankCanvasScript() {
+        // Default + scripts + no custom scheme + no back-forward gesture + initial build -> eligible.
+        assertTrue(
+            isIosWarmSpareEligible(
+                isolationScope = WebIsolationScope.Default,
+                allowScripts = true,
+                hasCustomScheme = false,
+                allowsBackForwardNavigationGestures = false,
+                isRecoveryOrRebuild = false,
+            ),
+        )
+        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Ephemeral, true, false, false, false))
+        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Named("raft_third_party"), true, false, false, false))
+        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Default, false, false, false, false))
+        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Default, true, true, false, false))
+        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Default, true, false, true, false))
+        assertFalse(isIosWarmSpareEligible(WebIsolationScope.Default, true, false, false, true))
+
+        assertTrue(shouldIgnoreWarmSpareBlankNavigation(true, WEB_CONTAINER_SPARE_BLANK_URL, "https://app.raft.build/a/1"))
+        assertFalse(shouldIgnoreWarmSpareBlankNavigation(false, WEB_CONTAINER_SPARE_BLANK_URL, "https://app.raft.build/a/1"))
+        assertFalse(shouldIgnoreWarmSpareBlankNavigation(true, "https://app.raft.build/a/1", "https://app.raft.build/a/1"))
+        assertFalse(shouldIgnoreWarmSpareBlankNavigation(true, WEB_CONTAINER_SPARE_BLANK_URL, WEB_CONTAINER_SPARE_BLANK_URL))
+        assertFalse(shouldIgnoreWarmSpareBlankNavigation(true, WEB_CONTAINER_SPARE_BLANK_URL, ""))
+
+        val script = JsbBootstrapScripts.buildBlankCanvasPaintScript(0xFF123456.toInt(), isDark = true)
+        assertTrue(script.contains("rgb(18,52,86)"))
+        assertTrue(script.contains("color-scheme','dark"))
     }
 }
