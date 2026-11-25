@@ -64,4 +64,22 @@
     }
 }
 
+- (void)testNavigatorCurrentTopPageSelectorIsPinned {
+    // Guards the Objective-C selector for Kotlin `RaftCmpIosNavigator.currentTopPage()` (`@ObjCName`).
+    Protocol *navProtocol = objc_getProtocol("SharedRaftCmpIosNavigator");
+    XCTAssertNotNil(navProtocol, @"the shared framework no longer exports SharedRaftCmpIosNavigator");
+    if (navProtocol == nil) {
+        return;
+    }
+    struct objc_method_description topPage =
+        protocol_getMethodDescription(navProtocol, NSSelectorFromString(@"currentTopPage"), YES, YES);
+    XCTAssertTrue(topPage.name != NULL, @"SharedRaftCmpIosNavigator no longer declares currentTopPage");
+    struct objc_method_description openPage =
+        protocol_getMethodDescription(navProtocol, NSSelectorFromString(@"openPagePageName:pageDataJson:"), YES, YES);
+    XCTAssertTrue(openPage.name != NULL, @"SharedRaftCmpIosNavigator no longer declares openPagePageName:pageDataJson:");
+    struct objc_method_description closePage =
+        protocol_getMethodDescription(navProtocol, NSSelectorFromString(@"closePage"), YES, YES);
+    XCTAssertTrue(closePage.name != NULL, @"SharedRaftCmpIosNavigator no longer declares closePage");
+}
+
 @end
