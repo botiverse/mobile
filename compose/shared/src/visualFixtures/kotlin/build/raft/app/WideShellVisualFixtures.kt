@@ -121,7 +121,8 @@ private fun WideShellFrame(selectedTab: String, content: @Composable () -> Unit)
 // activityResultsFixture.json (slock packages/visual-testing/shared; the thread in #design, the
 // #android-artifacts channel, the DM with Cindy; 3 conversations, 3 unread) and renders at
 // fixtureData.locale's instant, the same rows and clock the phone's Activity fixture ports
-// ([homeActivityVisualSnapshot], [homeVisualFixtureTimeContext]). The task open beside it is none of the rows, so no row is selected.
+// ([homeActivityVisualSnapshot], [homeVisualFixtureTimeContext]). The task open beside it is none of
+// the rows, so no row is selected.
 private val wideActivity = homeActivityVisualSnapshot
 
 @Composable
@@ -460,6 +461,7 @@ private fun WideTasksTask() {
             SharedTasksPanel(
                 state = TasksUiState(loadState = ScreenLoadState.Content(TasksContent(summaryCounts = wideTasks.summaryCounts(), tasks = wideTasks))),
                 onIntent = {},
+                timeContext = homeVisualFixtureTimeContext,
                 initialPresentationOverride = TasksPresentationState.Default.copy(selectedMode = TasksViewMode.List),
             )
         }
