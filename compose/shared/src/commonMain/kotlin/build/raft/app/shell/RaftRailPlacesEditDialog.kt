@@ -35,9 +35,14 @@ import build.raft.app.data.RailPlacesSaveOutcome
 import build.raft.app.data.SharedRailPlacesStore
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.isRaftRailBuiltInPlaceId
+import build.raft.app.data.isRaftRailKeptPlaceId
+import build.raft.app.data.raftRailAddPlace
 import build.raft.app.data.raftRailAppsNotOnList
 import build.raft.app.data.raftRailBuiltInsNotOnList
+import build.raft.app.data.raftRailMovePlace
 import build.raft.app.data.raftRailPlacesForKeys
+import build.raft.app.data.raftRailRemovePlace
+import build.raft.app.data.withRaftRailKeptPlaceKeys
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftAvatarSize
@@ -81,7 +86,9 @@ internal data class RaftUnavailableRailApp(
 /**
  * Dispatches an App place tap (botiverse/slock #16684 + #16960):
  * - When the last cached read already lists [clientId] as usable on [serverId], invokes [onOpen]
- *   immediately and starts a non-blocking background refresh if older than 15 s.
+ *   immediately and, if the cached read is older than 15 s, refreshes in the background without
+ *   blocking the open; if that refresh drops [clientId], calls [onDroppedAfterOpen] and
+ *   [onUnavailable] so an open App surface transitions cleanly to its empty state.
  * - When the cached snapshot is fresh and does not list [clientId], invokes [onUnavailable] at once.
  * - Otherwise waits for [SharedRailPlacesStore.ensureFreshAndResolveApp] before calling [onOpen]
  *   or [onUnavailable].
@@ -96,22 +103,34 @@ internal fun appShellDispatchRailAppPlaceOpen(
     onOpen: (RaftRailPlaceApp) -> Unit,
     onUnavailable: (RaftUnavailableRailApp) -> Unit,
     log: (String) -> Unit = {},
+    onDroppedAfterOpen: ((RaftRailPlaceApp) -> Unit)? = null,
 ) {
-    fun reportUnavailable() {
+    fun reportUnavailable(name: String = fallbackAppName) {
         log("app_shell_rail_app_place_unavailable serverId=$serverId clientId=$clientId")
         onUnavailable(
             RaftUnavailableRailApp(
                 serverId = serverId,
                 clientId = clientId,
-                appName = fallbackAppName,
+                appName = name,
                 serverName = serverName,
             ),
         )
     }
-    val immediate = railPlacesStore.resolveAppImmediateOrNull(serverId, clientId)
-    if (immediate != null) {
-        log("app_shell_rail_app_place_open serverId=$serverId clientId=${immediate.clientId}")
-        onOpen(immediate)
+    val cached = railPlacesStore.usableApp(serverId, clientId)
+    if (cached != null) {
+        val wasFresh = railPlacesStore.isFresh(serverId)
+        log("app_shell_rail_app_place_open serverId=$serverId clientId=${cached.clientId}")
+        onOpen(cached)
+        if (!wasFresh) {
+            scope.launch {
+                railPlacesStore.reload(serverId)
+                val state = railPlacesStore.state.value
+                if (state.activeServerId == serverId && serverId in state.byServer && railPlacesStore.usableApp(serverId, clientId) == null) {
+                    onDroppedAfterOpen?.invoke(cached)
+                    reportUnavailable(cached.name)
+                }
+            }
+        }
         return
     }
     if (railPlacesStore.isFresh(serverId)) {
@@ -132,7 +151,8 @@ internal fun appShellDispatchRailAppPlaceOpen(
 /**
  * Opens an installed App place tapped on the wide rail (botiverse/slock #16684 + #16960):
  * - When the last cached read already lists [clientId] as usable on [serverId], opens the App
- *   immediately and kicks off a background refresh when older than 15 s (no UI wait).
+ *   immediately and kicks off a background refresh when older than 15 s (no UI wait), reporting
+ *   [onUnavailable] if the background refresh drops the App.
  * - Otherwise waits for [SharedRailPlacesStore.ensureFreshAndResolveApp] before opening or
  *   reporting [onUnavailable].
  */
@@ -149,6 +169,7 @@ internal fun appShellOpenRailAppPlace(
     log: (String) -> Unit,
     accountId: String? = null,
     recentlyUsedStore: MobileRecentlyUsedStore? = null,
+    onDroppedAfterOpen: ((RaftRailPlaceApp) -> Unit)? = null,
 ) {
     appShellDispatchRailAppPlaceOpen(
         scope = scope,
@@ -183,14 +204,30 @@ internal fun appShellOpenRailAppPlace(
         },
         onUnavailable = onUnavailable,
         log = log,
+        onDroppedAfterOpen = onDroppedAfterOpen,
     )
 }
 
+/** Closes the active mobile web panel when a background rail-places refresh drops an already-opened App (#16960). */
+internal fun appShellCloseDroppedRailAppPanel(
+    webPanelHost: RaftMobileWebPanelHostController?,
+    dropped: RaftRailPlaceApp,
+) {
+    val active = webPanelHost?.coordinator?.session?.value ?: return
+    if (active.ownerHostId != webPanelHost.hostId || !active.isRaftApp) return
+    val droppedOrigin = raftAppEntryOriginOf(dropped.homepageUrl)
+    val activeOrigin = raftAppEntryOriginOf(active.launchUrl)
+    if ((droppedOrigin != null && droppedOrigin == activeOrigin) || active.appName == dropped.name) {
+        webPanelHost.close(active.sessionId)
+    }
+}
+
 /**
- * Edit navigation bar dialog for per-server rail places (web `EditNavigationBarDialog.tsx`,
- * botiverse/slock #16684): Chat and Activity are shown fixed first; editable places can be moved
- * up/down or removed, and remaining visible built-ins plus `placeableApps` can be added.
- * On a 409 conflict the dialog stays open with the server's latest list and an inline notice.
+ * Edit navigation bar dialog for per-server desktop rail places (web `EditNavigationBarDialog.tsx`,
+ * botiverse/slock #16684 + #16773): Search is shown fixed first only when the rail has it (no top
+ * bar); Chat and Activity appear in their stored positions with Move up / Move down and no Remove;
+ * other places can be moved or removed, and remaining visible built-ins plus `placeableApps` can be
+ * added. On a 409 conflict the dialog stays open with the server's latest list and an inline notice.
  */
 @Composable
 internal fun RaftRailPlacesEditDialog(
@@ -200,6 +237,7 @@ internal fun RaftRailPlacesEditDialog(
     resolveIconUrl: (String?) -> String?,
     onDismiss: () -> Unit,
     onSave: suspend (List<String>) -> RailPlacesSaveOutcome,
+    fixedSearchItem: RaftBottomTabItemPayload? = null,
 ) {
     if (!open || snapshot == null) return
     val visibleBuiltInByPlaceId =
@@ -209,7 +247,7 @@ internal fun RaftRailPlacesEditDialog(
                 .mapNotNull { item -> raftRailTabIdForKey(item.key)?.let { id -> id to item } }
                 .toMap()
         }
-    val snapshotKeys = remember(snapshot.places) { snapshot.places.map { it.key } }
+    val snapshotKeys = remember(snapshot.places) { withRaftRailKeptPlaceKeys(snapshot.places.map { it.key }) }
     var draftKeys by remember(open) { mutableStateOf(snapshotKeys) }
     var conflictNotice by remember(open) { mutableStateOf(false) }
     var saving by remember(open) { mutableStateOf(false) }
@@ -217,7 +255,7 @@ internal fun RaftRailPlacesEditDialog(
 
     LaunchedEffect(open, snapshot.placesVersion) {
         if (conflictNotice) {
-            draftKeys = snapshot.places.map { it.key }
+            draftKeys = withRaftRailKeptPlaceKeys(snapshot.places.map { it.key })
         }
     }
 
@@ -241,14 +279,7 @@ internal fun RaftRailPlacesEditDialog(
 
     fun moveVisible(key: String, direction: Int) {
         val visibleKeys = visibleDraftPlaces.map { it.key }
-        val index = visibleKeys.indexOf(key)
-        val neighbour = visibleKeys.getOrNull(index + direction) ?: return
-        val from = draftKeys.indexOf(key)
-        val to = draftKeys.indexOf(neighbour)
-        if (from < 0 || to < 0 || from == to) return
-        val next = draftKeys.toMutableList()
-        val moved = next.removeAt(from)
-        next.add(to, moved)
+        val next = raftRailMovePlace(draftKeys, visibleKeys, key, direction) ?: return
         draftKeys = next
         conflictNotice = false
     }
@@ -321,17 +352,13 @@ internal fun RaftRailPlacesEditDialog(
                     color = colors.foregroundMuted,
                 )
 
-                val fixedLabel = stringResource(Res.string.rail_places_edit_fixed)
-                FixedPlaceRow(
-                    label = stringResource(Res.string.tab_home),
-                    fixedBadge = fixedLabel,
-                    icon = { RaftConversationKindIcon(RaftConversationKindGlyph.Chat, size = 18.dp, color = colors.foregroundMuted) },
-                )
-                FixedPlaceRow(
-                    label = stringResource(Res.string.tab_activity),
-                    fixedBadge = fixedLabel,
-                    icon = { RaftContentLucideIcon(RaftLucideIconName.Bell, size = 18.dp) },
-                )
+                if (fixedSearchItem != null) {
+                    FixedPlaceRow(
+                        label = fixedSearchItem.label,
+                        fixedBadge = stringResource(Res.string.rail_places_edit_fixed),
+                        icon = { RaftContentLucideIcon(fixedSearchItem.iconName, size = 18.dp) },
+                    )
+                }
 
                 visibleDraftPlaces.forEachIndexed { index, place ->
                     val label =
@@ -340,6 +367,7 @@ internal fun RaftRailPlacesEditDialog(
                         } else {
                             place.app?.name ?: place.key
                         }
+                    val removable = !isRaftRailKeptPlaceId(place.key)
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -376,17 +404,23 @@ internal fun RaftRailPlacesEditDialog(
                         ) {
                             RaftGlyphIcon(RaftGlyph.ArrowDown, size = 16.dp, color = colors.foregroundMuted)
                         }
-                        RaftIconButton(
-                            onClick = {
-                                draftKeys = draftKeys.filter { it != place.key }
-                                conflictNotice = false
-                            },
-                            tooltip = stringResource(Res.string.rail_places_edit_remove, label),
-                            variant = RaftButtonVariant.Ghost,
-                            size = RaftIconButtonSize.Xs,
-                            enabled = !saving,
-                        ) {
-                            RaftGlyphIcon(RaftGlyph.X, size = 16.dp, color = colors.foregroundMuted)
+                        if (removable) {
+                            RaftIconButton(
+                                onClick = {
+                                    draftKeys = raftRailRemovePlace(draftKeys, place.key)
+                                    conflictNotice = false
+                                },
+                                tooltip = stringResource(Res.string.rail_places_edit_remove, label),
+                                variant = RaftButtonVariant.Ghost,
+                                size = RaftIconButtonSize.Xs,
+                                enabled = !saving,
+                            ) {
+                                RaftGlyphIcon(RaftGlyph.X, size = 16.dp, color = colors.foregroundMuted)
+                            }
+                        } else {
+                            // Chat and Activity have no Remove; reserve the same width so Up/Down stay aligned.
+                            // app-only: matches RaftIconButtonSize.Xs box width (24dp)
+                            Spacer(Modifier.size(24.dp))
                         }
                     }
                 }
@@ -411,8 +445,9 @@ internal fun RaftRailPlacesEditDialog(
                                 )
                             },
                             onAdd = {
-                                if (key !in draftKeys) {
-                                    draftKeys = draftKeys + key
+                                val next = raftRailAddPlace(draftKeys, key)
+                                if (next != draftKeys) {
+                                    draftKeys = next
                                     conflictNotice = false
                                 }
                             },
@@ -431,8 +466,9 @@ internal fun RaftRailPlacesEditDialog(
                                 )
                             },
                             onAdd = {
-                                if (place.key !in draftKeys) {
-                                    draftKeys = draftKeys + place.key
+                                val next = raftRailAddPlace(draftKeys, place.key)
+                                if (next != draftKeys) {
+                                    draftKeys = next
                                     conflictNotice = false
                                 }
                             },
@@ -558,9 +594,18 @@ private fun PlaceRowLeadingIcon(
     } else if (isRaftRailBuiltInPlaceId(place.key) && raftNavShowsOttie(RaftNavPresentation.Rail, place.key)) {
         HomeAssistantFace(Modifier.size(20.dp), size = 20.dp)
     } else {
-        RaftContentLucideIcon(
-            name = builtIn?.iconName ?: RaftLucideIconName.Blocks,
-            size = 18.dp,
-        )
+        val glyph = builtIn?.let { raftNavGlyph(RaftNavPresentation.Rail, it.key) }
+        if (glyph != null) {
+            RaftConversationKindIcon(
+                glyph,
+                size = 18.dp,
+                color = RaftTheme.colors.foregroundMuted,
+            )
+        } else {
+            RaftContentLucideIcon(
+                name = builtIn?.iconName ?: RaftLucideIconName.Blocks,
+                size = 18.dp,
+            )
+        }
     }
 }

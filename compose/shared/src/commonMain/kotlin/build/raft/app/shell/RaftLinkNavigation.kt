@@ -327,8 +327,12 @@ internal class RaftLinkNavigator(
     private val cancelPendingInstalledAppLookup: () -> Unit = {},
     /** Reactive revision counter for the installed-App origins cache so link marks update when warmed. */
     private val installedAppRevision: (() -> StateFlow<Long>)? = null,
+    /** Reactive rail-places state flow so off-conversation App links drop ↗ on first frame (#16957). */
+    private val railPlacesState: (() -> StateFlow<Any?>)? = null,
 ) {
     internal fun installedAppRevisionFlow(): StateFlow<Long>? = installedAppRevision?.invoke()
+
+    internal fun railPlacesStateFlow(): StateFlow<Any?>? = railPlacesState?.invoke()
 
     /**
      * Returns true when [rawUrl] is currently known to open inside Raft as an installed App
@@ -761,18 +765,47 @@ internal fun rememberRaftLinkNavigator(
                 val env = RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current()
                 raftBrowserRaftHosts(env.webUrl, env.apiBaseUrl)
             },
-            lookupInstalledAppSync =
-                cleanInstalledAppServerId?.let { serverId ->
-                    { candidateOrigin ->
-                        val sharedStores = RaftSharedStoreRegistry.get(bridge)
-                        val scope = sharedStores.currentInstalledAppScopeSync(serverId)
+            lookupInstalledAppSync = { candidateOrigin ->
+                val sharedStores = RaftSharedStoreRegistry.get(bridge)
+                fun railPlacesMatch(serverId: String): RaftInstalledAppSyncLookup.Matched? {
+                    if (!appShellRailPlacesEnabled(sharedStores.serverFeatureFlags, serverId)) return null
+                    val railApp = sharedStores.railPlacesStore.usableAppOn(serverId, candidateOrigin) ?: return null
+                    val logoUrl =
+                        railApp.iconUrl?.let { icon ->
+                            build.raft.app.data.resolveAppLinkIconUrl(icon, sharedStores.apiEnvironmentStore.current().apiBaseUrl)
+                        }
+                    return RaftInstalledAppSyncLookup.Matched(
+                        match =
+                            RaftInstalledAppOriginMatch(
+                                origin = candidateOrigin,
+                                appName = railApp.name,
+                                logoUrl = logoUrl,
+                            ),
+                        serverId = serverId,
+                    )
+                }
+                if (cleanInstalledAppServerId != null) {
+                    val scope = sharedStores.currentInstalledAppScopeSync(cleanInstalledAppServerId)
+                    val cached =
                         if (scope == null) {
                             RaftInstalledAppSyncLookup.NotLoaded
                         } else {
                             sharedStores.installedAppOriginsCache.lookupSync(scope, candidateOrigin)
                         }
+                    if (cached is RaftInstalledAppSyncLookup.Matched) {
+                        cached
+                    } else {
+                        railPlacesMatch(cleanInstalledAppServerId) ?: cached
                     }
-                },
+                } else {
+                    val activeServerId = sharedStores.railPlacesStore.state.value.activeServerId
+                    if (activeServerId != null) {
+                        railPlacesMatch(activeServerId) ?: RaftInstalledAppSyncLookup.KnownNotInstalled
+                    } else {
+                        RaftInstalledAppSyncLookup.KnownNotInstalled
+                    }
+                }
+            },
             lookupInstalledAppAsync =
                 if (cleanInstalledAppServerId != null && pendingInstalledAppGate != null) {
                     { _, candidateOrigin, onMatched, onFallback ->
@@ -822,6 +855,7 @@ internal fun rememberRaftLinkNavigator(
                 cleanInstalledAppServerId?.let {
                     { RaftSharedStoreRegistry.get(bridge).installedAppOriginsCache.revision }
                 },
+            railPlacesState = { RaftSharedStoreRegistry.get(bridge).railPlacesStore.state },
         )
     }
 }
@@ -866,6 +900,11 @@ internal fun rememberRaftLinkOpensInRaft(url: String?): Boolean {
         @Suppress("UNUSED_VARIABLE")
         val revision by revisionFlow.collectAsState()
     }
+    val railPlacesFlow = navigator.railPlacesStateFlow()
+    if (railPlacesFlow != null) {
+        @Suppress("UNUSED_VARIABLE")
+        val railPlacesSnapshot by railPlacesFlow.collectAsState()
+    }
     return navigator.opensAsInstalledAppInRaft(url)
 }
 
@@ -883,6 +922,11 @@ internal fun rememberRaftAppLinkCardLeavesRaft(
     if (revisionFlow != null) {
         @Suppress("UNUSED_VARIABLE")
         val revision by revisionFlow.collectAsState()
+    }
+    val railPlacesFlow = navigator.railPlacesStateFlow()
+    if (railPlacesFlow != null) {
+        @Suppress("UNUSED_VARIABLE")
+        val railPlacesSnapshot by railPlacesFlow.collectAsState()
     }
     return !navigator.canOpenAppLinkCardInRaft(cardUrl = cardUrl, targetUrl = targetUrl)
 }

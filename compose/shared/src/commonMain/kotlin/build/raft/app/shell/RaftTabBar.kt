@@ -9,9 +9,12 @@ import androidx.compose.ui.text.TextStyle
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -672,6 +675,7 @@ internal fun RaftNavigationRailTabBar(
     footerTools: (@Composable () -> Unit)? = null,
     sidebarToggle: RaftRailSidebarToggle? = null,
     reorder: RaftRailTabReorder? = null,
+    desktopPlaces: RaftDesktopRailPlacesHost? = null,
 ) {
     // The design system's raft-ui AppRail: 56dp plus the seam, 40dp items 6dp apart and 8dp from
     // both ends (48dp / 36dp in a short window), the selected sticker on the frame. The footer in
@@ -680,9 +684,19 @@ internal fun RaftNavigationRailTabBar(
     val select = onBottomItemSelect ?: onSelect
     val attentionDescriptions = raftNavRailAttentionDescriptions()
     val toggleItem = sidebarToggle?.let { raftRailSidebarToggleItem(it) }
+    var railHeightPx by remember { mutableStateOf(0f) }
+    val footerCount =
+        (if (toggleItem != null) 1 else 0) +
+            (if (footerTools != null) 1 else 0) +
+            bottomItems.size
     RaftDesignSystemTheme {
         RaftAppRail(
-            modifier = modifier,
+            modifier =
+                if (desktopPlaces != null) {
+                    modifier.onGloballyPositioned { railHeightPx = it.size.height.toFloat() }
+                } else {
+                    modifier
+                },
             topInset = topSafeArea,
             bottomInset = bottomSafeArea,
             header = header,
@@ -706,7 +720,29 @@ internal fun RaftNavigationRailTabBar(
                     )
                 },
         ) {
-            if (reorder != null) {
+            if (desktopPlaces != null) {
+                val metrics = RaftAppRailDefaults.metrics
+                val density = LocalDensity.current
+                val availableNavHeightPx =
+                    if (railHeightPx <= 0f) {
+                        0f
+                    } else {
+                        with(density) {
+                            val headerPx = if (header != null) (metrics.headerHeight + topSafeArea).toPx() else 0f
+                            val navTopPx = if (header == null) (metrics.navTop + topSafeArea).toPx() else metrics.navTopUnderHeader.toPx()
+                            val footerPx =
+                                if (footerCount > 0) {
+                                    (metrics.navBottom + metrics.footerBottom + bottomSafeArea).toPx() +
+                                        footerCount * metrics.itemSize.toPx() +
+                                        (footerCount - 1).coerceAtLeast(0) * metrics.itemGap.toPx()
+                                } else {
+                                    0f
+                                }
+                            (railHeightPx - headerPx - navTopPx - footerPx).coerceAtLeast(0f)
+                        }
+                    }
+                RaftDesktopRailPlacesNav(host = desktopPlaces, availableNavHeightPx = availableNavHeightPx)
+            } else if (reorder != null) {
                 RaftRailReorderableTabs(items = items, onSelect = onSelect, reorder = reorder)
             } else {
                 items.forEach { item ->
@@ -768,7 +804,7 @@ private fun raftNavRailAttentionDescriptions(): (String) -> String {
 }
 
 @Composable
-private fun RaftNavigationRailIcon(item: RaftBottomTabItemPayload, glyph: RaftConversationKindGlyph?, ink: Color) {
+internal fun RaftNavigationRailIcon(item: RaftBottomTabItemPayload, glyph: RaftConversationKindGlyph?, ink: Color) {
     if (item.isAppPlace) {
         RaftConnectedAppLogo(
             name = item.avatarFallbackLabel ?: item.label,

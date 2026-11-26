@@ -5227,6 +5227,16 @@
     <string name="rail_places_edit_conflict">Your navigation bar was just changed on another device. This is the latest; check it and save again.</string>
     <string name="rail_places_unavailable_title">%1$s isn't on %2$s anymore</string>
     <string name="rail_places_unavailable_go_to_apps">Go to Apps</string>
+    <string name="rail_places_more">More</string>
+    <string name="rail_places_more_places">More places</string>
+    <string name="rail_places_removed">Removed %1$s from your navigation bar</string>
+    <string name="rail_places_search_stays_first">Search stays first</string>
+    <string name="rail_places_kept_stay_on_rail">Chat and Activity stay on the rail</string>
+    <string name="rail_places_drag_added">Added %1$s to your navigation bar.</string>
+    <string name="rail_places_drag_added_before">Added %1$s to your navigation bar, before %2$s.</string>
+    <string name="rail_places_drag_added_after">Added %1$s to your navigation bar, after %2$s.</string>
+    <string name="rail_places_drag_dropped_before">%1$s dropped before %2$s.</string>
+    <string name="rail_places_drag_dropped_after">%1$s dropped after %2$s.</string>
     <string name="settings_notifications_device_section">This device</string>
     <string name="settings_notifications_pause_section">Pause and schedule</string>
     <string name="settings_notifications_pause_custom">Custom</string>

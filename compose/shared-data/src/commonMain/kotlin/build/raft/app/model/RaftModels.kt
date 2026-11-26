@@ -1915,8 +1915,10 @@ data class PermissionUpdatesChanged(
 ) : RealtimeEvent
 
 /**
- * `rail_places:updated` (botiverse/slock #16682 `routes/servers.ts` `emitRailPlacesUpdated`), sent
- * to the person's own room (`user:<id>`) when their per-server rail places change on any client.
+ * `rail_places:updated` (botiverse/slock #16682 + #16773 `routes/servers.ts`
+ * `emitRailPlacesUpdated`), sent to the person's own room (`user:<id>`) when their per-server
+ * desktop rail places change on any client (`desktopPlaces`, falling back to `places` with kept
+ * Chat/Activity first on pre-#16773 servers).
  */
 @Serializable
 data class RailPlacesUpdated(

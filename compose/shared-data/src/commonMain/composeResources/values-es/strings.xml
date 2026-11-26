@@ -5020,6 +5020,16 @@
     <string name="rail_places_edit_conflict">Tu barra de navegación acaba de cambiar en otro dispositivo. Esta es la última versión; revísala y guarda de nuevo.</string>
     <string name="rail_places_unavailable_title">%1$s ya no está en %2$s</string>
     <string name="rail_places_unavailable_go_to_apps">Ir a Apps</string>
+    <string name="rail_places_more">Más</string>
+    <string name="rail_places_more_places">Más lugares</string>
+    <string name="rail_places_removed">Se quitó %1$s de tu barra de navegación</string>
+    <string name="rail_places_search_stays_first">Buscar siempre va primero</string>
+    <string name="rail_places_kept_stay_on_rail">Chat y Actividad se quedan en la barra</string>
+    <string name="rail_places_drag_added">Se agregó %1$s a tu barra de navegación.</string>
+    <string name="rail_places_drag_added_before">Se agregó %1$s a tu barra de navegación, antes de %2$s.</string>
+    <string name="rail_places_drag_added_after">Se agregó %1$s a tu barra de navegación, después de %2$s.</string>
+    <string name="rail_places_drag_dropped_before">Soltaste %1$s antes de %2$s.</string>
+    <string name="rail_places_drag_dropped_after">Soltaste %1$s después de %2$s.</string>
     <string name="settings_notifications_device_section">Este dispositivo</string>
     <string name="settings_notifications_pause_section">Pausa y horario</string>
     <string name="settings_notifications_pause_custom">Personalizado</string>

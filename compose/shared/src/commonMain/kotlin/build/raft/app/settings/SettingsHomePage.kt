@@ -5391,6 +5391,136 @@ private fun RaftAppShellReadyContent(
                 )
             }
         }
+    val mobileWebPanelHost = LocalRaftMobileWebPanelHost.current
+    val baseRailItems =
+        if (navRailActive) {
+            appShellRailTabItems.orderedLikePhoneBar { it.key }.let { items ->
+                if (railWithoutTopBar) {
+                    appShellRailItemsWithSearch(
+                        items = items,
+                        searchLabel = searchTabLabel,
+                        searchOpen = railInlineSecondaryDestination == AppShellRailSearchKey,
+                    )
+                } else {
+                    items
+                }
+            }
+        } else {
+            emptyList()
+        }
+    val onSelectRailItem: (String) -> Unit = { key ->
+        if (key == AppShellRailSearchKey) {
+            // The rail's Search: the inline Search over the current tab.
+            serverMenuState.dismiss()
+            appShellTopBar.bellOpen.value = false
+            RaftProductEvents.navEntrySelected(
+                destination = appShellNavDestination(AppShellRailSearchKey),
+                surface = RaftNavSurface.Rail,
+                wasActive = railInlineSecondaryDestination == AppShellRailSearchKey,
+            )
+            if (railInlineSecondaryDestination == AppShellRailSearchKey) railInlineSearchFocusRequest += 1
+            railInlineSecondaryDestination = AppShellRailSearchKey
+            bridge.log("app_shell_rail_secondary_open destination=search from=rail")
+        } else {
+            railHelpOpen = false
+            val railAppClientId =
+                if (useDesktopRailPlaces) build.raft.app.data.raftRailAppPlaceClientId(key) else null
+            if (railAppClientId != null) {
+                val serverId = readyServerId?.takeIf { it.isNotBlank() }
+                if (serverId != null) {
+                    val snap = railPlacesStore.state.value.activeSnapshot
+                    val fallbackName =
+                        snap?.places?.firstOrNull { it.key == key }?.app?.name
+                            ?: snap?.placeableApps?.firstOrNull { it.clientId.equals(railAppClientId, ignoreCase = true) }?.name
+                            ?: key
+                    serverMenuState.dismiss()
+                    appShellTopBar.bellOpen.value = false
+                    appShellOpenRailAppPlace(
+                        scope = appShellCoroutineScope,
+                        railPlacesStore = railPlacesStore,
+                        linkNavigator = linkNavigator,
+                        serverId = serverId,
+                        serverName = serverMenuModel?.currentServer?.name.orEmpty(),
+                        clientId = railAppClientId,
+                        fallbackAppName = fallbackName,
+                        resolveIconUrl = { icon ->
+                            icon?.let { build.raft.app.data.resolveAppLinkIconUrl(it, sharedStores.apiEnvironmentStore.current().apiBaseUrl) }
+                        },
+                        onUnavailable = { unavailableRailApp = it },
+                        log = { bridge.log(it) },
+                        accountId = readySession?.user?.id,
+                        recentlyUsedStore = sharedStores.mobileRecentlyUsedStore,
+                        onDroppedAfterOpen = { dropped -> appShellCloseDroppedRailAppPanel(mobileWebPanelHost, dropped) },
+                    )
+                }
+            } else {
+                val destination = RaftAppDestination.fromId(key)
+                if (destination?.route == RaftNavRoute.Page) {
+                    // Computers and Apps open the pages their Settings rows open, in
+                    // the content area beside the rail (an inline page; the selected
+                    // tab stays under it).
+                    val inlinePage = appShellRailInlinePageKey(destination)
+                    if (shouldDismissKeyboardOnRailInlinePageSelect(inlinePage, railInlineSecondaryDestination)) {
+                        dismissAppShellKeyboard()
+                    }
+                    serverMenuState.dismiss()
+                    appShellTopBar.bellOpen.value = false
+                    RaftProductEvents.navEntrySelected(
+                        destination = appShellNavDestination(key),
+                        surface = RaftNavSurface.Rail,
+                        wasActive = false,
+                    )
+                    bridge.log("app_shell_rail_page_open key=$key")
+                    if (inlinePage == null) {
+                        bridge.logWarn("app_shell_rail_page_unrouted key=$key")
+                    } else {
+                        if (destination == RaftAppDestination.Computers) {
+                            writeComputerAttentionSeen(
+                                build.raft.app.data.raftComputerAttentionMarkSeen(computerAttentionSeen, currentComputerAttention)
+                            )
+                        }
+                        railInlineSecondaryDestination = inlinePage
+                    }
+                } else {
+                    if (shouldDismissKeyboardOnRailTabSelect(key, railInlineSecondaryDestination, selectedTab)) {
+                        dismissAppShellKeyboard()
+                    }
+                    RaftProductEvents.navEntrySelected(
+                        destination = appShellNavDestination(key),
+                        surface = RaftNavSurface.Rail,
+                        wasActive =
+                            railInlineSecondaryDestination == null &&
+                                retainedAppShellSelectedTab(selectedTab) == key,
+                    )
+                    // Tapping a real rail item dismisses the inline secondary destination
+                    // even when the underlying tab is already selected (Activity -> Search
+                    // -> Activity must land back on Activity).
+                    railInlineSecondaryDestination = null
+                    onAppShellTabSelected(key)
+                    // Then the tab's place (RaftRailPlaces.kt): Chat's conversation, a list with nothing open.
+                    railPlaces.land(latestWideNavShowing, key, selectedTab, railSelectionOpenedOn) { place ->
+                        restoreWideNavEntry(place)
+                    }
+                }
+            }
+        }
+    }
+    val desktopRailPlacesHost =
+        rememberAppShellDesktopRailPlacesHost(
+            enabled = navRailActive && useDesktopRailPlaces,
+            serverId = readyServerId,
+            snapshot = activeRailPlacesSnapshot,
+            baseRailItems = baseRailItems,
+            railPlacesStore = railPlacesStore,
+            bridge = bridge,
+            scope = appShellCoroutineScope,
+            resolveIconUrl = { icon ->
+                icon?.let { build.raft.app.data.resolveAppLinkIconUrl(it, sharedStores.apiEnvironmentStore.current().apiBaseUrl) }
+            },
+            onSelectItem = onSelectRailItem,
+            onOpenEdit = { railPlacesEditOpen = true },
+            closeMoreSignal = serverMenuState.open || railHelpOpen || appShellTopBar.bellOpen.value,
+        )
     val mainRouteSurface: @Composable () -> Unit = {
         CompositionLocalProvider(
             LocalRaftAppShellTopBar provides appShellTopBar.takeIf { navRailActive },
@@ -5407,6 +5537,10 @@ private fun RaftAppShellReadyContent(
             // column can collapse.
             modifier =
                 Modifier.onPreviewKeyEvent { event ->
+                    // botiverse/slock #16808: Escape during a rail/More drag cancels only the drag, leaving More open.
+                    if (desktopRailPlacesHost?.handlePreviewEscapeKey(event) == true) {
+                        return@onPreviewKeyEvent true
+                    }
                     // web MainLayout: ⌘K / Ctrl+K anywhere opens search (a text field included).
                     if (
                         raftSearchShortcut(
@@ -5520,18 +5654,6 @@ private fun RaftAppShellReadyContent(
                                     moreAttention = moreAttention,
                                 )
                             }
-                        val baseRailItems =
-                            appShellRailTabItems.orderedLikePhoneBar { it.key }.let { items ->
-                                if (railWithoutTopBar) {
-                                    appShellRailItemsWithSearch(
-                                        items = items,
-                                        searchLabel = searchTabLabel,
-                                        searchOpen = railInlineSecondaryDestination == AppShellRailSearchKey,
-                                    )
-                                } else {
-                                    items
-                                }
-                            }
                         val railItems =
                             appShellResolvedRailItems(
                                 useNativeMobileRailPlaces = useNativeMobileRailPlaces,
@@ -5561,102 +5683,10 @@ private fun RaftAppShellReadyContent(
                         }
                         RaftNavigationRailTabBar(
                             items = railItems,
-                            onSelect = { key ->
-                                if (key == AppShellRailSearchKey) {
-                                    // The rail's Search: the inline Search over the current tab.
-                                    serverMenuState.dismiss()
-                                    appShellTopBar.bellOpen.value = false
-                                    RaftProductEvents.navEntrySelected(
-                                        destination = appShellNavDestination(AppShellRailSearchKey),
-                                        surface = RaftNavSurface.Rail,
-                                        wasActive = railInlineSecondaryDestination == AppShellRailSearchKey,
-                                    )
-                                    if (railInlineSecondaryDestination == AppShellRailSearchKey) railInlineSearchFocusRequest += 1
-                                    railInlineSecondaryDestination = AppShellRailSearchKey
-                                    bridge.log("app_shell_rail_secondary_open destination=search from=rail")
-                                    return@RaftNavigationRailTabBar
-                                }
-                                railHelpOpen = false
-                                val railAppClientId =
-                                    if (useDesktopRailPlaces) build.raft.app.data.raftRailAppPlaceClientId(key) else null
-                                if (railAppClientId != null) {
-                                    val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@RaftNavigationRailTabBar
-                                    val fallbackName =
-                                        railPlacesStore.state.value.activeSnapshot?.places
-                                            ?.firstOrNull { it.key == key }
-                                            ?.app?.name
-                                            ?: key
-                                    serverMenuState.dismiss()
-                                    appShellTopBar.bellOpen.value = false
-                                    appShellOpenRailAppPlace(
-                                        scope = appShellCoroutineScope,
-                                        railPlacesStore = railPlacesStore,
-                                        linkNavigator = linkNavigator,
-                                        serverId = serverId,
-                                        serverName = serverMenuModel?.currentServer?.name.orEmpty(),
-                                        clientId = railAppClientId,
-                                        fallbackAppName = fallbackName,
-                                        resolveIconUrl = { icon ->
-                                            icon?.let { build.raft.app.data.resolveAppLinkIconUrl(it, sharedStores.apiEnvironmentStore.current().apiBaseUrl) }
-                                        },
-                                        onUnavailable = { unavailableRailApp = it },
-                                        log = { bridge.log(it) },
-                                        accountId = readySession?.user?.id,
-                                        recentlyUsedStore = sharedStores.mobileRecentlyUsedStore,
-                                    )
-                                    return@RaftNavigationRailTabBar
-                                }
-                                val destination = RaftAppDestination.fromId(key)
-                                if (destination?.route == RaftNavRoute.Page) {
-                                    // Computers and Apps open the pages their Settings rows open, in
-                                    // the content area beside the rail (an inline page; the selected
-                                    // tab stays under it).
-                                    val inlinePage = appShellRailInlinePageKey(destination)
-                                    if (shouldDismissKeyboardOnRailInlinePageSelect(inlinePage, railInlineSecondaryDestination)) {
-                                        dismissAppShellKeyboard()
-                                    }
-                                    serverMenuState.dismiss()
-                                    appShellTopBar.bellOpen.value = false
-                                    RaftProductEvents.navEntrySelected(
-                                        destination = appShellNavDestination(key),
-                                        surface = RaftNavSurface.Rail,
-                                        wasActive = false,
-                                    )
-                                    bridge.log("app_shell_rail_page_open key=$key")
-                                    if (inlinePage == null) {
-                                        bridge.logWarn("app_shell_rail_page_unrouted key=$key")
-                                    } else {
-                                        if (destination == RaftAppDestination.Computers) {
-                                            writeComputerAttentionSeen(
-                                                build.raft.app.data.raftComputerAttentionMarkSeen(computerAttentionSeen, currentComputerAttention)
-                                            )
-                                        }
-                                        railInlineSecondaryDestination = inlinePage
-                                    }
-                                    return@RaftNavigationRailTabBar
-                                }
-                                if (shouldDismissKeyboardOnRailTabSelect(key, railInlineSecondaryDestination, selectedTab)) {
-                                    dismissAppShellKeyboard()
-                                }
-                                RaftProductEvents.navEntrySelected(
-                                    destination = appShellNavDestination(key),
-                                    surface = RaftNavSurface.Rail,
-                                    wasActive =
-                                        railInlineSecondaryDestination == null &&
-                                            retainedAppShellSelectedTab(selectedTab) == key,
-                                )
-                                // Tapping a real rail item dismisses the inline secondary destination
-                                // even when the underlying tab is already selected (Activity -> Search
-                                // -> Activity must land back on Activity).
-                                railInlineSecondaryDestination = null
-                                onAppShellTabSelected(key)
-                                // Then the tab's place (RaftRailPlaces.kt): Chat's conversation, a list with nothing open.
-                                railPlaces.land(latestWideNavShowing, key, selectedTab, railSelectionOpenedOn) { place ->
-                                    restoreWideNavEntry(place)
-                                }
-                            },
+                            onSelect = onSelectRailItem,
                             modifier = Modifier.fillMaxHeight(),
                             reorder = railTabReorder,
+                            desktopPlaces = desktopRailPlacesHost,
                             // The server tab at the foot is the phone's; the top bar holds the server.
                             bottomItems =
                                 if (railWithoutTopBar && railInlineSecondaryDestination == AppShellRailSearchKey) {
@@ -5839,6 +5869,7 @@ private fun RaftAppShellReadyContent(
                                     null
                                 },
                         )
+                        desktopRailPlacesHost?.Overlays()
                         RaftRailPlacesEditDialog(
                             open = useDesktopRailPlaces && railPlacesEditOpen,
                             snapshot = activeRailPlacesSnapshot,
@@ -5851,6 +5882,7 @@ private fun RaftAppShellReadyContent(
                                 val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@RaftRailPlacesEditDialog build.raft.app.data.RailPlacesSaveOutcome.Skipped
                                 railPlacesStore.savePlaces(serverId, keys, emitEffect = false)
                             },
+                            fixedSearchItem = baseRailItems.firstOrNull { it.key == AppShellRailSearchKey },
                         )
                         RaftRailUnavailableAppDialog(
                             unavailable = if (useDesktopRailPlaces) unavailableRailApp else null,

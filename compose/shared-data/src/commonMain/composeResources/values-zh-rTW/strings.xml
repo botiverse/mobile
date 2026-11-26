@@ -5020,6 +5020,16 @@
     <string name="rail_places_edit_conflict">你的導覽列剛在另一台裝置上變更，這裡顯示的是最新版本，請檢查後再儲存。</string>
     <string name="rail_places_unavailable_title">%1$s 已不在 %2$s 上</string>
     <string name="rail_places_unavailable_go_to_apps">前往應用程式</string>
+    <string name="rail_places_more">更多</string>
+    <string name="rail_places_more_places">更多項目</string>
+    <string name="rail_places_removed">已從導覽列移除 %1$s</string>
+    <string name="rail_places_search_stays_first">搜尋固定在最前面</string>
+    <string name="rail_places_kept_stay_on_rail">聊天和動態會固定在導覽列上</string>
+    <string name="rail_places_drag_added">已將 %1$s 新增到導覽列。</string>
+    <string name="rail_places_drag_added_before">已將 %1$s 新增到導覽列，位於 %2$s 之前。</string>
+    <string name="rail_places_drag_added_after">已將 %1$s 新增到導覽列，位於 %2$s 之後。</string>
+    <string name="rail_places_drag_dropped_before">已將 %1$s 放到 %2$s 之前。</string>
+    <string name="rail_places_drag_dropped_after">已將 %1$s 放到 %2$s 之後。</string>
     <string name="settings_notifications_device_section">本機</string>
     <string name="settings_notifications_pause_section">暫停與時段</string>
     <string name="settings_notifications_pause_custom">自訂</string>

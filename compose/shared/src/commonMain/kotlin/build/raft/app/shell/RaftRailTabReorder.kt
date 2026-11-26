@@ -60,15 +60,24 @@ internal data class RaftRailTabReorder(
     val onOrderChange: (List<String>) -> Unit,
 )
 
-/** Fixed rail item keys (app-side keys) for per-server rail places (#wg-mobile-sync:#294). */
+/**
+ * Fixed rail item keys (app-side keys) for desktop per-server rail places (botiverse/slock #16773,
+ * #wg-mobile-sync:#322): only Search stays fixed at the top; Chat and Activity move like any place
+ * and can never be removed ([RaftRailPlacesKeptItemKeys]).
+ */
 internal val RaftRailPlacesFixedItemKeys: Set<String> =
-    setOf(AppShellRailSearchKey, RaftAppDestination.Chat.id, RaftAppDestination.Activity.id)
+    setOf(AppShellRailSearchKey)
+
+/** Kept rail item keys (app-side keys) present on every desktop rail list: movable, never removed. */
+internal val RaftRailPlacesKeptItemKeys: Set<String> =
+    setOf(RaftAppDestination.Chat.id, RaftAppDestination.Activity.id)
 
 /**
- * Projects the wide rail items from a server's per-server [snapshot] (botiverse/slock #16682 +
- * #16684): fixed tabs ([RaftRailPlacesFixedItemKeys], in [builtInItems]'s order) come first,
- * followed by each place in [snapshot] — built-in places gated by [builtInItems] (flags/role) and
- * installed App places rendered with their icon and never marked selected.
+ * Projects the wide rail items from a server's per-server desktop [snapshot] (botiverse/slock
+ * #16682 + #16684 + #16773): fixed Search (when in [builtInItems], i.e. without the top bar) comes
+ * first, followed by each place in [snapshot] (with Chat and Activity prepended when absent, as on
+ * pre-#16773 servers) — built-in places gated by [builtInItems] (flags/role) and installed App
+ * places rendered with their icon and never marked selected.
  */
 internal fun projectRailItemsFromServerPlaces(
     builtInItems: List<RaftBottomTabItemPayload>,
@@ -82,7 +91,7 @@ internal fun projectRailItemsFromServerPlaces(
             .mapNotNull { item -> raftRailTabIdForKey(item.key)?.let { placeId -> placeId to item } }
             .toMap()
     val placeItems =
-        snapshot.places.mapNotNull { place ->
+        build.raft.app.data.withRaftRailKeptPlaces(snapshot.places).mapNotNull { place ->
             when {
                 place.isBuiltIn -> builtInByPlaceId[place.key]
                 place.isApp -> {
@@ -104,7 +113,7 @@ internal fun projectRailItemsFromServerPlaces(
     return fixedItems + placeItems
 }
 
-/** Maps a rail item key (built-in or `app:<clientId>`) to its wire place key, or null for fixed tabs. */
+/** Maps a rail item key (built-in including Chat/Activity, or `app:<clientId>`) to its wire place key, or null for fixed Search/unknown. */
 internal fun raftRailPlaceKeyForItemKey(key: String): String? =
     if (key in RaftRailPlacesFixedItemKeys) {
         null

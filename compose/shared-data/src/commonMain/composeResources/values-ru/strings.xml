@@ -4995,6 +4995,16 @@
     <string name="rail_places_edit_conflict">Панель навигации только что изменили на другом устройстве. Проверьте актуальный список и сохраните снова.</string>
     <string name="rail_places_unavailable_title">«%1$s» больше нет на %2$s</string>
     <string name="rail_places_unavailable_go_to_apps">Перейти к приложениям</string>
+    <string name="rail_places_more">Ещё</string>
+    <string name="rail_places_more_places">Другие вкладки</string>
+    <string name="rail_places_removed">Вкладка «%1$s» убрана с панели навигации</string>
+    <string name="rail_places_search_stays_first">Поиск всегда первый</string>
+    <string name="rail_places_kept_stay_on_rail">Чат и активность всегда остаются на панели навигации</string>
+    <string name="rail_places_drag_added">Вкладка «%1$s» добавлена на панель навигации.</string>
+    <string name="rail_places_drag_added_before">Вкладка «%1$s» добавлена на панель навигации перед вкладкой «%2$s».</string>
+    <string name="rail_places_drag_added_after">Вкладка «%1$s» добавлена на панель навигации после вкладки «%2$s».</string>
+    <string name="rail_places_drag_dropped_before">Вкладка «%1$s» перемещена перед вкладкой «%2$s».</string>
+    <string name="rail_places_drag_dropped_after">Вкладка «%1$s» перемещена после вкладки «%2$s».</string>
     <string name="settings_notifications_device_section">Это устройство</string>
     <string name="settings_notifications_pause_section">Пауза и расписание</string>
     <string name="settings_notifications_pause_custom">Указать время</string>
