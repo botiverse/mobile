@@ -79,6 +79,8 @@ internal const val SettingsBillingFreeUploadBytes = 100L * 1024 * 1024
 
 /** Shared DOWNGRADE_GRACE_PERIOD_DAYS. */
 private const val SettingsBillingDowngradeGraceDays = 7
+/** Prepaid Pro shows its end banner and badge this many days ahead (web `PREPAID_REMINDER_DAYS`). */
+internal const val SettingsBillingPrepaidReminderDays = 7
 private const val SettingsBillingDayMillis = 24L * 60 * 60 * 1000
 
 /** Shared PRO_AGENT_SEAT_BLOCK_SIZE: ten agents take one seat under `seat_v1`, so an agent takes a tenth of one. */
@@ -92,6 +94,9 @@ internal sealed interface SettingsBillingViewOnlyDescription {
 
     /** Pro on a subscription: its seats and when it renews or ends (the web line without the price). */
     data class ProSummary(val seats: Int, val ending: Boolean, val periodEnd: String) : SettingsBillingViewOnlyDescription
+
+    /** Prepaid Pro: its seats and end date, price-free and payment-method-free for iOS App Store 3.1.1. */
+    data class PrepaidSummary(val seats: Int, val endsAt: String) : SettingsBillingViewOnlyDescription
 
     data class ProSeats(val seats: Int) : SettingsBillingViewOnlyDescription
 
@@ -112,7 +117,16 @@ internal sealed interface SettingsBillingViewOnlyStatus {
     data object PaymentFailed : SettingsBillingViewOnlyStatus
 
     data class EndsOn(val periodEnd: String) : SettingsBillingViewOnlyStatus
+
+    /** Prepaid Pro in grace: paid period ended on [endsAt] (warning soft badge). */
+    data class PrepaidEnded(val endsAt: String) : SettingsBillingViewOnlyStatus
 }
+
+internal data class SettingsBillingViewOnlyPrepaidBanner(
+    val inGrace: Boolean,
+    val endsAt: String,
+    val graceEndsAt: String,
+)
 
 internal data class SettingsBillingViewOnlyDowngrade(val expired: Boolean, val daysLeft: Int)
 
@@ -150,6 +164,7 @@ internal data class SettingsBillingViewOnlyModel(
     val downgrade: SettingsBillingViewOnlyDowngrade? = null,
     val pastDue: Boolean = false,
     val endingOn: String? = null,
+    val prepaidBanner: SettingsBillingViewOnlyPrepaidBanner? = null,
     val seats: SettingsBillingViewOnlySeats? = null,
     val appSumo: SettingsBillingViewOnlyAppSumo? = null,
     val uploads: SettingsBillingViewOnlyUploads? = null,
@@ -169,9 +184,17 @@ internal fun settingsBillingViewOnlyModel(
     val pricing = billingPricing(summary?.pricing)
     val planId = (summary?.effectivePlan ?: snapshot?.serverPlan ?: sessionPlan)?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "free"
     val appsumo = summary?.appsumo
+    val summaryPrepaid = summary?.prepaid
+    val prepaid = if (summary?.source == "prepaid") summaryPrepaid else null
+    val prepaidEndsAtMillis = prepaid?.endsAt?.let { parseRaftTimestampEpochMillisOrNull(it, 0) }
+    val prepaidEndingSoon =
+        prepaid != null &&
+            !prepaid.inGrace &&
+            prepaidEndsAtMillis != null &&
+            prepaidEndsAtMillis - nowEpochMillis <= SettingsBillingPrepaidReminderDays * SettingsBillingDayMillis
     // web billingControls getBillingControlsState.
     val internal = planId == "founder" || planId == "partner" || summary?.source == "appsumo" || summary?.appsumoBillingReserved == true
-    val entitling = !internal && (summary?.status == "active" || summary?.status == "past_due")
+    val entitling = !internal && prepaid == null && (summary?.status == "active" || summary?.status == "past_due")
     val isFree = planId == "free" && appsumo == null
     val isPro = planId == "pro" && appsumo == null
     val pastDue = entitling && summary?.status == "past_due"
@@ -190,6 +213,7 @@ internal fun settingsBillingViewOnlyModel(
     val description =
         when {
             appsumo != null -> SettingsBillingViewOnlyDescription.AppSumo
+            prepaid != null -> SettingsBillingViewOnlyDescription.PrepaidSummary(seats = prepaid.seatQuantity, endsAt = prepaid.endsAt)
             isPro && entitling && periodEnd != null -> SettingsBillingViewOnlyDescription.ProSummary(seats, ending, periodEnd)
             isFree -> SettingsBillingViewOnlyDescription.FreeSummary
             planId == "founder" -> SettingsBillingViewOnlyDescription.Founder
@@ -202,9 +226,21 @@ internal fun settingsBillingViewOnlyModel(
     val status =
         when {
             appsumo != null -> SettingsBillingViewOnlyStatus.Lifetime
+            prepaid != null && prepaid.inGrace -> SettingsBillingViewOnlyStatus.PrepaidEnded(prepaid.endsAt)
+            prepaid != null && prepaidEndingSoon -> SettingsBillingViewOnlyStatus.EndsOn(prepaid.endsAt)
             pastDue -> SettingsBillingViewOnlyStatus.PaymentFailed
             ending && periodEnd != null -> SettingsBillingViewOnlyStatus.EndsOn(periodEnd)
             else -> null
+        }
+    val prepaidBanner =
+        if (prepaid != null && (prepaid.inGrace || prepaidEndingSoon)) {
+            SettingsBillingViewOnlyPrepaidBanner(
+                inGrace = prepaid.inGrace,
+                endsAt = prepaid.endsAt,
+                graceEndsAt = prepaid.graceEndsAt,
+            )
+        } else {
+            null
         }
     val downgrade =
         snapshot?.planDowngradedAt?.let(::parseRaftTimestampEpochMillisOrNull)?.let { downgradedAt ->
@@ -249,6 +285,7 @@ internal fun settingsBillingViewOnlyModel(
         downgrade = downgrade,
         pastDue = isPro && pastDue,
         endingOn = periodEnd?.takeIf { isPro && ending && !pastDue },
+        prepaidBanner = prepaidBanner,
         seats = seatMeter,
         appSumo =
             appsumo?.let {
@@ -528,6 +565,22 @@ private fun SettingsBillingViewOnlyOverview(model: SettingsBillingViewOnlyModel,
             title = stringResource(Res.string.settings_billing_vo_ending_title, settingsBillingDate(periodEnd)),
         )
     }
+    model.prepaidBanner?.let { banner ->
+        RaftBanner(
+            description =
+                if (banner.inGrace) {
+                    stringResource(Res.string.settings_billing_vo_prepaid_grace_body, settingsBillingDate(banner.graceEndsAt))
+                } else {
+                    stringResource(Res.string.settings_billing_vo_prepaid_ending_body)
+                },
+            status = if (banner.inGrace) RaftBannerStatus.Warning else RaftBannerStatus.Info,
+            title =
+                stringResource(
+                    if (banner.inGrace) Res.string.settings_billing_vo_prepaid_grace_title else Res.string.settings_billing_vo_prepaid_ending_title,
+                    settingsBillingDate(banner.endsAt),
+                ),
+        )
+    }
 
     // The plan
     val status = model.status
@@ -603,6 +656,12 @@ private fun settingsBillingPlanDescription(
                     settingsBillingDate(description.periodEnd),
                 ),
             )
+        is SettingsBillingViewOnlyDescription.PrepaidSummary ->
+            stringResource(
+                Res.string.settings_billing_vo_summary_join,
+                settingsBillingSeatCount(description.seats),
+                stringResource(Res.string.settings_billing_vo_prepaid_until, settingsBillingDate(description.endsAt)),
+            )
         is SettingsBillingViewOnlyDescription.ProSeats -> settingsBillingSeatCount(description.seats)
         SettingsBillingViewOnlyDescription.ProDefault -> stringResource(Res.string.settings_billing_vo_pro_description)
         SettingsBillingViewOnlyDescription.Founder -> stringResource(Res.string.settings_billing_vo_founder_description)
@@ -623,6 +682,12 @@ private fun SettingsBillingStatusBadge(status: SettingsBillingViewOnlyStatus) {
                 stringResource(Res.string.settings_billing_vo_ends_on, settingsBillingDate(status.periodEnd)),
                 appearance = RaftBadgeAppearance.Soft,
                 variant = RaftBadgeVariant.Muted,
+            )
+        is SettingsBillingViewOnlyStatus.PrepaidEnded ->
+            RaftBadge(
+                stringResource(Res.string.settings_billing_vo_prepaid_ended, settingsBillingDate(status.endsAt)),
+                appearance = RaftBadgeAppearance.Soft,
+                variant = RaftBadgeVariant.Warning,
             )
     }
 }

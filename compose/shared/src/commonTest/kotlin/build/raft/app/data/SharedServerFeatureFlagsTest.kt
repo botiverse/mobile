@@ -1205,4 +1205,38 @@ class SharedServerFeatureFlagsTest {
         overriddenOn.prefetch(server)
         assertTrue(overriddenOn.isVoiceDictationEnabled(server))
     }
+
+    @Test
+    fun proSeatAddFlagDefaultsOffAndFollowsPerServerEvaluation() = runTest {
+        assertEquals("pro_seat_add", PRO_SEAT_ADD_FEATURE_FLAG_KEY)
+        assertTrue(PRO_SEAT_ADD_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse(PRO_SEAT_ADD_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        assertFalse(PRO_SEAT_ADD_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+
+        val enabled =
+            SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$PRO_SEAT_ADD_FEATURE_FLAG_KEY","enabled":true,"reason":"server_rule"}]}"""))
+            )
+        assertFalse(enabled.isProSeatAddEnabled(null))
+        assertFalse(enabled.isProSeatAddEnabled(server), "unresolved defaults OFF")
+        enabled.prefetch(server)
+        assertTrue(enabled.isProSeatAddEnabled(server))
+        assertFalse(enabled.isProSeatAddEnabled(ServerId("s2")), "other server stays OFF until evaluated")
+
+        val missing = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
+        missing.prefetch(server)
+        assertFalse(missing.isProSeatAddEnabled(server), "missing_flag stays OFF")
+
+        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
+        assertFalse(failed.prefetch(server).resolved)
+        assertFalse(failed.isProSeatAddEnabled(server))
+
+        val overridden =
+            SharedServerFeatureFlags(
+                api = FakeApi(ok("""{"evaluations":[{"key":"$PRO_SEAT_ADD_FEATURE_FLAG_KEY","enabled":true}]}""")),
+                diagnosticOverride = { _, key, eff -> if (key == PRO_SEAT_ADD_FEATURE_FLAG_KEY) false else eff },
+            )
+        overridden.prefetch(server)
+        assertFalse(overridden.isProSeatAddEnabled(server))
+    }
 }

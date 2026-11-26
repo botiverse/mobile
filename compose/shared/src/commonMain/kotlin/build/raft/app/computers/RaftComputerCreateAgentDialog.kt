@@ -32,6 +32,8 @@ internal fun RaftComputerCreateAgentDialog(
     serverPlan: String? = null,
     /** "Upgrade for more" in the agent-limit banner; null leaves it as text. */
     onUpgrade: (() -> Unit)? = null,
+    /** Like [onUpgrade], carrying the agent name for `pro_seat_add` seat requests. */
+    onUpgradeWithAgentName: ((String) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val picker by remember(computersStore, owner) {
@@ -111,6 +113,7 @@ internal fun RaftComputerCreateAgentDialog(
         limitPlanLabel = agentLimit.planLabel,
         seatLimit = agentLimit.seatState,
         onUpgrade = onUpgrade,
+        onUpgradeWithAgentName = onUpgradeWithAgentName,
         onAddComputer = onAddComputer,
         onDismiss = { if (!submitting) onDismiss() },
         onSubmit = { submit(it) },

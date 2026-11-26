@@ -41,6 +41,7 @@ class RaftIosRealtimeEventsSyncTest {
         // Events this audit found missing on iOS stay in the shared list.
         assertTrue(RealtimeSocketEvents.AgentSeen in RealtimeSocketEvents.ServerWireEvents)
         assertTrue(RealtimeSocketEvents.JointInvitesChanged in RealtimeSocketEvents.ServerWireEvents)
+        assertTrue(RealtimeSocketEvents.SeatJoinBlocksChanged in RealtimeSocketEvents.ServerWireEvents)
     }
 
     private fun read(relative: String): String {

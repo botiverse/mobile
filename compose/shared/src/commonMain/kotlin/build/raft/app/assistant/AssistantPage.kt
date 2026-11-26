@@ -207,7 +207,11 @@ internal fun AssistantRoute() {
                 // view-only Billing opens the plan page.
                 onViewPlans = {
                     if (settingsBillingOffersUpgrade()) {
-                        pager.openRaftUpgradeDialog(RaftUpgradeGate.SeatLimitAgentCreate, storeScope)
+                        pager.openRaftUpgradeDialog(
+                            RaftUpgradeGate.SeatLimitAgentCreate,
+                            storeScope,
+                            seatRequestPurpose = build.raft.app.data.SeatRequestPurpose.AssistantCreate,
+                        )
                     } else {
                         pager.openSettingsBillingPage(storeScope)
                     }

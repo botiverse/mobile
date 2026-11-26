@@ -8,6 +8,7 @@ import build.raft.app.data.raftMachineNoticeComputerIds
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.jointInviteIdFromHomeNotificationIdOrNull
+import build.raft.app.data.seatJoinBlockIdFromHomeNotificationIdOrNull
 import build.raft.app.data.usageLimitIdFromHomeNotificationIdOrNull
 import build.raft.app.data.displayRowHints
 import build.raft.app.data.HomeChannelRow
@@ -330,6 +331,15 @@ internal fun SharedHomeScreen(
     jointInviteStore: build.raft.app.data.SharedJointInviteStore? = null,
     secondFactorRecoveryStore: build.raft.app.data.SharedSecondFactorRecoveryStore? = null,
     usageLimitAttentionStore: build.raft.app.data.SharedUsageLimitAttentionStore? = null,
+    seatJoinBlocksStore: build.raft.app.data.SharedSeatJoinBlocksStore? = null,
+    serverFeatureFlags: build.raft.app.data.SharedServerFeatureFlags? = null,
+    onOpenBilling: () -> Unit = {},
+    onAskSeatJoin: (
+        server: build.raft.app.model.ServerSummary,
+        block: build.raft.app.data.SeatJoinBlock,
+        usage: build.raft.app.data.SeatJoinSeatUsage?,
+        onSent: () -> Unit,
+    ) -> Unit = { _, _, _, _ -> },
     topSafeAreaOverride: Dp? = null,
     // web Sidebar scroll content `pb-2`: 8dp under the last section's list.
     bottomContentPadding: Dp = RaftAppSpacing.Sm,
@@ -374,6 +384,13 @@ internal fun SharedHomeScreen(
     val usageLimitAttention =
         rememberHomeUsageLimitAttention(
             store = usageLimitAttentionStore,
+            content = state.content,
+            active = active,
+        )
+    val seatJoinBlocks =
+        rememberHomeSeatJoinBlocks(
+            store = seatJoinBlocksStore,
+            serverFeatureFlags = serverFeatureFlags,
             content = state.content,
             active = active,
         )
@@ -834,11 +851,12 @@ internal fun SharedHomeScreen(
                 )
             }
             // Account security first (web useSystemNotifications), then joint invites (web "0a"),
-            // then server-backed usage-limit attention cards (web "0").
+            // then server-backed usage-limit attention cards (web "0"), then seat-join blocks ("0b").
             val notificationItems =
                 listOfNotNull(secondFactorRecovery.item) +
                     jointInvites.items +
                     usageLimitAttention.items +
+                    seatJoinBlocks.items +
                     state.notifications.map { it.toHomeNotificationItem() }
             val conversationsByThreadId =
                 remember(snapshot.channels, snapshot.directMessages) {
@@ -964,6 +982,7 @@ internal fun SharedHomeScreen(
                 onNotificationView = { notification ->
                     val jointInviteId = notification.id.jointInviteIdFromHomeNotificationIdOrNull()
                     val usageLimitIncidentId = notification.id.usageLimitIdFromHomeNotificationIdOrNull()
+                    val seatJoinBlockId = notification.id.seatJoinBlockIdFromHomeNotificationIdOrNull()
                     val versionGateComputerId = homeComputerVersionGateTargetOrNull(notification.id, notification.targetId)
                     when {
                         notification.id == SECOND_FACTOR_RECOVERY_HOME_NOTIFICATION_ID ->
@@ -974,6 +993,17 @@ internal fun SharedHomeScreen(
                             usageLimitAttention.markSeen(usageLimitIncidentId)
                             val machineId = notification.targetId?.trim()?.takeIf { it.isNotEmpty() }
                             if (machineId != null) onOpenComputer(machineId) else onOpenComputers()
+                        }
+                        seatJoinBlockId != null -> {
+                            if (settingsBillingOffersUpgrade()) {
+                                if (snapshot.server.role?.trim()?.lowercase() == "owner") {
+                                    onOpenBilling()
+                                } else {
+                                    seatJoinBlocks.blockById[seatJoinBlockId]?.let { block ->
+                                        onAskSeatJoin(snapshot.server, block, seatJoinBlocks.usage, seatJoinBlocks.refresh)
+                                    }
+                                }
+                            }
                         }
                         notification.id.isAppUpdateHomeNotificationId() && onAppUpdateOpen != null ->
                             onAppUpdateOpen()
@@ -994,12 +1024,15 @@ internal fun SharedHomeScreen(
                 onNotificationDismiss = { notification ->
                     val jointInviteId = notification.id.jointInviteIdFromHomeNotificationIdOrNull()
                     val usageLimitIncidentId = notification.id.usageLimitIdFromHomeNotificationIdOrNull()
+                    val seatJoinBlockId = notification.id.seatJoinBlockIdFromHomeNotificationIdOrNull()
                     if (notification.security) {
                         // Not dismissible (no Dismiss is drawn): it goes only when the reset does.
                     } else if (jointInviteId != null) {
                         jointInviteStore?.dispatch(build.raft.app.data.SharedJointInviteIntent.Dismiss(jointInviteId))
                     } else if (usageLimitIncidentId != null) {
                         usageLimitAttention.dismiss(usageLimitIncidentId)
+                    } else if (seatJoinBlockId != null) {
+                        seatJoinBlocks.dismiss(seatJoinBlockId)
                     } else {
                         onNotificationDismiss(notification.id)
                     }
@@ -1013,6 +1046,7 @@ internal fun SharedHomeScreen(
                     jointInvites.refresh()
                     secondFactorRecovery.refresh()
                     usageLimitAttention.refresh()
+                    seatJoinBlocks.refresh()
                 },
                 onChannelClick = { threadId ->
                     val mergedDm = mergedDirectMessagesById[threadId]

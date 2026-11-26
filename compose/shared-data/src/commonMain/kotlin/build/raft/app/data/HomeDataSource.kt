@@ -365,6 +365,8 @@ class SharedHomeDataSource(
         is build.raft.app.model.JointInvitesChanged -> false
         // Pending App permission updates light the Apps review dot (SharedAppPermissionUpdatesStore); no Home row.
         is build.raft.app.model.PermissionUpdatesChanged -> false
+        // Seat-join-blocked notices live in SharedSeatJoinBlocksStore; no Home row changes.
+        is build.raft.app.model.SeatJoinBlocksChanged -> false
         // Per-server rail & mobile navigation places update their own stores; no Home row changes.
         is build.raft.app.model.RailPlacesUpdated,
         is build.raft.app.model.MobilePlacesUpdated -> false

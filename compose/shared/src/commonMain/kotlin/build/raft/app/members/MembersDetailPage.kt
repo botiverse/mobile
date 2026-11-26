@@ -2210,6 +2210,8 @@ internal class MembersCreateAgentInputs(
     val createAgentViewPlan: (() -> Unit)? = null,
     /** Where Billing offers upgrades: the agent-limit banner's "Upgrade for more" link opens Billing. */
     val createAgentUpgrade: (() -> Unit)? = null,
+    /** Like [createAgentUpgrade], carrying the typed/suggested agent name for `pro_seat_add` seat requests. */
+    val createAgentUpgradeWithName: ((String) -> Unit)? = null,
     /** The no-computer dialog's "Add Computer": Settings > Computers with its Add Computer dialog open. */
     val createAgentAddComputer: (() -> Unit)? = null
 )

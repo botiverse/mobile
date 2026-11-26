@@ -70,6 +70,13 @@ class ProcessWideSnapshotStateIsolationTest {
     }
 
     @Test
+    fun raftAskSeatsDialogStateNeverReadsComposeSnapshotState() {
+        assertNoSnapshotStateReads("RaftAskSeatsDialogState.request") {
+            RaftAskSeatsDialogState.request
+        }
+    }
+
+    @Test
     fun threadChannelJoinsInFlightNeverReadsComposeSnapshotState() {
         assertNoSnapshotStateReads("ThreadChannelJoinsInFlight.isJoining") {
             ThreadChannelJoinsInFlight.isJoining(ChannelId("ch-snapshot-test"))

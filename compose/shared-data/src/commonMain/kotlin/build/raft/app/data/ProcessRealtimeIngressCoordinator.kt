@@ -355,6 +355,7 @@ private fun RealtimeEvent.serverIdHint(): ServerId? =
         is ActivityDoneUpdated -> serverId
         is build.raft.app.model.JointInvitesChanged -> serverId
         is build.raft.app.model.PermissionUpdatesChanged -> serverId
+        is build.raft.app.model.SeatJoinBlocksChanged -> serverId
         is build.raft.app.model.RailPlacesUpdated -> serverId
         is build.raft.app.model.MobilePlacesUpdated -> serverId
         is ServerAppearanceUpdated -> serverId

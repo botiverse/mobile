@@ -340,7 +340,20 @@ internal fun SharedMembersScreen(
                                 onForegroundActivity("copy_invite_link")
                                 bridge.copyToPasteboard(url)
                             },
-                            onDismiss = onDismiss
+                            onDismiss = onDismiss,
+                            onSeatLimitWithEmails =
+                                if (settingsBillingOffersUpgrade()) {
+                                    { emails ->
+                                        pager.openRaftUpgradeDialog(
+                                            RaftUpgradeGate.SeatLimitInvite,
+                                            storeScope,
+                                            seatRequestPurpose =
+                                                emails.takeIf { it.isNotEmpty() }?.let { build.raft.app.data.SeatRequestPurpose.Invite(it) },
+                                        )
+                                    }
+                                } else {
+                                    null
+                                },
                         )
                     }
                 } else {

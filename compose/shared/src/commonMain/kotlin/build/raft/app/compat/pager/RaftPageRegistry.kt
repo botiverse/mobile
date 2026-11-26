@@ -28,6 +28,8 @@ import build.raft.app.compat.ui.ProvideRaftPlatformImeInsets
 import build.raft.app.compat.ui.RaftProvidePageActive
 import build.raft.app.RaftProvideAppTypeScale
 import build.raft.app.RaftProvideTextRendering
+import build.raft.app.RaftAskSeatsDialogHost
+import build.raft.app.RaftAskSeatsDialogState
 import build.raft.app.RaftUpgradeDialogHost
 import build.raft.app.RaftUpgradeDialogState
 import build.raft.app.components.RaftDesignSystemTheme
@@ -312,6 +314,10 @@ fun RaftPagerHost(
                                 // The upgrade dialog this page opened (RaftUpgradeDialog.kt), if any.
                                 if (RaftUpgradeDialogState.observeRequest()?.pagerId == pager.pagerId) {
                                     RaftDesignSystemTheme { RaftUpgradeDialogHost(pager) }
+                                }
+                                // Non-owner "Ask an owner for seats" dialog (RaftAskSeatsDialog.kt, pro_seat_add), if any.
+                                if (RaftAskSeatsDialogState.observeRequest()?.pagerId == pager.pagerId) {
+                                    RaftDesignSystemTheme { RaftAskSeatsDialogHost(pager) }
                                 }
                             }
                         }

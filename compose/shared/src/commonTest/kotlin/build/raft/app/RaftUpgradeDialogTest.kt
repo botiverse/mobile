@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.HiddenHistory
 import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.SeatRequestPurpose
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberServerRef
@@ -226,5 +227,77 @@ class RaftUpgradeDialogTest {
         )
         assertNull(threadHistoryLimitContext(ThreadHistoryPaywallScope.Channel, null, channelName = "roadmap"))
         assertNull(threadHistoryLimitContext(ThreadHistoryPaywallScope.Thread, hiddenZero, channelName = "roadmap"))
+    }
+
+    @Test
+    fun nonOwnerProSeatLimitOpensNativeAskSeatsOnlyWhenFlagOnAndOffersUpgrade() {
+        val purpose = SeatRequestPurpose.AgentCreate("scout")
+        assertTrue(
+            raftShouldOpenNativeAskSeatsDialog(
+                mode = RaftUpgradeMode.AddSeats,
+                isOwner = false,
+                proSeatAddEnabled = true,
+                offersUpgrade = true,
+                purpose = purpose,
+            )
+        )
+        // Owners still go to Plan & Billing WebView (Stripe & Prepaid Add Seats + Alipay).
+        assertFalse(
+            raftShouldOpenNativeAskSeatsDialog(
+                mode = RaftUpgradeMode.AddSeats,
+                isOwner = true,
+                proSeatAddEnabled = true,
+                offersUpgrade = true,
+                purpose = purpose,
+            )
+        )
+        // Flag OFF keeps legacy RaftUpgradeDialog behavior unchanged.
+        assertFalse(
+            raftShouldOpenNativeAskSeatsDialog(
+                mode = RaftUpgradeMode.AddSeats,
+                isOwner = false,
+                proSeatAddEnabled = false,
+                offersUpgrade = true,
+                purpose = purpose,
+            )
+        )
+        // iOS App Store Guideline 3.1.1: NEVER offer native Ask-an-owner dialog when offersUpgrade is false.
+        assertFalse(
+            raftShouldOpenNativeAskSeatsDialog(
+                mode = RaftUpgradeMode.AddSeats,
+                isOwner = false,
+                proSeatAddEnabled = true,
+                offersUpgrade = false,
+                purpose = purpose,
+            )
+        )
+        // Free-plan Upgrade or LimitNotice modes stay on RaftUpgradeDialog; null purpose falls back safely.
+        assertFalse(
+            raftShouldOpenNativeAskSeatsDialog(
+                mode = RaftUpgradeMode.Upgrade,
+                isOwner = false,
+                proSeatAddEnabled = true,
+                offersUpgrade = true,
+                purpose = purpose,
+            )
+        )
+        assertFalse(
+            raftShouldOpenNativeAskSeatsDialog(
+                mode = RaftUpgradeMode.LimitNotice,
+                isOwner = false,
+                proSeatAddEnabled = true,
+                offersUpgrade = true,
+                purpose = purpose,
+            )
+        )
+        assertFalse(
+            raftShouldOpenNativeAskSeatsDialog(
+                mode = RaftUpgradeMode.AddSeats,
+                isOwner = false,
+                proSeatAddEnabled = true,
+                offersUpgrade = true,
+                purpose = null,
+            )
+        )
     }
 }

@@ -177,6 +177,13 @@ object RealtimeSocketEvents {
     const val PermissionUpdatesChanged = GeneratedRealtimeContract.SocketEvent.PermissionUpdatesChanged
 
     /**
+     * botiverse/slock `#11576` `packages/shared/src/listChangedEvents.ts` `SEAT_JOIN_BLOCKS_CHANGED_EVENT`:
+     * `{ serverId }` to `server:<id>` whenever who a full invite or join link turned away may have
+     * changed. Payload-free: non-guest viewers with `pro_seat_add` read `GET /servers/:id/seat-join-blocks`.
+     */
+    const val SeatJoinBlocksChanged = GeneratedRealtimeContract.SocketEvent.SeatJoinBlocksChanged
+
+    /**
      * Interactive link card receipt hint (RFC 076 §6.8; botiverse/slock
      * `services/linkCardReceiptHints.ts`, shared `LINK_CARD_OPERATION_CHANGED_EVENT`):
      * `{ operation_id, receipt_revision }` to the viewer's `user:<id>:server:<id>` room whenever one of

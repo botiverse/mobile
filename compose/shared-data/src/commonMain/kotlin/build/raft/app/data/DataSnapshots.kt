@@ -1918,6 +1918,8 @@ data class SettingsBillingSubscriptionSnapshot(
     val pricing: ProPricing? = null,
     val appsumoBillingReserved: Boolean = false,
     val appsumo: SettingsBillingAppSumoSnapshot? = null,
+    /** Active or in-grace Prepaid Pro grant (`GET /billing/subscription` `prepaid`, botiverse/slock `#12867 #13745 #13932`). */
+    val prepaid: SettingsBillingPrepaidSnapshot? = null,
     /** Seats the plan holds; -1 unlimited, null when billing does not say. */
     val maxUniversalSeats: Double? = null,
     val usage: SettingsBillingSeatUsageSnapshot? = null,
@@ -1941,6 +1943,17 @@ data class SettingsBillingAppSumoSnapshot(
     val maxAgents: Int,
     val maxHostedJointChannels: Int,
     val hostedJointChannels: Int
+)
+
+/**
+ * Active or in-grace Prepaid Pro grant (`GET /billing/subscription` `prepaid`,
+ * botiverse/slock `packages/shared/src/serverBillingEntitlement.ts` `PrepaidEntitlement`).
+ */
+data class SettingsBillingPrepaidSnapshot(
+    val endsAt: String,
+    val graceEndsAt: String,
+    val inGrace: Boolean,
+    val seatQuantity: Int,
 )
 
 /** Who is on the server for billing: people, agents and the seats they take (a person 1; an agent 0.1 under `seat_v1`, 0 under `person_v2`). */

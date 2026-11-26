@@ -378,7 +378,6 @@ class ServerEnumContractTest {
                 "read_progress:watched" to "web read-progress panel only",
                 "rooms:join_failed" to "room joins are handled by the native transport host",
                 "rooms:joined" to "handled by the native transport host (RealtimeSocketEvents.RoomsJoined), not the mapper",
-                "seat-join-blocks:changed" to "billing seats page reads on open",
                 "server_order:updated" to "server switcher order reads on open",
             )
     }

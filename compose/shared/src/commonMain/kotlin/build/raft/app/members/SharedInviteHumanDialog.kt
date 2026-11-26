@@ -220,6 +220,8 @@ internal fun SharedServerInviteHumanDialogHost(
      * the error alone.
      */
     onSeatLimit: (() -> Unit)? = null,
+    /** Like [onSeatLimit], carrying the submitted emails for a Pro `invite` seat request (`pro_seat_add`). */
+    onSeatLimitWithEmails: ((List<String>) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val errorStrings = localizedErrorPresentationStrings()
@@ -248,6 +250,7 @@ internal fun SharedServerInviteHumanDialogHost(
     var sending by remember(serverId) { mutableStateOf(false) }
     var error by remember(serverId) { mutableStateOf<String?>(null) }
     var seatLimitHit by remember(serverId) { mutableStateOf(false) }
+    var seatLimitEmails by remember(serverId) { mutableStateOf<List<String>>(emptyList()) }
 
     fun adoptLink(link: SettingsServerJoinLinkSnapshot?) {
         joinLink = link
@@ -359,6 +362,7 @@ internal fun SharedServerInviteHumanDialogHost(
             val failure = failed?.failureMessage(failedSend, sendInvitesForbidden)
             sending = false
             seatLimitHit = (failed as? DataResult.Error)?.error?.let { raftIsSeatLimitError(it.code, it.serverMessage) } == true
+            seatLimitEmails = if (seatLimitHit) targets.map { it.email } else emptyList()
             if (failure == null) onDismiss() else error = failure
         }
     }
@@ -369,11 +373,14 @@ internal fun SharedServerInviteHumanDialogHost(
             onTabChange = { tab = it },
             error = error,
             errorAction =
-                onSeatLimit?.takeIf { seatLimitHit && !error.isNullOrBlank() }?.let { open ->
+                if (seatLimitHit && !error.isNullOrBlank() && (onSeatLimitWithEmails != null || onSeatLimit != null)) {
                     {
+                        val emails = seatLimitEmails
                         onDismiss()
-                        open()
+                        if (onSeatLimitWithEmails != null) onSeatLimitWithEmails(emails) else onSeatLimit?.invoke()
                     }
+                } else {
+                    null
                 },
             invitees = invitees,
             onInviteeChange = { updated ->

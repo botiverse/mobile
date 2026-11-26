@@ -1270,6 +1270,25 @@ internal fun AppShellJointInviteEffect(
     }
 }
 
+// `seat-join-blocks:changed` (botiverse/slock #11576): re-read the seat-join-blocks list immediately.
+@Composable
+@NonRestartableComposable
+internal fun AppShellSeatJoinBlocksEffect(
+    appShellRealtimeDomainEventOwner: build.raft.app.data.SharedRealtimeDomainEventOwner,
+    seatJoinBlocksStore: build.raft.app.data.SharedSeatJoinBlocksStore,
+) {
+    DisposableEffect(appShellRealtimeDomainEventOwner, seatJoinBlocksStore) {
+        val sink =
+            build.raft.app.data.RealtimeGuardedActiveThreadSink { eventServerId, event ->
+                if (event is build.raft.app.model.SeatJoinBlocksChanged && event.serverId.value == eventServerId) {
+                    seatJoinBlocksStore.dispatch(build.raft.app.data.SharedSeatJoinBlocksIntent.Changed(eventServerId))
+                }
+            }
+        appShellRealtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
+        onDispose { appShellRealtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
+    }
+}
+
 /**
  * Loads `GET /integrations/permission-updates` for owners & admins on the current server and
  * refreshes on `permission-updates:changed`, foreground/reconnect, and page visibility return
