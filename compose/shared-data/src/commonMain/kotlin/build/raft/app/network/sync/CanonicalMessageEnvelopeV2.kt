@@ -29,6 +29,13 @@ fun normalizeCanonicalRetraction(deletedAt: String?): String? =
         it.isNotEmpty() && it == it.trim() && parseRaftTimestampEpochMillisOrNull(it) != null
     }
 
+/**
+ * Canonical `systemSubtype` (`worker.ended`, etc.): an additive OPTIONAL key — a non-blank,
+ * trimmed subtype token, else null (the V2 fact omits the key).
+ */
+fun normalizeCanonicalSystemSubtype(systemSubtype: String?): String? =
+    systemSubtype?.takeIf { it.isNotBlank() && it == it.trim() }
+
 /** Durable generation identity. V2 never seeds from or writes the V1 consumer partition. */
 const val SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID: String = "sync-core.messages.v2"
 
@@ -368,6 +375,12 @@ data class CanonicalMessageNodeV2(
      */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val deletedAt: String? = null,
+    /**
+     * System-message subtype (`worker.ended`, etc.): an additive OPTIONAL key — present only for
+     * system rows that carry a non-blank trimmed subtype, omitted otherwise, never `null`.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val systemSubtype: String? = null,
 )
 
 /** Full schema-v6 authoritative message envelope. */

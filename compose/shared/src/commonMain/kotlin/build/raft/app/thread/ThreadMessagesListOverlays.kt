@@ -49,6 +49,7 @@ internal fun BoxWithConstraintsScope.ThreadMessagesListOverlays(
     listState: ThreadListViewport,
     reverseLayout: Boolean,
     agentTyping: ThreadAgentTypingUi?,
+    workerConversation: ThreadWorkerConversationUi? = null,
     agentTypingLineShown: Boolean,
     outlineOriginJumpRequestState: MutableState<Int>,
     selectToHere: ThreadShareSelectToHere?,
@@ -135,11 +136,19 @@ internal fun BoxWithConstraintsScope.ThreadMessagesListOverlays(
             modifier = Modifier.zIndex(ThreadJumpControlsZIndex),
         )
     }
-    if (agentTyping != null && agentTypingLineShown) {
-        ThreadAgentTypingLine(
-            typing = agentTyping,
-            modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadAgentTypingLineZIndex),
-        )
+    if (agentTypingLineShown) {
+        when {
+            agentTyping != null ->
+                ThreadAgentTypingLine(
+                    typing = agentTyping,
+                    modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadAgentTypingLineZIndex),
+                )
+            workerConversation != null ->
+                ThreadWorkerConversationLine(
+                    workerLine = workerConversation,
+                    modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadAgentTypingLineZIndex),
+                )
+        }
     }
     if (backToBottomMounted || nextUnreadThread != null || selectToHerePillDirection != null) {
         // Kuikly-era rule kept: the native dispatch capture sits on the pills' ancestor path so

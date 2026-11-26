@@ -87,6 +87,8 @@ private val threadMessagesJson = Json {
      * The server spreads the full `messages` row (`messageService.ts` `...visibleRow`), ISO or null.
      */
     val deletedAt: String? = null,
+    /** System-message subtype (`worker.ended`, etc.); null for chat or untyped system notices. */
+    val systemSubtype: String? = null,
     /** Resolved mention facts; see [WireMessageMention]. */
     val mentions: List<WireMessageMention> = emptyList(),
     /**

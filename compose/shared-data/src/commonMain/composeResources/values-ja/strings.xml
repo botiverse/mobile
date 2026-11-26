@@ -6793,4 +6793,25 @@
     <string name="mobile_nav_edit_add_place">%1$s をタブバーに追加</string>
     <string name="mobile_nav_edit_move_left">左へ移動</string>
     <string name="mobile_nav_edit_move_right">右へ移動</string>
+    <string name="worker_obs_span_minutes">{minutes}分</string>
+    <string name="worker_obs_span_hours">{hours}時間{minutes}分</string>
+    <string name="worker_obs_span_days">{days}日{hours}時間</string>
+    <string name="conversation_worker_handling">@{agent} の Worker {worker} が対応中</string>
+    <string name="conversation_worker_handling_anonymous">@{agent} の Worker が対応中</string>
+    <string name="conversation_worker_handling_unknown">Worker が対応中</string>
+    <string name="conversation_worker_unknown_agent_row">この会話のエージェントの Worker</string>
+    <string name="conversation_worker_who_unknown">Worker</string>
+    <string name="conversation_worker_handed_back_unknown">メッセージがエージェントに差し戻されました</string>
+    <string name="conversation_worker_who">@{agent} の Worker {worker}</string>
+    <string name="conversation_worker_who_anonymous">@{agent} の Worker</string>
+    <string name="conversation_worker_running">{tool} を実行中</string>
+    <string name="conversation_worker_waiting">@{person} が {span} 待機中</string>
+    <string name="conversation_worker_someone_waiting">{span} 待機中</string>
+    <string name="conversation_worker_handed_back">@{person} のメッセージが @{agent} に差し戻されました</string>
+    <string name="conversation_worker_handed_back_someone">メッセージが @{agent} に差し戻されました</string>
+    <string name="conversation_worker_waiting_for">{span} 待機中</string>
+    <string name="conversation_worker_no_activity">{span} 動きがありません</string>
+    <string name="conversation_worker_in_tool">{tool} で {span}</string>
+    <string name="conversation_worker_combined">{count} 件の Worker が対応中</string>
+    <string name="conversation_worker_popover_title">この会話を対応中の Worker</string>
 </resources>

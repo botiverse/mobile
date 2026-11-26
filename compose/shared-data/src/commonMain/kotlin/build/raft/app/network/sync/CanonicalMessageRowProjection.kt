@@ -129,6 +129,7 @@ fun CanonicalMessageRow.toAppMessage(
         // Same as RealtimeEventMapper (parity): flagged here, emptied where it is shown.
         deletedAt = deletedAt,
         externalAuthor = resolvedExternalAuthor,
+        systemSubtype = systemSubtype,
     )
 }
 

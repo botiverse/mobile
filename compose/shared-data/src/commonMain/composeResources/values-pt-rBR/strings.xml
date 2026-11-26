@@ -6792,4 +6792,25 @@
     <string name="mobile_nav_edit_add_place">Adicionar %1$s à barra de abas</string>
     <string name="mobile_nav_edit_move_left">Mover para a esquerda</string>
     <string name="mobile_nav_edit_move_right">Mover para a direita</string>
+    <string name="worker_obs_span_minutes">{minutes} min</string>
+    <string name="worker_obs_span_hours">{hours} h {minutes} min</string>
+    <string name="worker_obs_span_days">{days} d {hours} h</string>
+    <string name="conversation_worker_handling">O Worker {worker} de @{agent} está cuidando disso</string>
+    <string name="conversation_worker_handling_anonymous">Um Worker de @{agent} está cuidando disso</string>
+    <string name="conversation_worker_handling_unknown">Um Worker está cuidando disso</string>
+    <string name="conversation_worker_unknown_agent_row">Um Worker de um agente aqui</string>
+    <string name="conversation_worker_who_unknown">Um Worker</string>
+    <string name="conversation_worker_handed_back_unknown">Uma mensagem voltou para o agente</string>
+    <string name="conversation_worker_who">Worker {worker} de @{agent}</string>
+    <string name="conversation_worker_who_anonymous">Um Worker de @{agent}</string>
+    <string name="conversation_worker_running">executando {tool}</string>
+    <string name="conversation_worker_waiting">@{person} aguardando há {span}</string>
+    <string name="conversation_worker_someone_waiting">alguém aguardando há {span}</string>
+    <string name="conversation_worker_handed_back">A mensagem de @{person} voltou para @{agent}</string>
+    <string name="conversation_worker_handed_back_someone">Uma mensagem voltou para @{agent}</string>
+    <string name="conversation_worker_waiting_for">aguardando há {span}</string>
+    <string name="conversation_worker_no_activity">sem atividade há {span}</string>
+    <string name="conversation_worker_in_tool">em {tool} há {span}</string>
+    <string name="conversation_worker_combined">{count} Workers estão cuidando disso</string>
+    <string name="conversation_worker_popover_title">Workers cuidando desta conversa</string>
 </resources>

@@ -88,6 +88,10 @@ data class CanonicalMessagePersistedV1(
     @OptIn(ExperimentalSerializationApi::class)
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val externalAuthor: CanonicalExternalAuthorV1? = null,
+    // System-message subtype (`worker.ended`, etc.). Omitted when null so pre-existing BLOBs stay byte-identical.
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val systemSubtype: String? = null,
 )
 
 @Serializable
@@ -197,6 +201,7 @@ fun CanonicalMessageRow.toPersistedV1(): CanonicalMessagePersistedV1 = Canonical
         CanonicalConversationContextV1(it.channelType, it.parentChannelId, it.parentChannelType, it.parentMessageId)
     },
     deletedAt = deletedAt,
+    systemSubtype = systemSubtype,
     externalAuthor = externalAuthor?.let {
         CanonicalExternalAuthorV1(
             actorKind = it.actorKind,
@@ -253,6 +258,7 @@ fun CanonicalMessagePersistedV1.toCanonicalRow(): CanonicalMessageRow = Canonica
         CanonicalConversationContextWire(it.channelType, it.parentChannelId, it.parentChannelType, it.parentMessageId)
     },
     deletedAt = deletedAt,
+    systemSubtype = systemSubtype,
     externalAuthor = externalAuthor?.let {
         CanonicalExternalAuthorWire(
             actorKind = it.actorKind,

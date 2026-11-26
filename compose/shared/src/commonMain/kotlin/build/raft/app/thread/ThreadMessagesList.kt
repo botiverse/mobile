@@ -553,11 +553,12 @@ private fun ThreadMessagesListContent(
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
     val dmReadStatusMessageId = renderPayload.dmReadStatusMessageId(peerReadReceipts)
     val agentTyping = LocalThreadAgentTyping.current
-    // The typing / working line over the list's end, and the room the end makes for it: the one
-    // condition for both (web AgentTypingLine and AgentTypingListEnd). Also while Search in this
-    // thread is open: its bar sits at the list's top (web ThreadSearchBar). Not while "Generate
-    // image" captures the list.
-    val agentTypingLineShown = agentTyping != null && !shareSelectionCaptureActive
+    val workerConversation = LocalThreadWorkerConversation.current
+    // The typing / working / Worker line over the list's end, and the room the end makes for it:
+    // typing always wins the shared bottom slot; the Worker line draws when nobody is typing.
+    // Not while "Generate image" captures the list.
+    val activeWorkerConversation = if (agentTyping == null) workerConversation else null
+    val agentTypingLineShown = (agentTyping != null || activeWorkerConversation != null) && !shareSelectionCaptureActive
     // Task #1125: offline stand-in chrome (top inset + tip overlay), see threadOfflineLastKnownChrome.
     val offlineLastKnownChrome =
         threadOfflineLastKnownChrome(
@@ -4411,6 +4412,7 @@ private fun ThreadMessagesListContent(
             listState = listState,
             reverseLayout = reverseLayout,
             agentTyping = agentTyping,
+            workerConversation = activeWorkerConversation,
             agentTypingLineShown = agentTypingLineShown,
             outlineOriginJumpRequestState = outlineOriginJumpRequestState,
             selectToHere = selectToHere,

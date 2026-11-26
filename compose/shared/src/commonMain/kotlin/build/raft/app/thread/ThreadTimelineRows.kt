@@ -12,6 +12,7 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.model.delegatedGroupKey
 import build.raft.app.markdown.ThreadMarkdownTag
+import build.raft.app.data.WORKER_ENDED_RECORD_SUBTYPE
 import build.raft.app.data.channelAnnouncementNoticeOf
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.RaftTimeContext
@@ -97,6 +98,15 @@ internal fun ThreadSystemMessageRow(
             onOpenMember = onOpenMember,
         )
     ) return
+    // Worker v1 ended system record row (web MessageItem -> WorkerEndedRecordRow).
+    if (LocalThreadWorkerV1Enabled.current && message.systemSubtype == WORKER_ENDED_RECORD_SUBTYPE) {
+        ThreadWorkerEndedRecordRow(
+            message = message,
+            timestampValue = timestampValue,
+            onExpand = onExpand,
+        )
+        return
+    }
     var expanded by remember(message.id) { mutableStateOf(false) }
     val timestampLayout = remember { threadSystemMessageTimestampLayoutSpec() }
     // A channel or DM announcement's set, replace or remove line, in the reader's language (its

@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidedValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -11,6 +12,7 @@ import build.raft.app.assistant.newAssistantOtterHostId
 import build.raft.app.assistant.rememberThreadAssistantOtter
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.RaftKnownEntityResolver
+import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedComputersStore
@@ -59,6 +61,8 @@ internal class ThreadFeatureHosts(
     val inPlaceTextSelectionHost: ThreadInPlaceTextSelectionHost,
     val peerReadReceipts: ThreadPeerReadReceiptsUi?,
     val agentTyping: ThreadAgentTypingUi?,
+    val workerV1Enabled: Boolean,
+    val workerConversation: ThreadWorkerConversationUi?,
     val assistantOtter: ThreadAssistantOtter?,
     val appLinkPreviewHost: ThreadAppLinkPreviewHost?,
     val actionCardNames: ThreadActionCardNameLookup,
@@ -119,6 +123,7 @@ internal fun rememberThreadFeatureHosts(
     messageAvatarResolver: RaftMemberAvatarResolver,
     composerDraftViewModel: SharedThreadComposerDraftViewModel,
     threadViewModel: SharedThreadViewModel,
+    realtimeEvents: RaftRealtimeEvents? = null,
 ): ThreadFeatureHosts {
     // New Message Menu toggle: message bodies become selectable in place (ThreadInPlaceTextSelection.kt).
     // Always on where the pointer selects text (desktop: drag, double-click, Cmd+C, like the web).
@@ -152,6 +157,34 @@ internal fun rememberThreadFeatureHosts(
             serverId = currentServerId,
             serverMembersStore = serverMembersStore,
             agentStatusResolver = agentStatusResolver,
+            openAgent = { agentId ->
+                memberDetailIdentity(agentId, MemberKind.Agent, currentServerId)?.let { identity ->
+                    onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity)
+                }
+            },
+        )
+    // worker_v1: per-server feature gate for the conversation Worker status line and worker.ended record rows.
+    val workerV1FlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val workerV1ServerId = currentServerId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId)
+    val workerV1Enabled =
+        remember(sharedStores.serverFeatureFlags, workerV1ServerId, workerV1FlagRevision) {
+            sharedStores.serverFeatureFlags.isWorkerV1Enabled(workerV1ServerId)
+        }
+    val typingAgentIds =
+        remember(agentTyping) {
+            agentTyping?.agents?.mapTo(HashSet()) { it.agentId }.orEmpty()
+        }
+    val workerConversation =
+        rememberThreadWorkerConversation(
+            workerV1Enabled = workerV1Enabled,
+            payload = renderedThread,
+            taskConversation = taskConversation,
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            serverId = currentServerId,
+            serverMembersStore = serverMembersStore,
+            typingAgentIds = typingAgentIds,
+            realtimeEvents = realtimeEvents,
             openAgent = { agentId ->
                 memberDetailIdentity(agentId, MemberKind.Agent, currentServerId)?.let { identity ->
                     onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity)
@@ -342,6 +375,8 @@ internal fun rememberThreadFeatureHosts(
         inPlaceTextSelectionHost = inPlaceTextSelectionHost,
         peerReadReceipts = peerReadReceipts,
         agentTyping = agentTyping,
+        workerV1Enabled = workerV1Enabled,
+        workerConversation = workerConversation,
         assistantOtter = assistantOtter,
         appLinkPreviewHost = appLinkPreviewHost,
         actionCardNames = actionCardNames,
@@ -388,6 +423,8 @@ internal fun rememberThreadProvidedValues(
     inPlaceTextSelectionHost: ThreadInPlaceTextSelectionHost,
     peerReadReceipts: ThreadPeerReadReceiptsUi?,
     agentTyping: ThreadAgentTypingUi?,
+    workerV1Enabled: Boolean = false,
+    workerConversation: ThreadWorkerConversationUi? = null,
     assistantOtter: ThreadAssistantOtter?,
     threadRouteAttachmentActions: ThreadRouteAttachmentActions,
     attachmentDownloadHost: ThreadAttachmentDownloadHost?,
@@ -436,6 +473,8 @@ internal fun rememberThreadProvidedValues(
             LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
             LocalThreadPeerReadReceipts provides peerReadReceipts,
             LocalThreadAgentTyping provides agentTyping,
+            LocalThreadWorkerV1Enabled provides workerV1Enabled,
+            LocalThreadWorkerConversation provides workerConversation,
             LocalThreadAssistantOtter provides assistantOtter,
             // The assistant DM's receipt and WeChat notice cards. Read from values this lambda
             // already captures (see the JVM-limit note below).

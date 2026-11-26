@@ -6792,4 +6792,25 @@
     <string name="mobile_nav_edit_add_place">탭 바에 %1$s 추가</string>
     <string name="mobile_nav_edit_move_left">왼쪽으로 이동</string>
     <string name="mobile_nav_edit_move_right">오른쪽으로 이동</string>
+    <string name="worker_obs_span_minutes">{minutes}분</string>
+    <string name="worker_obs_span_hours">{hours}시간 {minutes}분</string>
+    <string name="worker_obs_span_days">{days}일 {hours}시간</string>
+    <string name="conversation_worker_handling">@{agent}의 Worker {worker}이(가) 처리 중</string>
+    <string name="conversation_worker_handling_anonymous">@{agent}의 Worker가 처리 중</string>
+    <string name="conversation_worker_handling_unknown">Worker가 처리 중</string>
+    <string name="conversation_worker_unknown_agent_row">이 대화 에이전트의 Worker</string>
+    <string name="conversation_worker_who_unknown">Worker</string>
+    <string name="conversation_worker_handed_back_unknown">메시지가 에이전트에게 돌아갔습니다</string>
+    <string name="conversation_worker_who">@{agent}의 Worker {worker}</string>
+    <string name="conversation_worker_who_anonymous">@{agent}의 Worker</string>
+    <string name="conversation_worker_running">{tool} 실행 중</string>
+    <string name="conversation_worker_waiting">@{person} {span} 대기 중</string>
+    <string name="conversation_worker_someone_waiting">누군가 {span} 대기 중</string>
+    <string name="conversation_worker_handed_back">@{person}의 메시지가 @{agent}에게 돌아갔습니다</string>
+    <string name="conversation_worker_handed_back_someone">메시지가 @{agent}에게 돌아갔습니다</string>
+    <string name="conversation_worker_waiting_for">{span} 대기 중</string>
+    <string name="conversation_worker_no_activity">{span} 동안 활동 없음</string>
+    <string name="conversation_worker_in_tool">{tool}에서 {span}</string>
+    <string name="conversation_worker_combined">Worker {count}개가 처리 중</string>
+    <string name="conversation_worker_popover_title">이 대화를 처리 중인 Worker</string>
 </resources>

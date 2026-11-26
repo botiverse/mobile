@@ -20,6 +20,7 @@ import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.ThreadFollowersUpdated
 import build.raft.app.model.ScopeReadUpdated
 import build.raft.app.model.AgentTypingUpdated
+import build.raft.app.model.ConversationWorkerStateUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskUpdated
@@ -923,6 +924,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is build.raft.app.model.ThreadReplyUpdated -> "thread_reply_updated"
     is ScopeReadUpdated -> "scope_read_updated"
     is AgentTypingUpdated -> "agent_typing"
+    is ConversationWorkerStateUpdated -> "conversation_worker_state"
         is ThreadUpdated -> "thread_updated"
     is TaskCreated -> "task_created"
     is TaskUpdated -> "task_updated"

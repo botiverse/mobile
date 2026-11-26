@@ -6792,4 +6792,25 @@
     <string name="mobile_nav_edit_add_place">Добавить %1$s на панель вкладок</string>
     <string name="mobile_nav_edit_move_left">Переместить влево</string>
     <string name="mobile_nav_edit_move_right">Переместить вправо</string>
+    <string name="worker_obs_span_minutes">{minutes} мин</string>
+    <string name="worker_obs_span_hours">{hours} ч {minutes} мин</string>
+    <string name="worker_obs_span_days">{days} д {hours} ч</string>
+    <string name="conversation_worker_handling">Worker {worker} агента @{agent} занимается этим</string>
+    <string name="conversation_worker_handling_anonymous">Worker агента @{agent} занимается этим</string>
+    <string name="conversation_worker_handling_unknown">Worker занимается этим</string>
+    <string name="conversation_worker_unknown_agent_row">Worker агента в этом диалоге</string>
+    <string name="conversation_worker_who_unknown">Worker</string>
+    <string name="conversation_worker_handed_back_unknown">Сообщение вернулось к своему агенту</string>
+    <string name="conversation_worker_who">Worker {worker} агента @{agent}</string>
+    <string name="conversation_worker_who_anonymous">Worker агента @{agent}</string>
+    <string name="conversation_worker_running">выполняет {tool}</string>
+    <string name="conversation_worker_waiting">@{person} ждёт {span}</string>
+    <string name="conversation_worker_someone_waiting">кто-то ждёт {span}</string>
+    <string name="conversation_worker_handed_back">Сообщение @{person} вернулось к @{agent}</string>
+    <string name="conversation_worker_handed_back_someone">Сообщение вернулось к @{agent}</string>
+    <string name="conversation_worker_waiting_for">ждёт {span}</string>
+    <string name="conversation_worker_no_activity">нет активности {span}</string>
+    <string name="conversation_worker_in_tool">в {tool} уже {span}</string>
+    <string name="conversation_worker_combined">{count} Worker занимаются этим</string>
+    <string name="conversation_worker_popover_title">Worker в этом диалоге</string>
 </resources>

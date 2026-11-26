@@ -35,6 +35,7 @@ import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadFollowersUpdated
 import build.raft.app.model.AgentTypingUpdated
+import build.raft.app.model.ConversationWorkerStateUpdated
 import build.raft.app.model.ScopeReadUpdated
 import build.raft.app.model.ThreadUpdated
 import kotlinx.coroutines.flow.map
@@ -50,6 +51,7 @@ internal fun RealtimeEvent.performanceMarkerName(): String =
         is build.raft.app.model.ThreadReplyUpdated -> "thread_reply_updated"
         is ScopeReadUpdated -> "scope_read_updated"
         is AgentTypingUpdated -> "agent_typing"
+        is ConversationWorkerStateUpdated -> "conversation_worker_state"
         is ThreadUpdated -> "thread_updated"
         is TaskCreated -> "task_created"
         is TaskUpdated -> "task_updated"
@@ -103,6 +105,7 @@ internal fun RealtimeEvent.performanceMarkerPhase(): String =
         is build.raft.app.model.ThreadReplyUpdated,
         is ScopeReadUpdated,
         is AgentTypingUpdated,
+        is ConversationWorkerStateUpdated,
         is ThreadUpdated,
         is TaskCreated,
         is TaskUpdated,

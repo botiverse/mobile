@@ -103,6 +103,9 @@ fun validateCanonicalMessageV2(
     val deletedAt = envelope.fact.deletedAt
     if (deletedAt != null && normalizeCanonicalRetraction(deletedAt) == null) return CANONICAL_MESSAGE_V2_EXACT_KEYS
 
+    val systemSubtype = envelope.fact.systemSubtype
+    if (systemSubtype != null && normalizeCanonicalSystemSubtype(systemSubtype) == null) return CANONICAL_MESSAGE_V2_EXACT_KEYS
+
     (envelope.fact.actionMetadata as? CanonicalActionMetadataV2.ActionCard)?.let { card ->
         if (
             card.sourceServerId?.isNotCanonicalString() == true ||
@@ -197,13 +200,18 @@ private fun validateExactV2Shape(root: JsonObject): String? {
         return CANONICAL_MESSAGE_V2_EXACT_KEYS
     }
     val fact = root["fact"] as? JsonObject ?: return CANONICAL_MESSAGE_V2_EXACT_KEYS
-    if (!fact.hasExactKeys(*CANONICAL_MESSAGE_V2_FACT_KEYS) &&
-        !fact.hasExactKeys(*CANONICAL_MESSAGE_V2_FACT_KEYS, CANONICAL_MESSAGE_V2_RETRACTION_KEY)
+    if (!fact.keys.containsAll(CANONICAL_MESSAGE_V2_FACT_BASE_KEYS) ||
+        !(CANONICAL_MESSAGE_V2_FACT_BASE_KEYS + CANONICAL_MESSAGE_V2_FACT_OPTIONAL_KEYS).containsAll(fact.keys)
     ) return CANONICAL_MESSAGE_V2_EXACT_KEYS
     // RFC 077: when present, `deletedAt` is a canonical timestamp string — never null (omit the key).
     fact[CANONICAL_MESSAGE_V2_RETRACTION_KEY]?.let { deletedAt ->
         val value = (deletedAt as? JsonPrimitive)?.takeIf { it.isString }?.content
         if (normalizeCanonicalRetraction(value) == null) return CANONICAL_MESSAGE_V2_EXACT_KEYS
+    }
+    // System subtype: when present, a non-blank trimmed string — never null (omit the key).
+    fact[CANONICAL_MESSAGE_V2_SYSTEM_SUBTYPE_KEY]?.let { systemSubtype ->
+        val value = (systemSubtype as? JsonPrimitive)?.takeIf { it.isString }?.content
+        if (normalizeCanonicalSystemSubtype(value) == null) return CANONICAL_MESSAGE_V2_EXACT_KEYS
     }
 
     val mentions = fact["mentions"] as? JsonArray ?: return CANONICAL_MESSAGE_V2_EXACT_KEYS
@@ -231,7 +239,7 @@ private fun validateExactV2Shape(root: JsonObject): String? {
     return null
 }
 
-private val CANONICAL_MESSAGE_V2_FACT_KEYS = arrayOf(
+private val CANONICAL_MESSAGE_V2_FACT_BASE_KEYS = setOf(
     "id", "seq", "senderType", "senderId", "content", "messageType", "createdAt", "randomId",
     "senderName", "senderDescription", "senderMembershipStatus", "mentions", "attachments", "reactions",
     "actionMetadata", "replyCount",
@@ -246,8 +254,16 @@ private val CANONICAL_ACTION_CARD_OPTIONAL_KEYS = setOf(
     "sourceServerId", "targetServerName", "confirmationVersion", "presentation", "executedByUserId",
 )
 
-/** The one optional `$.fact` key (RFC 077): present only on a retracted message. */
+/** Optional `$.fact` key (RFC 077): present only on a retracted message. */
 private const val CANONICAL_MESSAGE_V2_RETRACTION_KEY = "deletedAt"
+
+/** Optional `$.fact` key: present only on a system message carrying a subtype (`worker.ended`, etc.). */
+private const val CANONICAL_MESSAGE_V2_SYSTEM_SUBTYPE_KEY = "systemSubtype"
+
+private val CANONICAL_MESSAGE_V2_FACT_OPTIONAL_KEYS = setOf(
+    CANONICAL_MESSAGE_V2_RETRACTION_KEY,
+    CANONICAL_MESSAGE_V2_SYSTEM_SUBTYPE_KEY,
+)
 
 private fun validateContextShape(element: JsonElement?): String? {
     val context = element as? JsonObject ?: return CANONICAL_MESSAGE_V2_EXACT_KEYS

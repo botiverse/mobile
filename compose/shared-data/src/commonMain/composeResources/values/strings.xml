@@ -6794,4 +6794,25 @@
     <string name="mobile_nav_edit_add_place">Add %1$s to tab bar</string>
     <string name="mobile_nav_edit_move_left">Move left</string>
     <string name="mobile_nav_edit_move_right">Move right</string>
+    <string name="worker_obs_span_minutes">{minutes}m</string>
+    <string name="worker_obs_span_hours">{hours}h {minutes}m</string>
+    <string name="worker_obs_span_days">{days}d {hours}h</string>
+    <string name="conversation_worker_handling">Worker {worker} of @{agent} is handling this</string>
+    <string name="conversation_worker_handling_anonymous">A Worker of @{agent} is handling this</string>
+    <string name="conversation_worker_handling_unknown">A Worker is handling this</string>
+    <string name="conversation_worker_unknown_agent_row">A Worker of an agent here</string>
+    <string name="conversation_worker_who_unknown">A Worker</string>
+    <string name="conversation_worker_handed_back_unknown">A message went back to its agent</string>
+    <string name="conversation_worker_who">Worker {worker} of @{agent}</string>
+    <string name="conversation_worker_who_anonymous">A Worker of @{agent}</string>
+    <string name="conversation_worker_running">running {tool}</string>
+    <string name="conversation_worker_waiting">@{person} waiting {span}</string>
+    <string name="conversation_worker_someone_waiting">someone waiting {span}</string>
+    <string name="conversation_worker_handed_back">@{person}'s message went back to @{agent}</string>
+    <string name="conversation_worker_handed_back_someone">A message went back to @{agent}</string>
+    <string name="conversation_worker_waiting_for">waiting {span}</string>
+    <string name="conversation_worker_no_activity">no activity for {span}</string>
+    <string name="conversation_worker_in_tool">in {tool} for {span}</string>
+    <string name="conversation_worker_combined">{count} Workers are handling this</string>
+    <string name="conversation_worker_popover_title">Workers handling this conversation</string>
 </resources>

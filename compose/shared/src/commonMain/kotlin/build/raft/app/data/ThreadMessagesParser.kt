@@ -144,6 +144,7 @@ private fun WireMessage.toMessageItem(
         seq = seq,
         messageType = resolvedMessageType.name,
         systemEventType = null,
+        systemSubtype = systemSubtype?.trim()?.takeIf { it.isNotEmpty() },
         metadata = actionMetadata.toMessageItemMetadata(),
         body = content,
         randomId = randomId?.takeIf { it.isNotBlank() },

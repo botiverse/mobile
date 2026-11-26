@@ -732,6 +732,7 @@ internal fun RaftThreadMessageItem.mergeRealtimeUpdate(
         // have been deleted), a sparse patch without it keeps the label.
         delegatedBy = keepKnownDelegatedBy(update.delegatedBy, delegatedBy),
         deletedAt = update.deletedAt ?: deletedAt,
+        systemSubtype = update.systemSubtype ?: systemSubtype,
         // A read's quote replies win; a live copy carries none (room broadcasts never do), so the
         // loaded ones stay while the words they were resolved for stay.
         resolvedQuotes = update.resolvedQuotes ?: resolvedQuotes.takeIf { update.body.isBlank() || update.body == body },

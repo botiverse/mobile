@@ -1075,6 +1075,8 @@ internal class RaftSharedStoreProvider private constructor(
         RaftShellScopedStoreCache<SharedPeerReadReceiptStore>()
     private val shellAgentTypingStores =
         RaftShellScopedStoreCache<SharedAgentTypingStore>()
+    private val shellConversationWorkerStateStores =
+        RaftShellScopedStoreCache<SharedConversationWorkerStateStore>()
     private val processReadReceiptLock = SynchronizedObject()
     private var processReadReceiptCoordinator: ReadReceiptCoordinator? = null
     private val processReadReceiptRepositories = mutableMapOf<ReadReceiptOwner, RealReadReceiptRepository>()
@@ -3524,6 +3526,29 @@ internal class RaftSharedStoreProvider private constructor(
             }
         }
 
+    /**
+     * Worker v1 conversation status line: tracks active Workers handling open thread/task
+     * conversations for this shell, hydrated via `GET /conversations/worker-state` and updated via
+     * `conversation:worker:state` only while `worker_v1` is ON for the server.
+     */
+    fun conversationWorkerStateStore(scope: RaftShellStoreScope): SharedConversationWorkerStateStore =
+        shellConversationWorkerStateStores.getOrPut(scope) {
+            SharedConversationWorkerStateStore(
+                scope = threadSendScope,
+                fetchStates = { serverId, target ->
+                    fetchConversationWorkerState(networkClient(scope), serverId, target)
+                },
+                isEnabledForServer = { serverId ->
+                    serverFeatureFlags.isWorkerV1Enabled(ServerId(serverId))
+                },
+                now = ::defaultNowMillis,
+            ).also { store ->
+                realtimeDomainEventOwner(scope).registerGuardedActiveThreadSink(
+                    RealtimeGuardedActiveThreadSink { serverId, event -> store.consume(serverId, event) },
+                )
+            }
+        }
+
     override fun createAuthDataSourceForCurrentEnvironment(
         avatarCacheNativeCache: RaftAvatarNativeCache
     ): SharedAuthDataSource =
@@ -4073,6 +4098,7 @@ internal class RaftSharedStoreProvider private constructor(
         shellRealtimeDomainEventOwners.remove(scope)
         shellPeerReadReceiptStores.remove(scope)?.dispatch(PeerReadReceiptIntent.BindOwner(null))
         shellAgentTypingStores.remove(scope)?.close()
+        shellConversationWorkerStateStores.remove(scope)?.close()
         shellAgentDetailStores.remove(scope)
         shellComputersStores.remove(scope)?.dispatch(SharedComputersIntent.Clear)
         shellRuntimeAccountUsageStores.remove(scope)?.clearSync()

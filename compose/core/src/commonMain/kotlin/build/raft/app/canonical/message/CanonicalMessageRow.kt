@@ -145,4 +145,9 @@ data class CanonicalMessageRow(
      * task-status projector (absent = preserve; present null = clear).
      */
     val externalAuthor: CanonicalExternalAuthorWire? = null,
+    /**
+     * System-message subtype (`worker.ended`, etc.): optional aggregate preserved across canonical
+     * reads and live updates so system record rows survive reload and durable restore.
+     */
+    val systemSubtype: String? = null,
 )

@@ -68,6 +68,7 @@ enum GeneratedRealtimeContract {
         static let agentActivitySubscribed = "agent:activity:subscribed"
         static let agentSeen = "agent:seen"
         static let agentTyping = "agent:typing"
+        static let conversationWorkerState = "conversation:worker:state"
         static let agentSession = "agent:session"
         static let agentCreated = "agent:created"
         static let agentUpdated = "agent:updated"
@@ -135,6 +136,7 @@ enum GeneratedRealtimeContract {
             SocketEvent.agentActivitySubscribed,
             SocketEvent.agentSeen,
             SocketEvent.agentTyping,
+            SocketEvent.conversationWorkerState,
             SocketEvent.agentSession,
             SocketEvent.agentCreated,
             SocketEvent.agentUpdated,

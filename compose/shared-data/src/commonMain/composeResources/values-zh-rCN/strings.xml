@@ -6793,4 +6793,25 @@
     <string name="mobile_nav_edit_add_place">将 %1$s 添加到标签栏</string>
     <string name="mobile_nav_edit_move_left">向左移动</string>
     <string name="mobile_nav_edit_move_right">向右移动</string>
+    <string name="worker_obs_span_minutes">{minutes} 分钟</string>
+    <string name="worker_obs_span_hours">{hours} 小时 {minutes} 分</string>
+    <string name="worker_obs_span_days">{days} 天 {hours} 小时</string>
+    <string name="conversation_worker_handling">@{agent} 的 Worker {worker} 正在处理</string>
+    <string name="conversation_worker_handling_anonymous">@{agent} 的一个 Worker 正在处理</string>
+    <string name="conversation_worker_handling_unknown">一个 Worker 正在处理</string>
+    <string name="conversation_worker_unknown_agent_row">这里一个 agent 的 Worker</string>
+    <string name="conversation_worker_who_unknown">一个 Worker</string>
+    <string name="conversation_worker_handed_back_unknown">一条消息已交还给它的 agent</string>
+    <string name="conversation_worker_who">@{agent} 的 Worker {worker}</string>
+    <string name="conversation_worker_who_anonymous">@{agent} 的一个 Worker</string>
+    <string name="conversation_worker_running">正在运行 {tool}</string>
+    <string name="conversation_worker_waiting">@{person} 已等 {span}</string>
+    <string name="conversation_worker_someone_waiting">有人已等 {span}</string>
+    <string name="conversation_worker_handed_back">@{person} 的消息已交还给 @{agent}</string>
+    <string name="conversation_worker_handed_back_someone">一条消息已交还给 @{agent}</string>
+    <string name="conversation_worker_waiting_for">已等 {span}</string>
+    <string name="conversation_worker_no_activity">{span}没有动静</string>
+    <string name="conversation_worker_in_tool">在 {tool} 里 {span}</string>
+    <string name="conversation_worker_combined">{count} 个 Worker 正在处理</string>
+    <string name="conversation_worker_popover_title">正在处理这个对话的 Worker</string>
 </resources>

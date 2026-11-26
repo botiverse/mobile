@@ -852,6 +852,8 @@ data class Message(
      * servers and cached rows, which default to `false`.
      */
     val quietForPeople: Boolean = false,
+    /** Server-authored system row subtype (`worker.ended`, etc.); null for chat or untyped system rows. */
+    val systemSubtype: String? = null,
 )
 
 /**
@@ -1263,6 +1265,31 @@ data class AgentTypingUpdated(
     val phase: AgentTypingPhase,
     val expiresAtEpochMillis: Long,
     val taskId: String? = null,
+) : RealtimeEvent
+
+/** `conversation:worker:state` `state` closed union (slock `CONVERSATION_WORKER_STATES`). */
+@Serializable
+enum class ConversationWorkerStateKind { Handling, Stalled, Waiting, HandedBack, None }
+
+/**
+ * `conversation:worker:state` (worker_v1, slock `packages/shared/src/workerEvents.ts`
+ * `ConversationWorkerState`), emitted to `channel:<channelId>` and returned by
+ * `GET /api/conversations/worker-state`: who handles a thread or task conversation through a Worker.
+ */
+@Serializable
+data class ConversationWorkerStateUpdated(
+    val channelId: ChannelId,
+    val parentMessageId: MessageId? = null,
+    val taskId: String? = null,
+    val agentId: MemberId,
+    val worker: String? = null,
+    val state: ConversationWorkerStateKind,
+    val sinceAt: String,
+    val waitingSinceAt: String? = null,
+    val waitingFrom: String? = null,
+    val doing: String? = null,
+    val tool: String? = null,
+    val quietSinceAt: String? = null,
 ) : RealtimeEvent
 
 /**
