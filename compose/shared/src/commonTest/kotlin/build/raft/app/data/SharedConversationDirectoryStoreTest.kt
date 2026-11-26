@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.model.ChannelCapabilities
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
@@ -311,5 +312,80 @@ class SharedConversationDirectoryStoreTest {
         val inboxThenHome = listOf(inboxState, homeState).mergedSharedConversationDirectoryState()
         assertEquals(listOf(peer), homeThenInbox.resolve("joint-1")?.jointServers)
         assertEquals(listOf(peer), inboxThenHome.resolve("joint-1")?.jointServers)
+    }
+
+    @Test
+    fun mergedDirectoryPreservesChannelCapabilitiesAndJointRoleAcrossInboxOverlapAndPrefersNewerCapabilities() {
+        val initialCaps = ChannelCapabilities(federateChannels = true, editChannelMetadata = false)
+        val updatedCaps = ChannelCapabilities(federateChannels = false, editChannelMetadata = true)
+        val homeState =
+            HomeSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                currentMember =
+                    MemberProfile(
+                        id = MemberId("user-1"),
+                        displayName = "Artin",
+                        handle = "artin",
+                        kind = MemberKind.Human
+                    ),
+                channels =
+                    listOf(
+                        HomeChannelRow(
+                            threadId = ThreadId("joint-1"),
+                            channelId = ChannelId("joint-1"),
+                            kind = ConversationKind.Joint,
+                            name = "partner-sync",
+                            jointRole = "participant",
+                            channelCapabilities = initialCaps
+                        )
+                    ),
+                directMessages = emptyList(),
+                unreadTotal = 0
+            ).toSharedConversationDirectoryState()
+        val inboxState =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "channel:joint-1",
+                            kind = InboxItemKind.Channel,
+                            channelId = ChannelId("joint-1"),
+                            channelName = "partner-sync",
+                            latestActivityMessageId = MessageId("msg-1")
+                        )
+                    )
+            ).toSharedConversationDirectoryState()
+        val refreshedHomeState =
+            HomeSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                currentMember =
+                    MemberProfile(
+                        id = MemberId("user-1"),
+                        displayName = "Artin",
+                        handle = "artin",
+                        kind = MemberKind.Human
+                    ),
+                channels =
+                    listOf(
+                        HomeChannelRow(
+                            threadId = ThreadId("joint-1"),
+                            channelId = ChannelId("joint-1"),
+                            kind = ConversationKind.Joint,
+                            name = "partner-sync",
+                            jointRole = "participant",
+                            channelCapabilities = updatedCaps
+                        )
+                    ),
+                directMessages = emptyList(),
+                unreadTotal = 0
+            ).toSharedConversationDirectoryState()
+
+        val homeThenInbox = listOf(homeState, inboxState).mergedSharedConversationDirectoryState()
+        assertEquals(initialCaps, homeThenInbox.resolve("joint-1")?.channelCapabilities)
+        assertEquals("participant", homeThenInbox.resolve("joint-1")?.jointRole)
+
+        val homeThenRefreshed = listOf(homeState, refreshedHomeState).mergedSharedConversationDirectoryState()
+        assertEquals(updatedCaps, homeThenRefreshed.resolve("joint-1")?.channelCapabilities)
     }
 }

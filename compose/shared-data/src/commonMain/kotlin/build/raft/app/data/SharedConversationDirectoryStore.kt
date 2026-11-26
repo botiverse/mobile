@@ -567,10 +567,22 @@ private fun sharedConversationDirectoryStateFromProjections(
                 val mergedJointChannelId =
                     projection.jointChannelId?.takeIf(String::isNotBlank)
                         ?: existing.jointChannelId?.takeIf(String::isNotBlank)
-                if (mergedJointServers !== projection.jointServers || mergedJointChannelId != projection.jointChannelId) {
+                val mergedJointRole =
+                    projection.jointRole?.takeIf(String::isNotBlank)
+                        ?: existing.jointRole?.takeIf(String::isNotBlank)
+                val mergedChannelCapabilities =
+                    projection.channelCapabilities ?: existing.channelCapabilities
+                if (
+                    mergedJointServers !== projection.jointServers ||
+                    mergedJointChannelId != projection.jointChannelId ||
+                    mergedJointRole != projection.jointRole ||
+                    mergedChannelCapabilities != projection.channelCapabilities
+                ) {
                     projection.copy(
                         jointChannelId = mergedJointChannelId,
+                        jointRole = mergedJointRole,
                         jointServers = mergedJointServers,
+                        channelCapabilities = mergedChannelCapabilities,
                     )
                 } else {
                     projection

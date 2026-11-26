@@ -48,19 +48,22 @@ internal data class ExternalInviteChannel(
     val type: String?,
     val name: String,
     val archived: Boolean,
-    /** `jointRole` of a joint channel: only the `host` invites. */
+    /** `jointRole` of a joint channel; read only as the legacy fallback when [federateChannels] is absent. */
     val jointRole: String?,
     val hasExternalRelation: Boolean,
+    /** The channel's `channelCapabilities.federateChannels`; null when the server omitted `channelCapabilities`. */
+    val federateChannels: Boolean? = null,
 )
 
 /**
  * Web `isExternallyInvitableChannel`: an ordinary channel (not #all, DMs or threads) or a joint
- * channel this server hosts, live. The members page is always the current server's copy.
+ * channel, live. Joint-channel host authority is resolved by `channelCapabilities.federateChannels`
+ * in [externalInviteAccess] (#wg-rbac:#133).
  */
 internal fun isExternallyInvitableChannel(channel: ExternalInviteChannel?): Boolean {
     channel ?: return false
     when (channel.type) {
-        "joint" -> if (channel.jointRole != "host") return false
+        "joint" -> Unit
         "channel", "private" -> if (channel.name.removePrefix("#") == "all") return false
         else -> return false
     }
@@ -68,12 +71,18 @@ internal fun isExternallyInvitableChannel(channel: ExternalInviteChannel?): Bool
 }
 
 /**
- * Web `useExternalInviteAccess`: invite people outside the server and resend: the viewer an owner
- * or admin of the host server (channel admins are not), an invitable channel. The server checks
- * the same.
+ * Web `useExternalInviteAccess`: invite people outside the server and resend. When the server sent
+ * `channelCapabilities.federateChannels`, gate strictly on it (never the viewer's own server role
+ * or `jointRole == "host"` — on a connected server's copy of a joint channel the viewer may be a
+ * member locally and owner/admin only on the host, #wg-rbac:#133). Legacy servers that omit
+ * `channelCapabilities` fall back to the viewer's own server role and `jointRole == "host"`.
  */
-internal fun externalInviteAccess(serverRole: String?, channel: ExternalInviteChannel?): Boolean =
-    serverRole.isServerOwnerOrAdmin() && isExternallyInvitableChannel(channel)
+internal fun externalInviteAccess(serverRole: String?, channel: ExternalInviteChannel?): Boolean {
+    if (!isExternallyInvitableChannel(channel)) return false
+    val target = channel ?: return false
+    target.federateChannels?.let { return it }
+    return serverRole.isServerOwnerOrAdmin() && (target.type != "joint" || target.jointRole == "host")
+}
 
 /** Web `useExternalInviteManagement`: see and withdraw the open invites, as [externalInviteAccess]. */
 internal fun externalInviteManagement(serverRole: String?, channel: ExternalInviteChannel?): Boolean =

@@ -168,6 +168,54 @@ class MemberRepositoryDataSourceTest {
     }
 
     @Test
+    fun federateCapabilityComesFromChannelDetailIncludingParticipantJointCopy() = runBlocking {
+        // #wg-rbac:#133: GET /channels/:id `channelCapabilities.federateChannels` is preserved on
+        // the members snapshot (including on a participant joint copy), forced false on archived or
+        // #all channels, and null when omitted by legacy servers or when detail fetch fails.
+        val roster = HomeNetworkResponse(200, """{"humans":[],"agents":[]}""")
+        val cases =
+            listOf(
+                HomeNetworkResponse(
+                    200,
+                    """{"id":"channel-empty","name":"shared","type":"joint","jointRole":"participant","channelCapabilities":{"federateChannels":true}}""",
+                ) to true,
+                HomeNetworkResponse(
+                    200,
+                    """{"id":"channel-empty","name":"shared","type":"joint","jointRole":"participant","channelCapabilities":{"federateChannels":false}}""",
+                ) to false,
+                HomeNetworkResponse(
+                    200,
+                    """{"id":"channel-empty","name":"shared","type":"joint","jointRole":"host","channelCapabilities":{"federateChannels":true}}""",
+                ) to true,
+                HomeNetworkResponse(
+                    200,
+                    """{"id":"channel-empty","name":"shared","type":"joint","jointRole":"participant","archivedAt":"2026-10-01T00:00:00Z","channelCapabilities":{"federateChannels":true}}""",
+                ) to false,
+                HomeNetworkResponse(
+                    200,
+                    """{"id":"channel-empty","name":"all","type":"channel","channelCapabilities":{"federateChannels":true}}""",
+                ) to false,
+                HomeNetworkResponse(
+                    200,
+                    """{"id":"channel-empty","name":"shared","type":"joint","jointRole":"host"}""",
+                ) to null,
+                HomeNetworkResponse(503, "{}") to null,
+            )
+        for ((detail, expected) in cases) {
+            val network =
+                FakeMemberNetworkClient().apply {
+                    channelMembersResponse = roster
+                    channelDetailResponse = detail
+                }
+            val result =
+                assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+                    RealMemberRepository(sampleStore(), network).getChannelMembers(DataRequestPriority.Visible, ChannelId("channel-empty")),
+                )
+            assertEquals(expected, result.data.federateChannels, "detail=${detail.code}:${detail.bodyText}")
+        }
+    }
+
+    @Test
     fun roleChangePatchesTheMembersRolePathWithTheRoleBody() = runBlocking {
         // botiverse/slock bb8b13a1a3 routes/channels.ts PATCH /:id/members/:targetType/:memberId/role
         // (`role` member|admin; targetType user|agent) and web useChannelMembers.changeMemberRole.

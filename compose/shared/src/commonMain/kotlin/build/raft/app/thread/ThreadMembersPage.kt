@@ -626,8 +626,9 @@ private fun ThreadMembersPageScreen() {
             ?.ifBlank { null }
             ?: route.channelId.value.trim().removePrefix("#")
     val authorityRejected = liveOwner != routeOwner
-    // Web useExternalInviteAccess / useExternalInviteManagement: this server's owner or admin, an
-    // invitable channel (the directory row: type, jointRole, archived).
+    // Web useExternalInviteAccess / useExternalInviteManagement (#wg-rbac:#133): gate on the
+    // channel's `channelCapabilities.federateChannels` (fresh GET /channels/:id first, then the
+    // directory projection), falling back to own-server role only on legacy servers without it.
     val externalInviteChannel =
         channelProjections[route.channelId.value]?.let { projection ->
             ExternalInviteChannel(
@@ -636,6 +637,9 @@ private fun ThreadMembersPageScreen() {
                 archived = projection.archived,
                 jointRole = projection.jointRole,
                 hasExternalRelation = projection.hasExternalRelation,
+                federateChannels =
+                    channelMembersSlice.takeUnless { it.storedStandIn }?.federateChannels
+                        ?: projection.channelCapabilities?.federateChannels,
             )
         }
     val externalInviteAccessOn = !authorityRejected && externalInviteAccess(viewerServerRole, externalInviteChannel)
@@ -750,7 +754,7 @@ private fun ThreadMembersPageScreen() {
             projection = addChannelProjection,
             channelName = channelName,
             dialogOpen = externalInvitesState.dialog != null,
-            canMakePrivate = viewerServerRole == "owner" || viewerServerRole == "admin",
+            canMakePrivate = externalInviteChannel?.federateChannels ?: (viewerServerRole == "owner" || viewerServerRole == "admin"),
             memberConnectAccount = memberConnectAccount,
             onConnectionsChanged = {
                 latestHomeStore?.dispatch(SharedHomeIntent.Refresh)
@@ -1368,6 +1372,7 @@ private fun rememberThreadMembersInviteConnect(
                     servers = servers,
                     hasCurrentServerPendingInvites = false,
                     jointRole = jointRole,
+                    federateChannels = proj.channelCapabilities?.federateChannels,
                     isPrivate = isPrivate,
                     joined = proj.joined,
                 )
@@ -1482,6 +1487,7 @@ private fun rememberThreadMembersGuestConnect(
                     servers = servers,
                     hasCurrentServerPendingInvites = false,
                     jointRole = jointRole,
+                    federateChannels = proj.channelCapabilities?.federateChannels,
                     isPrivate = isPrivate,
                     joined = proj.joined,
                     conversionInProgress = conversionFromStore,

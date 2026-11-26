@@ -1234,6 +1234,7 @@ class RealMemberRepository(
             canAddMembers = mutable && channel?.channelCapabilities?.addChannelMembers == true,
             canRemoveMembers = mutable && channel?.channelCapabilities?.removeChannelMembers == true,
             canChangeMemberRoles = mutable && channel?.channelCapabilities?.changeChannelMemberRoles == true,
+            federateChannels = if (channel != null && !mutable) false else channel?.channelCapabilities?.federateChannels,
         ))
     }
 

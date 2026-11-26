@@ -227,15 +227,15 @@ internal data class JointChannelConnectionsState(
     fun showsStatusBadge(server: JointChannelServer): Boolean = !server.active
 
     /**
-     * Web `canDisconnectJointServers` and its row check: this server hosts the joint, the
-     * channel's own `federateChannels` is true (the server's check, never a server-wide
-     * fallback), and the row is another server's active copy. Everything here is what the server
-     * sent; the route re-checks it.
+     * Web `canDisconnectJointServers` and its row check (#wg-rbac:#133): the channel's own
+     * `federateChannels` is true (the server's check, never a server-wide fallback or a
+     * `jointRole == Host` check — a host owner/admin may view from a connected server's copy where
+     * they are only a local member), and the row is another server's active non-host copy.
+     * Everything here is what the server sent; the route re-checks it.
      */
     fun canDisconnectServer(server: JointChannelServer): Boolean {
         val current = connections ?: return false
         return current.isJoint &&
-            current.jointRole == JointChannelRole.Host &&
             current.federateChannels == true &&
             server.active &&
             server.role != JointChannelRole.Host &&
