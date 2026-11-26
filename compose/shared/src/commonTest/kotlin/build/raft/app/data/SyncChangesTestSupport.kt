@@ -86,8 +86,25 @@ internal fun syncStaleWithState(seq: Long, conversationId: String, refSeq: Long?
  * GET /api/tasks/channel/:id lists it, a delete names its channel (`SyncTaskDelete`), and a
  * resnapshot's id is a channel id (`SyncTaskResnapshot`).
  */
-internal fun syncTaskUpsert(seq: Long, id: String, channelId: String): String =
-    syncUpsert(seq, "task", id, """{"id":"$id","channelId":"$channelId","taskNumber":7,"title":"Write the sync rows","status":"in_progress"}""")
+internal fun syncTaskUpsert(
+    seq: Long,
+    id: String,
+    channelId: String,
+    title: String = "Write the sync rows",
+    status: String = "in_progress",
+    taskNumber: Int = 7,
+    revision: Long? = null,
+    extraFields: String = "",
+): String {
+    val rev = revision?.let { ""","revision":$it""" } ?: ""
+    val extra = if (extraFields.isNotBlank()) ",$extraFields" else ""
+    return syncUpsert(
+        seq,
+        "task",
+        id,
+        """{"id":"$id","channelId":"$channelId","taskNumber":$taskNumber,"title":"$title","status":"$status"$rev$extra}""",
+    )
+}
 
 internal fun syncTaskDelete(seq: Long, id: String, channelId: String): String =
     """{"seq":$seq,"entity":"task","id":"$id","op":"delete","channelId":"$channelId"}"""
@@ -105,7 +122,7 @@ internal val syncChannelScopeSnapshots = listOf("channels", "channel_members", "
 internal val syncAllSnapshotNames =
     listOf(
         "channels", "channel_members", "server_members", "agents", "inbox", "unread",
-        "followed_threads", "machines", "sidebar_order", "server_order",
+        "followed_threads", "machines", "sidebar_order", "server_order", "tasks",
     )
 
 /** A scripted API: answers in order, records each request's `since`. */

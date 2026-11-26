@@ -1282,6 +1282,11 @@ internal class RaftSharedStoreProvider private constructor(
     /** `GET /api/sync/changes` cursors per environment, account and server (same lifetime as the account caches). */
     private val syncCursorStore: RaftSyncCursorStore by lazy { RaftSyncCursorStore(sharedPreferenceStore) }
 
+    /** Task list transport for `/sync/changes` `task` resnapshots and `tasks` reset reloads. */
+    private val syncTasksDataSource: SharedTasksDataSource by lazy {
+        SharedTasksDataSource(api = NetworkRaftTasksApi(networkClient))
+    }
+
     /**
      * The sync reloads that failed, for the next pull to read again. Shared with the Home and
      * Activity stores, whose list reads settle the reloads sync dispatched to them.
@@ -1682,6 +1687,71 @@ internal class RaftSharedStoreProvider private constructor(
                         runCatchingPreservingCancellation { store.reloadMachinesForSync(serverId) }.getOrNull()
                     }
                     .syncSnapshotRead()
+            }
+
+            override suspend fun applyTaskChanges(
+                serverId: String,
+                mutations: List<SharedSyncedTaskMutation>,
+            ): Set<String> {
+                if (mutations.isEmpty() || scopesForServer(serverId).isEmpty()) return emptySet()
+                return tasksDataStore.applySyncedTaskChangesForCurrentOwner(serverId, mutations).conflictedChannelIds
+            }
+
+            override suspend fun dropChannelTasks(serverId: String, channelIds: Set<String>) {
+                if (channelIds.isEmpty()) return
+                channelIds.forEach { channelId -> tasksDataStore.dropChannelTasksForSync(serverId, channelId) }
+            }
+
+            override suspend fun refreshTasks(
+                serverId: String,
+                channelIds: Set<String>?,
+                reason: String,
+            ): Boolean {
+                val targetServerId = ServerId(serverId)
+                return tasksDataStore.refreshForSync(
+                    serverId = serverId,
+                    channelIds = channelIds,
+                    isServerActive = { scopesForServer(serverId).isNotEmpty() },
+                    fetchServerPage = {
+                        when (
+                            val page =
+                                syncTasksDataSource.loadServerTasksPage(
+                                    serverId = targetServerId,
+                                    limit = TASKS_SERVER_PAGE_LIMIT,
+                                    cursor = null,
+                                    priority = DataRequestPriority.Background,
+                                )
+                        ) {
+                            is TasksPageResult.Page ->
+                                if (page.tasks.isEmpty()) {
+                                    DataResult.Empty(EmptyReason.NoTasks)
+                                } else {
+                                    DataResult.Content(
+                                        TaskSnapshot(
+                                            tasks = page.tasks,
+                                            summaryCounts = page.tasks.summaryCounts(),
+                                        )
+                                    )
+                                }
+                            TasksPageResult.InvalidCursor ->
+                                DataResult.Error(ScreenError(code = "tasks_page_invalid_cursor", retryable = false))
+                            is TasksPageResult.Error ->
+                                if (page.code == "tasks_page_http_403") {
+                                    DataResult.NoPermission(PermissionBlocker(code = page.code, traceId = page.traceId))
+                                } else {
+                                    DataResult.Error(ScreenError(code = page.code, retryable = true, traceId = page.traceId))
+                                }
+                        }
+                    },
+                    fetchChannelTasks = { channelId ->
+                        syncTasksDataSource.loadChannelTasks(
+                            serverId = targetServerId,
+                            channelId = channelId,
+                            filter = TaskFilter(),
+                            priority = DataRequestPriority.Background,
+                        )
+                    },
+                )
             }
         }
 

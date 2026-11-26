@@ -25,8 +25,9 @@ import kotlinx.serialization.json.longOrNull
  * - `reset`: take `reset.snapshots`, continue from the returned cursor (`changes` is empty).
  * - An unknown `entity` is skipped; a known entity with an unknown `op` means "resnapshot that
  *   entity". New entities and ops are added, never renamed.
- * - `task` (slock #14975) is known and not read: its changes are skipped and counted
- *   ([RaftSyncChangesPage.ignoredEntities]), not reported row by row as an unknown entity.
+ * - `task` (slock #14975) carries incremental task updates (`upsert` with the
+ *   `GET /api/tasks/channel/:id` row, `delete` naming `channelId`, and channel-scoped `resnapshot`)
+ *   and the `tasks` snapshot (`RaftSyncSnapshot.Tasks`).
  *
  * The cursor is opaque: echo it back, never parse or compare it.
  *
@@ -69,7 +70,10 @@ enum class RaftSyncSnapshot(val wireName: String) {
     SidebarOrder("sidebar_order"),
 
     /** `GET /api/servers/order`. */
-    ServerOrder("server_order");
+    ServerOrder("server_order"),
+
+    /** `GET /api/tasks/channel/:id` (per channel: each channel's task list). */
+    Tasks("tasks");
 
     companion object {
         private val byWireName = entries.associateBy { it.wireName }
@@ -210,6 +214,36 @@ sealed interface RaftSyncChange {
         val reason: RaftSyncInboxRowDeleteReason,
     ) : RaftSyncInboxRowChange
 
+    /**
+     * `task` upsert (botiverse/slock #14975): [id] is the task id, [row] is the task as
+     * `GET /api/tasks/channel/:channelId` lists it for this viewer (`channelId` is the viewer's own
+     * channel).
+     */
+    data class TaskUpsert(
+        override val seq: Long,
+        val id: String,
+        val row: JsonObject,
+    ) : RaftSyncTaskChange
+
+    /**
+     * `task` delete (botiverse/slock #14975, `SyncTaskDelete`): task [id] left this viewer's list
+     * of [channelId] (deleted, moved away, or no longer visible).
+     */
+    data class TaskDelete(
+        override val seq: Long,
+        val id: String,
+        val channelId: String,
+    ) : RaftSyncTaskChange
+
+    /**
+     * `task` resnapshot (botiverse/slock #14975, `SyncTaskResnapshot`): re-read channel
+     * [channelId]'s task list (`GET /api/tasks/channel/:id`); many of its tasks changed at once.
+     */
+    data class TaskResnapshot(
+        override val seq: Long,
+        val channelId: String,
+    ) : RaftSyncTaskChange
+
     /** A known entity with an op this client does not know: retake that entity's snapshots. */
     data class Resnapshot(
         override val seq: Long,
@@ -248,6 +282,9 @@ data class RaftSyncConversationState(
 sealed interface RaftSyncInboxRowChange : RaftSyncChange {
     val id: String
 }
+
+/** A `task` change ([RaftSyncChange.TaskUpsert] / [RaftSyncChange.TaskDelete] / [RaftSyncChange.TaskResnapshot]). */
+sealed interface RaftSyncTaskChange : RaftSyncChange
 
 /** The capability name asking for `inbox_row` changes (slock `SYNC_CAPABILITY_INBOX_ROW`). */
 const val SYNC_CAPABILITY_INBOX_ROW: String = "inbox_row"
@@ -347,13 +384,11 @@ fun parseSyncChangesPage(
         }
     val cursor = wire.cursor.takeIf { it.isNotBlank() } ?: return null
     var skipped = 0
-    val ignored = LinkedHashMap<String, Int>()
     val changes = ArrayList<RaftSyncChange>(wire.changes.size)
     for (element in wire.changes) {
         when (val parsed = parseSyncChange(element, diagnostics)) {
             ParsedSyncChange.Malformed -> return null
             ParsedSyncChange.UnknownEntity -> skipped += 1
-            is ParsedSyncChange.IgnoredEntity -> ignored[parsed.entity] = (ignored[parsed.entity] ?: 0) + 1
             is ParsedSyncChange.Known -> changes += parsed.change
         }
     }
@@ -368,7 +403,6 @@ fun parseSyncChangesPage(
             )
         },
         skippedUnknownEntities = skipped,
-        ignoredEntities = ignored,
         inboxReset = wire.inboxReset?.let { reset ->
             if (reset.reason !in SyncInboxResetReasons) {
                 // Still retaken: a reset of a kind this client does not know is a reset all the same.
@@ -387,9 +421,6 @@ private val SyncInboxResetReasons = setOf("init", "too_many", "held_too_long")
 private sealed interface ParsedSyncChange {
     data class Known(val change: RaftSyncChange) : ParsedSyncChange
 
-    /** A known entity this client does not read: skipped, counted per entity, not reported. */
-    data class IgnoredEntity(val entity: String) : ParsedSyncChange
-
     data object UnknownEntity : ParsedSyncChange
 
     data object Malformed : ParsedSyncChange
@@ -398,6 +429,7 @@ private sealed interface ParsedSyncChange {
 private fun parseSyncChange(element: JsonObject, diagnostics: (String) -> Unit): ParsedSyncChange {
     val seq = element.longField("seq") ?: return ParsedSyncChange.Malformed
     val entity = element.stringField("entity") ?: return ParsedSyncChange.Malformed
+    if (entity == "task") return parseTaskChange(element, seq, diagnostics)
     val id = element.stringField("id") ?: return ParsedSyncChange.Malformed
     val op = element.stringField("op") ?: return ParsedSyncChange.Malformed
     RaftSyncRowEntity.fromWire(entity)?.let { rowEntity ->
@@ -425,17 +457,90 @@ private fun parseSyncChange(element: JsonObject, diagnostics: (String) -> Unit):
             )
         "scope" -> ParsedSyncChange.Known(parseScopeChange(element, seq, id, op))
         "inbox_row" -> parseInboxRowChange(element, seq, id, op, diagnostics)
-        // slock #14975 sends every client its task rows (an upsert with the GET /api/tasks/channel/:id
-        // row, a delete naming its `channelId`, a `resnapshot` of one channel's list). Not read here:
-        // task lists follow the realtime `task:*` pushes plus the store-owned RaftFreshnessGate re-reads
-        // (foreground, reconnect), as on web (slock packages/web/src/store/syncChangesClient.ts skips
-        // them too). Known, so counted for the pull's log line (`ignored=task:N`), not reported per row.
-        "task" -> ParsedSyncChange.IgnoredEntity(entity)
         else -> {
             // Skipped on purpose (the log moves on), but never silently.
             reportUnknownTypeDropped("sync_changes", "entity", entity, diagnostics = diagnostics)
             ParsedSyncChange.UnknownEntity
         }
+    }
+}
+
+/**
+ * A `task` change (botiverse/slock #14975):
+ * - `upsert`: carries the `GET /api/tasks/channel/:id` row in `row`.
+ * - `delete`: carries `channelId` naming the channel list the task left (`SyncTaskDelete`).
+ * - `resnapshot`: `id` is the channel id whose task list must be re-read (`SyncTaskResnapshot`).
+ *
+ * Malformed or unknown `task` entries fail closed to a `tasks` resnapshot (channel-scoped when a
+ * valid `channelId` is present, otherwise server-wide) without discarding valid changes in the
+ * same `/sync/changes` batch.
+ */
+private fun parseTaskChange(
+    element: JsonObject,
+    seq: Long,
+    diagnostics: (String) -> Unit,
+): ParsedSyncChange {
+    val tasksOnly = setOf(RaftSyncSnapshot.Tasks)
+    fun failClosed(field: String, value: String?, op: String, channelId: String? = null): ParsedSyncChange {
+        reportUnknownTypeDropped(
+            "sync_changes",
+            field,
+            value,
+            fallback = if (channelId != null) "task_channel_resnapshot" else "tasks_snapshot",
+            diagnostics = diagnostics,
+        )
+        return ParsedSyncChange.Known(
+            if (channelId != null) {
+                RaftSyncChange.TaskResnapshot(seq = seq, channelId = channelId)
+            } else {
+                RaftSyncChange.Resnapshot(seq = seq, entity = "task", op = op, snapshots = tasksOnly)
+            }
+        )
+    }
+
+    val op = element.stringField("op") ?: return failClosed("task_op", null, op = "missing")
+    val id = element.stringField("id") ?: return failClosed("task_id", null, op = op)
+    return when (op) {
+        "upsert" -> {
+            val rawRow = element["row"]
+            val row =
+                rawRow as? JsonObject
+                    ?: return failClosed(
+                        "task_upsert_row",
+                        when (rawRow) {
+                            null -> null
+                            JsonNull -> "null"
+                            else -> "non_object"
+                        },
+                        op = op,
+                    )
+            val rowId = row.stringField("id")
+            if (rowId != null && rowId != id) {
+                return failClosed(
+                    "task_upsert_id_mismatch",
+                    "mismatch",
+                    op = op,
+                    channelId = row.stringField("channelId"),
+                )
+            }
+            ParsedSyncChange.Known(RaftSyncChange.TaskUpsert(seq = seq, id = id, row = row))
+        }
+        "delete" -> {
+            val channelId =
+                element.stringField("channelId")
+                    ?: return failClosed(
+                        "task_delete_channel_id",
+                        when (val rawChannelId = element["channelId"]) {
+                            null, JsonNull -> null
+                            is JsonPrimitive -> if (rawChannelId.isString) "blank" else "non_string"
+                            else -> "non_string"
+                        },
+                        op = op,
+                    )
+            ParsedSyncChange.Known(RaftSyncChange.TaskDelete(seq = seq, id = id, channelId = channelId))
+        }
+        "resnapshot" -> ParsedSyncChange.Known(RaftSyncChange.TaskResnapshot(seq = seq, channelId = id))
+        else -> failClosed("task_op", op, op = op)
     }
 }
 

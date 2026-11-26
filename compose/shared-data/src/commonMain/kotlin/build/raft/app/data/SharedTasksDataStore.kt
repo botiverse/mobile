@@ -90,8 +90,31 @@ private data class SharedTasksTaskKey(
 
 private data class SharedTasksTaskMutation(
     val revision: Long,
-    val task: TaskSummary?
+    val task: TaskSummary?,
+    val deletedChannelId: String? = null
 )
+
+/** One incremental-sync `task` change for [SharedTasksDataStore.applySyncedTaskChangesForCurrentOwner]. */
+@RaftCoreInternalApi sealed interface SharedSyncedTaskMutation {
+    data class Upsert(val task: TaskSummary) : SharedSyncedTaskMutation
+
+    data class Delete(val channelId: ChannelId, val taskId: TaskId) : SharedSyncedTaskMutation
+}
+
+/** Result of applying a batch of incremental-sync `task` changes to [SharedTasksDataStore]. */
+@RaftCoreInternalApi data class SharedSyncedTaskApplyResult(
+    val outcomes: List<SharedTaskFactFoldOutcome> = emptyList(),
+    val conflictedChannelIds: Set<String> = emptySet(),
+)
+
+/** The task scopes currently held in memory for one server (for incremental sync resnapshots). */
+@RaftCoreInternalApi data class SharedTasksHeldScopes(
+    val hasServerSnapshot: Boolean,
+    val channelIds: Set<String>,
+) {
+    val isEmpty: Boolean
+        get() = !hasServerSnapshot && channelIds.isEmpty()
+}
 
 /**
  * A point-in-time owner fence for an in-flight request (task #345, round 5):
@@ -677,6 +700,99 @@ private fun SharedTasksDataStoreState.removeTaskState(
         canonicalTaskFacts = canonicalTaskFacts - taskId,
         taskProjectionRoutes = taskProjectionRoutes.filterKeys { key -> key.taskId != taskId },
         canonicalConflicts = canonicalConflicts - taskId
+    )
+}
+
+/**
+ * Channel-scoped delete (`SyncTaskDelete` from `/api/sync/changes`, slock #14975): removes [taskId]
+ * from [channelId] on [serverId] without touching other channels (e.g. when the task moved to
+ * another channel and its new-channel upsert already landed) or other servers.
+ */
+private fun SharedTasksDataStoreState.removeTaskFromChannelState(
+    serverId: String,
+    channelId: String,
+    taskId: TaskId,
+): SharedTasksDataStoreState {
+    val normalizedChannelId = channelId.normalizedTasksStoreId() ?: return this
+    val nextProjectionRevision = projectionRevision + 1L
+    val nextMutationRevision = mutationRevision + 1L
+    val previousServerRevision = serverSnapshotRevisions[serverId] ?: 0L
+    val routeKey = SharedTasksTaskKey(serverId, taskId)
+    val existingRoute = taskProjectionRoutes[routeKey]
+    val existingRouteChannelId = existingRoute?.channelId?.value.normalizedTasksStoreId()
+    val routeBelongsToOtherChannel = existingRouteChannelId != null && existingRouteChannelId != normalizedChannelId
+    val nextChannelSnapshots =
+        channelSnapshots.mapValues { (key, snapshot) ->
+            when {
+                key.serverId != serverId -> snapshot
+                key.channelId == normalizedChannelId -> snapshot.remove(taskId)
+                key.channelId == null &&
+                    snapshot.tasks.any { it.id == taskId && it.channelId?.value.normalizedTasksStoreId() == normalizedChannelId } ->
+                    snapshot.remove(taskId)
+                else -> snapshot
+            }
+        }
+    val nextServerSnapshots =
+        serverSnapshots[serverId]?.let { snapshot ->
+            val existingTask = snapshot.tasks.firstOrNull { it.id == taskId }
+            val existingTaskChannelId = existingTask?.channelId?.value.normalizedTasksStoreId()
+            val shouldRemoveFromServer =
+                existingTask != null &&
+                    (existingTaskChannelId == normalizedChannelId || (existingTaskChannelId == null && !routeBelongsToOtherChannel))
+            if (shouldRemoveFromServer) {
+                serverSnapshots + (serverId to snapshot.remove(taskId))
+            } else {
+                serverSnapshots
+            }
+        } ?: serverSnapshots
+    val nextTaskProjectionRoutes =
+        if (!routeBelongsToOtherChannel && existingRoute != null) {
+            taskProjectionRoutes - routeKey
+        } else {
+            taskProjectionRoutes
+        }
+    val taskStillRouted = nextTaskProjectionRoutes.keys.any { key -> key.taskId == taskId }
+    val nextCanonicalTaskFacts = if (taskStillRouted) canonicalTaskFacts else canonicalTaskFacts - taskId
+    val nextCanonicalConflicts = if (taskStillRouted) canonicalConflicts else canonicalConflicts - taskId
+    val nextStatusMutations =
+        if (statusMutations[routeKey]?.channelId?.value.normalizedTasksStoreId() == normalizedChannelId) {
+            statusMutations - routeKey
+        } else {
+            statusMutations
+        }
+    val nextTaskMutations =
+        if (routeBelongsToOtherChannel) {
+            taskMutations
+        } else {
+            taskMutations +
+                (routeKey to SharedTasksTaskMutation(nextMutationRevision, task = null, deletedChannelId = normalizedChannelId))
+        }
+    val nextServerSnapshotRevisions =
+        if (serverSnapshotRevisions.containsKey(serverId)) {
+            serverSnapshotRevisions + (serverId to nextProjectionRevision)
+        } else {
+            serverSnapshotRevisions
+        }
+    val nextChannelSnapshotRevisions =
+        channelSnapshotRevisions.mapValues { (key, revision) ->
+            if (key.serverId == serverId && revision >= previousServerRevision) {
+                nextProjectionRevision
+            } else {
+                revision
+            }
+        }
+    return copy(
+        serverSnapshots = nextServerSnapshots,
+        channelSnapshots = nextChannelSnapshots,
+        serverSnapshotRevisions = nextServerSnapshotRevisions,
+        channelSnapshotRevisions = nextChannelSnapshotRevisions,
+        projectionRevision = nextProjectionRevision,
+        mutationRevision = nextMutationRevision,
+        taskMutations = nextTaskMutations,
+        statusMutations = nextStatusMutations,
+        canonicalTaskFacts = nextCanonicalTaskFacts,
+        taskProjectionRoutes = nextTaskProjectionRoutes,
+        canonicalConflicts = nextCanonicalConflicts,
     )
 }
 
@@ -1452,6 +1568,151 @@ private const val CountedReplyKeyLimit = 512
         }
     }
 
+    /**
+     * The loaded task scopes currently held in memory for [serverId] (`Server` and/or loaded
+     * `Channel` scopes) so incremental sync resnapshots refresh only lists the app actually loaded.
+     */
+    fun heldScopesForServer(serverId: String): SharedTasksHeldScopes {
+        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return SharedTasksHeldScopes(false, emptySet())
+        val current = state.value
+        val hasServer = current.serverSnapshotStatuses[normalizedServerId] == SharedTasksDataStoreStatus.Loaded
+        val channels =
+            current.channelSnapshotStatuses
+                .asSequence()
+                .filter { (key, status) ->
+                    key.serverId == normalizedServerId &&
+                        key.channelId != null &&
+                        status == SharedTasksDataStoreStatus.Loaded
+                }
+                .mapNotNullTo(LinkedHashSet()) { (key, _) -> key.channelId }
+        return SharedTasksHeldScopes(hasServerSnapshot = hasServer, channelIds = channels)
+    }
+
+    /**
+     * Forces a fresh snapshot load for incremental sync, retiring any older load already in flight
+     * (which may predate the sync change) so its late answer cannot overwrite the resnapshot.
+     */
+    suspend fun reloadSnapshotForSync(
+        serverId: String,
+        scope: SharedTasksScope,
+        fetch: suspend () -> DataResult<TaskSnapshot>,
+    ): DataResult<TaskSnapshot> {
+        bindCurrentOwnerIdentity()
+        val normalizedServerId = serverId.normalizedTasksStoreId()
+            ?: return DataResult.Error(ScreenError(code = "selected_server_missing", retryable = false))
+        val key = SharedTasksSnapshotLoadKey(normalizedServerId, scope)
+        val created =
+            loadMutex.withLock {
+                loadsInFlight.remove(key)
+                createSnapshotLoad(key, fetch).also { candidate ->
+                    loadsInFlight[key] = candidate
+                }
+            }
+        created.start()
+        return created.await()
+    }
+
+    /**
+     * Applies incremental-sync `task` upserts and channel-scoped deletes for [serverId] in order,
+     * folded under [loadMutex] and published as a single state update.
+     */
+    suspend fun applySyncedTaskChangesForCurrentOwner(
+        serverId: String,
+        mutations: List<SharedSyncedTaskMutation>,
+    ): SharedSyncedTaskApplyResult {
+        if (mutations.isEmpty()) return SharedSyncedTaskApplyResult()
+        bindCurrentOwnerIdentity()
+        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return SharedSyncedTaskApplyResult()
+        return loadMutex.withLock {
+            var next = state.value
+            val outcomes = ArrayList<SharedTaskFactFoldOutcome>()
+            val conflictedChannels = LinkedHashSet<String>()
+            for (mutation in mutations) {
+                when (mutation) {
+                    is SharedSyncedTaskMutation.Upsert -> {
+                        val upsert = next.upsertTaskState(normalizedServerId, mutation.task, supersedeStatusMutation = true)
+                        next = upsert.state
+                        outcomes += upsert.outcome
+                        if (upsert.outcome == SharedTaskFactFoldOutcome.Conflict) {
+                            mutation.task.channelId?.value.normalizedTasksStoreId()?.let { conflictedChannels += it }
+                        }
+                    }
+                    is SharedSyncedTaskMutation.Delete -> {
+                        next = next.removeTaskFromChannelState(normalizedServerId, mutation.channelId.value, mutation.taskId)
+                    }
+                }
+            }
+            state.value = next
+            SharedSyncedTaskApplyResult(outcomes = outcomes, conflictedChannelIds = conflictedChannels)
+        }
+    }
+
+    /**
+     * Drops a channel's tasks from [serverId]'s memory projection (its channel snapshot, its slice
+     * of the server snapshot, its local routes, and any in-flight channel load) without touching
+     * unrelated channels or other servers.
+     */
+    suspend fun dropChannelTasksForSync(serverId: String, channelId: String) {
+        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return
+        val normalizedChannelId = channelId.normalizedTasksStoreId() ?: return
+        val channelScope = SharedTasksScope.Channel(ChannelId(normalizedChannelId))
+        val listKey = normalizedServerId to channelScope.offlineListId()
+        val loadKey = SharedTasksSnapshotLoadKey(normalizedServerId, channelScope)
+        val offlineOwner =
+            loadMutex.withLock {
+                synchronized(offlineLock) {
+                    offlineBlockedLists += listKey
+                    offlineReopenedLists -= listKey
+                    persistedHashes -= listKey
+                }
+                loadsInFlight.remove(loadKey)
+                state.update { current ->
+                    val keepChannel: (SharedTasksChannelKey) -> Boolean = {
+                        !(it.serverId == normalizedServerId && it.channelId == normalizedChannelId)
+                    }
+                    val nextServerSnapshots =
+                        current.serverSnapshots[normalizedServerId]?.let { snapshot ->
+                            val remaining =
+                                snapshot.tasks.filterNot { it.channelId?.value.normalizedTasksStoreId() == normalizedChannelId }
+                            if (remaining.size == snapshot.tasks.size) {
+                                current.serverSnapshots
+                            } else {
+                                current.serverSnapshots +
+                                    (normalizedServerId to snapshot.copy(tasks = remaining, summaryCounts = remaining.summaryCounts()))
+                            }
+                        } ?: current.serverSnapshots
+                    val nextRoutes =
+                        current.taskProjectionRoutes.filterNot { (key, route) ->
+                            key.serverId == normalizedServerId &&
+                                route.channelId?.value.normalizedTasksStoreId() == normalizedChannelId
+                        }
+                    val routedTaskIds = nextRoutes.keys.mapTo(mutableSetOf()) { it.taskId }
+                    val nextStatusMutations =
+                        current.statusMutations.filterNot { (key, permit) ->
+                            key.serverId == normalizedServerId &&
+                                permit.channelId.value.normalizedTasksStoreId() == normalizedChannelId
+                        }
+                    current.copy(
+                        serverSnapshots = nextServerSnapshots,
+                        channelSnapshots = current.channelSnapshots.filterKeys(keepChannel),
+                        channelSnapshotStatuses = current.channelSnapshotStatuses.filterKeys(keepChannel),
+                        channelSnapshotRevisions = current.channelSnapshotRevisions.filterKeys(keepChannel),
+                        statusMutations = nextStatusMutations,
+                        taskProjectionRoutes = nextRoutes,
+                        canonicalTaskFacts = current.canonicalTaskFacts.filterKeys { it in routedTaskIds },
+                        canonicalConflicts = current.canonicalConflicts.filterTo(mutableSetOf()) { it in routedTaskIds },
+                    )
+                }
+                TasksOfflineOwner.fromOwnerIdentity(state.value.ownerIdentity)
+            }
+        val lists = offlineLists
+        if (lists != null && offlineOwner != null) {
+            runCatchingPreservingCancellation {
+                lists.remove(offlineOwner, normalizedServerId, channelScope)
+            }
+        }
+    }
+
     fun channelProjectionFlow(
         serverId: String?,
         channelId: String?,
@@ -1720,10 +1981,26 @@ private const val CountedReplyKeyLimit = 512
             .sortedBy { (_, mutation) -> mutation.revision }
             .fold(snapshot) { merged, (key, mutation) ->
                 val task = mutation.task
+                val deletedChannelId = mutation.deletedChannelId
                 when {
-                    task == null -> merged.remove(key.taskId)
-                    scope == SharedTasksScope.Server -> merged.upsert(task)
-                    scope is SharedTasksScope.Channel && task.channelId == scope.channelId -> merged.upsert(task)
+                    task == null && deletedChannelId == null -> merged.remove(key.taskId)
+                    task == null && deletedChannelId != null ->
+                        when (scope) {
+                            is SharedTasksScope.Channel ->
+                                if (scope.channelId.value.normalizedTasksStoreId() == deletedChannelId) {
+                                    merged.remove(key.taskId)
+                                } else {
+                                    merged
+                                }
+                            SharedTasksScope.Server ->
+                                if (merged.tasks.any { it.id == key.taskId && it.channelId?.value.normalizedTasksStoreId() == deletedChannelId }) {
+                                    merged.remove(key.taskId)
+                                } else {
+                                    merged
+                                }
+                        }
+                    task != null && scope == SharedTasksScope.Server -> merged.upsert(task)
+                    task != null && scope is SharedTasksScope.Channel && task.channelId == scope.channelId -> merged.upsert(task)
                     else -> merged.remove(key.taskId)
                 }
             }
@@ -1797,3 +2074,101 @@ private fun TaskSnapshot.remove(taskId: TaskId): TaskSnapshot {
             .mapTo(mutableSetOf()) { it.index }
     return filterIndexed { index, _ -> index in kept }
 }
+
+/**
+ * Refreshes held task scopes in [SharedTasksDataStore] for incremental sync (`task`
+ * `op: "resnapshot"`, `reset` naming `"tasks"`, or an added channel scope):
+ * - [channelIds] == null: refreshes the server snapshot (if held) first, then every held channel
+ *   snapshot.
+ * - [channelIds] != null: refreshes each named channel when that channel or the server snapshot is
+ *   held.
+ *
+ * Returns false only when a refresh fails transiently ([RaftSyncSnapshotRead.Failed]); 403/404
+ * ([RaftSyncSnapshotRead.NotReadable]) drops that scope and counts as taken so the reload ledger
+ * does not retry forever.
+ */
+@RaftCoreInternalApi suspend fun SharedTasksDataStore.refreshForSync(
+    serverId: String,
+    channelIds: Set<String>?,
+    isServerActive: () -> Boolean = { true },
+    fetchServerPage: suspend () -> DataResult<TaskSnapshot>,
+    fetchChannelTasks: suspend (ChannelId) -> DataResult<TaskSnapshot>,
+): Boolean {
+    if (!isServerActive()) return true
+    val held = heldScopesForServer(serverId)
+    if (held.isEmpty) return true
+    var allSucceeded = true
+    if (channelIds == null) {
+        if (held.hasServerSnapshot) {
+            if (!isServerActive()) return true
+            val result =
+                runCatchingPreservingCancellation {
+                    reloadSnapshotForSync(
+                        serverId = serverId,
+                        scope = SharedTasksScope.Server,
+                        fetch = fetchServerPage,
+                    )
+                }.getOrNull()
+            val read = result?.taskSyncSnapshotRead() ?: RaftSyncSnapshotRead.Failed
+            when (read) {
+                RaftSyncSnapshotRead.Taken -> Unit
+                RaftSyncSnapshotRead.NotReadable -> dropList(serverId, SharedTasksScope.Server)
+                RaftSyncSnapshotRead.Failed -> allSucceeded = false
+            }
+        }
+        for (channelId in held.channelIds) {
+            if (!isServerActive()) return true
+            if (!refreshChannelForSync(serverId, channelId, fetchChannelTasks)) {
+                allSucceeded = false
+            }
+        }
+    } else {
+        for (rawChannelId in channelIds) {
+            if (!isServerActive()) return true
+            val channelId = rawChannelId.trim()
+            if (channelId.isEmpty()) continue
+            if (channelId !in held.channelIds && !held.hasServerSnapshot) continue
+            if (!refreshChannelForSync(serverId, channelId, fetchChannelTasks)) {
+                allSucceeded = false
+            }
+        }
+    }
+    return allSucceeded
+}
+
+private suspend fun SharedTasksDataStore.refreshChannelForSync(
+    serverId: String,
+    channelId: String,
+    fetchChannelTasks: suspend (ChannelId) -> DataResult<TaskSnapshot>,
+): Boolean {
+    val result =
+        runCatchingPreservingCancellation {
+            reloadSnapshotForSync(
+                serverId = serverId,
+                scope = SharedTasksScope.Channel(ChannelId(channelId)),
+            ) {
+                fetchChannelTasks(ChannelId(channelId))
+            }
+        }.getOrNull() ?: return false
+    return when (result.taskSyncSnapshotRead()) {
+        RaftSyncSnapshotRead.Taken -> true
+        RaftSyncSnapshotRead.NotReadable -> {
+            dropChannelTasksForSync(serverId, channelId)
+            true
+        }
+        RaftSyncSnapshotRead.Failed -> false
+    }
+}
+
+private fun DataResult<TaskSnapshot>.taskSyncSnapshotRead(): RaftSyncSnapshotRead =
+    when (this) {
+        is DataResult.Error ->
+            if (error.code == "tasks_404") RaftSyncSnapshotRead.NotReadable else RaftSyncSnapshotRead.Failed
+        is DataResult.NoPermission ->
+            if (blocker.code == "tasks_401" || blocker.code == "tasks_page_http_401") {
+                RaftSyncSnapshotRead.Failed
+            } else {
+                syncSnapshotRead()
+            }
+        else -> syncSnapshotRead()
+    }
