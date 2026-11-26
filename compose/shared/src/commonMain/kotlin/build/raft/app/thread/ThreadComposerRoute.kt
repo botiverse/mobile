@@ -561,6 +561,8 @@ internal class ThreadComposerRouteArgs(
     val removedAppBot: RaftAppBotIdentity? = null,
     val autofocusOnOpen: ComposerFocusOnOpen? = null,
     val optimisticPendingAccess: Boolean = false,
+    val dmAgentPeerId: String? = null,
+    val storeScope: build.raft.app.data.RaftShellStoreScope = build.raft.app.data.RaftShellStoreScope.Legacy,
 )
 
 @Composable
@@ -591,6 +593,8 @@ internal fun ThreadComposerRouteFromArgs(
         removedAppBot = removedAppBotOverride,
         autofocusOnOpen = args.autofocusOnOpen,
         optimisticPendingAccess = args.optimisticPendingAccess,
+        dmAgentPeerId = args.dmAgentPeerId,
+        storeScope = args.storeScope,
     )
 }
 
@@ -622,6 +626,9 @@ internal fun ThreadComposerRoute(
     autofocusOnOpen: ComposerFocusOnOpen? = null,
     /** True while rendering optimistically before access resolution finishes. */
     optimisticPendingAccess: Boolean = false,
+    /** Peer agent id in an agent DM, for composer notices (retired runtime, slock #16830). */
+    dmAgentPeerId: String? = null,
+    storeScope: build.raft.app.data.RaftShellStoreScope = build.raft.app.data.RaftShellStoreScope.Legacy,
 ) {
     if (removedAppBot != null) {
         // The editor never mounts, so the saved draft stays in the store untouched.
@@ -685,6 +692,13 @@ internal fun ThreadComposerRoute(
     // The assistant's DM in its panel: the conversation it was opened from, a chip above the
     // composer (web MessageInput's accessory row, `gap-1.5`), until × or the next message with text.
     Column(Modifier.fillMaxWidth().then(if (composerExpanded) Modifier.fillMaxHeight() else Modifier)) {
+        ThreadDmAgentRuntimeRetiredNotice(
+            dmAgentPeerId = dmAgentPeerId,
+            renderedPayload = renderedPayload,
+            agentStatusResolver = agentStatusResolver,
+            storeScope = storeScope,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
         surface.assistantContext?.let { attachment ->
             attachment.context?.let { context ->
                 ThreadAssistantContextChip(

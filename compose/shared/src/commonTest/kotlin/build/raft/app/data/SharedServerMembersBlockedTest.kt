@@ -37,6 +37,8 @@ class SharedServerMembersBlockedTest {
         [
           {"id":"agent-revoked","name":"revoked","status":"active","machineId":"m-1","blockedReason":"computer_access_revoked","serverId":"server-1"},
           {"id":"agent-old","name":"old","status":"active","machineId":"m-2","blockedReason":"computer_version_unsupported","serverId":"server-1"},
+          {"id":"agent-retired","name":"retired","status":"active","runtime":"kimi","machineId":"m-4","creatorType":"user","creatorId":"user-creator","blockedReason":"runtime_retired","serverId":"server-1"},
+          {"id":"agent-retired-switched","name":"switched","status":"active","runtime":"kimi-sdk","machineId":"m-4","blockedReason":"runtime_retired","serverId":"server-1"},
           {"id":"agent-future","name":"future","status":"active","machineId":"m-3","blockedReason":"some_future_reason","serverId":"server-1"},
           {"id":"agent-ext","name":"ext","status":"active","runtime":"external","blockedReason":"computer_access_revoked","serverId":"server-1"},
           {"id":"agent-bot","name":"bot","status":"active","managedByAppInstallId":"install-1","blockedReason":"computer_access_revoked","serverId":"server-1"},
@@ -141,8 +143,28 @@ class SharedServerMembersBlockedTest {
         val registry = ProcessMemberPresenceRegistry()
         val store = store(registry)
         store.refreshMembers(serverId, force = true, reason = "test")
-        for (id in listOf("agent-future", "agent-ext", "agent-bot", "agent-plain")) {
+        for (id in listOf("agent-future", "agent-ext", "agent-bot", "agent-plain", "agent-retired-switched")) {
             assertNull(store.currentMemberStatus(serverId, id)?.blocked, id)
         }
+    }
+
+    @Test
+    fun aRetiredRuntimeAgentReadsRuntimeRetiredInOrangeWithMachineAndCreator() = runBlocking<Unit> {
+        val registry = ProcessMemberPresenceRegistry()
+        val store = store(registry)
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport)
+        store.refreshMembers(serverId, force = true, reason = "test")
+
+        val held = assertNotNull(store.currentMemberStatus(serverId, "agent-retired"))
+        assertEquals(AgentBlockedState.RuntimeRetired, held.blocked)
+        assertEquals(AgentStatus.Error, held.status)
+        assertEquals("kimi", held.runtime)
+        assertEquals("m-4", held.machineId)
+        assertEquals("user-creator", held.creatorUserId)
+        val indicator = held.toRaftAgentStatusIndicatorState()
+        assertEquals(RaftColor.AccentOrange, indicator.color)
+        assertEquals("Change runtime", indicator.withoutActivityDetail().label)
+        assertEquals("m-4", indicator.machineId)
+        assertEquals("user-creator", indicator.creatorUserId)
     }
 }

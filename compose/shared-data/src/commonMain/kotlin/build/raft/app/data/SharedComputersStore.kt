@@ -1066,7 +1066,9 @@ private fun SharedComputersOwner.durableKey(serverId: String): RaftDurableSnapsh
     /** Server `revocation` (slock #16468), so a cold start paints Key revoked instead of flashing Offline. */
     val revocation: RaftDurableComputerRevocation? = null,
     /** Server `versionRefusedAt` (slock #16514), for offline reinstall eligibility across cold starts. */
-    val versionRefusedAt: String? = null
+    val versionRefusedAt: String? = null,
+    /** Server `refusedComputerVersion` (slock #16881), for offline refused reinstall copy across cold starts. */
+    val refusedComputerVersion: String? = null
 )
 
 @Serializable
@@ -1147,7 +1149,8 @@ private fun SharedComputersServerSlice.toDurableRecord(): RaftComputersDurableRe
                     ownerUserId = machine.ownerUserId,
                     owner = machine.owner?.toDurableComputerCreator(),
                     revocation = machine.revocation?.toDurableComputerRevocation(),
-                    versionRefusedAt = machine.versionRefusedAt
+                    versionRefusedAt = machine.versionRefusedAt,
+                    refusedComputerVersion = machine.refusedComputerVersion
                 )
             },
         machineCount = machineCount,
@@ -1192,7 +1195,8 @@ private fun RaftComputersDurableRecord.toServerSlice(): SharedComputersServerSli
                     ownerUserId = machine.ownerUserId,
                     owner = machine.owner?.toComputerCreatorSnapshot(),
                     revocation = machine.revocation?.toComputerRevocationSnapshot(),
-                    versionRefusedAt = machine.versionRefusedAt?.trim()?.takeIf { it.isNotBlank() }
+                    versionRefusedAt = machine.versionRefusedAt?.trim()?.takeIf { it.isNotBlank() },
+                    refusedComputerVersion = machine.refusedComputerVersion?.trim()?.takeIf { it.isNotBlank() }
                 )
             },
         machineCount = machineCount,

@@ -1033,7 +1033,7 @@ private fun ThreadMessageCardContent(
     val rowDoubleTapAction: ((RaftPopoverAnchor) -> Unit)? =
         if (
             threadMessageDoubleTapShowsReactions(
-                quickReactions = quickReactionsEnabled,
+                quickReactions = quickReactionsEnabled && writeActionsEnabled,
                 shareSelectionActive = shareSelectionActive,
                 hasLocalSendState = message.hasLocalSendState()
             )
@@ -1967,11 +1967,11 @@ private fun ThreadMessageCardContent(
                                             onToggleSave = onToggleSave,
                                             repliesBadge = repliesBadge,
                                             onOpenReplies = { onOpenThread(message.id) },
-                                            showReactionAddAction = showReactionAddAction,
-                                            onToggleReaction = onToggleReaction,
+                                            showReactionAddAction = showReactionAddAction && writeActionsEnabled,
+                                            onToggleReaction = if (writeActionsEnabled) onToggleReaction else null,
                                             showReactionReactors = showReactionReactors,
                                             onShowQuickReactions =
-                                                if (quickReactionsEnabled) onShowQuickReactions else null
+                                                if (quickReactionsEnabled && writeActionsEnabled) onShowQuickReactions else null
                                         )
                                     }
                                 }

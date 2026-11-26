@@ -3018,6 +3018,7 @@ private fun RaftAppShellReadyContent(
                     timeContext = threadTimeContext,
                     alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                     compactConsecutiveMessages = compactConsecutiveMessages,
+                    discussionElsewhere = resolution.discussionElsewhere,
                 )
                 null
             }
@@ -6342,6 +6343,11 @@ private fun RaftAppShellReadyContent(
                                 },
                                 openPage = { openedTask, conversationId -> openTaskPage(openedTask, conversationId, animated = false) },
                                 log = bridge::log,
+                                onDiscussionElsewhere = { elsewhereTask ->
+                                    tasksOpenSurfaceFlow.open(
+                                        TaskOpenSurface.Pending(elsewhereTask, discussionElsewhere = true)
+                                    )
+                                },
                             )
                         }
                         val onTasksPendingSend: (TaskSummary, String) -> Unit = { task, text ->
@@ -6537,6 +6543,7 @@ private fun RaftAppShellReadyContent(
                                                         alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                                                         compactConsecutiveMessages = compactConsecutiveMessages,
                                                         canWriteChannel = tasksChannelWriteCheck(surface.task.channelId),
+                                                        discussionElsewhere = surface.discussionElsewhere,
                                                     )
                                                 }
                                             }

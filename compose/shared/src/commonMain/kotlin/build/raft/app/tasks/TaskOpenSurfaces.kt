@@ -100,7 +100,11 @@ import build.raft.designsystem.theme.RaftTheme
 internal sealed interface TaskOpenSurface {
     val task: TaskSummary
 
-    data class Pending(override val task: TaskSummary) : TaskOpenSurface
+    data class Pending(
+        override val task: TaskSummary,
+        /** True when `POST /tasks/:id/conversation` refused with `403 joint_task_read_only`. */
+        val discussionElsewhere: Boolean = false,
+    ) : TaskOpenSurface
 
     data class Legacy(override val task: TaskSummary) : TaskOpenSurface
 }
@@ -162,6 +166,7 @@ internal data class TaskPendingSeed(
     val task: TaskSummary,
     val channelJoined: Boolean? = null,
     val canWriteChannel: Boolean? = null,
+    val discussionElsewhere: Boolean = false,
 )
 
 /**
@@ -202,12 +207,14 @@ internal class TaskPendingDraftStore {
         task: TaskSummary,
         channelJoined: Boolean? = null,
         canWriteChannel: Boolean? = null,
+        discussionElsewhere: Boolean = false,
     ) {
         seeds[key(serverId, task.id.value)] =
             TaskPendingSeed(
                 task = task,
                 channelJoined = channelJoined,
                 canWriteChannel = canWriteChannel,
+                discussionElsewhere = discussionElsewhere,
             )
     }
 
@@ -368,13 +375,22 @@ internal class TaskOpenSurfaceFlow(
         val shownRevision = current.task.revision
         val freshRevision = fresh.revision
         if (freshRevision != null && shownRevision != null && freshRevision < shownRevision) return null
+        val currentElsewhere = (current as? TaskOpenSurface.Pending)?.discussionElsewhere == true
         return when (val next = fresh.taskOpenSurface()) {
             null -> {
                 if (sending) return null
+                if (currentElsewhere && !fresh.readOnlyReason.isNullOrBlank()) {
+                    surface = TaskOpenSurface.Pending(fresh, discussionElsewhere = true)
+                    return null
+                }
                 surface = null
                 errorText = null
                 errorTraceId = null
                 fresh
+            }
+            is TaskOpenSurface.Pending -> {
+                surface = next.copy(discussionElsewhere = currentElsewhere || next.discussionElsewhere)
+                null
             }
             else -> {
                 surface = next
@@ -678,6 +694,7 @@ internal fun TaskPendingSurfaceContent(
             loadingDiscussion = needsSummaryHydration,
             viewerUserId = viewerUserId,
             agentStatusResolver = agentStatusResolver,
+            discussionElsewhere = surface.discussionElsewhere,
         )
     }
 }
@@ -876,9 +893,11 @@ internal fun TaskPendingConversationPage(
     viewerUserId: String? = null,
     /** Resolves an agent assignee's live status dot beside its face (null: no dot). */
     agentStatusResolver: RaftAgentStatusResolver? = null,
+    /** True when `POST /tasks/:id/conversation` refused with `403 joint_task_read_only` (slock #16739). */
+    discussionElsewhere: Boolean = false,
 ) {
     val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
+    val discussionAccess = taskDiscussionAccess(task.readOnlyReason, discussionElsewhere)
     val state = task.taskPendingHeaderState()
     val chrome =
         task.taskConversationHeaderChrome(
@@ -985,19 +1004,11 @@ internal fun TaskPendingConversationPage(
                             if (loadingDiscussion) {
                                 build.raft.designsystem.components.RaftSpinner()
                             } else {
-                                RaftText(
-                                    text = stringResource(Res.string.task_conversation_empty_title),
-                                    style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
-                                    color = colors.foreground,
+                                TaskConversationEmptyState(
+                                    hasHostMessage = task.hostMessageId != null,
+                                    access = discussionAccess,
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
-                                if (task.hostMessageId != null) {
-                                    RaftText(
-                                        text = stringResource(Res.string.task_conversation_empty_body),
-                                        style = typography.callout,
-                                        color = colors.foregroundMuted,
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                    )
-                                }
                             }
                         }
                         errorText?.let {
@@ -1012,7 +1023,11 @@ internal fun TaskPendingConversationPage(
         }
             headRoute(TaskHeadPlacement.PullDown)
         }
-        if (joined == false) {
+        if (discussionAccess != TaskDiscussionAccess.Writable) {
+            ThreadFooterNoticeDock(bottomSafeArea = bottomSafeArea) {
+                TaskReadOnlyDiscussionComposer()
+            }
+        } else if (joined == false) {
             ThreadJoinFooter(
                 label = stringResource(Res.string.task_conversation_join_to_reply),
                 onJoin = onJoin,
@@ -1337,19 +1352,25 @@ internal fun launchTasksTabTaskOpen(
                 }
                 null -> Unit
             }
-            val conversationId =
-                if (resolvedTask.taskOpenTarget() == TaskOpenTarget.ResolveConversation) {
-                    resolveTaskOpenConversationChannelId(
+            if (resolvedTask.taskOpenTarget() == TaskOpenTarget.ResolveConversation) {
+                val resolution =
+                    resolveTaskOpenConversation(
                         task = resolvedTask,
                         serverId = activeServerId.orEmpty(),
                         tasksDataSource = tasksDataSource,
                         log = log,
                     )
-                } else {
-                    null
+                if (!isStillActive()) return@launch
+                when (resolution) {
+                    is TaskConversationOpenResolution.Opened -> openPage(resolvedTask, resolution.conversationChannelId)
+                    TaskConversationOpenResolution.DiscussionElsewhere ->
+                        openSurface(TaskOpenSurface.Pending(resolvedTask, discussionElsewhere = true))
+                    else -> openPage(resolvedTask, null)
                 }
-            if (!isStillActive()) return@launch
-            openPage(resolvedTask, conversationId)
+            } else {
+                if (!isStillActive()) return@launch
+                openPage(resolvedTask, null)
+            }
         } finally {
             gate.finish(gateTaskId)
         }
@@ -1365,6 +1386,7 @@ internal fun launchArrivedTaskConversationOpen(
     isStillActive: () -> Boolean,
     openPage: (task: TaskSummary, resolvedConversationChannelId: ChannelId?) -> Unit,
     log: (String) -> Unit,
+    onDiscussionElsewhere: (TaskSummary) -> Unit = {},
 ) {
     if (arrived.taskOpenTarget() != TaskOpenTarget.ResolveConversation) {
         openPage(arrived, null)
@@ -1372,15 +1394,18 @@ internal fun launchArrivedTaskConversationOpen(
     }
     val activeServerId = serverId?.takeIf { it.isNotBlank() } ?: return
     scope.launch {
-        val conversationId =
-            resolveTaskOpenConversationChannelId(
+        val resolution =
+            resolveTaskOpenConversation(
                 task = arrived,
                 serverId = activeServerId,
                 tasksDataSource = tasksDataSource,
                 log = log,
             )
-        if (isStillActive() && conversationId != null) {
-            openPage(arrived, conversationId)
+        if (!isStillActive()) return@launch
+        when (resolution) {
+            is TaskConversationOpenResolution.Opened -> openPage(arrived, resolution.conversationChannelId)
+            TaskConversationOpenResolution.DiscussionElsewhere -> onDiscussionElsewhere(arrived)
+            else -> Unit
         }
     }
 }

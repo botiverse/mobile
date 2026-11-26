@@ -2118,6 +2118,9 @@
     <string name="task_conversation_join_to_reply">加入频道以回复</string>
     <string name="task_conversation_empty_title">这个任务还没有讨论</string>
     <string name="task_conversation_empty_body">之前的讨论在它来源消息的回复里。在这里发言，开始任务自己的讨论。</string>
+    <string name="task_conversation_read_only_notice">这个任务创建于其他服务器连接之前，它的讨论在这里只读。</string>
+    <string name="task_conversation_elsewhere_title">这段讨论保留在托管服务器上</string>
+    <string name="task_conversation_elsewhere_body">这个任务创建于其他服务器连接之前，它的讨论只能在托管服务器上查看。</string>
     <string name="task_conversation_composer_placeholder">在任务里发消息</string>
     <string name="task_legacy_heading">任务 #%1$s · Legacy</string>
     <string name="task_legacy_title">标题</string>
@@ -5176,6 +5179,12 @@
     <string name="agent_computer_offline_step_power">把电脑「%1$s」打开，别让它睡眠</string>
     <string name="agent_computer_offline_step_run">在那台电脑上打开 Raft Desktop，或运行：</string>
     <string name="agent_status_open_computer">打开 Computer</string>
+    <string name="agent_status_runtime_retired_full">%1$s 已停止支持</string>
+    <string name="agent_status_runtime_retired_detail_kimi">旧版 Kimi CLI 已停止支持，这个 Agent 无法启动。在 Agent 设置里把运行时改成 Kimi Code 即可继续使用。工作区和 MEMORY.md 都保留，会话重新开始。</string>
+    <string name="agent_status_runtime_retired_detail_kimi_update_computer">旧版 Kimi CLI 已停止支持，这个 Agent 无法启动。这台 Computer 的版本太旧，先更新 Computer，再在 Agent 设置里把运行时改成 Kimi Code。工作区和 MEMORY.md 都保留，会话重新开始。</string>
+    <string name="agent_status_runtime_retired_detail_gemini">Gemini CLI 已停止支持，这个 Agent 无法启动。在 Agent 设置里换成 Antigravity 或其他运行时即可继续使用。工作区和 MEMORY.md 都保留，会话重新开始。</string>
+    <string name="agent_status_runtime_retired_detail_copilot">GitHub Copilot CLI 已停止支持，这个 Agent 无法启动。在 Agent 设置里换成其他运行时即可继续使用。工作区和 MEMORY.md 都保留，会话重新开始。</string>
+    <string name="agent_status_runtime_retired_change_runtime">更换运行时</string>
     <string name="agent_migration_place_from_revoked_computer_note">这个 Agent 所在的 Computer 已失去对服务器的访问权限，无法带走它的文件。它会移到你选择的 Computer，并在下次收到消息时在那里开始新的会话。</string>
     <string name="agent_status_model_unsupported">这个运行时的账号或套餐不包含模型「%1$s」。请更换模型，或登录包含该模型的账号</string>
     <string name="agent_status_model_unsupported_default">这个运行时的账号或套餐不包含这个 Agent 的模型。请更换模型，或登录包含该模型的账号</string>

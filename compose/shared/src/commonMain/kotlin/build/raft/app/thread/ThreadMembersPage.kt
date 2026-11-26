@@ -1921,14 +1921,20 @@ internal fun ThreadMembersPagerRow(
         } else {
             null
         }
+    val runtimeRetired =
+        if (appBot == null && member.kind.equals("agent", ignoreCase = true)) {
+            rememberAgentRuntimeRetiredState(status)
+        } else {
+            null
+        }
     val signIn =
-        if (appBot == null && readinessCopy == null && member.kind.equals("agent", ignoreCase = true)) {
+        if (appBot == null && runtimeRetired == null && readinessCopy == null && member.kind.equals("agent", ignoreCase = true)) {
             rememberAgentRuntimeSignInState(status, fallbackName = member.displayName)
         } else {
             null
         }
     val deliveryHold =
-        if (appBot == null && readinessCopy == null && signIn == null && member.kind.equals("agent", ignoreCase = true)) {
+        if (appBot == null && runtimeRetired == null && readinessCopy == null && signIn == null && member.kind.equals("agent", ignoreCase = true)) {
             rememberAgentDeliveryHoldView(status)
         } else {
             null
@@ -1975,9 +1981,24 @@ internal fun ThreadMembersPagerRow(
         }
     ChannelMembersRow(
         title = member.displayName,
-        subtitle = readinessCopy?.title ?: deliveryHold?.text ?: subtitle,
+        subtitle = runtimeRetired?.shortText ?: readinessCopy?.title ?: deliveryHold?.text ?: subtitle,
         subtitleContent =
             when {
+                runtimeRetired != null -> {
+                    {
+                        RaftText(
+                            text = runtimeRetired.shortText,
+                            style = RaftTheme.typography.caption,
+                            color = RaftTheme.colors.foregroundHint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier =
+                                Modifier
+                                    .testTag(AgentRuntimeRetiredTestTags.MemberRowStatus)
+                                    .semantics { contentDescription = runtimeRetired.detail },
+                        )
+                    }
+                }
                 readinessCopy != null -> {
                     {
                         RaftText(

@@ -694,8 +694,20 @@ internal fun MembersAgentProfileStatus(
     // Web `runtimeSignInNeededOf` (slock #15282): the runtime is not signed in on the Computer, so
     // the agent cannot start. The error light and "Sign-in needed for {runtime}"; the chip opens
     // the Computer, where the runtime is signed in.
+    val runtimeRetired =
+        if (appBot) {
+            null
+        } else {
+            rememberAgentRuntimeRetiredState(
+                state = agentStatusIndicatorState ?: agentStatusObservedState,
+                blockedOverride = blocked,
+                fallbackRuntime = summary?.runtime ?: agentStatusIndicatorState?.runtime ?: member.roleDescription,
+                fallbackMachineId = summary?.machineId ?: agentStatusIndicatorState?.machineId,
+            )
+        }
     val rawRuntimeSignInNeeded =
         !appBot &&
+            runtimeRetired == null &&
             credentialReason == null &&
             membersAgentRuntimeSignInNeeded(
                 indicator = agentStatusIndicatorState,
@@ -767,7 +779,9 @@ internal fun MembersAgentProfileStatus(
     // follows under it ([AgentBlockedStatusNotice]). "Computer update required" is already the
     // short form (raft-design identity-and-presence): the chip says it, with no sentence under it.
     val statusLabel =
-        if (blocked == AgentBlockedState.ComputerUpdateRequired) {
+        if (runtimeRetired != null) {
+            runtimeRetired.fullText
+        } else if (blocked == AgentBlockedState.ComputerUpdateRequired) {
             AgentBlockedState.ComputerUpdateRequired.localizedStatusLabel()
         } else if (blocked != null) {
             stringResource(Res.string.member_row_status_error)
@@ -837,6 +851,7 @@ internal fun MembersAgentProfileStatus(
     val openComputer = onOpenComputer?.takeIf { blocked == AgentBlockedState.ComputerUpdateRequired || runtimeSignInNeeded }
     val chipDetailSemantics =
         when {
+            runtimeRetired != null -> Modifier.semantics { contentDescription = runtimeRetired.detail }
             runtimeSignIn != null -> Modifier.semantics { contentDescription = runtimeSignIn.detail }
             deliveryHoldView != null -> Modifier.semantics { contentDescription = deliveryHoldView.text }
             else -> Modifier
@@ -889,7 +904,15 @@ internal fun MembersAgentProfileStatus(
             statusChip(Modifier.padding(top = itemTop).then(chipDetailSemantics))
         }
     }
-    if (blocked != null && blocked != AgentBlockedState.ComputerUpdateRequired) {
+    if (runtimeRetired != null && showActivityDetail) {
+        AgentRuntimeRetiredNotice(
+            retired = runtimeRetired,
+            canChangeRuntime = onChangeModel != null,
+            onChangeRuntime = onChangeModel,
+            onOpenComputer = onOpenComputer,
+            modifier = Modifier.padding(top = itemTop),
+        )
+    } else if (blocked != null && blocked != AgentBlockedState.ComputerUpdateRequired && blocked != AgentBlockedState.RuntimeRetired) {
         AgentBlockedStatusNotice(blocked = blocked, modifier = Modifier.padding(top = itemTop))
         if (blocked == AgentBlockedState.ComputerAccessRevoked && computerRevokedNote != null) {
             MembersAgentComputerRevokedNote(

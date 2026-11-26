@@ -1571,6 +1571,11 @@ internal data class TaskConversationHeaderChrome(
     val onToggleFollow: () -> Unit,
     /** Delete task (the ⋯ menu's last row); null for a reader who may not delete it. */
     val onDeleteTask: (() -> Unit)? = null,
+    /**
+     * Non-blank when this task's discussion is read-only on this server (e.g. `joint_task_read_only`
+     * on a participant server for a historical joint task, slock #16739 / #16748).
+     */
+    val readOnlyReason: String? = null,
 )
 
 internal fun TaskSummary.taskConversationHeaderChrome(
@@ -1607,6 +1612,7 @@ internal fun TaskSummary.taskConversationHeaderChrome(
         onViewInChannel = onViewInChannel,
         onToggleFollow = { followed?.let(onToggleFollow) },
         onDeleteTask = onDeleteTask,
+        readOnlyReason = readOnlyReason,
     )
 }
 

@@ -131,7 +131,7 @@ private fun List<ReinstallCandidate>.noticeKind(): ReinstallNoticeKind {
             }
             return@forEach
         }
-        val tier = raftComputerVersionTier(computer) as? RaftComputerVersionTier.Notice ?: return@forEach
+        val tier = raftComputerVersionTier(computer, nowMillis) as? RaftComputerVersionTier.Notice ?: return@forEach
         val pendingDeadline =
             if (tier.enforced) {
                 null

@@ -2117,6 +2117,9 @@
     <string name="task_conversation_join_to_reply">Присоединиться к каналу, чтобы ответить</string>
     <string name="task_conversation_empty_title">В этой задаче пока нет обсуждения</string>
     <string name="task_conversation_empty_body">Предыдущее обсуждение — в ответах на исходное сообщение. Напишите здесь, чтобы начать обсуждение в самой задаче.</string>
+    <string name="task_conversation_read_only_notice">Эта задача была создана до подключения других серверов. Её обсуждение здесь доступно только для чтения.</string>
+    <string name="task_conversation_elsewhere_title">Это обсуждение остаётся на сервере-хосте</string>
+    <string name="task_conversation_elsewhere_body">Эта задача была создана до подключения других серверов. Её обсуждение можно просматривать только на сервере-хосте.</string>
     <string name="task_conversation_composer_placeholder">Написать в задаче</string>
     <string name="task_legacy_heading">Задача #%1$s · старый формат</string>
     <string name="task_legacy_title">Название</string>
@@ -4968,6 +4971,12 @@
     <string name="agent_computer_offline_step_power">Включите компьютер %1$s и не давайте ему переходить в спящий режим</string>
     <string name="agent_computer_offline_step_run">На этом компьютере откройте Raft Desktop или выполните:</string>
     <string name="agent_status_open_computer">Открыть компьютер</string>
+    <string name="agent_status_runtime_retired_full">%1$s больше не поддерживается</string>
+    <string name="agent_status_runtime_retired_detail_kimi">Старый Kimi CLI выведен из эксплуатации, поэтому этот агент не может запуститься. Переключите его среду выполнения на Kimi Code в настройках агента, чтобы продолжить работу. Рабочая область и MEMORY.md сохранятся; беседа начнётся заново.</string>
+    <string name="agent_status_runtime_retired_detail_kimi_update_computer">Старый Kimi CLI выведен из эксплуатации, поэтому этот агент не может запуститься. Этот компьютер слишком старый для Kimi Code: сначала обновите компьютер, затем переключите среду выполнения в настройках агента. Рабочая область и MEMORY.md сохранятся; беседа начнётся заново.</string>
+    <string name="agent_status_runtime_retired_detail_gemini">Gemini CLI выведен из эксплуатации, поэтому этот агент не может запуститься. Переключите его на Antigravity или другую среду выполнения в настройках агента, чтобы продолжить работу. Рабочая область и MEMORY.md сохранятся; беседа начнётся заново.</string>
+    <string name="agent_status_runtime_retired_detail_copilot">GitHub Copilot CLI выведен из эксплуатации, поэтому этот агент не может запуститься. Переключите его на другую среду выполнения в настройках агента, чтобы продолжить работу. Рабочая область и MEMORY.md сохранятся; беседа начнётся заново.</string>
+    <string name="agent_status_runtime_retired_change_runtime">Сменить среду выполнения</string>
     <string name="agent_migration_place_from_revoked_computer_note">Компьютер этого агента потерял доступ к серверу, поэтому его файлы перенести нельзя. Агент переедет на выбранный компьютер и начнёт там новый сеанс, когда получит следующее сообщение.</string>
     <string name="agent_status_model_unsupported">Аккаунт или тариф этой среды выполнения не включает «%1$s». Смените модель или войдите в аккаунт, где она есть</string>
     <string name="agent_status_model_unsupported_default">Аккаунт или тариф этой среды выполнения не включает модель этого агента. Смените модель или войдите в аккаунт, где она есть</string>

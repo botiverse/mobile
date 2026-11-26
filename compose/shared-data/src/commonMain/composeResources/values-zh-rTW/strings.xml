@@ -2117,6 +2117,9 @@
     <string name="task_conversation_join_to_reply">加入頻道以回覆</string>
     <string name="task_conversation_empty_title">這個任務還沒有討論</string>
     <string name="task_conversation_empty_body">先前的討論在來源訊息的回覆中。在這裡發言，開始任務本身的討論。</string>
+    <string name="task_conversation_read_only_notice">這個任務建立於其他伺服器連線之前，其討論在這裡僅供唯讀。</string>
+    <string name="task_conversation_elsewhere_title">這段討論保留在託管伺服器上</string>
+    <string name="task_conversation_elsewhere_body">這個任務建立於其他伺服器連線之前，其討論只能在託管伺服器上檢視。</string>
     <string name="task_conversation_composer_placeholder">在任務中傳送訊息</string>
     <string name="task_legacy_heading">任務 #%1$s · Legacy</string>
     <string name="task_legacy_title">標題</string>
@@ -4993,6 +4996,12 @@
     <string name="agent_computer_offline_step_power">把電腦「%1$s」打開，別讓它睡眠</string>
     <string name="agent_computer_offline_step_run">在那台電腦上開啟 Raft Desktop，或執行：</string>
     <string name="agent_status_open_computer">開啟電腦</string>
+    <string name="agent_status_runtime_retired_full">%1$s 已停止支援</string>
+    <string name="agent_status_runtime_retired_detail_kimi">舊版 Kimi CLI 已停止支援，這個 Agent 無法啟動。在 Agent 設定中將執行環境改為 Kimi Code 即可繼續使用。工作區與 MEMORY.md 會保留，工作階段會重新開始。</string>
+    <string name="agent_status_runtime_retired_detail_kimi_update_computer">舊版 Kimi CLI 已停止支援，這個 Agent 無法啟動。這台電腦版本過舊，無法執行 Kimi Code：請先更新電腦，再到 Agent 設定中切換執行環境。工作區與 MEMORY.md 會保留，工作階段會重新開始。</string>
+    <string name="agent_status_runtime_retired_detail_gemini">Gemini CLI 已停止支援，這個 Agent 無法啟動。在 Agent 設定中改為 Antigravity 或其他執行環境即可繼續使用。工作區與 MEMORY.md 會保留，工作階段會重新開始。</string>
+    <string name="agent_status_runtime_retired_detail_copilot">GitHub Copilot CLI 已停止支援，這個 Agent 無法啟動。在 Agent 設定中改為其他執行環境即可繼續使用。工作區與 MEMORY.md 會保留，工作階段會重新開始。</string>
+    <string name="agent_status_runtime_retired_change_runtime">更換執行環境</string>
     <string name="agent_migration_place_from_revoked_computer_note">這個 Agent 所在的電腦已失去伺服器的存取權，無法帶走它的檔案。它會移到你選擇的電腦，並在下次收到訊息時在那裡開始新的工作階段。</string>
     <string name="agent_status_model_unsupported">這個執行環境的帳號或方案不包含模型「%1$s」。請更換模型，或登入包含該模型的帳號</string>
     <string name="agent_status_model_unsupported_default">這個執行環境的帳號或方案不包含這個 Agent 的模型。請更換模型，或登入包含該模型的帳號</string>

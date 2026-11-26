@@ -2120,6 +2120,9 @@
     <string name="task_conversation_join_to_reply">チャンネルに参加して返信</string>
     <string name="task_conversation_empty_title">このタスクにはまだ議論がありません</string>
     <string name="task_conversation_empty_body">以前の議論は元のメッセージの返信にあります。ここに書くとタスク自身の議論が始まります。</string>
+    <string name="task_conversation_read_only_notice">このタスクは他のサーバーが接続される前に作成されました。ここでの議論は読み取り専用です。</string>
+    <string name="task_conversation_elsewhere_title">この議論はホストサーバーに残ります</string>
+    <string name="task_conversation_elsewhere_body">このタスクは他のサーバーが接続される前に作成されました。その議論はホストサーバー上でのみ閲覧できます。</string>
     <string name="task_conversation_composer_placeholder">このタスクにメッセージ</string>
     <string name="task_legacy_heading">タスク #%1$s · レガシー</string>
     <string name="task_legacy_title">タイトル</string>
@@ -5176,6 +5179,12 @@
     <string name="agent_computer_offline_step_power">コンピューター「%1$s」の電源を入れ、スリープしないようにする</string>
     <string name="agent_computer_offline_step_run">そのコンピューターで Raft Desktop を開くか、次を実行する：</string>
     <string name="agent_status_open_computer">コンピューターを開く</string>
+    <string name="agent_status_runtime_retired_full">%1$s はサポート終了しました</string>
+    <string name="agent_status_runtime_retired_detail_kimi">旧 Kimi CLI は廃止されたため、このエージェントは起動できません。使い続けるには、エージェントの設定でランタイムを Kimi Code に切り替えてください。ワークスペースと MEMORY.md は保持され、会話は新しく始まります。</string>
+    <string name="agent_status_runtime_retired_detail_kimi_update_computer">旧 Kimi CLI は廃止されたため、このエージェントは起動できません。このコンピューターは Kimi Code を実行するには古すぎます。先にコンピューターを更新してから、エージェントの設定でランタイムを切り替えてください。ワークスペースと MEMORY.md は保持され、会話は新しく始まります。</string>
+    <string name="agent_status_runtime_retired_detail_gemini">Gemini CLI は廃止されたため、このエージェントは起動できません。使い続けるには、エージェントの設定で Antigravity または他のランタイムに切り替えてください。ワークスペースと MEMORY.md は保持され、会話は新しく始まります。</string>
+    <string name="agent_status_runtime_retired_detail_copilot">GitHub Copilot CLI は廃止されたため、このエージェントは起動できません。使い続けるには、エージェントの設定で他のランタイムに切り替えてください。ワークスペースと MEMORY.md は保持され、会話は新しく始まります。</string>
+    <string name="agent_status_runtime_retired_change_runtime">ランタイムを変更</string>
     <string name="agent_migration_place_from_revoked_computer_note">このエージェントのコンピューターはサーバーへのアクセスを失ったため、ファイルを移せません。選んだコンピューターに移動し、次にメッセージを受け取ったときにそこで新しいセッションを始めます。</string>
     <string name="agent_status_model_unsupported">このランタイムのアカウントまたはプランには「%1$s」が含まれていません。モデルを変更するか、このモデルを含むアカウントでログインしてください</string>
     <string name="agent_status_model_unsupported_default">このランタイムのアカウントまたはプランには、このエージェントのモデルが含まれていません。モデルを変更するか、このモデルを含むアカウントでログインしてください</string>

@@ -1754,6 +1754,40 @@ private fun ThreadDmAgentActivity(
     // the app's wide breakpoint, [raftWindowWide], as the web's is under its `md`) on the
     // error light with Sign in beside it for viewers who can act on the Computer.
     val toolStuck = state.visibleToolStuck()
+    val runtimeRetired = if (toolStuck == null) rememberAgentRuntimeRetiredState(state) else null
+    if (runtimeRetired != null) {
+        val wide = raftWindowWide()
+        val retiredLabel = if (wide) runtimeRetired.fullText else runtimeRetired.shortText
+        Row(
+            modifier =
+                modifier
+                    .widthIn(max = ThreadHeaderDmAgentActivityMaxWidth)
+                    .semantics { contentDescription = runtimeRetired.detail },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+        ) {
+            RaftStatusIndicator(
+                color = RaftColor.AccentOrange,
+                size = ThreadHeaderDmAgentActivityDotSize,
+            )
+            Text(
+                text = retiredLabel,
+                style =
+                    RaftType.Caption.copy(
+                        color = RaftColor.ForegroundHint,
+                        fontFamily = RaftMonoFamily
+                    ),
+                color = RaftColor.ForegroundHint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier =
+                    Modifier
+                        .weight(1f, fill = false)
+                        .testTag(AgentRuntimeRetiredTestTags.DmHeaderStatus)
+            )
+        }
+        return
+    }
     val readinessCopy = if (toolStuck == null) rememberAgentReadinessDisplayCopy(state) else null
     if (readinessCopy != null) {
         Row(

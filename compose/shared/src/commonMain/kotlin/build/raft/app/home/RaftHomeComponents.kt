@@ -8816,20 +8816,26 @@ private fun DirectMessageAvatar(
 ) {
     val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
     val holdingReadiness = effectiveHoldingReadiness(status)
-    val signIn =
+    val runtimeRetired =
         if (agentMemberId != null && holdingReadiness == null) {
+            rememberAgentRuntimeRetiredState(status)
+        } else {
+            null
+        }
+    val signIn =
+        if (agentMemberId != null && holdingReadiness == null && runtimeRetired == null) {
             rememberAgentRuntimeSignInState(status, fallbackName = avatarLabel)
         } else {
             null
         }
     val deliveryHold =
-        if (agentMemberId != null && holdingReadiness == null && signIn == null) {
+        if (agentMemberId != null && holdingReadiness == null && runtimeRetired == null && signIn == null) {
             rememberAgentDeliveryHoldView(status)
         } else {
             null
         }
     val workersBusyText =
-        if (agentMemberId != null && holdingReadiness == null && signIn == null && deliveryHold == null) {
+        if (agentMemberId != null && holdingReadiness == null && runtimeRetired == null && signIn == null && deliveryHold == null) {
             val nowMs = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: build.raft.app.data.defaultNowMillis()
             status?.busyThroughWorkers(nowMs = nowMs)?.localizedText()
         } else {
@@ -8839,11 +8845,12 @@ private fun DirectMessageAvatar(
         statusColor =
             when {
                 holdingReadiness != null -> holdingReadiness.dotColor()
+                runtimeRetired != null -> RaftColor.AccentOrange
                 signIn != null && status?.external != true -> RaftColor.AccentOrange
                 deliveryHold != null -> RaftColor.AccentOrange
                 else -> status?.color
             },
-        statusDescription = signIn?.detail ?: deliveryHold?.text ?: workersBusyText,
+        statusDescription = runtimeRetired?.detail ?: signIn?.detail ?: deliveryHold?.text ?: workersBusyText,
         avatarSize = ChannelAvatarSize,
     ) {
         RaftAppAvatar(
@@ -8874,6 +8881,26 @@ private fun DirectMessageAgentMeta(
     modifier: Modifier = Modifier
 ) {
     val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
+    val runtimeRetired =
+        if (agentMemberId != null && status?.external != true) {
+            rememberAgentRuntimeRetiredState(status)
+        } else {
+            null
+        }
+    if (runtimeRetired != null) {
+        Text(
+            runtimeRetired.shortText,
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = RaftMonoFamily),
+            color = if (selected) RaftColor.StickerInk else RaftColor.ForegroundHint,
+            modifier =
+                modifier
+                    .testTag(AgentRuntimeRetiredTestTags.SidebarShort)
+                    .semantics { contentDescription = runtimeRetired.detail },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        return
+    }
     val readinessCopy =
         if (agentMemberId != null && status?.external != true) {
             rememberAgentReadinessDisplayCopy(status)

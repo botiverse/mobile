@@ -226,7 +226,7 @@ internal fun RaftComputerReleaseNotesLink(notes: SettingsComputerReleaseNotesSna
 @Composable
 internal fun RaftComputerVersionNotice(context: RaftComputerControlsContext) {
     val tier = context.upgrade.tier as? RaftComputerVersionTier.Notice ?: return
-    val computerVersion = context.computer.computerVersion?.trim()?.takeIf { it.isNotBlank() }
+    val computerVersion = raftNoticeComputerVersion(context.computer, tier)
     val date = tier.enforcedAt?.let { raftRelativeTimestampLabel(it) }?.takeIf { it.isNotBlank() }
     val unknown = tier.reason == "computer_version_unknown"
     val title =

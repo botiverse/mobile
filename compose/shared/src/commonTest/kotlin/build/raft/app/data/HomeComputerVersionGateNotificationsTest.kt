@@ -30,6 +30,7 @@ class HomeComputerVersionGateNotificationsTest {
         isComputer: Boolean = true,
         versionGate: SettingsComputerVersionGateSnapshot? = gate(),
         versionRefusedAt: String? = null,
+        refusedComputerVersion: String? = null,
         revocation: SettingsComputerRevocationSnapshot? = null,
         creatorUserId: String? = null,
         attachedByCurrentUser: Boolean = false,
@@ -53,6 +54,7 @@ class HomeComputerVersionGateNotificationsTest {
         versionGate = versionGate,
         revocation = revocation,
         versionRefusedAt = versionRefusedAt,
+        refusedComputerVersion = refusedComputerVersion,
     )
 
     private fun notices(
@@ -301,5 +303,34 @@ class HomeComputerVersionGateNotificationsTest {
                 "zone=$zone",
             )
         }
+    }
+
+    @Test
+    fun offlineNoVersionComputerRefusedWithinSevenDaysGetsReinstallNotice() {
+        val unknownGate = gate(reason = "computer_version_unknown", minVersion = "1.0.53", enforcedAt = null, enforced = true)
+        val offlineWithRefusedVersion =
+            computer(
+                id = "offline-refused",
+                name = "Offline Refused",
+                version = null,
+                status = ComputerStatus.Offline,
+                versionGate = unknownGate,
+                versionRefusedAt = recentRefusal,
+                refusedComputerVersion = "1.0.40",
+            )
+        val offlineStale =
+            computer(
+                id = "offline-stale",
+                name = "Offline Stale",
+                version = null,
+                status = ComputerStatus.Offline,
+                versionGate = unknownGate,
+                versionRefusedAt = staleRefusal,
+                refusedComputerVersion = "1.0.40",
+            )
+        val notice = notices(offlineWithRefusedVersion, offlineStale).single()
+        assertEquals("computer-version-gate:reinstall:now:offline-refused", notice.id)
+        assertEquals("Offline Refused needs a one-time reinstall", notice.title)
+        assertEquals("offline-refused", notice.targetId)
     }
 }

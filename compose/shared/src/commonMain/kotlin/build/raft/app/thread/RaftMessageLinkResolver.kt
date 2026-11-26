@@ -7,6 +7,7 @@ import build.raft.app.data.RaftMessageContextPageSink
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.isRaftMessageContextHistoryLimited
+import build.raft.app.data.parseHttpErrorEnvelope
 import build.raft.app.data.parseRaftMessageLinkChannelProbe
 import build.raft.app.data.parseRaftPublicServerCard
 import build.raft.app.data.parseSharedMessageContext
@@ -44,6 +45,7 @@ internal sealed interface RaftMessageLinkResolution {
         val channelId: ChannelId,
         val task: TaskSummary? = null,
         val focusedMessageId: String? = null,
+        val discussionElsewhere: Boolean = false,
     ) : RaftMessageLinkResolution
 
     /**
@@ -506,7 +508,23 @@ internal class RaftMessageLinkResolver(
                                     focusedMessageId = link.messageId,
                                 )
                         }
-                    RaftLinkProbeOutcome.NotFound -> return notFound("task_conversation_${openResponse?.code}")
+                    RaftLinkProbeOutcome.NotFound ->
+                        if (
+                            openResponse?.code == 403 &&
+                            openResponse.parseHttpErrorEnvelope()?.serverCode
+                                .equals(JointTaskReadOnlyErrorCode, ignoreCase = true)
+                        ) {
+                            return openPendingTask(
+                                serverId = server.id,
+                                taskId = task.id.value,
+                                channelId = task.channelId ?: ChannelId(link.channelId),
+                                task = task,
+                                focusedMessageId = null,
+                                discussionElsewhere = true,
+                            )
+                        } else {
+                            return notFound("task_conversation_${openResponse?.code}")
+                        }
                     RaftLinkProbeOutcome.Unavailable ->
                         if (openResponse?.code == 409) {
                             return notFound("task_conversation_409")
@@ -655,9 +673,11 @@ internal class RaftMessageLinkResolver(
         channelId: ChannelId,
         task: TaskSummary?,
         focusedMessageId: String?,
+        discussionElsewhere: Boolean = false,
     ): RaftMessageLinkResolution.OpenPendingTask {
         diagnosticsLogger(
-            "message_link_resolved result=open_pending_task seeded=${task != null} msg=${focusedMessageId != null}"
+            "message_link_resolved result=open_pending_task seeded=${task != null} " +
+                "msg=${focusedMessageId != null} elsewhere=$discussionElsewhere"
         )
         return RaftMessageLinkResolution.OpenPendingTask(
             serverId = serverId,
@@ -665,6 +685,7 @@ internal class RaftMessageLinkResolver(
             channelId = channelId,
             task = task,
             focusedMessageId = focusedMessageId,
+            discussionElsewhere = discussionElsewhere,
         )
     }
 

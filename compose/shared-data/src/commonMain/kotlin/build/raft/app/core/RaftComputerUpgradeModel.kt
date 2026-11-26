@@ -9,6 +9,8 @@ import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputerUpgradeDiskFullSnapshot
 import build.raft.app.data.SettingsComputerUpgradeFailureHintSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
+import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.raftComputerVersionRefusedRecently
 import build.raft.app.data.resolveServerRefusal
 import build.raft.app.data.settingsComputerUpgradeAvailabilityKey
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
@@ -141,14 +143,41 @@ private val raftComputerReleaseLookupFailedReasons =
 }
 
 /**
- * Web `computerVersionTier`, from the server gate only. A Computer online without a version yet is
- * [RaftComputerVersionTier.None] here: the web waits 20 s before calling that a reinstall, and the
- * app re-reads the row on the Computer's next status event.
+ * Web `computerVersionTier` (slock #16881), from the server gate.
+ * - Online without a version: [RaftComputerVersionTier.None] here (the web waits 20 s before
+ *   calling that a reinstall; the app re-reads the row on the Computer's next status event).
+ * - Offline without a version: [RaftComputerVersionTier.Notice] (`reinstall = true`) only when
+ *   refused at connect within the 7-day refusal window ([raftComputerVersionRefusedRecently]),
+ *   reading the reason from [SettingsComputerSnapshot.refusedComputerVersion] when present and
+ *   below the built-in floor (`computer_version_unsupported`), else `computer_version_unknown`.
  */
-@RaftCoreInternalApi fun raftComputerVersionTier(computer: SettingsComputerSnapshot): RaftComputerVersionTier {
+@RaftCoreInternalApi fun raftComputerVersionTier(
+    computer: SettingsComputerSnapshot,
+    nowMillis: Long = defaultNowMillis(),
+): RaftComputerVersionTier {
     if (!computer.isComputer) return RaftComputerVersionTier.None
     val gate = computer.versionGate ?: return RaftComputerVersionTier.None
-    val version = computer.computerVersion?.trim()?.takeIf { it.isNotBlank() } ?: return RaftComputerVersionTier.None
+    val version = computer.computerVersion?.trim()?.takeIf { it.isNotBlank() }
+    if (version == null) {
+        if (computer.online) return RaftComputerVersionTier.None
+        if (!raftComputerVersionRefusedRecently(computer.versionRefusedAt, nowMillis)) {
+            return RaftComputerVersionTier.None
+        }
+        val refused = computer.refusedComputerVersion?.trim()?.takeIf { it.isNotBlank() }
+        val reason =
+            if (refused != null && raftIsComputerSemver(refused) && raftIsRemoteUpgradeSupported(refused) == false) {
+                "computer_version_unsupported"
+            } else {
+                "computer_version_unknown"
+            }
+        return RaftComputerVersionTier.Notice(
+            reinstall = true,
+            reason = reason,
+            minVersion = gate.minVersion,
+            enforced = gate.enforced,
+            enforcedAt = gate.enforcedAt,
+        )
+    }
     val webCanUpgrade = raftIsRemoteUpgradeSupported(version) == true
     return RaftComputerVersionTier.Notice(
         reinstall = !webCanUpgrade,
@@ -157,6 +186,20 @@ private val raftComputerReleaseLookupFailedReasons =
         enforced = gate.enforced,
         enforcedAt = gate.enforcedAt,
     )
+}
+
+/**
+ * Web `noticeComputerVersion` (slock #16881): the version the reinstall notice names — the
+ * Computer's reported version, else (offline, refused at `ready` recently) the version it was
+ * refused with. Only for the version notice; everything else reads `computerVersion`.
+ */
+@RaftCoreInternalApi fun raftNoticeComputerVersion(
+    computer: SettingsComputerSnapshot,
+    tier: RaftComputerVersionTier,
+): String? {
+    val version = computer.computerVersion?.trim()?.takeIf { it.isNotBlank() }
+    if (version != null || tier !is RaftComputerVersionTier.Notice || !tier.reinstall) return version
+    return computer.refusedComputerVersion?.trim()?.takeIf { it.isNotBlank() }
 }
 
 /**
@@ -351,7 +394,7 @@ private fun raftComputerEpochMillis(iso: String?): Long? =
     nowMillis: Long,
 ): RaftComputerUpgradeModel {
     val fact = raftComputerVersionFact(computer)
-    val tier = raftComputerVersionTier(computer)
+    val tier = raftComputerVersionTier(computer, nowMillis)
     val reconnect = raftComputerUpgradeReconnect(computer, control.upgradeAccepted, nowMillis)
     val activeRefusal =
         control.upgradeRefusal

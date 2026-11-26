@@ -26,8 +26,9 @@ fun raftAgentStatusDotKind(
     blockedReason: String? = null,
     deliveryHold: AgentDeliveryHold? = null,
     runningWorkers: Int? = null,
+    runtime: String? = null,
 ): RaftAgentStatusDotKind {
-    if (!external && agentBlockedState(blockedReason) != null) return RaftAgentStatusDotKind.Orange
+    if (!external && agentBlockedState(blockedReason, runtime) != null) return RaftAgentStatusDotKind.Orange
     val parsedStatus = AgentStatus.fromWireValue(statusWireValue)
     val nowMs = nowEpochMillis ?: defaultNowMillis()
     if (
@@ -90,7 +91,7 @@ fun raftAgentWidgetStatusText(
     description: String?,
     runningWorkers: Int? = null,
 ): StringDesc {
-    if (!external) agentBlockedState(blockedReason)?.let { return it.statusLabelRes.desc() }
+    if (!external) agentBlockedState(blockedReason, runtime)?.let { return it.statusLabelRes.desc() }
     val status = AgentStatus.fromWireValue(statusWireValue)
     val detail =
         activityDetail?.trim()?.takeIf { it.isNotBlank() && !it.trimEnd('.', '…').equals(status?.label, ignoreCase = true) }

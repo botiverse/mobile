@@ -304,7 +304,7 @@ class SharedComputersStoreTest {
         val revokedRow =
             parseSyncedComputerRow(
                 kotlinx.serialization.json.Json.parseToJsonElement(
-                    """{"id":"machine-1","name":"Maria Laptop","status":"offline","isComputer":false,"versionRefusedAt":"2026-11-24T10:00:00.000Z","revocation":{"at":"2026-11-20T12:00:00.000Z","via":"key_revoked_manually","byUserName":"Alice","subjectUserName":null,"departureReason":null}}"""
+                    """{"id":"machine-1","name":"Maria Laptop","status":"offline","isComputer":false,"versionRefusedAt":"2026-11-24T10:00:00.000Z","refusedComputerVersion":"1.0.40","revocation":{"at":"2026-11-20T12:00:00.000Z","via":"key_revoked_manually","byUserName":"Alice","subjectUserName":null,"departureReason":null}}"""
                 ) as kotlinx.serialization.json.JsonObject
             )!!
         assertTrue(store.applySyncedMachineRows("server-1", listOf(revokedRow), deletes = emptySet()))
@@ -312,18 +312,20 @@ class SharedComputersStoreTest {
         assertEquals(SettingsComputerRevokedVia.KeyRevokedManually, afterRevoke.revocation?.via)
         assertEquals("Alice", afterRevoke.revocation?.byUserName)
         assertEquals("2026-11-24T10:00:00.000Z", afterRevoke.versionRefusedAt)
+        assertEquals("1.0.40", afterRevoke.refusedComputerVersion)
 
         // Reattaching sends a sync row with isComputer=true and revocation=null: revocation clears.
         val reattachedRow =
             parseSyncedComputerRow(
                 kotlinx.serialization.json.Json.parseToJsonElement(
-                    """{"id":"machine-1","name":"Maria Laptop","status":"online","isComputer":true,"computerVersion":"1.0.53","revocation":null,"versionRefusedAt":null}"""
+                    """{"id":"machine-1","name":"Maria Laptop","status":"online","isComputer":true,"computerVersion":"1.0.53","revocation":null,"versionRefusedAt":null,"refusedComputerVersion":null}"""
                 ) as kotlinx.serialization.json.JsonObject
             )!!
         assertTrue(store.applySyncedMachineRows("server-1", listOf(reattachedRow), deletes = emptySet()))
         val afterReattach = store.state.value.selectComputerServerSlice("server-1").machines.single()
         assertNull(afterReattach.revocation)
         assertNull(afterReattach.versionRefusedAt)
+        assertNull(afterReattach.refusedComputerVersion)
         assertTrue(afterReattach.isComputer)
     }
 

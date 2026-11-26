@@ -465,6 +465,8 @@ data class SharedServerMemberStatus(
     val runningWorkers: Int? = null,
     /** Another server's agent (joint channel): only presence is known, never the count. */
     val runningWorkersPresenceOnly: Boolean = false,
+    /** Human creator user id from the roster (`creator.id` when `creatorType == "user"`). */
+    val creatorUserId: String? = null,
 )
 
 /**
