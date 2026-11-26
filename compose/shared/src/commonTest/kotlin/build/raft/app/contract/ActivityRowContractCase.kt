@@ -106,6 +106,7 @@ internal data class ActivityRowMessage(
     val causalActorType: String? = null,
     val causalActorId: String? = null,
     val systemSubtype: String? = null,
+    val countsUnread: Boolean? = null,
     val quietForPeople: Boolean? = null,
     val mentions: List<ActivityRowMention> = emptyList(),
     @Transient val carriesSystemProvenance: Boolean = false,
@@ -155,7 +156,17 @@ internal data class ActivityRowExpectation(
     /** `sync_inbox_row` only: the row is no longer held. */
     val removed: Boolean? = null,
     val verdict: ActivityRowVerdict? = null,
+    val flagOn: ActivityRowFlagOnExpectations? = null,
 )
+
+@Serializable
+internal data class ActivityRowFlagOnExpectations(
+    @SerialName("people_activity_rows_v0")
+    val peopleActivityRowsV0: ActivityRowVerdictContainer? = null,
+)
+
+@Serializable
+internal data class ActivityRowVerdictContainer(val verdict: ActivityRowVerdict)
 
 @Serializable
 internal data class ActivityRowCheckpoint(

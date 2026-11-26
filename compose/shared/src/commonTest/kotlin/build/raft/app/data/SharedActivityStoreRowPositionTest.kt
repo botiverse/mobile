@@ -532,6 +532,117 @@ class SharedActivityStoreRowPositionTest {
         }
     }
 
+    @Test
+    fun quietLinesLeaveThreadAndChannelRowsInPlaceAndDoNotReopenDoneRows() = runTest {
+        val newerRow =
+            activityItem("c-top", unreadCount = 0).copy(
+                lastMessageId = MessageId("m-200"),
+                lastMessageAt = "2026-11-25T10:00:00.000Z",
+                latestActivitySeq = "200",
+                readStateLatestActivitySeq = "200",
+            )
+        val quietTargetChannelRow =
+            activityItem("c-1", unreadCount = 1).copy(
+                lastMessageId = MessageId("m-100"),
+                lastMessagePreview = "original channel message",
+                lastMessageAt = "2026-11-25T09:00:00.000Z",
+                latestActivitySeq = "100",
+                readStateLatestActivitySeq = "100",
+            )
+        val threadRow =
+            threadItem("th-1", unreadCount = 1).copy(
+                latestActivityMessageId = MessageId("m-50"),
+                latestActivityPreview = "original thread reply",
+                latestActivityAt = "2026-11-25T09:00:00.000Z",
+                latestActivitySeq = "50",
+                readStateLatestActivitySeq = "50",
+                replyCount = 1,
+            )
+
+        fun quietChannelLine(id: String, channelId: String, seq: Long, mentions: List<MessageMention> = emptyList()) =
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(id, channelId = channelId, authorId = "system", body = "Converted to task", seq = seq).copy(
+                        messageType = MessageType.System,
+                        mentions = mentions,
+                        quietForPeople = true,
+                    ),
+                    systemProvenance =
+                        MessageSystemProvenance(
+                            systemSubtype = "task.converted_summary",
+                            causalActorType = "agent",
+                            causalActorId = "agent-1",
+                            countsUnread = true,
+                            quietForPeople = true,
+                        ),
+                )
+            )
+
+        fun quietThreadLine(id: String, seq: Long, mentions: List<MessageMention> = emptyList()) =
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(id, channelId = "th-1", authorId = "system", body = "Task created", seq = seq).copy(
+                        messageType = MessageType.System,
+                        mentions = mentions,
+                        quietForPeople = true,
+                    ),
+                    systemProvenance =
+                        MessageSystemProvenance(
+                            systemSubtype = "task.created_summary",
+                            causalActorType = "agent",
+                            causalActorId = "agent-1",
+                            countsUnread = true,
+                            quietForPeople = true,
+                        ),
+                )
+            )
+
+        for (rowPosition in listOf(false, true)) {
+            val label = "inbox_row_position_v1=$rowPosition"
+            val f = loadedStore(listOf(snapshot(listOf(newerRow, quietTargetChannelRow, threadRow))), rowPosition = rowPosition)
+
+            // Quiet channel line without mention: row stays at index 1, unchanged, no re-read.
+            f.store.dispatch(quietChannelLine("m-101", "c-1", seq = 101L))
+            // Quiet thread line without mention: row stays at index 2, unchanged, no re-read.
+            f.store.dispatch(quietThreadLine("m-51", seq = 51L))
+            // Quiet line on a Done (unlisted) channel: stays unlisted, no re-read.
+            f.store.dispatch(quietChannelLine("m-301", "c-done", seq = 301L))
+            runCurrent()
+            advanceTimeBy(maxOf(ActivityRealtimeBackgroundRefreshIntervalMillis, ActivityRowRereadDelayMillis) + 1L)
+            runCurrent()
+            assertEquals(1, f.store.state.value.items.indexOfFirst { it.key == quietTargetChannelRow.key }, label)
+            assertEquals("100", f.row(quietTargetChannelRow.key).latestActivitySeq, label)
+            assertEquals("original channel message", f.row(quietTargetChannelRow.key).lastMessagePreview, label)
+            assertEquals(1, f.row(quietTargetChannelRow.key).unreadCount, label)
+            assertEquals(2, f.store.state.value.items.indexOfFirst { it.key == threadRow.key }, label)
+            assertEquals("50", f.row(threadRow.key).latestActivitySeq, label)
+            assertEquals("original thread reply", f.row(threadRow.key).latestActivityPreview, label)
+            assertEquals(1, f.row(threadRow.key).replyCount, label)
+            assertEquals(emptyList(), f.inbox.rowReads, label)
+            assertEquals(1, f.inbox.listReadCount, label)
+
+            // Quiet channel line mentioning viewer: moves to index 0, lights @, does not bump unread.
+            f.store.dispatch(
+                quietChannelLine("m-102", "c-1", seq = 102L, mentions = listOf(MessageMention("user", "user-1")))
+            )
+            runCurrent()
+            assertEquals(0, f.store.state.value.items.indexOfFirst { it.key == quietTargetChannelRow.key }, label)
+            assertEquals("102", f.row(quietTargetChannelRow.key).latestActivitySeq, label)
+            assertEquals(true, f.row(quietTargetChannelRow.key).hasMention, label)
+            assertEquals(1, f.row(quietTargetChannelRow.key).unreadCount, label)
+
+            // Quiet thread line mentioning viewer: moves to index 0, lights @, does not bump unread.
+            f.store.dispatch(
+                quietThreadLine("m-52", seq = 52L, mentions = listOf(MessageMention("user", "user-1")))
+            )
+            runCurrent()
+            assertEquals(0, f.store.state.value.items.indexOfFirst { it.key == threadRow.key }, label)
+            assertEquals("52", f.row(threadRow.key).latestActivitySeq, label)
+            assertEquals(true, f.row(threadRow.key).hasMention, label)
+            assertEquals(1, f.row(threadRow.key).unreadCount, label)
+        }
+    }
+
     private fun readState(channelId: String, maxReadSeq: Long, version: Long = 2L) =
         SharedActivityIntent.ApplyRealtimeEvent(
             PerReceiverReadStateChanged(

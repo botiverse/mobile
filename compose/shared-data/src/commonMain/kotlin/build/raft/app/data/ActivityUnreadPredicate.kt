@@ -99,28 +99,35 @@ import build.raft.app.RaftCoreInternalApi
  * past a channel or DM mute, a mention included (slock #15111): RisingWave keeps that row at its last
  * message before the mute. The position rule then leaves the row as it is, except that a mention
  * lights its @ (and moves a mention-only row, whose position is its highest mention).
- * On a person's task row (step 2c, raft-design #1440): only a message that is activity for them
- * ([peopleActivityRowMessage]), so a quiet lifecycle line that does not mention them leaves the
- * row's place, time and preview.
+ * On a person's row (step 2c, raft-design #1440; every row kind since #proj-raft-ui:#319):
+ * [peopleRowMessageMoves], so a quiet line that does not mention them leaves the row's place,
+ * time and preview on a task, thread, channel or DM row alike.
  */
 @RaftCoreInternalApi data class ActivityUnreadVerdict(val counts: Boolean?, val mention: Boolean, val moves: Boolean = true)
+
+/**
+ * Flag answers the rule takes as input (the caller resolves them for the reader's server; the rule
+ * reads no flag). Absent/false: flag off. Web `ActivityUnreadRules` (slock #17095).
+ */
+@RaftCoreInternalApi data class ActivityUnreadRules(
+    /** `people_activity_rows_v0` (#proj-raft-ui:#321): thread, channel and DM rows follow the whole people predicate. */
+    val peopleActivityRows: Boolean = false,
+)
 
 /** Web `activityLiveUnread`. */
 @RaftCoreInternalApi fun activityLiveUnread(
     message: ActivityUnreadMessage,
     viewer: ActivityUnreadViewer,
     scope: ActivityUnreadScope,
+    rules: ActivityUnreadRules = ActivityUnreadRules(),
 ): ActivityUnreadVerdict {
     val own = message.senderType == viewer.type && message.senderId == viewer.id
     val isThreadRow = scope.rowKind == ActivityUnreadRowKind.Thread || scope.rowKind == ActivityUnreadRowKind.Task
     // The mute decides whether a channel or DM row moves, whoever sent it and whether it is read;
-    // on a person's task row, the people predicate (step 2c, slock #16837).
+    // on a person's row, so does peopleRowMessageMoves (step 2c, #319, #321). Agents never read quietForPeople.
     val moves =
-        if (scope.rowKind == ActivityUnreadRowKind.Task && viewer.type == "user") {
-            peopleActivityRowMessage(message, viewer.id)
-        } else {
-            isThreadRow || !scope.activityMuted
-        }
+        (isThreadRow || !scope.activityMuted) &&
+            (viewer.type != "user" || peopleRowMessageMoves(message, viewer.id, scope.rowKind, fullRule = rules.peopleActivityRows))
     if (own || scope.readOnArrival) return ActivityUnreadVerdict(counts = false, mention = false, moves = moves)
     // An unfollowed thread row: no count and no @, even for a mention of the viewer. Correct only because
     // a mention makes the server follow the thread for them and send the change that makes the client
@@ -173,4 +180,22 @@ private fun countsForViewer(message: ActivityUnreadMessage, viewer: ActivityUnre
         agentOnly = message.agentOnly,
         quietForPeople = message.quietForPeople,
     )
+}
+
+/**
+ * Whether a message moves a PERSON's Activity row of [rowKind] (position, time, preview), before
+ * the mute (slock #17075 `peopleRowMessageMoves`, #proj-raft-ui:#319):
+ * - task rows: the whole people predicate ([peopleActivityRowMessage]);
+ * - thread, channel and DM rows: every message except a line quiet for people
+ *   ([ActivityUnreadMessage.quietForPeople] == true) that is not activity for them (does not
+ *   personally mention them). History-only and noise subtypes still move thread/channel/DM rows.
+ */
+@RaftCoreInternalApi fun peopleRowMessageMoves(
+    message: ActivityUnreadMessage,
+    userId: String,
+    rowKind: ActivityUnreadRowKind,
+    fullRule: Boolean = false,
+): Boolean {
+    if (rowKind == ActivityUnreadRowKind.Task || fullRule) return peopleActivityRowMessage(message, userId)
+    return message.quietForPeople != true || peopleActivityRowMessage(message, userId)
 }

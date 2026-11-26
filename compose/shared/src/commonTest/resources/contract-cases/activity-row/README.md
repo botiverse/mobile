@@ -175,7 +175,9 @@ arrives: open at the bottom with the read saved, a queued read, a read hold).
 
 `message`: `senderType`, `senderId`, `messageType` (`chat`/`system`),
 `causalActorType`, `causalActorId`, `systemSubtype` (`null` = none; **absent**
-= the event did not carry the system provenance), `mentions [{type, id}]`.
+= the event did not carry the system provenance), `countsUnread` (`false`: a
+history-only notice; absent = true), `quietForPeople` (absent = false),
+`mentions [{type, id}]`.
 
 ### Expectations
 
@@ -191,6 +193,12 @@ arrives: open at the bottom with the read saved, a queued read, a read hold).
   become the row's latest activity (past a channel or DM mute, a mention
   included): the client passes it to the position rule as the step's `moves`
   (rule 8).
+- `flagOn` (predicate cases): `{ "<flag>": { verdict } }`, the verdict where a
+  read-side flag is on for the reader's server, given only where it differs
+  from `verdict` (which is then the flag-off rule). The rule reads no flag: a
+  loader passes the flag's answer in (shared `activityLiveUnread`'s `rules`)
+  and asserts both states. Only `people_activity_rows_v0` today
+  (`rules.peopleActivityRows`, #proj-raft-ui:#321).
 
 ## Pending product decisions
 
@@ -221,6 +229,8 @@ while the flag is off) differs, web's loader lists the case in its own
 | 2026-11-16 | Tenny | #triage:#244 | `predicate_muted_channel_message`, `predicate_muted_channel_mention`, `muted_message_leaves_row`, `muted_mention_lights_without_moving` | Follow RisingWave: past a mute no message moves a row with a pre-mute message (`moves: false`); a mention lights its @; a mention-only row still moves. Judged in place, no list re-read. | web flag-off live patch (re-reads the list on a mention) |
 | 2026-11-17 | Scout, Lagoon | #triage:#244, #15301 review | `answer_before_read_lands`, `answer_before_read_lands_no_live`, `answer_mention_only_after_read_keeps_at`, `mark_unread_then_late_read_ack` | The row keeps its read seq; an answer at or below it has nothing unread, so an answer computed before a read and arriving after it does not bring the unread back (shared `mergeAnswer`). A mention-only answer is not cleared by it. Mark as Unread clears it and keeps a ceiling a late read ack cannot raise it past. | web meets it with its store's read projection (`inboxReadProjection.ts`, `projectionCoversActivity`), not yet through the shared read seq |
 | 2026-11-17 | Tenny | #triage:#244 (sync inbox rows, PR1) | `sync_upsert_equal_position_replaces`, `sync_upsert_below_ignored`, `sync_delete_done_below_activity_kept`, `sync_delete_left_unconditional` | An `inbox_row` upsert goes through the answer merge (read seq and ceiling: the higher of old and new; other fields from the new row). A delete applies at a null position or at or past the shown position. One change per row id per response. | no client applies `inbox_row` yet (web and app: capability not sent) |
+| 2026-11-26 | Kirby | #proj-raft-ui:bcf8659e (71732dab), #proj-raft-ui:#319 | `predicate_thread_quiet_line_stays`, `predicate_thread_quiet_line_mentioning_viewer`, `predicate_channel_quiet_line_stays`, `predicate_channel_quiet_line_mentioning_viewer` | One quiet-line rule for every row kind: a line quiet for people (`quietForPeople`) does not move a person's thread, channel or DM row unless it personally mentions them, as on a task row (shared `peopleRowMessageMoves`). Other kinds that do not count still move those rows. | RisingWave people views until Ray's rebuild (#proj-notification:#5); web flag-off live patch for thread rows until #proj-raft-ui:#318 |
+| 2026-11-27 | Kirby, Tenny | raft-chat README (line 69), #proj-raft-ui:#321 (Tenny 7ecafaa4) | `predicate_channel_uncounted_subtype`, `predicate_channel_self_unfollow_subtype`, `predicate_thread_self_unfollow_subtype`, `predicate_thread_task_deleted_summary_subtype`, `predicate_channel_history_only_notice`, `predicate_thread_history_only_notice`, `predicate_channel_agent_only_line`, `predicate_channel_history_only_mentioning_viewer` | Kirby's rule on every row: order a row by the last message of a kind that counts as unread. With `people_activity_rows_v0` on, a person's thread, channel and DM rows follow the whole people predicate, as task rows: a history-only, agents-only or noise line does not move the row, preview it or bring back its Done (`flagOn`: `moves: false`); their own message and a personal mention still do. The earlier `moves: true` only mirrored RisingWave (`rw_target_latest_v4`), it was not a product decision. Flag off: `moves: true` as before. Agents' rows are not affected. | RisingWave people views until Ray's `_full` variants (#proj-notification:#5); web's live path until Kirby passes the flag (web loader: shared rule only) |
 
 Web's gaps closed in step 2 for the flag-on path (`inbox_row_position_v1`);
 the server's pure inbox model (`inboxPolicyModel.ts`) follows all four rows
