@@ -576,7 +576,7 @@ internal class ThreadRealtimeGapRecovery(
         )
     }
 
-    suspend fun refreshLatestAfterVisibleMaxSeq(retryAttempt: Int = 0) {
+    suspend fun refreshLatestAfterVisibleMaxSeq(retryAttempt: Int = 0): Boolean {
         val generation = if (retryAttempt == 0) ++resumeCatchUpGeneration else resumeCatchUpGeneration
         val initial = currentState().payload
         val staleToken = routeStaleToken
@@ -587,25 +587,26 @@ internal class ThreadRealtimeGapRecovery(
                 ?: initial.streamChannelId
                     ?.takeIf { it.isNotBlank() }
                     ?.let(::ChannelId)
-                ?: return
-        val sinceSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()?.takeIf { it > 0L } ?: return
-        if (initial.newerMessagesStatus == "loading") return
+                ?: return true
+        val sinceSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()?.takeIf { it > 0L } ?: return true
+        if (initial.newerMessagesStatus == "loading") return false
         val failuresBefore = gapCatchUpRetryableFailures
-        recoverRealtimeGap(
-            initial = initial,
-            initialRequest =
-                RealtimeVisibleStreamGapRequest(
-                    channelId = streamChannelId,
-                    sinceSeq = sinceSeq,
-                    serverSeq = sinceSeq + 1L
-                ),
-            staleToken = staleToken,
-            // Replies posted while backgrounded are not top-level messages, so the sync above can come
-            // back empty while reply counts are stale (ad1df6b7): always re-read the reply summaries.
-            backfillAfterRecovery = true,
-        )
-        if (gapCatchUpRetryableFailures == failuresBefore || retryAttempt >= RESUME_CATCH_UP_MAX_RETRIES) return
-        if (!staleToken.isCurrent(routeStaleToken)) return
+        val succeeded =
+            recoverRealtimeGap(
+                initial = initial,
+                initialRequest =
+                    RealtimeVisibleStreamGapRequest(
+                        channelId = streamChannelId,
+                        sinceSeq = sinceSeq,
+                        serverSeq = sinceSeq + 1L
+                    ),
+                staleToken = staleToken,
+                // Replies posted while backgrounded are not top-level messages, so the sync above can come
+                // back empty while reply counts are stale (ad1df6b7): always re-read the reply summaries.
+                backfillAfterRecovery = true,
+            )
+        if (gapCatchUpRetryableFailures == failuresBefore || retryAttempt >= RESUME_CATCH_UP_MAX_RETRIES) return succeeded
+        if (!staleToken.isCurrent(routeStaleToken)) return succeeded
         diagnosticsLogger?.invoke(
             "thread_resume_catchup_retry_scheduled threadId=${initial.sourceThreadId.orEmpty()} " +
                 "attempt=${retryAttempt + 1}"
@@ -616,6 +617,7 @@ internal class ThreadRealtimeGapRecovery(
             if (generation != resumeCatchUpGeneration || !staleToken.isCurrent(routeStaleToken)) return@launch
             refreshLatestAfterVisibleMaxSeq(retryAttempt + 1)
         }
+        return succeeded
     }
 
     suspend fun recoverRealtimeGap(
@@ -629,10 +631,10 @@ internal class ThreadRealtimeGapRecovery(
          * network round trip. `false` (resume) awaits the catch-up, which the retry accounting needs.
          */
         launchCatchUp: Boolean = false,
-    ) {
+    ): Boolean {
         // The page is leaving: a catch-up already proved this account can no longer read it (web
         // #12696 stops the heartbeat's sync for a channel it was removed from).
-        if (currentState().conversationAccessLost) return
+        if (currentState().conversationAccessLost) return true
         val routeIdentity = initial.realtimeGapRouteIdentity()
         var requestSnapshot: RaftThreadScreenPayload? = null
         val recoveryId =
@@ -689,10 +691,11 @@ internal class ThreadRealtimeGapRecovery(
                     }
                     id
                 }
-            } ?: return
-        val snapshot = requestSnapshot ?: return
-        if (launchCatchUp) {
+            } ?: return false
+        val snapshot = requestSnapshot ?: return false
+        return if (launchCatchUp) {
             launchRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId, snapshot)
+            true
         } else {
             runRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId, snapshot)
         }
@@ -764,7 +767,7 @@ internal class ThreadRealtimeGapRecovery(
          * not become the anchor (it would hide the hole below it) nor count as "known before the fetch".
          */
         requestSnapshot: RaftThreadScreenPayload,
-    ) {
+    ): Boolean {
         // Set when the response merged (or replaced in) messages the timeline did not have. Resume
         // arrivals land here, but nothing else re-triggers the secondary (thread summary / followed)
         // refresh that the initial route load performs (task #317).
@@ -777,6 +780,7 @@ internal class ThreadRealtimeGapRecovery(
         // Message storage Phase 2b: the durable write revision before the catch-up's fetch (its page's revAtRequest).
         var durableRevAtRequest: Long? = null
         var recoveryCompleted = false
+        var catchUpSucceeded = false
         // Set when the catch-up answered that this account lost the conversation (removed from the
         // channel: web's exact denials, see [isChannelAccessDenial]); the page then leaves, as after refresh.
         var accessLost = false
@@ -803,7 +807,7 @@ internal class ThreadRealtimeGapRecovery(
                         return@withLock null
                     }
                     requestSnapshot
-                } ?: return
+                } ?: return false
             accessProvenance = dataSource.currentReplyCacheProvenance()
             val anchorMessageId = requestPayload.gapCatchUpAnchorMessageId()
             val requestMessageIds = requestPayload.messages.mapTo(mutableSetOf()) { it.id }
@@ -957,6 +961,7 @@ internal class ThreadRealtimeGapRecovery(
                                 "steps=$catchUpSteps pageMessages=${pageMessages.size} added=$added applied=$applied"
                         )
                         if (!applied) return@withLock
+                        catchUpSucceeded = true
                         if (decision != GapCatchUpDecision.DetachFromTail && added > 0) {
                             mergedNewArrivals = true
                         }
@@ -967,6 +972,7 @@ internal class ThreadRealtimeGapRecovery(
                         if (added > 0 || durableBaseline != null) durableOffer = catchUpResult.data
                     }
                     is DataResult.Empty -> {
+                        catchUpSucceeded = true
                         reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
                             latestPayload.copy(
                                 canLoadMoreAfter = false,
@@ -977,6 +983,7 @@ internal class ThreadRealtimeGapRecovery(
                     is DataResult.Error -> {
                         if (catchUpResult.isChannelAccessDenial()) {
                             accessLost = true
+                            catchUpSucceeded = true
                             markConversationAccessLost(catchUpResult.error.code)
                         } else {
                             if (catchUpResult.error.retryable) gapCatchUpRetryableFailures += 1L
@@ -992,6 +999,7 @@ internal class ThreadRealtimeGapRecovery(
                     is DataResult.NoPermission -> {
                         if (catchUpResult.isChannelAccessDenial()) {
                             accessLost = true
+                            catchUpSucceeded = true
                             markConversationAccessLost(catchUpResult.blocker.code)
                         } else {
                             reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
@@ -1046,9 +1054,9 @@ internal class ThreadRealtimeGapRecovery(
         if (accessLost) {
             // Same as refresh: drop memory + durable cache for this conversation; no backfill follows.
             accessProvenance?.let { provenance -> dataSource.evictLostConversationAccess(initial, provenance) }
-            return
+            return catchUpSucceeded
         }
-        if (!mergedNewArrivals && !backfillRequested) return
+        if (!mergedNewArrivals && !backfillRequested) return catchUpSucceeded
         val latest = currentState().payload
         if (
             !staleTokenStillCurrent(
@@ -1065,13 +1073,14 @@ internal class ThreadRealtimeGapRecovery(
                 latest,
             )
         ) {
-            return
+            return catchUpSucceeded
         }
         diagnosticsLogger?.invoke(
             "thread_secondary_backfill threadId=${initial.sourceThreadId.orEmpty()} " +
                 "trigger=${if (mergedNewArrivals) "resume_gap" else "resume"}"
         )
         launchSecondaryTimelineRefresh(initial, staleToken, fetchReason = InboxFetchReason.Visibility)
+        return catchUpSucceeded
     }
 
     /**

@@ -82,6 +82,7 @@ internal fun ThreadRouteLifecycleEffects(
         }
     }
     ThreadConversationFreshnessCatchUpEffect(
+        threadViewModel = threadViewModel,
         serverId = currentSession?.currentServerId,
         active = active,
         contentReady = payload.status == "content" && !payload.mainLoadFailed,
@@ -91,7 +92,6 @@ internal fun ThreadRouteLifecycleEffects(
             bridge.log(
                 "thread_freshness_catch_up trigger=${trigger.wireName} shell=${storeScope.shellInstanceId}"
             )
-            threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
             if (trigger == build.raft.app.data.RaftFreshnessTrigger.Reconnect) {
                 realtimeEvents.rejoinChannels(latestForegroundRejoinRoomIds, serverId)
             }

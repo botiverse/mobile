@@ -1420,7 +1420,9 @@ private fun RaftAppShellReadyContent(
                 resetActivity = homeActivityStore::reset,
                 diagnosticsLogger = raftLogger("SlockHomeShell", "shared_home_shell"),
                 scope = appShellCoroutineScope,
-                selectedConversationSeen = { raftHostShowsContent(storeScope.shellInstanceId) }
+                selectedConversationSeen = { raftHostShowsContent(storeScope.shellInstanceId) },
+                refreshHomeForFreshness = homeStore::refreshVisibleForegroundForFreshness,
+                refreshActivityForFreshness = homeActivityStore::refreshForFreshness,
             )
         }
     AppShellHomeShellStoreEffects(
@@ -2447,37 +2449,17 @@ private fun RaftAppShellReadyContent(
     }
 
     AppShellHomeFreshnessCatchUpEffect(
+        homeShellStore = homeShellStore,
         serverId = readySession?.currentServerId,
         visible = pageVisible && authoritativeHomeStartAllowed && readySession != null,
         contentReady = homeState.content is SharedHomeContentState.Content,
         selectedTab = selectedTab,
         selectedHomeDestination = selectedHomeDestination,
         visibleRefreshGate = visibleRefreshGate,
-        onCatchUp = { trigger ->
-            if (latestReadySession == null || !latestAuthoritativeHomeStartAllowed) return@AppShellHomeFreshnessCatchUpEffect
-            val tab = retainedAppShellSelectedTab(latestSelectedTab)
-            val destination = latestSelectedHomeDestination
-            val shouldRefreshHome =
-                when (tab) {
-                    "home" ->
-                        homeDestinationRefreshesOnLifecycleResume(destination) &&
-                            when (retainedHomeSecondaryDestination(destination)) {
-                                null, HomeDestinationActivity, HomeDestinationSaved, HomeDestinationSearch -> true
-                                else -> false
-                            }
-                    "dms", "activity" -> true
-                    else -> false
-                }
-            if (!shouldRefreshHome) return@AppShellHomeFreshnessCatchUpEffect
-            val refreshTarget = "$tab:${destination.orEmpty()}"
-            visibleRefreshGate.recordFreshCheck(
-                serverId = latestReadySession?.currentServerId,
-                target = refreshTarget,
-            )
+        onCatchUpTriggered = { trigger, _, tab, destination ->
             bridge.log(
                 "app_shell_freshness_catch_up trigger=${trigger.wireName} tab=$tab homeDestination=${destination.orEmpty()}"
             )
-            homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
         },
     )
 

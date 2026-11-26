@@ -53,6 +53,7 @@ import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -250,6 +251,7 @@ private data class HomeNotificationAuthority(
     private val conversationIdentityRevisionByServer = linkedMapOf<String, Long>()
 
     private var loadJob: Job? = null
+    private var loadOutcome: CompletableDeferred<Boolean>? = null
     /** Home loads running, by the switch request generation they load for. */
     private val loadsInFlightByGeneration = mutableMapOf<Long, Int>()
     private val loadsInFlightLock = SynchronizedObject()
@@ -506,13 +508,23 @@ private data class HomeNotificationAuthority(
                     "cancelPrevious=${loadJob != null} state=${_state.value.toSharedHomeStateDiagnosticsSummary()}"
             )
             loadJob?.cancel()
+            loadOutcome?.complete(false)
             agentDirectMessageStatusJob?.cancel()
             agentDirectMessageStatusJob = null
             loadJobLaunchIntent = intent
             loadJobLaunchedAtMillis = nowMillis()
+            val outcome = CompletableDeferred<Boolean>()
+            loadOutcome = outcome
             loadJob =
                 scope.launch {
-                    accept(intent)
+                    var succeeded = false
+                    try {
+                        succeeded = acceptLoadIntent(intent)
+                    } finally {
+                        outcome.complete(succeeded)
+                    }
+                }.also { launched ->
+                    launched.invokeOnCompletion { outcome.complete(false) }
                 }
         } else {
             scope.launch {
@@ -543,6 +555,19 @@ private data class HomeNotificationAuthority(
         dispatch(SharedHomeIntent.ForegroundRefresh)
     }
 
+    /**
+     * Launches (or joins a fresh in-flight) visibility foreground refresh and returns whether
+     * that network load succeeded (`DataResult.Content` or `DataResult.Empty`). Used by
+     * [SharedHomeShellStore]'s outcome-tracked [RaftFreshnessGate] (#wg-mobile-feedback:#274).
+     */
+    suspend fun refreshVisibleForegroundForFreshness(): Boolean {
+        dispatchVisibleForegroundRefresh()
+        val activeJob = loadJob
+        val activeOutcome = loadOutcome
+        activeJob?.join()
+        return activeOutcome?.await() ?: false
+    }
+
     private fun coalesceForegroundRefreshIntoFreshLoad(): Boolean {
         if (loadJob?.isActive != true) return false
         val launchIntent = loadJobLaunchIntent
@@ -569,6 +594,8 @@ private data class HomeNotificationAuthority(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
+        loadOutcome?.complete(false)
+        loadOutcome = null
         supersedeNotificationRequests()
         agentDirectMessageStatusJob?.cancel()
         agentDirectMessageStatusJob = null
@@ -750,10 +777,89 @@ private data class HomeNotificationAuthority(
         return resolveProjection(serverId, id)
     }
 
+    private suspend fun acceptLoadIntent(intent: SharedHomeIntent): Boolean {
+        var succeeded = false
+        withStateDiagnosticsContext(intent) {
+            succeeded =
+                when (intent) {
+                    SharedHomeIntent.Start ->
+                        load(
+                            _state.value.serverSwitchState,
+                            showRefreshAffordance =
+                                (_state.value.content as? SharedHomeContentState.Content)
+                                    ?.needsNetworkRefresh
+                                    ?: true,
+                        )
+                    SharedHomeIntent.Refresh -> {
+                        val nextSwitch = _state.value.serverSwitchState.refresh()
+                        reduceState(_state.value.copy(serverSwitchState = nextSwitch))
+                        load(
+                            nextSwitch,
+                            showRefreshAffordance = true,
+                        )
+                    }
+                    SharedHomeIntent.ForegroundRefresh ->
+                        load(
+                            _state.value.serverSwitchState,
+                            showRefreshAffordance = false,
+                        )
+                    is SharedHomeIntent.SelectServer -> selectServerAndLoad(intent.serverId)
+                    else -> {
+                        accept(intent)
+                        true
+                    }
+                }
+        }
+        return succeeded
+    }
+
+    private suspend fun selectServerAndLoad(serverId: String): Boolean {
+        val currentServerId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
+        reconcileNotificationAuthority(authStore.readSession(), serverId)
+        supersedeServerDrawerRequest(ServerId(serverId))
+        // A pending followed-thread reload belongs to the server being left; its result
+        // would be dropped anyway, so don't spend the request.
+        if (serverId != currentServerId) {
+            followedThreadUnreadRefresh.cancel()
+            resetLoungeListingState()
+        }
+        val nextSwitch =
+            if (serverId == currentServerId) {
+                _state.value.serverSwitchState.refresh()
+            } else {
+                _state.value.serverSwitchState.select(serverId)
+            }
+        startServerSwitchWatchdog(nextSwitch.pendingServerId)
+        val nextDrawerIntent = _state.value.serverDrawerCommandIntent.transitionTo(false)
+        nextDrawerIntent.supersededGeneration?.let { generation ->
+            diagnosticsLogger("server_drawer_command_superseded generation=$generation")
+        }
+        reduceState(
+            _state.value.copy(
+                serverSwitcherExpanded = false,
+                serverDrawer = _state.value.serverDrawer.copy(expanded = false, reorderMode = false),
+                serverDrawerCommandIntent = nextDrawerIntent.intent,
+                serverSwitchState = nextSwitch,
+                selectedConversationId = null,
+                selectedTopAction = null,
+                // #81: clear badge on server switch so the host
+                // stops showing a stale count from the previous
+                // server before the new server's first
+                // /servers/unread-summary arrives. See
+                // AppBadgeCount.DISABLED semantics.
+                appBadgeCount = AppBadgeCount.DISABLED
+            )
+        )
+        return load(
+            nextSwitch,
+            showRefreshAffordance = true,
+        )
+    }
+
     suspend fun accept(intent: SharedHomeIntent) {
         withStateDiagnosticsContext(intent) {
             when (intent) {
-            SharedHomeIntent.Start ->
+            SharedHomeIntent.Start -> {
                 load(
                     _state.value.serverSwitchState,
                     showRefreshAffordance =
@@ -761,6 +867,7 @@ private data class HomeNotificationAuthority(
                             ?.needsNetworkRefresh
                             ?: true,
                 )
+            }
             SharedHomeIntent.Refresh -> {
                 val nextSwitch = _state.value.serverSwitchState.refresh()
                 reduceState(_state.value.copy(serverSwitchState = nextSwitch))
@@ -769,11 +876,12 @@ private data class HomeNotificationAuthority(
                     showRefreshAffordance = true,
                 )
             }
-            SharedHomeIntent.ForegroundRefresh ->
+            SharedHomeIntent.ForegroundRefresh -> {
                 load(
                     _state.value.serverSwitchState,
                     showRefreshAffordance = false,
                 )
+            }
             SharedHomeIntent.ToggleServerSwitcher -> {
                 val expanding = !_state.value.serverSwitcherExpanded
                 val drawer =
@@ -860,46 +968,7 @@ private data class HomeNotificationAuthority(
                     )
                 )
             is SharedHomeIntent.SelectServer -> {
-                val currentServerId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
-                reconcileNotificationAuthority(authStore.readSession(), intent.serverId)
-                supersedeServerDrawerRequest(ServerId(intent.serverId))
-                // A pending followed-thread reload belongs to the server being left; its result
-                // would be dropped anyway, so don't spend the request.
-                if (intent.serverId != currentServerId) {
-                    followedThreadUnreadRefresh.cancel()
-                    resetLoungeListingState()
-                }
-                val nextSwitch =
-                    if (intent.serverId == currentServerId) {
-                        _state.value.serverSwitchState.refresh()
-                    } else {
-                        _state.value.serverSwitchState.select(intent.serverId)
-                    }
-                startServerSwitchWatchdog(nextSwitch.pendingServerId)
-                val nextDrawerIntent = _state.value.serverDrawerCommandIntent.transitionTo(false)
-                nextDrawerIntent.supersededGeneration?.let { generation ->
-                    diagnosticsLogger("server_drawer_command_superseded generation=$generation")
-                }
-                reduceState(
-                    _state.value.copy(
-                        serverSwitcherExpanded = false,
-                        serverDrawer = _state.value.serverDrawer.copy(expanded = false, reorderMode = false),
-                        serverDrawerCommandIntent = nextDrawerIntent.intent,
-                        serverSwitchState = nextSwitch,
-                        selectedConversationId = null,
-                        selectedTopAction = null,
-                        // #81: clear badge on server switch so the host
-                        // stops showing a stale count from the previous
-                        // server before the new server's first
-                        // /servers/unread-summary arrives. See
-                        // AppBadgeCount.DISABLED semantics.
-                        appBadgeCount = AppBadgeCount.DISABLED
-                    )
-                )
-                load(
-                    nextSwitch,
-                    showRefreshAffordance = true,
-                )
+                selectServerAndLoad(intent.serverId)
             }
             is SharedHomeIntent.SetSurfaceVisible ->
                 setHomeSurfaceVisible(intent.visible)
@@ -3118,15 +3187,16 @@ private data class HomeNotificationAuthority(
         showRefreshAffordance: Boolean,
         realtimeUnreadRound: Int = 0,
         priority: DataRequestPriority = DataRequestPriority.Visible,
-    ) {
+    ): Boolean {
         val sessionGeneration = homeSessionGeneration.value
         val generation = request.requestGeneration
         synchronized(loadsInFlightLock) {
             loadsInFlightByGeneration[generation] = (loadsInFlightByGeneration[generation] ?: 0) + 1
         }
         var othersInFlight = false
+        var succeeded = false
         try {
-            loadUnsettled(request, showRefreshAffordance, realtimeUnreadRound, priority)
+            succeeded = loadUnsettled(request, showRefreshAffordance, realtimeUnreadRound, priority)
         } finally {
             othersInFlight =
                 synchronized(loadsInFlightLock) {
@@ -3135,13 +3205,14 @@ private data class HomeNotificationAuthority(
                     left > 0
                 }
         }
-        if (sessionGeneration != homeSessionGeneration.value) return
+        if (sessionGeneration != homeSessionGeneration.value) return false
         // Another load of the same request (a foreground refresh beside the switch) may still bring it.
-        if (othersInFlight) return
+        if (othersInFlight) return succeeded
         val latest = _state.value.serverSwitchState
         if (latest.pendingServerId != null && latest.requestGeneration == generation) {
             failPendingServerSwitch(reason = "load_ended")
         }
+        return succeeded
     }
 
     private fun startServerSwitchWatchdog(targetServerId: String?) {
@@ -3183,7 +3254,7 @@ private data class HomeNotificationAuthority(
         showRefreshAffordance: Boolean,
         realtimeUnreadRound: Int,
         priority: DataRequestPriority,
-    ) {
+    ): Boolean {
         val sessionGeneration = homeSessionGeneration.value
         diagnosticsLogger("home_ui_load_start refreshAffordance=$showRefreshAffordance")
         val previous = _state.value.content
@@ -3194,7 +3265,7 @@ private data class HomeNotificationAuthority(
         )
         try {
             val session = authStore.readSession()
-            if (sessionGeneration != homeSessionGeneration.value) return
+            if (sessionGeneration != homeSessionGeneration.value) return false
             if (session == null) {
                 diagnosticsLogger("home_ui_error source=shared_home_load code=unauthenticated mapped=home_error_panel")
                 reduceState(
@@ -3208,7 +3279,7 @@ private data class HomeNotificationAuthority(
                         appBadgeCount = AppBadgeCount.DISABLED
                     )
                 )
-                return
+                return false
             }
             reduceState(
                 _state.value.copy(
@@ -3226,7 +3297,7 @@ private data class HomeNotificationAuthority(
             }
 
             val activeSession = authStore.readSession() ?: session
-            if (sessionGeneration != homeSessionGeneration.value) return
+            if (sessionGeneration != homeSessionGeneration.value) return false
             val activeServerId = requestedServerId ?: activeSession.currentServerId
             reconcileNotificationAuthority(activeSession, activeServerId)
             reduceState(
@@ -3248,9 +3319,9 @@ private data class HomeNotificationAuthority(
                 )
             )
             markCachedHomeNetworkRefreshStarted()
-            if (sessionGeneration != homeSessionGeneration.value) return
+            if (sessionGeneration != homeSessionGeneration.value) return false
             val activeServer = activeServerId?.let(::ServerId)
-            loadHomeFromNetwork(
+            return loadHomeFromNetwork(
                 request = request,
                 activeSession = activeSession,
                 activeServer = activeServer,
@@ -3263,11 +3334,12 @@ private data class HomeNotificationAuthority(
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (throwable: Throwable) {
-            if (sessionGeneration != homeSessionGeneration.value) return
+            if (sessionGeneration != homeSessionGeneration.value) return false
             diagnosticsLogger(
                 "home_ui_exception source=shared_home_load errorType=${throwable.safeHomeStoreDiagnosticsType()} mapped=${_state.value.content.refreshFailureMapping()} code=home_network"
             )
             reduceState(_state.value.copy(content = _state.value.content.asRefreshFailed("home_network")))
+            return false
         }
     }
 
@@ -3290,10 +3362,10 @@ private data class HomeNotificationAuthority(
         refreshNotificationsAfterLoad: Boolean,
         sessionGeneration: Long,
         realtimeUnreadRound: Int = 0,
-    ) {
+    ): Boolean {
         val realtimeUnreadToken = beginRealtimeUnreadWatch()
         try {
-            loadHomeFromNetworkWatched(
+            return loadHomeFromNetworkWatched(
                 request = request,
                 activeSession = activeSession,
                 activeServer = activeServer,
@@ -3326,7 +3398,7 @@ private data class HomeNotificationAuthority(
         refreshNotificationsAfterLoad: Boolean,
         sessionGeneration: Long,
         realtimeUnreadToken: Long,
-    ) {
+    ): Boolean {
         val activityUnreadRequestOwner =
             activeServer?.let { server ->
                 readReceiptOwnerFactory?.invoke(server.value, activeSession.user.id)
@@ -3367,7 +3439,7 @@ private data class HomeNotificationAuthority(
         }
         if (sessionGeneration != homeSessionGeneration.value) {
             diagnosticsLogger("home_network_result_drop reason=session_generation_changed")
-            return
+            return false
         }
         val latestSession = authStore.readSession()
         val expectedServerId = activeServer?.value ?: activeSession.currentServerId
@@ -3381,7 +3453,7 @@ private data class HomeNotificationAuthority(
                     "expectedAccount=${activeSession.user.id} actualAccount=${latestSession?.user?.id ?: "_"} " +
                     "expectedServer=${expectedServerId ?: "_"} actualServer=${latestSession?.currentServerId ?: "_"}"
             )
-            return
+            return false
         }
         val activeServerId = expectedServerId?.let(::ServerId)
         val candidatePrevious = _state.value.content as? SharedHomeContentState.Content
@@ -3557,7 +3629,7 @@ private data class HomeNotificationAuthority(
         val latestSwitch = _state.value.serverSwitchState
         if (sessionGeneration != homeSessionGeneration.value) {
             diagnosticsLogger("home_network_result_drop reason=session_generation_changed")
-            return
+            return false
         }
         if (resultServerId == null || latestSwitch.isCurrent(request.requestGeneration, resultServerId)) {
             val liveActivityUnreadOwner =
@@ -3718,7 +3790,7 @@ private data class HomeNotificationAuthority(
                 }
             if (!published) {
                 diagnosticsLogger("read_state_v1_home_publish rejected=stale_witness")
-                return
+                return false
             }
             settleUnreadStaleRecovery(dataResult, fetchedSnapshot?.unreadRetryAfterMillis)
             if (isLifecycleRetired) {
@@ -3734,7 +3806,9 @@ private data class HomeNotificationAuthority(
                     snapshot = freshSnapshot
                 )
             }
+            return dataResult is DataResult.Content || dataResult is DataResult.Empty
         }
+        return false
     }
 
     private fun launchAgentDirectMessageStatusRefresh(

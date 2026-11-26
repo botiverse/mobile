@@ -55,6 +55,7 @@ import build.raft.app.network.sync.ReplyPreview
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
@@ -511,6 +512,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
     @RaftCoreInternalApi val presentationStore = SharedActivityPresentationStore()
 
     private var loadJob: Job? = null
+    private var loadOutcome: CompletableDeferred<Boolean>? = null
     private var loadGeneration: Long = 0L
     /** [PerReceiverStateVersionStore.readStateAcceptMark] when the current list load started (only its answer is applied). */
     private var listReadMark: Long = 0L
@@ -1105,12 +1107,26 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         reduceState(intent, current.copy(retainedReadRowKeys = current.retainedReadRowKeys + item.key))
     }
 
+    /**
+     * Dispatches (or joins a fresh in-flight) [SharedActivityIntent.Refresh] and returns whether
+     * that network read succeeded (`DataResult.Content` or `DataResult.Empty`). Used by
+     * [SharedHomeShellStore]'s outcome-tracked [RaftFreshnessGate] (#wg-mobile-feedback:#274).
+     */
+    suspend fun refreshForFreshness(): Boolean {
+        dispatch(SharedActivityIntent.Refresh)
+        val (job, outcome) = synchronized(realtimeOwnerLock) { loadJob to loadOutcome }
+        job?.join()
+        return outcome?.await() ?: false
+    }
+
     fun clear() {
         val ownerServerId = synchronized(realtimeOwnerLock) {
             val owner = _state.value.ownerServerId
             loadGeneration += 1L
             loadJob?.cancel()
             loadJob = null
+            loadOutcome?.complete(false)
+            loadOutcome = null
             foregroundResetLoadStartedAtMillis = null
             realtimeBackgroundReconcileJob?.cancel()
             realtimeBackgroundReconcileJob = null
@@ -4384,6 +4400,9 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 }
                 foregroundResetLoadStartedAtMillis = startedAtMillis.takeIf { refresh && !backgroundRefresh }
                 loadJob?.cancel()
+                loadOutcome?.complete(false)
+                val outcome = CompletableDeferred<Boolean>()
+                loadOutcome = outcome
                 // This load owns the background flag now: a superseded background load's own
                 // clean-up below is fenced off by the generation.
                 val backgroundRefreshing = refresh && backgroundRefresh && current.snapshot != null
@@ -4392,6 +4411,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 }
                 val showsHeaderIndicator = refresh && headerIndicator && !pullRefresh && !backgroundRefresh
                 scope.launch(start = CoroutineStart.LAZY) {
+                    var loadSucceeded = false
                     val startedAt = TimeSource.Monotonic.markNow()
                     val previous = _state.value
                     var filter = previous.selectedFilter
@@ -4649,6 +4669,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                             )
                             return@launch
                         }
+                        loadSucceeded = result is DataResult.Content || result is DataResult.Empty
                         if (readySenderProfiles == null) {
                             applyLateSenderProfiles(intent, serverId, userId, senderProfilesLoad)
                         }
@@ -4707,6 +4728,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                             pullRefresh = pullRefresh
                         )
                     } finally {
+                        outcome.complete(loadSucceeded)
                         synchronized(realtimeOwnerLock) {
                             if (progressiveTailGeneration == generation) progressiveTailGeneration = null
                             if (pullJoinedGeneration == generation) pullJoinedGeneration = null
@@ -4715,7 +4737,10 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                             }
                         }
                     }
-                }.also { loadJob = it }
+                }.also { launched ->
+                    launched.invokeOnCompletion { outcome.complete(false) }
+                    loadJob = launched
+                }
             }
         job?.start()
     }

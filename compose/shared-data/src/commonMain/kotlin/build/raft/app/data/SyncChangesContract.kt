@@ -427,7 +427,7 @@ private fun parseSyncChange(element: JsonObject, diagnostics: (String) -> Unit):
         "inbox_row" -> parseInboxRowChange(element, seq, id, op, diagnostics)
         // slock #14975 sends every client its task rows (an upsert with the GET /api/tasks/channel/:id
         // row, a delete naming its `channelId`, a `resnapshot` of one channel's list). Not read here:
-        // task lists follow the realtime `task:*` pushes plus the RaftLiveCatchUpEffect re-reads
+        // task lists follow the realtime `task:*` pushes plus the store-owned RaftFreshnessGate re-reads
         // (foreground, reconnect), as on web (slock packages/web/src/store/syncChangesClient.ts skips
         // them too). Known, so counted for the pull's log line (`ignored=task:N`), not reported per row.
         "task" -> ParsedSyncChange.IgnoredEntity(entity)
