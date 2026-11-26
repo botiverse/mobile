@@ -24,7 +24,7 @@ class CanonicalMessageV2SystemSubtypeTest {
     private fun fact(seq: Long, systemSubtype: String? = null) = CanonicalMessageNodeV2(
         id = "message-$seq",
         seq = seq,
-        senderType = "system",
+        senderType = "user",
         senderId = "system",
         content = "Worker w3 of @Sage finished (ran 12m): Done.",
         messageType = "system",
@@ -87,7 +87,7 @@ class CanonicalMessageV2SystemSubtypeTest {
                   "id": "m-ended",
                   "seq": 9,
                   "channelId": "channel-a",
-                  "senderType": "system",
+                  "senderType": "user",
                   "senderId": "system",
                   "senderName": "System",
                   "messageType": "system",
