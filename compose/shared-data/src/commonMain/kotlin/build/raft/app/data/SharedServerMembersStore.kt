@@ -2908,11 +2908,21 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
         val channelKey = request.channelId.value.trim()
         val binding = currentChannelMembersOwner(ServerId(serverKey)) ?: return authSessionRequiredResult()
         if (expectedOwner != null && !binding.matches(expectedOwner)) return staleChannelMembersOwnerResult()
-        if (expectedOwner != null && !_state.value.channelMemberSlice(binding, ChannelId(channelKey)).canRemoveMembers) {
-            return DataResult.NoPermission(PermissionBlocker(
-                code = "channel_member_remove_not_allowed",
-                requiredCapability = "remove_channel_members",
-            ))
+        if (expectedOwner != null) {
+            val slice = _state.value.channelMemberSlice(binding, ChannelId(channelKey))
+            val targetMember =
+                slice.members.firstOrNull { member ->
+                    member.id == request.memberId && member.kind == request.kind
+                }
+            val canRemoveTarget =
+                !slice.storedStandIn &&
+                    (targetMember?.canRemoveFromChannel ?: slice.canRemoveMembers)
+            if (!canRemoveTarget) {
+                return DataResult.NoPermission(PermissionBlocker(
+                    code = "channel_member_remove_not_allowed",
+                    requiredCapability = "remove_channel_members",
+                ))
+            }
         }
         val result =
             try {

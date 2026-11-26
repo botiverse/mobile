@@ -251,6 +251,47 @@ class SharedServerChannelMembersOwnerTest {
     }
 
     @Test
+    fun removeChannelMemberHonorsPerRowCanRemoveFromChannelWhenChannelCapabilityIsFalse() = kotlinx.coroutines.test.runTest {
+        // #proj-mobile:#400: on a participant joint channel, channelCapabilities.removeChannelMembers
+        // is false while the participant's own agents carry canRemoveFromChannel = true.
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        val ownAgent =
+            MemberProfile(
+                id = MemberId("agent-own"),
+                displayName = "Own Bot",
+                handle = "own-bot",
+                kind = MemberKind.Agent,
+                serverId = ServerId(SERVER_ID),
+                canRemoveFromChannel = true,
+            )
+        val human = member("human-1").copy(canRemoveFromChannel = false)
+        val repository = OwnerTestMemberRepository().apply {
+            channelMembers = listOf(ownAgent, human)
+            canManage = false
+        }
+        val store = store(repository, ownerState) { 1L }
+        store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+        val expectedOwner = AuthenticatedRouteOwner(environmentId = "env-a", accountId = "account-a", serverId = SERVER_ID)
+
+        val agentResult =
+            store.removeChannelMember(
+                owner = expectedOwner,
+                request = RemoveChannelMemberRequest(ChannelId(CHANNEL_ID), MemberId("agent-own"), MemberKind.Agent),
+            )
+        assertIs<DataResult.Content<ChannelMemberActionResult>>(agentResult)
+        assertEquals(1, repository.removeChannelMemberCalls)
+
+        val humanResult =
+            store.removeChannelMember(
+                owner = expectedOwner,
+                request = RemoveChannelMemberRequest(ChannelId(CHANNEL_ID), MemberId("human-1"), MemberKind.Human),
+            )
+        assertIs<DataResult.NoPermission>(humanResult)
+        assertEquals(1, repository.removeChannelMemberCalls)
+    }
+
+    @Test
     fun twoStoresOnOneMirrorNeverStoreAnOlderCopyOrALostChannelAgain() = kotlinx.coroutines.test.runTest {
         val device = Device(backgroundScope)
         val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
@@ -476,10 +517,25 @@ class SharedServerChannelMembersOwnerTest {
         var channelMembers: List<MemberProfile> = emptyList()
         var channelMembersLoader: (suspend (ChannelId) -> List<MemberProfile>)? = null
         var getChannelMembersCalls: Int = 0
+        var removeChannelMemberCalls: Int = 0
         var canManage = false
         var gate: CompletableDeferred<Unit>? = null
         /** A failure to answer with instead of the members. */
         var failure: DataResult<ChannelMemberSnapshot>? = null
+
+        override suspend fun removeChannelMember(
+            priority: DataRequestPriority,
+            request: RemoveChannelMemberRequest,
+        ): DataResult<ChannelMemberActionResult> {
+            removeChannelMemberCalls += 1
+            return DataResult.Content(
+                ChannelMemberActionResult(
+                    channelId = request.channelId,
+                    memberId = request.memberId,
+                    member = null,
+                )
+            )
+        }
 
         override suspend fun addChannelMember(
             priority: DataRequestPriority,

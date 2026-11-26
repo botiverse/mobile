@@ -499,7 +499,13 @@ private fun ThreadMembersPageScreen() {
             .distinctBy { it.threadMemberKey }
             .map { profile -> profile.toRaftThreadMemberItem(route.serverId, knownServers = channelJointServers).let { row ->
                 row.copy(
-                    canRemove = row.canRemove && channelMembersSlice.canRemoveMembers,
+                    canRemove =
+                        !channelMembersSlice.storedStandIn &&
+                            memberRemovableFromChannel(
+                                member = profile,
+                                viewerServerId = route.serverId.value,
+                                canRemoveChannelMembers = channelMembersSlice.canRemoveMembers,
+                            ),
                     roleAction = channelMemberRoleAction(profile, canChangeMemberRoles, viewerUserId),
                 )
             } }
@@ -841,7 +847,7 @@ private fun ThreadMembersPageScreen() {
     }
 
     fun requestRemoveMember(member: RaftThreadMemberItem) {
-        if (authorityRejected || !channelMembersSlice.canRemoveMembers || !member.canRemove) return
+        if (authorityRejected || channelMembersSlice.storedStandIn || !member.canRemove) return
         val confirmation =
             threadMemberRemovalConfirmation(
                 member = member,
