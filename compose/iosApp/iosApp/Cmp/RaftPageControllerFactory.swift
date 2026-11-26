@@ -126,7 +126,7 @@ import shared
             bridge: bridge,
             navigator: navigator,
             listener: listener,
-            toastOverlay: RaftIosToastOverlayRegistry.overlay(for: nil)
+            toastOverlay: RaftIosToastOverlayRegistry.overlayOrEnsure(for: nil)
         )
         let content: UIViewController
         if let nativeTabBar = nativeTabBar {
