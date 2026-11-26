@@ -188,6 +188,17 @@ internal class RealThreadMcpConnectCardHost(
         return result
     }
 
+    private fun propagateUnitFailure(result: DataResult<Unit>): DataResult<ThreadMcpConnectFinishOutcome>? =
+        when (result) {
+            is DataResult.Content -> null
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> {
+                onNoPermission(result)
+                result
+            }
+            is DataResult.Empty -> result
+        }
+
     override suspend fun grantExistingAccount(
         messageId: String,
         card: ThreadActionCard,
@@ -203,20 +214,14 @@ internal class RealThreadMcpConnectCardHost(
                 apiClient.followDefaultAccount(appId, agentId, serverOverride)
             } else {
                 val addResult = apiClient.addConnectionAgent(choice.option.connectionId, agentId, serverOverride)
-                if (addResult !is DataResult.Content) {
-                    if (addResult is DataResult.NoPermission) onNoPermission(addResult)
-                    return addResult
-                }
+                propagateUnitFailure(addResult)?.let { return it }
                 if (choice.kind == McpAccountKind.Shared) {
                     apiClient.ensureAppEnabled(appId, agentId, serverOverride)
                 } else {
                     DataResult.Content(Unit)
                 }
             }
-        if (grantResult !is DataResult.Content) {
-            if (grantResult is DataResult.NoPermission) onNoPermission(grantResult)
-            return grantResult
-        }
+        propagateUnitFailure(grantResult)?.let { return it }
         return completeMarkExecuted(messageId, card, appId, agentId)
     }
 
@@ -258,10 +263,7 @@ internal class RealThreadMcpConnectCardHost(
     ): DataResult<ThreadMcpConnectFinishOutcome> {
         if (kind == McpAccountKind.Shared) {
             val enableResult = apiClient.ensureAppEnabled(appId, agentId, serverIdOverride(card.sourceServerId))
-            if (enableResult !is DataResult.Content) {
-                if (enableResult is DataResult.NoPermission) onNoPermission(enableResult)
-                return enableResult
-            }
+            propagateUnitFailure(enableResult)?.let { return it }
         }
         return completeMarkExecuted(messageId, card, appId, agentId)
     }
@@ -486,10 +488,12 @@ internal fun ThreadMcpConnectCardSlot(
                             actionError = null
                             submitting = true
                             when (val finish = currentHost.finishOAuthSignIn(messageId, currentCard, appId, agentId, session.kind)) {
-                                is DataResult.Content ->
-                                    if (finish.data is ThreadMcpConnectFinishOutcome.Refused) {
-                                        actionError = McpCardDisplayError.FromError(finish.data.error)
+                                is DataResult.Content -> {
+                                    val finishedOutcome = finish.data
+                                    if (finishedOutcome is ThreadMcpConnectFinishOutcome.Refused) {
+                                        actionError = McpCardDisplayError.FromError(finishedOutcome.error)
                                     }
+                                }
                                 is DataResult.Error -> actionError = McpCardDisplayError.FromError(finish.error)
                                 is DataResult.NoPermission ->
                                     actionError = McpCardDisplayError.FromPermission(finish.blocker.serverMessage, finish.blocker.traceId)
@@ -611,7 +615,8 @@ internal fun ThreadMcpConnectCardSlot(
             val selected = choices.firstOrNull { it.key == selectedKey }
             val appName = loadedView.app?.name.orEmpty()
             val unnamed = stringResource(Res.string.thread_action_card_mcp_connection_unnamed)
-            val hasPersonalConnections = loadedView.options.personal.connections.isNotEmpty()
+            val loadedOptions = loadedView.options
+            val hasPersonalConnections = loadedOptions?.personal?.connections?.isNotEmpty() == true
             val currentAccountLine = mcpCurrentAccountLine(loadedView, choices, agentName)
             val controlsLocked = submitting || waitingSession != null
 
@@ -774,10 +779,12 @@ internal fun ThreadMcpConnectCardSlot(
                                             )
                                         submitting = false
                                         when (outcome) {
-                                            is DataResult.Content ->
-                                                if (outcome.data is ThreadMcpConnectFinishOutcome.Refused) {
-                                                    actionError = McpCardDisplayError.FromError(outcome.data.error)
+                                            is DataResult.Content -> {
+                                                val finishOutcome = outcome.data
+                                                if (finishOutcome is ThreadMcpConnectFinishOutcome.Refused) {
+                                                    actionError = McpCardDisplayError.FromError(finishOutcome.error)
                                                 }
+                                            }
                                             is DataResult.Error -> actionError = McpCardDisplayError.FromError(outcome.error)
                                             is DataResult.NoPermission ->
                                                 actionError = McpCardDisplayError.FromPermission(outcome.blocker.serverMessage, outcome.blocker.traceId)
