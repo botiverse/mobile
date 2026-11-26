@@ -6250,6 +6250,10 @@
     <string name="mobile_web_panel_return_to_conversation">会話に戻る</string>
     <string name="mobile_web_panel_return_to_page">戻る</string>
     <string name="mobile_web_panel_apps_source">アプリ</string>
+    <string name="mobile_web_panel_forward_to_raft">Raftに転送</string>
+    <string name="mobile_web_panel_forwarded_to">%1$sに転送しました</string>
+    <string name="mobile_web_panel_forward_failed">リンクを転送できませんでした</string>
+    <string name="mobile_web_panel_js_prompt_placeholder">入力してください</string>
     <string name="send_prompt_heading">エージェントに送る</string>
     <string name="send_prompt_description">メッセージを確認し、必要なら書き換えて送信してください。送信後はエージェントとの DM に移動します。</string>
     <string name="send_prompt_to">送信先</string>

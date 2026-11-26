@@ -12,6 +12,8 @@ import android.util.Log
 import android.view.View
 import android.webkit.ConsoleMessage
 import android.webkit.DownloadListener
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
@@ -28,6 +30,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebMessageCompat
+import build.raft.webcontainer.WebJsDialogKind
+import build.raft.webcontainer.WebJsDialogRequest
+import build.raft.webcontainer.WebJsDialogResult
+import build.raft.webcontainer.WebJsDialogTracker
+import build.raft.webcontainer.isWebJsDialogPermitted
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import build.raft.webcontainer.WebContainerAndroidKeepAlive
@@ -243,6 +250,8 @@ internal class RaftAndroidSandboxWebView(
     private var firstPaintScriptHandler: ScriptHandler? = null
     private val bootstrapNavigationFence = RaftWebViewBootstrapNavigationFence()
     private var boundController: RaftWebViewController? = null
+    private var allowJsDialogs: Boolean = false
+    private val jsDialogTracker = WebJsDialogTracker()
     /** Diagnostics: when the current main-frame load started (0: none), and the progress milestones logged. */
     private var loadStartedAtMs: Long = 0L
     private var loggedProgressMilestone: Int = 0
@@ -267,6 +276,9 @@ internal class RaftAndroidSandboxWebView(
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(visibility)
         latestWindowVisibility = visibility
+        if (visibility != View.VISIBLE) {
+            jsDialogTracker.cancelActive()
+        }
         if (isForegroundWindowForRecovery(this)) {
             flushPendingRenderProcessRestore()
         }
@@ -274,11 +286,71 @@ internal class RaftAndroidSandboxWebView(
 
     override fun onDetachedFromWindow() {
         latestWindowVisibility = View.GONE
+        jsDialogTracker.cancelActive()
         super.onDetachedFromWindow()
     }
 
     private fun isForegroundWindow(): Boolean =
         isAttachedToWindow && latestWindowVisibility == View.VISIBLE
+
+    private fun handleLegacyAndroidJsDialog(
+        configuredWebView: WebView,
+        kind: WebJsDialogKind,
+        url: String?,
+        message: String?,
+        defaultPromptText: String?,
+        onConfirm: (String?) -> Unit,
+        onCancel: () -> Unit,
+    ): Boolean {
+        val visibleAndActive = !destroyed && !parkedForKeepAlive && configuredWebView === webView && isForegroundWindow()
+        val handler = events.onJsDialog
+        if (!allowJsDialogs && handler == null) {
+            if (!visibleAndActive) {
+                runCatching { onCancel() }
+                return true
+            }
+            return false
+        }
+        if (!isWebJsDialogPermitted(allowJsDialogs, visibleAndActive, handler != null)) {
+            runCatching { onCancel() }
+            return true
+        }
+        val originUrl = url?.trim()?.takeIf { it.isNotEmpty() } ?: currentUrl
+        var requestRef: WebJsDialogRequest? = null
+        val request =
+            WebJsDialogRequest(
+                kind = kind,
+                originUrl = originUrl,
+                message = message,
+                defaultPromptText = defaultPromptText,
+                onSettled = { requestRef?.let(jsDialogTracker::clearIfSame) },
+                onResult = { dialogResult ->
+                    val deliver = {
+                        runCatching {
+                            when (dialogResult) {
+                                WebJsDialogResult.AlertDismissed -> onConfirm(null)
+                                is WebJsDialogResult.Confirm -> if (dialogResult.confirmed) onConfirm(null) else onCancel()
+                                is WebJsDialogResult.Prompt ->
+                                    if (dialogResult.value != null) onConfirm(dialogResult.value) else onCancel()
+                            }
+                        }
+                        Unit
+                    }
+                    if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+                        deliver()
+                    } else {
+                        shareMainHandler.post { deliver() }
+                    }
+                },
+            )
+        requestRef = request
+        jsDialogTracker.begin(request)
+        val presented = runCatching { handler!!.invoke(request) }.isSuccess
+        if (!presented) {
+            request.cancel()
+        }
+        return true
+    }
 
     private fun destroyDeadWebView(dead: WebView?) {
         removeHostMessageListener()
@@ -348,6 +420,10 @@ internal class RaftAndroidSandboxWebView(
         keepAliveKey =
             if (storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty) null else config.keepAliveKey
         diagnosticsSurface = config.diagnosticsSurface
+        allowJsDialogs = config.allowJsDialogs
+        if (!allowJsDialogs) {
+            jsDialogTracker.cancelActive()
+        }
         updatePlaceholderBackground(config.backgroundArgb)
         updateSrc(config.url)
     }
@@ -463,6 +539,7 @@ internal class RaftAndroidSandboxWebView(
 
     /** Keep-alive: detaches from the page that showed it; its callbacks go nowhere until taken again. */
     internal fun detachForKeepAlive() {
+        jsDialogTracker.cancelActive()
         boundController?.unbindCommandDispatcher(this)
         boundController = null
         events = RaftWebViewEvents()
@@ -492,6 +569,7 @@ internal class RaftAndroidSandboxWebView(
         if (destroyed) return
         destroyed = true
         parkedForKeepAlive = false
+        jsDialogTracker.cancelActive()
         pendingRenderProcessRestore = null
         boundController?.unbindCommandDispatcher(this)
         boundController = null
@@ -516,6 +594,7 @@ internal class RaftAndroidSandboxWebView(
 
     /** [restoreUrl]: the page to load in the new WebView (the one shown, [raftWebViewRendererGoneRestoreUrl]); [src] when blank. */
     private fun recreateWebView(restoreCurrentDocument: Boolean, restoreUrl: String = "") {
+        jsDialogTracker.cancelActive()
         diagnosticsInfo("recreate_webview previousSrc=${src.formatUrlForLog()}")
         pendingRenderProcessRestore = null
         loadedSrc = ""
@@ -658,6 +737,61 @@ internal class RaftAndroidSandboxWebView(
                     if (!destroyed && configuredWebView === webView && consoleMessage != null) logConsoleMessage(consoleMessage)
                     return super.onConsoleMessage(consoleMessage)
                 }
+
+                override fun onJsAlert(
+                    view: WebView?,
+                    url: String?,
+                    message: String?,
+                    result: JsResult?,
+                ): Boolean {
+                    if (result == null) return false
+                    return handleLegacyAndroidJsDialog(
+                        configuredWebView = configuredWebView,
+                        kind = WebJsDialogKind.Alert,
+                        url = url,
+                        message = message,
+                        defaultPromptText = null,
+                        onConfirm = { result.confirm() },
+                        onCancel = { result.cancel() },
+                    )
+                }
+
+                override fun onJsConfirm(
+                    view: WebView?,
+                    url: String?,
+                    message: String?,
+                    result: JsResult?,
+                ): Boolean {
+                    if (result == null) return false
+                    return handleLegacyAndroidJsDialog(
+                        configuredWebView = configuredWebView,
+                        kind = WebJsDialogKind.Confirm,
+                        url = url,
+                        message = message,
+                        defaultPromptText = null,
+                        onConfirm = { result.confirm() },
+                        onCancel = { result.cancel() },
+                    )
+                }
+
+                override fun onJsPrompt(
+                    view: WebView?,
+                    url: String?,
+                    message: String?,
+                    defaultValue: String?,
+                    result: JsPromptResult?,
+                ): Boolean {
+                    if (result == null) return false
+                    return handleLegacyAndroidJsDialog(
+                        configuredWebView = configuredWebView,
+                        kind = WebJsDialogKind.Prompt,
+                        url = url,
+                        message = message,
+                        defaultPromptText = defaultValue,
+                        onConfirm = { value -> result.confirm(value ?: "") },
+                        onCancel = { result.cancel() },
+                    )
+                }
             }
         configuredWebView.webViewClient =
             object : WebViewClient() {
@@ -680,6 +814,7 @@ internal class RaftAndroidSandboxWebView(
                         return true
                     }
                     // Logged and joined to the death event (one Hands ticket however many WebViews it took).
+                    jsDialogTracker.cancelActive()
                     RaftWebViewRendererGone.record(
                         context,
                         if (parkedForKeepAlive) "${diagnosticsSurface}_parked" else diagnosticsSurface,
@@ -734,6 +869,7 @@ internal class RaftAndroidSandboxWebView(
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     if (destroyed || configuredWebView !== webView) return
+                    jsDialogTracker.cancelActive()
                     super.onPageStarted(view, url, favicon)
                     val target = url.orEmpty()
                     loadStartedAtMs = System.currentTimeMillis()

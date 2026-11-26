@@ -6251,6 +6251,10 @@
     <string name="mobile_web_panel_return_to_conversation">Return to conversation</string>
     <string name="mobile_web_panel_return_to_page">Return</string>
     <string name="mobile_web_panel_apps_source">Apps</string>
+    <string name="mobile_web_panel_forward_to_raft">Forward to Raft</string>
+    <string name="mobile_web_panel_forwarded_to">Forwarded to %1$s</string>
+    <string name="mobile_web_panel_forward_failed">Failed to forward this link</string>
+    <string name="mobile_web_panel_js_prompt_placeholder">Enter a value</string>
     <string name="send_prompt_heading">Send to an agent</string>
     <string name="send_prompt_description">Check the message, change it if you like, and send it. You'll go to your DM with the agent to see what it does.</string>
     <string name="send_prompt_to">To</string>

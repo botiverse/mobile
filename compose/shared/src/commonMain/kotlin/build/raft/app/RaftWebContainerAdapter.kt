@@ -344,6 +344,7 @@ internal fun RaftWebViewConfig.toWebContainerConfig(
         coverActive = coverActive,
         allowsBackForwardNavigationGestures = allowsBackForwardNavigationGestures,
         showsFormAccessoryBar = showsFormAccessoryBar,
+        allowJsDialogs = allowJsDialogs,
         keepAliveKey = effectiveKeepAliveKey,
         navigationPolicy =
             WebNavigationPolicy(
@@ -740,10 +741,11 @@ internal fun RaftWebContainerAdaptedHost(
         }
     }
     val hasDownloadHandler = events.onDownloadRequested != null
+    val hasJsDialogHandler = events.onJsDialog != null
     val hasCatchHandler = events.catchesMainFrameNavigation != null
     val hasRouteHandler = events.routesMainFrameNavigation != null
     val containerEvents =
-        remember(events, committedTracker, hasDownloadHandler, hasCatchHandler, hasRouteHandler) {
+        remember(events, committedTracker, hasDownloadHandler, hasJsDialogHandler, hasCatchHandler, hasRouteHandler) {
             WebContainerEvents(
                 onNavigationStateChange = { state ->
                     if (state.url.isNotBlank()) committedTracker.onUrlObserved(state.url)
@@ -781,6 +783,19 @@ internal fun RaftWebContainerAdaptedHost(
                 onDownloadRequested =
                     if (hasDownloadHandler) {
                         { result -> events.onDownloadRequested?.invoke(result.toRaftWebViewDownload()) }
+                    } else {
+                        null
+                    },
+                onJsDialog =
+                    if (hasJsDialogHandler) {
+                        { request ->
+                            val handler = events.onJsDialog
+                            if (handler != null) {
+                                handler(request)
+                            } else {
+                                request.cancel()
+                            }
+                        }
                     } else {
                         null
                     },

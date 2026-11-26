@@ -113,6 +113,8 @@ internal fun raftMobileWebPanelDisplayHost(rawUrl: String): String {
 
 /** Actions offered in the bottom bar's `⋮` overflow menu. */
 internal enum class RaftMobileWebPanelMenuAction {
+    Reload,
+    ForwardToRaft,
     Share,
     CopyLink,
     OpenInBrowser,
@@ -120,17 +122,21 @@ internal enum class RaftMobileWebPanelMenuAction {
 
 /**
  * Overflow menu items by layer:
- * - Layer 3 (third-party): Share, Copy link, Open in browser ↗.
- * - Layer 2 (Raft App): Share, Copy link — NO "Open in browser".
+ * - Layer 3 (third-party): Reload, Forward to Raft, Share, Copy link, Open in browser ↗.
+ * - Layer 2 (Raft App): Reload, Forward to Raft, Share, Copy link — NO "Open in browser".
  */
 internal fun raftMobileWebPanelMenuActions(isRaftApp: Boolean): List<RaftMobileWebPanelMenuAction> =
     if (isRaftApp) {
         listOf(
+            RaftMobileWebPanelMenuAction.Reload,
+            RaftMobileWebPanelMenuAction.ForwardToRaft,
             RaftMobileWebPanelMenuAction.Share,
             RaftMobileWebPanelMenuAction.CopyLink,
         )
     } else {
         listOf(
+            RaftMobileWebPanelMenuAction.Reload,
+            RaftMobileWebPanelMenuAction.ForwardToRaft,
             RaftMobileWebPanelMenuAction.Share,
             RaftMobileWebPanelMenuAction.CopyLink,
             RaftMobileWebPanelMenuAction.OpenInBrowser,

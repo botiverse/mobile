@@ -2,6 +2,9 @@ package build.raft.app
 
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
+import build.raft.webcontainer.WebJsDialogKind
+import build.raft.webcontainer.WebJsDialogRequest
+import build.raft.webcontainer.WebJsDialogResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -95,6 +98,8 @@ class RaftMobileWebPanelStateTest {
     fun overflowMenuOmitsOpenInBrowserForRaftAppsOnly() {
         assertEquals(
             listOf(
+                RaftMobileWebPanelMenuAction.Reload,
+                RaftMobileWebPanelMenuAction.ForwardToRaft,
                 RaftMobileWebPanelMenuAction.Share,
                 RaftMobileWebPanelMenuAction.CopyLink,
                 RaftMobileWebPanelMenuAction.OpenInBrowser,
@@ -103,11 +108,105 @@ class RaftMobileWebPanelStateTest {
         )
         assertEquals(
             listOf(
+                RaftMobileWebPanelMenuAction.Reload,
+                RaftMobileWebPanelMenuAction.ForwardToRaft,
                 RaftMobileWebPanelMenuAction.Share,
                 RaftMobileWebPanelMenuAction.CopyLink,
             ),
             raftMobileWebPanelMenuActions(isRaftApp = true),
         )
+    }
+
+    @Test
+    fun webPageForwardFormattingAndEligibility() {
+        assertTrue(canForwardWebPageUrl("https://docs.example.com/guide"))
+        assertTrue(canForwardWebPageUrl("http://localhost:3000/demo"))
+        assertFalse(canForwardWebPageUrl("about:blank"))
+        assertFalse(canForwardWebPageUrl("javascript:alert(1)"))
+        assertFalse(canForwardWebPageUrl("   "))
+
+        assertEquals(
+            "Push Setup Guide\nhttps://docs.example.com/push",
+            formatWebPageForwardMessageBody(
+                url = "https://docs.example.com/push",
+                pageTitle = "  Push   Setup\nGuide  ",
+            ),
+        )
+        // Title equal to host or URL adds no extra line.
+        assertEquals(
+            "https://docs.example.com/push",
+            formatWebPageForwardMessageBody(
+                url = "https://docs.example.com/push",
+                pageTitle = "docs.example.com",
+            ),
+        )
+        assertEquals(
+            "https://docs.example.com/push",
+            formatWebPageForwardMessageBody(
+                url = "https://docs.example.com/push",
+                pageTitle = "https://docs.example.com/push",
+            ),
+        )
+        assertEquals(
+            "https://docs.example.com/push",
+            formatWebPageForwardMessageBody(
+                url = "https://docs.example.com/push",
+                pageTitle = null,
+            ),
+        )
+    }
+
+    @Test
+    fun jsDialogStateCancelsImmediatelyWhenHiddenAndOnVisibilityLoss() {
+        val state = RaftWebJsDialogState(initialVisible = false)
+        val hiddenResults = mutableListOf<WebJsDialogResult>()
+        val hiddenReq =
+            WebJsDialogRequest(
+                kind = WebJsDialogKind.Confirm,
+                originUrl = "https://docs.example.com",
+                message = "Hidden confirm?",
+                onResult = { hiddenResults += it },
+            )
+        state.show(hiddenReq)
+        assertNull(state.activeRequest)
+        assertTrue(hiddenReq.isSettled)
+        assertEquals(listOf<WebJsDialogResult>(WebJsDialogResult.Confirm(false)), hiddenResults)
+
+        // Become visible, present a prompt, then collapse panel -> auto-cancels with null once.
+        state.onVisibilityChanged(true)
+        val promptResults = mutableListOf<WebJsDialogResult>()
+        val promptReq =
+            WebJsDialogRequest(
+                kind = WebJsDialogKind.Prompt,
+                originUrl = "https://docs.example.com",
+                message = "Name?",
+                defaultPromptText = "hello",
+                onResult = { promptResults += it },
+            )
+        state.show(promptReq)
+        assertEquals(promptReq, state.activeRequest)
+
+        state.onVisibilityChanged(false)
+        assertNull(state.activeRequest)
+        assertTrue(promptReq.isSettled)
+        state.confirmActive("too late")
+        assertEquals(listOf<WebJsDialogResult>(WebJsDialogResult.Prompt(null)), promptResults)
+
+        // External platform cancellation (e.g. page navigation or renderer death) immediately clears activeRequest.
+        state.onVisibilityChanged(true)
+        val navCancelResults = mutableListOf<WebJsDialogResult>()
+        val navCancelReq =
+            WebJsDialogRequest(
+                kind = WebJsDialogKind.Confirm,
+                originUrl = "https://docs.example.com",
+                message = "Still open?",
+                onResult = { navCancelResults += it },
+            )
+        state.show(navCancelReq)
+        assertEquals(navCancelReq, state.activeRequest)
+        assertTrue(navCancelReq.cancel())
+        assertNull(state.activeRequest)
+        assertEquals(listOf<WebJsDialogResult>(WebJsDialogResult.Confirm(false)), navCancelResults)
     }
 
     @Test

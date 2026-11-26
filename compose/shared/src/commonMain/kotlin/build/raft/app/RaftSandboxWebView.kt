@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import build.raft.app.compat.json.JSONObject
+import build.raft.webcontainer.WebJsDialogRequest
 
 /**
  * Which WebView storage partition a host runs in (#proj-workspace:#397):
@@ -130,6 +131,12 @@ internal data class RaftWebViewConfig(
      * Compose cover (#wg-mobile-sync:#242). Android and iOS ignore this.
      */
     val coverActive: Boolean = false,
+    /**
+     * Whether visible JavaScript modal dialogs (`alert` / `confirm` / `prompt`) are permitted to
+     * present through [RaftWebViewEvents.onJsDialog]. Off by default and flipped off whenever a
+     * kept-alive panel is collapsed or hidden so background pages can never hijack the foreground.
+     */
+    val allowJsDialogs: Boolean = false,
 ) {
     val effectiveStoragePartition: RaftWebViewStoragePartition
         get() =
@@ -172,6 +179,11 @@ internal class RaftWebViewEvents {
      * iOS loads as before.
      */
     var onDownloadRequested: ((RaftWebViewDownload) -> Unit)? = null
+    /**
+     * Single-shot JavaScript dialog (`alert` / `confirm` / `prompt`) emitted only while
+     * [RaftWebViewConfig.allowJsDialogs] is true and the host view is visible.
+     */
+    var onJsDialog: ((WebJsDialogRequest) -> Unit)? = null
     var onUrlChange: (String) -> Unit = {}
     var onNavigationStateChange: (RaftWebViewNavigationState) -> Unit = {}
     var onHostMessage: (String, JSONObject) -> Unit = { _, _ -> }

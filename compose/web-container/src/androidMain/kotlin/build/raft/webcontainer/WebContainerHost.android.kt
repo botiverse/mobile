@@ -12,6 +12,8 @@ import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.DownloadListener
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
@@ -478,6 +480,7 @@ internal class WebContainerAndroidView(
     private var downloadNameScriptHandler: ScriptHandler? = null
     private val downloadJson = Json { ignoreUnknownKeys = true }
     private var boundController: WebContainerController? = null
+    private val jsDialogTracker = WebJsDialogTracker()
 
     private val watchdogTickRunnable =
         object : Runnable {
@@ -508,11 +511,15 @@ internal class WebContainerAndroidView(
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(visibility)
         lastWindowVisibility = visibility
+        if (visibility != View.VISIBLE) {
+            jsDialogTracker.cancelActive()
+        }
         syncWatchdogLifecycle()
     }
 
     override fun onDetachedFromWindow() {
         lastWindowVisibility = View.GONE
+        jsDialogTracker.cancelActive()
         syncWatchdogLifecycle()
         super.onDetachedFromWindow()
     }
@@ -648,6 +655,9 @@ internal class WebContainerAndroidView(
 
         config = next
         configured = true
+        if (!next.allowJsDialogs) {
+            jsDialogTracker.cancelActive()
+        }
         chainState.configureBudget(next.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0)
 
         if (scopeChanged) {
@@ -696,6 +706,7 @@ internal class WebContainerAndroidView(
     }
 
     internal fun detachForKeepAlive() {
+        jsDialogTracker.cancelActive()
         boundController?.unbindDispatcher(this)
         boundController = null
         events = WebContainerEvents()
@@ -746,6 +757,7 @@ internal class WebContainerAndroidView(
         if (destroyed) return
         destroyed = true
         parkedForKeepAlive = false
+        jsDialogTracker.cancelActive()
         WebContainerAndroidKeepAlive.onParkedLoadFinished(this)
         fileChooser = null
         cancelWatchdogTick()
@@ -808,6 +820,7 @@ internal class WebContainerAndroidView(
         loadAfterRecreate: Boolean = true,
         nextIsolationScope: WebIsolationScope = isolationScope,
     ) {
+        jsDialogTracker.cancelActive()
         removeJsbBridge()
         removeDownloadBridge()
         clearDocumentStartScripts()
@@ -880,9 +893,10 @@ internal class WebContainerAndroidView(
     }
 
     private fun configureWebView() {
+        val configuredWebView = webView
         applyWebSettings()
-        webView.setBackgroundColor(effectivePlaceholderColor(config.backgroundArgb, painted = false))
-        webView.webChromeClient =
+        configuredWebView.setBackgroundColor(effectivePlaceholderColor(config.backgroundArgb, painted = false))
+        configuredWebView.webChromeClient =
             object : WebChromeClient() {
                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
                     if (destroyed) return
@@ -947,6 +961,61 @@ internal class WebContainerAndroidView(
                     }
                     return launched
                 }
+
+                override fun onJsAlert(
+                    view: WebView?,
+                    url: String?,
+                    message: String?,
+                    result: JsResult?,
+                ): Boolean {
+                    if (result == null) return false
+                    return handleAndroidJsDialog(
+                        configuredWebView = configuredWebView,
+                        kind = WebJsDialogKind.Alert,
+                        url = url,
+                        message = message,
+                        defaultPromptText = null,
+                        onConfirm = { result.confirm() },
+                        onCancel = { result.cancel() },
+                    )
+                }
+
+                override fun onJsConfirm(
+                    view: WebView?,
+                    url: String?,
+                    message: String?,
+                    result: JsResult?,
+                ): Boolean {
+                    if (result == null) return false
+                    return handleAndroidJsDialog(
+                        configuredWebView = configuredWebView,
+                        kind = WebJsDialogKind.Confirm,
+                        url = url,
+                        message = message,
+                        defaultPromptText = null,
+                        onConfirm = { result.confirm() },
+                        onCancel = { result.cancel() },
+                    )
+                }
+
+                override fun onJsPrompt(
+                    view: WebView?,
+                    url: String?,
+                    message: String?,
+                    defaultValue: String?,
+                    result: JsPromptResult?,
+                ): Boolean {
+                    if (result == null) return false
+                    return handleAndroidJsDialog(
+                        configuredWebView = configuredWebView,
+                        kind = WebJsDialogKind.Prompt,
+                        url = url,
+                        message = message,
+                        defaultPromptText = defaultValue,
+                        onConfirm = { value -> result.confirm(value ?: "") },
+                        onCancel = { result.cancel() },
+                    )
+                }
             }
 
         webView.webViewClient =
@@ -956,6 +1025,7 @@ internal class WebContainerAndroidView(
                     val api26 = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                     val didCrash = api26 && detail?.didCrash() == true
                     val rendererPriority = if (api26 && detail != null) detail.rendererPriorityAtExit() else null
+                    jsDialogTracker.cancelActive()
                     jsbDispatcher?.cancelInFlight("render_process_gone")
                     if (parkedForKeepAlive) {
                         runCatching {
@@ -1031,6 +1101,7 @@ internal class WebContainerAndroidView(
                         currentLoading = false
                         return
                     }
+                    jsDialogTracker.cancelActive()
                     jsbDispatcher?.cancelInFlight("main_frame_navigation")
                     if (target.isNotEmpty() && !target.equals(ABOUT_BLANK_URL, ignoreCase = true)) {
                         val isConfiguredInitialDocument =
@@ -1390,6 +1461,70 @@ internal class WebContainerAndroidView(
                 true
             }
         }
+    }
+
+    private fun handleAndroidJsDialog(
+        configuredWebView: WebView,
+        kind: WebJsDialogKind,
+        url: String?,
+        message: String?,
+        defaultPromptText: String?,
+        onConfirm: (String?) -> Unit,
+        onCancel: () -> Unit,
+    ): Boolean {
+        val visibleAndActive =
+            !destroyed &&
+                !parkedForKeepAlive &&
+                configuredWebView === webView &&
+                isAttachedToWindow &&
+                lastWindowVisibility == View.VISIBLE
+        val handler = events.onJsDialog
+        if (!config.allowJsDialogs && handler == null) {
+            if (!visibleAndActive) {
+                runCatching { onCancel() }
+                return true
+            }
+            return false
+        }
+        if (!isWebJsDialogPermitted(config.allowJsDialogs, visibleAndActive, handler != null)) {
+            runCatching { onCancel() }
+            return true
+        }
+        val originUrl = url?.trim()?.takeIf { it.isNotEmpty() } ?: currentUrl
+        var requestRef: WebJsDialogRequest? = null
+        val request =
+            WebJsDialogRequest(
+                kind = kind,
+                originUrl = originUrl,
+                message = message,
+                defaultPromptText = defaultPromptText,
+                onSettled = { requestRef?.let(jsDialogTracker::clearIfSame) },
+                onResult = { dialogResult ->
+                    val deliver = {
+                        runCatching {
+                            when (dialogResult) {
+                                WebJsDialogResult.AlertDismissed -> onConfirm(null)
+                                is WebJsDialogResult.Confirm -> if (dialogResult.confirmed) onConfirm(null) else onCancel()
+                                is WebJsDialogResult.Prompt ->
+                                    if (dialogResult.value != null) onConfirm(dialogResult.value) else onCancel()
+                            }
+                        }
+                        Unit
+                    }
+                    if (Looper.myLooper() == Looper.getMainLooper()) {
+                        deliver()
+                    } else {
+                        mainHandler.post { deliver() }
+                    }
+                },
+            )
+        requestRef = request
+        jsDialogTracker.begin(request)
+        val presented = runCatching { handler!!.invoke(request) }.isSuccess
+        if (!presented) {
+            request.cancel()
+        }
+        return true
     }
 
     private fun emptyBlockedResponse(): WebResourceResponse =

@@ -6249,6 +6249,10 @@
     <string name="mobile_web_panel_return_to_conversation">대화로 돌아가기</string>
     <string name="mobile_web_panel_return_to_page">돌아가기</string>
     <string name="mobile_web_panel_apps_source">앱</string>
+    <string name="mobile_web_panel_forward_to_raft">Raft로 전달</string>
+    <string name="mobile_web_panel_forwarded_to">%1$s(으)로 전달됨</string>
+    <string name="mobile_web_panel_forward_failed">링크를 전달하지 못했습니다</string>
+    <string name="mobile_web_panel_js_prompt_placeholder">값을 입력하세요</string>
     <string name="send_prompt_heading">에이전트에게 보내기</string>
     <string name="send_prompt_description">메시지를 확인하고 원하면 고친 뒤 보내세요. 보내면 에이전트와의 DM으로 이동해 어떻게 하는지 볼 수 있어요.</string>
     <string name="send_prompt_to">받는 에이전트</string>
