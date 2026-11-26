@@ -358,7 +358,11 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     traceSampleKeys(MOBILE_THREAD_OPEN_TRACE_NAME) +
         traceSampleKeys(MOBILE_FRAMES_NAV_TRANSITION_TRACE_NAME) +
         traceSampleKeys(MOBILE_FRAMES_RESUME_TRACE_NAME) +
-        traceSampleKeys(MOBILE_FRAMES_SCROLL_TRACE_NAME)
+        traceSampleKeys(MOBILE_FRAMES_SCROLL_TRACE_NAME) +
+        traceSampleKeys(MOBILE_HTTP_ERROR_TRACE_NAME) +
+        traceSampleKeys(MOBILE_UI_ERROR_TRACE_NAME) +
+        traceSampleKeys(MOBILE_WEBVIEW_TRACE_NAME) +
+        traceSampleKeys(MOBILE_WEB_CONTAINER_TRACE_NAME)
 ).distinct()
 
 /**

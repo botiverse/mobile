@@ -172,6 +172,7 @@ fun RaftPagerHost(
         remember(args) {
             factory().also { pager ->
                 pager.pagerId = "raft-${pagerIdSequence.incrementAndGet()}"
+                pager.pageName = args.pageName
                 pager.pageData = PageData(args.pageData.toKuiklyJson())
                 // Window facts before willInit/first composition: Kuikly's native host injected
                 // them before the page's first render.

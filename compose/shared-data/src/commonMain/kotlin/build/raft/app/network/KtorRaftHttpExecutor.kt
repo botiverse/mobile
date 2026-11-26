@@ -2,6 +2,7 @@ package build.raft.app.network
 
 import build.raft.app.RaftCoreInternalApi
 
+import build.raft.app.data.MobileHttpClientErrorTrace
 import build.raft.app.data.raftRedactSensitivePath
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpRequestTimeoutException
@@ -50,6 +51,18 @@ import kotlin.time.TimeSource
     private val uploadProgress: RaftUploadProgressTracker = platformRaftUploadProgressTracker(),
     /** Where a failed response's `X-Trace-Id` goes, for the error the app then shows. */
     private val failedTraceIds: RaftRecentFailedTraceId = RaftFailedRequestTraceIds,
+    /** Failure-only HTTP telemetry (`mobile.http.client`, #proj-mobile:#399). */
+    private val recordHttpFailureTrace: (
+        method: String,
+        url: String,
+        requestHeaders: Map<String, String>,
+        sentTraceId: String?,
+        statusCode: Int,
+        errorBodyText: String?,
+        transportDiagnostics: String?,
+        durationMs: Long,
+        redactSensitive: Boolean,
+    ) -> Unit = MobileHttpClientErrorTrace::recordFailure,
 ) : RaftHttpExecutor {
 
     override suspend fun execute(
@@ -333,14 +346,28 @@ import kotlin.time.TimeSource
                     is RaftNetworkRequestLifetimeOutcome.Completed -> outcome.value
                     is RaftNetworkRequestLifetimeOutcome.Retired -> outcome.toKtorExecutorResponse(engineLabel)
                 }
+            val durationMs = startedAt.elapsedNow().inWholeMilliseconds
             failedTraceIds.recordResponse(response.code, response.responseHeaders)
+            if (response.code == 0 || response.code >= 400) {
+                recordHttpFailureTrace(
+                    spec.method,
+                    spec.url,
+                    spec.headers,
+                    spec.headers.raftSentTraceIdOrNull(),
+                    response.code,
+                    response.errorBodyText,
+                    response.transportDiagnostics,
+                    durationMs,
+                    spec.redactSensitive,
+                )
+            }
             warningLogger(
                 "${spec.logPrefix}_finish $common " +
                     "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                     "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
                     "code=${response.code} clientRequestId=$clientRequestId " +
                     "traceId=${response.responseHeaders.raftResponseTraceIdOrNull() ?: "none"} " +
-                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                    "durationMs=$durationMs " +
                     (response.transportDiagnostics ?: "engine=$engineLabel status=none kind=none rawCode=none detail=none")
             )
             response
@@ -354,16 +381,30 @@ import kotlin.time.TimeSource
             )
             throw cancellation
         } catch (error: Exception) {
+            val durationMs = startedAt.elapsedNow().inWholeMilliseconds
+            val failureSummary = error.safeDiagnosticsSummary()
             warningLogger(
                 "${spec.logPrefix}_failed $common clientRequestId=$clientRequestId " +
-                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} ${error.safeDiagnosticsSummary()}"
+                    "durationMs=$durationMs $failureSummary"
+            )
+            val errorBody =
+                if (spec.redactSensitive) "attachment_presigned_upload_transport_failed"
+                else error.message?.redactNetworkErrorText()
+            recordHttpFailureTrace(
+                spec.method,
+                spec.url,
+                spec.headers,
+                spec.headers.raftSentTraceIdOrNull(),
+                0,
+                errorBody,
+                failureSummary,
+                durationMs,
+                spec.redactSensitive,
             )
             RaftHttpExecutorResponse(
                 code = 0,
                 bodyText = null,
-                errorBodyText =
-                    if (spec.redactSensitive) "attachment_presigned_upload_transport_failed"
-                    else error.message?.redactNetworkErrorText()
+                errorBodyText = errorBody
             )
         }
     }

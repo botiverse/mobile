@@ -1,6 +1,8 @@
 package build.raft.app.data
 
 import build.raft.app.RaftBuildFlags
+import build.raft.app.RaftCoreInternalApi
+import build.raft.app.model.ServerId
 import build.raft.app.network.RaftAppIdentityRegistry
 import kotlin.random.Random
 
@@ -12,11 +14,15 @@ import kotlin.random.Random
  */
 const val TRACE_SAMPLE_FLAG_PREFIX: String = "trace_sample"
 
-/** Sampled mobile trace span names (`trace_sample.<name>` hierarchy). */
+/** Sampled mobile trace span / event names (`trace_sample.<name>` hierarchy). */
 const val MOBILE_THREAD_OPEN_TRACE_NAME: String = "mobile.thread_open"
 const val MOBILE_FRAMES_NAV_TRANSITION_TRACE_NAME: String = "mobile.frames.nav_transition"
 const val MOBILE_FRAMES_RESUME_TRACE_NAME: String = "mobile.frames.resume"
 const val MOBILE_FRAMES_SCROLL_TRACE_NAME: String = "mobile.frames.scroll"
+const val MOBILE_HTTP_ERROR_TRACE_NAME: String = "mobile.http_error"
+const val MOBILE_UI_ERROR_TRACE_NAME: String = "mobile.ui_error"
+const val MOBILE_WEBVIEW_TRACE_NAME: String = "mobile.webview"
+const val MOBILE_WEB_CONTAINER_TRACE_NAME: String = "mobile.web_container"
 
 /** The evaluate answer fields the rate is read from (a subset of the server's FeatureFlagEvaluation). */
 data class TraceSampleEvaluation(
@@ -89,6 +95,9 @@ const val TRACE_SAMPLE_DEFAULT_RELEASE_RATE: Double = 0.1
 const val TRACE_SAMPLE_SCROLL_DEFAULT_RELEASE_RATE: Double = 0.02
 const val TRACE_SAMPLE_DEFAULT_PRERELEASE_RATE: Double = 1.0
 
+/** Built-in default for failure/error families (`mobile.http_error`, `mobile.ui_error`, `mobile.web_container`). */
+const val TRACE_SAMPLE_ERROR_DEFAULT_RATE: Double = 1.0
+
 fun defaultTraceSampleRate(
     buildType: String? = RaftAppIdentityRegistry.current()?.buildType,
     debugBuild: Boolean = RaftBuildFlags.isDebugBuild,
@@ -101,3 +110,32 @@ fun defaultScrollFrameTraceSampleRate(
     debugBuild: Boolean = RaftBuildFlags.isDebugBuild,
 ): Double =
     if (debugBuild || buildType == "alpha" || buildType == "debug") TRACE_SAMPLE_DEFAULT_PRERELEASE_RATE else TRACE_SAMPLE_SCROLL_DEFAULT_RELEASE_RATE
+
+/** Smooth `mobile.webview.load` foreground opens: 10% on release, 100% on alpha/debug (#proj-mobile:#399). */
+fun defaultWebViewForegroundTraceSampleRate(
+    buildType: String? = RaftAppIdentityRegistry.current()?.buildType,
+    debugBuild: Boolean = RaftBuildFlags.isDebugBuild,
+): Double = defaultTraceSampleRate(buildType, debugBuild)
+
+/** Smooth `mobile.webview.load` background prewarms: 2% on release, 100% on alpha/debug (#proj-mobile:#399). */
+fun defaultWebViewPrewarmTraceSampleRate(
+    buildType: String? = RaftAppIdentityRegistry.current()?.buildType,
+    debugBuild: Boolean = RaftBuildFlags.isDebugBuild,
+): Double = defaultScrollFrameTraceSampleRate(buildType, debugBuild)
+
+/**
+ * Resolves [traceName]'s sampling rate for [serverId] against the active [SharedServerFeatureFlags]
+ * snapshot (or [flags] when provided), falling back to [fallback] when unresolved or unset.
+ */
+@RaftCoreInternalApi fun resolveActiveServerTraceSampleRate(
+    serverId: String,
+    traceName: String,
+    fallback: Double,
+    flags: ServerFeatureFlagSnapshot? = null,
+): Double {
+    val snapshot =
+        flags ?: runCatching {
+            RaftDataStoreRegistry.currentOrNull()?.serverFeatureFlags?.snapshotFor(ServerId(serverId))
+        }.getOrNull() ?: ServerFeatureFlagSnapshot.Unresolved
+    return resolveTraceSampleRate(traceName, snapshot.traceSampleEvaluations(traceName), fallback)
+}

@@ -349,11 +349,88 @@ class KtorRaftHttpExecutorTest {
         }
     }
 
+    @Test
+    fun failureTraceHookCapturesHttpAndEdgeFailuresAndSkipsSuccessAndCancellation() = runBlocking {
+        class RecordedFailure(
+            val method: String,
+            val url: String,
+            val sentTraceId: String?,
+            val statusCode: Int,
+            val errorBodyText: String?,
+            val redactSensitive: Boolean,
+        )
+        val recorded = mutableListOf<RecordedFailure>()
+        val traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+        val reachedCancel = CompletableDeferred<Unit>()
+        val harness =
+            Harness(
+                recordHttpFailureTrace = { method, url, _, sentTraceId, code, errorBody, _, _, redact ->
+                    recorded += RecordedFailure(method, url, sentTraceId, code, errorBody, redact)
+                },
+            ) { request ->
+                when {
+                    request.url.encodedPath.endsWith("/ok") -> respond("""{"ok":true}""", HttpStatusCode.OK)
+                    request.url.encodedPath.endsWith("/edge") ->
+                        respond("<html>blocked</html>", HttpStatusCode.Forbidden, headersOf(HttpHeaders.ContentType, "text/html"))
+                    request.url.encodedPath.endsWith("/hang") -> {
+                        reachedCancel.complete(Unit)
+                        awaitCancellation()
+                    }
+                    else -> respond("""{"error":"boom"}""", HttpStatusCode.InternalServerError)
+                }
+            }
+
+        harness.executor.execute(RaftRequestPriority.Visible, "https://api.raft.test/api/ok", "GET", emptyMap(), null, false)
+        harness.executor.execute(
+            RaftRequestPriority.Visible,
+            "https://api.raft.test/api/edge",
+            "GET",
+            mapOf("traceparent" to traceparent),
+            null,
+            false,
+        )
+        harness.executor.executeBytes(
+            RaftRequestPriority.Foreground,
+            "https://bucket.r2.test/obj/key?X-Amz-Signature=abc",
+            "PUT",
+            emptyMap(),
+            ByteArray(4),
+        )
+        val cancelled = async {
+            harness.executor.execute(RaftRequestPriority.Visible, "https://api.raft.test/api/hang", "GET", emptyMap(), null, false)
+        }
+        withTimeout(10_000) { reachedCancel.await() }
+        cancelled.cancel()
+        assertFailsWith<CancellationException> { cancelled.await() }
+
+        assertEquals(2, recorded.size)
+        assertEquals("GET", recorded[0].method)
+        assertEquals("0af7651916cd43dd8448eb211c80319c", recorded[0].sentTraceId)
+        assertEquals(403, recorded[0].statusCode)
+        assertEquals("""{"error":"edge_blocked"}""", recorded[0].errorBodyText)
+        assertFalse(recorded[0].redactSensitive)
+
+        assertEquals("PUT", recorded[1].method)
+        assertEquals(500, recorded[1].statusCode)
+        assertTrue(recorded[1].redactSensitive)
+    }
+
     private class Harness(
         coordinator: RaftNetworkRequestLifetimeCoordinator = RaftNetworkRequestLifetimeCoordinator(),
         engineReportsProtocol: Boolean = true,
         failedTraceIds: RaftRecentFailedTraceId = RaftRecentFailedTraceId(),
         transportFacts: (requestId: String) -> String? = { null },
+        recordHttpFailureTrace: (
+            method: String,
+            url: String,
+            requestHeaders: Map<String, String>,
+            sentTraceId: String?,
+            statusCode: Int,
+            errorBodyText: String?,
+            transportDiagnostics: String?,
+            durationMs: Long,
+            redactSensitive: Boolean,
+        ) -> Unit = { _, _, _, _, _, _, _, _, _ -> },
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
     ) {
         val requests = mutableListOf<HttpRequestData>()
@@ -380,6 +457,7 @@ class KtorRaftHttpExecutorTest {
                 // MockEngine consumes the body itself: count at the body writer here.
                 uploadProgress = BodyWriterUploadProgressTracker,
                 failedTraceIds = failedTraceIds,
+                recordHttpFailureTrace = recordHttpFailureTrace,
             )
     }
 }

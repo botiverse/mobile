@@ -2,14 +2,19 @@
 
 package build.raft.app
 
+import build.raft.app.data.MOBILE_WEB_CONTAINER_TRACE_NAME
 import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftClientTraceEvents
 import build.raft.app.data.RaftDataStoreRegistry
 import build.raft.app.data.RaftWebSpanRecord
+import build.raft.app.data.TRACE_SAMPLE_ERROR_DEFAULT_RATE
+import build.raft.app.data.resolveActiveServerTraceSampleRate
+import build.raft.app.data.traceSampled
 import build.raft.app.model.raftEpochMillisUtcIso
 import build.raft.app.network.RaftTraceIds
 import build.raft.app.network.newRaftTraceIds
 import build.raft.webcontainer.pool.WebContainerTelemetryEvent
+import kotlin.random.Random
 import kotlin.time.TimeSource
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -90,6 +95,7 @@ internal fun buildWebContainerTraceSpan(
     event: WebContainerTelemetryEvent,
     ids: RaftTraceIds,
     nowEpochMs: Long,
+    sampleRate: Double = TRACE_SAMPLE_ERROR_DEFAULT_RATE,
 ): RaftWebSpanRecord? =
     when (event) {
         is WebContainerTelemetryEvent.RenderProcessGone -> {
@@ -107,7 +113,7 @@ internal fun buildWebContainerTraceSpan(
                     event.rendererPriorityAtExit?.let {
                         put("renderer_priority", JsonPrimitive(raftWebContainerRendererPriorityLabel(it)))
                     }
-                    put("sample_rate", JsonPrimitive(1.0))
+                    put("sample_rate", JsonPrimitive(sampleRate))
                 }
             RaftWebSpanRecord(
                 traceId = ids.traceId,
@@ -130,7 +136,7 @@ internal fun buildWebContainerTraceSpan(
                     event.engine?.takeIf { it.isNotBlank() }?.let {
                         put("engine", JsonPrimitive(sanitizeWebContainerTraceCode(it)))
                     }
-                    put("sample_rate", JsonPrimitive(1.0))
+                    put("sample_rate", JsonPrimitive(sampleRate))
                 }
             RaftWebSpanRecord(
                 traceId = ids.traceId,
@@ -153,7 +159,7 @@ internal fun buildWebContainerTraceSpan(
                     event.engine?.takeIf { it.isNotBlank() }?.let {
                         put("engine", JsonPrimitive(sanitizeWebContainerTraceCode(it)))
                     }
-                    put("sample_rate", JsonPrimitive(1.0))
+                    put("sample_rate", JsonPrimitive(sampleRate))
                 }
             RaftWebSpanRecord(
                 traceId = ids.traceId,
@@ -175,7 +181,7 @@ internal fun buildWebContainerTraceSpan(
                     event.engine?.takeIf { it.isNotBlank() }?.let {
                         put("engine", JsonPrimitive(sanitizeWebContainerTraceCode(it)))
                     }
-                    put("sample_rate", JsonPrimitive(1.0))
+                    put("sample_rate", JsonPrimitive(sampleRate))
                 }
             RaftWebSpanRecord(
                 traceId = ids.traceId,
@@ -198,7 +204,7 @@ internal fun buildWebContainerTraceSpan(
                     event.engine?.takeIf { it.isNotBlank() }?.let {
                         put("engine", JsonPrimitive(sanitizeWebContainerTraceCode(it)))
                     }
-                    put("sample_rate", JsonPrimitive(1.0))
+                    put("sample_rate", JsonPrimitive(sampleRate))
                 }
             RaftWebSpanRecord(
                 traceId = ids.traceId,
@@ -227,7 +233,8 @@ private object WebContainerTraceClock {
 
 /**
  * Rate-capped reporter turning high-signal [WebContainerTelemetryEvent]s into OTLP spans via
- * [emitSpan]. Thread-safe and never throws.
+ * [emitSpan], gated on `trace_sample.mobile.web_container` (default `1.0`, #proj-mobile:#399).
+ * Thread-safe and never throws.
  */
 internal class RaftWebContainerTraceReporter(
     private val nowEpochMs: () -> Long = { ProcessRaftDatetimeFoundationOwner.nowEpochMillis() },
@@ -236,6 +243,8 @@ internal class RaftWebContainerTraceReporter(
     private val maxSpansPerWindow: Int = WEB_CONTAINER_TRACE_MAX_SPANS_PER_MINUTE,
     private val windowMs: Long = WEB_CONTAINER_TRACE_WINDOW_MS,
     private val canEmit: () -> Boolean = ::hasActiveWebContainerTraceServer,
+    private val resolveSampleRate: () -> Double = ::resolveActiveWebContainerTraceSampleRate,
+    private val random: () -> Double = { Random.nextDouble() },
     private val emitSpan: (RaftWebSpanRecord) -> Unit = ::emitRaftWebContainerSpan,
 ) {
     private val lock = SynchronizedObject()
@@ -245,8 +254,12 @@ internal class RaftWebContainerTraceReporter(
         val span =
             runCatching {
                 if (!canEmit()) return false
+                val rate = resolveSampleRate()
+                if (!rate.isFinite() || rate <= 0.0) return false
+                val clampedRate = rate.coerceAtMost(1.0)
+                if (!traceSampled(clampedRate, random)) return false
                 val epochMs = nowEpochMs()
-                val candidate = buildWebContainerTraceSpan(event, newTraceIds(), epochMs) ?: return false
+                val candidate = buildWebContainerTraceSpan(event, newTraceIds(), epochMs, sampleRate = clampedRate) ?: return false
                 if (!tryAcquireSlot()) return false
                 candidate
             }.getOrNull() ?: return false
@@ -294,6 +307,15 @@ private fun activeWebContainerTraceServerId(): String? =
     }.getOrNull()
 
 private fun hasActiveWebContainerTraceServer(): Boolean = activeWebContainerTraceServerId() != null
+
+private fun resolveActiveWebContainerTraceSampleRate(): Double {
+    val serverId = activeWebContainerTraceServerId() ?: return TRACE_SAMPLE_ERROR_DEFAULT_RATE
+    return resolveActiveServerTraceSampleRate(
+        serverId = serverId,
+        traceName = MOBILE_WEB_CONTAINER_TRACE_NAME,
+        fallback = TRACE_SAMPLE_ERROR_DEFAULT_RATE,
+    )
+}
 
 /**
  * Emits [span] under the currently signed-in shell's server via the in-memory session snapshot

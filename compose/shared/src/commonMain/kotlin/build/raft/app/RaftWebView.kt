@@ -273,14 +273,70 @@ internal fun RaftSandboxWebView(
     /** [RaftWebViewEvents.onContentProcessGone]. */
     onContentProcessGone: ((String) -> Unit)? = null,
 ) {
+    val useWebContainer = rememberRaftWebContainerV1Enabled()
+    val loadAttempt =
+        remember(url, diagnosticsSurface, useWebContainer, keepAliveKey) {
+            val prewarmHit = keepAliveKey?.let { key -> raftWebViewKeptDocument(key)?.loaded == true } == true
+            MobileWebViewLoadTrace.startForegroundOpen(
+                diagnosticsSurface = diagnosticsSurface,
+                useWebContainer = useWebContainer,
+                prewarmHit = prewarmHit,
+            )
+        }
+    if (loadWatchdog != null) {
+        val watchdogPhase = loadWatchdog.state.phase
+        androidx.compose.runtime.LaunchedEffect(loadAttempt, watchdogPhase) {
+            when (watchdogPhase) {
+                RaftWebViewLoadPhase.Ready ->
+                    loadAttempt.finish(
+                        outcome = MobileWebViewLoadOutcome.Ok,
+                        errorCode = MobileWebViewLoadErrorCode.None,
+                        uiErrorShown = false,
+                    )
+                RaftWebViewLoadPhase.Stalled ->
+                    loadAttempt.finish(
+                        outcome = MobileWebViewLoadOutcome.Timeout,
+                        errorCode = MobileWebViewLoadErrorCode.Timeout,
+                        uiErrorShown = true,
+                    )
+                RaftWebViewLoadPhase.ProcessGone ->
+                    loadAttempt.finish(
+                        outcome = MobileWebViewLoadOutcome.Failed,
+                        errorCode = MobileWebViewLoadErrorCode.RenderProcessGone,
+                        uiErrorShown = true,
+                    )
+                RaftWebViewLoadPhase.Loading,
+                RaftWebViewLoadPhase.Failed,
+                -> Unit
+            }
+        }
+    }
     val events = remember { RaftWebViewEvents() }
     events.catchesMainFrameNavigation = catchesMainFrameNavigation
     events.routesMainFrameNavigation = routesMainFrameNavigation
     events.onLoadCommit = onLoadCommit
-    events.onLoadSuccess =
-        if (loadWatchdog == null) onLoadSuccess else { { loadWatchdog.onLoadFinished(); onLoadSuccess() } }
-    events.onLoadFailure =
-        if (loadWatchdog == null) onLoadFailure else { reason -> loadWatchdog.onLoadFailed(); onLoadFailure(reason) }
+    events.onLoadSuccess = {
+        loadWatchdog?.onLoadFinished()
+        if (loadWatchdog == null) {
+            loadAttempt.finish(
+                outcome = MobileWebViewLoadOutcome.Ok,
+                errorCode = MobileWebViewLoadErrorCode.None,
+                uiErrorShown = false,
+            )
+        }
+        onLoadSuccess()
+    }
+    events.onLoadFailure = { reason ->
+        loadWatchdog?.onLoadFailed()
+        val isTimeout = "timeout" in reason.lowercase() || "timed_out" in reason.lowercase() || "stalled" in reason.lowercase()
+        val outcome = if (isTimeout) MobileWebViewLoadOutcome.Timeout else MobileWebViewLoadOutcome.Failed
+        loadAttempt.finish(
+            outcome = outcome,
+            errorCode = classifyMobileWebViewErrorCode(reason, outcome),
+            uiErrorShown = true,
+        )
+        onLoadFailure(reason)
+    }
     events.onNavigationBlocked = onNavigationBlocked
     events.onDownloadRequested = onDownloadRequested
     events.onUrlChange = onUrlChange
@@ -290,6 +346,13 @@ internal fun RaftSandboxWebView(
     events.onContentProbe = { hasContent -> loadWatchdog?.onContentProbe(hasContent) }
     events.onContentProcessGone = { reason ->
         loadWatchdog?.onProcessGone(reason)
+        if (loadWatchdog == null) {
+            loadAttempt.finish(
+                outcome = MobileWebViewLoadOutcome.Failed,
+                errorCode = MobileWebViewLoadErrorCode.RenderProcessGone,
+                uiErrorShown = true,
+            )
+        }
         onContentProcessGone?.invoke(reason)
     }
     if (loadWatchdog != null) RaftWebViewLoadWatchdogEffect(loadWatchdog, controller)
@@ -346,7 +409,6 @@ internal fun RaftSandboxWebView(
         }
     // Full-bleed: in a clipped pane of the wide row (the Artifact column) the page is cut hard at the pane's edge, never
     // faded (raftPaneGridNoFade): a fade over a dark page glows. A native view (iOS WKWebView) is clipped as it is.
-    val useWebContainer = rememberRaftWebContainerV1Enabled()
     if (useWebContainer) {
         RaftWebContainerAdaptedHost(
             config = config,

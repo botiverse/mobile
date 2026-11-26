@@ -661,4 +661,36 @@ class SharedServerFeatureFlagsTest {
             coldStart.earlyAccessPolicy(listOf("srv-none", "srv-both"))
         )
     }
+
+    @Test
+    fun clientErrorAndWebViewTraceSampleFlagsAreRegisteredAndEvaluated() = runTest {
+        val expectedKeys =
+            listOf(
+                "trace_sample.mobile.http_error",
+                "trace_sample.mobile.ui_error",
+                "trace_sample.mobile.webview",
+                "trace_sample.mobile.web_container",
+                "trace_sample.mobile",
+                "trace_sample",
+            )
+        for (key in expectedKeys) {
+            assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, "missing registered key: $key")
+        }
+        val api =
+            FakeApi(
+                ok(
+                    """{"evaluations":[
+                        {"key":"trace_sample.mobile.http_error","enabled":true,"reason":"platform_rule","variant":"0.5"},
+                        {"key":"trace_sample.mobile.ui_error","enabled":false,"reason":"kill_switch"},
+                        {"key":"trace_sample.mobile.webview","enabled":true,"reason":"platform_rule","variant":"0.2"},
+                        {"key":"trace_sample.mobile.web_container","enabled":true,"reason":"platform_rule","variant":"0.75"}
+                    ]}"""
+                )
+            )
+        val snapshot = SharedServerFeatureFlags(api).prefetch(server)
+        assertEquals(0.5, resolveActiveServerTraceSampleRate(server.value, MOBILE_HTTP_ERROR_TRACE_NAME, 1.0, flags = snapshot))
+        assertEquals(0.0, resolveActiveServerTraceSampleRate(server.value, MOBILE_UI_ERROR_TRACE_NAME, 1.0, flags = snapshot))
+        assertEquals(0.2, resolveActiveServerTraceSampleRate(server.value, MOBILE_WEBVIEW_TRACE_NAME, 0.1, flags = snapshot))
+        assertEquals(0.75, resolveActiveServerTraceSampleRate(server.value, MOBILE_WEB_CONTAINER_TRACE_NAME, 1.0, flags = snapshot))
+    }
 }
