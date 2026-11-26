@@ -1171,7 +1171,14 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
             val profiles = currentKnownMemberProfilesById(scopedServerId)
             working.mapNotNull { (memberId, fact) ->
                 val profile = profiles[memberId.trim()] ?: return@mapNotNull null
-                val otherServer = profile.serverId?.value?.trim()?.let { it.isNotEmpty() && it != serverKey } == true
+                val otherServer =
+                    profile.inViewerServer == false ||
+                        profile.serverId?.value?.trim()?.let { it.isNotEmpty() && it != serverKey } == true ||
+                        (
+                            profile.inViewerServer == null &&
+                                !profile.servers.isNullOrEmpty() &&
+                                profile.servers.none { it.id == serverKey }
+                        )
                 if (
                     profile.kind != MemberKind.Agent ||
                     profile.isExternal ||
