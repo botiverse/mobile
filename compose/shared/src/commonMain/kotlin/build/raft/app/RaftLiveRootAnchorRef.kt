@@ -6,11 +6,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.node.GlobalPositionAwareModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
@@ -72,7 +74,7 @@ internal class RaftPopoverAnchor private constructor(
 
     @Composable
     internal fun renderInOverlay(
-        contentSize: Size,
+        contentSize: Size?,
         onDismiss: () -> Unit,
         modifier: Modifier,
         viewportGap: Float,
@@ -92,20 +94,53 @@ internal class RaftPopoverAnchor private constructor(
             dismissActivationDelayMillis = dismissActivationDelayMillis,
             outsidePointerMode = outsidePointerMode
         ) { overlayLayout ->
-            val popoverOffset =
-                overlayLayout.positionContent(
-                    anchor = rootOffset,
-                    contentSize = contentSize,
-                    viewportGap = viewportGap,
-                    horizontalOffset = horizontalOffset,
-                    verticalOffset = verticalOffset,
-                    verticalOffsetAbove = verticalOffsetAbove,
-                    verticalPlacement = verticalPlacement,
-                    horizontalPlacement = horizontalPlacement,
-                    horizontalAutoFlip = horizontalAutoFlip
-                ) ?: return@RaftFloatingOverlayHost
-            Box(modifier = Modifier.offset { IntOffset(popoverOffset.x.toInt(), popoverOffset.y.toInt()) }) {
-                content()
+            if (!overlayLayout.isReady || !rootOffset.isRaftUsableAnchor()) return@RaftFloatingOverlayHost
+            if (contentSize != null) {
+                val popoverOffset =
+                    overlayLayout.positionContent(
+                        anchor = rootOffset,
+                        contentSize = contentSize,
+                        viewportGap = viewportGap,
+                        horizontalOffset = horizontalOffset,
+                        verticalOffset = verticalOffset,
+                        verticalOffsetAbove = verticalOffsetAbove,
+                        verticalPlacement = verticalPlacement,
+                        horizontalPlacement = horizontalPlacement,
+                        horizontalAutoFlip = horizontalAutoFlip
+                    ) ?: return@RaftFloatingOverlayHost
+                Box(modifier = Modifier.offset { IntOffset(popoverOffset.x.toInt(), popoverOffset.y.toInt()) }) {
+                    content()
+                }
+            } else {
+                // Single-pass measure-then-place: measure the popover content at its natural
+                // constrained size, compute the final anchored offset from that real measurement,
+                // and place it before any draw runs so dynamic-height popovers never flash at a
+                // guessed position on their first visible frame.
+                Layout(
+                    content = { Box { content() } },
+                    modifier = Modifier.fillMaxSize(),
+                ) { measurables, constraints ->
+                    val placeable = measurables.single().measure(constraints.copy(minWidth = 0, minHeight = 0))
+                    val popoverOffset =
+                        overlayLayout.positionContent(
+                            anchor = rootOffset,
+                            contentSize = Size(placeable.width.toFloat(), placeable.height.toFloat()),
+                            viewportGap = viewportGap,
+                            horizontalOffset = horizontalOffset,
+                            verticalOffset = verticalOffset,
+                            verticalOffsetAbove = verticalOffsetAbove,
+                            verticalPlacement = verticalPlacement,
+                            horizontalPlacement = horizontalPlacement,
+                            horizontalAutoFlip = horizontalAutoFlip,
+                        )
+                    val layoutWidth = if (constraints.hasBoundedWidth) constraints.maxWidth else placeable.width
+                    val layoutHeight = if (constraints.hasBoundedHeight) constraints.maxHeight else placeable.height
+                    layout(layoutWidth, layoutHeight) {
+                        if (popoverOffset != null) {
+                            placeable.place(popoverOffset.x.toInt(), popoverOffset.y.toInt())
+                        }
+                    }
+                }
             }
         }
     }

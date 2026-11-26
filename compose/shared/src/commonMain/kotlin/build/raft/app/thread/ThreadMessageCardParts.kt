@@ -55,7 +55,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -330,18 +329,9 @@ internal fun ThreadAuthorDescriptionPopover(
     request: ThreadAuthorDescriptionPopoverRequest,
     onDismiss: () -> Unit
 ) {
-    val density = LocalDensity.current
-    val dimensions = threadAuthorDescriptionPopoverDimensions(request.description)
-    val estimatedSize =
-        with(density) {
-            Size(
-                width = dimensions.width.toPx(),
-                height = dimensions.height.toPx()
-            )
-        }
     RaftAnchoredPopover(
         anchor = request.anchor,
-        contentSize = estimatedSize,
+        contentSize = null,
         onDismiss = onDismiss,
         horizontalAutoFlip = true,
         verticalPlacement = RaftFloatingVerticalPlacement.Auto,
