@@ -25,7 +25,9 @@ import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.RaftAndroidNotificationChannelKind
 import build.raft.app.data.RaftNotificationLocalization
 import build.raft.app.data.RaftNotificationRetract
+import build.raft.app.data.RaftPushDeliveryTransport
 import build.raft.app.data.RaftRetractWatermarks
+import build.raft.app.push.AndroidPushDeliveryTracker
 import build.raft.app.data.parseRaftPushBadge
 import build.raft.app.data.parseRaftPushSeq
 import build.raft.app.data.raftAndroidNotificationChannelKind
@@ -345,6 +347,8 @@ internal object AndroidUnreadNotificationPoster {
                     .firstOrNull { it.tag == AndroidUnreadNotificationGrouping.CONVERSATION_TAG && it.id == notificationId }
                     ?.let { UnreadConversationHistory.readFrom(it.notification.extras) }
                 ?: UnreadConversationHistory.EMPTY
+        val incomingMessageId = request.optString("messageId").trim()
+        val duplicateMessage = incomingMessageId.isNotEmpty() && incomingMessageId in previous.messageIds
         val notification =
             buildUnreadNotification(
                 context = appContext,
@@ -389,7 +393,8 @@ internal object AndroidUnreadNotificationPoster {
             "code" to "posted",
             "notificationId" to notificationId,
             "channelId" to channelId,
-            "count" to history.count
+            "count" to history.count,
+            "duplicate" to duplicateMessage
         )
     }
 
@@ -937,6 +942,7 @@ internal object AndroidUnreadNotificationPoster {
             }
             ?: return null
         intent.putExtra(EXTRA_RAFT_APP_OPEN_SOURCE, RAFT_APP_OPEN_SOURCE_PUSH_NOTIFICATION)
+        AndroidPushDeliveryTracker.putDeliveryOpenExtras(intent, request)
         return PendingIntent.getActivity(
             appContext,
             notificationId,
@@ -1067,6 +1073,12 @@ internal object AndroidUnreadNotificationPoster {
             .put("silent", silent)
             .put("route", routeJson.orEmpty())
             .put("subtitle", subtitle.orEmpty())
+            .put("deliveryId", deliveryId.orEmpty())
+            .apply {
+                if (!deliveryId.isNullOrBlank()) {
+                    put("deliveryTransport", RaftPushDeliveryTransport.MobileSocket.wire)
+                }
+            }
             .putRaftNotificationLocalization(localization)
 
     /**

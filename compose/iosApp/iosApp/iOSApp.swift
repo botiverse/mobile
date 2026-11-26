@@ -10,6 +10,53 @@ private enum RaftIosPushEnvironment: String {
     case production
 }
 
+/// End-to-end push delivery observability helpers (`#proj-mobile:#405`).
+/// No-op when `deliveryId` is absent/invalid; never includes message content or identifiers.
+private enum RaftIosPushDeliveryObservability {
+    static func deliveryId(from userInfo: [AnyHashable: Any]) -> String? {
+        RaftIosNotificationRetraction.string(userInfo["deliveryId"])
+    }
+
+    static func serverId(from userInfo: [AnyHashable: Any]) -> String? {
+        RaftIosNotificationRetraction.string(userInfo["serverId"])
+            ?? RaftIosNotificationRetraction.string((userInfo["route"] as? [AnyHashable: Any])?["serverId"])
+    }
+
+    static func category(from userInfo: [AnyHashable: Any]) -> String? {
+        RaftIosNotificationRetraction.string(userInfo["raftCategory"])
+            ?? RaftIosNotificationRetraction.string(userInfo["category"])
+    }
+
+    static func kind(from userInfo: [AnyHashable: Any]) -> String? {
+        RaftIosNotificationRetraction.string(userInfo["kind"])
+    }
+
+    static func nowEpochMillis() -> Int64 {
+        epochMillis(Date())
+    }
+
+    static func epochMillis(_ date: Date) -> Int64 {
+        Int64(date.timeIntervalSince1970 * 1000.0)
+    }
+
+    /// Backfills `mobile.push.presented` (`inferred_from_center = true`) for sampled APNs alerts
+    /// delivered while the app was backgrounded/killed (no NotificationServiceExtension in 1.31).
+    static func backfillDeliveredNotifications() {
+        UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
+            for notification in notifications {
+                let userInfo = notification.request.content.userInfo
+                guard let deliveryId = deliveryId(from: userInfo) else { continue }
+                _ = RaftIosPushDeliveryTraceBridge.shared.recordApnsCenterBackfillPresented(
+                    deliveryId: deliveryId,
+                    serverId: serverId(from: userInfo),
+                    occurredAtMs: epochMillis(notification.date)
+                )
+            }
+            RaftIosPushDeliveryTraceBridge.shared.drainIfReady()
+        }
+    }
+}
+
 // Internal (not private) so RaftIosSceneDelegate can forward notification taps.
 enum RaftIosPushHost {
     private static let remoteNotificationsStateName = Notification.Name("slockIosRemoteNotificationsState")
@@ -321,6 +368,15 @@ enum RaftIosPushHost {
         // Product analytics: this open came from a notification (`app_opened.via`). Reported
         // before the activation it belongs to, so not deferred to the main queue.
         RaftIosProductEventsHost.shared.noteNotificationOpen()
+        if let deliveryId = RaftIosPushDeliveryObservability.deliveryId(from: userInfo) {
+            let appState = (source == "cold_launch" || source == "scene_connect") ? "cold_start" : "background"
+            RaftIosPushDeliveryTraceBridge.shared.recordApnsOpened(
+                deliveryId: deliveryId,
+                serverId: RaftIosPushDeliveryObservability.serverId(from: userInfo),
+                appState: appState,
+                occurredAtMs: RaftIosPushDeliveryObservability.nowEpochMillis()
+            )
+        }
         runOnMain {
             guard let payload = sanitizedSystemNotificationOpenPayload(
                 userInfo: userInfo,
@@ -574,6 +630,8 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
                 if removed > 0 {
                     RaftIosDiagnosticsRecord("info", "SlockIosPush", "retract_watermark_swept removed=\(removed)")
                 }
+                // #proj-mobile:#405: backfill presented events for sampled APNs alerts delivered while hidden.
+                RaftIosPushDeliveryObservability.backfillDeliveredNotifications()
             }
         }
         RaftIosDesktopShortcutHost.install()
@@ -655,6 +713,20 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         let userInfo = notification.request.content.userInfo
+        let deliveryId = RaftIosPushDeliveryObservability.deliveryId(from: userInfo)
+        let deliveryServerId = RaftIosPushDeliveryObservability.serverId(from: userInfo)
+        let isForeground = UIApplication.shared.applicationState == .active
+        let occurredAtMs = RaftIosPushDeliveryObservability.nowEpochMillis()
+        if let deliveryId {
+            RaftIosPushDeliveryTraceBridge.shared.recordApnsReceived(
+                deliveryId: deliveryId,
+                serverId: deliveryServerId,
+                category: RaftIosPushDeliveryObservability.category(from: userInfo),
+                kind: RaftIosPushDeliveryObservability.kind(from: userInfo),
+                isForeground: isForeground,
+                occurredAtMs: occurredAtMs
+            )
+        }
         // A Settings test (slock docs/contracts/notifications.md §6): confirm it is being shown.
         if let testId = userInfo["testId"] as? String, !testId.isEmpty {
             RaftNotificationTestAck.shared.ack(testId: testId, shown: true)
@@ -666,12 +738,30 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             watermarks: RaftIosRetractWatermarks.load(),
             now: Date()
         ) {
+            if let deliveryId {
+                RaftIosPushDeliveryTraceBridge.shared.recordApnsSuppressed(
+                    deliveryId: deliveryId,
+                    serverId: deliveryServerId,
+                    suppressReason: "retracted",
+                    isForeground: isForeground,
+                    occurredAtMs: occurredAtMs
+                )
+            }
             RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_suppressed reason=retracted")
             completionHandler([])
             return
         }
         if RaftIosPushHost.targetsVisibleConversation(userInfo: userInfo) {
             // The user is already looking at this conversation: no banner or sound, same as the in-app banner.
+            if let deliveryId {
+                RaftIosPushDeliveryTraceBridge.shared.recordApnsSuppressed(
+                    deliveryId: deliveryId,
+                    serverId: deliveryServerId,
+                    suppressReason: "visible_conversation",
+                    isForeground: isForeground,
+                    occurredAtMs: occurredAtMs
+                )
+            }
             RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_suppressed reason=visible_conversation")
             completionHandler([.badge])
             return
@@ -680,12 +770,29 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         // (no message) keeps its system banner in the foreground.
         let raftCategory = (notification.request.content.userInfo["raftCategory"] as? String) ?? ""
         let messageLess = ["reminder", "system_notice", "test"].contains(raftCategory)
-        if UIApplication.shared.applicationState == .active && !messageLess {
+        if isForeground && !messageLess {
             // Review S7: in the foreground only the shared in-app banner shows (it gets the same
             // notification over the socket); the system copy goes to Notification Center silently.
+            if let deliveryId {
+                RaftIosPushDeliveryTraceBridge.shared.recordApnsSuppressed(
+                    deliveryId: deliveryId,
+                    serverId: deliveryServerId,
+                    suppressReason: "foreground_suppressed",
+                    isForeground: true,
+                    occurredAtMs: occurredAtMs
+                )
+            }
             RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_will_present mode=list_only reason=foreground")
             completionHandler([.list, .badge])
             return
+        }
+        if let deliveryId {
+            RaftIosPushDeliveryTraceBridge.shared.recordApnsPresented(
+                deliveryId: deliveryId,
+                serverId: deliveryServerId,
+                isForeground: isForeground,
+                occurredAtMs: occurredAtMs
+            )
         }
         RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_will_present")
         completionHandler([.banner, .list, .sound, .badge])

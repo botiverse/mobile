@@ -1422,6 +1422,9 @@ private data class NotificationPushDto(
     // Banner copy (contract §1.5): the context line and the localization keys (slock mobileSocket.ts).
     val subtitle: String? = null,
     val localization: JsonElement? = null,
+    // Push delivery observability (#proj-mobile:#405): server-sampled opaque UUID + phone alert hint.
+    val deliveryId: String? = null,
+    val phoneAlert: Boolean? = null,
 )
 
 /**
@@ -2477,7 +2480,9 @@ private fun NotificationPushDto.toDomainOrNull(
         routeJson = route?.takeIf { parseRaftNotificationRouteObject(it) != null }?.toString(),
         silent = silent,
         subtitle = subtitle?.takeIf { it.isNotBlank() },
-        localization = parseRaftNotificationLocalizationObject(localization as? JsonObject)
+        localization = parseRaftNotificationLocalizationObject(localization as? JsonObject),
+        deliveryId = deliveryId?.trim()?.takeIf { it.isNotEmpty() },
+        phoneAlert = phoneAlert,
     )
 }
 
@@ -2519,7 +2524,9 @@ private fun NotificationPushDto.toUnknownKindNoticeOrNull(diagnostics: (String) 
         routeJson = route?.takeIf { parseRaftNotificationRouteObject(it) != null }?.toString(),
         silent = silent,
         subtitle = subtitle?.takeIf { it.isNotBlank() },
-        localization = parseRaftNotificationLocalizationObject(localization as? JsonObject)
+        localization = parseRaftNotificationLocalizationObject(localization as? JsonObject),
+        deliveryId = deliveryId?.trim()?.takeIf { it.isNotEmpty() },
+        phoneAlert = phoneAlert,
     )
 }
 
@@ -2542,7 +2549,9 @@ private fun NotificationPushDto.toNoticeOrNull(): NotificationNoticeReceived? {
         routeJson = route?.takeIf { parseRaftNotificationRouteObject(it) != null }?.toString(),
         silent = silent,
         subtitle = subtitle?.takeIf { it.isNotBlank() },
-        localization = parseRaftNotificationLocalizationObject(localization as? JsonObject)
+        localization = parseRaftNotificationLocalizationObject(localization as? JsonObject),
+        deliveryId = deliveryId?.trim()?.takeIf { it.isNotEmpty() },
+        phoneAlert = phoneAlert,
     )
 }
 

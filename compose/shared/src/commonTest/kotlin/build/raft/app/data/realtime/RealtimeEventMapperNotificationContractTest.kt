@@ -38,7 +38,8 @@ class RealtimeEventMapperNotificationContractTest {
                       "id": "message:m-9", "category": "dm", "priority": "high", "seq": 41,
                       "groupKey": "server-2:dm-1", "conversationId": "dm-1",
                       "route": {"type": "dm", "serverId": "server-2", "channelId": "dm-1", "messageId": "m-9"},
-                      "routeUrl": "/s/acme/dm/dm-1?msg=m-9", "silent": true, "previewMode": "full"
+                      "routeUrl": "/s/acme/dm/dm-1?msg=m-9", "silent": true, "previewMode": "full",
+                      "deliveryId": "550e8400-e29b-41d4-a716-446655440000", "phoneAlert": true
                     }
                     """.trimIndent()
                 )
@@ -49,6 +50,8 @@ class RealtimeEventMapperNotificationContractTest {
         assertEquals("server-2:dm-1", push.groupKey)
         assertEquals("dm-1", push.conversationId)
         assertEquals(true, push.silent)
+        assertEquals("550e8400-e29b-41d4-a716-446655440000", push.deliveryId)
+        assertEquals(true, push.phoneAlert)
         assertEquals(RaftNotificationRoute.DirectMessage("server-2", "dm-1", "m-9"), parseRaftNotificationRoute(push.routeJson))
     }
 
@@ -64,6 +67,8 @@ class RealtimeEventMapperNotificationContractTest {
         assertNull(push.category)
         assertNull(push.seq)
         assertNull(push.routeJson)
+        assertNull(push.deliveryId)
+        assertNull(push.phoneAlert)
     }
 
     @Test
@@ -78,13 +83,16 @@ class RealtimeEventMapperNotificationContractTest {
                      "parentMessageId":null,"messageId":null,"seq":null,"conversationId":null,
                      "title":"Reminder","body":"Standup","tag":"s1:reminder","id":"reminder:r1:2026-10-30T09:00:00.000Z",
                      "category":"reminder","priority":"high","groupKey":"s1:reminder","route":null,
-                     "routeUrl":"/s/acme/activity","silent":false}
+                     "routeUrl":"/s/acme/activity","silent":false,
+                     "deliveryId":"660e8400-e29b-41d4-a716-446655440001","phoneAlert":false}
                     """.trimIndent()
                 )
             )
         assertEquals("reminder", notice.category)
         assertEquals("s1:reminder", notice.groupKey)
         assertEquals("reminder:r1:2026-10-30T09:00:00.000Z", notice.notificationId)
+        assertEquals("660e8400-e29b-41d4-a716-446655440001", notice.deliveryId)
+        assertEquals(false, notice.phoneAlert)
         assertNull(notice.routeJson)
         // Without a category and groupKey a message-less payload stays dropped.
         assertNull(
