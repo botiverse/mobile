@@ -1768,8 +1768,8 @@ HSPLbuild/raft/app/ThreadMessageItemsKt;->formatCompactTimestampLabel(Lbuild/raf
 HSPLbuild/raft/app/ThreadMessageItemsKt;->hasLocalSendState(Lbuild/raft/app/RaftThreadMessageItem;)Z
 HSPLbuild/raft/app/ThreadMessageCardPartsKt;->hasThreadFooterMeta(Lbuild/raft/app/RaftThreadMessageItem;ZZ)Z
 HSPLbuild/raft/app/ThreadMessageCardPartsKt;->isDeletedThreadAuthor(Lbuild/raft/app/RaftThreadMessageItem;)Z
-HSPLbuild/raft/app/ThreadMessagesListKt;->isLatestItemAtRenderedBottom$default(Lcom/tencent/kuikly/compose/foundation/lazy/LazyListState;IIILjava/lang/Object;)Z
-HSPLbuild/raft/app/ThreadMessagesListKt;->isLatestItemAtRenderedBottom(Lcom/tencent/kuikly/compose/foundation/lazy/LazyListState;II)Z
+HSPLbuild/raft/app/ThreadListViewportGeometryKt;->isLatestItemAtRenderedBottom$default(Lcom/tencent/kuikly/compose/foundation/lazy/LazyListState;IIILjava/lang/Object;)Z
+HSPLbuild/raft/app/ThreadListViewportGeometryKt;->isLatestItemAtRenderedBottom(Lcom/tencent/kuikly/compose/foundation/lazy/LazyListState;II)Z
 HSPLbuild/raft/app/ThreadMessageCardPartsKt;->isLikelyThreadAgentId(Ljava/lang/String;)Z
 HSPLbuild/raft/app/ThreadMessageCardPartsKt;->isRemovedThreadHuman(Lbuild/raft/app/RaftThreadMessageItem;)Z
 HSPLbuild/raft/app/ThreadMessageCardPartsKt;->isSystemMessage(Lbuild/raft/app/RaftThreadMessageItem;)Z
