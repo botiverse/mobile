@@ -1476,8 +1476,8 @@
     <string name="activity_swipe_layer_done">Concluir</string>
     <string name="activity_swipe_layer_unfollow">Deixar de seguir</string>
     <string name="activity_swipe_layer_mute">Silenciar</string>
-    <string name="activity_swipe_layer_read">Ler</string>
-    <string name="activity_swipe_layer_unread">Não lidas</string>
+    <string name="activity_swipe_layer_read">Lida</string>
+    <string name="activity_swipe_layer_unread">Não lida</string>
     <string name="activity_swipe_unfollowed_thread">Você deixou de seguir a conversa em %1$s</string>
     <string name="activity_swipe_muted_activity">Atividade silenciada em %1$s</string>
     <string name="activity_fallback_thread_update">Atualização da thread</string>
@@ -3649,8 +3649,8 @@
     <string name="thread_followers_restore_failed">Não foi possível restaurar este agente. A lista foi atualizada.</string>
     <string name="thread_followers_empty">Nenhum agente segue esta thread.</string>
     <string name="thread_followers_peer_server">Outro servidor</string>
-    <string name="thread_message_read_status">Ler</string>
-    <string name="thread_mention_agent_read">Ler</string>
+    <string name="thread_message_read_status">Lida</string>
+    <string name="thread_mention_agent_read">Lida</string>
     <string name="thread_mention_agent_unread">Ainda não lida</string>
     <string name="thread_followers_removed">%1$s não segue mais esta thread.</string>
     <string name="thread_followers_restored">%1$s voltou a seguir esta thread.</string>

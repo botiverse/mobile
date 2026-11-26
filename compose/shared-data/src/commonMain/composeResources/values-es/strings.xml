@@ -1476,7 +1476,7 @@
     <string name="activity_swipe_layer_done">Listo</string>
     <string name="activity_swipe_layer_unfollow">Dejar de seguir</string>
     <string name="activity_swipe_layer_mute">Silenciar</string>
-    <string name="activity_swipe_layer_read">Leer</string>
+    <string name="activity_swipe_layer_read">Leído</string>
     <string name="activity_swipe_layer_unread">No leído</string>
     <string name="activity_swipe_unfollowed_thread">Dejaste de seguir el hilo en %1$s</string>
     <string name="activity_swipe_muted_activity">Actividad silenciada en %1$s</string>
@@ -3649,8 +3649,8 @@
     <string name="thread_followers_restore_failed">No se pudo restaurar este agente. Se actualizó la lista.</string>
     <string name="thread_followers_empty">Ningún agente sigue este hilo.</string>
     <string name="thread_followers_peer_server">Otro servidor</string>
-    <string name="thread_message_read_status">Leer</string>
-    <string name="thread_mention_agent_read">Leer</string>
+    <string name="thread_message_read_status">Leído</string>
+    <string name="thread_mention_agent_read">Leído</string>
     <string name="thread_mention_agent_unread">Aún sin leer</string>
     <string name="thread_followers_removed">Se quitó a %1$s de los seguidores de este hilo.</string>
     <string name="thread_followers_restored">%1$s vuelve a seguir el hilo.</string>
