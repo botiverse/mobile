@@ -8140,7 +8140,11 @@ private fun AppShellBannerAndExternalShareHosts(
             },
             onBannerDismiss = { target -> foregroundBannerStore.dismiss(target.id) }
         ) {
-            key("route-main") { mainRouteContent() }
+            CompositionLocalProvider(
+                build.raft.app.agents.LocalAgentVoiceCallHostMounted provides true,
+            ) {
+                key("route-main") { mainRouteContent() }
+            }
         }
         ExternalShareLaunchHost(
             pageData = pager.pageData.params,
@@ -8174,6 +8178,10 @@ private fun AppShellBannerAndExternalShareHosts(
                     ?.snapshot
                     ?.takeIf { it.server.id == serverId }
             },
+        )
+        build.raft.app.agents.AgentVoiceCallOverlayHost(
+            store = sharedStores.agentVoiceCallStore,
+            bottomClearance = shellScope.bottomTabBarContentInset,
         )
     }
 }

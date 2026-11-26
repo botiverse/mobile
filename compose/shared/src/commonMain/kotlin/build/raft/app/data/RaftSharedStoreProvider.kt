@@ -2075,6 +2075,25 @@ internal class RaftSharedStoreProvider private constructor(
         )
     }
 
+    /**
+     * Process-wide single active Raft Agent Voice call (`#wg-mobile-sync:#95`), shared across
+     * shell tabs, pushed pages, and server switches until hung up or closed.
+     */
+    val agentVoiceCallStore: SharedAgentVoiceCallStore by lazy {
+        SharedAgentVoiceCallStore(
+            api = RaftAgentVoiceCallNetworkApi(networkClient),
+            scope = threadSendScope,
+        ).also { store ->
+            threadSendScope.launch {
+                authStore.authSessionEvents.collect { event ->
+                    if (event is AuthSessionEvent.Cleared) {
+                        store.resetOnSignOut()
+                    }
+                }
+            }
+        }
+    }
+
     /** The current API environment's id: the feature-flag evaluation context. */
     private fun updateNetworkKmmRecoveryEnvironment(): String {
         val environment = apiEnvironmentStore.current()

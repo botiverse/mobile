@@ -115,6 +115,10 @@ import build.raft.designsystem.components.RaftEmptyStateDefaults
  */
 @Composable
 internal fun MembersAgentSkillsSection(detail: AgentDetailSnapshot?) {
+    // Raft Agent Voice settings come right before AssistantOwnerSection and Skills (web AgentDetailPanel).
+    if (detail != null && detail.summary?.deletedAt.isNullOrBlank() && detail.summary?.managedByAppInstallId.isNullOrBlank()) {
+        MembersAgentVoiceSectionHost(detail.agentId)
+    }
     // The owner's assistant settings come before Skills (web `AssistantOwnerSection`), emitted here
     // rather than in [MembersAgentProfileTab], whose body is shape-sensitive.
     if (detail != null && detail.summary?.deletedAt.isNullOrBlank()) MembersAgentAssistantOwnerSection(detail.agentId)

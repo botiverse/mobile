@@ -56,6 +56,12 @@ ALWAYS_CLASSES = {
     "kotlin.FloatArray", "kotlin.DoubleArray", "kotlin.BooleanArray", "kotlin.CharArray",
     "kotlin.Throwable", "kotlin.Exception", "kotlin.RuntimeException", "kotlin.IllegalStateException",
     "kotlin.IllegalArgumentException", "kotlin.Pair", "kotlin.Triple",
+    # Native bridge contract types pre-exported for the iOS LiveKit voice engine (#wg-mobile-sync:#95).
+    "build.raft.app.data.RaftAgentVoiceEngineState",
+    "build.raft.app.data.RaftAgentVoiceDisconnectReason",
+    "build.raft.app.data.RaftAgentVoiceEngineListener",
+    "build.raft.app.data.RaftAgentVoiceCallEngine",
+    "build.raft.app.data.RaftAgentVoiceCallEngineRegistry",
 }
 # Any's members: never entry points of an interface (Kotlin/Native leaves them out of a protocol).
 ANY_MEMBERS = {"equals", "hashCode", "toString"}

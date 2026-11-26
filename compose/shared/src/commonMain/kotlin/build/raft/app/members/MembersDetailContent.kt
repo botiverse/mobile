@@ -300,6 +300,11 @@ internal class MembersDetailActions(
     /** Opens the profile of an agent listed under a human's Created Agents. */
     val onOpenCreatedAgent: ((AgentProfile) -> Unit)? = null,
     /**
+     * Raft Agent Voice: starts a voice call to this agent. Null when the flag is off, the viewer
+     * is a Guest, the native engine is unsupported, or the agent is not callable.
+     */
+    val onStartCall: (() -> Unit)? = null,
+    /**
      * Agent Lounge v0: opens this agent's Lounge. Null when Lounges are off here (flag, Guest); the
      * profile also hides it for a deleted agent, a personal assistant and a remote profile.
      */
@@ -1147,6 +1152,7 @@ internal fun MembersDetailContent(
                     onBack = onBack,
                     onOpenDirectMessage = onOpenDirectMessage,
                     directMessageOpening = actions.directMessageOpening,
+                    onStartCall = actions.onStartCall?.takeIf { !membersAgentProfileIsRemote(accessMode) },
                     onOpenLounge =
                         actions.onOpenLounge?.takeIf {
                             agentOffersLounge(
