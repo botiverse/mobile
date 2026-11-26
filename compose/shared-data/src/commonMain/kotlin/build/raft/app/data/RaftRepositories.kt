@@ -1232,9 +1232,20 @@ data class AgentLifecycleActionResult(
     val machineId: String? = null
 )
 
+data class ChannelMemberStillInChannelServer(
+    val id: String,
+    val name: String,
+)
+
+data class ChannelMemberStillInChannel(
+    val through: List<ChannelMemberStillInChannelServer>,
+    val text: String? = null,
+)
+
 data class ChannelMemberActionResult(
     val channelId: ChannelId,
     val memberId: MemberId,
     val member: MemberProfile? = null,
-    val added: Boolean = true
+    val added: Boolean = true,
+    val stillInChannel: ChannelMemberStillInChannel? = null,
 )

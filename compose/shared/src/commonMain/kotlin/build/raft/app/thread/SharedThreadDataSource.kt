@@ -1383,7 +1383,7 @@ internal class SharedThreadDataSource(
         payload: RaftThreadScreenPayload,
         memberId: String,
         kind: String?
-    ): DataResult<RaftThreadScreenPayload> = channelMemberCommands.removeChannelMember(payload, memberId, kind)
+    ): DataResult<ThreadRemoveChannelMemberResult> = channelMemberCommands.removeChannelMember(payload, memberId, kind)
 
     suspend fun leaveChannel(payload: RaftThreadScreenPayload): DataResult<Unit> = channelMemberCommands.leaveChannel(payload)
 

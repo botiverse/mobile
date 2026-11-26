@@ -2070,6 +2070,76 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun removeChannelMemberKeepsMemberInRosterAndRefreshesWhenStillInChannel() = runBlocking {
+        val repository = FakeMemberRepository()
+        val serverA = MemberServerRef(id = "server-a", name = "Server A", slug = "server-a")
+        val viewerServer = MemberServerRef(id = "server-1", name = "Workspace", slug = "workspace")
+        val aliceBefore =
+            member("u1", "Alice").copy(
+                serverId = ServerId("server-1"),
+                inViewerServer = true,
+                canRemoveFromChannel = true,
+                servers = listOf(viewerServer, serverA),
+            )
+        val aliceAfter =
+            member("u1", "Alice").copy(
+                serverId = ServerId("server-a"),
+                serverName = "Server A",
+                inViewerServer = false,
+                canRemoveFromChannel = false,
+                servers = listOf(serverA),
+            )
+        val bob = member("u2", "Bob")
+        val stillInChannel =
+            ChannelMemberStillInChannel(
+                through = listOf(ChannelMemberStillInChannelServer(id = "server-a", name = "Server A")),
+                text = "Alice is still in the channel through Server A. Only your server’s side of their membership was removed.",
+            )
+        repository.membersByServer["server-1"] = listOf(aliceBefore, bob)
+        repository.channelMembersByChannel["channel-1"] = listOf(aliceBefore, bob)
+        repository.removeChannelMemberStillInChannel = { stillInChannel }
+        repository.onRemoveChannelMemberStillInChannel = {
+            repository.channelMembersByChannel["channel-1"] = listOf(aliceAfter, bob)
+        }
+
+        val store = SharedServerMembersStore(repository)
+        store.refreshMembers(ServerId("server-1"))
+        store.ensureMemberSuggestionsForServer(
+            serverId = ServerId("server-1"),
+            mentionChannelId = "channel-1"
+        )
+        assertEquals(1, repository.getChannelMembersCalls)
+
+        val result =
+            store.removeChannelMember(
+                serverId = ServerId("server-1"),
+                request =
+                    RemoveChannelMemberRequest(
+                        channelId = ChannelId("channel-1"),
+                        memberId = MemberId("u1"),
+                        kind = MemberKind.Human,
+                    )
+            )
+
+        assertIs<DataResult.Content<ChannelMemberActionResult>>(result)
+        assertEquals(stillInChannel, result.data.stillInChannel)
+        assertEquals(1, repository.removeChannelMemberCalls)
+        assertEquals(2, repository.getChannelMembersCalls)
+        val roster = store.currentChannelMembers(ServerId("server-1"), ChannelId("channel-1"))
+        assertEquals(listOf("u1", "u2"), roster.map { it.id.value })
+        val refreshedAlice = roster.single { it.id.value == "u1" }
+        assertEquals(false, refreshedAlice.inViewerServer)
+        assertEquals(false, refreshedAlice.canRemoveFromChannel)
+        assertEquals(listOf(serverA), refreshedAlice.servers)
+        val suggestions =
+            store.state.value.memberSuggestionSlice(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1"
+            ).suggestions
+        assertEquals(true, suggestions.single { it.memberId == "u1" }.inMentionChannel)
+    }
+
+    @Test
     fun seedProfilesCannotOverrideRealtimePresenceFactStatus() = runBlocking {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)
@@ -2624,6 +2694,8 @@ class SharedServerMembersStoreTest {
         var channelMembersCanAdd: Boolean = true
         var addChannelMemberStarted: CompletableDeferred<Unit>? = null
         var releaseAddChannelMember: CompletableDeferred<Unit>? = null
+        var removeChannelMemberStillInChannel: ((RemoveChannelMemberRequest) -> ChannelMemberStillInChannel?)? = null
+        var onRemoveChannelMemberStillInChannel: ((RemoveChannelMemberRequest) -> Unit)? = null
 
         override suspend fun getMembers(
             priority: DataRequestPriority,
@@ -2718,16 +2790,22 @@ class SharedServerMembersStoreTest {
             request: RemoveChannelMemberRequest
         ): DataResult<ChannelMemberActionResult> {
             removeChannelMemberCalls += 1
-            channelMembersByChannel[request.channelId.value] =
-                channelMembersByChannel[request.channelId.value]
-                    .orEmpty()
-                    .filterNot { it.id == request.memberId && it.kind == request.kind }
+            val stillInChannel = removeChannelMemberStillInChannel?.invoke(request)
+            if (stillInChannel != null) {
+                onRemoveChannelMemberStillInChannel?.invoke(request)
+            } else {
+                channelMembersByChannel[request.channelId.value] =
+                    channelMembersByChannel[request.channelId.value]
+                        .orEmpty()
+                        .filterNot { it.id == request.memberId && it.kind == request.kind }
+            }
             return DataResult.Content(
                 ChannelMemberActionResult(
                     channelId = request.channelId,
                     memberId = request.memberId,
                     member = null,
-                    added = false
+                    added = false,
+                    stillInChannel = stillInChannel,
                 )
             )
         }

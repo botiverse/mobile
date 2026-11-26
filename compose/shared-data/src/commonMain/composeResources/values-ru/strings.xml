@@ -3938,6 +3938,7 @@
     <string name="channel_members_update_role_failed">Не удалось изменить роль этого участника в канале. Попробуйте ещё раз.</string>
     <string name="channel_members_cannot_demote_server_admin_title">Нельзя понизить администраторов сервера</string>
     <string name="channel_members_cannot_demote_server_admin_message">%1$s — владелец или администратор сервера, поэтому остаётся администратором во всех каналах. Сначала измените роль этого участника на сервере в разделе «Администрирование».</string>
+    <string name="channel_members_still_in_channel_through">%1$s остаётся в канале через другие серверы (%2$s). Удалено только участие через ваш сервер.</string>
     <string name="member_row_status_online">В сети</string>
     <string name="member_row_status_likely_online">Вероятно, в сети</string>
     <string name="member_row_status_offline">Не в сети</string>

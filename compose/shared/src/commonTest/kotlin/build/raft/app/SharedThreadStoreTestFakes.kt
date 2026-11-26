@@ -28,6 +28,7 @@ import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.ChannelFilesSnapshot
 import build.raft.app.data.ChannelMemberActionResult
 import build.raft.app.data.ChannelMemberSnapshot
+import build.raft.app.data.ChannelMemberStillInChannel
 import build.raft.app.data.ConversationRepository
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -270,6 +271,8 @@ internal object SharedThreadStoreTestFakes {
         val addRequests: MutableList<AddChannelMemberRequest> = mutableListOf()
         val batchRequests: MutableList<AddChannelMembersBatchRequest> = mutableListOf()
         val removeRequests: MutableList<RemoveChannelMemberRequest> = mutableListOf()
+        var removeStillInChannelProvider: ((RemoveChannelMemberRequest) -> ChannelMemberStillInChannel?)? = null
+        var onRemoveStillInChannel: ((RemoveChannelMemberRequest) -> List<MemberProfile>)? = null
 
         override suspend fun getMembers(
             priority: build.raft.app.data.DataRequestPriority,
@@ -459,13 +462,20 @@ internal object SharedThreadStoreTestFakes {
         ): DataResult<ChannelMemberActionResult> {
             removeRequests += request
             val member = channelMembers.firstOrNull { it.id == request.memberId }
-            channelMembers = channelMembers.filterNot { it.id == request.memberId }
+            val stillInChannel = removeStillInChannelProvider?.invoke(request)
+            channelMembers =
+                if (stillInChannel != null) {
+                    onRemoveStillInChannel?.invoke(request) ?: channelMembers
+                } else {
+                    channelMembers.filterNot { it.id == request.memberId }
+                }
             return DataResult.Content(
                 ChannelMemberActionResult(
                     channelId = request.channelId,
                     memberId = request.memberId,
                     member = member,
-                    added = false
+                    added = false,
+                    stillInChannel = stillInChannel,
                 )
             )
         }

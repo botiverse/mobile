@@ -4117,6 +4117,7 @@
     <string name="channel_members_update_role_failed">このメンバーのチャンネルでの役割を更新できませんでした。もう一度お試しください。</string>
     <string name="channel_members_cannot_demote_server_admin_title">サーバー管理者は降格できません</string>
     <string name="channel_members_cannot_demote_server_admin_message">%1$s はサーバーのオーナーまたは管理者のため、すべてのチャンネルでチャンネル管理者のままになります。先に「設定 → 管理」でサーバーでの役割を変更してください。</string>
+    <string name="channel_members_still_in_channel_through">%1$s は %2$s 経由で引き続きチャンネルに参加しています。削除されたのは、あなたのサーバー側からの参加だけです。</string>
     <string name="member_row_status_online">オンライン</string>
     <string name="member_row_status_likely_online">おそらくオンライン</string>
     <string name="member_row_status_offline">オフライン</string>

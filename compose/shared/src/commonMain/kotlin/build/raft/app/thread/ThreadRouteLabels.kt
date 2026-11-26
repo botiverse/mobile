@@ -63,6 +63,7 @@ internal data class ThreadRouteLabels(
     val memberAddedLabel: String,
     val unableToAddMemberLabel: String,
     val memberRemovedLabel: String,
+    val stillInChannelToastStrings: StillInChannelToastStrings,
     val unableToRemoveMemberLabel: String,
     val channelArchivedLabel: String,
     val unableToArchiveChannelLabel: String,
@@ -225,6 +226,7 @@ internal fun threadRouteLabels(): ThreadRouteLabels {
     val memberAddedLabel = stringResource(Res.string.thread_feedback_member_added)
     val unableToAddMemberLabel = stringResource(Res.string.thread_error_add_member)
     val memberRemovedLabel = stringResource(Res.string.thread_feedback_member_removed)
+    val stillInChannelToastStrings = stillInChannelToastStrings()
     val unableToRemoveMemberLabel = stringResource(Res.string.thread_error_remove_member)
     val channelArchivedLabel = stringResource(Res.string.thread_feedback_channel_archived)
     val unableToArchiveChannelLabel = stringResource(Res.string.thread_error_archive_channel)
@@ -308,6 +310,7 @@ internal fun threadRouteLabels(): ThreadRouteLabels {
         memberAddedLabel = memberAddedLabel,
         unableToAddMemberLabel = unableToAddMemberLabel,
         memberRemovedLabel = memberRemovedLabel,
+        stillInChannelToastStrings = stillInChannelToastStrings,
         unableToRemoveMemberLabel = unableToRemoveMemberLabel,
         channelArchivedLabel = channelArchivedLabel,
         unableToArchiveChannelLabel = unableToArchiveChannelLabel,

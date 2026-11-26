@@ -347,8 +347,12 @@ internal class BridgeModule : Module() {
     }
 
     /** [toast] with raft-ui's [intent] icon (an operation's info / success / warning); the native toast has none. */
-    fun toastWithIntent(content: String, intent: RaftToastIntent?) {
-        if (RaftCmpToasts.post(content, origin = pager?.host?.capabilities, intent = intent)) return
+    fun toastWithIntent(content: String, intent: RaftToastIntent?) =
+        toastWithIntent(content = content, intent = intent, durationMillis = null)
+
+    /** [toastWithIntent] with an explicit auto-dismiss timeout ([durationMillis], null uses the intent default). */
+    fun toastWithIntent(content: String, intent: RaftToastIntent?, durationMillis: Long?) {
+        if (RaftCmpToasts.post(content, origin = pager?.host?.capabilities, durationMillis = durationMillis, intent = intent)) return
         val methodArgs = JSONObject()
         methodArgs.put("content", content)
         callNativeMethod("toast", methodArgs, null)

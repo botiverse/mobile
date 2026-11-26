@@ -2963,19 +2963,33 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
             }
         if (result is DataResult.Content) {
             if (currentChannelMembersOwner(ServerId(serverKey)) != binding) return staleChannelMembersOwnerResult()
-            patchChannelMemberSlice(
-                binding = binding,
-                channelKey = channelKey,
-                memberId = request.memberId.value,
-                memberKind = request.kind,
-                inMentionChannel = false
-            )
-            removeMentionChannelMemberSuggestionSlices(
-                serverKey = serverKey,
-                channelKey = channelKey,
-                memberId = request.memberId.value,
-                memberKind = request.kind
-            )
+            if (result.data.stillInChannel != null) {
+                // Joint-channel human removal where the person remains in the channel through
+                // another connected server: keep them in the roster (and @-mention suggestions)
+                // and refresh the slice so server badges, origin, and removal capability reflect
+                // the remaining servers.
+                loadChannelMembers(
+                    serverId = ServerId(serverKey),
+                    channelId = request.channelId,
+                    priority = priority,
+                    force = true,
+                    expectedOwner = expectedOwner,
+                )
+            } else {
+                patchChannelMemberSlice(
+                    binding = binding,
+                    channelKey = channelKey,
+                    memberId = request.memberId.value,
+                    memberKind = request.kind,
+                    inMentionChannel = false
+                )
+                removeMentionChannelMemberSuggestionSlices(
+                    serverKey = serverKey,
+                    channelKey = channelKey,
+                    memberId = request.memberId.value,
+                    memberKind = request.kind
+                )
+            }
         }
         return result
     }
