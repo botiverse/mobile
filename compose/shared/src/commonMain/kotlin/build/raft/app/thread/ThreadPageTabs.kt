@@ -684,7 +684,7 @@ private fun ThreadChatTabContent(
                     ThreadLoadingState()
                 }
             } else {
-                LaunchedEffect(threadInstanceKey, timelineSlice.status) {
+                ThreadAfterMotionEffect(threadInstanceKey, timelineSlice.status) {
                     onThreadContentReady()
                 }
                 val emptyOfflineChrome =
