@@ -924,6 +924,11 @@ object RaftClientTraceEvents {
     @RaftCoreInternalApi fun emitActivityDoneTrace(serverId: String, event: ActivityDoneTraceEvent) {
         sender.emit(serverId, event.traceName, event.toTraceAttrs())
     }
+
+    /** #proj-o11y:#53 (slock #16951): an Activity row's unread state flipped without the person acting on it. */
+    @RaftCoreInternalApi fun emitActivityUnreadStateFlipped(serverId: String, event: ActivityUnreadStateFlipped) {
+        sender.emit(serverId, RaftActivityUnreadStateFlippedTraceName, event.toTraceAttrs())
+    }
 }
 
 /** `clientPlatform` as `X-Raft-Client-Platform` names the app, its `appVersion`, and `app_build`. */

@@ -186,7 +186,8 @@ import kotlin.random.Random
                             is AuthApiResult.Failure -> {
                                 val diagnosis =
                                     RefreshFailureDiagnosis(
-                                        unauthorized = response.code == 401 || response.code == 403,
+                                        // Refusal P3 B2 (slock #16902): only 401 ends a session; a 403 keeps it.
+                                        unauthorized = response.code == 401,
                                         serverCode = parseAuthRefreshErrorCode(response.errorBodyText),
                                         replayed = replayedAgeMillis != null,
                                         attemptAgeMillis = attempt.refreshAttemptAgeMillis(clockMillis()),
@@ -295,7 +296,7 @@ import kotlin.random.Random
                     recentUnauthorizedByRefreshToken.remove(exchange.originalSession.refreshToken)
                 }
                 is RefreshExchange.Failure -> {
-                    if (exchange.response.code == 401 || exchange.response.code == 403) {
+                    if (exchange.response.code == 401) {
                         recentUnauthorizedByRefreshToken[exchange.originalSession.refreshToken] =
                             RecentUnauthorizedRefresh(exchange)
                     }
@@ -355,7 +356,7 @@ import kotlin.random.Random
         safeCaller: String,
         safeReason: String,
     ) {
-        if (status != 401 && status != 403) return
+        if (status != 401) return
         val attemptFingerprint = attempt.attemptId.authTokenDiagnosticsFingerprint()
         val attemptAgeMillis = diagnosis.attemptAgeMillis ?: attempt.refreshAttemptAgeMillis(clockMillis())
         if (diagnosis.replayed) {
@@ -443,7 +444,8 @@ import kotlin.random.Random
         safeReason: String
     ): SharedAuthRefreshResult {
         val code = exchange.response.code
-        if (code != 401 && code != 403) {
+        // Refusal P3 B2 (slock #16902): only 401 invalidates the session; a 403 keeps it.
+        if (code != 401) {
             return SharedAuthRefreshResult.Failure(exchange.response)
         }
         if (clearOnUnauthorized) {
@@ -693,11 +695,12 @@ private const val AUTH_REFRESH_REPLAY_RETRY_WINDOW_MILLIS = 8_000L
         if (likelyExpired) " diagnosis=likely_expired_server_replay_receipt" else ""
 }
 
-/** Error body of `POST /auth/refresh`: `{ error, code? }` like the server's other auth errors. */
+/** Error body of `POST /auth/refresh`: `{ error, code?, errorCode? }` like the server's other auth errors. */
 @Serializable
 @RaftCoreInternalApi data class AuthRefreshErrorBodyDto(
     val error: String? = null,
     val code: String? = null,
+    val errorCode: String? = null,
 )
 
 private val authRefreshErrorJson = Json { ignoreUnknownKeys = true }
@@ -712,6 +715,7 @@ private val authRefreshErrorJson = Json { ignoreUnknownKeys = true }
             return null
         }
     return dto.code?.trim()?.takeIf { it.isNotEmpty() }
+        ?: dto.errorCode?.trim()?.takeIf { it.isNotEmpty() }
 }
 
 @RaftCoreInternalApi fun String?.authTokenDiagnosticsFingerprint(): String {

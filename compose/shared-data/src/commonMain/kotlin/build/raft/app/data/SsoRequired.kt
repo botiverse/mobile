@@ -23,6 +23,7 @@ import kotlinx.serialization.json.Json
 @RaftCoreInternalApi data class SsoRequiredErrorBody(
     val error: String? = null,
     val code: String? = null,
+    val errorCode: String? = null,
     val signInUrl: String? = null,
 )
 
@@ -35,7 +36,7 @@ private val ssoRequiredJson = Json { ignoreUnknownKeys = true }
     val body =
         runCatching { ssoRequiredJson.decodeFromString(SsoRequiredErrorBody.serializer(), text) }
             .getOrNull() ?: return null
-    return body.takeIf { it.code == SSO_REQUIRED_ERROR_CODE }
+    return body.takeIf { looseRefusalCode(code = it.code, errorCode = it.errorCode) == SSO_REQUIRED_ERROR_CODE }
 }
 
 /**

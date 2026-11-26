@@ -184,6 +184,9 @@ class SharedAuthRefreshReplayDiagnosticsTest {
         val cases =
             listOf(
                 SUPERSEDED_401_BODY to AUTH_REFRESH_ROTATION_SUPERSEDED_CODE,
+                """{"error":"Refresh token already rotated","errorCode":"refresh_rotation_superseded"}""" to
+                    AUTH_REFRESH_ROTATION_SUPERSEDED_CODE,
+                """{"code":"code_wins","errorCode":"fallback_loses"}""" to "code_wins",
                 STAGING_401_BODY to null,
                 """{"error":"refresh_rotation_superseded"}""" to null,
                 """{"error":"x","code":"  "}""" to null,
@@ -194,6 +197,45 @@ class SharedAuthRefreshReplayDiagnosticsTest {
             assertEquals(expected, parseAuthRefreshErrorCode(body), body)
         }
         assertNull(parseAuthRefreshErrorCode(null))
+    }
+
+    @Test
+    fun forbidden403RefreshPreservesSessionEvenWhenClearOnUnauthorizedIsTrue() = runTest {
+        val store = InMemoryRaftAuthSessionStore(session("keep-403-access", "keep-403-refresh"))
+        val api =
+            FakeRefreshAuthApi(
+                refreshTokenAssertion = "keep-403-refresh",
+                responses =
+                    listOf(
+                        AuthApiResult.Failure(
+                            code = 403,
+                            errorBodyText = """{"error":"Account access is restricted.","code":"account_restricted"}"""
+                        )
+                    ),
+            )
+        val critical = mutableListOf<String>()
+        val coordinator =
+            SharedAuthRefreshCoordinator(
+                sessionStore = store,
+                authApi = api,
+                clockMillis = { 9_000L },
+                criticalLogger = critical::add,
+                attemptIdFactory = { "arf_00000000000000d1" },
+                installationIdFactory = { INSTALLATION_ID },
+            )
+
+        val result =
+            coordinator.refreshSession(
+                failedAccessToken = "keep-403-access",
+                clearOnUnauthorized = true,
+                reason = "auth_restore_401",
+                caller = "auth_restore",
+            )
+
+        assertEquals(403, (result as SharedAuthRefreshResult.Failure).response.code)
+        assertEquals("keep-403-access", store.readSession()?.accessToken)
+        assertEquals("keep-403-refresh", store.readSession()?.refreshToken)
+        assertFalse(critical.any { it.startsWith("refresh_unauthorized_session_cleared") })
     }
 
     private fun session(accessToken: String, refreshToken: String): StoredAuthSession =

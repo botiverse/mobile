@@ -89,24 +89,46 @@ internal data class SharedThreadState(
  * handled by the auth route, and an edge block is a network fact, not an access fact.
  */
 /**
- * Web `isChannelAccessDenial` (botiverse/slock store/channelAccessLoss.ts, #12696): only the server's
- * answers that mean "this channel, for this person" — `denyChannelAccess`'s 403 for an ex-member, the
- * 404s otherwise — with no error code. Every other 403 / 404 (not a member of the server, email
- * verification, device sessions, an unknown server) is not a removal. The realtime catch-up reads
- * this one, so a heartbeat never leaves a conversation on another kind of refusal.
+ * Web `isChannelAccessDenial` (botiverse/slock store/channelAccessLoss.ts, #12696 / #16896):
+ * only the server's answers that mean "this channel, for this person" — either the listed codes
+ * (`403 channel_access_lost` / `404 channel_not_found`) or the legacy codeless `denyChannelAccess`
+ * bodies. Every other 403 / 404 (not a member of the server, email verification, device sessions,
+ * an unknown server) or 401 auth blocker is not a removal. The realtime catch-up reads this one,
+ * so a heartbeat never leaves a conversation on another kind of refusal.
  */
 internal fun DataResult<*>.isChannelAccessDenial(): Boolean =
     when (this) {
-        is DataResult.NoPermission ->
-            blocker.serverCode == null && blocker.serverMessage?.trim() in ChannelAccessDenial403Messages
-        is DataResult.Error ->
-            error.serverCode == null &&
-                error.serverMessage?.trim() in ChannelAccessDenial404Messages &&
-                // The repository's uncoded 404; the thread API's uncoded 404 takes the caller's fallback.
-                (error.code == "http_404" || (error.code.startsWith("thread_") && error.code.endsWith("_network")))
+        is DataResult.NoPermission -> {
+            if (blocker.code == "auth_required" || blocker.requiredCapability == "auth_session") {
+                false
+            } else {
+                val serverCode = blocker.serverCode?.trim()?.takeIf { it.isNotEmpty() }
+                if (serverCode != null) {
+                    serverCode == CHANNEL_ACCESS_LOST_REFUSAL_CODE
+                } else {
+                    blocker.serverMessage?.trim() in ChannelAccessDenial403Messages
+                }
+            }
+        }
+        is DataResult.Error -> {
+            // The repository's uncoded 404; the thread API's uncoded 404 takes the caller's fallback.
+            val is404 = error.code == "http_404" || (error.code.startsWith("thread_") && error.code.endsWith("_network"))
+            if (!is404) {
+                false
+            } else {
+                val serverCode = error.serverCode?.trim()?.takeIf { it.isNotEmpty() }
+                if (serverCode != null) {
+                    serverCode == CHANNEL_NOT_FOUND_REFUSAL_CODE
+                } else {
+                    error.serverMessage?.trim() in ChannelAccessDenial404Messages
+                }
+            }
+        }
         else -> false
     }
 
+private const val CHANNEL_ACCESS_LOST_REFUSAL_CODE = "channel_access_lost"
+private const val CHANNEL_NOT_FOUND_REFUSAL_CODE = "channel_not_found"
 private val ChannelAccessDenial403Messages = setOf("Access denied", "You do not have access to this channel")
 private val ChannelAccessDenial404Messages = setOf("Channel not found or not visible", "Channel not found")
 

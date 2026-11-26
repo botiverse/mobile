@@ -36,11 +36,12 @@ private data class AgentTurnInterruptResponseDto(
     val stuckForMs: Long? = null
 )
 
-/** `{ error, code, details }`: the agents/channels error envelope (`code` and `details` are optional). */
+/** `{ error, code, errorCode, details }`: the agents/channels error envelope (`code`/`errorCode`/`details` are optional). */
 @Serializable
 private data class AgentControlsErrorDto(
     val error: String? = null,
     val code: String? = null,
+    val errorCode: String? = null,
     val details: JsonElement? = null
 )
 
@@ -107,7 +108,7 @@ private data class AgentSubagentInterruptResponseDto(
                 response.errorBodyText ?: response.bodyText.orEmpty()
             )
         }.getOrNull()
-    val serverCode = envelope?.code?.takeIf { it.isNotBlank() }
+    val serverCode = looseRefusalCode(code = envelope?.code, errorCode = envelope?.errorCode)
     val serverMessage = envelope?.error?.takeIf { it.isNotBlank() }
     if (response.code == 403 && serverCode == null) {
         return DataResult.NoPermission(

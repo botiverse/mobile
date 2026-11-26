@@ -618,11 +618,12 @@ private fun HomeNetworkResponse.actionCardFormRefusalOrNull(): ActionCardExecute
             return null
         }
     val message = envelope.error?.takeIf { it.isNotBlank() }
+    val refusalCode = looseRefusalCode(code = envelope.code, errorCode = envelope.errorCode)
     return when {
-        code == 422 && envelope.errorCode == "FORM_INVALID" ->
+        code == 422 && refusalCode == "FORM_INVALID" ->
             ActionCardExecuteOutcome.FormInvalid(envelope.issues.orEmpty().map { it.toActionCardFormIssue() }, message, traceId)
-        code == 422 && envelope.errorCode == "FORM_REQUIRED" -> ActionCardExecuteOutcome.FormRequired(message)
-        code == 409 && envelope.errorCode == "ALREADY_EXECUTED" ->
+        code == 422 && refusalCode == "FORM_REQUIRED" -> ActionCardExecuteOutcome.FormRequired(message)
+        code == 409 && refusalCode == "ALREADY_EXECUTED" ->
             ActionCardExecuteOutcome.AlreadyExecuted(envelope.metadata.toThreadActionCard(), message)
         else -> null
     }
@@ -754,10 +755,11 @@ private data class ActionErrorEnvelopeDto(
     val currentTextRevisionId: String? = null,
 )
 
-/** Shared `ActionCardFormInvalidBody` / `ActionCardFormRequiredBody` / `ActionCardAlreadyExecutedBody`. */
+/** Shared `ActionCardFormInvalidBody` / `ActionCardFormRequiredBody` / `ActionCardAlreadyExecutedBody` (slock #16923: `code` beside `errorCode`). */
 @Serializable
 private data class ActionCardFormErrorEnvelopeDto(
     val error: String? = null,
+    val code: String? = null,
     val errorCode: String? = null,
     val issues: List<ActionCardFormIssueDto>? = null,
     val metadata: WireActionCardMetadata? = null,

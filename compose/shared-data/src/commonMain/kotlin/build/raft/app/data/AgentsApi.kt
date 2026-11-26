@@ -1106,24 +1106,27 @@ private fun HomeNetworkResponse.serverErrorTextOrNull(): String? {
     }.getOrNull()?.takeIf { it.isNotBlank() }
 }
 
-/** task #517: the top-level machine `code` some refused agent requests carry
- * (`archive_migration_active`, …) — the web reads it off `response.data.code`. */
+/** task #517 / refusal P3 (#16898): the top-level machine `code` / `errorCode` some refused agent requests carry
+ * (`archive_migration_active`, `machine_offline`, `computer_access_revoked`, `agent_name_taken`, …). */
 private fun HomeNetworkResponse.serverErrorCodeOrNull(): String? {
     if (isSuccessful) return null
     val body = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
-    return runCatching {
-        agentsApiJson.decodeFromString(AgentErrorTextEnvelopeDto.serializer(), body).code
-    }.getOrNull()?.takeIf { it.isNotBlank() }
+    val dto =
+        runCatching {
+            agentsApiJson.decodeFromString(AgentErrorTextEnvelopeDto.serializer(), body)
+        }.getOrNull() ?: return null
+    return looseRefusalCode(code = dto.code, errorCode = dto.errorCode)
 }
 
 private fun HomeNetworkResponse.agentNameConflictCodeOrNull(): String? {
     if (code != 409) return null
+    // Refusal P3 B4 (slock #16912/#16913): prefer the listed `agent_name_taken` code when sent.
+    if (serverErrorCodeOrNull() == "agent_name_taken") return AGENT_CREATE_NAME_TAKEN
     val body = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
-    // task #191: principal-handle conflicts carry only a human-readable
+    // task #191: legacy principal-handle conflicts carry only a human-readable
     // `error` string, no issues codes ("Agent name X is already taken" /
-    // "Cindy agent already exists in this server"). Match the text until the
-    // server exposes a canonical machine code; these conflicts stay outside
-    // the runtime-form recovery allowlist so they are never auto-retried.
+    // "Cindy agent already exists in this server"). Keep as fallback for older servers;
+    // these conflicts stay outside the runtime-form recovery allowlist so they are never auto-retried.
     val errorText =
         runCatching {
             agentsApiJson.decodeFromString(AgentErrorTextEnvelopeDto.serializer(), body).error
@@ -1152,7 +1155,8 @@ private data class AgentErrorTextEnvelopeDto(
     val error: String? = null,
     // task #517: machine-readable refusal code (e.g. `archive_migration_active`)
     // rides next to the human text on the agents error envelope.
-    val code: String? = null
+    val code: String? = null,
+    val errorCode: String? = null,
 )
 
 @Serializable

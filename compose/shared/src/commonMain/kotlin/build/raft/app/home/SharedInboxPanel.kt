@@ -603,10 +603,10 @@ internal fun SharedHomeActivityScreen(
     }
     val lastOpenedStore = remember { ActivityLastOpenedStore(raftSharedPreferenceStore()) }
     // Every open (a picked row, or the reopen on arrival below) is the one to reopen next time.
-    val openActivityItem: (InboxItem) -> Unit = { item ->
+    val openActivityItemWithMode: (InboxItem, Boolean) -> Unit = { item, automatic ->
         // Every opened row (also the one the wide layout shows beside the list) joins the rows
         // retained for this visit: read in Unread, it stays listed until the user moves on.
-        activityStore.dispatch(SharedActivityIntent.RowOpened(item))
+        activityStore.dispatch(SharedActivityIntent.RowOpened(item, automatic = automatic))
         lastOpenedStore.write(activitySummaryServerId.value, item.key)
         state.snapshot?.let { snapshot ->
             sharedHomeStore?.supplementConversationIdentity(snapshot, dmPeerNames = state.dmPeerNames)
@@ -629,6 +629,7 @@ internal fun SharedHomeActivityScreen(
             }
         }
     }
+    val openActivityItem: (InboxItem) -> Unit = { item -> openActivityItemWithMode(item, false) }
     // Wide layout (the list-detail host owns the selection): once per visit, after the list loads,
     // reopen the conversation opened last time on this server when it is still listed and nothing
     // Activity opened is open beside the list (ActivityArrivalReopen.kt; another tab's conversation
@@ -654,7 +655,7 @@ internal fun SharedHomeActivityScreen(
                 lastOpenedKey = lastOpenedStore.read(activitySummaryServerId.value),
             ) ?: return@ActivityArrivalReopenEffect
         bridge.log("shared_activity_arrival_reopen kind=${item.kind.name} unread=${item.unreadCount}")
-        openActivityItem(item)
+        openActivityItemWithMode(item, true)
     }
     // web: pinning or unpinning while Pinned is shown reloads it (the server resolves the pins).
     val pinnedScopeReloadEdge = remember(activitySummaryServerId) { ActivityPinnedScopeReloadEdge() }
@@ -2818,7 +2819,7 @@ internal fun activityPresentationOwnerIdentity(
 internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? =
     // A row marked unread with no count (botiverse/slock #11795) is read on open too: that clears the mark.
     if (showsUnread && !isUnfollowedActivityThread && kind != InboxItemKind.MentionAction) {
-        SharedActivityIntent.MarkRead(this)
+        SharedActivityIntent.MarkRead(this, fromOpen = true)
     } else {
         null
     }

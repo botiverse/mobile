@@ -5,6 +5,11 @@ import build.raft.app.data.InviteeRefusal
 import build.raft.app.data.ResolvedServerRefusal
 import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.data.ServerRefusalInput
+import build.raft.app.data.isHostedRuntimeNotOfferedRefusalCode
+import build.raft.app.data.isRouteMissingRefusal
+import build.raft.app.data.looseRefusalCode
+import build.raft.app.data.parseAccountDeletionPendingError
+import build.raft.app.data.parseSsoRequiredError
 import build.raft.app.data.resolveServerRefusal
 import build.raft.app.resources.RawStringDesc
 import build.raft.app.resources.ResourceFormattedStringDesc
@@ -12,7 +17,9 @@ import build.raft.app.resources.ResourceStringDesc
 import build.raft.app.resources.StringDesc
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -296,5 +303,83 @@ class ChannelConversionServerWordsTest {
         assertTrue(!mergedDiff.title.contains("\n"), "toast title must never contain newline: ${mergedDiff.title}")
         assertEquals("Alpha: $fencedTooLarge\nBeta: Connections are paused.", mergedDiff.reason)
         assertEquals(traceId, mergedDiff.traceId)
+    }
+
+    @Test
+    fun refusalP3P4LooseDecodingRouteMissingHostedRuntimeAndSlugTakenParity() {
+        // ServerRefusalInput falls back to errorCode when code is absent.
+        val knownFromErrorCode =
+            assertIs<ResolvedServerRefusal.KnownCode<String>>(
+                resolveServerRefusal(
+                    ServerRefusalInput(
+                        status = 409,
+                        code = null,
+                        serverMessage = "Channel full.",
+                        traceId = "t-ec",
+                        errorCode = "channel_full",
+                    ),
+                    knownCode = { code, _ -> if (code == "channel_full") "localized_full" else null },
+                )
+            )
+        assertEquals("localized_full", knownFromErrorCode.known)
+        assertEquals("t-ec", knownFromErrorCode.traceId)
+
+        // looseRefusalCode: code > errorCode > code-shaped error; prose sentences are rejected.
+        assertEquals("a", looseRefusalCode(code = "a", errorCode = "b", error = "c"))
+        assertEquals("b", looseRefusalCode(code = " ", errorCode = "b", error = "c"))
+        assertEquals("TERMS_CHANGED", looseRefusalCode(code = null, errorCode = null, error = "TERMS_CHANGED"))
+        assertNull(looseRefusalCode(code = null, errorCode = null, error = "Channel not found."))
+
+        // isRouteMissingRefusal (slock #16922): 404 with absent code or unsupported_capability only.
+        assertTrue(isRouteMissingRefusal(status = 404, code = null))
+        assertTrue(isRouteMissingRefusal(status = 404, code = "unsupported_capability"))
+        assertTrue(isRouteMissingRefusal(status = 404, code = null, errorCode = "unsupported_capability"))
+        assertFalse(isRouteMissingRefusal(status = 404, code = "channel_not_found"))
+        assertFalse(isRouteMissingRefusal(status = 403, code = "unsupported_capability"))
+
+        // isHostedRuntimeNotOfferedRefusalCode (slock #16928).
+        assertTrue(isHostedRuntimeNotOfferedRefusalCode(code = "hosted_runtime_not_offered"))
+        assertTrue(isHostedRuntimeNotOfferedRefusalCode(code = null, errorCode = "agent_runtime_provider_disabled"))
+        assertTrue(isHostedRuntimeNotOfferedRefusalCode(code = "AGENT_RUNTIME_PROVIDER_NOT_CONFIGURED"))
+        assertFalse(isHostedRuntimeNotOfferedRefusalCode(code = "quota_exceeded"))
+
+        // Account deletion pending & SSO required accept both code and errorCode.
+        assertNotNull(
+            parseAccountDeletionPendingError(
+                403,
+                """{"error":"Account scheduled for deletion.","errorCode":"account_deletion_pending","scheduledFor":"2026-12-01T00:00:00Z"}""",
+            )
+        )
+        assertNotNull(
+            parseSsoRequiredError(
+                403,
+                """{"error":"Sign in with SSO.","errorCode":"SSO_REQUIRED","signInUrl":"https://sso.example/start"}""",
+            )
+        )
+
+        // External invite new-server refusal maps listed server_slug_taken (slock #16930) and keeps codeless 409 fallback.
+        assertEquals(
+            NewServerFieldErrors(slug = NewServerFieldError.SlugTaken),
+            newServerInputRefusal(
+                InviteeRefusal(status = 409, code = "server_slug_taken", error = "Slug is already taken."),
+                name = "Acme",
+                slug = "acme",
+            ),
+        )
+        assertNull(
+            newServerInputRefusal(
+                InviteeRefusal(status = 409, code = "free_external_limit", error = "Limit reached."),
+                name = "Acme",
+                slug = "acme",
+            ),
+        )
+        assertEquals(
+            NewServerFieldErrors(slug = NewServerFieldError.SlugTaken),
+            newServerInputRefusal(
+                InviteeRefusal(status = 409, code = null, error = "Slug taken"),
+                name = "Acme",
+                slug = "acme",
+            ),
+        )
     }
 }

@@ -104,6 +104,15 @@ class ExternalInviteAcceptApiTest {
         assertEquals("0123456789abcdef0123456789abcdef", refusal.traceId)
         // The neutral 404: one body for every unusable invite.
         assertNull(parseSharedInviteeRefusal(404, """{"error":"This invite link is not valid"}""", null).code)
+        // Refusal P3/P4: falls back to errorCode when code is absent.
+        val fromErrorCode =
+            parseSharedInviteeRefusal(
+                409,
+                """{"error":"Slug is already taken.","errorCode":"server_slug_taken"}""",
+                null,
+            )
+        assertEquals("server_slug_taken", fromErrorCode.code)
+        assertEquals("Slug is already taken.", fromErrorCode.error)
     }
 
     @Test

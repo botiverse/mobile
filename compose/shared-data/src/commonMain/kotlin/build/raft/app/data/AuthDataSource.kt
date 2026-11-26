@@ -781,7 +781,10 @@ class SharedAuthDataSource(
         ) {
             is SharedAuthRefreshResult.Success -> SharedAuthResult.Success(result.session)
             is SharedAuthRefreshResult.Failure ->
-                if (result.response.code == 401 || result.response.code == 403) {
+                // Refusal P3 B2 (slock #16902): only a 401 ends the session; a 403 is a refusal
+                // for a session that is still valid (e.g. account_deletion_pending, SSO_REQUIRED,
+                // or a server-explained restriction) and must keep the stored session.
+                if (result.response.code == 401) {
                     SharedAuthResult.Unauthenticated
                 } else {
                     result.response.toSharedAuthFailure()
@@ -2437,12 +2440,15 @@ data class AuthLogoutRequestBody(
             traceId = responseTraceId,
         )
     }
-    // web authErrors.ts: the server's English for wrong credentials reads as the client's copy.
+    // web authErrors.ts / refusal P3 (#16898): read refusal codes loosely from `code`, `errorCode`,
+    // or legacy `error` so both the new envelope and old code-as-error bodies match cleanly.
+    val refusalCode = errorDto?.refusalCodeOrNull()
     val incorrectCredentials =
-        (errorDto?.code as? JsonPrimitive)?.takeIf { it.isString }?.content == "AUTH_INVALID_CREDENTIALS" ||
+        refusalCode == "AUTH_INVALID_CREDENTIALS" ||
             message == "Invalid email or password"
     return when {
-        code == 422 && errorDto?.error in setOf("LEGAL_ACCEPTANCE_REQUIRED", "TERMS_CHANGED") ->
+        (code == 422 || code == 409) &&
+            refusalCode in setOf("LEGAL_ACCEPTANCE_REQUIRED", "TERMS_CHANGED", "legal_acceptance_required") ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.LegalAcceptanceRequired,
                 "Review and accept Raft's Terms of Service and Privacy Policy to continue.",
@@ -2671,7 +2677,16 @@ private data class AuthErrorBodyDto(
     val message: String? = null,
     /** Any JSON shape: a non-string `code` must not fail the decode and drop [error]. */
     val code: JsonElement? = null,
+    /** Refusal envelope alias beside `code`; tolerates non-string shapes like [code]. */
+    val errorCode: JsonElement? = null,
 )
+
+private fun AuthErrorBodyDto.refusalCodeOrNull(): String? =
+    looseRefusalCode(
+        code = (code as? JsonPrimitive)?.takeIf { it.isString }?.content,
+        errorCode = (errorCode as? JsonPrimitive)?.takeIf { it.isString }?.content,
+        error = error,
+    )
 
 private fun StoredAuthSession.bearer(): String = "Bearer $accessToken"
 

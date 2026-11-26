@@ -26,6 +26,8 @@ import build.raft.app.RaftCoreInternalApi
     val code: String? = null,
     val serverMessage: String? = null,
     val traceId: String? = null,
+    /** Refusal envelope alias beside `code` (slock Refusal P3/P4 `#16898` / `#16923`). */
+    val errorCode: String? = null,
 )
 
 /** Outcome of [resolveServerRefusal], preserving the exact tier that won and the trace ID. */
@@ -57,7 +59,7 @@ import build.raft.app.RaftCoreInternalApi
     input: ServerRefusalInput,
     knownCode: (normalizedCode: String?, status: Int?) -> K?,
 ): ResolvedServerRefusal<K> {
-    val normalizedCode = input.code?.trim()?.takeIf { it.isNotEmpty() }?.lowercase()
+    val normalizedCode = looseRefusalCode(code = input.code, errorCode = input.errorCode)?.lowercase()
     val status = input.status
 
     // Tier 1: infrastructure / auth / transport — never surface proxy HTML or internal markers.
@@ -92,6 +94,52 @@ import build.raft.app.RaftCoreInternalApi
     // Tier 4: no usable server sentence or 5xx internal error -> generic localized fallback.
     return ResolvedServerRefusal.Generic(status, input.traceId)
 }
+
+private val LooseRefusalCodePattern = Regex("^[A-Za-z][A-Za-z0-9_]*$")
+
+/**
+ * Extracts a refusal's machine code loosely across both the refusal envelope (`code` / `errorCode`)
+ * and legacy code-in-`error` bodies (`slock` `refusalCodeOf` / `readRefusal`, Refusal P3/P4 `#16898`).
+ * Prose sentences passed via [error] (containing whitespace or punctuation) are never mistaken for codes.
+ */
+@RaftCoreInternalApi fun looseRefusalCode(
+    code: String? = null,
+    errorCode: String? = null,
+    error: String? = null,
+): String? =
+    code?.trim()?.takeIf { it.isNotEmpty() }
+        ?: errorCode?.trim()?.takeIf { it.isNotEmpty() }
+        ?: error?.trim()?.takeIf { it.isNotEmpty() && LooseRefusalCodePattern.matches(it) }
+
+/**
+ * Matches slock `isRouteMissing` (`packages/shared/src/refusalCodes.ts`, `#16922`): a 404 whose
+ * refusal code is absent (older server) or `unsupported_capability` (catch-all 404) means the
+ * server does not implement the route; any other coded 404 is the route's own refusal.
+ */
+@RaftCoreInternalApi fun isRouteMissingRefusal(
+    status: Int?,
+    code: String?,
+    errorCode: String? = null,
+): Boolean {
+    if (status != 404) return false
+    val resolved = looseRefusalCode(code = code, errorCode = errorCode)
+    return resolved == null || resolved == "unsupported_capability"
+}
+
+/**
+ * Listed cloud-agent "not offered here" refusal codes (`slock` `hostedPanelRefusal.ts`, `#16928`).
+ */
+private val HostedRuntimeNotOfferedRefusalCodes =
+    setOf(
+        "hosted_runtime_not_offered",
+        "agent_runtime_provider_disabled",
+        "agent_runtime_provider_not_configured",
+    )
+
+@RaftCoreInternalApi fun isHostedRuntimeNotOfferedRefusalCode(
+    code: String?,
+    errorCode: String? = null,
+): Boolean = looseRefusalCode(code = code, errorCode = errorCode)?.lowercase() in HostedRuntimeNotOfferedRefusalCodes
 
 /**
  * Extracts a human-readable server refusal sentence, rejecting blank strings, opaque markers

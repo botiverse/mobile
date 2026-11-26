@@ -187,6 +187,7 @@ private data class InviteCancelRequestBody(val requestId: String? = null)
 private data class WireInviteeErrorBody(
     val error: String? = null,
     val code: String? = null,
+    val errorCode: String? = null,
     val limitSide: String? = null,
     val limitServerId: String? = null,
     val serverId: String? = null,
@@ -236,7 +237,7 @@ sealed interface InviteeAnswer<out T> {
     fun String?.clean() = this?.trim()?.takeIf(String::isNotBlank)
     return InviteeRefusal(
         status = status,
-        code = body?.code.clean(),
+        code = looseRefusalCode(code = body?.code, errorCode = body?.errorCode),
         limitSide = body?.limitSide.clean(),
         limitServerId = body?.limitServerId.clean(),
         serverId = body?.serverId.clean(),

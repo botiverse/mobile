@@ -782,6 +782,133 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun restoreSessionKeepsSessionAndReturnsFailureWhenCurrentUserReturns403() = runBlocking {
+        val store = InMemoryRaftAuthSessionStore(storedSession(accessToken = "valid-access", refreshToken = "valid-refresh"))
+        var refreshCalls = 0
+        val source =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        currentUserResponses =
+                            ArrayDeque(
+                                listOf(
+                                    AuthNetworkResponse(
+                                        403,
+                                        null,
+                                        """{"error":"Your organization paused access for this account.","code":"account_restricted"}"""
+                                    )
+                                )
+                            ),
+                        onRefreshRequest = { refreshCalls += 1 }
+                    ),
+                sessionStore = store
+            )
+
+        val result = source.restoreSession()
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals("Your organization paused access for this account.".desc(), result.userMessage)
+        assertEquals(0, refreshCalls)
+        assertEquals("valid-access", store.readSession()?.accessToken)
+        assertEquals("valid-refresh", store.readSession()?.refreshToken)
+    }
+
+    @Test
+    fun restoreSessionKeepsSessionWhenRefreshReturns403After401() = runBlocking {
+        val store = InMemoryRaftAuthSessionStore(storedSession(accessToken = "expired-token", refreshToken = "valid-refresh"))
+        val source =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        currentUserResponses =
+                            ArrayDeque(
+                                listOf(
+                                    AuthNetworkResponse(401, null, """{"error":"jwt expired"}""")
+                                )
+                            ),
+                        refreshResponse =
+                            AuthNetworkResponse(
+                                403,
+                                null,
+                                """{"error":"Account deletion is scheduled.","code":"account_deletion_pending"}"""
+                            )
+                    ),
+                sessionStore = store
+            )
+
+        val result = source.restoreSession()
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals("Account deletion is scheduled.".desc(), result.userMessage)
+        assertEquals("expired-token", store.readSession()?.accessToken)
+        assertEquals("valid-refresh", store.readSession()?.refreshToken)
+    }
+
+    @Test
+    fun restoreSessionKeepsRefreshedSessionWhenPostRefreshCurrentUserReturns403() = runBlocking {
+        val store = InMemoryRaftAuthSessionStore(storedSession(accessToken = "expired-token", refreshToken = "old-refresh"))
+        val source =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        currentUserResponses =
+                            ArrayDeque(
+                                listOf(
+                                    AuthNetworkResponse(401, null, """{"error":"jwt expired"}"""),
+                                    AuthNetworkResponse(
+                                        403,
+                                        null,
+                                        """{"error":"Sign in with SSO to continue.","code":"SSO_REQUIRED"}"""
+                                    )
+                                )
+                            ),
+                        refreshResponse =
+                            AuthNetworkResponse(
+                                200,
+                                """{"accessToken":"fresh-access","refreshToken":"fresh-refresh"}"""
+                            )
+                    ),
+                sessionStore = store
+            )
+
+        val result = source.restoreSession()
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals("Sign in with SSO to continue.".desc(), result.userMessage)
+        assertEquals("fresh-access", store.readSession()?.accessToken)
+        assertEquals("fresh-refresh", store.readSession()?.refreshToken)
+    }
+
+    @Test
+    fun restoreSessionClearsSessionWhenRefreshReturns401() = runBlocking {
+        val store = InMemoryRaftAuthSessionStore(storedSession(accessToken = "expired-token", refreshToken = "dead-refresh"))
+        val source =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        currentUserResponses =
+                            ArrayDeque(
+                                listOf(
+                                    AuthNetworkResponse(401, null, """{"error":"jwt expired"}""")
+                                )
+                            ),
+                        refreshResponse =
+                            AuthNetworkResponse(
+                                401,
+                                null,
+                                """{"error":"Session revoked","code":"future_unknown_401_code"}"""
+                            )
+                    ),
+                sessionStore = store
+            )
+
+        val result = source.restoreSession()
+
+        assertTrue(result is SharedAuthResult.Unauthenticated)
+        assertNull(store.readSession())
+    }
+
+    @Test
     fun realtimeAuthRefreshUpdatesStoredTokensWithoutChangingServerSelection() = runBlocking {
         val store = InMemoryRaftAuthSessionStore(storedSession(accessToken = "stale-token"))
         val source =
@@ -1280,11 +1407,14 @@ class AuthDataSourceTest {
         assertEquals(successor, store.readSession())
     }
 
-    private fun storedSession(accessToken: String = "access-token"): StoredAuthSession =
+    private fun storedSession(
+        accessToken: String = "access-token",
+        refreshToken: String = "refresh-token",
+    ): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
             accessToken = accessToken,
-            refreshToken = "refresh-token",
+            refreshToken = refreshToken,
             selectedServerId = "server-1",
             selectedServerSlug = "slock",
             servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))

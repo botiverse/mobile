@@ -262,9 +262,15 @@ internal fun newServerFieldErrors(name: String, slug: String): NewServerFieldErr
             },
     )
 
-/** Web `newServerInputRefusal`: POST /api/servers' 400, or 409 for a slug taken (neither has a code). */
+/**
+ * Web `newServerInputRefusal` (slock #16930): listed `server_slug_taken` (409) highlights the slug
+ * field; any other coded refusal falls through to the server's sentence; codeless 400/409 bodies
+ * from older servers keep the status + shared-rule path.
+ */
 internal fun newServerInputRefusal(refusal: InviteeRefusal, name: String, slug: String): NewServerFieldErrors? {
-    if (refusal.code != null || refusal.serverId != null) return null
+    if (refusal.serverId != null) return null
+    if (refusal.code == "server_slug_taken") return NewServerFieldErrors(slug = NewServerFieldError.SlugTaken)
+    if (refusal.code != null) return null
     if (refusal.status == 409) return NewServerFieldErrors(slug = NewServerFieldError.SlugTaken)
     if (refusal.status != 400) return null
     val errors = newServerFieldErrors(name, slug)
