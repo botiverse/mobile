@@ -239,8 +239,9 @@ internal fun rememberThreadPeerReadReceipts(
 
 /**
  * Web `dm-read-status` (artin, option C): its own right-aligned line under the DM's last message,
- * below everything the message owns — a 12dp circle-check and "Read" in caption / foreground-hint,
- * on a 20dp line.
+ * below everything the message owns — a 12dp double check (Lucide `check-check`) and "Read" in
+ * caption / foreground-hint, on a 20dp line (slock staging `MessageReadStatusLine.tsx`:
+ * `DmReadStatusLine` icon `<CheckCheck size={12} />`; row `mt-1 flex h-5 justify-end`, `gap-1`).
  */
 @Composable
 internal fun ThreadDmReadStatusRow(modifier: Modifier = Modifier) {
@@ -256,7 +257,7 @@ internal fun ThreadDmReadStatusRow(modifier: Modifier = Modifier) {
     ) {
         Box(Modifier.size(12.dp)) {
             RaftLucideIcon(
-                RaftLucideIconName.CircleCheck,
+                RaftLucideIconName.CheckCheck,
                 Modifier.size(12.dp),
                 color = raftArgbHex(RaftColor.ForegroundHint),
             )
