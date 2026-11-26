@@ -467,6 +467,7 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
     private val scope: CoroutineScope,
     private val nowMs: () -> Long = ::defaultNowMillis,
     private val logger: (String) -> Unit = {},
+    private val isServerEnabled: (String) -> Boolean = { true },
 ) {
     private val mutableState = MutableStateFlow(SharedRailPlacesState())
     val state: StateFlow<SharedRailPlacesState> = mutableState.asStateFlow()
@@ -493,7 +494,7 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
         val current = mutableState.value
         if (current.activeServerId == serverId) return
         mutableState.value = current.copy(activeServerId = serverId)
-        if (serverId != null && railShown && serverId !in current.byServer) {
+        if (serverId != null && railShown && isServerEnabled(serverId) && serverId !in current.byServer) {
             reloadAsync(serverId)
         }
     }
@@ -502,7 +503,7 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
         val becameShown = shown && !railShown
         railShown = shown
         val serverId = mutableState.value.activeServerId
-        if (becameShown && serverId != null && serverId !in mutableState.value.byServer) {
+        if (becameShown && serverId != null && isServerEnabled(serverId) && serverId !in mutableState.value.byServer) {
             reloadAsync(serverId)
         }
     }
@@ -520,7 +521,7 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
                 val returned = foreground && previous == false
                 previous = foreground
                 val serverId = mutableState.value.activeServerId
-                if (returned && railShown && serverId != null) {
+                if (returned && railShown && serverId != null && isServerEnabled(serverId)) {
                     reloadAsync(serverId)
                 }
             }
@@ -529,6 +530,7 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
     /** Seeds or refreshes from any `GET/PATCH /servers/:id/sidebar-order` snapshot. */
     fun applySidebarOrderSnapshot(serverId: String, snapshot: RaftRailPlacesSnapshot?) {
         if (snapshot == null) return
+        if (!isServerEnabled(serverId)) return
         if ((savesInFlightByServer[serverId] ?: 0) > 0) return
         val existing = mutableState.value.byServer[serverId]?.snapshot
         if (existing != null && snapshot.placesVersion < existing.placesVersion) return
@@ -538,6 +540,7 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
     /** Applies a live `rail_places:updated` socket event when it is at or ahead of the current version. */
     fun applyRealtimeUpdated(event: RailPlacesUpdated) {
         val serverId = event.serverId.value
+        if (!isServerEnabled(serverId)) return
         val existing = mutableState.value.byServer[serverId] ?: return
         if ((savesInFlightByServer[serverId] ?: 0) > 0) return
         if (event.placesVersion < existing.snapshot.placesVersion) return
@@ -551,6 +554,7 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
 
     /** Handles `permission-updates:changed`: reloads places if [serverId] is currently loaded/active. */
     fun onPermissionUpdatesChanged(serverId: String) {
+        if (!isServerEnabled(serverId)) return
         val state = mutableState.value
         if (state.activeServerId == serverId || serverId in state.byServer) {
             reloadAsync(serverId)
@@ -558,23 +562,46 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
     }
 
     fun isFresh(serverId: String, maxAgeMs: Long = RaftRailPlacesFreshMs): Boolean {
+        if (!isServerEnabled(serverId)) return false
         val entry = mutableState.value.byServer[serverId] ?: return false
         if (serverId in reloadDeferredByServer) return false
         return (nowMs() - entry.loadedAtMs) < maxAgeMs
     }
 
     fun usableApp(serverId: String, clientId: String): RaftRailPlaceApp? {
+        if (!isServerEnabled(serverId)) return null
         val snapshot = mutableState.value.byServer[serverId]?.snapshot ?: return null
         val target = clientId.lowercase()
         return snapshot.placeableApps.firstOrNull { it.clientId.lowercase() == target }
     }
 
+    /**
+     * Resolves an App place tap immediately when the last cached read already lists [clientId] as
+     * a usable App on [serverId] (botiverse/slock #16960). If that cached snapshot is older than
+     * [maxAgeMs], kicks off a non-blocking background refresh so the App opens without waiting on
+     * network I/O. Returns null when the cached snapshot does not list [clientId] (or the flag is
+     * off), letting the caller wait for [ensureFreshAndResolveApp].
+     */
+    fun resolveAppImmediateOrNull(
+        serverId: String,
+        clientId: String,
+        maxAgeMs: Long = RaftRailPlacesFreshMs,
+    ): RaftRailPlaceApp? {
+        val cached = usableApp(serverId, clientId) ?: return null
+        if (!isFresh(serverId, maxAgeMs)) {
+            reloadAsync(serverId)
+        }
+        return cached
+    }
+
     fun reloadAsync(serverId: String) {
+        if (!isServerEnabled(serverId)) return
         scope.launch { reload(serverId) }
     }
 
     /** Single-flight reload of `GET /servers/:id/sidebar-order` for [serverId]. */
     suspend fun reload(serverId: String) {
+        if (!isServerEnabled(serverId)) return
         reloadDeferredByServer[serverId]?.let { existing ->
             existing.await()
             return
@@ -586,6 +613,7 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
         try {
             val result = dataSource.readServerPlaces(serverId)
             if (epoch != accountEpoch) return
+            if (!isServerEnabled(serverId)) return
             if (gen != (saveGenerationByServer[serverId] ?: 0L)) return
             if ((savesInFlightByServer[serverId] ?: 0) > 0) return
             if (result is DataResult.Content && result.data != null) {
@@ -609,6 +637,7 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
         clientId: String,
         maxAgeMs: Long = RaftRailPlacesFreshMs,
     ): RaftRailPlaceApp? {
+        if (!isServerEnabled(serverId)) return null
         if (!isFresh(serverId, maxAgeMs)) {
             reload(serverId)
         }
@@ -625,6 +654,7 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
         keys: List<String>?,
         emitEffect: Boolean = true,
     ): RailPlacesSaveOutcome {
+        if (!isServerEnabled(serverId)) return RailPlacesSaveOutcome.Skipped
         val beforeEntry = mutableState.value.byServer[serverId] ?: return RailPlacesSaveOutcome.Skipped
         val canonicalKeys = keys?.mapNotNull(::canonicalRaftRailPlaceKey)?.distinct()
         val epoch = accountEpoch

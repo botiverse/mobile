@@ -26,13 +26,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -227,6 +230,60 @@ internal fun RaftMobileWebPanelSourceStrip(
  * - Trailing: history Back (`<`) and Forward (`>`) buttons disabled when no history exists in that
  *   direction, followed by `⋮` overflow menu (Share, Copy link, and for Layer 3 only: Open in browser ↗).
  */
+/** Text layout policy for a site domain vs. ordinary title (botiverse/slock #16701 / #16703). */
+internal data class RaftSiteDomainTextSpec(
+    val overflow: TextOverflow,
+    val textDirection: TextDirection,
+    val maxLines: Int,
+    val softWrap: Boolean,
+)
+
+/**
+ * Domains truncate from their START ([TextOverflow.StartEllipsis]) in left-to-right order so the
+ * trailing registrable domain is never hidden (`accounts.google.com.….evil-example.net` displays
+ * `…evil-example.net`, never `accounts.google.com…`).
+ */
+internal fun raftSiteDomainTextSpec(isDomain: Boolean): RaftSiteDomainTextSpec =
+    if (isDomain) {
+        RaftSiteDomainTextSpec(
+            overflow = TextOverflow.StartEllipsis,
+            textDirection = TextDirection.Ltr,
+            maxLines = 1,
+            softWrap = false,
+        )
+    } else {
+        RaftSiteDomainTextSpec(
+            overflow = TextOverflow.Ellipsis,
+            textDirection = TextDirection.Unspecified,
+            maxLines = 1,
+            softWrap = false,
+        )
+    }
+
+/**
+ * Renders a site's domain where Raft tells the user which site a page is on (mirrors web
+ * `SiteDomain.tsx`, botiverse/slock #16701 / #16703): single-line LTR text that truncates from the
+ * start ([TextOverflow.StartEllipsis]) so the real trailing domain is never cut off.
+ */
+@Composable
+internal fun RaftSiteDomainText(
+    host: String,
+    style: TextStyle,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    val spec = raftSiteDomainTextSpec(isDomain = true)
+    RaftText(
+        text = host,
+        modifier = modifier,
+        style = style.copy(textDirection = spec.textDirection),
+        color = color,
+        maxLines = spec.maxLines,
+        softWrap = spec.softWrap,
+        overflow = spec.overflow,
+    )
+}
+
 @Composable
 internal fun RaftMobileWebPanelBottomBar(
     isRaftApp: Boolean,
@@ -247,7 +304,9 @@ internal fun RaftMobileWebPanelBottomBar(
     val colors = RaftTheme.colors
     var menuExpanded by remember { mutableStateOf(false) }
     val displayHost = remember(currentUrl) { raftMobileWebPanelDisplayHost(currentUrl) }
-    val displayAppName = appName?.trim()?.takeIf { it.isNotEmpty() } ?: displayHost
+    val cleanAppName = appName?.trim()?.takeIf { it.isNotEmpty() }
+    val displayAppName = cleanAppName ?: displayHost
+    val isFallbackHost = cleanAppName == null && displayHost.isNotBlank()
     val menuActions = remember(isRaftApp) { raftMobileWebPanelMenuActions(isRaftApp) }
 
     Column(
@@ -288,10 +347,18 @@ internal fun RaftMobileWebPanelBottomBar(
                         appName = displayAppName,
                         appLogoUrl = appLogoUrl,
                         signedInAsName = signedInAsName,
+                        isFallbackHost = isFallbackHost,
+                    )
+                } else if (displayHost.isNotBlank()) {
+                    RaftSiteDomainText(
+                        host = displayHost,
+                        modifier = Modifier.testTag(RAFT_WEB_PANEL_HOST_LABEL_TAG),
+                        style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Medium),
+                        color = colors.foreground,
                     )
                 } else {
                     RaftText(
-                        text = displayHost.ifBlank { stringResource(Res.string.in_app_browser_title) },
+                        text = stringResource(Res.string.in_app_browser_title),
                         modifier = Modifier.testTag(RAFT_WEB_PANEL_HOST_LABEL_TAG),
                         style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Medium),
                         color = colors.foreground,
@@ -384,6 +451,7 @@ private fun RaftMobileWebPanelAppIdentity(
     appName: String,
     appLogoUrl: String?,
     signedInAsName: String?,
+    isFallbackHost: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     Column(
@@ -399,14 +467,23 @@ private fun RaftMobileWebPanelAppIdentity(
                 logoUrl = appLogoUrl,
                 size = RaftAvatarSize.Xs,
             )
-            RaftText(
-                text = appName,
-                modifier = Modifier.testTag(RAFT_WEB_PANEL_APP_NAME_TAG),
-                style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.foreground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (isFallbackHost) {
+                RaftSiteDomainText(
+                    host = appName,
+                    modifier = Modifier.weight(1f, fill = false).testTag(RAFT_WEB_PANEL_APP_NAME_TAG),
+                    style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.foreground,
+                )
+            } else {
+                RaftText(
+                    text = appName,
+                    modifier = Modifier.testTag(RAFT_WEB_PANEL_APP_NAME_TAG),
+                    style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.foreground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         val cleanUser = signedInAsName?.trim()?.takeIf { it.isNotEmpty() }
         if (cleanUser != null) {

@@ -27,15 +27,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.RAIL_PLACES_V0_FEATURE_FLAG_KEY
 import build.raft.app.data.RaftRailPlace
 import build.raft.app.data.RaftRailPlaceApp
 import build.raft.app.data.RaftRailPlacesSnapshot
 import build.raft.app.data.RailPlacesSaveOutcome
 import build.raft.app.data.SharedRailPlacesStore
+import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.isRaftRailBuiltInPlaceId
 import build.raft.app.data.raftRailAppsNotOnList
 import build.raft.app.data.raftRailBuiltInsNotOnList
 import build.raft.app.data.raftRailPlacesForKeys
+import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftButton
@@ -55,6 +58,18 @@ import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
+/**
+ * Whether per-server rail places are enabled for [serverId] (botiverse/slock #16715
+ * `rail_places_v0`): default OFF when unresolved, missing, failed, or false.
+ */
+internal fun appShellRailPlacesEnabled(
+    flags: SharedServerFeatureFlags,
+    serverId: String?,
+): Boolean {
+    val id = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    return flags.isEnabled(ServerId(id), RAIL_PLACES_V0_FEATURE_FLAG_KEY)
+}
+
 /** An App place on [serverId] that was no longer usable when tapped (web `UnavailableRailApp`). */
 internal data class RaftUnavailableRailApp(
     val serverId: String,
@@ -64,9 +79,62 @@ internal data class RaftUnavailableRailApp(
 )
 
 /**
- * Opens an installed App place tapped on the wide rail (botiverse/slock #16684): checks 15 s
- * freshness via [railPlacesStore], opens the App's homepage in Raft's authenticated web container
- * when still placeable, or reports [onUnavailable] when the App is no longer available here.
+ * Dispatches an App place tap (botiverse/slock #16684 + #16960):
+ * - When the last cached read already lists [clientId] as usable on [serverId], invokes [onOpen]
+ *   immediately and starts a non-blocking background refresh if older than 15 s.
+ * - When the cached snapshot is fresh and does not list [clientId], invokes [onUnavailable] at once.
+ * - Otherwise waits for [SharedRailPlacesStore.ensureFreshAndResolveApp] before calling [onOpen]
+ *   or [onUnavailable].
+ */
+internal fun appShellDispatchRailAppPlaceOpen(
+    scope: CoroutineScope,
+    railPlacesStore: SharedRailPlacesStore,
+    serverId: String,
+    serverName: String,
+    clientId: String,
+    fallbackAppName: String,
+    onOpen: (RaftRailPlaceApp) -> Unit,
+    onUnavailable: (RaftUnavailableRailApp) -> Unit,
+    log: (String) -> Unit = {},
+) {
+    fun reportUnavailable() {
+        log("app_shell_rail_app_place_unavailable serverId=$serverId clientId=$clientId")
+        onUnavailable(
+            RaftUnavailableRailApp(
+                serverId = serverId,
+                clientId = clientId,
+                appName = fallbackAppName,
+                serverName = serverName,
+            ),
+        )
+    }
+    val immediate = railPlacesStore.resolveAppImmediateOrNull(serverId, clientId)
+    if (immediate != null) {
+        log("app_shell_rail_app_place_open serverId=$serverId clientId=${immediate.clientId}")
+        onOpen(immediate)
+        return
+    }
+    if (railPlacesStore.isFresh(serverId)) {
+        reportUnavailable()
+        return
+    }
+    scope.launch {
+        val usable = railPlacesStore.ensureFreshAndResolveApp(serverId, clientId)
+        if (usable == null) {
+            reportUnavailable()
+            return@launch
+        }
+        log("app_shell_rail_app_place_open serverId=$serverId clientId=${usable.clientId}")
+        onOpen(usable)
+    }
+}
+
+/**
+ * Opens an installed App place tapped on the wide rail (botiverse/slock #16684 + #16960):
+ * - When the last cached read already lists [clientId] as usable on [serverId], opens the App
+ *   immediately and kicks off a background refresh when older than 15 s (no UI wait).
+ * - Otherwise waits for [SharedRailPlacesStore.ensureFreshAndResolveApp] before opening or
+ *   reporting [onUnavailable].
  */
 internal fun appShellOpenRailAppPlace(
     scope: CoroutineScope,
@@ -80,36 +148,32 @@ internal fun appShellOpenRailAppPlace(
     onUnavailable: (RaftUnavailableRailApp) -> Unit,
     log: (String) -> Unit,
 ) {
-    scope.launch {
-        val usable = railPlacesStore.ensureFreshAndResolveApp(serverId, clientId)
-        if (usable == null) {
-            log("app_shell_rail_app_place_unavailable serverId=$serverId clientId=$clientId")
-            onUnavailable(
-                RaftUnavailableRailApp(
-                    serverId = serverId,
-                    clientId = clientId,
-                    appName = fallbackAppName,
-                    serverName = serverName,
-                ),
-            )
-            return@launch
-        }
-        val scopeOrigin = raftAppEntryOriginOf(usable.homepageUrl)
-        log("app_shell_rail_app_place_open serverId=$serverId clientId=${usable.clientId}")
-        if (scopeOrigin != null) {
-            linkNavigator.openAppEntry(
-                usable.homepageUrl,
-                RaftAppEntryRequest(
-                    scopeOrigin = scopeOrigin,
-                    appName = usable.name,
-                    preferredServerId = serverId,
-                    appLogoUrl = resolveIconUrl(usable.iconUrl),
-                ),
-            )
-        } else {
-            linkNavigator.open(usable.homepageUrl)
-        }
-    }
+    appShellDispatchRailAppPlaceOpen(
+        scope = scope,
+        railPlacesStore = railPlacesStore,
+        serverId = serverId,
+        serverName = serverName,
+        clientId = clientId,
+        fallbackAppName = fallbackAppName,
+        onOpen = { usable ->
+            val scopeOrigin = raftAppEntryOriginOf(usable.homepageUrl)
+            if (scopeOrigin != null) {
+                linkNavigator.openAppEntry(
+                    usable.homepageUrl,
+                    RaftAppEntryRequest(
+                        scopeOrigin = scopeOrigin,
+                        appName = usable.name,
+                        preferredServerId = serverId,
+                        appLogoUrl = resolveIconUrl(usable.iconUrl),
+                    ),
+                )
+            } else {
+                linkNavigator.open(usable.homepageUrl)
+            }
+        },
+        onUnavailable = onUnavailable,
+        log = log,
+    )
 }
 
 /**

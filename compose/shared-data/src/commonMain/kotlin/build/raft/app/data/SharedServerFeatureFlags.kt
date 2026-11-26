@@ -280,6 +280,16 @@ const val MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY: String = "mobile_early_a
  */
 const val MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY: String = "mobile_early_access_default_on_v0"
 
+/**
+ * Per-server wide rail places (botiverse/slock #16715 `packages/web/src/store/serverFeatureFlags.ts`
+ * `RAIL_PLACES_FLAG_KEY`): per server, default OFF (unresolved or missing evaluates false).
+ * When ON, the wide rail uses per-server places (`GET/PATCH /servers/:id/sidebar-order`, installed
+ * App places, and Edit navigation bar). When OFF or loading, the wide rail keeps the standard
+ * built-in tabs in the account's order (`users.rail_tab_order`) and never reads or writes per-server
+ * rail places.
+ */
+const val RAIL_PLACES_V0_FEATURE_FLAG_KEY: String = "rail_places_v0"
+
 /** Effective Early access policy across a signed-in account's joined servers. */
 data class RaftEarlyAccessFlagPolicy(
     val visible: Boolean = false,
@@ -349,6 +359,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     // Long-lived Early access visibility & default-channel gates (#proj-mobile:e48030bc, default OFF).
     MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY,
     MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY,
+    // Per-server wide rail places (botiverse/slock #16715, default OFF).
+    RAIL_PLACES_V0_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,

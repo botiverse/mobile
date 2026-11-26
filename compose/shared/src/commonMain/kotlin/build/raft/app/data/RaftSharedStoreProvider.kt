@@ -2049,13 +2049,17 @@ internal class RaftSharedStoreProvider private constructor(
 
     /**
      * Per-server rail places (`GET/PATCH /servers/:id/sidebar-order` + `rail_places:updated`,
-     * botiverse/slock #16682 + #16684): built-ins and installed App places after fixed Chat & Activity.
+     * botiverse/slock #16682 + #16684 + #16715): built-ins and installed App places after fixed
+     * Chat & Activity, gated per server behind [RAIL_PLACES_V0_FEATURE_FLAG_KEY].
      */
     val railPlacesStore: SharedRailPlacesStore by lazy {
         SharedRailPlacesStore(
             dataSource = NetworkRailPlacesDataSource(networkClient),
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
             logger = sharedInfoLogger("SlockRailPlaces", "rail_places"),
+            isServerEnabled = { serverId ->
+                serverFeatureFlags.isEnabled(ServerId(serverId), RAIL_PLACES_V0_FEATURE_FLAG_KEY)
+            },
         )
     }
 

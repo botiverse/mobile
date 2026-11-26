@@ -1,5 +1,7 @@
 package build.raft.app
 
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -68,6 +70,25 @@ class RaftMobileWebPanelStateTest {
         assertEquals("localhost:3000", raftMobileWebPanelDisplayHost("http://localhost:3000/app"))
         assertEquals("www.com", raftMobileWebPanelDisplayHost("https://www.com/"))
         assertEquals("", raftMobileWebPanelDisplayHost("   "))
+        assertEquals(
+            "accounts.google.com.sign-in.account-recovery.evil-example.net",
+            raftMobileWebPanelDisplayHost("https://accounts.google.com.sign-in.account-recovery.evil-example.net/auth"),
+        )
+    }
+
+    @Test
+    fun siteDomainTextSpecHeadTruncatesLtrAndNeverCutsDomainEnd() {
+        val domainSpec = raftSiteDomainTextSpec(isDomain = true)
+        assertEquals(TextOverflow.StartEllipsis, domainSpec.overflow)
+        assertEquals(TextDirection.Ltr, domainSpec.textDirection)
+        assertEquals(1, domainSpec.maxLines)
+        assertFalse(domainSpec.softWrap)
+
+        val titleSpec = raftSiteDomainTextSpec(isDomain = false)
+        assertEquals(TextOverflow.Ellipsis, titleSpec.overflow)
+        assertEquals(TextDirection.Unspecified, titleSpec.textDirection)
+        assertEquals(1, titleSpec.maxLines)
+        assertFalse(titleSpec.softWrap)
     }
 
     @Test

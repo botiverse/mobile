@@ -4560,16 +4560,21 @@ private fun RaftAppShellReadyContent(
         railTabOrderStore = railTabOrderStore,
         railTabOrderStateState = railTabOrderStateState,
     )
+    val railPlacesEnabled =
+        remember(sharedStores.serverFeatureFlags, readyServerId, artifactsFlagRevision) {
+            appShellRailPlacesEnabled(sharedStores.serverFeatureFlags, readyServerId)
+        }
     val railPlacesStore = sharedStores.railPlacesStore
     val railPlacesStateState = railPlacesStore.state.collectAsState()
     val railPlacesState by railPlacesStateState
-    val activeRailPlacesSnapshot = railPlacesState.activeSnapshot
+    val activeRailPlacesSnapshot = if (railPlacesEnabled) railPlacesState.activeSnapshot else null
     val homeSidebarOrder = (homeState.content as? SharedHomeContentState.Content)?.snapshot?.sidebarOrder
     AppShellRailPlacesEffects(
         bridge = bridge,
         readySession = readySession,
         readyServerId = readyServerId,
         navRailActive = navRailActive,
+        enabled = railPlacesEnabled,
         sidebarOrder = homeSidebarOrder,
         appShellRealtimeDomainEventOwner = appShellRealtimeDomainEventOwner,
         railPlacesStore = railPlacesStore,
@@ -4577,19 +4582,19 @@ private fun RaftAppShellReadyContent(
     )
     var railPlacesEditOpen by remember { mutableStateOf(false) }
     var unavailableRailApp by remember { mutableStateOf<RaftUnavailableRailApp?>(null) }
-    LaunchedEffect(readyServerId, navRailActive) {
+    LaunchedEffect(readyServerId, navRailActive, railPlacesEnabled) {
         railPlacesEditOpen = false
         unavailableRailApp = null
     }
     val railTabReorder =
-        remember(railTabOrderStore, railPlacesStore, activeRailPlacesSnapshot != null, readyServerId) {
-            val useServerPlaces = activeRailPlacesSnapshot != null && !readyServerId.isNullOrBlank()
+        remember(railTabOrderStore, railPlacesStore, railPlacesEnabled, activeRailPlacesSnapshot != null, readyServerId) {
+            val useServerPlaces = railPlacesEnabled && activeRailPlacesSnapshot != null && !readyServerId.isNullOrBlank()
             RaftRailTabReorder(
                 fixedKeys = if (useServerPlaces) RaftRailPlacesFixedItemKeys else emptySet(),
                 onOrderChange = { keys ->
                     val serverId = readyServerId?.takeIf { it.isNotBlank() }
-                    val snapshot = railPlacesStore.state.value.activeSnapshot
-                    if (serverId != null && snapshot != null) {
+                    val snapshot = if (railPlacesEnabled) railPlacesStore.state.value.activeSnapshot else null
+                    if (railPlacesEnabled && serverId != null && snapshot != null) {
                         val reordered =
                             build.raft.app.data.raftRailPlacesWithVisibleReorder(
                                 fullKeys = snapshot.places.map { it.key },
@@ -5521,7 +5526,8 @@ private fun RaftAppShellReadyContent(
                                     return@RaftNavigationRailTabBar
                                 }
                                 railHelpOpen = false
-                                val railAppClientId = build.raft.app.data.raftRailAppPlaceClientId(key)
+                                val railAppClientId =
+                                    if (railPlacesEnabled) build.raft.app.data.raftRailAppPlaceClientId(key) else null
                                 if (railAppClientId != null) {
                                     val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@RaftNavigationRailTabBar
                                     val fallbackName =
@@ -5771,7 +5777,7 @@ private fun RaftAppShellReadyContent(
                                 pager.openSettingsFeedbackPage(storeScope)
                             },
                             onEditNavigationBar =
-                                if (activeRailPlacesSnapshot != null && !readyServerId.isNullOrBlank()) {
+                                if (railPlacesEnabled && activeRailPlacesSnapshot != null && !readyServerId.isNullOrBlank()) {
                                     {
                                         railHelpOpen = false
                                         railPlacesEditOpen = true
@@ -5781,7 +5787,7 @@ private fun RaftAppShellReadyContent(
                                 },
                         )
                         RaftRailPlacesEditDialog(
-                            open = railPlacesEditOpen,
+                            open = railPlacesEnabled && railPlacesEditOpen,
                             snapshot = activeRailPlacesSnapshot,
                             visibleBuiltInItems = appShellRailTabItems,
                             resolveIconUrl = { icon ->
@@ -5794,7 +5800,7 @@ private fun RaftAppShellReadyContent(
                             },
                         )
                         RaftRailUnavailableAppDialog(
-                            unavailable = unavailableRailApp,
+                            unavailable = if (railPlacesEnabled) unavailableRailApp else null,
                             onDismiss = { unavailableRailApp = null },
                             onGoToApps = { railInlineSecondaryDestination = AppShellRailAppsKey },
                         )

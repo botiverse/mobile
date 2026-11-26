@@ -73,6 +73,10 @@ class RaftMobileWebPanelUiTest {
         onNodeWithText("docs.example.com").assertIsDisplayed()
         runOnIdle { currentUrl = "https://bücher.example/login" }
         onNodeWithText("xn--bcher-kva.example").assertIsDisplayed()
+        val spoofHost = "accounts.google.com.sign-in.account-recovery.evil-example.net"
+        runOnIdle { currentUrl = "https://$spoofHost/oauth" }
+        onNodeWithTag(RAFT_WEB_PANEL_HOST_LABEL_TAG).assertIsDisplayed()
+        onNodeWithText(spoofHost).assertIsDisplayed()
 
         // Overflow menu contains Share, Copy link, and Open in browser for third-party websites.
         onNodeWithTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG).performClick()
