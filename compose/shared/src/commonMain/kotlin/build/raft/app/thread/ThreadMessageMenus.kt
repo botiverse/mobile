@@ -600,6 +600,7 @@ internal fun ThreadMessageActionMenu(
     viewContextState: AgentContextViewMenuEntryState = AgentContextViewMenuEntryState.Hidden,
     onViewContext: () -> Unit = {},
     onRetryViewContext: () -> Unit = {},
+    followTarget: ThreadMessageMenuFollowTarget? = null,
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     val reactionAtlasImage = LocalThreadReactionAtlasImage.current
@@ -659,6 +660,7 @@ internal fun ThreadMessageActionMenu(
             viewContextState,
             onViewContext,
             onRetryViewContext,
+            followTarget,
         ) {
             threadMessageMenuActions(
                 message = message,
@@ -715,6 +717,7 @@ internal fun ThreadMessageActionMenu(
                 viewContextState = viewContextState,
                 onViewContext = onViewContext,
                 onRetryViewContext = onRetryViewContext,
+                followTarget = followTarget,
             )
         }
     // web `reaction-add-any`: the reaction header's trailing Add Reaction (full emoji picker).

@@ -303,6 +303,226 @@ class ThreadMessageMenuParityTest {
         )
     }
 
+    @Test
+    fun replyThreadMessagesOfferEnclosingThreadFollowInClassicAndCompactMenus() {
+        val origin = message(id = "parent-1", threadChannelId = "thread-ch-1", replyCount = 2, isThreadFollowed = false)
+        val reply = message(id = "reply-2")
+        val replyThreadSlice =
+            slice(surfaceKind = RaftThreadSurfaceKind.ReplyThread, originMessage = origin).copy(
+                sourceThreadId = "thread-ch-1",
+            )
+        val unfollowedOriginMeta =
+            ThreadReplyMetadata(
+                parentMessageId = "parent-1",
+                threadChannelId = "thread-ch-1",
+                replyCount = 2,
+                unreadReplyCount = 0,
+                firstUnreadReplyMessageId = null,
+                isThreadFollowed = false,
+            )
+        val followedOriginMeta = unfollowedOriginMeta.copy(isThreadFollowed = true)
+
+        // Reply row inside an unfollowed reply thread -> Follow thread acting on parent-1.
+        val unfollowedCaps =
+            threadMessageMenuCapabilities(
+                message = reply,
+                replyMetadata = reply.toThreadReplyMetadata(),
+                slice = replyThreadSlice,
+                writeActionsEnabled = true,
+                originReplyMetadata = unfollowedOriginMeta,
+            )
+        assertTrue(unfollowedCaps.follow)
+        assertEquals(
+            ThreadMessageMenuFollowTarget(
+                parentMessageId = "parent-1",
+                threadChannelId = "thread-ch-1",
+                isFollowed = false,
+            ),
+            unfollowedCaps.followTarget,
+        )
+        val unfollowedCompact =
+            unfollowedCaps.toThreadNewMessageMenuActionAvailability(reply, reply.toThreadReplyMetadata())
+        assertTrue(unfollowedCompact.followThread)
+        assertFalse(unfollowedCompact.threadFollowed)
+        var followedInvocations = 0
+        var unfollowedChannel: String? = null
+        val unfollowedActions =
+            threadMessageMenuActions(
+                message = reply,
+                replyMetadata = reply.toThreadReplyMetadata(),
+                showReplyAction = false,
+                showSaveAction = true,
+                showFollowAction = unfollowedCaps.follow,
+                showTaskStatusAction = false,
+                showConvertToTaskAction = false,
+                showCopyLinkAction = true,
+                showShareMessagesAction = true,
+                showCancelAction = false,
+                showDeleteAction = false,
+                onReply = {},
+                onCopyLink = {},
+                onCopy = {},
+                onSelectText = {},
+                onShareMessages = {},
+                onSave = {},
+                onFollowThread = { followedInvocations += 1 },
+                onUnfollowThread = { unfollowedChannel = it },
+                onTaskStatusChange = {},
+                onConvertToTask = {},
+                onCancel = {},
+                onDelete = {},
+                followTarget = unfollowedCaps.followTarget,
+            )
+        val followRow = unfollowedActions.first { it.group == "thread" }
+        assertEquals(Res.string.thread_action_follow_thread.desc(), followRow.label)
+        assertEquals(RaftLucideIconName.FollowThread, followRow.icon)
+        followRow.onClick()
+        assertEquals(1, followedInvocations)
+        assertEquals(null, unfollowedChannel)
+
+        // Reply row inside a followed reply thread -> Unfollow thread acting on parent-1 / thread-ch-1.
+        val followedCaps =
+            threadMessageMenuCapabilities(
+                message = reply,
+                replyMetadata = reply.toThreadReplyMetadata(),
+                slice = replyThreadSlice,
+                writeActionsEnabled = true,
+                originReplyMetadata = followedOriginMeta,
+            )
+        assertTrue(followedCaps.follow)
+        assertEquals(
+            ThreadMessageMenuFollowTarget(
+                parentMessageId = "parent-1",
+                threadChannelId = "thread-ch-1",
+                isFollowed = true,
+            ),
+            followedCaps.followTarget,
+        )
+        val followedCompact =
+            followedCaps.toThreadNewMessageMenuActionAvailability(reply, reply.toThreadReplyMetadata())
+        assertTrue(followedCompact.followThread)
+        assertTrue(followedCompact.threadFollowed)
+        val followedActions =
+            threadMessageMenuActions(
+                message = reply,
+                replyMetadata = reply.toThreadReplyMetadata(),
+                showReplyAction = false,
+                showSaveAction = true,
+                showFollowAction = followedCaps.follow,
+                showTaskStatusAction = false,
+                showConvertToTaskAction = false,
+                showCopyLinkAction = true,
+                showShareMessagesAction = true,
+                showCancelAction = false,
+                showDeleteAction = false,
+                onReply = {},
+                onCopyLink = {},
+                onCopy = {},
+                onSelectText = {},
+                onShareMessages = {},
+                onSave = {},
+                onFollowThread = { followedInvocations += 1 },
+                onUnfollowThread = { unfollowedChannel = it },
+                onTaskStatusChange = {},
+                onConvertToTask = {},
+                onCancel = {},
+                onDelete = {},
+                followTarget = followedCaps.followTarget,
+            )
+        val unfollowRow = followedActions.first { it.group == "thread" }
+        assertEquals(Res.string.thread_action_unfollow_thread.desc(), unfollowRow.label)
+        assertEquals(RaftLucideIconName.UnfollowThread, unfollowRow.icon)
+        unfollowRow.onClick()
+        assertEquals("thread-ch-1", unfollowedChannel)
+
+        // Local send reply row inside a reply thread must not offer Follow/Unfollow.
+        val sendingReply =
+            message(id = "reply-local", deliveryState = ThreadMessageDeliverySending)
+                .copy(pendingSendContext = pendingSend())
+        val localCaps =
+            threadMessageMenuCapabilities(
+                message = sendingReply,
+                replyMetadata = sendingReply.toThreadReplyMetadata(),
+                slice = replyThreadSlice,
+                writeActionsEnabled = true,
+                originReplyMetadata = followedOriginMeta,
+            )
+        assertFalse(localCaps.follow)
+        assertEquals(null, localCaps.followTarget)
+
+        // Followed reply thread without a thread channel id hides unfollow rather than offering a no-op.
+        val missingChannelSlice = replyThreadSlice.copy(sourceThreadId = null)
+        val missingChannelCaps =
+            threadMessageMenuCapabilities(
+                message = reply,
+                replyMetadata = reply.toThreadReplyMetadata(),
+                slice = missingChannelSlice,
+                writeActionsEnabled = true,
+                originReplyMetadata = followedOriginMeta.copy(threadChannelId = null),
+            )
+        assertFalse(missingChannelCaps.follow)
+        assertEquals(null, missingChannelCaps.followTarget)
+
+        // 0-reply origin inside a reply thread (no threadChannelId yet) still offers Follow thread (web parity).
+        val zeroReplyOrigin = message(id = "parent-empty")
+        val zeroReplySlice =
+            slice(surfaceKind = RaftThreadSurfaceKind.ReplyThread, originMessage = zeroReplyOrigin).copy(
+                sourceThreadId = null,
+            )
+        val zeroReplyCaps =
+            threadMessageMenuCapabilities(
+                message = zeroReplyOrigin,
+                replyMetadata = zeroReplyOrigin.toThreadReplyMetadata(),
+                slice = zeroReplySlice,
+                writeActionsEnabled = true,
+                originReplyMetadata = zeroReplyOrigin.toThreadReplyMetadata(),
+            )
+        assertTrue(zeroReplyCaps.follow)
+        assertEquals(
+            ThreadMessageMenuFollowTarget(
+                parentMessageId = "parent-empty",
+                threadChannelId = null,
+                isFollowed = false,
+            ),
+            zeroReplyCaps.followTarget,
+        )
+
+        // Followed reply thread where originReplyMetadata omits threadChannelId falls back to slice.sourceThreadId.
+        val fallbackChannelCaps =
+            threadMessageMenuCapabilities(
+                message = reply,
+                replyMetadata = reply.toThreadReplyMetadata(),
+                slice = replyThreadSlice,
+                writeActionsEnabled = true,
+                originReplyMetadata = followedOriginMeta.copy(threadChannelId = null),
+            )
+        assertTrue(fallbackChannelCaps.follow)
+        assertEquals(
+            ThreadMessageMenuFollowTarget(
+                parentMessageId = "parent-1",
+                threadChannelId = "thread-ch-1",
+                isFollowed = true,
+            ),
+            fallbackChannelCaps.followTarget,
+        )
+
+        // Task conversation suppresses nested thread follow even when origin/reply metadata has thread fields.
+        val taskSlice =
+            slice(surfaceKind = RaftThreadSurfaceKind.Channel, originMessage = origin).copy(
+                channelKind = RaftTaskConversationChannelKind,
+            )
+        val taskCaps =
+            threadMessageMenuCapabilities(
+                message = origin,
+                replyMetadata = followedOriginMeta,
+                slice = taskSlice,
+                writeActionsEnabled = true,
+                originReplyMetadata = followedOriginMeta,
+            )
+        assertFalse(taskCaps.follow)
+        assertEquals(null, taskCaps.followTarget)
+    }
+
     private fun message(
         id: String = "message-1",
         authorKind: String = "human",
