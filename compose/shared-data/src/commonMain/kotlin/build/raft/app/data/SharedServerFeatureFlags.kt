@@ -123,15 +123,6 @@ const val ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY: String = "antiproton_hoste
 const val WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY: String = "workspace_artifacts_v0"
 
 /**
- * Inbox redesign step 2 (#triage:#244; slock web `INBOX_ROW_POSITION_FLAG_KEY`, shared with web): each
- * listed Activity row is kept by the shared per-row position rule (`reduceActivityRow`,
- * `activityLiveUnread`): a late older answer never regresses a row, a live message the rule cannot
- * judge re-reads only its row (`GET /channels/inbox?ids=`), and the loaded All list is the badge's
- * only writer. Per server, default OFF: off, every path is as before.
- */
-const val INBOX_ROW_POSITION_FEATURE_FLAG_KEY: String = "inbox_row_position_v1"
-
-/**
  * 1.30 web-aligned Activity in-place + per-row position path (#proj-mobile:#163, Tenny d229571c):
  * client default ON (in [SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS]), so `missing_flag` /
  * unresolved evaluates ON everywhere without a DB migration, while an explicit server rule,
@@ -297,14 +288,6 @@ const val TAB_BAR_PLACES_V0_FEATURE_FLAG_KEY: String = "tab_bar_places_v0"
 const val AGENT_VOICE_FEATURE_FLAG_KEY: String = "agent_voice_v1"
 
 /**
- * Agent View Context v0 & Context Access grants (botiverse/slock `packages/shared/src/featureFlags.ts`
- * `AGENT_CONTEXT_VIEW_FEATURE_FLAG_KEY`, #12980 / #13548): per server, default OFF (unresolved or
- * missing evaluates false). When ON, server endpoints serve context status, context view, viewed-by
- * records, and owner/admin context access grants.
- */
-const val AGENT_CONTEXT_VIEW_FEATURE_FLAG_KEY: String = "agent_context_view_v0"
-
-/**
  * Workers v1 (botiverse/slock `packages/shared/src/featureFlags.ts` `WORKER_V1_FEATURE_FLAG_KEY`,
  * `#wg-mobile-sync:#284`): per server, default OFF (unresolved or missing evaluates false).
  * Gates the Computer detail page's "Runtimes for Workers" section and subsequent Worker v1 surfaces.
@@ -390,7 +373,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY,
     ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY,
     WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
-    INBOX_ROW_POSITION_FEATURE_FLAG_KEY,
     MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY,
     SYNC_INBOX_ROWS_FEATURE_FLAG_KEY,
     PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
@@ -422,8 +404,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     TAB_BAR_PLACES_V0_FEATURE_FLAG_KEY,
     // Raft Agent Voice settings and live voice calls (#wg-mobile-sync:#95, default OFF).
     AGENT_VOICE_FEATURE_FLAG_KEY,
-    // Agent View Context v0 & Context Access grants (botiverse/slock #12980 / #13548, default OFF).
-    AGENT_CONTEXT_VIEW_FEATURE_FLAG_KEY,
     // Workers v1 (#wg-mobile-sync:#284, default OFF).
     WORKER_V1_FEATURE_FLAG_KEY,
     // DMs without threads Lab (#wg-mobile-sync:#305, botiverse/slock #16664, default OFF).

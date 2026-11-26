@@ -63,10 +63,10 @@ class AgentContextViewTest {
     }
 
     @Test
-    fun featureFlagIsRegisteredAndDefaultsOff() {
-        assertEquals("agent_context_view_v0", AGENT_CONTEXT_VIEW_FEATURE_FLAG_KEY)
-        assertTrue(AGENT_CONTEXT_VIEW_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
-        assertFalse(AGENT_CONTEXT_VIEW_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+    fun contextViewReliesOnStatusApiWithoutEvaluatingUnusedFeatureFlag() {
+        assertFalse("agent_context_view_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse("agent_context_view_v0" in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        assertFalse("agent_context_view_v0" in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
     }
 
     @Test
