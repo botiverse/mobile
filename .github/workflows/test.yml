@@ -933,6 +933,7 @@ jobs:
               compose/androidApp/src/androidTest/java/build/raft/app/shared/RaftThreadNewerAutoPaginationConnectedTest.kt \
               compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadNewerAutoPaginationVisualFixture.kt \
               compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadMessagesList.kt \
+              compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadMessagesListItems.kt \
               compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadViewportScroll.kt \
               compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadMessagesListModel.kt \
               compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadTimelineRows.kt \
