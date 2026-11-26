@@ -40,18 +40,26 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun prefetchResolvesEnabledFlagAndDefaultsUnknownOff() = runBlocking {
-        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_notification_prefs_v0","enabled":true}]}"""))
+        val api = FakeApi(ok("""{"evaluations":[{"key":"agent_lounge_v0","enabled":true}]}"""))
         val flags = SharedServerFeatureFlags(api)
         val snapshot = flags.prefetch(server)
         assertTrue(snapshot.resolved)
-        assertTrue(flags.isEnabled(server, SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY))
+        assertTrue(flags.isEnabled(server, AGENT_LOUNGE_FEATURE_FLAG_KEY))
         assertFalse(flags.isEnabled(server, SERVER_LABS_UI_FEATURE_FLAG_KEY)) // absent from evaluations -> off
         assertFalse(flags.isEnabled(server, SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY))
-        assertEquals(REGISTERED_SERVER_FEATURE_FLAG_KEYS, api.lastKeys) // batch: all registered keys
+        assertEquals(REGISTERED_SERVER_FEATURE_FLAG_KEYS, api.lastKeys) // batch: all registered product keys
+        assertTrue(
+            REGISTERED_SERVER_FEATURE_FLAG_KEYS.size <= FEATURE_FLAG_EVALUATE_MAX_BATCH_SIZE,
+            "product flag batch should stay comfortably under server 50-key limit, got ${REGISTERED_SERVER_FEATURE_FLAG_KEYS.size}",
+        )
+        assertTrue(
+            REGISTERED_SERVER_FEATURE_FLAG_KEYS.none { it == TRACE_SAMPLE_FLAG_PREFIX || it.startsWith("$TRACE_SAMPLE_FLAG_PREFIX.") },
+            "trace_sample.* keys must be evaluated separately from product flags",
+        )
     }
 
     @Test
-    fun activityInPlaceV1DefaultsOnAndHonorsBothRemoteOffSwitches() = runTest {
+    fun activityInPlaceV1DefaultsOnAndHonorsRemoteOffSwitches() = runTest {
         assertEquals("mobile_activity_inplace_v1", MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY)
         assertTrue(MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertTrue(MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
@@ -63,15 +71,14 @@ class SharedServerFeatureFlagsTest {
                 FakeApi(
                     ok(
                         """{"evaluations":[
-                            {"key":"$MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY","enabled":false,"reason":"missing_flag"},
-                            {"key":"$MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY","enabled":false,"reason":"default"}
+                            {"key":"$MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY","enabled":false,"reason":"missing_flag"}
                         ]}"""
                     )
                 )
             )
         assertTrue(missingFlags.isActivityInPlaceEnabled(server), "unresolved defaults ON")
         missingFlags.prefetch(server)
-        assertTrue(missingFlags.isActivityInPlaceEnabled(server), "missing_flag + legacy default-false stays ON")
+        assertTrue(missingFlags.isActivityInPlaceEnabled(server), "missing_flag stays ON")
 
         // Explicit server off on mobile_activity_inplace_v1 (flag_disabled, kill_switch, server_rule, default) turns it OFF.
         for (reason in listOf("flag_disabled", "kill_switch", "server_rule", "default")) {
@@ -80,8 +87,7 @@ class SharedServerFeatureFlagsTest {
                     FakeApi(
                         ok(
                             """{"evaluations":[
-                                {"key":"$MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY","enabled":false,"reason":"$reason"},
-                                {"key":"$MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY","enabled":false,"reason":"default"}
+                                {"key":"$MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY","enabled":false,"reason":"$reason"}
                             ]}"""
                         )
                     )
@@ -90,20 +96,20 @@ class SharedServerFeatureFlagsTest {
             assertFalse(disabled.isActivityInPlaceEnabled(server), "v1 off ($reason) disables path")
         }
 
-        // Legacy mobile_inbox_inplace_v0 kill_switch does NOT disable 1.30: mobile_activity_inplace_v1 is the sole off-switch.
+        // Retired mobile_inbox_inplace_v0 kill_switch does NOT disable 1.30: mobile_activity_inplace_v1 is the sole off-switch.
         val legacyKilled =
             SharedServerFeatureFlags(
                 FakeApi(
                     ok(
                         """{"evaluations":[
                             {"key":"$MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY","enabled":false,"reason":"missing_flag"},
-                            {"key":"$MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}
+                            {"key":"mobile_inbox_inplace_v0","enabled":false,"reason":"kill_switch"}
                         ]}"""
                     )
                 )
             )
         legacyKilled.prefetch(server)
-        assertTrue(legacyKilled.isActivityInPlaceEnabled(server), "legacy v0 kill_switch does not disable 1.30 path")
+        assertTrue(legacyKilled.isActivityInPlaceEnabled(server), "retired v0 kill_switch does not disable 1.30 path")
 
         // Local diagnostic override can force mobile_activity_inplace_v1 OFF.
         val overridden =
@@ -133,19 +139,23 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun diagnosticOverrideHookCanForceAServerEnabledFlagOff() = runBlocking {
-        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_notification_prefs_v0","enabled":true}]}"""))
+        val api = FakeApi(ok("""{"evaluations":[{"key":"agent_lounge_v0","enabled":true}]}"""))
         val flags = SharedServerFeatureFlags(api, diagnosticOverride = { _, _, _ -> false })
         flags.prefetch(server)
-        assertFalse(flags.isEnabled(server, SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY))
-        assertTrue(flags.snapshotFor(server).isEnabled(SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(server, AGENT_LOUNGE_FEATURE_FLAG_KEY))
+        assertTrue(flags.snapshotFor(server).isEnabled(AGENT_LOUNGE_FEATURE_FLAG_KEY))
     }
 
     @Test
     fun ordinaryRegisteredFlagsRequireExplicitResolvedEnablement() = runTest {
-        // Task v2, Drafts, and Agent usage are always on in the app: their flags are no longer asked for.
+        // Retired / graduated flags are no longer requested from the server.
         assertFalse("task_v2_conversations_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertFalse("drafts_section_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertFalse("agent_usage_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse("sync_core_notification_prefs_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse("mobile_inbox_inplace_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse("mobile_inbox_inplace_v0" in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+        assertFalse("mobile_raft_sign_in_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         // slock staging 82ec87f2 packages/shared/src/featureFlags.ts SLACK_BRIDGE_FEATURE_FLAG_KEYS.master.
         assertEquals("slack_bridge_v0", SLACK_BRIDGE_FEATURE_FLAG_KEY)
         // slock staging ee41b3f3 packages/server/src/services/featureFlagService.ts PERSONAL_ASSISTANT_FEATURE_FLAG_KEY.
@@ -154,8 +164,6 @@ class SharedServerFeatureFlagsTest {
         assertEquals("mobile_server_setup_v1", MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY)
         // botiverse/slock packages/shared/src/featureFlags.ts SERVER_LABS_UI_FEATURE_FLAG_KEY (default off).
         assertEquals("server_labs_ui_v0", SERVER_LABS_UI_FEATURE_FLAG_KEY)
-        // #proj-workspace:#356: mobile Login-with-Raft in-app browser catch (default off).
-        assertEquals("mobile_raft_sign_in_v0", MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY)
         // #wg-mobile-feedback:#276 screenshot -> quick feedback sheet allowlist (default off).
         assertEquals("mobile_screenshot_feedback_v0", MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY)
         assertFalse(MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
@@ -181,7 +189,6 @@ class SharedServerFeatureFlagsTest {
                 SLACK_BRIDGE_FEATURE_FLAG_KEY,
                 PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
                 SERVER_LABS_UI_FEATURE_FLAG_KEY,
-                MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY,
                 MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY,
                 MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY,
                 MOBILE_FCM_PROBE_FEATURE_FLAG_KEY,
@@ -220,7 +227,7 @@ class SharedServerFeatureFlagsTest {
         // #triage:#244: the Activity list and badge must not run the off path on a cold start until the
         // evaluation lands (or offline, at all) when the last session had the flags on.
         assertEquals("inbox_row_position_v1", INBOX_ROW_POSITION_FEATURE_FLAG_KEY)
-        val keys = listOf(MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY, INBOX_ROW_POSITION_FEATURE_FLAG_KEY)
+        val keys = listOf(INBOX_ROW_POSITION_FEATURE_FLAG_KEY)
         keys.forEach { key ->
             assertTrue(key in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS, key)
             assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)
@@ -810,7 +817,7 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
-    fun clientErrorAndWebViewTraceSampleFlagsAreRegisteredAndEvaluated() = runTest {
+    fun clientErrorAndWebViewTraceSampleFlagsAreEvaluatedSeparatelyFromProductFlags() = runTest {
         val expectedKeys =
             listOf(
                 "trace_sample.mobile.http_error",
@@ -821,24 +828,60 @@ class SharedServerFeatureFlagsTest {
                 "trace_sample",
             )
         for (key in expectedKeys) {
-            assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, "missing registered key: $key")
+            assertTrue(key in REGISTERED_TRACE_SAMPLE_FEATURE_FLAG_KEYS, "missing trace-sample key: $key")
+            assertFalse(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, "trace-sample key leaked into product batch: $key")
         }
+        val requests = mutableListOf<List<String>>()
         val api =
-            FakeApi(
-                ok(
-                    """{"evaluations":[
-                        {"key":"trace_sample.mobile.http_error","enabled":true,"reason":"platform_rule","variant":"0.5"},
-                        {"key":"trace_sample.mobile.ui_error","enabled":false,"reason":"kill_switch"},
-                        {"key":"trace_sample.mobile.webview","enabled":true,"reason":"platform_rule","variant":"0.2"},
-                        {"key":"trace_sample.mobile.web_container","enabled":true,"reason":"platform_rule","variant":"0.75"}
-                    ]}"""
-                )
-            )
-        val snapshot = SharedServerFeatureFlags(api).prefetch(server)
-        assertEquals(0.5, resolveActiveServerTraceSampleRate(server.value, MOBILE_HTTP_ERROR_TRACE_NAME, 1.0, flags = snapshot))
-        assertEquals(0.0, resolveActiveServerTraceSampleRate(server.value, MOBILE_UI_ERROR_TRACE_NAME, 1.0, flags = snapshot))
-        assertEquals(0.2, resolveActiveServerTraceSampleRate(server.value, MOBILE_WEBVIEW_TRACE_NAME, 0.1, flags = snapshot))
-        assertEquals(0.75, resolveActiveServerTraceSampleRate(server.value, MOBILE_WEB_CONTAINER_TRACE_NAME, 1.0, flags = snapshot))
+            object : RaftFeatureFlagsApi {
+                override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse {
+                    requests += keys
+                    return if (keys == REGISTERED_TRACE_SAMPLE_FEATURE_FLAG_KEYS) {
+                        ok(
+                            """{"evaluations":[
+                                {"key":"trace_sample.mobile.http_error","enabled":true,"reason":"platform_rule","variant":"0.5"},
+                                {"key":"trace_sample.mobile.ui_error","enabled":false,"reason":"kill_switch"},
+                                {"key":"trace_sample.mobile.webview","enabled":true,"reason":"platform_rule","variant":"0.2"},
+                                {"key":"trace_sample.mobile.web_container","enabled":true,"reason":"platform_rule","variant":"0.75"}
+                            ]}"""
+                        )
+                    } else {
+                        ok("""{"evaluations":[{"key":"$AGENT_LOUNGE_FEATURE_FLAG_KEY","enabled":true,"reason":"server_rule"}]}""")
+                    }
+                }
+            }
+        val flags = SharedServerFeatureFlags(api)
+        val revisionBefore = flags.snapshotRevision.value
+        val traceSnapshot = flags.prefetchTraceSampling(server)
+        assertTrue(traceSnapshot.resolved)
+        assertEquals(revisionBefore, flags.snapshotRevision.value, "trace sampling must not bump product snapshotRevision")
+        assertFalse(flags.snapshotFor(server).resolved, "product snapshot stays independent of trace sampling")
+        assertEquals(traceSnapshot, flags.traceSampleSnapshotFor(server))
+        assertEquals(0.5, resolveActiveServerTraceSampleRate(server.value, MOBILE_HTTP_ERROR_TRACE_NAME, 1.0, flags = traceSnapshot))
+        assertEquals(0.0, resolveActiveServerTraceSampleRate(server.value, MOBILE_UI_ERROR_TRACE_NAME, 1.0, flags = traceSnapshot))
+        assertEquals(0.2, resolveActiveServerTraceSampleRate(server.value, MOBILE_WEBVIEW_TRACE_NAME, 0.1, flags = traceSnapshot))
+        assertEquals(0.75, resolveActiveServerTraceSampleRate(server.value, MOBILE_WEB_CONTAINER_TRACE_NAME, 1.0, flags = traceSnapshot))
+
+        val productSnapshot = flags.prefetch(server)
+        assertTrue(productSnapshot.resolved)
+        assertTrue(flags.isEnabled(server, AGENT_LOUNGE_FEATURE_FLAG_KEY))
+        assertEquals(listOf(REGISTERED_TRACE_SAMPLE_FEATURE_FLAG_KEYS, REGISTERED_SERVER_FEATURE_FLAG_KEYS), requests)
+
+        // Trace sampling failure never disturbs resolved product flags.
+        val failingTraceApi =
+            object : RaftFeatureFlagsApi {
+                override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
+                    if (keys == REGISTERED_TRACE_SAMPLE_FEATURE_FLAG_KEYS) {
+                        HomeNetworkResponse(code = 500, bodyText = null)
+                    } else {
+                        ok("""{"evaluations":[{"key":"$AGENT_LOUNGE_FEATURE_FLAG_KEY","enabled":true,"reason":"server_rule"}]}""")
+                    }
+            }
+        val isolated = SharedServerFeatureFlags(failingTraceApi)
+        assertTrue(isolated.prefetch(server).resolved)
+        assertFalse(isolated.prefetchTraceSampling(server).resolved)
+        assertTrue(isolated.isEnabled(server, AGENT_LOUNGE_FEATURE_FLAG_KEY))
+        assertFalse(isolated.traceSampleSnapshotFor(server).resolved)
     }
 
     @Test

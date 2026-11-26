@@ -39,7 +39,6 @@ import kotlinx.serialization.json.Json
  * user and server stages — so a rollout can target mobile-only. This client
  * always sends `"mobile"` ([FEATURE_FLAG_PLATFORM_MOBILE]); the server treats every KMP surface as mobile.
  */
-const val SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY: String = "sync_core_notification_prefs_v0"
 const val SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY: String = "sync_core_read_state_v1"
 const val MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY: String = "mobile_thread_page_size_v0"
 /**
@@ -84,6 +83,10 @@ const val THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY: String =
 // task_v2_conversations_v0 is no longer read (stdrc, #raft-feature-flag): task v2 is always on in the
 // app and every surface that read it takes its former "on" path. Its flag row stays only because app
 // versions up to 1.28 still ask for it (the server answers it as always on, #wg-task-v2:#32).
+// sync_core_notification_prefs_v0, mobile_inbox_inplace_v0, and mobile_raft_sign_in_v0 are retired in
+// 1.31 (dm:@artin 2026-11-26): sync_core_notification_prefs_v0 had no readers; mobile_inbox_inplace_v0
+// was superseded by mobile_activity_inplace_v1 in 1.30; mobile_raft_sign_in_v0 graduated to 100% live
+// in 1.29 (prod config v707) and native in-app browser Raft sign-in is now always enabled when signed in.
 
 /**
  * Keys that are ON unless the server explicitly decides otherwise (artin 2026-10-10: DoH defaults on,
@@ -120,22 +123,11 @@ const val ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY: String = "antiproton_hoste
 const val WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY: String = "workspace_artifacts_v0"
 
 /**
- * Inbox refresh step 4 (#triage 6db2bd32): a live `message:new` / `thread:updated` for a row the
- * Activity list already shows patches its preview, unread and mention in place instead of
- * re-reading the list; a hidden list reads nothing until it shows again (`visibility`); while
- * visible, patched rows are re-read at most once per [ActivityInPlaceReconcileIntervalMillis]
- * (`inplace_reconcile`); and the Activity badge follows the loaded All list instead of its own
- * summary read. Mobile-only key, default OFF (server-unresolved evaluates false): off, every read
- * is today's.
- */
-const val MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY: String = "mobile_inbox_inplace_v0"
-
-/**
- * Inbox redesign step 2 (#triage:#244; slock web `INBOX_ROW_POSITION_FLAG_KEY`, shared with web): with
- * [MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY] on too, each listed Activity row is kept by the shared per-row
- * position rule (`reduceActivityRow`, `activityLiveUnread`): a late older answer never regresses a row,
- * a live message the rule cannot judge re-reads only its row (`GET /channels/inbox?ids=`), and the
- * loaded All list is the badge's only writer. Per server, default OFF: off, every path is as before.
+ * Inbox redesign step 2 (#triage:#244; slock web `INBOX_ROW_POSITION_FLAG_KEY`, shared with web): each
+ * listed Activity row is kept by the shared per-row position rule (`reduceActivityRow`,
+ * `activityLiveUnread`): a late older answer never regresses a row, a live message the rule cannot
+ * judge re-reads only its row (`GET /channels/inbox?ids=`), and the loaded All list is the badge's
+ * only writer. Per server, default OFF: off, every path is as before.
  */
 const val INBOX_ROW_POSITION_FEATURE_FLAG_KEY: String = "inbox_row_position_v1"
 
@@ -234,13 +226,6 @@ const val SERVER_LABS_UI_FEATURE_FLAG_KEY: String = "server_labs_ui_v0"
  * was retired (artin, #proj-raft-computer:4e327d5c); the app never read it.
  */
 const val CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY: String = "claude_limit_reset_v2"
-
-/**
- * Mobile in-app browser App entries (`Raft-Host`) and native "Log in with Raft" catch
- * (#proj-workspace:#356): per server, default off, read live from server flags. Off (or unresolved),
- * entries still open in-app with no `Raft-Host` header and no authorize catch.
- */
-const val MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY: String = "mobile_raft_sign_in_v0"
 
 /**
  * Screenshot -> quick feedback sheet (#wg-mobile-feedback:#276): per-server allowlist for
@@ -384,9 +369,8 @@ object RaftEarlyAccessPolicyHost {
     }
 }
 
-/** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
+/** Web-shared product flags plus mobile-only runtime safety flags evaluated in the primary prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
-    SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
     SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY,
     MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY,
     MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY,
@@ -396,7 +380,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY,
     ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY,
     WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
-    MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY,
     INBOX_ROW_POSITION_FEATURE_FLAG_KEY,
     MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY,
     SYNC_INBOX_ROWS_FEATURE_FLAG_KEY,
@@ -414,8 +397,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY,
     // The Computer usage card's "Use a limit reset" for Claude Code.
     CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY,
-    // Mobile in-app browser App entries (`Raft-Host`) and native Log in with Raft (#proj-workspace:#356).
-    MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY,
     // Screenshot -> quick feedback sheet allowlist (#wg-mobile-feedback:#276).
     MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY,
     // Standalone cross-platform Hybrid WebView Container (`compose/web-container`, default OFF).
@@ -444,9 +425,14 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,
-    // Trace sampling (slock docs/observability/trace-sampling.md): the rate is the variant, the most
-    // specific key with a flag decides (RaftTraceSampling.kt).
-) + (
+)
+
+/**
+ * Trace-sampling rate flags (slock docs/observability/trace-sampling.md): evaluated in a separate
+ * background request ([SharedServerFeatureFlags.prefetchTraceSampling]) so observability keys stay
+ * isolated from product feature flags and never crowd the primary 50-key evaluate batch.
+ */
+val REGISTERED_TRACE_SAMPLE_FEATURE_FLAG_KEYS: List<String> = (
     traceSampleKeys(MOBILE_THREAD_OPEN_TRACE_NAME) +
         traceSampleKeys(MOBILE_FRAMES_NAV_TRANSITION_TRACE_NAME) +
         traceSampleKeys(MOBILE_FRAMES_RESUME_TRACE_NAME) +
@@ -621,9 +607,22 @@ class SharedServerFeatureFlags(
      */
     private val lastKnown: ServerFeatureFlagLastKnownStore? = null,
     private val clientDefaultOnKeys: Set<String> = SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS,
+    private val traceSampleKeys: List<String> = REGISTERED_TRACE_SAMPLE_FEATURE_FLAG_KEYS,
     // Kept last so existing trailing-lambda constructions keep binding here.
     private val onEvaluation: ((ServerId, String, Boolean, String?, String?, String?, Long) -> Unit)? = null,
 ) {
+    private val traceSampleStore: SharedServerFeatureFlags? =
+        if (traceSampleKeys.isEmpty()) {
+            null
+        } else {
+            SharedServerFeatureFlags(
+                api = api,
+                keys = traceSampleKeys,
+                diagnosticsLogger = diagnosticsLogger,
+                clientDefaultOnKeys = emptySet(),
+                traceSampleKeys = emptyList(),
+            )
+        }
     private val stateLock = SynchronizedObject()
     private val nextRequestGenerationByServer = mutableMapOf<String, Long>()
     private val acceptedGenerationByServer = mutableMapOf<String, Long>()
@@ -702,6 +701,41 @@ class SharedServerFeatureFlags(
 
     fun snapshotFor(serverId: ServerId?): ServerFeatureFlagSnapshot =
         serverId?.let { snapshots[it.value] } ?: ServerFeatureFlagSnapshot.Unresolved
+
+    /**
+     * Evaluates [traceSampleKeys] for [serverId] in an independent request isolated from product
+     * feature flags. Failures or latency here never affect product flag snapshots or bump
+     * [snapshotRevision].
+     */
+    suspend fun prefetchTraceSampling(
+        serverId: ServerId,
+        evaluationContext: String? = null,
+        forceRefresh: Boolean = false,
+    ): ServerFeatureFlagSnapshot =
+        traceSampleStore?.prefetch(
+            serverId = serverId,
+            evaluationContext = evaluationContext,
+            forceRefresh = forceRefresh,
+        ) ?: ServerFeatureFlagSnapshot.Unresolved
+
+    /**
+     * Latest trace-sampling snapshot for [serverId]. Prefers the dedicated trace-sampling store;
+     * falls back to [snapshotFor] only when a caller explicitly evaluated `trace_sample*` keys on
+     * the primary store.
+     */
+    fun traceSampleSnapshotFor(serverId: ServerId?): ServerFeatureFlagSnapshot {
+        val dedicated = traceSampleStore?.snapshotFor(serverId)
+        if (dedicated != null && dedicated.resolved) return dedicated
+        val primary = snapshotFor(serverId)
+        return if (
+            primary.resolved &&
+            primary.reasons.keys.any { it == TRACE_SAMPLE_FLAG_PREFIX || it.startsWith("$TRACE_SAMPLE_FLAG_PREFIX.") }
+        ) {
+            primary
+        } else {
+            ServerFeatureFlagSnapshot.Unresolved
+        }
+    }
 
     fun isEnabled(serverId: ServerId?, key: String): Boolean =
         applyDiagnosticOverride(serverId, key, serverEffective(serverId, key))

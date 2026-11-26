@@ -82,7 +82,8 @@ class RaftTraceSamplingTest {
     @Test
     fun theFlagStoreKeepsTheReasonSoTheSnapshotResolvesTheRate() = runTest {
         val server = ServerId("s1")
-        assertTrue(traceSampleKeys(MOBILE_THREAD_OPEN_TRACE_NAME).all { it in REGISTERED_SERVER_FEATURE_FLAG_KEYS })
+        assertTrue(traceSampleKeys(MOBILE_THREAD_OPEN_TRACE_NAME).all { it in REGISTERED_TRACE_SAMPLE_FEATURE_FLAG_KEYS })
+        assertTrue(traceSampleKeys(MOBILE_THREAD_OPEN_TRACE_NAME).none { it in REGISTERED_SERVER_FEATURE_FLAG_KEYS })
         val api =
             object : RaftFeatureFlagsApi {
                 override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
@@ -95,15 +96,17 @@ class RaftTraceSamplingTest {
                     )
             }
         val flags = SharedServerFeatureFlags(api)
-        assertTrue(flags.snapshotFor(server).traceSampleEvaluations(MOBILE_THREAD_OPEN_TRACE_NAME).isEmpty(), "unresolved: the default applies")
-        val snapshot = flags.prefetch(server)
+        assertTrue(flags.traceSampleSnapshotFor(server).traceSampleEvaluations(MOBILE_THREAD_OPEN_TRACE_NAME).isEmpty(), "unresolved: the default applies")
+        val snapshot = flags.prefetchTraceSampling(server)
         assertEquals("platform_rule", snapshot.reasons["trace_sample.mobile.thread_open"])
         assertEquals(0.1, resolveTraceSampleRate(MOBILE_THREAD_OPEN_TRACE_NAME, snapshot.traceSampleEvaluations(MOBILE_THREAD_OPEN_TRACE_NAME), 1.0))
+        assertEquals(snapshot, flags.traceSampleSnapshotFor(server))
     }
 
     @Test
     fun clientErrorAndWebViewTraceSampleFamiliesAreRegisteredWithExpectedDefaults() {
         assertEquals(REGISTERED_SERVER_FEATURE_FLAG_KEYS.distinct(), REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertEquals(REGISTERED_TRACE_SAMPLE_FEATURE_FLAG_KEYS.distinct(), REGISTERED_TRACE_SAMPLE_FEATURE_FLAG_KEYS)
         for (name in listOf(
             MOBILE_HTTP_ERROR_TRACE_NAME,
             MOBILE_UI_ERROR_TRACE_NAME,
@@ -111,8 +114,12 @@ class RaftTraceSamplingTest {
             MOBILE_WEB_CONTAINER_TRACE_NAME,
         )) {
             assertTrue(
-                traceSampleKeys(name).all { it in REGISTERED_SERVER_FEATURE_FLAG_KEYS },
+                traceSampleKeys(name).all { it in REGISTERED_TRACE_SAMPLE_FEATURE_FLAG_KEYS },
                 "missing trace_sample keys for $name",
+            )
+            assertTrue(
+                traceSampleKeys(name).none { it in REGISTERED_SERVER_FEATURE_FLAG_KEYS },
+                "trace_sample keys must not be in product flag batch for $name",
             )
         }
         assertEquals(1.0, TRACE_SAMPLE_ERROR_DEFAULT_RATE)

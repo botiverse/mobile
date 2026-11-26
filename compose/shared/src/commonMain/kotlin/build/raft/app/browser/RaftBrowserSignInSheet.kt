@@ -26,7 +26,6 @@ import build.raft.app.base.BridgeModule
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
-import build.raft.app.data.MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftStaleReadRecoverySignals
@@ -95,18 +94,8 @@ internal fun rememberInAppBrowserSignInHost(
                 ?.takeIf { it.isNotEmpty() }
                 ?.let(::ServerId)
         }
-    val flagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-    LaunchedEffect(sharedStores.serverFeatureFlags, flagServerId) {
-        if (flagServerId != null) {
-            sharedStores.serverFeatureFlags.prefetch(flagServerId)
-        }
-    }
-    // Decision #1: read live from server flags (never latched). Off/unresolved => no header, no catch.
-    val flagEnabled =
-        remember(sharedStores.serverFeatureFlags, flagServerId, flagRevision) {
-            flagServerId != null &&
-                sharedStores.serverFeatureFlags.isEnabled(flagServerId, MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY)
-        }
+    // mobile_raft_sign_in_v0 graduated to 100% live in 1.29 (prod config v707); enabled whenever a server is bound.
+    val flagEnabled = flagServerId != null
     val pageVisible = rememberRaftPagerAppeared(pager) && panelVisible
     val appForeground by RaftStaleReadRecoverySignals.foreground.collectAsState()
     val scope = rememberCoroutineScope()
