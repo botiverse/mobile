@@ -49,11 +49,14 @@ import build.raft.app.RaftScreenshotFeedbackRootOverlay
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.LocalRaftPageArgs
 import build.raft.app.cmp.host.RaftCmpPageArgs
+import build.raft.app.LocalRaftNativeServerSwitcherBridge
 import build.raft.app.LocalRaftNativeTabBarBridge
 import build.raft.app.LocalRaftNativeNavBar
 import build.raft.app.LocalRaftNativeNavBarScript
 import build.raft.app.RaftNativeNavBarHostIdPageDataKey
 import build.raft.app.RaftNativeNavBarRegistry
+import build.raft.app.RaftNativeServerSwitcherHostIdPageDataKey
+import build.raft.app.RaftNativeServerSwitcherRegistry
 import build.raft.app.RaftNativeTabBarHostIdPageDataKey
 import build.raft.app.RaftNativeTabBarRegistry
 import build.raft.app.RaftSideActionHostIdPageDataKey
@@ -275,6 +278,13 @@ fun RaftPagerHost(
         LocalRaftNativeTabBarBridge provides
             remember(pager) {
                 RaftNativeTabBarRegistry.bridgeFor(pager.pageData.params.optString(RaftNativeTabBarHostIdPageDataKey))
+            },
+        // iOS 26+ native Liquid Glass Home server switcher overlay (#proj-mobile:#369), if registered.
+        LocalRaftNativeServerSwitcherBridge provides
+            remember(pager) {
+                RaftNativeServerSwitcherRegistry.bridgeFor(
+                    pager.pageData.params.optString(RaftNativeServerSwitcherHostIdPageDataKey)
+                )
             },
         LocalRaftSideActionHost provides sideActionHost,
         // PROTOTYPE: the host-drawn UINavigationBar registered for this page (iOS), if any.
