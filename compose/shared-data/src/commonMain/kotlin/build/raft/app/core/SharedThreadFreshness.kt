@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.data.compareActivitySeq
+import build.raft.app.data.isCanonicalActivitySeq
 import build.raft.app.data.map
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
@@ -57,7 +59,8 @@ class SharedThreadContentGeneration @RaftCoreInternalApi constructor(
     val latestActivityAt: String?,
     val lastMessageId: String?,
     val lastMessagePreview: String?,
-    val lastMessageAt: String?
+    val lastMessageAt: String?,
+    val latestActivitySeq: String? = null,
 )
 
 private data class SharedThreadMessageMutationKey(
@@ -176,11 +179,34 @@ private data class SharedThreadReplyCountKey(
             true
         }
 
+    /**
+     * Hands 3ebf97ba: advances any captured owner / prewarm generation when a live realtime
+     * `message:new` arrives for a channel, DM, joint channel, or reply thread — even when
+     * Activity does not currently list or in-place patch that row — so a ready prewarm captured
+     * before the message arrived can never be consumed as the final answer on open.
+     */
+    fun acceptRealtimeMessage(serverId: String, threadId: String, message: Message): Boolean =
+        synchronized(lock) {
+            val key = SharedThreadPayloadCacheKey(serverId, threadId)
+            val mutationKey = SharedThreadMessageMutationKey(key, message.id)
+            if (messageFacts[mutationKey] == message) return@synchronized false
+            messageFacts.remove(mutationKey)
+            messageFacts[mutationKey] = message
+            while (messageFacts.size > messageFactLimit.coerceAtLeast(1)) {
+                messageFacts.remove(messageFacts.keys.firstOrNull() ?: break)
+            }
+            if (generations.keys.none { it.payloadKey == key } && key !in contentGenerations) {
+                return@synchronized false
+            }
+            advanceAllOwnersLocked(key, cause = "message_new", realtimeMessageId = message.id.value)
+            true
+        }
+
     fun acceptSummary(
         serverId: String,
         threadId: String,
         fact: SharedThreadSummaryFact,
-        /** The live message (a reply) this fact comes from; null for a list re-read. */
+        /** The live message (a reply or channel message) this fact comes from; null for a list re-read. */
         realtimeMessageId: String? = null,
     ): Boolean =
         synchronized(lock) {
@@ -188,17 +214,50 @@ private data class SharedThreadReplyCountKey(
             val previous = summaryFacts[key]
             if (previous == null) {
                 summaryFacts[key] = fact
+                if (
+                    !realtimeMessageId.isNullOrBlank() &&
+                    (generations.keys.any { it.payloadKey == key } || key in contentGenerations)
+                ) {
+                    advanceAllOwnersLocked(key, cause = "activity_summary", realtimeMessageId = realtimeMessageId)
+                    return@synchronized true
+                }
                 return@synchronized false
             }
             if (previous == fact) return@synchronized false
             if (fact.replyCount < previous.replyCount) return@synchronized false
-            if (
-                fact.replyCount == previous.replyCount &&
-                fact.latestActivityAt != null &&
-                previous.latestActivityAt != null &&
-                fact.latestActivityAt < previous.latestActivityAt
-            ) {
-                return@synchronized false
+            val factSeq = fact.latestActivitySeq
+            val prevSeq = previous.latestActivitySeq
+            val seqCompare =
+                if (
+                    factSeq != null &&
+                    prevSeq != null &&
+                    isCanonicalActivitySeq(factSeq) &&
+                    isCanonicalActivitySeq(prevSeq)
+                ) {
+                    compareActivitySeq(factSeq, prevSeq)
+                } else {
+                    null
+                }
+            if (seqCompare != null && seqCompare < 0) return@synchronized false
+            if (seqCompare == null || seqCompare == 0) {
+                if (
+                    fact.replyCount == previous.replyCount &&
+                    fact.latestActivityAt != null &&
+                    previous.latestActivityAt != null &&
+                    fact.latestActivityAt < previous.latestActivityAt
+                ) {
+                    return@synchronized false
+                }
+                if (
+                    fact.replyCount == previous.replyCount &&
+                    fact.latestActivityAt == null &&
+                    previous.latestActivityAt == null &&
+                    fact.lastMessageAt != null &&
+                    previous.lastMessageAt != null &&
+                    fact.lastMessageAt < previous.lastMessageAt
+                ) {
+                    return@synchronized false
+                }
             }
             summaryFacts[key] = fact
             advanceAllOwnersLocked(key, cause = "activity_summary", realtimeMessageId = realtimeMessageId)
@@ -381,7 +440,10 @@ private data class SharedThreadReplyCountKey(
                 val realtimeIds =
                     realtimeMessageId
                         ?.takeIf { it.isNotBlank() }
-                        ?.let { id -> previous?.realtimeMessageIds.orEmpty() + id }
+                        ?.let { id ->
+                            val existingIds = previous?.realtimeMessageIds.orEmpty()
+                            if (existingIds.lastOrNull() == id) existingIds else existingIds + id
+                        }
                         ?.takeIf { ids -> ids.size <= SharedThreadRealtimeFoldMessageIdLimit }
                 generations[key] =
                     if (previous != null && realtimeIds != null) {
