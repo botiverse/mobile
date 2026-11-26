@@ -5,14 +5,15 @@
 // reaction-sprite.svg — so mobile and web glyphs can never drift (task #335).
 //
 // Outputs:
-//   compose/shared/src/commonMain/composeResources/files/reactions/
-//     reaction_atlas_v1.png            (rasterized atlas, 24dp cells @3x)
+//   compose/shared-data/src/commonMain/composeResources/files/reactions/
+//     reaction_atlas_v1.png            (rasterized atlas, 24dp cells @4x)
 //     reaction_atlas_v1_manifest.json  (ids/emoji/aliases/labels + rects)
 //
 // Point SLOCK_SOURCE_REPO (or SLOCK_REACT_REPO_DIR) at a Slock web checkout,
 // mirroring scripts/slock-visual-testing.mjs resolution.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -114,13 +115,35 @@ ${sourceBody(reaction.sourceSvg)
 </svg>
 `;
 
-const assetsDir = resolve(repoRoot, "compose/shared/src/commonMain/composeResources/files/reactions");
+const assetsDir = resolve(repoRoot, "compose/shared-data/src/commonMain/composeResources/files/reactions");
 const outPngPath = resolve(assetsDir, atlas.image);
 const outManifestPath = resolve(assetsDir, "reaction_atlas_v1_manifest.json");
 
 const tempDir = mkdtempSync(resolve(tmpdir(), "slock-reaction-atlas-"));
 const atlasSvgPath = resolve(tempDir, "reaction_atlas_v1.svg");
 writeFileSync(atlasSvgPath, atlasSvg);
+
+function rasterizeWithResvgFallback(svgMarkup, width, outPath) {
+  const require = createRequire(import.meta.url);
+  const candidates = [process.env.RESVG_JS_PATH, "@resvg/resvg-js"].filter(Boolean);
+  let resvgModule = null;
+  for (const specifier of candidates) {
+    try {
+      resvgModule = require(specifier);
+      break;
+    } catch {
+      // Try next candidate.
+    }
+  }
+  if (!resvgModule?.Resvg) {
+    return false;
+  }
+  const rendered = new resvgModule.Resvg(svgMarkup, {
+    fitTo: { mode: "width", value: width },
+  }).render();
+  writeFileSync(outPath, rendered.asPng());
+  return true;
+}
 
 try {
   execFileSync("rsvg-convert", [
@@ -136,9 +159,14 @@ try {
   ]);
 } catch (error) {
   if (error.code === "ENOENT") {
-    throw new Error("rsvg-convert is required to regenerate the thread reaction atlas.");
+    if (!rasterizeWithResvgFallback(atlasSvg, atlas.width, outPngPath)) {
+      throw new Error(
+        "rsvg-convert (or @resvg/resvg-js via NODE_PATH / RESVG_JS_PATH) is required to regenerate the thread reaction atlas.",
+      );
+    }
+  } else {
+    throw error;
   }
-  throw error;
 }
 
 const manifest = {
