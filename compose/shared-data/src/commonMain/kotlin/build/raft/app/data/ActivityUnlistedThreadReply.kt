@@ -115,6 +115,7 @@ private val ValidInsertedParentSenderKinds: Set<MemberKind> =
     readOnArrival: Boolean,
     followed: ActivityKnownFollowedThread?,
     parentChannel: ActivityKnownParentChannel?,
+    peopleActivityRows: Boolean = false,
 ): ActivityThreadInsertResult {
     if (reply == null || reply.channelId != event.threadChannelId) {
         return ActivityThreadInsertResult.Refused("no_reply")
@@ -176,6 +177,7 @@ private val ValidInsertedParentSenderKinds: Set<MemberKind> =
                     activityMuted = false,
                     readOnArrival = readOnArrival,
                 ),
+            rules = ActivityUnreadRules(peopleActivityRows = peopleActivityRows),
         )
     if (verdict.counts == null || !verdict.moves) {
         return ActivityThreadInsertResult.Refused("unjudged")

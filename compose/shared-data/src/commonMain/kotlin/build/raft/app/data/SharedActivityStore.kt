@@ -486,6 +486,12 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
      * path is today's.
      */
     private val inboxRowPositionEnabled: (serverId: String) -> Boolean = { false },
+    /**
+     * `people_activity_rows_v0` (`botiverse/slock` #17123): per server, default OFF. Passed as
+     * `fullRule` to [quietLineLeavesRow] and `peopleActivityRows` to [activityRowLiveVerdict] /
+     * [buildInsertedThreadRow] / [hiddenListMessageCounts].
+     */
+    private val peopleActivityRowsEnabled: (serverId: String) -> Boolean = { false },
     /** See [ActivityRowRereadDelayMillis]; injectable for virtual time. */
     private val rowRereadDelayMillis: Long = ActivityRowRereadDelayMillis,
     /** See [ActivitySelectedReadFollowupDelayMillis]; injectable for virtual time. */
@@ -2005,9 +2011,9 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         val existing = snapshot.items[existingIndex]
         val viewerId = inPlace?.principalId ?: current.ownerUserId?.trim()?.takeIf { it.isNotBlank() }
         val provenance = (intent.event as? MessageNew)?.systemProvenance
-        // Step 2c + #proj-raft-ui:#319 (slock #16837/#17080): a quiet line leaves this person's
+        // Step 2c + #proj-raft-ui:#319 (slock #16837/#17080/#17123): a quiet line leaves this person's
         // task or thread row as it is (place, time, preview, reply count, read state). No re-read.
-        if (quietLineLeavesRow(message, provenance, viewerId, existing.activityUnreadRowKind())) {
+        if (quietLineLeavesRow(message, provenance, viewerId, existing.activityUnreadRowKind(), fullRule = peopleActivityRowsOn(current.ownerServerId))) {
             return RealtimeRowPatch.Unchanged
         }
         if (existing.lastMessageId == message.id || existing.latestActivityMessageId == message.id) {
@@ -2073,18 +2079,19 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         val channelId = message.channelId ?: return RealtimeRowPatch.Absent
         val viewerId = inPlace?.principalId ?: current.ownerUserId?.trim()?.takeIf { it.isNotBlank() }
         val provenance = (intent.event as? MessageNew)?.systemProvenance
+        val peopleActivityRows = peopleActivityRowsOn(current.ownerServerId)
         val existingIndex =
             snapshot.items.indexOfFirst { item -> item.isChannelOrDmRow() && item.channelId == channelId }
         if (existingIndex < 0) {
-            // #proj-raft-ui:#319 (slock #17080): a quiet channel/DM line does not bring back a row
+            // #proj-raft-ui:#319 (slock #17080/#17123): a quiet channel/DM line does not bring back a row
             // Done hid and needs no catch-up re-read.
-            if (quietLineLeavesRow(message, provenance, viewerId, ActivityUnreadRowKind.Channel)) {
+            if (quietLineLeavesRow(message, provenance, viewerId, ActivityUnreadRowKind.Channel, fullRule = peopleActivityRows)) {
                 return RealtimeRowPatch.Unchanged
             }
             return RealtimeRowPatch.Absent
         }
         val existing = snapshot.items[existingIndex]
-        if (quietLineLeavesRow(message, provenance, viewerId, existing.activityUnreadRowKind())) {
+        if (quietLineLeavesRow(message, provenance, viewerId, existing.activityUnreadRowKind(), fullRule = peopleActivityRows)) {
             return RealtimeRowPatch.Unchanged
         }
         if (existing.lastMessageId == message.id) return RealtimeRowPatch.Unchanged
@@ -2199,6 +2206,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                         provenance = null,
                         viewerId = inPlace.principalId,
                         rowKind = ActivityUnreadRowKind.Thread,
+                        fullRule = peopleActivityRowsOn(current.ownerServerId),
                     )
             ) {
                 return RealtimeRowPatch.Unchanged
@@ -2233,6 +2241,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                     provenance = null,
                     viewerId = viewerId,
                     rowKind = existing.activityUnreadRowKind(),
+                    fullRule = peopleActivityRowsOn(current.ownerServerId),
                 )
         ) {
             return false
@@ -2565,6 +2574,10 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         return inboxInPlaceEnabled(serverId) && inboxRowPositionEnabled(serverId)
     }
 
+    /** `people_activity_rows_v0` (slock #17123) for [serverId]; off when unbound or unresolved. */
+    private fun peopleActivityRowsOn(serverId: String?): Boolean =
+        serverId?.let(peopleActivityRowsEnabled) == true
+
     /**
      * `sync_inbox_rows_v0` covers absent rows, new DMs, and foreground returns for this list:
      * requires a fresh All list kept by the per-row position rule and `sync_inbox_rows_v0` enabled.
@@ -2807,7 +2820,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 provenance = provenance,
                 principalId = inPlace.principalId,
                 activityMuted = intent.activityMuted,
-                readOnArrival = isActiveActivityConversation(streamChannelId.value, inPlace.activeConversationId, snapshot)
+                readOnArrival = isActiveActivityConversation(streamChannelId.value, inPlace.activeConversationId, snapshot),
+                peopleActivityRows = peopleActivityRowsOn(current.ownerServerId),
             )
         val seq = message.seq?.takeIf { it >= 0L }?.toString()
         val before = rowPositions.stateOf(existing)
@@ -2955,7 +2969,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         inPlace: InPlaceUnreadContext
     ): RealtimeRowPatch? {
         if (!rowPositionOnLocked()) return null
-        val snapshot = _state.value.snapshot ?: return null
+        val current = _state.value
+        val snapshot = current.snapshot ?: return null
         val index = snapshot.threadRowIndex(event.threadChannelId)
         if (index < 0) {
             val unlistedReply = event.latestReply?.toActivityLiveMessage(event)
@@ -2966,6 +2981,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                         provenance = null,
                         viewerId = inPlace.principalId,
                         rowKind = ActivityUnreadRowKind.Thread,
+                        fullRule = peopleActivityRowsOn(current.ownerServerId),
                     )
             ) {
                 return RealtimeRowPatch.Unchanged
@@ -3045,6 +3061,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 readOnArrival = readOnArrival,
                 followed = context.followed,
                 parentChannel = context.parentChannel,
+                peopleActivityRows = peopleActivityRowsOn(serverId),
             )
         if (built !is ActivityThreadInsertResult.Inserted) return false
         val index = insertedActivityRowIndex(snapshot.items, built.row, snapshot.hasMore) ?: return false
@@ -4068,6 +4085,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         // system lines and noise subtypes included), not by today's author-only check.
         val rowPosition =
             current.ownerServerId?.let { serverId -> inboxInPlaceEnabled(serverId) && inboxRowPositionEnabled(serverId) } == true
+        val peopleActivityRows = peopleActivityRowsOn(current.ownerServerId)
         val sharedRule: ((Message) -> Boolean)? =
             if (!rowPosition) {
                 null
@@ -4079,7 +4097,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                         principalId = currentUserId,
                         // The shell judges the mute for a `message:new` only.
                         activityMuted = activityMuted && event is MessageNew,
-                        activeConversationId = activeConversationId
+                        activeConversationId = activeConversationId,
+                        peopleActivityRows = peopleActivityRows,
                     )
                 }
             }
@@ -8519,7 +8538,8 @@ private fun InboxSnapshot.hiddenListMessageCounts(
     provenance: MessageSystemProvenance?,
     principalId: String,
     activityMuted: Boolean,
-    activeConversationId: String?
+    activeConversationId: String?,
+    peopleActivityRows: Boolean = false,
 ): Boolean {
     val streamChannelId = message.channelId ?: message.threadChannelId ?: return false
     val readOnArrival = isActiveActivityConversation(streamChannelId.value, activeConversationId, this)
@@ -8531,7 +8551,7 @@ private fun InboxSnapshot.hiddenListMessageCounts(
             items.firstOrNull { item -> item.isChannelOrDmRow() && item.channelId == message.channelId }
         }
     if (row != null) {
-        return activityRowLiveVerdict(row, message, provenance, principalId, activityMuted, readOnArrival).counts == true
+        return activityRowLiveVerdict(row, message, provenance, principalId, activityMuted, readOnArrival, peopleActivityRows).counts == true
     }
     val taskConversation = message.conversationContext?.channelKind == ConversationKind.Task
     val threadReply = taskConversation || message.conversationContext?.parentChannelId != null || message.parentMessageId != null
@@ -8548,7 +8568,8 @@ private fun InboxSnapshot.hiddenListMessageCounts(
             rowKind = rowKind,
             activityMuted = activityMuted && !threadReply,
             readOnArrival = readOnArrival
-        )
+        ),
+        rules = ActivityUnreadRules(peopleActivityRows = peopleActivityRows),
     ).counts == true
 }
 
