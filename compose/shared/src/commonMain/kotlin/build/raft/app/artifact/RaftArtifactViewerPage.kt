@@ -965,7 +965,8 @@ private fun RaftArtifactViewerWebBody(
     var hostHeadMoved by remember { mutableStateOf(false) }
     LaunchedEffect(hostHead) { if (!hostHeadMoved && hostHead != documentHostHead) hostHeadMoved = true }
     val loadWatchdog = remember { RaftWebViewLoadWatchdog(page = "artifact_viewer", url = src, retry = retry) }
-    val loadError = loadWatchdog.showsError
+    var platformLoadError by remember { mutableStateOf<String?>(null) }
+    val loadError = raftArtifactViewerHasLoadError(platformLoadError = platformLoadError, watchdogShowsError = loadWatchdog.showsError)
     LaunchedEffect(loadError) {
         if (!loadError) return@LaunchedEffect
         // The WebView left the screen (and may have been parked): never keep a stalled or crashed
@@ -1237,20 +1238,21 @@ private fun RaftArtifactViewerWebBody(
     // Diagnostics: a load still covered after a while, and what the page reached when it closes.
     val latestState by rememberUpdatedState(
         "kept=${kept != null} showsTarget=$showsTarget visible=$visible documentReady=$documentReady " +
-            "navigated=$navigated session=true"
+            "navigated=$navigated loadError=$loadError session=true"
     )
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS)
-        if (!visible || !documentReady) {
-            raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_load_slow elapsedMs=$RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS $latestState")
-        }
-    }
     val currentShownTarget by rememberUpdatedState(shownTarget)
     val currentLeft by rememberUpdatedState(left)
     val currentLoadError by rememberUpdatedState(loadError)
     val currentVisible by rememberUpdatedState(visible)
+    val currentDocumentReady by rememberUpdatedState(documentReady)
     val currentNavigated by rememberUpdatedState(navigated)
     val currentHostHeadMoved by rememberUpdatedState(hostHeadMoved)
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS)
+        if (!currentLoadError && (!currentVisible || !currentDocumentReady)) {
+            raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_load_slow elapsedMs=$RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS $latestState")
+        }
+    }
     DisposableEffect(Unit) {
         onDispose {
             raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_closed $latestState")
@@ -1325,14 +1327,26 @@ private fun RaftArtifactViewerWebBody(
             loadWatchdog = loadWatchdog,
             onLoadCommit = {
                 // A new document: it holds the token its injected session wrote.
+                platformLoadError = null
                 pageTokens.onDocumentLoaded(currentAppToken, build.raft.app.data.defaultNowMillis())
                 visible = true
                 RaftArtifactOpenTrace.mark("webview_commit")
             },
             onLoadSuccess = {
+                platformLoadError = null
                 visible = true
                 documentReady = true
                 RaftArtifactOpenTrace.mark("webview_page_finished")
+            },
+            onLoadFailure = { reason ->
+                val normalized = reason.trim().ifBlank { "webview_load_failed" }
+                visible = false
+                documentReady = false
+                platformLoadError = normalized
+                raftLogWarn(
+                    RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG,
+                    "artifact_viewer_load_failed reason=${normalized.take(64)}",
+                )
             },
             onUrlChange = ::onAddress,
             onNavigationStateChange = { state ->
@@ -1438,6 +1452,22 @@ private fun RaftArtifactViewerWebBody(
     }
     }
 }
+
+/**
+ * Whether the Artifact viewer body should replace its WebView and loading splash with the native
+ * error + Retry state: either the platform reported a main-frame load failure (`onLoadFailure`,
+ * e.g. Android `WebViewClient.ERROR_CONNECT` / SSL error or iOS navigation failure) or the load
+ * watchdog reached a terminal stall / render-process-gone phase.
+ *
+ * [RaftWebViewLoadWatchdog.showsError] intentionally stays false for [RaftWebViewLoadPhase.Failed]
+ * so each host owns its platform-error UI; without tracking [platformLoadError], a failed
+ * main-frame load cancels the 15 s stall timer and leaves the "正在获取页面" splash covering the
+ * screen indefinitely (Hands a9f83f40).
+ */
+internal fun raftArtifactViewerHasLoadError(
+    platformLoadError: String?,
+    watchdogShowsError: Boolean,
+): Boolean = platformLoadError != null || watchdogShowsError
 
 /** The App's splash cover over the viewer's body ([RaftArtifactViewerSplashCover]), for tests. */
 internal const val RAFT_ARTIFACT_VIEWER_SPLASH_COVER_TAG = "artifact_viewer_splash_cover"

@@ -1,17 +1,24 @@
 package build.raft.app
 
+import android.net.Uri
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.TestWebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
@@ -235,6 +242,108 @@ class SettingsWebViewStallRetryUiTest {
             assertEquals(RaftWebViewLoadPhase.Loading, watchdog.state.phase)
             assertEquals(1, webViews().size)
             assert(webViews().single() !== first) { "foreground resume should recreate a fresh WebView" }
+        }
+
+    @Test
+    fun artifactViewerMainFrameLoadErrorClearsSplashAndShowsRetry() =
+        runRobolectricComposeUiTest {
+            val artifactUrl = "https://app.raft.build/artifacts/pt_a24673bc-23f2-49cd-81db-0810ea146d64"
+            lateinit var watchdog: RaftWebViewLoadWatchdog
+            setContent {
+                Host {
+                    var retry by remember { mutableStateOf(0) }
+                    key(retry) {
+                        val controller = rememberRaftWebViewController()
+                        watchdog = remember { RaftWebViewLoadWatchdog(page = "artifact_viewer", url = artifactUrl, retry = retry) }
+                        var platformLoadError by remember { mutableStateOf<String?>(null) }
+                        var visible by remember { mutableStateOf(false) }
+                        val loadError =
+                            raftArtifactViewerHasLoadError(
+                                platformLoadError = platformLoadError,
+                                watchdogShowsError = watchdog.showsError,
+                            )
+                        val indicator =
+                            raftArtifactViewerLoadingIndicator(
+                                RaftArtifactViewerOpenState(
+                                    sessionRead = true,
+                                    documentShown = visible,
+                                    reusesKeptPage = false,
+                                    loadError = loadError,
+                                    sinceDocumentReadyMs = null,
+                                ),
+                            )
+                        if (!loadError) {
+                            RaftSandboxWebView(
+                                url = artifactUrl,
+                                modifier = Modifier.fillMaxSize(),
+                                allowNavigation = true,
+                                domStorageEnabled = true,
+                                controller = controller,
+                                loadWatchdog = watchdog,
+                                onLoadCommit = {
+                                    platformLoadError = null
+                                    visible = true
+                                },
+                                onLoadFailure = { reason ->
+                                    visible = false
+                                    platformLoadError = reason.ifBlank { "webview_load_failed" }
+                                },
+                            )
+                        } else {
+                            SettingsWebViewErrorContent(
+                                actionLabel = "Retry",
+                                actionIcon = RaftLucideIconName.RefreshCw,
+                                body = settingsWebViewErrorBody(watchdog.state.phase),
+                                onAction = { retry += 1 },
+                            )
+                        }
+                        if (indicator == RaftArtifactViewerLoadingIndicator.AppSplash) {
+                            Box(Modifier.fillMaxSize().testTag(RAFT_ARTIFACT_VIEWER_SPLASH_COVER_TAG))
+                        }
+                    }
+                }
+            }
+            waitForIdle()
+            assertEquals(1, webViews().size)
+            val first = webViews().single()
+            onNodeWithTag(RAFT_ARTIFACT_VIEWER_SPLASH_COVER_TAG).assertExists()
+            onNodeWithText("Could not load this page").assertDoesNotExist()
+
+            // Reproduce Hands a9f83f40: main-frame ERROR_CONNECT (-6) followed by Chromium error page finish.
+            val mainFrameReq =
+                object : WebResourceRequest {
+                    override fun getUrl(): Uri = Uri.parse(artifactUrl)
+                    override fun isForMainFrame(): Boolean = true
+                    override fun isRedirect(): Boolean = false
+                    override fun hasGesture(): Boolean = false
+                    override fun getMethod(): String = "GET"
+                    override fun getRequestHeaders(): MutableMap<String, String> = mutableMapOf()
+                }
+            runOnUiThread {
+                val client = shadowOf(first).webViewClient
+                client.onPageStarted(first, artifactUrl, null)
+                client.onReceivedError(
+                    first,
+                    mainFrameReq,
+                    TestWebResourceError(WebViewClient.ERROR_CONNECT, "net::ERR_CONNECTION_REFUSED"),
+                )
+                client.onPageFinished(first, artifactUrl)
+            }
+            waitForIdle()
+
+            // Immediately clears the splash and shows the connection error + Retry (no infinite splash).
+            assertEquals(RaftWebViewLoadPhase.Failed, watchdog.state.phase)
+            assertEquals(0, webViews().size, "failed WebView must be unmounted")
+            onNodeWithTag(RAFT_ARTIFACT_VIEWER_SPLASH_COVER_TAG).assertDoesNotExist()
+            onNodeWithText("Could not load this page").assertIsDisplayed()
+            onNodeWithText("Check your connection and try again.").assertIsDisplayed()
+
+            onNodeWithText("Retry").assertIsDisplayed().performClick()
+            waitForIdle()
+            onNodeWithText("Could not load this page").assertDoesNotExist()
+            onNodeWithTag(RAFT_ARTIFACT_VIEWER_SPLASH_COVER_TAG).assertExists()
+            val second = webViews().single()
+            assert(second !== first) { "Retry must mount a fresh WebView" }
         }
 
     /** Lets the load line's appear delay pass. */
