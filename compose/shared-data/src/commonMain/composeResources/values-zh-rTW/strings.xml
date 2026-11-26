@@ -1476,7 +1476,7 @@
     <string name="activity_swipe_layer_done">完成</string>
     <string name="activity_swipe_layer_unfollow">取消追蹤</string>
     <string name="activity_swipe_layer_mute">靜音</string>
-    <string name="activity_swipe_layer_read">讀取</string>
+    <string name="activity_swipe_layer_read">已讀</string>
     <string name="activity_swipe_layer_unread">未讀</string>
     <string name="activity_swipe_unfollowed_thread">已取消追蹤 %1$s 中的討論串</string>
     <string name="activity_swipe_muted_activity">已將 %1$s 的動態靜音</string>
@@ -3649,8 +3649,8 @@
     <string name="thread_followers_restore_failed">無法恢復此 Agent，清單已重新整理。</string>
     <string name="thread_followers_empty">沒有 Agent 追蹤此討論串。</string>
     <string name="thread_followers_peer_server">另一個伺服器</string>
-    <string name="thread_message_read_status">讀取</string>
-    <string name="thread_mention_agent_read">讀取</string>
+    <string name="thread_message_read_status">已讀</string>
+    <string name="thread_mention_agent_read">已讀</string>
     <string name="thread_mention_agent_unread">尚未讀取</string>
     <string name="thread_followers_removed">已將 %1$s 從此討論串的追蹤者中移除。</string>
     <string name="thread_followers_restored">已將 %1$s 恢復為追蹤者。</string>

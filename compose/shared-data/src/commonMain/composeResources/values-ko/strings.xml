@@ -1476,7 +1476,7 @@
     <string name="activity_swipe_layer_done">완료</string>
     <string name="activity_swipe_layer_unfollow">팔로우 취소</string>
     <string name="activity_swipe_layer_mute">음소거</string>
-    <string name="activity_swipe_layer_read">읽기</string>
+    <string name="activity_swipe_layer_read">읽음</string>
     <string name="activity_swipe_layer_unread">읽지 않음</string>
     <string name="activity_swipe_unfollowed_thread">%1$s의 스레드 팔로우를 취소했어요</string>
     <string name="activity_swipe_muted_activity">%1$s의 활동을 음소거했어요</string>
@@ -3649,8 +3649,8 @@
     <string name="thread_followers_restore_failed">이 에이전트를 복원하지 못했어요. 목록을 새로고침했어요.</string>
     <string name="thread_followers_empty">이 스레드를 팔로우하는 에이전트가 없어요.</string>
     <string name="thread_followers_peer_server">다른 서버</string>
-    <string name="thread_message_read_status">읽기</string>
-    <string name="thread_mention_agent_read">읽기</string>
+    <string name="thread_message_read_status">읽음</string>
+    <string name="thread_mention_agent_read">읽음</string>
     <string name="thread_mention_agent_unread">아직 읽지 않음</string>
     <string name="thread_followers_removed">%1$s을(를) 이 스레드의 팔로워에서 제거했어요.</string>
     <string name="thread_followers_restored">%1$s의 팔로우를 복원했어요.</string>
