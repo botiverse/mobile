@@ -1706,6 +1706,7 @@ private fun replyParentMismatchOrNull(
         actionMetadata = actionMetadata,
         replyCount = replyCount,
         deletedAt = normalizeCanonicalRetraction(row.deletedAt),
+        systemSubtype = normalizeCanonicalSystemSubtype(row.systemSubtype),
     )
     return when (
         val normalized = normalizeCanonicalMessageV2(

@@ -139,6 +139,7 @@ fun decodeCanonicalMessageWire(
         // `null` for every non-external sender and for a non-object value. A partial object is kept:
         // absent fields are stored blank and the projection fills the display fallback.
         externalAuthor = (rawJson["externalAuthor"] as? JsonObject)?.toCanonicalExternalAuthor(),
+        systemSubtype = normalizeCanonicalSystemSubtype(rawJson.nullableString("systemSubtype")),
     )
 
     return CanonicalMessageCarry(

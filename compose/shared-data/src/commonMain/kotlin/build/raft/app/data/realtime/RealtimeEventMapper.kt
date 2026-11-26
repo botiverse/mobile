@@ -137,6 +137,7 @@ import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.data.AgentTypingWire
 import build.raft.app.data.ScopeReadUpdatedWire
+import build.raft.app.data.parseConversationWorkerStateJson
 import build.raft.app.data.toAgentTypingUpdated
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.WireForwardMessageBundle
@@ -378,6 +379,9 @@ class RealtimeEventMapper(
             // Agent typing line (slock packages/shared/src/agentTyping.ts AgentTypingEvent).
             RealtimeSocketEvents.AgentTyping ->
                 decodeOrNull(AgentTypingWire.serializer(), element)?.toAgentTypingUpdated()
+            // Conversation Worker status line (worker_v1, slock packages/shared/src/workerEvents.ts).
+            RealtimeSocketEvents.ConversationWorkerState ->
+                parseConversationWorkerStateJson(element)
             RealtimeSocketEvents.AgentSession ->
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
             RealtimeSocketEvents.AgentCreated ->
@@ -681,6 +685,8 @@ private data class MessageWireDto(
     val countsUnread: Boolean? = null,
     /** Notifications noise cut step 2c (slock #16828): `true` for task lifecycle lines quiet for people; absent on older servers. */
     val quietForPeople: Boolean? = null,
+    /** System-message subtype (`worker.ended`, etc.); null for chat or untyped system notices. */
+    val systemSubtype: String? = null,
 )
 
 /** One `mentions[]` entry: `{ type: "user" | "agent" | "external"; id; name; displayName? }`. */
@@ -1582,6 +1588,7 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         mentions = mentions.toDomainMentions(),
         countsUnread = countsUnread != false,
         quietForPeople = quietForPeople == true,
+        systemSubtype = systemSubtype?.trim()?.takeIf { it.isNotEmpty() },
     )
 }
 

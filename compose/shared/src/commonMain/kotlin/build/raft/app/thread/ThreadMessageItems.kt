@@ -78,6 +78,8 @@ internal data class RaftThreadMessageItem(
     val seq: Long? = null,
     val messageType: String = "Chat",
     val systemEventType: String? = null,
+    /** Server-authored system row subtype (`worker.ended`, etc.); null for chat or untyped system rows. */
+    val systemSubtype: String? = null,
     val metadata: Map<String, String> = emptyMap(),
     val body: String = "",
     /**

@@ -6858,4 +6858,25 @@
     <string name="mobile_nav_edit_add_place">將 %1$s 新增至分頁列</string>
     <string name="mobile_nav_edit_move_left">向左移動</string>
     <string name="mobile_nav_edit_move_right">向右移動</string>
+    <string name="worker_obs_span_minutes">{minutes} 分鐘</string>
+    <string name="worker_obs_span_hours">{hours} 小時 {minutes} 分</string>
+    <string name="worker_obs_span_days">{days} 天 {hours} 小時</string>
+    <string name="conversation_worker_handling">@{agent} 的 Worker {worker} 正在處理</string>
+    <string name="conversation_worker_handling_anonymous">@{agent} 的一個 Worker 正在處理</string>
+    <string name="conversation_worker_handling_unknown">一個 Worker 正在處理</string>
+    <string name="conversation_worker_unknown_agent_row">這裡一個 agent 的 Worker</string>
+    <string name="conversation_worker_who_unknown">一個 Worker</string>
+    <string name="conversation_worker_handed_back_unknown">一則訊息已交還給它的 agent</string>
+    <string name="conversation_worker_who">@{agent} 的 Worker {worker}</string>
+    <string name="conversation_worker_who_anonymous">@{agent} 的一個 Worker</string>
+    <string name="conversation_worker_running">正在執行 {tool}</string>
+    <string name="conversation_worker_waiting">@{person} 已等待 {span}</string>
+    <string name="conversation_worker_someone_waiting">有人已等待 {span}</string>
+    <string name="conversation_worker_handed_back">@{person} 的訊息已交還給 @{agent}</string>
+    <string name="conversation_worker_handed_back_someone">一則訊息已交還給 @{agent}</string>
+    <string name="conversation_worker_waiting_for">已等待 {span}</string>
+    <string name="conversation_worker_no_activity">已 {span} 無動態</string>
+    <string name="conversation_worker_in_tool">在 {tool} 中 {span}</string>
+    <string name="conversation_worker_combined">{count} 個 Worker 正在處理</string>
+    <string name="conversation_worker_popover_title">正在處理此對話的 Worker</string>
 </resources>

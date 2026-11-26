@@ -7566,6 +7566,7 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
         is build.raft.app.model.RuntimeAuthLoginResultPushed -> "runtime_auth_login_result"
         is build.raft.app.model.ScopeReadUpdated -> "scope_read_updated"
         is build.raft.app.model.AgentTypingUpdated -> "agent_typing"
+        is build.raft.app.model.ConversationWorkerStateUpdated -> "conversation_worker_state"
         is build.raft.app.model.ServerFeaturesChanged -> "server_features_changed"
         is build.raft.app.model.ActivityChanged -> "activity_changed"
         // Never dirties Home (updatesHomeSnapshot is false); named for the diagnostics only.

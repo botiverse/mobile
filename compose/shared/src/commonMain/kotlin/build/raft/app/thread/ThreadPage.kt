@@ -4304,6 +4304,7 @@ private fun SharedThreadRouteContentContent(
                 messageAvatarResolver = messageAvatarResolver,
                 composerDraftViewModel = composerDraftViewModel,
                 threadViewModel = threadViewModel,
+                realtimeEvents = realtimeEvents,
             )
         val inPlaceTextSelectionHost = threadFeatureHosts.inPlaceTextSelectionHost
         val assistantOtter = threadFeatureHosts.assistantOtter
@@ -4338,6 +4339,8 @@ private fun SharedThreadRouteContentContent(
                 inPlaceTextSelectionHost = inPlaceTextSelectionHost,
                 peerReadReceipts = threadFeatureHosts.peerReadReceipts,
                 agentTyping = threadFeatureHosts.agentTyping,
+                workerV1Enabled = threadFeatureHosts.workerV1Enabled,
+                workerConversation = threadFeatureHosts.workerConversation,
                 assistantOtter = assistantOtter,
                 threadRouteAttachmentActions = threadRouteAttachmentActions,
                 attachmentDownloadHost = attachmentDownloadHost,

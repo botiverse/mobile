@@ -117,6 +117,7 @@ internal fun CanonicalMessageEnvelopeV2.toThreadMessageItem(
         deliveryState = ThreadMessageDeliverySent,
         // RFC 077: a frame stored as retracted restores flagged, without what its owner took back.
         deletedAt = fact.deletedAt,
+        systemSubtype = fact.systemSubtype,
     ).withoutRetractedContent()
 }
 

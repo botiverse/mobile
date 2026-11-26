@@ -6858,4 +6858,25 @@
     <string name="mobile_nav_edit_add_place">Añadir %1$s a la barra de pestañas</string>
     <string name="mobile_nav_edit_move_left">Mover a la izquierda</string>
     <string name="mobile_nav_edit_move_right">Mover a la derecha</string>
+    <string name="worker_obs_span_minutes">{minutes} min</string>
+    <string name="worker_obs_span_hours">{hours} h {minutes} min</string>
+    <string name="worker_obs_span_days">{days} d {hours} h</string>
+    <string name="conversation_worker_handling">El Worker {worker} de @{agent} se encarga de esto</string>
+    <string name="conversation_worker_handling_anonymous">Un Worker de @{agent} se encarga de esto</string>
+    <string name="conversation_worker_handling_unknown">Un Worker se encarga de esto</string>
+    <string name="conversation_worker_unknown_agent_row">Un Worker de un agente aquí</string>
+    <string name="conversation_worker_who_unknown">Un Worker</string>
+    <string name="conversation_worker_handed_back_unknown">Un mensaje volvió a su agente</string>
+    <string name="conversation_worker_who">Worker {worker} de @{agent}</string>
+    <string name="conversation_worker_who_anonymous">Un Worker de @{agent}</string>
+    <string name="conversation_worker_running">ejecutando {tool}</string>
+    <string name="conversation_worker_waiting">@{person} esperando {span}</string>
+    <string name="conversation_worker_someone_waiting">alguien esperando {span}</string>
+    <string name="conversation_worker_handed_back">El mensaje de @{person} volvió a @{agent}</string>
+    <string name="conversation_worker_handed_back_someone">Un mensaje volvió a @{agent}</string>
+    <string name="conversation_worker_waiting_for">esperando {span}</string>
+    <string name="conversation_worker_no_activity">sin actividad durante {span}</string>
+    <string name="conversation_worker_in_tool">en {tool} durante {span}</string>
+    <string name="conversation_worker_combined">{count} Workers se encargan de esto</string>
+    <string name="conversation_worker_popover_title">Workers a cargo de esta conversación</string>
 </resources>

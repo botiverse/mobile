@@ -347,6 +347,8 @@ class SharedHomeDataSource(
         is build.raft.app.model.ScopeReadUpdated -> false
         // Agent typing line: who is about to post only decorates the open conversation.
         is build.raft.app.model.AgentTypingUpdated -> false
+        // Conversation Worker status line: active Worker state only decorates the open thread/task.
+        is build.raft.app.model.ConversationWorkerStateUpdated -> false
         // A web restart's result only concerns the open computer detail page (settings store).
         is build.raft.app.model.ComputerRestartDone -> false
         // A Computer's runtime sign-in: only the Computer page's runtime cards read it.

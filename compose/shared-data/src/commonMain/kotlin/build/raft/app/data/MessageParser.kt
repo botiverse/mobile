@@ -142,6 +142,8 @@ private data class MessagesWireMessage(
     val delegatedBy: WireDelegatedBy? = null,
     /** RFC 077 PR 2b: set when the owner retracted the message; `content` is then the placeholder. */
     val deletedAt: String? = null,
+    /** System-message subtype (`worker.ended`, etc.); null for chat or untyped system notices. */
+    val systemSubtype: String? = null,
     /** Resolved mention facts (`ResolvedMentionFact[]`). */
     val mentions: List<WireMessageMention> = emptyList(),
     /**
@@ -648,6 +650,7 @@ private fun MessagesWireMessage.toDomain(
         externalAuthor = resolvedExternalAuthor,
         delegatedBy = delegatedBy.toMessageDelegatedBy(authorKind),
         deletedAt = deletedAt?.takeIf { it.isNotBlank() },
+        systemSubtype = systemSubtype?.trim()?.takeIf { it.isNotEmpty() },
         mentions = mentions.toMessageMentions(),
         resolvedQuotes =
             decodeResolvedInlineQuotes(

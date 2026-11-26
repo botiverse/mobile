@@ -86,6 +86,7 @@ object GeneratedRealtimeContract {
         const val AgentActivitySubscribed = "agent:activity:subscribed"
         const val AgentSeen = "agent:seen"
         const val AgentTyping = "agent:typing"
+        const val ConversationWorkerState = "conversation:worker:state"
         const val AgentSession = "agent:session"
         const val AgentCreated = "agent:created"
         const val AgentUpdated = "agent:updated"
@@ -153,6 +154,7 @@ object GeneratedRealtimeContract {
             AgentActivitySubscribed,
             AgentSeen,
             AgentTyping,
+            ConversationWorkerState,
             AgentSession,
             AgentCreated,
             AgentUpdated,

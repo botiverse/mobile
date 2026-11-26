@@ -253,6 +253,18 @@
         "enrichedUpdated": "present",
         "taskStatusUpdated": "present"
       }
+    },
+    {
+      "name": "systemSubtype",
+      "class": "optionalAggregate",
+      "wireType": "string",
+      "nullable": true,
+      "mergePolicy": "present-overwrite",
+      "presence": {
+        "messageNew": "present",
+        "enrichedUpdated": "present",
+        "taskStatusUpdated": "absent"
+      }
     }
   ],
   "nestedWireShapes": {

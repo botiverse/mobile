@@ -1013,6 +1013,11 @@ fun CanonicalMessageV2ScopePoisoned.diagnosticsLabel(): String = "fact=${factId.
             ?.takeIf { merged.fact.deletedAt == null && it.canonicalFactJson.contains(RETRACTION_BYTES_MARKER) }
             ?.let { stored?.envelope ?: decodeStoredFact(scope, incoming.fact.id, it.canonicalFactJson) }
             ?.fact?.takeIf { it.deletedAt != null }
+        // A system row's subtype is immutable once written; keep a stored one if a narrower update omits it.
+        val storedSystemSubtype = storedRow
+            ?.takeIf { merged.fact.systemSubtype == null && it.canonicalFactJson.contains(SYSTEM_SUBTYPE_BYTES_MARKER) }
+            ?.let { stored?.envelope ?: decodeStoredFact(scope, incoming.fact.id, it.canonicalFactJson) }
+            ?.fact?.systemSubtype
         // Manifest v8: the card's optional keys are one-way. A frame whose card lacks one is an
         // older/narrower copy: the stored value stays, and confirmationVersion never goes down.
         // The keys are only in the bytes of a card that has them, so other facts are never decoded.
@@ -1023,7 +1028,10 @@ fun CanonicalMessageV2ScopePoisoned.diagnosticsLabel(): String = "fact=${factId.
             }
             ?.let { stored?.envelope ?: decodeStoredFact(scope, incoming.fact.id, it.canonicalFactJson) }
             ?.fact?.actionMetadata as? CanonicalActionMetadataV2.ActionCard
-        val envelope = merged.withStoredRetraction(storedRetraction).withStoredActionCardKeys(storedCard)
+        val envelope = merged
+            .withStoredRetraction(storedRetraction)
+            .withStoredSystemSubtype(storedSystemSubtype)
+            .withStoredActionCardKeys(storedCard)
         val bytes = encodeCanonicalMessageV2(envelope, scope.serverId)
         database.queries.insertCanonicalFactIfAbsent(
             environmentId = scope.environmentId,
@@ -2087,6 +2095,9 @@ private fun encodeUnknownFields(fields: Set<MessageAggregateField>): String? =
 /** The `$.fact.deletedAt` key as it appears in canonical bytes (pre-filter only; the decode decides). */
 private const val RETRACTION_BYTES_MARKER = "\"deletedAt\":"
 
+/** The `$.fact.systemSubtype` key as it appears in canonical bytes (pre-filter only; the decode decides). */
+private const val SYSTEM_SUBTYPE_BYTES_MARKER = "\"systemSubtype\":"
+
 /** [retracted] (the stored copy of this fact, known retracted) over a frame that does not know it. */
 private fun CanonicalMessageEnvelopeV2.withStoredRetraction(retracted: CanonicalMessageNodeV2?): CanonicalMessageEnvelopeV2 =
     if (retracted == null || fact.deletedAt != null) {
@@ -2101,6 +2112,10 @@ private fun CanonicalMessageEnvelopeV2.withStoredRetraction(retracted: Canonical
             ),
         )
     }
+
+/** Keeps the stored immutable `systemSubtype` when a narrower update frame omits it. */
+private fun CanonicalMessageEnvelopeV2.withStoredSystemSubtype(systemSubtype: String?): CanonicalMessageEnvelopeV2 =
+    if (systemSubtype == null || fact.systemSubtype != null) this else copy(fact = fact.copy(systemSubtype = systemSubtype))
 
 /** The manifest-v8 optional action-card keys as they appear in canonical bytes (pre-filter only). */
 private val ACTION_CARD_ONE_WAY_BYTES_MARKERS = listOf(

@@ -70,6 +70,8 @@ object RealtimeSocketEvents {
     const val AgentSeen = GeneratedRealtimeContract.SocketEvent.AgentSeen
     /** Agent typing line (slock `packages/shared/src/agentTyping.ts`): an agent is about to post into `channel:<channelId>`. */
     const val AgentTyping = GeneratedRealtimeContract.SocketEvent.AgentTyping
+    /** Conversation Worker status line (worker_v1, slock `packages/shared/src/workerEvents.ts`): Worker state for a thread/task in `channel:<channelId>`. */
+    const val ConversationWorkerState = GeneratedRealtimeContract.SocketEvent.ConversationWorkerState
     const val AgentSession = GeneratedRealtimeContract.SocketEvent.AgentSession
     const val AgentCreated = GeneratedRealtimeContract.SocketEvent.AgentCreated
     /**
