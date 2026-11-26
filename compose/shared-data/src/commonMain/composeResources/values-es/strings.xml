@@ -5420,6 +5420,12 @@
     <string name="settings_computers_owner_dialog_public_confirm">Hacer pública</string>
     <string name="settings_computers_owner_dialog_saving">Guardando…</string>
     <string name="settings_computers_owner_dialog_failed">No se cambió el propietario. Inténtalo de nuevo.</string>
+    <string name="settings_computers_worker_runtimes_title">Entornos para Workers</string>
+    <string name="settings_computers_worker_runtimes_own_runtime">Los Workers siempre pueden usar el entorno propio de su agente. Activa otro entorno para que los Workers de los agentes en esta Computer también puedan usarlo: se ejecutan con el inicio de sesión y la cuota de esta Computer.</string>
+    <string name="settings_computers_worker_runtimes_none">Esta Computer aún no informa ningún entorno.</string>
+    <string name="settings_computers_worker_runtimes_change_by_owner">@%1$s, propietario de esta Computer, o un propietario o administrador del servidor puede cambiar esto.</string>
+    <string name="settings_computers_worker_runtimes_change_by_any_member">Esta Computer es pública: cualquier miembro de este servidor puede cambiar esto.</string>
+    <string name="settings_computers_worker_runtimes_save_failed">No se pudo cambiar %1$s para Workers. Inténtalo de nuevo.</string>
     <string name="settings_computers_handover_button">Traspasar</string>
     <string name="settings_computers_handover_dialog_title">Traspasar esta computadora</string>
     <string name="settings_computers_handover_dialog_person_label">Traspasar a</string>

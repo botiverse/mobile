@@ -2951,6 +2951,12 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
             openSetupGuide = { agent -> openAgentProfile(agent.id.value) },
         )
     val rescanServerId = target.serverId ?: currentServerId
+    val workerV1FlagServerId = rescanServerId?.let(::ServerId)
+    val workerV1FlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val workerV1Enabled =
+        remember(sharedStores.serverFeatureFlags, workerV1FlagServerId, workerV1FlagRevision) {
+            sharedStores.serverFeatureFlags.isWorkerV1Enabled(workerV1FlagServerId)
+        }
     val rescanComputersApi =
         remember(sharedStores, environment.storeScope) {
             RaftComputersApiClient(RaftComputersNetworkApi(sharedStores.networkClient(environment.storeScope)))
@@ -3058,6 +3064,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                     handoverController.cancel(procJobsServerId?.let(::ServerId), target.machineId)
                 },
                 othersAgentsRepository = othersAgentsRepository,
+                workerV1Enabled = workerV1Enabled,
             )
         }
         }
@@ -3132,6 +3139,8 @@ internal fun RaftSettingsComputerDetailContent(
     onRescanRuntimes: (suspend () -> ComputerRuntimeRescanResult)? = null,
     /** Revoke-and-delete / notify-agent-owners repository for Delete Computer (#wg-mobile-sync:#63). */
     othersAgentsRepository: ComputerOthersAgentsRepository? = null,
+    /** Whether `worker_v1` is enabled for this server (`#wg-mobile-sync:#284`); gates Runtimes for Workers. */
+    workerV1Enabled: Boolean = false,
 ) {
     build.raft.app.data.EnsureServerModelLabelCatalog(serverId)
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
@@ -3184,6 +3193,7 @@ internal fun RaftSettingsComputerDetailContent(
                     onCancelHandover = onCancelHandover,
                     onRescanRuntimes = onRescanRuntimes,
                     othersAgentsRepository = othersAgentsRepository,
+                    workerV1Enabled = workerV1Enabled,
                 )
         }
     }
@@ -3215,6 +3225,7 @@ private fun RaftComputerDetailBody(
     onCancelHandover: (suspend () -> DataResult<ComputerHandoverState>)? = null,
     onRescanRuntimes: (suspend () -> ComputerRuntimeRescanResult)? = null,
     othersAgentsRepository: ComputerOthersAgentsRepository? = null,
+    workerV1Enabled: Boolean = false,
 ) {
     val computer = model.computer
     val snapshot = model.snapshot
@@ -3494,6 +3505,33 @@ private fun RaftComputerDetailBody(
                     Spacer(Modifier.height(8.dp))
                     RaftComputerReleaseNotesLink(notes)
                 }
+            }
+        }
+        if (shouldShowComputerWorkerRuntimesSection(workerV1Enabled, snapshot.computer)) {
+            item(key = "worker-runtimes") {
+                RaftComputerWorkerRuntimesSection(
+                    computer = snapshot.computer,
+                    canClaim = model.canClaimOwner,
+                    claiming = claimingOwner && ownerSaving,
+                    runtimeCatalog = runtimeCatalog,
+                    workerRuntimesState = computerControl.workerRuntimes,
+                    onToggleRuntime = { runtime, enabled ->
+                        onIntent(
+                            SharedSettingsIntent.SetComputerWorkerRuntimes(
+                                machineId = machineId,
+                                runtime = runtime,
+                                enabled = enabled,
+                            )
+                        )
+                    },
+                    onClaim = {
+                        val me = snapshot.currentUserId
+                        if (me != null && !ownerSaving) {
+                            claimingOwner = true
+                            onIntent(SharedSettingsIntent.SetComputerOwner(SettingsComputerOwnerRequest(machineId, me)))
+                        }
+                    },
+                )
             }
         }
         item(key = "connection") { RaftComputerConnectionSection(controls) }

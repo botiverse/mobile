@@ -5603,6 +5603,12 @@
     <string name="settings_computers_owner_dialog_public_confirm">设为公开</string>
     <string name="settings_computers_owner_dialog_saving">保存中…</string>
     <string name="settings_computers_owner_dialog_failed">所有者没有改变，请重试。</string>
+    <string name="settings_computers_worker_runtimes_title">Worker 可用的运行时</string>
+    <string name="settings_computers_worker_runtimes_own_runtime">Worker 总能用它所属 Agent 自己的运行时。打开另一个运行时后，这台 Computer 上 Agent 的 Worker 也能用它，用的是这台 Computer 上该运行时的登录和额度。</string>
+    <string name="settings_computers_worker_runtimes_none">这台 Computer 还没有报告任何运行时。</string>
+    <string name="settings_computers_worker_runtimes_change_by_owner">@%1$s（这台 Computer 的所有者）或服务器的所有者、管理员可以更改此项。</string>
+    <string name="settings_computers_worker_runtimes_change_by_any_member">这台 Computer 是公共的：此服务器的任何成员都可以更改此项。</string>
+    <string name="settings_computers_worker_runtimes_save_failed">没能为 Worker 打开或关闭 %1$s，请重试。</string>
     <string name="settings_computers_handover_button">更换授权人</string>
     <string name="settings_computers_handover_dialog_title">更换这台 Computer 的授权人</string>
     <string name="settings_computers_handover_dialog_person_label">新授权人</string>

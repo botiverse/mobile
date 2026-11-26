@@ -5420,6 +5420,12 @@
     <string name="settings_computers_owner_dialog_public_confirm">設為公用</string>
     <string name="settings_computers_owner_dialog_saving">正在儲存…</string>
     <string name="settings_computers_owner_dialog_failed">擁有者沒有變更，請再試一次。</string>
+    <string name="settings_computers_worker_runtimes_title">Worker 可用的執行環境</string>
+    <string name="settings_computers_worker_runtimes_own_runtime">Worker 總能使用所屬 Agent 自己的執行環境。開啟另一個執行環境後，這台 Computer 上 Agent 的 Worker 也能使用它，並使用這台 Computer 上該執行環境的登入與額度。</string>
+    <string name="settings_computers_worker_runtimes_none">這台 Computer 尚未回報任何執行環境。</string>
+    <string name="settings_computers_worker_runtimes_change_by_owner">@%1$s（這台 Computer 的擁有者）或伺服器的擁有者、管理員可以變更此項。</string>
+    <string name="settings_computers_worker_runtimes_change_by_any_member">這台 Computer 為公開狀態：此伺服器的任何成員都可以變更此項。</string>
+    <string name="settings_computers_worker_runtimes_save_failed">無法為 Worker 變更 %1$s，請再試一次。</string>
     <string name="settings_computers_handover_button">更換授權人</string>
     <string name="settings_computers_handover_dialog_title">更換這台電腦的授權人</string>
     <string name="settings_computers_handover_dialog_person_label">新授權人</string>

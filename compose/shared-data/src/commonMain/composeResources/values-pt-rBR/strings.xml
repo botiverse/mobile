@@ -5420,6 +5420,12 @@
     <string name="settings_computers_owner_dialog_public_confirm">Tornar público</string>
     <string name="settings_computers_owner_dialog_saving">Salvando…</string>
     <string name="settings_computers_owner_dialog_failed">O proprietário não foi alterado. Tente de novo.</string>
+    <string name="settings_computers_worker_runtimes_title">Runtimes para Workers</string>
+    <string name="settings_computers_worker_runtimes_own_runtime">Os Workers sempre podem usar o runtime do próprio agente. Ative outro runtime para permitir que Workers de agentes neste Computer também o usem: eles usam o login e a cota deste Computer.</string>
+    <string name="settings_computers_worker_runtimes_none">Este Computer ainda não reportou nenhum runtime.</string>
+    <string name="settings_computers_worker_runtimes_change_by_owner">@%1$s, proprietário deste Computer, ou um proprietário ou administrador do servidor pode alterar isso.</string>
+    <string name="settings_computers_worker_runtimes_change_by_any_member">Este Computer é público: qualquer membro deste servidor pode alterar isso.</string>
+    <string name="settings_computers_worker_runtimes_save_failed">Não foi possível alterar %1$s para Workers. Tente de novo.</string>
     <string name="settings_computers_handover_button">Repassar</string>
     <string name="settings_computers_handover_dialog_title">Repassar este computador</string>
     <string name="settings_computers_handover_dialog_person_label">Repassar para</string>

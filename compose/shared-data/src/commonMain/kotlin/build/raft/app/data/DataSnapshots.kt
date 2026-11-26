@@ -2048,7 +2048,16 @@ data class SettingsComputerSnapshot(
      * connect for being below the Computer version floor (or reporting no version); null otherwise.
      */
     val versionRefusedAt: String? = null,
-    val refusedComputerVersion: String? = null
+    val refusedComputerVersion: String? = null,
+    /**
+     * Worker v1 step 2 (slock #17011, `MachineWorkerRuntimesFields`): runtimes turned on for Workers
+     * on this Computer. Null when absent on older servers (section stays hidden); empty = none on.
+     */
+    val workerRuntimesTurnedOn: List<String>? = null,
+    /** Whether this viewer may change [workerRuntimesTurnedOn] (the server's own decision). */
+    val canChangeWorkerRuntimes: Boolean = false,
+    /** Who can change [workerRuntimesTurnedOn]: `"owner_or_admin"` or `"any_member"`; null when unknown. */
+    val workerRuntimesChangeBy: String? = null
 )
 
 /**

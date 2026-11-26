@@ -306,6 +306,13 @@ const val AGENT_VOICE_FEATURE_FLAG_KEY: String = "agent_voice_v1"
  */
 const val AGENT_CONTEXT_VIEW_FEATURE_FLAG_KEY: String = "agent_context_view_v0"
 
+/**
+ * Workers v1 (botiverse/slock `packages/shared/src/featureFlags.ts` `WORKER_V1_FEATURE_FLAG_KEY`,
+ * `#wg-mobile-sync:#284`): per server, default OFF (unresolved or missing evaluates false).
+ * Gates the Computer detail page's "Runtimes for Workers" section and subsequent Worker v1 surfaces.
+ */
+@RaftCoreInternalApi const val WORKER_V1_FEATURE_FLAG_KEY: String = "worker_v1"
+
 /** Effective Early access policy across a signed-in account's joined servers. */
 data class RaftEarlyAccessFlagPolicy(
     val visible: Boolean = false,
@@ -381,6 +388,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     AGENT_VOICE_FEATURE_FLAG_KEY,
     // Agent View Context v0 & Context Access grants (botiverse/slock #12980 / #13548, default OFF).
     AGENT_CONTEXT_VIEW_FEATURE_FLAG_KEY,
+    // Workers v1 (#wg-mobile-sync:#284, default OFF).
+    WORKER_V1_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,
@@ -612,6 +621,13 @@ class SharedServerFeatureFlags(
      */
     @RaftCoreInternalApi fun isActivityInPlaceEnabled(serverId: ServerId): Boolean =
         isEnabled(serverId, MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY)
+
+    /**
+     * Workers v1 gate (`#wg-mobile-sync:#284`, botiverse/slock `WORKER_V1_FEATURE_FLAG_KEY`):
+     * per server, default OFF (unresolved or missing evaluates false).
+     */
+    @RaftCoreInternalApi fun isWorkerV1Enabled(serverId: ServerId?): Boolean =
+        isEnabled(serverId, WORKER_V1_FEATURE_FLAG_KEY)
 
     /**
      * Resolves the account-wide Early access policy across [serverIds] (`#proj-mobile:e48030bc`):

@@ -442,6 +442,30 @@ class SharedComputersStoreTest {
         assertFalse(olderReload.await(), "dropped flight must report the winning generation's failed outcome, not its own dropped 200")
     }
 
+    @Test
+    fun syncRowOmittingWorkerRuntimesPreservesExistingListValues() = runBlocking {
+        val api = ControlledComputersApi()
+        api.enqueue(
+            HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """{"machines":[{"id":"machine-1","name":"Mac Studio","status":"online","runtimes":["claude","codex"],"workerRuntimesTurnedOn":["codex"],"canChangeWorkerRuntimes":true,"workerRuntimesChangeBy":"any_member"}]}"""
+            )
+        )
+        val store = controlledStore(api, this@runBlocking)
+        store.ensureComputerPickerForServer("server-1")
+
+        val syncedRow = parseSyncedComputerRow(syncMachineRow("machine-1", "Mac Studio", "offline"))!!
+        assertNull(syncedRow.workerRuntimesTurnedOn)
+        assertTrue(store.applySyncedMachineRows("server-1", upserts = listOf(syncedRow), deletes = emptySet()))
+
+        val updated = store.currentSettingsComputerSnapshot("server-1", "machine-1")!!
+        assertEquals(false, updated.online)
+        assertEquals(listOf("codex"), updated.workerRuntimesTurnedOn)
+        assertEquals(true, updated.canChangeWorkerRuntimes)
+        assertEquals("any_member", updated.workerRuntimesChangeBy)
+    }
+
     private fun store(api: RecordingComputersApi): SharedComputersStore =
         SharedComputersStore(
             computersApiClient = RaftComputersApiClient(api),

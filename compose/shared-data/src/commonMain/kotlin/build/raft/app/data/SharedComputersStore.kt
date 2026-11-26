@@ -696,7 +696,18 @@ class SharedComputersStore @RaftCoreInternalApi constructor(
                                 latestComputerReleaseNotes = releaseNotes,
                                 // A sync row never carries `attention` (the list computes it per viewer): keep the list's.
                                 loginSteps = machine.loginSteps ?: previous?.loginSteps,
-                                serverNeedsAttention = machine.serverNeedsAttention ?: previous?.serverNeedsAttention
+                                serverNeedsAttention = machine.serverNeedsAttention ?: previous?.serverNeedsAttention,
+                                // Sync rows also omit per-viewer Worker runtime settings; keep the list's until reload.
+                                workerRuntimesTurnedOn = machine.workerRuntimesTurnedOn ?: previous?.workerRuntimesTurnedOn,
+                                canChangeWorkerRuntimes =
+                                    if (machine.workerRuntimesTurnedOn != null) {
+                                        machine.canChangeWorkerRuntimes
+                                    } else {
+                                        previous?.canChangeWorkerRuntimes ?: machine.canChangeWorkerRuntimes
+                                    },
+                                workerRuntimesChangeBy =
+                                    machine.workerRuntimesChangeBy
+                                        ?: if (machine.workerRuntimesTurnedOn == null) previous?.workerRuntimesChangeBy else null
                             )
                         }
                 val kept = current.machines.filterNot { it.id in deletes }
@@ -1068,7 +1079,11 @@ private fun SharedComputersOwner.durableKey(serverId: String): RaftDurableSnapsh
     /** Server `versionRefusedAt` (slock #16514), for offline reinstall eligibility across cold starts. */
     val versionRefusedAt: String? = null,
     /** Server `refusedComputerVersion` (slock #16881), for offline refused reinstall copy across cold starts. */
-    val refusedComputerVersion: String? = null
+    val refusedComputerVersion: String? = null,
+    /** Worker v1 step 2 (slock #17011): runtimes turned on for Workers; null when absent on older servers. */
+    val workerRuntimesTurnedOn: List<String>? = null,
+    val canChangeWorkerRuntimes: Boolean = false,
+    val workerRuntimesChangeBy: String? = null
 )
 
 @Serializable
@@ -1150,7 +1165,10 @@ private fun SharedComputersServerSlice.toDurableRecord(): RaftComputersDurableRe
                     owner = machine.owner?.toDurableComputerCreator(),
                     revocation = machine.revocation?.toDurableComputerRevocation(),
                     versionRefusedAt = machine.versionRefusedAt,
-                    refusedComputerVersion = machine.refusedComputerVersion
+                    refusedComputerVersion = machine.refusedComputerVersion,
+                    workerRuntimesTurnedOn = machine.workerRuntimesTurnedOn,
+                    canChangeWorkerRuntimes = machine.canChangeWorkerRuntimes,
+                    workerRuntimesChangeBy = machine.workerRuntimesChangeBy
                 )
             },
         machineCount = machineCount,
@@ -1196,7 +1214,12 @@ private fun RaftComputersDurableRecord.toServerSlice(): SharedComputersServerSli
                     owner = machine.owner?.toComputerCreatorSnapshot(),
                     revocation = machine.revocation?.toComputerRevocationSnapshot(),
                     versionRefusedAt = machine.versionRefusedAt?.trim()?.takeIf { it.isNotBlank() },
-                    refusedComputerVersion = machine.refusedComputerVersion?.trim()?.takeIf { it.isNotBlank() }
+                    refusedComputerVersion = machine.refusedComputerVersion?.trim()?.takeIf { it.isNotBlank() },
+                    workerRuntimesTurnedOn =
+                        machine.workerRuntimesTurnedOn?.map { it.trim() }?.filter { it.isNotEmpty() }?.distinct(),
+                    canChangeWorkerRuntimes = machine.canChangeWorkerRuntimes,
+                    workerRuntimesChangeBy =
+                        machine.workerRuntimesChangeBy?.trim()?.takeIf { it == "owner_or_admin" || it == "any_member" }
                 )
             },
         machineCount = machineCount,

@@ -210,6 +210,13 @@ interface RaftComputersApi {
         error("setMachineOwner is not implemented")
 
     /**
+     * Worker v1 step 2 (slock #17011): `PUT servers/:id/machines/:machineId/worker-runtimes` with
+     * body `{runtimes: string[]}`; answers `{machine}` as `GET …/machines` lists it.
+     */
+    suspend fun setMachineWorkerRuntimes(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse =
+        error("setMachineWorkerRuntimes is not implemented")
+
+    /**
      * `GET servers/:id/machines/:machineId/proc-jobs` (slock #15595, docs/contracts/proc-jobs.md):
      * the last snapshot of `raft proc` jobs reported by this Computer (`known` or `unknown`).
      */
@@ -293,6 +300,15 @@ interface RaftComputersApi {
         networkClient.request(
             priority = DataRequestPriority.Foreground,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/owner",
+            method = "PUT",
+            serverIdOverride = serverId,
+            bodyText = body
+        )
+
+    override suspend fun setMachineWorkerRuntimes(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "servers/${serverId.value}/machines/${machineId.trim()}/worker-runtimes",
             method = "PUT",
             serverIdOverride = serverId,
             bodyText = body
@@ -666,6 +682,28 @@ interface RaftComputersApi {
             "computer_owner_contract_mismatch",
             ComputerOwnerResponseDto.serializer()
         ) { wire -> ComputerOwnerChange(machine = wire.machine?.toSummary()) }
+
+    /**
+     * Worker v1 step 2 (slock #17011): turn on exactly [runtimes] for Workers on [machineId]
+     * (`PUT servers/:id/machines/:machineId/worker-runtimes`). Preserves server refusal codes
+     * (`worker_runtimes_forbidden`, `worker_runtimes_invalid`, `machine_not_found`) and messages.
+     */
+    suspend fun setMachineWorkerRuntimes(
+        serverId: ServerId,
+        machineId: String,
+        runtimes: List<String>
+    ): DataResult<ComputerWorkerRuntimesChange> {
+        val cleanMachineId = machineId.trim()
+        if (cleanMachineId.isBlank()) {
+            return DataResult.Error(ScreenError(code = "worker_runtimes_machine_required", retryable = false))
+        }
+        val response = transport.setMachineWorkerRuntimes(serverId, cleanMachineId, buildComputerWorkerRuntimesBody(runtimes))
+        if (!response.isSuccessful) return response.toComputerWorkerRuntimesError()
+        return response.mapComputersBody(
+            "computer_worker_runtimes_contract_mismatch",
+            ComputerWorkerRuntimesResponseDto.serializer()
+        ) { wire -> ComputerWorkerRuntimesChange(machine = wire.machine?.toSummary()) }
+    }
 
     suspend fun rotateMachineKey(serverId: ServerId, machineId: String): DataResult<ComputerApiKeyRotationSummary> =
         transport.rotateMachineKey(serverId, machineId).mapComputersBody(
@@ -1218,7 +1256,16 @@ sealed interface ComputerProcJobStopResult {
     val revocation: SettingsComputerRevocationSnapshot? = null,
     /** Server `versionRefusedAt` (slock #16514): when connect was last refused below the version floor. */
     val versionRefusedAt: String? = null,
-    val refusedComputerVersion: String? = null
+    val refusedComputerVersion: String? = null,
+    /**
+     * Worker v1 step 2 (slock #17011, `MachineWorkerRuntimesFields`): runtimes turned on for Workers
+     * on this Computer. Null when absent on older servers (section stays hidden); empty = none on.
+     */
+    val workerRuntimesTurnedOn: List<String>? = null,
+    /** Whether this viewer may change [workerRuntimesTurnedOn] (the server's own decision). */
+    val canChangeWorkerRuntimes: Boolean = false,
+    /** Who can change [workerRuntimesTurnedOn]: `"owner_or_admin"` or `"any_member"`; null when unknown. */
+    val workerRuntimesChangeBy: String? = null
 )
 
 /**
@@ -1270,6 +1317,82 @@ sealed interface ComputerProcJobStopResult {
 
 @Serializable
 private data class ComputerOwnerResponseDto(val machine: ComputerDto? = null)
+
+/** `PUT …/worker-runtimes` accepted: [machine] is the Computer as the list shows it (null when the server sent none). */
+@RaftCoreInternalApi data class ComputerWorkerRuntimesChange(val machine: ComputerSummary?)
+
+@Serializable
+private data class ComputerWorkerRuntimesBody(val runtimes: List<String>)
+
+@Serializable
+private data class ComputerWorkerRuntimesResponseDto(val machine: ComputerDto? = null)
+
+/** `{ "runtimes": [...] }` for `PUT servers/:id/machines/:machineId/worker-runtimes`. */
+@RaftCoreInternalApi fun buildComputerWorkerRuntimesBody(runtimes: List<String>): String =
+    computersApiJson.encodeToString(
+        ComputerWorkerRuntimesBody.serializer(),
+        ComputerWorkerRuntimesBody(
+            runtimes = runtimes.map(String::trim).filter(String::isNotEmpty).distinct()
+        )
+    )
+
+/**
+ * Strict refusal mapping for `PUT …/worker-runtimes` (slock #17011): preserves server refusal codes
+ * (`worker_runtimes_forbidden`, `worker_runtimes_invalid`, `machine_not_found`) and messages while
+ * keeping 401/5xx semantics aligned with the other Computer routes.
+ */
+private fun <T> HomeNetworkResponse.toComputerWorkerRuntimesError(): DataResult<T> {
+    if (this.code == 401) return toComputersDataError()
+    val envelope = parseHttpErrorEnvelope()
+    val serverCode = envelope?.serverCode
+    val serverMessage = if (this.code >= 500) null else envelope?.serverMessage
+    return when (this.code) {
+        403 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = serverCode ?: "worker_runtimes_forbidden",
+                    requiredCapability = "manage_computer_worker_runtimes",
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                    traceId = traceId,
+                )
+            )
+        400 ->
+            DataResult.Error(
+                ScreenError(
+                    code = serverCode ?: "worker_runtimes_invalid",
+                    retryable = false,
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                    traceId = traceId,
+                )
+            )
+        404 ->
+            DataResult.Error(
+                ScreenError(
+                    code = serverCode ?: "machine_not_found",
+                    retryable = false,
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                    traceId = traceId,
+                )
+            )
+        else ->
+            if (serverCode != null) {
+                DataResult.Error(
+                    ScreenError(
+                        code = serverCode,
+                        retryable = this.code >= 500,
+                        serverMessage = serverMessage,
+                        serverCode = serverCode,
+                        traceId = traceId,
+                    )
+                )
+            } else {
+                toComputersDataError()
+            }
+    }
+}
 
 private fun <T> runtimeFormContractError(code: String): DataResult<T> =
     DataResult.Error(ScreenError(code = code, retryable = false))
@@ -1516,7 +1639,12 @@ private data class ComputerDto(
     val versionRefusedAt: String? = null,
     // services/machineReadModel.ts `refusedComputerVersion` (slock #16881): the version the server
     // refused while this Computer is offline within the 7-day refusal window; null/absent otherwise.
-    val refusedComputerVersion: String? = null
+    val refusedComputerVersion: String? = null,
+    // Worker v1 step 2 (slock #17011, packages/shared/src/computerSettings.ts `MachineWorkerRuntimesFields`):
+    // absent (null) on older servers -> section stays hidden; `[]` means none turned on.
+    val workerRuntimesTurnedOn: List<String>? = null,
+    val canChangeWorkerRuntimes: Boolean = false,
+    val workerRuntimesChangeBy: String? = null
 )
 
 /** Outcome of `POST /servers/:id/machines/:machineId/runtimes/rescan` (slock #16477). */
@@ -1889,7 +2017,12 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         serverNeedsAttention = attention?.let(::computerServerNeedsAttention),
         revocation = revocation?.toSnapshot(),
         versionRefusedAt = versionRefusedAt?.trim()?.takeIf { it.isNotBlank() },
-        refusedComputerVersion = refusedComputerVersion?.trim()?.takeIf { it.isNotBlank() }
+        refusedComputerVersion = refusedComputerVersion?.trim()?.takeIf { it.isNotBlank() },
+        workerRuntimesTurnedOn =
+            workerRuntimesTurnedOn?.map { it.trim() }?.filter { it.isNotEmpty() }?.distinct(),
+        canChangeWorkerRuntimes = canChangeWorkerRuntimes,
+        workerRuntimesChangeBy =
+            workerRuntimesChangeBy?.trim()?.takeIf { it == "owner_or_admin" || it == "any_member" }
     )
 }
 

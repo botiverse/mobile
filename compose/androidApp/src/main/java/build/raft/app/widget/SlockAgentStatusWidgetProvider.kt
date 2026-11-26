@@ -15,6 +15,11 @@ import build.raft.app.core.data.network.RealRaftNetworkClientFactory
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.KeyValueAuthSessionStore
+import build.raft.app.model.AgentCredentialHoldReason
+import build.raft.app.model.AgentDeliveryHold
+import build.raft.app.model.AgentDeliveryHoldReason
+import build.raft.app.model.AgentProviderLimitHoldKind
+import build.raft.app.model.AgentProviderLimitWindow
 import build.raft.app.model.AgentStatus
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -181,7 +186,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
             )
         }
 
-        private data class AgentWidgetSummary(
+        internal data class AgentWidgetSummary(
             val id: String,
             val name: String,
             /** The app's status words for this row, resolved in the app language when drawn. */
@@ -195,6 +200,8 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
             val runtime: String? = null,
             /** The wire value the status came from (`activity ?: status`), for the app's dot mapping. */
             val statusWireValue: String?,
+            /** Parsed delivery hold from `GET /agents`, for dot parity with the app. */
+            val deliveryHold: AgentDeliveryHold? = null,
             /** Positive count of running Workers on its current Computer (`runningWorkers`, #16819). */
             val runningWorkers: Int? = null,
             val external: Boolean,
@@ -215,7 +222,14 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                     ).joinToString("|")
         }
 
-        private fun String.toAgentWidgetSummaries(): List<AgentWidgetSummary> {
+        internal fun parseAgentWidgetSummaries(
+            bodyText: String,
+            nowEpochMillis: Long = System.currentTimeMillis()
+        ): List<AgentWidgetSummary> = bodyText.toAgentWidgetSummaries(nowEpochMillis)
+
+        internal fun String.toAgentWidgetSummaries(
+            nowEpochMillis: Long = System.currentTimeMillis()
+        ): List<AgentWidgetSummary> {
             val array = toAgentWidgetArray() ?: return emptyList()
             return buildList {
                 for (index in 0 until array.length()) {
@@ -226,6 +240,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                             ?: item.optString("name").takeIf { it.isNotBlank() }
                             ?: id
                     val activityDetail = item.optString("activityDetail").takeIf { it.isNotBlank() }
+                    val activityDetailKind = item.optString("activityDetailKind").takeIf { it.isNotBlank() && it != "null" }?.trim()
                     val activity = item.optString("activity").takeIf { it.isNotBlank() }
                     val statusValue = item.optString("status").takeIf { it.isNotBlank() }
                     val status = AgentStatus.fromWireValue(activity ?: statusValue)
@@ -240,11 +255,20 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                     val external = runtime == ExternalAgentRuntimeId || item.optBoolean("external", false)
                     val paused = item.optString("assistantPausedAt").takeIf { it.isNotBlank() && it != "null" } != null
                     val appBot = item.optString("managedByAppInstallId").takeIf { it.isNotBlank() && it != "null" } != null
-                    val hasActiveHold = item.optJSONObject("deliveryHold") != null
+                    val deliveryHold = item.optDeliveryHoldOrNull()
+                    val hasActiveDeliveryHold =
+                        deliveryHold.isActiveDeliveryHold(
+                            status = status,
+                            nowEpochMillis = nowEpochMillis,
+                            external = external,
+                            blocked = blockedReason != null,
+                            appBot = appBot,
+                        )
+                    val hasCredentialHold = item.optCredentialHoldOrNull(activityDetailKind) != null
                     val readinessState = item.optJSONObject("readiness")?.optString("state")?.trim()?.lowercase()
                     val holdingReadiness = readinessState == "blocked" || readinessState == "waiting" || readinessState == "offline"
                     val runningWorkers =
-                        if (paused || appBot || hasActiveHold || holdingReadiness) {
+                        if (paused || appBot || hasActiveDeliveryHold || hasCredentialHold || holdingReadiness) {
                             null
                         } else {
                             item.optRunningWorkersCountOrNull()
@@ -278,6 +302,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                             blockedReason = blockedReason,
                             runtime = runtime,
                             statusWireValue = activity ?: statusValue,
+                            deliveryHold = deliveryHold,
                             runningWorkers = runningWorkers,
                             external = external,
                             lastSeenAt = item.optString("lastSeenAt").takeIf { it.isNotBlank() },
@@ -289,6 +314,71 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                     )
                 }
             }
+        }
+
+        private const val DELIVERY_HOLD_MODEL_MAX_LENGTH = 64
+
+        private fun JSONObject.optDeliveryHoldOrNull(): AgentDeliveryHold? {
+            val obj = optJSONObject("deliveryHold") ?: return null
+            val reason = AgentDeliveryHoldReason.fromWireValue(obj.opt("reason") as? String) ?: return null
+            val since = obj.optFiniteNonNegativeLongOrNull("since") ?: return null
+            val rawDetail = obj.opt("detail") as? String
+            return when (reason) {
+                AgentDeliveryHoldReason.CredentialInvalid ->
+                    AgentDeliveryHold(
+                        reason = AgentDeliveryHoldReason.CredentialInvalid,
+                        credentialDetail = AgentCredentialHoldReason.fromWireValue(rawDetail),
+                        since = since,
+                    )
+                AgentDeliveryHoldReason.ProviderLimit -> {
+                    val rawModel = (obj.opt("model") as? String)?.trim()
+                    val rawWindow = obj.opt("window") as? String
+                    AgentDeliveryHold(
+                        reason = AgentDeliveryHoldReason.ProviderLimit,
+                        providerLimitDetail = AgentProviderLimitHoldKind.fromWireValue(rawDetail),
+                        untilMs = obj.optFiniteNonNegativeLongOrNull("untilMs"),
+                        since = since,
+                        model = rawModel?.takeIf { it.isNotEmpty() && it.length <= DELIVERY_HOLD_MODEL_MAX_LENGTH },
+                        window = AgentProviderLimitWindow.fromWireValue(rawWindow),
+                        resetsAtMs = obj.optFiniteNonNegativeLongOrNull("resetsAtMs"),
+                    )
+                }
+            }
+        }
+
+        private fun AgentDeliveryHold?.isActiveDeliveryHold(
+            status: AgentStatus?,
+            nowEpochMillis: Long,
+            external: Boolean,
+            blocked: Boolean,
+            appBot: Boolean,
+        ): Boolean {
+            if (this == null || appBot || external || blocked) return false
+            if (status == null || status == AgentStatus.Offline || status == AgentStatus.Disconnected) return false
+            val holdUntilMs = untilMs
+            if (
+                reason == AgentDeliveryHoldReason.ProviderLimit &&
+                holdUntilMs != null &&
+                holdUntilMs <= nowEpochMillis
+            ) {
+                return false
+            }
+            return true
+        }
+
+        private fun JSONObject.optCredentialHoldOrNull(activityDetailKind: String?): AgentCredentialHoldReason? {
+            if (activityDetailKind != "idle") return null
+            val obj = optJSONObject("credentialHold") ?: return null
+            return AgentCredentialHoldReason.fromWireValue(obj.opt("reason") as? String)
+        }
+
+        private fun JSONObject.optFiniteNonNegativeLongOrNull(key: String): Long? {
+            val raw = opt(key) as? Number ?: return null
+            if (raw is Long) return raw.takeIf { it >= 0L }
+            if (raw is Int) return raw.toLong().takeIf { it >= 0L }
+            val asDouble = raw.toDouble()
+            if (!asDouble.isFinite() || asDouble < 0.0) return null
+            return asDouble.toLong()
         }
 
         private fun JSONObject.optRunningWorkersCountOrNull(): Int? {
@@ -332,6 +422,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                         lastSeenAt = lastSeenAt,
                         nowEpochMillis = System.currentTimeMillis(),
                         blockedReason = blockedReason,
+                        deliveryHold = deliveryHold,
                         runningWorkers = runningWorkers,
                         runtime = runtime,
                     )) {

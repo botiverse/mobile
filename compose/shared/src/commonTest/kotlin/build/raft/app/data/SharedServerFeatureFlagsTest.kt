@@ -698,4 +698,45 @@ class SharedServerFeatureFlagsTest {
         assertEquals(0.2, resolveActiveServerTraceSampleRate(server.value, MOBILE_WEBVIEW_TRACE_NAME, 0.1, flags = snapshot))
         assertEquals(0.75, resolveActiveServerTraceSampleRate(server.value, MOBILE_WEB_CONTAINER_TRACE_NAME, 1.0, flags = snapshot))
     }
+
+    @Test
+    fun workerV1FlagDefaultsOffAndFollowsPerServerEvaluation() = runTest {
+        assertEquals("worker_v1", WORKER_V1_FEATURE_FLAG_KEY)
+        assertTrue(WORKER_V1_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse(WORKER_V1_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        assertFalse(WORKER_V1_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+
+        val enabled =
+            SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$WORKER_V1_FEATURE_FLAG_KEY","enabled":true,"reason":"server_rule"}]}"""))
+            )
+        assertFalse(enabled.isWorkerV1Enabled(null))
+        assertFalse(enabled.isWorkerV1Enabled(server), "unresolved defaults OFF")
+        enabled.prefetch(server)
+        assertTrue(enabled.isWorkerV1Enabled(server))
+        assertFalse(enabled.isWorkerV1Enabled(ServerId("s2")), "other server stays OFF until evaluated")
+
+        val missing = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
+        missing.prefetch(server)
+        assertFalse(missing.isWorkerV1Enabled(server), "missing_flag stays OFF")
+
+        val defaultOff =
+            SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$WORKER_V1_FEATURE_FLAG_KEY","enabled":false,"reason":"default"}]}"""))
+            )
+        defaultOff.prefetch(server)
+        assertFalse(defaultOff.isWorkerV1Enabled(server))
+
+        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
+        assertFalse(failed.prefetch(server).resolved)
+        assertFalse(failed.isWorkerV1Enabled(server))
+
+        val overridden =
+            SharedServerFeatureFlags(
+                api = FakeApi(ok("""{"evaluations":[{"key":"$WORKER_V1_FEATURE_FLAG_KEY","enabled":true}]}""")),
+                diagnosticOverride = { _, key, eff -> if (key == WORKER_V1_FEATURE_FLAG_KEY) false else eff },
+            )
+        overridden.prefetch(server)
+        assertFalse(overridden.isWorkerV1Enabled(server))
+    }
 }

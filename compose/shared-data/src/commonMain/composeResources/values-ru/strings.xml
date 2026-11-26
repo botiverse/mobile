@@ -5420,6 +5420,12 @@
     <string name="settings_computers_owner_dialog_public_confirm">Сделать общим</string>
     <string name="settings_computers_owner_dialog_saving">Сохранение…</string>
     <string name="settings_computers_owner_dialog_failed">Владелец не изменился. Попробуйте ещё раз.</string>
+    <string name="settings_computers_worker_runtimes_title">Среды для Workers</string>
+    <string name="settings_computers_worker_runtimes_own_runtime">Workers всегда могут использовать собственную среду своего агента. Включите другую среду, чтобы Workers агентов на этом Computer тоже могли её использовать — они работают с входом и квотой этого Computer.</string>
+    <string name="settings_computers_worker_runtimes_none">Этот Computer ещё не сообщил ни об одной среде.</string>
+    <string name="settings_computers_worker_runtimes_change_by_owner">Изменять это могут @%1$s (владелец этого Computer), а также владелец или администратор сервера.</string>
+    <string name="settings_computers_worker_runtimes_change_by_any_member">Этот Computer публичный: изменять это может любой участник сервера.</string>
+    <string name="settings_computers_worker_runtimes_save_failed">Не удалось изменить %1$s для Workers. Попробуйте ещё раз.</string>
     <string name="settings_computers_handover_button">Передать</string>
     <string name="settings_computers_handover_dialog_title">Передать этот компьютер</string>
     <string name="settings_computers_handover_dialog_person_label">Кому передать</string>
