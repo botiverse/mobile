@@ -535,24 +535,25 @@ class SharedActivityStoreRowPositionTest {
     @Test
     fun quietLinesLeaveThreadAndChannelRowsInPlaceAndDoNotReopenDoneRows() = runTest {
         val newerRow =
-            item("c-top", "m-200", "200", unread = 0, readSeq = "200", latestAt = "2026-11-25T10:00:00Z")
-        val channelRow =
-            item("c-1", "m-100", "100", unread = 1, readSeq = "99", latestAt = "2026-11-25T09:00:00Z").copy(
+            activityItem("c-top", unreadCount = 0).copy(
+                lastMessageId = MessageId("m-200"),
+                lastMessageAt = "2026-11-25T10:00:00.000Z",
+                latestActivitySeq = "200",
+                readStateLatestActivitySeq = "200",
+            )
+        val quietTargetChannelRow =
+            activityItem("c-1", unreadCount = 1).copy(
+                lastMessageId = MessageId("m-100"),
                 lastMessagePreview = "original channel message",
+                lastMessageAt = "2026-11-25T09:00:00.000Z",
+                latestActivitySeq = "100",
+                readStateLatestActivitySeq = "100",
             )
         val threadRow =
-            item(
-                channelId = "c-2",
-                messageId = "m-50",
-                seq = "50",
-                unread = 1,
-                readSeq = "49",
-                kind = InboxItemKind.Thread,
-                latestAt = "2026-11-25T09:00:00Z",
-            ).copy(
-                key = "thread:th-1",
-                threadChannelId = ChannelId("th-1"),
+            threadItem("th-1", unreadCount = 1).copy(
+                latestActivityMessageId = MessageId("m-50"),
                 latestActivityPreview = "original thread reply",
+                latestActivityAt = "2026-11-25T09:00:00.000Z",
                 latestActivitySeq = "50",
                 readStateLatestActivitySeq = "50",
                 replyCount = 1,
@@ -598,7 +599,7 @@ class SharedActivityStoreRowPositionTest {
 
         for (rowPosition in listOf(false, true)) {
             val label = "inbox_row_position_v1=$rowPosition"
-            val f = loadedStore(listOf(snapshot(listOf(newerRow, channelRow, threadRow))), rowPosition = rowPosition)
+            val f = loadedStore(listOf(snapshot(listOf(newerRow, quietTargetChannelRow, threadRow))), rowPosition = rowPosition)
 
             // Quiet channel line without mention: row stays at index 1, unchanged, no re-read.
             f.store.dispatch(quietChannelLine("m-101", "c-1", seq = 101L))
@@ -609,10 +610,10 @@ class SharedActivityStoreRowPositionTest {
             runCurrent()
             advanceTimeBy(maxOf(ActivityRealtimeBackgroundRefreshIntervalMillis, ActivityRowRereadDelayMillis) + 1L)
             runCurrent()
-            assertEquals(1, f.store.state.value.items.indexOfFirst { it.key == channelRow.key }, label)
-            assertEquals("100", f.row(channelRow.key).latestActivitySeq, label)
-            assertEquals("original channel message", f.row(channelRow.key).lastMessagePreview, label)
-            assertEquals(1, f.row(channelRow.key).unreadCount, label)
+            assertEquals(1, f.store.state.value.items.indexOfFirst { it.key == quietTargetChannelRow.key }, label)
+            assertEquals("100", f.row(quietTargetChannelRow.key).latestActivitySeq, label)
+            assertEquals("original channel message", f.row(quietTargetChannelRow.key).lastMessagePreview, label)
+            assertEquals(1, f.row(quietTargetChannelRow.key).unreadCount, label)
             assertEquals(2, f.store.state.value.items.indexOfFirst { it.key == threadRow.key }, label)
             assertEquals("50", f.row(threadRow.key).latestActivitySeq, label)
             assertEquals("original thread reply", f.row(threadRow.key).latestActivityPreview, label)
@@ -625,10 +626,10 @@ class SharedActivityStoreRowPositionTest {
                 quietChannelLine("m-102", "c-1", seq = 102L, mentions = listOf(MessageMention("user", "user-1")))
             )
             runCurrent()
-            assertEquals(0, f.store.state.value.items.indexOfFirst { it.key == channelRow.key }, label)
-            assertEquals("102", f.row(channelRow.key).latestActivitySeq, label)
-            assertEquals(true, f.row(channelRow.key).hasMention, label)
-            assertEquals(1, f.row(channelRow.key).unreadCount, label)
+            assertEquals(0, f.store.state.value.items.indexOfFirst { it.key == quietTargetChannelRow.key }, label)
+            assertEquals("102", f.row(quietTargetChannelRow.key).latestActivitySeq, label)
+            assertEquals(true, f.row(quietTargetChannelRow.key).hasMention, label)
+            assertEquals(1, f.row(quietTargetChannelRow.key).unreadCount, label)
 
             // Quiet thread line mentioning viewer: moves to index 0, lights @, does not bump unread.
             f.store.dispatch(
