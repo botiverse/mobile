@@ -352,6 +352,16 @@ const val PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY: String = "private_mention_add_v0
  */
 @RaftCoreInternalApi const val MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY: String = "mcp_personal_accounts"
 
+/**
+ * Composer streaming voice dictation (`#wg-mobile-sync:#334`, botiverse/slock
+ * `docs/contracts/voice-dictation-v2.md`, `VOICE_DICTATION_V1_FEATURE_FLAG_KEY`): per server,
+ * default OFF (unresolved or missing evaluates false). Not client-default-on and not persisted in
+ * `SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS`. When ON (and the caller is not a Guest), the composer can
+ * request a thin-client v2 permit (`POST /api/voice/dictation/permits` with `v: 2`) and stream PCM16
+ * audio to `holt-live`.
+ */
+@RaftCoreInternalApi const val VOICE_DICTATION_V1_FEATURE_FLAG_KEY: String = "voice_dictation_v1"
+
 /** Effective Early access policy across a signed-in account's joined servers. */
 data class RaftEarlyAccessFlagPolicy(
     val visible: Boolean = false,
@@ -436,6 +446,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     TASK_WAITING_ON_YOU_FEATURE_FLAG_KEY,
     // Personal MCP accounts & native Connect card account choice (#wg-mobile-sync:#228, default OFF).
     MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY,
+    // Composer streaming voice dictation (#wg-mobile-sync:#334, default OFF).
+    VOICE_DICTATION_V1_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,
@@ -828,6 +840,13 @@ class SharedServerFeatureFlags(
      */
     @RaftCoreInternalApi fun isTaskWaitingOnYouEnabled(serverId: ServerId?): Boolean =
         isEnabled(serverId, TASK_WAITING_ON_YOU_FEATURE_FLAG_KEY)
+
+    /**
+     * Composer streaming voice dictation gate (`#wg-mobile-sync:#334`, botiverse/slock
+     * `voice_dictation_v1`): per server, default OFF (unresolved or missing evaluates false).
+     */
+    @RaftCoreInternalApi fun isVoiceDictationEnabled(serverId: ServerId?): Boolean =
+        isEnabled(serverId, VOICE_DICTATION_V1_FEATURE_FLAG_KEY)
 
     /**
      * Resolves the account-wide Early access policy across [serverIds] (`#proj-mobile:e48030bc`):

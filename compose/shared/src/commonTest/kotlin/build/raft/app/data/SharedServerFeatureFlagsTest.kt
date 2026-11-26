@@ -1156,4 +1156,53 @@ class SharedServerFeatureFlagsTest {
         overridden.prefetch(server)
         assertFalse(overridden.isMcpPersonalAccountsEnabled(server))
     }
+
+    @Test
+    fun voiceDictationV1FlagDefaultsOffAndFollowsPerServerEvaluation() = runTest {
+        assertEquals("voice_dictation_v1", VOICE_DICTATION_V1_FEATURE_FLAG_KEY)
+        assertTrue(VOICE_DICTATION_V1_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse(VOICE_DICTATION_V1_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        assertFalse(VOICE_DICTATION_V1_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+
+        val enabled =
+            SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$VOICE_DICTATION_V1_FEATURE_FLAG_KEY","enabled":true,"reason":"server_rule"}]}"""))
+            )
+        assertFalse(enabled.isVoiceDictationEnabled(null))
+        assertFalse(enabled.isVoiceDictationEnabled(server), "unresolved defaults OFF")
+        enabled.prefetch(server)
+        assertTrue(enabled.isVoiceDictationEnabled(server))
+        assertFalse(enabled.isVoiceDictationEnabled(ServerId("s2")), "other server stays OFF until evaluated")
+
+        val missing = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
+        missing.prefetch(server)
+        assertFalse(missing.isVoiceDictationEnabled(server), "missing_flag stays OFF")
+
+        val defaultOff =
+            SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$VOICE_DICTATION_V1_FEATURE_FLAG_KEY","enabled":false,"reason":"default"}]}"""))
+            )
+        defaultOff.prefetch(server)
+        assertFalse(defaultOff.isVoiceDictationEnabled(server))
+
+        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
+        assertFalse(failed.prefetch(server).resolved)
+        assertFalse(failed.isVoiceDictationEnabled(server))
+
+        val overriddenOff =
+            SharedServerFeatureFlags(
+                api = FakeApi(ok("""{"evaluations":[{"key":"$VOICE_DICTATION_V1_FEATURE_FLAG_KEY","enabled":true}]}""")),
+                diagnosticOverride = { _, key, eff -> if (key == VOICE_DICTATION_V1_FEATURE_FLAG_KEY) false else eff },
+            )
+        overriddenOff.prefetch(server)
+        assertFalse(overriddenOff.isVoiceDictationEnabled(server))
+
+        val overriddenOn =
+            SharedServerFeatureFlags(
+                api = FakeApi(ok("""{"evaluations":[{"key":"$VOICE_DICTATION_V1_FEATURE_FLAG_KEY","enabled":false}]}""")),
+                diagnosticOverride = { _, key, eff -> if (key == VOICE_DICTATION_V1_FEATURE_FLAG_KEY) true else eff },
+            )
+        overriddenOn.prefetch(server)
+        assertTrue(overriddenOn.isVoiceDictationEnabled(server))
+    }
 }
