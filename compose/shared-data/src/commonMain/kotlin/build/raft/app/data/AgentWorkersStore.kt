@@ -114,6 +114,12 @@ import kotlinx.coroutines.launch
     val status: AgentWorkersLoadStatus = AgentWorkersLoadStatus.Loading,
     /** Live rows from the latest read, excluding Workers already stopped locally since that read. */
     val workers: List<AgentWorkerRow> = emptyList(),
+    /** Worker launches of the last 7 days from `GET /api/agents/:id/workers/recent?days=7`. */
+    val recentWorkers: List<AgentRecentWorkerRow> = emptyList(),
+    /** True while an initial recent-workers load is in flight (prevents empty-state flash). */
+    val recentLoading: Boolean = false,
+    /** True once at least one recent-workers read has completed for the current binding. */
+    val recentLoaded: Boolean = false,
     /** True only during an explicit pull-to-refresh on a loaded/unknown panel. */
     val refreshing: Boolean = false,
     /** Wall clock when the latest read landed (`readAtMs` on web; moves `nowMillis` with every read). */
@@ -186,6 +192,7 @@ import kotlinx.coroutines.launch
     private val listWorkers: suspend (MemberId, DataRequestPriority) -> DataResult<AgentWorkersReadSnapshot>,
     private val stopWorker: suspend (MemberId, String) -> DataResult<AgentWorkerStopOutcome>,
     private val scope: CoroutineScope,
+    private val listRecentWorkers: (suspend (MemberId, Int, DataRequestPriority) -> DataResult<List<AgentRecentWorkerRow>>)? = null,
     private val workersChangedSignals: Flow<RaftAgentWorkersChangedSignal> = emptyFlow(),
     private val freshness: Flow<RaftFreshnessEvent> = RaftFreshnessSignal.events,
     private val foreground: StateFlow<Boolean> = RaftProcessForegroundGate.foreground,
@@ -205,12 +212,16 @@ import kotlinx.coroutines.launch
     private var panelOpen: Boolean = false
     private var pageVisible: Boolean = true
     private var readSeq: Long = 0L
+    private var recentReadSeq: Long = 0L
     private var lastDigest: String? = null
     private var rawWorkers: List<AgentWorkerRow> = emptyList()
     private var stoppedLocally: Set<String> = emptySet()
+    private var lastLiveLaunches: List<String>? = null
 
     private var readJob: Job? = null
+    private var recentReadJob: Job? = null
     private var afterStopJob: Job? = null
+    private var afterEndRecentJob: Job? = null
     private var rereadPollJob: Job? = null
     private var freshnessTickJob: Job? = null
     private var freshnessCatchUpInFlight: Boolean = false
@@ -245,6 +256,9 @@ import kotlinx.coroutines.launch
                     if (it.status != AgentWorkersLoadStatus.Loading) it.copy(refreshing = true) else it
                 }
                 triggerRead(DataRequestPriority.Visible)
+                if (panelOpen && listRecentWorkers != null) {
+                    triggerRecentRead(DataRequestPriority.Visible)
+                }
             }
             is AgentWorkersIntent.Stop -> stop(intent.agentId, intent.worker, intent.objectRef)
             AgentWorkersIntent.ConsumeFeedback -> {
@@ -267,21 +281,30 @@ import kotlinx.coroutines.launch
         resetForNewBinding(agentId, enabled)
         if (enabled) {
             triggerRead(DataRequestPriority.Visible)
+            if (panelOpen && listRecentWorkers != null) {
+                triggerRecentRead(DataRequestPriority.Visible)
+            }
             reconcilePeriodicJobs()
         }
     }
 
     private fun resetForNewBinding(agentId: MemberId, enabled: Boolean) {
         readSeq += 1L
+        recentReadSeq += 1L
         lastDigest = null
         rawWorkers = emptyList()
         stoppedLocally = emptySet()
+        lastLiveLaunches = null
         freshnessCatchUpInFlight = false
         freshnessGate.reset()
         readJob?.cancel()
         readJob = null
+        recentReadJob?.cancel()
+        recentReadJob = null
         afterStopJob?.cancel()
         afterStopJob = null
+        afterEndRecentJob?.cancel()
+        afterEndRecentJob = null
         rereadPollJob?.cancel()
         rereadPollJob = null
         freshnessTickJob?.cancel()
@@ -300,8 +323,17 @@ import kotlinx.coroutines.launch
         if (panelOpen == open) return
         panelOpen = open
         if (open && boundEnabled && boundAgentId != null) {
-            // Web AgentActivityLog `changeView`: opening the Workers view reads at once.
+            // Web AgentActivityLog `changeView`: opening the Workers view reads live + recent at once.
             triggerRead(DataRequestPriority.Visible)
+            if (listRecentWorkers != null) {
+                lastLiveLaunches =
+                    if (_state.value.status != AgentWorkersLoadStatus.Loading) currentLiveLaunches() else null
+                triggerRecentRead(DataRequestPriority.Visible)
+            }
+        } else if (!open) {
+            afterEndRecentJob?.cancel()
+            afterEndRecentJob = null
+            lastLiveLaunches = null
         }
         reconcilePeriodicJobs()
     }
@@ -434,7 +466,80 @@ import kotlinx.coroutines.launch
                         return@launch
                     }
                 }
+                syncRecentForLiveRowsChange()
                 reconcilePeriodicJobs()
+            }
+    }
+
+    private fun currentLiveLaunches(): List<String> =
+        _state.value.workers.map { it.launchId ?: it.worker }
+
+    private fun syncRecentForLiveRowsChange() {
+        val agentId = boundAgentId ?: return
+        if (!boundEnabled || !panelOpen || listRecentWorkers == null) return
+        val launches = currentLiveLaunches()
+        val previous = lastLiveLaunches
+        lastLiveLaunches = launches
+        if (previous == null || previous == launches) return
+        triggerRecentRead(DataRequestPriority.Background)
+        // Web `useRecentWorkers`: a live launch that went away may land its `ended` shortly after the snapshot.
+        if (previous.any { it !in launches }) {
+            scheduleAfterEndRecentRead(agentId)
+        }
+    }
+
+    private fun triggerRecentRead(priority: DataRequestPriority) {
+        val agentId = boundAgentId ?: return
+        val loader = listRecentWorkers ?: return
+        if (!boundEnabled) return
+        val seq = ++recentReadSeq
+        if (!_state.value.recentLoaded) {
+            _state.update { it.copy(recentLoading = true) }
+        }
+        recentReadJob?.cancel()
+        recentReadJob =
+            scope.launch {
+                val result =
+                    try {
+                        loader(agentId, AGENT_WORKER_RECENT_DAYS, priority)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        DataResult.Error(ScreenError(AgentControlErrorCodes.NetworkError, traceId = null))
+                    }
+                if (seq != recentReadSeq || !boundEnabled || boundAgentId != agentId) return@launch
+                when (result) {
+                    is DataResult.Content ->
+                        _state.update {
+                            it.copy(
+                                recentWorkers = result.data,
+                                recentLoading = false,
+                                recentLoaded = true,
+                            )
+                        }
+                    is DataResult.Empty,
+                    is DataResult.Error,
+                    is DataResult.NoPermission ->
+                        // Web `useRecentWorkers`: a failed initial read hides the group rather than breaking the panel.
+                        _state.update {
+                            it.copy(
+                                recentWorkers = if (it.recentLoaded) it.recentWorkers else emptyList(),
+                                recentLoading = false,
+                                recentLoaded = true,
+                            )
+                        }
+                }
+            }
+    }
+
+    private fun scheduleAfterEndRecentRead(agentId: MemberId) {
+        afterEndRecentJob?.cancel()
+        afterEndRecentJob =
+            scope.launch {
+                delay(afterStopReadDelayMillis)
+                if (boundEnabled && panelOpen && boundAgentId == agentId) {
+                    triggerRecentRead(DataRequestPriority.Background)
+                }
             }
     }
 
@@ -467,6 +572,7 @@ import kotlinx.coroutines.launch
                         feedbackAgentId = agentId,
                     )
                 }
+                syncRecentForLiveRowsChange()
                 scheduleAfterStopRead(agentId)
                 reconcilePeriodicJobs()
             } else {

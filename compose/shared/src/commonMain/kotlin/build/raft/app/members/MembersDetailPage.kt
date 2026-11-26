@@ -18,6 +18,8 @@ import build.raft.app.data.isRaftHostVisible
 import build.raft.app.data.AgentAppGrantsRevokeStore
 import build.raft.app.data.AgentSubagentStopStore
 import build.raft.app.data.AgentTurnStopStore
+import build.raft.app.data.AgentWorkerTimelineIntent
+import build.raft.app.data.AgentWorkerTimelineStore
 import build.raft.app.data.AgentWorkersIntent
 import build.raft.app.data.AgentWorkersStore
 import build.raft.app.data.RaftAgentControlsApi
@@ -291,6 +293,7 @@ private fun rememberMemberDetailRouteProvider(
             serverFeatureFlags = sharedStores.serverFeatureFlags,
             activityOverviewRepository = activityOverviewRepository,
             agentActivityOverviewCache = sharedStores.agentActivityOverviewCache,
+            messageContextPageSink = sharedStores.messageContextPageSink(storeScope),
             agentControlsApi = agentControlsApi,
             agentDetailCache = sharedStores.agentDetailCache,
             agentUpdatedSignals = sharedStores.agentUpdatedSignals,
@@ -410,8 +413,18 @@ internal fun MemberDetailPageContent(
                     listWorkers = api::listWorkers,
                     stopWorker = api::stopWorker,
                     scope = routeScope,
+                    listRecentWorkers = api::listRecentWorkers,
                     workersChangedSignals =
                         provider.agentWorkersChangedSignals?.events ?: kotlinx.coroutines.flow.emptyFlow(),
+                )
+            }
+        }
+    val agentWorkerTimelineStore =
+        remember(provider, routeScope) {
+            provider.agentControlsApi?.let { api ->
+                AgentWorkerTimelineStore(
+                    getTimeline = api::getWorkerTimeline,
+                    scope = routeScope,
                 )
             }
         }
@@ -1217,6 +1230,12 @@ internal fun MemberDetailPageContent(
                             )
                         )
                     }
+                    LaunchedEffect(agentWorkerTimelineStore, member.id, workersPanelEnabled) {
+                        val openAgentId = agentWorkerTimelineStore?.state?.value?.agentId
+                        if (!workersPanelEnabled || (openAgentId != null && openAgentId != member.id)) {
+                            agentWorkerTimelineStore?.dispatch(AgentWorkerTimelineIntent.Close)
+                        }
+                    }
                     MembersDetailContent(
                         member = member,
                         currentUserId = current.currentUserId,
@@ -1248,6 +1267,7 @@ internal fun MemberDetailPageContent(
                             turnStopStore = agentTurnStopStore,
                             subagentStopStore = agentSubagentStopStore,
                             workersStore = if (workersPanelEnabled) agentWorkersStore else null,
+                            workerTimelineStore = if (workersPanelEnabled) agentWorkerTimelineStore else null,
                             migration =
                                 agentMigrationStore?.let { store ->
                                     val flags = provider.serverFeatureFlags
@@ -1422,6 +1442,15 @@ internal fun MemberDetailPageContent(
                                     onUnavailableAction = { provider.bridge.toast(it) }
                                 )
                             },
+                            onOpenWorkerTimelineMessage =
+                                rememberMemberDetailWorkerTimelineMessageOpener(
+                                    pager = pager,
+                                    provider = provider,
+                                    server = current.server,
+                                    timeContextProvider = timeContextProvider,
+                                    fallbackTimeContext = timeContext,
+                                    scope = routeScope,
+                                ),
                             onUnavailableAction = { bridge.toast(it) }
                         ),
                         agentDetailActions = agentDetailActions,
@@ -2193,6 +2222,73 @@ internal class MembersInviteHumanInputs(
 
 /** Web `agentErrorRecordRefreshDelayMs`: how long a burst of error frames settles before the re-read. */
 private const val MembersAgentErrorRecordRereadDelayMs = 1_500L
+
+/**
+ * Web `ViewMessageLink` (`AgentWorkerTimeline.tsx`): resolves a timeline event's `messageId`
+ * through `GET /api/messages/context/:id?before=0&after=0` under the viewer's own permissions,
+ * then opens it in its conversation (or shows `"Message not found"` on 404/403/error).
+ * Kept out of [MemberDetailPageContent] (JVM method size).
+ */
+@Composable
+private fun rememberMemberDetailWorkerTimelineMessageOpener(
+    pager: Pager,
+    provider: MemberDetailRouteProvider,
+    server: ServerSummary,
+    timeContextProvider: RaftTimeContextProvider,
+    fallbackTimeContext: RaftTimeContext,
+    scope: kotlinx.coroutines.CoroutineScope,
+): (String) -> Unit {
+    val unavailableMessage = stringResource(Res.string.message_link_not_found_title)
+    var inFlightMessageId by remember(server.id) { mutableStateOf<String?>(null) }
+    val latestFallbackTimeContext by rememberUpdatedState(fallbackTimeContext)
+    return remember(pager, provider, server, timeContextProvider, scope, unavailableMessage) {
+        { rawMessageId: String ->
+            val messageId = rawMessageId.trim()
+            val api = provider.agentControlsApi
+            if (messageId.isNotEmpty() && inFlightMessageId == null) {
+                if (api == null) {
+                    provider.bridge.toast(unavailableMessage)
+                } else {
+                    inFlightMessageId = messageId
+                    scope.launch {
+                        try {
+                            when (
+                                val result =
+                                    api.resolveMessageTarget(
+                                        messageId = messageId,
+                                        contextPageSink = provider.messageContextPageSink,
+                                    )
+                            ) {
+                                is DataResult.Content ->
+                                    pager.openMembersMessageTarget(
+                                        target =
+                                            RaftThreadWebLinkTarget(
+                                                channelId = result.data.channelId,
+                                                messageId = result.data.messageId,
+                                            ),
+                                        messageId = result.data.messageId,
+                                        server = server,
+                                        conversationIdentityProvider = provider.conversationIdentityProvider,
+                                        storeScope = provider.storeScope,
+                                        timeContext = timeContextProvider.current ?: latestFallbackTimeContext,
+                                        unavailableMessage = unavailableMessage,
+                                        onUnavailableAction = { provider.bridge.toast(it) },
+                                    )
+                                is DataResult.Empty,
+                                is DataResult.Error,
+                                is DataResult.NoPermission -> provider.bridge.toast(unavailableMessage)
+                            }
+                        } finally {
+                            if (inFlightMessageId == messageId) {
+                                inFlightMessageId = null
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 /**
  * The viewer's own personal assistant, for its owner's section of the agent profile

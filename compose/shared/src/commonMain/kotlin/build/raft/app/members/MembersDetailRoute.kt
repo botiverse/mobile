@@ -341,6 +341,7 @@ internal class MemberDetailRouteProvider(
     val serverFeatureFlags: build.raft.app.data.SharedServerFeatureFlags? = null,
     val activityOverviewRepository: build.raft.app.data.AgentActivityOverviewRepository? = null,
     val agentActivityOverviewCache: build.raft.app.data.AgentActivityOverviewSnapshotCache? = null,
+    val messageContextPageSink: build.raft.app.data.RaftMessageContextPageSink? = null,
     val agentControlsApi: RaftAgentControlsApi? = null,
     /** Data-layer plan step 5: last canonical agent details, keyed by account + server + agent. */
     val agentDetailCache: build.raft.app.data.RaftAgentDetailCache? = null,

@@ -4,6 +4,9 @@ import build.raft.app.RaftCoreInternalApi
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
+import build.raft.app.model.MessageId
+import build.raft.app.model.ServerId
+import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -88,18 +91,20 @@ private data class AgentSubagentInterruptResponseDto(
 /** The longest sub-agent id a stop request may carry (`SUBAGENT_TASK_ID_MAX_LENGTH`). */
 @RaftCoreInternalApi const val AgentSubagentTaskIdMaxLength = 160
 
-/** Refusal codes the server explains for interrupt-turn (409/503/504). */
+/** Refusal codes the server explains for interrupt-turn (409/503/504) and Worker observability (404). */
 @RaftCoreInternalApi object AgentControlErrorCodes {
     const val ComputerUpgradeRequired = "computer_upgrade_required"
     const val ComputerOffline = "computer_offline"
     const val ComputerTimeout = "computer_timeout"
     const val WorkersSnapshotStale = "workers_snapshot_stale"
+    const val WorkerTimelineNotFound = "worker_timeline_not_found"
+    const val WorkerV1Off = "worker_v1_off"
     const val HostedStopFailed = "hosted_stop_failed"
     const val ContractMismatch = "agent_controls_contract_mismatch"
     const val NetworkError = "agent_controls_network_error"
 }
 
-/** Maps a non-2xx response to a typed error carrying the server `code` and `error` text. */
+/** Maps a non-2xx response to a typed error carrying the server `code`, `error` text, and `X-Trace-Id`. */
 @RaftCoreInternalApi fun agentControlsErrorResult(response: HomeNetworkResponse): DataResult<Nothing> {
     if (response.code == 401) return authSessionRequiredResult()
     val envelope =
@@ -113,7 +118,7 @@ private data class AgentSubagentInterruptResponseDto(
     val serverMessage = envelope?.error?.takeIf { it.isNotBlank() }
     if (response.code == 403 && serverCode == null) {
         return DataResult.NoPermission(
-            PermissionBlocker(code = "http_403", serverMessage = serverMessage)
+            PermissionBlocker(code = "http_403", serverMessage = serverMessage, traceId = response.traceId)
         )
     }
     val serverFields =
@@ -128,7 +133,8 @@ private data class AgentSubagentInterruptResponseDto(
             retryable = response.code >= 500 || response.code == 409,
             serverMessage = serverMessage,
             serverCode = serverCode,
-            serverFields = serverFields
+            serverFields = serverFields,
+            traceId = response.traceId
         )
     )
 }
@@ -271,6 +277,74 @@ private val agentControlsRequestJson = Json { explicitNulls = false }
             parse = ::parseSharedAgentWorkerStopOutcome,
         )
 
+    /** Worker observability (`GET /api/agents/:id/workers/recent?days=7`): launches of the last 7 days. */
+    suspend fun listRecentWorkers(
+        agentId: MemberId,
+        days: Int = AGENT_WORKER_RECENT_DAYS,
+        priority: DataRequestPriority = DataRequestPriority.Visible,
+    ): DataResult<List<AgentRecentWorkerRow>> =
+        send(
+            priority = priority,
+            path = "agents/${agentId.value}/workers/recent",
+            query = listOf("days" to days.coerceAtLeast(1).toString()),
+            parse = ::parseSharedAgentRecentWorkers,
+        )
+
+    /** Worker observability (`GET /api/agents/:id/workers/:launchId/timeline`): one launch's events by seq. */
+    suspend fun getWorkerTimeline(
+        agentId: MemberId,
+        launchId: String,
+        priority: DataRequestPriority = DataRequestPriority.Visible,
+    ): DataResult<AgentWorkerTimelineSnapshot> =
+        send(
+            priority = priority,
+            path = "agents/${agentId.value}/workers/${launchId.percentEncode()}/timeline",
+            parse = ::parseSharedAgentWorkerTimeline,
+        )
+
+    /**
+     * Worker timeline `"View message"` lookup (`GET /api/messages/context/:messageId?before=0&after=0`,
+     * web `ViewMessageLink`): resolves the channel under the viewer's own permissions.
+     */
+    suspend fun resolveMessageTarget(
+        messageId: String,
+        priority: DataRequestPriority = DataRequestPriority.Foreground,
+        contextPageSink: RaftMessageContextPageSink? = null,
+    ): DataResult<AgentWorkerMessageTarget> {
+        val cleanId = messageId.trim().takeIf { it.isNotEmpty() }
+            ?: return DataResult.Empty(EmptyReason.NoMessages)
+        return try {
+            val pendingContextPage = contextPageSink?.beginRequest(serverId = null)
+            val response =
+                networkClient.request(
+                    priority = priority,
+                    path = "messages/context/${cleanId.percentEncode()}",
+                    query = listOf("before" to "0", "after" to "0"),
+                    serverIdOverride = pendingContextPage?.serverId?.let(::ServerId),
+                )
+            if (response.code == 401) return authSessionRequiredResult()
+            if (response.code == 403 || response.code == 404) {
+                return DataResult.Empty(EmptyReason.NoMessages)
+            }
+            if (!response.isSuccessful) {
+                return agentControlsErrorResult(response)
+            }
+            val body = response.bodyText.orEmpty()
+            val payload = parseSharedMessageContext(body, fallbackThreadId = ThreadId(cleanId))
+            val targetId = payload.targetMessageId ?: MessageId(cleanId)
+            val message = payload.messages.firstOrNull { it.id == targetId }
+                ?: return DataResult.Empty(EmptyReason.NoMessages)
+            val channelId = (message.channelId ?: payload.channelId)?.value?.trim()?.takeIf { it.isNotEmpty() }
+                ?: return DataResult.Empty(EmptyReason.NoMessages)
+            pendingContextPage?.offer(body)
+            DataResult.Content(AgentWorkerMessageTarget(channelId = channelId, messageId = message.id.value))
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            DataResult.Error(ScreenError(AgentControlErrorCodes.NetworkError, traceId = null))
+        }
+    }
+
     override suspend fun migrationStatus(
         agentId: MemberId,
         priority: DataRequestPriority
@@ -348,6 +422,7 @@ private val agentControlsRequestJson = Json { explicitNulls = false }
         priority: DataRequestPriority,
         path: String,
         method: String = "GET",
+        query: List<Pair<String, String>> = emptyList(),
         bodyText: String? = null,
         parse: (String) -> T?
     ): DataResult<T> =
@@ -356,17 +431,24 @@ private val agentControlsRequestJson = Json { explicitNulls = false }
                 priority = priority,
                 path = path,
                 method = method,
+                query = query,
                 bodyText = bodyText
             )
             if (!response.isSuccessful) {
                 agentControlsErrorResult(response)
             } else {
                 parse(response.bodyText.orEmpty())?.let { DataResult.Content(it) }
-                    ?: DataResult.Error(ScreenError(AgentControlErrorCodes.ContractMismatch, retryable = false))
+                    ?: DataResult.Error(
+                        ScreenError(
+                            code = AgentControlErrorCodes.ContractMismatch,
+                            retryable = false,
+                            traceId = response.traceId,
+                        )
+                    )
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Exception) {
-            DataResult.Error(ScreenError(AgentControlErrorCodes.NetworkError))
+            DataResult.Error(ScreenError(AgentControlErrorCodes.NetworkError, traceId = null))
         }
 }
