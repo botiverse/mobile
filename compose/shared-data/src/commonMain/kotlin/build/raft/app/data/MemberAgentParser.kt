@@ -227,6 +227,8 @@ private data class WireAgent(
     val deliveryHold: JsonElement? = null,
     /** `GET /agents` / `GET /channels/:id/members` `runningWorkers` (botiverse/slock #16819): parsed via [parseAgentRunningWorkers]. */
     val runningWorkers: JsonElement? = null,
+    /** `GET /agents` / `GET /channels/:id/members` `serviceTier` (botiverse/slock #16868): parsed via [parseAgentServiceTier]. */
+    val serviceTier: JsonElement? = null,
 )
 
 @Serializable
@@ -1124,6 +1126,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         agentReadiness = parseWireAgentReadiness(readiness),
         agentDeliveryHold = parseAgentDeliveryHold(deliveryHold),
         agentRunningWorkers = parseAgentRunningWorkers(runningWorkers),
+        agentServiceTier = parseAgentServiceTier(serviceTier),
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },

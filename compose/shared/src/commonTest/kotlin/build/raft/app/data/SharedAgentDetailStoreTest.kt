@@ -785,4 +785,53 @@ class SharedAgentDetailStoreTest {
         )
         assertNull(s.state.value.detail?.summary?.runningWorkers)
     }
+
+    @Test
+    fun agentActivityAndCoarseStateUpdateAndClearServiceTierWhileSeenPreservesIt() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Online", activity = "Online")))
+
+        // Detailed frame sets serviceTier.
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(AgentStatus.Online, detail = "", serverSeq = 10L).copy(serviceTier = "default"),
+                observedAtMillis = 100L,
+            )
+        )
+        assertEquals("default", s.state.value.detail?.summary?.serviceTier)
+
+        // agent:seen preserves serviceTier.
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event =
+                    MemberPresenceUpdated(
+                        memberId = testMemberId,
+                        presence = Presence.Active,
+                        kind = MemberKind.Agent,
+                        lastSeenAt = "2026-11-26T10:00:00.000Z",
+                    ),
+                observedAtMillis = 150L,
+            )
+        )
+        assertEquals("default", s.state.value.detail?.summary?.serviceTier)
+
+        // Coarse state without serviceTier clears it.
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event =
+                    MemberPresenceUpdated(
+                        memberId = testMemberId,
+                        presence = Presence.Active,
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Online,
+                        serverSeq = 11L,
+                        serviceTier = null,
+                        coarseState = true,
+                    ),
+                observedAtMillis = 200L,
+            )
+        )
+        assertNull(s.state.value.detail?.summary?.serviceTier)
+    }
 }

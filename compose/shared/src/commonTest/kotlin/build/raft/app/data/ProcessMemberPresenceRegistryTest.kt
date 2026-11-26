@@ -397,4 +397,53 @@ class ProcessMemberPresenceRegistryTest {
         )
         assertNull(registry.factFor(ownerServerA, "agent-1")?.runningWorkers)
     }
+
+    @Test
+    fun serviceTierChangesVisiblePresenceSurvivesSeenAndClearsOnCoarseFrame() {
+        val plain = fact(status = AgentStatus.Online, serverSeq = 1)
+        val fallbackTier = fact(status = AgentStatus.Online, serverSeq = 2).copy(serviceTier = "default")
+        val fastTier = fact(status = AgentStatus.Online, serverSeq = 3).copy(serviceTier = "priority")
+        val cleared = fact(status = AgentStatus.Online, serverSeq = 4).copy(serviceTier = null)
+
+        assertFalse(fallbackTier.hasSameVisibleRegisteredPresenceAs(plain), "absent -> default tier is a visible change")
+        assertFalse(fastTier.hasSameVisibleRegisteredPresenceAs(fallbackTier), "default -> priority tier is a visible change")
+        assertFalse(cleared.hasSameVisibleRegisteredPresenceAs(fastTier), "priority -> absent tier is a visible change")
+        assertTrue(
+            fallbackTier.copy(serverSeq = 9).hasSameVisibleRegisteredPresenceAs(fallbackTier),
+            "same serviceTier with newer seq has same visible presence",
+        )
+
+        val registry = ProcessMemberPresenceRegistry()
+        registry.apply(ownerServerA, fallbackTier, GEN0)
+        assertEquals("default", registry.factFor(ownerServerA, "agent-1")?.serviceTier)
+
+        // agent:seen must not wipe serviceTier.
+        registry.apply(
+            ownerServerA,
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                lastSeenAt = "2026-11-26T10:00:00.000Z",
+            ),
+            GEN0,
+        )
+        assertEquals("default", registry.factFor(ownerServerA, "agent-1")?.serviceTier)
+
+        // Newer coarse frame without serviceTier clears it.
+        registry.apply(
+            ownerServerA,
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Online,
+                serverSeq = 5L,
+                serviceTier = null,
+                coarseState = true,
+            ),
+            GEN0,
+        )
+        assertNull(registry.factFor(ownerServerA, "agent-1")?.serviceTier)
+    }
 }

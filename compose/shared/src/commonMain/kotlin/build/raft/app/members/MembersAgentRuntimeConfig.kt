@@ -24,6 +24,9 @@ import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.data.CREATE_AGENT_BUILTIN_RUNTIME_ID
+import build.raft.app.data.CodexNonFastServiceTiers
+import build.raft.app.data.normalizeAgentServiceTier
+import build.raft.app.data.normalizedAgentRuntimeStatus
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.toAgentDetailSummary
@@ -549,12 +552,23 @@ internal fun MembersAgentRuntimeConfigSection(
                     (runtimeCatalog?.entry(normalized) ?: build.raft.app.data.BundledRuntimeCatalog.entry(normalized))?.deprecated == true
                 }
             }
+        val liveActivityStatus =
+            agentStatusIndicatorState?.status
+                ?: normalizedAgentRuntimeStatus(activity = summary?.activity, lifecycleStatus = summary?.status)
+        val liveServiceTier =
+            if (agentStatusIndicatorState?.status != null) {
+                agentStatusIndicatorState.serviceTier
+            } else {
+                summary?.serviceTier
+            }
         MembersAgentRuntimeConfigRows(
             resolution = runtimeConfigResolution,
             runtimeModelsCatalog = runtimeModelsCatalog,
             machineId = summary?.machineId ?: member.membersComputerId,
             serverId = runtimeCatalogServerId,
-            runtimeDeprecated = runtimeDeprecated
+            runtimeDeprecated = runtimeDeprecated,
+            liveActivityStatus = liveActivityStatus,
+            liveServiceTier = liveServiceTier,
         )
         // Web AgentProfileInfo: under the runtime rows (`mt-3`), before Environment Variables, only
         // when the server says the session reported Raft default limits (botiverse/slock #13492).
@@ -621,6 +635,7 @@ internal fun MembersAgentRuntimeConfigSection(
 }
 
 internal const val MEMBERS_RUNTIME_DEPRECATED_BANNER_TAG = "members-runtime-deprecated-banner"
+internal const val MEMBERS_RUNTIME_FAST_MODE_FALLBACK_HINT_TAG = "members-runtime-fast-mode-fallback-hint"
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -634,7 +649,11 @@ internal fun MembersAgentRuntimeConfigRows(
      * Whether this server deprecated the agent's runtime ([runtimeDeprecatedForAgent]: its own
      * runtime-options row); null: the catalog's answer. Drives " (deprecated)" and the warning.
      */
-    runtimeDeprecated: Boolean? = null
+    runtimeDeprecated: Boolean? = null,
+    /** Live agent status for fast-mode fallback display (botiverse/slock #16868). */
+    liveActivityStatus: AgentStatus? = null,
+    /** Live session `serviceTier` for fast-mode fallback display (botiverse/slock #16868). */
+    liveServiceTier: String? = null,
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val runtimeConfig = (resolution as? MembersAgentRuntimeConfigResolution.Content)?.config
@@ -695,12 +714,32 @@ internal fun MembersAgentRuntimeConfigRows(
             }
         }
         if (supportsRuntimeFastMode(runtimeId)) {
+            val displayedFastMode =
+                membersResolveDisplayedFastMode(
+                    config = runtimeConfig,
+                    status = liveActivityStatus,
+                    serviceTier = liveServiceTier,
+                )
+            val fastModeFallback =
+                membersIsDisplayedFastModeFallback(
+                    config = runtimeConfig,
+                    status = liveActivityStatus,
+                    serviceTier = liveServiceTier,
+                )
             MembersAgentInfoField(stringResource(Res.string.member_label_mode)) {
                 RaftText(
-                    text = if (membersRuntimeConfigFastMode(runtimeConfig)) stringResource(Res.string.member_label_fast) else stringResource(Res.string.member_label_default),
+                    text = if (displayedFastMode) stringResource(Res.string.member_label_fast) else stringResource(Res.string.member_label_default),
                     style = membersInfoValueStyle(),
                     color = RaftTheme.colors.foreground
                 )
+                if (fastModeFallback) {
+                    RaftText(
+                        text = stringResource(Res.string.member_runtime_fast_mode_fallback_hint),
+                        style = RaftTheme.typography.caption,
+                        color = RaftTheme.colors.foregroundMuted,
+                        modifier = Modifier.padding(top = 4.dp).testTag(MEMBERS_RUNTIME_FAST_MODE_FALLBACK_HINT_TAG)
+                    )
+                }
             }
         }
         if (runtimeId == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
@@ -1174,6 +1213,35 @@ internal fun AgentDetailSummary?.toMembersRuntimeConfigResolution(): MembersAgen
 internal fun membersRuntimeConfigFastMode(config: RuntimeConfig): Boolean =
     config.mode is RuntimeModeConfig.Fast &&
         raftRuntimeModelSupportsFastMode(config.runtime, config.toMembersRuntimeModelValue())
+
+/**
+ * Resolves whether an agent's Mode row should show Fast or Default (web `resolveDisplayedFastMode`,
+ * botiverse/slock #16868). When a live session reports its actual `serviceTier` (e.g. `default`
+ * after a fast-mode fallback), show the real tier rather than claiming Fast.
+ */
+internal fun membersResolveDisplayedFastMode(
+    config: RuntimeConfig,
+    status: AgentStatus? = null,
+    serviceTier: String? = null,
+): Boolean {
+    val normalizedTier = normalizeAgentServiceTier(serviceTier)
+    if (status != null && status != AgentStatus.Offline && status != AgentStatus.Disconnected && normalizedTier != null) {
+        return normalizedTier !in CodexNonFastServiceTiers
+    }
+    return membersRuntimeConfigFastMode(config)
+}
+
+/**
+ * True when the agent is configured for fast mode, is live, and the session reported a non-fast
+ * `serviceTier` (such as `default` or `flex` after a fallback; web `isDisplayedFastModeFallback`,
+ * botiverse/slock #16868).
+ */
+internal fun membersIsDisplayedFastModeFallback(
+    config: RuntimeConfig,
+    status: AgentStatus? = null,
+    serviceTier: String? = null,
+): Boolean =
+    membersRuntimeConfigFastMode(config) && !membersResolveDisplayedFastMode(config, status, serviceTier)
 
 internal fun membersRuntimeModelConfig(
     runtime: String,

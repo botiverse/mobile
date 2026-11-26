@@ -1728,6 +1728,7 @@
     <string name="member_label_command">명령어</string>
     <string name="member_label_default">기본값</string>
     <string name="member_label_fast">빠름</string>
+    <string name="member_runtime_fast_mode_fallback_hint">이번 세션에서는 빠른 모드를 사용할 수 없었어요</string>
     <string name="member_label_connected">온라인</string>
     <string name="member_label_offline">오프라인</string>
     <string name="member_label_activity_only">활동만</string>

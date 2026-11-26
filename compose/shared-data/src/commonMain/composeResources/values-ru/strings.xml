@@ -1728,6 +1728,7 @@
     <string name="member_label_command">Команда</string>
     <string name="member_label_default">По умолчанию</string>
     <string name="member_label_fast">Быстрый</string>
+    <string name="member_runtime_fast_mode_fallback_hint">Быстрый режим был недоступен для этого сеанса</string>
     <string name="member_label_connected">В сети</string>
     <string name="member_label_offline">Не в сети</string>
     <string name="member_label_activity_only">Только активность</string>

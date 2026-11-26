@@ -465,6 +465,8 @@ data class SharedServerMemberStatus(
     val runningWorkers: Int? = null,
     /** Another server's agent (joint channel): only presence is known, never the count. */
     val runningWorkersPresenceOnly: Boolean = false,
+    /** Live service tier reported by the agent's active session (`serviceTier`, botiverse/slock #16868). */
+    val serviceTier: String? = null,
     /** Human creator user id from the roster (`creator.id` when `creatorType == "user"`). */
     val creatorUserId: String? = null,
 )
@@ -637,6 +639,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             deliveryHold = presenceFact.deliveryHold,
             runningWorkers = resolvedRunningWorkers,
             runningWorkersPresenceOnly = resolvedRunningWorkers != null && otherServer,
+            serviceTier = normalizeAgentServiceTier(presenceFact.serviceTier),
         )
     }
     if (this?.kind != MemberKind.Agent) return null
@@ -663,6 +666,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         deliveryHold = resolvedProfileDeliveryHold,
         runningWorkers = resolvedProfileRunningWorkers,
         runningWorkersPresenceOnly = resolvedProfileRunningWorkers != null && otherServer,
+        serviceTier = if (authoritativeReadiness) normalizeAgentServiceTier(agentServiceTier) else null,
     )
 }
 
@@ -2317,6 +2321,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                         statusLabel = status.label,
                         deliveryHold = profile.agentDeliveryHold,
                         runningWorkers = profile.agentRunningWorkers,
+                        serviceTier = profile.agentServiceTier,
                         serverSeq = null
                     ),
                 writeGeneration = write.writeGeneration
@@ -3714,6 +3719,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                         statusLabel = status.label,
                         deliveryHold = profile.agentDeliveryHold,
                         runningWorkers = profile.agentRunningWorkers,
+                        serviceTier = profile.agentServiceTier,
                         serverSeq = null
                     )
             )
@@ -4664,7 +4670,8 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                         if (
                             member.agentReadiness == null &&
                             member.agentDeliveryHold == null &&
-                            member.agentRunningWorkers == null
+                            member.agentRunningWorkers == null &&
+                            member.agentServiceTier == null
                         ) {
                             member
                         } else {
@@ -4672,6 +4679,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                                 agentReadiness = null,
                                 agentDeliveryHold = null,
                                 agentRunningWorkers = null,
+                                agentServiceTier = null,
                             )
                         }
                     }
@@ -5168,6 +5176,7 @@ private fun MemberProfile.withoutVolatileStatus(): MemberProfile =
             agentReadiness = null,
             agentDeliveryHold = null,
             agentRunningWorkers = null,
+            agentServiceTier = null,
         )
     } else {
         this
@@ -5195,6 +5204,7 @@ private fun MemberProfile.mergeAuthoritativeProfile(
             agentReadiness = if (replaceReadiness) incoming.agentReadiness else incoming.agentReadiness ?: agentReadiness,
             agentDeliveryHold = if (replaceReadiness) incoming.agentDeliveryHold else incoming.agentDeliveryHold ?: agentDeliveryHold,
             agentRunningWorkers = if (replaceReadiness) incoming.agentRunningWorkers else incoming.agentRunningWorkers ?: agentRunningWorkers,
+            agentServiceTier = if (replaceReadiness) incoming.agentServiceTier else incoming.agentServiceTier ?: agentServiceTier,
         )
     val statusMerged =
         if (incoming.kind == MemberKind.Agent && incoming.agentStatus != null) {

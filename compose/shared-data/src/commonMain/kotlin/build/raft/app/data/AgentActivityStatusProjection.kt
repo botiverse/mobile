@@ -41,6 +41,8 @@ import build.raft.app.model.Presence
     val deliveryHold: AgentDeliveryHold? = null,
     /** Positive count of running Workers on its current Computer (botiverse/slock #16819); null when none. */
     val runningWorkers: Int? = null,
+    /** Live service tier reported by the session (botiverse/slock #16868); null when unknown. */
+    val serviceTier: String? = null,
 ) {
     val presence: Presence
         get() = status.presence
@@ -127,6 +129,7 @@ import build.raft.app.model.Presence
         errorCode = activityErrorCode.takeIf { status == AgentStatus.Error },
         deliveryHold = deliveryHold,
         runningWorkers = normalizeAgentRunningWorkers(runningWorkers),
+        serviceTier = normalizeAgentServiceTier(serviceTier),
     )
 }
 
@@ -170,6 +173,7 @@ import build.raft.app.model.Presence
         serverSeq = serverSeq,
         deliveryHold = deliveryHold,
         runningWorkers = normalizeAgentRunningWorkers(runningWorkers),
+        serviceTier = normalizeAgentServiceTier(serviceTier),
         errorCode = errorCode
     )
 

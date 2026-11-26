@@ -9,6 +9,8 @@ import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.data.isTaskConversation
+import build.raft.app.data.showsUnread
 
 /*
  * Wide Activity (list and detail side by side) reopens, on arrival, the conversation opened last time
@@ -43,13 +45,24 @@ internal fun activityArrivalReopenTarget(
     somethingOpen: Boolean,
     items: List<InboxItem>,
     lastOpenedKey: String?,
+    liveItems: List<InboxItem>? = null,
 ): InboxItem? {
     if (!wide || somethingOpen || lastOpenedKey == null) return null
+    val candidate = items.firstOrNull { it.key == lastOpenedKey } ?: return null
     // Web `useThreadsInboxOpen.reopen`: an Artifact is never auto-reopened on arrival (loading its
     // viewer advances its read position with no auto-read hold), while keeping its key as lastOpened
     // prevents reopening an older conversation instead.
-    return items.firstOrNull { it.key == lastOpenedKey }
-        ?.takeIf { it.kind != build.raft.app.model.InboxItemKind.Object }
+    if (candidate.kind == build.raft.app.model.InboxItemKind.Object) return null
+    // Web `useThreadsInboxOpen.reopen` (botiverse/slock #16717): a task conversation comes back as
+    // left only when it has nothing unread (opening its task reads it with no auto-read hold). Check
+    // the row's current live state in case a reply landed since arrival picked it; an unread or
+    // marked-unread task stays closed while keeping its key as lastOpened so no older conversation
+    // opens instead.
+    if (candidate.kind == build.raft.app.model.InboxItemKind.Thread && candidate.isTaskConversation) {
+        val fresh = liveItems?.firstOrNull { it.key == candidate.key } ?: candidate
+        if (fresh.showsUnread) return null
+    }
+    return candidate
 }
 
 /**
