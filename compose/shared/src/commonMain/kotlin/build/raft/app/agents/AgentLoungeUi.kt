@@ -1081,6 +1081,7 @@ internal fun rememberThreadPageLounge(
     sharedHomeStore: SharedHomeStore? = null,
     authStore: RaftAuthSessionStore? = null,
     serverMembersStore: SharedServerMembersStore? = null,
+    viewerUserId: String? = null,
 ): ThreadPageLounge {
     val lounge = rememberAgentLounge(serverId, payload.agentLoungeLookupChannelId())
     val allKnownLounges by RaftAgentLounges.lounges.collectAsState()
@@ -1123,6 +1124,31 @@ internal fun rememberThreadPageLounge(
             isAppBot = targetAppBot != null,
             isDeletedAgent = targetMemberProfile?.agentDeletedAt?.isNotBlank() == true,
         ) && targetMemberProfile?.assistantPausedAt == null
+    val resolvedViewerUserId =
+        viewerUserId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: homeSnapshot?.currentMember?.id?.value?.trim()?.takeIf { it.isNotEmpty() }
+    val rememberedConversationSide =
+        if (showConversationSwitch && targetAgentId != null) {
+            if (isLoungeConversation) AgentLoungeConversationSide.Lounge else AgentLoungeConversationSide.Private
+        } else {
+            null
+        }
+    // Web slock#16248 (`useRememberAgentConversationSide`): record the active side whenever an
+    // eligible agent's Lounge or Private DM is shown, however it was opened.
+    androidx.compose.runtime.LaunchedEffect(
+        resolvedViewerUserId,
+        cleanServerId,
+        targetAgentId,
+        rememberedConversationSide,
+    ) {
+        writeAgentConversationSide(
+            store = defaultAgentConversationSideStore(),
+            userId = resolvedViewerUserId,
+            serverId = cleanServerId,
+            agentId = targetAgentId,
+            side = rememberedConversationSide,
+        )
+    }
     val conversationSwitch =
         if (showConversationSwitch && targetAgentId != null) {
             val activeSide =
@@ -1153,6 +1179,13 @@ internal fun rememberThreadPageLounge(
                 privateUnread = privateUnread,
                 switching = openingPrivateDm || targetAgentId in opening,
                 onSelectLounge = {
+                    writeAgentConversationSide(
+                        store = defaultAgentConversationSideStore(),
+                        userId = resolvedViewerUserId,
+                        serverId = cleanServerId,
+                        agentId = targetAgentId,
+                        side = AgentLoungeConversationSide.Lounge,
+                    )
                     RaftProductEvents.conversationHeaderActionSelected(
                         action = RaftConversationHeaderAction.OpenLounge,
                         surface = RaftConversationHeaderSurface.Header,
@@ -1183,6 +1216,13 @@ internal fun rememberThreadPageLounge(
                     }
                 },
                 onSelectPrivate = {
+                    writeAgentConversationSide(
+                        store = defaultAgentConversationSideStore(),
+                        userId = resolvedViewerUserId,
+                        serverId = cleanServerId,
+                        agentId = targetAgentId,
+                        side = AgentLoungeConversationSide.Private,
+                    )
                     RaftProductEvents.conversationHeaderActionSelected(
                         action = RaftConversationHeaderAction.OpenDm,
                         surface = RaftConversationHeaderSurface.Header,

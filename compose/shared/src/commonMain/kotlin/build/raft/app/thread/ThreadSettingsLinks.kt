@@ -364,6 +364,7 @@ internal fun rememberThreadLoungeSelectionQuote(
             sharedHomeStore = sharedHomeStore,
             authStore = authStore,
             serverMembersStore = serverMembersStore,
+            viewerUserId = currentSession?.user?.id,
         )
     // Agent Lounge v0 (web slock #13880 `reopenRouteDm`): opening a closed Lounge, from any
     // entry point, takes it off `hiddenDmIds`, as opening a closed DM on the web does.
