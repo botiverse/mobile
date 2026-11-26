@@ -661,23 +661,24 @@ class SharedActivityStoreRowPositionTest {
                 unreadCount = 1,
             )
         val threadRow =
-            threadItem("th-1", parentChannelId = "c-1").copy(
+            threadItem("th-1", unreadCount = 1).copy(
                 latestActivityPreview = "original thread reply",
                 latestActivitySeq = "50",
                 readStateLatestActivitySeq = "50",
-                unreadCount = 1,
                 replyCount = 1,
             )
 
         fun historyOnly(id: String, channelId: String, seq: Long, mentions: List<MessageMention> = emptyList()) =
             SharedActivityIntent.ApplyRealtimeEvent(
                 MessageNew(
-                    message(id, channelId = channelId, authorId = "agent-1", body = "History-only notice", seq = seq).copy(
+                    message(id, channelId = channelId, authorId = "system", body = "History-only notice", seq = seq).copy(
+                        messageType = MessageType.System,
                         mentions = mentions,
                         countsUnread = false,
                     ),
                     systemProvenance =
                         MessageSystemProvenance(
+                            systemSubtype = "channel.history_notice",
                             causalActorType = "agent",
                             causalActorId = "agent-1",
                             countsUnread = false,
