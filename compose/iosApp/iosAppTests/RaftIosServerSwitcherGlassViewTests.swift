@@ -132,4 +132,138 @@ final class RaftIosServerSwitcherGlassViewTests: XCTestCase {
         overlay.apply(state: .closed, animated: false)
         XCTAssertTrue(overlay.isHidden)
     }
+
+    func testInitialContentOffsetYKeepsSelectedRowInView() {
+        let rowHeight = RaftIosServerSwitcherGeometry.rowHeight
+        let viewportHeight = CGFloat(RaftIosServerSwitcherGeometry.maxVisibleRows) * rowHeight
+
+        // Top 6 rows fit in initial viewport -> offset stays 0.
+        XCTAssertEqual(
+            RaftIosServerSwitcherGeometry.initialContentOffsetY(
+                selectedIndex: 0,
+                rowCount: 15,
+                viewportHeight: viewportHeight
+            ),
+            0
+        )
+        XCTAssertEqual(
+            RaftIosServerSwitcherGeometry.initialContentOffsetY(
+                selectedIndex: 5,
+                rowCount: 15,
+                viewportHeight: viewportHeight
+            ),
+            0
+        )
+
+        // Mid-list row below fold is centered inside viewport.
+        let midOffset = RaftIosServerSwitcherGeometry.initialContentOffsetY(
+            selectedIndex: 9,
+            rowCount: 15,
+            viewportHeight: viewportHeight
+        )
+        XCTAssertEqual(midOffset, (CGFloat(9) * rowHeight - (viewportHeight - rowHeight) / 2).rounded())
+        let midRowTop = CGFloat(9) * rowHeight
+        XCTAssertGreaterThanOrEqual(midRowTop, midOffset)
+        XCTAssertLessThanOrEqual(midRowTop + rowHeight, midOffset + viewportHeight)
+
+        // Bottom row clamps cleanly to maxOffset so the last row sits fully in view.
+        let maxOffset = CGFloat(15) * rowHeight - viewportHeight
+        XCTAssertEqual(
+            RaftIosServerSwitcherGeometry.initialContentOffsetY(
+                selectedIndex: 14,
+                rowCount: 15,
+                viewportHeight: viewportHeight
+            ),
+            maxOffset
+        )
+
+        // Short list (no scrolling needed) or nil selection stays at 0.
+        XCTAssertEqual(
+            RaftIosServerSwitcherGeometry.initialContentOffsetY(
+                selectedIndex: 4,
+                rowCount: 5,
+                viewportHeight: viewportHeight
+            ),
+            0
+        )
+        XCTAssertEqual(
+            RaftIosServerSwitcherGeometry.initialContentOffsetY(
+                selectedIndex: nil,
+                rowCount: 15,
+                viewportHeight: viewportHeight
+            ),
+            0
+        )
+    }
+
+    func testGlassOverlayScrollsSelectedServerIntoViewOnOpenAndPreservesUserScrollWhileOpenOnIos26() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("Liquid Glass server switcher is iOS 26+ only")
+        }
+        let overlay = RaftIosServerSwitcherGlassOverlayView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        func makeState(selectedIndex: Int, badgeOnFirst: String? = nil) -> RaftIosServerSwitcherStateSpec {
+            let rows = (0..<12).map { index in
+                RaftIosServerSwitcherRowSpec(
+                    id: "srv-\(index)",
+                    name: "Workspace \(index)",
+                    slug: "workspace-\(index)",
+                    selected: index == selectedIndex,
+                    publicPageLive: false,
+                    badgeLabel: index == 0 ? badgeOnFirst : nil,
+                    badgeMuted: false,
+                    mutedAccessibilityLabel: "Muted",
+                    avatarImage: nil,
+                    avatarFallbackLabel: "W"
+                )
+            }
+            return RaftIosServerSwitcherStateSpec(
+                open: true,
+                rows: rows,
+                actions: [
+                    RaftIosServerSwitcherActionSpec(
+                        id: "create_server",
+                        label: "Switch or create server",
+                        imageAssetName: "lucide-plus",
+                        systemSymbol: "plus"
+                    ),
+                ],
+                emptyLabel: "No servers",
+                switchPending: false,
+                reorderable: true,
+                anchorTopPt: 112,
+                anchorStartPt: 8,
+                maxWidthPt: 480
+            )
+        }
+
+        // Open with the last server selected -> table immediately positions row 11 in view.
+        overlay.apply(state: makeState(selectedIndex: 11), animated: false)
+        overlay.layoutIfNeeded()
+
+        let viewportHeight = overlay.serverTableView.bounds.height
+        let expectedBottomOffset = RaftIosServerSwitcherGeometry.initialContentOffsetY(
+            selectedIndex: 11,
+            rowCount: 12,
+            viewportHeight: viewportHeight
+        )
+        XCTAssertGreaterThan(expectedBottomOffset, 0)
+        XCTAssertEqual(overlay.serverTableView.contentOffset.y, expectedBottomOffset, accuracy: 1.0)
+
+        // Manual scroll while open must not be reset by subsequent badge/avatar updates.
+        overlay.serverTableView.setContentOffset(CGPoint(x: 0, y: 24), animated: false)
+        overlay.apply(state: makeState(selectedIndex: 11, badgeOnFirst: "3"), animated: false)
+        XCTAssertEqual(overlay.serverTableView.contentOffset.y, 24, accuracy: 1.0)
+
+        // Closing and reopening re-positions to the currently selected server.
+        overlay.apply(state: .closed, animated: false)
+        overlay.apply(state: makeState(selectedIndex: 11), animated: false)
+        overlay.layoutIfNeeded()
+        XCTAssertEqual(overlay.serverTableView.contentOffset.y, expectedBottomOffset, accuracy: 1.0)
+
+        // Reopening with the top server selected returns to offset 0.
+        overlay.apply(state: .closed, animated: false)
+        overlay.apply(state: makeState(selectedIndex: 0), animated: false)
+        overlay.layoutIfNeeded()
+        XCTAssertEqual(overlay.serverTableView.contentOffset.y, 0, accuracy: 1.0)
+    }
 }

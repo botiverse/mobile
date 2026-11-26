@@ -7172,6 +7172,48 @@ private fun HomeServerDrawerErrorRow(
     }
 }
 
+internal data class HomeServerSwitcherInitialScroll(
+    val firstVisibleItemIndex: Int,
+    val firstVisibleItemScrollOffsetPx: Int,
+)
+
+/**
+ * Computes the initial [LazyListState] position for [ServerSwitcherPanel] and
+ * [RaftServerSwitcherSelectionPanel] so the currently selected server row is immediately in view
+ * when the switcher opens (dm:@artin:#172).
+ *
+ * Rows already within the initial visible window (`0..<maxVisibleRows`) stay top-aligned at index 0;
+ * rows below the fold are centered within the viewport and clamped to the end of the list.
+ */
+internal fun homeServerSwitcherInitialScroll(
+    selectedIndex: Int,
+    serverCount: Int,
+    rowHeightPx: Int,
+    maxVisibleRows: Int = HomeServerSwitcherMaxVisibleRows,
+): HomeServerSwitcherInitialScroll {
+    if (
+        selectedIndex < 0 ||
+        selectedIndex >= serverCount ||
+        serverCount <= maxVisibleRows ||
+        rowHeightPx <= 0 ||
+        maxVisibleRows <= 0
+    ) {
+        return HomeServerSwitcherInitialScroll(0, 0)
+    }
+    if (selectedIndex < maxVisibleRows) {
+        return HomeServerSwitcherInitialScroll(0, 0)
+    }
+    val viewportHeightPx = maxVisibleRows * rowHeightPx
+    val contentHeightPx = serverCount * rowHeightPx
+    val maxOffsetPx = (contentHeightPx - viewportHeightPx).coerceAtLeast(0)
+    val rowTopPx = selectedIndex * rowHeightPx
+    val centeredOffsetPx = (rowTopPx - (viewportHeightPx - rowHeightPx) / 2).coerceIn(0, maxOffsetPx)
+    return HomeServerSwitcherInitialScroll(
+        firstVisibleItemIndex = centeredOffsetPx / rowHeightPx,
+        firstVisibleItemScrollOffsetPx = centeredOffsetPx % rowHeightPx,
+    )
+}
+
 @Composable
 internal fun ServerSwitcherPanel(
     servers: List<RaftServerSwitcherItem>,
@@ -7198,8 +7240,22 @@ internal fun ServerSwitcherPanel(
     var order by remember { mutableStateOf(incomingOrder) }
     var pendingIncomingOrder by remember { mutableStateOf<List<String>?>(null) }
     val serversById = remember(servers) { servers.associateBy { it.id } }
-    val listState = rememberLazyListState()
     val density = LocalDensity.current
+    val rowHeightPx = with(density) { HomeServerSwitcherMenuRowHeight.roundToPx().coerceAtLeast(1) }
+    val initialScroll =
+        remember(incomingOrder, currentServerId, rowHeightPx) {
+            homeServerSwitcherInitialScroll(
+                selectedIndex = incomingOrder.indexOf(currentServerId),
+                serverCount = incomingOrder.size,
+                rowHeightPx = rowHeightPx,
+            )
+        }
+    val listState =
+        rememberLazyListState(
+            initialFirstVisibleItemIndex = initialScroll.firstVisibleItemIndex,
+            initialFirstVisibleItemScrollOffset = initialScroll.firstVisibleItemScrollOffsetPx,
+        )
+    var initialRevealApplied by remember { mutableStateOf(incomingOrder.isNotEmpty()) }
     val rowStepPx = with(density) { HomeServerSwitcherMenuRowHeight.toPx().coerceAtLeast(1f) }
     val edgeScrollZonePx = with(density) { RaftSortEdgeScrollZone.toPx() }
     val edgeScrollStepPx = with(density) { RaftSortEdgeScrollStep.toPx() }
@@ -7214,6 +7270,20 @@ internal fun ServerSwitcherPanel(
             pendingIncomingOrder = null
         } else {
             pendingIncomingOrder = incomingOrder
+        }
+    }
+    LaunchedEffect(order, currentServerId, rowHeightPx) {
+        if (!initialRevealApplied && order.isNotEmpty() && draggedId == null) {
+            initialRevealApplied = true
+            val target =
+                homeServerSwitcherInitialScroll(
+                    selectedIndex = order.indexOf(currentServerId),
+                    serverCount = order.size,
+                    rowHeightPx = rowHeightPx,
+                )
+            if (target.firstVisibleItemIndex > 0 || target.firstVisibleItemScrollOffsetPx > 0) {
+                listState.scrollToItem(target.firstVisibleItemIndex, target.firstVisibleItemScrollOffsetPx)
+            }
         }
     }
     LaunchedEffect(draggedId) {
@@ -7440,7 +7510,21 @@ internal fun RaftServerSwitcherSelectionPanel(
     minWidth: Dp = 276.dp,
     maxWidth: Dp = HomeServerSwitcherMenuMaxWidth,
 ) {
-    val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val rowHeightPx = with(density) { HomeServerSwitcherMenuRowHeight.roundToPx().coerceAtLeast(1) }
+    val initialScroll =
+        remember(servers, selectedServerId, rowHeightPx) {
+            homeServerSwitcherInitialScroll(
+                selectedIndex = selectedServerId?.let { id -> servers.indexOfFirst { it.id == id } } ?: -1,
+                serverCount = servers.size,
+                rowHeightPx = rowHeightPx,
+            )
+        }
+    val listState =
+        rememberLazyListState(
+            initialFirstVisibleItemIndex = initialScroll.firstVisibleItemIndex,
+            initialFirstVisibleItemScrollOffset = initialScroll.firstVisibleItemScrollOffsetPx,
+        )
     HardShadowPanel(
         modifier = modifier.fillMaxWidth(),
         minWidth = minWidth,

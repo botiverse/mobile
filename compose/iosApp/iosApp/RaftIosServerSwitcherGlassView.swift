@@ -64,6 +64,39 @@ enum RaftIosServerSwitcherGeometry {
         return max(rowHeight, min(natural, max(rowHeight, availableHeight)))
     }
 
+    /// Initial vertical `contentOffset.y` that keeps the currently selected server row inside the
+    /// visible switcher viewport when the popover opens (dm:@artin:#172).
+    ///
+    /// Rows already within the initial viewport (`0..<viewportHeight`) keep offset `0`; rows below
+    /// the fold are centered in the viewport and clamped to `[0, maxOffset]`.
+    static func initialContentOffsetY(
+        selectedIndex: Int?,
+        rowCount: Int,
+        viewportHeight: CGFloat,
+        rowHeight: CGFloat = rowHeight
+    ) -> CGFloat {
+        guard
+            let selectedIndex,
+            selectedIndex >= 0,
+            selectedIndex < rowCount,
+            rowCount > 0,
+            viewportHeight > 0,
+            rowHeight > 0
+        else {
+            return 0
+        }
+        let contentHeight = CGFloat(rowCount) * rowHeight
+        let maxOffset = max(0, contentHeight - viewportHeight)
+        guard maxOffset > 0 else { return 0 }
+        let rowTop = CGFloat(selectedIndex) * rowHeight
+        let rowBottom = rowTop + rowHeight
+        if rowBottom <= viewportHeight {
+            return 0
+        }
+        let centered = rowTop - (viewportHeight - rowHeight) / 2
+        return min(maxOffset, max(0, centered)).rounded()
+    }
+
     static func popoverFrame(
         in bounds: CGRect,
         safeArea: UIEdgeInsets,
@@ -167,6 +200,7 @@ final class RaftIosServerSwitcherGlassOverlayView: UIView,
     private(set) var currentState: RaftIosServerSwitcherStateSpec = .closed
     private var orderedRows: [RaftIosServerSwitcherRowSpec] = []
     private var presentedVisible = false
+    private var pendingScrollToSelectedOnOpen = false
 
     let glassContainerView: UIVisualEffectView
     let serverTableView: UITableView
@@ -206,6 +240,7 @@ final class RaftIosServerSwitcherGlassOverlayView: UIView,
         serverTableView.backgroundColor = .clear
         serverTableView.separatorStyle = .none
         serverTableView.showsVerticalScrollIndicator = true
+        serverTableView.contentInsetAdjustmentBehavior = .never
         serverTableView.rowHeight = RaftIosServerSwitcherGeometry.rowHeight
         serverTableView.estimatedRowHeight = RaftIosServerSwitcherGeometry.rowHeight
         serverTableView.dataSource = self
@@ -305,6 +340,10 @@ final class RaftIosServerSwitcherGlassOverlayView: UIView,
         super.layoutSubviews()
         if currentState.open {
             positionGlassPopover()
+            if pendingScrollToSelectedOnOpen {
+                glassContainerView.layoutIfNeeded()
+                scrollSelectedRowIntoViewIfNeeded()
+            }
         }
     }
 
@@ -314,8 +353,13 @@ final class RaftIosServerSwitcherGlassOverlayView: UIView,
         orderedRows = state.rows
 
         if !state.open {
+            pendingScrollToSelectedOnOpen = false
             dismissPopover(animated: animated && wasOpen)
             return
+        }
+
+        if !wasOpen {
+            pendingScrollToSelectedOnOpen = true
         }
 
         let hasRows = !orderedRows.isEmpty
@@ -334,11 +378,29 @@ final class RaftIosServerSwitcherGlassOverlayView: UIView,
 
         isHidden = false
         positionGlassPopover()
+        if pendingScrollToSelectedOnOpen {
+            glassContainerView.layoutIfNeeded()
+            scrollSelectedRowIntoViewIfNeeded()
+        }
 
         if !presentedVisible {
             presentedVisible = true
             animatePresent(animated: animated)
         }
+    }
+
+    private func scrollSelectedRowIntoViewIfNeeded() {
+        guard pendingScrollToSelectedOnOpen, !orderedRows.isEmpty else { return }
+        let viewportHeight = serverTableView.bounds.height
+        guard viewportHeight > 0 else { return }
+        let selectedIndex = orderedRows.firstIndex(where: { $0.selected })
+        let targetOffsetY = RaftIosServerSwitcherGeometry.initialContentOffsetY(
+            selectedIndex: selectedIndex,
+            rowCount: orderedRows.count,
+            viewportHeight: viewportHeight
+        )
+        serverTableView.setContentOffset(CGPoint(x: 0, y: targetOffsetY), animated: false)
+        pendingScrollToSelectedOnOpen = false
     }
 
     private func positionGlassPopover() {

@@ -80,4 +80,44 @@ class HomeServerSwitcherRowTest {
         assertTrue(bridge.actionTapped(RaftNativeNavBarTitleId))
         assertEquals(1, toggles)
     }
+
+    @Test
+    fun initialScrollKeepsRowsInsideInitialViewportAtTop() {
+        assertEquals(
+            HomeServerSwitcherInitialScroll(firstVisibleItemIndex = 0, firstVisibleItemScrollOffsetPx = 0),
+            homeServerSwitcherInitialScroll(selectedIndex = 0, serverCount = 12, rowHeightPx = 96),
+        )
+        assertEquals(
+            HomeServerSwitcherInitialScroll(firstVisibleItemIndex = 0, firstVisibleItemScrollOffsetPx = 0),
+            homeServerSwitcherInitialScroll(selectedIndex = 5, serverCount = 12, rowHeightPx = 96),
+        )
+        assertEquals(
+            HomeServerSwitcherInitialScroll(firstVisibleItemIndex = 0, firstVisibleItemScrollOffsetPx = 0),
+            homeServerSwitcherInitialScroll(selectedIndex = 4, serverCount = 6, rowHeightPx = 96),
+        )
+        assertEquals(
+            HomeServerSwitcherInitialScroll(firstVisibleItemIndex = 0, firstVisibleItemScrollOffsetPx = 0),
+            homeServerSwitcherInitialScroll(selectedIndex = -1, serverCount = 12, rowHeightPx = 96),
+        )
+    }
+
+    @Test
+    fun initialScrollCentersBelowFoldServerAndClampsLastServerInView() {
+        // 15 servers, 6 visible rows, 100px per row (viewport = 600px, maxOffset = 900px).
+        // Row 9 sits at y=900..1000 -> centered offset = 900 - 250 = 650 -> item 6, offset 50px.
+        assertEquals(
+            HomeServerSwitcherInitialScroll(firstVisibleItemIndex = 6, firstVisibleItemScrollOffsetPx = 50),
+            homeServerSwitcherInitialScroll(selectedIndex = 9, serverCount = 15, rowHeightPx = 100),
+        )
+        // Last server (row 14) clamps to maxOffset = 900px -> item 9, offset 0px (rows 9..14 visible).
+        assertEquals(
+            HomeServerSwitcherInitialScroll(firstVisibleItemIndex = 9, firstVisibleItemScrollOffsetPx = 0),
+            homeServerSwitcherInitialScroll(selectedIndex = 14, serverCount = 15, rowHeightPx = 100),
+        )
+        // Row 6 of 8 (maxOffset = 200px) clamps cleanly to item 2, offset 0px (rows 2..7 visible).
+        assertEquals(
+            HomeServerSwitcherInitialScroll(firstVisibleItemIndex = 2, firstVisibleItemScrollOffsetPx = 0),
+            homeServerSwitcherInitialScroll(selectedIndex = 6, serverCount = 8, rowHeightPx = 100),
+        )
+    }
 }
