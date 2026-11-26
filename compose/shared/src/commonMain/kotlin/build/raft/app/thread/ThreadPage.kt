@@ -91,7 +91,6 @@ import build.raft.app.data.SharedMembersChannelSuggestionSlice
 import build.raft.app.data.SharedMembersMemberSuggestionSlice
 import build.raft.app.data.SharedMembersStore
 import build.raft.app.data.SharedServerChannelMembersSlice
-import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksDataStore
@@ -2281,7 +2280,6 @@ private fun SharedThreadRouteContentContent(
     val billingDirectoryProjections by threadRouteHeaderProjection.billingDirectoryProjectionsState
     val jointMessageSurface = threadRouteHeaderProjection.jointMessageSurface
     val messageAvatarResolver = threadRouteHeaderProjection.messageAvatarResolver
-    val lastAcceptedHeaderProjection by threadRouteHeaderProjection.lastAcceptedHeaderProjectionState
     val headerProjectionSource = threadRouteHeaderProjection.headerProjectionSource
     val stableHeaderProjection = threadRouteHeaderProjection.stableHeaderProjection
     val composerJointChannelId = threadRouteHeaderProjection.composerJointChannelId
@@ -2658,62 +2656,21 @@ private fun SharedThreadRouteContentContent(
             showComposer = payload.showComposer && renderSlice.writeActionsEnabled,
             suggestionDemand = composerSuggestionDemand
         )
-    val headerProjectionMapDiagnostics =
-        remember(directoryConversationProjections) {
-            directoryConversationProjections.headerProjectionMapDiagnostics()
-        }
-    val initialHeaderRouteDiagnostics =
-        remember(initialPayload) {
-            initialPayload.headerRouteDiagnostics()
-        }
-    val payloadHeaderRouteDiagnostics =
-        remember(payload) {
-            payload.headerRouteDiagnostics()
-        }
-    LaunchedEffect(
-        currentSession?.currentServerId,
-        headerProjectionInput,
-        conversationDirectoryLookupIds,
-        headerProjectionMapDiagnostics,
-        directoryConversationProjection,
-        lastAcceptedHeaderProjection,
-        headerProjectionSource,
-        stableHeaderProjection,
-        headerDisplayModel,
-        initialHeaderRouteDiagnostics,
-        payloadHeaderRouteDiagnostics
-    ) {
-        if (headerProjectionInput.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
-            bridge.log(
-                "thread_header_dm_diag stage=render " +
-                    "serverId=${currentSession?.currentServerId ?: "null"} " +
-                    "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
-                    "initialRoute=$initialHeaderRouteDiagnostics " +
-                    "stateRoute=$payloadHeaderRouteDiagnostics " +
-                    "projectionMap=$headerProjectionMapDiagnostics " +
-                    "current=${directoryConversationProjection.headerProjectionDiagnostics()} " +
-                    "previous=${lastAcceptedHeaderProjection.headerProjectionDiagnostics()} " +
-                    "stableSource=$headerProjectionSource " +
-                    "stable=${stableHeaderProjection.headerProjectionDiagnostics()} " +
-                    "final=${headerDisplayModel.headerDisplayDiagnostics()}"
-            )
-        }
-        if (headerProjectionInput.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
-            bridge.log(
-                "thread_header_reply_diag stage=render " +
-                    "serverId=${headerProjectionServerId?.value ?: "null"} " +
-                    "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
-                    "initialRoute=$initialHeaderRouteDiagnostics " +
-                    "stateRoute=$payloadHeaderRouteDiagnostics " +
-                    "projectionMap=$headerProjectionMapDiagnostics " +
-                    "current=${directoryConversationProjection.headerProjectionDiagnostics()} " +
-                    "previous=${lastAcceptedHeaderProjection.headerProjectionDiagnostics()} " +
-                    "stableSource=$headerProjectionSource " +
-                    "stable=${stableHeaderProjection.headerProjectionDiagnostics()} " +
-                    "final=${headerDisplayModel.headerDisplayDiagnostics()}"
-            )
-        }
-    }
+    ThreadHeaderRouteDiagnosticsEffect(
+        bridge = bridge,
+        currentSession = currentSession,
+        headerProjectionInput = headerProjectionInput,
+        conversationDirectoryLookupIds = conversationDirectoryLookupIds,
+        directoryConversationProjections = directoryConversationProjections,
+        directoryConversationProjection = directoryConversationProjection,
+        lastAcceptedHeaderProjectionState = threadRouteHeaderProjection.lastAcceptedHeaderProjectionState,
+        headerProjectionSource = headerProjectionSource,
+        stableHeaderProjection = stableHeaderProjection,
+        headerDisplayModel = headerDisplayModel,
+        headerProjectionServerId = headerProjectionServerId,
+        initialPayload = initialPayload,
+        payload = payload,
+    )
     val baseRenderedPayload = remember(payload) {
         payload
             .withSharedShellEventCapabilities()
@@ -3135,47 +3092,20 @@ private fun SharedThreadRouteContentContent(
         )
     val jumpInputs = threadRouteJump.jumpInputs
     val replyMetadataByParentId = threadRouteJump.replyMetadataByParentId
-    val taskProjectionOwnerIdentity =
-        remember(sharedStores.apiEnvironmentStore, currentSession?.user?.id) {
-            currentSession?.user?.id
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?.let { userId ->
-                    "${sharedStores.apiEnvironmentStore.current().apiBaseUrl.trimEnd('/')}|$userId"
-                }
-        }
-    // The session is captured a few frames after the page composes. Until then the shell's server
-    // keys the member directory, so @mentions in the first content frame are already chips with
-    // their names; reading nothing there painted them as plain text and re-laid the rows out as
-    // chips a few frames later (Compose 版 open jitter, artin 11-03).
-    val threadMembersServerId = threadPageServerId(currentServerId, storeScope.initialServerId)?.let(::ServerId)
-    // Composer attachment uploads belong to the draft, not to this page (artin: "不能背后上传吗"):
-    // the process-wide owner keeps them going after the user leaves the conversation, and the
-    // composer that opens this draft again picks up their progress or result. Keyed on this page's
-    // own account and server (the shell scope's server, else the page's captured provenance), never
-    // on whichever server the session selects later.
-    // The account comes from the signed-in route owner at once, not only from the session this
-    // page loads asynchronously: a cached conversation renders its full page on the first frame
-    // (#5104), and an upload started from that frame (or by a handler it registered) must land in
-    // the same store the composer watches. Before, the first frame keyed the store on account ""
-    // and the tile stayed on "Checking file…" (Android 1.27.0, artin; reproduced by Reef).
-    val attachmentUploadAccountId =
-        (currentSession?.user?.id ?: sharedStores.currentAuthenticatedRouteOwner(storeScope)?.accountId)
-            ?.trim()
-            ?.takeIf(String::isNotBlank)
-    val attachmentUploadServerId =
-        threadComposerUploadOwnerServerId(
-            shellServerId = storeScope.initialServerId,
-            pageServerId = replyCacheProvenance?.serverId,
-            sessionServerId = currentServerId
+    val threadRouteOwners =
+        rememberThreadRouteOwners(
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            currentSession = currentSession,
+            currentServerId = currentServerId,
+            replyCacheProvenance = replyCacheProvenance,
         )
-    val attachmentUploads =
-        sharedStores.composerDraftUploads.forOwner(attachmentUploadAccountId, attachmentUploadServerId)
-    // Until the page knows its account and server it cannot tell a draft-owned upload from an
-    // orphan, so the orphan safety net waits for both.
-    val attachmentUploadOwnerResolved = attachmentUploadAccountId != null && attachmentUploadServerId != null
-    val attachmentUploadOrchestrator = attachmentUploads.orchestrator
-    val attachmentUploadSemaphore = attachmentUploads.semaphore
+    val taskProjectionOwnerIdentity = threadRouteOwners.taskProjectionOwnerIdentity
+    val threadMembersServerId = threadRouteOwners.threadMembersServerId
+    val attachmentUploads = threadRouteOwners.attachmentUploads
+    val attachmentUploadOwnerResolved = threadRouteOwners.attachmentUploadOwnerResolved
+    val attachmentUploadOrchestrator = threadRouteOwners.attachmentUploadOrchestrator
+    val attachmentUploadSemaphore = threadRouteOwners.attachmentUploadSemaphore
     val threadRouteMembers =
         rememberThreadRouteMembers(
             serverMembersStore = serverMembersStore,
@@ -3213,14 +3143,10 @@ private fun SharedThreadRouteContentContent(
     val markdownTaskRefStatuses = threadRouteTaskProjection.markdownTaskRefStatuses
     val linkedTasksProjection = threadRouteTaskProjection.linkedTasksProjection
     val taskAssigneeOptions =
-        remember(threadChannelMembersSlice, threadMembersProjection) {
-            taskAssigneeIdentityOptions(
-                channelMembers = threadChannelMembersSlice.members,
-                channelMembersLoaded =
-                    threadChannelMembersSlice.status == SharedServerMembersLoadStatus.Loaded,
-                payloadMembers = threadMembersProjection.members.mapNotNull { it.toMemberProfile() }
-            )
-        }
+        rememberThreadTaskAssigneeOptions(
+            threadChannelMembersSlice = threadChannelMembersSlice,
+            threadMembersProjection = threadMembersProjection,
+        )
     // Channel refs (`#name`) are chips only for channels the reader knows. The store adds those names
     // once its Home lookup answers; the Home snapshot already in memory gives them to the first frame.
     val firstFrameHomeSnapshot =
