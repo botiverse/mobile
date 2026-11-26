@@ -254,6 +254,13 @@ internal fun DrawScope.drawRaftFocusRing(box: Rect, radius: Dp, gap: Color, ink:
 }
 
 /**
+ * `inset-ring-2` in [ink] inside [box] (px, in the draw scope's coordinates) rather than the whole
+ * element: an underline tab rings a shape past its text (raft-ui 0.105.0 Tabs).
+ */
+internal fun DrawScope.drawRaftInsetFocusRing(box: Rect, radius: Dp, ink: Color) =
+    drawBandAround(box, raftInsetBand(RaftFocusRing.InsetWidth.toPx(), radius.toPx()), ink)
+
+/**
  * CSS `ring-[w] ring-<color>` / `shadow-[0_0_0_w_color]`: a [width] stroke [offset]
  * outside the box, following its [radius]. Takes no layout space; the parent must not clip.
  */
