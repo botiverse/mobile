@@ -745,6 +745,7 @@ internal fun RaftMobileWebPanelBrowserBody(
                         diagnosticsSurface = "in_app_browser",
                         showsFormAccessoryBar = true,
                         allowJsDialogs = jsDialogsEnabled,
+                        allowNewWindows = raftPlatformName() == "android" && panelVisible,
                         onJsDialog = { request -> jsDialogState.show(request) },
                         catchesMainFrameNavigation = { ask -> signInHost.session.onMainFrameNavigation(ask) },
                         routesMainFrameNavigation = { candidateUrl ->

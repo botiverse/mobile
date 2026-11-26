@@ -14,6 +14,7 @@ import android.webkit.ConsoleMessage
 import android.webkit.DownloadListener
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
+import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
@@ -30,14 +31,17 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebMessageCompat
+import build.raft.webcontainer.WebContainerAndroidFullscreenController
+import build.raft.webcontainer.WebContainerAndroidKeepAlive
+import build.raft.webcontainer.WebContainerAndroidNewWindowTransport
 import build.raft.webcontainer.WebJsDialogKind
 import build.raft.webcontainer.WebJsDialogRequest
 import build.raft.webcontainer.WebJsDialogResult
 import build.raft.webcontainer.WebJsDialogTracker
+import build.raft.webcontainer.extractAndroidHitTestLinkUrl
 import build.raft.webcontainer.isWebJsDialogPermitted
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
-import build.raft.webcontainer.WebContainerAndroidKeepAlive
 import java.io.ByteArrayInputStream
 import java.net.URI
 import org.json.JSONObject as AndroidJSONObject
@@ -251,7 +255,10 @@ internal class RaftAndroidSandboxWebView(
     private val bootstrapNavigationFence = RaftWebViewBootstrapNavigationFence()
     private var boundController: RaftWebViewController? = null
     private var allowJsDialogs: Boolean = false
+    private var allowNewWindows: Boolean = false
     private val jsDialogTracker = WebJsDialogTracker()
+    internal val fullscreenController = WebContainerAndroidFullscreenController()
+    internal val newWindowTransport = WebContainerAndroidNewWindowTransport()
     /** Diagnostics: when the current main-frame load started (0: none), and the progress milestones logged. */
     private var loadStartedAtMs: Long = 0L
     private var loggedProgressMilestone: Int = 0
@@ -278,6 +285,8 @@ internal class RaftAndroidSandboxWebView(
         latestWindowVisibility = visibility
         if (visibility != View.VISIBLE) {
             jsDialogTracker.cancelActive()
+            fullscreenController.hide()
+            newWindowTransport.cancelAll()
         }
         if (isForegroundWindowForRecovery(this)) {
             flushPendingRenderProcessRestore()
@@ -287,6 +296,8 @@ internal class RaftAndroidSandboxWebView(
     override fun onDetachedFromWindow() {
         latestWindowVisibility = View.GONE
         jsDialogTracker.cancelActive()
+        fullscreenController.hide()
+        newWindowTransport.cancelAll()
         super.onDetachedFromWindow()
     }
 
@@ -424,6 +435,7 @@ internal class RaftAndroidSandboxWebView(
         if (!allowJsDialogs) {
             jsDialogTracker.cancelActive()
         }
+        updateAllowNewWindows(config.allowNewWindows)
         updatePlaceholderBackground(config.backgroundArgb)
         updateSrc(config.url)
     }
@@ -540,6 +552,8 @@ internal class RaftAndroidSandboxWebView(
     /** Keep-alive: detaches from the page that showed it; its callbacks go nowhere until taken again. */
     internal fun detachForKeepAlive() {
         jsDialogTracker.cancelActive()
+        fullscreenController.hide()
+        newWindowTransport.cancelAll()
         boundController?.unbindCommandDispatcher(this)
         boundController = null
         events = RaftWebViewEvents()
@@ -570,6 +584,8 @@ internal class RaftAndroidSandboxWebView(
         destroyed = true
         parkedForKeepAlive = false
         jsDialogTracker.cancelActive()
+        fullscreenController.hide()
+        newWindowTransport.cancelAll()
         pendingRenderProcessRestore = null
         boundController?.unbindCommandDispatcher(this)
         boundController = null
@@ -595,6 +611,8 @@ internal class RaftAndroidSandboxWebView(
     /** [restoreUrl]: the page to load in the new WebView (the one shown, [raftWebViewRendererGoneRestoreUrl]); [src] when blank. */
     private fun recreateWebView(restoreCurrentDocument: Boolean, restoreUrl: String = "") {
         jsDialogTracker.cancelActive()
+        fullscreenController.hide()
+        newWindowTransport.cancelAll()
         diagnosticsInfo("recreate_webview previousSrc=${src.formatUrlForLog()}")
         pendingRenderProcessRestore = null
         loadedSrc = ""
@@ -671,7 +689,7 @@ internal class RaftAndroidSandboxWebView(
             allowContentAccess = false
             loadsImagesAutomatically = true
             mediaPlaybackRequiresUserGesture = true
-            setSupportMultipleWindows(false)
+            setSupportMultipleWindows(this@RaftAndroidSandboxWebView.allowNewWindows)
             javaScriptCanOpenWindowsAutomatically = false
             cacheMode = if (cacheEnabled) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_NO_CACHE
             @Suppress("DEPRECATION")
@@ -705,13 +723,58 @@ internal class RaftAndroidSandboxWebView(
                     isUserGesture: Boolean,
                     resultMsg: android.os.Message?
                 ): Boolean {
-                    if (destroyed || configuredWebView !== webView) return false
-                    // A new window (multiple windows are off, so the engine normally navigates this
-                    // one instead): the link's address, routed by the host like any blocked page.
-                    val hit = view?.hitTestResult
-                    val link = hit?.extra?.takeIf { hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE }.orEmpty()
-                    notifyNavigationBlocked(link)
+                    if (destroyed || parkedForKeepAlive || configuredWebView !== webView) return false
+                    if (!allowNewWindows) {
+                        // Multiple windows are off on this surface: route any anchor link as a blocked page.
+                        val link = extractAndroidHitTestLinkUrl(view?.hitTestResult)
+                        notifyNavigationBlocked(link)
+                        return false
+                    }
+                    if (!isUserGesture || !isForegroundWindow()) {
+                        return false
+                    }
+                    val opened =
+                        newWindowTransport.open(
+                            context = context,
+                            resultMsg = resultMsg,
+                            profileName =
+                                if (storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty) {
+                                    RAFT_ANDROID_THIRD_PARTY_PROFILE_NAME
+                                } else {
+                                    null
+                                },
+                            onUrlCaptured = { capturedUrl ->
+                                handleLegacyNewWindowUrl(configuredWebView, capturedUrl)
+                            },
+                        )
+                    if (opened) return true
+                    val fallbackLink = extractAndroidHitTestLinkUrl(view?.hitTestResult)
+                    if (fallbackLink.isNotBlank()) {
+                        handleLegacyNewWindowUrl(configuredWebView, fallbackLink)
+                    }
                     return false
+                }
+
+                override fun onShowCustomView(
+                    view: View?,
+                    callback: CustomViewCallback?,
+                ) {
+                    fullscreenController.show(
+                        context = context,
+                        view = view,
+                        callback = callback,
+                        permitted = !destroyed && !parkedForKeepAlive && configuredWebView === webView && isForegroundWindow(),
+                    )
+                }
+
+                override fun onHideCustomView() {
+                    fullscreenController.hide()
+                }
+
+                override fun onPermissionRequest(request: PermissionRequest?) {
+                    // Per product decision (#proj-mobile:#395 / #397): deny all web camera/microphone/media
+                    // permission requests on Android without forwarding system runtime permission prompts.
+                    runCatching { request?.deny() }
                 }
 
                 override fun onShowFileChooser(
@@ -815,6 +878,8 @@ internal class RaftAndroidSandboxWebView(
                     }
                     // Logged and joined to the death event (one Hands ticket however many WebViews it took).
                     jsDialogTracker.cancelActive()
+                    fullscreenController.hide()
+                    newWindowTransport.cancelAll()
                     RaftWebViewRendererGone.record(
                         context,
                         if (parkedForKeepAlive) "${diagnosticsSurface}_parked" else diagnosticsSurface,
@@ -870,6 +935,7 @@ internal class RaftAndroidSandboxWebView(
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     if (destroyed || configuredWebView !== webView) return
                     jsDialogTracker.cancelActive()
+                    fullscreenController.hide()
                     super.onPageStarted(view, url, favicon)
                     val target = url.orEmpty()
                     loadStartedAtMs = System.currentTimeMillis()
@@ -1125,6 +1191,57 @@ internal class RaftAndroidSandboxWebView(
 
     private fun updateAllowNavigation(next: Boolean) {
         allowNavigation = next
+    }
+
+    private fun updateAllowNewWindows(next: Boolean) {
+        if (allowNewWindows == next) return
+        allowNewWindows = next
+        webView?.settings?.setSupportMultipleWindows(next)
+        if (!next) {
+            newWindowTransport.cancelAll()
+        }
+    }
+
+    internal fun handleLegacyNewWindowUrl(
+        configuredWebView: WebView,
+        rawUrl: String,
+    ) {
+        if (destroyed || parkedForKeepAlive || isolatedProfileUnavailable || configuredWebView !== webView) return
+        val target = rawUrl.trim()
+        if (target.isEmpty() || target.equals(ABOUT_BLANK_URL, ignoreCase = true)) return
+        navChainCarriesRaftHost = false
+        navChainReissueBudget = RAFT_HOST_REISSUE_BUDGET
+        navChainStarter = if (hasCommittedDocument) RaftSignInStarter.Page else RaftSignInStarter.Other
+        navChainHops.clear()
+        if (tryCatchMainFrameNavigation(configuredWebView, target, stopLoading = false)) {
+            return
+        }
+        if (shouldRouteMainFrameNavigation(target) || shouldBlockMainFrameNavigation(target)) {
+            return
+        }
+        val decision =
+            raftHostNavigationDecision(
+                url = target,
+                method = "GET",
+                kind = RaftHostNavigationKind.Page,
+                carriesHeader = false,
+                host = raftHost,
+                budgetLeft = navChainReissueBudget,
+                committed = hasCommittedDocument,
+            )
+        recordNavChainHop(target)
+        when (decision) {
+            RaftHostNavigationDecision.Allow -> configuredWebView.loadUrl(target)
+            RaftHostNavigationDecision.ReissueWithHeader -> {
+                navChainReissueBudget = (navChainReissueBudget - 1).coerceAtLeast(0)
+                navChainCarriesRaftHost = true
+                postReissueLoad(configuredWebView, target, includeHeader = true)
+            }
+            RaftHostNavigationDecision.ReissueWithoutHeader -> {
+                navChainCarriesRaftHost = false
+                postReissueLoad(configuredWebView, target, includeHeader = false)
+            }
+        }
     }
 
     private fun updateDomStorageEnabled(next: Boolean) {

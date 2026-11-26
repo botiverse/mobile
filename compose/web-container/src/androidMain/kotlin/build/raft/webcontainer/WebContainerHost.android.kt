@@ -14,6 +14,7 @@ import android.view.ViewGroup
 import android.webkit.DownloadListener
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
+import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
@@ -481,6 +482,8 @@ internal class WebContainerAndroidView(
     private val downloadJson = Json { ignoreUnknownKeys = true }
     private var boundController: WebContainerController? = null
     private val jsDialogTracker = WebJsDialogTracker()
+    internal val fullscreenController = WebContainerAndroidFullscreenController()
+    internal val newWindowTransport = WebContainerAndroidNewWindowTransport()
 
     private val watchdogTickRunnable =
         object : Runnable {
@@ -513,6 +516,8 @@ internal class WebContainerAndroidView(
         lastWindowVisibility = visibility
         if (visibility != View.VISIBLE) {
             jsDialogTracker.cancelActive()
+            fullscreenController.hide()
+            newWindowTransport.cancelAll()
         }
         syncWatchdogLifecycle()
     }
@@ -520,6 +525,8 @@ internal class WebContainerAndroidView(
     override fun onDetachedFromWindow() {
         lastWindowVisibility = View.GONE
         jsDialogTracker.cancelActive()
+        fullscreenController.hide()
+        newWindowTransport.cancelAll()
         syncWatchdogLifecycle()
         super.onDetachedFromWindow()
     }
@@ -647,7 +654,8 @@ internal class WebContainerAndroidView(
                 previous.domStorageEnabled != next.domStorageEnabled ||
                 previous.cacheEnabled != next.cacheEnabled ||
                 previous.allowPinchZoom != next.allowPinchZoom ||
-                previous.desktopViewportMode != next.desktopViewportMode
+                previous.desktopViewportMode != next.desktopViewportMode ||
+                previous.navigationPolicy.allowNewWindows != next.navigationPolicy.allowNewWindows
         val desktopModeChanged = wasConfigured && previous.desktopViewportMode != next.desktopViewportMode
         val urlChanged = !wasConfigured || previous.url.trim() != next.url.trim()
         val desiredDownloadOrigin = resolveDesiredDownloadOrigin(next)
@@ -657,6 +665,9 @@ internal class WebContainerAndroidView(
         configured = true
         if (!next.allowJsDialogs) {
             jsDialogTracker.cancelActive()
+        }
+        if (!next.navigationPolicy.allowNewWindows) {
+            newWindowTransport.cancelAll()
         }
         chainState.configureBudget(next.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0)
 
@@ -707,6 +718,8 @@ internal class WebContainerAndroidView(
 
     internal fun detachForKeepAlive() {
         jsDialogTracker.cancelActive()
+        fullscreenController.hide()
+        newWindowTransport.cancelAll()
         boundController?.unbindDispatcher(this)
         boundController = null
         events = WebContainerEvents()
@@ -758,6 +771,8 @@ internal class WebContainerAndroidView(
         destroyed = true
         parkedForKeepAlive = false
         jsDialogTracker.cancelActive()
+        fullscreenController.hide()
+        newWindowTransport.cancelAll()
         WebContainerAndroidKeepAlive.onParkedLoadFinished(this)
         fileChooser = null
         cancelWatchdogTick()
@@ -821,6 +836,8 @@ internal class WebContainerAndroidView(
         nextIsolationScope: WebIsolationScope = isolationScope,
     ) {
         jsDialogTracker.cancelActive()
+        fullscreenController.hide()
+        newWindowTransport.cancelAll()
         removeJsbBridge()
         removeDownloadBridge()
         clearDocumentStartScripts()
@@ -881,7 +898,7 @@ internal class WebContainerAndroidView(
             allowContentAccess = false
             loadsImagesAutomatically = true
             mediaPlaybackRequiresUserGesture = true
-            setSupportMultipleWindows(false)
+            setSupportMultipleWindows(config.navigationPolicy.allowNewWindows)
             javaScriptCanOpenWindowsAutomatically = false
             cacheMode = if (config.cacheEnabled) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_NO_CACHE
             @Suppress("DEPRECATION")
@@ -920,14 +937,52 @@ internal class WebContainerAndroidView(
                     isUserGesture: Boolean,
                     resultMsg: android.os.Message?,
                 ): Boolean {
-                    if (destroyed) return false
-                    val hit = view?.hitTestResult
-                    val link = hit?.extra?.takeIf { hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE }.orEmpty()
+                    if (destroyed || parkedForKeepAlive || configuredWebView !== webView) return false
                     if (!config.navigationPolicy.allowNewWindows) {
+                        val link = extractAndroidHitTestLinkUrl(view?.hitTestResult)
                         notifyNavigationBlocked(link, "new_window_blocked")
                         return false
                     }
+                    if (!isUserGesture || !isForegroundVisibleAndActive(configuredWebView)) {
+                        return false
+                    }
+                    val opened =
+                        newWindowTransport.open(
+                            context = context,
+                            resultMsg = resultMsg,
+                            profileName = activeTransportProfileName(),
+                            onUrlCaptured = { capturedUrl ->
+                                handleAndroidNewWindowUrl(configuredWebView, capturedUrl)
+                            },
+                        )
+                    if (opened) return true
+                    val fallbackLink = extractAndroidHitTestLinkUrl(view?.hitTestResult)
+                    if (fallbackLink.isNotBlank()) {
+                        handleAndroidNewWindowUrl(configuredWebView, fallbackLink)
+                    }
                     return false
+                }
+
+                override fun onShowCustomView(
+                    view: View?,
+                    callback: CustomViewCallback?,
+                ) {
+                    fullscreenController.show(
+                        context = context,
+                        view = view,
+                        callback = callback,
+                        permitted = isForegroundVisibleAndActive(configuredWebView),
+                    )
+                }
+
+                override fun onHideCustomView() {
+                    fullscreenController.hide()
+                }
+
+                override fun onPermissionRequest(request: PermissionRequest?) {
+                    // Per product decision (#proj-mobile:#395 / #397): deny all web camera/microphone/media
+                    // permission requests on Android without forwarding system runtime permission prompts.
+                    runCatching { request?.deny() }
                 }
 
                 override fun onShowFileChooser(
@@ -1026,6 +1081,8 @@ internal class WebContainerAndroidView(
                     val didCrash = api26 && detail?.didCrash() == true
                     val rendererPriority = if (api26 && detail != null) detail.rendererPriorityAtExit() else null
                     jsDialogTracker.cancelActive()
+                    fullscreenController.hide()
+                    newWindowTransport.cancelAll()
                     jsbDispatcher?.cancelInFlight("render_process_gone")
                     if (parkedForKeepAlive) {
                         runCatching {
@@ -1102,6 +1159,7 @@ internal class WebContainerAndroidView(
                         return
                     }
                     jsDialogTracker.cancelActive()
+                    fullscreenController.hide()
                     jsbDispatcher?.cancelInFlight("main_frame_navigation")
                     if (target.isNotEmpty() && !target.equals(ABOUT_BLANK_URL, ignoreCase = true)) {
                         val isConfiguredInitialDocument =
@@ -1463,6 +1521,56 @@ internal class WebContainerAndroidView(
         }
     }
 
+    private fun isForegroundVisibleAndActive(configuredWebView: WebView): Boolean =
+        !destroyed &&
+            !parkedForKeepAlive &&
+            configuredWebView === webView &&
+            isAttachedToWindow &&
+            lastWindowVisibility == View.VISIBLE
+
+    private fun activeTransportProfileName(): String? =
+        when (val scope = isolationScope) {
+            WebIsolationScope.Default -> null
+            WebIsolationScope.Ephemeral -> activeEphemeralProfileName
+            is WebIsolationScope.Named -> AndroidWebContainerProfileStore.profileNameFor(scope)
+        }
+
+    internal fun handleAndroidNewWindowUrl(
+        configuredWebView: WebView,
+        rawUrl: String,
+    ) {
+        if (destroyed || parkedForKeepAlive || isolatedProfileUnavailable || configuredWebView !== webView) return
+        val target = rawUrl.trim()
+        if (target.isEmpty() || target.equals(ABOUT_BLANK_URL, ignoreCase = true)) return
+        val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
+        chainState.startChain(
+            carriesHeader = false,
+            reissueBudget = budget,
+            starter = WebNavigationStarter.Link,
+        )
+        val decision =
+            evaluateMainFrameNavigation(
+                targetUrl = target,
+                initialUrl = config.url,
+                policy = config.navigationPolicy,
+                method = "GET",
+                requestCarriesScopedHeader = false,
+                chainState = chainState,
+                isUserGesture = true,
+                isRedirect = false,
+                catchesMainFrameNavigation = events.catchesMainFrameNavigation,
+                routesMainFrameNavigation = events.routesMainFrameNavigation,
+            )
+        when (decision) {
+            WebNavigationDecision.Allow -> configuredWebView.loadUrl(target)
+            is WebNavigationDecision.ReissueWithHeader ->
+                configuredWebView.loadUrl(decision.url, mapOf(decision.headerName to decision.headerValue))
+            is WebNavigationDecision.ReissueWithoutHeader -> configuredWebView.loadUrl(decision.url)
+            is WebNavigationDecision.InterceptedByHost -> Unit
+            is WebNavigationDecision.Block -> notifyNavigationBlocked(decision.url, decision.reason)
+        }
+    }
+
     private fun handleAndroidJsDialog(
         configuredWebView: WebView,
         kind: WebJsDialogKind,
@@ -1472,12 +1580,7 @@ internal class WebContainerAndroidView(
         onConfirm: (String?) -> Unit,
         onCancel: () -> Unit,
     ): Boolean {
-        val visibleAndActive =
-            !destroyed &&
-                !parkedForKeepAlive &&
-                configuredWebView === webView &&
-                isAttachedToWindow &&
-                lastWindowVisibility == View.VISIBLE
+        val visibleAndActive = isForegroundVisibleAndActive(configuredWebView)
         val handler = events.onJsDialog
         if (!config.allowJsDialogs && handler == null) {
             if (!visibleAndActive) {
