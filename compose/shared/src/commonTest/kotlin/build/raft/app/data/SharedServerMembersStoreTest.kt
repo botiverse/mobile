@@ -1016,6 +1016,50 @@ class SharedServerMembersStoreTest {
         assertEquals(2, localStatus?.runningWorkers)
         assertEquals(false, localStatus?.runningWorkersPresenceOnly)
 
+        // Joint-channel peer identified ONLY by its `servers` list (inViewerServer == null, serverId == null)
+        // must be treated as other-server consistently across workingAgentsFlow, workerBusyAgentsFlow, and memberStatus.
+        val serversOnlyPeer =
+            member("peer-servers-only", "ServersOnlyPeer").copy(
+                kind = MemberKind.Agent,
+                presence = Presence.Active,
+                serverId = null,
+                inViewerServer = null,
+                servers = listOf(MemberServerRef(id = "server-2", name = "Other")),
+                agentRunningWorkers = 4,
+            )
+        val serversOnlyLocal =
+            member("local-servers-only", "ServersOnlyLocal").copy(
+                kind = MemberKind.Agent,
+                presence = Presence.Active,
+                serverId = null,
+                inViewerServer = null,
+                servers = listOf(MemberServerRef(id = "server-1", name = "Local")),
+                agentRunningWorkers = 3,
+            )
+        repository.channelMembersByChannel["joint-servers-list"] = listOf(serversOnlyPeer, serversOnlyLocal)
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+            store.loadChannelMembers(ServerId("server-1"), ChannelId("joint-servers-list"))
+        )
+        store.applyPresence(ServerId("server-1"), onlineFact("peer-servers-only", 4))
+        store.applyPresence(ServerId("server-1"), onlineFact("local-servers-only", 3))
+
+        val workerBusyAfterServersList = store.workerBusyAgentsFlow(ServerId("server-1")).first()
+        assertEquals(
+            setOf("workers" to 2, "local-servers-only" to 3),
+            workerBusyAfterServersList.map { it.agentId to it.runningWorkers }.toSet(),
+        )
+        val serversOnlyPeerStatus = store.memberStatusFlow(ServerId("server-1"), "peer-servers-only").first()
+        assertEquals(1, serversOnlyPeerStatus?.runningWorkers)
+        assertEquals(true, serversOnlyPeerStatus?.runningWorkersPresenceOnly)
+        val serversOnlyLocalStatus = store.memberStatusFlow(ServerId("server-1"), "local-servers-only").first()
+        assertEquals(3, serversOnlyLocalStatus?.runningWorkers)
+        assertEquals(false, serversOnlyLocalStatus?.runningWorkersPresenceOnly)
+
+        store.applyPresence(ServerId("server-1"), onlineFact("peer-servers-only", null, status = AgentStatus.Working))
+        store.applyPresence(ServerId("server-1"), onlineFact("local-servers-only", null, status = AgentStatus.Working))
+        val workingAfterServersList = store.workingAgentsFlow(ServerId("server-1")).first()
+        assertEquals(setOf("self", "local-servers-only"), workingAfterServersList.map { it.agentId }.toSet())
+
         // Durable roster stripping never persists volatile runningWorkers or serviceTier.
         val durable = agent("workers", "Kirby").copy(agentRunningWorkers = 3, agentServiceTier = "default").forDurableRoster()
         assertNull(durable.agentRunningWorkers)

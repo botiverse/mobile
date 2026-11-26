@@ -428,8 +428,36 @@ data class SettingsComputerControlState(
     /** The upgrade request the server accepted for this page's click (kept until the row settles it). */
     val upgradeAccepted: SettingsComputerAcceptedUpgrade? = null,
     /** The last refused Upgrade click; it holds only while [SettingsComputerUpgradeRefusal.availabilityKey] matches. */
-    val upgradeRefusal: SettingsComputerUpgradeRefusal? = null
+    val upgradeRefusal: SettingsComputerUpgradeRefusal? = null,
+    /** Per-runtime saving and inline refusal state for Runtimes for Workers (slock #17012). */
+    val workerRuntimes: SettingsComputerWorkerRuntimesState = SettingsComputerWorkerRuntimesState()
 )
+
+/**
+ * Inline refusal / failure for one runtime row in Runtimes for Workers (web `ImmediateSaveStatus`),
+ * cleared on the next change for that runtime or when switching computers/servers.
+ */
+data class SettingsComputerWorkerRuntimeError(
+    val code: String? = null,
+    val serverMessage: String? = null,
+    val traceId: String? = null
+)
+
+/**
+ * Per-machine saving switches and inline row errors for Runtimes for Workers
+ * (web `MachineWorkerRuntimesSection` + `machineWorkerRuntimes.ts`).
+ */
+data class SettingsComputerWorkerRuntimesState(
+    val machineId: String? = null,
+    val savingRuntimes: Set<String> = emptySet(),
+    val errorsByRuntime: Map<String, SettingsComputerWorkerRuntimeError> = emptyMap()
+) {
+    fun isSaving(machineId: String, runtime: String): Boolean =
+        this.machineId == machineId && runtime in savingRuntimes
+
+    fun errorFor(machineId: String, runtime: String): SettingsComputerWorkerRuntimeError? =
+        if (this.machineId == machineId) errorsByRuntime[runtime] else null
+}
 
 /** A web restart: in flight until `computer:restart:done` (or the 60 s safety timeout), then briefly done. */
 data class SettingsComputerRestartProgress(
@@ -564,6 +592,15 @@ sealed interface SharedSettingsIntent {
     data class UpgradeComputer(val machineId: String, val targetVersion: String) : SharedSettingsIntent
     /** Computer owner v1: transfer, make Public (null), or Make it mine; the page reloads the Computer after. */
     data class SetComputerOwner(val request: SettingsComputerOwnerRequest) : SharedSettingsIntent
+    /**
+     * Worker v1 step 2 (slock #17012): turn [runtime] on or off for Workers on [machineId]
+     * (`PUT …/worker-runtimes`), optimistic with rollback and per-runtime inline error on failure.
+     */
+    data class SetComputerWorkerRuntimes(
+        val machineId: String,
+        val runtime: String,
+        val enabled: Boolean
+    ) : SharedSettingsIntent
     /** Copies one of the computer detail page's terminal commands. */
     data class CopyComputerCommand(val command: String) : SharedSettingsIntent
     /** Opens the public Raft Computer install guide ([COMPUTER_INSTALL_DOCS_URL]). */
@@ -1188,6 +1225,11 @@ class SharedSettingsDataSource(
 
     suspend fun setComputerOwner(request: SettingsComputerOwnerRequest): DataResult<SettingsComputerActionResult> =
         settingsRepository?.setComputerOwner(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun setComputerWorkerRuntimes(
+        request: SettingsComputerWorkerRuntimesRequest
+    ): DataResult<SettingsComputerWorkerRuntimesResult> =
+        settingsRepository?.setComputerWorkerRuntimes(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     /**
      * Web `getComputerCommands(serverSlug, deploymentEnv, getServerUrl())`: the session's server slug,
@@ -2295,6 +2337,9 @@ class SharedSettingsStore(
     private val scannedWorkspacesByKey = mutableMapOf<Pair<String, String>, List<SettingsComputerWorkspaceSnapshot>>()
     /** #587 site 7 (slock #16502): in-flight workspace scan per (serverId, machineId) so a second click/pull joins it. */
     private val workspaceScansInFlight = mutableMapOf<Pair<String, String>, CompletableDeferred<Unit>>()
+    /** Worker v1 step 2: in-flight optimistic toggles keyed by (machineId, runtime) -> desired enabled state. */
+    private val pendingWorkerRuntimeToggles = mutableMapOf<Pair<String, String>, Boolean>()
+    private var workerRuntimesScopeGeneration: Long = 0L
 
     init {
         authOwnerObservationJob =
@@ -2329,6 +2374,8 @@ class SharedSettingsStore(
         )
         pendingMachineRealtimeIds.clear()
         pendingCatchUpComputers = false
+        workerRuntimesScopeGeneration += 1L
+        pendingWorkerRuntimeToggles.clear()
         stopComputersObservation()
         _state.value = _state.value.withServerScopedContentCleared()
         loadJob?.cancel()
@@ -2379,6 +2426,8 @@ class SharedSettingsStore(
         loadJob?.cancel()
         loadJob = null
         pendingCatchUpComputers = false
+        workerRuntimesScopeGeneration += 1L
+        pendingWorkerRuntimeToggles.clear()
         stopComputersObservation()
         cancelDiagnosticsExpiryRefresh()
         authOwnerObservationJob?.cancel()
@@ -2452,9 +2501,17 @@ class SharedSettingsStore(
             when (_state.value.route.destination) {
                 SharedSettingsDestination.Computers -> {
                     val nextError = if (confirmedFresh) null else _state.value.routeErrorCode
+                    val preservedDecorated =
+                        if (pendingWorkerRuntimeToggles.isEmpty()) {
+                            decorated
+                        } else {
+                            decorated.copy(
+                                computers = decorated.computers.map { it.preservingPendingWorkerRuntimeToggles(it.id) }
+                            )
+                        }
                     _state.value =
                         _state.value.copy(
-                            computers = ScreenLoadState.Content(decorated),
+                            computers = ScreenLoadState.Content(preservedDecorated),
                             routeErrorCode = nextError,
                         )
                     if (confirmedFresh) computersValidatedAtMillis = nowMillis()
@@ -2468,7 +2525,11 @@ class SharedSettingsStore(
                         when (val currentDetail = _state.value.computerDetail) {
                             is ScreenLoadState.Content -> {
                                 val updatedDetail =
-                                    dataSource.decorateLiveComputerDetailSnapshot(serverId, currentDetail.data, liveComputer)
+                                    dataSource.decorateLiveComputerDetailSnapshot(
+                                        serverId,
+                                        currentDetail.data,
+                                        liveComputer.preservingPendingWorkerRuntimeToggles(openMachineId)
+                                    )
                                         ?: return
                                 if (
                                     observedComputersServerId != serverId ||
@@ -2761,6 +2822,8 @@ class SharedSettingsStore(
                     dataSource.setComputerOwner(intent.request).applyComputerActionReloadResult(COMPUTER_ACTION_OWNER, intent.request.machineId)
                 }
             }
+            is SharedSettingsIntent.SetComputerWorkerRuntimes ->
+                setComputerWorkerRuntimes(intent.machineId, intent.runtime, intent.enabled)
             is SharedSettingsIntent.CopyComputerCommand -> {
                 val command = intent.command.trim().takeIf { it.isNotBlank() } ?: return
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.CopyText(command))
@@ -3879,6 +3942,227 @@ class SharedSettingsStore(
     }
 
     /**
+     * Worker v1 step 2 (web `MachineWorkerRuntimesSection` + `setMachineWorkerRuntimes`):
+     * toggles [runtime] in the Computer's `workerRuntimesTurnedOn` optimistically, sends the whole
+     * list via `PUT …/worker-runtimes`, applies the server's returned machine on success, or rolls
+     * [runtime] back and records a per-runtime inline error on refusal/failure.
+     */
+    private suspend fun setComputerWorkerRuntimes(machineId: String, runtime: String, enabled: Boolean) {
+        val cleanMachineId = machineId.trim()
+        val cleanRuntime = runtime.trim()
+        if (cleanMachineId.isBlank() || cleanRuntime.isBlank()) return
+        val key = cleanMachineId to cleanRuntime
+        if (key in pendingWorkerRuntimeToggles) return
+        val currentComputer =
+            (_state.value.computerDetail as? ScreenLoadState.Content)?.data?.computer?.takeIf { it.id == cleanMachineId }
+                ?: (_state.value.computers as? ScreenLoadState.Content)?.data?.computers?.firstOrNull { it.id == cleanMachineId }
+                ?: return
+        val currentTurnedOn = currentComputer.workerRuntimesTurnedOn ?: return
+        val wasEnabled = cleanRuntime in currentTurnedOn
+        if (wasEnabled == enabled) return
+        val nextRuntimes =
+            if (enabled) {
+                (currentTurnedOn + cleanRuntime).distinct()
+            } else {
+                currentTurnedOn.filterNot { it == cleanRuntime }
+            }
+        val generation = workerRuntimesScopeGeneration
+        pendingWorkerRuntimeToggles[key] = enabled
+        applyWorkerRuntimesToComputerState(cleanMachineId) { computer ->
+            computer.copy(workerRuntimesTurnedOn = nextRuntimes)
+        }
+        updateWorkerRuntimesControl(cleanMachineId) { current ->
+            current.copy(
+                machineId = cleanMachineId,
+                savingRuntimes = current.savingRuntimes + cleanRuntime,
+                errorsByRuntime = current.errorsByRuntime - cleanRuntime,
+            )
+        }
+        val result =
+            try {
+                dataSource.setComputerWorkerRuntimes(
+                    SettingsComputerWorkerRuntimesRequest(
+                        machineId = cleanMachineId,
+                        runtimes = nextRuntimes,
+                    )
+                )
+            } catch (cancellation: CancellationException) {
+                if (generation == workerRuntimesScopeGeneration) {
+                    pendingWorkerRuntimeToggles.remove(key)
+                    updateWorkerRuntimesControl(cleanMachineId) { current ->
+                        current.copy(savingRuntimes = current.savingRuntimes - cleanRuntime)
+                    }
+                }
+                throw cancellation
+            } catch (_: Throwable) {
+                DataResult.Error(ScreenError(code = "worker_runtimes_save_failed", retryable = true))
+            }
+        if (generation != workerRuntimesScopeGeneration) return
+        pendingWorkerRuntimeToggles.remove(key)
+        when (result) {
+            is DataResult.Content -> {
+                val returnedMachine = result.data.machine
+                if (returnedMachine != null) {
+                    applyWorkerRuntimesToComputerState(cleanMachineId) { existing ->
+                        mergeReturnedWorkerRuntimesMachine(existing, returnedMachine)
+                            .preservingPendingWorkerRuntimeToggles(cleanMachineId)
+                    }
+                }
+                updateWorkerRuntimesControl(cleanMachineId) { current ->
+                    current.copy(
+                        machineId = cleanMachineId,
+                        savingRuntimes = current.savingRuntimes - cleanRuntime,
+                        errorsByRuntime = current.errorsByRuntime - cleanRuntime,
+                    )
+                }
+            }
+            is DataResult.Error -> {
+                rollbackWorkerRuntimeToggle(cleanMachineId, cleanRuntime, wasEnabled)
+                updateWorkerRuntimesControl(cleanMachineId) { current ->
+                    current.copy(
+                        machineId = cleanMachineId,
+                        savingRuntimes = current.savingRuntimes - cleanRuntime,
+                        errorsByRuntime =
+                            current.errorsByRuntime + (
+                                cleanRuntime to
+                                    SettingsComputerWorkerRuntimeError(
+                                        code = result.error.serverCode ?: result.error.code,
+                                        serverMessage = result.error.serverMessage,
+                                        traceId = result.error.traceId,
+                                    )
+                                ),
+                    )
+                }
+            }
+            is DataResult.NoPermission -> {
+                rollbackWorkerRuntimeToggle(cleanMachineId, cleanRuntime, wasEnabled)
+                updateWorkerRuntimesControl(cleanMachineId) { current ->
+                    current.copy(
+                        machineId = cleanMachineId,
+                        savingRuntimes = current.savingRuntimes - cleanRuntime,
+                        errorsByRuntime =
+                            current.errorsByRuntime + (
+                                cleanRuntime to
+                                    SettingsComputerWorkerRuntimeError(
+                                        code = result.blocker.serverCode ?: result.blocker.code,
+                                        serverMessage = result.blocker.serverMessage,
+                                        traceId = result.blocker.traceId,
+                                    )
+                                ),
+                    )
+                }
+            }
+            is DataResult.Empty -> {
+                rollbackWorkerRuntimeToggle(cleanMachineId, cleanRuntime, wasEnabled)
+                updateWorkerRuntimesControl(cleanMachineId) { current ->
+                    current.copy(
+                        machineId = cleanMachineId,
+                        savingRuntimes = current.savingRuntimes - cleanRuntime,
+                        errorsByRuntime =
+                            current.errorsByRuntime + (
+                                cleanRuntime to
+                                    SettingsComputerWorkerRuntimeError(code = "worker_runtimes_save_failed")
+                                ),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun updateWorkerRuntimesControl(
+        machineId: String,
+        transform: (SettingsComputerWorkerRuntimesState) -> SettingsComputerWorkerRuntimesState
+    ) {
+        updateComputerControl {
+            val base =
+                if (workerRuntimes.machineId == machineId) {
+                    workerRuntimes
+                } else {
+                    SettingsComputerWorkerRuntimesState(machineId = machineId)
+                }
+            copy(workerRuntimes = transform(base))
+        }
+    }
+
+    private fun applyWorkerRuntimesToComputerState(
+        machineId: String,
+        transform: (SettingsComputerSnapshot) -> SettingsComputerSnapshot
+    ) {
+        val currentState = _state.value
+        val nextDetail =
+            when (val detail = currentState.computerDetail) {
+                is ScreenLoadState.Content ->
+                    if (detail.data.computer.id == machineId) {
+                        ScreenLoadState.Content(detail.data.copy(computer = transform(detail.data.computer)))
+                    } else {
+                        detail
+                    }
+                else -> detail
+            }
+        val nextComputers =
+            when (val computers = currentState.computers) {
+                is ScreenLoadState.Content ->
+                    if (computers.data.computers.any { it.id == machineId }) {
+                        ScreenLoadState.Content(
+                            computers.data.copy(
+                                computers =
+                                    computers.data.computers.map { computer ->
+                                        if (computer.id == machineId) transform(computer) else computer
+                                    }
+                            )
+                        )
+                    } else {
+                        computers
+                    }
+                else -> computers
+            }
+        _state.value = currentState.copy(computerDetail = nextDetail, computers = nextComputers)
+    }
+
+    private fun rollbackWorkerRuntimeToggle(machineId: String, runtime: String, wasEnabled: Boolean) {
+        applyWorkerRuntimesToComputerState(machineId) { computer ->
+            val current = computer.workerRuntimesTurnedOn ?: return@applyWorkerRuntimesToComputerState computer
+            val restored =
+                if (wasEnabled) {
+                    (current + runtime).distinct()
+                } else {
+                    current.filterNot { it == runtime }
+                }
+            computer.copy(workerRuntimesTurnedOn = restored)
+        }
+    }
+
+    private fun mergeReturnedWorkerRuntimesMachine(
+        existing: SettingsComputerSnapshot,
+        returned: SettingsComputerSnapshot,
+    ): SettingsComputerSnapshot =
+        returned.copy(
+            latestComputerVersion = returned.latestComputerVersion ?: existing.latestComputerVersion,
+            latestComputerReleaseNotes = returned.latestComputerReleaseNotes ?: existing.latestComputerReleaseNotes,
+            canViewRuntimeUsage = existing.canViewRuntimeUsage,
+            canManage = existing.canManage,
+        )
+
+    private fun SettingsComputerSnapshot.preservingPendingWorkerRuntimeToggles(
+        machineId: String
+    ): SettingsComputerSnapshot {
+        val base = workerRuntimesTurnedOn ?: return this
+        val pending = pendingWorkerRuntimeToggles.entries.filter { it.key.first == machineId }
+        if (pending.isEmpty()) return this
+        var merged = base
+        for ((key, desiredEnabled) in pending) {
+            val runtimeId = key.second
+            merged =
+                if (desiredEnabled) {
+                    (merged + runtimeId).distinct()
+                } else {
+                    merged.filterNot { it == runtimeId }
+                }
+        }
+        return if (merged == base) this else copy(workerRuntimesTurnedOn = merged)
+    }
+
+    /**
      * Web `handleComputerRestart`: enter the restart progress before the POST returns, keep it until
      * `computer:restart:done` (or [COMPUTER_RESTART_TIMEOUT_MILLIS]), then show the outcome briefly.
      */
@@ -4969,6 +5253,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.RestartComputer,
             is SharedSettingsIntent.UpgradeComputer,
             is SharedSettingsIntent.SetComputerOwner,
+            is SharedSettingsIntent.SetComputerWorkerRuntimes,
             is SharedSettingsIntent.CopyComputerCommand,
             SharedSettingsIntent.OpenComputerInstallGuide,
             SharedSettingsIntent.ShowAddComputerDialog,

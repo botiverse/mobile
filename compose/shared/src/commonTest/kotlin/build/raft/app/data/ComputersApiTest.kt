@@ -580,6 +580,130 @@ class ComputersApiTest {
         assertEquals(listOf(true, false), refreshed.workspaces.map { it.partial })
     }
 
+    @Test
+    fun workerRuntimesFieldsPreserveNullVsEmptyAndPutHandlesSuccessAndRefusals() = runPortableCoroutineTest {
+        val listBody =
+            """
+            {"machines":[
+              {"id":"m-legacy","name":"Older Server","status":"online","isComputer":true,"runtimes":["claude"]},
+              {"id":"m-public","name":"Public Box","status":"online","isComputer":true,"runtimes":["claude","codex"],
+               "workerRuntimesTurnedOn":[],"canChangeWorkerRuntimes":true,"workerRuntimesChangeBy":"any_member"},
+              {"id":"m-owned","name":"Owned Box","status":"online","isComputer":true,"runtimes":["claude","codex"],
+               "workerRuntimesTurnedOn":["codex","pi"],"canChangeWorkerRuntimes":false,"workerRuntimesChangeBy":"owner_or_admin"}
+            ]}
+            """.trimIndent()
+        val listed =
+            assertIs<DataResult.Content<ComputerListSummary>>(
+                RaftComputersApiClient(RecordingComputersApi(machinesBody = listBody)).machines(ServerId("server-1"))
+            ).data.machines.associateBy { it.id }
+
+        val legacy = listed.getValue("m-legacy").toSettingsComputerSnapshot()
+        assertNull(legacy.workerRuntimesTurnedOn, "absent field on older server must stay null")
+        assertEquals(false, legacy.canChangeWorkerRuntimes)
+        assertNull(legacy.workerRuntimesChangeBy)
+
+        val publicMachine = listed.getValue("m-public").toSettingsComputerSnapshot()
+        assertEquals(emptyList(), publicMachine.workerRuntimesTurnedOn)
+        assertEquals(true, publicMachine.canChangeWorkerRuntimes)
+        assertEquals("any_member", publicMachine.workerRuntimesChangeBy)
+
+        val ownedMachine = listed.getValue("m-owned").toSettingsComputerSnapshot()
+        assertEquals(listOf("codex", "pi"), ownedMachine.workerRuntimesTurnedOn)
+        assertEquals(false, ownedMachine.canChangeWorkerRuntimes)
+        assertEquals("owner_or_admin", ownedMachine.workerRuntimesChangeBy)
+
+        // PUT /servers/:id/machines/:machineId/worker-runtimes success + refusals.
+        val captured = mutableListOf<Triple<String, String, String?>>()
+        var nextResponse =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """{"machine":{"id":"m-public","name":"Public Box","status":"online","isComputer":true,"runtimes":["claude","codex"],"workerRuntimesTurnedOn":["codex","pi"],"canChangeWorkerRuntimes":true,"workerRuntimesChangeBy":"any_member"}}"""
+            )
+        val networkClient =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse {
+                    captured += Triple(method, path, bodyText)
+                    return nextResponse
+                }
+            }
+        val client = RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
+
+        val saved =
+            assertIs<DataResult.Content<ComputerWorkerRuntimesChange>>(
+                client.setMachineWorkerRuntimes(ServerId("server-1"), "m-public", listOf("codex", "pi", "codex"))
+            ).data
+        assertEquals(
+            Triple("PUT", "servers/server-1/machines/m-public/worker-runtimes", """{"runtimes":["codex","pi"]}"""),
+            captured.single()
+        )
+        assertEquals(listOf("codex", "pi"), saved.machine?.workerRuntimesTurnedOn)
+
+        nextResponse =
+            HomeNetworkResponse(
+                code = 403,
+                bodyText =
+                    """{"code":"worker_runtimes_forbidden","error":"Only @alice, this Computer's owner, or an owner or admin of this server can change which runtimes Workers may use on it."}""",
+                traceId = "trace-403",
+            )
+        val forbidden =
+            assertIs<DataResult.NoPermission>(
+                client.setMachineWorkerRuntimes(ServerId("server-1"), "m-public", listOf("codex"))
+            )
+        assertEquals("worker_runtimes_forbidden", forbidden.blocker.code)
+        assertEquals("worker_runtimes_forbidden", forbidden.blocker.serverCode)
+        assertEquals(
+            "Only @alice, this Computer's owner, or an owner or admin of this server can change which runtimes Workers may use on it.",
+            forbidden.blocker.serverMessage
+        )
+        assertEquals("trace-403", forbidden.blocker.traceId)
+
+        nextResponse =
+            HomeNetworkResponse(
+                code = 400,
+                bodyText = """{"code":"worker_runtimes_invalid","error":"Send runtimes as a list of runtime ids."}""",
+            )
+        val invalid =
+            assertIs<DataResult.Error>(
+                client.setMachineWorkerRuntimes(ServerId("server-1"), "m-public", listOf("bogus"))
+            )
+        assertEquals("worker_runtimes_invalid", invalid.error.code)
+        assertEquals(false, invalid.error.retryable)
+        assertEquals("Send runtimes as a list of runtime ids.", invalid.error.serverMessage)
+
+        nextResponse =
+            HomeNetworkResponse(
+                code = 404,
+                bodyText = """{"code":"machine_not_found","error":"That Computer is not in this server."}""",
+            )
+        val notFound =
+            assertIs<DataResult.Error>(
+                client.setMachineWorkerRuntimes(ServerId("server-1"), "m-missing", emptyList())
+            )
+        assertEquals("machine_not_found", notFound.error.code)
+        assertEquals(false, notFound.error.retryable)
+
+        nextResponse =
+            HomeNetworkResponse(
+                code = 500,
+                bodyText = """{"error":"Failed to change the runtimes Workers may use on this Computer"}""",
+            )
+        val serverFailure =
+            assertIs<DataResult.Error>(
+                client.setMachineWorkerRuntimes(ServerId("server-1"), "m-public", listOf("codex"))
+            )
+        assertEquals("server_unavailable", serverFailure.error.code)
+        assertEquals(true, serverFailure.error.retryable)
+        assertNull(serverFailure.error.serverMessage)
+    }
+
     // Shared with ComputerControllerPermissionsTest.
     internal class RecordingComputersApi(
         private val machinesBody: String =

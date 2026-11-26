@@ -352,6 +352,121 @@ class SharedSettingsStoreComputersTest {
         assertEquals(2, repository.calls.count { it == "computers" })
     }
 
+    @Test
+    fun workerRuntimesToggleUpdatesOptimisticallySavesWholeListAndAppliesServerMachine() = runTest {
+        val initialComputer =
+            machine("m-1", "Studio").copy(
+                runtimes = listOf("claude", "codex"),
+                workerRuntimesTurnedOn = emptyList(),
+                canChangeWorkerRuntimes = true,
+                workerRuntimesChangeBy = "any_member",
+            )
+        val repository =
+            FakeSettingsRepository(
+                computerDetailResult =
+                    DataResult.Content(SettingsComputerDetailSnapshot(initialComputer, emptyList(), emptyList(), emptyList()))
+            )
+        val block = BlockingCall()
+        repository.setComputerWorkerRuntimesBlock = block
+        repository.setComputerWorkerRuntimesResult =
+            DataResult.Content(
+                SettingsComputerWorkerRuntimesResult(
+                    machineId = "m-1",
+                    machine = initialComputer.copy(workerRuntimesTurnedOn = listOf("codex")),
+                )
+            )
+        val detail = store(repository, standalone = true)
+        detail.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ComputerDetail, "m-1"))
+
+        detail.dispatch(SharedSettingsIntent.SetComputerWorkerRuntimes("m-1", "codex", enabled = true))
+        runCurrent()
+
+        // Applied optimistically at once and switch is marked saving; duplicate click while in flight is ignored.
+        val optimistic = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(detail.state.value.computerDetail).data
+        assertEquals(listOf("codex"), optimistic.computer.workerRuntimesTurnedOn)
+        assertTrue(detail.state.value.computerControl.workerRuntimes.isSaving("m-1", "codex"))
+        detail.dispatch(SharedSettingsIntent.SetComputerWorkerRuntimes("m-1", "codex", enabled = false))
+        runCurrent()
+        assertEquals(1, repository.setComputerWorkerRuntimesRequests.size)
+        assertEquals(listOf("codex"), repository.setComputerWorkerRuntimesRequests.single().runtimes)
+
+        block.release()
+        runCurrent()
+
+        val saved = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(detail.state.value.computerDetail).data
+        assertEquals(listOf("codex"), saved.computer.workerRuntimesTurnedOn)
+        assertEquals(false, detail.state.value.computerControl.workerRuntimes.isSaving("m-1", "codex"))
+        assertNull(detail.state.value.computerControl.workerRuntimes.errorFor("m-1", "codex"))
+    }
+
+    @Test
+    fun workerRuntimesRefusalRollsBackAndRecordsInlineErrorUntilNextChange() = runTest {
+        val initialComputer =
+            machine("m-1", "Studio").copy(
+                runtimes = listOf("claude", "codex"),
+                workerRuntimesTurnedOn = emptyList(),
+                canChangeWorkerRuntimes = true,
+                workerRuntimesChangeBy = "any_member",
+            )
+        val repository =
+            FakeSettingsRepository(
+                computerDetailResult =
+                    DataResult.Content(SettingsComputerDetailSnapshot(initialComputer, emptyList(), emptyList(), emptyList()))
+            )
+        val refusalMessage =
+            "Only an owner or admin of this server can change which runtimes Workers may use on this Computer."
+        val block = BlockingCall()
+        repository.setComputerWorkerRuntimesBlock = block
+        repository.setComputerWorkerRuntimesResult =
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "worker_runtimes_forbidden",
+                    requiredCapability = "manage_computer_worker_runtimes",
+                    serverMessage = refusalMessage,
+                    serverCode = "worker_runtimes_forbidden",
+                    traceId = "trace-wr-1",
+                )
+            )
+        val detail = store(repository, standalone = true)
+        detail.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ComputerDetail, "m-1"))
+
+        detail.dispatch(SharedSettingsIntent.SetComputerWorkerRuntimes("m-1", "codex", enabled = true))
+        runCurrent()
+        assertEquals(
+            listOf("codex"),
+            assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(detail.state.value.computerDetail)
+                .data.computer.workerRuntimesTurnedOn
+        )
+
+        block.release()
+        runCurrent()
+
+        val rolledBack = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(detail.state.value.computerDetail).data
+        assertEquals(emptyList(), rolledBack.computer.workerRuntimesTurnedOn)
+        assertEquals(false, detail.state.value.computerControl.workerRuntimes.isSaving("m-1", "codex"))
+        val rowError = detail.state.value.computerControl.workerRuntimes.errorFor("m-1", "codex")
+        assertEquals("worker_runtimes_forbidden", rowError?.code)
+        assertEquals(refusalMessage, rowError?.serverMessage)
+        assertEquals("trace-wr-1", rowError?.traceId)
+
+        // Next change clears the inline error and commits on success.
+        repository.setComputerWorkerRuntimesBlock = null
+        repository.setComputerWorkerRuntimesResult =
+            DataResult.Content(
+                SettingsComputerWorkerRuntimesResult(
+                    machineId = "m-1",
+                    machine = initialComputer.copy(workerRuntimesTurnedOn = listOf("codex")),
+                )
+            )
+        detail.accept(SharedSettingsIntent.SetComputerWorkerRuntimes("m-1", "codex", enabled = true))
+        assertNull(detail.state.value.computerControl.workerRuntimes.errorFor("m-1", "codex"))
+        assertEquals(
+            listOf("codex"),
+            assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(detail.state.value.computerDetail)
+                .data.computer.workerRuntimesTurnedOn
+        )
+    }
+
     private fun detailRepository() =
         FakeSettingsRepository(
             computerDetailResult =

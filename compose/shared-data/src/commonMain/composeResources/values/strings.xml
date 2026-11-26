@@ -5607,6 +5607,12 @@
     <string name="settings_computers_owner_dialog_public_confirm">Make public</string>
     <string name="settings_computers_owner_dialog_saving">Saving…</string>
     <string name="settings_computers_owner_dialog_failed">The owner wasn’t changed. Try again.</string>
+    <string name="settings_computers_worker_runtimes_title">Runtimes for Workers</string>
+    <string name="settings_computers_worker_runtimes_own_runtime">Workers can always use their agent’s own runtime. Turn on another runtime to let Workers of agents on this Computer use it too: they run on this Computer’s sign-in and quota for it.</string>
+    <string name="settings_computers_worker_runtimes_none">This Computer reports no runtimes yet.</string>
+    <string name="settings_computers_worker_runtimes_change_by_owner">@%1$s, this Computer’s owner, or a server owner or admin can change this.</string>
+    <string name="settings_computers_worker_runtimes_change_by_any_member">This Computer is Public: any member of this server can change this.</string>
+    <string name="settings_computers_worker_runtimes_save_failed">Couldn’t change %1$s for Workers. Try again.</string>
     <string name="settings_computers_handover_button">Hand over</string>
     <string name="settings_computers_handover_dialog_title">Hand over this Computer</string>
     <string name="settings_computers_handover_dialog_person_label">Hand over to</string>

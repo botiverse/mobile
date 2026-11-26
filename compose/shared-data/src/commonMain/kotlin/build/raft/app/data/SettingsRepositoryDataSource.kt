@@ -858,6 +858,22 @@ class RealSettingsRepository(
         }
     }
 
+    override suspend fun setComputerWorkerRuntimes(
+        request: SettingsComputerWorkerRuntimesRequest
+    ): DataResult<SettingsComputerWorkerRuntimesResult> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        val machineId = request.machineId.trim()
+        if (machineId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        val normalizedRuntimes = request.runtimes.map(String::trim).filter(String::isNotEmpty).distinct()
+        logger("machine_worker_runtimes_start serverId=$serverId machineId=$machineId count=${normalizedRuntimes.size}")
+        return computersApiClient.setMachineWorkerRuntimes(ServerId(serverId), machineId, normalizedRuntimes).mapComputerResult { change ->
+            SettingsComputerWorkerRuntimesResult(
+                machineId = machineId,
+                machine = change.machine?.toSettingsComputerSnapshot()
+            )
+        }
+    }
+
     override suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult> {
         val serverId = selectedServerId() ?: return serverRequired()
         val normalizedMachineId = machineId.trim()
@@ -3251,7 +3267,10 @@ private fun List<SettingsComputerAgentSnapshot>.enrichWithMembers(
         serverNeedsAttention = serverNeedsAttention,
         revocation = revocation,
         versionRefusedAt = versionRefusedAt,
-        refusedComputerVersion = refusedComputerVersion
+        refusedComputerVersion = refusedComputerVersion,
+        workerRuntimesTurnedOn = workerRuntimesTurnedOn,
+        canChangeWorkerRuntimes = canChangeWorkerRuntimes,
+        workerRuntimesChangeBy = workerRuntimesChangeBy
     )
 
 private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =

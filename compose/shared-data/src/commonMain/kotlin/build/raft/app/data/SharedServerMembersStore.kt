@@ -576,6 +576,21 @@ private fun SharedServerMembersEntry.visibleDirectoryMembers(): List<MemberProfi
 private fun SharedServerMembersEntry.visibleDirectoryEntry(): SharedServerMembersEntry =
     if (server.hidesHumanDirectoryFromViewer()) copy(members = visibleDirectoryMembers()) else this
 
+/**
+ * Whether [this] member belongs to another server relative to [serverKey] (e.g. a joint-channel
+ * peer): explicit `inViewerServer == false`, a non-blank `serverId` differing from [serverKey], or
+ * (when `inViewerServer` is absent) a non-empty `servers` list that does not contain [serverKey].
+ */
+private fun MemberProfile.isOtherServerFor(serverKey: String): Boolean {
+    val cleanServerKey = serverKey.normalizedServerMembersId() ?: return inViewerServer == false
+    if (inViewerServer == false) return true
+    val memberServerId = serverId?.value.normalizedServerMembersId()
+    if (memberServerId != null && memberServerId != cleanServerKey) return true
+    return inViewerServer == null &&
+        !servers.isNullOrEmpty() &&
+        servers.none { it.id.trim() == cleanServerKey }
+}
+
 private fun MemberProfile?.toSharedServerMemberStatus(
     presenceFact: MemberPresenceUpdated?,
     viewerServerId: String? = null,
@@ -595,10 +610,12 @@ private fun MemberProfile?.toSharedServerMemberStatus(
     val resolvedReadiness = if (authoritativeReadiness) this?.agentReadiness else null
     val resolvedProfileDeliveryHold = if (authoritativeReadiness) this?.agentDeliveryHold else null
     val cleanViewerServerId = viewerServerId.normalizedServerMembersId()
-    val memberServerId = this?.serverId?.value.normalizedServerMembersId()
     val otherServer =
-        this?.inViewerServer == false ||
-            (memberServerId != null && cleanViewerServerId != null && memberServerId != cleanViewerServerId)
+        when {
+            this == null -> false
+            cleanViewerServerId != null -> isOtherServerFor(cleanViewerServerId)
+            else -> inViewerServer == false
+        }
     if (
         presenceFact != null &&
         (
@@ -1171,14 +1188,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
             val profiles = currentKnownMemberProfilesById(scopedServerId)
             working.mapNotNull { (memberId, fact) ->
                 val profile = profiles[memberId.trim()] ?: return@mapNotNull null
-                val otherServer =
-                    profile.inViewerServer == false ||
-                        profile.serverId?.value?.trim()?.let { it.isNotEmpty() && it != serverKey } == true ||
-                        (
-                            profile.inViewerServer == null &&
-                                !profile.servers.isNullOrEmpty() &&
-                                profile.servers.none { it.id == serverKey }
-                        )
+                val otherServer = profile.isOtherServerFor(serverKey)
                 if (
                     profile.kind != MemberKind.Agent ||
                     profile.isExternal ||
@@ -1229,9 +1239,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                         val count = normalizeAgentRunningWorkers(fact.runningWorkers) ?: return@mapNotNull null
                         if (fact.credentialHold != null) return@mapNotNull null
                         val profile = profiles[memberId.trim()] ?: return@mapNotNull null
-                        val otherServer =
-                            profile.inViewerServer == false ||
-                                profile.serverId?.value?.trim()?.let { it.isNotEmpty() && it != serverKey } == true
+                        val otherServer = profile.isOtherServerFor(serverKey)
                         if (
                             profile.kind != MemberKind.Agent ||
                             profile.isExternal ||

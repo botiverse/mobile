@@ -5423,6 +5423,12 @@
     <string name="settings_computers_owner_dialog_public_confirm">공개로 하기</string>
     <string name="settings_computers_owner_dialog_saving">저장 중…</string>
     <string name="settings_computers_owner_dialog_failed">소유자가 바뀌지 않았어요. 다시 시도해 주세요.</string>
+    <string name="settings_computers_worker_runtimes_title">Worker용 런타임</string>
+    <string name="settings_computers_worker_runtimes_own_runtime">Worker는 언제나 소속 Agent의 런타임을 사용할 수 있습니다. 다른 런타임을 켜면 이 Computer에 있는 Agent의 Worker도 해당 런타임을 사용할 수 있으며, 이 Computer의 로그인 및 할당량으로 실행됩니다.</string>
+    <string name="settings_computers_worker_runtimes_none">이 Computer가 아직 런타임을 보고하지 않았습니다.</string>
+    <string name="settings_computers_worker_runtimes_change_by_owner">이 Computer의 소유자인 @%1$s 또는 서버 소유자나 관리자가 변경할 수 있습니다.</string>
+    <string name="settings_computers_worker_runtimes_change_by_any_member">이 Computer는 공개 상태입니다. 이 서버의 모든 멤버가 변경할 수 있습니다.</string>
+    <string name="settings_computers_worker_runtimes_save_failed">Worker용 %1$s 설정을 변경하지 못했어요. 다시 시도해 주세요.</string>
     <string name="settings_computers_handover_button">넘기기</string>
     <string name="settings_computers_handover_dialog_title">이 컴퓨터 넘기기</string>
     <string name="settings_computers_handover_dialog_person_label">새로 연결할 사람</string>

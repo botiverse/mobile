@@ -5606,6 +5606,12 @@
     <string name="settings_computers_owner_dialog_public_confirm">公開にする</string>
     <string name="settings_computers_owner_dialog_saving">保存中…</string>
     <string name="settings_computers_owner_dialog_failed">オーナーは変更されませんでした。もう一度お試しください。</string>
+    <string name="settings_computers_worker_runtimes_title">Worker 向けランタイム</string>
+    <string name="settings_computers_worker_runtimes_own_runtime">Worker は常に所属する Agent 自身のランタイムを使えます。別のランタイムをオンにすると、この Computer 上の Agent の Worker もそれを使えるようになり、この Computer のサインインと利用枠で動作します。</string>
+    <string name="settings_computers_worker_runtimes_none">この Computer はまだランタイムを報告していません。</string>
+    <string name="settings_computers_worker_runtimes_change_by_owner">この Computer の所有者である @%1$s、またはサーバーの所有者や管理者が変更できます。</string>
+    <string name="settings_computers_worker_runtimes_change_by_any_member">この Computer は公開設定です。このサーバーのすべてのメンバーが変更できます。</string>
+    <string name="settings_computers_worker_runtimes_save_failed">Worker 向けに %1$s を変更できませんでした。もう一度お試しください。</string>
     <string name="settings_computers_handover_button">引き渡す</string>
     <string name="settings_computers_handover_dialog_title">このコンピューターを引き渡す</string>
     <string name="settings_computers_handover_dialog_person_label">新しい接続者</string>

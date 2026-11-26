@@ -90,6 +90,11 @@ interface SettingsRepository {
     /** Computer owner v1: `PUT servers/:id/machines/:machineId/owner` (`ownerUserId` null = Public). */
     suspend fun setComputerOwner(request: SettingsComputerOwnerRequest): DataResult<SettingsComputerActionResult> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    /** Worker v1 step 2: `PUT servers/:id/machines/:machineId/worker-runtimes` (`{ runtimes: [...] }`). */
+    suspend fun setComputerWorkerRuntimes(
+        request: SettingsComputerWorkerRuntimesRequest
+    ): DataResult<SettingsComputerWorkerRuntimesResult> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
     suspend fun getComputerRuntimeModels(
         machineId: String,
         runtime: String
@@ -1074,6 +1079,18 @@ data class SettingsComputerUpgradeRequest(
 data class SettingsComputerOwnerRequest(
     val machineId: String,
     val ownerUserId: String?
+)
+
+/** Worker v1 step 2: turn on exactly [runtimes] for Workers on [machineId] (`PUT …/worker-runtimes`). */
+data class SettingsComputerWorkerRuntimesRequest(
+    val machineId: String,
+    val runtimes: List<String>
+)
+
+/** Result of `PUT …/worker-runtimes`: [machine] is the updated Computer snapshot (null when omitted). */
+data class SettingsComputerWorkerRuntimesResult(
+    val machineId: String,
+    val machine: SettingsComputerSnapshot? = null
 )
 
 /** A restart the server relayed (or queued); [requestId] correlates the `computer:restart:done` frame. */

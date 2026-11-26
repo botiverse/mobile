@@ -2674,6 +2674,9 @@ class SharedSettingsStoreTest {
 
         var restartComputerResult: DataResult<SettingsComputerRestartResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
         var upgradeComputerResult: DataResult<SettingsComputerUpgradeRequestSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        var setComputerWorkerRuntimesResult: DataResult<SettingsComputerWorkerRuntimesResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        var setComputerWorkerRuntimesBlock: BlockingCall? = null
+        val setComputerWorkerRuntimesRequests = mutableListOf<SettingsComputerWorkerRuntimesRequest>()
 
         override suspend fun restartComputer(machineId: String): DataResult<SettingsComputerRestartResult> {
             calls += "restartComputer:$machineId"
@@ -2683,6 +2686,15 @@ class SharedSettingsStoreTest {
         override suspend fun upgradeComputer(request: SettingsComputerUpgradeRequest): DataResult<SettingsComputerUpgradeRequestSnapshot> {
             calls += "upgradeComputer:${request.machineId}:${request.targetVersion}"
             return upgradeComputerResult
+        }
+
+        override suspend fun setComputerWorkerRuntimes(
+            request: SettingsComputerWorkerRuntimesRequest
+        ): DataResult<SettingsComputerWorkerRuntimesResult> {
+            calls += "setComputerWorkerRuntimes:${request.machineId}:${request.runtimes.joinToString(",")}"
+            setComputerWorkerRuntimesRequests += request
+            setComputerWorkerRuntimesBlock?.consume()
+            return setComputerWorkerRuntimesResult
         }
 
         override suspend fun getComputerRuntimeModels(
