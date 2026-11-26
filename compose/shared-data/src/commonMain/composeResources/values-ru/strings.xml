@@ -1333,6 +1333,8 @@
     <string name="external_share_opening_target">Открытие: %1$s…</string>
     <string name="external_share_error_title">Не удалось открыть содержимое</string>
     <string name="external_share_error_detail">Попробуйте ещё раз или закройте окно и поделитесь содержимым снова.</string>
+    <string name="external_share_items_selected_one">Выбран 1 элемент</string>
+    <string name="external_share_items_selected">Выбрано элементов: %1$d</string>
     <string name="external_share_retry_failed">Повторить неудавшиеся</string>
     <string name="thread_composer_external_share_other_server">Этот общий черновик можно отправить только с сервера %1$s.</string>
     <string name="thread_composer_external_share_other_server_generic">Этот общий черновик можно отправить только с сервера, на который он был передан.</string>

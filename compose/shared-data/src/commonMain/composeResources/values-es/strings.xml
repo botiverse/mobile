@@ -1333,6 +1333,8 @@
     <string name="external_share_opening_target">Abriendo %1$s…</string>
     <string name="external_share_error_title">No se pudo abrir el contenido compartido</string>
     <string name="external_share_error_detail">Inténtalo de nuevo, o cierra y vuelve a compartir el contenido.</string>
+    <string name="external_share_items_selected_one">1 elemento seleccionado</string>
+    <string name="external_share_items_selected">%1$d elementos seleccionados</string>
     <string name="external_share_retry_failed">Reintentar elementos fallidos</string>
     <string name="thread_composer_external_share_other_server">Este borrador compartido solo puede enviarse desde %1$s.</string>
     <string name="thread_composer_external_share_other_server_generic">Este borrador compartido solo puede enviarse desde el servidor al que se compartió.</string>

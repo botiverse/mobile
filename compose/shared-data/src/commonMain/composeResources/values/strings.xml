@@ -1334,6 +1334,8 @@
     <string name="external_share_opening_target">Opening %1$s…</string>
     <string name="external_share_error_title">Could not open shared content</string>
     <string name="external_share_error_detail">Try again, or close and share the content again.</string>
+    <string name="external_share_items_selected_one">1 item selected</string>
+    <string name="external_share_items_selected">%1$d items selected</string>
     <string name="external_share_retry_failed">Retry failed items</string>
     <string name="thread_composer_external_share_other_server">This shared draft can only be sent from %1$s.</string>
     <string name="thread_composer_external_share_other_server_generic">This shared draft can only be sent from the server it was shared to.</string>
