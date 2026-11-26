@@ -4,6 +4,9 @@ import build.raft.app.AppShellRailSearchKey
 import build.raft.app.RaftAppDestination
 import build.raft.app.RaftBottomTabItemPayload
 import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftUnavailableRailApp
+import build.raft.app.appShellDispatchRailAppPlaceOpen
+import build.raft.app.appShellRailPlacesEnabled
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.RailPlacesUpdated
@@ -359,15 +362,222 @@ class RaftServerRailPlacesTest {
         assertEquals("app:$stampId", raftRailPlaceKeyForItemKey("app:${stampId.uppercase()}"))
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun railPlacesFlagOffPreventsReadsWritesAndAppsUntilEnabledPerServer() =
+        runTest {
+            val enabledServers = mutableSetOf<String>()
+            val source = FakeRailPlacesDataSource()
+            val stampApp = RaftRailPlaceApp(stampId, "Stamp", "/api/integration-logos/stamp.webp", "https://stamp.build")
+            val snapshot =
+                RaftRailPlacesSnapshot(
+                    places = listOf(RaftRailPlace.builtIn("tasks"), RaftRailPlace.app(stampApp)),
+                    placesVersion = 2,
+                    placeableApps = listOf(stampApp),
+                )
+            source.nextRead = DataResult.Content(snapshot)
+            val store =
+                SharedRailPlacesStore(
+                    dataSource = source,
+                    scope = backgroundScope,
+                    nowMs = { 10_000L },
+                    isServerEnabled = { it in enabledServers },
+                )
+            val foreground = MutableStateFlow(true)
+            val follow = store.followAppLifecycle(foreground)
+
+            store.setAccount("user-1")
+            store.setActiveServer("srv-off")
+            store.setRailShown(true)
+            runCurrent()
+            store.applySidebarOrderSnapshot("srv-off", snapshot)
+            store.onPermissionUpdatesChanged("srv-off")
+            store.reloadAsync("srv-off")
+            foreground.value = false
+            runCurrent()
+            foreground.value = true
+            runCurrent()
+            assertEquals(0, source.readCount)
+            assertNull(store.state.value.activeSnapshot)
+            assertNull(store.usableApp("srv-off", stampId))
+            assertNull(store.resolveAppImmediateOrNull("srv-off", stampId))
+            assertNull(store.ensureFreshAndResolveApp("srv-off", stampId))
+            assertEquals(RailPlacesSaveOutcome.Skipped, store.savePlaces("srv-off", listOf("tasks")))
+            assertEquals(0, source.saveCalls.size)
+            assertEquals(0, source.readCount)
+
+            // Enabling rail_places_v0 on srv-on allows reads/writes only for srv-on, leaving srv-off untouched.
+            enabledServers += "srv-on"
+            store.setActiveServer("srv-on")
+            runCurrent()
+            assertEquals(1, source.readCount)
+            assertEquals(stampApp, store.usableApp("srv-on", stampId))
+            assertNull(store.usableApp("srv-off", stampId))
+
+            // Verify appShellRailPlacesEnabled defaults OFF when unresolved, false, or blank serverId.
+            val flags =
+                SharedServerFeatureFlags(
+                    object : RaftFeatureFlagsApi {
+                        override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
+                            if (serverId.value == "srv-on") {
+                                HomeNetworkResponse(
+                                    code = 200,
+                                    bodyText = """{"evaluations":[{"key":"$RAIL_PLACES_V0_FEATURE_FLAG_KEY","enabled":true}]}""",
+                                )
+                            } else {
+                                HomeNetworkResponse(
+                                    code = 200,
+                                    bodyText = """{"evaluations":[{"key":"$RAIL_PLACES_V0_FEATURE_FLAG_KEY","enabled":false}]}""",
+                                )
+                            }
+                    },
+                )
+            assertFalse(appShellRailPlacesEnabled(flags, null))
+            assertFalse(appShellRailPlacesEnabled(flags, "   "))
+            assertFalse(appShellRailPlacesEnabled(flags, "srv-on"))
+            flags.prefetch(ServerId("srv-on"))
+            flags.prefetch(ServerId("srv-off"))
+            assertTrue(appShellRailPlacesEnabled(flags, "srv-on"))
+            assertFalse(appShellRailPlacesEnabled(flags, "srv-off"))
+
+            follow.cancel()
+        }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun openingCachedStaleRailAppOpensImmediatelyAndRefreshesInBackground() =
+        runTest {
+            var now = 10_000L
+            val source = FakeRailPlacesDataSource()
+            val store =
+                SharedRailPlacesStore(
+                    dataSource = source,
+                    scope = backgroundScope,
+                    nowMs = { now },
+                )
+            val stampApp = RaftRailPlaceApp(stampId, "Stamp", "/api/integration-logos/stamp.webp", "https://stamp.build")
+            val vaultApp = RaftRailPlaceApp(vaultId, "Vault", null, "https://vault.example.test")
+            store.setAccount("user-1")
+            store.setActiveServer("srv-1")
+            store.applySidebarOrderSnapshot(
+                "srv-1",
+                RaftRailPlacesSnapshot(
+                    places = listOf(RaftRailPlace.app(stampApp)),
+                    placesVersion = 2,
+                    placeableApps = listOf(stampApp),
+                ),
+            )
+
+            // 1. Cached & fresh: opens synchronously with zero reloads.
+            val opened = mutableListOf<RaftRailPlaceApp>()
+            val unavailable = mutableListOf<RaftUnavailableRailApp>()
+            appShellDispatchRailAppPlaceOpen(
+                scope = backgroundScope,
+                railPlacesStore = store,
+                serverId = "srv-1",
+                serverName = "Raft HQ",
+                clientId = stampId,
+                fallbackAppName = "Stamp",
+                onOpen = { opened += it },
+                onUnavailable = { unavailable += it },
+            )
+            assertEquals(listOf(stampApp), opened)
+            assertEquals(emptyList<RaftUnavailableRailApp>(), unavailable)
+            assertEquals(0, source.readCount)
+
+            // 2. Cached & stale (> 15 s): opens immediately BEFORE network completes and triggers background refresh.
+            now += RaftRailPlacesFreshMs + 1L
+            val bgReadGate = CompletableDeferred<DataResult<RaftRailPlacesSnapshot?>>()
+            source.deferredReads.addLast(bgReadGate)
+            appShellDispatchRailAppPlaceOpen(
+                scope = backgroundScope,
+                railPlacesStore = store,
+                serverId = "srv-1",
+                serverName = "Raft HQ",
+                clientId = stampId,
+                fallbackAppName = "Stamp",
+                onOpen = { opened += it },
+                onUnavailable = { unavailable += it },
+            )
+            // Opened synchronously even though bgReadGate has NOT completed yet.
+            assertEquals(listOf(stampApp, stampApp), opened)
+            runCurrent()
+            assertEquals(1, source.readCount)
+            bgReadGate.complete(
+                DataResult.Content(
+                    RaftRailPlacesSnapshot(
+                        places = listOf(RaftRailPlace.app(stampApp), RaftRailPlace.app(vaultApp)),
+                        placesVersion = 3,
+                        placeableApps = listOf(stampApp, vaultApp),
+                    ),
+                ),
+            )
+            runCurrent()
+            assertEquals(3, store.state.value.activeSnapshot?.placesVersion)
+
+            // 3. Stale & NOT in cached placeableApps: waits for refresh before opening or reporting unavailable.
+            now += RaftRailPlacesFreshMs + 1L
+            val missingId = "99999999-8888-4777-8666-555555555555"
+            val waitReadGate = CompletableDeferred<DataResult<RaftRailPlacesSnapshot?>>()
+            source.deferredReads.addLast(waitReadGate)
+            appShellDispatchRailAppPlaceOpen(
+                scope = backgroundScope,
+                railPlacesStore = store,
+                serverId = "srv-1",
+                serverName = "Raft HQ",
+                clientId = missingId,
+                fallbackAppName = "Removed App",
+                onOpen = { opened += it },
+                onUnavailable = { unavailable += it },
+            )
+            runCurrent()
+            assertEquals(2, source.readCount)
+            assertEquals(2, opened.size)
+            assertEquals(emptyList<RaftUnavailableRailApp>(), unavailable)
+            waitReadGate.complete(
+                DataResult.Content(
+                    RaftRailPlacesSnapshot(
+                        places = listOf(RaftRailPlace.app(stampApp)),
+                        placesVersion = 4,
+                        placeableApps = listOf(stampApp),
+                    ),
+                ),
+            )
+            runCurrent()
+            assertEquals(
+                listOf(RaftUnavailableRailApp("srv-1", missingId, "Removed App", "Raft HQ")),
+                unavailable,
+            )
+
+            // 4. Fresh & absent from placeableApps: reports unavailable synchronously with zero reloads.
+            appShellDispatchRailAppPlaceOpen(
+                scope = backgroundScope,
+                railPlacesStore = store,
+                serverId = "srv-1",
+                serverName = "Raft HQ",
+                clientId = missingId,
+                fallbackAppName = "Removed App",
+                onOpen = { opened += it },
+                onUnavailable = { unavailable += it },
+            )
+            assertEquals(2, source.readCount)
+            assertEquals(2, unavailable.size)
+        }
+
     private class FakeRailPlacesDataSource : RailPlacesDataSource {
         var readCount = 0
         var nextRead: DataResult<RaftRailPlacesSnapshot?> = DataResult.Content(null)
+        val deferredReads = ArrayDeque<CompletableDeferred<DataResult<RaftRailPlacesSnapshot?>>>()
         val saveCalls = mutableListOf<Pair<List<String>?, Int>>()
         val saveQueue = ArrayDeque<CompletableDeferred<RailPlacesSaveWireResult>>()
 
         override suspend fun readServerPlaces(serverId: String): DataResult<RaftRailPlacesSnapshot?> {
             readCount += 1
-            return nextRead
+            return if (deferredReads.isNotEmpty()) {
+                deferredReads.removeFirst().await()
+            } else {
+                nextRead
+            }
         }
 
         override suspend fun saveServerPlaces(

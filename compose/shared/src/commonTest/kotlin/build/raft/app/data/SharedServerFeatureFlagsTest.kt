@@ -164,6 +164,10 @@ class SharedServerFeatureFlagsTest {
         // #proj-mobile:#379: Android silent FCM reachability probe + dual-engine fallback (default off).
         assertEquals("mobile_fcm_probe_v0", MOBILE_FCM_PROBE_FEATURE_FLAG_KEY)
         assertFalse(MOBILE_FCM_PROBE_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        // botiverse/slock #16715: per-server wide rail places gate (default off when unresolved/missing/false).
+        assertEquals("rail_places_v0", RAIL_PLACES_V0_FEATURE_FLAG_KEY)
+        assertFalse(RAIL_PLACES_V0_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        assertFalse(RAIL_PLACES_V0_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
         for (
             key in listOf(
                 MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
@@ -174,6 +178,7 @@ class SharedServerFeatureFlagsTest {
                 MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY,
                 MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY,
                 MOBILE_FCM_PROBE_FEATURE_FLAG_KEY,
+                RAIL_PLACES_V0_FEATURE_FLAG_KEY,
             )
         ) {
             assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)

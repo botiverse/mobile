@@ -140,14 +140,17 @@ fun RaftAvatar(
     presence: RaftPresence? = null,
     presenceCutoutColor: Color = RaftTheme.surfaceColor,
     contentDescription: String? = null,
+    fillOverride: Color? = null,
+    showFallbackBehindImage: Boolean = false,
     image: (@Composable () -> Unit)? = null,
 ) {
     val fill =
-        when (type) {
-            RaftAvatarType.Agent -> RaftUiPalette.inactive
-            RaftAvatarType.Human -> RaftUiPalette.paletteLavender
-            RaftAvatarType.Server -> RaftUiPalette.stickerInk
-        }
+        fillOverride
+            ?: when (type) {
+                RaftAvatarType.Agent -> RaftUiPalette.inactive
+                RaftAvatarType.Human -> RaftUiPalette.paletteLavender
+                RaftAvatarType.Server -> RaftUiPalette.stickerInk
+            }
     RaftAvatarFrame(
         size = size,
         fill = fill,
@@ -172,9 +175,8 @@ fun RaftAvatar(
                 .clearAndSetSemantics { },
             contentAlignment = Alignment.Center,
         ) {
-            when {
-                image != null -> image()
-                !initials.isNullOrBlank() ->
+            if (image == null || showFallbackBehindImage) {
+                if (!initials.isNullOrBlank()) {
                     RaftText(
                         text = initials,
                         style = raftAvatarInitialsStyle(size, RaftTheme.typography),
@@ -182,7 +184,12 @@ fun RaftAvatar(
                         maxLines = 1,
                         softWrap = false,
                     )
-                else -> RaftAvatarPlaceholderIcon(Modifier.size(size.iconSize))
+                } else {
+                    RaftAvatarPlaceholderIcon(Modifier.size(size.iconSize))
+                }
+            }
+            if (image != null) {
+                image()
             }
         }
     }

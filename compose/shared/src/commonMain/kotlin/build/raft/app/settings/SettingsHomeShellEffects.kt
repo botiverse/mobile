@@ -1066,8 +1066,9 @@ internal fun AppShellRailTabOrderEffects(
 /**
  * Wires per-server rail places (`GET/PATCH /servers/:id/sidebar-order`, `rail_places:updated`,
  * `permission-updates:changed`, foreground/reconnect freshness, and conflict/error toasts;
- * botiverse/slock #16682 + #16684, #wg-mobile-sync:#294). Kept outside `RaftAppShellReadyContent`
- * to preserve its JVM method-size budget.
+ * botiverse/slock #16682 + #16684 + #16715, #wg-mobile-sync:#294). Gated behind `rail_places_v0`
+ * ([enabled]): when OFF or unresolved, no per-server rail places are read, written, or updated.
+ * Kept outside `RaftAppShellReadyContent` to preserve its JVM method-size budget.
  */
 @Composable
 @NonRestartableComposable
@@ -1076,6 +1077,7 @@ internal fun AppShellRailPlacesEffects(
     readySession: StoredAuthSession?,
     readyServerId: String?,
     navRailActive: Boolean,
+    enabled: Boolean,
     sidebarOrder: build.raft.app.data.SettingsServerSidebarOrderSnapshot?,
     appShellRealtimeDomainEventOwner: build.raft.app.data.SharedRealtimeDomainEventOwner,
     railPlacesStore: build.raft.app.data.SharedRailPlacesStore,
@@ -1083,21 +1085,23 @@ internal fun AppShellRailPlacesEffects(
 ) {
     val railPlacesState by railPlacesStateState
     val accountId = readySession?.user?.id
+    val railPlacesActive = navRailActive && enabled
     LaunchedEffect(railPlacesStore, accountId) {
         railPlacesStore.setAccount(accountId)
     }
-    LaunchedEffect(railPlacesStore, readyServerId) {
-        railPlacesStore.setActiveServer(readyServerId)
+    LaunchedEffect(railPlacesStore, readyServerId, enabled) {
+        railPlacesStore.setActiveServer(if (enabled) readyServerId else null)
     }
-    LaunchedEffect(railPlacesStore, navRailActive) {
-        railPlacesStore.setRailShown(navRailActive)
+    LaunchedEffect(railPlacesStore, railPlacesActive) {
+        railPlacesStore.setRailShown(railPlacesActive)
     }
-    LaunchedEffect(railPlacesStore, readyServerId, sidebarOrder?.railPlaces) {
+    LaunchedEffect(railPlacesStore, readyServerId, sidebarOrder?.railPlaces, enabled) {
+        if (!enabled) return@LaunchedEffect
         val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         railPlacesStore.applySidebarOrderSnapshot(serverId, sidebarOrder?.railPlaces)
     }
-    LaunchedEffect(railPlacesStore, navRailActive) {
-        if (!navRailActive) return@LaunchedEffect
+    LaunchedEffect(railPlacesStore, railPlacesActive) {
+        if (!railPlacesActive) return@LaunchedEffect
         build.raft.app.data.RaftFreshnessSignal.events.collect { event ->
             val targetServerId =
                 when (event.trigger) {
@@ -1110,7 +1114,8 @@ internal fun AppShellRailPlacesEffects(
             }
         }
     }
-    DisposableEffect(appShellRealtimeDomainEventOwner, railPlacesStore) {
+    DisposableEffect(appShellRealtimeDomainEventOwner, railPlacesStore, enabled) {
+        if (!enabled) return@DisposableEffect onDispose {}
         val sink =
             build.raft.app.data.RealtimeGuardedActiveThreadSink { eventServerId, event ->
                 when (event) {
@@ -1132,7 +1137,8 @@ internal fun AppShellRailPlacesEffects(
     }
     val saveFailedText = stringResource(Res.string.rail_places_save_failed)
     val conflictText = stringResource(Res.string.rail_places_conflict)
-    LaunchedEffect(railPlacesState.effect) {
+    LaunchedEffect(railPlacesState.effect, enabled) {
+        if (!enabled) return@LaunchedEffect
         when (val effect = railPlacesState.effect) {
             is build.raft.app.data.SharedRailPlacesEffect.SaveFailed -> {
                 bridge.errorToast(saveFailedText, effect.traceId)
