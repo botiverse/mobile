@@ -13,7 +13,6 @@ import com.google.android.play.core.install.InstallStateUpdatedListener
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.InstallStatus
 import com.google.android.play.core.install.model.UpdateAvailability
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -48,8 +47,10 @@ internal object RaftAndroidPlayInAppUpdates {
         private val listingUrl: String
             get() = "https://play.google.com/store/apps/details?id=${application.packageName}"
 
-        private val listenerRegistered = AtomicBoolean(false)
         private val stateLock = Any()
+        private var listenerRegistering = false
+        private var listenerRegistered = false
+        private var released = false
 
         private var cachedInstallStatus: Int = PlayInstallStatus.UNKNOWN
         private var cachedTargetVersionCode: Long = 0L
@@ -292,11 +293,18 @@ internal object RaftAndroidPlayInAppUpdates {
             return true
         }
 
+        /**
+         * Safe to call off the main thread (`Dispatchers.IO`, #proj-mobile:#269): `installedFromPlay`
+         * (`PackageManager.getInstallSourceInfo`), lazy `AppUpdateManagerFactory.create`, listener
+         * registration, and `appUpdateInfo` IPC stay off the UI thread, while Play Tasks deliver the
+         * `addOnSuccessListener` callback on the main thread before any `startUpdateFlowForResult`.
+         */
         override fun onActivityResume(activity: Activity) {
             if (!installedFromPlay) return
             if (activity.isFinishing || activity.isDestroyed) return
             ensureListenerRegistered()
             appUpdateManager.appUpdateInfo.addOnSuccessListener { info ->
+                if (activity.isFinishing || activity.isDestroyed) return@addOnSuccessListener
                 snapshotFrom(info)
                 if (info.installStatus() == InstallStatus.DOWNLOADED) {
                     RaftAppLog.infoAlways(LOG_TAG, "resume_detected_downloaded latest=${info.availableVersionCode()}")
@@ -345,18 +353,48 @@ internal object RaftAndroidPlayInAppUpdates {
         }
 
         override fun release() {
-            if (listenerRegistered.compareAndSet(true, false)) {
+            val shouldUnregister =
+                synchronized(stateLock) {
+                    released = true
+                    val wasRegistered = listenerRegistered
+                    listenerRegistered = false
+                    wasRegistered
+                }
+            if (shouldUnregister) {
                 runCatching { appUpdateManager.unregisterListener(installStateListener) }
             }
         }
 
         private fun ensureListenerRegistered() {
-            if (listenerRegistered.compareAndSet(false, true)) {
-                runCatching { appUpdateManager.registerListener(installStateListener) }
-                    .onFailure { error ->
-                        listenerRegistered.set(false)
-                        RaftAppLog.w(LOG_TAG, "register_listener_failed error=${error.javaClass.simpleName}")
+            val shouldRegister =
+                synchronized(stateLock) {
+                    if (released || listenerRegistered || listenerRegistering) {
+                        false
+                    } else {
+                        listenerRegistering = true
+                        true
                     }
+                }
+            if (!shouldRegister) return
+            val registered =
+                runCatching {
+                    appUpdateManager.registerListener(installStateListener)
+                    true
+                }.onFailure { error ->
+                    RaftAppLog.w(LOG_TAG, "register_listener_failed error=${error.javaClass.simpleName}")
+                }.getOrDefault(false)
+            val undo =
+                synchronized(stateLock) {
+                    listenerRegistering = false
+                    if (registered && !released) {
+                        listenerRegistered = true
+                        false
+                    } else {
+                        registered && released
+                    }
+                }
+            if (undo) {
+                runCatching { appUpdateManager.unregisterListener(installStateListener) }
             }
         }
 

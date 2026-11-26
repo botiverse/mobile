@@ -192,6 +192,22 @@ internal object AndroidAppScopeRealtimeOwner {
             }
         }
 
+    /**
+     * Records the host's in-memory visibility bit immediately (so Frame 1 readers of
+     * `isRaftHostVisible` see the live state) without firing the `ActionAppLifecycle` event bus
+     * broadcast yet; callers pair this with [onHostVisibilityChanged] after Frame 1 draws
+     * (#proj-mobile:#269).
+     */
+    fun markHostVisibilityState(
+        visibility: AndroidHostVisibility,
+        shellInstanceId: String = "",
+    ) {
+        updateRaftHostVisibility(
+            shellInstanceId = shellInstanceId,
+            visible = visibility == AndroidHostVisibility.Visible,
+        )
+    }
+
     fun onHostVisibilityChanged(
         visibility: AndroidHostVisibility,
         shellInstanceId: String = "",

@@ -311,6 +311,7 @@ class RaftFrameMetricsTraceTest {
                 blockedMs = 0L,
                 longestFrameMs = 18L,
                 refreshRateHz = 60,
+                refreshRateEndHz = 90,
                 deviceModel = "Pixel 8",
                 osVersion = "15",
                 sampleRate = 0.1,
@@ -328,6 +329,7 @@ class RaftFrameMetricsTraceTest {
         assertEquals(0L, span.attrs["blocked_ms"]?.jsonPrimitive?.longOrNull)
         assertNull(span.attrs["first_frame_ms"], "absent (-1) first frame should be omitted")
         assertEquals(60, span.attrs["refresh_rate_hz"]?.jsonPrimitive?.intOrNull)
+        assertEquals(90, span.attrs["refresh_rate_end_hz"]?.jsonPrimitive?.intOrNull)
         assertEquals("15", span.attrs["os_version"]?.jsonPrimitive?.content)
         assertEquals(0.1, span.attrs["sample_rate"]?.jsonPrimitive?.doubleOrNull)
         assertEquals("trace_sample", span.attrs["record_condition"]?.jsonPrimitive?.content)

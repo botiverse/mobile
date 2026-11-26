@@ -313,6 +313,7 @@ private val ALLOWED_SCROLL_REASONS: Set<String> = setOf("stopped", "paused", "pa
     recordCondition: String,
     endEpochMillis: Long,
     random: Random = Random,
+    refreshRateEndHz: Int? = null,
 ): RaftWebSpanRecord {
     val clampedWindowMs = windowMs.coerceAtLeast(0L)
     val startEpochMillis = (endEpochMillis - clampedWindowMs).coerceAtLeast(0L)
@@ -329,6 +330,7 @@ private val ALLOWED_SCROLL_REASONS: Set<String> = setOf("stopped", "paused", "pa
             put("longest_frame_ms", JsonPrimitive(longestFrameMs.coerceAtLeast(0L)))
             if (firstFrameMs >= 0L) put("first_frame_ms", JsonPrimitive(firstFrameMs))
             refreshRateHz?.let { put("refresh_rate_hz", JsonPrimitive(it)) }
+            refreshRateEndHz?.let { put("refresh_rate_end_hz", JsonPrimitive(it)) }
             normalizeFrameTraceDeviceModel(deviceModel)?.let { put("device_model", JsonPrimitive(it)) }
             normalizeFrameTraceOsMajorVersion(osVersion)?.let { put("os_version", JsonPrimitive(it)) }
             put("sample_rate", JsonPrimitive(sampleRate))
@@ -494,6 +496,7 @@ object RaftFrameMetricsTraceReporter {
         frameIntervalNanos: Long,
         deviceModel: String?,
         osVersion: String?,
+        endFrameIntervalNanos: Long = frameIntervalNanos,
     ) {
         runCatching {
             val (serverId, flags) = currentServerAndFlags() ?: return
@@ -524,6 +527,7 @@ object RaftFrameMetricsTraceReporter {
                     blockedMs = blockedMs,
                     longestFrameMs = longestFrameMs,
                     refreshRateHz = frameIntervalNanosToRefreshRateHz(frameIntervalNanos),
+                    refreshRateEndHz = frameIntervalNanosToRefreshRateHz(endFrameIntervalNanos),
                     deviceModel = deviceModel,
                     osVersion = osVersion,
                     sampleRate = decision.sampleRate,
