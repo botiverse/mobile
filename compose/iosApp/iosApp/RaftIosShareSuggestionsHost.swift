@@ -1,6 +1,7 @@
 import CoreGraphics
 import CoreText
 import Foundation
+import ImageIO
 import Intents
 import UIKit
 import shared
@@ -492,15 +493,18 @@ final class RaftIosShareSuggestionsEngine: NSObject, RaftShareSuggestionsHost {
         )
     }
 
+    private static let iconStyleVersion = "iconV2"
+
     private static func buildSignature(snapshot: Snapshot) -> String {
         var parts: [String] = [
+            Self.iconStyleVersion,
             snapshot.accountId ?? "",
             snapshot.serverId ?? "",
         ]
         for entry in snapshot.suggestions {
             let item = entry.suggestion
             parts.append(
-                "\(entry.canonicalShortcutId)|\(item.title)|\(item.subtitle ?? "")|\(item.avatarWireValue ?? "")"
+                "\(entry.canonicalShortcutId)|\(item.serverName)|\(item.title)|\(item.subtitle ?? "")|\(item.avatarWireValue ?? "")|\(item.serverAvatarUrl ?? "")|\(item.isPrivate ? "1" : "0")"
             )
         }
         return parts.joined(separator: ";")
@@ -537,8 +541,22 @@ enum RaftIosShareSuggestionsHost {
 
 // MARK: - Thread-safe CoreGraphics / CoreText avatar PNG renderer
 
-private let raftIosShareChannelTileBackgroundArgb: UInt32 = 0xFFFFDF3F
-private let raftIosShareChannelTileForegroundArgb: UInt32 = 0xFF18181B
+enum RaftIosShareChannelBadgeKind: Equatable {
+    case publicHash
+    case privateLock
+    case jointUsers
+}
+
+private let raftIosShareServerTilePaletteArgb: [UInt32] = [
+    0xFF3A3A3E, // charcoal
+    0xFF3D4C63, // deep slate-blue
+    0xFF364D45, // deep forest
+    0xFF4C3F59, // deep plum
+    0xFF52453A, // deep bronze
+]
+private let raftIosShareChannelBadgeHaloArgb: UInt32 = 0xCC18181B
+private let raftIosShareChannelBadgeFillArgb: UInt32 = 0xFFF3F1EB
+private let raftIosShareChannelBadgeInkArgb: UInt32 = 0xFF262420
 private let raftIosShareDmTilePaletteArgb: [UInt32] = [
     0xFFE84C88,
     0xFF3B82F6,
@@ -548,52 +566,332 @@ private let raftIosShareDmTilePaletteArgb: [UInt32] = [
     0xFF06B6D4,
 ]
 
+func resolveIosShareChannelBadgeKind(suggestion: RaftShareSuggestion) -> RaftIosShareChannelBadgeKind {
+    if suggestion.isPrivate {
+        return .privateLock
+    }
+    if suggestion.kind == .joint {
+        return .jointUsers
+    }
+    return .publicHash
+}
+
+func resolveIosShareServerTileArgb(serverId: String) -> UInt32 {
+    let trimmed = serverId.trimmingCharacters(in: .whitespacesAndNewlines)
+    let index = Int(deterministicFnv1aHash(trimmed) % UInt64(raftIosShareServerTilePaletteArgb.count))
+    return raftIosShareServerTilePaletteArgb[index]
+}
+
 func renderIosShareSuggestionAvatarPngData(
     suggestion: RaftShareSuggestion,
-    sizePx: Int = 120
+    sizePx: Int = 120,
+    cachedServerImageDataLoader: (String) -> Data? = { sourceUrl in
+        RaftIosShareSuggestionsSupportKt.raftIosReadCachedAvatarImageData(sourceUrl: sourceUrl)
+    }
 ) -> Data? {
     guard sizePx > 0 else { return nil }
-    if suggestion.kind == .directmessage,
-        let rawWire = suggestion.avatarWireValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-        !rawWire.isEmpty,
-        let pixelAvatar = RaftIosShareSuggestionsSupportKt.raftIosRenderPixelAvatarRgba(wireValue: rawWire),
-        let png = renderIosPixelAvatarPngData(raster: pixelAvatar, sizePx: sizePx) {
-        return png
+    if suggestion.kind == .directmessage {
+        if let rawWire = suggestion.avatarWireValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !rawWire.isEmpty,
+            let pixelAvatar = RaftIosShareSuggestionsSupportKt.raftIosRenderPixelAvatarRgba(wireValue: rawWire),
+            let png = renderIosPixelAvatarPngData(raster: pixelAvatar, sizePx: sizePx) {
+            return png
+        }
+        let trimmed = suggestion.avatarLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let glyph = trimmed.isEmpty ? "?" : String(trimmed.prefix(2))
+        let index = Int(deterministicFnv1aHash(suggestion.shortcutId) % UInt64(raftIosShareDmTilePaletteArgb.count))
+        return renderIosGlyphTilePngData(
+            glyph: glyph,
+            backgroundArgb: raftIosShareDmTilePaletteArgb[index],
+            textArgb: 0xFFFFFFFF,
+            sizePx: sizePx
+        )
     }
 
-    let isChannel = suggestion.kind != .directmessage
-    let glyph: String
-    if isChannel {
-        glyph = "#"
-    } else {
-        let trimmed = suggestion.avatarLabel.trimmingCharacters(in: .whitespacesAndNewlines)
-        glyph = trimmed.isEmpty ? "?" : String(trimmed.prefix(2))
-    }
-    let backgroundArgb: UInt32
-    let textArgb: UInt32
-    if isChannel {
-        backgroundArgb = raftIosShareChannelTileBackgroundArgb
-        textArgb = raftIosShareChannelTileForegroundArgb
-    } else {
-        let index = Int(deterministicFnv1aHash(suggestion.shortcutId) % UInt64(raftIosShareDmTilePaletteArgb.count))
-        backgroundArgb = raftIosShareDmTilePaletteArgb[index]
-        textArgb = 0xFFFFFFFF
-    }
-    return renderIosGlyphTilePngData(
-        glyph: glyph,
-        backgroundArgb: backgroundArgb,
-        textArgb: textArgb,
-        sizePx: sizePx
+    return renderIosChannelServerBadgeTilePngData(
+        suggestion: suggestion,
+        sizePx: sizePx,
+        cachedServerImageDataLoader: cachedServerImageDataLoader
     )
 }
 
-private func renderIosPixelAvatarPngData(raster: RaftIosPixelAvatarRgba, sizePx: Int) -> Data? {
-    let rawSize = Int(raster.size)
-    let rgbaData = raster.rgbaData
-    guard rawSize > 0, rgbaData.count == rawSize * rawSize * 4 else { return nil }
-
+private func renderIosChannelServerBadgeTilePngData(
+    suggestion: RaftShareSuggestion,
+    sizePx: Int,
+    cachedServerImageDataLoader: (String) -> Data?
+) -> Data? {
     let colorSpace = CGColorSpaceCreateDeviceRGB()
     let bitmapInfo = CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+    guard let context = CGContext(
+        data: nil,
+        width: sizePx,
+        height: sizePx,
+        bitsPerComponent: 8,
+        bytesPerRow: sizePx * 4,
+        space: colorSpace,
+        bitmapInfo: bitmapInfo
+    ) else { return nil }
+
+    let size = CGFloat(sizePx)
+    let tileRect = CGRect(x: 0, y: 0, width: size, height: size)
+    let serverBackgroundArgb = resolveIosShareServerTileArgb(serverId: suggestion.serverId)
+    context.setFillColor(cgColor(fromArgb: serverBackgroundArgb, colorSpace: colorSpace))
+    context.fill(tileRect)
+
+    var drewServerVisual = false
+    if let rawServerAvatar = suggestion.serverAvatarUrl?.trimmingCharacters(in: .whitespacesAndNewlines),
+        !rawServerAvatar.isEmpty {
+        if let pixelRaster = RaftIosShareSuggestionsSupportKt.raftIosRenderPixelAvatarRgba(wireValue: rawServerAvatar) {
+            drewServerVisual = drawIosPixelAvatar(
+                raster: pixelRaster,
+                in: context,
+                sizePx: sizePx,
+                colorSpace: colorSpace,
+                bitmapInfo: bitmapInfo
+            )
+        } else if let cachedData = cachedServerImageDataLoader(rawServerAvatar),
+            let serverCgImage = decodeIosServerAvatarCgImage(data: cachedData, maxPixelSize: sizePx * 2) {
+            drawIosCenterCroppedImage(serverCgImage, in: context, destRect: tileRect)
+            drewServerVisual = true
+        }
+    }
+
+    if !drewServerVisual {
+        let monogram = suggestion.serverAvatarMonogram()
+        let fontSize = size * (monogram.count <= 1 ? 0.40 : 0.31)
+        // Gently shift down-right of center to balance the top-left semantic channel badge while
+        // staying well inside the circular Share Sheet mask and clear of the bottom-right app badge.
+        drawIosCenteredGlyph(
+            monogram,
+            in: context,
+            center: CGPoint(x: size * 0.52, y: size * 0.48),
+            fontSize: fontSize,
+            textArgb: 0xFFFFFFFF,
+            colorSpace: colorSpace
+        )
+    }
+
+    // CoreGraphics bitmap context origin is bottom-left (+Y up), so visual top-left is
+    // (0.27 * size, 0.73 * size). Outermost halo distance from center:
+    // sqrt(0.23^2 + 0.23^2) + 0.168 = 0.493 * size < 0.50 * size (never clipped by iOS circle mask).
+    drawIosChannelSemanticBadge(
+        kind: resolveIosShareChannelBadgeKind(suggestion: suggestion),
+        in: context,
+        center: CGPoint(x: size * 0.27, y: size * (1.0 - 0.27)),
+        badgeRadius: size * 0.15,
+        haloRadius: size * 0.168,
+        colorSpace: colorSpace
+    )
+
+    guard let output = context.makeImage() else { return nil }
+    return UIImage(cgImage: output).pngData()
+}
+
+private func decodeIosServerAvatarCgImage(data: Data, maxPixelSize: Int) -> CGImage? {
+    guard !data.isEmpty else { return nil }
+    guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+    let options: [CFString: Any] = [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+        kCGImageSourceShouldCacheImmediately: true,
+        kCGImageSourceThumbnailMaxPixelSize: max(maxPixelSize, 64),
+    ]
+    return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+}
+
+private func drawIosCenterCroppedImage(_ image: CGImage, in context: CGContext, destRect: CGRect) {
+    let width = image.width
+    let height = image.height
+    guard width > 0, height > 0 else { return }
+    let cropSize = min(width, height)
+    let cropRect = CGRect(
+        x: (width - cropSize) / 2,
+        y: (height - cropSize) / 2,
+        width: cropSize,
+        height: cropSize
+    )
+    let cropped = image.cropping(to: cropRect) ?? image
+    context.saveGState()
+    context.interpolationQuality = .high
+    context.draw(cropped, in: destRect)
+    context.restoreGState()
+}
+
+private func drawIosChannelSemanticBadge(
+    kind: RaftIosShareChannelBadgeKind,
+    in context: CGContext,
+    center: CGPoint,
+    badgeRadius: CGFloat,
+    haloRadius: CGFloat,
+    colorSpace: CGColorSpace
+) {
+    let haloColor = cgColor(fromArgb: raftIosShareChannelBadgeHaloArgb, colorSpace: colorSpace)
+    let pillColor = cgColor(fromArgb: raftIosShareChannelBadgeFillArgb, colorSpace: colorSpace)
+    let inkColor = cgColor(fromArgb: raftIosShareChannelBadgeInkArgb, colorSpace: colorSpace)
+
+    context.saveGState()
+    context.setFillColor(haloColor)
+    context.fillEllipse(
+        in: CGRect(
+            x: center.x - haloRadius,
+            y: center.y - haloRadius,
+            width: haloRadius * 2,
+            height: haloRadius * 2
+        )
+    )
+    context.setFillColor(pillColor)
+    context.fillEllipse(
+        in: CGRect(
+            x: center.x - badgeRadius,
+            y: center.y - badgeRadius,
+            width: badgeRadius * 2,
+            height: badgeRadius * 2
+        )
+    )
+
+    // Switch locally to top-down badge-centered coordinates (-Y up, +Y down) so vector paths match
+    // Android's Canvas geometry identically and render right-side-up in the output PNG.
+    context.translateBy(x: center.x, y: center.y)
+    context.scaleBy(x: 1.0, y: -1.0)
+    let r = badgeRadius
+
+    switch kind {
+    case .publicHash:
+        let slant = 0.08 * r
+        context.setStrokeColor(inkColor)
+        context.setLineWidth(max(1.2, 0.135 * r))
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+        context.move(to: CGPoint(x: -0.18 * r + slant, y: -0.44 * r))
+        context.addLine(to: CGPoint(x: -0.18 * r - slant, y: 0.44 * r))
+        context.move(to: CGPoint(x: 0.18 * r + slant, y: -0.44 * r))
+        context.addLine(to: CGPoint(x: 0.18 * r - slant, y: 0.44 * r))
+        context.move(to: CGPoint(x: -0.42 * r, y: -0.17 * r))
+        context.addLine(to: CGPoint(x: 0.46 * r, y: -0.17 * r))
+        context.move(to: CGPoint(x: -0.46 * r, y: 0.17 * r))
+        context.addLine(to: CGPoint(x: 0.42 * r, y: 0.17 * r))
+        context.strokePath()
+
+    case .privateLock:
+        // Padlock shackle arch (Bezier semicircle through visual top y = -0.47 * r).
+        let shackleR = 0.23 * r
+        let shackleArchY = -0.24 * r
+        let kappa = 0.55228475 * shackleR
+        context.setStrokeColor(inkColor)
+        context.setLineWidth(max(1.2, 0.15 * r))
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+        context.move(to: CGPoint(x: -shackleR, y: -0.02 * r))
+        context.addLine(to: CGPoint(x: -shackleR, y: shackleArchY))
+        context.addCurve(
+            to: CGPoint(x: 0, y: shackleArchY - shackleR),
+            control1: CGPoint(x: -shackleR, y: shackleArchY - kappa),
+            control2: CGPoint(x: -kappa, y: shackleArchY - shackleR)
+        )
+        context.addCurve(
+            to: CGPoint(x: shackleR, y: shackleArchY),
+            control1: CGPoint(x: kappa, y: shackleArchY - shackleR),
+            control2: CGPoint(x: shackleR, y: shackleArchY - kappa)
+        )
+        context.addLine(to: CGPoint(x: shackleR, y: -0.02 * r))
+        context.strokePath()
+
+        // Padlock body (filled rounded rect) with subtle pill-colored keyhole dot.
+        let bodyRect = CGRect(x: -0.37 * r, y: -0.06 * r, width: 0.74 * r, height: 0.52 * r)
+        let corner = min(0.12 * r, min(bodyRect.width, bodyRect.height) * 0.5)
+        context.setFillColor(inkColor)
+        context.addPath(CGPath(roundedRect: bodyRect, cornerWidth: corner, cornerHeight: corner, transform: nil))
+        context.fillPath()
+
+        let keyholeR = 0.075 * r
+        context.setFillColor(pillColor)
+        context.fillEllipse(
+            in: CGRect(x: -keyholeR, y: 0.20 * r - keyholeR, width: keyholeR * 2, height: keyholeR * 2)
+        )
+
+    case .jointUsers:
+        // Secondary right-back person silhouette.
+        let secHeadR = 0.135 * r
+        context.setFillColor(inkColor)
+        context.fillEllipse(
+            in: CGRect(
+                x: 0.25 * r - secHeadR,
+                y: -0.18 * r - secHeadR,
+                width: secHeadR * 2,
+                height: secHeadR * 2
+            )
+        )
+        addIosTorsoArchPath(in: context, left: 0.06 * r, right: 0.50 * r, top: 0.06 * r, bottom: 0.36 * r)
+        context.fillPath()
+
+        // Subtle pill-colored separation stroke around primary person so both silhouettes read crisply.
+        let priHeadR = 0.175 * r
+        let gapR = priHeadR + 0.055 * r
+        context.setFillColor(pillColor)
+        context.fillEllipse(
+            in: CGRect(
+                x: -0.15 * r - gapR,
+                y: -0.22 * r - gapR,
+                width: gapR * 2,
+                height: gapR * 2
+            )
+        )
+        addIosTorsoArchPath(in: context, left: -0.49 * r, right: 0.19 * r, top: 0.04 * r, bottom: 0.40 * r)
+        context.setStrokeColor(pillColor)
+        context.setLineWidth(max(1.0, 0.10 * r))
+        context.setLineJoin(.round)
+        context.strokePath()
+
+        // Primary left-front person silhouette.
+        context.setFillColor(inkColor)
+        context.fillEllipse(
+            in: CGRect(
+                x: -0.15 * r - priHeadR,
+                y: -0.22 * r - priHeadR,
+                width: priHeadR * 2,
+                height: priHeadR * 2
+            )
+        )
+        addIosTorsoArchPath(in: context, left: -0.49 * r, right: 0.19 * r, top: 0.04 * r, bottom: 0.40 * r)
+        context.fillPath()
+    }
+
+    context.restoreGState()
+}
+
+private func addIosTorsoArchPath(
+    in context: CGContext,
+    left: CGFloat,
+    right: CGFloat,
+    top: CGFloat,
+    bottom: CGFloat
+) {
+    let midX = (left + right) * 0.5
+    let halfW = (right - left) * 0.5
+    context.move(to: CGPoint(x: left, y: bottom))
+    context.addCurve(
+        to: CGPoint(x: midX, y: top),
+        control1: CGPoint(x: left, y: top),
+        control2: CGPoint(x: midX - halfW * 0.45, y: top)
+    )
+    context.addCurve(
+        to: CGPoint(x: right, y: bottom),
+        control1: CGPoint(x: midX + halfW * 0.45, y: top),
+        control2: CGPoint(x: right, y: top)
+    )
+    context.closePath()
+}
+
+private func drawIosPixelAvatar(
+    raster: RaftIosPixelAvatarRgba,
+    in context: CGContext,
+    sizePx: Int,
+    colorSpace: CGColorSpace,
+    bitmapInfo: UInt32
+) -> Bool {
+    let rawSize = Int(raster.size)
+    let rgbaData = raster.rgbaData
+    guard rawSize > 0, rgbaData.count == rawSize * rawSize * 4 else { return false }
     guard let provider = CGDataProvider(data: rgbaData as CFData),
         let rawImage = CGImage(
             width: rawSize,
@@ -607,18 +905,10 @@ private func renderIosPixelAvatarPngData(raster: RaftIosPixelAvatarRgba, sizePx:
             decode: nil,
             shouldInterpolate: false,
             intent: .defaultIntent
-        ),
-        let context = CGContext(
-            data: nil,
-            width: sizePx,
-            height: sizePx,
-            bitsPerComponent: 8,
-            bytesPerRow: sizePx * 4,
-            space: colorSpace,
-            bitmapInfo: bitmapInfo
         )
-    else { return nil }
+    else { return false }
 
+    context.saveGState()
     let bgArgb = UInt32(bitPattern: raster.backgroundArgb)
     context.setFillColor(cgColor(fromArgb: bgArgb, colorSpace: colorSpace))
     context.fill(CGRect(x: 0, y: 0, width: sizePx, height: sizePx))
@@ -632,6 +922,29 @@ private func renderIosPixelAvatarPngData(raster: RaftIosPixelAvatarRgba, sizePx:
         height: CGFloat(sizePx) - inset * 2
     )
     context.draw(rawImage, in: dest)
+    context.restoreGState()
+    return true
+}
+
+private func renderIosPixelAvatarPngData(raster: RaftIosPixelAvatarRgba, sizePx: Int) -> Data? {
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    let bitmapInfo = CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+    guard let context = CGContext(
+        data: nil,
+        width: sizePx,
+        height: sizePx,
+        bitsPerComponent: 8,
+        bytesPerRow: sizePx * 4,
+        space: colorSpace,
+        bitmapInfo: bitmapInfo
+    ) else { return nil }
+    guard drawIosPixelAvatar(
+        raster: raster,
+        in: context,
+        sizePx: sizePx,
+        colorSpace: colorSpace,
+        bitmapInfo: bitmapInfo
+    ) else { return nil }
     guard let output = context.makeImage() else { return nil }
     return UIImage(cgImage: output).pngData()
 }
@@ -654,10 +967,32 @@ private func renderIosGlyphTilePngData(
         bitmapInfo: bitmapInfo
     ) else { return nil }
 
+    let size = CGFloat(sizePx)
     context.setFillColor(cgColor(fromArgb: backgroundArgb, colorSpace: colorSpace))
-    context.fill(CGRect(x: 0, y: 0, width: sizePx, height: sizePx))
+    context.fill(CGRect(x: 0, y: 0, width: size, height: size))
 
-    let fontSize = CGFloat(sizePx) * (glyph.count <= 1 ? 0.44 : 0.34)
+    let fontSize = size * (glyph.count <= 1 ? 0.44 : 0.34)
+    drawIosCenteredGlyph(
+        glyph,
+        in: context,
+        center: CGPoint(x: size * 0.5, y: size * 0.5),
+        fontSize: fontSize,
+        textArgb: textArgb,
+        colorSpace: colorSpace
+    )
+
+    guard let output = context.makeImage() else { return nil }
+    return UIImage(cgImage: output).pngData()
+}
+
+private func drawIosCenteredGlyph(
+    _ glyph: String,
+    in context: CGContext,
+    center: CGPoint,
+    fontSize: CGFloat,
+    textArgb: UInt32,
+    colorSpace: CGColorSpace
+) {
     let font = UIFont.systemFont(ofSize: fontSize, weight: .bold)
     let attributes: [NSAttributedString.Key: Any] = [
         .font: font,
@@ -666,15 +1001,12 @@ private func renderIosGlyphTilePngData(
     let attributed = NSAttributedString(string: glyph, attributes: attributes)
     let line = CTLineCreateWithAttributedString(attributed)
     let bounds = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
-    let drawX = (CGFloat(sizePx) - bounds.width) * 0.5 - bounds.origin.x
-    let drawY = (CGFloat(sizePx) - bounds.height) * 0.5 - bounds.origin.y
+    let drawX = center.x - bounds.width * 0.5 - bounds.origin.x
+    let drawY = center.y - bounds.height * 0.5 - bounds.origin.y
 
     context.textMatrix = .identity
     context.textPosition = CGPoint(x: drawX, y: drawY)
     CTLineDraw(line, context)
-
-    guard let output = context.makeImage() else { return nil }
-    return UIImage(cgImage: output).pngData()
 }
 
 private func cgColor(fromArgb argb: UInt32, colorSpace: CGColorSpace) -> CGColor {

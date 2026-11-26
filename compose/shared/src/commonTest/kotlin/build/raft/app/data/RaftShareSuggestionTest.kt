@@ -12,6 +12,7 @@ import build.raft.app.model.ThreadId
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -247,6 +248,94 @@ class RaftShareSuggestionTest {
         // Same timestamp: DM wins tie-breaker before alphabetical channels.
         assertEquals("raft_share:v1:srv-1:dm:dm-1", suggestions.first().shortcutId)
         assertTrue(suggestions.drop(1).all { it.kind == RaftShareSuggestionKind.Channel })
+    }
+
+    @Test
+    fun extractRecentShareSuggestionsPopulatesServerAvatarUrlPrivateFlagsAndServerMonogram() {
+        val nowMillis = 1_763_900_000_000L
+        val snapshot =
+            HomeSnapshot(
+                server =
+                    ServerSummary(
+                        id = ServerId("srv-1"),
+                        name = "Acme Corp",
+                        avatarUrl = "  https://cdn.raft.build/avatars/server/acme.webp  "
+                    ),
+                currentMember = MemberProfile(MemberId("me"), "Me", "me", MemberKind.Human),
+                channels =
+                    listOf(
+                        HomeChannelRow(
+                            threadId = ThreadId("ch-public"),
+                            channelId = ChannelId("ch-public"),
+                            channelType = "channel",
+                            name = "general",
+                            lastMessageAt = "2025-11-23T12:20:00Z"
+                        ),
+                        HomeChannelRow(
+                            threadId = ThreadId("ch-private"),
+                            channelId = ChannelId("ch-private"),
+                            channelType = "PRIVATE",
+                            name = "exec",
+                            lastMessageAt = "2025-11-23T12:21:00Z"
+                        ),
+                        HomeChannelRow(
+                            threadId = ThreadId("ch-joint-pub"),
+                            channelId = ChannelId("ch-joint-pub"),
+                            kind = ConversationKind.Joint,
+                            channelType = "joint",
+                            name = "partner-open",
+                            lastMessageAt = "2025-11-23T12:22:00Z"
+                        ),
+                        HomeChannelRow(
+                            threadId = ThreadId("ch-joint-priv"),
+                            channelId = ChannelId("ch-joint-priv"),
+                            kind = ConversationKind.Joint,
+                            channelType = "private",
+                            name = "partner-secret",
+                            lastMessageAt = "2025-11-23T12:23:00Z"
+                        )
+                    ),
+                directMessages =
+                    listOf(
+                        HomeDirectMessageRow(
+                            threadId = ThreadId("dm-1"),
+                            channelId = ChannelId("dm-1"),
+                            name = "Alice",
+                            lastMessageAt = "2025-11-23T12:24:00Z"
+                        )
+                    ),
+                unreadTotal = 0
+            )
+
+        val suggestions = extractRecentShareSuggestions(snapshot = snapshot, nowEpochMillis = nowMillis)
+        val byChannelId = suggestions.associateBy { it.channelId }
+        assertEquals(5, byChannelId.size)
+        suggestions.forEach { suggestion ->
+            assertEquals("https://cdn.raft.build/avatars/server/acme.webp", suggestion.serverAvatarUrl)
+        }
+        assertFalse(byChannelId.getValue("dm-1").isPrivate)
+        assertFalse(byChannelId.getValue("ch-public").isPrivate)
+        assertTrue(byChannelId.getValue("ch-private").isPrivate)
+        assertEquals(RaftShareSuggestionKind.Channel, byChannelId.getValue("ch-private").kind)
+        assertFalse(byChannelId.getValue("ch-joint-pub").isPrivate)
+        assertEquals(RaftShareSuggestionKind.Joint, byChannelId.getValue("ch-joint-pub").kind)
+        assertTrue(byChannelId.getValue("ch-joint-priv").isPrivate)
+        assertEquals(RaftShareSuggestionKind.Joint, byChannelId.getValue("ch-joint-priv").kind)
+
+        // Blank server avatarUrl normalizes to null.
+        val blankAvatarSuggestions =
+            extractRecentShareSuggestions(
+                snapshot = snapshot.copy(server = snapshot.server.copy(avatarUrl = "   ")),
+                nowEpochMillis = nowMillis
+            )
+        assertTrue(blankAvatarSuggestions.all { it.serverAvatarUrl == null })
+
+        // Server monogram handles multi-word, single-word, emoji-prefixed, and blank names.
+        assertEquals("AC", byChannelId.getValue("ch-public").serverAvatarMonogram())
+        assertEquals("B", byChannelId.getValue("ch-public").copy(serverName = "Botiverse").serverAvatarMonogram())
+        assertEquals("LP", byChannelId.getValue("ch-public").copy(serverName = "🚀 Launch Pad").serverAvatarMonogram())
+        assertEquals("R", byChannelId.getValue("ch-public").copy(serverName = "   ").serverAvatarMonogram())
+        assertEquals("R", byChannelId.getValue("ch-public").copy(serverName = "!!!").serverAvatarMonogram())
     }
 
     @Test
