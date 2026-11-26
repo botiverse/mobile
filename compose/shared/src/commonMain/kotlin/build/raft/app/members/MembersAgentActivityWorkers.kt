@@ -91,17 +91,15 @@ internal class MembersAgentWorkersBinding(
 
 /** Web `liveMark`: a live Worker row's status mark; null when none or while the snapshot is stale. */
 internal sealed interface MembersAgentWorkerMarkKind {
-    data class Stalled(val silentMs: Long) : MembersAgentWorkerMarkKind
-    data class Waiting(val person: String?, val waitedMs: Long, val warning: Boolean) : MembersAgentWorkerMarkKind
-    data class InTool(val tool: String?, val inToolMs: Long) : MembersAgentWorkerMarkKind
+    data class Stalled(val silentMs: Long) : MembersAgentWorkerMarkKind {
+        override val warning: Boolean get() = true
+    }
+    data class Waiting(val person: String?, val waitedMs: Long, override val warning: Boolean) : MembersAgentWorkerMarkKind
+    data class InTool(val tool: String?, val inToolMs: Long) : MembersAgentWorkerMarkKind {
+        override val warning: Boolean get() = false
+    }
 
     val warning: Boolean
-        get() =
-            when (this) {
-                is Stalled -> true
-                is Waiting -> warning
-                is InTool -> false
-            }
 }
 
 /** Pure decision logic matching web `AgentWorkerRows.tsx` `liveMark`. */
@@ -121,8 +119,9 @@ internal fun membersAgentWorkerLiveMark(
     if (waitedMs != null && waitedMs >= AGENT_WORKER_HUMAN_WAITING_AFTER_MS) {
         return MembersAgentWorkerMarkKind.Waiting(person = row.waitingFrom, waitedMs = waitedMs, warning = true)
     }
-    if (row.doing == AgentWorkerDoing.Tool && row.inToolForMs != null) {
-        val inToolMs = row.inToolForMs + maxOf(0L, nowMillis - readAtMillis)
+    val inToolForMs = row.inToolForMs
+    if (row.doing == AgentWorkerDoing.Tool && inToolForMs != null) {
+        val inToolMs = inToolForMs + maxOf(0L, nowMillis - readAtMillis)
         return MembersAgentWorkerMarkKind.InTool(tool = row.tool, inToolMs = inToolMs)
     }
     if (waitedMs != null) {
@@ -450,10 +449,11 @@ private fun MembersAgentWorkerRow(
                     stringResource(Res.string.member_activity_workers_mark_in_any_tool, membersWorkerSpanText(mark.inToolMs))
                 }
         }
+    val sinceEpochMillis = row.sinceEpochMillis
     val durationPart =
         when {
             row.state == AgentWorkerState.Starting -> stringResource(Res.string.member_activity_workers_starting)
-            row.sinceEpochMillis != null -> membersActivityOverviewDuration(nowMillis - row.sinceEpochMillis)
+            sinceEpochMillis != null -> membersActivityOverviewDuration(nowMillis - sinceEpochMillis)
             else -> null
         }
     val progress = row.progress
