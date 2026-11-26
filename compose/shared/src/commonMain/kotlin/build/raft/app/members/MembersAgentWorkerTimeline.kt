@@ -584,12 +584,14 @@ private fun membersWorkerTimelineEventTitle(
         }
         is AgentWorkerTimelineEventData.Reported ->
             when (data.reportKind) {
-                AgentWorkerReportKind.Progress ->
-                    if (!data.text.isNullOrBlank()) {
-                        stringResource(Res.string.member_activity_workers_event_progress, data.text)
+                AgentWorkerReportKind.Progress -> {
+                    val progressText = data.text
+                    if (!progressText.isNullOrBlank()) {
+                        stringResource(Res.string.member_activity_workers_event_progress, progressText)
                     } else {
                         stringResource(Res.string.member_activity_workers_event_progress_reported)
                     }
+                }
                 AgentWorkerReportKind.NeedsDecision ->
                     stringResource(Res.string.member_activity_workers_event_needs_decision, parentHandle)
                 AgentWorkerReportKind.OutOfScope ->
@@ -638,16 +640,18 @@ private fun membersWorkerTimelineEventTitle(
             when (data.reason) {
                 AgentWorkerEndReason.Done ->
                     stringResource(Res.string.member_activity_workers_event_ended_done, span)
-                AgentWorkerEndReason.WaitingOn ->
-                    if (!data.waitingOn.isNullOrBlank()) {
+                AgentWorkerEndReason.WaitingOn -> {
+                    val waitingOn = data.waitingOn
+                    if (!waitingOn.isNullOrBlank()) {
                         stringResource(
                             Res.string.member_activity_workers_event_ended_waiting_on,
-                            data.waitingOn,
+                            waitingOn,
                             span,
                         )
                     } else {
                         stringResource(Res.string.member_activity_workers_event_ended_waiting_on_someone, span)
                     }
+                }
                 else ->
                     stringResource(
                         Res.string.member_activity_workers_event_ended,
@@ -713,12 +717,14 @@ private fun membersWorkerTimelineEventDetailParts(
                 when (data.doing) {
                     AgentWorkerQuietDoing.Model ->
                         stringResource(Res.string.member_activity_workers_event_quiet_model)
-                    AgentWorkerQuietDoing.Tool ->
-                        if (!data.tool.isNullOrBlank()) {
-                            stringResource(Res.string.member_activity_workers_event_quiet_tool, data.tool)
+                    AgentWorkerQuietDoing.Tool -> {
+                        val toolName = data.tool
+                        if (!toolName.isNullOrBlank()) {
+                            stringResource(Res.string.member_activity_workers_event_quiet_tool, toolName)
                         } else {
                             stringResource(Res.string.member_activity_workers_event_quiet_any_tool)
                         }
+                    }
                 }
             )
         is AgentWorkerTimelineEventData.Active -> emptyList()

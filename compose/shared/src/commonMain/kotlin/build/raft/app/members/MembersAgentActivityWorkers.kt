@@ -561,11 +561,13 @@ private fun MembersAgentRecentWorkerRow(
                 waitingOn = row.waitingOn,
             )
         }
+    val startedAtMs = row.startedAtEpochMillis
+    val endedAtMs = row.endedAtEpochMillis
     val ranPart =
-        if (row.startedAtEpochMillis != null && row.endedAtEpochMillis != null) {
+        if (startedAtMs != null && endedAtMs != null) {
             stringResource(
                 Res.string.member_activity_workers_recent_ran,
-                membersWorkerSpanText(row.endedAtEpochMillis - row.startedAtEpochMillis),
+                membersWorkerSpanText(endedAtMs - startedAtMs),
             )
         } else {
             null
