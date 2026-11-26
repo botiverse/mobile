@@ -396,6 +396,29 @@
     XCTAssertTrue(((RaftPageViewController *)navigation.topViewController).raftIsAppShellPage);
 }
 
+- (void)testReplaceShellRootReplacesExistingAppShellAndChooserWithSingleRoot {
+    RaftPageViewController *oldShell = [self renderPage:@"compose_slock_app_shell"];
+    RaftPageViewController *chooseServer = [self renderPage:@"compose_auth_choose_server"];
+    RaftRouterRecordingNavigationController *navigation =
+        [self navigationWithPages:@[oldShell, chooseServer]];
+
+    [self.router openPageWithName:@"compose_slock_app_shell"
+                         pageData:@{
+                             @"slockReplaceCurrentPage": @YES,
+                             @"slockReplaceShellRoot": @YES,
+                             @"slockShellServerId": @"server-b",
+                         }
+                       controller:chooseServer];
+    XCTAssertEqual(navigation.replacementCount, 1u);
+    XCTAssertEqual(navigation.pushCount, 0u);
+    XCTAssertEqual(navigation.viewControllers.count, 1u,
+                   @"Replacing shell root after creating/selecting a server must not stack two AppShells");
+    RaftPageViewController *newShell = (RaftPageViewController *)navigation.topViewController;
+    XCTAssertNotEqual(newShell, oldShell);
+    XCTAssertNotEqual(newShell, chooseServer);
+    XCTAssertTrue(newShell.raftIsAppShellPage);
+}
+
 - (void)testViewWillDisappearSkipsCoverHookWhenPresentingSafariViewController {
     RaftStubPresentedPageViewController *page =
         [[RaftStubPresentedPageViewController alloc] initWithPageName:@"compose_settings_computers" pageData:@{}];

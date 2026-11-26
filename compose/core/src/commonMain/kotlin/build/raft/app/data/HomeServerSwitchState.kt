@@ -21,6 +21,21 @@ data class HomeServerSwitchState(
     fun refresh(): HomeServerSwitchState =
         copy(requestGeneration = requestGeneration + 1)
 
+    /**
+     * Realigns Home's switch fence to an authoritative server selection committed outside
+     * `SharedHomeIntent.SelectServer` (creating a server, picking one on the server chooser,
+     * joining an invite, or opening a cross-server link/notification).
+     *
+     * Advances [requestGeneration] so late responses from the previous server are dropped,
+     * clears any stale [pendingServerId], and preserves [failedServerId] / [failureCount].
+     */
+    fun alignToAuthoritativeServer(serverId: String): HomeServerSwitchState =
+        copy(
+            selectedServerId = serverId,
+            pendingServerId = null,
+            requestGeneration = requestGeneration + 1
+        )
+
     fun isCurrent(generation: Long, serverId: ServerId): Boolean =
         generation == requestGeneration && (selectedServerId == null || selectedServerId == serverId.value)
 

@@ -190,5 +190,46 @@ class AppShellServerSwitchWindowTest {
         assertTrue(data.optBoolean(RAFT_SERVER_SWITCH_KEEP_WINDOW, false))
         assertEquals(4242L, data.optLong(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, 0L))
         assertEquals("server-a", data.optString(RAFT_ROUTE_SERVER_ID))
+        assertFalse(data.optBoolean(AUTH_REPLACE_SHELL_ROOT, false))
+    }
+
+    @Test
+    fun sameShellSelectionFromChooserMarksReplaceShellRootOnlyForInPlaceShell() {
+        val inPlaceFromShell =
+            appShellPageDataForServerSelection(
+                sourceStoreScope = sourceScope,
+                sourceDocumentShell = false,
+                selectedServerId = "server-b",
+                multiShellHostEnabled = false,
+                suppressRestoreLanding = true,
+                routeOwner = owner("server-b"),
+                fromShell = true,
+            )
+        assertTrue(inPlaceFromShell.optBoolean(AUTH_REPLACE_SHELL_ROOT, false))
+        assertEquals("server-b", inPlaceFromShell.optString(RAFT_SHELL_SERVER_ID))
+
+        val postLogin =
+            appShellPageDataForServerSelection(
+                sourceStoreScope = RaftShellStoreScope.Legacy,
+                sourceDocumentShell = false,
+                selectedServerId = "server-b",
+                multiShellHostEnabled = false,
+                suppressRestoreLanding = true,
+                routeOwner = owner("server-b"),
+                fromShell = false,
+            )
+        assertFalse(postLogin.optBoolean(AUTH_REPLACE_SHELL_ROOT, false))
+
+        val separateWindow =
+            appShellPageDataForServerSelection(
+                sourceStoreScope = sourceScope,
+                sourceDocumentShell = false,
+                selectedServerId = "server-b",
+                multiShellHostEnabled = true,
+                suppressRestoreLanding = true,
+                routeOwner = owner("server-b"),
+                fromShell = true,
+            )
+        assertFalse(separateWindow.optBoolean(AUTH_REPLACE_SHELL_ROOT, false))
     }
 }

@@ -78,6 +78,7 @@ import kotlinx.coroutines.launch
 import build.raft.app.components.RaftSlotIcon
 
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
+internal const val AUTH_REPLACE_SHELL_ROOT = "slockReplaceShellRoot"
 
 internal class AuthChooseServerVisualApi(
     private val user: StoredAuthUser,
@@ -244,6 +245,11 @@ internal fun appShellPageDataForServerSelection(
         if (window != null) {
             put(RAFT_SERVER_SWITCH_WINDOW_ID, window)
             if (!has(AppShellInitialTabKey)) put(RAFT_SERVER_SWITCH_KEEP_WINDOW, true)
+        } else if (fromShell && replaceCurrent && !opensDocumentShell) {
+            // Same-shell server selection/creation from a page pushed over the shell (e.g.
+            // AuthChooseServerPage): replace down to a single shell root rather than stacking a
+            // second AppShell controller over the previous one (#proj-mobile:#407).
+            put(AUTH_REPLACE_SHELL_ROOT, true)
         }
     }
 }

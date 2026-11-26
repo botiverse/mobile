@@ -4,6 +4,8 @@
 #import <objc/runtime.h>
 
 static NSString *const RaftRouterReplaceCurrentPageKey = @"slockReplaceCurrentPage";
+/// Shared `AUTH_REPLACE_SHELL_ROOT`: same-shell server selection replaces down to one shell root.
+static NSString *const RaftRouterReplaceShellRootKey = @"slockReplaceShellRoot";
 /// Shared `RAFT_OPEN_WITHOUT_ANIMATION`: the page takes the place of what its source shows over itself.
 static NSString *const RaftRouterOpenWithoutAnimationKey = @"slockOpenWithoutAnimation";
 static char RaftRouterRetiredByLoginKey;
@@ -94,8 +96,15 @@ static BOOL RaftRouterBool(id value) {
                 [RaftIosDisplayLinkJankTracker noteNavTransitionRequested];
             }
             UIViewController *renderViewController = [RaftPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
-            [viewControllers replaceObjectAtIndex:targetIndex withObject:renderViewController];
-            [navigationController setViewControllers:viewControllers animated:animated];
+            BOOL replaceShellRoot =
+                [pageName isEqualToString:@"compose_slock_app_shell"] &&
+                RaftRouterBool(sanitizedPageData[RaftRouterReplaceShellRootKey]);
+            if (replaceShellRoot) {
+                [navigationController setViewControllers:@[renderViewController] animated:animated];
+            } else {
+                [viewControllers replaceObjectAtIndex:targetIndex withObject:renderViewController];
+                [navigationController setViewControllers:viewControllers animated:animated];
+            }
         } else {
             // task #151: not the page on top again, and not over a transition still running (a
             // different page waits for it, latest wins): RaftIosPageOpenGate.
