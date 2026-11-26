@@ -66,13 +66,13 @@ class SharedActivityStoreDoneFrontierCatchUpTest {
         runCurrent()
 
         // Row stayed hidden and a single catch-up Done was written through frontier 12.
-        assertEquals(emptyList(), store.state.value.items)
+        assertEquals(emptyList<InboxItem>(), store.state.value.items)
         assertEquals(
-            listOf(
+            listOf<Pair<ChannelId, InboxDoneFrontier>>(
                 ChannelId("ch-1") to InboxDoneFrontier.Storage("10"),
                 ChannelId("ch-1") to InboxDoneFrontier.Storage("12"),
             ),
-            inbox.doneCalls,
+            inbox.doneCalls.toList(),
         )
         assertEquals(1, traces.size)
         val committed = traces.single().second as ActivityDoneTraceEvent.DoneCommitted
@@ -91,7 +91,7 @@ class SharedActivityStoreDoneFrontierCatchUpTest {
         // A subsequent refresh with the same caught-up row does NOT trigger a third Done.
         store.dispatch(SharedActivityIntent.PullRefresh)
         runCurrent()
-        assertEquals(emptyList(), store.state.value.items)
+        assertEquals(emptyList<InboxItem>(), store.state.value.items)
         assertEquals(2, inbox.doneCalls.size)
     }
 
