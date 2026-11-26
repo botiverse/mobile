@@ -272,8 +272,25 @@ import kotlinx.atomicfu.locks.synchronized
         carriesSystemProvenance = provenance != null,
         countsUnread = provenance?.countsUnread ?: if (!countsUnread) false else null,
         agentOnly = provenance?.agentOnly,
+        quietForPeople = provenance?.quietForPeople ?: if (quietForPeople) true else null,
         mentions = mentions.map { ActivityUnreadTarget(it.type, it.id) },
     )
+
+/**
+ * Step 2c (raft-design #1440, slock #16828/#16837): a live message in a task conversation that is
+ * not activity for this person ([peopleActivityRowMessage]): a lifecycle line written quiet for
+ * people (e.g. a claim or status move) that does not personally mention them. On their task row it
+ * changes nothing (place, time, preview, read state). Null/blank [viewerId] (no session): never
+ * quiet, matching web `isQuietTaskLineForViewer`.
+ */
+@RaftCoreInternalApi fun isQuietTaskLineForViewer(
+    message: Message,
+    provenance: MessageSystemProvenance?,
+    viewerId: String?,
+): Boolean {
+    val cleanViewerId = viewerId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    return !peopleActivityRowMessage(message.toActivityUnreadMessage(provenance), cleanViewerId)
+}
 
 /** The wire `senderType` a member kind stands for. */
 @RaftCoreInternalApi fun MemberKind.activitySenderType(): String =

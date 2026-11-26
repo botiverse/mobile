@@ -674,6 +674,8 @@ private data class MessageWireDto(
     val deletedAt: String? = null,
     /** Notifications noise cut step 1a (slock #16667): `false` for history-only / skip notices; absent on older servers. */
     val countsUnread: Boolean? = null,
+    /** Notifications noise cut step 2c (slock #16828): `true` for task lifecycle lines quiet for people; absent on older servers. */
+    val quietForPeople: Boolean? = null,
 )
 
 /** One `mentions[]` entry: `{ type: "user" | "agent" | "external"; id; name; displayName? }`. */
@@ -854,6 +856,7 @@ private data class ThreadLatestReplyDto(
     val delegatedBy: WireDelegatedBy? = null,
     val deletedAt: String? = null,
     val countsUnread: Boolean? = null,
+    val quietForPeople: Boolean? = null,
 )
 
 @Serializable
@@ -1532,6 +1535,7 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         deletedAt = deletedAt?.takeIf { it.isNotBlank() },
         mentions = mentions.toDomainMentions(),
         countsUnread = countsUnread != false,
+        quietForPeople = quietForPeople == true,
     )
 }
 
@@ -1576,6 +1580,7 @@ private fun JsonObject.systemProvenanceOrNull(): MessageSystemProvenance? {
         causalActorId = text("causalActorId"),
         countsUnread = bool("countsUnread"),
         agentOnly = bool("agentOnly"),
+        quietForPeople = bool("quietForPeople"),
     )
 }
 
@@ -1683,6 +1688,7 @@ private fun ThreadUpdatedDto.toDomain(): ThreadUpdated? {
             },
         latestReplyRetracted = !latestReply?.deletedAt.isNullOrBlank(),
         latestReplyCountsUnread = latestReply?.countsUnread != false,
+        latestReplyQuietForPeople = latestReply?.quietForPeople == true,
     )
 }
 

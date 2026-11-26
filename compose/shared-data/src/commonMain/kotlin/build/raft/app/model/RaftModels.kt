@@ -845,6 +845,13 @@ data class Message(
      * servers and cached rows, which default to `true`.
      */
     val countsUnread: Boolean = true,
+    /**
+     * Notifications noise cut step 2c (raft-design #1440, slock #16828 `messages.quiet_for_people`):
+     * true on task lifecycle lines that are not a person's activity (do not count, move, preview,
+     * or revive a Done task row) unless they personally mention the person. Absent on older
+     * servers and cached rows, which default to `false`.
+     */
+    val quietForPeople: Boolean = false,
 )
 
 /**
@@ -1194,13 +1201,14 @@ data class MessageNew(
     @Transient val systemProvenance: MessageSystemProvenance? = null,
 ) : RealtimeEvent
 
-/** Wire `systemSubtype` / `causalActorType` / `causalActorId` / `countsUnread` / `agentOnly` of a `message:new` frame (each may be null). */
+/** Wire `systemSubtype` / `causalActorType` / `causalActorId` / `countsUnread` / `agentOnly` / `quietForPeople` of a `message:new` frame (each may be null). */
 data class MessageSystemProvenance(
     val systemSubtype: String?,
     val causalActorType: String?,
     val causalActorId: String?,
     val countsUnread: Boolean? = null,
     val agentOnly: Boolean? = null,
+    val quietForPeople: Boolean? = null,
 )
 
 @Serializable
@@ -1306,6 +1314,8 @@ data class ThreadUpdated(
     val latestReplyRetracted: Boolean = false,
     /** Notifications noise cut step 1a (slock #16667): `latestReply.countsUnread`; absent defaults to true. */
     val latestReplyCountsUnread: Boolean = true,
+    /** Notifications noise cut step 2c (slock #16828/#16837): `latestReply.quietForPeople`; absent defaults to false. */
+    val latestReplyQuietForPeople: Boolean = false,
 ) : RealtimeEvent
 
 @Serializable

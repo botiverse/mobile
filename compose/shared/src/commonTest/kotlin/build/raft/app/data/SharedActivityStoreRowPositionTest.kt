@@ -4,12 +4,14 @@ import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
+import build.raft.app.model.MessageMention
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageSystemProvenance
 import build.raft.app.model.MessageType
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.ServerId
+import build.raft.app.model.TaskId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.currentCoroutineContext
@@ -436,6 +438,98 @@ class SharedActivityStoreRowPositionTest {
         // Flag off: today's author-only check counts both.
         assertEquals(1, badgeAfter(rowPosition = false, muted))
         assertEquals(1, badgeAfter(rowPosition = false, ownCausedSystem))
+    }
+
+    @Test
+    fun aQuietTaskLifecycleLineLeavesAPersonsTaskRowInPlaceWithFlagOnAndOff() = runTest {
+        // Step 2c (raft-design #1440, slock #16828/#16837): a task lifecycle line written quiet
+        // for people leaves a person's task row untouched (place, preview, seq, read state, no
+        // re-read) unless it mentions them; non-quiet lines and chat messages move it as before.
+        val taskRow =
+            threadItem("task-conv-1", unreadCount = 1).copy(
+                taskConversation = InboxTaskConversation(taskId = TaskId("task-1"), taskTitle = "Ship it"),
+                latestActivityPreview = "please look",
+                latestActivityAt = "2026-11-25T09:00:00.000Z",
+                latestActivityMessageId = MessageId("m-100"),
+                latestActivitySeq = "100",
+                readStateLatestActivitySeq = "100",
+                replyCount = 1,
+            )
+
+        fun claimLine(
+            id: String,
+            seq: Long,
+            quietForPeople: Boolean,
+            mentions: List<MessageMention> = emptyList(),
+        ): SharedActivityIntent.ApplyRealtimeEvent =
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(id, channelId = "task-conv-1", authorId = "system", body = "Agent took the task", seq = seq).copy(
+                        messageType = MessageType.System,
+                        mentions = mentions,
+                        quietForPeople = quietForPeople,
+                    ),
+                    systemProvenance =
+                        MessageSystemProvenance(
+                            systemSubtype = "task.lifecycle_thread",
+                            causalActorType = "agent",
+                            causalActorId = "agent-1",
+                            countsUnread = true,
+                            quietForPeople = quietForPeople,
+                        ),
+                )
+            )
+
+        for (rowPosition in listOf(false, true)) {
+            val label = "inbox_row_position_v1=$rowPosition"
+            val f = loadedStore(listOf(snapshot(listOf(channelRow, taskRow))), rowPosition = rowPosition)
+
+            // Quiet claim line without mention: row stays at index 1 with identical preview/seq/unread and no re-read.
+            f.store.dispatch(claimLine("m-101", seq = 101L, quietForPeople = true))
+            runCurrent()
+            advanceTimeBy(maxOf(ActivityRealtimeBackgroundRefreshIntervalMillis, ActivityRowRereadDelayMillis) + 1L)
+            runCurrent()
+            assertEquals(1, f.store.state.value.items.indexOfFirst { it.key == taskRow.key }, label)
+            assertEquals(
+                listOf("100", "please look", 1, false, 1),
+                f.row(taskRow.key).let { listOf(it.latestActivitySeq, it.latestActivityPreview, it.unreadCount, it.hasMention, it.replyCount) },
+                label,
+            )
+            assertEquals(emptyList(), f.inbox.rowReads, label)
+            assertEquals(1, f.inbox.listReadCount, label)
+
+            // Quiet line mentioning the viewer: moves to index 0, lights `@`, does not add unread.
+            f.store.dispatch(
+                claimLine(
+                    "m-102",
+                    seq = 102L,
+                    quietForPeople = true,
+                    mentions = listOf(MessageMention(type = "user", id = "user-1")),
+                )
+            )
+            runCurrent()
+            assertEquals(0, f.store.state.value.items.indexOfFirst { it.key == taskRow.key }, label)
+            assertEquals("102", f.row(taskRow.key).latestActivitySeq, label)
+            assertEquals(true, f.row(taskRow.key).hasMention, label)
+            assertEquals(MessageId("m-102"), f.row(taskRow.key).firstMentionMessageId, label)
+            assertEquals(1, f.row(taskRow.key).unreadCount, label)
+
+            // Non-quiet claim line (flag off on server / older event): moves the row as before.
+            val nonQuiet = loadedStore(listOf(snapshot(listOf(channelRow, taskRow))), rowPosition = rowPosition)
+            nonQuiet.store.dispatch(claimLine("m-101", seq = 101L, quietForPeople = false))
+            runCurrent()
+            assertEquals(0, nonQuiet.store.state.value.items.indexOfFirst { it.key == taskRow.key }, label)
+            assertEquals("101", nonQuiet.row(taskRow.key).latestActivitySeq, label)
+            assertEquals(1, nonQuiet.row(taskRow.key).unreadCount, label)
+
+            // Chat reply on the task row: moves to top and bumps unread.
+            val chatStore = loadedStore(listOf(snapshot(listOf(channelRow, taskRow))), rowPosition = rowPosition)
+            chatStore.store.dispatch(live("m-101", "task-conv-1", seq = 101L))
+            runCurrent()
+            assertEquals(0, chatStore.store.state.value.items.indexOfFirst { it.key == taskRow.key }, label)
+            assertEquals("101", chatStore.row(taskRow.key).latestActivitySeq, label)
+            assertEquals(2, chatStore.row(taskRow.key).unreadCount, label)
+        }
     }
 
     private fun readState(channelId: String, maxReadSeq: Long, version: Long = 2L) =

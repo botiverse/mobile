@@ -154,7 +154,17 @@ private data class InPlaceLiveUnread(val counts: Boolean, val mention: Boolean)
 private fun threadSystemMessageCounts(row: InboxItem, provenance: MessageSystemProvenance?, principalId: String): Boolean {
     if (row.isTaskConversation) return false
     if (provenance == null) return false
-    if (!messageCountsAsUnreadActivity(provenance.countsUnread, provenance.systemSubtype, readerType = "user", agentOnly = provenance.agentOnly)) return false
+    if (
+        !messageCountsAsUnreadActivity(
+            provenance.countsUnread,
+            provenance.systemSubtype,
+            readerType = "user",
+            agentOnly = provenance.agentOnly,
+            quietForPeople = provenance.quietForPeople,
+        )
+    ) {
+        return false
+    }
     return !(provenance.causalActorType == "user" && provenance.causalActorId == principalId)
 }
 
@@ -179,7 +189,12 @@ private fun InPlaceUnreadContext.unreadFor(
         message.author.id.value != principalId &&
             !isActiveActivityConversation(streamChannelId, activeConversationId, snapshot) &&
             !row.isUnfollowedActivityThread
-    val countsUnread = message.countsUnread && provenance?.countsUnread != false && provenance?.agentOnly != true
+    val countsUnread =
+        message.countsUnread &&
+            provenance?.countsUnread != false &&
+            provenance?.agentOnly != true &&
+            !message.quietForPeople &&
+            provenance?.quietForPeople != true
     val counts =
         live &&
             countsUnread &&
@@ -236,6 +251,7 @@ private fun ReplyPreview.toActivityLiveMessage(event: ThreadUpdated): Message {
         delegatedBy = event.latestReplyDelegatedBy,
         deletedAt = if (event.latestReplyRetracted) event.lastReplyAt ?: createdAt else null,
         countsUnread = event.latestReplyCountsUnread,
+        quietForPeople = event.latestReplyQuietForPeople,
     )
 }
 
@@ -1987,6 +2003,13 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         inPlace: InPlaceUnreadContext?
     ): RealtimeRowPatch {
         val existing = snapshot.items[existingIndex]
+        val viewerId = inPlace?.principalId ?: current.ownerUserId?.trim()?.takeIf { it.isNotBlank() }
+        val provenance = (intent.event as? MessageNew)?.systemProvenance
+        // Step 2c (raft-design #1440, slock #16837): a quiet task line leaves this person's task
+        // row as it is (place, time, preview, read state). Nothing to re-read.
+        if (existing.isTaskConversation && isQuietTaskLineForViewer(message, provenance, viewerId)) {
+            return RealtimeRowPatch.Unchanged
+        }
         if (existing.lastMessageId == message.id || existing.latestActivityMessageId == message.id) {
             return RealtimeRowPatch.Unchanged
         }
@@ -2002,7 +2025,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         // In place: a thread row or reply without a seq is left to the re-read (web
         // liveUnreadFields: its recency guard is by message id only, so a late older reply would
         // count twice).
-        val unread = inPlace?.unreadFor(existing, message, snapshot, (intent.event as? MessageNew)?.systemProvenance)
+        val unread = inPlace?.unreadFor(existing, message, snapshot, provenance)
 
         val patched =
             existing.copy(
@@ -2176,6 +2199,14 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         val existingIndex = snapshot.threadRowIndex(event.threadChannelId)
         if (existingIndex < 0) return false
         val existing = snapshot.items[existingIndex]
+        val viewerId = current.ownerUserId?.trim()?.takeIf { it.isNotBlank() }
+        if (
+            existing.isTaskConversation &&
+                event.latestReply != null &&
+                isQuietTaskLineForViewer(event.latestReply.toActivityLiveMessage(event), provenance = null, viewerId = viewerId)
+        ) {
+            return false
+        }
         if (event.replyCount < existing.replyCount) return false
         // Web updateThreadActivityMeta (inboxStore.ts:1779-1795) moves only the
         // reply count and time; the event's unread never overwrites the row.
@@ -8420,6 +8451,7 @@ private fun InboxSnapshot.unreadIncrementForMessage(
         if (!sharedRule(message)) return 0
     } else {
         if (!message.countsUnread) return 0
+        if (message.quietForPeople) return 0
         if (message.author.id.value == currentUserId) return 0
         if (isActiveActivityConversation(channelId.value, activeConversationId, this)) return 0
         if (items.any { item ->
@@ -8457,12 +8489,19 @@ private fun InboxSnapshot.hiddenListMessageCounts(
     if (row != null) {
         return activityRowLiveVerdict(row, message, provenance, principalId, activityMuted, readOnArrival).counts == true
     }
-    val threadReply = message.conversationContext?.parentChannelId != null || message.parentMessageId != null
+    val taskConversation = message.conversationContext?.channelKind == ConversationKind.Task
+    val threadReply = taskConversation || message.conversationContext?.parentChannelId != null || message.parentMessageId != null
+    val rowKind =
+        when {
+            taskConversation -> ActivityUnreadRowKind.Task
+            threadReply -> ActivityUnreadRowKind.Thread
+            else -> ActivityUnreadRowKind.Channel
+        }
     return activityLiveUnread(
         message.toActivityUnreadMessage(provenance),
         ActivityUnreadViewer(type = "user", id = principalId),
         ActivityUnreadScope(
-            rowKind = if (threadReply) ActivityUnreadRowKind.Thread else ActivityUnreadRowKind.Channel,
+            rowKind = rowKind,
             activityMuted = activityMuted && !threadReply,
             readOnArrival = readOnArrival
         )

@@ -1,0 +1,47 @@
+{
+  "formatVersion": 1,
+  "id": "predicate_task_quiet_line_stays",
+  "rule": "predicate",
+  "title": "On a person's task row, a quiet lifecycle line (an agent claims the task) does not count, light the @ or move the row",
+  "why": "raft-design #1440: a task row's place, time and preview follow only messages that are activity for the person; claim and status lines are not. The row's status marker updates in place from the task itself.",
+  "status": "agreed",
+  "sources": {
+    "web": [
+      "packages/shared/src/activityUnreadPredicate.ts (activityLiveUnread: moves on a task row is peopleActivityRowMessage)",
+      "packages/web/src/store/inboxRowPosition.ts (rowPositionVerdict, with inbox_row_position_v1 on)",
+      "packages/web/src/store/inboxStore.ts (receiveThreadReply, isQuietTaskLineForViewer, flag off)"
+    ],
+    "server": [
+      "packages/server/src/services/inboxUnreadEligibility.ts (peopleActivityMessageSql, taskRowPeopleActivityMessageSql: the Postgres task row reads)",
+      "RisingWave people views: the shared fragment in Ray's rebuild after RW081 (#proj-notification:#3)"
+    ]
+  },
+  "given": {
+    "viewer": {
+      "type": "user",
+      "id": "viewer-1"
+    },
+    "scope": {
+      "rowKind": "task",
+      "threadFollowed": true
+    },
+    "message": {
+      "senderType": "user",
+      "senderId": "system",
+      "messageType": "system",
+      "causalActorType": "agent",
+      "causalActorId": "agent-1",
+      "systemSubtype": "task.lifecycle_thread",
+      "quietForPeople": true,
+      "mentions": []
+    }
+  },
+  "steps": [],
+  "expect": {
+    "verdict": {
+      "counts": false,
+      "mention": false,
+      "moves": false
+    }
+  }
+}

@@ -27,21 +27,24 @@ import build.raft.app.RaftCoreInternalApi
 
 /**
  * Whether a message can count as unread activity for a reader of [readerType] (`"user"` or
- * `"agent"`, slock #16667 / #16677 `messageCountsAsUnreadActivity`):
+ * `"agent"`, slock #16667 / #16677 / #16828 `messageCountsAsUnreadActivity`):
  * false when `messages.counts_unread` is explicitly `false` (history-only / skip notice), when a
  * person (`"user"`) reads an agents-only message ([agentOnly] `true` from slock #16678
- * `messages.agent_only` or [systemSubtype] in [AGENT_ONLY_SYSTEM_SUBTYPES]), or when
- * [systemSubtype] is one of the legacy uncounted noise subtypes. Absent `countsUnread` (`null`)
- * counts as true for older servers.
+ * `messages.agent_only` or [systemSubtype] in [AGENT_ONLY_SYSTEM_SUBTYPES]) or a line quiet for
+ * people ([quietForPeople] `true` from slock #16828 `messages.quiet_for_people`, step 2c), or when
+ * [systemSubtype] is one of the legacy uncounted noise subtypes. An agent never reads
+ * [quietForPeople]. Absent `countsUnread` / `quietForPeople` (`null`) counts for older servers.
  */
 @RaftCoreInternalApi fun messageCountsAsUnreadActivity(
     countsUnread: Boolean?,
     systemSubtype: String?,
     readerType: String = "user",
     agentOnly: Boolean? = null,
+    quietForPeople: Boolean? = null,
 ): Boolean {
     if (countsUnread == false) return false
     if (readerType == "user" && agentOnly == true) return false
+    if (readerType == "user" && quietForPeople == true) return false
     if (systemSubtype == null) return true
     if (readerType == "user" && systemSubtype in AGENT_ONLY_SYSTEM_SUBTYPES) return false
     return systemSubtype !in ActivityUncountedSystemSubtypes
@@ -72,6 +75,8 @@ import build.raft.app.RaftCoreInternalApi
     val countsUnread: Boolean? = null,
     /** `messages.agent_only` (slock #16678); true: agents-only system row, never unread for a person. Absent on older events. */
     val agentOnly: Boolean? = null,
+    /** `messages.quiet_for_people` (slock #16828, step 2c); true: not a person's activity unless it mentions them. Absent on older events. */
+    val quietForPeople: Boolean? = null,
     val mentions: List<ActivityUnreadTarget> = emptyList(),
 )
 
@@ -94,6 +99,9 @@ import build.raft.app.RaftCoreInternalApi
  * past a channel or DM mute, a mention included (slock #15111): RisingWave keeps that row at its last
  * message before the mute. The position rule then leaves the row as it is, except that a mention
  * lights its @ (and moves a mention-only row, whose position is its highest mention).
+ * On a person's task row (step 2c, raft-design #1440): only a message that is activity for them
+ * ([peopleActivityRowMessage]), so a quiet lifecycle line that does not mention them leaves the
+ * row's place, time and preview.
  */
 @RaftCoreInternalApi data class ActivityUnreadVerdict(val counts: Boolean?, val mention: Boolean, val moves: Boolean = true)
 
@@ -105,8 +113,14 @@ import build.raft.app.RaftCoreInternalApi
 ): ActivityUnreadVerdict {
     val own = message.senderType == viewer.type && message.senderId == viewer.id
     val isThreadRow = scope.rowKind == ActivityUnreadRowKind.Thread || scope.rowKind == ActivityUnreadRowKind.Task
-    // The mute decides whether the row moves, whoever sent it and whether it is read.
-    val moves = isThreadRow || !scope.activityMuted
+    // The mute decides whether a channel or DM row moves, whoever sent it and whether it is read;
+    // on a person's task row, the people predicate (step 2c, slock #16837).
+    val moves =
+        if (scope.rowKind == ActivityUnreadRowKind.Task && viewer.type == "user") {
+            peopleActivityRowMessage(message, viewer.id)
+        } else {
+            isThreadRow || !scope.activityMuted
+        }
     if (own || scope.readOnArrival) return ActivityUnreadVerdict(counts = false, mention = false, moves = moves)
     // An unfollowed thread row: no count and no @, even for a mention of the viewer. Correct only because
     // a mention makes the server follow the thread for them and send the change that makes the client
@@ -125,6 +139,7 @@ private fun countsForViewer(message: ActivityUnreadMessage, viewer: ActivityUnre
     if (scope.activityMuted && scope.rowKind != ActivityUnreadRowKind.Thread) return false
     if (message.countsUnread == false) return false
     if (viewer.type == "user" && message.agentOnly == true) return false
+    if (viewer.type == "user" && message.quietForPeople == true) return false
     if (message.messageType != "system") return true
     if (!message.carriesSystemProvenance) return null
     if (message.causalActorType == viewer.type && message.causalActorId == viewer.id) return false
@@ -133,5 +148,29 @@ private fun countsForViewer(message: ActivityUnreadMessage, viewer: ActivityUnre
         systemSubtype = message.systemSubtype,
         readerType = viewer.type,
         agentOnly = message.agentOnly,
+        quietForPeople = message.quietForPeople,
+    )
+}
+
+/**
+ * Step 2c (raft-design #1440, slock #16828/#16837 `peopleActivityRowMessage`): whether a message
+ * is activity on a PERSON's row: it moves the row (position, time), may be its preview, and can
+ * bring back a Done row. True for the person's own message, a message that personally mentions
+ * them, and a message of a kind that counts as unread for people ([messageCountsAsUnreadActivity],
+ * `readerType = "user"`), read or not. A quiet line ([ActivityUnreadMessage.quietForPeople]) is
+ * none of these for anyone it does not mention. Agents' rows do not use it.
+ */
+@RaftCoreInternalApi fun peopleActivityRowMessage(
+    message: ActivityUnreadMessage,
+    userId: String,
+): Boolean {
+    if (message.senderType == "user" && message.senderId == userId) return true
+    if (message.mentions.any { it.type == "user" && it.id == userId }) return true
+    return messageCountsAsUnreadActivity(
+        countsUnread = message.countsUnread,
+        systemSubtype = if (message.carriesSystemProvenance) message.systemSubtype else null,
+        readerType = "user",
+        agentOnly = message.agentOnly,
+        quietForPeople = message.quietForPeople,
     )
 }

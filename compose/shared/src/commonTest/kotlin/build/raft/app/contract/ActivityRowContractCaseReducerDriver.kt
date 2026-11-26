@@ -51,6 +51,7 @@ private fun runPredicateOnReducer(case: ActivityRowContractCase, expect: Activit
                 causalActorId = message.causalActorId,
                 systemSubtype = message.systemSubtype,
                 carriesSystemProvenance = message.carriesSystemProvenance,
+                quietForPeople = message.quietForPeople,
                 mentions = message.mentions.map { ActivityUnreadTarget(it.type, it.id) },
             ),
             ActivityUnreadViewer(viewer.type, viewer.id),

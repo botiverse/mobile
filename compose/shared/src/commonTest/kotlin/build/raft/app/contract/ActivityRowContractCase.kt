@@ -106,6 +106,7 @@ internal data class ActivityRowMessage(
     val causalActorType: String? = null,
     val causalActorId: String? = null,
     val systemSubtype: String? = null,
+    val quietForPeople: Boolean? = null,
     val mentions: List<ActivityRowMention> = emptyList(),
     @Transient val carriesSystemProvenance: Boolean = false,
 )
