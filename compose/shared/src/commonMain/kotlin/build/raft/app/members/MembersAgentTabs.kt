@@ -1122,12 +1122,17 @@ internal fun membersAgentAppCanSummary(appName: String, scopes: List<String>): S
 }
 
 /**
- * Web AgentActivityLog `showSubagents` (slock #14961): the Sub-agents segment shows for a runtime
- * that can start sub-agents ([agentRuntimeHasSubagents]) even at 0, else once one has appeared, and
- * always while it is the view.
+ * Web AgentActivityLog `showSubagents` (slock #14961 + Worker v1): always offered when `worker_v1`
+ * is on for a Computer agent ([workersEnabled]), or for a runtime that can start sub-agents
+ * ([agentRuntimeHasSubagents]) even at 0, else once one has appeared, and always while it is the view.
  */
-internal fun membersAgentActivityShowsSubagents(runtime: String?, subagentCount: Int, viewing: Boolean): Boolean =
-    agentRuntimeHasSubagents(runtime) || subagentCount > 0 || viewing
+internal fun membersAgentActivityShowsSubagents(
+    runtime: String?,
+    subagentCount: Int,
+    viewing: Boolean,
+    workersEnabled: Boolean = false,
+): Boolean =
+    workersEnabled || agentRuntimeHasSubagents(runtime) || subagentCount > 0 || viewing
 
 // #89 React parity: agent scope grant list + per-group row definitions.
 // Mirrors `packages/shared/src/agentScopes.ts` AGENT_SCOPE_GROUPS. Kept local

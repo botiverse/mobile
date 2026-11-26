@@ -378,6 +378,8 @@ class SharedHomeDataSource(
         is build.raft.app.model.LinkCardChanged -> false
         // A joint channel's other-server agent: its resolved row (avatar fallback) changes; no Home row.
         is build.raft.app.model.ActorUpdated -> false
+        // Worker v1 nudge: only an open Agent Detail › Workers panel refreshes on it; no Home row.
+        is build.raft.app.model.AgentWorkersChanged -> false
         // "Collapse long messages" of one conversation (RaftMessageDisplayPrefsStore); no Home row.
         is build.raft.app.model.MessageDisplayPrefsChanged -> false
         // Thread notification level changes are thread follow/unfollow frames (`slock #16474`):

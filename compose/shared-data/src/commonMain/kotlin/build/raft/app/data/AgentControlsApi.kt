@@ -93,6 +93,7 @@ private data class AgentSubagentInterruptResponseDto(
     const val ComputerUpgradeRequired = "computer_upgrade_required"
     const val ComputerOffline = "computer_offline"
     const val ComputerTimeout = "computer_timeout"
+    const val WorkersSnapshotStale = "workers_snapshot_stale"
     const val HostedStopFailed = "hosted_stop_failed"
     const val ContractMismatch = "agent_controls_contract_mismatch"
     const val NetworkError = "agent_controls_network_error"
@@ -247,6 +248,27 @@ private val agentControlsRequestJson = Json { explicitNulls = false }
             method = "POST",
             bodyText = "{}",
             parse = ::parseSharedAgentSubagentInterruptOutcome
+        )
+
+    /** Worker v1 (`GET /api/agents/:id/workers`): the agent's live Workers from its Computer's last snapshot. */
+    suspend fun listWorkers(
+        agentId: MemberId,
+        priority: DataRequestPriority = DataRequestPriority.Visible,
+    ): DataResult<AgentWorkersReadSnapshot> =
+        send(
+            priority = priority,
+            path = "agents/${agentId.value}/workers",
+            parse = ::parseSharedAgentWorkersRead,
+        )
+
+    /** Worker v1 (`POST /api/agents/:id/workers/:worker/stop`): stops one Worker and hands its conversation back. */
+    suspend fun stopWorker(agentId: MemberId, worker: String): DataResult<AgentWorkerStopOutcome> =
+        send(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/workers/${worker.percentEncode()}/stop",
+            method = "POST",
+            bodyText = "{}",
+            parse = ::parseSharedAgentWorkerStopOutcome,
         )
 
     override suspend fun migrationStatus(

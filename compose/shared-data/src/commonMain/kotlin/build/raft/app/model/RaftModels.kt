@@ -1804,6 +1804,20 @@ data class ActorUpdated(
 ) : RealtimeEvent
 
 /**
+ * `agent:workers:changed` (botiverse/slock `packages/shared/src/workersSnapshot.ts`
+ * `AgentWorkersChangedEvent`, docs/contracts/worker-snapshot.md): a snapshot of [agentId]'s
+ * Computer arrived with changed Worker rows ([digest] is the server's `workersRowsDigest`).
+ * Carries no content: the open Workers panel reads `GET /api/agents/:id/workers` again when
+ * [digest] differs from its latest read.
+ */
+@Serializable
+data class AgentWorkersChanged(
+    val agentId: MemberId,
+    val digest: String,
+    val receivedAt: String,
+) : RealtimeEvent
+
+/**
  * The person's product-feedback unread total (unread public replies on their own tickets) in one
  * Hands app (botiverse/slock f0f773995 `packages/shared/src/productFeedbackUnread.ts`, sent by
  * `services/productFeedbackUnreadRealtime.ts` to their own `user:<id>` room):

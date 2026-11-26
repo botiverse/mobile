@@ -59,3 +59,22 @@ import build.raft.app.RaftCoreInternalApi
 ): Boolean =
     !deleted && !isExternalAgent && online &&
         (serverRoleCanControlAgentRuntime(serverRole) || isCreator)
+
+/**
+ * Worker v1 Stop authority (`POST /api/agents/:id/workers/:worker/stop`, web AgentDetailPanel
+ * `workersPanel.canStop`): live Computer agent, `controlAgentRuntime` or creator authority,
+ * and for a personal assistant only its owner (`routes/agents.ts:6452`).
+ */
+@RaftCoreInternalApi fun canStopAgentWorkers(
+    serverRole: String?,
+    isCreator: Boolean,
+    isExternalAgent: Boolean,
+    deleted: Boolean,
+    assistantOwnerUserId: String? = null,
+    currentUserId: String? = null,
+): Boolean {
+    if (deleted || isExternalAgent) return false
+    val cleanAssistantOwner = assistantOwnerUserId?.trim()?.takeIf { it.isNotEmpty() }
+    if (cleanAssistantOwner != null && currentUserId?.trim() != cleanAssistantOwner) return false
+    return serverRoleCanControlAgentRuntime(serverRole) || isCreator
+}

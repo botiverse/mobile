@@ -145,16 +145,19 @@ private fun membersSubagentDuration(group: AgentActivitySubagentGroup, nowEpochM
 private val systemNowEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() }
 
 @Composable
-private fun MembersAgentSubagentRow(
+internal fun MembersAgentSubagentRow(
     group: AgentActivitySubagentGroup,
     divider: Boolean,
     timeContext: RaftTimeContext,
     nowEpochMillis: () -> Long,
     onOpen: (String) -> Unit,
+    /** Worker v1: beside the agent's Workers, prepend "runtime sub-agent" so the row keeps its single state badge. */
+    runtimeTag: Boolean = false,
 ) {
     val running = group.state == AgentActivitySubagentState.Running
     val lastTool = group.lastToolName
     val facts = listOfNotNull(
+        if (runtimeTag) stringResource(Res.string.member_activity_workers_runtime_subagent) else null,
         if (group.title != null) group.subagentType else null,
         group.model,
         membersSubagentSteps(group),
@@ -177,7 +180,7 @@ private fun MembersAgentSubagentRow(
 }
 
 @Composable
-private fun MembersAgentSubagentGroupHeading(running: Boolean, count: Int) {
+internal fun MembersAgentSubagentGroupHeading(running: Boolean, count: Int) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     Row(

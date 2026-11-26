@@ -875,6 +875,9 @@ internal class RaftSharedStoreProvider private constructor(
     /** Realtime `agent:updated` for open agent Profiles (they re-read `GET /agents/:id`). */
     internal val agentUpdatedSignals: RaftAgentUpdatedSignals = RaftAgentUpdatedSignals()
 
+    /** Realtime `agent:workers:changed` for open Agent Detail › Workers panels. */
+    internal val agentWorkersChangedSignals: RaftAgentWorkersChangedSignals = RaftAgentWorkersChangedSignals()
+
     /**
      * Realtime `channel:members-updated`: every members store reloads its held list or drops a stored one
      * ([channelId] null: every list of the server). [admission]: the grant the event was admitted under
@@ -4983,6 +4986,9 @@ internal class RaftSharedStoreProvider private constructor(
                         }
                         owner.installActorUpdatedSink { serverId, event ->
                             provider.applyActorUpdated(serverId, event)
+                        }
+                        owner.installAgentWorkersChangedSink { serverId, event ->
+                            provider.agentWorkersChangedSignals.publish(serverId, event)
                         }
                         owner.installAgentActivitySubscribedSink { serverId, event ->
                             provider.agentActivitySubscriptions.onSubscribed(serverId, event.agentIds)

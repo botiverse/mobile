@@ -935,6 +935,28 @@ class RealtimeEventMapperTest {
     }
 
     @Test
+    fun agentWorkersChangedMapsStrictlyAndIsInServerWireEvents() {
+        // botiverse/slock docs/contracts/worker-snapshot.md AgentWorkersChangedEvent.
+        assertEquals("agent:workers:changed", RealtimeSocketEvents.AgentWorkersChanged)
+        assertTrue(RealtimeSocketEvents.AgentWorkersChanged in RealtimeSocketEvents.ServerWireEvents)
+        val mapper = RealtimeEventMapper()
+        assertEquals(
+            build.raft.app.model.AgentWorkersChanged(
+                agentId = build.raft.app.model.MemberId("agent-1"),
+                digest = "d0000001",
+                receivedAt = "2026-11-23T10:05:00.000Z",
+            ),
+            mapper.map(
+                RealtimeSocketEvents.AgentWorkersChanged,
+                """{"agentId":"agent-1","digest":"d0000001","receivedAt":"2026-11-23T10:05:00.000Z"}""",
+            ),
+        )
+        assertNull(mapper.map(RealtimeSocketEvents.AgentWorkersChanged, """{"agentId":"","digest":"d0000001","receivedAt":"2026-11-23T10:05:00.000Z"}"""))
+        assertNull(mapper.map(RealtimeSocketEvents.AgentWorkersChanged, """{"agentId":"agent-1","receivedAt":"2026-11-23T10:05:00.000Z"}"""))
+        assertNull(mapper.map(RealtimeSocketEvents.AgentWorkersChanged, """{"agentId":"agent-1","digest":"d0000001"}"""))
+    }
+
+    @Test
     fun serverWireEventsIncludeWebRealtimeContractEvents() {
         val events = RealtimeSocketEvents.ServerWireEvents
 

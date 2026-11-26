@@ -72,6 +72,7 @@ enum GeneratedRealtimeContract {
         static let agentCreated = "agent:created"
         static let agentUpdated = "agent:updated"
         static let agentDeleted = "agent:deleted"
+        static let agentWorkersChanged = "agent:workers:changed"
         static let machineStatus = "machine:status"
         static let machineCapabilities = "machine:capabilities"
         static let machineUpdated = "machine:updated"
@@ -138,6 +139,7 @@ enum GeneratedRealtimeContract {
             SocketEvent.agentCreated,
             SocketEvent.agentUpdated,
             SocketEvent.agentDeleted,
+            SocketEvent.agentWorkersChanged,
             SocketEvent.machineStatus,
             SocketEvent.machineCapabilities,
             SocketEvent.machineUpdated,

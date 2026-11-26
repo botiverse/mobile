@@ -73,6 +73,7 @@ internal fun RealtimeEvent.performanceMarkerName(): String =
         is build.raft.app.model.LinkCardOperationChanged -> "link_card_operation_changed"
         is build.raft.app.model.LinkCardChanged -> "link_card_changed"
         is build.raft.app.model.ActorUpdated -> "actor_updated"
+        is build.raft.app.model.AgentWorkersChanged -> "agent_workers_changed"
         is build.raft.app.model.MessageDisplayPrefsChanged -> "message_display_prefs_updated"
         is ComputerRestartDone -> "computer_restart_done"
         is build.raft.app.model.RuntimeAuthUpdated -> "runtime_auth_updated"
@@ -113,6 +114,7 @@ internal fun RealtimeEvent.performanceMarkerPhase(): String =
         is ActivityChanged,
         is build.raft.app.model.JointInvitesChanged,
         is build.raft.app.model.PermissionUpdatesChanged,
+        is build.raft.app.model.AgentWorkersChanged,
         is ComputerRestartDone -> "realtime_refresh_apply"
         is build.raft.app.model.RuntimeAuthUpdated,
         is build.raft.app.model.RuntimeAuthLoginEventPushed,
