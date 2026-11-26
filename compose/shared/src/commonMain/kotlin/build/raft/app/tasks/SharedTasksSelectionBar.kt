@@ -170,8 +170,9 @@ internal fun formatTasksBatchOutcomeToast(
                 res.format(outcome.done, resolvedStatus).resolve()
             }
             is TasksBatchAction.Assignee -> {
-                if (action.assignee != null) {
-                    val resolvedName = assigneeLabel ?: action.assignee.displayName
+                val targetAssignee = action.assignee
+                if (targetAssignee != null) {
+                    val resolvedName = assigneeLabel ?: targetAssignee.displayName
                     val res =
                         if (outcome.done == 1) {
                             Res.string.tasks_batch_assign_done_one
