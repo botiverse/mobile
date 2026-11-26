@@ -3782,6 +3782,17 @@
     <string name="composer_attach_file">Attach file</string>
     <string name="composer_expand">Expand</string>
     <string name="composer_collapse">Collapse</string>
+    <string name="composer_format_toolbar">Formatting</string>
+    <string name="composer_format_bold">Bold</string>
+    <string name="composer_format_italic">Italic</string>
+    <string name="composer_format_strikethrough">Strikethrough</string>
+    <string name="composer_format_code">Code</string>
+    <string name="composer_format_link">Link</string>
+    <string name="composer_format_numbered_list">Numbered list</string>
+    <string name="composer_format_bulleted_list">Bulleted list</string>
+    <string name="composer_format_quote">Quote</string>
+    <string name="composer_format_code_block">Code block</string>
+    <string name="composer_format_more">More formatting</string>
     <string name="markdown_task_list_checkbox">Task list checkbox</string>
     <string name="markdown_task_list_checked">Completed</string>
     <string name="markdown_task_list_unchecked">Not completed</string>

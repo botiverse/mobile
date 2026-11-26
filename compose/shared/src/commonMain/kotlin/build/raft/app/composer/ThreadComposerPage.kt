@@ -31,6 +31,7 @@ import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.ui.graphics.isSpecified
 import build.raft.designsystem.components.RaftEmbeddedControls
+import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.components.RaftComposerAttachment
 import build.raft.designsystem.components.RaftComposerAttachmentFile
 import build.raft.designsystem.components.RaftComposerAttachmentGap
@@ -992,15 +993,17 @@ internal class ThreadComposerEditorOwner(
         sourceSessionId: Long,
         nextText: String,
         cursor: Int = nextText.length,
+        selectionEnd: Int = cursor,
         publishAsSynced: Boolean = true,
     ): Boolean {
         if (!isActiveSession(sourceSessionId)) return false
-        val clampedCursor = cursor.coerceIn(0, nextText.length)
+        val clampedStart = cursor.coerceIn(0, nextText.length)
+        val clampedEnd = selectionEnd.coerceIn(clampedStart, nextText.length)
         textFieldState.edit {
             if (!textContentEquals(asCharSequence(), nextText)) {
                 replace(0, length, nextText)
             }
-            selection = TextRange(clampedCursor)
+            selection = TextRange(clampedStart, clampedEnd)
         }
         val snapshot = currentSnapshot()
         lastObservedSnapshot = snapshot
@@ -1336,6 +1339,31 @@ internal fun rememberRaftComposerHasHardwareKeyboard(): Boolean =
 internal const val ThreadComposerSendKeyHintTestTag = "composer-send-key-hint"
 internal const val ThreadComposerExpandToggleTestTag = "composer-expand-toggle"
 internal const val ThreadComposerExpandedSurfaceTestTag = "composer-expanded-surface"
+
+/**
+ * Effective hardware-keyboard send mode (web `activeSendKey`, slock #16767): while the composer is
+ * expanded, Enter always inserts a newline and ⌘/Ctrl+Enter sends for every account.
+ */
+internal fun threadComposerActiveSendKey(
+    expanded: Boolean,
+    composerSendKey: RaftComposerSendKey,
+): RaftComposerSendKey = if (expanded) RaftComposerSendKey.ModEnter else composerSendKey
+
+/**
+ * Whether the composer toolbar shows `"⌘Enter to send"` / `"Ctrl+Enter to send"` (web
+ * `MessageInput.tsx`, slock #16598 / #16767): always shown while expanded (even on an empty box);
+ * while collapsed, shown only in [RaftComposerSendKey.ModEnter] mode while composing.
+ */
+internal fun threadComposerShowsSendKeyHint(
+    showSendKeyHint: Boolean,
+    hardwareKeyboardConnected: Boolean,
+    expanded: Boolean,
+    composerSendKey: RaftComposerSendKey,
+    composing: Boolean,
+): Boolean =
+    showSendKeyHint &&
+        hardwareKeyboardConnected &&
+        (expanded || (composerSendKey == RaftComposerSendKey.ModEnter && composing))
 
 /** Height kept for the latest messages strip above an expanded composer (web `h-30` = 120px). */
 internal val ThreadComposerExpandedMessageListStripHeight = 120.dp
@@ -3186,6 +3214,11 @@ internal fun ThreadComposerContentLeaf(
             state.composerMode != "no_permission" &&
             !state.pendingAttachments.hasFailedThreadAttachmentUpload() &&
             (hasReplyTextForSend || state.pendingAttachments.isNotEmpty())
+    val activeComposerSendKey =
+        threadComposerActiveSendKey(
+            expanded = composerExpanded,
+            composerSendKey = composerSendKey,
+        )
     val effectiveImeActionRequested =
         threadComposerEffectiveImeActionRequested(
             hardwareKeyboard = hardwareKeyboardConnected,
@@ -3250,6 +3283,57 @@ internal fun ThreadComposerContentLeaf(
         )
         emitChange(nextText = edit.text)
         return true
+    }
+
+    fun applyMarkdownFormat(tool: ThreadComposerMarkdownTool) {
+        if (!composerEnabled) return
+        val segmentedNow = quoteController.isSegmented
+        val liveState =
+            if (segmentedNow) {
+                quoteController.activeTextFieldState() ?: return
+            } else {
+                editorOwner.textFieldState
+            }
+        val liveText = liveState.text.toString()
+        val liveSelStart = minOf(liveState.selection.start, liveState.selection.end).coerceIn(0, liveText.length)
+        val liveSelEnd = maxOf(liveState.selection.start, liveState.selection.end).coerceIn(liveSelStart, liveText.length)
+        val edit = threadComposerMarkdownEdit(liveText, liveSelStart, liveSelEnd, tool)
+        if (segmentedNow) {
+            val serialized =
+                quoteController.replaceActiveTextBlock(
+                    nextText = edit.nextValue,
+                    nextCursor = edit.selectionStart,
+                    nextSelectionEnd = edit.selectionEnd,
+                )
+            if (!editorOwner.applyProgrammaticText(editorOwner.editorSessionId, serialized, cursor = serialized.length, publishAsSynced = true)) {
+                return
+            }
+            suggestionSelectionDispatcher.updateDraft(
+                text = edit.nextValue,
+                selectionStart = edit.selectionStart,
+                selectionEnd = edit.selectionEnd,
+            )
+            emitChange(nextText = serialized)
+            return
+        }
+        if (
+            !editorOwner.applyProgrammaticText(
+                sourceSessionId = editorOwner.editorSessionId,
+                nextText = edit.nextValue,
+                cursor = edit.selectionStart,
+                selectionEnd = edit.selectionEnd,
+                publishAsSynced = true,
+            )
+        ) {
+            return
+        }
+        suggestionSelectionDispatcher.updateDraft(
+            text = edit.nextValue,
+            selectionStart = edit.selectionStart,
+            selectionEnd = edit.selectionEnd,
+        )
+        emitChange(nextText = edit.nextValue)
+        runCatching { composerFocusRequester.requestFocus() }
     }
 
     // Read by the mention effect after it waited out a composition: the field's live TextFieldState
@@ -3819,21 +3903,16 @@ internal fun ThreadComposerContentLeaf(
                         }
             ) {
                 // raft-ui `Composer`: card layer, container radius, 1.5dp line-strong edge,
-                // no shadow. Expanded (slock #16670): borderless on canvas, text flush on the
-                // messages' left edge, editor filling height.
+                // no shadow. Expanded (slock #16767, cindyz Option A): keeps its framed ink border
+                // and grows up the column with a top Markdown format row, editor filling height.
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .then(
-                            if (composerExpanded) {
-                                Modifier.fillMaxHeight()
-                            } else {
-                                Modifier.raftControlSurface(
-                                    fill = RaftColor.Card,
-                                    border = RaftColor.BorderBlack,
-                                    radius = RaftAppRadius.Container
-                                )
-                            }
+                        .then(if (composerExpanded) Modifier.fillMaxHeight() else Modifier)
+                        .raftControlSurface(
+                            fill = RaftColor.Card,
+                            border = RaftColor.BorderBlack,
+                            radius = RaftAppRadius.Container
                         )
                         .testTag(ThreadComposerCardTestTag)
                         .raftSlot("composer-frame")
@@ -3863,20 +3942,28 @@ internal fun ThreadComposerContentLeaf(
                                 }
                             }
                         }
-                        .then(
-                            if (composerExpanded) {
-                                Modifier.padding(bottom = ThreadComposerCardPaddingBottom)
-                            } else {
-                                Modifier.padding(
-                                    start = ThreadComposerCardPadding,
-                                    top = ThreadComposerCardPadding,
-                                    end = ThreadComposerCardPadding,
-                                    bottom = ThreadComposerCardPaddingBottom
-                                )
-                            }
+                        .padding(
+                            start = ThreadComposerCardPadding,
+                            top = if (composerExpanded) ThreadComposerCardPaddingBottom else ThreadComposerCardPadding,
+                            end = ThreadComposerCardPadding,
+                            bottom = ThreadComposerCardPaddingBottom
                         ),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    if (composerExpanded) {
+                        ThreadComposerFormatBar(
+                            enabled = composerEnabled,
+                            hardwareKeyboardConnected = hardwareKeyboardConnected,
+                            editorFocusRequester = composerFocusRequester,
+                            onApplyFormat = ::applyMarkdownFormat,
+                            onCollapse = {
+                                expandState?.collapse()
+                                if (!isSegmentedQuoteComposer) {
+                                    runCatching { composerFocusRequester.requestFocus() }
+                                }
+                            },
+                        )
+                    }
                     // Clear retires the logical callback session, not the native editor view. A
                     // session-keyed subtree destroys the first responder and produces a visible
                     // IME dismiss→reopen cycle on iOS.
@@ -3932,9 +4019,9 @@ internal fun ThreadComposerContentLeaf(
                                 composerKeyboardActions = composerKeyboardActions,
                                 hardwareEnterConfig =
                                     RaftHardwareEnterConfig(
-                                        mode = composerSendKey,
+                                        mode = activeComposerSendKey,
                                         hardwareKeyboard = hardwareKeyboardConnected,
-                                        softEnterSends = composerSendKeyEnabled,
+                                        softEnterSends = if (composerExpanded) false else composerSendKeyEnabled,
                                         isImeComposing = { currentActiveFieldState().composition != null },
                                         canSendAsTask = surface.showTaskButton && surface.sendsAsTask,
                                         onSend = { handleKeyboardSend(fromHardwareEnter = true) },
@@ -4096,9 +4183,9 @@ internal fun ThreadComposerContentLeaf(
                             keyboardActions = composerKeyboardActions,
                             hardwareEnterConfig =
                                 RaftHardwareEnterConfig(
-                                    mode = composerSendKey,
+                                    mode = activeComposerSendKey,
                                     hardwareKeyboard = hardwareKeyboardConnected,
-                                    softEnterSends = composerSendKeyEnabled,
+                                    softEnterSends = if (composerExpanded) false else composerSendKeyEnabled,
                                     isImeComposing = { currentActiveFieldState().composition != null },
                                     canSendAsTask = surface.showTaskButton && surface.sendsAsTask,
                                     onSend = { handleKeyboardSend(fromHardwareEnter = true) },
@@ -4138,16 +4225,15 @@ internal fun ThreadComposerContentLeaf(
                                 .fillMaxWidth()
                                 // raft-ui `composer-input` (the web's composer-textarea), for the component comparison.
                                 .raftSlot("composer-input")
+                                .padding(horizontal = ThreadComposerInputPaddingHorizontal)
                                 .then(
                                     if (composerExpanded) {
                                         Modifier.weight(1f)
                                     } else {
-                                        Modifier
-                                            .padding(horizontal = ThreadComposerInputPaddingHorizontal)
-                                            .heightIn(
-                                                min = ThreadComposerTextFieldMinHeight,
-                                                max = ThreadComposerTextFieldMaxHeight
-                                            )
+                                        Modifier.heightIn(
+                                            min = ThreadComposerTextFieldMinHeight,
+                                            max = ThreadComposerTextFieldMaxHeight
+                                        )
                                     }
                                 )
                                 .threadComposerImagePasteFocus(imagePasteFocusOwner)
@@ -4178,7 +4264,7 @@ internal fun ThreadComposerContentLeaf(
                             modifier =
                                 Modifier
                                     .raftSlot("composer-toolbar")
-                                    .then(if (!composerExpanded) Modifier.composerToolbarBleed() else Modifier)
+                                    .composerToolbarBleed()
                                     .fillMaxWidth()
                                     .heightIn(min = ThreadComposerToolbarMinHeight),
                             verticalAlignment = Alignment.CenterVertically,
@@ -4249,17 +4335,21 @@ internal fun ThreadComposerContentLeaf(
                                     ThreadComposerQuoteCountBadge(count = quoteController.quoteCount)
                                 }
                                 val composingForChrome = hasReplyTextForSend || state.pendingAttachments.isNotEmpty()
+                                val modEnterKeyLabel = raftComposerModEnterKeyLabel(raftPlatformShortcutsUseCommand())
                                 if (
-                                    LocalThreadComposerShowSendKeyHint.current &&
-                                    hardwareKeyboardConnected &&
-                                    composerSendKey == RaftComposerSendKey.ModEnter &&
-                                    composingForChrome
+                                    threadComposerShowsSendKeyHint(
+                                        showSendKeyHint = LocalThreadComposerShowSendKeyHint.current,
+                                        hardwareKeyboardConnected = hardwareKeyboardConnected,
+                                        expanded = composerExpanded,
+                                        composerSendKey = composerSendKey,
+                                        composing = composingForChrome,
+                                    )
                                 ) {
                                     Text(
                                         text =
                                             stringResource(
                                                 Res.string.composer_send_key_hint,
-                                                raftComposerModEnterKeyLabel(raftPlatformShortcutsUseCommand()),
+                                                modEnterKeyLabel,
                                             ),
                                         modifier = Modifier.testTag(ThreadComposerSendKeyHintTestTag),
                                         style = RaftType.Caption.copy(color = RaftColor.ForegroundHint),
@@ -4295,29 +4385,18 @@ internal fun ThreadComposerContentLeaf(
                                         )
                                     }
                                 }
-                                if (canExpandComposer) {
-                                    // Web ComposerExpandButton (slock #16670): last before Send; no
-                                    // shortcut, keeps the same editor/draft focused across toggle.
+                                if (canExpandComposer && !composerExpanded) {
+                                    // Web ComposerExpandButton (slock #16670 / #16767): last before
+                                    // Send while collapsed; once expanded, Collapse sits at the end
+                                    // of ThreadComposerFormatBar at the top of the card.
                                     ComposerIconButton(
-                                        icon =
-                                            if (composerExpanded) {
-                                                RaftLucideIconName.Minimize2
-                                            } else {
-                                                RaftLucideIconName.Maximize2
-                                            },
+                                        icon = RaftLucideIconName.Maximize2,
                                         enabled = composerEnabled,
                                         modifier =
                                             Modifier
                                                 .threadComposerSuggestionKeepsEditorFocus()
                                                 .testTag(ThreadComposerExpandToggleTestTag),
-                                        contentDescription =
-                                            stringResource(
-                                                if (composerExpanded) {
-                                                    Res.string.composer_collapse
-                                                } else {
-                                                    Res.string.composer_expand
-                                                }
-                                            ),
+                                        contentDescription = stringResource(Res.string.composer_expand),
                                         onClick = {
                                             expandState?.toggle(
                                                 conversationKey = expandConversationKey,
@@ -4331,7 +4410,13 @@ internal fun ThreadComposerContentLeaf(
                                 }
                                 ComposerSendButton(
                                     enabled = canSend,
-                                    sending = state.composerMode == "sending" || state.composerMode == "uploading"
+                                    sending = state.composerMode == "sending" || state.composerMode == "uploading",
+                                    tooltipShortcut =
+                                        if (hardwareKeyboardConnected && activeComposerSendKey == RaftComposerSendKey.ModEnter) {
+                                            modEnterKeyLabel
+                                        } else {
+                                            null
+                                        },
                                 ) {
                                     sendComposerMessage()
                                 }
@@ -4359,7 +4444,7 @@ internal fun ThreadComposerContentLeaf(
  * and last buttons sit [ThreadComposerEmbeddedInset] inside the card's outer edge, as far as
  * the bottom one (raft-ui `ComposerToolbar` `mx-[calc(var(--control-embedded-inset)-…)]`).
  */
-private fun Modifier.composerToolbarBleed(): Modifier =
+internal fun Modifier.composerToolbarBleed(): Modifier =
     layout { measurable, constraints ->
         // raft-ui `ComposerToolbar`: `mx-[calc(var(--control-embedded-inset)-0.75rem-1px)]`.
         val bleed = (ThreadComposerCardPadding - ThreadComposerCardPaddingBottom).roundToPx()
@@ -6297,7 +6382,7 @@ private fun ComposerSuggestionDivider() {
 }
 
 @Composable
-private fun ComposerIconButton(
+internal fun ComposerIconButton(
     icon: RaftLucideIconName,
     enabled: Boolean,
     modifier: Modifier = Modifier,
@@ -6307,22 +6392,39 @@ private fun ComposerIconButton(
     loading: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     longClickLabel: String? = null,
+    tooltipShortcut: String? = null,
     onClick: () -> Unit
 ) {
-    RaftIconButton(
-        onClick = onClick,
-        tooltip = contentDescription.takeIf { it.isNotBlank() },
-        modifier = modifier,
-        variant = variant,
-        size = RaftIconButtonSize.Md,
-        enabled = enabled,
-        loading = loading,
-        onLongClick = onLongClick,
-        longClickLabel = longClickLabel,
-    ) {
-        // raft-ui `ComposerIconButton`: `text-foreground-muted` glyphs; the send button keeps
-        // its primary ink, and a disabled button keeps the button's own disabled ink.
-        RaftSlotIcon(icon, color = RaftTheme.colors.foregroundMuted.takeIf { variant == RaftButtonVariant.Ghost && enabled })
+    val showSeparateShortcutTooltip = tooltipShortcut != null && contentDescription.isNotBlank()
+    val button: @Composable (Modifier) -> Unit = { buttonModifier ->
+        RaftIconButton(
+            onClick = onClick,
+            tooltip = if (showSeparateShortcutTooltip) null else contentDescription.takeIf { it.isNotBlank() },
+            contentDescription = contentDescription.takeIf { it.isNotBlank() },
+            modifier = buttonModifier,
+            variant = variant,
+            size = RaftIconButtonSize.Md,
+            enabled = enabled,
+            loading = loading,
+            onLongClick = onLongClick,
+            longClickLabel = longClickLabel,
+        ) {
+            // raft-ui `ComposerIconButton`: `text-foreground-muted` glyphs; the send button keeps
+            // its primary ink, and a disabled button keeps the button's own disabled ink.
+            RaftSlotIcon(icon, color = RaftTheme.colors.foregroundMuted.takeIf { variant == RaftButtonVariant.Ghost && enabled })
+        }
+    }
+    if (showSeparateShortcutTooltip) {
+        RaftTooltip(
+            text = contentDescription,
+            modifier = modifier,
+            openOnLongPress = onLongClick == null,
+            shortcut = tooltipShortcut,
+        ) {
+            button(Modifier)
+        }
+    } else {
+        button(modifier)
     }
 }
 
@@ -6330,6 +6432,7 @@ private fun ComposerIconButton(
 private fun ComposerSendButton(
     enabled: Boolean,
     sending: Boolean,
+    tooltipShortcut: String? = null,
     onClick: () -> Unit
 ) {
     // Busy keeps the pink under the spinner and ignores taps (raft-ui Button > States).
@@ -6339,6 +6442,7 @@ private fun ComposerSendButton(
         contentDescription = stringResource(Res.string.common_send),
         variant = RaftButtonVariant.Primary,
         loading = sending,
+        tooltipShortcut = tooltipShortcut,
         onClick = onClick
     )
 }

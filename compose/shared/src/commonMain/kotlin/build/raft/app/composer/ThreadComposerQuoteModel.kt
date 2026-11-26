@@ -899,21 +899,26 @@ internal class ThreadComposerQuoteController(
         return commitBlocks(collapsed)
     }
 
-    /** Replaces the active text block's text & caret (e.g. `@` / `#` suggestion or mention insert). */
-    fun replaceActiveTextBlock(nextText: String, nextCursor: Int): String {
+    /** Replaces the active text block's text & selection (e.g. `@` / `#` suggestion, mention insert, or format tool). */
+    fun replaceActiveTextBlock(
+        nextText: String,
+        nextCursor: Int,
+        nextSelectionEnd: Int = nextCursor,
+    ): String {
         val blockId =
             blocks.firstOrNull { it is ComposerBlock.Text && it.id == activeTextBlockId }?.id
                 ?: defaultActiveTextBlockId(blocks)
-        val clamped = nextCursor.coerceIn(0, nextText.length)
+        val clampedStart = nextCursor.coerceIn(0, nextText.length)
+        val clampedEnd = nextSelectionEnd.coerceIn(clampedStart, nextText.length)
         val targetState =
             textFieldStatesByBlockId.getOrPut(blockId) {
-                TextFieldState(nextText, initialSelection = TextRange(clamped))
+                TextFieldState(nextText, initialSelection = TextRange(clampedStart, clampedEnd))
             }
         targetState.edit {
             if (asCharSequence().toString() != nextText) {
                 replace(0, length, nextText)
             }
-            selection = TextRange(clamped)
+            selection = TextRange(clampedStart, clampedEnd)
         }
         armedDeleteQuoteId = null
         val next = updateTextBlock(blocks, blockId, nextText)

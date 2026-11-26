@@ -3602,6 +3602,17 @@
     <string name="composer_attach_file">Anexar arquivo</string>
     <string name="composer_expand">Expandir</string>
     <string name="composer_collapse">Recolher</string>
+    <string name="composer_format_toolbar">Formatação</string>
+    <string name="composer_format_bold">Negrito</string>
+    <string name="composer_format_italic">Itálico</string>
+    <string name="composer_format_strikethrough">Tachado</string>
+    <string name="composer_format_code">Código</string>
+    <string name="composer_format_link">Link</string>
+    <string name="composer_format_numbered_list">Lista numerada</string>
+    <string name="composer_format_bulleted_list">Lista com marcadores</string>
+    <string name="composer_format_quote">Citação</string>
+    <string name="composer_format_code_block">Bloco de código</string>
+    <string name="composer_format_more">Mais formatação</string>
     <string name="markdown_task_list_checkbox">Caixa de seleção da lista de tarefas</string>
     <string name="markdown_task_list_checked">Concluída</string>
     <string name="markdown_task_list_unchecked">Não concluída</string>

@@ -3602,6 +3602,17 @@
     <string name="composer_attach_file">Прикрепить файл</string>
     <string name="composer_expand">Развернуть</string>
     <string name="composer_collapse">Свернуть</string>
+    <string name="composer_format_toolbar">Форматирование</string>
+    <string name="composer_format_bold">Жирный</string>
+    <string name="composer_format_italic">Курсив</string>
+    <string name="composer_format_strikethrough">Зачёркнутый</string>
+    <string name="composer_format_code">Код</string>
+    <string name="composer_format_link">Ссылка</string>
+    <string name="composer_format_numbered_list">Нумерованный список</string>
+    <string name="composer_format_bulleted_list">Маркированный список</string>
+    <string name="composer_format_quote">Цитата</string>
+    <string name="composer_format_code_block">Блок кода</string>
+    <string name="composer_format_more">Другое форматирование</string>
     <string name="markdown_task_list_checkbox">Флажок в списке задач</string>
     <string name="markdown_task_list_checked">Выполнено</string>
     <string name="markdown_task_list_unchecked">Не выполнено</string>
