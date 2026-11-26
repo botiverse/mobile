@@ -210,6 +210,33 @@ import kotlin.time.TimeSource
  * `markThreadUndone` repository call has no caller and the server emits no
  * undone realtime event). If one is added it must [forget] the row here.
  */
+/**
+ * Click-time row snapshot captured alongside a local user Done hold (#proj-o11y:#53, mirrors
+ * `botiverse/slock` `packages/web/src/store/inboxDoneRows.ts` in #16943). Distinguishes a
+ * read-state marker that merely caught up with an in-place realtime patch from genuinely newer
+ * activity, and carries the closed-set trace fields for `slock.activity.item_reappeared` and
+ * `slock.activity.done_committed`. Remote Dones (`activity_done:updated`) leave this null.
+ */
+@RaftCoreInternalApi data class ActivityLocalDoneMeta(
+    val shownLatestActivitySeq: String?,
+    val isJoint: Boolean,
+    val rowKind: ActivityDoneTraceRowKind,
+    val wasUnreadAtClick: Boolean,
+    val clickedAtMillis: Long,
+)
+
+/** Outcome of evaluating a Done overlay entry against a freshly served row. */
+@RaftCoreInternalApi sealed interface ActivityDoneHoldOutcome {
+    data object NotHeld : ActivityDoneHoldOutcome
+    data object Held : ActivityDoneHoldOutcome
+    data object Expired : ActivityDoneHoldOutcome
+    data class FrontierCaughtUp(val meta: ActivityLocalDoneMeta) : ActivityDoneHoldOutcome
+    data class LiftedMarkerNewer(
+        val meta: ActivityLocalDoneMeta?,
+        val newerActivity: Boolean,
+    ) : ActivityDoneHoldOutcome
+}
+
 @RaftCoreInternalApi class ActivityLocalMutationOverlay(
     private val nowMillis: () -> Long,
     private val holdMillis: Long = ActivityLocalMutationHoldMillis,
@@ -222,7 +249,8 @@ import kotlin.time.TimeSource
     private data class Entry(
         val marker: ActivityOverlayMarker,
         val generation: Long,
-        val expiresAtMillis: Long
+        val expiresAtMillis: Long,
+        val localDoneMeta: ActivityLocalDoneMeta? = null,
     )
 
     private val lock = SynchronizedObject()
@@ -234,7 +262,11 @@ import kotlin.time.TimeSource
      * must match, or null when the row has no marker to hold against (no frontier
      * seq and no anchor; web registers no hold either).
      */
-    fun remember(owner: ActivityOverlayOwner, item: InboxItem): Long? =
+    fun remember(
+        owner: ActivityOverlayOwner,
+        item: InboxItem,
+        localDoneMeta: ActivityLocalDoneMeta? = null,
+    ): Long? =
         synchronized(lock) {
             val now = nowMillis()
             sweepExpiredLocked(now)
@@ -249,7 +281,8 @@ import kotlin.time.TimeSource
                 Entry(
                     marker = marker,
                     generation = generation,
-                    expiresAtMillis = now + pendingBackstopMillis
+                    expiresAtMillis = now + pendingBackstopMillis,
+                    localDoneMeta = localDoneMeta,
                 )
             generation
         }
@@ -298,6 +331,56 @@ import kotlin.time.TimeSource
             } else {
                 true
             }
+        }
+
+    /**
+     * Evaluates a Done overlay hold against a freshly served row (#proj-o11y:#53, mirrors web
+     * `inboxDoneMarkerOnlyCaughtUp` in `packages/web/src/store/inboxDoneRows.ts`).
+     *
+     * When a served row carries a newer read-state marker on a non-joint storage-frontier row
+     * whose served `latestActivitySeq`, `doneFrontierSeq`, and `readStateLatestActivitySeq` are
+     * all `<=` the `latestActivitySeq` the row showed at click time, the row stays hidden, the
+     * held marker advances to the served marker (preventing duplicate catch-ups across
+     * back-to-back refreshes), and [ActivityDoneHoldOutcome.FrontierCaughtUp] is returned so the
+     * store writes one catch-up Done through the served `doneFrontierSeq`.
+     */
+    fun evaluateDoneHold(owner: ActivityOverlayOwner, item: InboxItem): ActivityDoneHoldOutcome =
+        synchronized(lock) {
+            val scoped = entries[owner] ?: return@synchronized ActivityDoneHoldOutcome.NotHeld
+            val entry = scoped[item.key] ?: return@synchronized ActivityDoneHoldOutcome.NotHeld
+            if (nowMillis() > entry.expiresAtMillis) {
+                removeLocked(owner, item.key)
+                return@synchronized ActivityDoneHoldOutcome.Expired
+            }
+            val servedMarker = item.activityOverlayMarker()
+            if (!servedMarker.isNewerThan(entry.marker)) {
+                return@synchronized ActivityDoneHoldOutcome.Held
+            }
+            val meta = entry.localDoneMeta
+            if (meta != null) {
+                val shown = meta.shownLatestActivitySeq
+                val newerActivity = compareActivitySeq(item.latestActivitySeq, shown) > 0
+                val servedFrontier = item.doneFrontierSeq?.takeIf(::isCanonicalPositiveActivitySeq)
+                val servedReadMarker = item.readStateLatestActivitySeq?.takeIf(::isCanonicalActivitySeq)
+                val frontierCovered =
+                    item.doneFrontierSeqPresent &&
+                        servedFrontier != null &&
+                        compareActivitySeq(servedFrontier, shown) <= 0
+                val markerCovered =
+                    servedReadMarker != null &&
+                        compareActivitySeq(servedReadMarker, shown) <= 0
+                if (!meta.isJoint && shown != null && !newerActivity && frontierCovered && markerCovered) {
+                    scoped[item.key] = entry.copy(marker = servedMarker)
+                    return@synchronized ActivityDoneHoldOutcome.FrontierCaughtUp(meta)
+                }
+                removeLocked(owner, item.key)
+                return@synchronized ActivityDoneHoldOutcome.LiftedMarkerNewer(
+                    meta = meta,
+                    newerActivity = newerActivity,
+                )
+            }
+            removeLocked(owner, item.key)
+            ActivityDoneHoldOutcome.LiftedMarkerNewer(meta = null, newerActivity = false)
         }
 
     fun clear() {

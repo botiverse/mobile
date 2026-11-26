@@ -124,11 +124,34 @@ class SharedActivityStoreDoneFrontierTest {
 
     @Test
     fun aStorageFrontierDoneDoesNotHideAReplyItNeverCovered() = runTest {
-        // Web never moves the Done marker on a socket patch: a Done names the
-        // served frontier (10), so the patched reply (11) stays active and the
-        // row shows again as soon as the server serves it.
-        val served = threadItem("thread-1").copy(readStateLatestActivitySeq = "10", replyCount = 2).withFrontier("10")
-        val afterDone = served.copy(readStateLatestActivitySeq = "11", replyCount = 3, doneFrontierSeq = "11")
+        // When the row showed seq 10 at Done time and the server later serves
+        // a genuinely newer reply at seq 11 that was never shown on the row,
+        // the Done through frontier 10 must not hide it or catch up to 11.
+        val served = threadItem("thread-1").copy(latestActivitySeq = "10", readStateLatestActivitySeq = "10", replyCount = 2).withFrontier("10")
+        val afterDone = served.copy(latestActivitySeq = "11", readStateLatestActivitySeq = "11", replyCount = 3, doneFrontierSeq = "11")
+        val inbox =
+            FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(served)), snapshot(listOf(afterDone))))
+        val conversations = FakeConversationRepository()
+        val store = frontierStore(inbox, conversations)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+
+        store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
+        runCurrent()
+
+        assertEquals(listOf<InboxDoneFrontier>(InboxDoneFrontier.Storage("10")), conversations.doneThreadFrontiers)
+        assertEquals(listOf("thread:thread-1"), store.state.value.items.map { it.key })
+        assertEquals("11", store.state.value.items.single().readStateLatestActivitySeq)
+    }
+
+    @Test
+    fun socketPatchLeavesDoneFrontierUntouchedAndCatchesUpOnceServerServesIt() = runTest {
+        // Web never moves the Done marker on a socket patch: the first Done still
+        // names the served frontier (10). Because reply-3 (seq 11) was already shown
+        // on the row when Done was pressed, the server's caught-up frontier (11)
+        // keeps the row hidden and triggers one catch-up Done through 11 (#proj-o11y:#53).
+        val served = threadItem("thread-1").copy(latestActivitySeq = "10", readStateLatestActivitySeq = "10", replyCount = 2).withFrontier("10")
+        val afterDone = served.copy(latestActivitySeq = "11", readStateLatestActivitySeq = "11", replyCount = 3, doneFrontierSeq = "11")
         val inbox =
             FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(served)), snapshot(listOf(afterDone))))
         val conversations = FakeConversationRepository()
@@ -137,13 +160,17 @@ class SharedActivityStoreDoneFrontierTest {
         runCurrent()
         store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(MessageNew(message("reply-3", channelId = "thread-1", seq = 11L))))
         assertEquals("10", store.state.value.items.single().readStateLatestActivitySeq)
+        assertEquals("10", store.state.value.items.single().doneFrontierSeq)
+        assertEquals("11", store.state.value.items.single().latestActivitySeq)
 
         store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
         runCurrent()
 
-        assertEquals(listOf<InboxDoneFrontier>(InboxDoneFrontier.Storage("10")), conversations.doneThreadFrontiers)
-        assertEquals(listOf("thread:thread-1"), store.state.value.items.map { it.key })
-        assertEquals("11", store.state.value.items.single().readStateLatestActivitySeq)
+        assertEquals(
+            listOf<InboxDoneFrontier>(InboxDoneFrontier.Storage("10"), InboxDoneFrontier.Storage("11")),
+            conversations.doneThreadFrontiers,
+        )
+        assertEquals(emptyList(), store.state.value.items)
     }
 
     @Test
