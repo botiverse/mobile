@@ -142,7 +142,7 @@ internal fun TaskCreateStatusField(
             RaftDropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
-                width = maxOf(220.dp, with(density) { triggerWidth.toDp() }),
+                minWidth = maxOf(220.dp, with(density) { triggerWidth.toDp() }),
                 offset = 4.dp,
             ) {
                 TaskCreateStatuses.forEach { status ->

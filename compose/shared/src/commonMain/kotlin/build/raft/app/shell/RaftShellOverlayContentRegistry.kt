@@ -15,7 +15,7 @@ import kotlinx.atomicfu.locks.synchronized
  */
 internal data class RaftShellOverlayContentEntry(
     val requestId: String,
-    val contentSize: Size,
+    val contentSize: Size?,
     val viewportGap: Float,
     val horizontalOffset: Float,
     val verticalOffset: Float,

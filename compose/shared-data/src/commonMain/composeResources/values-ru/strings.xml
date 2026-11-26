@@ -1022,8 +1022,8 @@
     <string name="channel_settings_unavailable_detail">Возможно, канал удалён или не удалось загрузить его настройки.</string>
     <string name="channel_settings_invalid_route">На этой странице нет корректного идентификатора сервера или канала.</string>
     <string name="channel_details_title">Сведения</string>
-    <string name="channel_details_open">Сведения и настройки канала</string>
-    <string name="channel_details_close">Закрыть сведения и настройки канала</string>
+    <string name="channel_details_open">Настройки канала</string>
+    <string name="channel_details_close">Закрыть настройки канала</string>
     <string name="conversation_details_open">Сведения и настройки</string>
     <string name="conversation_details_close">Закрыть сведения и настройки</string>
     <string name="thread_action_search_channel">Искать в этом канале</string>

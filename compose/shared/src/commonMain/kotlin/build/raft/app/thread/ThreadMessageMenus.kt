@@ -733,10 +733,18 @@ internal fun ThreadMessageActionMenu(
             ).dp.toPx()
         }
     val viewportGapPx = with(density) { ThreadMessageMenuViewportGap.toPx() }
-    val contentSize = Size(
-        width = menuWidth,
-        height = menuHeight
-    )
+    // Pin footprint when a truncated link URL or wrapping item description is present; otherwise
+    // let the popover measure its natural single-line width capped by viewport width.
+    val pinWidth = link != null || actions.any { it.description != null }
+    val contentSize =
+        if (pinWidth) {
+            Size(
+                width = menuWidth,
+                height = menuHeight
+            )
+        } else {
+            null
+        }
     val shellItems =
         actions.mapIndexed { index, action ->
             RaftShellOverlayItem(
@@ -826,7 +834,7 @@ internal fun ThreadMessageActionMenu(
 @Composable
 private fun ThreadShellAwareAnchoredPopover(
     anchor: RaftPopoverAnchor,
-    contentSize: Size,
+    contentSize: Size?,
     viewportGapPx: Float,
     onDismiss: () -> Unit,
     shellRequestId: (pageRootAnchor: Offset?) -> String,

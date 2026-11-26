@@ -46,7 +46,7 @@ export function avatarForMessage(tree, messageText) {
     const center = elementCenter(element);
     if (!center || center.y >= messageCenter.y || messageCenter.y - center.y > 160) return false;
     const label = String(element.label || "");
-    if (!label || /^(Back|Save|Saved|Open Tasks|Open [Ff]iles|Channel details and settings|Thread panel menu)$/.test(label)) return false;
+    if (!label || /^(Back|Save|Saved|Open Tasks|Open [Ff]iles|Channel settings|Thread panel menu)$/.test(label)) return false;
     if (/\b(reply|replies)\b/.test(label) || /^\d{1,2}:\d{2}/.test(label) || /ago$|Exact time/.test(label)) return false;
     return true;
   });

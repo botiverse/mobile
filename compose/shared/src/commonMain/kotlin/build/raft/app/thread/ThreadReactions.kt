@@ -340,11 +340,16 @@ internal fun ThreadMessageMenuChrome(
             testTag = action.testTag,
         )
     }
+    val baseWidth = threadMessageMenuWidthDp(showReactionActions, showAddReactionAction = onAddReaction != null).dp
+    // Keep a fixed width when a truncated link URL or wrapping item description is present;
+    // otherwise grow from baseWidth so longer localized labels stay on one line up to viewport width.
+    val pinWidth = link != null || menuItems.any { it.description != null }
     RaftUiMenuSurface(
         items = menuItems,
         onSelect = { id -> actions.getOrNull(id.toIntOrNull() ?: -1)?.let { if (it.enabled) it.onClick() } },
         modifier = modifier,
-        width = threadMessageMenuWidthDp(showReactionActions, showAddReactionAction = onAddReaction != null).dp,
+        minWidth = baseWidth,
+        width = if (pinWidth) baseWidth else null,
         header =
             if (showReactionActions || link != null) {
                 {

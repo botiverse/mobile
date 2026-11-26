@@ -1022,8 +1022,8 @@
     <string name="channel_settings_unavailable_detail">頻道可能已被刪除，或無法載入其設定。</string>
     <string name="channel_settings_invalid_route">此頁面缺少有效的伺服器或頻道識別資訊。</string>
     <string name="channel_details_title">詳細資訊</string>
-    <string name="channel_details_open">頻道詳細資料與設定</string>
-    <string name="channel_details_close">關閉頻道詳細資料與設定</string>
+    <string name="channel_details_open">頻道設定</string>
+    <string name="channel_details_close">關閉頻道設定</string>
     <string name="conversation_details_open">詳細資料與設定</string>
     <string name="conversation_details_close">關閉詳細資料與設定</string>
     <string name="thread_action_search_channel">搜尋此頻道</string>

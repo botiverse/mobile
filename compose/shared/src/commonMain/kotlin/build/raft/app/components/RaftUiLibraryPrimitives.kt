@@ -644,7 +644,8 @@ internal fun RaftUiSelectTrigger(
 internal fun RaftUiMenuSurface(
     items: List<RaftUiMenuItem>,
     modifier: Modifier = Modifier,
-    width: Dp? = 310.dp,
+    minWidth: Dp = RaftMetrics.MenuMinWidth,
+    width: Dp? = null,
     rowHeight: Dp = 36.dp,
     shadowOffset: Dp = 0.dp,
     showDividers: Boolean = false,
@@ -654,6 +655,7 @@ internal fun RaftUiMenuSurface(
 ) {
     RaftMenuSurface(
         modifier = modifier.raftFloatingContentClickTarget(),
+        minWidth = minWidth,
         width = width?.let(::raftMenuWidth)
     ) {
         header?.let { content ->

@@ -11904,8 +11904,7 @@ internal fun RaftFilePreviewPageScaffold(
                         menuOpen = false
                         onOverflowMenuSelect(id)
                     },
-                    onDismiss = { menuOpen = false },
-                    width = 180.dp
+                    onDismiss = { menuOpen = false }
                 )
             }
         }

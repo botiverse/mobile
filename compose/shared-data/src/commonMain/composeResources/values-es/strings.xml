@@ -1022,8 +1022,8 @@
     <string name="channel_settings_unavailable_detail">Es posible que el canal se haya eliminado o que no se haya podido cargar su configuración.</string>
     <string name="channel_settings_invalid_route">A esta página le falta una identidad válida de servidor o canal.</string>
     <string name="channel_details_title">Detalles</string>
-    <string name="channel_details_open">Detalles y configuración del canal</string>
-    <string name="channel_details_close">Cerrar detalles y configuración del canal</string>
+    <string name="channel_details_open">Configuración del canal</string>
+    <string name="channel_details_close">Cerrar configuración del canal</string>
     <string name="conversation_details_open">Detalles y configuración</string>
     <string name="conversation_details_close">Cerrar detalles y configuración</string>
     <string name="thread_action_search_channel">Buscar en este canal</string>

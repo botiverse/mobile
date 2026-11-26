@@ -684,7 +684,7 @@ private fun SendPromptAgentHeadPicker(
         RaftDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            width = SendPromptPickerMenuWidth,
+            minWidth = SendPromptPickerMenuWidth,
             offset = 6.dp,
             returnFocusTo = triggerFocus,
         ) {

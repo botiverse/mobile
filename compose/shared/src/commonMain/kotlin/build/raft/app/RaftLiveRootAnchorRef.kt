@@ -20,6 +20,7 @@ import androidx.compose.ui.node.requireLayoutCoordinates
 import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import kotlin.math.ceil
 
 internal sealed interface RaftPopoverLocalPoint {
     fun resolve(size: IntSize): Offset
@@ -120,7 +121,17 @@ internal class RaftPopoverAnchor private constructor(
                     content = { Box { content() } },
                     modifier = Modifier.fillMaxSize(),
                 ) { measurables, constraints ->
-                    val placeable = measurables.single().measure(constraints.copy(minWidth = 0, minHeight = 0))
+                    // Reserve viewportGap on both sides so auto-sized menus/popovers grow to fit
+                    // their widest item up to the available viewport width without overflowing.
+                    val maxGapPx = ceil(viewportGap).toInt().coerceAtLeast(0) * 2
+                    val childConstraints =
+                        constraints.copy(
+                            minWidth = 0,
+                            minHeight = 0,
+                            maxWidth = if (constraints.hasBoundedWidth) (constraints.maxWidth - maxGapPx).coerceAtLeast(0) else constraints.maxWidth,
+                            maxHeight = if (constraints.hasBoundedHeight) (constraints.maxHeight - maxGapPx).coerceAtLeast(0) else constraints.maxHeight,
+                        )
+                    val placeable = measurables.single().measure(childConstraints)
                     val popoverOffset =
                         overlayLayout.positionContent(
                             anchor = rootOffset,

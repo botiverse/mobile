@@ -1022,8 +1022,8 @@
     <string name="channel_settings_unavailable_detail">채널이 삭제되었거나 설정을 불러오지 못했어요.</string>
     <string name="channel_settings_invalid_route">이 페이지에 유효한 서버 또는 채널 정보가 없어요.</string>
     <string name="channel_details_title">세부 정보</string>
-    <string name="channel_details_open">채널 정보 및 설정</string>
-    <string name="channel_details_close">채널 정보 및 설정 닫기</string>
+    <string name="channel_details_open">채널 설정</string>
+    <string name="channel_details_close">채널 설정 닫기</string>
     <string name="conversation_details_open">정보 및 설정</string>
     <string name="conversation_details_close">정보 및 설정 닫기</string>
     <string name="thread_action_search_channel">이 채널 검색</string>
