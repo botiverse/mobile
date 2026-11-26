@@ -1,5 +1,6 @@
 package build.raft.app.shared
 
+import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -129,4 +130,46 @@ private fun SharedSettingsUpdateTransactionState.blocksSilentWifiPreload(): Bool
         SharedSettingsUpdateTransactionState.Idle,
         SharedSettingsUpdateTransactionState.Failed,
         SharedSettingsUpdateTransactionState.Stale -> false
+    }
+
+/**
+ * Whether an explicit user tap on Update / Download should cancel an existing [DownloadManager]
+ * request and enqueue a fresh unrestricted user-initiated download instead of reusing it.
+ *
+ * A silent Wi-Fi-only preload (`setAllowedOverMetered(false)`, `NETWORK_WIFI`) pauses in
+ * `STATUS_PAUSED` (or sits in `STATUS_PENDING`) as soon as the device moves onto cellular or a
+ * metered hotspot, and `DownloadManager` does not allow relaxing network constraints in place.
+ * Reusing such a request traps the user on "Downloading..." until they return to unmetered Wi-Fi.
+ */
+internal fun shouldReplaceHandsDownloadOnExplicitInstall(
+    status: Int,
+    reason: Int?,
+    unmeteredWifiOnly: Boolean,
+): Boolean =
+    when (status) {
+        DownloadManager.STATUS_SUCCESSFUL -> false
+        DownloadManager.STATUS_RUNNING -> false
+        DownloadManager.STATUS_PENDING -> unmeteredWifiOnly
+        DownloadManager.STATUS_PAUSED ->
+            unmeteredWifiOnly ||
+                reason == DownloadManager.PAUSED_QUEUED_FOR_WIFI ||
+                reason == DownloadManager.PAUSED_WAITING_TO_RETRY
+        else -> true
+    }
+
+/**
+ * Whether a tracked non-terminal [DownloadManager] entry should be surfaced as active
+ * `Downloading` in update status UI. A silent background Wi-Fi preload that is paused off-Wi-Fi
+ * must fall back to idle so the user still sees the Update button and can download over cellular.
+ */
+internal fun shouldExposeHandsDownloadAsDownloading(
+    status: Int,
+    unmeteredWifiOnly: Boolean,
+    autoOpenOnComplete: Boolean,
+): Boolean =
+    when (status) {
+        DownloadManager.STATUS_PAUSED -> !(unmeteredWifiOnly && !autoOpenOnComplete)
+        DownloadManager.STATUS_PENDING,
+        DownloadManager.STATUS_RUNNING -> true
+        else -> false
     }

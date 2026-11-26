@@ -1,5 +1,6 @@
 package build.raft.app.shared
 
+import android.app.DownloadManager
 import build.raft.app.data.SharedSettingsUpdateTransactionState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -133,6 +134,124 @@ class HandsWifiPreloadGateTest {
         assertTrue(isHandsWifiPreloadBatteryNotLow(batteryPercent = null, isCharging = true, isPowerSaveMode = false))
         assertFalse(isHandsWifiPreloadBatteryNotLow(batteryPercent = 90, isCharging = true, isPowerSaveMode = true))
         assertFalse(isHandsWifiPreloadBatteryNotLow(batteryPercent = 90, isCharging = false, isPowerSaveMode = true))
+    }
+
+    @Test
+    fun explicitInstallReplacesWifiOnlyPausedOrPendingPreloadsAndQueuedForWifiOrRetryPausedDownloads() {
+        // Silent Wi-Fi-only preload paused or pending off Wi-Fi must be replaced with an unrestricted download.
+        assertTrue(
+            shouldReplaceHandsDownloadOnExplicitInstall(
+                status = DownloadManager.STATUS_PAUSED,
+                reason = DownloadManager.PAUSED_QUEUED_FOR_WIFI,
+                unmeteredWifiOnly = true,
+            )
+        )
+        assertTrue(
+            shouldReplaceHandsDownloadOnExplicitInstall(
+                status = DownloadManager.STATUS_PAUSED,
+                reason = DownloadManager.PAUSED_WAITING_FOR_NETWORK,
+                unmeteredWifiOnly = true,
+            )
+        )
+        assertTrue(
+            shouldReplaceHandsDownloadOnExplicitInstall(
+                status = DownloadManager.STATUS_PENDING,
+                reason = null,
+                unmeteredWifiOnly = true,
+            )
+        )
+
+        // Actively running or completed Wi-Fi preload is reused instead of discarding progress.
+        assertFalse(
+            shouldReplaceHandsDownloadOnExplicitInstall(
+                status = DownloadManager.STATUS_RUNNING,
+                reason = null,
+                unmeteredWifiOnly = true,
+            )
+        )
+        assertFalse(
+            shouldReplaceHandsDownloadOnExplicitInstall(
+                status = DownloadManager.STATUS_SUCCESSFUL,
+                reason = null,
+                unmeteredWifiOnly = true,
+            )
+        )
+
+        // User-initiated download: keep running/pending/waiting-for-network, but replace queued-for-Wi-Fi, retry-paused, or failed.
+        assertFalse(
+            shouldReplaceHandsDownloadOnExplicitInstall(
+                status = DownloadManager.STATUS_PENDING,
+                reason = null,
+                unmeteredWifiOnly = false,
+            )
+        )
+        assertFalse(
+            shouldReplaceHandsDownloadOnExplicitInstall(
+                status = DownloadManager.STATUS_PAUSED,
+                reason = DownloadManager.PAUSED_WAITING_FOR_NETWORK,
+                unmeteredWifiOnly = false,
+            )
+        )
+        assertTrue(
+            shouldReplaceHandsDownloadOnExplicitInstall(
+                status = DownloadManager.STATUS_PAUSED,
+                reason = DownloadManager.PAUSED_QUEUED_FOR_WIFI,
+                unmeteredWifiOnly = false,
+            )
+        )
+        assertTrue(
+            shouldReplaceHandsDownloadOnExplicitInstall(
+                status = DownloadManager.STATUS_PAUSED,
+                reason = DownloadManager.PAUSED_WAITING_TO_RETRY,
+                unmeteredWifiOnly = false,
+            )
+        )
+        assertTrue(
+            shouldReplaceHandsDownloadOnExplicitInstall(
+                status = DownloadManager.STATUS_FAILED,
+                reason = null,
+                unmeteredWifiOnly = false,
+            )
+        )
+    }
+
+    @Test
+    fun silentPausedWifiPreloadFallsBackToIdleWhileExplicitAndRunningDownloadsStayDownloading() {
+        assertFalse(
+            shouldExposeHandsDownloadAsDownloading(
+                status = DownloadManager.STATUS_PAUSED,
+                unmeteredWifiOnly = true,
+                autoOpenOnComplete = false,
+            )
+        )
+        assertTrue(
+            shouldExposeHandsDownloadAsDownloading(
+                status = DownloadManager.STATUS_RUNNING,
+                unmeteredWifiOnly = true,
+                autoOpenOnComplete = false,
+            )
+        )
+        assertTrue(
+            shouldExposeHandsDownloadAsDownloading(
+                status = DownloadManager.STATUS_PAUSED,
+                unmeteredWifiOnly = false,
+                autoOpenOnComplete = true,
+            )
+        )
+        assertTrue(
+            shouldExposeHandsDownloadAsDownloading(
+                status = DownloadManager.STATUS_PAUSED,
+                unmeteredWifiOnly = true,
+                autoOpenOnComplete = true,
+            )
+        )
+        assertFalse(
+            shouldExposeHandsDownloadAsDownloading(
+                status = DownloadManager.STATUS_FAILED,
+                unmeteredWifiOnly = false,
+                autoOpenOnComplete = true,
+            )
+        )
     }
 
     private fun eligibleContext(

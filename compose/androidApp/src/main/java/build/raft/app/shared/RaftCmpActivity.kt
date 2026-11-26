@@ -6937,15 +6937,31 @@ internal class RaftBridgeModule(
                     synchronized(handsUpdateDownloadLock) {
                         val tracked = currentHandsDownload(response, arch)
                         if (tracked != null) {
-                            val status = tracked.status()
-                            when (status) {
-                                DownloadManager.STATUS_SUCCESSFUL -> {
+                            val (status, reason) = tracked.statusAndReason()
+                            when {
+                                status == DownloadManager.STATUS_SUCCESSFUL -> {
                                     tracked.completed = true
                                     tracked.toInstallResult(appContext, source = "button")
                                 }
-                                DownloadManager.STATUS_PENDING,
-                                DownloadManager.STATUS_RUNNING,
-                                DownloadManager.STATUS_PAUSED -> {
+                                shouldReplaceHandsDownloadOnExplicitInstall(
+                                    status = status,
+                                    reason = reason,
+                                    unmeteredWifiOnly = tracked.unmeteredWifiOnly,
+                                ) -> {
+                                    RaftAppLog.infoAlways(
+                                            "SlockHandsUpdate",
+                                            "download_replace_existing key=${tracked.key} oldDownloadId=${tracked.downloadId} " +
+                                                    "status=$status reason=${reason ?: -1} wifiOnly=${tracked.unmeteredWifiOnly}"
+                                    )
+                                    cancelHandsDownload(tracked)
+                                    enqueueHandsApkInstall(
+                                            response = response,
+                                            arch = arch,
+                                            autoOpenInstaller = true,
+                                            unmeteredWifiOnly = false,
+                                    ).toDownloadingInstallResult(response)
+                                }
+                                else -> {
                                     tracked.autoOpenOnComplete = true
                                     HandsInstallResult(
                                             statusLabel = "Downloading",
@@ -6953,10 +6969,6 @@ internal class RaftBridgeModule(
                                             actionLabel = "Downloading",
                                             transactionState = SharedSettingsUpdateTransactionState.Downloading,
                                     )
-                                }
-                                else -> {
-                                    handsUpdateDownloads.remove(tracked.key)
-                                    enqueueHandsApkInstall(response, arch).toDownloadingInstallResult(response)
                                 }
                             }
                         } else {
@@ -7049,10 +7061,13 @@ internal class RaftBridgeModule(
                                 try {
                                     runCatching { appContext.unregisterReceiver(self) }
                                     val status = handsDownloadStatus(downloadManager, completedId)
+                                    val download = handsUpdateDownloads[key]?.takeIf { it.downloadId == completedId }
+                                    if (download == null) {
+                                        return@launch
+                                    }
                                     if (status == DownloadManager.STATUS_SUCCESSFUL) {
-                                        val download = handsUpdateDownloads[key]
-                                        download?.completed = true
-                                        if (download != null && download.autoOpenOnComplete) {
+                                        download.completed = true
+                                        if (download.autoOpenOnComplete) {
                                             RaftAppLog.infoAlways(
                                                     "SlockHandsUpdate",
                                                     "download_ready downloadId=$completedId latest=${latest.version_code}"
@@ -7069,7 +7084,7 @@ internal class RaftBridgeModule(
                                             )
                                         }
                                     } else {
-                                        handsUpdateDownloads[key]?.failed = true
+                                        download.failed = true
                                         RaftAppLog.infoAlways(
                                                 "SlockHandsUpdate",
                                                 "download_failed downloadId=$completedId status=$status"
@@ -7079,7 +7094,7 @@ internal class RaftBridgeModule(
                                 } catch (cancelled: CancellationException) {
                                     throw cancelled
                                 } catch (throwable: Throwable) {
-                                    handsUpdateDownloads[key]?.failed = true
+                                    handsUpdateDownloads[key]?.takeIf { it.downloadId == completedId }?.failed = true
                                     RaftAppLog.infoAlways(
                                             "SlockHandsUpdate",
                                             "download_complete_failed downloadId=$completedId error=${throwable.javaClass.simpleName}"
@@ -7112,6 +7127,8 @@ internal class RaftBridgeModule(
                             downloadUrl = downloadUrl,
                             arch = arch.orEmpty(),
                             downloadManager = downloadManager,
+                            unmeteredWifiOnly = unmeteredWifiOnly,
+                            completionReceiver = receiver,
                             autoOpenOnComplete = autoOpenInstaller,
                     )
             // Register before publishing downloadId so an immediate ACTION_DOWNLOAD_COMPLETE broadcast
@@ -7125,9 +7142,18 @@ internal class RaftBridgeModule(
         }
     }
 
+    private fun cancelHandsDownload(tracked: HandsUpdateDownload) {
+        handsUpdateDownloads.remove(tracked.key, tracked)
+        tracked.completionReceiver?.let { receiver ->
+            runCatching { appContext.unregisterReceiver(receiver) }
+        }
+        runCatching { tracked.downloadManager.remove(tracked.downloadId) }
+    }
+
     private fun currentHandsDownloadResult(response: UpdateCheckResponse, arch: String?): HandsInstallResult {
         val tracked = handsUpdateDownloads[response.handsDownloadKey(arch)] ?: return HandsInstallResult()
-        return when (if (tracked.failed) DownloadManager.STATUS_FAILED else tracked.status()) {
+        val status = if (tracked.failed) DownloadManager.STATUS_FAILED else tracked.status()
+        return when (status) {
             DownloadManager.STATUS_SUCCESSFUL -> {
                 tracked.completed = true
                 HandsInstallResult(
@@ -7141,12 +7167,22 @@ internal class RaftBridgeModule(
             DownloadManager.STATUS_PENDING,
             DownloadManager.STATUS_RUNNING,
             DownloadManager.STATUS_PAUSED ->
-                HandsInstallResult(
-                        statusLabel = "Downloading",
-                        detail = RaftHostStrings.appUpdateDownloading(),
-                        actionLabel = "Downloading",
-                        transactionState = SharedSettingsUpdateTransactionState.Downloading,
-                )
+                if (
+                    shouldExposeHandsDownloadAsDownloading(
+                        status = status,
+                        unmeteredWifiOnly = tracked.unmeteredWifiOnly,
+                        autoOpenOnComplete = tracked.autoOpenOnComplete,
+                    )
+                ) {
+                    HandsInstallResult(
+                            statusLabel = "Downloading",
+                            detail = RaftHostStrings.appUpdateDownloading(),
+                            actionLabel = "Downloading",
+                            transactionState = SharedSettingsUpdateTransactionState.Downloading,
+                    )
+                } else {
+                    HandsInstallResult()
+                }
             else -> {
                 HandsInstallResult(
                     statusLabel = "Failed", actionLabel = "Download",
@@ -10319,6 +10355,8 @@ private data class HandsUpdateDownload(
         val downloadUrl: String,
         val arch: String,
         val downloadManager: DownloadManager,
+        val unmeteredWifiOnly: Boolean = false,
+        val completionReceiver: BroadcastReceiver? = null,
         @Volatile var autoOpenOnComplete: Boolean = true,
         @Volatile var completed: Boolean = false,
         @Volatile var failed: Boolean = false
@@ -10345,20 +10383,25 @@ private data class HandsUpdateDownload(
         return mapOf("status" to "ok", "token" to downloadId.toString(), "phase" to "failed")
     }
 
-    fun status(): Int =
+    fun status(): Int = statusAndReason().first
+
+    fun statusAndReason(): Pair<Int, Int?> =
             if (completed) {
-                DownloadManager.STATUS_SUCCESSFUL
+                DownloadManager.STATUS_SUCCESSFUL to null
             } else {
-                queryStatus()
+                queryStatusAndReason()
             }
 
-    private fun queryStatus(): Int {
+    private fun queryStatusAndReason(): Pair<Int, Int?> {
         val cursor = downloadManager.query(DownloadManager.Query().setFilterById(downloadId))
-                ?: return DownloadManager.STATUS_FAILED
+                ?: return DownloadManager.STATUS_FAILED to null
         cursor.use {
-            if (!it.moveToFirst()) return DownloadManager.STATUS_FAILED
-            val index = it.getColumnIndex(DownloadManager.COLUMN_STATUS)
-            return if (index >= 0) it.getInt(index) else DownloadManager.STATUS_FAILED
+            if (!it.moveToFirst()) return DownloadManager.STATUS_FAILED to null
+            val statusIndex = it.getColumnIndex(DownloadManager.COLUMN_STATUS)
+            val status = if (statusIndex >= 0) it.getInt(statusIndex) else DownloadManager.STATUS_FAILED
+            val reasonIndex = it.getColumnIndex(DownloadManager.COLUMN_REASON)
+            val reason = if (reasonIndex >= 0) it.getInt(reasonIndex) else null
+            return status to reason
         }
     }
 }
