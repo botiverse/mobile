@@ -95,7 +95,7 @@ class RaftMobileWebPanelUiTest {
     }
 
     @Test
-    fun raftAppBottomBarShowsAppIdentitySignedInAsAndOmitsOpenInBrowser() = runRobolectricComposeUiTest {
+    fun raftAppBottomBarShowsAppIdentitySignedInAsAndOffersOpenInBrowser() = runRobolectricComposeUiTest {
         val actions = mutableListOf<String>()
 
         setContent {
@@ -109,7 +109,7 @@ class RaftMobileWebPanelUiTest {
                     onClose = { actions += "close" },
                     onShare = { actions += "share" },
                     onCopyLink = { actions += "copy" },
-                    onOpenInBrowser = null,
+                    onOpenInBrowser = { actions += "open_browser" },
                 )
             }
         }
@@ -119,14 +119,13 @@ class RaftMobileWebPanelUiTest {
         onNodeWithTag(RAFT_WEB_PANEL_SIGNED_IN_LABEL_TAG).assertIsDisplayed()
         onNodeWithText("Signed in as Mia").assertIsDisplayed()
 
-        // Layer 2 Raft App overflow menu has Share and Copy link ONLY — NO "Open in browser".
+        // Layer 2 Raft App overflow menu also offers "Open in browser" (#proj-mobile:#409).
         onNodeWithTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG).performClick()
         onNodeWithText("Share").assertIsDisplayed()
         onNodeWithText("Copy link").assertIsDisplayed()
-        onAllNodesWithText("Open in browser").assertCountEquals(0)
-        onNodeWithText("Copy link").performClick()
+        onNodeWithText("Open in browser").assertIsDisplayed().performClick()
 
-        assertEquals(listOf("copy"), actions)
+        assertEquals(listOf("open_browser"), actions)
     }
 
     @Test

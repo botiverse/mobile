@@ -95,26 +95,17 @@ class RaftMobileWebPanelStateTest {
     }
 
     @Test
-    fun overflowMenuOmitsOpenInBrowserForRaftAppsOnly() {
-        assertEquals(
+    fun overflowMenuIncludesOpenInBrowserForBothLayers() {
+        val expected =
             listOf(
                 RaftMobileWebPanelMenuAction.Reload,
                 RaftMobileWebPanelMenuAction.ForwardToRaft,
                 RaftMobileWebPanelMenuAction.Share,
                 RaftMobileWebPanelMenuAction.CopyLink,
                 RaftMobileWebPanelMenuAction.OpenInBrowser,
-            ),
-            raftMobileWebPanelMenuActions(isRaftApp = false),
-        )
-        assertEquals(
-            listOf(
-                RaftMobileWebPanelMenuAction.Reload,
-                RaftMobileWebPanelMenuAction.ForwardToRaft,
-                RaftMobileWebPanelMenuAction.Share,
-                RaftMobileWebPanelMenuAction.CopyLink,
-            ),
-            raftMobileWebPanelMenuActions(isRaftApp = true),
-        )
+            )
+        assertEquals(expected, raftMobileWebPanelMenuActions(isRaftApp = false))
+        assertEquals(expected, raftMobileWebPanelMenuActions(isRaftApp = true))
     }
 
     @Test
