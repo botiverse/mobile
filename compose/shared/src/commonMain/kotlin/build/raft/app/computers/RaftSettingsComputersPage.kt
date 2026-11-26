@@ -111,6 +111,8 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.data.SettingsComputerOwnerRequest
 import build.raft.designsystem.components.RaftToastIntent
 import build.raft.app.data.COMPUTER_ACTION_SCAN_WORKSPACES
+import build.raft.app.data.ComputerOthersAgentsRepository
+import build.raft.app.data.NetworkComputerOthersAgentsRepository
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.BundledRuntimeCatalog
@@ -692,21 +694,40 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisible: Boolean) {
         settingsViewModel::dispatch,
         description = if (approvingCode) stringResource(Res.string.settings_computers_code_step_up_notice) else null,
     )
-    // A card's ⋯ → Delete computer (web RackRowMenu → DeleteComputerDialog): the Computer page's
-    // confirm; the agents on it are the ones the cards show.
+    // A card's ⋯ → Delete computer (web RackRowMenu → DeleteComputerDialog): own computers route
+    // through revoke-computer-key (`delete: true`) so other people's agents show the notify / force
+    // unbind flow; someone else's computer or a raw daemon deletes directly when empty.
+    val rackOthersAgentsRepository =
+        remember(sharedStores, environment.storeScope) {
+            NetworkComputerOthersAgentsRepository(sharedStores.networkClient(environment.storeScope))
+        }
     deleteComputerId?.let { machineId ->
         val row = (model as? RaftComputersListModel.Content)?.rows?.firstOrNull { it.id == machineId }
+        val computerSnapshot =
+            (settingsState.computers as? ScreenLoadState.Content)?.data?.computers?.firstOrNull { it.id == machineId }
         if (row == null) {
             deleteComputerId = null
         } else {
             RaftComputersTheme {
-                RaftComputerDeleteDialog(
-                    name = row.name,
-                    agentCount = agentsByMachine[machineId]?.size ?: 0,
-                    onConfirm = {
+                RaftComputerDeleteFlowDialog(
+                    serverId = currentServerId?.let(::ServerId),
+                    machineId = machineId,
+                    computerName = computerSnapshot?.name ?: row.name,
+                    isComputer = computerSnapshot?.isComputer ?: (row.kind == RaftComputerKind.Computer),
+                    attachedByCurrentUser = computerSnapshot?.attachedByCurrentUser == true,
+                    agents =
+                        agentsByMachine[machineId].orEmpty().map { agent ->
+                            RaftComputerDeleteAgentRef(
+                                creatorUserId = agent.creatorUserId,
+                                assistantOwnerUserId = agent.assistantOwnerUserId,
+                            )
+                        },
+                    currentUserId = routeOwner?.accountId,
+                    repository = rackOthersAgentsRepository,
+                    onDeleted = {
                         deleteComputerId = null
                         bridge.log("settings_computers_card_delete")
-                        settingsViewModel.dispatch(SharedSettingsIntent.DeleteComputer(machineId))
+                        settingsViewModel.dispatch(SharedSettingsIntent.ForgetDeletedComputer(machineId))
                     },
                     onDismiss = { deleteComputerId = null },
                 )
@@ -2934,6 +2955,10 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
         remember(sharedStores, environment.storeScope) {
             RaftComputersApiClient(RaftComputersNetworkApi(sharedStores.networkClient(environment.storeScope)))
         }
+    val othersAgentsRepository =
+        remember(sharedStores, environment.storeScope) {
+            NetworkComputerOthersAgentsRepository(sharedStores.networkClient(environment.storeScope))
+        }
     val phonePullWorkspaces = raftPlatformPullToRefreshStyle() != RaftPullToRefreshStyle.None && !raftWindowWide()
     val workspacesScanning =
         settingsState.actionState?.let {
@@ -3032,6 +3057,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                 onCancelHandover = {
                     handoverController.cancel(procJobsServerId?.let(::ServerId), target.machineId)
                 },
+                othersAgentsRepository = othersAgentsRepository,
             )
         }
         }
@@ -3104,6 +3130,8 @@ internal fun RaftSettingsComputerDetailContent(
     onCancelHandover: (suspend () -> DataResult<ComputerHandoverState>)? = null,
     /** Retries runtime detection on the Computer (`POST …/runtimes/rescan`, slock #16477); null hides Retry. */
     onRescanRuntimes: (suspend () -> ComputerRuntimeRescanResult)? = null,
+    /** Revoke-and-delete / notify-agent-owners repository for Delete Computer (#wg-mobile-sync:#63). */
+    othersAgentsRepository: ComputerOthersAgentsRepository? = null,
 ) {
     build.raft.app.data.EnsureServerModelLabelCatalog(serverId)
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
@@ -3155,6 +3183,7 @@ internal fun RaftSettingsComputerDetailContent(
                     onDesignateHandover = onDesignateHandover,
                     onCancelHandover = onCancelHandover,
                     onRescanRuntimes = onRescanRuntimes,
+                    othersAgentsRepository = othersAgentsRepository,
                 )
         }
     }
@@ -3185,6 +3214,7 @@ private fun RaftComputerDetailBody(
     onDesignateHandover: (suspend (String) -> DataResult<ComputerHandoverState>)? = null,
     onCancelHandover: (suspend () -> DataResult<ComputerHandoverState>)? = null,
     onRescanRuntimes: (suspend () -> ComputerRuntimeRescanResult)? = null,
+    othersAgentsRepository: ComputerOthersAgentsRepository? = null,
 ) {
     val computer = model.computer
     val snapshot = model.snapshot
@@ -3595,15 +3625,39 @@ private fun RaftComputerDetailBody(
         }
     }
     if (confirmDelete) {
-        RaftComputerDeleteDialog(
-            name = computer.name,
-            agentCount = model.assignedAgentCount,
-            onConfirm = {
-                confirmDelete = false
-                onIntent(SharedSettingsIntent.DeleteComputer(machineId))
-            },
-            onDismiss = { confirmDelete = false },
-        )
+        if (othersAgentsRepository != null) {
+            RaftComputerDeleteFlowDialog(
+                serverId = serverId?.let(::ServerId),
+                machineId = machineId,
+                computerName = computer.name,
+                isComputer = snapshot.computer.isComputer,
+                attachedByCurrentUser = snapshot.computer.attachedByCurrentUser,
+                agents =
+                    snapshot.agents.map { agent ->
+                        RaftComputerDeleteAgentRef(
+                            creatorUserId = agent.creatorUserId ?: agent.memberProfile?.agentCreatorUserId,
+                            assistantOwnerUserId = agent.assistantOwnerUserId ?: agent.memberProfile?.assistantOwnerUserId,
+                        )
+                    },
+                currentUserId = snapshot.currentUserId,
+                repository = othersAgentsRepository,
+                onDeleted = {
+                    confirmDelete = false
+                    onIntent(SharedSettingsIntent.ForgetDeletedComputer(machineId))
+                },
+                onDismiss = { confirmDelete = false },
+            )
+        } else {
+            RaftComputerDeleteDialog(
+                name = computer.name,
+                agentCount = model.assignedAgentCount,
+                onConfirm = {
+                    confirmDelete = false
+                    onIntent(SharedSettingsIntent.DeleteComputer(machineId))
+                },
+                onDismiss = { confirmDelete = false },
+            )
+        }
     }
 }
 

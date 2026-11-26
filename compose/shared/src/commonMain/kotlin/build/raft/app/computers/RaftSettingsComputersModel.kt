@@ -844,6 +844,8 @@ internal data class RaftComputerCardAgent(
     val id: String,
     val name: String,
     val avatarWireValue: String?,
+    val creatorUserId: String? = null,
+    val assistantOwnerUserId: String? = null,
 )
 
 private const val RAFT_COMPUTER_ID_BADGE_PREFIX = "computer-id:"
@@ -872,6 +874,8 @@ internal fun raftComputerAgentsByMachine(members: List<MemberProfile>): Map<Stri
                 id = member.id.value,
                 name = member.displayName.trim().ifBlank { member.handle },
                 avatarWireValue = member.avatarWireValueForAvatarSlot(),
+                creatorUserId = member.agentCreatorUserId,
+                assistantOwnerUserId = member.assistantOwnerUserId,
             )
     }
     return byMachine
