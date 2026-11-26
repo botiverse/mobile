@@ -62,7 +62,7 @@ Colours are generated; never edit `RaftUiColorTokens.g.kt` by hand. Follow
 4. `python3 tools/design-tokens/gen_theme_decor.py` and
    `python3 tools/design-tokens/gen_dimensions.py` (the Web's lengths in `Compact` / `Wide` /
    `Fine`) and `python3 tools/design-tokens/gen_component_tokens.py` (raft-ui's
-   `tokens.resolved.json`: the component tokens in `Touch` / `Fine` / `Desktop`), then each with
+   `tokens.resolved.json`: the component tokens in `Touch` / `Fine` / `Desktop` / `WideTouch`), then each with
    `--check`. Copy `tokens.resolved.json` with the stylesheets.
 5. Every changed colour or length in the Kotlin diff is a visible change: say so in the PR.
 

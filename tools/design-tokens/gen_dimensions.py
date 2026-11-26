@@ -6,7 +6,8 @@ styles.css + foundation.css and the Web index.css. Every custom property whose v
 a length is resolved in three contexts, as the Web applies them:
 
   compact  a phone (below 48rem)
-  wide     48rem and up, by touch (a tablet)
+  wide     48rem and up, by touch (a tablet; raft-ui's `wideTouch`,
+           `@media (width >= 48rem) and (pointer: coarse)`)
   fine     48rem and up with a mouse or trackpad (`@media (width >= 48rem) and (pointer: fine)`)
 
 Only declarations on the root (`@theme`, `:root`, `:where(:root)`, `:host`, `.light`) count; the
@@ -72,8 +73,12 @@ def context_of(stack):
         return CONTEXTS
     wide = re.search(r"width\s*>=\s*48rem", m)
     fine = "pointer: fine" in m or "pointer:fine" in m
+    coarse = "pointer: coarse" in m or "pointer:coarse" in m
     if wide and fine:
         return ("fine",)
+    if wide and coarse:
+        # Wide touch (raft-ui 0.103.4, raft-design #1416): 48rem and up by touch, a tablet.
+        return ("wide",)
     if wide:
         return ("wide", "fine")
     if fine:

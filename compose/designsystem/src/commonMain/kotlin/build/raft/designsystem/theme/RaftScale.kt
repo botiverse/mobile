@@ -67,7 +67,7 @@ enum class RaftPointerInput {
 /**
  * raft-ui's component tokens for a window of [scale] used by [pointerInput]: [RaftUiComponentTokens.Desktop]
  * on a wide window with a mouse or trackpad, [RaftUiComponentTokens.Fine] with a mouse in a narrow
- * one, else [RaftUiComponentTokens.Touch]. The app's wide layout starts at [RaftScale.WideMinWidth]
+ * one, [RaftUiComponentTokens.WideTouch] on a wide window by touch, else [RaftUiComponentTokens.Touch]. The app's wide layout starts at [RaftScale.WideMinWidth]
  * (744), the Web's desktop at 768.
  */
 fun raftComponentTokens(scale: RaftScale, pointerInput: RaftPointerInput): RaftUiComponentTokens.Values =
@@ -78,8 +78,8 @@ fun raftComponentTokens(scale: RaftScale, pointerInput: RaftPointerInput): RaftU
  * window ([RaftScale.Wide]: a tablet, an unfolded Duo, a phone held sideways at 744 and up) takes the short head
  * ([RaftControlMetrics.MobileShortHead], 48): the screen has room for more of the content, not for taller heads
  * (artin, #wg-mobile-sync:#265). Its bar buttons are 36 with a 20 glyph (not the phone's 44 and 22), so they
- * sit in the 48 head with 6 above and below; raft-design #1416 names this raft-ui's `wideTouch` context
- * (`header-height` 48, `bar-button-size` 36, `bar-icon-size` 20), not yet in a published raft-ui.
+ * sit in the 48 head with 6 above and below: raft-ui's `wideTouch` context (raft-ui 0.103.4, raft-design
+ * #1416: `header-height` 48, `bar-button-size` 36, `bar-icon-size` 20).
  */
 fun raftControlMetrics(scale: RaftScale, pointerInput: RaftPointerInput): RaftControlMetrics =
     when {
@@ -204,9 +204,9 @@ data class RaftControlMetrics(
          */
         fun of(tokens: RaftUiComponentTokens.Values): RaftControlMetrics {
             val desktop = tokens == RaftUiComponentTokens.Desktop
-            // App-only: raft-ui has no token for a bar button's glyph (Button `icon-lg` draws the
-            // control icon, 22; the desktop bar button's is 16) or for the settings cards.
-            val barIconSize = if (desktop) 16.dp else tokens.controlIconSize
+            // `bar-icon-size` (raft-ui 0.103.4): 22 on a phone, 20 by touch on a wide window. App-only:
+            // the desktop bar button's glyph stays 16 (raft-ui's is 18), and the settings cards.
+            val barIconSize = if (desktop) 16.dp else tokens.barIconSize
             return RaftControlMetrics(
                 height = tokens.controlHeight,
                 ctaHeight = tokens.controlHeightCta,
@@ -240,26 +240,18 @@ data class RaftControlMetrics(
         val Mobile = of(RaftUiComponentTokens.Touch)
 
         /**
-         * The touch context in a wide window: [Mobile] with the short head (raft-ui
-         * `header-height-short`, 48) and its bar buttons at the frame item's 36 (web
-         * `size-icon-header`, which keeps 36 in the 48 head), their glyph at the rail's 20, so a
-         * head's buttons sit in it with 6 above and below as the top bar's items do, instead of a
-         * 44 button with 2.
+         * The touch context in a wide window, raft-ui's `wideTouch` (0.103.4, raft-design #1416):
+         * the 48 head, its bar buttons at 36 with a 20 glyph, so a head's buttons sit in it with
+         * 6 above and below as the top bar's items do, instead of a 44 button with 2. App-only on
+         * top: the bar buttons' corners at `radius-control`, the head's small avatar and the
+         * sidebar's touch row height.
          */
-        val MobileShortHead: RaftControlMetrics = run {
-            val touch = RaftUiComponentTokens.Touch
-            val button = touch.frameItemHeight
-            val glyph = 20.dp
-            Mobile.copy(
-                headHeight = touch.headerHeightShort,
-                barButtonSize = button,
-                barIconSize = glyph,
+        val MobileShortHead: RaftControlMetrics =
+            of(RaftUiComponentTokens.WideTouch).copy(
                 barButtonRadius = RaftRadius.Control,
-                barEdgeInset = touch.pageInset - (button - glyph) / 2,
                 headAvatar = RaftAvatarSize.Sm,
-                sidebarRowHeight = touch.rowHeight,
+                sidebarRowHeight = RaftUiComponentTokens.WideTouch.rowHeight,
             )
-        }
 
         /** The desktop context: a wide window with a mouse or trackpad (34dp controls). */
         val Desktop = of(RaftUiComponentTokens.Desktop)

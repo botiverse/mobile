@@ -117,6 +117,18 @@
     color: var(--foreground);
   }
 
+  /* Raft Desktop raised this page above a built-in browser page while an
+     overlay covers it (features/webPreview/nativeViewHole.ts): #root is cut
+     open over the browser's placeholder and paints its own paper elsewhere,
+     so html and body paint none and the browser page shows through.
+     !important: the desktop frontend's boot skeleton paints the body from an
+     unlayered <style> (apps/desktop/frontend/index.html), which a layered rule
+     loses to. */
+  html[data-native-view-hole],
+  html[data-native-view-hole] body {
+    background: transparent !important;
+  }
+
   /* #root is pinned to the visual viewport by trackVisualViewport() in
      main.tsx, which writes #root's own inline height / top — only while the
      software keyboard is up. Otherwise the rule below applies: 100dvh, the
@@ -1300,7 +1312,7 @@
 }
 
 [data-slot="panel-header"][data-host-head-compact] :is([data-slot="panel-action"], [data-slot="panel-toggle-action"]) {
-  padding-inline: calc((var(--bar-button-size) - var(--control-icon-size) - 3px) / 2);
+  padding-inline: calc((var(--bar-button-size) - var(--bar-icon-size) - 3px) / 2);
 }
 
 [data-slot="panel-header"][data-host-head-compact] [data-slot="panel-title-trigger"] {

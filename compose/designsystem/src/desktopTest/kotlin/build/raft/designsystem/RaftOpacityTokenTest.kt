@@ -9,7 +9,7 @@ import kotlin.test.assertEquals
 class RaftOpacityTokenTest {
     @Test
     fun dimmedIsTheToken() {
-        for (context in listOf(RaftUiComponentTokens.Touch, RaftUiComponentTokens.Fine, RaftUiComponentTokens.Desktop)) {
+        for (context in listOf(RaftUiComponentTokens.Touch, RaftUiComponentTokens.Fine, RaftUiComponentTokens.Desktop, RaftUiComponentTokens.WideTouch)) {
             assertEquals(context.opacityDimmed, RaftOpacity.Dimmed)
         }
     }
