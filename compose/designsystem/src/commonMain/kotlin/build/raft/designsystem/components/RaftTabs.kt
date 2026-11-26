@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
@@ -119,8 +120,9 @@ fun RaftTabs(
  * page around the strip stays where it is.
  *
  * [inHead]: the strip stands in a head's title slot (a pane grid column's row tabs, #189 rule 4, web RowTabs in
- * `PanelHeaderContent`): no seam under it (the head has its own), no padding round the tabs, no safe-area padding (the
- * head keeps its content out of it); it still scrolls and fades.
+ * `PanelHeaderContent`): no seam under it (the head has its own), no padding round the tabs but the focus ring's
+ * room, given back past the slot's edges (raft-ui 0.105.0 TabsList `p-1 -m-1`), no safe-area padding (the head keeps
+ * its content out of it); it still scrolls and fades.
  */
 @Composable
 fun RaftTabStrip(
@@ -187,6 +189,7 @@ internal fun RaftTabStripImpl(
         Box(
             Modifier
                 .fillMaxWidth()
+                .then(if (inHead) Modifier.raftRingRoom(raftTabsRingRoom(variant)) else Modifier)
                 // Read in the draw phase: reaching an edge redraws, the modifiers stay.
                 .raftEdgeFade(colors.layerCanvas, start = { scroll.canScrollBackward }, end = { scroll.canScrollForward })
                 .then(backSwipe.modifier)
@@ -195,7 +198,9 @@ internal fun RaftTabStripImpl(
             CompositionLocalProvider(LocalRaftTabStripScroll provides strip) {
                 RaftTabs(
                     if (inHead) {
-                        Modifier.onPlaced { strip.content = it }
+                        Modifier
+                            .onPlaced { strip.content = it }
+                            .padding(horizontal = raftTabsRingRoom(variant))
                     } else {
                         Modifier
                             .onPlaced { strip.content = it }
@@ -217,6 +222,31 @@ internal fun RaftTabStripImpl(
 /** A [RaftTabStrip]'s side padding (raft-ui ConversationPanelTabs `px-4`), also its reveal inset. */
 private val RaftTabStripInset = 16.dp
 
+/**
+ * How far a tab draws past its box at the row's ends (raft-ui 0.105.0 TabsList, raft-design #1448):
+ * a sticker tab's outward focus ring, 4dp (`p-1 -m-1`); an underline tab's ring, 10dp past its text
+ * (`px-2.5 -mx-2.5`). A strip with its own [RaftTabStripInset] already has the room.
+ */
+private fun raftTabsRingRoom(variant: RaftTabsVariant): Dp =
+    if (variant == RaftTabsVariant.Default) 4.dp else 10.dp
+
+/**
+ * CSS `-mx-[room]` on a row that pads itself by [room]: lays the element out [room] wider on each side
+ * and gives the width back, so its content stays in place and the row's clip (its scroll, its edge
+ * fade) leaves [room] for what the content draws past its own box.
+ */
+private fun Modifier.raftRingRoom(room: Dp): Modifier =
+    layout { measurable, constraints ->
+        val extra = room.roundToPx() * 2
+        val widened =
+            constraints.copy(
+                minWidth = constraints.minWidth + extra,
+                maxWidth = if (constraints.hasBoundedWidth) constraints.maxWidth + extra else constraints.maxWidth,
+            )
+        val placeable = measurable.measure(widened)
+        layout(placeable.width - extra, placeable.height) { placeable.place(-extra / 2, 0) }
+    }
+
 /** How far a scrolling tab strip fades at an edge with more tabs past it. */
 private val RaftEdgeFadeWidth = RaftFade.Edge
 
@@ -224,9 +254,9 @@ private val RaftEdgeFadeWidth = RaftFade.Edge
  * Fades the content out towards the start / end edge while [start] / [end] say so (CSS
  * `mask-image` gradient), by drawing a [fill] gradient over it: the strip is all [fill],
  * so that looks the same as the mask, and with no offscreen layer nothing clips the
- * focus ring that a tab draws outside the strip (an underline tab's ring runs 4dp above
- * and below it). The draw step is always attached; only the fade's width changes (0 at
- * an edge with nothing past it), read in the draw phase.
+ * focus ring that a sticker tab draws outside its box (4dp all round). The draw step is
+ * always attached; only the fade's width changes (0 at an edge with nothing past it), read
+ * in the draw phase.
  */
 private fun Modifier.raftEdgeFade(fill: Color, start: () -> Boolean, end: () -> Boolean): Modifier =
     drawWithContent {
@@ -309,7 +339,13 @@ fun RaftTab(
     val reveal = if (strip != null) Modifier.raftRevealInStripWhen(selected, strip, room = RaftTabStripInset) else Modifier
     when (variant) {
         // raft-ui's `tabs-tab` slot; a page's own name on the tab wins.
-        RaftTabsVariant.Default -> RaftStickerItem(text, selected, enabled, source, modifier.raftDefaultSlot("tabs-tab").then(reveal).then(target).then(select), icon = icon)
+        RaftTabsVariant.Default -> {
+            // `focus-visible:z-raised` (raft-ui 0.105.0, raft-design #1448): the focused tab's ring
+            // goes over its neighbour across the 2dp gap.
+            val isFocused = raftIsFocused(source)
+            val raised = if (enabled && isFocused) Modifier.zIndex(1f) else Modifier
+            RaftStickerItem(text, selected, enabled, source, modifier.raftDefaultSlot("tabs-tab").then(reveal).then(target).then(select).then(raised), icon = icon)
+        }
         RaftTabsVariant.Underline -> RaftUnderlineTab(text, selected, enabled, source, modifier.raftDefaultSlot("tabs-tab").then(reveal).then(select), icon)
     }
 }
@@ -404,13 +440,20 @@ private fun RaftUnderlineTab(
             // 44 with a finger; the shared 34dp row height under a fine pointer (sizing v12,
             // raft-ui 0.65 desktop density).
             .heightIn(min = RaftTheme.controls.rowHeight ?: 44.dp)
-            .raftFocusRing(focused, 0.dp, colors)
             .drawWithContent {
                 drawContent()
                 // `data-active:shadow-[inset_0_-2px_0_var(--foreground)]`
                 if (selected && enabled) {
                     val h = 2.dp.toPx()
                     drawRect(line, topLeft = Offset(0f, size.height - h), size = Size(size.width, h))
+                }
+                // raft-ui 0.105.0 (raft-design #1448): `before:inset-y-1.5 before:-inset-x-2.5
+                // focus-visible:keyboard:before:inset-ring-2 inset-ring-foreground`, a 2dp ring inside
+                // a shape 6dp in from the top and bottom and 10dp past the text, apart from the line.
+                if (focused) {
+                    val x = 10.dp.toPx()
+                    val y = 6.dp.toPx()
+                    drawRaftInsetFocusRing(Rect(-x, y, size.width + x, size.height - y), RaftRadius.Control, colors.foreground)
                 }
             },
         horizontalArrangement = Arrangement.spacedBy(6.dp),
