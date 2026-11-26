@@ -17,8 +17,14 @@ import build.raft.app.data.RaftAuthApiClient
 import build.raft.app.data.RaftAndroidPushRegistrationBridge
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftLocalPreferenceStore
+import build.raft.app.data.RaftPushDeliveryAppState
+import build.raft.app.data.RaftPushDeliverySuppressReason
+import build.raft.app.data.RaftPushDeliveryTransport
 import build.raft.app.data.buildSystemUnreadNotificationRequestFromPush
+import build.raft.app.data.normalizePushDeliveryCategory
+import build.raft.app.data.normalizePushDeliveryId
 import build.raft.app.data.postAndroidAppScopeEvent
+import build.raft.app.data.pushDeliveryCategoryKindHint
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectionState
 import build.raft.app.data.realtime.RealtimeConnectRequest
@@ -33,8 +39,10 @@ import build.raft.app.data.realtime.raftRealtimeSocketTransport
 import build.raft.app.data.realtime.realtimeRawPayloadJson
 import build.raft.app.model.ChannelId
 import build.raft.app.push.AndroidFcmReachabilityController
+import build.raft.app.push.AndroidPushDeliveryTracker
 import build.raft.app.push.FcmReachabilityStatus
 import build.raft.app.push.RaftPlayServicesAvailability
+import build.raft.app.push.androidSocketBackgroundSkipSuppressReason
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
 import build.raft.app.model.NotificationPushReceived
@@ -455,6 +463,41 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             event: NotificationNoticeReceived,
             isAppInForeground: Boolean
         ) {
+            val deliveryId = normalizePushDeliveryId(event.deliveryId)
+            val appState =
+                if (isAppInForeground) RaftPushDeliveryAppState.Foreground else RaftPushDeliveryAppState.Background
+            val accountId =
+                if (deliveryId != null) runCatching { sessionStore.readSession()?.user?.id }.getOrNull() else null
+            if (deliveryId != null) {
+                AndroidPushDeliveryTracker.recordReceived(
+                    context = appContext,
+                    deliveryId = deliveryId,
+                    serverId = event.serverId.value,
+                    transport = RaftPushDeliveryTransport.MobileSocket,
+                    appState = appState,
+                    category = normalizePushDeliveryCategory(category = event.category),
+                    accountId = accountId,
+                )
+            }
+            if (event.phoneAlert == false) {
+                if (deliveryId != null) {
+                    AndroidPushDeliveryTracker.recordPresented(
+                        context = appContext,
+                        deliveryId = deliveryId,
+                        serverId = event.serverId.value,
+                        transport = RaftPushDeliveryTransport.MobileSocket,
+                        appState = appState,
+                        presented = false,
+                        suppressReason = RaftPushDeliverySuppressReason.PhoneAlertFalse,
+                        accountId = accountId,
+                    )
+                }
+                RaftAppLog.w(
+                    LOG_TAG,
+                    "background_notice_skip reason=phone_alert_false serverId=${event.serverId.value} category=${event.category}"
+                )
+                return
+            }
             val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
             val remotePushActive =
                 isRemotePushActive(
@@ -470,6 +513,24 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                     )
                 )
             if (!shouldPostBackgroundUnreadNotification(false, preferenceEnabled, isAppInForeground, remotePushActive)) {
+                if (deliveryId != null) {
+                    AndroidPushDeliveryTracker.recordPresented(
+                        context = appContext,
+                        deliveryId = deliveryId,
+                        serverId = event.serverId.value,
+                        transport = RaftPushDeliveryTransport.MobileSocket,
+                        appState = appState,
+                        presented = false,
+                        suppressReason =
+                            androidSocketBackgroundSkipSuppressReason(
+                                preferenceEnabled = preferenceEnabled,
+                                isAppInForeground = isAppInForeground,
+                                remotePushActive = remotePushActive,
+                                phoneAlert = event.phoneAlert,
+                            ),
+                        accountId = accountId,
+                    )
+                }
                 RaftAppLog.w(
                     LOG_TAG,
                     "background_notice_skip reason=${backgroundUnreadNotificationSkipReason(false, preferenceEnabled, isAppInForeground, remotePushActive)} " +
@@ -489,8 +550,25 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                     .put("silent", event.silent == true)
                     .put("route", event.routeJson.orEmpty())
                     .put("subtitle", event.subtitle.orEmpty())
+                    .put("deliveryId", event.deliveryId.orEmpty())
+                    .apply {
+                        if (!event.deliveryId.isNullOrBlank()) {
+                            put("deliveryTransport", RaftPushDeliveryTransport.MobileSocket.wire)
+                        }
+                    }
                     .let { with(AndroidUnreadNotificationPoster) { it.putRaftNotificationLocalization(event.localization) } }
             val result = AndroidUnreadNotificationPoster.postUnreadNotification(appContext, request)
+            if (deliveryId != null) {
+                AndroidPushDeliveryTracker.recordPosterOutcome(
+                    context = appContext,
+                    deliveryId = deliveryId,
+                    serverId = event.serverId.value,
+                    transport = RaftPushDeliveryTransport.MobileSocket,
+                    appState = appState,
+                    result = result,
+                    accountId = accountId,
+                )
+            }
             RaftAppLog.w(
                 LOG_TAG,
                 "background_notice_result code=${result["code"]} status=${result["status"]} serverId=${event.serverId.value} category=${event.category}"
@@ -504,6 +582,46 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             event: NotificationPushReceived,
             isAppInForeground: Boolean
         ) {
+            // While foregrounded, SettingsHomePage owns mobile_socket received/presented/opened
+            // reporting for message notifications via the in-app banner path (avoid double reporting).
+            val deliveryId = if (!isAppInForeground) normalizePushDeliveryId(event.deliveryId) else null
+            val accountId =
+                if (deliveryId != null) runCatching { sessionStore.readSession()?.user?.id }.getOrNull() else null
+            if (deliveryId != null) {
+                AndroidPushDeliveryTracker.recordReceived(
+                    context = appContext,
+                    deliveryId = deliveryId,
+                    serverId = event.serverId.value,
+                    transport = RaftPushDeliveryTransport.MobileSocket,
+                    appState = RaftPushDeliveryAppState.Background,
+                    category =
+                        normalizePushDeliveryCategory(
+                            category = event.category,
+                            kind = event.kind.pushDeliveryCategoryKindHint(),
+                            mentioned = event.mentioned == true,
+                        ),
+                    accountId = accountId,
+                )
+            }
+            if (event.phoneAlert == false) {
+                if (deliveryId != null) {
+                    AndroidPushDeliveryTracker.recordPresented(
+                        context = appContext,
+                        deliveryId = deliveryId,
+                        serverId = event.serverId.value,
+                        transport = RaftPushDeliveryTransport.MobileSocket,
+                        appState = RaftPushDeliveryAppState.Background,
+                        presented = false,
+                        suppressReason = RaftPushDeliverySuppressReason.PhoneAlertFalse,
+                        accountId = accountId,
+                    )
+                }
+                RaftAppLog.w(
+                    LOG_TAG,
+                    "background_unread_notification_skip reason=phone_alert_false serverId=${serverId.value} messageId=${event.messageId.value}"
+                )
+                return
+            }
             val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
             val hasAttachedConsumers = false
             // notification:push reaches every server's events over this one socket: decide by the
@@ -514,6 +632,24 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.messageId.value} preference_enabled=$preferenceEnabled foreground=$isAppInForeground eventServerId=${event.serverId.value} remote_push_active=$remotePushActive"
             )
             if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled, isAppInForeground, remotePushActive)) {
+                if (deliveryId != null) {
+                    AndroidPushDeliveryTracker.recordPresented(
+                        context = appContext,
+                        deliveryId = deliveryId,
+                        serverId = event.serverId.value,
+                        transport = RaftPushDeliveryTransport.MobileSocket,
+                        appState = RaftPushDeliveryAppState.Background,
+                        presented = false,
+                        suppressReason =
+                            androidSocketBackgroundSkipSuppressReason(
+                                preferenceEnabled = preferenceEnabled,
+                                isAppInForeground = isAppInForeground,
+                                remotePushActive = remotePushActive,
+                                phoneAlert = event.phoneAlert,
+                            ),
+                        accountId = accountId,
+                    )
+                }
                 RaftAppLog.w(
                     LOG_TAG,
                     "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(hasAttachedConsumers, preferenceEnabled, isAppInForeground, remotePushActive)} serverId=${serverId.value} messageId=${event.messageId.value}"
@@ -527,6 +663,18 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                     isAppInForeground = isAppInForeground
                 )
             if (request == null) {
+                if (deliveryId != null) {
+                    AndroidPushDeliveryTracker.recordPresented(
+                        context = appContext,
+                        deliveryId = deliveryId,
+                        serverId = event.serverId.value,
+                        transport = RaftPushDeliveryTransport.MobileSocket,
+                        appState = RaftPushDeliveryAppState.Background,
+                        presented = false,
+                        suppressReason = RaftPushDeliverySuppressReason.Unknown,
+                        accountId = accountId,
+                    )
+                }
                 RaftAppLog.w(
                     LOG_TAG,
                     "background_unread_notification_skip reason=policy serverId=${serverId.value} messageId=${event.messageId.value}"
@@ -534,6 +682,17 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 return
             }
             val result = AndroidUnreadNotificationPoster.postUnreadNotification(appContext, request)
+            if (deliveryId != null) {
+                AndroidPushDeliveryTracker.recordPosterOutcome(
+                    context = appContext,
+                    deliveryId = deliveryId,
+                    serverId = event.serverId.value,
+                    transport = RaftPushDeliveryTransport.MobileSocket,
+                    appState = RaftPushDeliveryAppState.Background,
+                    result = result,
+                    accountId = accountId,
+                )
+            }
             RaftAppLog.w(
                 LOG_TAG,
                 "background_unread_notification_result code=${result["code"]} status=${result["status"]} serverId=${serverId.value} messageId=${event.messageId.value}"

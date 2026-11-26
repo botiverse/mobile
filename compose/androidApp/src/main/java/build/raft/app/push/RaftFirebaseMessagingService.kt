@@ -2,7 +2,12 @@ package build.raft.app.push
 
 import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.data.RaftNotificationTestAck
+import build.raft.app.data.RaftPushDeliveryAppState
+import build.raft.app.data.RaftPushDeliverySuppressReason
+import build.raft.app.data.RaftPushDeliveryTransport
 import build.raft.app.data.RaftPushMessageType
+import build.raft.app.data.normalizePushDeliveryCategory
+import build.raft.app.data.normalizePushDeliveryId
 import build.raft.app.data.parseRaftFcmNotificationRetract
 import build.raft.app.data.parseRaftPushBadge
 import build.raft.app.network.raftProcessIsForeground
@@ -65,6 +70,28 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
                 AndroidFcmReachabilityController.onRealFcmDelivered(applicationContext, source = "alert_disabled")
                 // The second guard: the server already stops alerting a registration with alertsEnabled=false.
                 RaftAppLog.i(TAG, "fcm_message_suppressed reason=alerts_disabled")
+                normalizePushDeliveryId(data["deliveryId"])?.let { deliveryId ->
+                    val serverId = resolveAndroidPushServerId(data["serverId"], data["route"])
+                    val appState =
+                        if (raftProcessIsForeground()) RaftPushDeliveryAppState.Foreground else RaftPushDeliveryAppState.Background
+                    AndroidPushDeliveryTracker.recordReceived(
+                        context = applicationContext,
+                        deliveryId = deliveryId,
+                        serverId = serverId,
+                        transport = RaftPushDeliveryTransport.Fcm,
+                        appState = appState,
+                        category = normalizePushDeliveryCategory(category = data["category"], kind = data["kind"]),
+                    )
+                    AndroidPushDeliveryTracker.recordPresented(
+                        context = applicationContext,
+                        deliveryId = deliveryId,
+                        serverId = serverId,
+                        transport = RaftPushDeliveryTransport.Fcm,
+                        appState = appState,
+                        presented = false,
+                        suppressReason = RaftPushDeliverySuppressReason.AlertsDisabled,
+                    )
+                }
                 // A Settings test answered at once instead of waiting out the 15 s.
                 data["testId"]?.takeIf { it.isNotBlank() }?.let { RaftNotificationTestAck.ack(it, shown = false) }
             }
@@ -83,9 +110,35 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     private fun postAlert(data: Map<String, String>) {
-        if (raftFcmAlertSuppressedInForeground(data["category"], foreground = raftProcessIsForeground())) {
+        val foreground = raftProcessIsForeground()
+        val deliveryId = normalizePushDeliveryId(data["deliveryId"])
+        val serverId = resolveAndroidPushServerId(data["serverId"], data["route"])
+        val appState =
+            if (foreground) RaftPushDeliveryAppState.Foreground else RaftPushDeliveryAppState.Background
+        if (deliveryId != null) {
+            AndroidPushDeliveryTracker.recordReceived(
+                context = applicationContext,
+                deliveryId = deliveryId,
+                serverId = serverId,
+                transport = RaftPushDeliveryTransport.Fcm,
+                appState = appState,
+                category = normalizePushDeliveryCategory(category = data["category"], kind = data["kind"]),
+            )
+        }
+        if (raftFcmAlertSuppressedInForeground(data["category"], foreground = foreground)) {
             // In the foreground only the in-app banner shows (it gets the same notification over the
             // socket), as Slack does: no second, system copy.
+            if (deliveryId != null) {
+                AndroidPushDeliveryTracker.recordPresented(
+                    context = applicationContext,
+                    deliveryId = deliveryId,
+                    serverId = serverId,
+                    transport = RaftPushDeliveryTransport.Fcm,
+                    appState = appState,
+                    presented = false,
+                    suppressReason = RaftPushDeliverySuppressReason.ForegroundSuppressed,
+                )
+            }
             RaftAppLog.i(TAG, "fcm_message_suppressed reason=app_foreground")
             return
         }
@@ -102,11 +155,32 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
             )
         ) {
             // The user is already looking at this conversation: stay silent, same as the in-app banner.
+            if (deliveryId != null) {
+                AndroidPushDeliveryTracker.recordPresented(
+                    context = applicationContext,
+                    deliveryId = deliveryId,
+                    serverId = serverId,
+                    transport = RaftPushDeliveryTransport.Fcm,
+                    appState = appState,
+                    presented = false,
+                    suppressReason = RaftPushDeliverySuppressReason.VisibleConversation,
+                )
+            }
             RaftAppLog.i(TAG, "fcm_message_suppressed reason=visible_conversation")
             return
         }
         val request = raftFcmUnreadNotificationRequest(data)
         val result = AndroidUnreadNotificationPoster.postUnreadNotification(applicationContext, request)
+        if (deliveryId != null) {
+            AndroidPushDeliveryTracker.recordPosterOutcome(
+                context = applicationContext,
+                deliveryId = deliveryId,
+                serverId = serverId,
+                transport = RaftPushDeliveryTransport.Fcm,
+                appState = appState,
+                result = result,
+            )
+        }
         // A test from Settings (contract §6): confirm whether it reached the tray.
         data["testId"]?.takeIf { it.isNotBlank() }?.let { testId ->
             RaftNotificationTestAck.ack(testId, shown = result["status"] == "ok")
@@ -165,6 +239,9 @@ internal fun raftFcmUnreadNotificationRequest(data: Map<String, String>): JSONOb
         for (key in FCM_UNREAD_NOTIFICATION_KEYS) {
             put(key, data[key].orEmpty())
         }
+        if (!data["deliveryId"].isNullOrBlank()) {
+            put("deliveryTransport", RaftPushDeliveryTransport.Fcm.wire)
+        }
     }
 
 private val FCM_UNREAD_NOTIFICATION_KEYS =
@@ -208,5 +285,6 @@ private val FCM_UNREAD_NOTIFICATION_KEYS =
         "silent",
         "badge",
         "serverBadge",
-        "testId"
+        "testId",
+        "deliveryId"
     )

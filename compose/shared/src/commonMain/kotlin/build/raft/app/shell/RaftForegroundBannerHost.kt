@@ -22,6 +22,7 @@ import build.raft.app.markdown.markdownToPreviewText
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.messageNotificationText
+import build.raft.app.data.normalizePushDeliveryId
 import build.raft.app.data.raftNotificationTitleWithoutSubtitle
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
@@ -144,7 +145,9 @@ internal data class RaftForegroundMessageBanner(
      * [title] / [body], resolved only when the banner is drawn (never while building it).
      */
     val titleFallback: StringDesc? = null,
-    val bodyFallback: StringDesc? = null
+    val bodyFallback: StringDesc? = null,
+    /** #proj-mobile:#405: server-sampled opaque UUID carried from `notification:push` for `mobile.push.opened`. */
+    val deliveryId: String? = null
 )
 
 /** One banner model, route owner and expiry clock for one AppShell/window. */
@@ -1052,7 +1055,8 @@ internal fun raftNotificationPushBannerOrNull(
         avatarLabel = (event.senderName ?: event.title).trim().take(2).uppercase().ifBlank { "??" },
         crossServerSource = sourceIdentity.takeIf { otherServer },
         titleFallback = foregroundBannerTitle.catalogFallback(),
-        bodyFallback = foregroundBannerBody.catalogFallback()
+        bodyFallback = foregroundBannerBody.catalogFallback(),
+        deliveryId = normalizePushDeliveryId(event.deliveryId)
     )
 }
 

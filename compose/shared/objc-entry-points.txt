@@ -208,6 +208,8 @@ callable build.raft.app.data.RaftIosMobileOAuthStartResult.*
 callable build.raft.app.data.RaftIosMobileOAuthStartResult.Companion.*
 callable build.raft.app.data.RaftIosPixelAvatarRgba.*
 callable build.raft.app.data.RaftIosPixelAvatarRgba.Companion.*
+callable build.raft.app.data.RaftIosPushDeliveryTraceBridge.*
+callable build.raft.app.data.RaftIosPushDeliveryTraceBridge.Companion.*
 callable build.raft.app.data.RaftIosPushRegistrationBridge.*
 callable build.raft.app.data.RaftIosPushRegistrationBridge.Companion.*
 callable build.raft.app.data.RaftIosSealedInputsHost.*

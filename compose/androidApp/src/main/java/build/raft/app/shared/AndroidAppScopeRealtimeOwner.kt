@@ -24,6 +24,7 @@ import build.raft.app.data.RaftAndroidPushRegistrationBridge
 import build.raft.app.data.RaftAuthApiClient
 import build.raft.app.data.RaftHostNetworkNotifyContract
 import build.raft.app.data.RaftProductEvents
+import build.raft.app.data.RaftPushDeliveryAppState
 import build.raft.app.data.RaftRatingPrompt
 import build.raft.app.data.RaftRealtimeMaxSessions
 import build.raft.app.data.updateRaftHostVisibility
@@ -42,6 +43,7 @@ import build.raft.app.model.Message
 import build.raft.app.model.ServerId
 import build.raft.app.network.updateRaftProcessNetworkVisibility
 import build.raft.app.push.AndroidFcmReachabilityController
+import build.raft.app.push.AndroidPushDeliveryTracker
 import build.raft.app.push.androidNetworkSnapshotFrom
 import build.raft.app.push.queryActiveAndroidNetworkSnapshot
 import kotlinx.coroutines.CoroutineScope
@@ -112,6 +114,13 @@ internal object AndroidAppScopeRealtimeOwner {
     /** An activity received a new launch intent (onNewIntent): what it says about this open. */
     fun onActivityNewIntent(intent: Intent?) {
         RaftProductEvents.onAppOpenSignal(intent.raftAppOpenSignal())
+        installedApplicationContext?.let { context ->
+            AndroidPushDeliveryTracker.recordOpenedFromIntent(
+                context = context,
+                intent = intent,
+                appState = RaftPushDeliveryAppState.Background,
+            )
+        }
     }
 
     private val processVisibilityTracker =
@@ -354,6 +363,17 @@ internal object AndroidAppScopeRealtimeOwner {
                         // A fresh launch (not a restore) says how the app is being opened.
                         if (savedInstanceState == null) {
                             RaftProductEvents.onAppOpenSignal(activity.intent.raftAppOpenSignal())
+                            val openAppState =
+                                if (processVisibilityTracker.currentForegroundEpoch() == 0L) {
+                                    RaftPushDeliveryAppState.ColdStart
+                                } else {
+                                    RaftPushDeliveryAppState.Background
+                                }
+                            AndroidPushDeliveryTracker.recordOpenedFromIntent(
+                                context = activity.applicationContext,
+                                intent = activity.intent,
+                                appState = openAppState,
+                            )
                         }
                     }
 

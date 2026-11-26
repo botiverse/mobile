@@ -149,7 +149,9 @@ data class SystemUnreadNotificationRequest(
      */
     val subtitle: String? = null,
     val localization: RaftNotificationLocalization? = null,
-    val serverName: String? = null
+    val serverName: String? = null,
+    /** #proj-mobile:#405: server-sampled opaque UUID carried through to the Android tray intent. */
+    val deliveryId: String? = null
 )
 
 data class SystemUnreadNotificationServerGateResult(
@@ -317,7 +319,8 @@ fun buildSystemUnreadNotificationRequestFromPush(
         routeJson = push.routeJson,
         subtitle = push.subtitle,
         localization = push.localization,
-        serverName = push.serverName?.trim()?.takeIf { it.isNotEmpty() }
+        serverName = push.serverName?.trim()?.takeIf { it.isNotEmpty() },
+        deliveryId = push.deliveryId
     )
 }
 

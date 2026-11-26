@@ -34,10 +34,12 @@ import build.raft.app.shared.isAndroidSystemDark
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.data.RaftAuthSessionState
+import build.raft.app.data.RaftPushDeliveryTrace
 import build.raft.app.data.installAndroidAppScopeEventBus
 import build.raft.app.data.sessionOrNull
 import build.raft.app.network.installAndroidRaftAppIdentity
 import build.raft.app.network.installAndroidRaftUserAgentDevice
+import build.raft.app.push.AndroidPushDeliveryTracker
 import build.raft.app.push.AndroidPushRegistration
 import kotlinx.coroutines.runBlocking
 
@@ -115,6 +117,7 @@ class RaftApplication : Application() {
             }
         }
         installAndroidAppScopeSharedKeyValueStores(this)
+        AndroidPushDeliveryTracker.install(this)
         // Settings > Appearance > Theme, applied before any page composes.
         RaftAppAppearanceRuntime.onSystemDarkChanged(isAndroidSystemDark(resources.configuration.uiMode))
         RaftAppAppearanceRuntime.ensureLoaded()
@@ -153,8 +156,13 @@ class RaftApplication : Application() {
             }.getOrNull()
         if (initialSessionState is RaftAuthSessionState.SignedOut) {
             AndroidDynamicShortcutCoordinator.clear("cold_start_signed_out")
+            RaftPushDeliveryTrace.onSignedOut()
         }
         initialSessionState?.sessionOrNull?.let { session ->
+            RaftPushDeliveryTrace.setKnownAccountHint(
+                accountId = session.user.id,
+                serverId = session.currentServerId,
+            )
             RaftAndroidLocalDiagnostics.updateUserContext(
                 context = this,
                 userId = session.user.id,

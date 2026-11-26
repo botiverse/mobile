@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.MutableState
 import build.raft.app.data.SharedAuthDataSource
+import build.raft.app.data.pushDeliveryCategoryKindHint
 import build.raft.app.data.raftDedupeKey
 import build.raft.app.data.ArchivedNameCollision
 import build.raft.app.data.archivedNameCollisionOrNull
@@ -4090,11 +4091,55 @@ private fun RaftAppShellReadyContent(
                             if (!sharedStores.isActiveAppShellPager(pager.pagerId)) {
                                 return@runIfCurrentGrant
                             }
+                            val pushDeliveryId =
+                                if (build.raft.app.network.raftProcessIsForeground()) {
+                                    build.raft.app.data.normalizePushDeliveryId(event.deliveryId)
+                                } else {
+                                    null
+                                }
+                            if (pushDeliveryId != null) {
+                                build.raft.app.data.RaftPushDeliveryTrace.recordReceived(
+                                    deliveryId = pushDeliveryId,
+                                    serverId = event.serverId.value,
+                                    transport = build.raft.app.data.RaftPushDeliveryTransport.MobileSocket,
+                                    appState = build.raft.app.data.RaftPushDeliveryAppState.Foreground,
+                                    category =
+                                        build.raft.app.data.normalizePushDeliveryCategory(
+                                            category = event.category,
+                                            kind = event.kind.pushDeliveryCategoryKindHint(),
+                                            mentioned = event.mentioned == true,
+                                        ),
+                                )
+                            }
                             // One banner per notification, however many of the user's sockets delivered it.
                             if (!build.raft.app.data.RaftNotificationPushDedupe.firstForBanner(event.raftDedupeKey())) {
+                                if (pushDeliveryId != null) {
+                                    build.raft.app.data.RaftPushDeliveryTrace.recordPresented(
+                                        deliveryId = pushDeliveryId,
+                                        serverId = event.serverId.value,
+                                        transport = build.raft.app.data.RaftPushDeliveryTransport.MobileSocket,
+                                        appState = build.raft.app.data.RaftPushDeliveryAppState.Foreground,
+                                        presented = false,
+                                        suppressReason = build.raft.app.data.RaftPushDeliverySuppressReason.Dedup,
+                                    )
+                                }
+                                return@runIfCurrentGrant
+                            }
+                            if (event.phoneAlert == false) {
+                                if (pushDeliveryId != null) {
+                                    build.raft.app.data.RaftPushDeliveryTrace.recordPresented(
+                                        deliveryId = pushDeliveryId,
+                                        serverId = event.serverId.value,
+                                        transport = build.raft.app.data.RaftPushDeliveryTransport.MobileSocket,
+                                        appState = build.raft.app.data.RaftPushDeliveryAppState.Foreground,
+                                        presented = false,
+                                        suppressReason = build.raft.app.data.RaftPushDeliverySuppressReason.PhoneAlertFalse,
+                                    )
+                                }
                                 return@runIfCurrentGrant
                             }
                             if (latestForegroundMessageBannersEnabled) {
+                                var suppressedReason: String? = null
                                 val banner =
                                     raftNotificationPushBannerOrNull(
                                     event = event,
@@ -4109,6 +4154,7 @@ private fun RaftAppShellReadyContent(
                                     visibleRouteIdentities = foregroundBannerStore.visibleRouteIdentities(),
                                     conversationDirectory = latestAppShellConversationDirectory,
                                     onSuppressed = { reason ->
+                                        suppressedReason = reason
                                         bridge.log(
                                             "notification_push_banner_suppressed reason=$reason " +
                                                 "serverId=${event.serverId.value} messageId=${event.messageId.value} kind=${event.kind.name}"
@@ -4123,14 +4169,48 @@ private fun RaftAppShellReadyContent(
                                             mentioned = event.mentioned == true,
                                             strings = latestPushPreviewBannerStrings
                                         )
-                                banner?.let {
+                                if (banner != null) {
+                                    if (pushDeliveryId != null) {
+                                        build.raft.app.data.RaftPushDeliveryTrace.recordPresented(
+                                            deliveryId = pushDeliveryId,
+                                            serverId = event.serverId.value,
+                                            transport = build.raft.app.data.RaftPushDeliveryTransport.MobileSocket,
+                                            appState = build.raft.app.data.RaftPushDeliveryAppState.Foreground,
+                                            presented = true,
+                                        )
+                                    }
                                     bridge.log(
                                         "notification_push_banner_shown serverId=${event.serverId.value} " +
                                             "messageId=${event.messageId.value} kind=${event.kind.name}"
                                     )
-                                    foregroundBannerStore.show(it)
+                                    foregroundBannerStore.show(banner)
+                                } else if (pushDeliveryId != null) {
+                                    val mappedReason =
+                                        if (suppressedReason == "visible_conversation") {
+                                            build.raft.app.data.RaftPushDeliverySuppressReason.VisibleConversation
+                                        } else {
+                                            build.raft.app.data.RaftPushDeliverySuppressReason.Unknown
+                                        }
+                                    build.raft.app.data.RaftPushDeliveryTrace.recordPresented(
+                                        deliveryId = pushDeliveryId,
+                                        serverId = event.serverId.value,
+                                        transport = build.raft.app.data.RaftPushDeliveryTransport.MobileSocket,
+                                        appState = build.raft.app.data.RaftPushDeliveryAppState.Foreground,
+                                        presented = false,
+                                        suppressReason = mappedReason,
+                                    )
                                 }
                             } else {
+                                if (pushDeliveryId != null) {
+                                    build.raft.app.data.RaftPushDeliveryTrace.recordPresented(
+                                        deliveryId = pushDeliveryId,
+                                        serverId = event.serverId.value,
+                                        transport = build.raft.app.data.RaftPushDeliveryTransport.MobileSocket,
+                                        appState = build.raft.app.data.RaftPushDeliveryAppState.Foreground,
+                                        presented = false,
+                                        suppressReason = build.raft.app.data.RaftPushDeliverySuppressReason.AlertsDisabled,
+                                    )
+                                }
                                 foregroundBannerStore.dismiss()
                             }
                         }
@@ -8022,6 +8102,15 @@ private fun AppShellBannerAndExternalShareHosts(
             currentServerStore = sharedStores.localDataStore,
             currentServerIdOverride = readySession?.currentServerId?.let(::ServerId),
             onBannerClick = { target ->
+                target.deliveryId?.let { deliveryId ->
+                    build.raft.app.data.RaftPushDeliveryTrace.recordOpened(
+                        deliveryId = deliveryId,
+                        serverId = target.serverId,
+                        transport = build.raft.app.data.RaftPushDeliveryTransport.MobileSocket,
+                        appState = build.raft.app.data.RaftPushDeliveryAppState.Foreground,
+                        openSurface = build.raft.app.data.RaftPushDeliveryOpenSurface.InAppBanner,
+                    )
+                }
                 foregroundBannerStore.dismiss(target.id)
                 val crossServerSource = target.crossServerSource
                 if (crossServerSource != null) {

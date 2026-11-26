@@ -394,6 +394,15 @@ private val clientTraceJson =
     @RaftCoreInternalApi fun droppedNotYetReported(reason: RaftClientTraceDropReason): Int =
         synchronized(lock) { dropTallies.getValue(reason).count }
 
+    /** True when the sender can accept foreground handoff (transport + account + privacy Off + foreground). */
+    @RaftCoreInternalApi fun canAcceptImmediateHandoff(): Boolean =
+        synchronized(lock) {
+            transport != null &&
+                account != null &&
+                privacyMode.value == RaftPrivacyMode.Off &&
+                foreground.value
+        }
+
     fun bindTransport(next: RaftClientTraceTransport) {
         synchronized(lock) { transport = next }
     }
@@ -503,16 +512,26 @@ private val clientTraceJson =
 
     /**
      * Queues one event for [serverId]; sent with the next flush. Never throws. [traceId] / [spanId]:
-     * the trace the event belongs to, when its requests sent that `traceparent`.
+     * the trace the event belongs to, when its requests sent that `traceparent`. [occurredAtMillis]:
+     * when the event happened (defaults to now), written as `RaftWebEventRecord.time` so buffered
+     * events keep their original occurrence timestamp instead of upload time.
      */
-    fun emit(serverId: String, name: String, attrs: JsonObject, traceId: String? = null, spanId: String? = null) {
+    fun emit(
+        serverId: String,
+        name: String,
+        attrs: JsonObject,
+        traceId: String? = null,
+        spanId: String? = null,
+        occurredAtMillis: Long? = null,
+    ) {
         val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return
         try {
             val now = nowEpochMillis()
+            val eventTimeMillis = occurredAtMillis ?: now
             val record =
                 RaftWebEventRecord(
                     name = name,
-                    time = raftEpochMillisUtcIso(now),
+                    time = raftEpochMillisUtcIso(eventTimeMillis),
                     traceId = traceId,
                     spanId = spanId,
                     attrs = JsonObject(attrs + defaultAttrs().mapValues { (_, value) -> JsonPrimitive(value) }),
@@ -877,16 +896,19 @@ object RaftClientTraceEvents {
     @RaftCoreInternalApi fun onSignedIn(userId: String?) {
         val account = userId?.trim()?.takeIf { it.isNotEmpty() } ?: return
         sender.setAccount(account)
+        RaftPushDeliveryTrace.onSignedIn(accountId = account)
     }
 
     /** Signed out ([RaftProductEvents.setSignedOut]): what is held is dropped, not sent by the next account. */
     @RaftCoreInternalApi fun onSignedOut() {
         sender.setAccount(null)
+        RaftPushDeliveryTrace.onSignedOut()
     }
 
     /** [sessionAccount]: the user id of the session [networkClient] authenticates with (null signed out). */
     fun bindTransport(networkClient: RaftNetworkClient, sessionAccount: suspend () -> String?) {
         sender.bindTransport(RaftNetworkClientTraceTransport(networkClient, sessionAccount))
+        RaftPushDeliveryTrace.onTransportBound()
     }
 
     /** `mobile_inbox_inplace_v0`: one `activity:inplace_check` (web `emitStateTransitionTrace`). */
@@ -933,6 +955,16 @@ object RaftClientTraceEvents {
     /** #proj-mobile:#399 (slock #16971): canonical user-visible error record (`mobile.ui_error`). */
     @RaftCoreInternalApi fun emitUiError(serverId: String, attrs: JsonObject, traceId: String? = null) {
         sender.emit(serverId, MOBILE_UI_ERROR_EVENT_NAME, attrs, traceId = traceId)
+    }
+
+    /** #proj-mobile:#405: push delivery point events (`mobile.push.received|presented|opened`). */
+    @RaftCoreInternalApi fun emitPushDeliveryEvent(
+        serverId: String,
+        name: String,
+        attrs: JsonObject,
+        occurredAtMillis: Long,
+    ) {
+        sender.emit(serverId, name, attrs, occurredAtMillis = occurredAtMillis)
     }
 }
 

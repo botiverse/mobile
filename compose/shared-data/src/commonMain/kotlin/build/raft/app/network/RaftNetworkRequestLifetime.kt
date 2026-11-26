@@ -342,6 +342,8 @@ fun updateRaftProcessNetworkVisibility(foreground: Boolean): Int {
     build.raft.app.data.RaftStaleReadRecoverySignals.onProcessVisibility(foreground)
     // #proj-mobile:#172: mobile.realtime.session_health measures foreground time only.
     build.raft.app.data.realtime.RaftRealtimeSessionHealth.onProcessVisibility(foreground)
+    // #proj-mobile:#405: buffered push delivery events drain strictly on foreground return.
+    build.raft.app.data.RaftPushDeliveryTrace.onProcessVisibility(foreground)
     return retired
 }
 

@@ -122,6 +122,7 @@ class MainActivity : ComponentActivity() {
         pendingExternalShareLookupJob?.cancel()
         pendingExternalShareLookupJob = null
         setIntent(intent)
+        build.raft.app.shared.AndroidAppScopeRealtimeOwner.onActivityNewIntent(intent)
         AndroidLoginTransitionRouting.observeNewIntent(this)
         RaftAppLog.d(
             "SlockBoot",

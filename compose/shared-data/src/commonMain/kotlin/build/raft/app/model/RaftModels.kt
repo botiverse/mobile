@@ -2045,7 +2045,11 @@ data class NotificationPushReceived(
      * socket; [localization] keys the fixed phrases of title / subtitle / body.
      */
     val subtitle: String? = null,
-    val localization: build.raft.app.data.RaftNotificationLocalization? = null
+    val localization: build.raft.app.data.RaftNotificationLocalization? = null,
+    /** #proj-mobile:#405: server-sampled opaque UUID for push delivery observability (null when unsampled). */
+    val deliveryId: String? = null,
+    /** Explicit server hint when this socket push should not alert the mobile device (null/true: normal). */
+    val phoneAlert: Boolean? = null
 ) : RealtimeEvent
 
 /**
@@ -2065,7 +2069,11 @@ data class NotificationNoticeReceived(
     val silent: Boolean? = null,
     /** As [NotificationPushReceived.subtitle] / [NotificationPushReceived.localization]. */
     val subtitle: String? = null,
-    val localization: build.raft.app.data.RaftNotificationLocalization? = null
+    val localization: build.raft.app.data.RaftNotificationLocalization? = null,
+    /** #proj-mobile:#405: server-sampled opaque UUID for push delivery observability (null when unsampled). */
+    val deliveryId: String? = null,
+    /** Explicit server hint when this socket push should not alert the mobile device (null/true: normal). */
+    val phoneAlert: Boolean? = null
 ) : RealtimeEvent
 
 /**
