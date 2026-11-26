@@ -118,10 +118,16 @@ internal fun appShellPhoneBottomTabs(
     serverTab: RaftServerMenuModel? = null,
     /** The server tab's screen-reader label ("Current server: Raft HQ"). */
     serverTabAccessibilityLabel: String? = null,
+    /** Dynamic ordered keys when `tab_bar_places_v0` is ON (default: fixed [AppShellPhoneBottomBarKeys]). */
+    orderedTabKeys: List<String> = AppShellPhoneBottomBarKeys,
+    artifactsLabel: String = "",
+    membersLabel: String = "",
+    computersLabel: String = "",
+    appsLabel: String = "",
 ): List<RaftBottomTabItemPayload> =
     appShellBottomTabs(
-        selectedKey = appShellPhoneBottomBarSelectedKey(selectedTab),
-        orderedTabKeys = AppShellPhoneBottomBarKeys,
+        selectedKey = appShellPhoneBottomBarSelectedKey(selectedTab, orderedTabKeys),
+        orderedTabKeys = orderedTabKeys,
         activityUnreadCount = activityUnreadCount,
         moreAttention = moreAttention,
         labelFor = { key ->
@@ -130,6 +136,10 @@ internal fun appShellPhoneBottomTabs(
                 "activity" -> activityLabel
                 AppShellSearchTabKey -> searchLabel
                 "tasks" -> tasksLabel
+                RaftAppDestination.Artifacts.id -> artifactsLabel.ifBlank { key.uppercase() }
+                RaftAppDestination.Members.id -> membersLabel.ifBlank { key.uppercase() }
+                RaftAppDestination.Computers.id -> computersLabel.ifBlank { key.uppercase() }
+                RaftAppDestination.Apps.id -> appsLabel.ifBlank { key.uppercase() }
                 "more" -> moreLabel
                 else -> key.uppercase()
             }
@@ -185,7 +195,17 @@ internal fun appShellBottomTabs(
 // union keeps legacy clamping behavior unchanged while making the Slack keys first-class for
 // child-page lookup, tap normalization and retained-tab bookkeeping.
 internal val retainedAppShellTabKeys =
-    listOf("home", "tasks", "members", "settings") + listOf("home", "dms", "activity", "more", AppShellSearchTabKey)
+    listOf("home", "tasks", "members", "settings") +
+        listOf(
+            "home",
+            "dms",
+            "activity",
+            "more",
+            AppShellSearchTabKey,
+            RaftAppDestination.Artifacts.id,
+            RaftAppDestination.Computers.id,
+            RaftAppDestination.Apps.id,
+        )
 
 internal fun retainedAppShellSelectedTab(selectedTab: String): String =
     selectedTab.takeIf { it in retainedAppShellTabKeys } ?: "home"
@@ -780,6 +800,9 @@ internal fun appShellBottomTabPerformanceRoute(tab: String): String =
         "activity" -> "kuikly_activity"
         "more" -> "kuikly_more"
         AppShellSearchTabKey -> "kuikly_search"
+        RaftAppDestination.Artifacts.id -> "kuikly_artifacts"
+        RaftAppDestination.Computers.id -> "kuikly_computers"
+        RaftAppDestination.Apps.id -> "kuikly_apps"
         else -> "kuikly_home"
     }
 
@@ -799,6 +822,7 @@ internal fun appShellBottomTabsVisible(
     selectedTab: String,
     selectedHomeDestination: String?,
     navRailActive: Boolean = false,
+    phoneTabKeys: List<String> = AppShellPhoneBottomBarKeys,
 ): Boolean =
     when (retainedAppShellSelectedTab(selectedTab)) {
         // Home secondary destinations are native child pages. Keep the root tab bar mounted
@@ -806,7 +830,7 @@ internal fun appShellBottomTabsVisible(
         "home" ->
             selectedHomeDestination == null ||
                 retainedHomeSecondaryDestination(selectedHomeDestination) != null
-        else -> appShellMoreChildBackTarget(selectedTab, navRailActive) == null
+        else -> appShellMoreChildBackTarget(selectedTab, navRailActive, phoneTabKeys = phoneTabKeys) == null
     }
 
 /**

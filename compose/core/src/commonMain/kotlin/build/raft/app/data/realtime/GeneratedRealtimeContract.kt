@@ -126,6 +126,7 @@ object GeneratedRealtimeContract {
         const val NotificationPrefsUpdated = "notification_prefs:updated"
         const val PinnedUpdated = "pinned:updated"
         const val RailPlacesUpdated = "rail_places:updated"
+        const val MobilePlacesUpdated = "mobile_places:updated"
         const val NotificationPush = "notification:push"
         const val NotificationRetract = "notification:retract"
         const val JointInvitesChanged = "joint-invites:changed"
@@ -193,6 +194,7 @@ object GeneratedRealtimeContract {
             NotificationPrefsUpdated,
             PinnedUpdated,
             RailPlacesUpdated,
+            MobilePlacesUpdated,
             NotificationPush,
             NotificationRetract,
             JointInvitesChanged,

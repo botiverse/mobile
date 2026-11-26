@@ -603,7 +603,8 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisible: Boolean) {
             RaftSettingsComputersContent(
                 model = model,
                 refreshErrorCode = refreshErrorCode,
-                bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
+                bottomContentPadding =
+                    LocalRaftPhoneTabRootBottomInset.current ?: (raftBottomSafeAreaPadding() + RaftAppSpacing.Lg),
                 onRetry = ::refresh,
                 onAddComputer = { settingsViewModel.dispatch(SharedSettingsIntent.ShowAddComputerDialog) },
                 onOpenComputer = { machineId ->

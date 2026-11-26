@@ -291,6 +291,16 @@ const val MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY: String = "mobile_earl
 const val RAIL_PLACES_V0_FEATURE_FLAG_KEY: String = "rail_places_v0"
 
 /**
+ * Per-server phone & native tablet/foldable navigation places (botiverse/slock #16964,
+ * `#proj-mobile:#329`): per server, default OFF (unresolved or missing evaluates false).
+ * When ON on Android and iOS, the phone bottom tab bar (first 1..4 visible built-in places +
+ * Server tab) and the native tablet/foldable navigation rail project from per-server `mobilePlaces`
+ * (`GET/PATCH /servers/:id/sidebar-order` and `mobile_places:updated`). Desktop Compose never reads
+ * `mobilePlaces`.
+ */
+const val TAB_BAR_PLACES_V0_FEATURE_FLAG_KEY: String = "tab_bar_places_v0"
+
+/**
  * Raft Agent Voice (`#wg-mobile-sync:#95`, botiverse/slock `packages/shared/src/featureFlags.ts`
  * `AGENT_VOICE_FEATURE_FLAG_KEY`): per server, default OFF (unresolved or missing evaluates false).
  * When ON, an agent's profile offers the Voice settings section (`voice-settings` / `voice-questions`,
@@ -384,6 +394,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY,
     // Per-server wide rail places (botiverse/slock #16715, default OFF).
     RAIL_PLACES_V0_FEATURE_FLAG_KEY,
+    // Per-server phone & native tablet/foldable navigation places (botiverse/slock #16964, default OFF).
+    TAB_BAR_PLACES_V0_FEATURE_FLAG_KEY,
     // Raft Agent Voice settings and live voice calls (#wg-mobile-sync:#95, default OFF).
     AGENT_VOICE_FEATURE_FLAG_KEY,
     // Agent View Context v0 & Context Access grants (botiverse/slock #12980 / #13548, default OFF).

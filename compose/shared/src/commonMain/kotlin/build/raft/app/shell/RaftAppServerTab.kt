@@ -205,6 +205,10 @@ internal fun RaftAppServerMenuOverlay(
     val moveDownLabel = stringResource(Res.string.server_panel_move_down)
     val pageLabels =
         mapOf(
+            RaftServerMenuEntry.Home to stringResource(Res.string.tab_home),
+            RaftServerMenuEntry.Activity to stringResource(Res.string.tab_activity),
+            RaftServerMenuEntry.Tasks to stringResource(Res.string.tab_tasks),
+            RaftServerMenuEntry.Search to stringResource(Res.string.home_nav_search),
             RaftServerMenuEntry.Artifacts to stringResource(Res.string.artifacts_dashboard_title),
             RaftServerMenuEntry.Members to stringResource(Res.string.tab_members),
             RaftServerMenuEntry.Computers to stringResource(Res.string.settings_computers_title),
@@ -348,9 +352,13 @@ internal fun raftServerMenuUnreadCount(server: RaftServerSwitcherItem): Pair<Int
     return if (count > 0) count to presentation.muted else null
 }
 
-/** The popover's page icons: the ones their old More rows wore. */
+/** The popover's page icons: the ones their old More rows (or phone bar tabs) wore. */
 internal fun raftServerMenuEntryIcon(entry: RaftServerMenuEntry): RaftLucideIconName =
     when (entry) {
+        RaftServerMenuEntry.Home -> RaftLucideIconName.House
+        RaftServerMenuEntry.Activity -> RaftLucideIconName.Activity
+        RaftServerMenuEntry.Tasks -> RaftLucideIconName.ListTodo
+        RaftServerMenuEntry.Search -> RaftLucideIconName.Search
         RaftServerMenuEntry.Artifacts -> RaftLucideIconName.Artifact
         RaftServerMenuEntry.Members -> RaftLucideIconName.Users
         RaftServerMenuEntry.Computers -> RaftLucideIconName.Monitor

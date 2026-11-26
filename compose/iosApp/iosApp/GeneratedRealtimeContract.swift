@@ -108,6 +108,7 @@ enum GeneratedRealtimeContract {
         static let notificationPrefsUpdated = "notification_prefs:updated"
         static let pinnedUpdated = "pinned:updated"
         static let railPlacesUpdated = "rail_places:updated"
+        static let mobilePlacesUpdated = "mobile_places:updated"
         static let notificationPush = "notification:push"
         static let notificationRetract = "notification:retract"
         static let jointInvitesChanged = "joint-invites:changed"
@@ -175,6 +176,7 @@ enum GeneratedRealtimeContract {
             SocketEvent.notificationPrefsUpdated,
             SocketEvent.pinnedUpdated,
             SocketEvent.railPlacesUpdated,
+            SocketEvent.mobilePlacesUpdated,
             SocketEvent.notificationPush,
             SocketEvent.notificationRetract,
             SocketEvent.jointInvitesChanged,

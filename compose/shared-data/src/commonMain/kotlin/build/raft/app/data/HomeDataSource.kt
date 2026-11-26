@@ -363,6 +363,9 @@ class SharedHomeDataSource(
         is build.raft.app.model.JointInvitesChanged -> false
         // Pending App permission updates light the Apps review dot (SharedAppPermissionUpdatesStore); no Home row.
         is build.raft.app.model.PermissionUpdatesChanged -> false
+        // Per-server rail & mobile navigation places update their own stores; no Home row changes.
+        is build.raft.app.model.RailPlacesUpdated,
+        is build.raft.app.model.MobilePlacesUpdated -> false
         // The member's theme lives on the stored server (process realtime owner); Home's rows do not change.
         is build.raft.app.model.ServerAppearanceUpdated -> false
         // A person's new name / avatar is patched into the member directory (and the signed-in user's

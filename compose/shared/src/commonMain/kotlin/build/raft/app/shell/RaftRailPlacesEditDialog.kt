@@ -147,6 +147,8 @@ internal fun appShellOpenRailAppPlace(
     resolveIconUrl: (String?) -> String?,
     onUnavailable: (RaftUnavailableRailApp) -> Unit,
     log: (String) -> Unit,
+    accountId: String? = null,
+    recentlyUsedStore: MobileRecentlyUsedStore? = null,
 ) {
     appShellDispatchRailAppPlaceOpen(
         scope = scope,
@@ -156,6 +158,14 @@ internal fun appShellOpenRailAppPlace(
         clientId = clientId,
         fallbackAppName = fallbackAppName,
         onOpen = { usable ->
+            recentlyUsedStore?.recordApp(
+                accountId = accountId,
+                serverId = serverId,
+                clientId = usable.clientId,
+                name = usable.name,
+                iconUrl = usable.iconUrl,
+                homepageUrl = usable.homepageUrl,
+            )
             val scopeOrigin = raftAppEntryOriginOf(usable.homepageUrl)
             if (scopeOrigin != null) {
                 linkNavigator.openAppEntry(

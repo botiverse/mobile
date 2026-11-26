@@ -49,6 +49,25 @@ internal val LocalRaftSettingsWideDetail = staticCompositionLocalOf { false }
  */
 internal val LocalRaftSettingsWideDetailClose = staticCompositionLocalOf<(() -> Unit)?> { null }
 
+/**
+ * True when a page (`Artifacts`, `Computers`, `Apps`) is hosted directly as a top-level phone
+ * bottom-bar tab (`tab_bar_places_v0`): unlike [LocalRaftSettingsWideDetail], the phone keeps its
+ * status-bar top safe area and compact phone layout while suppressing its root Back button.
+ */
+internal val LocalRaftPhoneTabRoot = staticCompositionLocalOf { false }
+
+/**
+ * Scrollable bottom content inset (dp) reserved for the phone bottom tab bar while hosted inside
+ * [LocalRaftPhoneTabRoot]; `null` elsewhere so pushed pages keep their default bottom safe area.
+ */
+internal val LocalRaftPhoneTabRootBottomInset = staticCompositionLocalOf<Dp?> { null }
+
+/**
+ * Extra bottom clearance (dp) for full-height embedded WebView pages hosted inside
+ * [LocalRaftPhoneTabRoot] (non-zero only when a floating native bottom tab bar overlays content).
+ */
+internal val LocalRaftPhoneTabRootWebViewBottomInset = staticCompositionLocalOf<Dp?> { null }
+
 /** Closes a Settings section page: the wide pane's close when it is the pane's content, else the router's. */
 internal fun settingsPageClose(wideDetailClose: (() -> Unit)?, routerClose: () -> Unit) {
     if (wideDetailClose != null) wideDetailClose() else routerClose()

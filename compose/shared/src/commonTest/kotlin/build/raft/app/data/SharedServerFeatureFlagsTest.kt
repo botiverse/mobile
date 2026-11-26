@@ -168,6 +168,10 @@ class SharedServerFeatureFlagsTest {
         assertEquals("rail_places_v0", RAIL_PLACES_V0_FEATURE_FLAG_KEY)
         assertFalse(RAIL_PLACES_V0_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
         assertFalse(RAIL_PLACES_V0_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+        // botiverse/slock #16964 / #proj-mobile:#329: phone & native tablet/foldable navigation places gate (default off).
+        assertEquals("tab_bar_places_v0", TAB_BAR_PLACES_V0_FEATURE_FLAG_KEY)
+        assertFalse(TAB_BAR_PLACES_V0_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        assertFalse(TAB_BAR_PLACES_V0_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
         for (
             key in listOf(
                 MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
@@ -179,6 +183,7 @@ class SharedServerFeatureFlagsTest {
                 MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY,
                 MOBILE_FCM_PROBE_FEATURE_FLAG_KEY,
                 RAIL_PLACES_V0_FEATURE_FLAG_KEY,
+                TAB_BAR_PLACES_V0_FEATURE_FLAG_KEY,
             )
         ) {
             assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)

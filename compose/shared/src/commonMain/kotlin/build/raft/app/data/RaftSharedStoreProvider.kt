@@ -2088,6 +2088,32 @@ internal class RaftSharedStoreProvider private constructor(
     }
 
     /**
+     * Per-server phone & native tablet/foldable navigation places
+     * (`GET/PATCH /servers/:id/sidebar-order` + `mobile_places:updated`, botiverse/slock #16964,
+     * `#proj-mobile:#329`): gated per server behind [TAB_BAR_PLACES_V0_FEATURE_FLAG_KEY] and never
+     * enabled on Desktop Compose.
+     */
+    val mobileRailPlacesStore: SharedMobileRailPlacesStore by lazy {
+        SharedMobileRailPlacesStore(
+            dataSource = NetworkMobilePlacesDataSource(networkClient),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
+            logger = sharedInfoLogger("SlockMobilePlaces", "mobile_places"),
+            isServerEnabled = { serverId ->
+                !build.raft.app.raftPlatformIsDesktop() &&
+                    serverFeatureFlags.isEnabled(ServerId(serverId), TAB_BAR_PLACES_V0_FEATURE_FLAG_KEY)
+            },
+        )
+    }
+
+    /**
+     * Per-account × per-server recently opened Artifacts and installed Raft Apps (up to 4 entries)
+     * for the mobile Server Tab Popover (`#proj-mobile:#329`).
+     */
+    val mobileRecentlyUsedStore: build.raft.app.MobileRecentlyUsedStore by lazy {
+        build.raft.app.MobileRecentlyUsedStore()
+    }
+
+    /**
      * Whether the assistant's otter shows over every page: an account setting (`auth/me`
      * `assistantOtterVisible`), read once per account by the otter or the owner's section.
      */
@@ -2335,6 +2361,7 @@ internal class RaftSharedStoreProvider private constructor(
         // Another device may have reordered the rail's tabs while backgrounded: read them again.
         railTabOrderStore.followAppLifecycle(RaftStaleReadRecoverySignals.foreground)
         railPlacesStore.followAppLifecycle(RaftStaleReadRecoverySignals.foreground)
+        mobileRailPlacesStore.followAppLifecycle(RaftStaleReadRecoverySignals.foreground)
         // App start: read this environment's client config (and again on each environment change).
         clientConfigStore.start()
         // The feedback unread dot: read for whoever is signed in (now and after each sign-in); none signed out.

@@ -386,7 +386,12 @@ internal fun SettingsWebViewPageScaffold(
 
     // In the wide Settings detail pane the page is the pane's content: no Back of its own unless the
     // web page has history, closing returns to the default section (SettingsWideSplit.kt).
+    // As a promoted phone bottom-bar tab (`LocalRaftPhoneTabRoot`), suppress root Back while keeping
+    // the phone status-bar inset and optional floating tab-bar clearance.
     val wideDetail = LocalRaftSettingsWideDetail.current
+    val phoneTabRoot = LocalRaftPhoneTabRoot.current
+    val phoneTabWebViewBottomInset = LocalRaftPhoneTabRootWebViewBottomInset.current
+    val suppressRootBack = wideDetail || phoneTabRoot
     val wideDetailClose = LocalRaftSettingsWideDetailClose.current
 
     fun closePage() {
@@ -402,7 +407,7 @@ internal fun SettingsWebViewPageScaffold(
     }
 
     RaftBackHandler(
-        enabled = settingsWebViewHandlesBack(wideDetail, navigationState.canGoBack),
+        enabled = settingsWebViewHandlesBack(suppressRootBack, navigationState.canGoBack),
         label = "settings_webview_${surface.diagnosticsName}",
         blocksBackSwipe = false,
         onBack = ::goBackOrClose,
@@ -422,7 +427,7 @@ internal fun SettingsWebViewPageScaffold(
                 iconName = iconName,
                 backgroundColor = RaftColor.SurfaceWhite,
                 applyTopSafeArea = !wideDetail,
-                onBack = if (settingsWebViewHandlesBack(wideDetail, navigationState.canGoBack)) ::goBackOrClose else null,
+                onBack = if (settingsWebViewHandlesBack(suppressRootBack, navigationState.canGoBack)) ::goBackOrClose else null,
                 trailingContent = trailingContent,
                 nativeActions = nativeActions,
             )
@@ -433,6 +438,13 @@ internal fun SettingsWebViewPageScaffold(
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .then(
+                        if (phoneTabWebViewBottomInset != null && phoneTabWebViewBottomInset > 0.dp) {
+                            Modifier.padding(bottom = phoneTabWebViewBottomInset)
+                        } else {
+                            Modifier
+                        },
+                    )
                     .zIndex(SETTINGS_WEB_VIEW_BODY_Z_INDEX)
                     .background(RaftTheme.colors.layerCanvas),
         ) {

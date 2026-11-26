@@ -2502,7 +2502,10 @@ data class SettingsServerSidebarOrderSnapshot(
     val sectionsVersion: Long = 0L,
     // #wg-mobile-sync:#294 (slock #16682): per-server rail places (`places`, `placesVersion`,
     // `placeableApps`), null on older servers that do not send `places`.
-    val railPlaces: RaftRailPlacesSnapshot? = null
+    val railPlaces: RaftRailPlacesSnapshot? = null,
+    // #proj-mobile:#329 (slock #16964): per-server mobile & tablet navigation places (`mobilePlaces`,
+    // `mobilePlacesVersion`, `placeableApps`), null on older servers that do not send `mobilePlaces`.
+    val mobilePlaces: RaftMobilePlacesSnapshot? = null,
 )
 
 @Serializable

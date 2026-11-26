@@ -315,7 +315,19 @@ internal fun appShellChildPageGlassStyle(bottomTabBarOverlaysContent: Boolean): 
 // xxchan 2026-10-20: the phone bar is 主页 · 动态 · 任务 · 更多 (+ the Search action); Members and
 // Settings are pushed from More. They stay shell child pages so the wide rail, deep links and
 // old launch values keep selecting them directly.
-internal val AppShellChildPageTabKeys = listOf("home", "activity", "tasks", AppShellSearchTabKey, "more", "members", "settings")
+internal val AppShellChildPageTabKeys =
+    listOf(
+        "home",
+        "activity",
+        "tasks",
+        AppShellSearchTabKey,
+        "more",
+        "members",
+        "settings",
+        RaftAppDestination.Artifacts.id,
+        RaftAppDestination.Computers.id,
+        RaftAppDestination.Apps.id,
+    )
 
 internal typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
 
@@ -632,6 +644,10 @@ private fun RaftAppShellReadyContent(
     val authGateInstanceId = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optString(APP_SHELL_AUTH_GATE_INSTANCE_ID)
     }
+    val hasExplicitInitialTab = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.optString(AppShellInitialTabKey).isNotBlank()
+    }
+    val userPickedTabServerIdState = remember { mutableStateOf<String?>(null) }
     val selectedTabState = remember { mutableStateOf(launchSelection.selectedTab) }
     var selectedTab by selectedTabState
     // Navigation 3 (Android, stack on): the host saves the tab under the stack's pages with them.
@@ -1511,6 +1527,14 @@ private fun RaftAppShellReadyContent(
         remember(serverSetupFlagRevision, serverSetupGateServerId) {
             serverSetupGateEnabled(sharedStores.serverFeatureFlags, serverSetupGateServerId.orEmpty())
         }
+    val mobilePlacesShell =
+        rememberAppShellMobilePlacesShellState(
+            sharedStores = sharedStores,
+            readySession = readySession,
+            readyServerId = readyServerId,
+            homeState = homeState,
+            flagRevision = serverSetupFlagRevision,
+        )
     val setupAdmissionHost =
         if (readySession != null && !readyServerId.isNullOrBlank()) {
             rememberServerSetupAdmissionHost(
@@ -2262,6 +2286,9 @@ private fun RaftAppShellReadyContent(
         prewarmAdmissionGate.invalidate("tab_select:$nextTab")
         serverMenuState.dismiss()
         val retainedTab = retainedAppShellSelectedTab(nextTab)
+        if (source == AppShellTabSwitchSource.User) {
+            userPickedTabServerIdState.value = readyServerId
+        }
         appShellTabHistory =
             when (source) {
                 AppShellTabSwitchSource.User ->
@@ -2270,10 +2297,12 @@ private fun RaftAppShellReadyContent(
                         to = retainedTab,
                         roots =
                             appShellTabHistoryRoots(
-                                raftAdaptiveNavRailActive(
-                                    desktopModeEnabled = desktopModeOnLargeScreen,
-                                    paneState = shellScope.adaptivePane
-                                )
+                                navRailActive =
+                                    raftAdaptiveNavRailActive(
+                                        desktopModeEnabled = desktopModeOnLargeScreen,
+                                        paneState = shellScope.adaptivePane
+                                    ),
+                                phoneTabKeys = mobilePlacesShell.activePhoneTabKeys,
                             ),
                     )
                 AppShellTabSwitchSource.Back -> appShellTabHistory.arrivedByBack(retainedTab)
@@ -3151,6 +3180,7 @@ private fun RaftAppShellReadyContent(
             selectedTab = selectedTab,
             navRailActive = backNavRail,
             origin = serverPageOrigin,
+            phoneTabKeys = mobilePlacesShell.activePhoneTabKeys,
         )?.let { target ->
             selectAppShellTab(target, directChildSwitch = true, source = AppShellTabSwitchSource.Back)
             retainedAppShellTabs = retainedAppShellTabs + target
@@ -3158,11 +3188,14 @@ private fun RaftAppShellReadyContent(
             return true
         }
         // artin 2026-11-02: Back on a tab root returns to the tab picked before it (Activity ->
-        // Search -> Back = Activity); with none left it goes Home, and Home leaves the app.
+        // Search -> Back = Activity); with none left it goes to the bar's first tab, which leaves the app.
         fun backToEarlierTab(): Boolean {
             val target =
-                appShellTabHistory.backTarget(selectedTab, appShellTabHistoryRoots(backNavRail))
-                    ?: return false
+                appShellTabHistory.backTarget(
+                    current = selectedTab,
+                    roots = appShellTabHistoryRoots(backNavRail, mobilePlacesShell.activePhoneTabKeys),
+                    primaryTab = if (backNavRail) "home" else appShellPhonePrimaryTabKey(mobilePlacesShell.activePhoneTabKeys),
+                ) ?: return false
             bridge.log("app_back_tab_history from=$selectedTab to=$target history=${appShellTabHistory.tabs.size}")
             selectAppShellTab(target, directChildSwitch = true, source = AppShellTabSwitchSource.Back)
             if (isRetainedAppShellTab(target)) retainedAppShellTabs = retainedAppShellTabs + target
@@ -4114,6 +4147,12 @@ private fun RaftAppShellReadyContent(
             railInlineSecondaryDestination = AppShellRailSearchKey
             return@LaunchedEffect
         }
+        appShellPromotedPhoneTabMovesToRailInline(selectedTab, navRailActive)?.let { inlineKey ->
+            bridge.log("app_shell_promoted_tab_to_rail from=$selectedTab to=$inlineKey")
+            selectAppShellTab("home", directChildSwitch = true)
+            railInlineSecondaryDestination = inlineKey
+            return@LaunchedEffect
+        }
         val root = appShellSettingsRootTab(selectedTab, navRailActive) ?: return@LaunchedEffect
         bridge.log("app_shell_settings_root from=$selectedTab to=$root navRail=$navRailActive")
         selectAppShellTab(root, directChildSwitch = true)
@@ -4292,6 +4331,7 @@ private fun RaftAppShellReadyContent(
             selectedTab = selectedTab,
             selectedHomeDestination = selectedHomeDestination,
             navRailActive = navRailActive,
+            phoneTabKeys = mobilePlacesShell.activePhoneTabKeys,
         ) && !navRailActive &&
             !appShellAdaptiveDetailCoversTabRoot(
                 desktopModeOnLargeScreen = desktopModeOnLargeScreen,
@@ -4444,6 +4484,7 @@ private fun RaftAppShellReadyContent(
         readyServerId = readyServerId,
         wideNavHistoriesState = wideNavHistoriesState,
         serverMenuArtifactsShown = serverMenuArtifactsShown,
+        activePhoneTabKeys = mobilePlacesShell.activePhoneTabKeys,
     )
     val serverTabAccessibilityLabel =
         serverMenuModel?.let { stringResource(Res.string.server_tab_a11y_label, it.currentServer.name) }
@@ -4454,10 +4495,12 @@ private fun RaftAppShellReadyContent(
         activityTabLabel,
         searchTabLabel,
         moreTabLabel,
+        railNavLabels,
         activityTabUnreadCount,
         moreAttention,
         serverMenuModel,
-        serverTabAccessibilityLabel
+        serverTabAccessibilityLabel,
+        mobilePlacesShell.activePhoneTabKeys,
     ) {
         appShellPhoneBottomTabs(
             selectedTab = selectedTab,
@@ -4469,7 +4512,12 @@ private fun RaftAppShellReadyContent(
             activityUnreadCount = activityTabUnreadCount,
             moreAttention = moreAttention,
             serverTab = serverMenuModel,
-            serverTabAccessibilityLabel = serverTabAccessibilityLabel
+            serverTabAccessibilityLabel = serverTabAccessibilityLabel,
+            orderedTabKeys = mobilePlacesShell.activePhoneTabKeys,
+            artifactsLabel = railNavLabels.getValue(RaftAppDestination.Artifacts.id),
+            membersLabel = railNavLabels.getValue(RaftAppDestination.Members.id),
+            computersLabel = railNavLabels.getValue(RaftAppDestination.Computers.id),
+            appsLabel = railNavLabels.getValue(RaftAppDestination.Apps.id),
         )
     }
     // The wide rail keeps the web LeftRail entries (Direction A, #proj-mobile 10-30): Chat,
@@ -4504,53 +4552,67 @@ private fun RaftAppShellReadyContent(
     val railPlacesStore = sharedStores.railPlacesStore
     val railPlacesStateState = railPlacesStore.state.collectAsState()
     val railPlacesState by railPlacesStateState
-    val activeRailPlacesSnapshot = if (railPlacesEnabled) railPlacesState.activeSnapshot else null
+    val useNativeMobileRailPlaces = mobilePlacesShell.enabled && !mobilePlacesShell.isDesktopHost && navRailActive
+    val useDesktopRailPlaces = railPlacesEnabled && !useNativeMobileRailPlaces
+    val activeRailPlacesSnapshot = if (useDesktopRailPlaces) railPlacesState.activeSnapshot else null
     val homeSidebarOrder = (homeState.content as? SharedHomeContentState.Content)?.snapshot?.sidebarOrder
     AppShellRailPlacesEffects(
         bridge = bridge,
         readySession = readySession,
         readyServerId = readyServerId,
         navRailActive = navRailActive,
-        enabled = railPlacesEnabled,
+        enabled = useDesktopRailPlaces,
         sidebarOrder = homeSidebarOrder,
         appShellRealtimeDomainEventOwner = appShellRealtimeDomainEventOwner,
         railPlacesStore = railPlacesStore,
         railPlacesStateState = railPlacesStateState,
     )
+    AppShellMobileRailPlacesEffects(
+        bridge = bridge,
+        readySession = readySession,
+        readyServerId = readyServerId,
+        navRailActive = navRailActive,
+        enabled = mobilePlacesShell.enabled,
+        sidebarOrder = homeSidebarOrder,
+        appShellRealtimeDomainEventOwner = appShellRealtimeDomainEventOwner,
+        mobileRailPlacesStore = mobilePlacesShell.store,
+        mobileRailPlacesStateState = mobilePlacesShell.storeState,
+        activePhoneTabKeys = mobilePlacesShell.activePhoneTabKeys,
+        artifactsEnabled = mobilePlacesShell.artifactsEnabled,
+        isGuest = mobilePlacesShell.isGuest,
+        hasExplicitInitialTab = hasExplicitInitialTab,
+        selectedTabState = selectedTabState,
+        retainedAppShellTabsState = retainedAppShellTabsState,
+        userPickedTabServerIdState = userPickedTabServerIdState,
+        onSelectProgrammaticTab = { tab -> selectAppShellTab(tab, directChildSwitch = true) },
+    )
     var railPlacesEditOpen by remember { mutableStateOf(false) }
     var unavailableRailApp by remember { mutableStateOf<RaftUnavailableRailApp?>(null) }
-    LaunchedEffect(readyServerId, navRailActive, railPlacesEnabled) {
+    LaunchedEffect(readyServerId, navRailActive, useDesktopRailPlaces) {
         railPlacesEditOpen = false
         unavailableRailApp = null
     }
     val railTabReorder =
-        remember(railTabOrderStore, railPlacesStore, railPlacesEnabled, activeRailPlacesSnapshot != null, readyServerId) {
-            val useServerPlaces = railPlacesEnabled && activeRailPlacesSnapshot != null && !readyServerId.isNullOrBlank()
-            RaftRailTabReorder(
-                fixedKeys = if (useServerPlaces) RaftRailPlacesFixedItemKeys else emptySet(),
-                onOrderChange = { keys ->
-                    val serverId = readyServerId?.takeIf { it.isNotBlank() }
-                    val snapshot = if (railPlacesEnabled) railPlacesStore.state.value.activeSnapshot else null
-                    if (railPlacesEnabled && serverId != null && snapshot != null) {
-                        val reordered =
-                            build.raft.app.data.raftRailPlacesWithVisibleReorder(
-                                fullKeys = snapshot.places.map { it.key },
-                                visibleOrder = keys.mapNotNull(::raftRailPlaceKeyForItemKey),
-                            )
-                        appShellCoroutineScope.launch {
-                            railPlacesStore.savePlaces(serverId, reordered)
-                        }
-                    } else {
-                        railTabOrderStore.dispatch(
-                            build.raft.app.data.SharedRailTabOrderIntent.Reorder(
-                                build.raft.app.data.raftRailTabOrderWithVisibleOrder(
-                                    fullOrder = railTabOrderStore.state.value.order,
-                                    visibleOrder = keys.mapNotNull(::raftRailTabIdForKey),
-                                )
-                            )
-                        )
-                    }
-                },
+        remember(
+            useNativeMobileRailPlaces,
+            mobilePlacesShell.store,
+            mobilePlacesShell.activeSnapshot != null,
+            useDesktopRailPlaces,
+            railTabOrderStore,
+            railPlacesStore,
+            activeRailPlacesSnapshot != null,
+            readyServerId,
+        ) {
+            appShellResolvedRailTabReorder(
+                useNativeMobileRailPlaces = useNativeMobileRailPlaces,
+                mobilePlacesStore = mobilePlacesShell.store,
+                mobilePlacesLoaded = mobilePlacesShell.activeSnapshot != null,
+                useDesktopRailPlaces = useDesktopRailPlaces,
+                railPlacesStore = railPlacesStore,
+                desktopRailPlacesLoaded = activeRailPlacesSnapshot != null,
+                railTabOrderStore = railTabOrderStore,
+                readyServerId = readyServerId,
+                scope = appShellCoroutineScope,
             )
         }
     // The rail's Help menu (web LeftRail HelpMenu), beside the rail.
@@ -4864,6 +4926,11 @@ private fun RaftAppShellReadyContent(
                         SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
                     )
                 }
+                if (nextTab == RaftAppDestination.Computers.id) {
+                    writeComputerAttentionSeen(
+                        build.raft.app.data.raftComputerAttentionMarkSeen(computerAttentionSeen, currentComputerAttention)
+                    )
+                }
                 selectAppShellTab(nextTab, directChildSwitch = true, source = AppShellTabSwitchSource.User)
                 if (isRetainedAppShellTab(nextTab)) {
                     retainedAppShellTabs = retainedAppShellTabs + nextTab
@@ -4948,8 +5015,22 @@ private fun RaftAppShellReadyContent(
         serverMenuState.dismiss()
         prewarmAdmissionGate.invalidate("server_menu_open:${entry.key}")
         bridge.log("app_shell_server_menu_open row=${entry.key} from=$selectedTab")
-        if (!navRailActive) serverPageOrigin = appShellServerPageOrigin(selectedTab, serverPageOrigin)
+        if (!navRailActive) {
+            serverPageOrigin = appShellServerPageOrigin(selectedTab, serverPageOrigin, mobilePlacesShell.activePhoneTabKeys)
+        }
         when (entry) {
+            RaftServerMenuEntry.Home -> {
+                onAppShellTabSelected("home")
+            }
+            RaftServerMenuEntry.Activity -> {
+                openAppShellActivityTab(source = "server_menu")
+            }
+            RaftServerMenuEntry.Tasks -> {
+                onAppShellTabSelected("tasks")
+            }
+            RaftServerMenuEntry.Search -> {
+                openSearchTab(source = "server_menu")
+            }
             RaftServerMenuEntry.Artifacts -> {
                 // web MobileServerTab `openArtifacts`: the page pushed over the shell.
                 if (!navRailActive) serverTabFocusOnPageReturn = true
@@ -5125,8 +5206,11 @@ private fun RaftAppShellReadyContent(
                         else -> RaftServerMenuAnchor.TopBar
                     },
                 entries =
-                    raftServerMenuEntriesFor(
-                        serverMenuModel.entries,
+                    appShellResolvedServerMenuEntries(
+                        tabBarPlacesEnabled = mobilePlacesShell.enabled,
+                        defaultEntries = serverMenuModel.entries,
+                        mobilePlaces = mobilePlacesShell.activeSnapshot?.mobilePlaces,
+                        phoneTabKeys = mobilePlacesShell.activePhoneTabKeys,
                         wide = navRailActive,
                         guest = serverMenuContent.snapshot.server.role.equals("guest", ignoreCase = true),
                         artifacts = serverMenuArtifactsShown,
@@ -5366,7 +5450,7 @@ private fun RaftAppShellReadyContent(
                 RaftProductEvents.navEntrySelected(
                     destination = appShellNavDestination(key),
                     surface = RaftNavSurface.MobileTabBar,
-                    wasActive = appShellPhoneBottomBarSelectedKey(selectedTab) == key,
+                    wasActive = appShellPhoneBottomBarSelectedKey(selectedTab, mobilePlacesShell.activePhoneTabKeys) == key,
                 )
                 onAppShellTabSelected(key)
             },
@@ -5420,15 +5504,20 @@ private fun RaftAppShellReadyContent(
                                 }
                             }
                         val railItems =
-                            activeRailPlacesSnapshot?.let { placesSnapshot ->
-                                projectRailItemsFromServerPlaces(
-                                    builtInItems = baseRailItems,
-                                    snapshot = placesSnapshot,
-                                    resolveIconUrl = { icon ->
-                                        icon?.let { build.raft.app.data.resolveAppLinkIconUrl(it, sharedStores.apiEnvironmentStore.current().apiBaseUrl) }
-                                    },
-                                )
-                            } ?: baseRailItems.orderedLikeRailTabOrder(railTabOrderState.order)
+                            appShellResolvedRailItems(
+                                useNativeMobileRailPlaces = useNativeMobileRailPlaces,
+                                baseRailItems = baseRailItems,
+                                searchLabel = searchTabLabel,
+                                railInlineSecondaryDestination = railInlineSecondaryDestination,
+                                mobilePlacesSnapshot = mobilePlacesShell.activeSnapshot,
+                                artifactsEnabled = serverMenuArtifactsShown,
+                                isGuest = mobilePlacesShell.isGuest,
+                                desktopRailPlacesSnapshot = activeRailPlacesSnapshot,
+                                railTabOrder = railTabOrderState.order,
+                                resolveIconUrl = { icon ->
+                                    icon?.let { build.raft.app.data.resolveAppLinkIconUrl(it, sharedStores.apiEnvironmentStore.current().apiBaseUrl) }
+                                },
+                            )
                         if (railWithoutTopBar) {
                             // Without the top bar the system's side column holds the history's Back.
                             raftSideColumnFallbackBack(
@@ -5460,7 +5549,7 @@ private fun RaftAppShellReadyContent(
                                 }
                                 railHelpOpen = false
                                 val railAppClientId =
-                                    if (railPlacesEnabled) build.raft.app.data.raftRailAppPlaceClientId(key) else null
+                                    if (useDesktopRailPlaces) build.raft.app.data.raftRailAppPlaceClientId(key) else null
                                 if (railAppClientId != null) {
                                     val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@RaftNavigationRailTabBar
                                     val fallbackName =
@@ -5483,6 +5572,8 @@ private fun RaftAppShellReadyContent(
                                         },
                                         onUnavailable = { unavailableRailApp = it },
                                         log = { bridge.log(it) },
+                                        accountId = readySession?.user?.id,
+                                        recentlyUsedStore = sharedStores.mobileRecentlyUsedStore,
                                     )
                                     return@RaftNavigationRailTabBar
                                 }
@@ -5710,7 +5801,7 @@ private fun RaftAppShellReadyContent(
                                 pager.openSettingsFeedbackPage(storeScope)
                             },
                             onEditNavigationBar =
-                                if (railPlacesEnabled && activeRailPlacesSnapshot != null && !readyServerId.isNullOrBlank()) {
+                                if (useDesktopRailPlaces && activeRailPlacesSnapshot != null && !readyServerId.isNullOrBlank()) {
                                     {
                                         railHelpOpen = false
                                         railPlacesEditOpen = true
@@ -5720,7 +5811,7 @@ private fun RaftAppShellReadyContent(
                                 },
                         )
                         RaftRailPlacesEditDialog(
-                            open = railPlacesEnabled && railPlacesEditOpen,
+                            open = useDesktopRailPlaces && railPlacesEditOpen,
                             snapshot = activeRailPlacesSnapshot,
                             visibleBuiltInItems = appShellRailTabItems,
                             resolveIconUrl = { icon ->
@@ -5733,7 +5824,7 @@ private fun RaftAppShellReadyContent(
                             },
                         )
                         RaftRailUnavailableAppDialog(
-                            unavailable = if (railPlacesEnabled) unavailableRailApp else null,
+                            unavailable = if (useDesktopRailPlaces) unavailableRailApp else null,
                             onDismiss = { unavailableRailApp = null },
                             onGoToApps = { railInlineSecondaryDestination = AppShellRailAppsKey },
                         )
@@ -6972,7 +7063,7 @@ private fun RaftAppShellReadyContent(
                     // layout (raft-design #712): their header gets a back button to the page the panel
                     // opened them from (Home after a deep link). On the wide rail they are rail roots.
                     val moreChildBack: (() -> Unit)? =
-                        appShellMoreChildBackTarget(selectedTab, navRailActive, serverPageOrigin)?.let { target ->
+                        appShellMoreChildBackTarget(selectedTab, navRailActive, serverPageOrigin, mobilePlacesShell.activePhoneTabKeys)?.let { target ->
                             {
                                 selectAppShellTab(target, directChildSwitch = true, source = AppShellTabSwitchSource.Back)
                                 retainedAppShellTabs = retainedAppShellTabs + target
@@ -7248,6 +7339,27 @@ private fun RaftAppShellReadyContent(
                                 "activity" -> activityTabContent(active)
                                 "more" -> moreTabContent(active)
                                 AppShellSearchTabKey -> searchTabContent(active)
+                                RaftAppDestination.Artifacts.id ->
+                                    AppShellPromotedPhoneTabHost(
+                                        page = remember(storeScope) { ARTIFACTS_HOME_PAGE to artifactsHomePageData(storeScope) },
+                                        bottomInset = appShellBottomContentInset,
+                                        webViewBottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
+                                        active = active,
+                                    )
+                                RaftAppDestination.Computers.id ->
+                                    AppShellPromotedPhoneTabHost(
+                                        page = remember(storeScope) { settingsWideDetailPage(SettingsDestinationComputers, storeScope) },
+                                        bottomInset = appShellBottomContentInset,
+                                        webViewBottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
+                                        active = active,
+                                    )
+                                RaftAppDestination.Apps.id ->
+                                    AppShellPromotedPhoneTabHost(
+                                        page = remember(storeScope) { settingsWideDetailPage(SettingsDestinationConnectedApps, storeScope) },
+                                        bottomInset = appShellBottomContentInset,
+                                        webViewBottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
+                                        active = active,
+                                    )
                                 else -> homeTabContent(active)
                             }
                         }

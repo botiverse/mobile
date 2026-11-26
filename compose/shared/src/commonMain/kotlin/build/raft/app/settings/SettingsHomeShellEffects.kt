@@ -502,6 +502,7 @@ internal fun AppShellServerMenuEffects(
     readyServerId: String?,
     wideNavHistoriesState: MutableState<RaftWideNavHistories>,
     serverMenuArtifactsShown: Boolean,
+    activePhoneTabKeys: List<String> = AppShellPhoneBottomBarKeys,
 ) {
     var selectedTab by selectedTabState
     var serverPageOrigin by serverPageOriginState
@@ -555,9 +556,9 @@ internal fun AppShellServerMenuEffects(
         }
     }
     // A server page's origin lives only while a server page shows; a deep link to one finds none
-    // and goes back to Home.
-    LaunchedEffect(selectedTab) {
-        if (retainedAppShellSelectedTab(selectedTab) !in AppShellMoreChildTabKeys) serverPageOrigin = null
+    // and goes back to the bar's primary tab.
+    LaunchedEffect(selectedTab, activePhoneTabKeys) {
+        if (!appShellIsMoreChildTab(selectedTab, activePhoneTabKeys)) serverPageOrigin = null
     }
     // Computers is a page of its own: when the shell shows again after it, focus the server tab.
     LaunchedEffect(pageVisibleTick) {
@@ -1112,6 +1113,150 @@ internal fun AppShellRailPlacesEffects(
                 railPlacesStore.consumeEffect()
             }
             null -> Unit
+        }
+    }
+}
+
+/**
+ * Wires per-server mobile & native tablet/foldable navigation places
+ * (`GET/PATCH /servers/:id/sidebar-order`, `mobile_places:updated`, `permission-updates:changed`,
+ * foreground/reconnect freshness, conflict/error toasts, and phone default-tab landing;
+ * botiverse/slock #16964, `#proj-mobile:#329`). Gated behind `tab_bar_places_v0` ([enabled],
+ * always false on Desktop Compose). Kept outside `RaftAppShellReadyContent` to preserve its JVM
+ * method-size budget.
+ */
+@Composable
+@NonRestartableComposable
+internal fun AppShellMobileRailPlacesEffects(
+    bridge: build.raft.app.base.BridgeModule,
+    readySession: StoredAuthSession?,
+    readyServerId: String?,
+    navRailActive: Boolean,
+    enabled: Boolean,
+    sidebarOrder: build.raft.app.data.SettingsServerSidebarOrderSnapshot?,
+    appShellRealtimeDomainEventOwner: build.raft.app.data.SharedRealtimeDomainEventOwner,
+    mobileRailPlacesStore: build.raft.app.data.SharedMobileRailPlacesStore,
+    mobileRailPlacesStateState: State<build.raft.app.data.SharedMobileRailPlacesState>,
+    activePhoneTabKeys: List<String>,
+    artifactsEnabled: Boolean,
+    isGuest: Boolean,
+    hasExplicitInitialTab: Boolean,
+    selectedTabState: MutableState<String>,
+    retainedAppShellTabsState: MutableState<Set<String>>,
+    userPickedTabServerIdState: MutableState<String?>,
+    onSelectProgrammaticTab: (String) -> Unit,
+) {
+    val mobileRailPlacesState by mobileRailPlacesStateState
+    val accountId = readySession?.user?.id
+    val selectedTab by selectedTabState
+    var retainedAppShellTabs by retainedAppShellTabsState
+    val latestOnSelectProgrammaticTab by rememberUpdatedState(onSelectProgrammaticTab)
+    LaunchedEffect(mobileRailPlacesStore, accountId) {
+        mobileRailPlacesStore.setAccount(accountId)
+    }
+    LaunchedEffect(mobileRailPlacesStore, readyServerId, enabled) {
+        mobileRailPlacesStore.setActiveServer(if (enabled) readyServerId else null)
+    }
+    LaunchedEffect(mobileRailPlacesStore, enabled) {
+        mobileRailPlacesStore.setSurfaceActive(enabled)
+    }
+    LaunchedEffect(mobileRailPlacesStore, readyServerId, sidebarOrder?.mobilePlaces, enabled) {
+        if (!enabled) return@LaunchedEffect
+        val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        mobileRailPlacesStore.applySidebarOrderSnapshot(serverId, sidebarOrder?.mobilePlaces)
+    }
+    LaunchedEffect(mobileRailPlacesStore, enabled) {
+        if (!enabled) return@LaunchedEffect
+        build.raft.app.data.RaftFreshnessSignal.events.collect { event ->
+            val targetServerId =
+                when (event.trigger) {
+                    build.raft.app.data.RaftFreshnessTrigger.Reconnect ->
+                        event.serverId ?: mobileRailPlacesStore.state.value.activeServerId
+                    build.raft.app.data.RaftFreshnessTrigger.Foreground,
+                    build.raft.app.data.RaftFreshnessTrigger.NetworkRestored ->
+                        mobileRailPlacesStore.state.value.activeServerId
+                }
+            if (!targetServerId.isNullOrBlank()) {
+                mobileRailPlacesStore.reloadAsync(targetServerId)
+            }
+        }
+    }
+    DisposableEffect(appShellRealtimeDomainEventOwner, mobileRailPlacesStore, enabled) {
+        if (!enabled) return@DisposableEffect onDispose {}
+        val sink =
+            build.raft.app.data.RealtimeGuardedActiveThreadSink { eventServerId, event ->
+                when (event) {
+                    is build.raft.app.model.MobilePlacesUpdated -> {
+                        if (event.serverId.value == eventServerId) {
+                            mobileRailPlacesStore.applyRealtimeUpdated(event)
+                        }
+                    }
+                    is build.raft.app.model.PermissionUpdatesChanged -> {
+                        if (event.serverId.value == eventServerId) {
+                            mobileRailPlacesStore.onPermissionUpdatesChanged(eventServerId)
+                        }
+                    }
+                    else -> Unit
+                }
+            }
+        appShellRealtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
+        onDispose { appShellRealtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
+    }
+    val saveFailedText = stringResource(Res.string.rail_places_save_failed)
+    val conflictText = stringResource(Res.string.rail_places_conflict)
+    LaunchedEffect(mobileRailPlacesState.effect, enabled) {
+        if (!enabled) return@LaunchedEffect
+        when (val effect = mobileRailPlacesState.effect) {
+            is build.raft.app.data.SharedRailPlacesEffect.SaveFailed -> {
+                bridge.errorToast(saveFailedText, effect.traceId)
+                mobileRailPlacesStore.consumeEffect()
+            }
+            is build.raft.app.data.SharedRailPlacesEffect.Conflict -> {
+                bridge.toast(conflictText)
+                mobileRailPlacesStore.consumeEffect()
+            }
+            null -> Unit
+        }
+    }
+    // Kirby §7: when entering a server with `tab_bar_places_v0` ON on a phone, land on the 1st tab
+    // of the person's phone bar (not hardcoded "home") unless an explicit launch tab or manual tap
+    // already chose a tab on this server. Also clamp unavailable promoted tabs (e.g. Artifacts off
+    // or guest role on Members/Computers/Apps) back to the 1st tab.
+    var appliedDefaultServerId by remember { mutableStateOf<String?>(null) }
+    val activeSnapshotLoaded = mobileRailPlacesState.activeSnapshot != null
+    LaunchedEffect(
+        enabled,
+        navRailActive,
+        readyServerId,
+        activeSnapshotLoaded,
+        activePhoneTabKeys,
+        artifactsEnabled,
+        isGuest,
+        selectedTab,
+    ) {
+        if (!enabled || navRailActive) return@LaunchedEffect
+        val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val primaryTab = appShellPhonePrimaryTabKey(activePhoneTabKeys)
+        val retained = retainedAppShellSelectedTab(selectedTab)
+        val selectedUnavailable =
+            (retained == RaftAppDestination.Artifacts.id && !artifactsEnabled) ||
+                (isGuest && (retained == RaftAppDestination.Members.id || retained == RaftAppDestination.Computers.id || retained == RaftAppDestination.Apps.id))
+        if (selectedUnavailable && retained != primaryTab) {
+            latestOnSelectProgrammaticTab(primaryTab)
+            retainedAppShellTabs = retainedAppShellTabs + primaryTab
+            return@LaunchedEffect
+        }
+        if (
+            activeSnapshotLoaded &&
+            appliedDefaultServerId != serverId &&
+            !hasExplicitInitialTab &&
+            userPickedTabServerIdState.value != serverId
+        ) {
+            appliedDefaultServerId = serverId
+            if (retained != primaryTab) {
+                latestOnSelectProgrammaticTab(primaryTab)
+                retainedAppShellTabs = retainedAppShellTabs + primaryTab
+            }
         }
     }
 }

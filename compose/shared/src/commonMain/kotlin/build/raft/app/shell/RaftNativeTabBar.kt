@@ -421,6 +421,9 @@ internal fun raftNativeTabBarSymbol(icon: RaftLucideIconName): RaftNativeTabBarS
         RaftLucideIconName.SquareCheckBig,
         RaftLucideIconName.ListTodo -> RaftNativeTabBarSymbol("checkmark.square", "checkmark.square.fill")
         RaftLucideIconName.Users -> RaftNativeTabBarSymbol("person.2", "person.2.fill")
+        RaftLucideIconName.Artifact -> RaftNativeTabBarSymbol("doc.text", "doc.text.fill")
+        RaftLucideIconName.Monitor -> RaftNativeTabBarSymbol("desktopcomputer", "desktopcomputer")
+        RaftLucideIconName.Blocks -> RaftNativeTabBarSymbol("square.grid.2x2", "square.grid.2x2.fill")
         RaftLucideIconName.Settings -> RaftNativeTabBarSymbol("gearshape", "gearshape.fill")
         RaftLucideIconName.Search -> RaftNativeTabBarSymbol("magnifyingglass", "magnifyingglass")
         RaftLucideIconName.Inbox -> RaftNativeTabBarSymbol("tray", "tray.fill")

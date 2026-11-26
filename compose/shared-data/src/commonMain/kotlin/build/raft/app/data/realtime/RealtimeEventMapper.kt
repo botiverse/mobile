@@ -459,6 +459,8 @@ class RealtimeEventMapper(
                 element.parseActivityDoneUpdatedOrNull()
             RealtimeSocketEvents.RailPlacesUpdated ->
                 element.parseRailPlacesUpdatedOrNull()
+            RealtimeSocketEvents.MobilePlacesUpdated ->
+                element.parseMobilePlacesUpdatedOrNull()
             RealtimeSocketEvents.JointInvitesChanged ->
                 decodeOrNull(ServerListChangedDto.serializer(), element)
                     ?.takeIf { it.serverId.isNotBlank() }
@@ -1183,6 +1185,26 @@ private fun JsonObject.parseRailPlacesUpdatedOrNull(): build.raft.app.model.Rail
         serverId = ServerId(serverId),
         places = build.raft.app.data.parseRaftRailPlacesArray(placesArray),
         placesVersion = placesVersion,
+    )
+}
+
+/**
+ * Strict parser for `mobile_places:updated` (botiverse/slock #16964 `routes/servers.ts`
+ * `emitMobilePlacesUpdated`): `{ serverId, mobilePlaces, mobilePlacesVersion }`.
+ */
+private fun JsonObject.parseMobilePlacesUpdatedOrNull(): build.raft.app.model.MobilePlacesUpdated? {
+    val serverId =
+        (this["serverId"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+            ?: return null
+    val placesArray = this["mobilePlaces"] as? JsonArray ?: return null
+    val versionPrimitive = (this["mobilePlacesVersion"] as? JsonPrimitive)?.takeIf { !it.isString } ?: return null
+    val mobilePlacesVersion =
+        versionPrimitive.intOrNull?.takeIf { it >= 0 && versionPrimitive.content == it.toString() }
+            ?: return null
+    return build.raft.app.model.MobilePlacesUpdated(
+        serverId = ServerId(serverId),
+        mobilePlaces = build.raft.app.data.parseRaftMobilePlacesArray(placesArray),
+        mobilePlacesVersion = mobilePlacesVersion,
     )
 }
 
