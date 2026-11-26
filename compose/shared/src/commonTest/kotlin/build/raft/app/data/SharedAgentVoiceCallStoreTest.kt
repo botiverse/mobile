@@ -107,8 +107,8 @@ class SharedAgentVoiceCallStoreTest {
         assertEquals(AgentVoiceCallPhase.Connecting, store.call.value?.phase)
         assertEquals(testCallId, engine.connectedCallId)
         assertEquals("tok-initial", engine.connectedToken)
-        assertEquals(false, engine.muted)
-        assertEquals(true, engine.speakerOn)
+        assertEquals(false, engine.currentMuted)
+        assertEquals(true, engine.currentSpeakerOn)
 
         // Second startCall while active only bumps focusNonce and does not start another call
         val focusBefore = store.call.value!!.focusNonce
@@ -130,10 +130,10 @@ class SharedAgentVoiceCallStoreTest {
         // Mute & speaker controls
         store.toggleMute()
         assertTrue(store.call.value!!.muted)
-        assertTrue(engine.muted)
+        assertTrue(engine.currentMuted)
         store.toggleSpeaker()
         assertFalse(store.call.value!!.speakerOn)
-        assertFalse(engine.speakerOn)
+        assertFalse(engine.currentSpeakerOn)
 
         // Live mic warning does not end the call
         engine.listener!!.onMicError("busy")
@@ -324,8 +324,8 @@ class SharedAgentVoiceCallStoreTest {
     ) : RaftAgentVoiceCallEngine {
         var connectedCallId: String? = null
         var connectedToken: String? = null
-        var muted: Boolean = false
-        var speakerOn: Boolean = true
+        var currentMuted: Boolean = false
+        var currentSpeakerOn: Boolean = true
         var listener: RaftAgentVoiceEngineListener? = null
         val updatedTokens = mutableListOf<String>()
         var disconnectCalls: Int = 0
@@ -340,17 +340,17 @@ class SharedAgentVoiceCallStoreTest {
         ) {
             this.connectedCallId = callId
             this.connectedToken = token
-            this.muted = muted
-            this.speakerOn = speakerOn
+            this.currentMuted = muted
+            this.currentSpeakerOn = speakerOn
             this.listener = listener
         }
 
         override fun setMuted(muted: Boolean) {
-            this.muted = muted
+            this.currentMuted = muted
         }
 
         override fun setSpeakerOn(speakerOn: Boolean) {
-            this.speakerOn = speakerOn
+            this.currentSpeakerOn = speakerOn
         }
 
         override fun updateToken(token: String) {
