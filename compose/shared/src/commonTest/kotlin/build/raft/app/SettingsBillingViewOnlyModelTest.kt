@@ -120,4 +120,32 @@ class SettingsBillingViewOnlyModelTest {
         assertEquals(ProPricing.SeatV1, legacyModel.pricing)
         assertEquals(ProPricing.SeatV1, legacyModel.seats?.pricing)
     }
+
+    @Test
+    fun appSumoUnlimitedAgentsCarriesNegativeLimitAndMarksCountUnlimited() {
+        val summary =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"pro","source":"appsumo","stripeConfigured":true,"appsumo":{"tier":1,"lifetime":true,"maxHumans":1,"maxAgents":-1,"maxHostedJointChannels":2,"hostedJointChannels":1,"monthlyUploadBytes":1073741824},"capacity":{"maxHumans":1,"maxAgents":-1,"maxUniversalSeats":-1},"usage":{"humans":1,"agents":11,"universalSeats":2.1},"fileUploadQuota":{"limited":true,"usedBytes":536870912,"remainingBytes":536870912,"limitBytes":1073741824}}"""
+            )
+        val model = settingsBillingViewOnlyModel(snapshot(summary), sessionPlan = null, nowEpochMillis = now)
+
+        assertEquals(SettingsBillingViewOnlyPlan.AppSumo, model.plan)
+        assertEquals(1, model.appSumoTier)
+        assertEquals(SettingsBillingViewOnlyStatus.Lifetime, model.status)
+        assertEquals(
+            SettingsBillingViewOnlyAppSumo(
+                humans = 1,
+                maxHumans = 1,
+                agents = 11,
+                maxAgents = -1,
+                jointChannels = 1,
+                maxJointChannels = 2,
+            ),
+            model.appSumo,
+        )
+        assertTrue(settingsBillingCountIsUnlimited(-1))
+        assertTrue(settingsBillingCountIsUnlimited(-5))
+        assertFalse(settingsBillingCountIsUnlimited(0))
+        assertFalse(settingsBillingCountIsUnlimited(1))
+    }
 }

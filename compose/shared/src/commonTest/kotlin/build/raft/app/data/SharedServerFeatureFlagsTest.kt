@@ -139,9 +139,10 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun ordinaryRegisteredFlagsRequireExplicitResolvedEnablement() = runTest {
-        // Task v2 and Drafts are always on in the app: their flags are no longer asked for.
+        // Task v2, Drafts, and Agent usage are always on in the app: their flags are no longer asked for.
         assertFalse("task_v2_conversations_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertFalse("drafts_section_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse("agent_usage_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         // slock staging 82ec87f2 packages/shared/src/featureFlags.ts SLACK_BRIDGE_FEATURE_FLAG_KEYS.master.
         assertEquals("slack_bridge_v0", SLACK_BRIDGE_FEATURE_FLAG_KEY)
         // slock staging ee41b3f3 packages/server/src/services/featureFlagService.ts PERSONAL_ASSISTANT_FEATURE_FLAG_KEY.

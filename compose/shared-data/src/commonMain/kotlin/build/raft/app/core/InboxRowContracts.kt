@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.InboxItem
+import build.raft.app.data.isTaskConversation
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
@@ -37,28 +38,43 @@ import build.raft.app.model.MessageId
     }
 
 /**
- * Open anchor used by Activity, Search, and Saved rows. This mirrors React's row-open
- * contract: `firstUnreadMessageId` is only an anchor while the row is actually unread.
- * Thread rows focus reply ids (`firstUnreadMessageId` / `latestActivityMessageId`) and
- * must not fall back to `lastMessageId` or `parentMessageId`, both of which can describe
- * the parent/origin rather than a thread reply.
+ * The reply an Activity thread or task-conversation row opens on for its unread
+ * (botiverse/slock #16908 `activityThreadUnreadFocusId`): [InboxItem.firstUnreadMessageId] while
+ * unread, else `null` so the thread opens at its latest replies. Never [InboxItem.latestActivityMessageId]:
+ * it is the thread's newest row of any kind (the server's max seq, no visibility filter), such as
+ * an agent's "stopped following this thread" line that people cannot read.
+ */
+@RaftCoreInternalApi fun InboxItem.activityThreadUnreadFocusId(): MessageId? =
+    if (unreadCount > 0) firstUnreadMessageId else null
+
+/**
+ * Open anchor used by Activity, Search, and Saved rows. Mirrors React's row-open contract
+ * (botiverse/slock #16908 `useThreadsInboxOpen.ts` / `inboxItem.ts`):
+ * - Single-message rows (Saved / Search) carry [InboxItem.explicitFocusMessageId] and always focus
+ *   that exact saved/matched message.
+ * - Activity thread and task-conversation rows focus only a readable unread target
+ *   ([activityThreadUnreadFocusId], plus `firstMentionMessageId` on task conversations when an
+ *   unread mention is active). Read rows (`unreadCount == 0`) and unread rows without a known
+ *   first unread reply return `null` so the thread opens cleanly at its latest replies without
+ *   focusing `latestActivityMessageId`, `lastMessageId`, or `parentMessageId`.
  */
 @RaftCoreInternalApi fun InboxItem.resolveInboxAnchorMessageId(): MessageId? =
-    when (kind) {
-        InboxItemKind.Object -> null
-        InboxItemKind.Thread ->
-            if (unreadCount > 0) {
-                firstUnreadMessageId ?: latestActivityMessageId
-            } else {
-                latestActivityMessageId
-            }
-        InboxItemKind.MentionAction -> lastMessageId
-        InboxItemKind.DirectMessage,
-        InboxItemKind.Channel,
-        InboxItemKind.System ->
-            if (unreadCount > 0) {
-                firstUnreadMessageId ?: lastMessageId
-            } else {
-                lastMessageId
-            }
-    }
+    explicitFocusMessageId
+        ?: when (kind) {
+            InboxItemKind.Object -> null
+            InboxItemKind.Thread ->
+                if (isTaskConversation) {
+                    firstMentionMessageId?.takeIf { unreadCount > 0 || hasMention } ?: activityThreadUnreadFocusId()
+                } else {
+                    activityThreadUnreadFocusId()
+                }
+            InboxItemKind.MentionAction -> lastMessageId
+            InboxItemKind.DirectMessage,
+            InboxItemKind.Channel,
+            InboxItemKind.System ->
+                if (unreadCount > 0) {
+                    firstUnreadMessageId ?: lastMessageId
+                } else {
+                    lastMessageId
+                }
+        }

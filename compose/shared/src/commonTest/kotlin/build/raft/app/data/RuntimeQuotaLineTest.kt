@@ -87,6 +87,9 @@ class RuntimeQuotaLineTest {
         assertEquals("Claude Max · 5 小时 已用完，3 小时后恢复 · 本周 已用 60%", line(RuntimeAccountUsageProvider.Claude, withReset))
         val noReset = read(window("Current session", 1.0, RuntimeAccountUsageWindowStatus.LimitReached))
         assertEquals("Claude Max · 5 小时 已用完", line(RuntimeAccountUsageProvider.Claude, noReset))
+        // Epoch / pre-2000 placeholder reset is treated as absent (slock #16700).
+        val epochReset = read(window("Current session", 1.0, RuntimeAccountUsageWindowStatus.LimitReached, "1970-01-01T00:00:00.000Z"))
+        assertEquals("Claude Max · 5 小时 已用完", line(RuntimeAccountUsageProvider.Claude, epochReset))
         // 0.4% left is not used up: it reads 100% used (rounded), not "used up", as the web says.
         assertEquals("Claude Max · 5 小时 已用 100%", line(RuntimeAccountUsageProvider.Claude, read(window("Current session", 0.996))))
     }

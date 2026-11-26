@@ -1005,7 +1005,7 @@ class ThreadPayloadTest {
 
     @Test
     fun appShellActivityThreadItemOpensReplyThreadChrome() {
-        val request =
+        val baseItem =
             InboxItem(
                 key = "thread:message-1",
                 kind = InboxItemKind.Thread,
@@ -1019,9 +1019,12 @@ class ThreadPayloadTest {
                 parentMessagePreview = "Parent message preview",
                 parentMessageSenderId = "user-1",
                 parentMessageSenderKind = MemberKind.Human,
+                unreadCount = 1,
+                firstUnreadMessageId = MessageId("reply-message-1"),
                 latestActivityMessageId = MessageId("reply-message-1"),
                 latestActivityPreview = "Latest reply"
-            ).toHomeMessageOpenRequestForTest()
+            )
+        val request = baseItem.toHomeMessageOpenRequestForTest()
         val conversation = request.conversationIdentity
 
         val payload =
@@ -1048,6 +1051,17 @@ class ThreadPayloadTest {
         assertEquals(null, payload.originMessage)
         assertEquals(false, payload.showModeTabs)
         assertEquals(false, payload.showMembersAction)
+
+        // slock #16908: a read Activity thread row opens at latest replies with no focused message.
+        val readRequest = baseItem.copy(unreadCount = 0, firstUnreadMessageId = null).toHomeMessageOpenRequestForTest()
+        val readPayload =
+            requireNotNull(buildAppShellThreadPayload(
+                conversation = readRequest.conversationIdentity,
+                anchorMessageId = readRequest.anchorMessageId,
+                originFallback = readRequest.originFallback
+            ))
+        assertEquals(null, readRequest.anchorMessageId)
+        assertEquals(null, readPayload.focusedMessageId)
         assertEquals(false, payload.showSettingsAction)
         assertEquals(true, payload.showOpenInChannelAction)
     }

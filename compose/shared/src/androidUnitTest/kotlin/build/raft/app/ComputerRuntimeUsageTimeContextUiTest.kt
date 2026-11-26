@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -26,6 +27,9 @@ import build.raft.app.data.RaftEpochMillisSource
 import build.raft.app.data.RaftLocalOffsetMinutesSource
 import build.raft.app.data.RuntimeAccountUsageKey
 import build.raft.app.data.RuntimeAccountUsageProvider
+import build.raft.app.data.RuntimeAccountUsageWindow
+import build.raft.app.data.RuntimeAccountUsageWindowFill
+import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedRuntimeAccountUsageStore
 import build.raft.app.data.stringDescLocaleType
@@ -37,6 +41,7 @@ import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertNull
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -91,6 +96,75 @@ class ComputerRuntimeUsageTimeContextUiTest {
         assertShown("已用完 · 26 小时后重置")
         assertShown("6 分钟前更新")
         onAllNodesWithText("未知时间", substring = true, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun epochAndInvalidWindowResetsReadAsAbsentNeverLaterOr1970() = runRobolectricComposeUiTest {
+        StringDesc.localeType = AppLocale.English.stringDescLocaleType
+        var epochText: String? = "unset"
+        var floorText: String? = "unset"
+        var invalidText: String? = "unset"
+        setContent {
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
+                RaftTheme(appearance = RaftAppearance.Light) {
+                    val capabilities = remember { RaftTimeCapabilities(localOffsetMinutes = 0, timeFormat = RaftTimeFormat24Hour) }
+                    val timeProvider = rememberLiveRaftTimeContext(capabilities = capabilities, clock = { NOW_MILLIS }, foundationOwner = fixedZone)
+                    CompositionLocalProvider(LocalRaftTimeContextProvider provides timeProvider) {
+                        epochText = computerRuntimeUsageResetText("1970-01-01T00:00:00.000Z", timeProvider.current)
+                        floorText = computerRuntimeUsageResetText("2000-01-01T00:00:00.000Z", timeProvider.current)
+                        invalidText = computerRuntimeUsageResetText("not a date", timeProvider.current)
+                        Column {
+                            ComputerRuntimeUsageWindowRow(
+                                window =
+                                    RuntimeAccountUsageWindow(
+                                        id = "claude_weekly",
+                                        label = "Claude Models · Weekly",
+                                        status = RuntimeAccountUsageWindowStatus.Ok,
+                                        usedRatio = 0.0,
+                                        resetsAt = "1970-01-01T00:00:00.000Z",
+                                    ),
+                                timeContext = timeProvider.current,
+                                fill = RuntimeAccountUsageWindowFill.Used,
+                            )
+                            ComputerRuntimeUsageWindowRow(
+                                window =
+                                    RuntimeAccountUsageWindow(
+                                        id = "limit_epoch",
+                                        label = "Limit Window",
+                                        status = RuntimeAccountUsageWindowStatus.LimitReached,
+                                        usedRatio = 1.0,
+                                        resetsAt = "1970-01-01T00:00:00.000Z",
+                                    ),
+                                timeContext = timeProvider.current,
+                                fill = RuntimeAccountUsageWindowFill.UsedUp,
+                            )
+                            ComputerRuntimeUsageWindowRow(
+                                window =
+                                    RuntimeAccountUsageWindow(
+                                        id = "bad_reset",
+                                        label = "Invalid Window",
+                                        status = RuntimeAccountUsageWindowStatus.Ok,
+                                        usedRatio = 0.5,
+                                        resetsAt = "not a date",
+                                    ),
+                                timeContext = timeProvider.current,
+                                fill = RuntimeAccountUsageWindowFill.Used,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        assertNull(epochText)
+        assertNull(floorText)
+        assertNull(invalidText)
+        onNodeWithText("0% used", useUnmergedTree = true).assertExists()
+        onNodeWithText("Used up", useUnmergedTree = true).assertExists()
+        onNodeWithText("50% used", useUnmergedTree = true).assertExists()
+        onAllNodesWithText("later", substring = true, ignoreCase = true, useUnmergedTree = true).assertCountEquals(0)
+        onAllNodesWithText("1970", substring = true, useUnmergedTree = true).assertCountEquals(0)
+        onAllNodesWithText("days ago", substring = true, ignoreCase = true, useUnmergedTree = true).assertCountEquals(0)
     }
 
     private fun ComposeUiTest.assertShown(text: String) {

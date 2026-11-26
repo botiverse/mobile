@@ -40,6 +40,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SharedInboxPanelTest {
@@ -573,18 +574,31 @@ class SharedInboxPanelTest {
                 parentMessageId = MessageId("parent-msg"),
                 unreadCount = 1,
                 firstUnreadMessageId = MessageId("older-unread-reply"),
-                latestActivityMessageId = MessageId("latest-visible-reply"),
+                latestActivityMessageId = MessageId("agent-unfollow-line"),
                 lastMessageId = MessageId("last-reply")
             )
         val unreadRequest = item.toHomeMessageOpenRequestForTest()
-        val readRequest =
+        val readItem =
             item.copy(
                 unreadCount = 0,
                 firstUnreadMessageId = MessageId("stale-first-unread")
-            ).toHomeMessageOpenRequestForTest()
+            )
+        val readRequest = readItem.toHomeMessageOpenRequestForTest()
+        val unreadWithoutFirst =
+            item.copy(
+                unreadCount = 2,
+                firstUnreadMessageId = null
+            )
+        val unreadWithoutFirstRequest = unreadWithoutFirst.toHomeMessageOpenRequestForTest()
 
+        assertEquals(MessageId("older-unread-reply"), item.activityThreadUnreadFocusId())
+        assertNull(readItem.activityThreadUnreadFocusId())
+        assertNull(unreadWithoutFirst.activityThreadUnreadFocusId())
         assertEquals("older-unread-reply", unreadRequest.anchorMessageId)
-        assertEquals("latest-visible-reply", readRequest.anchorMessageId)
+        // slock #16908: read thread rows (and unread rows without firstUnreadMessageId) open at
+        // latest replies with no focus, never focusing latestActivityMessageId.
+        assertNull(readRequest.anchorMessageId)
+        assertNull(unreadWithoutFirstRequest.anchorMessageId)
         assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("parent-msg")), unreadRequest.conversationIdentity.threadId)
     }
 

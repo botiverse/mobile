@@ -686,16 +686,15 @@ internal fun membersDirectMessageEligibility(
 internal fun membersVisibleAgentTabs(
     canViewPrivateSurfaces: Boolean,
     deleted: Boolean,
-    agentUsageEnabled: Boolean = false,
     managedByApp: Boolean = false,
 ): List<MembersAgentDetailTab> =
     MembersAgentDetailTab.entries.filter { tab ->
         when {
             tab == MembersAgentDetailTab.Profile -> true
-            // Web AgentDetailPanel: Usage is behind agent_usage_v0, private (same rule as Activity),
+            // Web AgentDetailPanel: Usage is private (same rule as Activity),
             // and never shown for App Bots or archived/deleted agents.
             tab == MembersAgentDetailTab.Usage ->
-                agentUsageEnabled && canViewPrivateSurfaces && !deleted && !managedByApp
+                canViewPrivateSurfaces && !deleted && !managedByApp
             else -> canViewPrivateSurfaces
         }
     }
@@ -704,7 +703,6 @@ internal fun membersAgentDetailTabsForAccess(
     accessMode: MemberDetailAccessMode,
     canViewPrivateSurfaces: Boolean,
     deleted: Boolean,
-    agentUsageEnabled: Boolean = false,
     managedByApp: Boolean = false,
 ): List<MembersAgentDetailTab> =
     if (!accessMode.allowsPrivateAgentSurfaces) {
@@ -713,7 +711,6 @@ internal fun membersAgentDetailTabsForAccess(
         membersVisibleAgentTabs(
             canViewPrivateSurfaces = canViewPrivateSurfaces,
             deleted = deleted,
-            agentUsageEnabled = agentUsageEnabled,
             managedByApp = managedByApp,
         )
     }

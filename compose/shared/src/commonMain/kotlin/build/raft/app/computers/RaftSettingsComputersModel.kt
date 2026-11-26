@@ -29,6 +29,7 @@ import build.raft.app.model.RaftRelativeTimeUnit
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.MemberProfile
 import build.raft.app.data.ServerRuntimeCatalog
+import build.raft.app.data.RUNTIME_USAGE_RESET_FLOOR_MS
 import build.raft.app.data.RuntimeAccountUsageAccount
 import build.raft.app.data.RuntimeAccountUsageHealth
 import build.raft.app.data.RuntimeAccountUsageLoad
@@ -572,6 +573,7 @@ internal data class RaftRackReset(val unit: RaftRelativeTimeUnit, val count: Int
 
 internal fun raftRackReset(resetsAt: String?, nowMillis: Long): RaftRackReset? {
     val at = resetsAt?.takeIf { it.isNotBlank() }?.let { parseRaftTimestampEpochMillisOrNull(it, 0) } ?: return null
+    if (at <= RUNTIME_USAGE_RESET_FLOOR_MS) return null
     val left = at - nowMillis
     if (left <= 0) return null
     return when {
@@ -584,13 +586,17 @@ internal fun raftRackReset(resetsAt: String?, nowMillis: Long): RaftRackReset? {
 /**
  * Web `usableAgainAt`: when an account whose windows are at their limit can be used again, the
  * latest of their resets (with the weekly limit still reached, the 5-hour reset frees nothing).
- * Null when any of them doesn't say when it resets.
+ * Null when any of them doesn't say when it resets or carries an implausible epoch reset.
  */
 private fun raftRackUsableAgainAt(resets: List<String?>): String? {
     var latest: String? = null
     var latestMillis = Long.MIN_VALUE
     resets.forEach { reset ->
-        val millis = reset?.takeIf { it.isNotBlank() }?.let { parseRaftTimestampEpochMillisOrNull(it, 0) } ?: return null
+        val millis =
+            reset?.takeIf { it.isNotBlank() }
+                ?.let { parseRaftTimestampEpochMillisOrNull(it, 0) }
+                ?.takeIf { it > RUNTIME_USAGE_RESET_FLOOR_MS }
+                ?: return null
         if (latest == null || millis > latestMillis) {
             latest = reset
             latestMillis = millis

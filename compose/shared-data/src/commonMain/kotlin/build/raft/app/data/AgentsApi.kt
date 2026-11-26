@@ -217,7 +217,7 @@ enum class AgentArchiveWorkspaceChoice(val wireValue: String) {
     /** Runtime form protocol v2 for editing: `GET /agents/:id/runtime-form`, the create form plus `values`. */
     suspend fun agentRuntimeFormV2(agentId: MemberId): HomeNetworkResponse =
         error("agentRuntimeFormV2 is not implemented")
-    /** `GET /api/servers/:serverId/agent-usage?from=YYYY-MM-DD&to=YYYY-MM-DD[&agents=<agentId>]` (`agent_usage_v0`). */
+    /** `GET /api/servers/:serverId/agent-usage?from=YYYY-MM-DD&to=YYYY-MM-DD[&agents=<agentId>]`. */
     suspend fun agentUsage(serverId: ServerId, from: String, to: String, agentId: MemberId? = null): HomeNetworkResponse =
         error("agentUsage is not implemented")
 }
@@ -633,7 +633,7 @@ enum class AgentArchiveWorkspaceChoice(val wireValue: String) {
             diagnosticsLogger = diagnosticsLogger
         ) { wire -> AgentActivityPage(entryCount = wire.size) }
 
-    /** `GET /api/servers/:serverId/agent-usage` (`agent_usage_v0`, web `useAgentUsage`). */
+    /** `GET /api/servers/:serverId/agent-usage` (web `useAgentUsage`). */
     suspend fun agentUsage(serverId: ServerId, from: String, to: String, agentId: MemberId? = null): DataResult<AgentUsageResponse> {
         val response = transport.agentUsage(serverId, from, to, agentId)
         if (!response.isSuccessful) return response.toAgentsDataError()

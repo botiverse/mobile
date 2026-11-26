@@ -4,6 +4,7 @@ import build.raft.app.RaftCoreInternalApi
 
 import build.raft.app.withKnownLatestDelegatedLabelsFrom
 import build.raft.app.model.ChannelId
+import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
@@ -1905,7 +1906,10 @@ fun InboxItem.savedMessageIdOrNull(): MessageId? =
         ?.removePrefix(SavedInboxItemKeyPrefix)
         ?.takeIf { it.isNotBlank() }
         ?.let(::MessageId)
-        ?: resolveInboxAnchorMessageId()
+        ?: when (kind) {
+            InboxItemKind.Thread -> explicitFocusMessageId ?: latestActivityMessageId
+            else -> resolveInboxAnchorMessageId()
+        }
 
 enum class SearchTimeRange(val key: String, val label: String) {
     Any("any", "ANY TIME"),

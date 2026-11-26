@@ -9,6 +9,7 @@ import kotlinx.coroutines.yield
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -318,6 +319,40 @@ class RuntimeAccountUsageTest {
         gate.complete(Unit)
         inFlight.await()
         assertNull(store.peekSync(k1, allowExpiredLoaded = true))
+    }
+
+    @Test
+    fun epochAndPre2000UsageResetTimesAreDroppedOnParseAndRejectedByFloorGuard() {
+        assertEquals(946_684_800_000L, RUNTIME_USAGE_RESET_FLOOR_MS)
+        assertFalse(isPlausibleUsageResetAt("1970-01-01T00:00:00.000Z"))
+        assertFalse(isPlausibleUsageResetAt("1999-12-31T23:59:59.000Z"))
+        assertFalse(isPlausibleUsageResetAt("2000-01-01T00:00:00.000Z"))
+        assertTrue(isPlausibleUsageResetAt("2000-01-01T00:00:00.001Z"))
+        assertTrue(isPlausibleUsageResetAt("2026-08-02T04:13:00.000Z"))
+        assertFalse(isPlausibleUsageResetAt("not a date"))
+        assertFalse(isPlausibleUsageResetAt(""))
+        assertFalse(isPlausibleUsageResetAt(null))
+
+        val read = assertIs<RuntimeAccountUsageRead.Available>(
+            parse(
+                """{"state":"fresh","snapshot":{"protocolVersion":2,"provider":"antigravity","accounts":[
+                  {"accountKey":"acct-1","health":"ok","windows":[
+                    {"id":"claude_weekly","label":"Claude Models · Weekly","status":"ok","usedRatio":0,"resetsAt":"1970-01-01T00:00:00.000Z"},
+                    {"id":"floor_window","label":"Floor","status":"ok","usedRatio":0.1,"resetsAt":"2000-01-01T00:00:00.000Z"},
+                    {"id":"bad_window","label":"Bad","status":"ok","usedRatio":0.2,"resetsAt":"not a date"},
+                    {"id":"gemini_weekly","label":"Gemini Models · Weekly","status":"ok","usedRatio":0.02,"resetsAt":"2026-08-27T00:00:00.000Z"}
+                  ]}
+                ]}}"""
+            )
+        )
+        val byId = read.snapshot.accounts.single().windows.associateBy { it.id }
+        val claude = byId.getValue("claude_weekly")
+        assertEquals(RuntimeAccountUsageWindowStatus.Ok, claude.status)
+        assertEquals(0.0, claude.usedRatio)
+        assertNull(claude.resetsAt)
+        assertNull(byId.getValue("floor_window").resetsAt)
+        assertNull(byId.getValue("bad_window").resetsAt)
+        assertEquals("2026-08-27T00:00:00.000Z", byId.getValue("gemini_weekly").resetsAt)
     }
 
     private fun parseRefresh(body: String): RuntimeAccountUsageRefresh? =

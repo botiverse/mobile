@@ -399,6 +399,7 @@
     <string name="settings_billing_vo_payment_failed">결제 실패</string>
     <string name="settings_billing_vo_usage_title">사용량</string>
     <string name="settings_billing_vo_usage_used">%2$s 중 %1$s 사용</string>
+    <string name="settings_billing_vo_appsumo_unlimited_usage">%1$d개 사용 중 · 무제한</string>
     <string name="settings_billing_vo_seats">시트</string>
     <string name="settings_billing_vo_people">사람</string>
     <string name="settings_billing_vo_agents">에이전트</string>

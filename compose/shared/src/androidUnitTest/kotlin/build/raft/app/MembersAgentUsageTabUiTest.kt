@@ -34,7 +34,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Robolectric Compose UI tests for the Agent Profile Usage tab (`MembersAgentUsageTab`,
- * `botiverse/slock` `AgentUsageTab.tsx`, `agent_usage_v0`).
+ * `botiverse/slock` `AgentUsageTab.tsx`).
  */
 @OptIn(ExperimentalTestApi::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

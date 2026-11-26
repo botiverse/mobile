@@ -746,14 +746,42 @@ private fun SettingsBillingSeatsBreakdown(humans: Int, agents: Int, pricing: Pro
     }
 }
 
-/** One AppSumo allowance: what is used of the license's limit (web UsageMeter). */
+/** Whether an AppSumo allowance cap represents unlimited usage (`-1` on the wire, botiverse/slock #16801). */
+internal fun settingsBillingCountIsUnlimited(limit: Int): Boolean = limit < 0
+
+/**
+ * Localized usage copy for one AppSumo allowance (web `UsageMeter`, botiverse/slock #16801):
+ * unlimited (`"11 used · Unlimited"`) when [limit] < 0, else finite (`"1 of 1 used"`).
+ */
+internal fun settingsBillingCountUsageDesc(used: Int, limit: Int): StringDesc =
+    if (settingsBillingCountIsUnlimited(limit)) {
+        Res.string.settings_billing_vo_appsumo_unlimited_usage.format(used)
+    } else {
+        Res.string.settings_billing_vo_usage_used.format(used.toString(), limit.toString())
+    }
+
+/**
+ * One AppSumo allowance: what is used of the license's limit (web `UsageMeter`, botiverse/slock
+ * #16801). A negative limit (`-1`) is unlimited and renders the localized unlimited usage line
+ * instead of a finite ratio bar.
+ */
 @Composable
 private fun SettingsBillingCountMeter(label: String, used: Int, limit: Int) {
+    if (settingsBillingCountIsUnlimited(limit)) {
+        RaftDescriptionList {
+            Item(
+                term = label,
+                value = settingsBillingCountUsageDesc(used, limit).localized(),
+                copyable = false,
+            )
+        }
+        return
+    }
     RaftMeter(
         used = used.toFloat(),
         max = max(limit.toFloat(), 0.0001f),
         label = label,
-        valueText = stringResource(Res.string.settings_billing_vo_usage_used, used.toString(), limit.toString()),
+        valueText = settingsBillingCountUsageDesc(used, limit).localized(),
     )
 }
 

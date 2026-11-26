@@ -399,6 +399,7 @@
     <string name="settings_billing_vo_payment_failed">付款失败</string>
     <string name="settings_billing_vo_usage_title">用量</string>
     <string name="settings_billing_vo_usage_used">已用 %1$s / %2$s</string>
+    <string name="settings_billing_vo_appsumo_unlimited_usage">已用 %1$d 个，无上限</string>
     <string name="settings_billing_vo_seats">席位</string>
     <string name="settings_billing_vo_people">人</string>
     <string name="settings_billing_vo_agents">Agent</string>

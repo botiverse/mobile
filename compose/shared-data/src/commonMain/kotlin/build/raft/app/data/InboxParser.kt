@@ -659,12 +659,11 @@ private fun WireSavedEntry.toInboxItem(diagnostics: (String) -> Unit): InboxItem
         channelKind = conversationKind,
         channelType = channelType.takeIf { it.isNotBlank() },
         lastMessageId = MessageId(messageId),
-        // The saved message itself is this row's open anchor. Thread rows must
-        // carry it in latestActivityMessageId: resolveInboxAnchorMessageId
-        // deliberately never falls back to lastMessageId for threads (task #231
-        // — without this, a saved thread message opened unanchored at the
-        // bottom instead of focusing the saved message like Activity rows do).
+        // The saved message itself is this row's open anchor (explicitFocusMessageId). Keep
+        // latestActivityMessageId populated as well so thread preview retraction and legacy
+        // saved-id helpers continue to see the saved reply id.
         latestActivityMessageId = MessageId(messageId),
+        explicitFocusMessageId = MessageId(messageId),
         lastMessagePreview = content,
         lastMessageAt = createdAt,
         lastMessageSenderName = senderName,
@@ -817,10 +816,10 @@ private fun WireSearchResult.toInboxItem(diagnostics: (String) -> Unit): InboxIt
         channelKind = conversationKind,
         channelType = channelType.takeIf { it.isNotBlank() },
         lastMessageId = MessageId(id),
-        // The matched message is this row's open anchor — same contract as the
-        // saved mapping above: thread rows anchor only via
-        // latestActivityMessageId (task #231).
+        // The matched message is this row's open anchor (explicitFocusMessageId). Keep
+        // latestActivityMessageId populated as well for thread preview retraction.
         latestActivityMessageId = MessageId(id),
+        explicitFocusMessageId = MessageId(id),
         lastMessagePreview = snippet.ifBlank { content },
         lastMessageAt = createdAt,
         lastMessageSenderName = senderName,

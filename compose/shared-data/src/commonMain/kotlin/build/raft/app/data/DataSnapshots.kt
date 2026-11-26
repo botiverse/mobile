@@ -139,6 +139,13 @@ data class InboxItem(
      * `parentChannel*` the task's channel, and there is no parent message.
      */
     val taskConversation: InboxTaskConversation? = null,
+    /**
+     * Explicit message to focus when opening a single-message row (Saved entry or Search hit).
+     * Null on Activity conversation summary rows, whose [latestActivityMessageId] is the thread's
+     * newest row of any kind (including unreadable system/agent lines) and must never be focused
+     * on open (botiverse/slock #16908).
+     */
+    val explicitFocusMessageId: MessageId? = null,
 )
 
 /** The task a task-conversation Activity row belongs to (wire `taskId` / `taskTitle`). */

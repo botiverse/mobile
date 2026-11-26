@@ -152,7 +152,7 @@ private fun RuntimeAccountUsageWindow.toSegment(kind: RuntimeQuotaWindowKind?, a
         rawLabel = label,
         percentUsed = if (usedUp) 100 else runtimeQuotaPercentUsed(ratio),
         usedUp = usedUp,
-        resetsAt = resetsAt,
+        resetsAt = resetsAt?.takeIf(::isPlausibleUsageResetAt),
         onCredits = usedUp && account.carriedByCredits(this),
     )
 }

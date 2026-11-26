@@ -126,11 +126,20 @@ class RaftComputersRackModelTest {
         assertEquals(RaftRackReset(RaftRelativeTimeUnit.Day, 2), raftRackReset(at(48 * hour), now))
         assertEquals(RaftRackReset(RaftRelativeTimeUnit.Day, 2), raftRackReset(at(3 * day - 1_000), now))
         assertEquals(RaftRackReset(RaftRelativeTimeUnit.Day, 6), raftRackReset(at(6 * day + 5 * hour), now))
-        // None when it isn't known or has passed: the line says "Used up".
+        // None when it isn't known, is at/before the 2000-01-01 floor, or has passed: the line says "Used up".
         assertNull(raftRackReset(null, now))
         assertNull(raftRackReset("not a date", now))
+        assertNull(raftRackReset("1970-01-01T00:00:00.000Z", 0L))
+        assertNull(raftRackReset("2000-01-01T00:00:00.000Z", 0L))
         assertNull(raftRackReset(at(0), now))
         assertNull(raftRackReset(at(-5 * minute), now))
+
+        val epochLimit =
+            raftRackUsageCell(
+                claude,
+                loaded(account(window(1.0, RuntimeAccountUsageWindowStatus.LimitReached, resetsAt = "1970-01-01T00:00:00.000Z"))),
+            )
+        assertNull(assertIs<RaftRackUsageCell.Value>(epochLimit).resetsAt)
     }
 
     @Test
