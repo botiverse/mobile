@@ -847,7 +847,7 @@ ALLOWED_STATIC_TIME_CONTEXT_SITES: tuple[tuple[str, int, str], ...] = (
     ),
     (
         "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPage.kt",
-        9,
+        7,
         "Phase 2C: ThreadPage staticContext fallbacks pending Phase 2C retirement",
     ),
     (
@@ -874,6 +874,11 @@ ALLOWED_STATIC_TIME_CONTEXT_SITES: tuple[tuple[str, int, str], ...] = (
         "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadTabContent.kt",
         1,
         "Phase 2C: ThreadTabContent staticContext pending Phase 2C retirement",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadTaskConversationHead.kt",
+        2,
+        "Phase 2C: ThreadTaskConversationHead staticContext fallbacks (moved from ThreadPage) pending Phase 2C retirement",
     ),
 )
 
