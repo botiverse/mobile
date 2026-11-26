@@ -194,6 +194,11 @@ internal fun RaftWebPageForwardHost(
                     errorCode = dirResult.error.code
                     loadState = RaftForwardPickerLoadState.Error
                 }
+                is DataResult.NoPermission -> {
+                    targets = emptyList()
+                    errorCode = dirResult.blocker.code
+                    loadState = RaftForwardPickerLoadState.Error
+                }
             }
         } else {
             conversationTargets = emptyList()
@@ -214,6 +219,10 @@ internal fun RaftWebPageForwardHost(
                             }
                             is DataResult.Error -> {
                                 errorCode = res.error.code
+                                loadState = RaftForwardPickerLoadState.Error
+                            }
+                            is DataResult.NoPermission -> {
+                                errorCode = res.blocker.code
                                 loadState = RaftForwardPickerLoadState.Error
                             }
                         }
@@ -254,7 +263,8 @@ internal fun RaftWebPageForwardHost(
                         nextCursor = pageResult.data.nextCursor
                     }
                     is DataResult.Empty -> nextCursor = null
-                    is DataResult.Error -> nextCursor = null
+                    is DataResult.Error,
+                    is DataResult.NoPermission -> nextCursor = null
                 }
             } finally {
                 if (requestGeneration == expectedGeneration && selectedServerId == expectedServerId) {
@@ -297,8 +307,15 @@ internal fun RaftWebPageForwardHost(
                 when (val sent = conversationRepository.sendMessage(channelId = destination.channelId, body = body)) {
                     is DataResult.Content -> onForwarded(target.title)
                     is DataResult.Empty,
-                    is DataResult.Error -> {
-                        bridge.logWarn("web_panel_forward_send_failed code=${(sent as? DataResult.Error)?.error?.code ?: "empty"}")
+                    is DataResult.Error,
+                    is DataResult.NoPermission -> {
+                        val failCode =
+                            when (sent) {
+                                is DataResult.Error -> sent.error.code
+                                is DataResult.NoPermission -> sent.blocker.code
+                                else -> "empty"
+                            }
+                        bridge.logWarn("web_panel_forward_send_failed code=$failCode")
                         onForwardFailed()
                     }
                 }
