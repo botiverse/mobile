@@ -47,6 +47,7 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.expiredAsOf
 import build.raft.app.data.expiresAtEpochMillis
 import build.raft.app.data.isAgentMigrateAction
+import build.raft.app.data.isConnectMcpAction
 import build.raft.app.data.isPreparedRequestAction
 import build.raft.app.data.isInviteExternalAction
 import build.raft.app.model.ConversationKind
@@ -87,6 +88,10 @@ internal data class ThreadActionCardSpecHost(
     val evaluateMigrateAgentAccess: (ThreadActionCard) -> AgentMigrateCardAccess? = { null },
     /** Permission evaluation for `channel:invite_external` cards (web `actionCardCommon.tsx` `capabilities.federateChannels`). */
     val evaluateInviteExternalAccess: (ThreadActionCard) -> InviteExternalCardAccess? = { null },
+    /** Server feature flag `mcp_personal_accounts` (`#wg-mobile-sync:#228`): mounts native Connect card account choice. */
+    val mcpPersonalAccountsEnabled: Boolean = false,
+    /** Collaborator driving `integration:connect_mcp` native account choice when [mcpPersonalAccountsEnabled] is true. */
+    val mcpConnectCardHost: ThreadMcpConnectCardHost? = null,
     /** The host's diagnostics log (the bridge log in the app). */
     val log: (String) -> Unit = {},
 )
@@ -367,12 +372,20 @@ internal fun ThreadActionCardSpecView(
             effectiveCard.resultKind == "external-invites" &&
             effectiveCard.resultAddresses == 0
     val stripPreparedRequestButtons = isPreparedRequest && !canOperate
+    val showMcpConnectFooter =
+        effectiveCard.isConnectMcpAction() &&
+            host.mcpPersonalAccountsEnabled &&
+            canOperate &&
+            !effectiveCard.isExecuted &&
+            !effectiveCard.hasEnded
     val shown =
-        remember(rendered, inline, questionLayout, singleQuestion, stripPreparedRequestButtons, hideZeroExternalInviteResult) {
+        remember(rendered, inline, questionLayout, singleQuestion, stripPreparedRequestButtons, hideZeroExternalInviteResult, showMcpConnectFooter) {
             val body = if (inline == null) rendered.spec else rendered.spec.withoutInlineQuestions(inline)
             val layoutBody = if (questionLayout == QuestionCardLayout.SlimCard) body.withoutSlimQuestionRows(singleQuestion) else body
+            val withoutAddressed = if (stripPreparedRequestButtons) layoutBody.withoutAddressedCardActionButtons() else layoutBody
+            val finalSpec = if (showMcpConnectFooter) withoutAddressed.withoutMcpConnectLoginNotice() else withoutAddressed
             rendered.copy(
-                spec = if (stripPreparedRequestButtons) layoutBody.withoutAddressedCardActionButtons() else layoutBody,
+                spec = finalSpec,
                 result = if (hideZeroExternalInviteResult) null else rendered.result,
             )
         }
@@ -493,6 +506,18 @@ internal fun ThreadActionCardSpecView(
                             onOpen = { host.onIntent(ThreadActionCardSpecIntent.OpenInviteExternal(messageId, currentCard)) },
                             onDecline = { host.onIntent(ThreadActionCardSpecIntent.DeclineInviteExternal(messageId, currentCard)) },
                             onReconfirm = { host.onIntent(ThreadActionCardSpecIntent.ReconfirmInviteExternal(messageId, currentCard)) },
+                        )
+                    }
+                }
+                showMcpConnectFooter -> {
+                    {
+                        ThreadMcpConnectCardFooter(
+                            messageId = messageId,
+                            card = effectiveCard,
+                            busyElementKey = slice.busyElement(typedPending),
+                            host = host.mcpConnectCardHost,
+                            onReconfirm = { host.onIntent(ThreadActionCardSpecIntent.ReconfirmMcpConnect(messageId, currentCard)) },
+                            onOpenInWeb = { host.openInWeb(messageId) },
                         )
                     }
                 }

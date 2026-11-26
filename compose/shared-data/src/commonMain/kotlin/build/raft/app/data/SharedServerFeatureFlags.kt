@@ -343,6 +343,15 @@ const val PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY: String = "private_mention_add_v0
  */
 @RaftCoreInternalApi const val TASK_WAITING_ON_YOU_FEATURE_FLAG_KEY: String = "task_waiting_on_you_v0"
 
+/**
+ * Per-member personal MCP accounts and native Connect card account choice (botiverse/slock
+ * `packages/shared/src/featureFlags.ts` `MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY`, #15635 /
+ * #16087 / #16241 / #16986, `#wg-mobile-sync:#228`): per server, default OFF (unresolved or
+ * missing evaluates false). When ON, `integration:connect_mcp` action cards mount the native
+ * account picker slot (`ThreadMcpConnectCardSlot`); when OFF, cards keep the fallback view.
+ */
+@RaftCoreInternalApi const val MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY: String = "mcp_personal_accounts"
+
 /** Effective Early access policy across a signed-in account's joined servers. */
 data class RaftEarlyAccessFlagPolicy(
     val visible: Boolean = false,
@@ -425,6 +434,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY,
     // Activity task waiting-on-you status (botiverse/slock #16759 / #17085, default OFF).
     TASK_WAITING_ON_YOU_FEATURE_FLAG_KEY,
+    // Personal MCP accounts & native Connect card account choice (#wg-mobile-sync:#228, default OFF).
+    MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,
@@ -780,6 +791,14 @@ class SharedServerFeatureFlags(
      */
     @RaftCoreInternalApi fun isDataExportEnabled(serverId: ServerId?): Boolean =
         isEnabled(serverId, DATA_EXPORT_FEATURE_FLAG_KEY)
+
+    /**
+     * Personal MCP accounts & native Connect card account choice gate (`#wg-mobile-sync:#228`,
+     * botiverse/slock `MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY`): per server, default OFF
+     * (unresolved or missing evaluates false).
+     */
+    @RaftCoreInternalApi fun isMcpPersonalAccountsEnabled(serverId: ServerId?): Boolean =
+        isEnabled(serverId, MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY)
 
     /**
      * Account-level Data export gate across [serverIds]: personal data export is user-scoped on the

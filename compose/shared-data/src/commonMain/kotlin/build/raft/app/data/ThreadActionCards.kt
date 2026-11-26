@@ -84,6 +84,8 @@ private val threadActionCardJson = Json {
     val requestId: String? = null,
     val agentId: String? = null,
     val agentName: String? = null,
+    /** `integration:connect_mcp`: the MCP App id (`action.mcpServerId` or `result.mcpServerId`). */
+    val mcpServerId: String? = null,
     val clientId: String? = null,
     val clientKey: String? = null,
     val clientName: String? = null,
@@ -559,6 +561,8 @@ private fun JsonObject.questionShapes(): List<ThreadActionCardQuestion> =
     val requestId: String? = null,
     val agentId: String? = null,
     val agentName: String? = null,
+    /** `integration:connect_mcp`: the MCP App id (`action.mcpServerId` or `result.mcpServerId`). */
+    val mcpServerId: String? = null,
     val clientId: String? = null,
     val clientKey: String? = null,
     val clientName: String? = null,
@@ -583,6 +587,7 @@ private fun JsonObject.questionShapes(): List<ThreadActionCardQuestion> =
     val ownerAgentId: String? = null,
     val ownerAgentName: String? = null,
     val agentId: String? = null,
+    val mcpServerId: String? = null,
     val targetMachineId: String? = null,
     val addedHumanIds: List<String> = emptyList(),
     val addedAgentIds: List<String> = emptyList(),
@@ -634,6 +639,7 @@ private fun JsonObject.questionShapes(): List<ThreadActionCardQuestion> =
         requestId = action.requestId?.takeIf { it.isNotBlank() },
         agentId = action.agentId?.takeIf { it.isNotBlank() },
         agentName = action.agentName?.takeIf { it.isNotBlank() },
+        mcpServerId = firstNonBlank(action.mcpServerId, actionObject.actionCardStringOrNull("mcpServerId"), meta.result?.mcpServerId),
         clientId = action.clientId?.takeIf { it.isNotBlank() },
         clientKey = action.clientKey?.takeIf { it.isNotBlank() },
         clientName = action.clientName?.takeIf { it.isNotBlank() },
@@ -758,6 +764,7 @@ private val actionCardSpecCache = atomic(emptyMap<String, ActionCardSpecCard?>()
         putString("requestId", requestId)
         putString("agentId", agentId)
         putString("agentName", agentName)
+        putString("mcpServerId", mcpServerId)
         putString("clientId", clientId)
         putString("clientKey", clientKey)
         putString("clientName", clientName)
@@ -855,6 +862,7 @@ private val actionCardSpecCache = atomic(emptyMap<String, ActionCardSpecCard?>()
         requestId = metadata["${ActionCardMetadataPrefix}requestId"]?.takeIf { it.isNotBlank() },
         agentId = metadata["${ActionCardMetadataPrefix}agentId"]?.takeIf { it.isNotBlank() },
         agentName = metadata["${ActionCardMetadataPrefix}agentName"]?.takeIf { it.isNotBlank() },
+        mcpServerId = metadata["${ActionCardMetadataPrefix}mcpServerId"]?.takeIf { it.isNotBlank() },
         clientId = metadata["${ActionCardMetadataPrefix}clientId"]?.takeIf { it.isNotBlank() },
         clientKey = metadata["${ActionCardMetadataPrefix}clientKey"]?.takeIf { it.isNotBlank() },
         clientName = metadata["${ActionCardMetadataPrefix}clientName"]?.takeIf { it.isNotBlank() },
@@ -965,6 +973,30 @@ private val actionCardSpecCache = atomic(emptyMap<String, ActionCardSpecCard?>()
         resultId = channelId,
         resultAddresses = addresses.coerceAtLeast(0),
     )
+
+@RaftCoreInternalApi fun ThreadActionCard.withExecutedMcpConnection(
+    mcpServerId: String,
+    agentId: String,
+    executedByUserName: String? = null,
+): ThreadActionCard =
+    copy(
+        state = "executed",
+        executedByUserName = executedByUserName ?: this.executedByUserName,
+        mcpServerId = mcpServerId,
+        agentId = agentId,
+        resultKind = "mcp-connection",
+        resultId = agentId,
+    )
+
+/**
+ * Resolves the MCP App id on an `integration:connect_mcp` card: prefers [ThreadActionCard.mcpServerId]
+ * (REST / metadata), falling back to [ThreadActionCard.metadataItems] if a projected carrier dropped
+ * the top-level action key.
+ */
+@RaftCoreInternalApi val ThreadActionCard.resolvedMcpServerId: String?
+    get() =
+        mcpServerId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: metadataItems.firstOrNull { it.key.equals("mcpServerId", ignoreCase = true) }?.value?.trim()?.takeIf { it.isNotEmpty() }
 
 @RaftCoreInternalApi const val ChannelInviteExternalActionCardType = "channel:invite_external"
 

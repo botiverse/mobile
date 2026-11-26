@@ -1110,4 +1110,50 @@ class SharedServerFeatureFlagsTest {
         overridden.prefetch(server)
         assertFalse(overridden.isTaskWaitingOnYouEnabled(server))
     }
+
+    @Test
+    fun mcpPersonalAccountsDefaultsOffAndHonorsServerEvaluation() = runTest {
+        assertEquals("mcp_personal_accounts", MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY)
+        assertTrue(MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse(MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+
+        val api =
+            object : RaftFeatureFlagsApi {
+                override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
+                    when (serverId.value) {
+                        "s1" ->
+                            ok("""{"evaluations":[{"key":"$MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY","enabled":false,"reason":"default"}]}""")
+                        "s2" ->
+                            ok("""{"evaluations":[{"key":"$MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY","enabled":true,"reason":"server_rule"}]}""")
+                        else -> ok("""{"evaluations":[]}""")
+                    }
+            }
+        val flags = SharedServerFeatureFlags(api)
+
+        assertFalse(flags.isMcpPersonalAccountsEnabled(null))
+        assertFalse(flags.isMcpPersonalAccountsEnabled(ServerId("s1")), "unresolved defaults OFF")
+
+        flags.prefetch(ServerId("s1"))
+        assertFalse(flags.isMcpPersonalAccountsEnabled(ServerId("s1")))
+
+        flags.prefetch(ServerId("s2"))
+        assertTrue(flags.isMcpPersonalAccountsEnabled(ServerId("s2")))
+        assertFalse(flags.isMcpPersonalAccountsEnabled(ServerId("s1")))
+
+        val missing = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
+        missing.prefetch(server)
+        assertFalse(missing.isMcpPersonalAccountsEnabled(server), "missing_flag stays OFF")
+
+        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
+        assertFalse(failed.prefetch(server).resolved)
+        assertFalse(failed.isMcpPersonalAccountsEnabled(server))
+
+        val overridden =
+            SharedServerFeatureFlags(
+                api = FakeApi(ok("""{"evaluations":[{"key":"$MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY","enabled":true}]}""")),
+                diagnosticOverride = { _, key, eff -> if (key == MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY) false else eff },
+            )
+        overridden.prefetch(server)
+        assertFalse(overridden.isMcpPersonalAccountsEnabled(server))
+    }
 }
