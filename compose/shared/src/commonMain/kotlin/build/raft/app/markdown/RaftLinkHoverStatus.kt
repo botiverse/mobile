@@ -112,6 +112,7 @@ internal fun raftLinkHoverLabel(
                     is RaftOwnLinkRoute.ServerJoin,
                     is RaftOwnLinkRoute.ExternalInvite,
                     is RaftOwnLinkRoute.SendPrompt,
+                    is RaftOwnLinkRoute.DataExport,
                     -> true
                     is RaftOwnLinkRoute.WebPage,
                     null,

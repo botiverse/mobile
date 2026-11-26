@@ -347,6 +347,15 @@ const val DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY: String = "dm_main_timeline_lab_
  */
 @RaftCoreInternalApi const val PEOPLE_ACTIVITY_ROWS_FEATURE_FLAG_KEY: String = "people_activity_rows_v0"
 
+/**
+ * Data export (botiverse/slock `packages/shared/src/featureFlags.ts` `DATA_EXPORT_FEATURE_FLAG_KEY`,
+ * #15418 / #15427 / #15451 / #15495 / #15506 / #15517): default OFF everywhere (unresolved or
+ * missing evaluates false). Personal export (`/api/me/data-exports`) is evaluated user-scoped on
+ * the server and server export (`/api/servers/:id/data-exports`) is evaluated per user and server.
+ * Gates Settings › Account › Data & privacy and in-app `/?data_export=<id>` deep-link routing.
+ */
+@RaftCoreInternalApi const val DATA_EXPORT_FEATURE_FLAG_KEY: String = "data_export_v0"
+
 /** Effective Early access policy across a signed-in account's joined servers. */
 data class RaftEarlyAccessFlagPolicy(
     val visible: Boolean = false,
@@ -430,6 +439,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY,
     // People Activity rows full rule (botiverse/slock #17095 / #17123, default OFF).
     PEOPLE_ACTIVITY_ROWS_FEATURE_FLAG_KEY,
+    // Data export (botiverse/slock #15418 / #15427 / #15451 / #15506 / #15517, default OFF).
+    DATA_EXPORT_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,
@@ -725,6 +736,27 @@ class SharedServerFeatureFlags(
      */
     @RaftCoreInternalApi fun isPeopleActivityRowsEnabled(serverId: ServerId?): Boolean =
         isEnabled(serverId, PEOPLE_ACTIVITY_ROWS_FEATURE_FLAG_KEY)
+
+    /**
+     * Data export gate (`botiverse/slock` `DATA_EXPORT_FEATURE_FLAG_KEY`):
+     * per server, default OFF (unresolved or missing evaluates false).
+     */
+    @RaftCoreInternalApi fun isDataExportEnabled(serverId: ServerId?): Boolean =
+        isEnabled(serverId, DATA_EXPORT_FEATURE_FLAG_KEY)
+
+    /**
+     * Account-level Data export gate across [serverIds]: personal data export is user-scoped on the
+     * server (`evaluateFeatureFlag({ key: "data_export_v0", userId, serverId: null })`), while
+     * client evaluations run per joined server. True when any joined server enables
+     * [DATA_EXPORT_FEATURE_FLAG_KEY]; false when empty, unresolved, or all off.
+     */
+    @RaftCoreInternalApi fun isDataExportEnabledForAccount(serverIds: Collection<String>): Boolean =
+        serverIds
+            .asSequence()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .distinct()
+            .any { isEnabled(ServerId(it), DATA_EXPORT_FEATURE_FLAG_KEY) }
 
     /**
      * Resolves the account-wide Early access policy across [serverIds] (`#proj-mobile:e48030bc`):

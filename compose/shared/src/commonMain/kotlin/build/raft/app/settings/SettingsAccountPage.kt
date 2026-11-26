@@ -28,6 +28,7 @@ import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowChevron
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftSwitch
@@ -60,7 +61,9 @@ import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.RAFT_MOBILE_OAUTH_COMPLETION_EVENT
 import build.raft.app.data.RaftEventBuses
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.secondFactorStepUpWebUrlResolver
+import build.raft.app.model.ServerId
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -97,6 +100,7 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 const val SETTINGS_ACCOUNT_PAGE = "compose_settings_account"
@@ -287,8 +291,23 @@ private fun SettingsAccountScreen() {
         onDispose(subscription::close)
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
+    val featureFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val accountServerIds = remember(session.value) { raftDataExportAccountServerIds(session.value) }
+    LaunchedEffect(accountServerIds, sharedStores.serverFeatureFlags) {
+        accountServerIds.forEach { serverId ->
+            val id = ServerId(serverId)
+            if (!sharedStores.serverFeatureFlags.snapshotFor(id).resolved) {
+                launch { runCatchingPreservingCancellation { sharedStores.serverFeatureFlags.prefetch(id) } }
+            }
+        }
+    }
+    val dataExportEnabled =
+        remember(sharedStores.serverFeatureFlags, accountServerIds, featureFlagRevision) {
+            sharedStores.serverFeatureFlags.isDataExportEnabledForAccount(accountServerIds)
+        }
     val loginSecurityNetworkClient =
-        remember(bridge, environment.storeScope) { RaftSharedStoreRegistry.get(bridge).networkClient(environment.storeScope) }
+        remember(sharedStores, environment.storeScope) { sharedStores.networkClient(environment.storeScope) }
     val loginSecurityStore = rememberSettingsAccountLoginSecurityStore(loginSecurityNetworkClient)
     val loginSecurityState by loginSecurityStore.state.collectAsState()
     val signedInDevicesStore =
@@ -351,6 +370,15 @@ private fun SettingsAccountScreen() {
                 SettingsAccountDeletionUi(
                     onOpen = { pager.openSettingsAccountDeletionPage(environment.storeScope) }
                 ),
+            // Data & privacy web surface (flag `data_export_v0`, off by default).
+            dataPrivacy =
+                if (dataExportEnabled) {
+                    SettingsAccountDataPrivacyUi(
+                        onOpen = { pager.openSettingsDataPrivacyPage(environment.storeScope) }
+                    )
+                } else {
+                    null
+                },
             onPasswordChange = { currentPassword, newPassword ->
                 settingsViewModel.dispatch(
                     SharedSettingsIntent.ChangeAccountPassword(
@@ -488,6 +516,8 @@ internal fun SettingsAccountContent(
     onPasswordChange: (currentPassword: String, newPassword: String) -> Unit = { _, _ -> },
     /** Delete account; null hides the row (web has no such row, so visual-parity fixtures pass null). */
     accountDeletion: SettingsAccountDeletionUi? = null,
+    /** Data & privacy (`data_export_v0`); null hides the entry so Settings › Account is unchanged while off. */
+    dataPrivacy: SettingsAccountDataPrivacyUi? = null,
     /** The open "Verify it's you" of a refused password or sign-in method change; null: none. */
     secondFactorStepUp: SettingsSecondFactorStepUpUi? = null,
     /** Login & security (passkeys, two-step verification); null hides the group (visual fixtures). */
@@ -570,19 +600,32 @@ internal fun SettingsAccountContent(
             if (appLogins != null && appLogins.state.logins.isNotEmpty()) {
                 item(key = SettingsAppLoginsSectionTag) { SettingsAppLoginsSection(appLogins) }
             }
-            // Web order (AccountSection.tsx): Product analytics before Session (Sign out).
-            if (localizedPayload.usageDataVisible) {
+            // Web order (AccountSection.tsx): Product analytics (or Data & privacy while data_export_v0
+            // is on) before Session (Sign out). When dataPrivacy is null, this block stays identical.
+            if (localizedPayload.usageDataVisible || dataPrivacy != null) {
                 item(key = SettingsAccountUsageDataSectionTag) {
                     Box(Modifier.fillMaxWidth().testTag(SettingsAccountUsageDataSectionTag)) {
                         SettingsFormSection(
                             iconName = RaftLucideIconName.ChartColumn,
-                            title = stringResource(Res.string.settings_usage_data_section_title),
+                            title =
+                                stringResource(
+                                    if (dataPrivacy != null) {
+                                        Res.string.settings_account_data_privacy_title
+                                    } else {
+                                        Res.string.settings_usage_data_section_title
+                                    }
+                                ),
                         ) {
-                            SettingsAccountUsageDataRow(
-                                sharing = localizedPayload.usageDataSharing,
-                                saving = localizedPayload.usageDataSaving,
-                                onEvent = onEvent
-                            )
+                            if (localizedPayload.usageDataVisible) {
+                                SettingsAccountUsageDataRow(
+                                    sharing = localizedPayload.usageDataSharing,
+                                    saving = localizedPayload.usageDataSaving,
+                                    onEvent = onEvent
+                                )
+                            }
+                            if (dataPrivacy != null) {
+                                SettingsAccountDataPrivacyRow(onClick = dataPrivacy.onOpen)
+                            }
                         }
                     }
                 }
@@ -686,6 +729,30 @@ internal class SettingsAccountDeletionUi(
     val onOpen: () -> Unit
 )
 
+/** The Data & privacy row's action: open the embedded web Data & privacy surface (`data_export_v0`). */
+internal class SettingsAccountDataPrivacyUi(
+    val onOpen: () -> Unit
+)
+
+/**
+ * Data & privacy entry row (`data_export_v0`, botiverse/slock #15427 / #15517): opens the
+ * authenticated Settings WebView at `/settings/account#data-export`.
+ */
+@Composable
+private fun SettingsAccountDataPrivacyRow(onClick: () -> Unit) {
+    RaftListRowGroup(Modifier.fillMaxWidth().settingsSearchAnchor(SETTINGS_DATA_EXPORT_ANCHOR, SettingsSearchCardShape)) {
+        RaftListRow(
+            title = stringResource(Res.string.settings_account_data_privacy_title),
+            modifier = Modifier.testTag(SettingsAccountDataPrivacyRowTag),
+            variant = RaftListRowVariant.Plain,
+            description = stringResource(Res.string.settings_account_data_privacy_subtitle),
+            wrapDescription = true,
+            onClick = onClick,
+            trailing = { RaftListRowChevron() },
+        )
+    }
+}
+
 /**
  * Delete account (App Store 5.1.1(v)): a plain setting row in its own inset group, the red
  * button its target, under the Danger zone header (web DeleteAccountSection).
@@ -763,6 +830,7 @@ private fun SettingsAccountUsageDataRow(
 internal const val SettingsAccountChangePasswordToggleTag = "settings-account-change-password-toggle"
 internal const val SettingsAccountConnectedAccountsSectionTag = "settings-account-connected-accounts"
 internal const val SettingsAccountUsageDataSectionTag = "settings-account-usage-data"
+internal const val SettingsAccountDataPrivacyRowTag = "settings-account-data-privacy-row"
 internal const val SettingsAccountSessionSectionTag = "settings-account-session"
 
 @Composable

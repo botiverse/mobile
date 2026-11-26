@@ -371,6 +371,8 @@
     <string name="settings_usage_data_description">Ajude a melhorar o Raft compartilhando quais páginas e recursos você usa. Suas mensagens e outros conteúdos nunca são incluídos.</string>
     <string name="settings_usage_data_learn_more">Saiba mais</string>
     <string name="settings_usage_data_save_failed">Não foi possível salvar esta configuração. Tente novamente.</string>
+    <string name="settings_account_data_privacy_title">Dados e privacidade</string>
+    <string name="settings_account_data_privacy_subtitle">Exporte seus dados</string>
     <string name="settings_computers_title">Computadores</string>
     <string name="settings_computers_subtitle">Computadores conectados e espaços de trabalho</string>
     <string name="settings_server_title">Servidor</string>

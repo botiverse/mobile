@@ -940,4 +940,56 @@ class SharedServerFeatureFlagsTest {
         assertTrue(enabled.isPeopleActivityRowsEnabled(server))
         assertFalse(enabled.isPeopleActivityRowsEnabled(ServerId("s2")))
     }
+
+    @Test
+    fun dataExportV0FlagDefaultsOffAndFollowsPerServerAndAccountEvaluation() = runTest {
+        assertEquals("data_export_v0", DATA_EXPORT_FEATURE_FLAG_KEY)
+        assertTrue(DATA_EXPORT_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse(DATA_EXPORT_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        assertFalse(DATA_EXPORT_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+
+        val api =
+            object : RaftFeatureFlagsApi {
+                override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
+                    when (serverId.value) {
+                        "s1" ->
+                            ok("""{"evaluations":[{"key":"$DATA_EXPORT_FEATURE_FLAG_KEY","enabled":false,"reason":"default"}]}""")
+                        "s2" ->
+                            ok("""{"evaluations":[{"key":"$DATA_EXPORT_FEATURE_FLAG_KEY","enabled":true,"reason":"user_rule"}]}""")
+                        else -> ok("""{"evaluations":[]}""")
+                    }
+            }
+        val flags = SharedServerFeatureFlags(api)
+
+        assertFalse(flags.isDataExportEnabled(null))
+        assertFalse(flags.isDataExportEnabled(ServerId("s1")), "unresolved defaults OFF")
+        assertFalse(flags.isDataExportEnabledForAccount(emptyList()))
+        assertFalse(flags.isDataExportEnabledForAccount(listOf("s1", "s2")), "unresolved account defaults OFF")
+
+        flags.prefetch(ServerId("s1"))
+        assertFalse(flags.isDataExportEnabled(ServerId("s1")))
+        assertFalse(flags.isDataExportEnabledForAccount(listOf("s1", "s2")))
+
+        flags.prefetch(ServerId("s2"))
+        assertTrue(flags.isDataExportEnabled(ServerId("s2")))
+        assertFalse(flags.isDataExportEnabled(ServerId("s1")))
+        assertTrue(flags.isDataExportEnabledForAccount(listOf("s1", "s2")))
+        assertTrue(flags.isDataExportEnabledForAccount(listOf("  s2  ", "")))
+
+        val missing = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
+        missing.prefetch(server)
+        assertFalse(missing.isDataExportEnabled(server), "missing_flag stays OFF")
+
+        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
+        assertFalse(failed.prefetch(server).resolved)
+        assertFalse(failed.isDataExportEnabled(server))
+
+        val overridden =
+            SharedServerFeatureFlags(
+                api = FakeApi(ok("""{"evaluations":[{"key":"$DATA_EXPORT_FEATURE_FLAG_KEY","enabled":true}]}""")),
+                diagnosticOverride = { _, key, eff -> if (key == DATA_EXPORT_FEATURE_FLAG_KEY) false else eff },
+            )
+        overridden.prefetch(server)
+        assertFalse(overridden.isDataExportEnabled(server))
+    }
 }

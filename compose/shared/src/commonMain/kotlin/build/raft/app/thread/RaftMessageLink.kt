@@ -554,6 +554,17 @@ object RaftMessageLinkIngress {
             )
             return true
         }
+        val dataExport =
+            parseRaftDataExportLink(url, webUrl)
+                ?: raftSchemeLinkToWebLink(url, webUrl)?.let { parseRaftDataExportLink(it, webUrl) }
+        if (dataExport != null) {
+            val pending = RaftDataExportLinkInbox.Process.submit(dataExport, source.raftLinkLogToken())
+            raftLogInfo(
+                RaftMessageLinkLogTag,
+                "data_export_link_ingress result=pending id=${pending.id} source=${pending.source} hasServer=${dataExport.serverId != null}"
+            )
+            return true
+        }
         val link =
             parseRaftMessageLink(url, webUrl)
                 ?: raftSchemeLinkToWebLink(url, webUrl)?.let { parseRaftMessageLink(it, webUrl) }
