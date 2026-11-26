@@ -129,6 +129,12 @@ enum class InboxRefreshTrigger(val wireValue: String) {
      * not show: that row is asked for alone (`?ids=`, `position_reread`) and inserted from the answer.
      */
     RowUndone("row_undone"),
+    /**
+     * `task_waiting_on_you_v0` (botiverse/slock #16759 / #17085): `task:updated` put a new waiting
+     * hold on the signed-in user for a listed task row, so that row (or the list when row position
+     * is off) is re-read to pick up the server's `waiting` metadata.
+     */
+    TaskWaiting("task_waiting"),
 }
 
 /** The trigger a realtime event gives the Activity re-read it asks for. */

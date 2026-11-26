@@ -140,12 +140,47 @@ data class InboxItem(
      */
     val taskConversation: InboxTaskConversation? = null,
     /**
+     * `task_waiting_on_you_v0` (botiverse/slock #16759): optional `waiting` metadata served on
+     * `kind: "task"` rows when the task currently waits on the signed-in user. Absent/null when
+     * the flag is off, the task does not wait on the viewer, or the payload is malformed.
+     */
+    val taskWaiting: TaskWaitingOnYou? = null,
+    /**
      * Explicit message to focus when opening a single-message row (Saved entry or Search hit).
      * Null on Activity conversation summary rows, whose [latestActivityMessageId] is the thread's
      * newest row of any kind (including unreadable system/agent lines) and must never be focused
      * on open (botiverse/slock #16908).
      */
     val explicitFocusMessageId: MessageId? = null,
+)
+
+/** How a task ended up waiting on the viewer (wire `waiting.via`). */
+@kotlinx.serialization.Serializable
+enum class TaskWaitingVia {
+    Claim,
+    Assign,
+    System,
+}
+
+/** Who assigned the task to the viewer (wire `waiting.assignedBy`, only on `via = "assign"`). */
+@kotlinx.serialization.Serializable
+data class TaskWaitingAssignedBy(
+    val kind: MemberKind,
+    val id: String,
+    val name: String? = null,
+)
+
+/**
+ * Waiting-on-you metadata carried by a `kind: "task"` inbox row (`task_waiting_on_you_v0`,
+ * botiverse/slock `packages/shared/src/taskWaitingOnYou.ts`).
+ */
+@kotlinx.serialization.Serializable
+data class TaskWaitingOnYou(
+    val since: String,
+    val via: TaskWaitingVia,
+    val assignedBy: TaskWaitingAssignedBy? = null,
+    val reason: String? = null,
+    val reasonTruncated: Boolean = false,
 )
 
 /** The task a task-conversation Activity row belongs to (wire `taskId` / `taskTitle`). */
@@ -158,6 +193,54 @@ data class InboxTaskConversation(
 /** A task v2 conversation row (web `isTaskConversationItem`). */
 val InboxItem.isTaskConversation: Boolean
     get() = taskConversation != null
+
+/**
+ * Whether [task] currently waits on [currentUserId] (web `liveTaskWaitsOn`, slock #16759):
+ * active status (`todo` | `in_progress` | `in_review`) and assigned to this human user.
+ */
+@RaftCoreInternalApi fun liveTaskWaitsOn(task: TaskSummary, currentUserId: String?): Boolean {
+    if (currentUserId.isNullOrBlank()) return false
+    val active =
+        task.status == TaskStatus.Todo ||
+            task.status == TaskStatus.InProgress ||
+            task.status == TaskStatus.InReview
+    return active && task.assignee?.kind == MemberKind.Human && task.assignee.id.value == currentUserId
+}
+
+/**
+ * Effective waiting metadata to display on an Activity task row (web `shownTaskWaiting`,
+ * slock #16759): keeps [rowWaiting] unless [liveTask] is known and no longer waits on
+ * [currentUserId], in which case it clears immediately in place without waiting for a refetch.
+ */
+@RaftCoreInternalApi fun shownTaskWaiting(
+    rowWaiting: TaskWaitingOnYou?,
+    liveTask: TaskSummary?,
+    currentUserId: String?,
+): TaskWaitingOnYou? {
+    if (rowWaiting == null) return null
+    if (liveTask == null) return rowWaiting
+    if (currentUserId.isNullOrBlank()) {
+        val active =
+            liveTask.status == TaskStatus.Todo ||
+                liveTask.status == TaskStatus.InProgress ||
+                liveTask.status == TaskStatus.InReview
+        return if (active && liveTask.assignee?.kind == MemberKind.Human) rowWaiting else null
+    }
+    if (!liveTaskWaitsOn(liveTask, currentUserId)) return null
+    return rowWaiting
+}
+
+/**
+ * Carries [served]'s `taskWaiting` onto a kept task-conversation row (web `withServedTaskWaiting`,
+ * slock #16759 / #17085): `waiting` is task state, not row position, so a kept row still takes the
+ * freshly served `waiting` (including clearing it to null).
+ */
+@RaftCoreInternalApi fun InboxItem.withServedTaskWaiting(served: InboxItem): InboxItem =
+    if (isTaskConversation && served.isTaskConversation && taskWaiting != served.taskWaiting) {
+        copy(taskWaiting = served.taskWaiting)
+    } else {
+        this
+    }
 
 /**
  * The frontier a Done request names, chosen exactly like web

@@ -4961,6 +4961,13 @@
     <string name="artifacts_viewer_unavailable_body">Ele não existe ou você não tem acesso.</string>
     <string name="artifacts_viewer_open_in_browser">Abrir no navegador</string>
     <string name="activity_list_object_home">· %1$s</string>
+    <string name="activity_list_waiting_label">Aguardando você</string>
+    <string name="activity_list_waiting_assigned_by">%1$s atribuiu a você · %2$s</string>
+    <string name="activity_list_waiting_claimed">Você assumiu · %1$s</string>
+    <string name="activity_list_waiting_assigned">Atribuída a você · %1$s</string>
+    <string name="activity_list_waiting_detail">%1$s · %2$s · %3$s</string>
+    <string name="activity_list_waiting_detail_no_reason">%1$s · %2$s</string>
+    <string name="activity_list_waiting_named">Aguardando você, %1$s</string>
     <string name="activity_action_unfollow_artifact">Deixar de seguir</string>
     <string name="activity_unfollowed_artifact">Você deixou de seguir %1$s</string>
     <string name="emoji_picker_search_placeholder">Pesquisar emoji</string>

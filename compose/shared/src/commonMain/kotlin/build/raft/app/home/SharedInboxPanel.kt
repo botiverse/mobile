@@ -79,7 +79,9 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
+import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
@@ -475,10 +477,40 @@ internal fun SharedHomeActivityScreen(
                 }
             }
         }
+    val serverFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val taskWaitingOnYouEnabled =
+        remember(sharedStores, activitySummaryServerId, serverFlagRevision) {
+            sharedStores.serverFeatureFlags.isTaskWaitingOnYouEnabled(activitySummaryServerId)
+        }
+    val listedTaskIds =
+        remember(safeOpenProjectedState.items) {
+            safeOpenProjectedState.items.mapNotNullTo(mutableSetOf()) { it.taskConversation?.taskId }
+        }
+    val liveTasksByIdSource =
+        remember(sharedStores.tasksDataStore, listedTaskIds) {
+            if (listedTaskIds.isEmpty()) {
+                emptyMap<TaskId, TaskSummary>() to flowOf(emptyMap<TaskId, TaskSummary>())
+            } else {
+                val initial = sharedStores.tasksDataStore.canonicalTasksSnapshot().filterKeys { it in listedTaskIds }
+                val base =
+                    sharedStores.tasksDataStore
+                        .canonicalTasksFlow()
+                        .map { tasks -> tasks.filterKeys { it in listedTaskIds } }
+                        .distinctUntilChanged()
+                initial to base.deferWhile(RaftScrollFrameSignal.homeScrolling, enabled = panelInactiveFlow)
+            }
+        }
+    val liveTasksById by liveTasksByIdSource.second.collectAsState(liveTasksByIdSource.first)
     val conversationList =
-        remember(conversationListContext, conversationListAgentStatusResolver) {
+        remember(conversationListContext, conversationListAgentStatusResolver, liveTasksById, taskWaitingOnYouEnabled, state.ownerUserId) {
+            val baseContext = conversationListContext ?: ActivityConversationListContext.Empty
             ActivityConversationListPresentation(
-                context = conversationListContext ?: ActivityConversationListContext.Empty,
+                context =
+                    baseContext.copy(
+                        currentMemberId = baseContext.currentMemberId ?: state.ownerUserId?.takeIf { it.isNotBlank() },
+                        liveTasksById = liveTasksById,
+                        taskWaitingEnabled = taskWaitingOnYouEnabled,
+                    ),
                 agentStatusResolver = conversationListAgentStatusResolver
             )
         }

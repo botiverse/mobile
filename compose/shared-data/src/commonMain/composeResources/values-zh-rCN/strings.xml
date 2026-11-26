@@ -5167,6 +5167,13 @@
     <string name="artifacts_viewer_unavailable_body">它不存在，或者你没有权限查看。</string>
     <string name="artifacts_viewer_open_in_browser">在浏览器中打开</string>
     <string name="activity_list_object_home">· %1$s</string>
+    <string name="activity_list_waiting_label">等你处理</string>
+    <string name="activity_list_waiting_assigned_by">%1$s 派给你 · %2$s</string>
+    <string name="activity_list_waiting_claimed">你认领了它 · %1$s</string>
+    <string name="activity_list_waiting_assigned">已分配给你 · %1$s</string>
+    <string name="activity_list_waiting_detail">%1$s · %2$s · %3$s</string>
+    <string name="activity_list_waiting_detail_no_reason">%1$s · %2$s</string>
+    <string name="activity_list_waiting_named">等你处理，%1$s</string>
     <string name="activity_action_unfollow_artifact">取消关注</string>
     <string name="activity_unfollowed_artifact">已取消关注 %1$s</string>
     <string name="emoji_picker_search_placeholder">搜索表情</string>

@@ -4961,6 +4961,13 @@
     <string name="artifacts_viewer_unavailable_body">존재하지 않거나 볼 권한이 없어요.</string>
     <string name="artifacts_viewer_open_in_browser">브라우저에서 열기</string>
     <string name="activity_list_object_home">· %1$s</string>
+    <string name="activity_list_waiting_label">내 처리 대기</string>
+    <string name="activity_list_waiting_assigned_by">%1$s님이 할당함 · %2$s</string>
+    <string name="activity_list_waiting_claimed">내가 맡음 · %1$s</string>
+    <string name="activity_list_waiting_assigned">나에게 할당됨 · %1$s</string>
+    <string name="activity_list_waiting_detail">%1$s · %2$s · %3$s</string>
+    <string name="activity_list_waiting_detail_no_reason">%1$s · %2$s</string>
+    <string name="activity_list_waiting_named">내 처리 대기, %1$s</string>
     <string name="activity_action_unfollow_artifact">팔로우 취소</string>
     <string name="activity_unfollowed_artifact">%1$s 팔로우를 취소했어요</string>
     <string name="emoji_picker_search_placeholder">이모지 검색</string>

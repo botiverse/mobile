@@ -2303,6 +2303,10 @@ internal class RaftSharedStoreProvider private constructor(
         syncChangesPullAllowed(serverId) &&
             serverFeatureFlags.isEnabled(ServerId(serverId), SYNC_INBOX_ROWS_FEATURE_FLAG_KEY)
 
+    /** `task_waiting_on_you_v0` enabled for [serverId] (botiverse/slock #16759 / #17085). */
+    private fun taskWaitingOnYouEnabled(serverId: String): Boolean =
+        serverFeatureFlags.isTaskWaitingOnYouEnabled(ServerId(serverId))
+
     /** Local Home + ThreadPayload metadata for unlisted `thread:updated` frames (#proj-mobile:#163). */
     private fun knownThreadContextForActivity(
         scope: RaftShellStoreScope,
@@ -3922,6 +3926,7 @@ internal class RaftSharedStoreProvider private constructor(
                     knownThreadContextForActivity(scope, serverId, threadChannelId, parentMessageId, parentChannelId)
                 },
                 unreadFlipSink = RaftClientTraceEvents::emitActivityUnreadStateFlipped,
+                taskWaitingOnYouEnabled = ::taskWaitingOnYouEnabled,
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {
                         if (scope == RaftShellStoreScope.Legacy) homeActivityStoreScope else RaftStoreThreading.newScope()
@@ -3943,6 +3948,20 @@ internal class RaftSharedStoreProvider private constructor(
      */
     fun publishChannelAccessLost(scope: RaftShellStoreScope, channelId: ChannelId) {
         homeActivityStoreOrNull(scope)?.dispatch(SharedActivityIntent.ChannelAccessLost(setOf(channelId.value)))
+    }
+
+    private fun onTaskUpdatedRealtimeEvent(serverId: String, previous: TaskSummary?, task: TaskSummary) {
+        homeActivityStores.entries().forEach { (shellScope, store) ->
+            runOnStoreScope(homeActivityStoreScopes.get(shellScope)) {
+                store.dispatch(
+                    SharedActivityIntent.ReconcileTaskWaiting(
+                        serverId = serverId,
+                        task = task,
+                        previous = previous,
+                    )
+                )
+            }
+        }
     }
 
     private fun publishConversationReadAllAck(accountId: String, event: PerReceiverReadStateChanged) {
@@ -5128,6 +5147,9 @@ internal class RaftSharedStoreProvider private constructor(
                         }
                         owner.installMachinesRealtimeSink { serverId, event ->
                             provider.onMachinesRealtimeEvent(serverId, event.reason)
+                        }
+                        owner.installTaskUpdatedSink { serverId, previous, task ->
+                            provider.onTaskUpdatedRealtimeEvent(serverId, previous, task)
                         }
                     },
                 realtimeAuthorityProvider = realtimeAuthorityProvider,

@@ -92,8 +92,11 @@ import build.raft.app.data.ResolvedActor
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
+import build.raft.app.data.TaskWaitingOnYou
+import build.raft.app.data.TaskWaitingVia
 import build.raft.app.data.formatTaskConversationRef
 import build.raft.app.data.isTaskConversation
+import build.raft.app.data.shownTaskWaiting
 import build.raft.app.data.showsMarkedUnreadDot
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedHomeContentState
@@ -104,7 +107,9 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
+import build.raft.app.model.TaskSummary
 import build.raft.app.model.agentAvatarFallbackWireValue
 import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.model.avatarWireValueForAvatarSlot
@@ -118,6 +123,7 @@ import build.raft.designsystem.components.RaftInboxItemLeadingDefaults
 import build.raft.designsystem.components.RaftTaskStatusBadge
 import build.raft.designsystem.components.RaftTaskStatusBadgeSize
 import build.raft.designsystem.components.RaftTaskStatusPixel
+import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.components.RaftMentionMarker
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.RaftQuietUnreadDot
@@ -193,6 +199,14 @@ internal data class ActivityConversationListContext(
      * it knows its actor may be the other server's and must be resolved through `POST /api/actors/resolve`.
      */
     val jointChannelIds: Set<String> = emptySet(),
+    /**
+     * `task_waiting_on_you_v0` (botiverse/slock #16759): live canonical tasks known to the client
+     * keyed by [TaskId], used to clear a row's waiting-on-you mark in place as soon as `task:updated`
+     * resolves or reassigns it.
+     */
+    val liveTasksById: Map<TaskId, TaskSummary> = emptyMap(),
+    /** Whether `task_waiting_on_you_v0` is enabled for this server (fail-closed default OFF). */
+    val taskWaitingEnabled: Boolean = false,
 ) {
     companion object {
         val Empty = ActivityConversationListContext()
@@ -477,6 +491,11 @@ internal data class ActivityConversationRowModel(
      */
     val taskConversation: Boolean = false,
     val taskStatusMark: TaskStatus? = null,
+    /**
+     * `task_waiting_on_you_v0` (botiverse/slock #16759): non-null when the task row waits on the
+     * signed-in user (after applying live-task clearing via [shownTaskWaiting]).
+     */
+    val taskWaiting: TaskWaitingOnYou? = null,
     /** Agent Lounge v0: the row is a Lounge (or a thread in one); named and drawn as the Lounge. */
     val lounge: ActivityConversationLounge? = null,
 ) {
@@ -650,6 +669,14 @@ internal fun InboxItem.activityConversationRowModel(
     val muted = activityConversationMuted(context, dmPeer)
     val unread = unreadCount.coerceAtLeast(0)
     val markedDot = showsMarkedUnreadDot
+    val liveTask = taskConversation?.taskId?.takeIf { taskConversationRow }?.let { context.liveTasksById[it] }
+    val effectiveTaskStatus = (liveTask?.status ?: taskStatus).takeIf { taskConversationRow }
+    val effectiveTaskWaiting =
+        if (taskConversationRow && context.taskWaitingEnabled && effectiveTaskStatus != null) {
+            shownTaskWaiting(taskWaiting, liveTask, context.currentMemberId)
+        } else {
+            null
+        }
     return ActivityConversationRowModel(
         leadingKind = leadingKind,
         dmPeer = dmPeer,
@@ -679,7 +706,8 @@ internal fun InboxItem.activityConversationRowModel(
         taskStatus = taskStatus.takeIf { kind == InboxItemKind.Thread && !taskConversationRow && taskNumber != null },
         delegatedBy = previewDelegatedBy(),
         taskConversation = taskConversationRow,
-        taskStatusMark = taskStatus.takeIf { taskConversationRow },
+        taskStatusMark = effectiveTaskStatus,
+        taskWaiting = effectiveTaskWaiting,
         lounge =
             if (directMessage || threadInDirectMessage) {
                 null
@@ -1346,6 +1374,7 @@ internal fun ActivityConversationListRow(
                                 model = model,
                                 marksHeight = bodyLine,
                                 taskStatusPixelOnly = layout.twoLinePreview,
+                                timeContext = timeContext,
                             )
                         },
                     )
@@ -1657,12 +1686,99 @@ private fun ActivityConversationTimeFallback(item: InboxItem, timeContext: RaftT
     )
 }
 
+internal const val ActivityTaskWaitingMarkTag = "activity-task-waiting-mark"
+
+/**
+ * Pure detail formatting for a waiting-on-you Activity task row (web `taskWaitingDetail.ts`,
+ * slock #16759): builds the tooltip string (`"{status} · {who}"` or `"{status} · {who} · {reason}"`).
+ */
+internal inline fun formatTaskWaitingDetail(
+    statusLabel: String,
+    whoLabel: String,
+    waiting: TaskWaitingOnYou,
+    formatWithReason: (status: String, who: String, reason: String) -> String,
+    formatWithoutReason: (status: String, who: String) -> String,
+): String {
+    val reason =
+        waiting.reason
+            ?.takeIf { waiting.via == TaskWaitingVia.Assign && it.isNotBlank() }
+            ?.let { text -> if (waiting.reasonTruncated) "$text…" else text }
+    return if (reason != null) {
+        formatWithReason(statusLabel, whoLabel, reason)
+    } else {
+        formatWithoutReason(statusLabel, whoLabel)
+    }
+}
+
+/**
+ * Waiting-on-you indicator on an Activity task row (web `TaskWaitingStatus.tsx`, slock #16759):
+ * keeps the task's status color/dot and replaces the badge text with "Waiting on you" (on wide) or
+ * preserves the compact 10dp pixel (on phone), with a tooltip explaining status, who/when, and
+ * optional assignment reason.
+ */
+@Composable
+private fun ActivityTaskWaitingStatus(
+    status: TaskStatus,
+    waiting: TaskWaitingOnYou,
+    pixelOnly: Boolean,
+    timeContext: RaftTimeContext?,
+) {
+    val statusLabel = status.localizedLabel()
+    val timeLabel = raftShortRelativeTimestampLabel(waiting.since, timeContext = timeContext)
+    val assignerName = waiting.assignedBy?.name?.takeIf { it.isNotBlank() }
+    val whoLabel =
+        when {
+            waiting.via == TaskWaitingVia.Assign && assignerName != null ->
+                stringResource(Res.string.activity_list_waiting_assigned_by, assignerName, timeLabel)
+            waiting.via == TaskWaitingVia.Claim ->
+                stringResource(Res.string.activity_list_waiting_claimed, timeLabel)
+            else ->
+                stringResource(Res.string.activity_list_waiting_assigned, timeLabel)
+        }
+    val detail =
+        formatTaskWaitingDetail(
+            statusLabel = statusLabel,
+            whoLabel = whoLabel,
+            waiting = waiting,
+            formatWithReason = { s, w, r -> stringResource(Res.string.activity_list_waiting_detail, s, w, r) },
+            formatWithoutReason = { s, w -> stringResource(Res.string.activity_list_waiting_detail_no_reason, s, w) },
+        )
+    val accessibleName = stringResource(Res.string.activity_list_waiting_named, detail)
+    RaftTooltip(text = detail, openOnLongPress = true) {
+        if (pixelOnly) {
+            Box(
+                modifier =
+                    Modifier
+                        .testTag(ActivityTaskWaitingMarkTag)
+                        .semantics {
+                            contentDescription = accessibleName
+                            role = Role.Image
+                        },
+                contentAlignment = Alignment.Center,
+            ) {
+                RaftTaskStatusPixel(status = status.raftTaskStatus())
+            }
+        } else {
+            RaftTaskStatusBadge(
+                status = status.raftTaskStatus(),
+                text = stringResource(Res.string.activity_list_waiting_label),
+                size = RaftTaskStatusBadgeSize.Sm,
+                modifier =
+                    Modifier
+                        .testTag(ActivityTaskWaitingMarkTag)
+                        .clearAndSetSemantics { contentDescription = accessibleName },
+            )
+        }
+    }
+}
+
 /** raft-ui `InboxItemMarks` (draft, mention, muted / unread count), beside the excerpt's first line. */
 @Composable
 private fun ActivityConversationMarks(
     model: ActivityConversationRowModel,
     marksHeight: Dp,
     taskStatusPixelOnly: Boolean = false,
+    timeContext: RaftTimeContext? = null,
 ) {
     val colors = RaftTheme.colors
     if (
@@ -1677,7 +1793,15 @@ private fun ActivityConversationMarks(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         model.taskStatusMark?.let { status ->
-            if (taskStatusPixelOnly) {
+            val waiting = model.taskWaiting
+            if (waiting != null) {
+                ActivityTaskWaitingStatus(
+                    status = status,
+                    waiting = waiting,
+                    pixelOnly = taskStatusPixelOnly,
+                    timeContext = timeContext,
+                )
+            } else if (taskStatusPixelOnly) {
                 // raft-design#1433 / #proj-mobile:#372 Option A (phone two-line preview): a task row's
                 // status in the marks is only the 10dp colour pixel so line 1 keeps room for the
                 // message; screen readers still read its localized label.

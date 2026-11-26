@@ -269,6 +269,15 @@ private class RealtimeGuardedSinkRegistration(
         machinesRealtimeSink = sink
     }
 
+    // `task:updated` accepted by SharedTasksDataStore: carries the prior canonical fact (captured
+    // atomically before upsert) alongside the incoming task so Activity can re-read a listed task
+    // row when a new waiting-on-you hold lands (`task_waiting_on_you_v0`, slock #16759 / #17085).
+    private var taskUpdatedSink: ((serverId: String, previous: TaskSummary?, task: TaskSummary) -> Unit)? = null
+
+    fun installTaskUpdatedSink(sink: (serverId: String, previous: TaskSummary?, task: TaskSummary) -> Unit) {
+        taskUpdatedSink = sink
+    }
+
     // `notification_prefs:updated` with a server mode is emitted to the viewer's own user room. Process entry
     // only, like the appearance sink: it refreshes the viewer's last-known workspace notification preference
     // under the grant's account whether or not a Settings page is mounted.
@@ -976,9 +985,14 @@ private class RealtimeGuardedSinkRegistration(
 
     private suspend fun RealtimeEvent.patchSharedTaskProjection(serverId: String) {
         val store = tasksDataStore ?: return
-        suspend fun patch(task: TaskSummary) {
-            when (store.upsertTaskForCurrentOwner(serverId, task)) {
-                SharedTaskFactFoldOutcome.Accepted -> Unit
+        suspend fun patch(task: TaskSummary, notifyUpdated: Boolean = false) {
+            val result = store.upsertTaskForCurrentOwnerWithPrevious(serverId, task)
+            when (result?.first) {
+                SharedTaskFactFoldOutcome.Accepted -> {
+                    if (notifyUpdated) {
+                        taskUpdatedSink?.invoke(serverId, result.second, task)
+                    }
+                }
                 SharedTaskFactFoldOutcome.StaleIgnored ->
                     sinks?.log?.invoke(
                         "tasks_canonical_stale_drop serverId=$serverId taskId=${task.id.value} " +
@@ -1006,7 +1020,7 @@ private class RealtimeGuardedSinkRegistration(
                 }
             }
             is TaskCreated -> tasks.forEach { task -> patch(task) }
-            is TaskUpdated -> patch(task)
+            is TaskUpdated -> patch(task, notifyUpdated = true)
             is TaskDeleted -> {
                 if (!store.removeTaskForCurrentOwner(serverId, taskId)) {
                     sinks?.log?.invoke(
@@ -1137,7 +1151,7 @@ private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
     }
 
 private fun TaskSummary.taskDomainKey(): String =
-    "${id.value}:${revision ?: -1L}:${status.name}:${updatedAtLabel}:${assignee?.id?.value.orEmpty()}"
+    "${id.value}:${revision ?: -1L}:${status.name}:${updatedAtLabel}:${assignee?.id?.value.orEmpty()}:${claimedAt.orEmpty()}"
 
 private fun RealtimeEvent.messageSeqEnvelope(epoch: String): MessageSeqEnvelope<RealtimeEvent>? =
     when (this) {

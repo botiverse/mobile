@@ -351,6 +351,15 @@ const val DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY: String = "dm_main_timeline_lab_
  */
 const val PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY: String = "private_mention_add_v0"
 
+/**
+ * Activity task waiting-on-you status (botiverse/slock `packages/shared/src/featureFlags.ts`
+ * `TASK_WAITING_ON_YOU_FEATURE_FLAG_KEY`, #16759 / #17085): per server, default OFF (unresolved or
+ * missing evaluates false). When ON, `GET /channels/inbox` task rows carry optional `waiting`
+ * metadata, Activity task rows show the waiting-on-you indicator + tooltip, and `task:updated`
+ * re-reads a listed task row when a new hold lands on the signed-in user.
+ */
+@RaftCoreInternalApi const val TASK_WAITING_ON_YOU_FEATURE_FLAG_KEY: String = "task_waiting_on_you_v0"
+
 /** Effective Early access policy across a signed-in account's joined servers. */
 data class RaftEarlyAccessFlagPolicy(
     val visible: Boolean = false,
@@ -434,6 +443,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     DATA_EXPORT_FEATURE_FLAG_KEY,
     // Add from a mention in private/joint channels (botiverse/slock #16718 / #16726, default OFF).
     PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY,
+    // Activity task waiting-on-you status (botiverse/slock #16759 / #17085, default OFF).
+    TASK_WAITING_ON_YOU_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,
@@ -811,6 +822,13 @@ class SharedServerFeatureFlags(
      */
     fun isPrivateMentionAddEnabled(serverId: ServerId?): Boolean =
         isEnabled(serverId, PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY)
+
+    /**
+     * Activity task waiting-on-you gate (botiverse/slock `TASK_WAITING_ON_YOU_FEATURE_FLAG_KEY`,
+     * #16759 / #17085): per server, default OFF (unresolved or missing evaluates false).
+     */
+    @RaftCoreInternalApi fun isTaskWaitingOnYouEnabled(serverId: ServerId?): Boolean =
+        isEnabled(serverId, TASK_WAITING_ON_YOU_FEATURE_FLAG_KEY)
 
     /**
      * Resolves the account-wide Early access policy across [serverIds] (`#proj-mobile:e48030bc`):
