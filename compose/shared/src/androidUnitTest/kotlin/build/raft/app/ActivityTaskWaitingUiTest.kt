@@ -143,7 +143,7 @@ class ActivityTaskWaitingUiTest {
     fun phoneRowShowsCompactPixelWithFullWaitingAccessibleName() =
         runRobolectricComposeUiTest {
             showTaskRow(
-                scale = RaftScale.Phone,
+                scale = RaftScale.Compact,
                 waiting =
                     TaskWaitingOnYou(
                         since = sinceIso,
