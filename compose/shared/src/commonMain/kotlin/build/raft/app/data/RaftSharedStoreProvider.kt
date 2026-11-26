@@ -816,6 +816,30 @@ internal class RaftSharedStoreProvider private constructor(
     val resolvedQuotesStore: SharedResolvedQuotesStore by resolvedQuotesStoreLazy
 
     /**
+     * Agent View Context status cache (30s TTL per agent) and audited View Context / Context Access
+     * grants repositories (botiverse/slock #12980, #13548, #13550, #14072, #14560).
+     */
+    private val agentContextViewStatusStoreLazy = lazy {
+        AgentContextViewStatusStore(
+            api = RaftAgentContextViewNetworkApi(networkClient),
+        )
+    }
+    val agentContextViewStatusStore: AgentContextViewStatusStore by agentContextViewStatusStoreLazy
+
+    fun agentContextViewRepository(scope: RaftShellStoreScope = RaftShellStoreScope.Legacy): AgentContextViewRepository =
+        AgentContextViewRepository(
+            api = RaftAgentContextViewNetworkApi(networkClient(scope)),
+            statusStore = agentContextViewStatusStore,
+        )
+
+    fun agentContextViewGrantsRepository(
+        scope: RaftShellStoreScope = RaftShellStoreScope.Legacy,
+    ): AgentContextViewGrantsRepository =
+        AgentContextViewGrantsRepository(
+            api = RaftAgentContextViewNetworkApi(networkClient(scope)),
+        )
+
+    /**
      * In-memory LRU cache of resolved quoted message permalinks (#proj-mobile:#383), scoped by
      * `(accountUserId, serverId, channelId, messageId)` and cleared on sign-out / server-access loss.
      */
@@ -953,6 +977,7 @@ internal class RaftSharedStoreProvider private constructor(
                 artifactScreenshotDiskCache.clearAllAsync(threadSendScope)
                 // Quote replies' resolved quotes, cached quoted permalinks, and composer quote metadata: per viewer, session only.
                 if (resolvedQuotesStoreLazy.isInitialized()) resolvedQuotesStore.clearAll()
+                if (agentContextViewStatusStoreLazy.isInitialized()) agentContextViewStatusStore.clearAll()
                 quotedPermalinkCache.clear()
                 build.raft.app.ThreadComposerQuoteMetaCache.clear()
                 // The Artifact viewer's headers and its kept WebView (Tenny's cache rule 1).

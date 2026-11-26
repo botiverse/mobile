@@ -87,6 +87,7 @@ internal class ThreadRouteEventHandler(
     val pendingThreadFollowMessageIdsState: MutableState<Set<String>>,
     val markdownRefOpenStore: ThreadMarkdownRefOpenStore,
     val textSelectionMessageState: MutableState<RaftThreadMessageItem?>,
+    val viewContextMessageState: MutableState<RaftThreadMessageItem?>,
     val createAgentDialogStateHolder: MutableState<ThreadCreateAgentActionDialogState?>,
     val migrateAgentDialogStateHolder: MutableState<ThreadMigrateAgentActionDialogState?>,
     val markdownTaskOpenRequestGate: MarkdownTaskNumberOpenRequestGate,
@@ -122,6 +123,7 @@ internal class ThreadRouteEventHandler(
     var pendingActionCardIds by pendingActionCardIdsState
     var pendingThreadFollowMessageIds by pendingThreadFollowMessageIdsState
     var textSelectionMessage by textSelectionMessageState
+    var viewContextMessage by viewContextMessageState
     var createAgentDialogState by createAgentDialogStateHolder
     var migrateAgentDialogState by migrateAgentDialogStateHolder
     val actionCardSuccessLabels = labels.actionCardSuccessLabels
@@ -388,6 +390,9 @@ internal class ThreadRouteEventHandler(
                 }
                 action == "openSelectMessageText" && !itemId.isNullOrBlank() -> {
                     handleOpenSelectMessageText(itemId)
+                }
+                action == "openViewContext" && !itemId.isNullOrBlank() -> {
+                    handleOpenViewContext(itemId)
                 }
                 action == "openMessageThread" && !itemId.isNullOrBlank() -> {
                     handleOpenMessageThread(itemId)
@@ -708,6 +713,13 @@ internal class ThreadRouteEventHandler(
                         bridge.toast(noTextToSelectLabel)
                     } else {
                         textSelectionMessage = message
+                    }
+    }
+
+    private fun handleOpenViewContext(itemId: String) {
+                    val message = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
+                    if (message != null && threadMessageSupportsContextView(message)) {
+                        viewContextMessage = message
                     }
     }
 

@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import build.raft.designsystem.components.RaftCheckboxIndicator
@@ -119,7 +120,15 @@ internal data class RaftUiMenuItem(
     val enabled: Boolean = true,
     val dividerBefore: Boolean = false,
     /** In progress: a spinner in place of [icon]. */
-    val loading: Boolean = false
+    val loading: Boolean = false,
+    /** Optional second line under [label] (e.g. View context check-failed hint). */
+    val description: String? = null,
+    /** In progress: a trailing spinner while keeping [icon]. */
+    val trailingLoading: Boolean = false,
+    /** Whether tapping this item dismisses the menu surface after [onSelect]. */
+    val dismissOnSelect: Boolean = true,
+    /** Optional Compose testTag applied to the menu row. */
+    val testTag: String? = null,
 )
 
 @Composable
@@ -668,8 +677,11 @@ internal fun RaftUiMenuSurface(
                         if (item.enabled) {
                             onSelect(item.id)
                         }
-                        onDismiss()
+                        if (item.dismissOnSelect) {
+                            onDismiss()
+                        }
                     },
+                    modifier = item.testTag?.let { Modifier.testTag(it) } ?: Modifier,
                     enabled = item.enabled,
                     checked = item.selected && item.trailing == null,
                     leadingIcon =
@@ -678,7 +690,9 @@ internal fun RaftUiMenuSurface(
                         } else {
                             item.icon?.let { icon -> { RaftSlotIcon(icon) } }
                         },
-                    shortcut = item.trailing
+                    shortcut = item.trailing,
+                    trailingIcon = if (item.trailingLoading) { { RaftIconSpinner() } } else null,
+                    description = item.description,
                 )
             }
         }

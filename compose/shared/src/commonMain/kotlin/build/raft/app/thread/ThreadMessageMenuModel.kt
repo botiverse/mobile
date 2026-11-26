@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.components.RaftMetrics
+import build.raft.app.data.AgentContextViewMenuEntryState
 import build.raft.app.model.TaskStatus
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.semantics.onClick
@@ -240,12 +241,30 @@ internal fun ThreadMessageMenuCapabilities.toThreadNewMessageMenuActionAvailabil
         createTaskFromMessage = createTaskFromMessage
     )
 
+internal const val THREAD_MESSAGE_MENU_VIEW_CONTEXT_TAG: String = "message-context-view-context"
+internal const val THREAD_MESSAGE_MENU_VIEW_CONTEXT_RETRY_TAG: String = "message-context-view-retry"
+
+/**
+ * Whether opening a message's menu checks View Context status (web `ViewContextMenuGroup`):
+ * sent non-system local agent messages only (never humans, system events, external bridges, or local sends).
+ */
+internal fun threadMessageSupportsContextView(message: RaftThreadMessageItem): Boolean =
+    message.isThreadAgentAuthor() &&
+        !message.hasLocalSendState() &&
+        !message.isSystemMessage() &&
+        message.externalAuthor == null &&
+        message.authorId.isNotBlank()
+
 internal data class ThreadMessageMenuAction(
     val label: StringDesc,
     val icon: RaftLucideIconName,
     val group: String,
     val enabled: Boolean = true,
-    val onClick: () -> Unit
+    val onClick: () -> Unit,
+    val description: StringDesc? = null,
+    val trailingLoading: Boolean = false,
+    val dismissOnSelect: Boolean = true,
+    val testTag: String? = null,
 )
 
 // Web MessageItem context menu (raft-ui ContextMenuPopup + slock MenuItem): `min-w-60`
@@ -282,7 +301,9 @@ internal fun threadMessageMenuContentHeightDp(
     actionGroups: List<String>,
     showReactionActions: Boolean,
     /** A link section's actions ([ThreadMessageLinkMenuRows]); 0: no link section. */
-    linkActionCount: Int = 0
+    linkActionCount: Int = 0,
+    /** Two-line rows (e.g. Retry View context with check-failed subtitle); 0 for single-line menus. */
+    extraTwoLineRowCount: Int = 0,
 ): Float {
     // The popover chooses above/below before drawing its content. Feeding it a
     // generic first-frame estimate and replacing that with onGloballyPositioned
@@ -312,6 +333,7 @@ internal fun threadMessageMenuContentHeightDp(
             0f
         }
     return effectiveRowCount * ThreadMessageMenuRowHeight.value +
+        extraTwoLineRowCount * 18f +
         groupDividerCount * separatorHeight +
         reactionHeaderHeight +
         linkSectionHeight +
@@ -617,7 +639,11 @@ internal fun threadMessageMenuActions(
     onMarkThreadUnread: () -> Unit = {},
     /** Downloads the message's video ([threadMessageMenuDownloadVideoAttachmentId]); null hides it. */
     onDownloadVideo: (() -> Unit)? = null,
-    onQuote: () -> Unit = {}
+    onQuote: () -> Unit = {},
+    /** Trailing View Context group for agent messages (botiverse/slock #12980, #14072, #14560). */
+    viewContextState: AgentContextViewMenuEntryState = AgentContextViewMenuEntryState.Hidden,
+    onViewContext: () -> Unit = {},
+    onRetryViewContext: () -> Unit = {},
 ): List<ThreadMessageMenuAction> =
     // Add Reaction is not a row: it ends the reaction header ([ThreadMessageMenuChrome]).
     // web MessageItem's sections (menu order v4, botiverse/slock #16225, cindyz 2026-11-22):
@@ -772,6 +798,35 @@ internal fun threadMessageMenuActions(
                     onClick = onTranslate
                 )
             )
+        }
+        when (viewContextState) {
+            AgentContextViewMenuEntryState.Hidden -> Unit
+            AgentContextViewMenuEntryState.ShowOpen -> {
+                add(
+                    ThreadMessageMenuAction(
+                        label = Res.string.thread_action_view_context.desc(),
+                        icon = RaftLucideIconName.FileScan,
+                        group = "context",
+                        testTag = THREAD_MESSAGE_MENU_VIEW_CONTEXT_TAG,
+                        onClick = onViewContext,
+                    )
+                )
+            }
+            is AgentContextViewMenuEntryState.ShowRetry -> {
+                add(
+                    ThreadMessageMenuAction(
+                        label = Res.string.thread_action_view_context_retry.desc(),
+                        description = Res.string.thread_action_view_context_check_failed.desc(),
+                        icon = RaftLucideIconName.RefreshCw,
+                        group = "context",
+                        enabled = !viewContextState.retrying,
+                        trailingLoading = viewContextState.retrying,
+                        dismissOnSelect = false,
+                        testTag = THREAD_MESSAGE_MENU_VIEW_CONTEXT_RETRY_TAG,
+                        onClick = onRetryViewContext,
+                    )
+                )
+            }
         }
         if (showDeleteAction) {
             add(
