@@ -992,7 +992,17 @@ internal fun SharedHomeScreen(
                 onChannelClick = { threadId ->
                     val mergedDm = mergedDirectMessagesById[threadId]
                     val hiddenIds = snapshot.sidebarOrder?.hiddenDmIds.orEmpty()
-                    if (mergedDm?.opensAgentLoungeOnClick == true) {
+                    val mergedAgentId = mergedDm?.presenceMemberId?.trim()?.takeIf { it.isNotEmpty() }
+                    val openMergedAsLounge =
+                        mergedDm?.opensAgentLoungeOnClick == true &&
+                            resolveMergedAgentRowOpenSide(
+                                store = defaultAgentConversationSideStore(),
+                                userId = current.session.user.id,
+                                serverId = snapshot.server.id.value,
+                                agentId = mergedAgentId,
+                                hasDirectMessage = conversationsByThreadId[threadId] != null,
+                            ) == AgentLoungeConversationSide.Lounge
+                    if (openMergedAsLounge) {
                         val mergedLoungeId = mergedDm.mergedAgentLounge?.channelId
                         val immediateLoungeIdentity =
                             mergedLoungeId?.let { loungeId ->
@@ -1009,7 +1019,7 @@ internal fun SharedHomeScreen(
                             onOpenConversation(immediateLoungeIdentity)
                             onIntent(SharedHomeIntent.SelectConversation(mergedLoungeId))
                         } else {
-                            val agentId = mergedDm.presenceMemberId?.takeIf { it.isNotBlank() }
+                            val agentId = mergedAgentId
                             if (agentId != null && homeLoungeOpener != null) {
                                 homeLoungeOpener.open(snapshot.server.id.value, agentId, mergedDm.name) { opened ->
                                     if (mergedDm.id in hiddenIds) {
@@ -1043,6 +1053,9 @@ internal fun SharedHomeScreen(
                         } else if (conversation == null) {
                             bridge.toast(conversationUnavailableMessage)
                         } else {
+                            if (mergedDm != null && mergedDm.id in hiddenIds) {
+                                onIntent(SharedHomeIntent.ReopenClosedConversation(mergedDm.id))
+                            }
                             onOpenConversation(conversation.toThreadLaunchConversationIdentity())
                             onIntent(SharedHomeIntent.SelectConversation(threadId))
                         }
