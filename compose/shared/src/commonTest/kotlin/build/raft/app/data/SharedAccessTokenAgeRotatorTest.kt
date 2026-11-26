@@ -1,6 +1,8 @@
 package build.raft.app.data
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,6 +12,8 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
@@ -411,9 +415,15 @@ class SharedAccessTokenAgeRotatorTest {
         val authDataSource = SharedAuthDataSource(api = api, sessionStore = store)
 
         val observedEvents = mutableListOf<AuthSessionEvent>()
+        val rotatedSignal = CompletableDeferred<Unit>()
         val eventCollector =
             backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                store.authSessionEvents.collect { observedEvents += it }
+                store.authSessionEvents.collect { event ->
+                    observedEvents += event
+                    if (event is AuthSessionEvent.TokensRotated) {
+                        rotatedSignal.complete(Unit)
+                    }
+                }
             }
 
         val foreground = MutableStateFlow(true)
@@ -432,7 +442,13 @@ class SharedAccessTokenAgeRotatorTest {
 
         // At 13m, rotates via single-flight coordinator, updates store, and emits TokensRotated
         // (which SettingsWebViewAccessTokenSyncEffect observes to push into open WebViews).
+        // SharedAuthRefreshCoordinator executes its single-flight owner refresh on Dispatchers.Default
+        // outside runTest's virtual scheduler, so await the real TokensRotated signal deterministically.
         advanceTimeBy(RAFT_ACCESS_TOKEN_ROTATE_AGE_MS)
+        runCurrent()
+        withContext(Dispatchers.Default) {
+            withTimeout(5_000L) { rotatedSignal.await() }
+        }
         runCurrent()
         assertEquals(1, api.refreshCalls)
         assertEquals(rotatedAccess, store.readSession()?.accessToken)
