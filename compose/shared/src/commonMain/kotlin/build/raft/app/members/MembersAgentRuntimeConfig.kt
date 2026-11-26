@@ -766,8 +766,9 @@ internal fun MembersAgentRuntimeConfigRows(
             }
         }
     }
-    // Web AgentProfileInfo, while the agent's runtime is deprecated here (there: under the Runtime row).
-    if (deprecated) {
+    // Web AgentProfileInfo, while the agent's runtime is deprecated (not retired: a retired one
+    // cannot keep running and shows AgentRuntimeRetiredNotice under the status chip instead).
+    if (deprecated && !build.raft.app.model.isRuntimeRetired(runtimeConfig.runtime)) {
         RaftUiBanner(
             status = RaftUiBannerStatus.Warning,
             description = stringResource(Res.string.member_runtime_deprecated_warning),

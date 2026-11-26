@@ -1217,7 +1217,8 @@ sealed interface ComputerProcJobStopResult {
     /** Server `revocation` (slock #16468): set only for a machine whose Computers are all revoked. */
     val revocation: SettingsComputerRevocationSnapshot? = null,
     /** Server `versionRefusedAt` (slock #16514): when connect was last refused below the version floor. */
-    val versionRefusedAt: String? = null
+    val versionRefusedAt: String? = null,
+    val refusedComputerVersion: String? = null
 )
 
 /**
@@ -1512,7 +1513,10 @@ private data class ComputerDto(
     val revocation: ComputerRevocationDto? = null,
     // services/machineReadModel.ts `versionRefusedAt` (slock #16514): when the server last refused
     // this machine on connect below the Computer version floor; null/absent otherwise.
-    val versionRefusedAt: String? = null
+    val versionRefusedAt: String? = null,
+    // services/machineReadModel.ts `refusedComputerVersion` (slock #16881): the version the server
+    // refused while this Computer is offline within the 7-day refusal window; null/absent otherwise.
+    val refusedComputerVersion: String? = null
 )
 
 /** Outcome of `POST /servers/:id/machines/:machineId/runtimes/rescan` (slock #16477). */
@@ -1884,7 +1888,8 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         loginSteps = attention?.let(::computerLoginSteps),
         serverNeedsAttention = attention?.let(::computerServerNeedsAttention),
         revocation = revocation?.toSnapshot(),
-        versionRefusedAt = versionRefusedAt?.trim()?.takeIf { it.isNotBlank() }
+        versionRefusedAt = versionRefusedAt?.trim()?.takeIf { it.isNotBlank() },
+        refusedComputerVersion = refusedComputerVersion?.trim()?.takeIf { it.isNotBlank() }
     )
 }
 

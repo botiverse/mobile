@@ -465,6 +465,8 @@ data class SharedServerMemberStatus(
     val runningWorkers: Int? = null,
     /** Another server's agent (joint channel): only presence is known, never the count. */
     val runningWorkersPresenceOnly: Boolean = false,
+    /** Human creator user id from the roster (`creator.id` when `creatorType == "user"`). */
+    val creatorUserId: String? = null,
 )
 
 /**
@@ -668,12 +670,12 @@ private fun MemberProfile?.toSharedServerMemberStatus(
 private fun MemberProfile.agentRuntimeOrNull(): String? =
     roleDescription?.trim()?.takeIf { kind == MemberKind.Agent && it.isNotBlank() }
 
-private fun MemberProfile.agentComputerIdOrNull(): String? =
+internal fun MemberProfile.agentComputerIdOrNull(): String? =
     permissionBadges.firstNotNullOfOrNull { badge ->
         badge.takeIf { it.startsWith("computer-id:") }?.removePrefix("computer-id:")?.trim()?.takeIf { it.isNotBlank() }
     }
 
-private fun MemberProfile.agentComputerNameOrNull(): String? =
+internal fun MemberProfile.agentComputerNameOrNull(): String? =
     permissionBadges.firstNotNullOfOrNull { badge ->
         badge.takeIf { it.startsWith("computer:") }?.removePrefix("computer:")?.trim()?.takeIf { it.isNotBlank() }
     }

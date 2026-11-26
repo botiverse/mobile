@@ -2118,6 +2118,9 @@
     <string name="task_conversation_join_to_reply">Entrar no canal para responder</string>
     <string name="task_conversation_empty_title">Nenhuma discussão nesta tarefa ainda</string>
     <string name="task_conversation_empty_body">A discussão anterior está nas respostas da mensagem de origem. Escreva aqui para começar a discussão da própria tarefa.</string>
+    <string name="task_conversation_read_only_notice">Esta tarefa foi criada antes que outros servidores fossem conectados. A discussão dela é somente leitura aqui.</string>
+    <string name="task_conversation_elsewhere_title">Esta discussão permanece no servidor anfitrião</string>
+    <string name="task_conversation_elsewhere_body">Esta tarefa foi criada antes que outros servidores fossem conectados. A discussão dela só pode ser lida no servidor anfitrião.</string>
     <string name="task_conversation_composer_placeholder">Escrever nesta tarefa</string>
     <string name="task_legacy_heading">Tarefa #%1$s · Legada</string>
     <string name="task_legacy_title">Título</string>
@@ -4994,6 +4997,12 @@
     <string name="agent_computer_offline_step_power">Ligue o computador %1$s e não deixe que ele entre em suspensão</string>
     <string name="agent_computer_offline_step_run">Nesse computador, abra o Raft Desktop ou execute:</string>
     <string name="agent_status_open_computer">Abrir computador</string>
+    <string name="agent_status_runtime_retired_full">%1$s não tem mais suporte</string>
+    <string name="agent_status_runtime_retired_detail_kimi">O antigo Kimi CLI foi descontinuado, então este agente não pode iniciar. Troque o runtime dele para Kimi Code nas configurações do agente para continuar usando. O workspace e o MEMORY.md são mantidos; a conversa começa do zero.</string>
+    <string name="agent_status_runtime_retired_detail_kimi_update_computer">O antigo Kimi CLI foi descontinuado, então este agente não pode iniciar. Este computador é antigo demais para executar o Kimi Code: atualize o computador primeiro e depois troque o runtime nas configurações do agente. O workspace e o MEMORY.md são mantidos; a conversa começa do zero.</string>
+    <string name="agent_status_runtime_retired_detail_gemini">O Gemini CLI foi descontinuado, então este agente não pode iniciar. Troque para Antigravity ou outro runtime nas configurações do agente para continuar usando. O workspace e o MEMORY.md são mantidos; a conversa começa do zero.</string>
+    <string name="agent_status_runtime_retired_detail_copilot">O GitHub Copilot CLI foi descontinuado, então este agente não pode iniciar. Troque para outro runtime nas configurações do agente para continuar usando. O workspace e o MEMORY.md são mantidos; a conversa começa do zero.</string>
+    <string name="agent_status_runtime_retired_change_runtime">Trocar runtime</string>
     <string name="agent_migration_place_from_revoked_computer_note">O computador deste agente perdeu o acesso ao servidor, então os arquivos dele não podem ser trazidos. Ele vai para o computador que você escolher e começa uma sessão nova lá na próxima vez que receber uma mensagem.</string>
     <string name="agent_status_model_unsupported">A conta ou o plano deste runtime não inclui “%1$s”. Troque o modelo ou entre com uma conta que o inclua</string>
     <string name="agent_status_model_unsupported_default">A conta ou o plano deste runtime não inclui o modelo deste agente. Troque o modelo ou entre com uma conta que o inclua</string>

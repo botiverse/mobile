@@ -191,6 +191,8 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
             val status: AgentStatus?,
             /** The agent list's `blockedReason`: a held agent's light is orange, as in the app. */
             val blockedReason: String?,
+            /** The agent's runtime id (`runtime`), so `runtime_retired` clears after switching. */
+            val runtime: String? = null,
             /** The wire value the status came from (`activity ?: status`), for the app's dot mapping. */
             val statusWireValue: String?,
             /** Positive count of running Workers on its current Computer (`runningWorkers`, #16819). */
@@ -274,6 +276,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                             hasDetail = blockedReason != null || runtime != null || description != null || runningWorkers != null,
                             status = status,
                             blockedReason = blockedReason,
+                            runtime = runtime,
                             statusWireValue = activity ?: statusValue,
                             runningWorkers = runningWorkers,
                             external = external,
@@ -330,6 +333,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                         nowEpochMillis = System.currentTimeMillis(),
                         blockedReason = blockedReason,
                         runningWorkers = runningWorkers,
+                        runtime = runtime,
                     )) {
                     RaftAgentStatusDotKind.Lime -> RaftAgentWidgetTone.Active
                     RaftAgentStatusDotKind.Yellow -> RaftAgentWidgetTone.Working

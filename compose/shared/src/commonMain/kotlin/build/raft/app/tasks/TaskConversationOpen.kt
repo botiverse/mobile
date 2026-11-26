@@ -67,6 +67,61 @@ internal fun taskConversationLaunchIdentity(conversationChannelId: ChannelId): T
     )
 
 /**
+ * Outcome of resolving a task's local conversation channel (slock #16739):
+ * - [Opened]: local conversation channel id ready to open on `THREAD_PAGE`;
+ * - [Pending]: task has no conversation yet (opening never creates one);
+ * - [Legacy]: legacy orphan task (`isLegacy`);
+ * - [DiscussionElsewhere]: historical joint task refused with `403 joint_task_read_only` whose
+ *   discussion stays on the host server;
+ * - [Failed]: transient/other error resolving the conversation.
+ */
+internal sealed interface TaskConversationOpenResolution {
+    data class Opened(val conversationChannelId: ChannelId) : TaskConversationOpenResolution
+
+    data object Pending : TaskConversationOpenResolution
+
+    data object Legacy : TaskConversationOpenResolution
+
+    data object DiscussionElsewhere : TaskConversationOpenResolution
+
+    data object Failed : TaskConversationOpenResolution
+}
+
+internal suspend fun resolveTaskOpenConversation(
+    task: TaskSummary,
+    serverId: String,
+    tasksDataSource: SharedTasksDataSource,
+    log: (String) -> Unit = {},
+): TaskConversationOpenResolution =
+    when (val target = task.taskOpenTarget()) {
+        is TaskOpenTarget.Conversation -> TaskConversationOpenResolution.Opened(target.conversationChannelId)
+        // Never POSTed: that would create the conversation (web: opening does not create).
+        TaskOpenTarget.PendingConversation -> TaskConversationOpenResolution.Pending
+        TaskOpenTarget.LegacyPanel -> TaskConversationOpenResolution.Legacy
+        TaskOpenTarget.ResolveConversation -> {
+            val resolvedServerId = serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
+            val result = resolvedServerId?.let { tasksDataSource.openTaskConversation(it, task.id) }
+            when {
+                result is DataResult.Content -> {
+                    log("task_conversation_resolve taskId=${task.id.value} result=resolved")
+                    TaskConversationOpenResolution.Opened(result.data.conversationChannelId)
+                }
+                result?.isJointTaskReadOnlyRefusal() == true -> {
+                    log("task_conversation_resolve taskId=${task.id.value} result=$JointTaskReadOnlyErrorCode")
+                    TaskConversationOpenResolution.DiscussionElsewhere
+                }
+                else -> {
+                    log(
+                        "task_conversation_resolve taskId=${task.id.value} " +
+                            "result=${result?.let { it::class.simpleName } ?: "no_server"}"
+                    )
+                    TaskConversationOpenResolution.Failed
+                }
+            }
+        }
+    }
+
+/**
  * The local conversation id a task opens on, resolving it through `POST /tasks/:id/conversation`
  * when the task DTO cannot name it ([TaskOpenTarget.ResolveConversation]). `null` = nothing to open
  * (no conversation yet, a legacy orphan), or it could not be resolved (the caller reports it).
@@ -77,21 +132,8 @@ internal suspend fun resolveTaskOpenConversationChannelId(
     tasksDataSource: SharedTasksDataSource,
     log: (String) -> Unit = {},
 ): ChannelId? =
-    when (val target = task.taskOpenTarget()) {
-        is TaskOpenTarget.Conversation -> target.conversationChannelId
-        // Never POSTed: that would create the conversation (web: opening does not create).
-        TaskOpenTarget.PendingConversation, TaskOpenTarget.LegacyPanel -> null
-        TaskOpenTarget.ResolveConversation -> {
-            val resolvedServerId = serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
-            val result = resolvedServerId?.let { tasksDataSource.openTaskConversation(it, task.id) }
-            val opened = (result as? DataResult.Content)?.data?.conversationChannelId
-            log(
-                "task_conversation_resolve taskId=${task.id.value} " +
-                    "result=${if (opened != null) "resolved" else result?.let { it::class.simpleName } ?: "no_server"}"
-            )
-            opened
-        }
-    }
+    (resolveTaskOpenConversation(task, serverId, tasksDataSource, log) as? TaskConversationOpenResolution.Opened)
+        ?.conversationChannelId
 
 /**
  * Builds the launch payload a task opens on. [resolvedConversationChannelId] is the answer of

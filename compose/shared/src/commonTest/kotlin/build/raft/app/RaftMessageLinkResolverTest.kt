@@ -522,6 +522,39 @@ class RaftMessageLinkResolverTest {
         assertTrue(outsideNetwork.requests.isEmpty())
     }
 
+    @Test
+    fun jointTaskLink403ReadOnlyOpensPendingWithDiscussionElsewhere() = runTest {
+        val readOnlyNetwork =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, channelBody(type = "joint", id = cid)),
+                channelTasks = HomeNetworkResponse(200, tasksListBody(channelType = "joint", conversationChannelId = taskConvId)),
+                openTaskConversation =
+                    HomeNetworkResponse(
+                        403,
+                        """{"error":"This task's discussion stays on the host server.","code":"joint_task_read_only"}""",
+                    ),
+            )
+        val pending =
+            assertIs<RaftMessageLinkResolution.OpenPendingTask>(
+                RaftMessageLinkResolver(readOnlyNetwork).resolve(link(taskId = taskId), servers)
+            )
+        assertEquals(serverId, pending.serverId)
+        assertEquals(taskId, pending.taskId)
+        assertTrue(pending.discussionElsewhere)
+        assertNull(pending.focusedMessageId)
+
+        // A non-joint_task_read_only 403 still resolves to NotFound.
+        val forbiddenNetwork =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, channelBody(type = "joint", id = cid)),
+                channelTasks = HomeNetworkResponse(200, tasksListBody(channelType = "joint", conversationChannelId = taskConvId)),
+                openTaskConversation = HomeNetworkResponse(403, """{"error":"Forbidden","code":"forbidden"}"""),
+            )
+        assertIs<RaftMessageLinkResolution.NotFound>(
+            RaftMessageLinkResolver(forbiddenNetwork).resolve(link(taskId = taskId), servers)
+        )
+    }
+
     private fun tasksListBody(
         id: String = taskId,
         channelType: String = "channel",

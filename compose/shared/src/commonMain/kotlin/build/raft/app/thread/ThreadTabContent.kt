@@ -70,6 +70,7 @@ internal fun ThreadTabContent(
     taskPanelChannelId: ChannelId,
     threadScreenPagerForForwardBundle: Pager,
     timelineRenderConfig: ThreadTimelineRenderConfig,
+    writeActionsEnabled: Boolean = data.writeActionsEnabled,
 ) {
     // Everything below is what the `renderThreadTabContent` lambda captured from ThreadPageContentContent.
     val threadInstanceKey = data.threadInstanceKey
@@ -79,7 +80,6 @@ internal fun ThreadTabContent(
     val timelineSlice = data.timelineSlice
     val accessResolution = data.accessResolution
     val canonicalAccessResolved = data.canonicalAccessResolved
-    val writeActionsEnabled = data.writeActionsEnabled
     val replyMetadataByParentId = data.replyMetadataByParentId
     val composerDraftPersistSlice = data.composerDraftPersistSlice
     val resolvedAuxiliaryThreadId = data.resolvedAuxiliaryThreadId

@@ -2004,7 +2004,8 @@ data class SettingsComputerSnapshot(
      * Server `versionRefusedAt` (slock #16514): when the server last refused this machine on
      * connect for being below the Computer version floor (or reporting no version); null otherwise.
      */
-    val versionRefusedAt: String? = null
+    val versionRefusedAt: String? = null,
+    val refusedComputerVersion: String? = null
 )
 
 /**

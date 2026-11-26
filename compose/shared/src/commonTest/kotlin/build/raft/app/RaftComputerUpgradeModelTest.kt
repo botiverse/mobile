@@ -248,6 +248,88 @@ class RaftComputerUpgradeModelTest {
         assertNull(nonOneClick.upgradeDiskFull)
     }
 
+    @Test
+    fun offlineRefusedComputerWithoutVersionUsesRefusedComputerVersionAndSevenDayWindow() {
+        val unknownGate =
+            SettingsComputerVersionGateSnapshot(
+                reason = "computer_version_unknown",
+                minVersion = RAFT_COMPUTER_VERSION_FLOOR,
+                enforcedAt = null,
+                enforced = true,
+            )
+        // NOW = 2025-10-21T01:00:00Z (1_761_008_400_000L)
+        val recentRefusal = "2025-10-21T00:59:00.000Z"
+        val staleRefusal = "2025-10-14T00:59:59.000Z"
+
+        val withRefusedVersion =
+            computer(
+                version = null,
+                online = false,
+                gate = unknownGate,
+                versionRefusedAt = recentRefusal,
+                refusedComputerVersion = "1.0.40",
+            )
+        val tierWithVersion = raftComputerVersionTier(withRefusedVersion, NOW)
+        assertEquals(
+            RaftComputerVersionTier.Notice(
+                reinstall = true,
+                reason = "computer_version_unsupported",
+                minVersion = RAFT_COMPUTER_VERSION_FLOOR,
+                enforced = true,
+                enforcedAt = null,
+            ),
+            tierWithVersion,
+        )
+        assertEquals("1.0.40", raftNoticeComputerVersion(withRefusedVersion, tierWithVersion))
+        assertEquals(RaftComputerCardState.Reinstall, model(withRefusedVersion).card)
+
+        // Without refusedComputerVersion (or non-SemVer), reason stays computer_version_unknown.
+        val withoutRefusedVersion =
+            computer(version = null, online = false, gate = unknownGate, versionRefusedAt = recentRefusal, refusedComputerVersion = null)
+        val tierUnknown = raftComputerVersionTier(withoutRefusedVersion, NOW)
+        assertEquals(
+            RaftComputerVersionTier.Notice(
+                reinstall = true,
+                reason = "computer_version_unknown",
+                minVersion = RAFT_COMPUTER_VERSION_FLOOR,
+                enforced = true,
+                enforcedAt = null,
+            ),
+            tierUnknown,
+        )
+        assertNull(raftNoticeComputerVersion(withoutRefusedVersion, tierUnknown))
+
+        val nonSemverRefused =
+            computer(version = null, online = false, gate = unknownGate, versionRefusedAt = recentRefusal, refusedComputerVersion = "dev")
+        assertEquals(
+            RaftComputerVersionTier.Notice(
+                reinstall = true,
+                reason = "computer_version_unknown",
+                minVersion = RAFT_COMPUTER_VERSION_FLOOR,
+                enforced = true,
+                enforcedAt = null,
+            ),
+            raftComputerVersionTier(nonSemverRefused, NOW),
+        )
+
+        // Stale refusal (> 7 days) or online unreported produces None.
+        val stale =
+            computer(version = null, online = false, gate = unknownGate, versionRefusedAt = staleRefusal, refusedComputerVersion = "1.0.40")
+        val staleTier = raftComputerVersionTier(stale, NOW)
+        assertEquals(RaftComputerVersionTier.None, staleTier)
+        assertNull(raftNoticeComputerVersion(stale, staleTier))
+
+        val onlineUnreported =
+            computer(version = null, online = true, gate = unknownGate, versionRefusedAt = recentRefusal, refusedComputerVersion = "1.0.40")
+        assertEquals(RaftComputerVersionTier.None, raftComputerVersionTier(onlineUnreported, NOW))
+
+        // Reported computerVersion wins over refusedComputerVersion.
+        val withLiveVersion =
+            computer(version = "1.0.50", online = false, gate = unknownGate, versionRefusedAt = recentRefusal, refusedComputerVersion = "1.0.40")
+        val liveTier = raftComputerVersionTier(withLiveVersion, NOW)
+        assertEquals("1.0.50", raftNoticeComputerVersion(withLiveVersion, liveTier))
+    }
+
     private fun model(computer: SettingsComputerSnapshot, control: SettingsComputerControlState = SettingsComputerControlState()) =
         raftComputerUpgradeModel(computer, control, NOW)
 
@@ -275,6 +357,8 @@ class RaftComputerUpgradeModelTest {
         gate: SettingsComputerVersionGateSnapshot? = null,
         notes: SettingsComputerReleaseNotesSnapshot? = null,
         lastHeartbeat: String? = null,
+        versionRefusedAt: String? = null,
+        refusedComputerVersion: String? = null,
     ) = SettingsComputerSnapshot(
         id = "machine-1",
         name = "Studio",
@@ -290,6 +374,8 @@ class RaftComputerUpgradeModelTest {
         versionGate = gate,
         latestComputerVersion = latest,
         latestComputerReleaseNotes = notes,
+        versionRefusedAt = versionRefusedAt,
+        refusedComputerVersion = refusedComputerVersion,
     )
 
     private companion object {

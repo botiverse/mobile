@@ -3250,7 +3250,8 @@ private fun List<SettingsComputerAgentSnapshot>.enrichWithMembers(
         loginSteps = loginSteps.orEmpty(),
         serverNeedsAttention = serverNeedsAttention,
         revocation = revocation,
-        versionRefusedAt = versionRefusedAt
+        versionRefusedAt = versionRefusedAt,
+        refusedComputerVersion = refusedComputerVersion
     )
 
 private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =

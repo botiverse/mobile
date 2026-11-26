@@ -475,8 +475,12 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
     val accessResolution = data.accessResolution
     val canonicalAccessResolved = data.canonicalAccessResolved
     val replyParentAuthority = data.replyParentAuthority
+    val taskConversationReadOnly =
+        payload.isTaskConversationSurface() && !data.taskConversationChrome?.readOnlyReason.isNullOrBlank()
     // #proj-chat:#44: Lounge reactions and action cards follow `canPost` (`postable`), not channel membership.
-    val writeActionsEnabled = data.writeActionsEnabled && (conversationLounge?.postable != false)
+    // slock #16739 / #16748: a historical joint task's participant discussion is read-only (no send, reactions, or action cards).
+    val writeActionsEnabled =
+        data.writeActionsEnabled && (conversationLounge?.postable != false) && !taskConversationReadOnly
     val jointBillingNotice = data.jointBillingNotice
     val jointGraceDeadlineLabel = data.jointGraceDeadlineLabel
     val externalFreezeState = data.externalFreezeState
@@ -905,6 +909,7 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                 taskPanelChannelId = taskPanelChannelId,
                 threadScreenPagerForForwardBundle = threadScreenPagerForForwardBundle,
                 timelineRenderConfig = timelineRenderConfig,
+                writeActionsEnabled = writeActionsEnabled,
             )
         }
     val composerSuggestionPortal =
@@ -923,6 +928,7 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
     val archivedFooterActive = pageLounge == null && threadFooterShowsArchived(payload)
     val optimisticComposerActive =
         !primaryFooterReady &&
+            !taskConversationReadOnly &&
             threadShowsOptimisticComposer(
                 accessResolution = accessResolution,
                 payloadStatus = payload.status,
@@ -983,6 +989,8 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                     adaptiveNativeEditingStateReader = LocalThreadAdaptiveNativeEditingReader.current,
                     autofocusOnOpen = composerAutofocusOnOpen,
                     optimisticPendingAccess = optimisticComposerActive,
+                    dmAgentPeerId = headerDisplay.composerDmAgentPeerId(),
+                    storeScope = adaptiveStoreScope,
                 )
             ThreadRouteComposerDockSlot(
                 args = composerRouteArgs,
@@ -1417,6 +1425,12 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                             archived?.onUnarchive?.invoke { onThreadEvent("retryThreadLoad", null, null, null) }
                         },
                     )
+                }
+            } else if (taskConversationReadOnly && selectedTab == RaftThreadTab.Chat) {
+                // Web ChatPanel / TaskConversationDialog `isJointTaskReadOnly` (slock #16739):
+                // a historical joint task's participant discussion is read-only here.
+                ThreadFooterNoticeDock(bottomSafeArea = composerBottomSafeArea) {
+                    TaskReadOnlyDiscussionComposer()
                 }
             } else if (!writeActionsEnabled) {
                 Unit

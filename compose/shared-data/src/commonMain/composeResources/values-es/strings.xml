@@ -2118,6 +2118,9 @@
     <string name="task_conversation_join_to_reply">Unirse al canal para responder</string>
     <string name="task_conversation_empty_title">Aún no hay conversación en esta tarea</string>
     <string name="task_conversation_empty_body">Su conversación anterior está en las respuestas del mensaje del que surgió. Escribe aquí para empezar la conversación propia de la tarea.</string>
+    <string name="task_conversation_read_only_notice">Esta tarea se creó antes de que se conectaran otros servidores. Su conversación es de solo lectura aquí.</string>
+    <string name="task_conversation_elsewhere_title">Esta conversación permanece en el servidor anfitrión</string>
+    <string name="task_conversation_elsewhere_body">Esta tarea se creó antes de que se conectaran otros servidores. Su conversación solo puede leerse en el servidor anfitrión.</string>
     <string name="task_conversation_composer_placeholder">Escribir en esta tarea</string>
     <string name="task_legacy_heading">Tarea #%1$s · Heredada</string>
     <string name="task_legacy_title">Título</string>
@@ -4994,6 +4997,12 @@
     <string name="agent_computer_offline_step_power">Enciende la computadora %1$s y evita que entre en suspensión</string>
     <string name="agent_computer_offline_step_run">En esa computadora, abre Raft Desktop o ejecuta:</string>
     <string name="agent_status_open_computer">Abrir computadora</string>
+    <string name="agent_status_runtime_retired_full">%1$s ya no tiene soporte</string>
+    <string name="agent_status_runtime_retired_detail_kimi">La versión anterior de Kimi CLI fue retirada, por lo que este agente no puede iniciarse. Cambia su runtime a Kimi Code en la configuración del agente para seguir usándolo. Su espacio de trabajo y MEMORY.md se conservan; la conversación empieza desde cero.</string>
+    <string name="agent_status_runtime_retired_detail_kimi_update_computer">La versión anterior de Kimi CLI fue retirada, por lo que este agente no puede iniciarse. Esta computadora es demasiado antigua para ejecutar Kimi Code: actualiza la computadora primero y luego cambia el runtime en la configuración del agente. Su espacio de trabajo y MEMORY.md se conservan; la conversación empieza desde cero.</string>
+    <string name="agent_status_runtime_retired_detail_gemini">Gemini CLI fue retirado, por lo que este agente no puede iniciarse. Cámbialo a Antigravity u otro runtime en la configuración del agente para seguir usándolo. Su espacio de trabajo y MEMORY.md se conservan; la conversación empieza desde cero.</string>
+    <string name="agent_status_runtime_retired_detail_copilot">GitHub Copilot CLI fue retirado, por lo que este agente no puede iniciarse. Cámbialo a otro runtime en la configuración del agente para seguir usándolo. Su espacio de trabajo y MEMORY.md se conservan; la conversación empieza desde cero.</string>
+    <string name="agent_status_runtime_retired_change_runtime">Cambiar runtime</string>
     <string name="agent_migration_place_from_revoked_computer_note">La computadora de este agente perdió el acceso al servidor, así que sus archivos no se pueden traer. Se mueve a la computadora que elijas e inicia una sesión nueva allí la próxima vez que reciba un mensaje.</string>
     <string name="agent_status_model_unsupported">La cuenta o el plan de este runtime no incluye “%1$s”. Cambia el modelo o inicia sesión con una cuenta que lo incluya</string>
     <string name="agent_status_model_unsupported_default">La cuenta o el plan de este runtime no incluye el modelo de este agente. Cambia el modelo o inicia sesión con una cuenta que lo incluya</string>

@@ -231,6 +231,39 @@ val RUNTIMES: List<RuntimeInfo> = listOf(
 fun getRuntimeDisplayName(id: String): String =
     RUNTIMES.firstOrNull { it.id == id }?.displayName ?: id
 
+/**
+ * Retired runtimes (shared `RETIRED_RUNTIME_IDS`, slock #16830): deprecated, and existing agents on
+ * them no longer start. The server refuses every start before dispatch with `runtime_retired`.
+ */
+val RETIRED_RUNTIME_IDS: List<String> = listOf("kimi", "gemini", "copilot")
+
+/** Shared `isRuntimeRetired`: whether [runtimeId] is a retired runtime. */
+fun isRuntimeRetired(runtimeId: String?): Boolean =
+    runtimeId?.trim()?.takeIf { it.isNotEmpty() } in RETIRED_RUNTIME_IDS
+
+/** The runtime each retired one's copy suggests switching to; null means any other runtime. */
+val RETIRED_RUNTIME_REPLACEMENTS: Map<String, String?> = mapOf(
+    "kimi" to "kimi-sdk",
+    "gemini" to "antigravity",
+    "copilot" to null,
+)
+
+/**
+ * Shared `retiredRuntimeNeedsComputerUpdate` (slock #16830): whether the agent's Computer is too
+ * old to offer the retired runtime's suggested replacement, so updating the Computer has to come
+ * first. An in-process replacement (`binary == ""`, e.g. Kimi Code) absent from [machineRuntimeIds]
+ * means a Computer that predates it; a CLI replacement may just not be installed (false). Null or
+ * empty [machineRuntimeIds] (no Computer or none reported) stays undecided (false).
+ */
+fun retiredRuntimeNeedsComputerUpdate(runtimeId: String?, machineRuntimeIds: List<String>?): Boolean {
+    val normalized = runtimeId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    if (!isRuntimeRetired(normalized)) return false
+    val replacement = RETIRED_RUNTIME_REPLACEMENTS[normalized] ?: return false
+    val info = RUNTIMES.firstOrNull { it.id == replacement } ?: return false
+    if (machineRuntimeIds.isNullOrEmpty()) return false
+    return info.binary.isEmpty() && info.id !in machineRuntimeIds
+}
+
 // ── Reasoning effort ──
 
 /**

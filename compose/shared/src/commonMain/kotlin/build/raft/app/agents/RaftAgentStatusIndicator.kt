@@ -100,6 +100,8 @@ internal data class RaftAgentStatusIndicatorState(
     val runningWorkers: Int? = null,
     /** Another server's agent (joint channel): only presence is known, never the count. */
     val runningWorkersPresenceOnly: Boolean = false,
+    /** Human creator user id from the roster, for edit-permission checks on retired-runtime notices. */
+    val creatorUserId: String? = null,
 )
 
 /** React parity: external agents caption as "External" (agentStore.ts resolveAgentDisplayState). */
@@ -290,6 +292,7 @@ internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(
             deliveryHold = deliveryHold,
             runningWorkers = runningWorkers,
             runningWorkersPresenceOnly = runningWorkersPresenceOnly,
+            creatorUserId = creatorUserId,
         )
     // Web AgentActivityDot (botiverse/slock #16333, #16819): a held agent paints the error light on
     // every avatar and in the @mention list while its hold is active; otherwise an online agent

@@ -109,11 +109,12 @@ class WorkspaceTerminologyResourceTest {
         const val SERVER_TERM = "工作空间"
         const val FILES_TERM = "工作区"
 
-        // Key domains about an agent's local files: member pages, agent migration, and computers.
+        // Key domains about an agent's local files: member pages, agent migration, retired-runtime notices, and computers.
         val AGENT_FILESYSTEM_KEY_PREFIXES =
             listOf(
                 "member_",
                 "agent_migration_",
+                "agent_status_runtime_retired_detail_",
                 "raft_pro_migration_",
                 "settings_computers_",
                 "settings_computer_detail_",

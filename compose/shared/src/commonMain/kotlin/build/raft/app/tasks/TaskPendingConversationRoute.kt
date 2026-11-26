@@ -101,6 +101,7 @@ internal const val TASK_PENDING_CHANNEL_ID_KEY = "channelId"
 internal const val TASK_PENDING_FOCUSED_MESSAGE_ID_KEY = "focusedMessageId"
 internal const val TASK_PENDING_ALIGN_OWN_MESSAGES_RIGHT_KEY = "alignOwnMessagesRight"
 internal const val TASK_PENDING_COMPACT_CONSECUTIVE_MESSAGES_KEY = "compactConsecutiveMessages"
+internal const val TASK_PENDING_DISCUSSION_ELSEWHERE_KEY = "discussionElsewhere"
 
 @Page(TASK_PENDING_CONVERSATION_PAGE, supportInLocal = true)
 internal class ComposeTaskPendingPage : AuthenticatedProductPager(AuthenticatedProductRoute.TaskPending) {
@@ -117,6 +118,7 @@ internal data class TaskPendingRouteParams(
     val alignOwnMessagesRight: Boolean,
     val compactConsecutiveMessages: Boolean,
     val focusedMessageId: String? = null,
+    val discussionElsewhere: Boolean = false,
 )
 
 /**
@@ -132,6 +134,7 @@ internal fun taskPendingPageData(
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
     focusedMessageId: String? = null,
+    discussionElsewhere: Boolean = false,
 ): JSONObject =
     settingsStandalonePageData(TASK_PENDING_CONVERSATION_PAGE, storeScope).apply {
         put(TASK_PENDING_TASK_ID_KEY, taskId.trim())
@@ -139,6 +142,7 @@ internal fun taskPendingPageData(
         focusedMessageId?.trim()?.takeIf { it.isNotEmpty() }?.let { put(TASK_PENDING_FOCUSED_MESSAGE_ID_KEY, it) }
         put(TASK_PENDING_ALIGN_OWN_MESSAGES_RIGHT_KEY, alignOwnMessagesRight)
         put(TASK_PENDING_COMPACT_CONSECUTIVE_MESSAGES_KEY, compactConsecutiveMessages)
+        if (discussionElsewhere) put(TASK_PENDING_DISCUSSION_ELSEWHERE_KEY, true)
         put("localOffsetMinutes", timeContext?.localOffsetMinutes ?: 0)
         timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
         timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
@@ -152,6 +156,7 @@ internal fun taskPendingPageData(
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
     focusedMessageId: String? = null,
+    discussionElsewhere: Boolean = false,
 ): JSONObject =
     taskPendingPageData(
         taskId = task.id.value,
@@ -161,6 +166,7 @@ internal fun taskPendingPageData(
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
         focusedMessageId = focusedMessageId,
+        discussionElsewhere = discussionElsewhere,
     )
 
 internal fun parseTaskPendingRouteParams(
@@ -174,6 +180,7 @@ internal fun parseTaskPendingRouteParams(
         alignOwnMessagesRight = params.optBoolean(TASK_PENDING_ALIGN_OWN_MESSAGES_RIGHT_KEY, false),
         compactConsecutiveMessages = params.optBoolean(TASK_PENDING_COMPACT_CONSECUTIVE_MESSAGES_KEY, false),
         focusedMessageId = params.optString(TASK_PENDING_FOCUSED_MESSAGE_ID_KEY).trim().takeIf { it.isNotEmpty() },
+        discussionElsewhere = params.optBoolean(TASK_PENDING_DISCUSSION_ELSEWHERE_KEY, false),
     )
 
 /**
@@ -193,6 +200,7 @@ internal fun Pager.openTaskPendingPage(
     compactConsecutiveMessages: Boolean = false,
     channelJoined: Boolean? = null,
     canWriteChannel: Boolean? = null,
+    discussionElsewhere: Boolean = false,
 ): Boolean {
     val resolvedServerId = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: storeScope.initialServerId
     val targetStoreScope =
@@ -206,6 +214,7 @@ internal fun Pager.openTaskPendingPage(
             task = task,
             channelJoined = channelJoined,
             canWriteChannel = canWriteChannel,
+            discussionElsewhere = discussionElsewhere,
         )
     }
     return openRaftPage(
@@ -219,6 +228,7 @@ internal fun Pager.openTaskPendingPage(
                 alignOwnMessagesRight = alignOwnMessagesRight,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 focusedMessageId = focusedMessageId,
+                discussionElsewhere = discussionElsewhere,
             ),
         storeScopeOverride = targetStoreScope,
     )
@@ -234,6 +244,7 @@ internal fun Pager.openTaskPendingPage(
     compactConsecutiveMessages: Boolean = false,
     channelJoined: Boolean? = null,
     canWriteChannel: Boolean? = null,
+    discussionElsewhere: Boolean = false,
 ): Boolean =
     openTaskPendingPage(
         taskId = task.id.value,
@@ -247,6 +258,7 @@ internal fun Pager.openTaskPendingPage(
         compactConsecutiveMessages = compactConsecutiveMessages,
         channelJoined = channelJoined,
         canWriteChannel = canWriteChannel,
+        discussionElsewhere = discussionElsewhere,
     )
 
 /**
@@ -640,6 +652,9 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
 
     val controller = remember(foregroundBannerStore) { TaskPendingPageController(foregroundBannerStore.taskPendingDrafts) }
     var joinedLocally by remember(resolvedChannelId) { mutableStateOf(false) }
+    var discussionElsewhere by remember(route.taskId) {
+        mutableStateOf(route.discussionElsewhere || seed?.discussionElsewhere == true)
+    }
     var pendingSentConversationId by remember(route.taskId) { mutableStateOf<ChannelId?>(null) }
     var pendingSentTask by remember(route.taskId) { mutableStateOf<TaskSummary?>(null) }
     val pendingServerId = resolvedServerId?.takeIf { it.isNotBlank() }
@@ -774,16 +789,16 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
     // page in place with the real task conversation page. Launch inside page-owned coroutineScope
     // so subsequent `task:updated` emissions while resolving a joint-channel conversation cannot
     // cancel the hand-off and leave `controller.handingOff` stuck true.
-    LaunchedEffect(liveTask, resolvedServerId, pageVisible) {
-        if (!pageVisible) return@LaunchedEffect
+    LaunchedEffect(liveTask, resolvedServerId, pageVisible, discussionElsewhere) {
+        if (!pageVisible || discussionElsewhere) return@LaunchedEffect
         val current = liveTask ?: return@LaunchedEffect
         val serverId = resolvedServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (!controller.claimConversationArrived(current)) return@LaunchedEffect
         coroutineScope.launch {
             val requiresResolvedConversation = current.taskOpenTarget() == TaskOpenTarget.ResolveConversation
-            val conversationId =
+            val resolution =
                 try {
-                    resolveTaskOpenConversationChannelId(
+                    resolveTaskOpenConversation(
                         task = current,
                         serverId = serverId,
                         tasksDataSource = tasksDataSource,
@@ -793,6 +808,12 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
                     controller.resetHandOff()
                     throw cancelled
                 }
+            if (resolution == TaskConversationOpenResolution.DiscussionElsewhere) {
+                discussionElsewhere = true
+                controller.resetHandOff()
+                return@launch
+            }
+            val conversationId = (resolution as? TaskConversationOpenResolution.Opened)?.conversationChannelId
             if (requiresResolvedConversation && conversationId == null) {
                 bridge.logWarn("task_pending_arrival_resolve_failed taskId=${current.id.value}")
                 bridge.toast(unableToOpenTaskLabel)
@@ -1037,6 +1058,7 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
             onAmend = channelTasks.taskHeadAmend(liveTask),
             useHostSafeArea = true,
             loadingDiscussion = needsSummaryHydration,
+            discussionElsewhere = discussionElsewhere,
         )
     }
     }

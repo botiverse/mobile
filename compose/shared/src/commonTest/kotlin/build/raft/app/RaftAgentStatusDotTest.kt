@@ -49,4 +49,24 @@ class RaftAgentStatusDotTest {
         // What it is doing, in the daemon's words, while it works.
         assertEquals("Running npm test".desc(), widgetText("working", detail = "Running npm test"))
     }
+
+    @Test
+    fun retiredRuntimeBlockedAgentShowsOrangeDotAndChangeRuntimeUntilSwitched() {
+        assertEquals(
+            RaftAgentStatusDotKind.Orange,
+            raftAgentStatusDotKind("offline", external = false, blockedReason = "runtime_retired", runtime = "kimi"),
+        )
+        assertEquals(
+            RaftAgentStatusDotKind.Lime,
+            raftAgentStatusDotKind("online", external = false, blockedReason = "runtime_retired", runtime = "kimi-sdk"),
+        )
+        assertEquals(
+            Res.string.agent_status_runtime_retired_change_runtime.desc(),
+            widgetText("offline", blockedReason = "runtime_retired", runtime = "kimi"),
+        )
+        assertEquals(
+            Res.string.member_row_status_online.desc(),
+            widgetText("online", blockedReason = "runtime_retired", runtime = "kimi-sdk"),
+        )
+    }
 }

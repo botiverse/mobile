@@ -1127,8 +1127,17 @@ private fun MembersListRowAvatar(
         rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value.takeIf { showsStatus })
             ?.withoutActivityDetail()
     val holdingReadiness = if (showsStatus) effectiveHoldingReadiness(rawStatus) else null
-    val signIn =
+    val runtimeRetired =
         if (showsStatus && holdingReadiness == null) {
+            rememberAgentRuntimeRetiredState(
+                state = rawStatus,
+                fallbackRuntime = member.roleDescription,
+            )
+        } else {
+            null
+        }
+    val signIn =
+        if (showsStatus && holdingReadiness == null && runtimeRetired == null) {
             rememberAgentRuntimeSignInState(
                 state = rawStatus,
                 fallbackRuntime = member.roleDescription,
@@ -1138,7 +1147,7 @@ private fun MembersListRowAvatar(
             null
         }
     val deliveryHold =
-        if (showsStatus && holdingReadiness == null && signIn == null) {
+        if (showsStatus && holdingReadiness == null && runtimeRetired == null && signIn == null) {
             rememberAgentDeliveryHoldView(
                 state = rawStatus,
                 fallbackRuntime = member.roleDescription,
@@ -1148,7 +1157,7 @@ private fun MembersListRowAvatar(
             null
         }
     val workersBusyText =
-        if (showsStatus && holdingReadiness == null && signIn == null && deliveryHold == null) {
+        if (showsStatus && holdingReadiness == null && runtimeRetired == null && signIn == null && deliveryHold == null) {
             val nowMs = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: build.raft.app.data.defaultNowMillis()
             rawStatus?.busyThroughWorkers(nowMs = nowMs)?.localizedText()
         } else {
@@ -1157,6 +1166,7 @@ private fun MembersListRowAvatar(
     val status =
         when {
             holdingReadiness != null -> rawStatus?.copy(color = holdingReadiness.dotColor())
+            runtimeRetired != null -> rawStatus?.copy(color = RaftColor.AccentOrange)
             signIn != null -> rawStatus?.copy(color = RaftColor.AccentOrange)
             deliveryHold != null -> rawStatus?.copy(color = RaftColor.AccentOrange)
             else -> rawStatus
@@ -1165,7 +1175,7 @@ private fun MembersListRowAvatar(
         member = member,
         showStatusOverlay = showsStatus && status != null,
         statusIndicatorState = status,
-        statusDescription = signIn?.detail ?: deliveryHold?.text ?: workersBusyText,
+        statusDescription = runtimeRetired?.detail ?: signIn?.detail ?: deliveryHold?.text ?: workersBusyText,
         memberAvatarResolver = memberAvatarResolver
     )
 }

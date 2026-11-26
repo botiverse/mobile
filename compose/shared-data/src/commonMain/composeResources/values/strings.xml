@@ -2122,6 +2122,9 @@
     <string name="task_conversation_join_to_reply">Join channel to reply</string>
     <string name="task_conversation_empty_title">No discussion in this task yet</string>
     <string name="task_conversation_empty_body">Its earlier discussion is in the replies of the message it came from. Write here to start the task's own.</string>
+    <string name="task_conversation_read_only_notice">This task was created before other servers connected. Its discussion is read-only here.</string>
+    <string name="task_conversation_elsewhere_title">This discussion stays on the host server</string>
+    <string name="task_conversation_elsewhere_body">This task was created before other servers connected. Its discussion can only be read on the host server.</string>
     <string name="task_conversation_composer_placeholder">Message this task</string>
     <string name="task_legacy_heading">Task #%1$s · Legacy</string>
     <string name="task_legacy_title">Title</string>
@@ -5178,6 +5181,12 @@
     <string name="agent_computer_offline_step_power">Turn on the computer %1$s and keep it from sleeping</string>
     <string name="agent_computer_offline_step_run">On that computer, open Raft Desktop or run:</string>
     <string name="agent_status_open_computer">Open computer</string>
+    <string name="agent_status_runtime_retired_full">%1$s is no longer supported</string>
+    <string name="agent_status_runtime_retired_detail_kimi">The old Kimi CLI is retired, so this agent can't start. Switch its runtime to Kimi Code in the agent's settings to keep using it. Its workspace and MEMORY.md are kept; the conversation starts fresh.</string>
+    <string name="agent_status_runtime_retired_detail_kimi_update_computer">The old Kimi CLI is retired, so this agent can't start. This Computer is too old to run Kimi Code: update the Computer first, then switch the runtime in the agent's settings. Its workspace and MEMORY.md are kept; the conversation starts fresh.</string>
+    <string name="agent_status_runtime_retired_detail_gemini">Gemini CLI is retired, so this agent can't start. Switch it to Antigravity or another runtime in the agent's settings to keep using it. Its workspace and MEMORY.md are kept; the conversation starts fresh.</string>
+    <string name="agent_status_runtime_retired_detail_copilot">GitHub Copilot CLI is retired, so this agent can't start. Switch it to another runtime in the agent's settings to keep using it. Its workspace and MEMORY.md are kept; the conversation starts fresh.</string>
+    <string name="agent_status_runtime_retired_change_runtime">Change runtime</string>
     <string name="agent_migration_place_from_revoked_computer_note">This agent's Computer lost its access to the server, so its files can't be brought over. It moves to the computer you choose and starts a fresh session there the next time it gets a message.</string>
     <string name="agent_status_model_unsupported">This runtime's account or plan doesn't include "%1$s". Change the model, or sign in with an account that includes it</string>
     <string name="agent_status_model_unsupported_default">This runtime's account or plan doesn't include this agent's model. Change the model, or sign in with an account that includes it</string>
