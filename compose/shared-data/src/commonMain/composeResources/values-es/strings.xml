@@ -2699,6 +2699,11 @@
     <string name="home_second_factor_recovery_cancel">Cancelar restablecimiento</string>
     <string name="home_second_factor_recovery_cancelled">Restablecimiento cancelado. La verificación en dos pasos sigue activada y te enviamos un correo.</string>
     <string name="home_second_factor_recovery_cancel_failed">No se canceló el restablecimiento. Inténtalo de nuevo.</string>
+    <string name="home_notification_usage_limit_title">%1$s agotado</string>
+    <string name="home_notification_usage_limit_body_one">%1$d agente en %2$s podría pausarse hasta que el uso vuelva a estar disponible.</string>
+    <string name="home_notification_usage_limit_body_many">%1$d agentes en %2$s podrían pausarse hasta que el uso vuelva a estar disponible.</string>
+    <string name="home_notification_usage_limit_body_with_reset_one">%1$d agente en %2$s podría pausarse. Vuelve %3$s.</string>
+    <string name="home_notification_usage_limit_body_with_reset_many">%1$d agentes en %2$s podrían pausarse. Vuelve %3$s.</string>
     <string name="home_notification_app_update_title">Hay una actualización de la app</string>
     <string name="home_notification_app_update_ready_title">Actualización lista para instalar</string>
     <string name="home_notification_app_update_body">Versión actual: %1$s. Última versión: %2$s.</string>

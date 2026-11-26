@@ -8,6 +8,7 @@ import build.raft.app.data.raftMachineNoticeComputerIds
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.jointInviteIdFromHomeNotificationIdOrNull
+import build.raft.app.data.usageLimitIdFromHomeNotificationIdOrNull
 import build.raft.app.data.displayRowHints
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.agentLoungeEnabled
@@ -328,6 +329,7 @@ internal fun SharedHomeScreen(
     channelRepository: ChannelRepository? = null,
     jointInviteStore: build.raft.app.data.SharedJointInviteStore? = null,
     secondFactorRecoveryStore: build.raft.app.data.SharedSecondFactorRecoveryStore? = null,
+    usageLimitAttentionStore: build.raft.app.data.SharedUsageLimitAttentionStore? = null,
     topSafeAreaOverride: Dp? = null,
     // web Sidebar scroll content `pb-2`: 8dp under the last section's list.
     bottomContentPadding: Dp = RaftAppSpacing.Sm,
@@ -369,6 +371,12 @@ internal fun SharedHomeScreen(
             onOpenConversation = onOpenConversation,
         )
     val secondFactorRecovery = rememberHomeSecondFactorRecovery(bridge, secondFactorRecoveryStore, active)
+    val usageLimitAttention =
+        rememberHomeUsageLimitAttention(
+            store = usageLimitAttentionStore,
+            content = state.content,
+            active = active,
+        )
     LaunchedEffect(active, sessionReady, homeContentSummary, state.homeRealtimeDirty, shouldStartHome) {
         bridge.log(
             "shared_home_screen_enter active=$active sessionReady=$sessionReady " +
@@ -825,9 +833,13 @@ internal fun SharedHomeScreen(
                         "directMessageDraftIds=${directMessageDraftIds.joinToString(separator = ",")}"
                 )
             }
-            // Account security first (web useSystemNotifications), then joint invites (web "0a").
+            // Account security first (web useSystemNotifications), then joint invites (web "0a"),
+            // then server-backed usage-limit attention cards (web "0").
             val notificationItems =
-                listOfNotNull(secondFactorRecovery.item) + jointInvites.items + state.notifications.map { it.toHomeNotificationItem() }
+                listOfNotNull(secondFactorRecovery.item) +
+                    jointInvites.items +
+                    usageLimitAttention.items +
+                    state.notifications.map { it.toHomeNotificationItem() }
             val conversationsByThreadId =
                 remember(snapshot.channels, snapshot.directMessages) {
                     (snapshot.channels + snapshot.directMessages).associateBy { it.threadId.value }
@@ -951,12 +963,18 @@ internal fun SharedHomeScreen(
                 },
                 onNotificationView = { notification ->
                     val jointInviteId = notification.id.jointInviteIdFromHomeNotificationIdOrNull()
+                    val usageLimitIncidentId = notification.id.usageLimitIdFromHomeNotificationIdOrNull()
                     val versionGateComputerId = homeComputerVersionGateTargetOrNull(notification.id, notification.targetId)
                     when {
                         notification.id == SECOND_FACTOR_RECOVERY_HOME_NOTIFICATION_ID ->
                             secondFactorRecovery.cancel()
                         jointInviteId != null ->
                             jointInviteStore?.dispatch(build.raft.app.data.SharedJointInviteIntent.Accept(jointInviteId))
+                        usageLimitIncidentId != null -> {
+                            usageLimitAttention.markSeen(usageLimitIncidentId)
+                            val machineId = notification.targetId?.trim()?.takeIf { it.isNotEmpty() }
+                            if (machineId != null) onOpenComputer(machineId) else onOpenComputers()
+                        }
                         notification.id.isAppUpdateHomeNotificationId() && onAppUpdateOpen != null ->
                             onAppUpdateOpen()
                         versionGateComputerId != null ->
@@ -975,19 +993,26 @@ internal fun SharedHomeScreen(
                 },
                 onNotificationDismiss = { notification ->
                     val jointInviteId = notification.id.jointInviteIdFromHomeNotificationIdOrNull()
+                    val usageLimitIncidentId = notification.id.usageLimitIdFromHomeNotificationIdOrNull()
                     if (notification.security) {
                         // Not dismissible (no Dismiss is drawn): it goes only when the reset does.
                     } else if (jointInviteId != null) {
                         jointInviteStore?.dispatch(build.raft.app.data.SharedJointInviteIntent.Dismiss(jointInviteId))
+                    } else if (usageLimitIncidentId != null) {
+                        usageLimitAttention.dismiss(usageLimitIncidentId)
                     } else {
                         onNotificationDismiss(notification.id)
                     }
                 },
-                onNotificationCenterOpened = secondFactorRecovery.refresh,
+                onNotificationCenterOpened = {
+                    secondFactorRecovery.refresh()
+                    usageLimitAttention.markAllUnseenSeen()
+                },
                 onRefresh = {
                     onIntent(SharedHomeIntent.Refresh)
                     jointInvites.refresh()
                     secondFactorRecovery.refresh()
+                    usageLimitAttention.refresh()
                 },
                 onChannelClick = { threadId ->
                     val mergedDm = mergedDirectMessagesById[threadId]

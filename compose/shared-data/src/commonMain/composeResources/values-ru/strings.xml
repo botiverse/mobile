@@ -2699,6 +2699,11 @@
     <string name="home_second_factor_recovery_cancel">Отменить сброс</string>
     <string name="home_second_factor_recovery_cancelled">Сброс отменён. Двухэтапная аутентификация остаётся включённой. Мы отправили вам письмо.</string>
     <string name="home_second_factor_recovery_cancel_failed">Не удалось отменить сброс. Попробуйте ещё раз.</string>
+    <string name="home_notification_usage_limit_title">%1$s: исчерпано</string>
+    <string name="home_notification_usage_limit_body_one">%1$d агент на компьютере %2$s может быть приостановлен, пока лимит не сбросится.</string>
+    <string name="home_notification_usage_limit_body_many">%1$d агентов на компьютере %2$s могут быть приостановлены, пока лимит не сбросится.</string>
+    <string name="home_notification_usage_limit_body_with_reset_one">%1$d агент на компьютере %2$s может быть приостановлен. Вернётся %3$s.</string>
+    <string name="home_notification_usage_limit_body_with_reset_many">%1$d агентов на компьютере %2$s могут быть приостановлены. Вернётся %3$s.</string>
     <string name="home_notification_app_update_title">Доступно обновление приложения</string>
     <string name="home_notification_app_update_ready_title">Обновление готово к установке</string>
     <string name="home_notification_app_update_body">Текущая версия: %1$s. Последняя версия: %2$s.</string>

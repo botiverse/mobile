@@ -2699,6 +2699,11 @@
     <string name="home_second_factor_recovery_cancel">Cancelar redefinição</string>
     <string name="home_second_factor_recovery_cancelled">Redefinição cancelada. A verificação em duas etapas continua ativada, e enviamos um e-mail para você.</string>
     <string name="home_second_factor_recovery_cancel_failed">A redefinição não foi cancelada. Tente novamente.</string>
+    <string name="home_notification_usage_limit_title">%1$s esgotado</string>
+    <string name="home_notification_usage_limit_body_one">%1$d agente em %2$s pode ficar pausado até que o uso volte a ficar disponível.</string>
+    <string name="home_notification_usage_limit_body_many">%1$d agentes em %2$s podem ficar pausados até que o uso volte a ficar disponível.</string>
+    <string name="home_notification_usage_limit_body_with_reset_one">%1$d agente em %2$s pode ficar pausado. Volta %3$s.</string>
+    <string name="home_notification_usage_limit_body_with_reset_many">%1$d agentes em %2$s podem ficar pausados. Volta %3$s.</string>
     <string name="home_notification_app_update_title">Atualização do app disponível</string>
     <string name="home_notification_app_update_ready_title">Atualização pronta para instalar</string>
     <string name="home_notification_app_update_body">Versão atual: %1$s. Versão mais recente: %2$s.</string>
