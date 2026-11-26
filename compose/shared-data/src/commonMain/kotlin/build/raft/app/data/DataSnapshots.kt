@@ -2336,7 +2336,11 @@ data class SettingsComputerAgentSnapshot(
     /** Wire top-level `envVars`, the fallback when [runtimeConfig] carries none. */
     val envVars: Map<String, String>? = null,
     /** What the bulk Change model reads from wire `runtimeConfig`; null when the row carries none. */
-    val runtimeConfig: SettingsComputerAgentRuntimeConfig? = null
+    val runtimeConfig: SettingsComputerAgentRuntimeConfig? = null,
+    /** User id who created this agent (`creatorId` when `creatorType == "user"`), for Delete Computer own-agent filtering. */
+    val creatorUserId: String? = null,
+    /** Personal assistant's owner user id (`assistantOwnerUserId`), for Delete Computer own-agent filtering. */
+    val assistantOwnerUserId: String? = null,
 )
 
 /**

@@ -549,6 +549,8 @@ sealed interface SharedSettingsIntent {
     data class RenameComputer(val request: SettingsComputerRenameRequest) : SharedSettingsIntent
     data class UpdateComputerDescription(val request: SettingsComputerDescriptionUpdateRequest) : SharedSettingsIntent
     data class DeleteComputer(val machineId: String) : SharedSettingsIntent
+    /** Removes a Computer already deleted via revoke-computer-key / DeleteComputerDialog and reloads the list. */
+    data class ForgetDeletedComputer(val machineId: String) : SharedSettingsIntent
     data class RotateComputerKey(val machineId: String) : SharedSettingsIntent
     /** Remote restart of a managed Computer (online only); progress lands in [SharedSettingsState.computerControl]. */
     data class RestartComputer(val machineId: String) : SharedSettingsIntent
@@ -2682,6 +2684,21 @@ class SharedSettingsStore(
                 runAction(COMPUTER_ACTION_DELETE, intent.machineId) {
                     dataSource.deleteComputer(intent.machineId).applyComputerDeleteActionResult(COMPUTER_ACTION_DELETE, intent.machineId)
                 }
+            }
+            is SharedSettingsIntent.ForgetDeletedComputer -> {
+                val current = _state.value.computers
+                if (current is ScreenLoadState.Content) {
+                    val remaining = current.data.computers.filterNot { it.id == intent.machineId }
+                    if (remaining.size != current.data.computers.size) {
+                        _state.value =
+                            _state.value.copy(
+                                computers = ScreenLoadState.Content(current.data.copy(computers = remaining))
+                            )
+                    }
+                }
+                DataResult.Content(
+                    SettingsComputerActionResult(machineId = intent.machineId, success = true, action = "delete")
+                ).applyComputerDeleteActionResult(COMPUTER_ACTION_DELETE, intent.machineId)
             }
             is SharedSettingsIntent.RestartComputer -> restartComputer(intent.machineId)
             is SharedSettingsIntent.UpgradeComputer -> upgradeComputer(intent.machineId, intent.targetVersion)
@@ -4892,6 +4909,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.RenameComputer,
             is SharedSettingsIntent.UpdateComputerDescription,
             is SharedSettingsIntent.DeleteComputer,
+            is SharedSettingsIntent.ForgetDeletedComputer,
             is SharedSettingsIntent.RotateComputerKey,
             is SharedSettingsIntent.RegisterComputer,
             is SharedSettingsIntent.RestartComputer,

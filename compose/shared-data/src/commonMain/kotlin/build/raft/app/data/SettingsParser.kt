@@ -475,6 +475,7 @@ private data class WireSettingsAgent(
     val machineId: String? = null,
     val creatorType: String? = null,
     val creatorId: String? = null,
+    val assistantOwnerUserId: String? = null,
     val reasoningEffort: String? = null,
     val external: Boolean = false,
     val envVars: JsonElement? = null,
@@ -505,6 +506,8 @@ private fun WireSettingsAgent.toSettingsComputerAgentSnapshot(): SettingsCompute
         external = external || runtime == "external",
         envVars = envVars.toSettingsStringMap(),
         runtimeConfig = (runtimeConfig as? JsonObject)?.toSettingsComputerAgentRuntimeConfig(),
+        creatorUserId = creatorId?.trim()?.takeIf { it.isNotEmpty() && creatorType == "user" },
+        assistantOwnerUserId = assistantOwnerUserId?.trim()?.takeIf { it.isNotEmpty() },
     )
 }
 
