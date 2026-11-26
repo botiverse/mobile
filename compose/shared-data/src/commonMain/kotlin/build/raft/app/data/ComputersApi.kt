@@ -1198,6 +1198,12 @@ sealed interface ComputerProcJobStopResult {
     val hostProvider: String? = null,
     /** Server `deviceClass` ("laptop", "server"); null when unknown or an older server. */
     val deviceClass: String? = null,
+    /**
+     * Server `sameMachineGroup` (slock #10082, `computer_host_identity_v0`): opaque per-response
+     * label shared by Computers on the same physical machine ("machine-1"); null when alone or
+     * while the flag is off / on older servers. Compare only, never display.
+     */
+    val sameMachineGroup: String? = null,
     /** Server `installerRepairHint.reason` (a known one only); null when there is nothing to hint or an older server. */
     val installerRepairHint: String? = null,
     /** Server `upgradeScope.ok == false`: the Computer refuses a web upgrade's scope (it runs as a system service). */
@@ -1577,6 +1583,10 @@ private data class ComputerDto(
     val hostProvider: String? = null,
     // services/machineReadModel.ts `deviceClass: isDeviceClass(machine.deviceClass) ? machine.deviceClass : null`.
     val deviceClass: String? = null,
+    // routes/servers.ts buildMachineList (slock #10082, `computer_host_identity_v0`): opaque
+    // per-response group label ("machine-1") shared by Computers on one physical host; null when
+    // alone, absent while the flag is off or on older servers. Compare only, never display.
+    val sameMachineGroup: String? = null,
     // routes/servers.ts GET /:id/machines `installerRepairHint: await readInstallerRepairHint(...)`
     // (packages/shared/src/index.ts ComputerInstallerRepairHint, #proj-raft-computer task #34):
     // advisory, the installer state needs a repair run on the machine; null when nothing to hint.
@@ -1991,6 +2001,7 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         osRelease = osRelease?.trim()?.takeIf { it.isNotBlank() },
         hostProvider = hostProvider?.trim()?.takeIf { it.isNotBlank() },
         deviceClass = deviceClass?.trim()?.takeIf { it.isNotBlank() },
+        sameMachineGroup = sameMachineGroup?.trim()?.takeIf { it.isNotBlank() },
         installerRepairHint = installerRepairHint?.reason?.takeIf { it in COMPUTER_INSTALLER_REPAIR_HINT_REASONS },
         upgradeScopeRefused = upgradeScope?.ok == false,
         runtimeVersions =

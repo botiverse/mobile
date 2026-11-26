@@ -108,6 +108,12 @@ internal data class RaftComputerRowModel(
     val hostProvider: String? = null,
     /** Server `deviceClass` ("laptop", "server", "desktop", ...), for device icon parity (web `ComputerDeviceIcon`). */
     val deviceClass: String? = null,
+    /**
+     * Server `sameMachineGroup` (slock #10082, `computer_host_identity_v0`): opaque per-response
+     * label shared by Computers running on the same physical machine; null when alone or when the
+     * flag is off / older server. Compare only, never display.
+     */
+    val sameMachineGroup: String? = null,
 )
 
 /**
@@ -378,6 +384,7 @@ internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel 
         revoked = !isComputer && revocation != null,
         hostProvider = hostProvider,
         deviceClass = deviceClass,
+        sameMachineGroup = sameMachineGroup?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 
@@ -941,6 +948,11 @@ internal sealed interface RaftComputerDetailModel {
         val canTransferOwner: Boolean = snapshot.canTransferOwner,
         /** Make it mine (whoever connected a Public Computer). */
         val canClaimOwner: Boolean = snapshot.canClaimOwner,
+        /**
+         * Other Computers on the same physical machine (web `sameMachinePeers`, slock #10082 / #10304);
+         * empty when alone or when `computer_host_identity_v0` omits `sameMachineGroup`.
+         */
+        val sameMachinePeerNames: List<String> = snapshot.sameMachinePeerNames,
     ) : RaftComputerDetailModel
 }
 

@@ -466,6 +466,69 @@ class SharedComputersStoreTest {
         assertEquals("any_member", updated.workerRuntimesChangeBy)
     }
 
+    @Test
+    fun syncRowUpdatesAndClearsSameMachineGroupAndRefreshesCachedDetailPeers() = runBlocking {
+        val api = ControlledComputersApi()
+        api.enqueue(
+            HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """{"machines":[""" +
+                        """{"id":"m-1","name":"Alpha","status":"online","isComputer":true,"sameMachineGroup":"machine-1"},""" +
+                        """{"id":"m-2","name":"Beta","status":"online","isComputer":true,"sameMachineGroup":"machine-1"},""" +
+                        """{"id":"m-3","name":"Gamma","status":"online","isComputer":true,"sameMachineGroup":null}""" +
+                        """]}"""
+            )
+        )
+        val store = controlledStore(api, this@runBlocking)
+        store.ensureComputerPickerForServer("server-1")
+
+        val initialList = store.currentSettingsComputersForServer("server-1")
+        assertEquals(listOf("Beta"), sameMachinePeerNames(initialList.first { it.id == "m-1" }, initialList))
+
+        store.recordSettingsComputerDetail(
+            "server-1",
+            "m-1",
+            SettingsComputerDetailSnapshot(
+                computer = initialList.first { it.id == "m-1" },
+                workspaces = emptyList(),
+                agents = emptyList(),
+                sections = emptyList(),
+                sameMachinePeerNames = listOf("Beta")
+            )
+        )
+
+        // Incremental sync adds Gamma to the same physical host and renames Beta -> Beta Renamed.
+        val betaRenamed =
+            parseSyncedComputerRow(
+                kotlinx.serialization.json.Json.parseToJsonElement(
+                    """{"id":"m-2","name":"Beta Renamed","status":"online","isComputer":true,"sameMachineGroup":"machine-1"}"""
+                ) as kotlinx.serialization.json.JsonObject
+            )!!
+        val gammaJoined =
+            parseSyncedComputerRow(
+                kotlinx.serialization.json.Json.parseToJsonElement(
+                    """{"id":"m-3","name":"Gamma","status":"online","isComputer":true,"sameMachineGroup":"machine-1"}"""
+                ) as kotlinx.serialization.json.JsonObject
+            )!!
+        assertTrue(store.applySyncedMachineRows("server-1", upserts = listOf(betaRenamed, gammaJoined), deletes = emptySet()))
+        assertEquals(
+            listOf("Beta Renamed", "Gamma"),
+            store.cachedSettingsComputerDetail("server-1", "m-1")?.sameMachinePeerNames
+        )
+
+        // When the flag turns off or peers leave, sync clears sameMachineGroup to null (never retains stale label).
+        val alphaAlone =
+            parseSyncedComputerRow(
+                kotlinx.serialization.json.Json.parseToJsonElement(
+                    """{"id":"m-1","name":"Alpha","status":"online","isComputer":true,"sameMachineGroup":null}"""
+                ) as kotlinx.serialization.json.JsonObject
+            )!!
+        assertTrue(store.applySyncedMachineRows("server-1", upserts = listOf(alphaAlone), deletes = setOf("m-2", "m-3")))
+        assertNull(store.currentSettingsComputerSnapshot("server-1", "m-1")?.sameMachineGroup)
+        assertEquals(emptyList(), store.cachedSettingsComputerDetail("server-1", "m-1")?.sameMachinePeerNames)
+    }
+
     private fun store(api: RecordingComputersApi): SharedComputersStore =
         SharedComputersStore(
             computersApiClient = RaftComputersApiClient(api),

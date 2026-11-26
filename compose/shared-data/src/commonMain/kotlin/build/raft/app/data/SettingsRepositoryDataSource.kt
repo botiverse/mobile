@@ -716,7 +716,11 @@ class RealSettingsRepository(
         if (machines !is DataResult.Content) return machines.mapSettingsDetailError(serverId, machineId)
         val computer = machines.data.computers.firstOrNull { it.id == machineId }
             ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        return getComputerDetailForServerComputer(serverId, computer)
+        return getComputerDetailForServerComputer(
+            serverId = serverId,
+            computer = computer,
+            sameMachinePeerNames = sameMachinePeerNames(computer, machines.data.computers)
+        )
     }
 
     override suspend fun getComputerDetailForComputer(computer: SettingsComputerSnapshot): DataResult<SettingsComputerDetailSnapshot> {
@@ -728,7 +732,8 @@ class RealSettingsRepository(
 
     private suspend fun getComputerDetailForServerComputer(
         serverId: String,
-        computer: SettingsComputerSnapshot
+        computer: SettingsComputerSnapshot,
+        sameMachinePeerNames: List<String> = emptyList()
     ): DataResult<SettingsComputerDetailSnapshot> {
         val machineId = computer.id
         // Workspace discovery is a remote recursive filesystem scan. Keep it behind the explicit Scan action.
@@ -759,7 +764,8 @@ class RealSettingsRepository(
                     )
                 ),
                 workspacesScanned = false,
-                agentsError = agentsError
+                agentsError = agentsError,
+                sameMachinePeerNames = sameMachinePeerNames
             )
         )
     }
@@ -3257,6 +3263,7 @@ private fun List<SettingsComputerAgentSnapshot>.enrichWithMembers(
         osRelease = osRelease,
         hostProvider = hostProvider,
         deviceClass = deviceClass,
+        sameMachineGroup = sameMachineGroup,
         installerRepairHint = installerRepairHint,
         upgradeScopeRefused = upgradeScopeRefused,
         runtimeVersions = runtimeVersions,

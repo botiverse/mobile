@@ -3305,7 +3305,7 @@ private fun RaftComputerDetailBody(
     // Back leaves select mode first.
     RaftBackHandler(enabled = bulk != null && bulkState.selectionMode, label = "computer_agents_select") { bulkState.clearSelection() }
     LazyColumn(Modifier.fillMaxSize().raftSafeAreaHorizontalPadding()) {
-        item(key = "header") { RaftComputerDetailHeader(computer, onOpenMigrationLog) }
+        item(key = "header") { RaftComputerDetailHeader(computer, model.sameMachinePeerNames, onOpenMigrationLog) }
         item(key = "version-notice") { RaftComputerVersionNotice(controls) }
         raftComputerMemoryLimitNotApplied(snapshot.computer)?.let { scopes ->
             item(key = "memory-limit-not-applied") { RaftComputerMemoryLimitNotAppliedBanner(scopes) }
@@ -3911,8 +3911,14 @@ private fun raftComputerCreatedDate(createdAt: String?): String? {
     return value.membersLocalizedCreatedDateOrNull(currentRaftEffectiveDateTimeContext())
 }
 
+internal const val RAFT_COMPUTER_DETAIL_SAME_MACHINE_TAG = "machine-detail-same-machine"
+
 @Composable
-private fun RaftComputerDetailHeader(computer: RaftComputerRowModel, onOpenMigrationLog: (() -> Unit)?) {
+private fun RaftComputerDetailHeader(
+    computer: RaftComputerRowModel,
+    sameMachinePeerNames: List<String>,
+    onOpenMigrationLog: (() -> Unit)?,
+) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -3938,6 +3944,18 @@ private fun RaftComputerDetailHeader(computer: RaftComputerRowModel, onOpenMigra
             }
             computer.lastSeenAt?.let {
                 RaftText(raftComputerLastSeen(it), style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundHint)
+            }
+            // Web MachineDetailPanel (`computer_host_identity_v0`, slock #10082 / #10304):
+            // names other Computers sharing `sameMachineGroup`; hidden when alone or flag off.
+            val cleanSameMachinePeers = sameMachinePeerNames.map(String::trim).filter(String::isNotEmpty)
+            if (cleanSameMachinePeers.isNotEmpty()) {
+                val peerNames = memberRemovalImpactJoinLocalized(cleanSameMachinePeers)
+                RaftText(
+                    stringResource(Res.string.settings_computers_detail_same_machine_as, peerNames),
+                    modifier = Modifier.testTag(RAFT_COMPUTER_DETAIL_SAME_MACHINE_TAG),
+                    style = RaftTheme.typography.caption,
+                    color = RaftTheme.colors.foregroundHint,
+                )
             }
             // Web ComputerMigrationLogLink.
             if (onOpenMigrationLog != null) {

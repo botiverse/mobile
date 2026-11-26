@@ -3186,6 +3186,7 @@
     <string name="settings_computers_detail_unavailable">计算机不可用</string>
     <string name="settings_computers_detail_no_access">无权访问计算机</string>
     <string name="settings_computers_detail_error_load">无法加载计算机</string>
+    <string name="settings_computers_detail_same_machine_as">与 %1$s 在同一台机器上</string>
     <string name="settings_computers_section_agents">这台 Computer 上的 Agent</string>
     <string name="settings_computers_action_create_agent">创建 Agent</string>
     <string name="settings_computers_bulk_select">选择</string>

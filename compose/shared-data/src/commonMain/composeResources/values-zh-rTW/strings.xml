@@ -3183,6 +3183,7 @@
     <string name="settings_computers_detail_unavailable">電腦無法使用</string>
     <string name="settings_computers_detail_no_access">沒有這台電腦的存取權限</string>
     <string name="settings_computers_detail_error_load">無法載入電腦</string>
+    <string name="settings_computers_detail_same_machine_as">與 %1$s 位於同一台電腦</string>
     <string name="settings_computers_section_agents">這台電腦上的 Agent</string>
     <string name="settings_computers_action_create_agent">建立 Agent</string>
     <string name="settings_computers_bulk_select">選取</string>

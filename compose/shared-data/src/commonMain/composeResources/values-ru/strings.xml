@@ -3183,6 +3183,7 @@
     <string name="settings_computers_detail_unavailable">Компьютер недоступен</string>
     <string name="settings_computers_detail_no_access">Нет доступа к компьютеру</string>
     <string name="settings_computers_detail_error_load">Не удалось загрузить компьютер</string>
+    <string name="settings_computers_detail_same_machine_as">На том же компьютере: %1$s</string>
     <string name="settings_computers_section_agents">Агенты на этом компьютере</string>
     <string name="settings_computers_action_create_agent">Создать агента</string>
     <string name="settings_computers_bulk_select">Выбрать</string>
