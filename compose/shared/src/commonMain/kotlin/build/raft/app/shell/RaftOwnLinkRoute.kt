@@ -34,6 +34,9 @@ internal sealed interface RaftOwnLinkRoute {
     /** A send-prompt link (`?dialog=send-prompt&prompt=<text>`, [parseRaftSendPromptLink]): the native sheet. */
     data class SendPrompt(val link: RaftSendPromptLink) : RaftOwnLinkRoute
 
+    /** A data-export deep link (`/?data_export=<id>`, [parseRaftDataExportLink]): Data & privacy surface. */
+    data class DataExport(val link: RaftDataExportLink) : RaftOwnLinkRoute
+
     /** A Raft page the app has no screen to open from a link: its web page ([RaftLinkOpenIntent.RaftWebPage]). */
     data class WebPage(val reason: RaftOwnLinkWebPageReason) : RaftOwnLinkRoute
 }
@@ -69,6 +72,9 @@ internal fun raftOwnLinkRoute(
     if (raftOwnWebLinkPath(url, configuredWebUrl, appHosts) == null) return null
     parseRaftSendPromptLink(url, configuredWebUrl, appHosts, allowRelative = false)?.let {
         return RaftOwnLinkRoute.SendPrompt(it)
+    }
+    parseRaftDataExportLink(url, configuredWebUrl, appHosts)?.let {
+        return RaftOwnLinkRoute.DataExport(it)
     }
     parseRaftArtifactDeepLink(url, configuredWebUrl, appHosts)?.let { return RaftOwnLinkRoute.Artifact(it) }
     parseRaftServerJoinLink(url, configuredWebUrl, appHosts)?.let { return RaftOwnLinkRoute.ServerJoin(it) }
@@ -115,6 +121,7 @@ internal fun raftOwnLinkShellOpener(
     messageInbox: RaftMessageLinkInbox = RaftMessageLinkInbox.Process,
     inviteInbox: RaftExternalInviteLinkInbox = RaftExternalInviteLinkInbox.Process,
     sendPromptInbox: RaftSendPromptLinkInbox = RaftSendPromptLinkInbox.Process,
+    dataExportInbox: RaftDataExportLinkInbox = RaftDataExportLinkInbox.Process,
     log: (String) -> Unit = {},
 ): (String) -> Boolean = { url ->
     when (val route = raftOwnLinkRoute(url, webUrl(), appHosts())) {
@@ -134,6 +141,11 @@ internal fun raftOwnLinkShellOpener(
         is RaftOwnLinkRoute.SendPrompt -> {
             val pending = sendPromptInbox.submit(route.link, "message_link_tap")
             log("raft_link_tap route=send_prompt id=${pending.id}")
+            true
+        }
+        is RaftOwnLinkRoute.DataExport -> {
+            val pending = dataExportInbox.submit(route.link, "message_link_tap")
+            log("raft_link_tap route=data_export id=${pending.id} hasServer=${route.link.serverId != null}")
             true
         }
         else -> false

@@ -39,6 +39,9 @@ internal interface RaftShellNavigationIntakeHost {
     /** Opens a taken send-prompt link ([RaftSendPromptLinkInbox]) as the Send-to-agent sheet. */
     fun openSendPromptLink(taken: RaftPendingSendPromptLink) {}
 
+    /** Opens a taken data-export deep link ([RaftDataExportLinkInbox]) via Data & privacy WebView or browser fallback. */
+    suspend fun openDataExportLink(taken: RaftPendingDataExportLink) {}
+
     /** Opens the in-app Download Center ([SETTINGS_STORAGE_PAGE]) from a platform notification tap. */
     fun openDownloadCenter(taken: RaftPendingDownloadCenterLaunch) {}
 
@@ -97,6 +100,7 @@ internal class RaftShellNavigationIntake(
     private val serverJoinInbox: RaftServerJoinLinkInbox = RaftServerJoinLinkInbox.Process,
     private val sendPromptInbox: RaftSendPromptLinkInbox = RaftSendPromptLinkInbox.Process,
     private val downloadCenterInbox: RaftDownloadCenterLaunchInbox = RaftDownloadCenterLaunchInbox.Process,
+    private val dataExportInbox: RaftDataExportLinkInbox = RaftDataExportLinkInbox.Process,
 ) {
     private val wakeups = Channel<Unit>(Channel.CONFLATED)
 
@@ -117,6 +121,7 @@ internal class RaftShellNavigationIntake(
             launch { serverJoinInbox.pending.collect { pending -> if (pending != null) wake() } }
             launch { sendPromptInbox.pending.collect { pending -> if (pending != null) wake() } }
             launch { downloadCenterInbox.pending.collect { pending -> if (pending != null) wake() } }
+            launch { dataExportInbox.pending.collect { pending -> if (pending != null) wake() } }
             for (ignored in wakeups) {
                 takeArtifactLink(host)?.let { taken ->
                     host.closeIncomingNavigationCover()
@@ -133,6 +138,10 @@ internal class RaftShellNavigationIntake(
                 takeSendPromptLink(host)?.let { taken ->
                     host.closeIncomingNavigationCover()
                     host.openSendPromptLink(taken)
+                }
+                takeDataExportLink(host)?.let { taken ->
+                    host.closeIncomingNavigationCover()
+                    launch { host.openDataExportLink(taken) }
                 }
                 takeDownloadCenterLaunch(host)?.let { taken ->
                     host.closeIncomingNavigationCover()
@@ -213,6 +222,18 @@ internal class RaftShellNavigationIntake(
             return null
         }
         host.log("send_prompt_link_take id=${taken.id} source=${taken.source}")
+        return taken
+    }
+
+    private fun takeDataExportLink(host: RaftShellNavigationIntakeHost): RaftPendingDataExportLink? {
+        val pending = dataExportInbox.pending.value ?: return null
+        if (!host.messageLinkSessionReady()) return null
+        val taken = dataExportInbox.take(pending.id)
+        if (taken == null) {
+            host.log("data_export_link_take_skipped id=${pending.id} reason=taken_replaced_or_expired")
+            return null
+        }
+        host.log("data_export_link_take id=${taken.id} source=${taken.source}")
         return taken
     }
 

@@ -66,6 +66,8 @@ const val SETTINGS_WEB_VIEW_PAGE = "compose_settings_webview"
 internal const val SETTINGS_WEB_VIEW_SURFACE = "settingsWebViewSurface"
 internal const val SETTINGS_WEB_VIEW_VERSION_CODE = "versionCode"
 internal const val SETTINGS_WEB_VIEW_INSTALLED_APP_ID = "installedAppId"
+internal const val SETTINGS_WEB_VIEW_DATA_EXPORT_ID = "dataExportId"
+internal const val SETTINGS_WEB_VIEW_DATA_EXPORT_SERVER_ID = "dataExportServerId"
 
 @Page(SETTINGS_WEB_VIEW_PAGE, supportInLocal = true)
 internal class ComposeSettingsWebViewPage : AuthenticatedProductPager(AuthenticatedProductRoute.SettingsWebView) {
@@ -83,6 +85,10 @@ internal fun settingsWebViewPageData(
     anchor: SettingsSearchAnchorRequest? = null,
     /** An App bot's owning App row id (`?installed_app=<id>`, botiverse/slock #14286). */
     installedAppId: String? = null,
+    /** A data-export deep link's export UUID (`?data_export=<id>`, botiverse/slock #15427). */
+    dataExportId: String? = null,
+    /** Optional server UUID for a server data-export deep link (`&data_export_server=<id>`, botiverse/slock #15451). */
+    dataExportServerId: String? = null,
     replaceCurrentPage: Boolean = false,
 ): JSONObject =
     JSONObject().apply {
@@ -102,10 +108,20 @@ internal fun settingsWebViewPageData(
                 put(SETTINGS_WEB_VIEW_INSTALLED_APP_ID, it)
             }
         }
+        if (surface == SettingsWebViewSurface.DataPrivacy) {
+            dataExportUuidOrNull(dataExportId)?.let { put(SETTINGS_WEB_VIEW_DATA_EXPORT_ID, it) }
+            dataExportUuidOrNull(dataExportServerId)?.let { put(SETTINGS_WEB_VIEW_DATA_EXPORT_SERVER_ID, it) }
+        }
     }
 
 internal fun settingsInstalledAppIdFromPageData(params: JSONObject): String? =
     params.optString(SETTINGS_WEB_VIEW_INSTALLED_APP_ID).trim().takeIf { it.isNotEmpty() }
+
+internal fun settingsDataExportIdFromPageData(params: JSONObject): String? =
+    dataExportUuidOrNull(params.optString(SETTINGS_WEB_VIEW_DATA_EXPORT_ID))
+
+internal fun settingsDataExportServerIdFromPageData(params: JSONObject): String? =
+    dataExportUuidOrNull(params.optString(SETTINGS_WEB_VIEW_DATA_EXPORT_SERVER_ID))
 
 internal fun settingsWebViewSurfaceFromPageData(params: JSONObject): SettingsWebViewSurface? {
     val surfaceName = params.optString(SETTINGS_WEB_VIEW_SURFACE).trim()
@@ -118,11 +134,22 @@ internal fun Pager.openSettingsWebViewPage(
     versionCode: String = "",
     anchor: SettingsSearchAnchorRequest? = null,
     installedAppId: String? = null,
+    dataExportId: String? = null,
+    dataExportServerId: String? = null,
     replaceCurrentPage: Boolean = false,
 ) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         SETTINGS_WEB_VIEW_PAGE,
-        settingsWebViewPageData(surface, storeScope, versionCode, anchor, installedAppId, replaceCurrentPage = replaceCurrentPage),
+        settingsWebViewPageData(
+            surface = surface,
+            storeScope = storeScope,
+            versionCode = versionCode,
+            anchor = anchor,
+            installedAppId = installedAppId,
+            dataExportId = dataExportId,
+            dataExportServerId = dataExportServerId,
+            replaceCurrentPage = replaceCurrentPage,
+        ),
     )
 }
 
@@ -242,6 +269,24 @@ private fun SettingsWebViewScreen() {
                 spec = remember(searchAnchor) { settingsAppAuthorizationsWebViewSpec.withSettingsSearchAnchor(searchAnchor) },
             )
         SettingsWebViewSurface.AccountDeletion -> SettingsAccountDeletionWebViewPage(pager)
+        SettingsWebViewSurface.DataPrivacy -> {
+            val dataExportId =
+                remember(pager.pageData.params) { settingsDataExportIdFromPageData(pager.pageData.params) }
+            val dataExportServerId =
+                remember(pager.pageData.params) { settingsDataExportServerIdFromPageData(pager.pageData.params) }
+            StandaloneSettingsWebViewPage(
+                pager = pager,
+                title = stringResource(Res.string.settings_account_data_privacy_title),
+                iconName = RaftLucideIconName.Download,
+                spec =
+                    remember(dataExportId, dataExportServerId) {
+                        settingsDataPrivacyWebViewSpec(
+                            exportId = dataExportId,
+                            serverId = dataExportServerId,
+                        )
+                    },
+            )
+        }
         // Keep old settings-webview route payloads compatible while rendering
         // the Hands-hosted Release Notes WebView.
         SettingsWebViewSurface.ReleaseNotes -> ReleaseNotesScreen()

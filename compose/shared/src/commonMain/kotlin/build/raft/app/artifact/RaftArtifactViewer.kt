@@ -761,7 +761,8 @@ internal fun raftArtifactViewerBlockedNavigationTarget(
             is RaftOwnLinkRoute.Conversation,
             is RaftOwnLinkRoute.ServerJoin,
             is RaftOwnLinkRoute.ExternalInvite,
-            is RaftOwnLinkRoute.SendPrompt -> RaftArtifactViewerBlockedTarget.OpenMessage(url)
+            is RaftOwnLinkRoute.SendPrompt,
+            is RaftOwnLinkRoute.DataExport -> RaftArtifactViewerBlockedTarget.OpenMessage(url)
             is RaftOwnLinkRoute.Artifact ->
                 if (artifactCanonicalId(route.target.id) == artifactCanonicalId(artifactId)) {
                     RaftArtifactViewerBlockedTarget.Ignore
@@ -920,9 +921,11 @@ internal fun raftArtifactViewerNavigation(
         }
     }
     if (parseRaftMessageLink(url, configuredWebUrl = webOrigin, appHosts = appHosts) != null) return RaftArtifactViewerNavigation.OpenMessage(url)
-    // A join or invite link the page opened in place: its page in the app, never lost with the viewer.
+    // A join, invite, or data-export link the page opened in place: its page in the app, never lost with the viewer.
     when (raftOwnLinkRoute(url, webOrigin, appHosts)) {
-        is RaftOwnLinkRoute.ServerJoin, is RaftOwnLinkRoute.ExternalInvite -> return RaftArtifactViewerNavigation.OpenMessage(url)
+        is RaftOwnLinkRoute.ServerJoin,
+        is RaftOwnLinkRoute.ExternalInvite,
+        is RaftOwnLinkRoute.DataExport -> return RaftArtifactViewerNavigation.OpenMessage(url)
         else -> Unit
     }
     return RaftArtifactViewerNavigation.Close

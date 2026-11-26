@@ -289,6 +289,44 @@ internal fun AppShellExternalLinkNavigationEffects(
                 ?: canonicalFinalSelectedServerId?.takeIf(String::isNotBlank)
         sendPromptHostState.open(serverId = serverId, prompt = taken.link.prompt)
     }
+    val latestOpenDataExportLink by rememberUpdatedState<suspend (RaftPendingDataExportLink) -> Unit> { taken ->
+        val session = readySession
+        val webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl
+        for (serverId in raftDataExportFlagServerIdsToPrefetch(taken.link, session)) {
+            val id = ServerId(serverId)
+            if (!sharedStores.serverFeatureFlags.snapshotFor(id).resolved) {
+                runCatchingPreservingCancellation { sharedStores.serverFeatureFlags.prefetch(id) }
+            }
+        }
+        when (
+            val action =
+                resolveRaftDataExportLinkAction(
+                    link = taken.link,
+                    session = session,
+                    webBaseUrl = webBaseUrl,
+                    isFlagEnabledForServer = { id ->
+                        sharedStores.serverFeatureFlags.isDataExportEnabled(ServerId(id))
+                    },
+                )
+        ) {
+            is RaftDataExportLinkAction.OpenSettingsWebView -> {
+                bridge.log(
+                    "data_export_link_open target=webview hasServer=${action.serverId != null} source=${taken.source}"
+                )
+                pager.openSettingsDataPrivacyPage(
+                    storeScope = navigationStoreScope,
+                    exportId = action.exportId,
+                    serverId = action.serverId,
+                )
+            }
+            is RaftDataExportLinkAction.OpenWebFallback -> {
+                bridge.log(
+                    "data_export_link_open target=browser reason=flag_off_or_unresolved source=${taken.source}"
+                )
+                linkNavigator.open(action.url, RaftLinkOpenIntent.RaftWebPageInBrowser)
+            }
+        }
+    }
     val latestOpenDownloadCenter by rememberUpdatedState<(RaftPendingDownloadCenterLaunch) -> Unit> { taken ->
         val topPageName = pager.host?.navigator?.topPage()?.pageName
         if (topPageName == SETTINGS_STORAGE_PAGE) {
@@ -358,6 +396,8 @@ internal fun AppShellExternalLinkNavigationEffects(
                 override fun openServerJoinLink(taken: RaftPendingExternalInviteLink) = latestOpenServerJoinLink(taken)
 
                 override fun openSendPromptLink(taken: RaftPendingSendPromptLink) = latestOpenSendPromptLink(taken)
+
+                override suspend fun openDataExportLink(taken: RaftPendingDataExportLink) = latestOpenDataExportLink(taken)
 
                 override fun openDownloadCenter(taken: RaftPendingDownloadCenterLaunch) = latestOpenDownloadCenter(taken)
 

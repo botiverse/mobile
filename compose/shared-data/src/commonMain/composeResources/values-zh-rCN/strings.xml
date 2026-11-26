@@ -371,6 +371,8 @@
     <string name="settings_usage_data_description">帮助我们改进 Raft：记录你使用了哪些页面和功能，不包含消息或其他内容。</string>
     <string name="settings_usage_data_learn_more">了解更多</string>
     <string name="settings_usage_data_save_failed">设置没有保存成功，请重试。</string>
+    <string name="settings_account_data_privacy_title">数据与隐私</string>
+    <string name="settings_account_data_privacy_subtitle">导出你的数据</string>
     <string name="settings_computers_title">计算机</string>
     <string name="settings_computers_subtitle">已连接计算机和守护进程状态</string>
     <string name="settings_server_title">服务器</string>

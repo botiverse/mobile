@@ -653,6 +653,7 @@ internal class FakeShellNavigationIntakeHost : RaftShellNavigationIntakeHost {
     val focusedTopMessages = mutableListOf<Pair<HomeMessageOpenRequest, String>>()
     val openedArtifacts = mutableListOf<RaftPendingArtifactLink>()
     val openedInvites = mutableListOf<RaftPendingExternalInviteLink>()
+    val openedDataExports = mutableListOf<RaftPendingDataExportLink>()
     val openedDownloadCenters = mutableListOf<RaftPendingDownloadCenterLaunch>()
     var directory: SharedConversationDirectoryState = ShellNavigationIntakeFixtures.directory()
     var accountId: String? = "account-a"
@@ -684,6 +685,10 @@ internal class FakeShellNavigationIntakeHost : RaftShellNavigationIntakeHost {
 
     override fun openExternalInviteLink(taken: RaftPendingExternalInviteLink) {
         openedInvites += taken
+    }
+
+    override suspend fun openDataExportLink(taken: RaftPendingDataExportLink) {
+        openedDataExports += taken
     }
 
     override fun openDownloadCenter(taken: RaftPendingDownloadCenterLaunch) {

@@ -62,6 +62,7 @@ class SettingsWebViewAuthBootstrapTest {
                 SettingsWebViewSurface.Administration,
                 SettingsWebViewSurface.ImBridges,
                 SettingsWebViewSurface.AccountDeletion,
+                SettingsWebViewSurface.DataPrivacy,
                 SettingsWebViewSurface.Computers,
             )
         surfaces.forEach { surface ->

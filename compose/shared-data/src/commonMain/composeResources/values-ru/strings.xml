@@ -371,6 +371,8 @@
     <string name="settings_usage_data_description">Помогите улучшить Raft, делясь информацией о том, какими страницами и функциями вы пользуетесь. Ваши сообщения и другой контент не передаются никогда.</string>
     <string name="settings_usage_data_learn_more">Подробнее</string>
     <string name="settings_usage_data_save_failed">Не удалось сохранить настройку. Попробуйте ещё раз.</string>
+    <string name="settings_account_data_privacy_title">Данные и конфиденциальность</string>
+    <string name="settings_account_data_privacy_subtitle">Экспорт ваших данных</string>
     <string name="settings_computers_title">Компьютеры</string>
     <string name="settings_computers_subtitle">Подключённые компьютеры и рабочие пространства</string>
     <string name="settings_server_title">Сервер</string>

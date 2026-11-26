@@ -31,6 +31,8 @@ internal enum class SettingsWebViewSurface(val diagnosticsName: String) {
     ReleaseNotes("release-notes"),
     /** Settings > Account > Delete account: the web deletion page (also its pending state). */
     AccountDeletion("account-deletion"),
+    /** Settings > Account > Data & privacy: the web data export surface (and emailed `/?data_export=` links). */
+    DataPrivacy("data-privacy"),
     /** The in-app Artifact viewer's web page (not a Settings route; shares the token sync). */
     ArtifactViewer("artifact-viewer"),
     /** Authenticated in-app WebView for Raft's own web pages without a native screen (#proj-mobile:#204). */
