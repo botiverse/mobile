@@ -22,6 +22,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.RaftAndroidSqlDatabaseContext
 import build.raft.app.data.RaftComposerSendKey
@@ -36,11 +37,13 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * Expandable wide-viewport conversation composer (botiverse/slock #16670):
- * - Expand grows the composer over its message list (leaving a 120dp strip) and Collapse brings it
- *   back, keeping the same editor, draft, and focus.
+ * Expandable wide-viewport conversation composer (botiverse/slock #16670 & #16767):
+ * - Expand keeps the framed ink card, grows over the message list (leaving a 120dp strip), adds a
+ *   top Markdown format row with Collapse at its end (Esc in tooltip only), and removes the bottom
+ *   Expand button; Collapse brings it back keeping the same editor, draft, and focus.
  * - Esc collapses the expanded composer after any open suggestion list has taken its own Esc.
- * - Enter still sends while expanded and collapses the composer.
+ * - While expanded, Enter inserts a newline and Ctrl/⌘+Enter sends for every account, with the
+ *   send-key hint shown even when the draft is empty.
  * - Hidden on phone widths and when the host does not provide [LocalThreadComposerExpandState].
  */
 @OptIn(ExperimentalTestApi::class)
@@ -67,6 +70,11 @@ class ThreadComposerExpandUiTest {
             waitForIdle()
 
             onNodeWithTag(ThreadComposerExpandedSurfaceTestTag, useUnmergedTree = true).assertExists()
+            onNodeWithTag(ThreadComposerFormatBarTestTag, useUnmergedTree = true).assertExists()
+            onNodeWithTag(ThreadComposerCollapseButtonTestTag, useUnmergedTree = true).assertExists()
+            onNodeWithTag(ThreadComposerExpandToggleTestTag, useUnmergedTree = true).assertDoesNotExist()
+            onNodeWithTag(ThreadComposerSendKeyHintTestTag, useUnmergedTree = true).assertExists()
+            onNodeWithText("Esc", useUnmergedTree = true).assertDoesNotExist()
             onNodeWithContentDescription("Collapse").assertExists()
             editor.assertIsFocused()
             assertEquals("a long message\nsecond line", events.valueOf("change"))
@@ -88,6 +96,7 @@ class ThreadComposerExpandUiTest {
             waitForIdle()
 
             onNodeWithTag(ThreadComposerExpandedSurfaceTestTag, useUnmergedTree = true).assertDoesNotExist()
+            onNodeWithTag(ThreadComposerFormatBarTestTag, useUnmergedTree = true).assertDoesNotExist()
             onNodeWithContentDescription("Expand").assertExists()
             editor.assertIsFocused()
             assertEquals("a long message\nsecond line", events.valueOf("change"))
@@ -120,7 +129,7 @@ class ThreadComposerExpandUiTest {
         }
 
     @Test
-    fun enterSendsWhileExpandedAndCollapsesComposer() =
+    fun expandedEnterInsertsNewlineAndModEnterSendsAndCollapsesComposer() =
         runRobolectricComposeUiTest {
             val events = showComposer(expandable = true)
             val editor = onNode(hasSetTextAction())
@@ -128,15 +137,56 @@ class ThreadComposerExpandUiTest {
             onNodeWithContentDescription("Expand").performClick()
             waitForIdle()
             onNodeWithTag(ThreadComposerExpandedSurfaceTestTag, useUnmergedTree = true).assertExists()
+            // Send-key hint shows immediately while expanded, even on an empty box.
+            onNodeWithTag(ThreadComposerSendKeyHintTestTag, useUnmergedTree = true).assertExists()
 
             editor.performTextInput("sent from the big box")
             waitForIdle()
 
+            // Expanded: plain Enter inserts a newline instead of sending.
             editor.performKeyInput { pressKey(Key.Enter) }
             waitForIdle()
+            assertTrue(events.none { it.first == "send" }, "Plain Enter must not send while expanded: $events")
+            onNodeWithTag(ThreadComposerExpandedSurfaceTestTag, useUnmergedTree = true).assertExists()
 
-            assertEquals("sent from the big box", events.valueOf("send"))
+            // Ctrl+Enter sends and collapses the composer.
+            editor.performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.Enter) } }
+            waitForIdle()
+
+            assertEquals(1, events.count { it.first == "send" })
+            assertTrue(events.valueOf("send")?.startsWith("sent from the big box") == true)
             onNodeWithTag(ThreadComposerExpandedSurfaceTestTag, useUnmergedTree = true).assertDoesNotExist()
+
+            // Once collapsed, the account's Enter-to-send mode applies again.
+            editor.performTextInput("collapsed again")
+            waitForIdle()
+            editor.performKeyInput { pressKey(Key.Enter) }
+            waitForIdle()
+            assertEquals(2, events.count { it.first == "send" })
+        }
+
+    @Test
+    fun expandedFormatToolbarInsertsMarkdownAndKeepsFocusInEditor() =
+        runRobolectricComposeUiTest {
+            val events = showComposer(expandable = true)
+            val editor = onNode(hasSetTextAction())
+
+            onNodeWithContentDescription("Expand").performClick()
+            waitForIdle()
+            onNodeWithTag(ThreadComposerFormatBarTestTag, useUnmergedTree = true).assertExists()
+
+            editor.performTextInput("hello")
+            waitForIdle()
+
+            onNodeWithContentDescription("Bulleted list").assertExists().performClick()
+            waitForIdle()
+            assertEquals("- hello", events.valueOf("change"))
+            editor.assertIsFocused()
+
+            onNodeWithContentDescription("Bold").assertExists().performClick()
+            waitForIdle()
+            assertEquals("- hello****", events.valueOf("change"))
+            editor.assertIsFocused()
         }
 
     @Test

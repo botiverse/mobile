@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.ui.unit.dp
+import build.raft.app.data.RaftComposerSendKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -56,5 +57,101 @@ class ThreadComposerExpandStateTest {
         assertEquals("stream-9", stream.expandConversationKey)
         assertEquals("chan-1:msg-42", thread.expandConversationKey)
         assertEquals("chan-1:msg-99", otherThread.expandConversationKey)
+    }
+
+    @Test
+    fun expandedForcesModEnterSendKeyAndAlwaysShowsHintOnHardwareKeyboard() {
+        assertEquals(RaftComposerSendKey.ModEnter, threadComposerActiveSendKey(expanded = true, composerSendKey = RaftComposerSendKey.Enter))
+        assertEquals(RaftComposerSendKey.ModEnter, threadComposerActiveSendKey(expanded = true, composerSendKey = RaftComposerSendKey.ModEnter))
+        assertEquals(RaftComposerSendKey.Enter, threadComposerActiveSendKey(expanded = false, composerSendKey = RaftComposerSendKey.Enter))
+        assertEquals(RaftComposerSendKey.ModEnter, threadComposerActiveSendKey(expanded = false, composerSendKey = RaftComposerSendKey.ModEnter))
+
+        // Expanded: Enter inserts a newline and Cmd/Ctrl+Enter sends even when account preference is Enter.
+        val expandedMode = threadComposerActiveSendKey(expanded = true, composerSendKey = RaftComposerSendKey.Enter)
+        assertEquals(
+            RaftHardwareEnterOutcome.Newline,
+            raftHardwareEnterOutcome(
+                mode = expandedMode,
+                hardwareKeyboard = true,
+                softEnterSends = false,
+                modPressed = false,
+                shiftPressed = false,
+                altPressed = false,
+            ),
+        )
+        assertEquals(
+            RaftHardwareEnterOutcome.Send,
+            raftHardwareEnterOutcome(
+                mode = expandedMode,
+                hardwareKeyboard = true,
+                softEnterSends = false,
+                modPressed = true,
+                shiftPressed = false,
+                altPressed = false,
+            ),
+        )
+
+        // Expanded always shows the send-key hint (empty box or not); collapsed shows it only in ModEnter while composing.
+        assertTrue(
+            threadComposerShowsSendKeyHint(
+                showSendKeyHint = true,
+                hardwareKeyboardConnected = true,
+                expanded = true,
+                composerSendKey = RaftComposerSendKey.Enter,
+                composing = false,
+            ),
+        )
+        assertFalse(
+            threadComposerShowsSendKeyHint(
+                showSendKeyHint = true,
+                hardwareKeyboardConnected = true,
+                expanded = false,
+                composerSendKey = RaftComposerSendKey.Enter,
+                composing = true,
+            ),
+        )
+        assertFalse(
+            threadComposerShowsSendKeyHint(
+                showSendKeyHint = true,
+                hardwareKeyboardConnected = true,
+                expanded = false,
+                composerSendKey = RaftComposerSendKey.ModEnter,
+                composing = false,
+            ),
+        )
+        assertTrue(
+            threadComposerShowsSendKeyHint(
+                showSendKeyHint = true,
+                hardwareKeyboardConnected = true,
+                expanded = false,
+                composerSendKey = RaftComposerSendKey.ModEnter,
+                composing = true,
+            ),
+        )
+        assertFalse(
+            threadComposerShowsSendKeyHint(
+                showSendKeyHint = false,
+                hardwareKeyboardConnected = true,
+                expanded = true,
+                composerSendKey = RaftComposerSendKey.Enter,
+                composing = true,
+            ),
+        )
+        assertFalse(
+            threadComposerShowsSendKeyHint(
+                showSendKeyHint = true,
+                hardwareKeyboardConnected = false,
+                expanded = true,
+                composerSendKey = RaftComposerSendKey.Enter,
+                composing = true,
+            ),
+        )
+    }
+
+    @Test
+    fun formatBarFoldsBlockToolsBelow480Dp() {
+        assertFalse(threadComposerFormatBarShowsInlineBlockTools(479.dp))
+        assertTrue(threadComposerFormatBarShowsInlineBlockTools(480.dp))
+        assertTrue(threadComposerFormatBarShowsInlineBlockTools(768.dp))
     }
 }

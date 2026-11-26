@@ -1138,17 +1138,6 @@ internal fun ThreadComposerDock(
                 .retainInputFocusForInteractions()
                 .background(RaftColor.Canvas)
     ) {
-        if (expanded) {
-            // Web COMPOSER_EXPANDED.root (`border-t border-line-seam`): one 1px seam between the
-            // 120dp message strip and the expanded composer.
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(RaftColor.BorderSeam)
-            )
-        }
         Box(
             modifier =
                 Modifier.fillMaxWidth()

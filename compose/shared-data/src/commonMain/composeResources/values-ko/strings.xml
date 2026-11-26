@@ -3602,6 +3602,17 @@
     <string name="composer_attach_file">파일 첨부</string>
     <string name="composer_expand">펼치기</string>
     <string name="composer_collapse">접기</string>
+    <string name="composer_format_toolbar">서식</string>
+    <string name="composer_format_bold">굵게</string>
+    <string name="composer_format_italic">기울임꼴</string>
+    <string name="composer_format_strikethrough">취소선</string>
+    <string name="composer_format_code">코드</string>
+    <string name="composer_format_link">링크</string>
+    <string name="composer_format_numbered_list">번호 매기기 목록</string>
+    <string name="composer_format_bulleted_list">글머리 기호 목록</string>
+    <string name="composer_format_quote">인용</string>
+    <string name="composer_format_code_block">코드 블록</string>
+    <string name="composer_format_more">서식 더 보기</string>
     <string name="markdown_task_list_checkbox">작업 목록 체크박스</string>
     <string name="markdown_task_list_checked">완료</string>
     <string name="markdown_task_list_unchecked">완료되지 않음</string>

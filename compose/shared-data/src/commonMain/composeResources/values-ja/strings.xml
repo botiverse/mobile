@@ -3781,6 +3781,17 @@
     <string name="composer_attach_file">ファイル</string>
     <string name="composer_expand">展開</string>
     <string name="composer_collapse">折りたたむ</string>
+    <string name="composer_format_toolbar">書式</string>
+    <string name="composer_format_bold">太字</string>
+    <string name="composer_format_italic">斜体</string>
+    <string name="composer_format_strikethrough">取り消し線</string>
+    <string name="composer_format_code">コード</string>
+    <string name="composer_format_link">リンク</string>
+    <string name="composer_format_numbered_list">番号付きリスト</string>
+    <string name="composer_format_bulleted_list">箇条書き</string>
+    <string name="composer_format_quote">引用</string>
+    <string name="composer_format_code_block">コードブロック</string>
+    <string name="composer_format_more">その他の書式</string>
     <string name="markdown_task_list_checkbox">タスクリストのチェックボックス</string>
     <string name="markdown_task_list_checked">完了</string>
     <string name="markdown_task_list_unchecked">未完了</string>

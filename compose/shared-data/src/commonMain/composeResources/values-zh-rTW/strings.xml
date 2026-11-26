@@ -3602,6 +3602,17 @@
     <string name="composer_attach_file">附加檔案</string>
     <string name="composer_expand">展開</string>
     <string name="composer_collapse">收合</string>
+    <string name="composer_format_toolbar">格式</string>
+    <string name="composer_format_bold">粗體</string>
+    <string name="composer_format_italic">斜體</string>
+    <string name="composer_format_strikethrough">刪除線</string>
+    <string name="composer_format_code">程式碼</string>
+    <string name="composer_format_link">連結</string>
+    <string name="composer_format_numbered_list">編號清單</string>
+    <string name="composer_format_bulleted_list">項目符號清單</string>
+    <string name="composer_format_quote">引用</string>
+    <string name="composer_format_code_block">程式碼區塊</string>
+    <string name="composer_format_more">更多格式</string>
     <string name="markdown_task_list_checkbox">任務清單核取方塊</string>
     <string name="markdown_task_list_checked">已完成</string>
     <string name="markdown_task_list_unchecked">未完成</string>
