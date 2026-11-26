@@ -3,9 +3,13 @@ package build.raft.app.shared
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.Build
 import androidx.core.app.Person
@@ -24,6 +28,7 @@ import build.raft.app.data.RaftShareSuggestionContract
 import build.raft.app.data.RaftShareSuggestionKind
 import build.raft.app.data.RaftShareSuggestionsHost
 import build.raft.app.data.RaftShareSuggestionsHostProvider
+import build.raft.app.image.raftReadCachedAvatarImageBytesOrNull
 import build.raft.app.raftApplyPersistedPixelAvatars
 import build.raft.app.raftPixelAvatarRaster
 import build.raft.app.widget.toSharedPixelAvatarWireValue
@@ -492,13 +497,17 @@ internal class AndroidDynamicShortcutCoordinatorEngine(
                 append(item.id).append('|').append(item.title).append('|').append(item.targetKind).append(';')
             }
             append("#pub:").append(snapshot.shareSuggestionsPublished)
+            append("#iv:").append(ICON_STYLE_VERSION)
             append("#s:")
             append(snapshot.shareAccountId.orEmpty()).append('|').append(snapshot.shareServerId.orEmpty()).append(':')
             snapshot.share.forEach { item ->
                 append(item.shortcutId)
+                    .append('|').append(item.serverName)
                     .append('|').append(item.title)
                     .append('|').append(item.subtitle.orEmpty())
                     .append('|').append(item.avatarWireValue.orEmpty())
+                    .append('|').append(item.serverAvatarUrl.orEmpty())
+                    .append('|').append(if (item.isPrivate) '1' else '0')
                     .append(';')
             }
         }
@@ -531,6 +540,7 @@ internal class AndroidDynamicShortcutCoordinatorEngine(
         internal const val MAX_PINNED_SHORTCUTS = 4
         internal const val SHARE_RANK_BASE = 100
         internal const val SHARE_TARGET_CATEGORY = "build.raft.app.category.SHARE_TARGET"
+        internal const val ICON_STYLE_VERSION = "iconV2"
 
         internal fun combineLegacyDynamicShortcuts(
             pinned: List<ShortcutInfoCompat>,
@@ -585,6 +595,27 @@ object AndroidDynamicShortcutCoordinator {
     }
 }
 
+internal enum class AndroidShareChannelBadgeKind {
+    PublicHash,
+    PrivateLock,
+    JointUsers
+}
+
+internal fun resolveAndroidShareChannelBadgeKind(
+    suggestion: RaftShareSuggestion
+): AndroidShareChannelBadgeKind =
+    when {
+        suggestion.isPrivate -> AndroidShareChannelBadgeKind.PrivateLock
+        suggestion.kind == RaftShareSuggestionKind.Joint -> AndroidShareChannelBadgeKind.JointUsers
+        else -> AndroidShareChannelBadgeKind.PublicHash
+    }
+
+internal fun resolveAndroidShareServerTileColor(serverId: String): Int {
+    val hash = deterministicFnv1aHash(serverId.trim())
+    val index = (hash % SERVER_TILE_PALETTE.size.toULong()).toInt()
+    return SERVER_TILE_PALETTE[index]
+}
+
 internal fun buildAndroidShareSuggestionIcon(
     context: Context,
     suggestion: RaftShareSuggestion
@@ -598,7 +629,14 @@ internal fun resolveAndroidShareSuggestionPixelRaster(
     suggestion: RaftShareSuggestion
 ): RaftPixelAvatarRaster? {
     if (suggestion.kind != RaftShareSuggestionKind.DirectMessage) return null
-    val wire = suggestion.avatarWireValue?.trim().orEmpty()
+    return resolveAndroidPixelAvatarRasterByWire(context, suggestion.avatarWireValue)
+}
+
+private fun resolveAndroidPixelAvatarRasterByWire(
+    context: Context,
+    wireValue: String?
+): RaftPixelAvatarRaster? {
+    val wire = wireValue?.trim().orEmpty()
     if (!wire.startsWith("pixel:") && !wire.startsWith("random:") && !wire.startsWith("pixel-human:")) {
         return null
     }
@@ -633,36 +671,267 @@ internal fun renderAdaptivePixelAvatarArgb(
 internal fun renderAndroidShareSuggestionAvatarBitmap(
     context: Context,
     suggestion: RaftShareSuggestion,
-    sizePx: Int = 108
+    sizePx: Int = 108,
+    cachedServerAvatarBytesLoader: (String) -> ByteArray? = ::raftReadCachedAvatarImageBytesOrNull
 ): Bitmap {
-    resolveAndroidShareSuggestionPixelRaster(context, suggestion)?.let { raster ->
-        return renderAdaptivePixelAvatarBitmap(raster, sizePx)
+    if (suggestion.kind == RaftShareSuggestionKind.DirectMessage) {
+        resolveAndroidShareSuggestionPixelRaster(context, suggestion)?.let { raster ->
+            return renderAdaptivePixelAvatarBitmap(raster, sizePx)
+        }
+        val glyph = suggestion.avatarLabel.trim().take(2).ifBlank { "?" }
+        val paletteIndex = (suggestion.shortcutId.hashCode() and Int.MAX_VALUE) % DM_TILE_PALETTE.size
+        return renderAdaptiveGlyphBitmap(
+            glyph = glyph,
+            backgroundColor = DM_TILE_PALETTE[paletteIndex],
+            textColor = Color.WHITE,
+            sizePx = sizePx
+        )
     }
-    val glyph =
-        if (suggestion.kind != RaftShareSuggestionKind.DirectMessage) {
-            "#"
-        } else {
-            suggestion.avatarLabel.trim().take(2).ifBlank { "?" }
-        }
-    val backgroundColor =
-        if (suggestion.kind != RaftShareSuggestionKind.DirectMessage) {
-            CHANNEL_TILE_BACKGROUND
-        } else {
-            val paletteIndex = (suggestion.shortcutId.hashCode() and Int.MAX_VALUE) % DM_TILE_PALETTE.size
-            DM_TILE_PALETTE[paletteIndex]
-        }
-    val textColor =
-        if (suggestion.kind != RaftShareSuggestionKind.DirectMessage) {
-            CHANNEL_TILE_FOREGROUND
-        } else {
-            Color.WHITE
-        }
-    return renderAdaptiveGlyphBitmap(
-        glyph = glyph,
-        backgroundColor = backgroundColor,
-        textColor = textColor,
-        sizePx = sizePx
+
+    return renderAdaptiveChannelServerBadgeBitmap(
+        context = context,
+        suggestion = suggestion,
+        sizePx = sizePx,
+        cachedServerAvatarBytesLoader = cachedServerAvatarBytesLoader
     )
+}
+
+private fun renderAdaptiveChannelServerBadgeBitmap(
+    context: Context,
+    suggestion: RaftShareSuggestion,
+    sizePx: Int,
+    cachedServerAvatarBytesLoader: (String) -> ByteArray?
+): Bitmap {
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val size = sizePx.toFloat()
+    val serverColor = resolveAndroidShareServerTileColor(suggestion.serverId)
+    canvas.drawColor(serverColor)
+
+    var drewServerVisual = false
+    val rawServerAvatar = suggestion.serverAvatarUrl?.trim()?.takeIf { it.isNotEmpty() }
+    if (rawServerAvatar != null) {
+        val pixelRaster = resolveAndroidPixelAvatarRasterByWire(context, rawServerAvatar)
+        if (pixelRaster != null) {
+            val pixelBitmap = renderAdaptivePixelAvatarBitmap(pixelRaster, sizePx)
+            try {
+                canvas.drawBitmap(pixelBitmap, 0f, 0f, null)
+                drewServerVisual = true
+            } finally {
+                pixelBitmap.recycle()
+            }
+        } else {
+            val cachedBytes = runCatching { cachedServerAvatarBytesLoader(rawServerAvatar) }.getOrNull()
+            val decoded = cachedBytes?.let { decodeBoundedAndroidServerAvatarBitmap(it, targetSizePx = sizePx) }
+            if (decoded != null) {
+                try {
+                    val cropSize = minOf(decoded.width, decoded.height)
+                    val left = (decoded.width - cropSize) / 2
+                    val top = (decoded.height - cropSize) / 2
+                    val srcRect = Rect(left, top, left + cropSize, top + cropSize)
+                    val dstRect = Rect(0, 0, sizePx, sizePx)
+                    val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+                    canvas.drawBitmap(decoded, srcRect, dstRect, bitmapPaint)
+                    drewServerVisual = true
+                } finally {
+                    decoded.recycle()
+                }
+            }
+        }
+    }
+
+    if (!drewServerVisual) {
+        val monogram = suggestion.serverAvatarMonogram()
+        val textPaint =
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                textAlign = Paint.Align.CENTER
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textSize = size * (if (monogram.length <= 1) 0.30f else 0.23f)
+            }
+        val metrics = textPaint.fontMetrics
+        val centerX = size * 0.515f
+        val baseline = (size * 0.515f) - ((metrics.ascent + metrics.descent) / 2f)
+        canvas.drawText(monogram, centerX, baseline, textPaint)
+    }
+
+    // Android adaptive bitmaps mask the outer ~18% on each edge (visible circle radius = 0.333 * size).
+    // Centering the badge at (0.35 * size, 0.35 * size) with radius 0.10 * size (halo 0.112 * size)
+    // keeps its outermost rim at sqrt(0.15^2 + 0.15^2) + 0.112 = 0.324 * size < 0.333 * size
+    // (never clipped) while matching iOS's 30% badge-to-visible-circle proportion.
+    drawAndroidChannelSemanticBadge(
+        canvas = canvas,
+        kind = resolveAndroidShareChannelBadgeKind(suggestion),
+        centerX = size * 0.35f,
+        centerY = size * 0.35f,
+        badgeRadius = size * 0.10f,
+        haloRadius = size * 0.112f
+    )
+
+    return bitmap
+}
+
+private fun decodeBoundedAndroidServerAvatarBitmap(
+    bytes: ByteArray,
+    targetSizePx: Int
+): Bitmap? {
+    if (bytes.isEmpty()) return null
+    return runCatching {
+        val bounds =
+            BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val outWidth = bounds.outWidth
+        val outHeight = bounds.outHeight
+        if (outWidth <= 0 || outHeight <= 0) return null
+        val target = targetSizePx.coerceAtLeast(64)
+        var sampleSize = 1
+        val halfWidth = outWidth / 2
+        val halfHeight = outHeight / 2
+        while (halfWidth / sampleSize >= target && halfHeight / sampleSize >= target) {
+            sampleSize *= 2
+        }
+        val decodeOptions =
+            BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)?.takeIf {
+            it.width > 0 && it.height > 0
+        }
+    }.getOrNull()
+}
+
+private fun drawAndroidChannelSemanticBadge(
+    canvas: Canvas,
+    kind: AndroidShareChannelBadgeKind,
+    centerX: Float,
+    centerY: Float,
+    badgeRadius: Float,
+    haloRadius: Float
+) {
+    val haloPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = CHANNEL_BADGE_HALO_COLOR
+        }
+    val pillPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = CHANNEL_BADGE_PILL_FILL
+        }
+    val inkFillPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = CHANNEL_BADGE_ICON_INK
+        }
+
+    canvas.drawCircle(centerX, centerY, haloRadius, haloPaint)
+    canvas.drawCircle(centerX, centerY, badgeRadius, pillPaint)
+
+    canvas.save()
+    canvas.translate(centerX, centerY)
+    val r = badgeRadius
+    when (kind) {
+        AndroidShareChannelBadgeKind.PublicHash -> {
+            val slant = 0.08f * r
+            val strokePaint =
+                Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    color = CHANNEL_BADGE_ICON_INK
+                    strokeWidth = maxOf(1.2f, 0.135f * r)
+                    strokeCap = Paint.Cap.ROUND
+                    strokeJoin = Paint.Join.ROUND
+                }
+            canvas.drawLine(-0.18f * r + slant, -0.44f * r, -0.18f * r - slant, 0.44f * r, strokePaint)
+            canvas.drawLine(0.18f * r + slant, -0.44f * r, 0.18f * r - slant, 0.44f * r, strokePaint)
+            canvas.drawLine(-0.42f * r, -0.17f * r, 0.46f * r, -0.17f * r, strokePaint)
+            canvas.drawLine(-0.46f * r, 0.17f * r, 0.42f * r, 0.17f * r, strokePaint)
+        }
+
+        AndroidShareChannelBadgeKind.PrivateLock -> {
+            val shackleR = 0.23f * r
+            val shackleArchY = -0.24f * r
+            val kappa = 0.55228475f * shackleR
+            val shacklePath =
+                Path().apply {
+                    moveTo(-shackleR, -0.02f * r)
+                    lineTo(-shackleR, shackleArchY)
+                    cubicTo(
+                        -shackleR,
+                        shackleArchY - kappa,
+                        -kappa,
+                        shackleArchY - shackleR,
+                        0f,
+                        shackleArchY - shackleR
+                    )
+                    cubicTo(
+                        kappa,
+                        shackleArchY - shackleR,
+                        shackleR,
+                        shackleArchY - kappa,
+                        shackleR,
+                        shackleArchY
+                    )
+                    lineTo(shackleR, -0.02f * r)
+                }
+            val shacklePaint =
+                Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    color = CHANNEL_BADGE_ICON_INK
+                    strokeWidth = maxOf(1.2f, 0.15f * r)
+                    strokeCap = Paint.Cap.ROUND
+                    strokeJoin = Paint.Join.ROUND
+                }
+            canvas.drawPath(shacklePath, shacklePaint)
+
+            val bodyRect = RectF(-0.37f * r, -0.06f * r, 0.37f * r, 0.46f * r)
+            val corner = 0.12f * r
+            canvas.drawRoundRect(bodyRect, corner, corner, inkFillPaint)
+            canvas.drawCircle(0f, 0.20f * r, 0.075f * r, pillPaint)
+        }
+
+        AndroidShareChannelBadgeKind.JointUsers -> {
+            // Secondary right-back person silhouette.
+            canvas.drawCircle(0.25f * r, -0.18f * r, 0.135f * r, inkFillPaint)
+            val secondaryTorso = buildAndroidTorsoArchPath(0.06f * r, 0.50f * r, 0.06f * r, 0.36f * r)
+            canvas.drawPath(secondaryTorso, inkFillPaint)
+
+            // Subtle pill-colored cutout around primary person so both silhouettes separate crisply.
+            val primaryTorso = buildAndroidTorsoArchPath(-0.49f * r, 0.19f * r, 0.04f * r, 0.40f * r)
+            canvas.drawCircle(-0.15f * r, -0.22f * r, (0.175f + 0.055f) * r, pillPaint)
+            val cutoutStrokePaint =
+                Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    color = CHANNEL_BADGE_PILL_FILL
+                    strokeWidth = maxOf(1.0f, 0.10f * r)
+                    strokeJoin = Paint.Join.ROUND
+                }
+            canvas.drawPath(primaryTorso, cutoutStrokePaint)
+
+            // Primary left-front person silhouette.
+            canvas.drawCircle(-0.15f * r, -0.22f * r, 0.175f * r, inkFillPaint)
+            canvas.drawPath(primaryTorso, inkFillPaint)
+        }
+    }
+    canvas.restore()
+}
+
+private fun buildAndroidTorsoArchPath(
+    left: Float,
+    right: Float,
+    top: Float,
+    bottom: Float
+): Path {
+    val midX = (left + right) * 0.5f
+    val halfW = (right - left) * 0.5f
+    return Path().apply {
+        moveTo(left, bottom)
+        cubicTo(left, top, midX - halfW * 0.45f, top, midX, top)
+        cubicTo(midX + halfW * 0.45f, top, right, top, right, bottom)
+        close()
+    }
 }
 
 private fun renderAdaptivePixelAvatarBitmap(
@@ -692,8 +961,26 @@ private fun renderAdaptiveGlyphBitmap(
     return bitmap
 }
 
-private val CHANNEL_TILE_BACKGROUND = Color.rgb(0xFF, 0xDF, 0x3F)
-private val CHANNEL_TILE_FOREGROUND = Color.rgb(0x18, 0x18, 0x1B)
+private fun deterministicFnv1aHash(value: String): ULong {
+    var hash = 0xcbf29ce484222325uL
+    for (byte in value.encodeToByteArray()) {
+        hash = hash xor (byte.toUInt() and 0xFFu).toULong()
+        hash *= 0x100000001b3uL
+    }
+    return hash
+}
+
+internal val SERVER_TILE_PALETTE =
+    intArrayOf(
+        Color.rgb(0x3A, 0x3A, 0x3E), // charcoal
+        Color.rgb(0x3D, 0x4C, 0x63), // deep slate-blue
+        Color.rgb(0x36, 0x4D, 0x45), // deep forest
+        Color.rgb(0x4C, 0x3F, 0x59), // deep plum
+        Color.rgb(0x52, 0x45, 0x3A) // deep bronze
+    )
+internal val CHANNEL_BADGE_PILL_FILL = Color.rgb(0xF3, 0xF1, 0xEB)
+internal val CHANNEL_BADGE_ICON_INK = Color.rgb(0x26, 0x24, 0x20)
+private val CHANNEL_BADGE_HALO_COLOR = Color.argb(0xCC, 0x18, 0x18, 0x1B)
 private val DM_TILE_PALETTE =
     intArrayOf(
         Color.rgb(0xE8, 0x4C, 0x88),

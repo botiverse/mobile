@@ -427,6 +427,7 @@ callable build.raft.app.setRaftEnvironmentIndicatorHiddenForCapture
 callable build.raft.app.data.checkRaftIosColdStartSignedOut
 callable build.raft.app.data.installRaftIosExternalShareEnvelopeHost
 callable build.raft.app.data.raftClearLegacyFontPreference
+callable build.raft.app.data.raftIosReadCachedAvatarImageData
 callable build.raft.app.data.raftIosRenderPixelAvatarRgba
 callable build.raft.app.data.updateRaftHostVisibility
 callable build.raft.app.nav.raftIosNativeNavLaunchDecision

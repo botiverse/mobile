@@ -268,6 +268,11 @@ class RaftIosExternalShareEnvelopeHostIosTest {
 
         assertEquals(null, raftIosRenderPixelAvatarRgba("https://example.com/avatar.png"))
         assertEquals(null, raftIosRenderPixelAvatarRgba(""))
+
+        // Zero-network-I/O cached server avatar helper returns null cleanly on blank or uncached URLs.
+        assertEquals(null, raftIosReadCachedAvatarImageData(null))
+        assertEquals(null, raftIosReadCachedAvatarImageData("   "))
+        assertEquals(null, raftIosReadCachedAvatarImageData("https://example.com/uncached-server-icon.png"))
     }
 
     private inline fun withTempInbox(block: (String) -> Unit) {

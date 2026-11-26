@@ -3,6 +3,8 @@ package build.raft.app.image
 import androidx.compose.ui.graphics.ImageBitmap
 import build.raft.app.compat.ui.toRaftImageBitmap
 import build.raft.app.data.RaftImageCacheHooks
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.raftAvatarImageCandidates
 import build.raft.app.raftLogWarn
 import coil3.Extras
 import coil3.ImageLoader
@@ -59,6 +61,44 @@ private val raftBuiltImageLoader = atomic<ImageLoader?>(null)
 
 /** The installed Raft loader, or null before the first page host built it. */
 internal fun raftCurrentImageLoader(): ImageLoader? = raftBuiltImageLoader.value
+
+/**
+ * Synchronously reads already-cached encoded raster image bytes for an http(s) or relative Raft
+ * avatar URL from Coil's local disk cache without touching the network. Returns `null` on a cache
+ * miss, before Coil is initialized, or when cached bytes are SVG / non-image.
+ */
+fun raftReadCachedAvatarImageBytesOrNull(sourceUrl: String?): ByteArray? {
+    val trimmed = sourceUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val diskCache = raftCurrentImageLoader()?.diskCache ?: return null
+    val apiBaseUrl =
+        runCatching {
+            RaftSharedStoreRegistry.currentOrNull()
+                ?.apiEnvironmentStore
+                ?.current()
+                ?.apiBaseUrl
+                ?.trimEnd('/')
+        }.getOrNull()
+    val candidates = raftAvatarImageCandidates(trimmed, apiBaseUrl)
+    if (candidates.isEmpty()) return null
+    val seenKeys = LinkedHashSet<String>(candidates.size)
+    for (candidate in candidates) {
+        val key = raftNetworkImageCacheKey(candidate)
+        if (!seenKeys.add(key)) continue
+        val snapshot = runCatching { diskCache.openSnapshot(key) }.getOrNull() ?: continue
+        val bytes =
+            snapshot.use {
+                runCatching {
+                    diskCache.fileSystem.read(snapshot.data) { readByteArray() }
+                }.getOrNull()
+            } ?: continue
+        if (bytes.isEmpty()) continue
+        val mime = raftSniffImageMimeType(bytes)
+        if (mime != null && mime != "image/svg+xml") {
+            return bytes
+        }
+    }
+    return null
+}
 
 /**
  * Synchronous frame-1 Coil memory-cache lookup for an http(s) avatar / server logo keyed by

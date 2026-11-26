@@ -1,10 +1,12 @@
 package build.raft.app.data
 
+import build.raft.app.RaftAvatarStep
 import build.raft.app.RaftCoreInternalApi
 
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.messageStreamChannelId
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.raftAppAvatarInitials
 import build.raft.app.toRaftAvatarLabel
 import kotlin.concurrent.Volatile
 import kotlinx.serialization.Serializable
@@ -122,8 +124,23 @@ data class RaftShareSuggestion(
     val peerType: String? = null,
     val avatarWireValue: String? = null,
     val avatarLabel: String = title.toRaftAvatarLabel(),
-    val lastActivityEpochMillis: Long = 0L
-)
+    val lastActivityEpochMillis: Long = 0L,
+    val serverAvatarUrl: String? = null,
+    val isPrivate: Boolean = false
+) {
+    /**
+     * Crisp 1–2 uppercase character monogram for this suggestion's server (falling back to `"R"`
+     * when [serverName] has no letter or digit), shared identically by Android and iOS Direct
+     * Share channel shortcut icons.
+     */
+    fun serverAvatarMonogram(): String {
+        val trimmed = serverName.trim()
+        if (trimmed.isEmpty()) return "R"
+        return raftAppAvatarInitials(trimmed, RaftAvatarStep.Md)
+            .ifBlank { trimmed.toRaftAvatarLabel() }
+            .ifBlank { "R" }
+    }
+}
 
 /**
  * Bottom capability installed by Android (Sharing Shortcuts) or iOS (`INSendMessageIntent`)
@@ -179,6 +196,7 @@ object RaftShareSuggestionsHostProvider {
 ): List<RaftShareSuggestion> {
     val serverId = snapshot.server.id.value.trim()
     val serverName = snapshot.server.name.trim()
+    val serverAvatarUrl = snapshot.server.avatarUrl?.trim()?.takeIf { it.isNotBlank() }
     if (serverId.isBlank() || maxCount <= 0) return emptyList()
 
     val candidates = mutableListOf<RaftShareSuggestion>()
@@ -205,7 +223,9 @@ object RaftShareSuggestionsHostProvider {
                 peerType = dm.directMessagePeerType?.trim()?.takeIf { it.isNotBlank() },
                 avatarWireValue = dm.directMessagePeerAvatarWireValue?.trim()?.takeIf { it.isNotBlank() },
                 avatarLabel = title.toRaftAvatarLabel(),
-                lastActivityEpochMillis = dm.lastMessageAt?.let { parseRaftTimestampEpochMillisOrNull(it, 0) } ?: 0L
+                lastActivityEpochMillis = dm.lastMessageAt?.let { parseRaftTimestampEpochMillisOrNull(it, 0) } ?: 0L,
+                serverAvatarUrl = serverAvatarUrl,
+                isPrivate = false
             )
     }
 
@@ -218,6 +238,7 @@ object RaftShareSuggestionsHostProvider {
             } else {
                 RaftShareSuggestionKind.Channel
             }
+        val isPrivate = channel.channelType?.trim().equals("private", ignoreCase = true)
         val shortcutId =
             RaftShareSuggestionContract.encodeTargetHint(
                 serverId = serverId,
@@ -239,7 +260,9 @@ object RaftShareSuggestionsHostProvider {
                 peerType = null,
                 avatarWireValue = null,
                 avatarLabel = "#",
-                lastActivityEpochMillis = channel.lastMessageAt?.let { parseRaftTimestampEpochMillisOrNull(it, 0) } ?: 0L
+                lastActivityEpochMillis = channel.lastMessageAt?.let { parseRaftTimestampEpochMillisOrNull(it, 0) } ?: 0L,
+                serverAvatarUrl = serverAvatarUrl,
+                isPrivate = isPrivate
             )
     }
 

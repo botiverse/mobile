@@ -2,6 +2,7 @@
 
 package build.raft.app.data
 
+import build.raft.app.image.raftReadCachedAvatarImageBytesOrNull
 import build.raft.app.raftApplyPersistedPixelAvatars
 import build.raft.app.raftPixelAvatarRaster
 import kotlinx.cinterop.addressOf
@@ -116,6 +117,18 @@ fun raftIosRenderPixelAvatarRgba(wireValue: String): RaftIosPixelAvatarRgba? {
         backgroundArgb = raster.backgroundArgb,
         rgbaData = data
     )
+}
+
+/**
+ * Reads already-cached encoded raster image bytes for an http(s) or relative Raft avatar URL from
+ * Coil's local disk cache without performing any network I/O. Returns null on a cache miss.
+ */
+fun raftIosReadCachedAvatarImageData(sourceUrl: String?): NSData? {
+    val bytes = raftReadCachedAvatarImageBytesOrNull(sourceUrl) ?: return null
+    if (bytes.isEmpty()) return null
+    return bytes.usePinned { pinned ->
+        NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
+    }
 }
 
 /**
