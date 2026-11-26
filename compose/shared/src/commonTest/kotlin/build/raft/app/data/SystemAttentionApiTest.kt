@@ -395,12 +395,12 @@ class SystemAttentionApiTest {
         assertIs<DataResult.Content<Unit>>(dataSource.dismiss(serverId, incidentId))
 
         assertEquals(
-            listOf(
+            listOf<Triple<String, String, ServerId?>>(
                 Triple("GET", "servers/srv-42/system-notifications-v2", serverId),
                 Triple("POST", "servers/srv-42/system-notifications-v2/$incidentId/seen", serverId),
                 Triple("POST", "servers/srv-42/system-notifications-v2/$incidentId/dismiss", serverId),
             ),
-            requests,
+            requests.toList(),
         )
     }
 
