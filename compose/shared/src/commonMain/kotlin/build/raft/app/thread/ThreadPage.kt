@@ -200,7 +200,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -2256,290 +2255,41 @@ private fun SharedThreadRouteContentContent(
             )
         }
     }
-    val headerProjectionRoutePayload =
-        remember(
-            payload.surfaceKind,
-            payload.channelKind,
-            payload.sourceThreadId,
-            payload.streamChannelId,
-            payload.parentChannelId,
-            payload.parentMessageId,
-            payload.parentSurfaceKind,
-            payload.parentChannelKind,
-            payload.dmPeerIdentity
-        ) {
-            payload.threadHeaderProjectionRoutePayload()
-        }
-    val headerProjectionInput =
-        remember(headerProjectionRoutePayload) {
-            headerProjectionRoutePayload.threadHeaderProjectionInput()
-        }
-    val conversationDirectoryLookupIds = headerProjectionInput.lookupIds
-    val emptyConversationDirectoryProjectionFlow =
-        remember { MutableStateFlow(emptyMap<String, SharedConversationDirectoryProjection>()) }
-    val headerProjectionServerId =
-        remember(replyCacheProvenance?.serverId, currentSession?.currentServerId, storeScope.initialServerId) {
-            threadHeaderProjectionServerId(
-                sessionServerId =
-                    replyCacheProvenance
-                        ?.serverId
-                        ?.takeIf { it.isNotBlank() }
-                        ?: currentSession?.currentServerId,
-                scopeInitialServerId = storeScope.initialServerId
-            )?.let(::ServerId)
-        }
-    val memberAvatarResolver =
-        remember(serverMembersStore, headerProjectionServerId) {
-            raftMemberAvatarResolver(
-                serverMembersStore = serverMembersStore,
-                serverId = headerProjectionServerId?.value,
-                diagnosticsLogger = { message -> bridge.log("thread_avatar_member $message") }
-            )
-        }
-    val memberAppBotResolver =
-        remember(serverMembersStore, headerProjectionServerId) {
-            raftMemberAppBotResolver(
-                serverMembersStore = serverMembersStore,
-                serverId = headerProjectionServerId?.value,
-            )
-        }
-    // First-frame header: whatever the app already holds in memory for this exact
-    // account+server+conversation (Home sidebar row, identity hub). Canonical state still wins;
-    // see displayModelWithKnownCandidate.
-    val knownEntityResolver = remember(sharedStores, storeScope) { sharedStores.knownEntityResolver(storeScope) }
-    val knownEntityAccountId =
-        currentSession?.user?.id ?: sharedStores.currentAuthenticatedRouteOwner(storeScope)?.accountId
-    val knownHeaderCandidate =
-        remember(
-            knownEntityResolver,
-            knownEntityAccountId,
-            headerProjectionServerId,
-            headerProjectionInput,
-            sharedHomeState.content
-        ) {
-            threadHeaderKnownCandidate(
-                resolver = knownEntityResolver,
-                accountId = knownEntityAccountId,
-                serverId = headerProjectionServerId,
-                input = headerProjectionInput
-            )
-        }
-    val initialDirectoryConversationProjections =
-        remember(
-            conversationIdentityProvider,
-            headerProjectionServerId,
-            conversationDirectoryLookupIds
-        ) {
-            threadHeaderInitialProjectionMap(
-                provider = conversationIdentityProvider,
-                serverId = headerProjectionServerId,
-                input = headerProjectionInput
-            )
-        }
-    // Offline-first header: the stored channel detail (offline resource) stands in on a cold start or an
-    // offline open until the network's detail arrives; it never replaces a detail already there.
-    LaunchedEffect(sharedStores, storeScope, headerProjectionServerId, conversationDirectoryLookupIds) {
-        val serverId = headerProjectionServerId?.value ?: return@LaunchedEffect
-        if (conversationDirectoryLookupIds.isEmpty()) return@LaunchedEffect
-        try {
-            sharedStores.restoreStoredConversationIdentities(storeScope, serverId, conversationDirectoryLookupIds)
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Throwable) {
-            // Best effort: the header falls back to its candidates.
-        }
-    }
-    val directoryConversationProjectionFlow = remember(
-        conversationIdentityProvider,
-        headerProjectionServerId,
-        headerProjectionInput.surfaceKind,
-        conversationDirectoryLookupIds
-    ) {
-        if (
-            conversationIdentityProvider != null &&
-            headerProjectionServerId != null &&
-            conversationDirectoryLookupIds.isNotEmpty()
-        ) {
-            conversationIdentityProvider
-                .projectionFlow(headerProjectionServerId, conversationDirectoryLookupIds)
-        } else {
-            emptyConversationDirectoryProjectionFlow
-        }
-    }
-    val headerProjectionStateOwner =
-        remember(headerProjectionInput, initialDirectoryConversationProjections) {
-            ThreadHeaderProjectionStateOwner(
-                input = headerProjectionInput,
-                initialProjections = initialDirectoryConversationProjections
-            )
-        }
-    LaunchedEffect(headerProjectionStateOwner, directoryConversationProjectionFlow) {
-        directoryConversationProjectionFlow.collect { projections ->
-            val outcome = headerProjectionStateOwner.accept(projections)
-            if (
-                outcome != null &&
-                headerProjectionInput.surfaceKind == RaftThreadSurfaceKind.ReplyThread
-            ) {
-                bridge.log(
-                    "thread_header_reply_diag stage=owner_accept " +
-                        "serverId=${headerProjectionServerId?.value ?: "null"} " +
-                        "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
-                        "incoming=${projections.headerProjectionMapDiagnostics()} " +
-                        "outcome=${outcome.name} " +
-                        "selected=${headerProjectionStateOwner.selectedProjection().headerProjectionDiagnostics()}"
-                )
-            }
-        }
-    }
-    val directoryConversationProjections by headerProjectionStateOwner.state.collectAsStateWhileStarted()
-    val directoryConversationProjection =
-        remember(headerProjectionInput, conversationDirectoryLookupIds, directoryConversationProjections) {
-            conversationDirectoryLookupIds
-                .firstNotNullOfOrNull { id ->
-                    directoryConversationProjections[id]?.takeIf { projection ->
-                        headerProjectionInput.acceptsForDisplay(projection)
-                    }
-                }
-        }
-    // Unfiltered directory projections (header owner drops non-display rows, but a
-    // reply thread's joint billing state lives on its parent channel projection).
-    val billingDirectoryProjections by directoryConversationProjectionFlow.collectAsStateWhileStarted(
-        initialDirectoryConversationProjections
-    )
-    // Joint channel (or a reply thread in one): message rows may resolve senders from the other
-    // server, who are in neither of this server's rosters, through `POST /api/actors/resolve`.
-    val jointMessageSurface =
-        remember(
-            billingDirectoryProjections,
-            conversationDirectoryLookupIds,
-            payload.channelKind,
-            payload.parentSurfaceKind,
-            payload.parentChannelKind,
-            payload.parentChannelId
-        ) {
-            threadMessageSurfaceIsJoint(
-                payload = payload,
-                lookupIds = conversationDirectoryLookupIds,
-                projections = billingDirectoryProjections
-            )
-        }
-    val messageAvatarResolver =
-        remember(memberAvatarResolver, jointMessageSurface) {
-            memberAvatarResolver.forJointSurface(jointMessageSurface)
-        }
-    var lastAcceptedHeaderProjection by remember(headerProjectionInput) {
-        mutableStateOf<SharedConversationDirectoryProjection?>(null)
-    }
-    val headerProjectionSource =
-        remember(headerProjectionInput, directoryConversationProjection, lastAcceptedHeaderProjection) {
-            headerProjectionInput.stableProjectionSource(
-                current = directoryConversationProjection,
-                previous = lastAcceptedHeaderProjection
-            )
-        }
-    val stableHeaderProjection =
-        remember(headerProjectionInput, directoryConversationProjection, lastAcceptedHeaderProjection) {
-            headerProjectionInput.stableProjection(
-                current = directoryConversationProjection,
-                previous = lastAcceptedHeaderProjection
-            )
-        }
-    val composerJointChannelId =
-        remember(
-            payload.surfaceKind,
-            payload.channelKind,
-            payload.parentChannelId,
-            payload.jointChannelId,
-            conversationDirectoryLookupIds,
-            billingDirectoryProjections,
-            stableHeaderProjection,
-        ) {
-            threadComposerJointChannelId(
-                payload = payload,
-                lookupIds = conversationDirectoryLookupIds,
-                projections = billingDirectoryProjections,
-                stableHeaderProjection = stableHeaderProjection,
-            )
-        }
-    LaunchedEffect(headerProjectionInput, directoryConversationProjection) {
-        val previous = lastAcceptedHeaderProjection
-        val accepted = directoryConversationProjection?.takeIf(headerProjectionInput::acceptsForDisplay)
-        if (headerProjectionInput.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
-            bridge.log(
-                "thread_header_dm_diag stage=accept_check " +
-                    "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
-                    "current=${directoryConversationProjection.headerProjectionDiagnostics()} " +
-                    "previous=${previous.headerProjectionDiagnostics()} " +
-                    "accepted=${accepted != null}"
-            )
-        }
-        if (headerProjectionInput.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
-            bridge.log(
-                "thread_header_reply_diag stage=accept_check " +
-                    "serverId=${headerProjectionServerId?.value ?: "null"} " +
-                    "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
-                    "current=${directoryConversationProjection.headerProjectionDiagnostics()} " +
-                    "previous=${previous.headerProjectionDiagnostics()} " +
-                    "accepted=${accepted != null}"
-            )
-        }
-        if (accepted != null) {
-            if (headerProjectionInput.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
-                bridge.log(
-                    "thread_header_dm_diag stage=accepted_store " +
-                        "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
-                        "stored=${accepted.headerProjectionDiagnostics()}"
-                )
-            }
-            lastAcceptedHeaderProjection = accepted
-        }
-    }
-    // Public-page globe on the channel header icon: the server's publicPageLive comes from
-    // the session server list (canonical store state), never from the route payload. The External
-    // glyph needs no server fact.
-    val headerServerPublicPageLive =
-        currentSession?.servers?.firstOrNull { it.id == headerProjectionServerId?.value }?.publicPageLive == true
-    val headerDisplayModel =
-        remember(headerProjectionInput, stableHeaderProjection, payload, headerServerPublicPageLive, knownHeaderCandidate) {
-            headerProjectionInput
-                .displayModelWithKnownCandidate(
-                    projection = stableHeaderProjection,
-                    contentPayload = payload,
-                    knownCandidate = knownHeaderCandidate
-                )
-                .copy(serverPublicPageLive = headerServerPublicPageLive)
-        }
-    // Agent Lounge v0: a Lounge's mute is the Lounge's own (no Home list holds it), so its ⋯ Mute
-    // and muted mark follow what the sidebar row's menu and other devices set.
-    val mutePageLounge =
-        rememberAgentLounge(
-            headerProjectionServerId?.value,
-            payload.agentLoungeLookupChannelId()?.takeIf { payload.surfaceKind == RaftThreadSurfaceKind.Channel },
+    val threadRouteHeaderProjection =
+        rememberThreadRouteHeaderProjection(
+            bridge = bridge,
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            serverMembersStore = serverMembersStore,
+            conversationIdentityProvider = conversationIdentityProvider,
+            sharedHomeStore = sharedHomeStore,
+            sharedHomeState = sharedHomeState,
+            payload = payload,
+            currentSession = currentSession,
+            replyCacheProvenance = replyCacheProvenance,
         )
-    val activityMuteState =
-        remember(payload, stableHeaderProjection, sharedHomeStore, mutePageLounge) {
-            val state =
-                if (mutePageLounge != null) {
-                    mutePageLounge.agentLoungeActivityMuteState(joinedHint = stableHeaderProjection?.joined == true)
-                } else {
-                    payload.threadActivityMuteState(stableHeaderProjection)
-                }
-            state?.takeIf { sharedHomeStore != null }
-        }
-    val activityMutedIndicatorVisible =
-        remember(payload, stableHeaderProjection, mutePageLounge) {
-            mutePageLounge?.activityMuted ?: payload.threadActivityMutedIndicatorVisible(stableHeaderProjection)
-        }
-    val sidebarOrder =
-        remember(sharedHomeState.content) {
-            (sharedHomeState.content as? SharedHomeContentState.Content)
-                ?.snapshot
-                ?.sidebarOrder
-        }
-    val conversationPinState =
-        remember(payload, stableHeaderProjection, sidebarOrder) {
-            payload.threadConversationPinTarget(stableHeaderProjection)?.toUiState(sidebarOrder)
-        }
+    val headerProjectionInput = threadRouteHeaderProjection.headerProjectionInput
+    val conversationDirectoryLookupIds = threadRouteHeaderProjection.conversationDirectoryLookupIds
+    val headerProjectionServerId = threadRouteHeaderProjection.headerProjectionServerId
+    val memberAvatarResolver = threadRouteHeaderProjection.memberAvatarResolver
+    val memberAppBotResolver = threadRouteHeaderProjection.memberAppBotResolver
+    val knownEntityResolver = threadRouteHeaderProjection.knownEntityResolver
+    val knownEntityAccountId = threadRouteHeaderProjection.knownEntityAccountId
+    val directoryConversationProjectionFlow = threadRouteHeaderProjection.directoryConversationProjectionFlow
+    val directoryConversationProjections by threadRouteHeaderProjection.directoryConversationProjectionsState
+    val directoryConversationProjection = threadRouteHeaderProjection.directoryConversationProjection
+    val billingDirectoryProjections by threadRouteHeaderProjection.billingDirectoryProjectionsState
+    val jointMessageSurface = threadRouteHeaderProjection.jointMessageSurface
+    val messageAvatarResolver = threadRouteHeaderProjection.messageAvatarResolver
+    val lastAcceptedHeaderProjection by threadRouteHeaderProjection.lastAcceptedHeaderProjectionState
+    val headerProjectionSource = threadRouteHeaderProjection.headerProjectionSource
+    val stableHeaderProjection = threadRouteHeaderProjection.stableHeaderProjection
+    val composerJointChannelId = threadRouteHeaderProjection.composerJointChannelId
+    val headerDisplayModel = threadRouteHeaderProjection.headerDisplayModel
+    val mutePageLounge = threadRouteHeaderProjection.mutePageLounge
+    val activityMuteState = threadRouteHeaderProjection.activityMuteState
+    val activityMutedIndicatorVisible = threadRouteHeaderProjection.activityMutedIndicatorVisible
+    val conversationPinState = threadRouteHeaderProjection.conversationPinState
     val routeMountPlan =
         payload.threadRouteMountPlan(
             timelineSlice = timelineSlice,
