@@ -1076,27 +1076,11 @@ FRESHNESS_GATE_DECL_FILE = (
     "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/RaftFreshnessSignal.kt"
 )
 # Ratchet allowlist of legacy page-owned RaftLiveCatchUpEffect sites (#wg-mobile-feedback:#274).
-# Shrink as Phases 1-3 migrate each page into store-owned / sync/changes freshness; never add new sites.
-FRESHNESS_LIVE_CATCH_UP_ALLOWLIST: tuple[tuple[str, int, str], ...] = (
-    (
-        "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeShellNavigation.kt",
-        1,
-        "#274 Phase 2: fold shell reconnect catch-up into SharedForegroundReconciler",
-    ),
-    (
-        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadViewportAnchors.kt",
-        1,
-        "#274 Phase 2: move active conversation catch-up into SharedThreadStore",
-    ),
-)
+# All legacy sites migrated to store-owned / sync/changes freshness; never add new sites.
+FRESHNESS_LIVE_CATCH_UP_ALLOWLIST: tuple[tuple[str, int, str], ...] = ()
 # Ratchet allowlist of legacy RaftFreshnessGate sites not yet passing trackOutcome = true (#273/#274).
-FRESHNESS_GATE_UNTRACKED_ALLOWLIST: tuple[tuple[str, int, str], ...] = (
-    (
-        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/RaftLiveCatchUp.kt",
-        1,
-        "#274 legacy page helper (to be deleted after Phase 2)",
-    ),
-)
+# All RaftFreshnessGate sites now pass trackOutcome = true; never add new untracked sites.
+FRESHNESS_GATE_UNTRACKED_ALLOWLIST: tuple[tuple[str, int, str], ...] = ()
 
 FRESHNESS_LIVE_CATCH_UP_CALL_RE = re.compile(r"\bRaftLiveCatchUpEffect\s*\(")
 FRESHNESS_GATE_CALL_RE = re.compile(r"\bRaftFreshnessGate\s*\(")

@@ -172,8 +172,8 @@ private class ChannelAnnouncementFront {
  * The socket of [key]'s server back (a new connection, RaftFreshnessSignal): the store reads [key] again
  * (rule 12), after its jitter when the socket came back by itself after a drop the app did not cause
  * ([RaftFreshnessEvent.afterDrop]). One that came while the page was not in front reads when it is, at
- * once, as the web runs its held reconnect reload when the page shows again. A [RaftLiveCatchUpEffect]
- * that keeps the event, not only its trigger.
+ * once, as the web runs its held reconnect reload when the page shows again. Keeps the full
+ * [RaftFreshnessEvent], not only its trigger.
  */
 @Composable
 private fun ChannelAnnouncementReconnectEffect(

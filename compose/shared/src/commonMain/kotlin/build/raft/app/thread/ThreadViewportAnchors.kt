@@ -1,14 +1,17 @@
 package build.raft.app
 
 import build.raft.app.data.RAFT_FRESHNESS_CONNECTED_FOREGROUND_SKIP_MILLIS
+import build.raft.app.data.RaftFreshnessTrigger
 import build.raft.app.data.raftForegroundGateNowMillis
 import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
 import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.model.RaftTimeContext
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.size
 
@@ -847,31 +850,41 @@ internal class ThreadVisibleResumeGate(
 }
 
 /**
- * Subscribes a conversation page to the process-wide [build.raft.app.data.RaftFreshnessSignal]
- * (#proj-mobile:#198) for socket reconnect and network recovery while stamping [resumeGate] when
- * initial content settles or a catch-up fires so an immediate unbroken-socket foreground return
- * within 60 s skips a redundant refetch.
+ * Binds an open conversation page to [SharedThreadViewModel]'s store-owned outcome-tracked
+ * [build.raft.app.data.RaftFreshnessGate] (#wg-mobile-feedback:#274 Phase 2) for socket reconnect
+ * and network recovery, while stamping [resumeGate] when initial content settles or a catch-up
+ * fires so an immediate unbroken-socket foreground return within 60 s skips a redundant refetch.
  */
 @Composable
 internal fun ThreadConversationFreshnessCatchUpEffect(
+    threadViewModel: SharedThreadViewModel,
     serverId: String?,
     active: Boolean,
     contentReady: Boolean,
     resumeGate: ThreadVisibleResumeGate,
-    onCatchUp: (RaftLiveCatchUpTrigger) -> Unit,
+    onCatchUp: (RaftFreshnessTrigger) -> Unit,
 ) {
+    val latestOnCatchUp by rememberUpdatedState(onCatchUp)
+    val latestResumeGate by rememberUpdatedState(resumeGate)
     LaunchedEffect(resumeGate, serverId, contentReady) {
         if (contentReady) {
             resumeGate.recordFreshCheck(serverId)
         }
     }
-    RaftLiveCatchUpEffect(
-        serverId = serverId,
-        visible = active,
-        foreground = false,
-    ) { trigger ->
-        resumeGate.recordFreshCheck(serverId)
-        onCatchUp(trigger)
+    LaunchedEffect(threadViewModel, serverId, active) {
+        threadViewModel.setFreshnessObserver(
+            serverId = serverId,
+            active = active,
+            onTriggered = { trigger, triggeredServerId ->
+                latestResumeGate.recordFreshCheck(triggeredServerId)
+                latestOnCatchUp(trigger)
+            },
+        )
+    }
+    DisposableEffect(threadViewModel) {
+        onDispose {
+            threadViewModel.clearFreshnessObserver()
+        }
     }
 }
 

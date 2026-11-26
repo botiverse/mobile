@@ -1,12 +1,17 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.input.key.key
+import build.raft.app.data.RaftFreshnessTrigger
 import build.raft.app.data.SharedAuthGateIntent
 import build.raft.app.data.SharedAuthReadyPhase
 import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.SharedHomeContentState
+import build.raft.app.data.SharedHomeShellStore
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.RAFT_FRESHNESS_CONNECTED_FOREGROUND_SKIP_MILLIS
 import build.raft.app.data.RaftShellStoreScope
@@ -934,32 +939,52 @@ internal fun homeSurfaceVisibilityDispatchDelayMs(visible: Boolean): Long =
     if (visible) HomeSurfaceVisibleResumeDelayMs else 0L
 
 /**
- * Subscribes the Home / DMs / Activity shell routes to the process-wide
- * [build.raft.app.data.RaftFreshnessSignal] (#proj-mobile:#198) for socket reconnect and network
- * recovery (the Tasks tab keeps its own [RaftLiveCatchUpEffect]), and stamps [visibleRefreshGate]
- * so an immediate unbroken-socket foreground return within 60 s skips a redundant refetch.
+ * Binds the Home / DMs / Activity shell routes to [SharedHomeShellStore]'s store-owned
+ * outcome-tracked [build.raft.app.data.RaftFreshnessGate] (#wg-mobile-feedback:#274 Phase 2) for
+ * socket reconnect and network recovery (the Tasks and Artifacts tabs own their own store gates),
+ * and stamps [visibleRefreshGate] so an immediate unbroken-socket foreground return within 60 s
+ * skips a redundant refetch.
  */
 @Composable
 internal fun AppShellHomeFreshnessCatchUpEffect(
+    homeShellStore: SharedHomeShellStore,
     serverId: String?,
     visible: Boolean,
     contentReady: Boolean,
     selectedTab: String,
     selectedHomeDestination: String?,
     visibleRefreshGate: AppShellVisibleRefreshGate,
-    onCatchUp: (RaftLiveCatchUpTrigger) -> Unit,
+    onCatchUpTriggered: (
+        trigger: RaftFreshnessTrigger,
+        serverId: String,
+        tab: String,
+        destination: String?,
+    ) -> Unit,
 ) {
+    val latestVisibleRefreshGate by rememberUpdatedState(visibleRefreshGate)
+    val latestOnCatchUpTriggered by rememberUpdatedState(onCatchUpTriggered)
     val refreshTarget = "${retainedAppShellSelectedTab(selectedTab)}:${selectedHomeDestination.orEmpty()}"
     LaunchedEffect(visibleRefreshGate, serverId, refreshTarget, contentReady) {
         if (contentReady) {
             visibleRefreshGate.recordFreshCheck(serverId = serverId, target = refreshTarget)
         }
     }
-    RaftLiveCatchUpEffect(
-        serverId = serverId,
-        visible = visible,
-        foreground = false,
-    ) { trigger ->
-        onCatchUp(trigger)
+    LaunchedEffect(homeShellStore, serverId, visible) {
+        homeShellStore.setFreshnessScope(
+            serverId = serverId,
+            visible = visible,
+            onTriggered = { trigger, triggeredServerId, tab, destination ->
+                latestVisibleRefreshGate.recordFreshCheck(
+                    serverId = triggeredServerId,
+                    target = "${retainedAppShellSelectedTab(tab)}:${destination.orEmpty()}",
+                )
+                latestOnCatchUpTriggered(trigger, triggeredServerId, tab, destination)
+            },
+        )
+    }
+    DisposableEffect(homeShellStore) {
+        onDispose {
+            homeShellStore.stopFreshnessObserver()
+        }
     }
 }

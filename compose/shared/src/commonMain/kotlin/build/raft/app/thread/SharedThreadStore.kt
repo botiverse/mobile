@@ -10,8 +10,14 @@ import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.MessageMutationSummary
 import build.raft.app.data.InboxFetchReason
 import build.raft.app.data.MviStaleToken
+import build.raft.app.data.RaftFreshnessEvent
+import build.raft.app.data.RaftFreshnessGate
+import build.raft.app.data.RaftFreshnessSignal
+import build.raft.app.data.RaftFreshnessTrigger
 import build.raft.app.data.SharedForegroundLoadGate
 import build.raft.app.data.SharedForegroundThreadKey
+import build.raft.app.data.raftForegroundGateNowMillis
+import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadPendingSendDrainer
 import build.raft.app.data.ThreadPendingSendJournal
@@ -126,7 +132,28 @@ internal class SharedThreadStore(
      * [ThreadInitialLoadingRevealDelayMs].
      */
     private val initialLoadingRevealDelayMillis: Long = ThreadInitialLoadingRevealDelayMs,
+    /** Process-wide freshness signal (#wg-mobile-feedback:#274 Phase 2). */
+    private val freshness: Flow<RaftFreshnessEvent> = RaftFreshnessSignal.events,
+    private val freshnessNowMillis: () -> Long = ::raftForegroundGateNowMillis,
+    private val freshnessLiveConnectionToken: (serverId: String) -> Long? =
+        RaftRealtimeConnectionCauses::liveConnectionToken,
 ) {
+    private val freshnessLock = SynchronizedObject()
+    private val freshnessGate =
+        RaftFreshnessGate(
+            foreground = false,
+            reconnect = true,
+            nowMillis = freshnessNowMillis,
+            trackOutcome = true,
+            liveConnectionToken = freshnessLiveConnectionToken,
+        )
+    private var freshnessObserveJob: Job? = null
+    private var freshnessCatchUpJob: Job? = null
+    private var freshnessServerId: String? = null
+    private var freshnessActive: Boolean = false
+    private var freshnessCatchUpInFlight: Boolean = false
+    private var onFreshnessCatchUpTriggered: ((RaftFreshnessTrigger, String) -> Unit)? = null
+
     private val readStateProjection = ThreadReadStateProjection()
     // task #387: seed the first frame from the in-memory reply cache synchronously, so a warm
     // channel entry renders content immediately instead of flashing the loading shell for the
@@ -723,13 +750,133 @@ internal class SharedThreadStore(
             SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
             SharedThreadIntent.LoadNewer -> loadNewer()
-            SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq -> refreshLatestAfterVisibleMaxSeq()
+            SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq -> { refreshLatestAfterVisibleMaxSeq() }
             is SharedThreadIntent.RecoverRealtimeGap -> recoverRealtimeGap(intent.serverSeq)
+        }
+    }
+
+    /**
+     * Registers this open conversation with the store-owned outcome-tracked [RaftFreshnessGate]
+     * (#wg-mobile-feedback:#274 Phase 2). Lazily collects [freshness] while observed so
+     * reconnect / network-restored catch-up lives on the store rather than a page effect.
+     */
+    fun setFreshnessObserver(
+        serverId: String?,
+        active: Boolean,
+        onTriggered: ((RaftFreshnessTrigger, String) -> Unit)? = null,
+    ) {
+        val normalizedServerId = serverId?.trim()?.takeIf { it.isNotEmpty() }
+        val drainedTrigger: Pair<RaftFreshnessTrigger, String>? =
+            synchronized(freshnessLock) {
+                val previousServerId = freshnessServerId
+                val wasActive = freshnessActive
+                freshnessServerId = normalizedServerId
+                freshnessActive = active
+                onFreshnessCatchUpTriggered = onTriggered
+                if (freshnessObserveJob?.isActive != true) {
+                    freshnessObserveJob =
+                        scope.launch {
+                            freshness.collect { event ->
+                                onFreshnessEvent(event)
+                            }
+                        }
+                }
+                if (previousServerId != null && normalizedServerId != previousServerId && !freshnessCatchUpInFlight) {
+                    freshnessGate.reset()
+                }
+                if (!wasActive && active && normalizedServerId != null) {
+                    freshnessGate.onVisibilityChanged(visible = true, serverId = normalizedServerId)?.let { trigger ->
+                        freshnessCatchUpInFlight = true
+                        trigger to normalizedServerId
+                    }
+                } else {
+                    null
+                }
+            }
+        if (drainedTrigger != null) {
+            startFreshnessCatchUp(drainedTrigger.first, drainedTrigger.second)
+        }
+    }
+
+    fun clearFreshnessObserver() {
+        synchronized(freshnessLock) {
+            freshnessObserveJob?.cancel()
+            freshnessObserveJob = null
+            freshnessActive = false
+            freshnessServerId = null
+            onFreshnessCatchUpTriggered = null
+            if (!freshnessCatchUpInFlight) {
+                freshnessGate.reset()
+            }
+        }
+    }
+
+    private fun onFreshnessEvent(event: RaftFreshnessEvent) {
+        val fired: Pair<RaftFreshnessTrigger, String>? =
+            synchronized(freshnessLock) {
+                val serverId = freshnessServerId ?: return
+                val trigger = freshnessGate.onEvent(event, serverId, visible = freshnessActive) ?: return
+                freshnessCatchUpInFlight = true
+                trigger to serverId
+            }
+        if (fired != null) {
+            startFreshnessCatchUp(fired.first, fired.second)
+        }
+    }
+
+    private fun startFreshnessCatchUp(trigger: RaftFreshnessTrigger, serverId: String) {
+        val callback = synchronized(freshnessLock) { onFreshnessCatchUpTriggered }
+        callback?.invoke(trigger, serverId)
+        freshnessCatchUpJob =
+            scope.launch {
+                var succeeded = false
+                try {
+                    succeeded = refreshLatestAfterVisibleMaxSeq()
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    succeeded = false
+                } finally {
+                    completeFreshnessCatchUp(succeeded)
+                }
+            }
+    }
+
+    private fun completeFreshnessCatchUp(succeeded: Boolean) {
+        val followUp: Pair<RaftFreshnessTrigger, String>? =
+            synchronized(freshnessLock) {
+                if (!freshnessCatchUpInFlight) return
+                freshnessCatchUpInFlight = false
+                val nextTrigger = freshnessGate.onCatchUpCompleted(succeeded = succeeded, visible = freshnessActive)
+                val serverId = freshnessServerId
+                if (serverId == null && freshnessObserveJob == null) {
+                    freshnessGate.reset()
+                    null
+                } else if (nextTrigger != null && serverId != null) {
+                    freshnessCatchUpInFlight = true
+                    nextTrigger to serverId
+                } else {
+                    null
+                }
+            }
+        if (followUp != null) {
+            startFreshnessCatchUp(followUp.first, followUp.second)
         }
     }
 
     fun clear() {
         readOnSight.hide(this)
+        synchronized(freshnessLock) {
+            freshnessObserveJob?.cancel()
+            freshnessObserveJob = null
+            freshnessCatchUpJob?.cancel()
+            freshnessCatchUpJob = null
+            freshnessCatchUpInFlight = false
+            freshnessActive = false
+            freshnessServerId = null
+            onFreshnessCatchUpTriggered = null
+            freshnessGate.reset()
+        }
         cancelLoadingRevealTimer()
         loadJob?.cancel()
         loadJob = null
@@ -2848,12 +2995,12 @@ internal class SharedThreadStore(
 
     private suspend fun recoverRealtimeGap(serverSeq: Long) = threadRealtimeGapRecovery.recoverRealtimeGap(serverSeq)
 
-    private suspend fun refreshLatestAfterVisibleMaxSeq() {
+    private suspend fun refreshLatestAfterVisibleMaxSeq(): Boolean {
         if (messageJumpInFlightTarget != null || _state.value.unreadThreadJumpLoading) {
             diagnosticsLogger?.invoke("thread_resume_catchup_skip reason=jump_in_flight")
-            return
+            return false
         }
-        threadRealtimeGapRecovery.refreshLatestAfterVisibleMaxSeq()
+        return threadRealtimeGapRecovery.refreshLatestAfterVisibleMaxSeq()
     }
 
     private suspend fun recoverRealtimeGap(
@@ -3959,6 +4106,20 @@ internal class SharedThreadViewModel(
 
     fun dispatch(intent: SharedThreadIntent) {
         store.dispatch(intent)
+    }
+
+    fun setFreshnessObserver(
+        serverId: String?,
+        active: Boolean,
+        onTriggered: ((RaftFreshnessTrigger, String) -> Unit)? = null,
+    ) {
+        store.setFreshnessObserver(serverId = serverId, active = active, onTriggered = onTriggered)
+    }
+
+    fun clearFreshnessObserver() {
+        if (storeDelegate.isInitialized()) {
+            store.clearFreshnessObserver()
+        }
     }
 
     internal fun triggerPendingSendDrain(reason: String) {

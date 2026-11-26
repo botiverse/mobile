@@ -35,7 +35,7 @@ data class RaftFreshnessEvent(
 /**
  * The one process-wide signal that what the app shows may be stale (#proj-mobile:#198 ②): the app
  * came back to the foreground, a server's realtime socket rejoined its rooms, or the network came
- * back. Data owners (stores, and pages through [build.raft.app.RaftLiveCatchUpEffect]) subscribe and
+ * back. Data owners (stores) subscribe with an outcome-tracked [RaftFreshnessGate] and
  * re-read silently (Background priority, single-flight, content kept); nothing listens to the
  * platform lifecycle on its own.
  *

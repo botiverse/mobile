@@ -1,11 +1,16 @@
 package build.raft.app.data
 
+import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
 import build.raft.app.model.Message
 import build.raft.app.model.MessageNew
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.RealtimeEvent
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -68,8 +73,40 @@ class SharedHomeShellStore(
     private val diagnosticsLogger: (String) -> Unit = {},
     private val scope: CoroutineScope,
     /** As [SharedHomeStore]'s: the selected conversation skips Activity unread only while it is seen. */
-    private val selectedConversationSeen: () -> Boolean = { RaftHostInUse.isInUse }
+    private val selectedConversationSeen: () -> Boolean = { RaftHostInUse.isInUse },
+    /** Process-wide freshness signal (#wg-mobile-feedback:#274 Phase 2). */
+    private val freshness: Flow<RaftFreshnessEvent> = RaftFreshnessSignal.events,
+    private val freshnessNowMillis: () -> Long = ::raftForegroundGateNowMillis,
+    private val freshnessLiveConnectionToken: (serverId: String) -> Long? =
+        RaftRealtimeConnectionCauses::liveConnectionToken,
+    /**
+     * Outcome-reporting refresh hooks used by [freshnessGate] (`trackOutcome = true`) so a failed
+     * catch-up never consumes the 10 s coalesce window (#wg-mobile-feedback:#273/#274).
+     */
+    private val refreshHomeForFreshness: (suspend () -> Boolean)? = null,
+    private val refreshActivityForFreshness: (suspend () -> Boolean)? = null,
 ) {
+    private val freshnessLock = SynchronizedObject()
+    private val freshnessGate =
+        RaftFreshnessGate(
+            foreground = false,
+            reconnect = true,
+            nowMillis = freshnessNowMillis,
+            trackOutcome = true,
+            liveConnectionToken = freshnessLiveConnectionToken,
+        )
+    private var freshnessObserveJob: Job? = null
+    private var freshnessCatchUpJob: Job? = null
+    private var freshnessServerId: String? = null
+    private var freshnessHostVisible: Boolean = false
+    private var freshnessCatchUpInFlight: Boolean = false
+    private var onFreshnessCatchUpTriggered: (
+        trigger: RaftFreshnessTrigger,
+        serverId: String,
+        tab: String,
+        destination: String?,
+    ) -> Unit = { _, _, _, _ -> }
+
     private var observedHomeServerId: String? = homeState.value.activeHomeServerId()
     private var pendingSavedSummaryRefreshServerId: String? = null
 
@@ -151,8 +188,10 @@ class SharedHomeShellStore(
             SharedHomeShellIntent.OpenActivity -> openDestination(SharedHomeShellDestinationActivity)
             SharedHomeShellIntent.OpenSaved -> openDestination(SharedHomeShellDestinationSaved)
             SharedHomeShellIntent.OpenSearch -> openDestination(SharedHomeShellDestinationSearch)
-            SharedHomeShellIntent.CloseSecondaryDestination ->
+            SharedHomeShellIntent.CloseSecondaryDestination -> {
                 _state.value = _state.value.copy(destination = null)
+                recheckFreshnessVisibility()
+            }
             is SharedHomeShellIntent.SetSelectedTab -> setSelectedTab(intent.tab)
             is SharedHomeShellIntent.SetSelectedConversation -> {
                 _state.value = _state.value.copy(selectedConversationId = intent.conversationId)
@@ -180,6 +219,14 @@ class SharedHomeShellStore(
 
     fun reset() {
         resetActivity()
+        synchronized(freshnessLock) {
+            freshnessCatchUpJob?.cancel()
+            freshnessCatchUpJob = null
+            freshnessCatchUpInFlight = false
+            freshnessServerId = null
+            freshnessHostVisible = false
+            freshnessGate.reset()
+        }
         _state.value =
             _state.value.copy(
                 destination = null,
@@ -187,6 +234,166 @@ class SharedHomeShellStore(
                 selectedConversationId = null,
                 primarySurfaceVisible = false
             )
+    }
+
+    /**
+     * Binds the shell's Home / DMs / Activity routes to the store-owned outcome-tracked
+     * [RaftFreshnessGate] (#wg-mobile-feedback:#274 Phase 2). Lazily collects [freshness] while
+     * active; triggers while hidden or on another tab (e.g. More, Tasks) are held and drained as
+     * soon as an eligible route is visible again.
+     */
+    fun setFreshnessScope(
+        serverId: String?,
+        visible: Boolean,
+        onTriggered: (
+            trigger: RaftFreshnessTrigger,
+            serverId: String,
+            tab: String,
+            destination: String?,
+        ) -> Unit = { _, _, _, _ -> },
+    ) {
+        val normalizedServerId = serverId?.trim()?.takeIf { it.isNotEmpty() }
+        val drained: Pair<RaftFreshnessTrigger, String>? =
+            synchronized(freshnessLock) {
+                val previousServerId = freshnessServerId
+                val wasRouteVisible = isFreshnessRouteVisibleLocked()
+                freshnessServerId = normalizedServerId
+                freshnessHostVisible = visible
+                onFreshnessCatchUpTriggered = onTriggered
+                if (freshnessObserveJob?.isActive != true) {
+                    freshnessObserveJob =
+                        scope.launch {
+                            freshness.collect { event ->
+                                onFreshnessEvent(event)
+                            }
+                        }
+                }
+                if (previousServerId != null && normalizedServerId != previousServerId && !freshnessCatchUpInFlight) {
+                    freshnessGate.reset()
+                }
+                val nowRouteVisible = isFreshnessRouteVisibleLocked()
+                if (!wasRouteVisible && nowRouteVisible && normalizedServerId != null) {
+                    freshnessGate.onVisibilityChanged(visible = true, serverId = normalizedServerId)?.let { trigger ->
+                        freshnessCatchUpInFlight = true
+                        trigger to normalizedServerId
+                    }
+                } else {
+                    null
+                }
+            }
+        if (drained != null) {
+            startFreshnessCatchUp(drained.first, drained.second)
+        }
+    }
+
+    fun stopFreshnessObserver() {
+        synchronized(freshnessLock) {
+            freshnessObserveJob?.cancel()
+            freshnessObserveJob = null
+            freshnessHostVisible = false
+            freshnessServerId = null
+            onFreshnessCatchUpTriggered = { _, _, _, _ -> }
+            if (!freshnessCatchUpInFlight) {
+                freshnessGate.reset()
+            }
+        }
+    }
+
+    private fun isFreshnessRouteVisibleLocked(): Boolean {
+        if (!freshnessHostVisible || freshnessServerId == null) return false
+        val current = _state.value
+        return isHomeShellFreshnessRouteEligible(current.selectedTab, current.destination)
+    }
+
+    private fun recheckFreshnessVisibility() {
+        val drained: Pair<RaftFreshnessTrigger, String>? =
+            synchronized(freshnessLock) {
+                val serverId = freshnessServerId ?: return
+                if (!isFreshnessRouteVisibleLocked()) return
+                freshnessGate.onVisibilityChanged(visible = true, serverId = serverId)?.let { trigger ->
+                    freshnessCatchUpInFlight = true
+                    trigger to serverId
+                }
+            }
+        if (drained != null) {
+            startFreshnessCatchUp(drained.first, drained.second)
+        }
+    }
+
+    private fun onFreshnessEvent(event: RaftFreshnessEvent) {
+        val fired: Pair<RaftFreshnessTrigger, String>? =
+            synchronized(freshnessLock) {
+                val serverId = freshnessServerId ?: return
+                val trigger = freshnessGate.onEvent(event, serverId, visible = isFreshnessRouteVisibleLocked()) ?: return
+                freshnessCatchUpInFlight = true
+                trigger to serverId
+            }
+        if (fired != null) {
+            startFreshnessCatchUp(fired.first, fired.second)
+        }
+    }
+
+    private fun startFreshnessCatchUp(trigger: RaftFreshnessTrigger, serverId: String) {
+        val current = _state.value
+        val tab = normalizedHomeShellFreshnessTab(current.selectedTab)
+        val destination = current.destination
+        val callback = synchronized(freshnessLock) { onFreshnessCatchUpTriggered }
+        callback(trigger, serverId, tab, destination)
+        freshnessCatchUpJob =
+            scope.launch {
+                var succeeded = false
+                try {
+                    succeeded = runFreshnessCatchUp(tab, destination)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    succeeded = false
+                } finally {
+                    completeFreshnessCatchUp(succeeded)
+                }
+            }
+    }
+
+    private suspend fun runFreshnessCatchUp(tab: String, destination: String?): Boolean {
+        val refreshActivity =
+            destination == SharedHomeShellDestinationActivity ||
+                (destination == null && tab == "activity")
+        return if (refreshActivity) {
+            refreshActivityForFreshness?.invoke() ?: run {
+                dispatchActivity(SharedActivityIntent.Refresh)
+                true
+            }
+        } else {
+            val ok =
+                refreshHomeForFreshness?.invoke() ?: run {
+                    dispatchHomeVisibleRefresh()
+                    true
+                }
+            refreshSavedSummary()
+            ok
+        }
+    }
+
+    private fun completeFreshnessCatchUp(succeeded: Boolean) {
+        val followUp: Pair<RaftFreshnessTrigger, String>? =
+            synchronized(freshnessLock) {
+                if (!freshnessCatchUpInFlight) return
+                freshnessCatchUpInFlight = false
+                val nextTrigger = freshnessGate.onCatchUpCompleted(succeeded = succeeded, visible = isFreshnessRouteVisibleLocked())
+                val serverId = freshnessServerId
+                if (serverId == null && freshnessObserveJob == null) {
+                    freshnessGate.reset()
+                    null
+                } else if (nextTrigger != null && serverId != null) {
+                    freshnessCatchUpInFlight = true
+                    nextTrigger to serverId
+                } else {
+                    null
+                }
+            }
+        if (followUp != null) {
+            startFreshnessCatchUp(followUp.first, followUp.second)
+        }
     }
 
     suspend fun acceptRealtimeEvent(serverId: String, event: RealtimeEvent) {
@@ -220,6 +427,17 @@ class SharedHomeShellStore(
     }
 
     fun clear() {
+        synchronized(freshnessLock) {
+            freshnessObserveJob?.cancel()
+            freshnessObserveJob = null
+            freshnessCatchUpJob?.cancel()
+            freshnessCatchUpJob = null
+            freshnessCatchUpInFlight = false
+            freshnessHostVisible = false
+            freshnessServerId = null
+            onFreshnessCatchUpTriggered = { _, _, _, _ -> }
+            freshnessGate.reset()
+        }
         jobs.forEach(Job::cancel)
     }
 
@@ -229,6 +447,7 @@ class SharedHomeShellStore(
         if (tab == "activity" && previousTab != "activity") {
             dispatchActivity(SharedActivityIntent.Refresh)
         }
+        recheckFreshnessVisibility()
     }
 
     private fun setSurfaceVisible(visible: Boolean) {
@@ -252,6 +471,7 @@ class SharedHomeShellStore(
             SharedHomeShellDestinationSaved -> dispatchSearchSaved(SharedHomeSearchSavedIntent.OpenSaved)
             SharedHomeShellDestinationSearch -> dispatchSearchSaved(SharedHomeSearchSavedIntent.OpenSearch)
         }
+        recheckFreshnessVisibility()
     }
 
     private fun refreshVisibleHomeDestination() {
@@ -317,6 +537,16 @@ class SharedHomeShellStore(
         }
     }
 }
+
+private fun normalizedHomeShellFreshnessTab(selectedTab: String?): String =
+    selectedTab?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "home"
+
+private fun isHomeShellFreshnessRouteEligible(selectedTab: String?, destination: String?): Boolean =
+    when (normalizedHomeShellFreshnessTab(selectedTab)) {
+        "home" -> destination == null || destination == SharedHomeShellDestinationActivity
+        "dms", "activity" -> true
+        else -> false
+    }
 
 private fun SharedHomeShellIntent.shouldLogHomeShellDispatch(): Boolean =
     when (this) {
