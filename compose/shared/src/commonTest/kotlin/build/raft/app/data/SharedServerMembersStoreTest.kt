@@ -905,6 +905,45 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun workingAgentsFlowExcludesOtherServerAgentsFromJointChannelRoster() = runBlocking {
+        val repository = FakeMemberRepository()
+        fun agent(id: String, name: String) =
+            member(id, name).copy(kind = MemberKind.Agent, presence = Presence.Active)
+        // Joint-channel roster carries remote agents with inViewerServer = false; serverId may be
+        // omitted on the wire (Hands 86e0bc50 / cs26). Both shapes must stay out of Working now.
+        val jointRemoteNoServerId =
+            agent("frank", "Frank").copy(serverId = null, inViewerServer = false)
+        val jointRemoteWithServerId =
+            agent("imprint", "Imprint").copy(serverId = ServerId("botiverse"), inViewerServer = false)
+        val jointLocalAgent =
+            agent("vix", "Vix").copy(serverId = ServerId("server-1"), inViewerServer = true)
+        repository.channelMembersByChannel["joint-botiverse"] =
+            listOf(jointLocalAgent, jointRemoteNoServerId, jointRemoteWithServerId)
+
+        val store = SharedServerMembersStore(repository)
+        store.seed(MemberSnapshot(server("server-1"), listOf(jointLocalAgent)))
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+            store.loadChannelMembers(ServerId("server-1"), ChannelId("joint-botiverse"))
+        )
+
+        fun fact(id: String, status: AgentStatus) =
+            MemberPresenceUpdated(
+                memberId = MemberId(id),
+                presence = status.presence,
+                kind = MemberKind.Agent,
+                agentStatus = status,
+                coarseState = true,
+                serverSeq = 1L,
+            )
+        store.applyPresence(ServerId("server-1"), fact("vix", AgentStatus.Working))
+        store.applyPresence(ServerId("server-1"), fact("frank", AgentStatus.Thinking))
+        store.applyPresence(ServerId("server-1"), fact("imprint", AgentStatus.Working))
+
+        val working = store.workingAgentsFlow(ServerId("server-1")).first()
+        assertEquals(listOf("vix" to AgentStatus.Working), working.map { it.agentId to it.status })
+    }
+
+    @Test
     fun workerBusyAgentsFlowIncludesLocalOnlineRunningWorkersAndExcludesHoldsPeersAndOwnWork() = runTest {
         val repository = FakeMemberRepository()
         fun agent(id: String, name: String) =
