@@ -69,6 +69,8 @@ class RaftApplication : Application() {
         }
         RaftPageRegistry.install()
         RaftAndroidHostHooks.install(this)
+        // Native LiveKit audio engine for Agent Voice calls + RECORD_AUDIO permission bridge.
+        AndroidAgentVoiceCallEngine.install(this)
         // The Google Play rating prompt for RaftRatingPrompt (`play` builds only).
         RaftAndroidStoreReview.install(this)
         // The install channel the minimum build gate asks: Hands (APK builds) or Google Play (`play`).

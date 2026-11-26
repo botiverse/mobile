@@ -328,6 +328,12 @@ static NSDictionary *RaftIosOpenSourceLicensesResult(void) {
     NSArray<NSDictionary *> *items = @[
         item(@"Hands", @"Hands", @"0.2.3", @"MIT License",
              @"https://github.com/oranix-io/hands/blob/main/LICENSE", @"https://github.com/oranix-io/hands"),
+        item(@"LiveKitClient", @"LiveKit Swift Client SDK (Agent Voice)", @"2.20.1", @"Apache License 2.0",
+             @"https://github.com/livekit/client-sdk-swift/blob/main/LICENSE", @"https://github.com/livekit/client-sdk-swift"),
+        item(@"LiveKitFFI", @"LiveKit FFI XCFramework", @"0.13.4", @"Apache License 2.0",
+             @"https://github.com/livekit/livekit-ffi-xcframework", @"https://github.com/livekit/livekit-ffi-xcframework"),
+        item(@"LiveKitWebRTC", @"LiveKit WebRTC XCFramework", @"150.7871.08", @"BSD 3-Clause License",
+             @"https://github.com/livekit/webrtc-xcframework/blob/main/LICENSE", @"https://github.com/livekit/webrtc-xcframework"),
         item(@"MMKV", @"MMKV / MMKVCore", @"2.4.3", @"BSD 3-Clause License",
              @"https://github.com/Tencent/MMKV/blob/master/LICENSE.TXT", @"https://github.com/Tencent/MMKV"),
         item(@"MobileVLCKit", @"MobileVLCKit (VLCKit and libVLC, video playback)", @"3.7.5",

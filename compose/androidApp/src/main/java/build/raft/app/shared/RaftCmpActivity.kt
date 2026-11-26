@@ -1973,6 +1973,9 @@ internal open class RaftCmpActivity :
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (build.raft.app.AndroidRecordAudioPermissionBridge.onRequestPermissionsResult(requestCode, permissions, grantResults)) {
+            return
+        }
         // The notification permission rides the push registration (osPermission): report the
         // answer now, not at the next app start, without running NotificationManager/SharedPrefs
         // IPC on the main thread.

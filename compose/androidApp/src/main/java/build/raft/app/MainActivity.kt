@@ -134,6 +134,17 @@ class MainActivity : ComponentActivity() {
         handleLaunchIntent(intent)
     }
 
+    @Deprecated("Deprecated in Java")
+    @Suppress("DEPRECATION")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        AndroidRecordAudioPermissionBridge.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
     override fun onDestroy() {
         if (::externalShareAdmissionOwner.isInitialized) {
             externalShareAdmissionOwner.detach(externalShareResultListener)

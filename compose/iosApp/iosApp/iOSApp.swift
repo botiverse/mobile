@@ -892,6 +892,8 @@ struct iOSApp: App {
         // WebM / MKV / ... attachments play in-app through MobileVLCKit (AVPlayer cannot demux them);
         // registered before the first page decides which attachments are previewable videos.
         RaftIosVlcVideo.install()
+        // Native LiveKit audio engine for Agent Voice calls.
+        RaftIosAgentVoiceCallEngine.install()
         // iOS native navigation (mobile_ios_native_nav_v1): iPhone only; decided at the first page.
         RaftNativeNavProto.installHostSupport()
         // iOS native navigation capture tooling: the login-free capture of the real app on

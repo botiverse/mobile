@@ -864,7 +864,8 @@ val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::cla
             // Shared KMP metadata (common) and its Android variant must both be disclosed.
             "org.jetbrains.compose.components:components-resources",
             "org.jetbrains.compose.components:components-resources-android",
-            handsAndroidSdkModule
+            handsAndroidSdkModule,
+            "io.livekit:livekit-android"
         )
     )
     overridesFile.set(layout.projectDirectory.file("../config/oss-license-overrides.json"))
@@ -978,6 +979,7 @@ dependencies {
     add(handsNativeSymbols.name, "$handsAndroidSdkCoordinate:native-symbols@zip")
     implementation(libs.androidsvg)
     implementation(libs.mmkv)
+    implementation(libs.livekit.android)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.installations)

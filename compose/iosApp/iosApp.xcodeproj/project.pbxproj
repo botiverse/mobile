@@ -122,6 +122,9 @@
 		A57900010000000000000002 /* RaftIosServerSwitcherGlassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57900020000000000000001 /* RaftIosServerSwitcherGlassView.swift */; };
 		A57900010000000000000003 /* RaftIosServerSwitcherHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57900020000000000000002 /* RaftIosServerSwitcherHost.swift */; };
 		A57900010000000000000004 /* RaftIosServerSwitcherGlassViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57900020000000000000003 /* RaftIosServerSwitcherGlassViewTests.swift */; };
+		A70100010000000000000001 /* RaftIosAgentVoiceCallEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70100020000000000000001 /* RaftIosAgentVoiceCallEngine.swift */; };
+		A70100010000000000000002 /* RaftIosAgentVoiceCallEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70100020000000000000001 /* RaftIosAgentVoiceCallEngine.swift */; };
+		A70100010000000000000003 /* RaftIosAgentVoiceCallEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70100020000000000000002 /* RaftIosAgentVoiceCallEngineTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -294,6 +297,8 @@
 		A57900020000000000000001 /* RaftIosServerSwitcherGlassView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosServerSwitcherGlassView.swift; sourceTree = "<group>"; };
 		A57900020000000000000002 /* RaftIosServerSwitcherHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosServerSwitcherHost.swift; sourceTree = "<group>"; };
 		A57900020000000000000003 /* RaftIosServerSwitcherGlassViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosServerSwitcherGlassViewTests.swift; sourceTree = "<group>"; };
+		A70100020000000000000001 /* RaftIosAgentVoiceCallEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosAgentVoiceCallEngine.swift; sourceTree = "<group>"; };
+		A70100020000000000000002 /* RaftIosAgentVoiceCallEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosAgentVoiceCallEngineTests.swift; sourceTree = "<group>"; };
 		E360000F0000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		E360000F0000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		E360000F0000000000000003 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -518,6 +523,7 @@
 				F08600020000000000000001 /* RaftIosSealedInputsHost.swift */,
 				A57900020000000000000001 /* RaftIosServerSwitcherGlassView.swift */,
 				A57900020000000000000002 /* RaftIosServerSwitcherHost.swift */,
+				A70100020000000000000001 /* RaftIosAgentVoiceCallEngine.swift */,
 				058557D7273AAEEB004C7B11 /* Preview Content */,
 			);
 			path = iosApp;
@@ -560,6 +566,7 @@
 				E36000020000000000000009 /* RaftIosShareSuggestionsHostTests.swift */,
 				F08600020000000000000002 /* RaftIosSealedInputsHostTests.swift */,
 				A57900020000000000000003 /* RaftIosServerSwitcherGlassViewTests.swift */,
+				A70100020000000000000002 /* RaftIosAgentVoiceCallEngineTests.swift */,
 			);
 			path = iosAppTests;
 			sourceTree = "<group>";
@@ -1050,6 +1057,7 @@
 				F08600010000000000000001 /* RaftIosSealedInputsHost.swift in Sources */,
 				A57900010000000000000001 /* RaftIosServerSwitcherGlassView.swift in Sources */,
 				A57900010000000000000003 /* RaftIosServerSwitcherHost.swift in Sources */,
+				A70100010000000000000001 /* RaftIosAgentVoiceCallEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1108,6 +1116,8 @@
 				F08600010000000000000003 /* RaftIosSealedInputsHostTests.swift in Sources */,
 				A57900010000000000000002 /* RaftIosServerSwitcherGlassView.swift in Sources */,
 				A57900010000000000000004 /* RaftIosServerSwitcherGlassViewTests.swift in Sources */,
+				A70100010000000000000002 /* RaftIosAgentVoiceCallEngine.swift in Sources */,
+				A70100010000000000000003 /* RaftIosAgentVoiceCallEngineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -158,12 +158,29 @@ dependencyResolutionManagement {
         }
     }
 
+    // LiveKit Android SDK depends on com.github.davidliu:audioswitch (hosted exclusively on JitPack).
+    // Scope JitPack strictly to that group so no other dependency resolves through it.
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftJitpackAudioSwitch() {
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = "JitPackLiveKitAudioSwitch"
+                    url = uri("https://jitpack.io")
+                }
+            }
+            filter {
+                includeGroup("com.github.davidliu")
+            }
+        }
+    }
+
     repositories {
         raftArtifactsKbaMetadata()
         raftArtifactsKuiklyBase()
         raftArtifactsHands()
         raftArtifactsComposeUiPatch()
         raftArtifactsComposeFoundationPatch()
+        raftJitpackAudioSwitch()
         mavenLocal()
         google()
         mavenCentral()

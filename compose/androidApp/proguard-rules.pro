@@ -5,6 +5,8 @@
 #     kotlinx.coroutines (ServiceLoader for Dispatchers.Main), OkHttp, Coil 3,
 #     Compose / CMP resources, Media3, AndroidX, Firebase / FCM.
 #   - MMKV: keeps its native methods and the static callbacks called from JNI.
+#   - LiveKit Android SDK (io.livekit:livekit-android): bundles consumer-rules.pro for
+#     WebRTC JNI, Protobuf, NIST SDP parsers, kotlinx.serialization, and JNA (livekit-ffi-android).
 #   - Hands SDK: JNI entry point is a Java_* symbol for a native method, which the
 #     default proguard-android-optimize.txt keeps (-keepclasseswithmembernames native).
 # Manifest components (activities, activity-aliases, services, receivers, the
