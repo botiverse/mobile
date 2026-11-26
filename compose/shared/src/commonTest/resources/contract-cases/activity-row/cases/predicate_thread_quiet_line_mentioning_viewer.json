@@ -1,0 +1,51 @@
+{
+  "formatVersion": 1,
+  "id": "predicate_thread_quiet_line_mentioning_viewer",
+  "rule": "predicate",
+  "title": "On a person's thread row, a quiet line that mentions them lights the @ and moves the row, without counting",
+  "why": "#proj-raft-ui:#319 (Kirby 71732dab): a personal mention is activity for the person even on a quiet line, so it moves the row as on a task row. Its kind does not count as unread for people.",
+  "status": "agreed",
+  "sources": {
+    "web": [
+      "packages/shared/src/activityUnreadPredicate.ts (activityLiveUnread: moves on a person's row is peopleRowMessageMoves)",
+      "packages/web/src/store/inboxRowPosition.ts (rowPositionVerdict, with inbox_row_position_v1 on)"
+    ],
+    "server": [
+      "packages/server/src/services/inboxUnreadEligibility.ts (peopleRowMovingMessageSql: the Postgres thread row reads)",
+      "RisingWave people views: the shared fragment in Ray's rebuild (#proj-notification:#5)"
+    ]
+  },
+  "given": {
+    "viewer": {
+      "type": "user",
+      "id": "viewer-1"
+    },
+    "scope": {
+      "rowKind": "thread",
+      "threadFollowed": true
+    },
+    "message": {
+      "senderType": "user",
+      "senderId": "system",
+      "messageType": "system",
+      "causalActorType": "agent",
+      "causalActorId": "agent-1",
+      "systemSubtype": "task.created_summary",
+      "quietForPeople": true,
+      "mentions": [
+        {
+          "type": "user",
+          "id": "viewer-1"
+        }
+      ]
+    }
+  },
+  "steps": [],
+  "expect": {
+    "verdict": {
+      "counts": false,
+      "mention": true,
+      "moves": true
+    }
+  }
+}

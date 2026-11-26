@@ -317,9 +317,53 @@ class ActivityUnreadPredicateTest {
                 ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Task),
             ).moves,
         )
+        // #proj-raft-ui:#319 (slock #17075): a quiet line leaves thread, channel and DM rows in place too.
+        for (rowKind in listOf(ActivityUnreadRowKind.Thread, ActivityUnreadRowKind.Channel, ActivityUnreadRowKind.Dm)) {
+            assertEquals(
+                ActivityUnreadVerdict(counts = false, mention = false, moves = false),
+                activityLiveUnread(claim, viewer, ActivityUnreadScope(rowKind = rowKind)),
+            )
+            assertEquals(
+                ActivityUnreadVerdict(counts = false, mention = true, moves = true),
+                activityLiveUnread(
+                    claim.copy(mentions = listOf(ActivityUnreadTarget("user", "u1"))),
+                    viewer,
+                    ActivityUnreadScope(rowKind = rowKind),
+                ),
+            )
+            assertEquals(
+                true,
+                activityLiveUnread(claim, ActivityUnreadViewer(type = "agent", id = "a2"), ActivityUnreadScope(rowKind = rowKind)).moves,
+            )
+        }
+        // Only task rows apply the whole people predicate; history-only and noise lines still move thread/channel/DM rows.
+        val historyOnly =
+            ActivityUnreadMessage(
+                senderType = "user",
+                senderId = "system",
+                countsUnread = false,
+                systemSubtype = "channel.rename",
+                mentions = emptyList(),
+            )
+        assertFalse(peopleRowMessageMoves(historyOnly, "u1", ActivityUnreadRowKind.Task))
+        for (rowKind in listOf(ActivityUnreadRowKind.Thread, ActivityUnreadRowKind.Channel, ActivityUnreadRowKind.Dm)) {
+            assertTrue(peopleRowMessageMoves(historyOnly, "u1", rowKind))
+            assertTrue(
+                peopleRowMessageMoves(
+                    historyOnly.copy(countsUnread = true, systemSubtype = "task.deleted_summary"),
+                    "u1",
+                    rowKind,
+                )
+            )
+        }
+        // Channel mute still wins first on a quiet line mentioning the viewer.
         assertEquals(
-            true,
-            activityLiveUnread(claim, viewer, ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Thread)).moves,
+            false,
+            activityLiveUnread(
+                claim.copy(mentions = listOf(ActivityUnreadTarget("user", "u1"))),
+                viewer,
+                ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Channel, activityMuted = true),
+            ).moves,
         )
         assertEquals(
             true,

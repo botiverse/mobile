@@ -277,20 +277,27 @@ import kotlinx.atomicfu.locks.synchronized
     )
 
 /**
- * Step 2c (raft-design #1440, slock #16828/#16837): a live message in a task conversation that is
- * not activity for this person ([peopleActivityRowMessage]): a lifecycle line written quiet for
- * people (e.g. a claim or status move) that does not personally mention them. On their task row it
- * changes nothing (place, time, preview, read state). Null/blank [viewerId] (no session): never
- * quiet, matching web `isQuietTaskLineForViewer`.
+ * One quiet-line rule for every person's Activity row (step 2c, raft-design #1440; every row kind
+ * since #proj-raft-ui:#319 / slock #17075+#17080 `quietLineLeavesRow`): true when [message] does
+ * not move this person's row of [rowKind] (place, time, preview, reply count, read/Done state).
+ * Null/blank [viewerId] (no session): never quiet.
  */
+@RaftCoreInternalApi fun quietLineLeavesRow(
+    message: Message,
+    provenance: MessageSystemProvenance?,
+    viewerId: String?,
+    rowKind: ActivityUnreadRowKind,
+): Boolean {
+    val cleanViewerId = viewerId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    return !peopleRowMessageMoves(message.toActivityUnreadMessage(provenance), cleanViewerId, rowKind)
+}
+
+/** Backwards-compatible alias for task rows. */
 @RaftCoreInternalApi fun isQuietTaskLineForViewer(
     message: Message,
     provenance: MessageSystemProvenance?,
     viewerId: String?,
-): Boolean {
-    val cleanViewerId = viewerId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
-    return !peopleActivityRowMessage(message.toActivityUnreadMessage(provenance), cleanViewerId)
-}
+): Boolean = quietLineLeavesRow(message, provenance, viewerId, ActivityUnreadRowKind.Task)
 
 /** The wire `senderType` a member kind stands for. */
 @RaftCoreInternalApi fun MemberKind.activitySenderType(): String =
