@@ -11,7 +11,6 @@ import build.raft.app.resources.*
 import build.raft.app.downloads.RaftDownloadCenterProcess
 import build.raft.app.data.homeStateForPage
 import build.raft.app.data.HomeFollowedThreadUnread
-import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
 import build.raft.designsystem.components.raftPaneGridCellExpand
@@ -92,7 +91,6 @@ import build.raft.app.data.SharedMembersChannelSuggestionSlice
 import build.raft.app.data.SharedMembersMemberSuggestionSlice
 import build.raft.app.data.SharedMembersStore
 import build.raft.app.data.SharedServerChannelMembersSlice
-import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedTasksDataSource
@@ -1382,7 +1380,7 @@ internal val LocalThreadAdaptiveNativeEditingReader =
 // them: say so, with the trace ID, and offer the same jump again. Kept out of
 // SharedThreadRouteContentContent to hold that method under its JVM size ceiling.
 @Composable
-private fun ThreadJumpFailureToasts(
+internal fun ThreadJumpFailureToasts(
     threadViewModel: SharedThreadViewModel,
     bridge: build.raft.app.base.BridgeModule,
 ) {
@@ -3361,7 +3359,8 @@ private fun SharedThreadRouteContentContent(
             assistantPanelEmbed = inAssistantPanelEmbed
         )
     val sideCardsStore = LocalConversationSideCards.current
-    val sideCardsState by sideCardsStore.state.collectAsState()
+    val sideCardsStateHolder = sideCardsStore.state.collectAsState()
+    val sideCardsState by sideCardsStateHolder
     // The person's open cards, kept across restarts (web keeps them across reloads).
     LaunchedEffect(sideCardsStore, messageBodyOwnerKey) { sideCardsStore.bindOwner(messageBodyOwnerKey) }
     // An old Tasks / Files tab link (route `selectedTab`, a `selectTab` event) opens that card over
@@ -3373,91 +3372,19 @@ private fun SharedThreadRouteContentContent(
         selectedThreadTab = RaftThreadTab.Chat
         threadViewModel.dispatch(SharedThreadIntent.SelectTab(RaftThreadTab.Chat.wireValue))
     }
-    // Jump pills (ThreadJumpPills.kt): the unread-thread pill follows the web, a channel only;
-    // its threads and the conversation's unread come from Home.
-    val jumpHomeSnapshot =
-        (sharedHomeState.content as? SharedHomeContentState.Content)
-            ?.snapshot
-            ?.takeIf { snapshot -> snapshot.server.id.value == currentServerId }
-    val jumpChannelId = threadTimelineKey?.takeIf { it.isNotBlank() }
-    val jumpSurfaceKind = payload.surfaceKind
-    val jumpFollowedThreadUnread = jumpHomeSnapshot?.followedThreadUnread
-    val jumpConversationUnreadCount =
-        jumpHomeSnapshot?.let { snapshot ->
-            snapshot.channels.firstOrNull { it.channelId.value == jumpChannelId }?.unreadCount
-                ?: snapshot.directMessages.firstOrNull { it.channelId.value == jumpChannelId }?.unreadCount
-        } ?: 0
-    // Parents of unread threads the page has not loaded, from the followed-threads list (web
-    // FollowedThread.parentMessageId): without them the pill had no target for an older parent.
-    val jumpUnreadThreadParents by remember(threadViewModel) {
-        threadViewModel.unreadThreadParentsFlow()
-    }.collectAsState(threadViewModel.state.value.unreadThreadParents)
-    val jumpFocusNonce by remember(threadViewModel) {
-        threadViewModel.unreadThreadJumpFocusNonceFlow()
-    }.collectAsState(threadViewModel.state.value.unreadThreadJumpFocusNonce)
-    val jumpLoading by remember(threadViewModel) {
-        threadViewModel.unreadThreadJumpLoadingFlow()
-    }.collectAsState(threadViewModel.state.value.unreadThreadJumpLoading)
-    val jumpInputs =
-        remember(
-            jumpChannelId,
-            jumpSurfaceKind,
-            jumpFollowedThreadUnread,
-            jumpConversationUnreadCount,
-            jumpUnreadThreadParents,
-            jumpFocusNonce,
-            jumpLoading,
-        ) {
-            ThreadJumpInputs(
-                channelId = jumpChannelId,
-                unreadThreadPillEnabled =
-                    jumpChannelId != null && jumpSurfaceKind == RaftThreadSurfaceKind.Channel,
-                homeFollowedThreadUnread =
-                    jumpFollowedThreadUnread?.filterValues { thread -> thread.parentChannelId.value == jumpChannelId },
-                conversationUnreadCount = jumpConversationUnreadCount,
-                unreadThreadParents = jumpUnreadThreadParents.filterValues { parent -> parent.parentChannelId == jumpChannelId },
-                jumpFocusNonce = jumpFocusNonce,
-                jumpLoading = jumpLoading,
-            )
-        }
-    // #wg-mobile-sync:#256: a parent's inline replies count its thread's new replies as the channel
-    // row's thread mark does (Home's followed-thread unread), so a reply that arrives while the
-    // channel is open shows under its parent, not only on the row (ThreadJumpPills.kt).
-    val replyMetadataByParentId = rememberInlineReplyMetadata(pageReplyMetadataByParentId, jumpFollowedThreadUnread)
-    // The unread threads whose parent is neither loaded nor resolved: look them up (single-flight
-    // in the store; each id at most once per page). Keyed by the id set, not the message list.
-    val jumpUnresolvedUnreadThreadIds =
-        remember(jumpInputs, timelineSlice.messages, replyMetadataByParentId) {
-            if (!jumpInputs.unreadThreadPillEnabled) {
-                emptySet()
-            } else {
-                val candidates = threadJumpParentCandidates(timelineSlice.messages, replyMetadataByParentId)
-                threadUnreadThreadIdsNeedingParents(
-                    unreadThreadIds =
-                        threadConversationUnreadThreadIds(
-                            channelId = jumpInputs.channelId.orEmpty(),
-                            homeFollowedThreadUnread = jumpInputs.homeFollowedThreadUnread,
-                            loadedMessages = candidates,
-                        ),
-                    messages = candidates,
-                    resolvedParents = jumpInputs.unreadThreadParents,
-                )
-            }
-        }
-    val markUnreadNothingLabel by rememberUpdatedState(stringResource(Res.string.home_action_mark_unread_nothing))
-    ThreadJumpFailureToasts(threadViewModel, bridge)
-    LaunchedEffect(threadViewModel) {
-        threadViewModel.readToggleNoticesFlow().collect { notice ->
-            when (notice) {
-                RaftReadToggleNotice.MarkUnreadNothing -> bridge.toast(markUnreadNothingLabel)
-            }
-        }
-    }
-    LaunchedEffect(threadViewModel, jumpUnresolvedUnreadThreadIds) {
-        if (jumpUnresolvedUnreadThreadIds.isNotEmpty()) {
-            threadViewModel.dispatch(SharedThreadIntent.ResolveUnreadThreadParents(jumpUnresolvedUnreadThreadIds))
-        }
-    }
+    val threadRouteJump =
+        rememberThreadRouteJump(
+            bridge = bridge,
+            threadViewModel = threadViewModel,
+            payload = payload,
+            timelineSlice = timelineSlice,
+            sharedHomeState = sharedHomeState,
+            currentServerId = currentServerId,
+            threadTimelineKey = threadTimelineKey,
+            pageReplyMetadataByParentId = pageReplyMetadataByParentId,
+        )
+    val jumpInputs = threadRouteJump.jumpInputs
+    val replyMetadataByParentId = threadRouteJump.replyMetadataByParentId
     val taskProjectionOwnerIdentity =
         remember(sharedStores.apiEnvironmentStore, currentSession?.user?.id) {
             currentSession?.user?.id
@@ -3499,73 +3426,20 @@ private fun SharedThreadRouteContentContent(
     val attachmentUploadOwnerResolved = attachmentUploadAccountId != null && attachmentUploadServerId != null
     val attachmentUploadOrchestrator = attachmentUploads.orchestrator
     val attachmentUploadSemaphore = attachmentUploads.semaphore
-    val threadMembersChannelId = baseRenderedPayload.sourceThreadId?.trim()?.takeIf { it.isNotBlank() }?.let(::ChannelId)
-    val threadServerMembersEntry by remember(serverMembersStore, threadMembersServerId) {
-        if (serverMembersStore != null && threadMembersServerId != null) {
-            serverMembersStore.serverMembersEntryFlow(threadMembersServerId)
-        } else {
-            MutableStateFlow(SharedServerMembersEntry(serverId = threadMembersServerId?.value.orEmpty()))
-        }
-    }.collectAsState(
-        // First frame: the directory already in memory, so @mentions paint names, not handles.
-        threadMembersServerId?.let { serverId -> serverMembersStore?.currentServerMembersEntry(serverId) }
-            ?: SharedServerMembersEntry(serverId = threadMembersServerId?.value.orEmpty())
-    )
-    LaunchedEffect(selectedThreadTab, serverMembersStore, threadMembersServerId, sideCardsEnabled && sideCardsState.tasks) {
-        val store = serverMembersStore ?: return@LaunchedEffect
-        val serverId = threadMembersServerId ?: return@LaunchedEffect
-        if (selectedThreadTab == RaftThreadTab.Tasks || (sideCardsEnabled && sideCardsState.tasks)) {
-            store.refreshMembers(serverId, DataRequestPriority.Visible)
-        }
-    }
-    // Keep channelMemberSliceFlow keyed independently of `active` so covering this thread during
-    // a push never tears down and recreates its member flow on Frame 1; gate only the refresh.
-    val threadChannelMembersSlice by remember(
-        serverMembersStore,
-        threadMembersServerId,
-        threadMembersChannelId,
-    ) {
-        if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
-            serverMembersStore.channelMemberSliceFlow(
-                serverId = threadMembersServerId,
-                channelId = threadMembersChannelId
-            )
-        } else {
-            MutableStateFlow(
-                SharedServerChannelMembersSlice(
-                    serverId = threadMembersServerId?.value,
-                    channelId = threadMembersChannelId?.value.orEmpty()
-                )
-            )
-        }
-    }.collectAsStateWhileStarted(
-        if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
-            serverMembersStore.currentChannelMemberSlice(threadMembersServerId, threadMembersChannelId)
-        } else {
-            SharedServerChannelMembersSlice(
-                serverId = threadMembersServerId?.value,
-                channelId = threadMembersChannelId?.value.orEmpty()
-            )
-        }
-    )
-    LaunchedEffect(serverMembersStore, threadMembersServerId, threadMembersChannelId, active) {
-        if (active && serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
-            serverMembersStore.loadChannelMembers(
-                serverId = threadMembersServerId,
-                channelId = threadMembersChannelId,
-                priority = DataRequestPriority.Visible
-            )
-        }
-    }
-    val threadMembersProjection =
-        remember(baseRenderedPayload, threadChannelMembersSlice, threadServerMembersEntry, threadMembersServerId) {
-            threadMembersProjection(
-                basePayload = baseRenderedPayload,
-                channelMembersSlice = threadChannelMembersSlice,
-                serverMembersEntry = threadServerMembersEntry,
-                serverId = threadMembersServerId
-            )
-        }
+    val threadRouteMembers =
+        rememberThreadRouteMembers(
+            serverMembersStore = serverMembersStore,
+            baseRenderedPayload = baseRenderedPayload,
+            threadMembersServerId = threadMembersServerId,
+            active = active,
+            sideCardsEnabled = sideCardsEnabled,
+            sideCardsStateHolder = sideCardsStateHolder,
+            selectedThreadTabState = selectedThreadTabState,
+        )
+    val threadMembersChannelId = threadRouteMembers.threadMembersChannelId
+    val threadServerMembersEntry by threadRouteMembers.threadServerMembersEntryState
+    val threadChannelMembersSlice by threadRouteMembers.threadChannelMembersSliceState
+    val threadMembersProjection = threadRouteMembers.threadMembersProjection
     val threadRouteTaskProjection =
         rememberThreadRouteTaskProjection(
             bridge = bridge,
@@ -6231,7 +6105,7 @@ private fun rememberThreadChannelJointServers(
  * keep that route below its JVM method-size cap.
  */
 @Composable
-private fun rememberInlineReplyMetadata(
+internal fun rememberInlineReplyMetadata(
     page: Map<String, ThreadReplyMetadata>,
     followedThreadUnread: Map<String, HomeFollowedThreadUnread>?,
 ): Map<String, ThreadReplyMetadata> =
