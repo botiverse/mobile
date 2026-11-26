@@ -121,27 +121,17 @@ internal enum class RaftMobileWebPanelMenuAction {
 }
 
 /**
- * Overflow menu items by layer:
- * - Layer 3 (third-party): Reload, Forward to Raft, Share, Copy link, Open in browser ↗.
- * - Layer 2 (Raft App): Reload, Forward to Raft, Share, Copy link — NO "Open in browser".
+ * Overflow menu items by layer (#proj-mobile:#409: both Layer 2 Raft Apps and Layer 3 third-party
+ * pages offer Open in browser so users can always hand off to their system browser).
  */
 internal fun raftMobileWebPanelMenuActions(isRaftApp: Boolean): List<RaftMobileWebPanelMenuAction> =
-    if (isRaftApp) {
-        listOf(
-            RaftMobileWebPanelMenuAction.Reload,
-            RaftMobileWebPanelMenuAction.ForwardToRaft,
-            RaftMobileWebPanelMenuAction.Share,
-            RaftMobileWebPanelMenuAction.CopyLink,
-        )
-    } else {
-        listOf(
-            RaftMobileWebPanelMenuAction.Reload,
-            RaftMobileWebPanelMenuAction.ForwardToRaft,
-            RaftMobileWebPanelMenuAction.Share,
-            RaftMobileWebPanelMenuAction.CopyLink,
-            RaftMobileWebPanelMenuAction.OpenInBrowser,
-        )
-    }
+    listOf(
+        RaftMobileWebPanelMenuAction.Reload,
+        RaftMobileWebPanelMenuAction.ForwardToRaft,
+        RaftMobileWebPanelMenuAction.Share,
+        RaftMobileWebPanelMenuAction.CopyLink,
+        RaftMobileWebPanelMenuAction.OpenInBrowser,
+    )
 
 /** The panel's vertical detents (Option A: 88% default, 100% fullscreen, or collapsed keeping page alive). */
 internal enum class RaftMobileWebPanelDetent {

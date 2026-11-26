@@ -879,7 +879,7 @@ internal fun RaftMobileWebPanelBrowserBody(
                                 loadError = null
                                 controller.reload()
                             },
-                            onOpenSystem = if (storageResolution.isRaftApp) null else ::openCurrentInSystemBrowser,
+                            onOpenSystem = ::openCurrentInSystemBrowser,
                             onClose = if (storageResolution.isRaftApp) onClose else null,
                         )
                     }
@@ -933,7 +933,7 @@ internal fun RaftMobileWebPanelBrowserBody(
             onClose = onClose,
             onShare = ::shareCurrentUrl,
             onCopyLink = ::copyCurrentUrl,
-            onOpenInBrowser = if (storageResolution.isRaftApp) null else ::openCurrentInSystemBrowser,
+            onOpenInBrowser = ::openCurrentInSystemBrowser,
         )
         if (bottomInsetDp > 0.dp) {
             Spacer(
