@@ -214,7 +214,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -3342,10 +3341,10 @@ private fun SharedThreadRouteContentContent(
     // currently mounted composer.  When a reused Thread instance moves to another draft key we
     // may retire only the previous restoration batch; blindly clearing this map would race an
     // upload which is still owned by the process-level orchestrator.
-    var restoredAttachmentUploadDraftKey by remember(threadInstanceKey) {
+    val restoredAttachmentUploadDraftKeyState = remember(threadInstanceKey) {
         mutableStateOf<String?>(null)
     }
-    var restoredAttachmentUploadFileIds by remember(threadInstanceKey) {
+    val restoredAttachmentUploadFileIdsState = remember(threadInstanceKey) {
         mutableStateOf<Set<ThreadAttachmentUploadAttemptIdentity>>(emptySet())
     }
     val externalShareSendRequestedState = remember(threadInstanceKey) { mutableStateOf(false) }
@@ -4125,171 +4124,18 @@ private fun SharedThreadRouteContentContent(
         rememberThreadComposerKeyboardHandoff(key = threadInstanceKey) {
             composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RequestFocus)
         }
-    // A4 adoption (task #18): register the draft-persist barrier + viewport anchor providers
-    // with the holder the page-level initiator calls. Registration is keyed on the objects
-    // themselves so a rotated detail never serves a stale provider.
-    val adaptiveNativeEditingStateReader = LocalThreadAdaptiveNativeEditingReader.current
-    val adaptiveInitiationCaptureHolder = LocalThreadAdaptiveInitiationCapture.current
-    DisposableEffect(
-        adaptiveInitiationCaptureHolder,
-        adaptiveNativeEditingStateReader,
-        composerDraftViewModel,
-        threadInstanceKey,
-    ) {
-        val holder = adaptiveInitiationCaptureHolder
-        val reader = adaptiveNativeEditingStateReader
-        if (holder != null && reader != null) {
-            holder.captureLatestDraft = captureLatestDraft@{ _ ->
-                // Unavailable must abort the migration — proceeding with only the stale shared
-                // draft would silently lose whatever is in the live editor (bridge contract).
-                val identityBefore = composerDraftViewModel.state.value
-                val nativeRead =
-                    suspendCancellableCoroutine<RaftTextFieldNativeEditingStateReadResult.Available?> {
-                            continuation ->
-                        reader.readCurrentValue { readResult ->
-                            continuation.resume(
-                                readResult as? RaftTextFieldNativeEditingStateReadResult.Available
-                            )
-                        }
-                    } ?: return@captureLatestDraft null
-                val nativeText = nativeRead.value.text
-                // The draft the native value belongs to is pinned by the state read above;
-                // a composer draft switch/rebind mid-read would attribute the persisted text
-                // to the wrong conversation.
-                val identityAfterRead = composerDraftViewModel.state.value
-                if (
-                    identityAfterRead.draftKey != identityBefore.draftKey ||
-                    identityAfterRead.instanceId != identityBefore.instanceId
-                ) {
-                    return@captureLatestDraft null
-                }
-                val changeReceipt =
-                    runCatchingPreservingCancellation {
-                        composerDraftViewModel.acceptQueued(
-                            SharedThreadComposerDraftIntent.Change(seedText = nativeText)
-                        )
-                    }.getOrElse { return@captureLatestDraft null }
-                // The receipt state must still carry the same draft identity we started from.
-                // A rejected (accepted=false) receipt is a satisfied no-op only when the
-                // serialized lane proves the store already carries the exact native text —
-                // MviFoundation reports an equivalent-state transition as not-accepted with
-                // state=previous. Any other rejection means the draft projection did not
-                // accept our text, and persisting would durably store the wrong content.
-                if (
-                    changeReceipt.state.draftKey != identityBefore.draftKey ||
-                    changeReceipt.state.instanceId != identityBefore.instanceId
-                ) {
-                    return@captureLatestDraft null
-                }
-                val changeSatisfied =
-                    changeReceipt.accepted ||
-                        changeReceipt.state.seedText == nativeText
-                if (!changeSatisfied) {
-                    return@captureLatestDraft null
-                }
-                val flushReceipt =
-                    runCatchingPreservingCancellation {
-                        composerDraftViewModel.acceptQueued(
-                            SharedThreadComposerDraftIntent.Flush
-                        )
-                    }.getOrElse { return@captureLatestDraft null }
-                if (
-                    !flushReceipt.accepted ||
-                    flushReceipt.state.draftKey != identityBefore.draftKey ||
-                    flushReceipt.state.instanceId != identityBefore.instanceId
-                ) {
-                    return@captureLatestDraft null
-                }
-                // Identity-bearing snapshot: the pre-commit fence compares a later capture
-                // field-for-field — same text under a different draft/instance is drift.
-                SharedThreadComposerDraftSnapshot(
-                    text = nativeText,
-                    draftKey = identityBefore.draftKey,
-                    instanceId = identityBefore.instanceId,
-                    editorNativeRef = nativeRead.editorNativeRef,
-                )
-            }
-        }
-        onDispose {
-            if (holder != null && holder.captureLatestDraft != null) {
-                holder.captureLatestDraft = null
-            }
-        }
-    }
-    // Warm the upload-capability cache when the composer opens so a later pick adds its chip
-    // without waiting on `attachments/upload-capabilities` (slow on weak networks).
-    LaunchedEffect(threadInstanceKey) {
-        runCatchingPreservingCancellation { dataSource.prefetchAttachmentUploadCapabilities() }
-    }
-    LaunchedEffect(composerDraftViewModel, threadInstanceKey, attachmentUploads, attachmentUploadOwnerResolved) {
-        composerDraftViewModel.state.collect { draftState ->
-            val draftKey = normalizeThreadAttachmentUploadDraftKey(draftState.draftKey)
-            val previousRestoredKey = restoredAttachmentUploadDraftKey
-            if (draftKey != null && previousRestoredKey != null && draftKey != previousRestoredKey) {
-                // A reused Thread surface moved its composer store from draft A to draft B: A's
-                // uploads keep going (they belong to draft A, not to this page) and publish only
-                // into draft A's uploads, never into B.
-                // The map key is the complete (draft,id) identity.  Retire every handle owned by
-                // the old draft; a same-named local id admitted by the new draft is a different
-                // key and therefore remains untouched.  This also prevents a late old-job
-                // cleanup from deleting or shadowing the new draft's handle.
-                attachmentUploadFilesByLocalId =
-                    attachmentUploadFilesByLocalId.filterKeys { key -> key.draftKey != previousRestoredKey }
-                restoredAttachmentUploadFileIds =
-                    restoredAttachmentUploadFileIds.filter { key -> key.draftKey != previousRestoredKey }.toSet()
-            }
-
-            // A transient null key can be emitted while a route is being rebound.  Keep the last
-            // non-empty key so the first real key after an initial null does not clear an active
-            // session, while a genuine A -> B transition still retires the old restoration batch.
-            if (draftKey == null) return@collect
-            if (draftKey != previousRestoredKey) {
-                restoredAttachmentUploadDraftKey = draftKey
-            }
-
-            val restoredFiles =
-                draftState.uploadedAttachments
-                    .mapNotNull { attachment ->
-                        attachment.toRestoredThreadComposerPlatformFile()?.let { file ->
-                            attachment.id to file
-                        }
-                    }
-                    .toMap()
-            if (restoredFiles.isNotEmpty()) {
-                // Never shadow the handle a live attempt of this page registered; a draft-owned
-                // upload started by a page that is gone gets the restored file (Retry after a
-                // background failure).
-                val safeRestoredFiles =
-                    restoredFiles.filterKeys { id ->
-                        attachmentUploadFilesByLocalId.threadAttachmentUploadFile(id, draftKey) == null
-                    }
-                if (safeRestoredFiles.isNotEmpty()) {
-                    val keyedFiles =
-                        safeRestoredFiles.mapNotNull { (id, file) ->
-                            threadAttachmentUploadAttemptIdentity(id, draftKey)?.let { identity ->
-                                identity to file
-                            }
-                        }.toMap()
-                    attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId + keyedFiles
-                    restoredAttachmentUploadFileIds = restoredAttachmentUploadFileIds + keyedFiles.keys
-                }
-            }
-            // A restored row whose upload nothing owns any more (the process died meanwhile, or
-            // the upload was cancelled) can never finish: fail it (upload_interrupted) so the chip
-            // offers Retry with the file registered above, instead of blocking Send forever. The
-            // draft's own uploads are left to the applier below.
-            if (!attachmentUploadOwnerResolved) return@collect
-            recoverOrphanedThreadComposerUploads(
-                draftKey = draftKey,
-                state = draftState,
-                acceptWithState = composerDraftViewModel::acceptWithState,
-                currentState = { composerDraftViewModel.state.value },
-                orchestrator = attachmentUploadOrchestrator,
-                log = { message -> bridge.logWarn(message) },
-                ownedByDraftUpload = { id -> attachmentUploads.ownsUpload(draftKey, id) }
-            )
-        }
-    }
+    ThreadComposerDraftUploadEffects(
+        bridge = bridge,
+        dataSource = dataSource,
+        composerDraftViewModel = composerDraftViewModel,
+        threadInstanceKey = threadInstanceKey,
+        attachmentUploads = attachmentUploads,
+        attachmentUploadOwnerResolved = attachmentUploadOwnerResolved,
+        attachmentUploadOrchestrator = attachmentUploadOrchestrator,
+        attachmentUploadFilesByLocalIdState = attachmentUploadFilesByLocalIdState,
+        restoredAttachmentUploadDraftKeyState = restoredAttachmentUploadDraftKeyState,
+        restoredAttachmentUploadFileIdsState = restoredAttachmentUploadFileIdsState,
+    )
     fun routeAuthRequired(code: String? = null): Boolean {
         if (!code.isAuthSessionErrorCode()) return false
         onAuthRequired(code ?: "auth_required")
@@ -5326,101 +5172,28 @@ private fun SharedThreadRouteContentContent(
     // The external-share auto-send below runs in an effect keyed only on the thread: it must
     // send with the latest session, provenance and upload store, not the first frame's (null
     // before the session loads, so the queued share was silently never sent).
-    val latestPerformComposerSend by rememberUpdatedState<() -> Boolean> { performComposerSend() }
+    val latestPerformComposerSendState = rememberUpdatedState<() -> Boolean> { performComposerSend() }
     fun handleComposerSendRequest(request: ThreadComposerSendRequest): ThreadComposerSendAdmission =
         threadRouteComposerActions.handleComposerSendRequest(request)
-    val latestHandleComposerSendRequest by rememberUpdatedState<(ThreadComposerSendRequest) -> ThreadComposerSendAdmission> { req ->
+    val latestHandleComposerSendRequestState = rememberUpdatedState<(ThreadComposerSendRequest) -> ThreadComposerSendAdmission> { req ->
         handleComposerSendRequest(req)
     }
-    val pendingOptimisticSend = pendingOptimisticSendState.value
-    LaunchedEffect(
-        pendingOptimisticSend,
-        renderSlice.accessResolution,
-        renderSlice.writeActionsEnabled,
-        renderSlice.replyParentAuthority,
-        threadLimitLocked,
-        renderedThread.channelArchived,
-        renderedThread.joined,
-        renderedThread.canSend,
-        composerSurface.sendChannelId,
-    ) {
-        val pending = pendingOptimisticSend ?: return@LaunchedEffect
-        val currentThreadState = threadViewModel.state.value
-        val canFlushNow =
-            !threadLimitLocked &&
-                (
-                    (
-                        renderSlice.accessResolution == ThreadAccessResolution.Resolved &&
-                            renderSlice.writeActionsEnabled &&
-                            !renderedThread.channelArchived &&
-                            renderedThread.joined &&
-                            renderedThread.canSend
-                    ) ||
-                        currentThreadState.allowsOptimisticSendWhileAccessLoading(
-                            sendChannelId = composerSurface.sendChannelId,
-                            limitLocked = threadLimitLocked,
-                        )
-                )
-        if (canFlushNow) {
-            pendingOptimisticSendState.value = null
-            val latestDraft = composerDraftViewModel.state.value
-            val resolvedRequest =
-                pending.copy(
-                    value = TextFieldValue(latestDraft.seedText),
-                    asTask = latestDraft.seedAsTask,
-                )
-            latestHandleComposerSendRequest(resolvedRequest)
-            return@LaunchedEffect
-        }
-        if (currentThreadState.canDeferOptimisticSendWhileAccessLoading(limitLocked = threadLimitLocked)) {
-            delay(10_000L)
-            if (pendingOptimisticSendState.value === pending) {
-                pendingOptimisticSendState.value = null
-                bridge.log("thread_composer_deferred_send_aborted reason=access_timeout")
-            }
-            return@LaunchedEffect
-        }
-        pendingOptimisticSendState.value = null
-        bridge.log(
-            "thread_composer_deferred_send_aborted " +
-                "accessResolution=${renderSlice.accessResolution.name} " +
-                "writeActions=${renderSlice.writeActionsEnabled} " +
-                "limitLocked=$threadLimitLocked archived=${renderedThread.channelArchived} " +
-                "joined=${renderedThread.joined} canSend=${renderedThread.canSend}"
-        )
-    }
-    LaunchedEffect(composerDraftViewModel, threadInstanceKey) {
-        composerDraftViewModel.state.collect { draftState ->
-            if (!externalShareSendRequested) return@collect
-            val externalAttachments =
-                draftState.uploadedAttachments.filter { attachment ->
-                    attachment.source == "external_share" &&
-                        attachment.id !in draftState.removedAttachmentIds
-                }
-            when {
-                externalAttachments.any { it.status == "failed" } -> externalShareSendRequested = false
-                externalAttachments.any { it.status == "queued" || it.status == "uploading" } -> Unit
-                externalAttachments.isNotEmpty() -> {
-                    val expected = externalShareExpectedAuthority
-                    val authorityCurrent =
-                        expected != null && dataSource.matchesExternalShareSendAuthority(expected)
-                    externalShareSendRequested = false
-                    externalShareExpectedAuthority = null
-                    if (authorityCurrent) {
-                        latestPerformComposerSend()
-                    } else {
-                        bridge.logWarn(
-                            "external_share_send_rejected reason=auth_generation_changed_after_upload"
-                        )
-                    }
-                }
-                else -> {
-                    externalShareSendRequested = false
-                    externalShareExpectedAuthority = null
-                }
-            }
-        }
-    }
+    ThreadComposerDeferredSendEffects(
+        bridge = bridge,
+        dataSource = dataSource,
+        threadViewModel = threadViewModel,
+        composerDraftViewModel = composerDraftViewModel,
+        threadInstanceKey = threadInstanceKey,
+        pendingOptimisticSendState = pendingOptimisticSendState,
+        renderSliceState = renderSliceState,
+        threadLimitLocked = threadLimitLocked,
+        renderedThread = renderedThread,
+        composerSurface = composerSurface,
+        externalShareSendRequestedState = externalShareSendRequestedState,
+        externalShareExpectedAuthorityState = externalShareExpectedAuthorityState,
+        latestPerformComposerSendState = latestPerformComposerSendState,
+        latestHandleComposerSendRequestState = latestHandleComposerSendRequestState,
+    )
     suspend fun admitComposerPickedAttachments(action: String, response: JSONObject?): Unit =
         threadRouteComposerActions.admitComposerPickedAttachments(action, response)
     ThreadComposerImageEventEffect(
