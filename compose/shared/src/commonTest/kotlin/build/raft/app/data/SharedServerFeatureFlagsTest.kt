@@ -1035,4 +1035,38 @@ class SharedServerFeatureFlagsTest {
         overridden.prefetch(server)
         assertFalse(overridden.isDataExportEnabled(server))
     }
+
+    @Test
+    fun privateMentionAddFlagDefaultsOffAndFollowsPerServerEvaluation() = runTest {
+        assertEquals("private_mention_add_v0", PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY)
+        assertTrue(PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse(PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        assertFalse(PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+
+        val enabled =
+            SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY","enabled":true,"reason":"server_rule"}]}"""))
+            )
+        assertFalse(enabled.isPrivateMentionAddEnabled(null))
+        assertFalse(enabled.isPrivateMentionAddEnabled(server), "unresolved defaults OFF")
+        enabled.prefetch(server)
+        assertTrue(enabled.isPrivateMentionAddEnabled(server))
+        assertFalse(enabled.isPrivateMentionAddEnabled(ServerId("s2")), "other server stays OFF until evaluated")
+
+        val missing = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
+        missing.prefetch(server)
+        assertFalse(missing.isPrivateMentionAddEnabled(server), "missing_flag stays OFF")
+
+        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
+        assertFalse(failed.prefetch(server).resolved)
+        assertFalse(failed.isPrivateMentionAddEnabled(server))
+
+        val overridden =
+            SharedServerFeatureFlags(
+                api = FakeApi(ok("""{"evaluations":[{"key":"$PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY","enabled":true}]}""")),
+                diagnosticOverride = { _, key, eff -> if (key == PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY) false else eff },
+            )
+        overridden.prefetch(server)
+        assertFalse(overridden.isPrivateMentionAddEnabled(server))
+    }
 }

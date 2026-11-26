@@ -341,6 +341,16 @@ const val DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY: String = "dm_main_timeline_lab_
  */
 @RaftCoreInternalApi const val DATA_EXPORT_FEATURE_FLAG_KEY: String = "data_export_v0"
 
+/**
+ * Add from a mention in a private or joint channel (botiverse/slock
+ * `packages/shared/src/featureFlags.ts` `PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY`, #16718 / #16726):
+ * per server, default OFF (unresolved or missing evaluates false). When ON and the viewer can add
+ * members to an unarchived private or joint channel, the `@mention` picker also lists same-server
+ * non-members (excluding outsider guests) under "Not in this channel", and add-only pending mention
+ * prompts explain that the target cannot see the message until added.
+ */
+const val PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY: String = "private_mention_add_v0"
+
 /** Effective Early access policy across a signed-in account's joined servers. */
 data class RaftEarlyAccessFlagPolicy(
     val visible: Boolean = false,
@@ -422,6 +432,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     PEOPLE_ACTIVITY_ROWS_FEATURE_FLAG_KEY,
     // Data export (botiverse/slock #15418 / #15427 / #15451 / #15506 / #15517, default OFF).
     DATA_EXPORT_FEATURE_FLAG_KEY,
+    // Add from a mention in private/joint channels (botiverse/slock #16718 / #16726, default OFF).
+    PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,
@@ -791,6 +803,14 @@ class SharedServerFeatureFlags(
             .filter(String::isNotEmpty)
             .distinct()
             .any { isEnabled(ServerId(it), DATA_EXPORT_FEATURE_FLAG_KEY) }
+
+    /**
+     * Private/joint channel add-from-mention gate (`#wg-mobile-sync:#326`, botiverse/slock
+     * #16718 / #16726 `PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY`): per server, default OFF
+     * (unresolved or missing evaluates false).
+     */
+    fun isPrivateMentionAddEnabled(serverId: ServerId?): Boolean =
+        isEnabled(serverId, PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY)
 
     /**
      * Resolves the account-wide Early access policy across [serverIds] (`#proj-mobile:e48030bc`):

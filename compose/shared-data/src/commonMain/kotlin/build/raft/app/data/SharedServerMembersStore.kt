@@ -223,7 +223,8 @@ data class SharedServerMembersState(
     fun memberSuggestionSlice(
         serverId: ServerId,
         mentionChannelId: String? = null,
-        memberScopedMentions: Boolean = false
+        memberScopedMentions: Boolean = false,
+        excludeOutsiderGuests: Boolean = false,
     ): SharedMembersMemberSuggestionSlice {
         val serverKey = serverId.value.trim()
         val channelKey = mentionChannelId.normalizedServerMembersId()
@@ -232,7 +233,8 @@ data class SharedServerMembersState(
                 SharedMembersMentionScope(
                     serverId = serverKey,
                     mentionChannelId = channelKey,
-                    memberScopedMentions = memberScopedMentions
+                    memberScopedMentions = memberScopedMentions,
+                    excludeOutsiderGuests = excludeOutsiderGuests,
                 )
             ] ?: SharedMembersMemberSuggestionSlice()
         return if (channelKey == null && entriesByServerId[serverKey]?.server.hidesHumanDirectoryFromViewer()) {
@@ -1354,8 +1356,12 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
             .listedForMembersReaderRole(_state.value.entryFor(ServerId(serverKey))?.server?.role)
 
     /** A guest this reader may not see in the directory: out of the channel, it leaves the `@` list. */
-    private fun hiddenFromDirectoryReader(serverKey: String, memberKey: String): Boolean {
-        if (showsGuestsInDirectory(serverKey)) return false
+    private fun hiddenFromDirectoryReader(
+        serverKey: String,
+        memberKey: String,
+        excludeOutsiderGuests: Boolean = false,
+    ): Boolean {
+        if (!excludeOutsiderGuests && showsGuestsInDirectory(serverKey)) return false
         val member = currentKnownMemberProfilesById(ServerId(serverKey))[memberKey] ?: return false
         return !member.listedForMembersReader(showGuests = false)
     }
@@ -1525,14 +1531,16 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
     fun memberSuggestionSliceFlow(
         serverId: ServerId,
         mentionChannelId: String? = null,
-        memberScopedMentions: Boolean = false
+        memberScopedMentions: Boolean = false,
+        excludeOutsiderGuests: Boolean = false,
     ): Flow<SharedMembersMemberSuggestionSlice> =
         state
             .map { current ->
                 current.memberSuggestionSlice(
                     serverId = serverId,
                     mentionChannelId = mentionChannelId,
-                    memberScopedMentions = memberScopedMentions
+                    memberScopedMentions = memberScopedMentions,
+                    excludeOutsiderGuests = excludeOutsiderGuests,
                 )
             }
             .distinctUntilChanged()
@@ -4021,7 +4029,8 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
         serverId: ServerId,
         mentionChannelId: String? = null,
         memberScopedMentions: Boolean = false,
-        force: Boolean = false
+        force: Boolean = false,
+        excludeOutsiderGuests: Boolean = false,
     ) {
         val key = serverId.value.trim()
         if (key.isBlank()) return
@@ -4030,7 +4039,8 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
             SharedMembersMentionScope(
                 serverId = key,
                 mentionChannelId = normalizedMentionChannelId,
-                memberScopedMentions = memberScopedMentions
+                memberScopedMentions = memberScopedMentions,
+                excludeOutsiderGuests = excludeOutsiderGuests,
             )
         val currentSlice = _state.value.memberSuggestionSlices[suggestionScope] ?: SharedMembersMemberSuggestionSlice()
         if (
@@ -4219,13 +4229,23 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                         )
                     }
                 val channelMembers = channelSnapshot?.members.orEmpty()
+                val inChannelIds = channelMembers.map { it.id.value }.toSet()
+                val directoryForSuggestions =
+                    if (suggestionScope.excludeOutsiderGuests) {
+                        // A Guest joins only its bound channel: never offered outside a private/joint channel.
+                        serverMembers.filter { member ->
+                            member.id.value in inChannelIds || member.listedForMembersReader(showGuests = false)
+                        }
+                    } else {
+                        serverMembers
+                    }
                 val suggestions =
                     if (mentionChannelId == null) {
-                        serverMembers.toServerMembersMemberSuggestions()
+                        directoryForSuggestions.toServerMembersMemberSuggestions()
                     } else {
-                        serverMembers.toServerMembersMemberSuggestions(
+                        directoryForSuggestions.toServerMembersMemberSuggestions(
                             localServerId = serverId,
-                            inMentionChannelIds = channelMembers.map { it.id.value }.toSet()
+                            inMentionChannelIds = inChannelIds
                         ).mergeServerMembersMentionChannelSuggestions(
                             channelMembers.toServerMembersMemberSuggestions(
                                 localServerId = serverId,
@@ -4524,7 +4544,13 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                         slice.suggestions.removeOrMarkMemberSuggestionOutsideMentionChannel(
                             memberId = memberKey,
                             memberKind = memberKind,
-                            remove = scope.memberScopedMentions || hiddenFromDirectoryReader(serverKey, memberKey)
+                            remove =
+                                scope.memberScopedMentions ||
+                                    hiddenFromDirectoryReader(
+                                        serverKey = serverKey,
+                                        memberKey = memberKey,
+                                        excludeOutsiderGuests = scope.excludeOutsiderGuests,
+                                    )
                         )
                     if (nextSuggestions != slice.suggestions) {
                         changed = true

@@ -5295,6 +5295,7 @@
     <string name="agent_lounge_open_failed">無法開啟會客廳，請再試一次。</string>
     <string name="agent_lounge_dm_open_failed">無法開啟私聊，請再試一次。</string>
     <string name="thread_composer_mention_lounge_agent_excluded">%1$s 不會收到通知：直接發在這裡的訊息只會傳給這個會客廳的 Agent。在討論串裡 @ 才會通知到。</string>
+    <string name="thread_composer_mention_not_in_private_channel">%1$s 不在 %2$s 中，加入頻道後才能看到這則訊息</string>
     <string name="thread_composer_placeholder_named">傳送訊息至 %1$s</string>
     <string name="thread_archived_notice">此頻道已封存。</string>
     <string name="thread_archived_unarchive">取消封存</string>

@@ -5295,6 +5295,7 @@
     <string name="agent_lounge_open_failed">No se pudo abrir el salón. Inténtalo de nuevo.</string>
     <string name="agent_lounge_dm_open_failed">No se pudo abrir el chat privado. Inténtalo de nuevo.</string>
     <string name="thread_composer_mention_lounge_agent_excluded">%1$s no recibirá la notificación: un mensaje publicado aquí solo llega al agente de este salón. Para que la reciba, haz la mención en un hilo.</string>
+    <string name="thread_composer_mention_not_in_private_channel">%1$s no está en %2$s y no verá este mensaje hasta que se le agregue</string>
     <string name="thread_composer_placeholder_named">Enviar mensaje a %1$s</string>
     <string name="thread_archived_notice">Este canal está archivado.</string>
     <string name="thread_archived_unarchive">Desarchivar</string>

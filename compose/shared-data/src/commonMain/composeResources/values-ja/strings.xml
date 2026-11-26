@@ -5478,6 +5478,7 @@
     <string name="agent_lounge_open_failed">ラウンジを開けませんでした。もう一度お試しください。</string>
     <string name="agent_lounge_dm_open_failed">プライベートチャットを開けませんでした。もう一度お試しください。</string>
     <string name="thread_composer_mention_lounge_agent_excluded">%1$s には通知されません。ここに直接投稿したメッセージは、このラウンジのエージェントにだけ届きます。通知するには、スレッドでメンションしてください。</string>
+    <string name="thread_composer_mention_not_in_private_channel">%1$s は %2$s のメンバーではないため、追加されるまでこのメッセージを見られません</string>
     <string name="thread_composer_placeholder_named">%1$s へのメッセージ</string>
     <string name="thread_archived_notice">このチャンネルはアーカイブされています。</string>
     <string name="thread_archived_unarchive">アーカイブを解除</string>
