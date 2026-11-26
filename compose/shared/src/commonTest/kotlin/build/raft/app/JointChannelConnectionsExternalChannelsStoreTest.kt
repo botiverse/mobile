@@ -16,10 +16,11 @@ import kotlin.test.assertNull
 
 /**
  * Connected servers of an external channel (web EditChannelDialog, botiverse/slock staging
- * f3c3905046d1: #13705 host first / Host badge / no plan chips, #13856 the host's per-row
- * Disconnect; the server invite form and Resend are gone since botiverse/slock #15939). Who may
- * disconnect is only what the server sent (`jointRole`, `jointServers[].role`,
- * `channelCapabilities.federateChannels`).
+ * f3c3905046d1: #13705 host first / Host badge / no plan chips, #13856 per-row Disconnect; the
+ * server invite form and Resend are gone since botiverse/slock #15939). Who may disconnect another
+ * server is only what the server sent (`channelCapabilities.federateChannels == true`, #wg-rbac:#133,
+ * regardless of `jointRole` or local `canFederate`), excluding the host row, the current server,
+ * and pending rows.
  */
 class JointChannelConnectionsExternalChannelsStoreTest {
     @Test
@@ -37,29 +38,53 @@ class JointChannelConnectionsExternalChannelsStoreTest {
     }
 
     @Test
-    fun onlyTheHostWithTheChannelsFederateCapabilityMayDisconnectAnotherActiveServer() = runTest {
-        data class Case(val role: JointChannelRole?, val federate: Boolean?, val expected: List<String>)
+    fun channelsFederateCapabilityGatesDisconnectingAnotherActiveServerOnHostOrParticipantCopy() = runTest {
+        // #wg-rbac:#133: a host owner/admin viewing from a connected participant server where they
+        // are only a local member (`canFederate = false`) still gets `federateChannels = true` and
+        // may disconnect another active participant (`srv-other`), never the current server
+        // (`srv-active`), the host (`srv-host`), or a pending row (`srv-pending`).
+        val otherParticipant =
+            JointChannelServer("srv-other", "Other Co", "other-co", active = true, isCurrentServer = false, plan = JointChannelServerPlan.Free, role = JointChannelRole.Participant)
+        data class Case(
+            val role: JointChannelRole?,
+            val federate: Boolean?,
+            val localCanFederate: Boolean,
+            val expected: List<String>,
+            val confirmTarget: String,
+        )
         listOf(
-            Case(JointChannelRole.Host, true, listOf("srv-active")),
-            Case(JointChannelRole.Host, false, emptyList()),
-            // No channelCapabilities: never the server-wide fallback.
-            Case(JointChannelRole.Host, null, emptyList()),
-            Case(JointChannelRole.Participant, true, emptyList()),
-            Case(null, true, emptyList()),
+            // Host copy: can disconnect both other active participant rows when federateChannels == true.
+            Case(JointChannelRole.Host, federate = true, localCanFederate = true, expected = listOf("srv-active", "srv-other"), confirmTarget = "srv-active"),
+            Case(JointChannelRole.Host, federate = true, localCanFederate = false, expected = listOf("srv-active", "srv-other"), confirmTarget = "srv-active"),
+            Case(JointChannelRole.Host, federate = false, localCanFederate = true, expected = emptyList(), confirmTarget = "srv-active"),
+            // Legacy server without channelCapabilities: never falls back to server-wide canFederate.
+            Case(JointChannelRole.Host, federate = null, localCanFederate = true, expected = emptyList(), confirmTarget = "srv-active"),
+            // Participant copy: local member + federateChannels == true -> can disconnect srv-other (not srv-active, which isCurrentServer).
+            Case(JointChannelRole.Participant, federate = true, localCanFederate = false, expected = listOf("srv-other"), confirmTarget = "srv-other"),
+            // Participant copy: local owner/admin + federateChannels == false -> denied.
+            Case(JointChannelRole.Participant, federate = false, localCanFederate = true, expected = emptyList(), confirmTarget = "srv-other"),
+            // Participant copy: legacy server without channelCapabilities -> denied even for local admin.
+            Case(JointChannelRole.Participant, federate = null, localCanFederate = true, expected = emptyList(), confirmTarget = "srv-other"),
+            // Missing jointRole still honors channelCapabilities.federateChannels.
+            Case(null, federate = true, localCanFederate = false, expected = listOf("srv-other"), confirmTarget = "srv-other"),
         ).forEach { case ->
-            val dataSource =
-                FakeJointConnectionsDataSource(connections = externalTestConnections(case.role, federateChannels = case.federate))
+            val base = externalTestConnections(case.role, federateChannels = case.federate)
+            val withOther = base.copy(servers = base.servers + otherParticipant)
+            val dataSource = FakeJointConnectionsDataSource(connections = withOther, canFederate = case.localCanFederate)
             val store = loadedStore(dataSource)
             val state = store.state.value
 
             assertEquals(case.expected, state.displayServers.filter(state::canDisconnectServer).map { it.serverId }, "case=$case")
-            store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer("srv-active"))
-            assertEquals("srv-active".takeIf { case.expected.isNotEmpty() }, store.state.value.disconnectConfirmServerId, "case=$case")
-            // The host's own row and a pending row never open a confirm.
+            store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer(case.confirmTarget))
+            assertEquals(case.confirmTarget.takeIf { case.expected.isNotEmpty() }, store.state.value.disconnectConfirmServerId, "case=$case")
+            // The host's own row, the current server's row (on participant copy), and a pending row never open a confirm.
             store.dispatch(JointChannelConnectionsIntent.DismissDisconnectServer)
             store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer("srv-host"))
             store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer("srv-pending"))
-            assertNull(store.state.value.disconnectConfirmServerId)
+            if (case.role != JointChannelRole.Host) {
+                store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer("srv-active"))
+            }
+            assertNull(store.state.value.disconnectConfirmServerId, "non-disconnectable rows case=$case")
             store.clear()
         }
     }

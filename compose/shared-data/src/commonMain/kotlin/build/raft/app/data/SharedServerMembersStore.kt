@@ -163,7 +163,9 @@ data class SharedServerChannelMembersSlice(
      * is written under this instant, so an older answer (another store's, or a late one) never replaces a
      * newer one on disk.
      */
-    val offlineAnswerStamp: Long = 0L
+    val offlineAnswerStamp: Long = 0L,
+    /** [ChannelMemberSnapshot.federateChannels]; null on a stored stand-in or when the server omitted it. */
+    val federateChannels: Boolean? = null
 ) {
     fun snapshotOrNull(): ChannelMemberSnapshot? =
         channelId.takeIf { it.isNotBlank() }?.let {
@@ -174,7 +176,8 @@ data class SharedServerChannelMembersSlice(
                 canAddMembers = canAddMembers,
                 canRemoveMembers = canRemoveMembers,
                 canChangeMemberRoles = canChangeMemberRoles,
-                liveActivityAgentIds = liveActivityAgentIds
+                liveActivityAgentIds = liveActivityAgentIds,
+                federateChannels = federateChannels
             )
         }
 }
@@ -3911,7 +3914,8 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                             status = SharedServerMembersLoadStatus.Loaded,
                             errorCode = null,
                             liveActivityAgentIds = result.data.liveActivityAgentIds,
-                            offlineAnswerStamp = answerStamp
+                            offlineAnswerStamp = answerStamp,
+                            federateChannels = result.data.federateChannels
                         )
                     )
                     if (normalizedScope != scope) removeChannelSlice(scope)
@@ -3935,7 +3939,8 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                             canAddMembers = result.data.canAddMembers,
                             canRemoveMembers = result.data.canRemoveMembers,
                             canChangeMemberRoles = result.data.canChangeMemberRoles,
-                            liveActivityAgentIds = result.data.liveActivityAgentIds
+                            liveActivityAgentIds = result.data.liveActivityAgentIds,
+                            federateChannels = result.data.federateChannels
                         )
                     )
                 }
@@ -3957,7 +3962,8 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                             canAddMembersKnown = previousForBinding?.canAddMembersKnown == true,
                             status = SharedServerMembersLoadStatus.Loaded,
                             errorCode = null,
-                            offlineAnswerStamp = answerStamp
+                            offlineAnswerStamp = answerStamp,
+                            federateChannels = previousForBinding?.takeUnless { it.storedStandIn }?.federateChannels
                         )
                     )
                     logger("shared_server_channel_members_load_result serverId=$serverKey channelId=$channelKey result=empty")

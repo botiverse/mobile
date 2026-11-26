@@ -1413,7 +1413,13 @@ data class ChannelMemberSnapshot(
     /** Ids of agent rows that carried the server's live `activity` (the non-guest
      *  `GET /channels/:id/members` merges it in; the guest projection omits it). An
      *  explicit producer signal: only these rows may seed live presence facts. */
-    val liveActivityAgentIds: Set<String> = emptySet()
+    val liveActivityAgentIds: Set<String> = emptySet(),
+    /**
+     * The channel's `channelCapabilities.federateChannels` resolved by `GET /channels/:id`
+     * (false when the channel is archived or `#all`, null when the detail could not be read or the
+     * server omitted `channelCapabilities`). Gates external invites on the members page (#wg-rbac:#133).
+     */
+    val federateChannels: Boolean? = null
 )
 
 @Serializable

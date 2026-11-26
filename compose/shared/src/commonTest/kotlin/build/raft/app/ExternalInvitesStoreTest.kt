@@ -134,20 +134,60 @@ class ExternalInvitesStoreTest {
         archived: Boolean = false,
         jointRole: String? = null,
         hasExternalRelation: Boolean = false,
-    ) = ExternalInviteChannel(type, name, archived, jointRole, hasExternalRelation)
+        federateChannels: Boolean? = null,
+    ) = ExternalInviteChannel(type, name, archived, jointRole, hasExternalRelation, federateChannels)
 
     @Test
-    fun accessNeedsAnOwnerOrAdminAndAnInvitableChannel() {
+    fun accessAndManagementTrustFederateCapabilityOnAnyJointCopyAndIgnoreViewerServerRole() {
+        // #wg-rbac:#133: host owner/admin viewing from a connected participant server where they
+        // are only a local member gets federateChannels == true and can invite/manage.
+        val participantAllowed = channel(type = "joint", jointRole = "participant", federateChannels = true)
+        listOf("member", "guest", null, "admin", "owner").forEach { role ->
+            assertTrue(externalInviteAccess(role, participantAllowed), "access role=$role")
+            assertTrue(externalInviteManagement(role, participantAllowed), "management role=$role")
+        }
+        // Participant owner/admin who is NOT a host owner/admin gets federateChannels == false.
+        val participantDenied = channel(type = "joint", jointRole = "participant", federateChannels = false)
+        listOf("owner", "admin", "member", null).forEach { role ->
+            assertFalse(externalInviteAccess(role, participantDenied), "denied access role=$role")
+            assertFalse(externalInviteManagement(role, participantDenied), "denied management role=$role")
+        }
+        // Host copy follows channelCapabilities.federateChannels directly (never own-server role).
+        assertTrue(externalInviteAccess("member", channel(type = "joint", jointRole = "host", federateChannels = true)))
+        assertTrue(externalInviteManagement("member", channel(type = "joint", jointRole = "host", federateChannels = true)))
+        assertFalse(externalInviteAccess("owner", channel(type = "joint", jointRole = "host", federateChannels = false)))
+        assertFalse(externalInviteManagement("owner", channel(type = "joint", jointRole = "host", federateChannels = false)))
+        // Regular channels also follow federateChannels when present.
+        assertTrue(externalInviteAccess("member", channel(type = "channel", federateChannels = true)))
+        assertFalse(externalInviteAccess("owner", channel(type = "private", federateChannels = false)))
+        // Channel invitable guards still hold even if federateChannels == true.
+        listOf(
+            channel(type = "joint", jointRole = "participant", archived = true, federateChannels = true),
+            channel(type = "joint", jointRole = "host", archived = true, federateChannels = true),
+            channel(type = "channel", name = "all", federateChannels = true),
+            channel(type = "private", archived = true, federateChannels = true),
+            channel(type = "dm", federateChannels = true),
+        ).forEachIndexed { index, target ->
+            assertFalse(externalInviteAccess("owner", target), "guard access case $index")
+            assertFalse(externalInviteManagement("owner", target), "guard management case $index")
+        }
+    }
+
+    @Test
+    fun legacyServerWithoutChannelCapabilitiesFallsBackToServerRoleAndHostJointRole() {
         assertTrue(externalInviteAccess("owner", channel()))
         assertTrue(externalInviteAccess("admin", channel(type = "channel")))
         assertTrue(externalInviteAccess("admin", channel(type = "joint", jointRole = "host")))
+        assertTrue(externalInviteManagement("admin", channel(type = "joint", jointRole = "host")))
         listOf(
             externalInviteAccess("member", channel()),
             externalInviteAccess(null, channel()),
             externalInviteAccess("owner", channel(name = "all", type = "channel")),
             externalInviteAccess("owner", channel(archived = true)),
-            // Another server's projection of a joint channel is the host's to share.
+            // Legacy server without channelCapabilities: only the host copy invites.
+            externalInviteAccess("owner", channel(type = "joint", jointRole = "participant")),
             externalInviteAccess("owner", channel(type = "joint", jointRole = "member")),
+            externalInviteAccess("owner", channel(type = "joint", jointRole = null)),
             externalInviteAccess("owner", channel(type = "dm")),
             externalInviteAccess("owner", null),
         ).forEachIndexed { index, allowed -> assertFalse(allowed, "case $index") }
