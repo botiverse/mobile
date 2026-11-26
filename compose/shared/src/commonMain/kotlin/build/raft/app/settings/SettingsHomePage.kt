@@ -1051,6 +1051,14 @@ private fun RaftAppShellReadyContent(
                 scope = jointInviteScope,
             )
         }
+    // Owner/admin usage-limit attention cards (GET /api/servers/:id/system-notifications-v2, slock #13079).
+    val usageLimitAttentionStore =
+        remember(appShellNetworkClient, jointInviteScope) {
+            build.raft.app.data.SharedUsageLimitAttentionStore(
+                dataSource = build.raft.app.data.NetworkUsageLimitAttentionDataSource(appShellNetworkClient),
+                scope = jointInviteScope,
+            )
+        }
     val homeReadReceiptRepository =
         remember(shellAuthStore, appShellNetworkClient) {
             RealReadReceiptRepository(
@@ -3765,9 +3773,10 @@ private fun RaftAppShellReadyContent(
                             ) {
                                 realtimeShellForegroundTick += 1
                             }
-                            // Web: the reset notice is read again whenever the window comes back.
+                            // Web: the reset notice and usage-limit cards are read again whenever the window comes back.
                             if (latestReadySession != null) {
                                 secondFactorRecoveryStore.dispatch(build.raft.app.data.SharedSecondFactorRecoveryIntent.RefreshIfStale)
+                                usageLimitAttentionStore.dispatch(build.raft.app.data.SharedUsageLimitAttentionIntent.RefreshIfStale)
                             }
                         }
                         if (visibleLifecycleEvent && !latestPageVisible) {
@@ -6979,6 +6988,7 @@ private fun RaftAppShellReadyContent(
                                 channelRepository = channelRepository,
                                 jointInviteStore = jointInviteStore,
                                 secondFactorRecoveryStore = secondFactorRecoveryStore,
+                                usageLimitAttentionStore = usageLimitAttentionStore,
                                 topSafeAreaOverride = shellScope.topSafeArea,
                                 bottomContentPadding = appShellBottomContentInset,
                                 listPositionServerId = homeListPositionServerId,

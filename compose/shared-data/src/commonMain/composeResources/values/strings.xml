@@ -2695,6 +2695,11 @@
     <string name="home_second_factor_recovery_cancel">Cancel reset</string>
     <string name="home_second_factor_recovery_cancelled">Reset cancelled. Two-step verification stays on, and we emailed you.</string>
     <string name="home_second_factor_recovery_cancel_failed">The reset wasn't cancelled. Try again.</string>
+    <string name="home_notification_usage_limit_title">%1$s used up</string>
+    <string name="home_notification_usage_limit_body_one">%1$d agent on %2$s may pause until usage is available again.</string>
+    <string name="home_notification_usage_limit_body_many">%1$d agents on %2$s may pause until usage is available again.</string>
+    <string name="home_notification_usage_limit_body_with_reset_one">%1$d agent on %2$s may pause. Back %3$s.</string>
+    <string name="home_notification_usage_limit_body_with_reset_many">%1$d agents on %2$s may pause. Back %3$s.</string>
     <string name="home_notification_app_update_title">App update available</string>
     <string name="home_notification_app_update_ready_title">Update ready to install</string>
     <string name="home_notification_app_update_body">Current version %1$s. Latest version %2$s.</string>

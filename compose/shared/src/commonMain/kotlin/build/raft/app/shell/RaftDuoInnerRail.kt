@@ -133,13 +133,14 @@ internal fun RaftAppRailNotificationBell(
     onToggle: () -> Unit,
 ) {
     val visible = remember(state.notifications) { state.notifications.visibleHomeNotifications() }
+    val unreadCount = visible.count { it.unread }
     val securityAlert = visible.hasHomeSecurityAlert()
     val securityAlertLabel = Res.string.home_notification_center_security_alert.format(listOf(visible.size)).localized()
     val attentionDescription =
-        if (securityAlert) securityAlertLabel else when (visible.size) {
+        if (securityAlert) securityAlertLabel else when (unreadCount) {
             0 -> null
             1 -> Res.string.home_notification_center_item_count_one.format(listOf(1)).localized()
-            else -> Res.string.home_notification_center_item_count_many.format(listOf(visible.size)).localized()
+            else -> Res.string.home_notification_center_item_count_many.format(listOf(unreadCount)).localized()
         }
     RaftAppRailItem(
         label = stringResource(Res.string.home_notification_center_title),
@@ -159,7 +160,7 @@ internal fun RaftAppRailNotificationBell(
                 if (securityAlert) HomeNotificationSecurityMarker(Modifier.align(Alignment.TopEnd))
             }
         },
-        attention = visible.isNotEmpty() && !securityAlert,
+        attention = visible.hasUnreadHomeNotifications() && !securityAlert,
         attentionDescription = attentionDescription,
     )
 }

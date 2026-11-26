@@ -2691,6 +2691,11 @@
     <string name="home_second_factor_recovery_cancel">재설정 취소</string>
     <string name="home_second_factor_recovery_cancelled">재설정을 취소했어요. 2단계 인증은 계속 켜져 있고, 안내 이메일도 보내 드렸어요.</string>
     <string name="home_second_factor_recovery_cancel_failed">재설정을 취소하지 못했어요. 다시 시도해 주세요.</string>
+    <string name="home_notification_usage_limit_title">%1$s 모두 사용</string>
+    <string name="home_notification_usage_limit_body_one">사용량 한도가 풀릴 때까지 %2$s의 에이전트 %1$d개가 일시 중지될 수 있어요.</string>
+    <string name="home_notification_usage_limit_body_many">사용량 한도가 풀릴 때까지 %2$s의 에이전트 %1$d개가 일시 중지될 수 있어요.</string>
+    <string name="home_notification_usage_limit_body_with_reset_one">%2$s의 에이전트 %1$d개가 일시 중지될 수 있어요. %3$s 복구돼요.</string>
+    <string name="home_notification_usage_limit_body_with_reset_many">%2$s의 에이전트 %1$d개가 일시 중지될 수 있어요. %3$s 복구돼요.</string>
     <string name="home_notification_app_update_title">앱 업데이트가 있어요</string>
     <string name="home_notification_app_update_ready_title">업데이트 설치 준비 완료</string>
     <string name="home_notification_app_update_body">현재 버전 %1$s. 최신 버전 %2$s.</string>

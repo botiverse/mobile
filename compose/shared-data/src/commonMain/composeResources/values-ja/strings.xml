@@ -2694,6 +2694,11 @@
     <string name="home_second_factor_recovery_cancel">リセットをキャンセル</string>
     <string name="home_second_factor_recovery_cancelled">リセットをキャンセルしました。2 段階認証はオンのままです。確認のメールをお送りしました。</string>
     <string name="home_second_factor_recovery_cancel_failed">リセットをキャンセルできませんでした。もう一度お試しください。</string>
+    <string name="home_notification_usage_limit_title">%1$s 上限到達</string>
+    <string name="home_notification_usage_limit_body_one">%2$s のエージェント %1$d 個は、使用量が回復するまで一時停止する場合があります。</string>
+    <string name="home_notification_usage_limit_body_many">%2$s のエージェント %1$d 個は、使用量が回復するまで一時停止する場合があります。</string>
+    <string name="home_notification_usage_limit_body_with_reset_one">%2$s のエージェント %1$d 個が一時停止する場合があります。%3$sに回復します。</string>
+    <string name="home_notification_usage_limit_body_with_reset_many">%2$s のエージェント %1$d 個が一時停止する場合があります。%3$sに回復します。</string>
     <string name="home_notification_app_update_title">アプリのアップデートがあります</string>
     <string name="home_notification_app_update_ready_title">アップデートの準備ができました</string>
     <string name="home_notification_app_update_body">現在のバージョン %1$s。最新バージョン %2$s。</string>

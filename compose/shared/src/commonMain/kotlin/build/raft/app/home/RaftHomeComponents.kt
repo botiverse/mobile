@@ -611,6 +611,11 @@ data class RaftHomeNotificationItem(
     val security: Boolean = false,
     /** False while the primary action runs (web `action.disabled`). */
     val actionEnabled: Boolean = true,
+    /**
+     * Server-backed unread state (web NotificationEntry `unread`): true by default so local
+     * notices retain legacy behavior; server-backed usage-limit notices flip to false once seen.
+     */
+    val unread: Boolean = true,
 )
 
 @Serializable
@@ -5048,19 +5053,20 @@ private fun homeSideColumnBellAction(
     onToggle: () -> Unit,
 ): RaftSideAction {
     val visible = remember(notifications) { notifications.visibleHomeNotifications() }
+    val unreadCount = visible.count { it.unread }
     val securityAlertLabel = Res.string.home_notification_center_security_alert.format(listOf(visible.size)).localized()
     val attentionDescription =
-        if (visible.hasHomeSecurityAlert()) securityAlertLabel else when (visible.size) {
+        if (visible.hasHomeSecurityAlert()) securityAlertLabel else when (unreadCount) {
             0 -> null
             1 -> Res.string.home_notification_center_item_count_one.format(listOf(1)).localized()
-            else -> Res.string.home_notification_center_item_count_many.format(listOf(visible.size)).localized()
+            else -> Res.string.home_notification_center_item_count_many.format(listOf(unreadCount)).localized()
         }
     return raftSideColumnLucideAction(
         id = "home-bell",
         label = stringResource(Res.string.home_notification_center_title),
         icon = RaftLucideIconName.Bell,
         onClick = onToggle,
-        attention = visible.isNotEmpty(),
+        attention = visible.hasUnreadHomeNotifications(),
         attentionDescription = attentionDescription,
     )
 }
@@ -5847,14 +5853,15 @@ private fun HomeNativeNavBarHead(
     onNotificationToggle: () -> Unit,
 ) {
     val visible = remember(notifications) { notifications.visibleHomeNotifications() }
+    val unreadCount = visible.count { it.unread }
     val bellLabel = stringResource(Res.string.home_notification_center_title)
     val bell =
         RaftNativeNavBarAction(
             id = "home-bell",
             label = bellLabel,
-            systemSymbol = if (visible.isEmpty()) "bell" else "bell.badge",
+            systemSymbol = if (unreadCount == 0) "bell" else "bell.badge",
             onClick = onNotificationToggle,
-            badge = visible.size.takeIf { it > 0 },
+            badge = unreadCount.takeIf { it > 0 },
             // The Compose head's bell (its count is the bar button's badge).
             icon = RaftLucideIconName.Bell,
         )
@@ -6135,14 +6142,14 @@ internal fun RaftAppTopBarNotificationOverlay(
 }
 
 @Composable
-private fun HomeNotificationBellButton(
+internal fun HomeNotificationBellButton(
     notifications: List<RaftHomeNotificationItem>,
     open: Boolean,
     onToggle: () -> Unit,
     size: Dp,
 ) {
     val visibleNotifications = remember(notifications) { notifications.visibleHomeNotifications() }
-    val hasUnread = visibleNotifications.isNotEmpty()
+    val hasUnread = visibleNotifications.hasUnreadHomeNotifications()
     val securityAlert = visibleNotifications.hasHomeSecurityAlert()
     val securityAlertLabel =
         Res.string.home_notification_center_security_alert.format(listOf(visibleNotifications.size)).localized()
@@ -6165,7 +6172,7 @@ private fun HomeNotificationBellButton(
             if (securityAlert) {
                 HomeNotificationSecurityMarker(Modifier.align(Alignment.TopEnd))
             } else if (hasUnread) {
-                ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
+                ServerUnreadMarker(Modifier.align(Alignment.TopEnd).testTag(HOME_NOTIFICATION_UNREAD_DOT_TAG))
             }
         }
     }
@@ -6188,9 +6195,12 @@ internal fun HomeNotificationSecurityMarker(modifier: Modifier = Modifier) {
 }
 
 internal const val HOME_NOTIFICATION_SECURITY_MARKER_TAG = "home-notification-security-marker"
+internal const val HOME_NOTIFICATION_UNREAD_DOT_TAG = "home-notification-unread-dot"
 private val HomeNotificationSecurityMarkerOffset = 8.dp
 
 internal fun List<RaftHomeNotificationItem>.hasHomeSecurityAlert(): Boolean = any { it.security }
+
+internal fun List<RaftHomeNotificationItem>.hasUnreadHomeNotifications(): Boolean = any { it.unread }
 
 // A 20dp bell in a 44dp button: raft-ui NotificationCenter's bell size (`size-5`). The web phone navbar
 // uses 22px; artin found that too big in the app (2026-10-21).
@@ -6307,7 +6317,7 @@ internal fun HomeAppUpdateBanner(
  * or the all-clear empty state.
  */
 @Composable
-private fun HomeNotificationPopover(
+internal fun HomeNotificationPopover(
     notifications: List<RaftHomeNotificationItem>,
     onView: (RaftHomeNotificationItem) -> Unit,
     onDismiss: (RaftHomeNotificationItem) -> Unit,
@@ -6414,7 +6424,7 @@ private fun HomeNotificationRow(
     val colors = RaftTheme.colors
     val title = notification.title.ifBlank { notification.body }
     val body = if (notification.title.isBlank()) "" else notification.body
-    Box(modifier = Modifier.fillMaxWidth()) {
+    Box(modifier = Modifier.fillMaxWidth().testTag("home_notification_row_${notification.id}")) {
         if (!first) {
             Box(
                 Modifier
@@ -6467,11 +6477,13 @@ private fun HomeNotificationRow(
                 }
             }
         }
-        RaftStatusDot(
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = HomeNotificationUnreadTop, end = 16.dp),
-            variant = RaftStatusVariant.Accent,
-            size = RaftStatusSize.Md
-        )
+        if (notification.unread) {
+            RaftStatusDot(
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = HomeNotificationUnreadTop, end = 16.dp),
+                variant = RaftStatusVariant.Accent,
+                size = RaftStatusSize.Md
+            )
+        }
     }
 }
 
