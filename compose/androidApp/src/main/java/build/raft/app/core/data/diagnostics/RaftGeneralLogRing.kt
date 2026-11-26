@@ -155,11 +155,18 @@ object RaftGeneralLogRing {
         }
     }
 
+    internal fun droppedEntryCount(): Long = droppedEntries.get()
+
     fun flush(): Boolean =
-        runCatching {
+        try {
             executor.submit { }.get(2L, TimeUnit.SECONDS)
-            droppedEntries.get() == 0L
-        }.getOrDefault(false)
+            true
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        } catch (_: Throwable) {
+            false
+        }
 
     fun logFiles(context: Context): List<File> {
         val appContext = context.applicationContext

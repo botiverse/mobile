@@ -522,10 +522,8 @@ private fun Bitmap.recycleIfNeededForThreadImage() {
 }
 
 /**
- * The user-facing copy/share text (Settings > About "Copy environment info", Diagnostics share,
- * the signed-out report-failed fallback): the Environment rows only. App run logs never go on the
- * clipboard or a share sheet; they leave the device only with an explicit Feedback submit, inside
- * the attachment built by [formatMergedSettingsDiagnosticsExportText] (product ruling 2026-11-17).
+ * Environment-only summary text (used by the compact Hands feedback share reference and as the
+ * header of [formatMergedSettingsDiagnosticsExportText]).
  */
 internal fun formatSettingsDiagnosticsSummaryText(about: Map<String, Any>): String =
         buildString {
@@ -534,6 +532,48 @@ internal fun formatSettingsDiagnosticsSummaryText(about: Map<String, Any>): Stri
             appendLine("Environment")
             appendMergedSettingsDiagnosticsEnvironmentRows(about)
         }
+
+internal const val SETTINGS_DIAGNOSTICS_COPY_MAX_LOG_CHARS = 64_000
+internal const val SETTINGS_DIAGNOSTICS_COPY_MAX_TOTAL_CHARS = 80_000
+
+/**
+ * User-facing Settings -> Diagnostics / About copy & share text: includes the Environment summary
+ * plus sanitized recent logs, safely capped below Android's Binder clipboard transaction limit.
+ */
+internal fun formatSettingsDiagnosticsCopyShareText(
+        about: Map<String, Any>,
+        recentLogs: String,
+        hasFallbackDiagnosticsLogs: Boolean,
+        maxTotalChars: Int = SETTINGS_DIAGNOSTICS_COPY_MAX_TOTAL_CHARS,
+): String {
+    val safeMaxTotalChars = maxTotalChars.coerceAtLeast(0)
+    val sanitizedLogs = build.raft.app.core.data.diagnostics.DiagnosticsSanitizer.sanitize(recentLogs).trim()
+    val headerOnly =
+            formatMergedSettingsDiagnosticsExportText(
+                    about = about,
+                    recentLogs = "",
+                    hasFallbackDiagnosticsLogs = hasFallbackDiagnosticsLogs,
+            )
+    if (sanitizedLogs.isEmpty()) return headerOnly.take(safeMaxTotalChars)
+    val overheadChars =
+            formatMergedSettingsDiagnosticsExportText(
+                    about = about,
+                    recentLogs = "X",
+                    hasFallbackDiagnosticsLogs = hasFallbackDiagnosticsLogs,
+            ).length - 1
+    val logBudget = (safeMaxTotalChars - overheadChars).coerceAtLeast(0)
+    val boundedLogs =
+            if (sanitizedLogs.length > logBudget) {
+                sanitizedLogs.takeLast(logBudget)
+            } else {
+                sanitizedLogs
+            }
+    return formatMergedSettingsDiagnosticsExportText(
+            about = about,
+            recentLogs = boundedLogs,
+            hasFallbackDiagnosticsLogs = hasFallbackDiagnosticsLogs,
+    ).take(safeMaxTotalChars)
+}
 
 private fun StringBuilder.appendMergedSettingsDiagnosticsEnvironmentRows(about: Map<String, Any>) {
     appendDiagnosticsExportLine("App", about.diagnosticsStringValue("appName").ifBlank { "Raft" })
@@ -898,7 +938,8 @@ internal open class RaftCmpActivity :
     private var imeTraceMaxProgressImePx = 0
     private var cmpFirstFrameListener: ViewTreeObserver.OnDrawListener? = null
     private var databaseLaunchDrawListener: ViewTreeObserver.OnDrawListener? = null
-    private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
+    private val threadAttachmentPickerLatch = AndroidPendingAttachmentPickerLatch<PendingThreadAttachmentUpload>()
+    private var pendingAttachmentPickerRecoveryRunnable: Runnable? = null
     private var pendingThreadCameraCapture: PendingThreadCameraCapture? = null
     private var pendingAttachmentSaveAs: PendingAndroidAttachmentSaveAs? = null
     private var androidShellLaunchTarget: AndroidShellLaunchTarget? = null
@@ -1767,6 +1808,12 @@ internal open class RaftCmpActivity :
         removeHomeColdStartNativeHold(reason = "destroy")
         removeCmpFirstFrameListener()
         whiteScreenHandler.removeCallbacks(whiteScreenWatch)
+        cancelPendingAttachmentPickerRecovery()
+        if (isFinishing) {
+            pendingThreadCameraCapture?.file?.let { runCatching { it.delete() } }
+            pendingThreadCameraCapture = null
+            threadAttachmentPickerLatch.consume()?.callback?.invoke(mapOf("code" to 204, "bodyText" to ""))
+        }
         removeDatabaseLaunchDrawListener()
         postFirstFrameResumeCoordinator.cancel()
         postFirstFrameResumeJob?.cancel()
@@ -1822,6 +1869,7 @@ internal open class RaftCmpActivity :
     }
 
     override fun onStop() {
+        threadAttachmentPickerLatch.onHostPausedOrStopped()
         RaftRecentsTaskColor.recordStop(this, pageName, hostCanvasArgb, recentsTaskColor.appliedArgb)
         screenshotFeedbackPolicyJob?.cancel()
         screenshotFeedbackPolicyJob = null
@@ -1950,6 +1998,8 @@ internal open class RaftCmpActivity :
     }
 
     override fun onPause() {
+        threadAttachmentPickerLatch.onHostPausedOrStopped()
+        cancelPendingAttachmentPickerRecovery()
         postFirstFrameResumeCoordinator.cancel()
         postFirstFrameResumeJob?.cancel()
         postFirstFrameResumeJob = null
@@ -2002,6 +2052,7 @@ internal open class RaftCmpActivity :
         if (hostAttached) {
             reportRealtimeVisibility(AndroidHostVisibility.Visible, "activity_on_resume")
         }
+        schedulePendingAttachmentPickerRecoveryIfNeeded()
         // Defer non-first-frame Binder IPCs (Play services/battery probes, widget queries,
         // notification permission/summary refreshes, keep-alive start) until after Frame 1 draws
         // so returning from background paints cleanly without stalling the opening scroll.
@@ -2468,6 +2519,29 @@ internal open class RaftCmpActivity :
         }
     }
 
+    private fun cancelPendingAttachmentPickerRecovery() {
+        pendingAttachmentPickerRecoveryRunnable?.let { whiteScreenHandler.removeCallbacks(it) }
+        pendingAttachmentPickerRecoveryRunnable = null
+    }
+
+    private fun schedulePendingAttachmentPickerRecoveryIfNeeded() {
+        cancelPendingAttachmentPickerRecovery()
+        val expectedToken = threadAttachmentPickerLatch.resumeRecoveryTokenOrNull() ?: return
+        val recovery =
+                Runnable {
+                    pendingAttachmentPickerRecoveryRunnable = null
+                    val orphaned = threadAttachmentPickerLatch.recoverIfOrphaned(expectedToken) ?: return@Runnable
+                    pendingThreadCameraCapture?.file?.let { runCatching { it.delete() } }
+                    pendingThreadCameraCapture = null
+                    RaftAppLog.w("SlockKuiklyAttachment", "picker_orphaned_on_resume_recovered")
+                    orphaned.callback?.invoke(mapOf("code" to 204, "bodyText" to ""))
+                }
+        pendingAttachmentPickerRecoveryRunnable = recovery
+        // AndroidX ActivityResultRegistry delivers results at ON_START (before ON_RESUME), so any
+        // real result has already consumed the latch before this main-looper runnable runs.
+        whiteScreenHandler.post(recovery)
+    }
+
     override fun requestThreadAttachmentUpload(
             channelId: String,
             imageOnly: Boolean,
@@ -2475,7 +2549,7 @@ internal open class RaftCmpActivity :
             compressImages: Boolean,
             callback: RaftBridgeCallback?
     ) {
-        if (pendingThreadAttachmentUpload != null) {
+        if (threadAttachmentPickerLatch.isBusy) {
             callback?.invoke(
                     mapOf(
                             "code" to 409,
@@ -2486,13 +2560,25 @@ internal open class RaftCmpActivity :
             )
             return
         }
-        pendingThreadAttachmentUpload =
+        cancelPendingAttachmentPickerRecovery()
+        val pending =
                 PendingThreadAttachmentUpload(
                         channelId = channelId,
                         imageOnly = imageOnly,
                         compressImages = compressImages,
                         callback = callback
                 )
+        if (threadAttachmentPickerLatch.begin(pending) == null) {
+            callback?.invoke(
+                    mapOf(
+                            "code" to 409,
+                            "bodyText" to "",
+                            "errorCode" to "attachment_picker_busy",
+                            "errorBodyText" to "Attachment picker already open"
+                    )
+            )
+            return
+        }
         runCatching {
                     if (capture) {
                         val cameraCapture = createPendingThreadCameraCapture()
@@ -2507,7 +2593,7 @@ internal open class RaftCmpActivity :
                 .onFailure { throwable ->
                     pendingThreadCameraCapture?.file?.let { runCatching { it.delete() } }
                     pendingThreadCameraCapture = null
-                    pendingThreadAttachmentUpload = null
+                    threadAttachmentPickerLatch.consume()
                     callback?.invoke(
                             mapOf(
                                     "code" to 0,
@@ -2541,8 +2627,10 @@ internal open class RaftCmpActivity :
     }
 
     private fun handleThreadCameraCaptureResult(captured: Boolean) {
+        cancelPendingAttachmentPickerRecovery()
         val cameraCapture = pendingThreadCameraCapture ?: run {
             nav3Results?.dropRecreated(RAFT_STACK_RESULT_ATTACHMENT_PICKER)
+            threadAttachmentPickerLatch.consume()?.callback?.invoke(mapOf("code" to 204, "bodyText" to ""))
             return
         }
         pendingThreadCameraCapture = null
@@ -2555,12 +2643,12 @@ internal open class RaftCmpActivity :
                 "SlockCameraCapture",
                 "camera_result_discarded_after_activity_recreation captured=$captured cleaned=$cleaned",
             )
+            threadAttachmentPickerLatch.consume()?.callback?.invoke(mapOf("code" to 204, "bodyText" to ""))
             return
         }
         if (!captured || !cameraCapture.file.isFile || cameraCapture.file.length() <= 0L) {
             runCatching { cameraCapture.file.delete() }
-            val pending = pendingThreadAttachmentUpload ?: return
-            pendingThreadAttachmentUpload = null
+            val pending = threadAttachmentPickerLatch.consume() ?: return
             pending.callback?.invoke(mapOf("code" to 204, "bodyText" to ""))
             return
         }
@@ -2577,12 +2665,12 @@ internal open class RaftCmpActivity :
             source: String = "platform_picker",
             sourceFilesToDelete: List<File> = emptyList()
     ) {
-        val pending = pendingThreadAttachmentUpload ?: run {
+        cancelPendingAttachmentPickerRecovery()
+        val pending = threadAttachmentPickerLatch.consume() ?: run {
             // A picker result for a request made before this window was recreated: dropped.
             nav3Results?.dropRecreated(RAFT_STACK_RESULT_ATTACHMENT_PICKER)
             return
         }
-        pendingThreadAttachmentUpload = null
         RaftAppLog.record(
                 "SlockKuiklyAttachment",
                 "picker_result uriCount=${uris.size}"
@@ -5759,18 +5847,18 @@ internal class RaftBridgeModule(
             }
             "copyDiagnostics" -> {
                 scope.launchSettingsBridgeAction(callback) {
-                    val summaryText = withContext(Dispatchers.IO) { buildSettingsDiagnosticsSummaryText() }
-                    copyText("Raft diagnostics", summaryText)
-                    RaftAppLog.record("SlockDiagnostics", "shared_copy_diagnostics")
+                    val exportText = withContext(Dispatchers.IO) { buildSettingsDiagnosticsCopyShareText() }
+                    copyText("Raft diagnostics", exportText)
+                    RaftAppLog.record("SlockDiagnostics", "shared_copy_diagnostics chars=${exportText.length}")
                     mapOf("status" to "ok")
                 }
                 return
             }
             "shareDiagnostics" -> {
                 scope.launchSettingsBridgeAction(callback) {
-                    val summaryText = withContext(Dispatchers.IO) { buildSettingsDiagnosticsSummaryText() }
-                    shareText(subject = "Raft diagnostics", text = summaryText)
-                    RaftAppLog.record("SlockDiagnostics", "shared_share_diagnostics")
+                    val exportText = withContext(Dispatchers.IO) { buildSettingsDiagnosticsCopyShareText() }
+                    shareText(subject = "Raft diagnostics", text = exportText)
+                    RaftAppLog.record("SlockDiagnostics", "shared_share_diagnostics chars=${exportText.length}")
                     mapOf("status" to "ok")
                 }
                 return
@@ -7554,6 +7642,7 @@ internal class RaftBridgeModule(
             cancelFeedbackDiagnosticsOperation(stale)
         }
         if (!feedbackDiagnosticsLifecycle.start(requestId, binding)) {
+            RaftAppLog.w("SlockDiagnostics", "feedback_diagnostics_start_rejected requestId=$requestId")
             callback?.invoke(
                 feedbackDiagnosticsEventPayload(
                     requestId,
@@ -7576,6 +7665,7 @@ internal class RaftBridgeModule(
         feedbackDiagnosticsUploads[requestId] = operation
         val hostActivity = activity as? ComponentActivity
         if (hostActivity == null) {
+            RaftAppLog.w("SlockDiagnostics", "feedback_diagnostics_no_activity requestId=$requestId")
             cancelFeedbackDiagnosticsOperation(operation)
             callback?.invoke(
                 feedbackDiagnosticsEventPayload(
@@ -7603,6 +7693,11 @@ internal class RaftBridgeModule(
                         } else {
                             FeedbackDiagnosticsFailureReason.GenerateFailed
                         }
+                    RaftAppLog.w(
+                        "SlockDiagnostics",
+                        "feedback_diagnostics_begin_upload_rejected requestId=$requestId " +
+                            "reason=${reason.name.lowercase(Locale.US)} bytes=$archiveSize maxBytes=${FeedbackDiagnosticsLifecycle.MAX_BYTES}"
+                    )
                     feedbackDiagnosticsLifecycle.failed(requestId, binding, reason)?.let { event ->
                         callback?.invoke(feedbackDiagnosticsEventPayload(event))
                     }
@@ -7624,6 +7719,11 @@ internal class RaftBridgeModule(
                 }
             } catch (_: CancellationException) {
                 // Cancellation invalidates the ledger; never emit a late failed/done event.
+                RaftAppLog.w(
+                    "SlockDiagnostics",
+                    "feedback_diagnostics_cancelled requestId=$requestId " +
+                        "phase=${feedbackDiagnosticsLifecycle.phase(requestId, binding)?.name?.lowercase(Locale.US) ?: "cleared"}"
+                )
             } catch (error: Throwable) {
                 val reason =
                     when {
@@ -7634,6 +7734,18 @@ internal class RaftBridgeModule(
                             FeedbackDiagnosticsFailureReason.GenerateFailed
                         else -> FeedbackDiagnosticsFailureReason.UploadFailed
                     }
+                val statusSuffix =
+                    if (error is HandsDiagnosticsPreuploadException) " status=${error.statusCode}" else ""
+                val safeMessage =
+                    build.raft.app.core.data.diagnostics.DiagnosticsSanitizer
+                        .sanitize(error.message.orEmpty())
+                        .replace(Regex("\\s+"), " ")
+                        .take(160)
+                RaftAppLog.w(
+                    "SlockDiagnostics",
+                    "feedback_diagnostics_failed requestId=$requestId reason=${reason.name.lowercase(Locale.US)} " +
+                        "error=${error.javaClass.simpleName}$statusSuffix message=$safeMessage"
+                )
                 feedbackDiagnosticsLifecycle.failed(requestId, binding, reason)?.let { event ->
                     callback?.invoke(feedbackDiagnosticsEventPayload(event))
                 }
@@ -7652,6 +7764,11 @@ internal class RaftBridgeModule(
         operation.authMonitorJob = hostActivity.lifecycleScope.launch {
             val initialAccount = withContext(Dispatchers.IO) { authStore.readSession()?.user?.id }
             if (initialAccount != operation.binding.accountId) {
+                RaftAppLog.w(
+                    "SlockDiagnostics",
+                    "feedback_diagnostics_auth_cancelled requestId=${operation.requestId} " +
+                        "reason=initial_account_mismatch hasSession=${initialAccount != null}"
+                )
                 cancelFeedbackDiagnosticsOperation(operation)
                 return@launch
             }
@@ -7662,6 +7779,16 @@ internal class RaftBridgeModule(
                         event is AuthSessionEvent.Authenticated ||
                         currentAccount != operation.binding.accountId
                 if (shouldCancel) {
+                    val cancelReason =
+                        when {
+                            event is AuthSessionEvent.Cleared -> "session_cleared"
+                            event is AuthSessionEvent.Authenticated -> "session_reauthenticated"
+                            else -> "account_changed"
+                        }
+                    RaftAppLog.w(
+                        "SlockDiagnostics",
+                        "feedback_diagnostics_auth_cancelled requestId=${operation.requestId} reason=$cancelReason"
+                    )
                     cancelFeedbackDiagnosticsOperation(operation)
                     return@collect
                 }
@@ -8077,11 +8204,27 @@ internal class RaftBridgeModule(
                 else -> "text/plain"
             }
 
-    /** Copy/share text: the Environment rows only, no app run logs (see [formatSettingsDiagnosticsSummaryText]). */
+    /** Compact Environment-only summary (used by Hands feedback share reference). */
     private fun buildSettingsDiagnosticsSummaryText(): String {
         val about = loadSettingsAbout()
         recordSettingsDiagnosticsEnvironment(about)
         return formatSettingsDiagnosticsSummaryText(about)
+    }
+
+    /** User-facing Settings copy/share text: Environment summary plus bounded sanitized recent logs. */
+    private fun buildSettingsDiagnosticsCopyShareText(): String {
+        val about = loadSettingsAbout()
+        recordSettingsDiagnosticsEnvironment(about)
+        val recentLogs =
+            RaftAndroidLocalDiagnostics.exportRecentDiagnosticsText(
+                context = appContext,
+                maxChars = SETTINGS_DIAGNOSTICS_COPY_MAX_LOG_CHARS,
+            )
+        return formatSettingsDiagnosticsCopyShareText(
+            about = about,
+            recentLogs = recentLogs,
+            hasFallbackDiagnosticsLogs = RaftAndroidLocalDiagnostics.hasFallbackDiagnosticsLogs(appContext),
+        )
     }
 
     /** The summary written into the Feedback diagnostics zip, next to the log files it points at. */

@@ -258,7 +258,19 @@ object RaftAndroidLocalDiagnostics {
     fun prepareDiagnosticsFeedbackArchive(context: Context, summaryText: String): File {
         val appContext = context.applicationContext
         drainDiagnosticsSummaries()
-        check(flush()) { "diagnostics_flush_timeout operation=prepare_archive" }
+        val flushed = flush()
+        if (!flushed) {
+            Log.w(Tag, "diagnostics_flush_timeout operation=prepare_archive proceeding_best_effort")
+        }
+        val finalSummaryText =
+            appendDiagnosticsFlushStatusNote(
+                summaryText = summaryText,
+                flushed = flushed,
+                dispatchDropped = dispatchQueue.droppedEntryCount(),
+                dispatchFailed = dispatchQueue.failedEntryCount(),
+                generalDropped = RaftGeneralLogRing.droppedEntryCount(),
+                authDropped = RaftAuthCriticalJournal.droppedEntryCount(),
+            )
         val feedbackDir = feedbackDir(appContext).apply { mkdirs() }
         pruneFeedbackArchives(feedbackDir)
         val archive = File(feedbackDir, "$FeedbackFilePrefix${System.currentTimeMillis()}$FeedbackZipExtension")
@@ -266,7 +278,7 @@ object RaftAndroidLocalDiagnostics {
         var selectedBytes = 0L
         ZipOutputStream(archive.outputStream().buffered()).use { zip ->
             zip.putNextEntry(ZipEntry(FeedbackSnapshotName))
-            zip.write(summaryText.toByteArray(StandardCharsets.UTF_8))
+            zip.write(finalSummaryText.toByteArray(StandardCharsets.UTF_8))
             zip.closeEntry()
 
             val seenNames = mutableSetOf<String>()
@@ -327,13 +339,17 @@ object RaftAndroidLocalDiagnostics {
     fun exportRecentDiagnosticsText(context: Context, maxChars: Int = RecentDiagnosticsMaxChars): String {
         val appContext = context.applicationContext
         drainDiagnosticsSummaries()
-        if (!flush()) {
-            return "Diagnostics snapshot unavailable because pending logs did not flush."
+        val flushed = flush()
+        if (!flushed) {
+            Log.w(Tag, "diagnostics_flush_timeout operation=export_recent proceeding_best_effort")
         }
         val authText = RaftAuthCriticalJournal.exportRecentText(appContext, maxChars / 2)
         val generalText = RaftGeneralLogRing.exportRecentText(appContext, maxChars - authText.length)
         val text =
             buildString {
+                if (!flushed) {
+                    appendLine("[Note: pending log flush timed out; showing available logs]")
+                }
                 if (authText.isNotBlank()) appendLine(authText)
                 if (generalText.isNotBlank()) append(generalText)
             }.takeLast(maxChars)
@@ -520,3 +536,32 @@ internal fun requireSafeDiagnosticsZipEntryName(name: String): String {
 
 internal fun shouldEmitDiagnostic(includeNonCritical: Boolean, authEvent: String?): Boolean =
     includeNonCritical || authEvent != null
+
+internal fun appendDiagnosticsFlushStatusNote(
+    summaryText: String,
+    flushed: Boolean,
+    dispatchDropped: Long,
+    dispatchFailed: Long,
+    generalDropped: Long,
+    authDropped: Long,
+): String {
+    if (
+        flushed &&
+        dispatchDropped == 0L &&
+        dispatchFailed == 0L &&
+        generalDropped == 0L &&
+        authDropped == 0L
+    ) {
+        return summaryText
+    }
+    return buildString {
+        append(summaryText.trimEnd())
+        appendLine()
+        appendLine()
+        append(
+            "Diagnostics pipeline note: flushed=$flushed " +
+                "dispatchDropped=$dispatchDropped dispatchFailed=$dispatchFailed " +
+                "generalDropped=$generalDropped authDropped=$authDropped"
+        )
+    }
+}

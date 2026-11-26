@@ -3783,7 +3783,7 @@
     <string name="settings_diagnostics_section_load_status">Статус загрузки</string>
     <string name="settings_diagnostics_section_actions">Действия</string>
     <string name="settings_diagnostics_action_share_environment">Поделиться сведениями об окружении</string>
-    <string name="settings_diagnostics_logs_via_feedback_hint">Чтобы приложить журналы, отправьте их через «Обратную связь».</string>
+    <string name="settings_diagnostics_logs_via_feedback_hint">Содержит сведения об окружении и последние обезличенные журналы. Полные журналы отправьте через «Обратную связь».</string>
     <string name="settings_diagnostics_action_send">Отправить диагностику</string>
     <string name="settings_diagnostics_send_detail">Отправить обезличенную диагностику в поддержку.</string>
     <string name="settings_diagnostics_detail_basic">Авторизация и обезличенная диагностика приложения</string>

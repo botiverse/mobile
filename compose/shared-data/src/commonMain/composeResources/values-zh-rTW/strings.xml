@@ -3783,7 +3783,7 @@
     <string name="settings_diagnostics_section_load_status">載入狀態</string>
     <string name="settings_diagnostics_section_actions">操作</string>
     <string name="settings_diagnostics_action_share_environment">分享環境資訊</string>
-    <string name="settings_diagnostics_logs_via_feedback_hint">需要記錄時，請在「意見回饋」裡送出。</string>
+    <string name="settings_diagnostics_logs_via_feedback_hint">包含環境資訊與去識別化的近期記錄；完整記錄請在「意見回饋」裡送出。</string>
     <string name="settings_diagnostics_action_send">傳送診斷資訊</string>
     <string name="settings_diagnostics_send_detail">與支援團隊分享已去除敏感資訊的診斷資訊。</string>
     <string name="settings_diagnostics_detail_basic">驗證與已去除敏感資訊的 App 診斷</string>

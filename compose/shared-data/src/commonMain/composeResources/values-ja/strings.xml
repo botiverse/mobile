@@ -3962,7 +3962,7 @@
     <string name="settings_diagnostics_section_load_status">読み込み状態</string>
     <string name="settings_diagnostics_section_actions">アクション</string>
     <string name="settings_diagnostics_action_share_environment">環境情報を共有</string>
-    <string name="settings_diagnostics_logs_via_feedback_hint">ログが必要なときは、「フィードバック」から送信してください。</string>
+    <string name="settings_diagnostics_logs_via_feedback_hint">環境情報と機密除去済みの最新ログを含みます。完全なログは「フィードバック」から送信してください。</string>
     <string name="settings_diagnostics_action_send">診断を送信</string>
     <string name="settings_diagnostics_send_detail">サニタイズ済みの診断情報をサポートと共有します。</string>
     <string name="settings_diagnostics_detail_basic">認証とサニタイズ済みアプリ診断</string>

@@ -3783,7 +3783,7 @@
     <string name="settings_diagnostics_section_load_status">Status de carregamento</string>
     <string name="settings_diagnostics_section_actions">Ações</string>
     <string name="settings_diagnostics_action_share_environment">Compartilhar informações do ambiente</string>
-    <string name="settings_diagnostics_logs_via_feedback_hint">Para incluir os registros, envie-os pelo Feedback.</string>
+    <string name="settings_diagnostics_logs_via_feedback_hint">Inclui informações do ambiente e registros recentes anonimizados. Para registros completos, envie-os pelo Feedback.</string>
     <string name="settings_diagnostics_action_send">Enviar diagnósticos</string>
     <string name="settings_diagnostics_send_detail">Compartilhe diagnósticos sem dados sensíveis com o suporte.</string>
     <string name="settings_diagnostics_detail_basic">Autenticação e diagnósticos do app sem dados sensíveis</string>

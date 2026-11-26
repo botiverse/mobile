@@ -349,8 +349,8 @@ internal data class SettingsAboutPayloadCopy(
     val licensesDetail: String = "Review third-party libraries included in the app package.",
     val open: String = "Open",
     val copyEnvironment: String = "Copy environment info",
-    /** The copy row carries the environment only; app logs go with Feedback. */
-    val copyEnvironmentHint: String = "To include logs, send them with Feedback.",
+    /** The copy row includes environment info plus recent sanitized logs; full archive goes with Feedback. */
+    val copyEnvironmentHint: String = "Includes environment info and recent sanitized logs. For full logs, send Feedback.",
     val copy: String = "Copy",
     val earlyAccessTitle: String = "Early access",
     val earlyAccessAlphaOffDetail: String = "Receive pre-release Raft updates directly from the alpha channel.",

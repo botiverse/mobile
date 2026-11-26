@@ -46,6 +46,31 @@ class RaftDiagnosticsDispatchQueueTest {
         assertEquals(1L, processed.last().second)
     }
 
+    @Test
+    fun flushReturnsTrueAfterProcessorFailureWithoutPoisoningFutureFlushes() {
+        val processed = CopyOnWriteArrayList<String>()
+        val queue =
+            RaftDiagnosticsDispatchQueue(
+                capacity = 8,
+                threadFactory = ThreadFactory { runnable -> Thread(runnable, "diagnostics-test-failure") },
+                processor = { entry, _ ->
+                    if (entry.message == "boom") {
+                        throw IllegalStateException("simulated processor failure")
+                    }
+                    processed += entry.message
+                },
+            )
+
+        assertTrue(queue.enqueue(pending("boom")))
+        assertTrue("flush must succeed once queued entries drain even after a processor failure", queue.flush())
+        assertEquals(1L, queue.failedEntryCount())
+        assertEquals(1L, queue.droppedEntryCount())
+
+        assertTrue(queue.enqueue(pending("recovered-entry")))
+        assertTrue("subsequent flushes must not remain permanently poisoned", queue.flush())
+        assertEquals(listOf("recovered-entry"), processed.toList())
+    }
+
     private fun pending(
         message: String,
         includeNonCritical: Boolean = true,

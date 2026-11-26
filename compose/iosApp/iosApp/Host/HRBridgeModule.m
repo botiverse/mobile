@@ -2048,17 +2048,29 @@ static NSArray<NSDictionary *> *RaftDiagnosticsEnvironmentRows(void) {
     return rows;
 }
 
-// The user-facing copy/share text (Settings > About "Copy environment info", Diagnostics share,
-// the signed-out report-failed fallback): the Environment rows only, never the app run logs
-// (product ruling 2026-11-17: app logs leave the device only with an explicit Feedback submit).
-// task #382 (product ruling 2026-09-17, option (a)): these surfaces omit empty rows entirely
-// instead of printing "--" placeholders.
+// Compact Environment-only summary (used by the Hands feedback ticket share reference).
+// task #382 (product ruling 2026-09-17, option (a)): omits empty rows instead of printing "--".
 static NSString *RaftDiagnosticsBuildSummaryText(NSDictionary *about) {
     return RaftDiagnosticsSummaryText(about ?: @{}, RaftDiagnosticsEnvironmentRows(), YES);
 }
 
-// The Feedback diagnostics attachment only: full Environment rows (empty ones as "--") plus the
-// recent app diagnostics. Never put this text on the pasteboard or a share sheet.
+static NSUInteger const RaftDiagnosticsCopyShareMaxLogChars = 64000;
+
+// User-facing copy/share text (Settings > About / Diagnostics): Environment summary plus
+// bounded sanitized recent logs (full archive still goes out with Feedback).
+static NSString *RaftDiagnosticsBuildCopyShareText(NSDictionary *about) {
+    NSMutableString *text = [NSMutableString string];
+    [text appendString:RaftDiagnosticsBuildSummaryText(about) ?: @""];
+    [text appendString:@"\niOS diagnostics\n"];
+    NSString *recentLogs = RaftBridgeSanitizedLogString(
+        RaftDiagnosticsExportRecentText(RaftDiagnosticsCopyShareMaxLogChars)
+    ) ?: @"";
+    [text appendString:recentLogs];
+    return text;
+}
+
+// The Feedback diagnostics attachment: full Environment rows (empty ones as "--") plus the
+// recent app diagnostics.
 static NSString *RaftDiagnosticsBuildAttachmentExportText(NSDictionary *about) {
     NSMutableString *text = [NSMutableString string];
     [text appendString:RaftDiagnosticsSummaryText(about ?: @{}, RaftDiagnosticsEnvironmentRows(), NO)];
@@ -4219,7 +4231,7 @@ NSString *const RaftBridgeCallbackKey = @"callback";
                 return;
             }
             if ([actionCopy isEqualToString:@"copyDiagnostics"]) {
-                NSString *exportText = RaftDiagnosticsBuildSummaryText(aboutSnapshot) ?: @"";
+                NSString *exportText = RaftDiagnosticsBuildCopyShareText(aboutSnapshot) ?: @"";
                 RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_copy_diagnostics");
                 RaftBridgeRunOnMain(^{
                     UIPasteboard.generalPasteboard.string = exportText;
@@ -4228,7 +4240,7 @@ NSString *const RaftBridgeCallbackKey = @"callback";
                 return;
             }
             if ([actionCopy isEqualToString:@"shareDiagnostics"]) {
-                NSString *exportText = RaftDiagnosticsBuildSummaryText(aboutSnapshot) ?: @"";
+                NSString *exportText = RaftDiagnosticsBuildCopyShareText(aboutSnapshot) ?: @"";
                 RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_share_diagnostics");
                 RaftBridgeRunOnMain(^{
                     __strong typeof(weakSelf) strongSelf = weakSelf;

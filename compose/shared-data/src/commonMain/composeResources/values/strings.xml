@@ -3963,7 +3963,7 @@
     <string name="settings_diagnostics_section_load_status">Load status</string>
     <string name="settings_diagnostics_section_actions">Actions</string>
     <string name="settings_diagnostics_action_share_environment">Share environment info</string>
-    <string name="settings_diagnostics_logs_via_feedback_hint">To include logs, send them with Feedback.</string>
+    <string name="settings_diagnostics_logs_via_feedback_hint">Includes environment info and recent sanitized logs. For full logs, send Feedback.</string>
     <string name="settings_diagnostics_action_send">Send diagnostics</string>
     <string name="settings_diagnostics_send_detail">Share sanitized diagnostics with support.</string>
     <string name="settings_diagnostics_detail_basic">Auth and sanitized app diagnostics</string>

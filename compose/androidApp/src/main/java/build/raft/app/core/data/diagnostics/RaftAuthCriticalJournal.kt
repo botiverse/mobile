@@ -93,11 +93,18 @@ object RaftAuthCriticalJournal {
         }
     }
 
+    internal fun droppedEntryCount(): Long = droppedEntries.get()
+
     fun flush(): Boolean =
-        runCatching {
+        try {
             executor.submit { }.get(2L, TimeUnit.SECONDS)
-            droppedEntries.get() == 0L
-        }.getOrDefault(false)
+            true
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        } catch (_: Throwable) {
+            false
+        }
 
     fun hasFiles(context: Context): Boolean =
         logFiles(context.applicationContext).any { it.isFile && it.length() > 0L }
