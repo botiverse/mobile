@@ -66,7 +66,6 @@ import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDrawer
-import build.raft.designsystem.components.RaftDrawerFill
 import build.raft.designsystem.components.RaftDrawerSnapPoint
 import build.raft.designsystem.components.raftDrawerDragArea
 import build.raft.designsystem.components.rememberRaftDrawerState
@@ -143,7 +142,7 @@ internal fun ThreadAssistantPanelMessagesReport(messages: List<RaftThreadMessage
 
 /**
  * The assistant's panel (web AssistantOtterPanel): the head, then [conversation] filling the
- * rest. The head is raft-ui's panel head: 56dp on the canvas with a seam under it; the otter's
+ * rest. The head is raft-ui's panel head: 56dp on the canvas (the sheet's popover in a sheet, [inSheet]) with a seam under it; the otter's
  * head as the assistant's face (the image is cut at its chest, so it sits on the 32dp box's
  * bottom edge); the name in `text-headline` with the paused chip beside it; the meta line in
  * caption on `foreground-hint`, up to two lines (web `ASSISTANT_SUBTITLE_CLASS`); collapse (a
@@ -157,15 +156,21 @@ internal fun ThreadAssistantPanel(
     paused: Boolean,
     onCollapse: () -> Unit,
     modifier: Modifier = Modifier,
+    inSheet: Boolean = false,
     conversation: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
+    // raft-ui 0.105.1 (raft-design #1451): in a sheet (web DrawerContent) the PanelHeader paints the
+    // sheet's `layer-popover`, so the sheet is one surface from the grab handle down; the
+    // conversation under it keeps `layer-canvas`. Beside the page (the popover) the head is canvas.
+    val headFill = if (inSheet) colors.layerPopover else colors.layerCanvas
     Column(modifier.fillMaxSize().background(colors.layerCanvas).testTag(ThreadAssistantPanelTestTag)) {
         // The head's icon-lg buttons are bar buttons: 28dp under a mouse or trackpad (sizing v12).
         CompositionLocalProvider(LocalRaftBarButtons provides true) {
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .background(headFill)
                     .height(ThreadAssistantPanelHeadHeight)
                     // The collapse button's 18dp chevron ends on the 16dp line: 3dp out for the 44dp
                     // button, 11dp for the 28dp bar button under a mouse or trackpad (sizing v12).
@@ -309,6 +314,7 @@ internal fun ThreadAssistantPanelSheet(
                 readsDms = otter.readsDms,
                 paused = otter.paused,
                 onCollapse = { close() },
+                inSheet = !wide,
                 conversation = {
                     CompositionLocalProvider(
                         LocalThreadAssistantPanelEmbed provides otter.panelEmbed,
@@ -340,7 +346,6 @@ internal fun ThreadAssistantPanelSheet(
             },
             overlay = windowOverlay,
             state = drawerState,
-            fill = RaftDrawerFill.Canvas,
         ) {
             // Report coverage from inside the drawer's own Dialog window so the host never hides
             // its banner before the Dialog has entered composition, and releases coverage on the
