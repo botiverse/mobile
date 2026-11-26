@@ -245,11 +245,16 @@ internal const val THREAD_MESSAGE_MENU_VIEW_CONTEXT_TAG: String = "message-conte
 internal const val THREAD_MESSAGE_MENU_VIEW_CONTEXT_RETRY_TAG: String = "message-context-view-retry"
 
 /**
- * Whether opening a message's menu checks View Context status (web `ViewContextMenuGroup`):
- * sent non-system local agent messages only (never humans, system events, external bridges, or local sends).
+ * Whether opening a message's menu checks View Context status (web `ViewContextMenuGroup` /
+ * `MessageItem.tsx`): sent non-system local agent messages on non-joint surfaces only (never
+ * humans, system events, external bridges, local sends, or joint channels/threads/tasks).
  */
-internal fun threadMessageSupportsContextView(message: RaftThreadMessageItem): Boolean =
-    message.isThreadAgentAuthor() &&
+internal fun threadMessageSupportsContextView(
+    message: RaftThreadMessageItem,
+    onJointSurface: Boolean = false,
+): Boolean =
+    !onJointSurface &&
+        message.isThreadAgentAuthor() &&
         !message.hasLocalSendState() &&
         !message.isSystemMessage() &&
         message.externalAuthor == null &&

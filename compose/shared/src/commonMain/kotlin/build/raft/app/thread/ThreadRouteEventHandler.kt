@@ -116,6 +116,7 @@ internal class ThreadRouteEventHandler(
     val openCanonicalTask: (TaskSummary, String) -> Unit,
     val settingsPageLinkKey: String,
     val threadLimitLocked: Boolean = false,
+    val onJointSurface: Boolean = false,
 ) {
     val renderSlice by renderSliceState
     var pendingReactionKeys by pendingReactionKeysState
@@ -719,7 +720,7 @@ internal class ThreadRouteEventHandler(
 
     private fun handleOpenViewContext(itemId: String) {
                     val message = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
-                    if (message != null && threadMessageSupportsContextView(message)) {
+                    if (message != null && threadMessageSupportsContextView(message, onJointSurface = onJointSurface)) {
                         viewContextMessage = message
                     }
     }

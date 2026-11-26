@@ -4244,6 +4244,14 @@ private fun SharedThreadRouteContentContent(
             openCanonicalTask = openCanonicalTask,
             settingsPageLinkKey = settingsPageLinkKey,
             threadLimitLocked = threadLimitLocked,
+            onJointSurface =
+                resolveThreadJointSurface(
+                    jointMessageSurface = jointMessageSurface,
+                    taskChannelType = taskConversation.task?.channelType,
+                    taskParentChannelId = taskConversation.parentChannelId,
+                    currentServerId = currentServerId,
+                    conversationIdentityProvider = data.conversationIdentityProvider,
+                ),
         )
     val threadRouteEventHandler = buildThreadRouteEventHandler()
     val foregroundBannerSlot =
