@@ -36,6 +36,12 @@ internal fun ExternalShareTargetPickerSurface(
     }
     val surface = state.toExternalSharePickerSurface(queryOverride = inputQuery)
     val contentCount = state.envelope.items.size + if (state.envelope.text.isNotBlank() || state.envelope.subject.isNotBlank()) 1 else 0
+    val subtitle =
+        if (contentCount == 1) {
+            stringResource(Res.string.external_share_items_selected_one)
+        } else {
+            stringResource(Res.string.external_share_items_selected, contentCount)
+        }
     RaftForwardTargetPicker(
         messageCount = contentCount,
         skippedCount = 0,
@@ -52,6 +58,7 @@ internal fun ExternalShareTargetPickerSurface(
         // non-interactive placeholder on every debounced request drops Android IME focus.
         searchInputInteractive = true,
         bottomSafeArea = bottomSafeArea,
+        subtitleOverride = subtitle,
         topContent = {
             RaftServerSwitcherControl(
                 servers = state.toExternalShareServerSwitcherItems(),

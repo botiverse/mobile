@@ -168,11 +168,14 @@ private fun ExternalShareActiveSession(
 }
 
 @Composable
-private fun ExternalShareSurface(
+internal fun ExternalShareSurface(
     state: ExternalShareState,
     onIntent: (ExternalShareIntent) -> Unit,
     onOpenComposer: suspend (ExternalShareComposerHandoff) -> Boolean
 ) {
+    // External Share renders full-screen overlays inside the AppShell; cover the host-drawn
+    // native iOS tab bar so it cannot sit on top of the picker's Continue footer.
+    RaftNativeTabBarCover(active = state != ExternalShareState.Idle)
     when (state) {
         ExternalShareState.Idle -> Unit
         is ExternalShareState.SelectingTargets -> ExternalShareTargetPickerSurface(state, onIntent)

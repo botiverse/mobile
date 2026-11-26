@@ -1333,6 +1333,8 @@
     <string name="external_share_opening_target">Abrindo %1$s…</string>
     <string name="external_share_error_title">Não foi possível abrir o conteúdo compartilhado</string>
     <string name="external_share_error_detail">Tente novamente ou feche e compartilhe o conteúdo de novo.</string>
+    <string name="external_share_items_selected_one">1 item selecionado</string>
+    <string name="external_share_items_selected">%1$d itens selecionados</string>
     <string name="external_share_retry_failed">Tentar novamente os itens com falha</string>
     <string name="thread_composer_external_share_other_server">Este rascunho compartilhado só pode ser enviado de %1$s.</string>
     <string name="thread_composer_external_share_other_server_generic">Este rascunho compartilhado só pode ser enviado do servidor para o qual foi compartilhado.</string>
