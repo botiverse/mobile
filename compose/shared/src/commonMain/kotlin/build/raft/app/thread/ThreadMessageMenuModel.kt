@@ -233,7 +233,7 @@ internal fun ThreadMessageMenuCapabilities.toThreadNewMessageMenuActionAvailabil
         addReaction = addReaction,
         copyLink = copyLink,
         followThread = follow,
-        threadFollowed = replyMetadata.isThreadFollowed,
+        threadFollowed = followTarget?.isFollowed ?: replyMetadata.isThreadFollowed,
         markThreadUnread = markThreadUnreadChannelId != null,
         taskStatus = taskStatus,
         taskDone = message.isThreadTaskDone(),
@@ -422,6 +422,59 @@ internal fun threadTaskStatusMenuIcon(isDone: Boolean): RaftLucideIconName =
     if (isDone) RaftLucideIconName.ReopenTask else RaftLucideIconName.SquareCheckBig
 
 /**
+ * The Follow / Unfollow target a message's menu acts on (web `MessageItem` + `threadFollowCommand.ts`):
+ * - In an open reply thread (`slice.replyThreadSurface && originMessage != null`): every sent message
+ *   (both the origin parent and every reply row) acts on the enclosing thread's [parentMessageId] and
+ *   [threadChannelId].
+ * - In a channel or DM list (`slice.showReplyActions`): a message with a thread conversation acts on
+ *   its own thread ([shouldShowThreadFollowAction]).
+ * - In a task conversation (`!slice.replyThreadSurface && !slice.showReplyActions`): null — never
+ *   offers a nested thread follow (`#wg-rbac:#105`).
+ */
+internal data class ThreadMessageMenuFollowTarget(
+    val parentMessageId: String,
+    val threadChannelId: String?,
+    val isFollowed: Boolean,
+)
+
+internal fun resolveThreadMessageMenuFollowTarget(
+    message: RaftThreadMessageItem,
+    replyMetadata: ThreadReplyMetadata,
+    slice: ThreadTimelineSlice,
+    writeActionsEnabled: Boolean,
+    originReplyMetadata: ThreadReplyMetadata? = null,
+): ThreadMessageMenuFollowTarget? {
+    if (!writeActionsEnabled || message.hasLocalSendState()) return null
+    val isTaskConversation = slice.channelKind.normalizedThreadChannelKind() == RaftTaskConversationChannelKind
+    if (slice.replyThreadSurface && !isTaskConversation) {
+        val origin = slice.originMessage ?: return null
+        val parentMessageId = origin.id.trim().takeIf { it.isNotBlank() } ?: return null
+        if (origin.hasLocalSendState()) return null
+        val effectiveOriginReply =
+            originReplyMetadata
+                ?: if (origin.id == message.id) replyMetadata else origin.toThreadReplyMetadata()
+        val resolvedThreadChannelId =
+            effectiveOriginReply.threadChannelId?.trim()?.takeIf { it.isNotBlank() }
+                ?: slice.sourceThreadId?.trim()?.takeIf { it.isNotBlank() }
+        if (effectiveOriginReply.isThreadFollowed && resolvedThreadChannelId == null) return null
+        return ThreadMessageMenuFollowTarget(
+            parentMessageId = parentMessageId,
+            threadChannelId = resolvedThreadChannelId,
+            isFollowed = effectiveOriginReply.isThreadFollowed,
+        )
+    }
+    if (!slice.showReplyActions || isTaskConversation) return null
+    if (!shouldShowThreadFollowAction(message, replyMetadata)) return null
+    val ownThreadChannelId = replyMetadata.threadChannelId?.trim()?.takeIf { it.isNotBlank() }
+    if (replyMetadata.isThreadFollowed && ownThreadChannelId == null) return null
+    return ThreadMessageMenuFollowTarget(
+        parentMessageId = message.id,
+        threadChannelId = ownThreadChannelId,
+        isFollowed = replyMetadata.isThreadFollowed,
+    )
+}
+
+/**
  * What a message's long-press menu offers, shared by the Classic and Compact menus and aligned
  * with web MessageItem's context menu (botiverse/slock 563672da5):
  *  - quick reactions, and the reaction row's trailing Add Reaction (full picker): `!isSystem && canReact`
@@ -429,7 +482,8 @@ internal fun threadTaskStatusMenuIcon(isDone: Boolean): RaftLucideIconName =
  *  - Reply in Thread: `!hideThreadActions`; the menu also drops it once the message shows its
  *    thread ([threadMessageMenuShowsReplyInThread]), the hover toolbar keeps it
  *  - Forward: `showForwardAction` (non-guest, source channel) and `getForwardableMessages`
- *  - Follow/Unfollow: `canShowThreadFollowAction && hasThreadConversation`
+ *  - Follow/Unfollow: enclosing thread on every sent message in a reply thread, own thread in a
+ *    channel/DM list, suppressed in task conversations ([resolveThreadMessageMenuFollowTarget])
  *  - Mark as Done/Reopen and Convert to Task: never for external senders
  * Mobile-only: Select Text, and Delete/Cancel for local sends.
  */
@@ -458,7 +512,12 @@ internal data class ThreadMessageMenuCapabilities(
      * Copy, Select Text (and its quote) and a selection's Copy: off while the body is only a cut
      * Activity preview ([hasActivityCutBody]), so the cut text is never copied or quoted as the message.
      */
-    val copyText: Boolean = true
+    val copyText: Boolean = true,
+    /**
+     * The thread acted on by Follow / Unfollow in this message's menu (enclosing reply thread in a
+     * thread panel, or the message's own thread in a channel/DM list), or null when hidden.
+     */
+    val followTarget: ThreadMessageMenuFollowTarget? = null,
 )
 
 /**
@@ -494,7 +553,7 @@ internal fun threadMessageMenuCapabilities(
     slice: ThreadTimelineSlice,
     writeActionsEnabled: Boolean,
     translate: ThreadMessageMenuTranslateState = ThreadMessageMenuTranslateState.Hidden,
-    /** The open reply thread's origin reply facts (its thread channel, followed), for Mark Thread as Unread. */
+    /** The open reply thread's origin reply facts (thread channel, followed), for Follow/Unfollow and Mark Thread as Unread. */
     originReplyMetadata: ThreadReplyMetadata? = null
 ): ThreadMessageMenuCapabilities {
     val localSend = message.hasLocalSendState()
@@ -502,10 +561,14 @@ internal fun threadMessageMenuCapabilities(
     val external = message.externalAuthor != null
     // The same gate decides whether a row's double tap shows the quick reaction bar.
     val canReact = threadMessageCanQuickReact(message, slice, writeActionsEnabled)
-    // Web hides thread actions on rows inside the thread panel but still offers Follow on the
-    // panel's parent (`showThreadFollowAction`); mobile's origin message is that parent.
-    val threadFollowSurface =
-        slice.showReplyActions || slice.originMessage?.id == message.id
+    val followTarget =
+        resolveThreadMessageMenuFollowTarget(
+            message = message,
+            replyMetadata = replyMetadata,
+            slice = slice,
+            writeActionsEnabled = writeActionsEnabled,
+            originReplyMetadata = originReplyMetadata,
+        )
     // A cut Activity preview stands in for a message whose text has not loaded: nothing may copy,
     // quote, translate, forward or make a task of the cut text until the full message replaces it.
     val cutBody = message.hasActivityCutBody()
@@ -527,11 +590,7 @@ internal fun threadMessageMenuCapabilities(
                 !cutBody &&
                 message.isForwardableOrdinaryChatMessage(),
         save = slice.showMessageSaveAction && !localSend,
-        follow =
-            writeActionsEnabled &&
-                !localSend &&
-                threadFollowSurface &&
-                shouldShowThreadFollowAction(message, replyMetadata),
+        follow = followTarget != null,
         // Task v2 (web MessageItem menu): a message's tasks are its list, never a single linked task,
         // so there is no Mark as Done / Reopen here, and "Create Task from Message" replaces "Convert
         // to Task" — offered on a message that already has tasks too.
@@ -546,7 +605,8 @@ internal fun threadMessageMenuCapabilities(
         createTaskFromMessage = true,
         markThreadUnreadChannelId =
             if (localSend) null else threadMessageMarkThreadUnreadChannelId(slice, replyMetadata, originReplyMetadata),
-        copyText = !cutBody
+        copyText = !cutBody,
+        followTarget = followTarget,
     )
 }
 
@@ -649,6 +709,7 @@ internal fun threadMessageMenuActions(
     viewContextState: AgentContextViewMenuEntryState = AgentContextViewMenuEntryState.Hidden,
     onViewContext: () -> Unit = {},
     onRetryViewContext: () -> Unit = {},
+    followTarget: ThreadMessageMenuFollowTarget? = null,
 ): List<ThreadMessageMenuAction> =
     // Add Reaction is not a row: it ends the reaction header ([ThreadMessageMenuChrome]).
     // web MessageItem's sections (menu order v4, botiverse/slock #16225, cindyz 2026-11-22):
@@ -669,20 +730,31 @@ internal fun threadMessageMenuActions(
         if (showReplyAction) {
             add(ThreadMessageMenuAction(Res.string.thread_action_reply_in_thread.desc(), RaftLucideIconName.Thread, "thread", onClick = onReply))
         }
-        val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
-        if (showFollowAction && shouldShowThreadFollowAction(message, replyMetadata)) {
+        val effectiveFollowTarget =
+            followTarget
+                ?: if (shouldShowThreadFollowAction(message, replyMetadata)) {
+                    ThreadMessageMenuFollowTarget(
+                        parentMessageId = message.id,
+                        threadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() },
+                        isFollowed = replyMetadata.isThreadFollowed,
+                    )
+                } else {
+                    null
+                }
+        val followThreadChannelId = effectiveFollowTarget?.threadChannelId?.takeIf { it.isNotBlank() }
+        if (showFollowAction && effectiveFollowTarget != null && (!effectiveFollowTarget.isFollowed || followThreadChannelId != null)) {
             add(
                 ThreadMessageMenuAction(
                     label =
-                        if (replyMetadata.isThreadFollowed) {
+                        if (effectiveFollowTarget.isFollowed) {
                             Res.string.thread_action_unfollow_thread.desc()
                         } else {
                             Res.string.thread_action_follow_thread.desc()
                         },
-                    icon = threadFollowMenuIcon(replyMetadata.isThreadFollowed),
+                    icon = threadFollowMenuIcon(effectiveFollowTarget.isFollowed),
                     group = "thread",
                     onClick = {
-                        if (replyMetadata.isThreadFollowed && followThreadChannelId != null) {
+                        if (effectiveFollowTarget.isFollowed && followThreadChannelId != null) {
                             onUnfollowThread(followThreadChannelId)
                         } else {
                             onFollowThread()

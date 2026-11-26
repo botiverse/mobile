@@ -80,14 +80,29 @@ internal fun ThreadMessageMenuOverlays(
         track: Boolean = true,
         anchor: RaftPopoverAnchor? = null
     ): ThreadNewMessageMenuMessageActions {
-        val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
+        val followTarget =
+            resolveThreadMessageMenuFollowTarget(
+                message = message,
+                replyMetadata = replyMetadata,
+                slice = renderPayload,
+                writeActionsEnabled = writeActionsEnabled,
+                originReplyMetadata = renderPayload.originMessage?.let(replyMetadataByParentId::threadReplyMetadataFor),
+            )
+        val followTargetParentMessageId = followTarget?.parentMessageId ?: message.id
+        val followThreadChannelId =
+            if (followTarget != null) {
+                followTarget.threadChannelId
+            } else {
+                replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
+            }
+        val isTargetThreadFollowed = followTarget?.isFollowed ?: replyMetadata.isThreadFollowed
         fun trackTool(tool: ThreadNewMessageMenuTool) {
             if (!track) return
             trackLongPressMenuAction(
                 message,
                 tool.productMessageAction(
                     isSaved = message.isSaved,
-                    isThreadFollowed = replyMetadata.isThreadFollowed && followThreadChannelId != null,
+                    isThreadFollowed = isTargetThreadFollowed && followThreadChannelId != null,
                     isTaskDone = message.isThreadTaskDone()
                 )
             )
@@ -144,10 +159,10 @@ internal fun ThreadMessageMenuOverlays(
                     onFollowThread = {
                         close()
                         trackTool(ThreadNewMessageMenuTool.FollowThread)
-                        if (replyMetadata.isThreadFollowed && followThreadChannelId != null) {
-                            onThreadEvent(UNFOLLOW_THREAD_ACTION, message.id, followThreadChannelId, null)
+                        if (isTargetThreadFollowed && followThreadChannelId != null) {
+                            onThreadEvent(UNFOLLOW_THREAD_ACTION, followTargetParentMessageId, followThreadChannelId, null)
                         } else {
-                            onThreadEvent(FOLLOW_THREAD_ACTION, message.id, null, null)
+                            onThreadEvent(FOLLOW_THREAD_ACTION, followTargetParentMessageId, null, null)
                         }
                     },
                     onTaskStatus = {
@@ -365,15 +380,16 @@ internal fun ThreadMessageMenuOverlays(
                 trackLongPressMenuAction(message, RaftMessageAction.Translate)
                 translationStore?.translateNow(message.toTranslationCandidate())
             }
+            val followTargetParentMessageId = capabilities.followTarget?.parentMessageId ?: message.id
             val onFollowThread: () -> Unit = {
                 closeActionMenu()
                 trackLongPressMenuAction(message, RaftMessageAction.FollowThread)
-                onThreadEvent(FOLLOW_THREAD_ACTION, message.id, null, null)
+                onThreadEvent(FOLLOW_THREAD_ACTION, followTargetParentMessageId, null, null)
             }
             val onUnfollowThread: (String) -> Unit = { threadChannelId ->
                 closeActionMenu()
                 trackLongPressMenuAction(message, RaftMessageAction.UnfollowThread)
-                onThreadEvent(UNFOLLOW_THREAD_ACTION, message.id, threadChannelId, null)
+                onThreadEvent(UNFOLLOW_THREAD_ACTION, followTargetParentMessageId, threadChannelId, null)
             }
             val onTaskStatusChange: (String) -> Unit = { action ->
                 closeActionMenu()
@@ -534,6 +550,7 @@ internal fun ThreadMessageMenuOverlays(
                     viewContextState = viewContextState,
                     onViewContext = onViewContext,
                     onRetryViewContext = onRetryViewContext,
+                    followTarget = capabilities.followTarget,
                     diagnosticsLogger = diagnosticsLogger
                 )
             }
