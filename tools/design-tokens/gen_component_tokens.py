@@ -2,11 +2,13 @@
 """Generate the mobile component tokens from raft-ui's tokens.resolved.json.
 
 raft-ui (0.102.23 and later) ships every numeric token of tokens.json resolved to a plain number
-in three contexts, so a reader that can't evaluate CSS gets the same values the Web computes:
+in four contexts, so a reader that can't evaluate CSS gets the same values the Web computes:
 
-  touch    a phone, and a touch screen at any width (the token's own value)
-  fine     a mouse or a trackpad at any width (`@media (pointer: fine)`)
-  desktop  from 768px with a mouse or a trackpad (`@media (width >= 48rem) and (pointer: fine)`)
+  touch      a phone (the token's own value)
+  fine       a mouse or a trackpad at any width (`@media (pointer: fine)`)
+  desktop    from 768px with a mouse or a trackpad (`@media (width >= 48rem) and (pointer: fine)`)
+  wideTouch  from 768px by touch, a tablet (`@media (width >= 48rem) and (pointer: coarse)`;
+             raft-ui 0.103.4, raft-design #1416: the 48 head, 36 bar buttons, 20 bar icons)
 
 These are the sizes the Web and the apps both draw (design/foundations/tokens.md, component
 tokens): control and row heights, heads, bars, the list toolbar, the tab bar. Writes
@@ -28,10 +30,10 @@ import gen_dimensions
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 OUT = ROOT / "compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/tokens/RaftUiComponentTokens.g.kt"
-CONTEXTS = ("touch", "fine", "desktop")
+CONTEXTS = ("touch", "fine", "desktop", "wideTouch")
 # gen_dimensions' contexts (the App's: a phone, a wide window by touch, a wide window with a mouse)
 # against the file's.
-CSS_CONTEXTS = {"compact": "touch", "wide": "touch", "fine": "desktop"}
+CSS_CONTEXTS = {"compact": "touch", "wide": "wideTouch", "fine": "desktop"}
 TEXT_LENGTHS = ("font-size", "line-height")
 
 
@@ -114,9 +116,9 @@ import androidx.compose.ui.unit.sp
 
 /**
  * raft-ui's component tokens, the sizes the Web and the apps both draw, from its
- * `tokens.resolved.json`, in the three contexts the Web resolves them for: [Touch] a phone and a
- * touch screen at any width, [Fine] a mouse or a trackpad in a narrow window, [Desktop] a wide
- * window with a mouse or a trackpad ([of]). A dimension is in dp (a font size and a line height
+ * `tokens.resolved.json`, in the four contexts the Web resolves them for: [Touch] a phone, [Fine] a
+ * mouse or a trackpad in a narrow window, [Desktop] a wide window with a mouse or a trackpad,
+ * [WideTouch] a wide window by touch, a tablet ([of]). A dimension is in dp (a font size and a line height
  * in sp), a duration in ms. Names are the token's path, camel-cased (`list-toolbar.height` is
  * [Values.listToolbarHeight]).
  */
@@ -137,6 +139,10 @@ object RaftUiComponentTokens {{
 {block("desktop")}
     }}
 
+    data object WideTouch : Values() {{
+{block("wideTouch")}
+    }}
+
     /**
      * The values for a window that is [wide] or not, used with a mouse or trackpad ([fine]) or a
      * finger. The Web's desktop starts at 768px; the app's wide layout at its own breakpoint.
@@ -145,6 +151,7 @@ object RaftUiComponentTokens {{
         when {{
             fine && wide -> Desktop
             fine -> Fine
+            wide -> WideTouch
             else -> Touch
         }}
 }}
@@ -157,10 +164,10 @@ def main():
     if "--check" in sys.argv:
         if not OUT.exists() or OUT.read_text() != kt:
             sys.exit(f"{OUT.relative_to(ROOT)} is stale: run python3 tools/design-tokens/gen_component_tokens.py")
-        print(f"component tokens up to date ({n} tokens x 3 contexts)")
+        print(f"component tokens up to date ({n} tokens x {len(CONTEXTS)} contexts)")
         return
     OUT.write_text(kt)
-    print(f"wrote {OUT.relative_to(ROOT)} ({n} tokens x 3 contexts)")
+    print(f"wrote {OUT.relative_to(ROOT)} ({n} tokens x {len(CONTEXTS)} contexts)")
 
 
 if __name__ == "__main__":
