@@ -269,25 +269,23 @@ class SharedServerChannelMembersOwnerTest {
             channelMembers = listOf(ownAgent, human)
             canManage = false
         }
-        val store = store(repository, ownerState)
+        val store = store(repository, ownerState) { 1L }
         store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
         runCurrent()
         val expectedOwner = AuthenticatedRouteOwner(environmentId = "env-a", accountId = "account-a", serverId = SERVER_ID)
 
         val agentResult =
             store.removeChannelMember(
-                serverId = ServerId(SERVER_ID),
+                owner = expectedOwner,
                 request = RemoveChannelMemberRequest(ChannelId(CHANNEL_ID), MemberId("agent-own"), MemberKind.Agent),
-                expectedOwner = expectedOwner,
             )
         assertIs<DataResult.Content<ChannelMemberActionResult>>(agentResult)
         assertEquals(1, repository.removeChannelMemberCalls)
 
         val humanResult =
             store.removeChannelMember(
-                serverId = ServerId(SERVER_ID),
+                owner = expectedOwner,
                 request = RemoveChannelMemberRequest(ChannelId(CHANNEL_ID), MemberId("human-1"), MemberKind.Human),
-                expectedOwner = expectedOwner,
             )
         assertIs<DataResult.NoPermission>(humanResult)
         assertEquals(1, repository.removeChannelMemberCalls)
