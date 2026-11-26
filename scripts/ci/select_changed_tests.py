@@ -84,6 +84,15 @@ PROD_SOURCE_SETS = (
     "preview",
 )
 
+# Platform-specific production source sets that are never compiled by Android JVM unit tests.
+# Kept separate from PROD_SOURCE_SETS so index_repository() only indexes Android-visible code.
+NON_ANDROID_PROD_SOURCE_SETS = (
+    "iosMain",
+    "nativeMain",
+    "desktopMain",
+    "jsMain",
+)
+
 TEST_SOURCE_SETS = (
     "commonTest",
     "androidUnitTest",
@@ -244,7 +253,7 @@ def is_benign_path(path: str) -> bool:
         return True
     if path.endswith(".md") and "/" not in path:
         return True
-    if path in (".gitignore", "LICENSE"):
+    if path in (".gitignore", "LICENSE", "compose/shared/objc-entry-points.txt"):
         return True
     # Screenshot goldens do not affect plain JVM unit tests (Roborazzi is off on jvm tier).
     if path.endswith(".png") and "/screenshots/" in path:
@@ -273,7 +282,7 @@ def classify_source_path(path: str) -> tuple[str, str, bool] | None:
     # Non-code resources / sqldelight under src/ are handled as global fail-closed.
     if len(parts) >= 5 and parts[4] not in ("kotlin", "java"):
         return None
-    if src_set in PROD_SOURCE_SETS:
+    if src_set in PROD_SOURCE_SETS or src_set in NON_ANDROID_PROD_SOURCE_SETS:
         return (mod, src_set, False)
     if src_set in TEST_SOURCE_SETS:
         return (mod, src_set, True)
@@ -494,8 +503,17 @@ def select_tests(
         if classified is None:
             return full_result(f"non-source-or-global-path:{path}")
         mod, src_set, is_test = classified
-        # iOS-only / desktop-only / instrumented-only source sets don't affect Android JVM tests.
-        if src_set in ("iosMain", "nativeMain", "desktopMain", "iosTest", "androidTest", "androidInstrumentedTest", "connectedTest"):
+        # Non-Android / instrumented-only source sets do not affect Android JVM tests.
+        # Exceptions: `:web-container:desktopTest` runs inside the Android CI job gated on
+        # `run_web_container_tests`, so desktop changes inside `:web-container` trigger only
+        # `:web-container` tests without fanning out into Android dependents.
+        if mod == "desktopApp":
+            continue
+        if src_set in ("iosMain", "nativeMain", "jsMain", "iosTest", "androidTest", "androidInstrumentedTest", "connectedTest"):
+            continue
+        if src_set in ("desktopMain", "desktopTest", "desktopVcase"):
+            if mod == "web-container":
+                test_touched_modules.add("web-container")
             continue
         if not is_test:
             if status.startswith("D"):
@@ -876,6 +894,46 @@ def run_self_test(repo_root: pathlib.Path) -> None:
         # Case F: unknown diff sentinel fails closed to full
         res_unk = select_tests(root, [("?", "__CI_CHANGED_PATHS_UNKNOWN__")])
         assert res_unk["mode"] == "full", res_unk
+
+        # Case G: non-Android platform source sets (iosMain/nativeMain/desktopMain/jsMain/iosTest/desktopApp)
+        # and compose/shared/objc-entry-points.txt do not force full mode when paired with an Android change
+        res_cross = select_tests(
+            root,
+            [
+                ("M", "compose/shared/src/commonMain/kotlin/build/raft/app/lounge/LoungeTabModel.kt"),
+                ("M", "compose/shared/src/iosMain/kotlin/build/raft/app/IosBridge.kt"),
+                ("M", "compose/shared-data/src/nativeMain/kotlin/build/raft/app/NativeHelper.kt"),
+                ("M", "compose/shared/src/desktopMain/kotlin/build/raft/app/DesktopBridge.kt"),
+                ("M", "compose/shared/src/jsMain/kotlin/build/raft/app/JsStub.kt"),
+                ("A", "compose/shared/src/iosTest/kotlin/build/raft/app/IosBridgeTest.kt"),
+                ("M", "compose/desktopApp/src/main/kotlin/build/raft/app/desktop/App.kt"),
+                ("M", "compose/shared/objc-entry-points.txt"),
+            ],
+        )
+        assert res_cross["mode"] == "selected", res_cross
+        assert "build.raft.app.lounge.LoungeTabModelTest" in res_cross["selected_classes"]["shared"], res_cross
+        assert res_cross["run_web_container_tests"] is False, res_cross
+
+        # Case H: web-container desktopMain/desktopTest runs :web-container tests (since Android CI runs
+        # :web-container:desktopTest) without fanning out into :shared or :androidApp
+        res_wc_desktop = select_tests(
+            root,
+            [("M", "compose/web-container/src/desktopMain/kotlin/build/raft/web/DesktopHost.kt")],
+        )
+        assert res_wc_desktop["mode"] == "selected", res_wc_desktop
+        assert res_wc_desktop["run_web_container_tests"] is True, res_wc_desktop
+        assert res_wc_desktop["run_shared_tests"] is False, res_wc_desktop
+        assert res_wc_desktop["run_android_app_tests"] is False, res_wc_desktop
+
+        # Case I: non-Android-only PR still fails closed safely if Android job runs
+        res_ios_only = select_tests(
+            root,
+            [
+                ("M", "compose/shared/src/iosMain/kotlin/build/raft/app/IosBridge.kt"),
+                ("M", "compose/shared/objc-entry-points.txt"),
+            ],
+        )
+        assert res_ios_only["mode"] == "full" and res_ios_only["reason"] == "no-android-source-changes", res_ios_only
 
     print(
         f"select_changed_tests self-test: PASS "
