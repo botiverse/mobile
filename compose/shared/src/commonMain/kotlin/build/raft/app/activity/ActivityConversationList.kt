@@ -930,15 +930,14 @@ internal data class ActivityRowLayout(
     /** When true, always reserve [previewLines] vertical slots; when false, height follows laid-out lines. */
     val reservePreviewLines: Boolean = false,
     /**
-     * Phone / compact two-line preview layout (raft-design#1433 `InboxItemPreview`): top-aligned
-     * leading avatar/tile, `#channel ·` in `foregroundHint`, and pixel-only task status in marks.
+     * Phone / compact two-line preview layout (raft-design#1433 `InboxItemPreview`): `#channel ·`
+     * in `foregroundHint` and pixel-only task status in marks; leading avatar/tile stays vertically
+     * centered with the row content (artin, 2026-11-26: match 1.29.0 alignment on two-line previews).
      * False on wide lists, which keep the single-line `InboxItemLine` layout.
      */
     val twoLinePreview: Boolean = false,
     /**
-     * Static top inset on the top-aligned leading avatar/tile so the 36dp leading slot centers on
-     * the first two lines (20dp title + 20dp first excerpt line = 40dp -> static 2dp, matching web
-     * `data-lead="two"` `margin-top: 2px` with zero runtime calculation). Zero on centered wide rows.
+     * Optional top inset on the leading avatar/tile; 0dp when vertically centered with the row.
      */
     val leadingTopPadding: Dp = 0.dp,
     /** A hairline between two adjacent rows (none in the web's list cells: lists.md "lists have no dividers"). */
@@ -958,10 +957,11 @@ internal data class ActivityRowLayout(
     companion object {
         /**
          * The phone's row: compact list cell with the two-line preview (raft-design#1433): up to two
-         * excerpt lines whose height follows content, top-aligned leading visual, `#channel ·` in
-         * hint colour, and pixel-only task status. The shape is 8dp in, the content 12dp inside it
-         * (20dp from the screen's edge); 8dp above and below, at least 56dp tall by touch (56dp for
-         * 1-line body, 76dp for 2-line); rows 2dp apart with no line between them.
+         * excerpt lines whose height follows content, vertically centered leading visual (matching
+         * 1.29.0 per artin 2026-11-26), `#channel ·` in hint colour, and pixel-only task status.
+         * The shape is 8dp in, the content 12dp inside it (20dp from the screen's edge); 8dp above
+         * and below, at least 56dp tall by touch (56dp for 1-line body, 76dp for 2-line); rows 2dp
+         * apart with no line between them.
          */
         fun phone(pointerInput: RaftPointerInput): ActivityRowLayout =
             ActivityRowLayout(
@@ -972,7 +972,7 @@ internal data class ActivityRowLayout(
                 previewLines = 2,
                 reservePreviewLines = false,
                 twoLinePreview = true,
-                leadingTopPadding = 2.dp,
+                leadingTopPadding = 0.dp,
                 dividers = false,
                 rowGap = 2.dp,
                 listTop = 8.dp,
@@ -1216,7 +1216,7 @@ internal fun ActivityConversationListRow(
                         .heightIn(min = layout.minHeight)
                         .padding(start = layout.contentPadX, end = layout.contentPadX + doneRoom, top = layout.padY, bottom = layout.padY),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = if (layout.twoLinePreview) Alignment.Top else Alignment.CenterVertically,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 ActivityConversationLeading(
                     model = model,

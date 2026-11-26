@@ -507,7 +507,7 @@ class ActivityConversationListTest {
         for (input in RaftPointerInput.entries) {
             val phone = ActivityRowLayout.of(RaftScale.Compact, input)
             assertTrue(phone.twoLinePreview, "Compact $input twoLinePreview")
-            assertEquals(2.dp, phone.leadingTopPadding, "Compact $input leadingTopPadding")
+            assertEquals(0.dp, phone.leadingTopPadding, "Compact $input leadingTopPadding")
             assertEquals(2, phone.previewLines, "Compact $input previewLines")
             assertFalse(phone.reservePreviewLines, "Compact $input reservePreviewLines")
             assertEquals(8.dp, phone.padY, "Compact $input padY")
