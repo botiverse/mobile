@@ -82,6 +82,8 @@ class SharedActivityStoreThreadFreshnessTest {
                 scope = scope,
                 inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(initialRow)))),
                 replyThreadFreshnessLedger = payloadStore.freshnessLedger,
+                inboxInPlaceEnabled = { true },
+                inboxRowPositionEnabled = { true },
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
 
@@ -201,6 +203,8 @@ class SharedActivityStoreThreadFreshnessTest {
                         initialSnapshots = listOf(snapshot(listOf(olderRow)), snapshot(listOf(olderRow)))
                     ),
                 replyThreadFreshnessLedger = ledger,
+                inboxInPlaceEnabled = { true },
+                inboxRowPositionEnabled = { true },
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
 

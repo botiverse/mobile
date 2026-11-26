@@ -225,12 +225,16 @@ private data class SharedThreadReplyCountKey(
             }
             if (previous == fact) return@synchronized false
             if (fact.replyCount < previous.replyCount) return@synchronized false
+            val factSeq = fact.latestActivitySeq
+            val prevSeq = previous.latestActivitySeq
             val seqCompare =
                 if (
-                    isCanonicalActivitySeq(fact.latestActivitySeq) &&
-                    isCanonicalActivitySeq(previous.latestActivitySeq)
+                    factSeq != null &&
+                    prevSeq != null &&
+                    isCanonicalActivitySeq(factSeq) &&
+                    isCanonicalActivitySeq(prevSeq)
                 ) {
-                    compareActivitySeq(fact.latestActivitySeq, previous.latestActivitySeq)
+                    compareActivitySeq(factSeq, prevSeq)
                 } else {
                     null
                 }
