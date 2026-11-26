@@ -44,6 +44,8 @@ class ThreadReadReceiptsScreenshotTest {
 
     @Test fun dmPeerWatermarkLight() = capture("thread.read-receipts.dm", RaftAppAppearance.Light) { DmRows() }
 
+    @Test fun dmPeerWatermarkDark() = capture("thread.read-receipts.dm.dark", RaftAppAppearance.Dark) { DmRows() }
+
     private fun capture(name: String, appearance: RaftAppAppearance, rows: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
