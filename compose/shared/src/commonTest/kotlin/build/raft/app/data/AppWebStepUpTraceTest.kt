@@ -234,6 +234,8 @@ class AppWebStepUpTraceTest {
         val outcome = async { harness.coordinator.run(Action(clock, refusal(withCode))::invoke) }
         runCurrent()
         harness.coordinator.accept(SecondFactorStepUpIntent.Submit)
+        assertTrue(assertNotNull(harness.coordinator.state.value).continuesInBrowser)
+        harness.coordinator.accept(SecondFactorStepUpIntent.SwitchMethod(SecondFactorStepUpMethod.Totp))
         assertTrue(assertNotNull(harness.coordinator.state.value).webStepUpBesideCode)
         val session = harness.openPage()
         clock.ms += 4_000

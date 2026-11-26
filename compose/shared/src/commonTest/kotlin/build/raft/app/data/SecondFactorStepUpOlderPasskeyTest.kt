@@ -22,17 +22,18 @@ class SecondFactorStepUpOlderPasskeyTest {
         )
 
     @Test
-    fun olderPasskeysAndAnAuthenticatorKeepTheCodeEntryAndOfferTheBrowser() {
+    fun olderPasskeysAndAnAuthenticatorGoStraightToTheBrowserAndKeepOtherMethods() {
         val dialog =
             passkeyFirst(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode)
                 .withOnlyOlderPasskeys(webStepUpOffered = true)
 
-        assertEquals(SecondFactorStepUpMethod.Totp, dialog.method, "the 6-digit code stays")
+        assertNull(dialog.method, "continues in browser directly instead of jumping to TOTP (#proj-mobile:#188)")
         assertEquals(listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode), dialog.methods)
-        assertEquals(SecondFactorStepUpBanner.PasskeyUnsupported, dialog.banner)
-        assertTrue(dialog.webStepUpBesideCode, "Verify with your passkey in the browser, under the field")
+        assertEquals(listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode), dialog.otherMethods)
+        assertNull(dialog.banner, "no PasskeyUnsupported warning banner when browser step-up handles it")
+        assertTrue(dialog.continuesInBrowser, "Continue in browser opens immediately without a second tap")
         assertEquals(SecondFactorWebStepUpPhase.Ready, dialog.webStepUp)
-        assertFalse(dialog.continuesInBrowser, "the browser opens only when the person picks it")
+        assertFalse(dialog.webStepUpBesideCode)
     }
 
     @Test
@@ -40,8 +41,23 @@ class SecondFactorStepUpOlderPasskeyTest {
         val dialog = passkeyFirst().withOnlyOlderPasskeys(webStepUpOffered = true)
 
         assertNull(dialog.method)
+        assertEquals(emptyList(), dialog.methods)
         assertNull(dialog.banner)
         assertTrue(dialog.continuesInBrowser, "Continue in browser, which the dialog opens by itself (#5129)")
+        assertFalse(dialog.webStepUpBesideCode)
+    }
+
+    @Test
+    fun withoutWebStepUpOlderPasskeysStillFallBackToCodeWithBanner() {
+        val dialog =
+            passkeyFirst(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode)
+                .withOnlyOlderPasskeys(webStepUpOffered = false)
+
+        assertEquals(SecondFactorStepUpMethod.Totp, dialog.method)
+        assertEquals(listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode), dialog.methods)
+        assertEquals(SecondFactorStepUpBanner.PasskeyUnsupported, dialog.banner)
+        assertNull(dialog.webStepUp)
+        assertFalse(dialog.continuesInBrowser)
         assertFalse(dialog.webStepUpBesideCode)
     }
 }

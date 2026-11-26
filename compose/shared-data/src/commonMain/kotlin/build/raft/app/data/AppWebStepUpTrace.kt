@@ -53,7 +53,7 @@ import kotlinx.serialization.json.JsonPrimitive
 
 /** `trigger`: which offer of the web step-up the person took. */
 @RaftCoreInternalApi enum class AppWebStepUpTrigger(val wire: String) {
-    /** Only older passkeys and no code: the dialog goes straight to the browser (Continue in browser). */
+    /** Only older passkeys: the dialog goes straight to the browser (Continue in browser). */
     LegacyOnly("legacy_only"),
 
     /** Verify with your passkey in the browser, under the code's field (#158). */

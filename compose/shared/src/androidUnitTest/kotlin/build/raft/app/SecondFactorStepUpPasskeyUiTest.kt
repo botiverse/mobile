@@ -5,7 +5,9 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.RaftNativePasskeyAssertion
@@ -157,6 +159,35 @@ class SecondFactorStepUpPasskeyUiTest {
         waitForIdle()
         assertEquals(SecondFactorStepUpIntent.WebStepUpCallback("raft://login/callback?requestId=r-1&code=k-1"), intents.last())
         assertEquals(1, pages.size)
+    }
+
+    @Test
+    fun continueInBrowserWithOtherMethodsAutoOpensAndShowsMethodLinksAfterCancel() = runRobolectricComposeUiTest {
+        val intents = mutableListOf<SecondFactorStepUpIntent>()
+        val readyWithCodes =
+            SecondFactorStepUpDialogState(
+                methods = listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode),
+                method = null,
+                passkeyListed = true,
+                webStepUp = SecondFactorWebStepUpPhase.Ready,
+            )
+        val state = mutableStateOf(readyWithCodes)
+        show(state, intents)
+
+        // Straight into browser step-up with no PasskeyUnsupported warning banner.
+        assertEquals(listOf<SecondFactorStepUpIntent>(SecondFactorStepUpIntent.ContinueInBrowser), intents)
+        onAllNodesWithTag(SECOND_FACTOR_STEP_UP_BANNER_TAG).assertCountEquals(0)
+
+        // After cancelling the browser sheet, Continue in browser stays primary with code switch links underneath.
+        runOnIdle { state.value = readyWithCodes.copy(banner = SecondFactorStepUpBanner.WebStepUpCancelled) }
+        waitForIdle()
+        onNodeWithTag(SECOND_FACTOR_STEP_UP_CONTINUE_IN_BROWSER_TAG).assertExists()
+        onNodeWithTag(secondFactorStepUpMethodLinkTag(SecondFactorStepUpMethod.Totp)).assertExists()
+        onNodeWithTag(secondFactorStepUpMethodLinkTag(SecondFactorStepUpMethod.BackupCode)).assertExists()
+
+        onNodeWithTag(secondFactorStepUpMethodLinkTag(SecondFactorStepUpMethod.Totp)).performClick()
+        waitForIdle()
+        assertEquals(SecondFactorStepUpIntent.SwitchMethod(SecondFactorStepUpMethod.Totp), intents.last())
     }
 
     private val passkeyOnlyHere = SecondFactorStepUpDialogState(methods = emptyList(), method = null, passkeyListed = true)
