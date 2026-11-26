@@ -3725,9 +3725,9 @@ internal fun ThreadComposerContentLeaf(
                     Text(
                         text = localizedThreadComposerStatusLabel(status),
                         style = RaftType.Caption.copy(
-                            color = if (state.composerMode == "failed") RaftColor.AccentRed else RaftColor.TextMutedGray
+                            color = if (state.composerMode == "failed") RaftColor.DangerStrong else RaftColor.TextMutedGray
                         ),
-                        color = if (state.composerMode == "failed") RaftColor.AccentRed else RaftColor.TextMutedGray,
+                        color = if (state.composerMode == "failed") RaftColor.DangerStrong else RaftColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

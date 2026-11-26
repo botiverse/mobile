@@ -287,8 +287,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                     item(key = "save-error") {
                         Text(
                             text = message,
-                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                            color = RaftColor.AccentRed
+                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.DangerStrong),
+                            color = RaftColor.DangerStrong
                         )
                     }
                 }

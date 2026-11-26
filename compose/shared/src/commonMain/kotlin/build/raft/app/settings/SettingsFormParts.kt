@@ -342,7 +342,7 @@ internal fun SettingsFormEmptyText(text: String) {
 
 @Composable
 internal fun SettingsFormErrorText(text: String) {
-    Text(text, style = RaftType.Caption.copy(color = RaftColor.AccentRed), color = RaftColor.AccentRed)
+    Text(text, style = RaftType.Caption.copy(color = RaftColor.DangerStrong), color = RaftColor.DangerStrong)
 }
 
 @Composable

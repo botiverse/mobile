@@ -613,8 +613,8 @@ internal fun ThreadAttachmentCommentsContent(
                             labels = userFacingErrorLabels,
                             genericMessage = stringResource(Res.string.common_error)
                         ),
-                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                    color = RaftColor.AccentRed,
+                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.DangerStrong),
+                    color = RaftColor.DangerStrong,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

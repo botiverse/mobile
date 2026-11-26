@@ -471,8 +471,8 @@ internal fun AuthTextField(
         if (isError && !errorText.isNullOrBlank()) {
             Text(
                 text = errorText,
-                style = RaftType.Caption.copy(color = RaftColor.AccentRed),
-                color = RaftColor.AccentRed,
+                style = RaftType.Caption.copy(color = RaftColor.DangerStrong),
+                color = RaftColor.DangerStrong,
                 modifier = Modifier.authStaticTextFocus()
             )
         }

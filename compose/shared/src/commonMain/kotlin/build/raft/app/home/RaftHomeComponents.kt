@@ -7160,11 +7160,11 @@ private fun HomeServerDrawerErrorRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
-        RaftLucideIcon(RaftLucideIconName.RefreshCw, Modifier.size(14.dp), color = RaftColor.AccentRedArgb)
+        RaftLucideIcon(RaftLucideIconName.RefreshCw, Modifier.size(14.dp), color = raftArgbHex(RaftColor.DangerStrong))
         Text(
             text = retryLabel,
             style = RaftType.Caption,
-            color = RaftColor.AccentRed,
+            color = RaftColor.DangerStrong,
             modifier = Modifier.weight(1f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis

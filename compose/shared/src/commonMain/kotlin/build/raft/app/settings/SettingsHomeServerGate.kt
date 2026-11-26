@@ -1098,7 +1098,7 @@ private fun PageErrorBody(
                 Text(
                     text = codeMessage,
                     style = RaftType.Caption,
-                    color = RaftColor.AccentRed
+                    color = RaftColor.DangerStrong
                 )
             }
             RaftTraceIdNote(traceId = traceId)

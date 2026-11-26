@@ -482,7 +482,7 @@ internal fun SharedCreateChannelDialog(
                         Text(
                             text = Res.string.channel_create_error.format(listOf(localizedError)).localized(),
                             style = RaftType.Caption,
-                            color = RaftColor.AccentRed
+                            color = RaftColor.DangerStrong
                         )
                         RaftTraceIdNote(errorTraceId)
                     }

@@ -2270,7 +2270,7 @@ private fun TasksStatusDialog(
                     Text(
                         text = "${stringResource(Res.string.tasks_error_update_status)}: $code",
                         style = RaftType.Caption,
-                        color = RaftColor.AccentRed
+                        color = RaftColor.DangerStrong
                     )
                 }
             }
@@ -2359,7 +2359,7 @@ internal fun TasksCreateDialog(
                     Text(
                         text = code,
                         style = RaftType.Caption,
-                        color = RaftColor.AccentRed,
+                        color = RaftColor.DangerStrong,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
