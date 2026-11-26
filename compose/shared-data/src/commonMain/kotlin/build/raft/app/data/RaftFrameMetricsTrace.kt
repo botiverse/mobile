@@ -424,7 +424,7 @@ object RaftFrameMetricsTraceReporter {
                 ?.trim()
                 ?.takeIf { it.isNotEmpty() }
                 ?: return null
-        return serverId to provider.serverFeatureFlags.snapshotFor(ServerId(serverId))
+        return serverId to provider.serverFeatureFlags.traceSampleSnapshotFor(ServerId(serverId))
     }
 
     fun reportNavTransition(

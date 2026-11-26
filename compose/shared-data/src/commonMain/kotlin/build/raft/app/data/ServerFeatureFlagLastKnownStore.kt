@@ -17,7 +17,7 @@ const val SERVER_FEATURE_FLAG_LAST_KNOWN_STORAGE_KEY: String = "serverFeatureFla
  * same way the last online session did (task #1133). A cold start reads their last value until the
  * evaluation lands (or fails); every other flag keeps the defaults-off-until-evaluated contract.
  * - `mobile_server_setup_v1`: offline, the setup check then fails open to Home.
- * - `mobile_inbox_inplace_v0` and `inbox_row_position_v1` (#triage:#244): the Activity list and its
+ * - `inbox_row_position_v1` / `mobile_activity_inplace_v1` (#triage:#244): the Activity list and its
  *   badge read by one rule from the first frame, not by today's off path until the evaluation lands
  *   and then by the flag's (the first load's rows and badge counted one way, the live patches after
  *   it the other).
@@ -28,7 +28,6 @@ const val SERVER_FEATURE_FLAG_LAST_KNOWN_STORAGE_KEY: String = "serverFeatureFla
 val SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS: Set<String> =
     setOf(
         MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
-        MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY,
         INBOX_ROW_POSITION_FEATURE_FLAG_KEY,
         MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY,
         MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY,

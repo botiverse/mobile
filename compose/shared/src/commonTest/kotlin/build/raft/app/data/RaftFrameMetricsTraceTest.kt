@@ -17,14 +17,19 @@ class RaftFrameMetricsTraceTest {
     @Test
     fun registeredFlagsIncludeAllThreeFrameMetricsTraceHierarchiesWithoutDuplicates() {
         assertEquals(REGISTERED_SERVER_FEATURE_FLAG_KEYS.distinct(), REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertEquals(REGISTERED_TRACE_SAMPLE_FEATURE_FLAG_KEYS.distinct(), REGISTERED_TRACE_SAMPLE_FEATURE_FLAG_KEYS)
         for (name in listOf(
             MOBILE_FRAMES_NAV_TRANSITION_TRACE_NAME,
             MOBILE_FRAMES_RESUME_TRACE_NAME,
             MOBILE_FRAMES_SCROLL_TRACE_NAME,
         )) {
             assertTrue(
-                traceSampleKeys(name).all { it in REGISTERED_SERVER_FEATURE_FLAG_KEYS },
-                "missing flag keys for $name",
+                traceSampleKeys(name).all { it in REGISTERED_TRACE_SAMPLE_FEATURE_FLAG_KEYS },
+                "missing trace-sample flag keys for $name",
+            )
+            assertTrue(
+                traceSampleKeys(name).none { it in REGISTERED_SERVER_FEATURE_FLAG_KEYS },
+                "trace-sample flag keys must not be in product flag batch for $name",
             )
         }
         assertEquals(

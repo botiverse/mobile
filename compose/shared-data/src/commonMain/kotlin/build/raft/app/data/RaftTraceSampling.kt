@@ -125,7 +125,7 @@ fun defaultWebViewPrewarmTraceSampleRate(
 
 /**
  * Resolves [traceName]'s sampling rate for [serverId] against the active [SharedServerFeatureFlags]
- * snapshot (or [flags] when provided), falling back to [fallback] when unresolved or unset.
+ * trace-sampling snapshot (or [flags] when provided), falling back to [fallback] when unresolved or unset.
  */
 @RaftCoreInternalApi fun resolveActiveServerTraceSampleRate(
     serverId: String,
@@ -135,7 +135,7 @@ fun defaultWebViewPrewarmTraceSampleRate(
 ): Double {
     val snapshot =
         flags ?: runCatching {
-            RaftDataStoreRegistry.currentOrNull()?.serverFeatureFlags?.snapshotFor(ServerId(serverId))
+            RaftDataStoreRegistry.currentOrNull()?.serverFeatureFlags?.traceSampleSnapshotFor(ServerId(serverId))
         }.getOrNull() ?: ServerFeatureFlagSnapshot.Unresolved
     return resolveTraceSampleRate(traceName, snapshot.traceSampleEvaluations(traceName), fallback)
 }

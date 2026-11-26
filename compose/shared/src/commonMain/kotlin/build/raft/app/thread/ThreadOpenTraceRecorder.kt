@@ -112,7 +112,7 @@ internal fun ThreadMessagesListOpenTrace(
             openKey = openKey,
             surfaceKind = slice.surfaceKind,
             openKind = if (slice.focusedMessageId.isNullOrBlank()) "latest" else "focused",
-            flags = { flags.snapshotFor(viewerServerId?.let(::ServerId)) },
+            flags = { flags.traceSampleSnapshotFor(viewerServerId?.let(::ServerId)) },
             serverId = { viewerServerId },
             log = log,
             appBuild = appBuild,

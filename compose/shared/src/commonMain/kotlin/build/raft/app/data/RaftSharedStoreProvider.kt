@@ -1997,9 +1997,25 @@ internal class RaftSharedStoreProvider private constructor(
         ServerFeatureFlagChangeRefresher(
             scope = threadSendScope,
             refetch = { serverId ->
+                val environmentId = updateNetworkKmmRecoveryEnvironment()
+                threadSendScope.launch {
+                    runCatching {
+                        serverFeatureFlags.prefetchTraceSampling(
+                            serverId = serverId,
+                            evaluationContext = environmentId,
+                            forceRefresh = true,
+                        )
+                    }.onFailure { error ->
+                        if (error is CancellationException) throw error
+                        sharedWarnLogger("SlockFeatureFlags", "feature_flags")(
+                            "trace_sampling_prefetch_failed server=${serverId.value} " +
+                                "reason=${error::class.simpleName ?: "unknown"}"
+                        )
+                    }
+                }
                 serverFeatureFlags.prefetch(
                     serverId = serverId,
-                    evaluationContext = updateNetworkKmmRecoveryEnvironment(),
+                    evaluationContext = environmentId,
                     forceRefresh = true,
                 )
             },
@@ -2759,10 +2775,27 @@ internal class RaftSharedStoreProvider private constructor(
                                 cancelUnselectedSyncPulls()
                                 var syncPullRequested = false
                                 refreshSelectedServerFeatureFlags {
+                                    val environmentId = updateNetworkKmmRecoveryEnvironment()
+                                    val targetServerId = ServerId(serverId)
+                                    // Evaluate trace_sample.* independently so observability latency
+                                    // or failures never block product flags or sync-changes pulls.
+                                    threadSendScope.launch {
+                                        runCatching {
+                                            serverFeatureFlags.prefetchTraceSampling(
+                                                serverId = targetServerId,
+                                                evaluationContext = environmentId,
+                                            )
+                                        }.onFailure { error ->
+                                            if (error is CancellationException) throw error
+                                            sharedWarnLogger("SlockFeatureFlags", "feature_flags")(
+                                                "trace_sampling_prefetch_failed server=$serverId " +
+                                                    "reason=${error::class.simpleName ?: "unknown"}"
+                                            )
+                                        }
+                                    }
                                     try {
-                                        val environmentId = updateNetworkKmmRecoveryEnvironment()
                                         serverFeatureFlags.prefetch(
-                                            serverId = ServerId(serverId),
+                                            serverId = targetServerId,
                                             evaluationContext = environmentId
                                         )
                                     } catch (cancellation: CancellationException) {
