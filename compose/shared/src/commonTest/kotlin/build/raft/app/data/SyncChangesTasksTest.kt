@@ -557,7 +557,8 @@ class SyncChangesTasksTest {
         assertEquals(listOf("t-stale-2"), store.projection("server-1", SharedTasksScope.Channel(ChannelId("ch-1"))).tasks.map { it.id.value })
         assertEquals(listOf("t-other"), store.projection("server-1", SharedTasksScope.Channel(ChannelId("ch-2"))).tasks.map { it.id.value })
 
-        // A task row with invalid status in ch-2 falls back to ch-2 resnapshot while valid ch-1 upsert still applies!
+        // A task row with blank status in ch-2 is rejected by strict parsing and falls back to
+        // ch-2 resnapshot while the valid ch-1 upsert in the same batch still applies!
         targets.channelRefreshes.clear()
         val mixedPage =
             requireNotNull(
@@ -566,7 +567,7 @@ class SyncChangesTasksTest {
                         cursor = "c1.11.1",
                         changes =
                             listOf(
-                                syncUpsert(11, "task", "t-bad-status", """{"id":"t-bad-status","channelId":"ch-2","status":"bogus_status"}"""),
+                                syncUpsert(11, "task", "t-bad-status", """{"id":"t-bad-status","channelId":"ch-2","status":""}"""),
                                 syncTaskUpsert(12, "t-good", "ch-1", title = "Applied cleanly", status = "in_progress", revision = 1L),
                             ),
                     )
