@@ -76,8 +76,11 @@ internal fun agentNeedsManualRestart(
 ): Boolean {
     if (external || blocked != null || likelyOnline) return false
     if (credentialReason != null) return true
-    if (status == AgentStatus.Error) return runtimeErrorClass?.trim() != RateLimitErrorClass
-    if (detailKind?.trim() !in ManualStartDetailKinds) return false
+    // Web agentNeedsManualRestart (botiverse/slock #17124): a failed start a person must fix shows
+    // the error light while keeping its detail kind; its start-failure rules below still decide.
+    if (detailKind?.trim() !in ManualStartDetailKinds) {
+        return status == AgentStatus.Error && runtimeErrorClass?.trim() != RateLimitErrorClass
+    }
     val failure = spawnFailure ?: return true
     // The other reasons (runtime missing, bad config, ...): a restart is still the last step once
     // the cause is fixed, so Retry stays for them.

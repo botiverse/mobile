@@ -3503,10 +3503,12 @@
     <string name="settings_computers_readiness_do_verify_account">계정 인증</string>
     <string name="settings_computers_readiness_do_sign_in">로그인</string>
     <string name="settings_computers_readiness_do_update_computer">업데이트</string>
+    <string name="settings_computers_readiness_do_change_model">모델 변경</string>
     <string name="settings_computers_readiness_do_fix">열기</string>
     <string name="settings_computers_readiness_can_sign_in">%1$s 님이 로그인할 수 있어요</string>
     <string name="settings_computers_readiness_can_verify_account">%1$s 님이 계정을 인증할 수 있어요</string>
     <string name="settings_computers_readiness_can_update_computer">%1$s 님이 이 컴퓨터를 업데이트할 수 있어요</string>
+    <string name="settings_computers_readiness_can_change_model">%1$s 님이 모델을 변경할 수 있어요</string>
     <string name="settings_computers_readiness_can_fix">%1$s 님이 해결할 수 있어요</string>
     <string name="settings_computers_readiness_actor_role_computer_owner">컴퓨터 소유자</string>
     <string name="settings_computers_readiness_actor_role_agent_owner">에이전트 소유자</string>
@@ -3514,6 +3516,7 @@
     <string name="settings_computers_readiness_owner_can_sign_in">%1$s가 로그인할 수 있어요</string>
     <string name="settings_computers_readiness_owner_can_verify_account">%1$s가 계정을 인증할 수 있어요</string>
     <string name="settings_computers_readiness_owner_can_update_computer">%1$s가 이 컴퓨터를 업데이트할 수 있어요</string>
+    <string name="settings_computers_readiness_owner_can_change_model">%1$s가 모델을 변경할 수 있어요</string>
     <string name="settings_computers_readiness_owner_can_fix">%1$s가 해결할 수 있어요</string>
     <string name="settings_computers_readiness_attention_count_one">%1$d대 확인 필요</string>
     <string name="settings_computers_readiness_attention_count_other">%1$d대 확인 필요</string>
@@ -3562,6 +3565,8 @@
     <string name="settings_computers_readiness_computer_too_old_desktop_detail">이 컴퓨터의 Raft 버전이 너무 오래되어 에이전트를 실행할 수 없어요. 이 컴퓨터에서 Raft Desktop을 업데이트해 주세요. 메시지는 그대로 남아 있다가 전달돼요.</string>
     <string name="settings_computers_readiness_runtime_missing_title">%1$s 미설치</string>
     <string name="settings_computers_readiness_runtime_missing_detail">이 컴퓨터에 %1$s이(가) 설치되어 있지 않아요. 이 컴퓨터에 설치하거나, %1$s이(가) 있는 컴퓨터로 에이전트를 옮겨 주세요. 메시지는 그대로 남아 있다가 전달돼요.</string>
+    <string name="settings_computers_readiness_model_unavailable_title">모델을 사용할 수 없어요</string>
+    <string name="settings_computers_readiness_model_unavailable_detail">이 컴퓨터의 %1$s에서는 더 이상 %2$s을(를) 제공하지 않아요. 다른 모델을 선택해 주세요.</string>
     <string name="settings_computers_rack_view_label">컴퓨터 보기</string>
     <string name="settings_computers_rack_view_list">목록</string>
     <string name="settings_computers_rack_view_cards">카드</string>
@@ -5324,6 +5329,9 @@
     <string name="agent_status_credential_sign_in">%1$s에 다시 로그인해야 해요</string>
     <string name="agent_status_runtime_sign_in_full">%1$s에 로그인해야 해요</string>
     <string name="agent_status_runtime_sign_in_short">로그인이 필요해요</string>
+    <string name="agent_status_attention_model_unavailable">모델을 사용할 수 없어요</string>
+    <string name="agent_status_attention_needs_restart">다시 시작해야 해요</string>
+    <string name="agent_status_attention_with_detail">%1$s: %2$s</string>
     <string name="agent_status_runtime_sign_in_detail">%3$s에서 %2$s에 로그인해야 %1$s을(를) 시작할 수 있어요. 그 컴퓨터에서 로그인하거나 %1$s을(를) 다른 런타임으로 바꿔 주세요.</string>
     <string name="agent_status_credential_plan_model">플랜에 %1$s이(가) 포함되어 있지 않아요</string>
     <string name="agent_status_credential_plan_default_model">플랜에 이 모델이 포함되어 있지 않아요</string>
@@ -6658,6 +6666,7 @@
     <string name="agent_readiness_can_sign_in">%1$s 님이 로그인할 수 있어요</string>
     <string name="agent_readiness_can_verify_account">%1$s 님이 계정을 인증할 수 있어요</string>
     <string name="agent_readiness_can_update_computer">%1$s 님이 이 컴퓨터를 업데이트할 수 있어요</string>
+    <string name="agent_readiness_can_change_model">%1$s 님이 모델을 변경할 수 있어요</string>
     <string name="agent_readiness_can_fix">%1$s 님이 해결할 수 있어요</string>
     <string name="agent_readiness_verification_required_title">계정 인증 필요</string>
     <string name="agent_readiness_verification_required_detail">여기에 로그인된 %1$s 계정은 인증을 마칠 때까지 응답을 받을 수 없어요. 계정 소유자가 Anthropic 인증 포털에서 절차를 마친 다음 ‘다시 시도’를 선택해야 해요. 메시지는 그대로 남아 있다가 전달돼요.</string>
@@ -6675,6 +6684,8 @@
     <string name="agent_readiness_computer_too_old_desktop_detail">이 컴퓨터의 Raft 버전이 너무 오래되어 에이전트를 실행할 수 없어요. 이 컴퓨터에서 Raft Desktop을 업데이트해 주세요. 메시지는 그대로 남아 있다가 전달돼요.</string>
     <string name="agent_readiness_runtime_missing_title">%1$s 미설치</string>
     <string name="agent_readiness_runtime_missing_detail">이 컴퓨터에 %1$s이(가) 설치되어 있지 않아요. 이 컴퓨터에 설치하거나, %1$s이(가) 있는 컴퓨터로 에이전트를 옮겨 주세요. 메시지는 그대로 남아 있다가 전달돼요.</string>
+    <string name="agent_readiness_model_unavailable_title">모델을 사용할 수 없어요</string>
+    <string name="agent_readiness_model_unavailable_detail">이 컴퓨터의 %1$s에서는 더 이상 %2$s을(를) 제공하지 않아요. 다른 모델을 선택해 주세요.</string>
     <string name="agent_readiness_owner_can_sign_in_computer_owner">컴퓨터 소유자가 로그인할 수 있어요</string>
     <string name="agent_readiness_owner_can_sign_in_agent_owner">에이전트 소유자가 로그인할 수 있어요</string>
     <string name="agent_readiness_owner_can_sign_in_server_admin">서버 관리자가 로그인할 수 있어요</string>
@@ -6684,6 +6695,9 @@
     <string name="agent_readiness_owner_can_update_computer_computer_owner">컴퓨터 소유자가 이 컴퓨터를 업데이트할 수 있어요</string>
     <string name="agent_readiness_owner_can_update_computer_agent_owner">에이전트 소유자가 이 컴퓨터를 업데이트할 수 있어요</string>
     <string name="agent_readiness_owner_can_update_computer_server_admin">서버 관리자가 이 컴퓨터를 업데이트할 수 있어요</string>
+    <string name="agent_readiness_owner_can_change_model_computer_owner">컴퓨터 소유자가 모델을 변경할 수 있어요</string>
+    <string name="agent_readiness_owner_can_change_model_agent_owner">에이전트 소유자가 모델을 변경할 수 있어요</string>
+    <string name="agent_readiness_owner_can_change_model_server_admin">서버 관리자가 모델을 변경할 수 있어요</string>
     <string name="agent_readiness_owner_can_fix_computer_owner">컴퓨터 소유자가 해결할 수 있어요</string>
     <string name="agent_readiness_owner_can_fix_agent_owner">에이전트 소유자가 해결할 수 있어요</string>
     <string name="agent_readiness_owner_can_fix_server_admin">서버 관리자가 해결할 수 있어요</string>

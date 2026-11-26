@@ -18,6 +18,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.AgentActivityDetailKindRuntimeUnavailable
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.model.AgentAttention
 import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.RaftTimeContext
@@ -84,9 +85,10 @@ internal data class AgentStatusSpawnFailure(val spawnFailure: AgentSpawnFailure,
 
 /**
  * Web AgentStatusBadge `spawnFailure`: the carrier only while the status's detail kind is
- * `runtime_unavailable`. The live status decides when it has a kind; without one, the loaded
- * profile's (whose carrier is kept only with that kind) while the live status is unknown or
- * offline (a failed start leaves the agent offline).
+ * `runtime_unavailable` (falling back to live `indicator.spawnFailure` or
+ * `indicator.attention.spawnFailure` before live activity loads, botiverse/slock #17133). The
+ * live status decides when it has a kind; without one, the loaded profile's (whose carrier is
+ * kept only with that kind) while the live status is unknown, offline, or a start-failure attention.
  */
 internal fun membersAgentStatusSpawnFailure(
     indicator: RaftAgentStatusIndicatorState?,
@@ -94,16 +96,27 @@ internal fun membersAgentStatusSpawnFailure(
     summaryActivityDetail: String?,
     summarySpawnFailure: AgentSpawnFailure?,
 ): AgentStatusSpawnFailure? {
-    val failure = summarySpawnFailure ?: return null
+    val attentionFailure = (indicator?.attention as? AgentAttention.StartFailure)?.spawnFailure
+    val failure = summarySpawnFailure ?: indicator?.spawnFailure ?: attentionFailure ?: return null
+    val fallbackDetail =
+        summaryActivityDetail?.takeIf { it.isNotBlank() }
+            ?: indicator?.lastRuntimeErrorMessage?.takeIf { it.isNotBlank() }
+            ?: ""
     val liveKind = indicator?.detailKind
     if (liveKind != null) {
         if (liveKind != AgentActivityDetailKindRuntimeUnavailable) return null
-        return AgentStatusSpawnFailure(failure, indicator.label.ifBlank { summaryActivityDetail.orEmpty() })
+        val liveDetail =
+            indicator.label.takeIf { raw ->
+                raw.isNotBlank() &&
+                    !raw.equals("Error", ignoreCase = true) &&
+                    !raw.equals("Offline", ignoreCase = true)
+            }
+        return AgentStatusSpawnFailure(failure, liveDetail ?: fallbackDetail)
     }
     val liveStatus = indicator?.status
-    if (liveStatus != null && liveStatus != AgentStatus.Offline) return null
+    if (liveStatus != null && liveStatus != AgentStatus.Offline && attentionFailure == null) return null
     if (summaryDetailKind != null && summaryDetailKind != AgentActivityDetailKindRuntimeUnavailable) return null
-    return AgentStatusSpawnFailure(failure, summaryActivityDetail.orEmpty())
+    return AgentStatusSpawnFailure(failure, fallbackDetail)
 }
 
 /** [copy] in this locale; the next try reads as the clock today, else the date and the clock. */

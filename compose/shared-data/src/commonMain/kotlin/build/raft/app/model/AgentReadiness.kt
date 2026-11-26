@@ -25,6 +25,7 @@ val AGENT_READINESS_KNOWN_CODES: Set<String> =
         "computer_too_old",
         "runtime_missing",
         "verification_required",
+        "model_unavailable",
     )
 
 /**
@@ -53,6 +54,7 @@ data class AgentReadinessFact(
     val since: Long? = null,
     val until: Long? = null,
     val managedByDesktop: Boolean? = null,
+    val model: String? = null,
 )
 
 /**
@@ -94,6 +96,25 @@ data class AgentReadinessResetCountdown(
 fun AgentReadiness?.holds(): Boolean =
     this != null && (state == "blocked" || state == "waiting")
 
+/**
+ * Web `readinessAttentionOf` (`packages/web/src/utils/activity.ts`, botiverse/slock #17124):
+ * the readiness that turns an agent's light to the error light on every dot — `blocked`, except
+ * `computer_offline` (stays stone/offline). `waiting`, `advisory`, and `ready` do not trigger
+ * attention.
+ */
+fun AgentReadiness?.attentionReadinessOrNull(): AgentReadiness? {
+    if (this == null || state != "blocked") return null
+    return if (primary?.code == "computer_offline") null else this
+}
+
+/**
+ * Web `AgentStatusBadge` `modelAdvisory` (botiverse/slock #17127): while a warm session is still
+ * live, `model_unavailable` is `advisory` — the status chip stays online/working with an
+ * owner-only note and Change model action below.
+ */
+fun AgentReadiness?.isModelUnavailableAdvisory(): Boolean =
+    this != null && state == "advisory" && primary?.code == "model_unavailable"
+
 /** True when [AgentReadiness.primary] names a provider quota/rate-limit wait. */
 fun AgentReadiness.isLimitWait(): Boolean =
     primary?.code in AGENT_READINESS_LIMIT_WAIT_CODES
@@ -108,7 +129,8 @@ fun AgentReadiness.light(): AgentReadinessLight {
 
 /**
  * Web `runtimeOf`: extracts the runtime id named by [AgentReadinessFact.resource] (`runtime` or
- * `shared:<runtime>` on `login` / `login_window`), falling back to the agent's own runtime id.
+ * `shared:<runtime>` on `login` / `login_window` / `model`), guarding missing `resource.key`
+ * (botiverse/slock #17127, #17133), and falling back to the agent's own runtime id.
  */
 fun AgentReadiness.resolvedRuntimeId(fallbackRuntimeId: String?): String? {
     val resource = primary?.resource
@@ -116,13 +138,21 @@ fun AgentReadiness.resolvedRuntimeId(fallbackRuntimeId: String?): String? {
         resource.runtime?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
     }
     if (
-        (resource?.kind == "login" || resource?.kind == "login_window") &&
+        (resource?.kind == "login" || resource?.kind == "login_window" || resource?.kind == "model") &&
         resource.key?.startsWith("shared:") == true
     ) {
         resource.key.removePrefix("shared:").trim().takeIf { it.isNotEmpty() }?.let { return it }
     }
     return fallbackRuntimeId?.trim()?.takeIf { it.isNotEmpty() }
 }
+
+/**
+ * Resolves the unavailable model id from `params.model` first, falling back to `resource.model`
+ * when `resource.kind == "model"` (web `formatReadiness` `model_unavailable`, botiverse/slock #17127).
+ */
+fun AgentReadinessFact.resolvedModel(): String? =
+    model?.trim()?.takeIf { it.isNotEmpty() }
+        ?: resource?.takeIf { it.kind == "model" }?.model?.trim()?.takeIf { it.isNotEmpty() }
 
 private const val READINESS_MILLIS_PER_MINUTE = 60_000L
 private const val READINESS_MILLIS_PER_HOUR = 60L * READINESS_MILLIS_PER_MINUTE

@@ -29,6 +29,7 @@ import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.ScreenError
 import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.SharedCreateAgentFormStore
+import build.raft.app.model.AgentAttention
 import build.raft.app.model.AgentDeliveryHoldReason
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentStatus
@@ -39,6 +40,8 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
 import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.RaftTextField
 import androidx.compose.runtime.Composable
@@ -258,7 +261,7 @@ internal fun membersAgentHeldByOfflineComputer(
 ): Boolean {
     if (!computerOffline || external || indicator?.blocked != null) return false
     if (lifecycleStatus?.trim()?.lowercase() == "stopped") return false
-    if (indicator?.status == AgentStatus.Error) return false
+    if (indicator?.status == AgentStatus.Error && indicator.attention == null) return false
     return indicator?.detailKind?.trim() !in MembersOwnOfflineDetailKinds
 }
 
@@ -634,7 +637,10 @@ internal fun MembersAgentProfileStatus(
                 text = readinessCopy.title,
                 appearance = RaftBadgeAppearance.Soft,
                 variant = readinessCopy.light.badgeVariant(),
-                modifier = Modifier.semantics { contentDescription = readinessCopy.fullDetail },
+                modifier =
+                    Modifier
+                        .testTag(AgentReadinessTestTags.ProfileChip)
+                        .semantics { contentDescription = readinessCopy.fullDetail },
                 icon = { RaftStatusIndicator(color = readinessCopy.light.dotColor()) },
             )
             val portalUrl = readinessCopy.verificationPortalUrl
@@ -643,6 +649,15 @@ internal fun MembersAgentProfileStatus(
                     onOpenUrl = {
                         if (openUrl != null) openUrl(portalUrl) else runCatching { uriHandler.openUri(portalUrl) }
                     },
+                )
+            }
+            if (showActivityDetail && readinessCopy.offersChangeModel && onChangeModel != null) {
+                RaftTextLink(
+                    text = stringResource(Res.string.agent_status_change_model),
+                    onClick = onChangeModel,
+                    variant = RaftTextLinkVariant.Strong,
+                    style = RaftTheme.typography.footnote,
+                    modifier = Modifier.testTag(AgentSpawnFailureStatusTestTags.ChangeModel),
                 )
             }
             if (readinessCopy.offersRetry && onRetry != null) {
@@ -655,16 +670,6 @@ internal fun MembersAgentProfileStatus(
         )
         return
     }
-    // Web AgentStatusBadge: a failed start's typed copy stands in for the daemon's detail
-    // (botiverse/slock #13460). It gets its own lines under the chip (as the stuck-tool notice
-    // does), so the chip keeps the status words and never cuts the copy.
-    val spawnFailureStatus =
-        spawnFailure?.takeIf {
-            showActivityDetail &&
-                !appBot &&
-                blocked == null &&
-                agentSpawnFailureCopy(it.spawnFailure, it.daemonDetail, nowMs = Long.MIN_VALUE) != null
-        }
     // Web AgentStatusBadge `heldView` (botiverse/slock #16333): the daemon holds the agent's
     // deliveries on every frame, whatever the activity. Every member sees why (detailed badge:
     // "Can't respond: <reason>"; compact badge: "Can't respond" with the reason in semantics).
@@ -715,11 +720,11 @@ internal fun MembersAgentProfileStatus(
                 summary = summary,
                 external = external,
                 blocked = blocked,
-                liveSpawnFailureReason = spawnFailure?.spawnFailure?.reason,
+                liveSpawnFailureReason = spawnFailure?.spawnFailure?.reason ?: agentStatusIndicatorState?.spawnFailureReason,
                 paused = !member.assistantPausedAt.isNullOrBlank(),
             )
-    val runtimeSignIn =
-        rememberAgentRuntimeSignInState(
+    val runtimeSignInResolution =
+        rememberAgentRuntimeSignInResolution(
             state = agentStatusIndicatorState,
             neededOverride = rawRuntimeSignInNeeded,
             fallbackRuntime = summary?.runtime ?: agentStatusIndicatorState?.runtime,
@@ -727,36 +732,66 @@ internal fun MembersAgentProfileStatus(
             fallbackMachineId = summary?.machineId ?: agentStatusIndicatorState?.machineId,
             fallbackMachineName = summary?.machineName ?: agentStatusIndicatorState?.machineName,
         )
+    val runtimeSignIn = runtimeSignInResolution.state
     val runtimeSignInNeeded = runtimeSignIn != null
+    val effectiveIndicator =
+        agentStatusIndicatorState?.withoutClearedLoginRequiredAttention(runtimeSignInResolution.clearedByLiveLogin)
+    val effectiveObserved =
+        agentStatusObservedState?.withoutClearedLoginRequiredAttention(runtimeSignInResolution.clearedByLiveLogin)
+    // Web AgentStatusBadge (#13460, #17133): a failed start's typed copy stands in for the
+    // daemon's detail, falling back to `attention.spawnFailure` before live activity loads. It
+    // gets its own lines under the chip (as the stuck-tool notice does), so the chip keeps the
+    // short status words and never cuts the copy.
+    val effectiveSpawnFailure =
+        spawnFailure?.takeUnless {
+            runtimeSignInResolution.clearedByLiveLogin && it.spawnFailure.reason == RuntimeLoginRequiredSpawnFailure
+        }
+            ?: if (effectiveIndicator?.attention is AgentAttention.StartFailure) {
+                membersAgentStatusSpawnFailure(
+                    indicator = effectiveIndicator,
+                    summaryDetailKind = summary?.activityDetailKind,
+                    summaryActivityDetail = summary?.activityDetail,
+                    summarySpawnFailure = null,
+                )
+            } else {
+                null
+            }
+    val spawnFailureStatus =
+        effectiveSpawnFailure?.takeIf {
+            showActivityDetail &&
+                !appBot &&
+                blocked == null &&
+                agentSpawnFailureCopy(it.spawnFailure, it.daemonDetail, nowMs = Long.MIN_VALUE) != null
+        }
     val showRetry =
         onRetry != null &&
             !appBot &&
             agentNeedsManualRestart(
-                status = agentStatusIndicatorState?.status,
+                status = effectiveIndicator?.status,
                 detailKind =
                     membersAgentStatusDetailKind(
-                        indicator = agentStatusIndicatorState,
+                        indicator = effectiveIndicator,
                         summaryStatus = summary?.status,
                         summaryActivity = summary?.activity,
                         summaryDetailKind = summary?.activityDetailKind,
                     ),
-                spawnFailure = spawnFailure?.spawnFailure,
+                spawnFailure = effectiveSpawnFailure?.spawnFailure,
                 runtimeErrorClass = summary?.lastRuntimeErrorClass,
                 external = external,
                 blocked = blocked,
-                likelyOnline = agentStatusIndicatorState?.likelyOnline == true,
+                likelyOnline = effectiveIndicator?.likelyOnline == true,
                 credentialReason = credentialReason,
             )
     // Web: held or not, an invalid credential or delivery hold cannot respond: the error light.
-    val errorLight = credentialReason != null || runtimeSignInNeeded || deliveryHold != null
+    val baseErrorLight = credentialReason != null || runtimeSignInNeeded || deliveryHold != null
     // Web AgentStatusBadge `workersBusy` (botiverse/slock #16819): online with running Workers
     // shows busy yellow and "Working through a Worker / N Workers" (or presence-only for peers).
     val workersBusy =
-        if (appBot || errorLight || blocked != null) {
+        if (appBot || baseErrorLight || blocked != null || effectiveIndicator?.attention != null) {
             null
         } else {
             membersAgentRunningWorkersDisplay(
-                indicator = agentStatusIndicatorState,
+                indicator = effectiveIndicator,
                 summary = summary,
                 external = external,
                 blocked = blocked,
@@ -768,8 +803,27 @@ internal fun MembersAgentProfileStatus(
                 resolvedDeliveryHold = deliveryHold,
             )
         }
+    // Web AgentStatusBadge `startFailureAttention` (botiverse/slock #17133): a non-retryable
+    // stored failed start shows its short title in the chip and the full sentence below.
+    val startFailureAttention =
+        if (
+            !appBot &&
+            runtimeRetired == null &&
+            runtimeSignIn == null &&
+            deliveryHoldView == null &&
+            credentialReason == null &&
+            blocked == null &&
+            effectiveIndicator?.likelyOnline != true &&
+            workersBusy == null &&
+            effectiveIndicator?.attention is AgentAttention.StartFailure
+        ) {
+            rememberAgentAttentionParts(effectiveIndicator, timeContext = timeContext)
+        } else {
+            null
+        }
+    val errorLight = baseErrorLight || startFailureAttention != null
     val rawStatusLabel = membersHeroAgentStatusLabel(
-        indicatorState = agentStatusIndicatorState,
+        indicatorState = effectiveIndicator,
         summaryStatus = summary?.status,
         summaryActivity = summary?.activity,
         summaryActivityDetail = summary?.activityDetail,
@@ -798,7 +852,7 @@ internal fun MembersAgentProfileStatus(
             if (showActivityDetail) {
                 agentCredentialInvalidText(
                     reason = credentialReason,
-                    runtime = summary?.runtime ?: agentStatusIndicatorState?.runtime,
+                    runtime = summary?.runtime ?: effectiveIndicator?.runtime,
                     model = summary?.model,
                 )
             } else {
@@ -806,8 +860,10 @@ internal fun MembersAgentProfileStatus(
             }
         } else if (workersBusy != null) {
             workersBusy.localizedText()
+        } else if (startFailureAttention != null) {
+            startFailureAttention.short
         } else {
-            agentStatusIndicatorState
+            effectiveIndicator
                 ?.copy(label = rawStatusLabel, runningWorkers = null)
                 ?.localizedMemberStatusLabel()
                 ?: rawStatusLabel
@@ -820,7 +876,7 @@ internal fun MembersAgentProfileStatus(
     // something authoritative arrives (task #253/#256).
     // An App Bot renders no presence (web: always-offline on a signal that does
     // not apply to it).
-    val chipStatus = if (errorLight) AgentStatus.Error else agentStatusObservedState?.status
+    val chipStatus = if (errorLight) AgentStatus.Error else effectiveObserved?.status
     val chipVariant =
         when {
             errorLight -> AgentStatus.Error.membersStatusBadgeVariant()
@@ -831,14 +887,14 @@ internal fun MembersAgentProfileStatus(
         when {
             errorLight -> RaftColor.AccentOrange
             workersBusy != null -> RaftColor.BrandYellow
-            else -> agentStatusObservedState?.color
+            else -> effectiveObserved?.color
         }
     val statusChip: @Composable (Modifier) -> Unit = { chipModifier ->
         RaftBadge(
             text = statusLabel,
             appearance = RaftBadgeAppearance.Soft,
             variant = chipVariant,
-            modifier = chipModifier,
+            modifier = chipModifier.testTag(AgentReadinessTestTags.ProfileChip),
             icon = if (chipColor != null) {
                 {
                     // raft-ui Status in a Badge (`lead-dot`): the 10dp light, never an animation.
@@ -855,6 +911,8 @@ internal fun MembersAgentProfileStatus(
             runtimeRetired != null -> Modifier.semantics { contentDescription = runtimeRetired.detail }
             runtimeSignIn != null -> Modifier.semantics { contentDescription = runtimeSignIn.detail }
             deliveryHoldView != null -> Modifier.semantics { contentDescription = deliveryHoldView.text }
+            startFailureAttention != null ->
+                Modifier.semantics { contentDescription = startFailureAttention.detail.ifBlank { startFailureAttention.short } }
             else -> Modifier
         }
     // Nothing known about its presence (e.g. a joint channel's agent of another server
@@ -923,14 +981,19 @@ internal fun MembersAgentProfileStatus(
             )
         }
     }
-    // Web #10446: stuck on one tool call: its own lines under the status chip, so the
-    // chip never truncates it, with the way out for whoever can stop the turn.
+    // Web #10446, #17133: failed-start sentence (or Change model action) and stuck-tool notice sit
+    // on their own lines under the status chip so the chip never truncates them.
     if (spawnFailureStatus != null) {
         AgentSpawnFailureStatusNotice(
             status = spawnFailureStatus,
             timeContext = timeContext,
             onChangeModel = onChangeModel,
             modifier = Modifier.padding(top = itemTop)
+        )
+    } else if (showActivityDetail && startFailureAttention != null && startFailureAttention.detail.isNotBlank()) {
+        AgentStartFailureDetailNotice(
+            text = startFailureAttention.detail,
+            modifier = Modifier.padding(top = itemTop),
         )
     }
     if (toolStuck != null && member.managedByAppInstallId.isNullOrBlank()) {
@@ -939,6 +1002,25 @@ internal fun MembersAgentProfileStatus(
             onStopTurn = onStopTurn,
             stopTurnEnabled = !stopTurnInProgress,
             modifier = Modifier.padding(top = itemTop)
+        )
+    }
+    // Web AgentStatusBadge (#17127): while a warm session is still live on a removed model,
+    // readiness is advisory so the chip stays online/working with an owner-only note + Change model.
+    val modelAdvisory =
+        if (showActivityDetail && !appBot && runtimeRetired == null && blocked == null) {
+            rememberAgentModelUnavailableAdvisoryCopy(
+                readiness = (effectiveIndicator ?: effectiveObserved)?.readiness ?: member.agentReadiness,
+                fallbackRuntimeId = summary?.runtime ?: effectiveIndicator?.runtime ?: member.roleDescription,
+                timeContext = timeContext,
+            )
+        } else {
+            null
+        }
+    if (modelAdvisory != null) {
+        AgentReadinessAdvisoryNotice(
+            text = modelAdvisory.detail,
+            onChangeModel = onChangeModel,
+            modifier = Modifier.padding(top = itemTop),
         )
     }
 }

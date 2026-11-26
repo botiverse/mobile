@@ -3682,10 +3682,12 @@
     <string name="settings_computers_readiness_do_verify_account">アカウントを確認</string>
     <string name="settings_computers_readiness_do_sign_in">ログイン</string>
     <string name="settings_computers_readiness_do_update_computer">アップデート</string>
+    <string name="settings_computers_readiness_do_change_model">モデルを変更</string>
     <string name="settings_computers_readiness_do_fix">開く</string>
     <string name="settings_computers_readiness_can_sign_in">%1$s がログインできます</string>
     <string name="settings_computers_readiness_can_verify_account">%1$s がアカウントを認証できます</string>
     <string name="settings_computers_readiness_can_update_computer">%1$s がこのコンピューターをアップデートできます</string>
+    <string name="settings_computers_readiness_can_change_model">%1$s がモデルを変更できます</string>
     <string name="settings_computers_readiness_can_fix">%1$s が対応できます</string>
     <string name="settings_computers_readiness_actor_role_computer_owner">コンピューターのオーナー</string>
     <string name="settings_computers_readiness_actor_role_agent_owner">エージェントのオーナー</string>
@@ -3693,6 +3695,7 @@
     <string name="settings_computers_readiness_owner_can_sign_in">%1$sがログインできます</string>
     <string name="settings_computers_readiness_owner_can_verify_account">%1$sがアカウントを認証できます</string>
     <string name="settings_computers_readiness_owner_can_update_computer">%1$sがこのコンピューターをアップデートできます</string>
+    <string name="settings_computers_readiness_owner_can_change_model">%1$sがモデルを変更できます</string>
     <string name="settings_computers_readiness_owner_can_fix">%1$sが対応できます</string>
     <string name="settings_computers_readiness_attention_count_one">%1$d 台要対応</string>
     <string name="settings_computers_readiness_attention_count_other">%1$d 台要対応</string>
@@ -3741,6 +3744,8 @@
     <string name="settings_computers_readiness_computer_too_old_desktop_detail">このコンピューターの Raft のバージョンが古すぎるため、エージェントを実行できません。このコンピューターで Raft Desktop をアップデートしてください。メッセージは保持され、後で配信されます。</string>
     <string name="settings_computers_readiness_runtime_missing_title">%1$s 未インストール</string>
     <string name="settings_computers_readiness_runtime_missing_detail">このコンピューターに %1$s がインストールされていません。このコンピューターにインストールするか、%1$s があるコンピューターにエージェントを移行してください。メッセージは保持され、後で配信されます。</string>
+    <string name="settings_computers_readiness_model_unavailable_title">モデルを利用できません</string>
+    <string name="settings_computers_readiness_model_unavailable_detail">このコンピューターの %1$s では %2$s を利用できなくなりました。別のモデルを選んでください。</string>
     <string name="settings_computers_rack_view_label">コンピューターの表示</string>
     <string name="settings_computers_rack_view_list">リスト</string>
     <string name="settings_computers_rack_view_cards">カード</string>
@@ -5507,6 +5512,9 @@
     <string name="agent_status_credential_sign_in">%1$s へのログインが必要です</string>
     <string name="agent_status_runtime_sign_in_full">%1$s へのログインが必要です</string>
     <string name="agent_status_runtime_sign_in_short">ログインが必要です</string>
+    <string name="agent_status_attention_model_unavailable">モデルを利用できません</string>
+    <string name="agent_status_attention_needs_restart">再起動が必要です</string>
+    <string name="agent_status_attention_with_detail">%1$s：%2$s</string>
     <string name="agent_status_runtime_sign_in_detail">%3$s で %2$s にログインするまで、%1$s は起動できません。そのコンピューターでログインするか、%1$s を別のランタイムに切り替えてください。</string>
     <string name="agent_status_credential_plan_model">プランに %1$s が含まれていません</string>
     <string name="agent_status_credential_plan_default_model">プランにこのモデルが含まれていません</string>
@@ -6659,6 +6667,7 @@
     <string name="agent_readiness_can_sign_in">%1$s がログインできます</string>
     <string name="agent_readiness_can_verify_account">%1$s がアカウントを認証できます</string>
     <string name="agent_readiness_can_update_computer">%1$s がこのコンピューターをアップデートできます</string>
+    <string name="agent_readiness_can_change_model">%1$s がモデルを変更できます</string>
     <string name="agent_readiness_can_fix">%1$s が対応できます</string>
     <string name="agent_readiness_verification_required_title">アカウントの認証が必要</string>
     <string name="agent_readiness_verification_required_detail">ここでログインしている %1$s アカウントは、認証が完了するまで応答を受け取れません。アカウントの所有者が Anthropic 認証ポータルで手続きを完了してから、「再試行」を選択してください。メッセージは保持され、後で配信されます。</string>
@@ -6676,6 +6685,8 @@
     <string name="agent_readiness_computer_too_old_desktop_detail">このコンピューターの Raft のバージョンが古すぎるため、エージェントを実行できません。このコンピューターで Raft Desktop をアップデートしてください。メッセージは保持され、後で配信されます。</string>
     <string name="agent_readiness_runtime_missing_title">%1$s 未インストール</string>
     <string name="agent_readiness_runtime_missing_detail">このコンピューターに %1$s がインストールされていません。このコンピューターにインストールするか、%1$s があるコンピューターにエージェントを移行してください。メッセージは保持され、後で配信されます。</string>
+    <string name="agent_readiness_model_unavailable_title">モデルを利用できません</string>
+    <string name="agent_readiness_model_unavailable_detail">このコンピューターの %1$s では %2$s を利用できなくなりました。別のモデルを選んでください。</string>
     <string name="agent_readiness_owner_can_sign_in_computer_owner">コンピューターのオーナーがログインできます</string>
     <string name="agent_readiness_owner_can_sign_in_agent_owner">エージェントのオーナーがログインできます</string>
     <string name="agent_readiness_owner_can_sign_in_server_admin">サーバー管理者がログインできます</string>
@@ -6685,6 +6696,9 @@
     <string name="agent_readiness_owner_can_update_computer_computer_owner">コンピューターのオーナーがこのコンピューターをアップデートできます</string>
     <string name="agent_readiness_owner_can_update_computer_agent_owner">エージェントのオーナーがこのコンピューターをアップデートできます</string>
     <string name="agent_readiness_owner_can_update_computer_server_admin">サーバー管理者がこのコンピューターをアップデートできます</string>
+    <string name="agent_readiness_owner_can_change_model_computer_owner">コンピューターのオーナーがモデルを変更できます</string>
+    <string name="agent_readiness_owner_can_change_model_agent_owner">エージェントのオーナーがモデルを変更できます</string>
+    <string name="agent_readiness_owner_can_change_model_server_admin">サーバー管理者がモデルを変更できます</string>
     <string name="agent_readiness_owner_can_fix_computer_owner">コンピューターのオーナーが対応できます</string>
     <string name="agent_readiness_owner_can_fix_agent_owner">エージェントのオーナーが対応できます</string>
     <string name="agent_readiness_owner_can_fix_server_admin">サーバー管理者が対応できます</string>

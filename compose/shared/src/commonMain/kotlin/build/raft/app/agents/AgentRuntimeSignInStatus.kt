@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.AgentActivityDetailKindRuntimeUnavailable
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.RuntimeAuthAction
 import build.raft.app.data.RuntimeAuthAvailability
@@ -21,6 +22,8 @@ import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthView
 import build.raft.app.data.canViewMachineRuntimeAccountUsage
 import build.raft.app.data.selectComputerServerSlice
+import build.raft.app.model.AgentAttention
+import build.raft.app.model.AgentStatus
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
@@ -76,12 +79,40 @@ internal data class AgentRuntimeSignInState(
     val openUrl: (String) -> Unit,
 )
 
+internal data class AgentRuntimeSignInResolution(
+    val state: AgentRuntimeSignInState?,
+    /** True when the Computer's live auth read confirmed the runtime is already signed in. */
+    val clearedByLiveLogin: Boolean,
+)
+
+/**
+ * Strips a synthesized `runtime_login_required` start-failure attention once the viewer's live
+ * Computer auth read confirms the runtime is signed in (prevents a stale stored sign-in error
+ * from repainting the error light / "Sign-in needed" after sign-in completes).
+ */
+internal fun RaftAgentStatusIndicatorState.withoutClearedLoginRequiredAttention(
+    clearedByLiveLogin: Boolean,
+): RaftAgentStatusIndicatorState {
+    if (!clearedByLiveLogin) return this
+    val startFailure = attention as? AgentAttention.StartFailure ?: return this
+    if (startFailure.spawnFailure.reason != RuntimeLoginRequiredSpawnFailure) return this
+    return copy(
+        status = AgentStatus.Offline,
+        color = RaftColor.PresenceOffline,
+        label = AgentStatus.Offline.label,
+        detailKind = detailKind?.takeUnless { it == AgentActivityDetailKindRuntimeUnavailable },
+        spawnFailureReason = null,
+        spawnFailure = null,
+        attention = null,
+    )
+}
+
 /**
  * Web `useAgentRuntimeSignInNeeded` + `useAgentRuntimeSignInView` (botiverse/slock #15282):
  * resolves the sign-in-needed status and optional live Computer auth read for one agent.
  *
- * - Returns `null` for every other state, for an agent without a known runtime, and once the
- *   viewer's live read of the Computer reports `logged_in`.
+ * - Returns `null` state for every other state, for an agent without a known runtime, and once the
+ *   viewer's live read of the Computer reports `logged_in` (with `clearedByLiveLogin = true`).
  * - Never reads `GET …/runtime-auth` unless sign-in is needed, the runtime has a single sign-in,
  *   the viewer may see the Computer's sign-in state (`canViewMachine` or fail-closed `viewer` +
  *   `computersStateFlow`), and the shell provided [LocalMembersRuntimeAccountUsageAccess].
@@ -90,14 +121,14 @@ internal data class AgentRuntimeSignInState(
  *   confirmation and can close the session cleanly.
  */
 @Composable
-internal fun rememberAgentRuntimeSignInState(
+internal fun rememberAgentRuntimeSignInResolution(
     state: RaftAgentStatusIndicatorState?,
     neededOverride: Boolean? = null,
     fallbackRuntime: String? = null,
     fallbackName: String? = null,
     fallbackMachineId: String? = null,
     fallbackMachineName: String? = null,
-): AgentRuntimeSignInState? {
+): AgentRuntimeSignInResolution {
     val runtimeId = (state?.runtime ?: fallbackRuntime)?.trim()?.takeIf { it.isNotEmpty() }
     val needed =
         runtimeId != null &&
@@ -186,7 +217,7 @@ internal fun rememberAgentRuntimeSignInState(
         }
     }
     LaunchedEffect(controller) { controller?.read() }
-    if (!needed || runtimeId == null) return null
+    if (!needed || runtimeId == null) return AgentRuntimeSignInResolution(state = null, clearedByLiveLogin = false)
 
     val runtimeName = observeAgentRuntimeDisplayName(runtimeId)
     val rawComputerName =
@@ -212,7 +243,9 @@ internal fun rememberAgentRuntimeSignInState(
     }
     // The failed start (above all a stored one, kept until the next good start) can outlive the
     // sign-in it waited for: once the viewer's live read says the runtime is signed in, drop the status.
-    if (controller?.status is RuntimeAuthStatus.LoggedIn) return null
+    if (controller?.status is RuntimeAuthStatus.LoggedIn) {
+        return AgentRuntimeSignInResolution(state = null, clearedByLiveLogin = true)
+    }
 
     val agentName =
         (state?.agentDisplayName ?: fallbackName)?.trim()?.takeIf { it.isNotEmpty() }
@@ -226,19 +259,41 @@ internal fun rememberAgentRuntimeSignInState(
             authRuntime != null &&
             access?.auth != null &&
             runtimeSignInOffered(controller.view, authRuntime)
-    return AgentRuntimeSignInState(
-        runtimeId = runtimeId,
-        machineId = machineId,
-        fullText = fullText,
-        shortText = shortText,
-        detail = detail,
-        offered = offered,
-        controller = controller,
-        runtimeDisplayName = runtimeName,
-        computerDisplayName = rawComputerName,
-        openUrl = openUrl,
+    return AgentRuntimeSignInResolution(
+        state =
+            AgentRuntimeSignInState(
+                runtimeId = runtimeId,
+                machineId = machineId,
+                fullText = fullText,
+                shortText = shortText,
+                detail = detail,
+                offered = offered,
+                controller = controller,
+                runtimeDisplayName = runtimeName,
+                computerDisplayName = rawComputerName,
+                openUrl = openUrl,
+            ),
+        clearedByLiveLogin = false,
     )
 }
+
+@Composable
+internal fun rememberAgentRuntimeSignInState(
+    state: RaftAgentStatusIndicatorState?,
+    neededOverride: Boolean? = null,
+    fallbackRuntime: String? = null,
+    fallbackName: String? = null,
+    fallbackMachineId: String? = null,
+    fallbackMachineName: String? = null,
+): AgentRuntimeSignInState? =
+    rememberAgentRuntimeSignInResolution(
+        state = state,
+        neededOverride = neededOverride,
+        fallbackRuntime = fallbackRuntime,
+        fallbackName = fallbackName,
+        fallbackMachineId = fallbackMachineId,
+        fallbackMachineName = fallbackMachineName,
+    ).state
 
 /**
  * Web `RuntimeSignInAction` (`packages/web/src/components/machine/RuntimeSignInAction.tsx`,

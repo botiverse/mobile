@@ -57,6 +57,8 @@ import kotlinx.serialization.Serializable
                     presence = Presence.Offline,
                     agentStatus = null,
                     agentReadiness = null,
+                    lastRuntimeErrorSpawnFailureReason = null,
+                    lastRuntimeErrorMessage = null,
                     agentDeliveryHold = null,
                     agentRunningWorkers = null,
                     agentServiceTier = null,

@@ -2810,9 +2810,12 @@ private fun RaftComputerCardAgentSlot(
             memberId = agent.id,
             canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, agent.id),
         )
+    val holdingReadiness = effectiveHoldingReadiness(live)
+    val attentionParts = rememberAgentAttentionParts(live)
     val size = RaftComputerCardAvatarSize
     RaftAvatarWithStatus(
-        statusColor = live?.color,
+        statusColor = holdingReadiness?.dotColor() ?: live?.color,
+        statusDescription = attentionParts?.fullText,
         avatarSize = size.edge,
         cutoutColor = LocalRaftSurfaceColor.current,
         modifier =
@@ -4332,9 +4335,15 @@ private fun RaftComputerAgentRow(
     machineId: String? = null,
 ) {
     // Web MachineAgentRow on a phone-width row: a plain Online / Offline is the status light
-    // alone; anything else (an error, a block, what it is working on) keeps its words, on a line
-    // under the runtime · model line.
-    val statusText = live?.localizedMemberStatusLabel()
+    // alone; anything else (an error, a block, an attention state, what it is working on) keeps
+    // its words, on a line under the runtime · model line.
+    val holdingReadiness = effectiveHoldingReadiness(live)
+    val readinessCopy = rememberAgentReadinessDisplayCopy(live)
+    val attentionParts = rememberAgentAttentionParts(live)
+    val statusText =
+        attentionParts?.fullText
+            ?: readinessCopy?.title
+            ?: live?.localizedMemberStatusLabel(withDetail = true)
     val plainPresence =
         statusText == null ||
             statusText == stringResource(Res.string.member_row_status_online) ||
@@ -4350,7 +4359,7 @@ private fun RaftComputerAgentRow(
         description = statusText?.takeIf { !plainPresence },
         descriptionMaxLines = 3,
         leading = { RaftComputerAgentAvatar(agent) },
-        trailing = if (live != null) { { RaftStatusIndicator(color = live.color, size = 10.dp) } } else null,
+        trailing = if (live != null) { { RaftStatusIndicator(color = holdingReadiness?.dotColor() ?: live.color, size = 10.dp) } } else null,
     )
 }
 

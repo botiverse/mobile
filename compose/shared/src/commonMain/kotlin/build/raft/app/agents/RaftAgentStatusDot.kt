@@ -4,8 +4,11 @@ import build.raft.app.data.agentBlockedState
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.statusLabelRes
 import build.raft.app.model.AgentDeliveryHold
+import build.raft.app.model.AgentReadiness
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
+import build.raft.app.model.attentionReadinessOrNull
+import build.raft.app.model.storedStartFailureAttentionOf
 import build.raft.app.resources.*
 
 /**
@@ -13,8 +16,9 @@ import build.raft.app.resources.*
  * Android home-screen widget). Resolved by [raftAgentStatusIndicatorState], the same mapping as
  * every dot in the app: working / thinking yellow, online / idle lime, external agents cyan (lime
  * inside the 120s online window), error orange, and offline, disconnected or unknown gray. An
- * agent held by its Computer ([blockedReason], [agentBlockedState]) is orange whatever its last
- * activity, as in the app.
+ * agent held by its Computer ([blockedReason], [agentBlockedState]) or needing a person
+ * ([readiness] blocked except `computer_offline`, or a non-retryable stored failed start while
+ * offline and not stopped) is orange whatever its last activity, as in the app.
  */
 enum class RaftAgentStatusDotKind { Lime, Yellow, Cyan, Orange, Gray }
 
@@ -27,9 +31,23 @@ fun raftAgentStatusDotKind(
     deliveryHold: AgentDeliveryHold? = null,
     runningWorkers: Int? = null,
     runtime: String? = null,
+    readiness: AgentReadiness? = null,
+    lastRuntimeErrorSpawnFailureReason: String? = null,
+    lifecycleStatus: String? = null,
 ): RaftAgentStatusDotKind {
     if (!external && agentBlockedState(blockedReason, runtime) != null) return RaftAgentStatusDotKind.Orange
+    if (!external && readiness.attentionReadinessOrNull() != null) return RaftAgentStatusDotKind.Orange
     val parsedStatus = AgentStatus.fromWireValue(statusWireValue)
+    val heldByOfflineComputer = readiness?.state == "blocked" && readiness.primary?.code == "computer_offline"
+    if (
+        !external &&
+        !heldByOfflineComputer &&
+        parsedStatus == AgentStatus.Offline &&
+        lifecycleStatus?.trim()?.lowercase() != "stopped" &&
+        storedStartFailureAttentionOf(lastRuntimeErrorSpawnFailureReason, liveSpawnFailure = null, model = null) != null
+    ) {
+        return RaftAgentStatusDotKind.Orange
+    }
     val nowMs = nowEpochMillis ?: defaultNowMillis()
     if (
         deliveryHold != null &&

@@ -1136,20 +1136,28 @@ private fun MembersListRowAvatar(
         } else {
             null
         }
-    val signIn =
+    val signInResolution =
         if (showsStatus && holdingReadiness == null && runtimeRetired == null) {
-            rememberAgentRuntimeSignInState(
+            rememberAgentRuntimeSignInResolution(
                 state = rawStatus,
                 fallbackRuntime = member.roleDescription,
                 fallbackName = member.displayName.takeIf { it.isNotBlank() } ?: member.handle,
             )
         } else {
+            AgentRuntimeSignInResolution(state = null, clearedByLiveLogin = false)
+        }
+    val signIn = signInResolution.state
+    val effectiveRawStatus = rawStatus?.withoutClearedLoginRequiredAttention(signInResolution.clearedByLiveLogin)
+    val attentionParts =
+        if (showsStatus && runtimeRetired == null && signIn == null) {
+            rememberAgentAttentionParts(effectiveRawStatus)
+        } else {
             null
         }
     val deliveryHold =
-        if (showsStatus && holdingReadiness == null && runtimeRetired == null && signIn == null) {
+        if (showsStatus && holdingReadiness == null && runtimeRetired == null && signIn == null && attentionParts == null) {
             rememberAgentDeliveryHoldView(
-                state = rawStatus,
+                state = effectiveRawStatus,
                 fallbackRuntime = member.roleDescription,
                 fallbackModel = member.model,
             )
@@ -1157,25 +1165,26 @@ private fun MembersListRowAvatar(
             null
         }
     val workersBusyText =
-        if (showsStatus && holdingReadiness == null && runtimeRetired == null && signIn == null && deliveryHold == null) {
+        if (showsStatus && holdingReadiness == null && runtimeRetired == null && signIn == null && attentionParts == null && deliveryHold == null) {
             val nowMs = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: build.raft.app.data.defaultNowMillis()
-            rawStatus?.busyThroughWorkers(nowMs = nowMs)?.localizedText()
+            effectiveRawStatus?.busyThroughWorkers(nowMs = nowMs)?.localizedText()
         } else {
             null
         }
     val status =
         when {
-            holdingReadiness != null -> rawStatus?.copy(color = holdingReadiness.dotColor())
-            runtimeRetired != null -> rawStatus?.copy(color = RaftColor.AccentOrange)
-            signIn != null -> rawStatus?.copy(color = RaftColor.AccentOrange)
-            deliveryHold != null -> rawStatus?.copy(color = RaftColor.AccentOrange)
-            else -> rawStatus
+            holdingReadiness != null -> effectiveRawStatus?.copy(color = holdingReadiness.dotColor())
+            runtimeRetired != null -> effectiveRawStatus?.copy(color = RaftColor.AccentOrange)
+            signIn != null -> effectiveRawStatus?.copy(color = RaftColor.AccentOrange)
+            attentionParts != null -> effectiveRawStatus?.copy(color = RaftColor.AccentOrange)
+            deliveryHold != null -> effectiveRawStatus?.copy(color = RaftColor.AccentOrange)
+            else -> effectiveRawStatus
         }
     MembersAvatar(
         member = member,
         showStatusOverlay = showsStatus && status != null,
         statusIndicatorState = status,
-        statusDescription = runtimeRetired?.detail ?: signIn?.detail ?: deliveryHold?.text ?: workersBusyText,
+        statusDescription = runtimeRetired?.detail ?: signIn?.detail ?: attentionParts?.fullText ?: deliveryHold?.text ?: workersBusyText,
         memberAvatarResolver = memberAvatarResolver
     )
 }

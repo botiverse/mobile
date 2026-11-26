@@ -283,11 +283,13 @@ import kotlin.concurrent.Volatile
     val savedAtMs: Long = 0L,
 )
 
-/** Presence, readiness, delivery holds, running Workers and live service tier are live server state; a persisted roster never carries them. */
+/** Presence, readiness, stored failed-start errors, delivery holds, running Workers and live service tier are live server state; a persisted roster never carries them. */
 @RaftCoreInternalApi fun MemberProfile.forDurableRoster(): MemberProfile =
     if (
         presence == Presence.Offline &&
         agentReadiness == null &&
+        lastRuntimeErrorSpawnFailureReason == null &&
+        lastRuntimeErrorMessage == null &&
         agentDeliveryHold == null &&
         agentRunningWorkers == null &&
         agentServiceTier == null
@@ -297,6 +299,8 @@ import kotlin.concurrent.Volatile
         copy(
             presence = Presence.Offline,
             agentReadiness = null,
+            lastRuntimeErrorSpawnFailureReason = null,
+            lastRuntimeErrorMessage = null,
             agentDeliveryHold = null,
             agentRunningWorkers = null,
             agentServiceTier = null,

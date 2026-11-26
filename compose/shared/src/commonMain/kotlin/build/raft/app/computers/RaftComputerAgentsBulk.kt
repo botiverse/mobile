@@ -471,6 +471,7 @@ internal fun RaftComputerSelectableAgentRow(
     serverId: String? = null,
     machineId: String? = null,
 ) {
+    val holdingReadiness = effectiveHoldingReadiness(live)
     build.raft.app.data.RaftModelLabelCatalogs.observeCatalog(serverId)
     build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
     RaftListRow(
@@ -485,7 +486,7 @@ internal fun RaftComputerSelectableAgentRow(
                 avatar()
             }
         },
-        trailing = if (live != null) { { RaftStatusIndicator(color = live.color, size = 10.dp) } } else null,
+        trailing = if (live != null) { { RaftStatusIndicator(color = holdingReadiness?.dotColor() ?: live.color, size = 10.dp) } } else null,
     )
 }
 
