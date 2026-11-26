@@ -176,6 +176,9 @@ internal fun formatConversationWorkerLine(
     reduced: Boolean = false,
 ): WorkerLineParts? {
     val state = held.state
+    val worker = state.worker
+    val waitingFrom = state.waitingFrom
+    val stateTool = state.tool
     val agent = agentHandle.orEmpty()
     val unnamed = agentHandle == null
 
@@ -190,20 +193,20 @@ internal fun formatConversationWorkerLine(
     val handling =
         when {
             unnamed -> strings.handlingUnknown
-            state.worker != null -> strings.handling.substituteWorkerTemplate(mapOf("worker" to state.worker, "agent" to agent))
+            worker != null -> strings.handling.substituteWorkerTemplate(mapOf("worker" to worker, "agent" to agent))
             else -> strings.handlingAnonymous.substituteWorkerTemplate(mapOf("agent" to agent))
         }
     val who =
         when {
             unnamed -> strings.whoUnknown
-            state.worker != null -> strings.who.substituteWorkerTemplate(mapOf("worker" to state.worker, "agent" to agent))
+            worker != null -> strings.who.substituteWorkerTemplate(mapOf("worker" to worker, "agent" to agent))
             else -> strings.whoAnonymous.substituteWorkerTemplate(mapOf("agent" to agent))
         }
     val waitingMs = age(state.waitingSinceAt ?: state.sinceAt)
     val quietMs = state.quietSinceAt?.let(::age)
 
     fun working(): WorkerLineParts {
-        val tool = if (!reduced && state.doing == "tool" && !state.tool.isNullOrBlank()) state.tool else null
+        val tool = if (!reduced && state.doing == "tool" && !stateTool.isNullOrBlank()) stateTool else null
         val tail =
             if (tool != null) {
                 "${span(heldMs)} · ${strings.running.substituteWorkerTemplate(mapOf("tool" to tool))}"
@@ -226,8 +229,8 @@ internal fun formatConversationWorkerLine(
             val handedWho =
                 when {
                     unnamed -> strings.handedBackUnknown
-                    state.waitingFrom != null ->
-                        strings.handedBack.substituteWorkerTemplate(mapOf("person" to state.waitingFrom, "agent" to agent))
+                    waitingFrom != null ->
+                        strings.handedBack.substituteWorkerTemplate(mapOf("person" to waitingFrom, "agent" to agent))
                     else -> strings.handedBackSomeone.substituteWorkerTemplate(mapOf("agent" to agent))
                 }
             WorkerLineParts(
@@ -242,8 +245,8 @@ internal fun formatConversationWorkerLine(
         ConversationWorkerStateKind.Waiting -> {
             val warn = waitingMs >= WORKER_HUMAN_WAITING_AFTER_MS
             val waitingTail =
-                if (state.waitingFrom != null) {
-                    strings.waiting.substituteWorkerTemplate(mapOf("person" to state.waitingFrom, "span" to span(waitingMs)))
+                if (waitingFrom != null) {
+                    strings.waiting.substituteWorkerTemplate(mapOf("person" to waitingFrom, "span" to span(waitingMs)))
                 } else {
                     strings.someoneWaiting.substituteWorkerTemplate(mapOf("span" to span(waitingMs)))
                 }
@@ -257,7 +260,7 @@ internal fun formatConversationWorkerLine(
             )
         }
         ConversationWorkerStateKind.Stalled -> {
-            if (state.worker == null && quietMs == null) {
+            if (worker == null && quietMs == null) {
                 working()
             } else {
                 val silentMs = quietMs ?: (WORKER_QUIET_AFTER_MS + (nowMs - held.stateSeenAtMs).coerceAtLeast(0L))
@@ -273,10 +276,10 @@ internal fun formatConversationWorkerLine(
         }
         ConversationWorkerStateKind.Handling -> {
             val inToolMs = quietMs ?: (nowMs - held.doingSeenAtMs).coerceAtLeast(0L)
-            if (!unnamed && !reduced && state.doing == "tool" && !state.tool.isNullOrBlank() && inToolMs >= WORKER_QUIET_AFTER_MS) {
+            if (!unnamed && !reduced && state.doing == "tool" && !stateTool.isNullOrBlank() && inToolMs >= WORKER_QUIET_AFTER_MS) {
                 WorkerLineParts(
                     who = who,
-                    tail = strings.inTool.substituteWorkerTemplate(mapOf("tool" to state.tool, "span" to span(inToolMs))),
+                    tail = strings.inTool.substituteWorkerTemplate(mapOf("tool" to stateTool, "span" to span(inToolMs))),
                     tone = WorkerLineTone.Default,
                     scope = WorkerLineScope.Tail,
                     urgency = 0L,
