@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.HiddenHistory
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -179,5 +180,51 @@ class RaftUpgradeDialogTest {
             externalSlotUpgradeContext(listOf(privateWithExternal, activeJoint), serverId = "srv-a")
         )
         assertEquals("c1,c3", externalSlotChannelsKey(listOf(plain, privateWithExternal, archivedJoint, activeJoint), serverId = "srv-a"))
+    }
+
+    @Test
+    fun historyContextPairsOnlyWithHistory30dAndResolvesFromPaywallScope() {
+        val channelCtx = RaftUpgradeHistoryContext.Channel(channel = "#roadmap", count = 50, capped = false)
+        assertEquals(channelCtx, historyContextForGate(RaftUpgradeGate.History30d, channelCtx))
+        assertNull(historyContextForGate(RaftUpgradeGate.General, channelCtx))
+        assertNull(historyContextForGate(RaftUpgradeGate.History30d, RaftUpgradeHistoryContext.Channel("#roadmap", 0, false)))
+        assertNull(historyContextForGate(RaftUpgradeGate.History30d, RaftUpgradeHistoryContext.Channel(" ", 5, false)))
+        assertNull(historyContextForGate(RaftUpgradeGate.History30d, RaftUpgradeHistoryContext.Thread(0, false)))
+        assertNull(historyContextForGate(RaftUpgradeGate.History30d, RaftUpgradeHistoryContext.Conversation(0, false)))
+        assertNull(historyContextForGate(RaftUpgradeGate.History30d, RaftUpgradeHistoryContext.Target(" ")))
+        val targetCtx = RaftUpgradeHistoryContext.Target("2026-09-16T12:00:00.000Z")
+        assertEquals(targetCtx, historyContextForGate(RaftUpgradeGate.History30d, targetCtx))
+
+        val hidden50 = HiddenHistory(hiddenCount = 50, hiddenCountCapped = false, parentHidden = false, latest = emptyList())
+        val hiddenCapped = HiddenHistory(hiddenCount = 1000, hiddenCountCapped = true, parentHidden = false, latest = emptyList())
+        val hiddenZero = HiddenHistory(hiddenCount = 0, hiddenCountCapped = false, parentHidden = true, latest = emptyList())
+
+        assertEquals(
+            RaftUpgradeHistoryContext.Channel(channel = "#roadmap", count = 50, capped = false),
+            threadHistoryLimitContext(ThreadHistoryPaywallScope.Channel, hidden50, channelName = "roadmap"),
+        )
+        assertEquals(
+            RaftUpgradeHistoryContext.Channel(channel = "#roadmap", count = 1000, capped = true),
+            threadHistoryLimitContext(ThreadHistoryPaywallScope.Channel, hiddenCapped, channelName = "#roadmap"),
+        )
+        // Agent Lounges and unnamed channels fall back to Conversation (web historyPaywallChannelName).
+        assertEquals(
+            RaftUpgradeHistoryContext.Conversation(count = 50, capped = false),
+            threadHistoryLimitContext(ThreadHistoryPaywallScope.Channel, hidden50, channelName = "Lagoon's Lounge", isAgentLounge = true),
+        )
+        assertEquals(
+            RaftUpgradeHistoryContext.Thread(count = 50, capped = false),
+            threadHistoryLimitContext(ThreadHistoryPaywallScope.Thread, hidden50, channelName = "roadmap"),
+        )
+        assertEquals(
+            RaftUpgradeHistoryContext.Conversation(count = 50, capped = false),
+            threadHistoryLimitContext(ThreadHistoryPaywallScope.Dm, hidden50, channelName = "Alice"),
+        )
+        assertEquals(
+            RaftUpgradeHistoryContext.Conversation(count = 50, capped = false),
+            threadHistoryLimitContext(ThreadHistoryPaywallScope.Task, hidden50, channelName = "Task #1"),
+        )
+        assertNull(threadHistoryLimitContext(ThreadHistoryPaywallScope.Channel, null, channelName = "roadmap"))
+        assertNull(threadHistoryLimitContext(ThreadHistoryPaywallScope.Thread, hiddenZero, channelName = "roadmap"))
     }
 }

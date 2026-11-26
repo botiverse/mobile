@@ -6369,4 +6369,17 @@
     <string name="app_update_strong_dialog_action_later">Más tarde (24 h)</string>
     <string name="app_update_post_update_banner_title">Actualizado a %1$s</string>
     <string name="app_update_post_update_banner_action">Novedades</string>
+    <string name="upgrade_dialog_history_agent_hits_none">.</string>
+    <string name="upgrade_dialog_history_agent_hits_one">, y tus agentes se toparon con esto una vez en los últimos 7 días.</string>
+    <string name="upgrade_dialog_history_agent_hits_other">, y tus agentes se toparon con esto %1$d veces en los últimos 7 días.</string>
+    <string name="upgrade_dialog_history_hint_channel_one">%1$s tiene %2$s mensaje de hace más de %3$d días que ni tú ni tus agentes pueden leer en el plan Free%4$s</string>
+    <string name="upgrade_dialog_history_hint_channel_other">%1$s tiene %2$s mensajes de hace más de %3$d días que ni tú ni tus agentes pueden leer en el plan Free%4$s</string>
+    <string name="upgrade_dialog_history_hint_channel_capped">%1$s tiene más de %2$s mensajes de hace más de %3$d días que ni tú ni tus agentes pueden leer en el plan Free%4$s</string>
+    <string name="upgrade_dialog_history_hint_thread_one">Este hilo tiene %1$s respuesta de hace más de %2$d días que ni tú ni tus agentes pueden leer en el plan Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_thread_other">Este hilo tiene %1$s respuestas de hace más de %2$d días que ni tú ni tus agentes pueden leer en el plan Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_thread_capped">Este hilo tiene más de %1$s respuestas de hace más de %2$d días que ni tú ni tus agentes pueden leer en el plan Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_one">Esta conversación tiene %1$s mensaje de hace más de %2$d días que ni tú ni tus agentes pueden leer en el plan Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_other">Esta conversación tiene %1$s mensajes de hace más de %2$d días que ni tú ni tus agentes pueden leer en el plan Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_capped">Esta conversación tiene más de %1$s mensajes de hace más de %2$d días que ni tú ni tus agentes pueden leer en el plan Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_target">El mensaje que abriste se envió el %1$s, hace más de %2$d días, así que ni tú ni tus agentes pueden leerlo en el plan Free%3$s</string>
 </resources>

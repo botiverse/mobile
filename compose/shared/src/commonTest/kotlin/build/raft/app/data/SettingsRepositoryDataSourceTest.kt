@@ -686,6 +686,52 @@ class SettingsRepositoryDataSourceTest {
         assertEquals("2026-12-01T00:00:00.000Z", summary.currentPeriodEnd)
         assertFalse(summary.canManageBilling)
         assertEquals("pro", admin.data.serverPlan)
+        assertNull(summary.agentHistoryBlocks7d)
+    }
+
+    @Test
+    fun billingSummaryParsesAgentHistoryBlocks7dAndLoaderDegradesOnFailure() = runBlocking {
+        val withHits =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"free","agentHistoryBlocks7d":6,"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}"""
+            )
+        assertEquals(6, requireNotNull(withHits).agentHistoryBlocks7d)
+
+        val withZero =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"free","agentHistoryBlocks7d":0,"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}"""
+            )
+        assertEquals(0, requireNotNull(withZero).agentHistoryBlocks7d)
+
+        val withNull =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"pro","agentHistoryBlocks7d":null,"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}"""
+            )
+        assertNull(requireNotNull(withNull).agentHistoryBlocks7d)
+
+        val withNegative =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"free","agentHistoryBlocks7d":-1,"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}"""
+            )
+        assertNull(requireNotNull(withNegative).agentHistoryBlocks7d)
+
+        val loaded =
+            loadServerAgentHistoryBlocks7d(
+                networkClient =
+                    FakeSettingsNetworkClient(
+                        billingSubscriptionJson =
+                            """{"plan":"free","agentHistoryBlocks7d":3,"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}"""
+                    ),
+                serverId = "srv-1",
+            )
+        assertEquals(3, loaded)
+
+        val denied =
+            loadServerAgentHistoryBlocks7d(
+                networkClient = FakeSettingsNetworkClient(responseCode = 403),
+                serverId = "srv-1",
+            )
+        assertNull(denied)
     }
 
     @Test

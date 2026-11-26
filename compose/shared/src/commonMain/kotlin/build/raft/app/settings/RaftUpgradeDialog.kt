@@ -36,10 +36,12 @@ import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.billingPricing
 import build.raft.app.data.formatProSeatMonthlyUsd
+import build.raft.app.data.loadServerAgentHistoryBlocks7d
 import build.raft.app.data.loadServerProPricing
 import build.raft.app.data.percentEncode
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
@@ -358,6 +360,40 @@ internal fun raftUpgradeWebUrl(
     return base + "?" + query.joinToString("&") { (key, value) -> "$key=$value" }
 }
 
+/**
+ * What the 30-day history window hid where the paywall was met (web `HistoryLimitContext`,
+ * botiverse/slock #14512): how many older messages the conversation has (a named channel by its
+ * `#name`), or when the message a link opened was sent. Paired strictly with
+ * [RaftUpgradeGate.History30d] via [historyContextForGate].
+ */
+internal sealed interface RaftUpgradeHistoryContext {
+    data class Channel(val channel: String, val count: Int, val capped: Boolean) : RaftUpgradeHistoryContext
+    data class Thread(val count: Int, val capped: Boolean) : RaftUpgradeHistoryContext
+    data class Conversation(val count: Int, val capped: Boolean) : RaftUpgradeHistoryContext
+    data class Target(val sentAtIso: String) : RaftUpgradeHistoryContext
+}
+
+/**
+ * Pairs [context] only with [RaftUpgradeGate.History30d] when well-formed; any other gate or empty
+ * count/channel falls back to the gate's own copy (without the 7-day agent hit count).
+ */
+internal fun historyContextForGate(
+    gate: RaftUpgradeGate,
+    context: RaftUpgradeHistoryContext?,
+): RaftUpgradeHistoryContext? {
+    if (gate != RaftUpgradeGate.History30d || context == null) return null
+    return when (context) {
+        is RaftUpgradeHistoryContext.Channel ->
+            context.takeIf { it.channel.isNotBlank() && it.count > 0 }
+        is RaftUpgradeHistoryContext.Thread ->
+            context.takeIf { it.count > 0 }
+        is RaftUpgradeHistoryContext.Conversation ->
+            context.takeIf { it.count > 0 }
+        is RaftUpgradeHistoryContext.Target ->
+            context.takeIf { it.sentAtIso.isNotBlank() }
+    }
+}
+
 /** One open upgrade dialog: shown by the [RaftUpgradeDialogHost] of the page that opened it. */
 internal data class RaftUpgradeRequest(
     val gate: RaftUpgradeGate,
@@ -379,6 +415,14 @@ internal data class RaftUpgradeRequest(
      * answers, so the dialog never quotes a `seat_v1` price on a guess.
      */
     val pricing: ProPricing? = null,
+    /** Gate-paired conversation history paywall context (`History30d`, botiverse/slock #14512). */
+    val historyContext: RaftUpgradeHistoryContext? = null,
+    /**
+     * How often this server's agents ran into the 30-day history window in the past 7 days
+     * (`GET /billing/subscription` `agentHistoryBlocks7d`, botiverse/slock #14512). Shown only
+     * inside the contextual [historyContext] line when > 0.
+     */
+    val agentHistoryBlocks7d: Int? = null,
 )
 
 /** The open upgrade dialog, if any (one per process, like web `useUpgradeDialogStore`). */
@@ -415,6 +459,8 @@ internal fun Pager.openRaftUpgradeDialog(
     targetServerId: String? = null,
     knownBillingPresent: Boolean = false,
     knownPricing: ProPricing? = null,
+    historyContext: RaftUpgradeHistoryContext? = null,
+    knownAgentHistoryBlocks7d: Int? = null,
 ) {
     val bridge = Utils.bridgeModule(pagerId)
     val sharedStores = RaftSharedStoreRegistry.get(bridge)
@@ -423,6 +469,7 @@ internal fun Pager.openRaftUpgradeDialog(
     val authDataSource = sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope)
     val pager = this
     val pairedContext = externalContextForGate(gate, externalContext)
+    val pairedHistoryContext = historyContextForGate(gate, historyContext)
     raftUpgradeScope.launch {
         val session = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
         val requestedServerId = targetServerId?.trim()?.takeIf { it.isNotEmpty() }
@@ -447,6 +494,12 @@ internal fun Pager.openRaftUpgradeDialog(
             server?.slug?.takeIf { it.isNotBlank() }
                 ?: if (requestedServerId == null) standaloneSettingsServerSlug(session) else null
         val initialPricing = if (mode != RaftUpgradeMode.LimitNotice && knownBillingPresent) billingPricing(knownPricing) else null
+        val initialAgentHistoryBlocks =
+            if (mode != RaftUpgradeMode.LimitNotice && pairedHistoryContext != null) {
+                knownAgentHistoryBlocks7d?.takeIf { it >= 0 }
+            } else {
+                null
+            }
         val request =
             RaftUpgradeRequest(
                 gate = gate,
@@ -467,26 +520,68 @@ internal fun Pager.openRaftUpgradeDialog(
                 externalContext = pairedContext,
                 storeScope = storeScope,
                 pricing = initialPricing,
+                historyContext = pairedHistoryContext,
+                agentHistoryBlocks7d = initialAgentHistoryBlocks,
             )
         RaftUpgradeDialogState.refresher = { current -> raftReloadServerPlan(authDataSource, current.serverId) }
         RaftUpgradeDialogState.request = request
+        val canReadBillingSummary = server?.role == "owner" || server?.role == "admin"
+        val shouldLoadPricing = mode != RaftUpgradeMode.LimitNotice && !knownBillingPresent && request.serverId.isNotBlank()
+        val shouldLoadHistoryBlocks =
+            mode != RaftUpgradeMode.LimitNotice &&
+                gate == RaftUpgradeGate.History30d &&
+                pairedHistoryContext != null &&
+                knownAgentHistoryBlocks7d == null &&
+                canReadBillingSummary &&
+                request.serverId.isNotBlank()
+        val networkClient =
+            if (shouldLoadPricing || shouldLoadHistoryBlocks) {
+                sharedStores.networkClient(storeScope)
+            } else {
+                null
+            }
         // #16367: ask GET /api/billing/pricing (readable by any member) when billing is not already known.
         // Never in LimitNotice (iOS view-only App Store guideline 3.1.1) and never quote a guessed price.
-        if (mode != RaftUpgradeMode.LimitNotice && !knownBillingPresent && request.serverId.isNotBlank()) {
-            val resolved =
-                loadServerProPricing(
-                    networkClient = sharedStores.networkClient(storeScope),
-                    serverId = request.serverId,
-                )
-            if (resolved != null) {
-                val current = RaftUpgradeDialogState.request
-                if (current != null &&
-                    current.pagerId == request.pagerId &&
-                    current.serverId == request.serverId &&
-                    current.gate == request.gate &&
-                    current.mode == request.mode
-                ) {
-                    RaftUpgradeDialogState.request = current.copy(pricing = resolved)
+        if (shouldLoadPricing && networkClient != null) {
+            launch {
+                val resolved =
+                    loadServerProPricing(
+                        networkClient = networkClient,
+                        serverId = request.serverId,
+                    )
+                if (resolved != null) {
+                    val current = RaftUpgradeDialogState.request
+                    if (current != null &&
+                        current.pagerId == request.pagerId &&
+                        current.serverId == request.serverId &&
+                        current.gate == request.gate &&
+                        current.mode == request.mode
+                    ) {
+                        RaftUpgradeDialogState.request = current.copy(pricing = resolved)
+                    }
+                }
+            }
+        }
+        // #14512: read `agentHistoryBlocks7d` from GET /api/billing/subscription (owner/admin only)
+        // when opening a contextual 30-day history upgrade dialog.
+        if (shouldLoadHistoryBlocks && networkClient != null) {
+            launch {
+                val resolved =
+                    loadServerAgentHistoryBlocks7d(
+                        networkClient = networkClient,
+                        serverId = request.serverId,
+                    )
+                if (resolved != null) {
+                    val current = RaftUpgradeDialogState.request
+                    if (current != null &&
+                        current.pagerId == request.pagerId &&
+                        current.serverId == request.serverId &&
+                        current.gate == request.gate &&
+                        current.mode == request.mode &&
+                        current.historyContext == request.historyContext
+                    ) {
+                        RaftUpgradeDialogState.request = current.copy(agentHistoryBlocks7d = resolved)
+                    }
                 }
             }
         }
@@ -653,6 +748,91 @@ internal fun raftUpgradeGateCopy(gate: RaftUpgradeGate): RaftUpgradeGateCopy =
     }
 
 /**
+ * Tail of the contextual 30-day history hint (web `upgradeDialog.history.hint*` `{agentTries}`,
+ * botiverse/slock #14512): ends the sentence with a period when `agentTries <= 0` (including
+ * Japanese/Korean verb conjugation) or appends how often agents hit the window in the past 7 days.
+ */
+@Composable
+internal fun raftHistoryAgentHitsTail(agentTries: Int): String =
+    when {
+        agentTries <= 0 -> stringResource(Res.string.upgrade_dialog_history_agent_hits_none)
+        agentTries == 1 -> stringResource(Res.string.upgrade_dialog_history_agent_hits_one, agentTries)
+        else -> stringResource(Res.string.upgrade_dialog_history_agent_hits_other, agentTries)
+    }
+
+/**
+ * Formats the send date of a hidden target message (web `hiddenMessageDateFormat`): month and day
+ * in the current year, with the year when from another year, via [RaftTimeContext].
+ */
+@Composable
+internal fun raftFormatHiddenHistoryTargetDate(
+    sentAtIso: String,
+    timeContext: RaftTimeContext? = null,
+): String {
+    val context = currentRaftEffectiveDateTimeContext(timeContext)
+    val epochMillis = parseRaftTimestampEpochMillisOrNull(sentAtIso, context.localOffsetMinutes) ?: return sentAtIso
+    val targetDate = civilDateFromEpochDay(context.localEpochDay(epochMillis))
+    val todayDay = context.resolvedTodayEpochDay()
+    val sameYear = todayDay != null && targetDate.year == civilDateFromEpochDay(todayDay).year
+    return if (sameYear) {
+        stringResource(Res.string.settings_compact_month_day, raftLocalizedShortMonth(targetDate.month), targetDate.day)
+    } else {
+        sentAtIso.membersLocalizedCreatedDateOrNull(context) ?: sentAtIso
+    }
+}
+
+/**
+ * Web `historyLimitHint` (`upgradeGateCopy.ts`, botiverse/slock #14512): contextual line under the
+ * upgrade dialog title when opened from a conversation's history paywall, including how often
+ * this server's agents ran into the 30-day window in the past 7 days when [agentTries] > 0.
+ */
+@Composable
+internal fun raftHistoryLimitHint(
+    context: RaftUpgradeHistoryContext,
+    agentTries: Int = 0,
+    timeContext: RaftTimeContext? = null,
+): String {
+    val days = SettingsBillingFreeHistoryDays
+    val tail = raftHistoryAgentHitsTail(agentTries)
+    return when (context) {
+        is RaftUpgradeHistoryContext.Channel -> {
+            val formattedCount = threadHistoryPaywallCount(context.count)
+            val res =
+                when {
+                    context.capped -> Res.string.upgrade_dialog_history_hint_channel_capped
+                    context.count == 1 -> Res.string.upgrade_dialog_history_hint_channel_one
+                    else -> Res.string.upgrade_dialog_history_hint_channel_other
+                }
+            stringResource(res, context.channel, formattedCount, days, tail)
+        }
+        is RaftUpgradeHistoryContext.Thread -> {
+            val formattedCount = threadHistoryPaywallCount(context.count)
+            val res =
+                when {
+                    context.capped -> Res.string.upgrade_dialog_history_hint_thread_capped
+                    context.count == 1 -> Res.string.upgrade_dialog_history_hint_thread_one
+                    else -> Res.string.upgrade_dialog_history_hint_thread_other
+                }
+            stringResource(res, formattedCount, days, tail)
+        }
+        is RaftUpgradeHistoryContext.Conversation -> {
+            val formattedCount = threadHistoryPaywallCount(context.count)
+            val res =
+                when {
+                    context.capped -> Res.string.upgrade_dialog_history_hint_conversation_capped
+                    context.count == 1 -> Res.string.upgrade_dialog_history_hint_conversation_one
+                    else -> Res.string.upgrade_dialog_history_hint_conversation_other
+                }
+            stringResource(res, formattedCount, days, tail)
+        }
+        is RaftUpgradeHistoryContext.Target -> {
+            val formattedDate = raftFormatHiddenHistoryTargetDate(context.sentAtIso, timeContext)
+            stringResource(Res.string.upgrade_dialog_history_hint_target, formattedDate, days, tail)
+        }
+    }
+}
+
+/**
  * The upgrade dialog (see the file comment), in the app's dialog card: eyebrow, a title of up to
  * three lines, the limit, what Pro adds, who finishes it, and the action in the footer.
  * Every string takes the server name as `%1$s` (unused where the copy has none).
@@ -666,6 +846,8 @@ internal fun RaftUpgradeDialog(
     val server = request.serverName
     val copy = raftUpgradeGateCopy(request.gate)
     val pairedContext = externalContextForGate(request.gate, request.externalContext)
+    val pairedHistoryContext = historyContextForGate(request.gate, request.historyContext)
+    val agentHistoryTries = (request.agentHistoryBlocks7d ?: 0).coerceAtLeast(0)
     val freezeUpcoming = pairedContext as? RaftUpgradeExternalContext.FreezeUpcoming
     val freezeDeadline = freezeUpcoming?.let { raftFormatFreezeDeadline(it.deadlineIso) }
     val slotChannel = (pairedContext as? RaftUpgradeExternalContext.Slot)?.channelName
@@ -714,6 +896,8 @@ internal fun RaftUpgradeDialog(
                 stringResource(Res.string.upgrade_dialog_external_freeze_upcoming_hint, freezeDeadline, server)
             slotChannel != null ->
                 stringResource(Res.string.upgrade_dialog_external_limit_hint_channel, server, slotChannel)
+            pairedHistoryContext != null ->
+                raftHistoryLimitHint(pairedHistoryContext, agentHistoryTries)
             else -> stringResource(copy.hint, server)
         }
     val action =

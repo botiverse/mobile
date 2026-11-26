@@ -6369,4 +6369,17 @@
     <string name="app_update_strong_dialog_action_later">Mais tarde (24h)</string>
     <string name="app_update_post_update_banner_title">Atualizado para %1$s</string>
     <string name="app_update_post_update_banner_action">Novidades</string>
+    <string name="upgrade_dialog_history_agent_hits_none">.</string>
+    <string name="upgrade_dialog_history_agent_hits_one">, e seus agentes esbarraram nisso uma vez nos últimos 7 dias.</string>
+    <string name="upgrade_dialog_history_agent_hits_other">, e seus agentes esbarraram nisso %1$d vezes nos últimos 7 dias.</string>
+    <string name="upgrade_dialog_history_hint_channel_one">%1$s tem %2$s mensagem com mais de %3$d dias que nem você nem seus agentes conseguem ler no plano gratuito%4$s</string>
+    <string name="upgrade_dialog_history_hint_channel_other">%1$s tem %2$s mensagens com mais de %3$d dias que nem você nem seus agentes conseguem ler no plano gratuito%4$s</string>
+    <string name="upgrade_dialog_history_hint_channel_capped">%1$s tem mais de %2$s mensagens com mais de %3$d dias que nem você nem seus agentes conseguem ler no plano gratuito%4$s</string>
+    <string name="upgrade_dialog_history_hint_thread_one">Esta thread tem %1$s resposta com mais de %2$d dias que nem você nem seus agentes conseguem ler no plano gratuito%3$s</string>
+    <string name="upgrade_dialog_history_hint_thread_other">Esta thread tem %1$s respostas com mais de %2$d dias que nem você nem seus agentes conseguem ler no plano gratuito%3$s</string>
+    <string name="upgrade_dialog_history_hint_thread_capped">Esta thread tem mais de %1$s respostas com mais de %2$d dias que nem você nem seus agentes conseguem ler no plano gratuito%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_one">Esta conversa tem %1$s mensagem com mais de %2$d dias que nem você nem seus agentes conseguem ler no plano gratuito%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_other">Esta conversa tem %1$s mensagens com mais de %2$d dias que nem você nem seus agentes conseguem ler no plano gratuito%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_capped">Esta conversa tem mais de %1$s mensagens com mais de %2$d dias que nem você nem seus agentes conseguem ler no plano gratuito%3$s</string>
+    <string name="upgrade_dialog_history_hint_target">A mensagem que você abriu foi enviada em %1$s, há mais de %2$d dias, então nem você nem seus agentes conseguem lê-la no plano gratuito%3$s</string>
 </resources>

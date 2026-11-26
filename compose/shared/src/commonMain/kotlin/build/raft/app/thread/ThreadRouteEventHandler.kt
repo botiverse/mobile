@@ -279,9 +279,31 @@ internal class ThreadRouteEventHandler(
                 if (action == ThreadOpenPlanBillingEvent) {
                     bridge.log("thread_history_paywall_open_billing offersUpgrade=${settingsBillingOffersUpgrade()}")
                     // Upgrade to Pro: the upgrade dialog for the 30-day window (web HistoryPaywall
-                    // `history_30d`). iOS view-only Billing: "View your plan", the view-only page.
+                    // `history_30d`, with conversation context so the owner sees how many older
+                    // messages hide here and how often agents ran into the window in the past 7 days).
+                    // iOS view-only Billing: "View your plan", the view-only page.
                     if (settingsBillingOffersUpgrade()) {
-                        pager.openRaftUpgradeDialog(RaftUpgradeGate.History30d, storeScope)
+                        val hidden =
+                            renderedTimelineSlice.historyChannelId?.let { channelId ->
+                                build.raft.app.data.RaftHiddenHistoryStore.byChannel.value[channelId]
+                            }
+                        val loungeChannelId = renderedThread.agentLoungeLookupChannelId()
+                        val isAgentLounge =
+                            loungeChannelId != null &&
+                                currentServerId != null &&
+                                RaftAgentLounges.lounge(currentServerId, loungeChannelId) != null
+                        val historyContext =
+                            threadHistoryLimitContext(
+                                scope = renderedTimelineSlice.historyPaywallScope(),
+                                hidden = hidden,
+                                channelName = renderedThread.title,
+                                isAgentLounge = isAgentLounge,
+                            )
+                        pager.openRaftUpgradeDialog(
+                            gate = RaftUpgradeGate.History30d,
+                            storeScope = storeScope,
+                            historyContext = historyContext,
+                        )
                     } else {
                         pager.openSettingsBillingPage(storeScope)
                     }

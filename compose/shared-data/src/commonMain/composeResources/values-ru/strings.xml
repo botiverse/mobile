@@ -6369,4 +6369,17 @@
     <string name="app_update_strong_dialog_action_later">Позже (24 ч)</string>
     <string name="app_update_post_update_banner_title">Обновлено до %1$s</string>
     <string name="app_update_post_update_banner_action">Что нового</string>
+    <string name="upgrade_dialog_history_agent_hits_none">.</string>
+    <string name="upgrade_dialog_history_agent_hits_one">; за последние 7 дней ваши агенты наткнулись на это %1$d раз.</string>
+    <string name="upgrade_dialog_history_agent_hits_other">; за последние 7 дней ваши агенты наткнулись на это %1$d раза.</string>
+    <string name="upgrade_dialog_history_hint_channel_one">В канале %1$s %2$s сообщение старше %3$d дней, которое вы и ваши агенты не можете прочитать на тарифе Free%4$s</string>
+    <string name="upgrade_dialog_history_hint_channel_other">В канале %1$s %2$s сообщений старше %3$d дней, которые вы и ваши агенты не можете прочитать на тарифе Free%4$s</string>
+    <string name="upgrade_dialog_history_hint_channel_capped">В канале %1$s более %2$s сообщений старше %3$d дней, которые вы и ваши агенты не можете прочитать на тарифе Free%4$s</string>
+    <string name="upgrade_dialog_history_hint_thread_one">В этой ветке %1$s ответ старше %2$d дней, который вы и ваши агенты не можете прочитать на тарифе Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_thread_other">В этой ветке %1$s ответов старше %2$d дней, которые вы и ваши агенты не можете прочитать на тарифе Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_thread_capped">В этой ветке более %1$s ответов старше %2$d дней, которые вы и ваши агенты не можете прочитать на тарифе Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_one">В этом чате %1$s сообщение старше %2$d дней, которое вы и ваши агенты не можете прочитать на тарифе Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_other">В этом чате %1$s сообщений старше %2$d дней, которые вы и ваши агенты не можете прочитать на тарифе Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_capped">В этом чате более %1$s сообщений старше %2$d дней, которые вы и ваши агенты не можете прочитать на тарифе Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_target">Сообщение, которое вы открыли, отправлено %1$s, больше %2$d дней назад, поэтому на тарифе Free вы и ваши агенты не можете его прочитать%3$s</string>
 </resources>

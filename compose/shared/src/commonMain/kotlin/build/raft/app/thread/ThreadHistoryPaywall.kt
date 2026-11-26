@@ -171,6 +171,37 @@ internal fun threadHistoryPaywallCount(count: Int): String {
     return digits.reversed().chunked(3).joinToString(",").reversed()
 }
 
+/**
+ * What the upgrade dialog's contextual line says about this paywall (web `HistoryPaywall.tsx`
+ * `historyContextFor` + `historyPaywallLabels.ts` `historyPaywallChannelName`, botiverse/slock
+ * #14512): how many older messages the conversation has (a named channel by its `#name`), or null
+ * when the count is unknown or zero. DMs, tasks, and agent Lounges have no `#channel` name and
+ * fall back to "this conversation"; reply threads use "this thread".
+ */
+internal fun threadHistoryLimitContext(
+    scope: ThreadHistoryPaywallScope,
+    hidden: HiddenHistory?,
+    channelName: String? = null,
+    isAgentLounge: Boolean = false,
+): RaftUpgradeHistoryContext? {
+    if (hidden == null || hidden.hiddenCount <= 0) return null
+    val count = hidden.hiddenCount
+    val capped = hidden.hiddenCountCapped
+    return when (scope) {
+        ThreadHistoryPaywallScope.Channel -> {
+            val clean = channelName?.trim()?.removePrefix("#")?.takeIf { it.isNotBlank() && !isAgentLounge }
+            if (clean != null) {
+                RaftUpgradeHistoryContext.Channel(channel = "#$clean", count = count, capped = capped)
+            } else {
+                RaftUpgradeHistoryContext.Conversation(count = count, capped = capped)
+            }
+        }
+        ThreadHistoryPaywallScope.Thread -> RaftUpgradeHistoryContext.Thread(count = count, capped = capped)
+        ThreadHistoryPaywallScope.Dm,
+        ThreadHistoryPaywallScope.Task -> RaftUpgradeHistoryContext.Conversation(count = count, capped = capped)
+    }
+}
+
 /** What the window hides in [channelId], live ([RaftHiddenHistoryStore]); null when nothing. */
 @Composable
 internal fun rememberThreadHiddenHistory(channelId: String?): HiddenHistory? {
