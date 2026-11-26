@@ -1538,7 +1538,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         marker: ActivityReplyThreadPrewarmMarker
     ): ActivityReplyThreadPrewarmMarker {
         _state.value.items
-            .firstOrNull { item -> item.replyThreadPrewarmKey(marker.key.serverId) == marker.key }
+            .firstOrNull { item -> item.matchesPrewarmMarkerKey(marker.key) }
             ?.let { item ->
                 replyThreadFreshnessLedger.acceptSummary(
                     marker.key.serverId,
@@ -1552,17 +1552,32 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
 
     private fun advanceReplyThreadContent(existing: InboxItem, patched: InboxItem, realtimeMessageId: String?) {
         val serverId = _state.value.ownerServerId ?: return
-        val key = existing.replyThreadPrewarmKey(serverId) ?: return
+        val threadId = existing.activityFreshnessThreadId() ?: return
         replyThreadFreshnessLedger.acceptSummary(
-            key.serverId,
-            key.threadChannelId,
+            serverId,
+            threadId,
             patched.replyThreadSummaryFact(),
             realtimeMessageId = realtimeMessageId,
         )
     }
 
+    /**
+     * Hands 3ebf97ba: any non-echo live `message:new` on the active server invalidates captured
+     * prewarm generations for that conversation (channel, joint channel, DM, or reply thread),
+     * even when the row is not listed or not patched in place.
+     */
+    private fun acceptMessageNewFreshness(message: Message) {
+        val serverId = _state.value.ownerServerId?.trim()?.takeIf { it.isNotBlank() } ?: return
+        val threadId =
+            message.threadChannelId?.value?.trim()?.takeIf { it.isNotBlank() }
+                ?: message.channelId?.value?.trim()?.takeIf { it.isNotBlank() }
+                ?: message.threadId.value.trim().takeIf { it.isNotBlank() }
+                ?: return
+        replyThreadFreshnessLedger.acceptRealtimeMessage(serverId, threadId, message)
+    }
+
     private fun acceptMessageUpdatedFreshness(message: Message) {
-        val serverId = _state.value.ownerServerId ?: return
+        val serverId = _state.value.ownerServerId?.trim()?.takeIf { it.isNotBlank() } ?: return
         val candidateThreadIds =
             setOfNotNull(
                 message.channelId?.value,
@@ -1571,13 +1586,18 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             )
         val item =
             _state.value.items.firstOrNull { candidate ->
-                candidate.kind == InboxItemKind.Thread &&
+                (candidate.kind == InboxItemKind.Thread || candidate.isChannelOrDmRow()) &&
                     candidateThreadIds.any { threadId ->
                         candidate.threadChannelId?.value == threadId || candidate.channelId.value == threadId
                     }
-            } ?: return
-        val key = item.replyThreadPrewarmKey(serverId) ?: return
-        replyThreadFreshnessLedger.acceptMessageMutation(key.serverId, key.threadChannelId, message)
+            }
+        val threadId =
+            item?.activityFreshnessThreadId()
+                ?: message.threadChannelId?.value?.trim()?.takeIf { it.isNotBlank() }
+                ?: message.channelId?.value?.trim()?.takeIf { it.isNotBlank() }
+                ?: message.threadId.value.trim().takeIf { it.isNotBlank() }
+                ?: return
+        replyThreadFreshnessLedger.acceptMessageMutation(serverId, threadId, message)
     }
 
     private fun cancelReplyPrewarmJobsNotIn(activeKeys: Set<ActivityReplyThreadPrewarmKey>) {
@@ -1738,8 +1758,9 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         }
         if (!event.refreshesActivity()) return null
         // Web socketBridge messageNew: a message the list already shows (a repeat delivery) is an echo.
+        val isMessageEcho = event is MessageNew && _state.value.showsMessage(event.message.id)
         val trigger =
-            if (event is MessageNew && _state.value.showsMessage(event.message.id)) {
+            if (isMessageEcho) {
                 InboxRefreshTrigger.MessageEcho
             } else {
                 event.inboxRefreshTrigger()
@@ -1749,7 +1770,10 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         when (event) {
             // Not past a mute (the shell's allowLocalPatch): the served row stops there. In place,
             // the shown row a target names is patched instead of re-read, so nothing is caught up.
-            is MessageNew -> if (intent.allowLocalPatch && inPlace == null) raiseRealtimeCatchUpTargetLocked(event.message)
+            is MessageNew -> {
+                if (!isMessageEcho) acceptMessageNewFreshness(event.message)
+                if (intent.allowLocalPatch && inPlace == null) raiseRealtimeCatchUpTargetLocked(event.message)
+            }
             is MessageUpdated -> {
                 acceptMessageUpdatedFreshness(event.message)
                 applyChannelMessageUpdatedPatch(event.message, intent)
@@ -2054,6 +2078,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                         existing.readStateLatestActivitySeq
                     }
             ).withLiveUnread(unread, message.id)
+        advanceReplyThreadContent(existing, patched, realtimeMessageId = message.id.value)
         realtimeHighWater[patched.key] =
             ActivityRealtimeHighWater(
                 marker = patched.lastMessageId,
@@ -2761,9 +2786,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 "advances=$advances unread=${patched.unreadCount} mention=${patched.hasMention}"
         )
         if (advances) {
-            if (existing.kind == InboxItemKind.Thread) {
-                advanceReplyThreadContent(existing, patched, realtimeMessageId = message.id.value)
-            }
+            advanceReplyThreadContent(existing, patched, realtimeMessageId = message.id.value)
             applyPatchedActivityItem(patched, index, current, snapshot, intent)
         } else {
             replaceActivityItemInPlace(patched, index, current, snapshot, intent)
@@ -5478,12 +5501,12 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             }
 
     private fun acceptCanonicalReplyThreadFacts(nextState: SharedActivityState) {
-        val serverId = nextState.ownerServerId ?: return
+        val serverId = nextState.ownerServerId?.trim()?.takeIf { it.isNotBlank() } ?: return
         nextState.items.forEach { item ->
-            val key = item.replyThreadPrewarmKey(serverId) ?: return@forEach
+            val threadId = item.activityFreshnessThreadId() ?: return@forEach
             replyThreadFreshnessLedger.acceptSummary(
-                key.serverId,
-                key.threadChannelId,
+                serverId,
+                threadId,
                 item.replyThreadSummaryFact()
             )
         }
@@ -8203,6 +8226,29 @@ private fun InboxItem.replyThreadPrewarmKey(serverId: String): ActivityReplyThre
     )
 }
 
+/**
+ * Hands 3ebf97ba: the timeline channel id whose [SharedThreadFreshnessLedger] generation tracks
+ * this Activity row — covering reply threads, task conversations, channels, joint channels, and DMs.
+ */
+private fun InboxItem.activityFreshnessThreadId(): String? =
+    when (kind) {
+        InboxItemKind.Thread -> {
+            val normalizedThreadChannelId = threadChannelId?.value?.trim()?.takeIf { it.isNotBlank() }
+            val normalizedParentChannelId = parentChannelId?.value?.trim()?.takeIf { it.isNotBlank() }
+            normalizedThreadChannelId?.takeUnless { it == normalizedParentChannelId }
+        }
+        InboxItemKind.Channel,
+        InboxItemKind.DirectMessage -> channelId.value.trim().takeIf { it.isNotBlank() }
+        else -> null
+    }
+
+private fun InboxItem.matchesPrewarmMarkerKey(key: ActivityReplyThreadPrewarmKey): Boolean =
+    if (key.isConversation) {
+        isChannelOrDmRow() && !isTaskConversation && channelId.value.trim() == key.threadChannelId
+    } else {
+        replyThreadPrewarmKey(key.serverId) == key
+    }
+
 private fun InboxItem.replyThreadSummaryFact(): SharedThreadSummaryFact =
     SharedThreadSummaryFact(
         replyCount = replyCount,
@@ -8211,7 +8257,8 @@ private fun InboxItem.replyThreadSummaryFact(): SharedThreadSummaryFact =
         latestActivityAt = latestActivityAt,
         lastMessageId = lastMessageId?.value,
         lastMessagePreview = lastMessagePreview,
-        lastMessageAt = lastMessageAt
+        lastMessageAt = lastMessageAt,
+        latestActivitySeq = latestActivitySeq,
     )
 
 private fun List<InboxItem>.withActivityThreadTaskProjection(
