@@ -76,8 +76,9 @@ import kotlinx.coroutines.launch
  *
  * It is at most [RaftDrawerDefaults.MaxWidth] wide, and [content] fills it under the grab handle
  * ([RaftSheetGrabHandle]): it draws its own head. [fill] is the surface's layer: raft-ui's
- * `layer-popover`, or [RaftDrawerFill.Canvas] for a panel whose head and body sit on the canvas
- * (the assistant's panel), so the grab handle's strip is the same opaque layer as the rest.
+ * `layer-popover`, or [RaftDrawerFill.Canvas] for content that is all on the canvas, so the grab
+ * handle's strip is the same opaque layer as the rest. A panel in a sheet paints its head on the
+ * sheet's `layer-popover` (raft-ui 0.105.1, raft-design #1451), so it takes the default fill.
  * [clearNavigationBar] false leaves the home indicator and the keyboard to [content] (a
  * conversation whose composer already pads for both); true pads the surface for them.
  * [overlay] is drawn over the whole window, above the scrim and the surface (a notification
