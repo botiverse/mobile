@@ -501,6 +501,23 @@ class RaftWebContainerAdapterTest {
         assertTrue(mediaDenyLine.contains("reason=missing_usage_description"))
         assertTrue(mediaDenyLine.contains("missingKeys=NSMicrophoneUsageDescription"))
 
+        // The policy denial every web page gets (iOS, artin 2026-11-26) is expected: logged, not a warning.
+        val (policyDenyWarn, policyDenyLine) =
+            formatWebContainerTelemetryLog(
+                WebContainerTelemetryEvent.MediaCapturePermission(
+                    surfaceId = "in_app_browser",
+                    kind = "Camera",
+                    grantedPrompt = false,
+                    reason = build.raft.webcontainer.WEB_MEDIA_CAPTURE_DENIED_REASON,
+                    missingKeys = emptyList(),
+                    origin = "https://example.com",
+                    isMainFrame = true,
+                ),
+            )
+        assertFalse(policyDenyWarn)
+        assertTrue(policyDenyLine.contains("decision=deny"))
+        assertTrue(policyDenyLine.contains("reason=web_media_capture_disabled"))
+
         val (mediaPromptWarn, mediaPromptLine) =
             formatWebContainerTelemetryLog(
                 WebContainerTelemetryEvent.MediaCapturePermission(

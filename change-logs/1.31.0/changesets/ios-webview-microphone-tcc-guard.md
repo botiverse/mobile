@@ -8,12 +8,12 @@ rollout: full
 
 ## zh-CN
 
-修复了在 iOS 内置浏览器或 Raft 应用页面请求麦克风权限时应用直接闪退的问题：应用现已声明麦克风用途说明及其多语言文案，并在 iOS WebView 权限代理中新增防退化校验，仅在所需系统隐私说明完备时弹出授权提示，否则安全拒绝而不再触发系统崩溃。
+修复了在 iOS 内置浏览器或 Raft 应用页面里，网页申请麦克风时应用直接闪退的问题。现在网页的麦克风和摄像头申请一律直接拒绝，不再弹出系统授权框（与桌面端内置浏览器一致），页面其余功能照常可用。
 
 ## en
 
-Fixed a crash on iOS when a web page or Raft App opened in the in-app browser requests microphone access: Raft now declares `NSMicrophoneUsageDescription` across all supported locales and guards WebKit media capture permission prompts so any missing privacy usage description is safely denied instead of crashing the app.
+Fixed a crash on iOS when a web page in the in-app browser or a Raft App asked for the microphone. Web pages' microphone and camera requests are now always declined without a system prompt, as in Raft Desktop's built-in browser, and the rest of the page keeps working.
 
 ## ja
 
-iOS のアプリ内ブラウザや Raft アプリで Web ページがマイク権限を要求した際にアプリがクラッシュする不具合を修正しました。すべての対応言語でマイクの利用目的説明を追加するとともに、iOS の WebView 権限ハンドラで必要なプライバシー説明の有無を確認し、未設定の場合はクラッシュさせず安全に拒否するようにしました。
+iOS のアプリ内ブラウザや Raft アプリで Web ページがマイクを要求するとアプリがクラッシュする不具合を修正しました。Web ページからのマイク・カメラの要求は、デスクトップ版の内蔵ブラウザと同様にシステムの許可ダイアログを出さずに常に拒否し、ページのほかの機能はそのまま使えます。

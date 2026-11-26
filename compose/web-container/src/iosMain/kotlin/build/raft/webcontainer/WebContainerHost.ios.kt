@@ -1232,57 +1232,40 @@ internal class WebContainerIosHost(
         notifyNavigationBlocked(action.request.URL?.absoluteString.orEmpty(), "new_window_blocked")
     }
 
+    /**
+     * Every web page's camera / microphone request is refused ([WEB_MEDIA_CAPTURE_DENIED_REASON]):
+     * WebKit gets `WKPermissionDecisionDeny` before it reaches `tccd`, so no page raises a system
+     * prompt. A request from a WebView that is not this host's is refused too.
+     */
     internal fun decideMediaCapturePermission(
         source: WKWebView,
         originLabel: String,
         isMainFrame: Boolean,
         type: WKMediaCaptureType,
-        hasUsageDescription: (String) -> Boolean = ::iosBundleHasUsageDescription,
     ): WKPermissionDecision {
         if (disposed || !isSameObjCObject(source, webView)) {
             return WKPermissionDecision.WKPermissionDecisionDeny
         }
         val kind = type.toWebMediaCaptureKind()
-        val decision = evaluateIosWebMediaCapturePermission(kind, hasUsageDescription)
         val surfaceId = config?.surfaceId ?: "default"
-        when (decision) {
-            IosWebMediaCaptureDecision.Prompt -> {
-                telemetrySink?.onEvent(
-                    WebContainerTelemetryEvent.MediaCapturePermission(
-                        surfaceId = surfaceId,
-                        kind = kind.name,
-                        grantedPrompt = true,
-                        reason = null,
-                        missingKeys = emptyList(),
-                        origin = originLabel,
-                        isMainFrame = isMainFrame,
-                    ),
-                )
-                val logLine =
-                    "[WebContainer][info] media_capture_permission decision=prompt surface=$surfaceId " +
-                        "kind=${kind.name} mainFrame=$isMainFrame origin=$originLabel"
-                NSLog(logLine.replace("%", "%%"))
-            }
-            is IosWebMediaCaptureDecision.Deny -> {
-                telemetrySink?.onEvent(
-                    WebContainerTelemetryEvent.MediaCapturePermission(
-                        surfaceId = surfaceId,
-                        kind = kind.name,
-                        grantedPrompt = false,
-                        reason = decision.reason,
-                        missingKeys = decision.missingKeys,
-                        origin = originLabel,
-                        isMainFrame = isMainFrame,
-                    ),
-                )
-                val logLine =
-                    "[WebContainer][warn] media_capture_permission decision=deny surface=$surfaceId " +
-                        "kind=${kind.name} reason=${decision.reason} missingKeys=${decision.missingKeys.joinToString(",")} " +
-                        "mainFrame=$isMainFrame origin=$originLabel"
-                NSLog(logLine.replace("%", "%%"))
-            }
+        runCatching {
+            telemetrySink?.onEvent(
+                WebContainerTelemetryEvent.MediaCapturePermission(
+                    surfaceId = surfaceId,
+                    kind = kind.name,
+                    grantedPrompt = false,
+                    reason = WEB_MEDIA_CAPTURE_DENIED_REASON,
+                    missingKeys = emptyList(),
+                    origin = originLabel,
+                    isMainFrame = isMainFrame,
+                ),
+            )
         }
-        return decision.toWkPermissionDecision()
+        val logLine =
+            "[WebContainer][info] media_capture_permission decision=deny surface=$surfaceId " +
+                "kind=${kind.name} reason=$WEB_MEDIA_CAPTURE_DENIED_REASON mainFrame=$isMainFrame origin=$originLabel"
+        NSLog(logLine.replace("%", "%%"))
+        return WKPermissionDecision.WKPermissionDecisionDeny
     }
 
     private fun handleWatchdogAction(action: WebContainerWatchdogAction) {

@@ -5,12 +5,9 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
-import build.raft.webcontainer.IosWebMediaCaptureDecision
-import build.raft.webcontainer.evaluateIosWebMediaCapturePermission
+import build.raft.webcontainer.WEB_MEDIA_CAPTURE_DENIED_REASON
 import build.raft.webcontainer.formatIosSecurityOriginForLog
-import build.raft.webcontainer.iosBundleHasUsageDescription
 import build.raft.webcontainer.toWebMediaCaptureKind
-import build.raft.webcontainer.toWkPermissionDecision
 import kotlinx.cinterop.CEnum
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -1134,30 +1131,25 @@ internal class RaftIosSandboxWebView(
         notifyNavigationBlocked(action.request.URL?.absoluteString ?: "")
     }
 
+    /**
+     * Every web page's camera / microphone request is refused ([WEB_MEDIA_CAPTURE_DENIED_REASON]):
+     * WebKit gets `WKPermissionDecisionDeny` before it reaches `tccd`, so no page raises a system
+     * prompt. A request from a WebView that is not this host's is refused too.
+     */
     internal fun decideMediaCapturePermission(
         source: WKWebView,
         originLabel: String,
         isMainFrame: Boolean,
         type: WKMediaCaptureType,
-        hasUsageDescription: (String) -> Boolean = ::iosBundleHasUsageDescription,
     ): WKPermissionDecision {
         if (disposed || !raftIsSameObjCObject(source, webView)) {
             return WKPermissionDecision.WKPermissionDecisionDeny
         }
-        val kind = type.toWebMediaCaptureKind()
-        val decision = evaluateIosWebMediaCapturePermission(kind, hasUsageDescription)
-        when (decision) {
-            IosWebMediaCaptureDecision.Prompt ->
-                diagnosticsInfo(
-                    "media_capture_permission decision=prompt kind=${kind.name} mainFrame=$isMainFrame origin=$originLabel",
-                )
-            is IosWebMediaCaptureDecision.Deny ->
-                diagnosticsWarn(
-                    "media_capture_permission decision=deny kind=${kind.name} reason=${decision.reason} " +
-                        "missingKeys=${decision.missingKeys.joinToString(",")} mainFrame=$isMainFrame origin=$originLabel",
-                )
-        }
-        return decision.toWkPermissionDecision()
+        diagnosticsInfo(
+            "media_capture_permission decision=deny kind=${type.toWebMediaCaptureKind().name} " +
+                "reason=$WEB_MEDIA_CAPTURE_DENIED_REASON mainFrame=$isMainFrame origin=$originLabel",
+        )
+        return WKPermissionDecision.WKPermissionDecisionDeny
     }
 
     internal fun didReceiveScriptMessage(controller: WKUserContentController, message: WKScriptMessage) {
