@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -43,29 +43,29 @@ class SharedHomeShellStoreFreshnessTest {
                 triggered += Triple(trigger, serverId, tab)
             },
         )
-        advanceUntilIdle()
+        runCurrent()
 
         // First catch-up fails: must NOT consume the 10 s coalesce window.
         freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.NetworkRestored))
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(1, homeRefreshAttempts)
 
         // Second NetworkRestored 1 s later retries immediately and succeeds.
         nowMs = 2_000L
         freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.NetworkRestored))
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(2, homeRefreshAttempts)
 
         // Third NetworkRestored 1 s after success is coalesced inside the 10 s window.
         nowMs = 3_000L
         freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.NetworkRestored))
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(2, homeRefreshAttempts)
 
         // A new socket connection (transportEpoch) bypasses the 10 s coalesce window.
         nowMs = 4_000L
         freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Reconnect, serverId = "server-1", transportEpoch = 2L))
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(3, homeRefreshAttempts)
         assertEquals(
             listOf(
@@ -113,17 +113,17 @@ class SharedHomeShellStoreFreshnessTest {
             visible = true,
             onTriggered = { trigger, _, tab, _ -> triggered += trigger to tab },
         )
-        advanceUntilIdle()
+        runCurrent()
 
         // Reconnect while on More is held, not dropped.
         freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Reconnect, serverId = "server-1", transportEpoch = 1L))
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(0, homeRefreshAttempts)
         assertEquals(0, activityRefreshAttempts)
 
         // Returning to Home drains the held reconnect.
         store.dispatch(SharedHomeShellIntent.SetSelectedTab("home"))
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(1, homeRefreshAttempts)
         assertEquals(listOf(RaftFreshnessTrigger.Reconnect to "home"), triggered)
 
@@ -134,11 +134,11 @@ class SharedHomeShellStoreFreshnessTest {
             visible = false,
             onTriggered = { trigger, _, tab, _ -> triggered += trigger to tab },
         )
-        advanceUntilIdle()
+        runCurrent()
 
         nowMs = 20_000L
         freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.NetworkRestored))
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(0, activityRefreshAttempts)
 
         store.setFreshnessScope(
@@ -146,7 +146,7 @@ class SharedHomeShellStoreFreshnessTest {
             visible = true,
             onTriggered = { trigger, _, tab, _ -> triggered += trigger to tab },
         )
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(1, activityRefreshAttempts)
         assertEquals(
             listOf(
@@ -182,10 +182,10 @@ class SharedHomeShellStoreFreshnessTest {
             )
         store.dispatch(SharedHomeShellIntent.SetSelectedTab("home"))
         store.setFreshnessScope(serverId = "server-1", visible = true)
-        advanceUntilIdle()
+        runCurrent()
 
         freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Foreground))
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(0, homeRefreshAttempts)
         store.clear()
     }
