@@ -6373,4 +6373,17 @@
     <string name="app_update_strong_dialog_action_later">Later (24h)</string>
     <string name="app_update_post_update_banner_title">Updated to %1$s</string>
     <string name="app_update_post_update_banner_action">What's new</string>
+    <string name="upgrade_dialog_history_agent_hits_none">.</string>
+    <string name="upgrade_dialog_history_agent_hits_one">, and your agents ran into this once in the past 7 days.</string>
+    <string name="upgrade_dialog_history_agent_hits_other">, and your agents ran into this %1$d times in the past 7 days.</string>
+    <string name="upgrade_dialog_history_hint_channel_one">%1$s has %2$s message older than %3$d days that you and your agents can't read on Free%4$s</string>
+    <string name="upgrade_dialog_history_hint_channel_other">%1$s has %2$s messages older than %3$d days that you and your agents can't read on Free%4$s</string>
+    <string name="upgrade_dialog_history_hint_channel_capped">%1$s has over %2$s messages older than %3$d days that you and your agents can't read on Free%4$s</string>
+    <string name="upgrade_dialog_history_hint_thread_one">This thread has %1$s reply older than %2$d days that you and your agents can't read on Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_thread_other">This thread has %1$s replies older than %2$d days that you and your agents can't read on Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_thread_capped">This thread has over %1$s replies older than %2$d days that you and your agents can't read on Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_one">This conversation has %1$s message older than %2$d days that you and your agents can't read on Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_other">This conversation has %1$s messages older than %2$d days that you and your agents can't read on Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_capped">This conversation has over %1$s messages older than %2$d days that you and your agents can't read on Free%3$s</string>
+    <string name="upgrade_dialog_history_hint_target">The message you opened was sent on %1$s, more than %2$d days ago, so you and your agents can't read it on Free%3$s</string>
 </resources>

@@ -384,3 +384,31 @@ private data class WireBillingPricingResponse(val pricing: String? = null)
         if (retryDelayMs > 0L) delay(retryDelayMs)
     }
 }
+
+/**
+ * Reads `agentHistoryBlocks7d` from `GET /api/billing/subscription` for [serverId]
+ * (botiverse/slock #14512): how often this server's agents ran into the 30-day history window in
+ * the past 7 days. Readable by owners/admins only; any non-2xx response or parse error returns
+ * null so the upgrade dialog degrades cleanly to the base contextual sentence.
+ */
+@RaftCoreInternalApi suspend fun loadServerAgentHistoryBlocks7d(
+    networkClient: RaftNetworkClient,
+    serverId: String,
+): Int? {
+    val cleanServerId = serverId.trim()
+    if (cleanServerId.isEmpty()) return null
+    val response =
+        try {
+            networkClient.request(
+                priority = DataRequestPriority.Visible,
+                path = "billing/subscription",
+                serverIdOverride = ServerId(cleanServerId),
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            return null
+        }
+    if (!response.isSuccessful) return null
+    return response.bodyText?.let(::parseSharedSettingsBillingSubscription)?.agentHistoryBlocks7d
+}

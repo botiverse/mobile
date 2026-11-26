@@ -1836,7 +1836,13 @@ data class SettingsBillingSubscriptionSnapshot(
     val provisionedAgents: Int = 0,
     val proPackQuantity: Int = 0,
     val fileUploadQuota: SettingsBillingFileUploadQuotaSnapshot? = null,
-    val priceBillingInterval: String? = null
+    val priceBillingInterval: String? = null,
+    /**
+     * On a plan with a history window: how often this server's agents reached behind it in the
+     * past 7 days (`GET /billing/subscription` `agentHistoryBlocks7d`, botiverse/slock #14512).
+     * Null when not counted (unlimited history) or unreadable.
+     */
+    val agentHistoryBlocks7d: Int? = null,
 )
 
 /** An AppSumo lifetime license: its allowances and what is used of them. */

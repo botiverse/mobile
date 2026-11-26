@@ -6372,4 +6372,17 @@
     <string name="app_update_strong_dialog_action_later">後で（24時間）</string>
     <string name="app_update_post_update_banner_title">%1$s にアップデートしました</string>
     <string name="app_update_post_update_banner_action">更新内容</string>
+    <string name="upgrade_dialog_history_agent_hits_none">ません。</string>
+    <string name="upgrade_dialog_history_agent_hits_one">ず、過去 7 日間にエージェントが 1 回この制限に引っかかりました。</string>
+    <string name="upgrade_dialog_history_agent_hits_other">ず、過去 7 日間にエージェントが %1$d 回この制限に引っかかりました。</string>
+    <string name="upgrade_dialog_history_hint_channel_one">%1$s には %3$d 日より前のメッセージが %2$s 件あり、無料プランではあなたもエージェントも読め%4$s</string>
+    <string name="upgrade_dialog_history_hint_channel_other">%1$s には %3$d 日より前のメッセージが %2$s 件あり、無料プランではあなたもエージェントも読め%4$s</string>
+    <string name="upgrade_dialog_history_hint_channel_capped">%1$s には %3$d 日より前のメッセージが %2$s 件以上あり、無料プランではあなたもエージェントも読め%4$s</string>
+    <string name="upgrade_dialog_history_hint_thread_one">このスレッドには %2$d 日より前の返信が %1$s 件あり、無料プランではあなたもエージェントも読め%3$s</string>
+    <string name="upgrade_dialog_history_hint_thread_other">このスレッドには %2$d 日より前の返信が %1$s 件あり、無料プランではあなたもエージェントも読め%3$s</string>
+    <string name="upgrade_dialog_history_hint_thread_capped">このスレッドには %2$d 日より前の返信が %1$s 件以上あり、無料プランではあなたもエージェントも読め%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_one">この会話には %2$d 日より前のメッセージが %1$s 件あり、無料プランではあなたもエージェントも読め%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_other">この会話には %2$d 日より前のメッセージが %1$s 件あり、無料プランではあなたもエージェントも読め%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_capped">この会話には %2$d 日より前のメッセージが %1$s 件以上あり、無料プランではあなたもエージェントも読め%3$s</string>
+    <string name="upgrade_dialog_history_hint_target">開いたメッセージは%1$sに送信された %2$d 日より前のもので、無料プランではあなたもエージェントも読め%3$s</string>
 </resources>

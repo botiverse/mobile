@@ -6372,4 +6372,17 @@
     <string name="app_update_strong_dialog_action_later">稍后提醒（24 小时）</string>
     <string name="app_update_post_update_banner_title">已更新至 %1$s</string>
     <string name="app_update_post_update_banner_action">查看更新日志</string>
+    <string name="upgrade_dialog_history_agent_hits_none">。</string>
+    <string name="upgrade_dialog_history_agent_hits_one">，过去 7 天你的 Agent 已经有 1 次想读没读到。</string>
+    <string name="upgrade_dialog_history_agent_hits_other">，过去 7 天你的 Agent 已经有 %1$d 次想读没读到。</string>
+    <string name="upgrade_dialog_history_hint_channel_one">%1$s 有 %2$s 条超过 %3$d 天的消息，免费版下你和你的 Agent 都读不到%4$s</string>
+    <string name="upgrade_dialog_history_hint_channel_other">%1$s 有 %2$s 条超过 %3$d 天的消息，免费版下你和你的 Agent 都读不到%4$s</string>
+    <string name="upgrade_dialog_history_hint_channel_capped">%1$s 有 %2$s 多条超过 %3$d 天的消息，免费版下你和你的 Agent 都读不到%4$s</string>
+    <string name="upgrade_dialog_history_hint_thread_one">这个消息列有 %1$s 条超过 %2$d 天的回复，免费版下你和你的 Agent 都读不到%3$s</string>
+    <string name="upgrade_dialog_history_hint_thread_other">这个消息列有 %1$s 条超过 %2$d 天的回复，免费版下你和你的 Agent 都读不到%3$s</string>
+    <string name="upgrade_dialog_history_hint_thread_capped">这个消息列有 %1$s 多条超过 %2$d 天的回复，免费版下你和你的 Agent 都读不到%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_one">这段对话有 %1$s 条超过 %2$d 天的消息，免费版下你和你的 Agent 都读不到%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_other">这段对话有 %1$s 条超过 %2$d 天的消息，免费版下你和你的 Agent 都读不到%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_capped">这段对话有 %1$s 多条超过 %2$d 天的消息，免费版下你和你的 Agent 都读不到%3$s</string>
+    <string name="upgrade_dialog_history_hint_target">你打开的这条消息发于 %1$s，已超过 %2$d 天，免费版下你和你的 Agent 都读不到%3$s</string>
 </resources>

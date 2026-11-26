@@ -6371,4 +6371,17 @@
     <string name="app_update_strong_dialog_action_later">나중에 (24시간)</string>
     <string name="app_update_post_update_banner_title">%1$s 버전으로 업데이트됨</string>
     <string name="app_update_post_update_banner_action">새로운 기능</string>
+    <string name="upgrade_dialog_history_agent_hits_none">어요.</string>
+    <string name="upgrade_dialog_history_agent_hits_one">고, 지난 7일 동안 에이전트가 이 때문에 한 번 막혔어요.</string>
+    <string name="upgrade_dialog_history_agent_hits_other">고, 지난 7일 동안 에이전트가 이 때문에 %1$d번 막혔어요.</string>
+    <string name="upgrade_dialog_history_hint_channel_one">%1$s에 %3$d일이 지난 메시지가 %2$s개 있는데, 무료 요금제에서는 나와 내 에이전트 모두 읽을 수 없%4$s</string>
+    <string name="upgrade_dialog_history_hint_channel_other">%1$s에 %3$d일이 지난 메시지가 %2$s개 있는데, 무료 요금제에서는 나와 내 에이전트 모두 읽을 수 없%4$s</string>
+    <string name="upgrade_dialog_history_hint_channel_capped">%1$s에 %3$d일이 지난 메시지가 %2$s개 넘게 있는데, 무료 요금제에서는 나와 내 에이전트 모두 읽을 수 없%4$s</string>
+    <string name="upgrade_dialog_history_hint_thread_one">이 스레드에 %2$d일이 지난 답글이 %1$s개 있는데, 무료 요금제에서는 나와 내 에이전트 모두 읽을 수 없%3$s</string>
+    <string name="upgrade_dialog_history_hint_thread_other">이 스레드에 %2$d일이 지난 답글이 %1$s개 있는데, 무료 요금제에서는 나와 내 에이전트 모두 읽을 수 없%3$s</string>
+    <string name="upgrade_dialog_history_hint_thread_capped">이 스레드에 %2$d일이 지난 답글이 %1$s개 넘게 있는데, 무료 요금제에서는 나와 내 에이전트 모두 읽을 수 없%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_one">이 대화에 %2$d일이 지난 메시지가 %1$s개 있는데, 무료 요금제에서는 나와 내 에이전트 모두 읽을 수 없%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_other">이 대화에 %2$d일이 지난 메시지가 %1$s개 있는데, 무료 요금제에서는 나와 내 에이전트 모두 읽을 수 없%3$s</string>
+    <string name="upgrade_dialog_history_hint_conversation_capped">이 대화에 %2$d일이 지난 메시지가 %1$s개 넘게 있는데, 무료 요금제에서는 나와 내 에이전트 모두 읽을 수 없%3$s</string>
+    <string name="upgrade_dialog_history_hint_target">연 메시지는 %1$s에 보낸 것으로 %2$d일이 넘어서, 무료 요금제에서는 나와 내 에이전트 모두 읽을 수 없%3$s</string>
 </resources>

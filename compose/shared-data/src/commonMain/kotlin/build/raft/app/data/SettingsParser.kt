@@ -700,7 +700,8 @@ private data class WireSettingsBillingSubscription(
     val price: WireSettingsBillingPrice? = null,
     val subscription: WireSettingsSubscription? = null,
     val stripeConfigured: Boolean,
-    val permissions: WireSettingsBillingPermissions = WireSettingsBillingPermissions()
+    val permissions: WireSettingsBillingPermissions = WireSettingsBillingPermissions(),
+    val agentHistoryBlocks7d: Int? = null,
 )
 
 @Serializable
@@ -793,6 +794,7 @@ fun parseSharedSettingsBillingSubscription(bodyText: String): SettingsBillingSub
             )
         },
         priceBillingInterval = billing.price?.billingInterval?.takeIf { it.isNotBlank() },
+        agentHistoryBlocks7d = billing.agentHistoryBlocks7d?.takeIf { it >= 0 },
     )
 }.getOrNull()
 
