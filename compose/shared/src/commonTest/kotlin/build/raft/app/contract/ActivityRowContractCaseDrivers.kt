@@ -456,6 +456,7 @@ private fun ActivityRowMessage.toMessageNew(streamChannelId: String): MessageNew
             messageType = if (messageType == "system") MessageType.System else MessageType.Chat,
             author = base.author.copy(id = MemberId(senderId), kind = kind),
             mentions = mentions.map { MessageMention(type = it.type, id = it.id) },
+            countsUnread = countsUnread != false,
             quietForPeople = quietForPeople == true,
         )
     // Absent `systemSubtype`: the frame carried no provenance (README "Predicate inputs").
@@ -465,6 +466,7 @@ private fun ActivityRowMessage.toMessageNew(streamChannelId: String): MessageNew
                 systemSubtype = systemSubtype,
                 causalActorType = causalActorType,
                 causalActorId = causalActorId,
+                countsUnread = countsUnread,
                 quietForPeople = quietForPeople,
             )
         } else {
@@ -530,11 +532,11 @@ private fun TestScope.runPredicateCase(case: ActivityRowContractCase): List<Stri
     // The row's own re-read: the store could not judge it in place. (A list read that follows a
     // message the position rule does not take, the reader's own with mentions, judges nothing here.)
     val rowReread = h.inbox.rowRereadAsked
-    // A message past the mute on a row with a pre-mute message, or a quiet line on a person's task
-    // row (step 2c, raft-design #1440), is judged without moving the row.
+    // A message past the mute on a row with a pre-mute message, or a quiet line on a person's row
+    // (step 2c, raft-design #1440; every row kind since #proj-raft-ui:#319), is judged without moving the row.
     val stayedUnmoved =
         !applied && !rowReread && !h.inbox.rereadAsked &&
-            (scope.activityMuted == true || (scope.rowKind == ActivityRowKind.Task && message.quietForPeople == true))
+            (scope.activityMuted == true || message.quietForPeople == true)
     val counts: Boolean? =
         when {
             (applied || stayedUnmoved) && !rowReread -> after.unreadCount > 0

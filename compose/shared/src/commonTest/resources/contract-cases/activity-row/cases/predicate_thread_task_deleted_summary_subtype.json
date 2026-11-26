@@ -3,16 +3,18 @@
   "id": "predicate_thread_task_deleted_summary_subtype",
   "rule": "predicate",
   "title": "On a thread row, task.deleted_summary never counts",
-  "why": "A noise subtype (the born-read registry's skip producers).",
+  "why": "A noise subtype (the born-read registry's skip producers). With people_activity_rows_v0 on (#proj-raft-ui:#321, Kirby's rule: order a row by the last message of a kind that counts as unread) it does not move a person's row either (`expect.flagOn`); flag off it still does, as RisingWave does today (`moves: true` there only mirrored rw_target_latest_v4, Tenny 7ecafaa4).",
   "status": "agreed",
   "sources": {
     "web": [
       "packages/web/src/store/inboxInPlaceUnread.ts (liveActivityUnread, liveUnreadFields)",
-      "packages/web/src/store/inboxRowPosition.ts (rowPositionVerdict, with inbox_row_position_v1 on)"
+      "packages/web/src/store/inboxRowPosition.ts (rowPositionVerdict, with inbox_row_position_v1 on)",
+      "packages/shared/src/activityUnreadPredicate.ts (peopleRowMessageMoves fullRule: activityLiveUnread rules.peopleActivityRows)"
     ],
     "server": [
       "infra/risingwave/sql/075-inbox-cursor-decouple.sql (unread_count FILTER)",
-      "packages/server/src/services/inboxUnreadEligibility.ts (isMessageUnreadEligibleForReceiver)"
+      "packages/server/src/services/inboxUnreadEligibility.ts (isMessageUnreadEligibleForReceiver)",
+      "packages/server/src/services/inboxUnreadEligibility.ts (peopleRowMovingMessageSql, chatRowPeopleMovingMessageSql with fullRule)"
     ]
   },
   "given": {
@@ -40,6 +42,15 @@
       "counts": false,
       "mention": false,
       "moves": true
+    },
+    "flagOn": {
+      "people_activity_rows_v0": {
+        "verdict": {
+          "counts": false,
+          "mention": false,
+          "moves": false
+        }
+      }
     }
   }
 }

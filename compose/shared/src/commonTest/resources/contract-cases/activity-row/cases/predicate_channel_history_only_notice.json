@@ -1,0 +1,55 @@
+{
+  "formatVersion": 1,
+  "id": "predicate_channel_history_only_notice",
+  "rule": "predicate",
+  "title": "On a channel row, a history-only notice does not count",
+  "why": "A history-only notice (`counts_unread=false`, system_messages_history_only) stays in history and is nobody's unread. With people_activity_rows_v0 on (#proj-raft-ui:#321, Kirby's rule: order a row by the last message of a kind that counts as unread) it does not move a person's row either (`expect.flagOn`); flag off it still does, as RisingWave does today (`moves: true` there only mirrored rw_target_latest_v4, Tenny 7ecafaa4).",
+  "status": "agreed",
+  "sources": {
+    "web": [
+      "packages/web/src/store/inboxInPlaceUnread.ts (liveActivityUnread, liveUnreadFields)",
+      "packages/web/src/store/inboxRowPosition.ts (rowPositionVerdict, with inbox_row_position_v1 on)",
+      "packages/shared/src/activityUnreadPredicate.ts (peopleRowMessageMoves fullRule: activityLiveUnread rules.peopleActivityRows)"
+    ],
+    "server": [
+      "packages/server/src/services/inboxUnreadEligibility.ts (isMessageUnreadEligibleForReceiver, messageCountsAsUnreadActivitySql)",
+      "packages/server/src/services/inboxUnreadEligibility.ts (peopleRowMovingMessageSql, chatRowPeopleMovingMessageSql with fullRule)"
+    ]
+  },
+  "given": {
+    "viewer": {
+      "type": "user",
+      "id": "viewer-1"
+    },
+    "scope": {
+      "rowKind": "channel"
+    },
+    "message": {
+      "senderType": "system",
+      "senderId": "system",
+      "messageType": "system",
+      "causalActorType": "user",
+      "causalActorId": "user-2",
+      "systemSubtype": "channel.rename",
+      "countsUnread": false,
+      "mentions": []
+    }
+  },
+  "steps": [],
+  "expect": {
+    "verdict": {
+      "counts": false,
+      "mention": false,
+      "moves": true
+    },
+    "flagOn": {
+      "people_activity_rows_v0": {
+        "verdict": {
+          "counts": false,
+          "mention": false,
+          "moves": false
+        }
+      }
+    }
+  }
+}

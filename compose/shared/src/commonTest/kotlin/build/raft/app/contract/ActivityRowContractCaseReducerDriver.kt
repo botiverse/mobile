@@ -7,6 +7,7 @@ import build.raft.app.data.ActivitySyncRowChange
 import build.raft.app.data.applySyncInboxRowChange
 import build.raft.app.data.ActivityUnreadMessage
 import build.raft.app.data.ActivityUnreadRowKind
+import build.raft.app.data.ActivityUnreadRules
 import build.raft.app.data.ActivityUnreadScope
 import build.raft.app.data.ActivityUnreadTarget
 import build.raft.app.data.ActivityUnreadViewer
@@ -41,35 +42,47 @@ private fun runPredicateOnReducer(case: ActivityRowContractCase, expect: Activit
     val scope = case.given.scope ?: return listOf("no given.scope")
     val message = case.given.message ?: return listOf("no given.message")
     val expected = expect.verdict ?: return listOf("no expected verdict")
-    val verdict =
-        activityLiveUnread(
-            ActivityUnreadMessage(
-                senderType = message.senderType,
-                senderId = message.senderId,
-                messageType = message.messageType,
-                causalActorType = message.causalActorType,
-                causalActorId = message.causalActorId,
-                systemSubtype = message.systemSubtype,
-                carriesSystemProvenance = message.carriesSystemProvenance,
-                quietForPeople = message.quietForPeople,
-                mentions = message.mentions.map { ActivityUnreadTarget(it.type, it.id) },
-            ),
-            ActivityUnreadViewer(viewer.type, viewer.id),
-            ActivityUnreadScope(
-                rowKind =
-                    when (scope.rowKind) {
-                        ActivityRowKind.Channel -> ActivityUnreadRowKind.Channel
-                        ActivityRowKind.Dm -> ActivityUnreadRowKind.Dm
-                        ActivityRowKind.Thread -> ActivityUnreadRowKind.Thread
-                        ActivityRowKind.Task -> ActivityUnreadRowKind.Task
-                    },
-                threadFollowed = scope.threadFollowed ?: true,
-                activityMuted = scope.activityMuted ?: false,
-                readOnArrival = scope.readOnArrival ?: false,
-            ),
+    val unreadMessage =
+        ActivityUnreadMessage(
+            senderType = message.senderType,
+            senderId = message.senderId,
+            messageType = message.messageType,
+            causalActorType = message.causalActorType,
+            causalActorId = message.causalActorId,
+            systemSubtype = message.systemSubtype,
+            carriesSystemProvenance = message.carriesSystemProvenance,
+            countsUnread = message.countsUnread,
+            quietForPeople = message.quietForPeople,
+            mentions = message.mentions.map { ActivityUnreadTarget(it.type, it.id) },
         )
+    val unreadViewer = ActivityUnreadViewer(viewer.type, viewer.id)
+    val unreadScope =
+        ActivityUnreadScope(
+            rowKind =
+                when (scope.rowKind) {
+                    ActivityRowKind.Channel -> ActivityUnreadRowKind.Channel
+                    ActivityRowKind.Dm -> ActivityUnreadRowKind.Dm
+                    ActivityRowKind.Thread -> ActivityUnreadRowKind.Thread
+                    ActivityRowKind.Task -> ActivityUnreadRowKind.Task
+                },
+            threadFollowed = scope.threadFollowed ?: true,
+            activityMuted = scope.activityMuted ?: false,
+            readOnArrival = scope.readOnArrival ?: false,
+        )
+    val failures = mutableListOf<String>()
+    val verdict = activityLiveUnread(unreadMessage, unreadViewer, unreadScope)
     val actual = ActivityRowVerdict(counts = verdict.counts, mention = verdict.mention, moves = verdict.moves.takeIf { expected.moves != null })
-    return if (actual == expected) emptyList() else listOf("verdict: expected $expected, got $actual")
+    if (actual != expected) failures += "verdict: expected $expected, got $actual"
+    val expectedFlagOn = expect.flagOn?.peopleActivityRowsV0?.verdict ?: expected
+    val flagOnVerdict = activityLiveUnread(unreadMessage, unreadViewer, unreadScope, ActivityUnreadRules(peopleActivityRows = true))
+    val actualFlagOn =
+        ActivityRowVerdict(
+            counts = flagOnVerdict.counts,
+            mention = flagOnVerdict.mention,
+            moves = flagOnVerdict.moves.takeIf { expectedFlagOn.moves != null },
+        )
+    if (actualFlagOn != expectedFlagOn) failures += "verdict (people_activity_rows_v0 on): expected $expectedFlagOn, got $actualFlagOn"
+    return failures
 }
 
 private fun ActivityRowServed.toAnswer() = ActivityRowAnswer(unreadCount, hasMention, position, mentionOnly, readSeq)
