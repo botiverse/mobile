@@ -456,11 +456,17 @@ private fun ActivityRowMessage.toMessageNew(streamChannelId: String): MessageNew
             messageType = if (messageType == "system") MessageType.System else MessageType.Chat,
             author = base.author.copy(id = MemberId(senderId), kind = kind),
             mentions = mentions.map { MessageMention(type = it.type, id = it.id) },
+            quietForPeople = quietForPeople == true,
         )
     // Absent `systemSubtype`: the frame carried no provenance (README "Predicate inputs").
     val provenance =
         if (carriesSystemProvenance) {
-            MessageSystemProvenance(systemSubtype = systemSubtype, causalActorType = causalActorType, causalActorId = causalActorId)
+            MessageSystemProvenance(
+                systemSubtype = systemSubtype,
+                causalActorType = causalActorType,
+                causalActorId = causalActorId,
+                quietForPeople = quietForPeople,
+            )
         } else {
             null
         }
@@ -489,7 +495,7 @@ private fun predicateDriver() =
  * and the store judges it in place (SharedActivityStore `InPlaceUnreadContext.unreadFor`). `counts`
  * is the unread it added; a message the store does not apply in place and re-reads the row for is
  * `counts: null` (cannot judge here). `mention` is the @ it lit. `moves`: the row did not stay where it
- * was past the mute (a message it re-reads is judged on the answer, not here).
+ * was past the mute or on a quiet task line (a message it re-reads is judged on the answer, not here).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 private fun TestScope.runPredicateCase(case: ActivityRowContractCase): List<String> {
@@ -524,19 +530,22 @@ private fun TestScope.runPredicateCase(case: ActivityRowContractCase): List<Stri
     // The row's own re-read: the store could not judge it in place. (A list read that follows a
     // message the position rule does not take, the reader's own with mentions, judges nothing here.)
     val rowReread = h.inbox.rowRereadAsked
-    // A message past the mute on a row with a pre-mute message is judged without moving the row.
-    val stayedMuted = !applied && !rowReread && scope.activityMuted == true
+    // A message past the mute on a row with a pre-mute message, or a quiet line on a person's task
+    // row (step 2c, raft-design #1440), is judged without moving the row.
+    val stayedUnmoved =
+        !applied && !rowReread && !h.inbox.rereadAsked &&
+            (scope.activityMuted == true || (scope.rowKind == ActivityRowKind.Task && message.quietForPeople == true))
     val counts: Boolean? =
         when {
-            (applied || stayedMuted) && !rowReread -> after.unreadCount > 0
+            (applied || stayedUnmoved) && !rowReread -> after.unreadCount > 0
             !applied && rowReread -> null
             else ->
                 return listOf(
-                    "no verdict: applied=$applied rowReread=$rowReread " +
+                    "no verdict: applied=$applied rowReread=$rowReread reread=${h.inbox.rereadAsked} " +
                         "(row seq ${after.latestActivitySeq}, unread ${after.unreadCount})"
                 )
         }
     val expected = case.expect!!.verdict!!
-    val actual = ActivityRowVerdict(counts = counts, mention = after.hasMention, moves = (!stayedMuted).takeIf { expected.moves != null })
+    val actual = ActivityRowVerdict(counts = counts, mention = after.hasMention, moves = (!stayedUnmoved).takeIf { expected.moves != null })
     return if (actual == expected) emptyList() else listOf("verdict: expected $expected, got $actual")
 }

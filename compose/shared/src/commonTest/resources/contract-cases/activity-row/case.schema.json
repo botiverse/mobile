@@ -177,6 +177,7 @@
             "causalActorType": { "type": ["string", "null"] },
             "causalActorId": { "type": ["string", "null"] },
             "systemSubtype": { "description": "null: no subtype. Absent: the event did not carry the system provenance.", "type": ["string", "null"] },
+            "quietForPeople": { "description": "messages.quiet_for_people (step 2c): a task lifecycle line that is not a person's activity unless it mentions them. Absent = false (an older event).", "type": ["boolean", "null"] },
             "mentions": {
               "type": "array",
               "items": {
@@ -290,7 +291,7 @@
       "properties": {
         "counts": { "description": "One more unread on the row. null: cannot be judged from the event (the row is re-read).", "type": ["boolean", "null"] },
         "mention": { "description": "It @-mentions the viewer: the row's @ lights.", "type": "boolean" },
-        "moves": { "description": "It becomes the row's latest activity (position, preview, order). false only past a channel or DM mute without a mention of the viewer: the server keeps the row at its last message before the mute.", "type": "boolean" }
+        "moves": { "description": "It becomes the row's latest activity (position, preview, order). false past a channel or DM mute without a mention of the viewer (the server keeps the row at its last message before the mute), and on a person's task row for a message that is not activity for them (a quiet line without a mention of them, step 2c).", "type": "boolean" }
       }
     },
     "checkpoint": {

@@ -155,7 +155,9 @@ private fun ActivityRowState.withVerdict(counts: Boolean, mention: Boolean): Act
 private fun applyLive(row: ActivityRowState, event: ActivityRowEvent.Live): ActivityRowResult {
     // Past a mute (RisingWave's muted prefix, #triage:#244): the server's row stays at its last message
     // before the mute. A message that does not mention the viewer changes nothing; a mention lights the
-    // @, and moves only a mention-only row (its position is its highest mention).
+    // @, and moves only a mention-only row (its position is its highest mention). The same for a quiet
+    // line on a person's task row (step 2c, slock #16837): it never mentions them here, since a mention
+    // makes it their activity (`moves`).
     if (!event.moves && !event.mentionsViewer) return keep(row)
     val stays = !event.moves && !row.mentionOnly
     val position = row.position ?: return reread(row, ActivityRowRereadReason.NullPosition)

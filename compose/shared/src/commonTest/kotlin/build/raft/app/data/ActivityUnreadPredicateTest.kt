@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.MessageNew
+import build.raft.app.model.ThreadUpdated
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -182,5 +183,260 @@ class ActivityUnreadPredicateTest {
                 )
             )
         assertNull(omittedEvent.systemProvenance?.agentOnly)
+    }
+
+    @Test
+    fun quietForPeopleSuppressesUnreadForUsersWhileLeavingAgentsIntact() {
+        assertFalse(
+            messageCountsAsUnreadActivity(
+                countsUnread = true,
+                systemSubtype = "task.lifecycle_thread",
+                readerType = "user",
+                quietForPeople = true,
+            )
+        )
+        assertTrue(
+            messageCountsAsUnreadActivity(
+                countsUnread = true,
+                systemSubtype = "task.lifecycle_thread",
+                readerType = "agent",
+                quietForPeople = true,
+            )
+        )
+        assertTrue(
+            messageCountsAsUnreadActivity(
+                countsUnread = true,
+                systemSubtype = "task.lifecycle_thread",
+                readerType = "user",
+                quietForPeople = false,
+            )
+        )
+        assertTrue(
+            messageCountsAsUnreadActivity(
+                countsUnread = true,
+                systemSubtype = "task.lifecycle_thread",
+                readerType = "user",
+                quietForPeople = null,
+            )
+        )
+    }
+
+    @Test
+    fun peopleActivityRowMessageMatchesSlockStep2cPredicate() {
+        val claim =
+            ActivityUnreadMessage(
+                senderType = "user",
+                senderId = "system",
+                messageType = "system",
+                systemSubtype = "task.lifecycle_thread",
+                countsUnread = true,
+                quietForPeople = true,
+                mentions = emptyList(),
+            )
+        assertFalse(peopleActivityRowMessage(claim, "u1"))
+        assertTrue(peopleActivityRowMessage(claim.copy(mentions = listOf(ActivityUnreadTarget("user", "u1"))), "u1"))
+        assertFalse(peopleActivityRowMessage(claim.copy(mentions = listOf(ActivityUnreadTarget("agent", "u1"))), "u1"))
+        assertFalse(peopleActivityRowMessage(claim.copy(mentions = listOf(ActivityUnreadTarget("user", "u2"))), "u1"))
+        assertTrue(peopleActivityRowMessage(claim.copy(quietForPeople = false), "u1"))
+        assertTrue(
+            peopleActivityRowMessage(
+                ActivityUnreadMessage(senderType = "user", senderId = "u1", countsUnread = false, systemSubtype = null),
+                "u1",
+            )
+        )
+        assertTrue(
+            peopleActivityRowMessage(
+                ActivityUnreadMessage(senderType = "agent", senderId = "a1", systemSubtype = null),
+                "u1",
+            )
+        )
+        assertFalse(
+            peopleActivityRowMessage(
+                ActivityUnreadMessage(
+                    senderType = "user",
+                    senderId = "system",
+                    countsUnread = true,
+                    systemSubtype = "agent.server_role_hint",
+                ),
+                "u1",
+            )
+        )
+        assertFalse(
+            peopleActivityRowMessage(
+                ActivityUnreadMessage(
+                    senderType = "user",
+                    senderId = "system",
+                    countsUnread = false,
+                    systemSubtype = "channel.rename",
+                ),
+                "u1",
+            )
+        )
+    }
+
+    @Test
+    fun activityLiveUnreadMovesOnTaskRowFollowsPeopleActivityPredicate() {
+        val viewer = ActivityUnreadViewer(type = "user", id = "u1")
+        val claim =
+            ActivityUnreadMessage(
+                senderType = "user",
+                senderId = "system",
+                messageType = "system",
+                causalActorType = "agent",
+                causalActorId = "a1",
+                systemSubtype = "task.lifecycle_thread",
+                countsUnread = true,
+                quietForPeople = true,
+                mentions = emptyList(),
+            )
+        assertEquals(
+            ActivityUnreadVerdict(counts = false, mention = false, moves = false),
+            activityLiveUnread(claim, viewer, ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Task)),
+        )
+        assertEquals(
+            false,
+            activityLiveUnread(claim, viewer, ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Task, readOnArrival = true)).moves,
+        )
+        assertEquals(
+            ActivityUnreadVerdict(counts = false, mention = true, moves = true),
+            activityLiveUnread(
+                claim.copy(mentions = listOf(ActivityUnreadTarget("user", "u1"))),
+                viewer,
+                ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Task),
+            ),
+        )
+        assertEquals(
+            true,
+            activityLiveUnread(claim.copy(quietForPeople = false), viewer, ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Task)).moves,
+        )
+        assertEquals(
+            true,
+            activityLiveUnread(
+                ActivityUnreadMessage(senderType = "agent", senderId = "a1", messageType = "chat", systemSubtype = null),
+                viewer,
+                ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Task),
+            ).moves,
+        )
+        assertEquals(
+            true,
+            activityLiveUnread(claim, viewer, ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Thread)).moves,
+        )
+        assertEquals(
+            true,
+            activityLiveUnread(claim, ActivityUnreadViewer(type = "agent", id = "a2"), ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Task)).moves,
+        )
+    }
+
+    @Test
+    fun realtimeEventMapperDecodesQuietForPeopleAndThreadsToUnreadMessage() {
+        val mapper = RealtimeEventMapper()
+        val quietEvent =
+            assertIs<MessageNew>(
+                mapper.map(
+                    RealtimeSocketEvents.MessageNew,
+                    """
+                    {
+                      "id": "m-quiet-1",
+                      "channelId": "task-conv-1",
+                      "seq": 101,
+                      "senderType": "user",
+                      "senderId": "system",
+                      "messageType": "system",
+                      "content": "Agent took the task",
+                      "systemSubtype": "task.lifecycle_thread",
+                      "causalActorType": "agent",
+                      "causalActorId": "agent-1",
+                      "countsUnread": true,
+                      "quietForPeople": true
+                    }
+                    """.trimIndent(),
+                )
+            )
+        assertTrue(quietEvent.message.quietForPeople)
+        assertEquals(true, quietEvent.systemProvenance?.quietForPeople)
+
+        val unreadMessage = quietEvent.message.toActivityUnreadMessage(quietEvent.systemProvenance)
+        assertEquals(true, unreadMessage.quietForPeople)
+        assertEquals(
+            ActivityUnreadVerdict(counts = false, mention = false, moves = false),
+            activityLiveUnread(
+                unreadMessage,
+                ActivityUnreadViewer(type = "user", id = "user-1"),
+                ActivityUnreadScope(rowKind = ActivityUnreadRowKind.Task),
+            ),
+        )
+
+        val notQuietEvent =
+            assertIs<MessageNew>(
+                mapper.map(
+                    RealtimeSocketEvents.MessageNew,
+                    """
+                    {
+                      "id": "m-quiet-2",
+                      "channelId": "task-conv-1",
+                      "seq": 102,
+                      "senderType": "user",
+                      "senderId": "system",
+                      "messageType": "system",
+                      "content": "Agent took the task",
+                      "systemSubtype": "task.lifecycle_thread",
+                      "causalActorType": "agent",
+                      "causalActorId": "agent-1",
+                      "quietForPeople": false
+                    }
+                    """.trimIndent(),
+                )
+            )
+        assertFalse(notQuietEvent.message.quietForPeople)
+        assertEquals(false, notQuietEvent.systemProvenance?.quietForPeople)
+        assertEquals(false, notQuietEvent.message.toActivityUnreadMessage(notQuietEvent.systemProvenance).quietForPeople)
+
+        val omittedEvent =
+            assertIs<MessageNew>(
+                mapper.map(
+                    RealtimeSocketEvents.MessageNew,
+                    """
+                    {
+                      "id": "m-quiet-3",
+                      "channelId": "task-conv-1",
+                      "seq": 103,
+                      "senderType": "user",
+                      "senderId": "system",
+                      "messageType": "system",
+                      "content": "Agent took the task",
+                      "systemSubtype": "task.lifecycle_thread"
+                    }
+                    """.trimIndent(),
+                )
+            )
+        assertFalse(omittedEvent.message.quietForPeople)
+        assertNull(omittedEvent.systemProvenance?.quietForPeople)
+        assertNull(omittedEvent.message.toActivityUnreadMessage(omittedEvent.systemProvenance).quietForPeople)
+
+        val quietThreadUpdated =
+            assertIs<ThreadUpdated>(
+                mapper.map(
+                    RealtimeSocketEvents.ThreadUpdated,
+                    """
+                    {
+                      "parentMessageId": "p-1",
+                      "threadChannelId": "task-conv-1",
+                      "replyCount": 2,
+                      "latestReply": {
+                        "id": "r-101",
+                        "seq": 101,
+                        "content": "Agent took the task",
+                        "senderId": "system",
+                        "senderType": "user",
+                        "senderName": "System",
+                        "messageType": "system",
+                        "createdAt": "2026-11-26T10:00:00Z",
+                        "quietForPeople": true
+                      }
+                    }
+                    """.trimIndent(),
+                )
+            )
+        assertTrue(quietThreadUpdated.latestReplyQuietForPeople)
     }
 }
