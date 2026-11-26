@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.toArgb
 import build.raft.designsystem.components.raftPaneGridNoFade
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.compat.json.JSONObject
+import build.raft.webcontainer.WebJsDialogRequest
 
 internal data class RaftWebViewNavigationState(
     val url: String = "",
@@ -272,6 +273,10 @@ internal fun RaftSandboxWebView(
     catchesMainFrameNavigation: ((RaftWebViewMainFrameCatchAsk) -> Boolean)? = null,
     /** [RaftWebViewEvents.onContentProcessGone]. */
     onContentProcessGone: ((String) -> Unit)? = null,
+    /** [RaftWebViewConfig.allowJsDialogs]. */
+    allowJsDialogs: Boolean = false,
+    /** [RaftWebViewEvents.onJsDialog]. */
+    onJsDialog: ((WebJsDialogRequest) -> Unit)? = null,
 ) {
     val useWebContainer = rememberRaftWebContainerV1Enabled()
     val loadAttempt =
@@ -339,6 +344,7 @@ internal fun RaftSandboxWebView(
     }
     events.onNavigationBlocked = onNavigationBlocked
     events.onDownloadRequested = onDownloadRequested
+    events.onJsDialog = onJsDialog
     events.onUrlChange = onUrlChange
     events.onNavigationStateChange =
         if (loadWatchdog == null) onNavigationStateChange else { state -> loadWatchdog.onNavigationState(state); onNavigationStateChange(state) }
@@ -381,6 +387,7 @@ internal fun RaftSandboxWebView(
             allowsBackForwardNavigationGestures,
             raftHost,
             coverActive,
+            allowJsDialogs,
         ) {
             RaftWebViewConfig(
                 url = url,
@@ -405,6 +412,7 @@ internal fun RaftSandboxWebView(
                 allowsBackForwardNavigationGestures = allowsBackForwardNavigationGestures,
                 raftHost = raftHost,
                 coverActive = coverActive,
+                allowJsDialogs = allowJsDialogs,
             )
         }
     // Full-bleed: in a clipped pane of the wide row (the Artifact column) the page is cut hard at the pane's edge, never
@@ -511,6 +519,10 @@ internal fun RaftWebView(
     catchesMainFrameNavigation: ((RaftWebViewMainFrameCatchAsk) -> Boolean)? = null,
     /** [RaftWebViewEvents.onContentProcessGone]. */
     onContentProcessGone: ((String) -> Unit)? = null,
+    /** [RaftWebViewConfig.allowJsDialogs]. */
+    allowJsDialogs: Boolean = false,
+    /** [RaftWebViewEvents.onJsDialog]. */
+    onJsDialog: ((WebJsDialogRequest) -> Unit)? = null,
 ) {
     RaftSandboxWebView(
         url = url,
@@ -542,6 +554,8 @@ internal fun RaftWebView(
         raftHost = raftHost,
         catchesMainFrameNavigation = catchesMainFrameNavigation,
         onContentProcessGone = onContentProcessGone,
+        allowJsDialogs = allowJsDialogs,
+        onJsDialog = onJsDialog,
     )
 }
 

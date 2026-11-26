@@ -27,9 +27,13 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.webcontainer.WebJsDialogKind
+import build.raft.webcontainer.WebJsDialogRequest
+import build.raft.webcontainer.WebJsDialogResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -368,5 +372,105 @@ class RaftMobileWebPanelUiTest {
         onNodeWithContentDescription("Forward").assertIsNotEnabled()
 
         assertEquals(listOf("back", "forward"), callbacks)
+    }
+
+    @Test
+    fun overflowMenuExposesReloadAndForwardToRaftActions() = runRobolectricComposeUiTest {
+        val actions = mutableListOf<String>()
+
+        setContent {
+            RaftDesignSystemTheme {
+                RaftMobileWebPanelBottomBar(
+                    isRaftApp = true,
+                    currentUrl = "https://deck.example/views/19",
+                    appName = "Deck",
+                    appLogoUrl = null,
+                    signedInAsName = "artin",
+                    onClose = { actions += "close" },
+                    onShare = { actions += "share" },
+                    onCopyLink = { actions += "copy" },
+                    onOpenInBrowser = null,
+                    onReload = { actions += "reload" },
+                    onForwardToRaft = { actions += "forward_to_raft" },
+                )
+            }
+        }
+
+        onNodeWithTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG).performClick()
+        onNodeWithText("Reload").assertIsDisplayed().performClick()
+
+        onNodeWithTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG).performClick()
+        onNodeWithText("Forward to Raft").assertIsDisplayed().performClick()
+
+        assertEquals(listOf("reload", "forward_to_raft"), actions)
+    }
+
+    @Test
+    fun jsDialogHostHandlesAlertConfirmAndPromptSingleShot() = runRobolectricComposeUiTest {
+        val state = RaftWebJsDialogState(initialVisible = true)
+        val outcomes = mutableListOf<WebJsDialogResult>()
+
+        setContent {
+            RaftDesignSystemTheme {
+                RaftWebJsDialogHost(state = state)
+            }
+        }
+
+        // 1. alert() -> shows OK only, clicking OK settles with AlertDismissed once.
+        runOnIdle {
+            state.show(
+                WebJsDialogRequest(
+                    kind = WebJsDialogKind.Alert,
+                    originUrl = "https://docs.example.com/guide",
+                    message = "Changes saved",
+                    onResult = { outcomes += it },
+                ),
+            )
+        }
+        onNodeWithTag(RAFT_WEB_JS_DIALOG_TAG).assertIsDisplayed()
+        onNodeWithText("docs.example.com").assertIsDisplayed()
+        onNodeWithText("Changes saved").assertIsDisplayed()
+        onNodeWithTag(RAFT_WEB_JS_DIALOG_CANCEL_TAG).assertDoesNotExist()
+        onNodeWithTag(RAFT_WEB_JS_DIALOG_OK_TAG).performClick()
+        onNodeWithTag(RAFT_WEB_JS_DIALOG_TAG).assertDoesNotExist()
+
+        // 2. confirm() -> clicking Cancel settles with Confirm(false).
+        runOnIdle {
+            state.show(
+                WebJsDialogRequest(
+                    kind = WebJsDialogKind.Confirm,
+                    originUrl = "https://docs.example.com/guide",
+                    message = "Delete draft?",
+                    onResult = { outcomes += it },
+                ),
+            )
+        }
+        onNodeWithTag(RAFT_WEB_JS_DIALOG_CANCEL_TAG).assertIsDisplayed().performClick()
+        onNodeWithTag(RAFT_WEB_JS_DIALOG_TAG).assertDoesNotExist()
+
+        // 3. prompt() -> edits default value and confirms with updated text.
+        runOnIdle {
+            state.show(
+                WebJsDialogRequest(
+                    kind = WebJsDialogKind.Prompt,
+                    originUrl = "https://docs.example.com/guide",
+                    message = "Rename file",
+                    defaultPromptText = "old.txt",
+                    onResult = { outcomes += it },
+                ),
+            )
+        }
+        onNodeWithTag(RAFT_WEB_JS_DIALOG_INPUT_TAG).assertIsDisplayed().performTextReplacement("new.txt")
+        onNodeWithTag(RAFT_WEB_JS_DIALOG_OK_TAG).performClick()
+        onNodeWithTag(RAFT_WEB_JS_DIALOG_TAG).assertDoesNotExist()
+
+        assertEquals(
+            listOf(
+                WebJsDialogResult.AlertDismissed,
+                WebJsDialogResult.Confirm(false),
+                WebJsDialogResult.Prompt("new.txt"),
+            ),
+            outcomes,
+        )
     }
 }

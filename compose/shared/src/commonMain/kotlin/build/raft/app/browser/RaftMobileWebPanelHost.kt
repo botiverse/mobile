@@ -559,6 +559,19 @@ internal fun RaftMobileWebPanelBrowserBody(
     }
 
     val panelVisible = panelDetent != RaftMobileWebPanelDetent.Collapsed
+    val authStore =
+        remember(sharedStores, storeScope) {
+            if (storeScope != null) sharedStores.authStore(storeScope) else sharedStores.authStore
+        }
+    val networkClient =
+        remember(sharedStores, storeScope) {
+            if (storeScope != null) sharedStores.networkClient(storeScope) else sharedStores.networkClient
+        }
+    val authEvents =
+        remember(authStore, sharedStores.authStore) {
+            settingsWebViewAuthEventSource(authStore, sharedStores.authStore)
+        }
+    val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, authEvents)
     val signInHost =
         rememberInAppBrowserSignInHost(
             pager = pager,
@@ -579,6 +592,15 @@ internal fun RaftMobileWebPanelBrowserBody(
     val stepUpState by signInHost.stepUp.state.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     val copiedLabel = stringResource(Res.string.common_copied)
+    val forwardFailedLabel = stringResource(Res.string.mobile_web_panel_forward_failed)
+    val forwardedToTemplate = stringResource(Res.string.mobile_web_panel_forwarded_to, "__RAFT_FORWARD_TARGET__")
+    var forwardUrlToSend by remember(sessionKey) { mutableStateOf<String?>(null) }
+    var forwardTitleToSend by remember(sessionKey) { mutableStateOf<String?>(null) }
+    val jsDialogsEnabled = panelVisible && forwardUrlToSend == null && signInUiState.sheet == null
+    val jsDialogState = remember(sessionKey) { RaftWebJsDialogState(initialVisible = jsDialogsEnabled) }
+    LaunchedEffect(jsDialogState, jsDialogsEnabled) {
+        jsDialogState.onVisibilityChanged(jsDialogsEnabled)
+    }
 
     var navigationState by
         remember(sessionKey, effectiveLaunchUrl) {
@@ -722,6 +744,8 @@ internal fun RaftMobileWebPanelBrowserBody(
                         injectedJavaScript = "",
                         diagnosticsSurface = "in_app_browser",
                         showsFormAccessoryBar = true,
+                        allowJsDialogs = jsDialogsEnabled,
+                        onJsDialog = { request -> jsDialogState.show(request) },
                         catchesMainFrameNavigation = { ask -> signInHost.session.onMainFrameNavigation(ask) },
                         routesMainFrameNavigation = { candidateUrl ->
                             raftInAppBrowserShouldRouteNavigation(
@@ -862,6 +886,19 @@ internal fun RaftMobileWebPanelBrowserBody(
                     controller.goForward()
                 }
             },
+            onReload = {
+                loadError = null
+                controller.reload()
+            },
+            onForwardToRaft =
+                if (authSnapshot.session?.servers?.isNotEmpty() == true && canForwardWebPageUrl(currentUrl)) {
+                    {
+                        forwardUrlToSend = currentUrl
+                        forwardTitleToSend = navigationState.title
+                    }
+                } else {
+                    null
+                },
             onClose = onClose,
             onShare = ::shareCurrentUrl,
             onCopyLink = ::copyCurrentUrl,
@@ -876,6 +913,33 @@ internal fun RaftMobileWebPanelBrowserBody(
                         .background(RaftTheme.colors.layerCanvas),
             )
         }
+    }
+
+    RaftWebJsDialogHost(state = jsDialogState)
+
+    val activeForwardUrl = forwardUrlToSend
+    val activeAuthSession = authSnapshot.session
+    if (activeForwardUrl != null && activeAuthSession != null) {
+        RaftWebPageForwardHost(
+            url = activeForwardUrl,
+            pageTitle = forwardTitleToSend,
+            session = activeAuthSession,
+            authStore = authStore,
+            networkClient = networkClient,
+            bridge = bridge,
+            onDismiss = {
+                forwardUrlToSend = null
+                forwardTitleToSend = null
+            },
+            onForwarded = { targetTitle ->
+                forwardUrlToSend = null
+                forwardTitleToSend = null
+                bridge.briefToast(forwardedToTemplate.replace("__RAFT_FORWARD_TARGET__", targetTitle))
+            },
+            onForwardFailed = {
+                bridge.briefToast(forwardFailedLabel)
+            },
+        )
     }
 
     RaftBrowserSignInSheetHost(

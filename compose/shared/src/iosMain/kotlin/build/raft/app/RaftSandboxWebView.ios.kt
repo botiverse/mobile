@@ -6,7 +6,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import build.raft.webcontainer.WEB_MEDIA_CAPTURE_DENIED_REASON
+import build.raft.webcontainer.WebJsDialogKind
+import build.raft.webcontainer.WebJsDialogRequest
+import build.raft.webcontainer.WebJsDialogResult
+import build.raft.webcontainer.WebJsDialogTracker
 import build.raft.webcontainer.formatIosSecurityOriginForLog
+import build.raft.webcontainer.isWebJsDialogPermitted
 import build.raft.webcontainer.toWebMediaCaptureKind
 import kotlinx.cinterop.CEnum
 import kotlinx.cinterop.ObjCSignatureOverride
@@ -19,6 +24,10 @@ import platform.CoreGraphics.CGColorGetAlpha
 import platform.CoreGraphics.CGRectMake
 // Foundation categories (NSHTTPURLRequest, NSMutableHTTPURLRequest) import as extensions.
 import platform.Foundation.*
+import platform.UIKit.UIApplication
+import platform.UIKit.UIApplicationDidEnterBackgroundNotification
+import platform.UIKit.UIApplicationState
+import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIColor
 import platform.UIKit.UIView
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
@@ -49,6 +58,7 @@ import platform.WebKit.WKWebpagePreferences
 import platform.WebKit.WKWebsiteDataStore
 import platform.WebKit.WKWindowFeatures
 import platform.darwin.NSObject
+import platform.darwin.NSObjectProtocol
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import platform.posix.memcpy
@@ -206,12 +216,40 @@ internal class RaftIosSandboxWebView(
     /** Prior URLs visited by the current navigation chain before the active candidate. */
     private val navChainHops = mutableListOf<String>()
     private var diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT
+    private var allowJsDialogs: Boolean = false
+    private val jsDialogTracker = WebJsDialogTracker()
+    private var windowAttached: Boolean = container.window != null
+    private var appInBackground: Boolean =
+        UIApplication.sharedApplication.applicationState == UIApplicationState.UIApplicationStateBackground
+    private val lifecycleObservers = mutableListOf<NSObjectProtocol>()
 
     private val delegate = RaftIosWebViewDelegate(this)
     private val scriptMessageHandler = RaftIosWebViewScriptMessageHandler(this)
 
     init {
         container.backgroundColor = UIColor.whiteColor
+        val center = NSNotificationCenter.defaultCenter
+        lifecycleObservers +=
+            center.addObserverForName(
+                name = UIApplicationDidEnterBackgroundNotification,
+                `object` = null,
+                queue = NSOperationQueue.mainQueue,
+            ) { _ ->
+                if (!disposed) {
+                    appInBackground = true
+                    jsDialogTracker.cancelActive()
+                }
+            }
+        lifecycleObservers +=
+            center.addObserverForName(
+                name = UIApplicationWillEnterForegroundNotification,
+                `object` = null,
+                queue = NSOperationQueue.mainQueue,
+            ) { _ ->
+                if (!disposed) {
+                    appInBackground = false
+                }
+            }
     }
 
     /** Before the first config: the canvas colour from the start (UIKitView may show the container before `update`). */
@@ -270,6 +308,10 @@ internal class RaftIosSandboxWebView(
         raftHost = config.raftHost
         allowPinchZoom = config.allowPinchZoom
         diagnosticsSurface = config.diagnosticsSurface
+        allowJsDialogs = config.allowJsDialogs
+        if (!allowJsDialogs) {
+            jsDialogTracker.cancelActive()
+        }
         showsFormAccessoryBar = config.showsFormAccessoryBar
         allowsBackForwardNavigationGestures = config.allowsBackForwardNavigationGestures
         (webView as? RaftIosWebView)?.showsFormAccessoryBar = showsFormAccessoryBar
@@ -311,6 +353,12 @@ internal class RaftIosSandboxWebView(
     fun dispose() {
         if (disposed) return
         disposed = true
+        jsDialogTracker.cancelActive()
+        val center = NSNotificationCenter.defaultCenter
+        for (observer in lifecycleObservers) {
+            center.removeObserver(observer)
+        }
+        lifecycleObservers.clear()
         boundController?.unbindCommandDispatcher(this)
         boundController = null
         tearDownWebView()
@@ -318,6 +366,7 @@ internal class RaftIosSandboxWebView(
     }
 
     private fun tearDownWebView() {
+        jsDialogTracker.cancelActive()
         revealTimer?.invalidate()
         revealTimer = null
         pendingHostLoadUrl = null
@@ -463,6 +512,10 @@ internal class RaftIosSandboxWebView(
 
     fun onWindowAttachmentChanged(attached: Boolean) {
         if (disposed) return
+        windowAttached = attached
+        if (!attached) {
+            jsDialogTracker.cancelActive()
+        }
         val view = webView ?: return
         if (attached) {
             if (stateTimer == null) {
@@ -982,6 +1035,7 @@ internal class RaftIosSandboxWebView(
 
     internal fun didStartProvisional(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
+        jsDialogTracker.cancelActive()
         currentURL = source.URL?.absoluteString ?: currentURL
         loadStartedAt = TimeSource.Monotonic.markNow()
         diagnosticsInfo("page_started url=${formatUrlForLog(currentURL)} ${loadElapsedField()}")
@@ -1113,6 +1167,7 @@ internal class RaftIosSandboxWebView(
      */
     internal fun contentProcessDidTerminate(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
+        jsDialogTracker.cancelActive()
         events.onContentProcessGone("web_content_process_terminated")
         if (disposed) return
         lastSuccessfulURL = ""
@@ -1129,6 +1184,123 @@ internal class RaftIosSandboxWebView(
     internal fun createWindowBlocked(source: WKWebView, action: WKNavigationAction) {
         if (!raftIsSameObjCObject(source, webView)) return
         notifyNavigationBlocked(action.request.URL?.absoluteString ?: "")
+    }
+
+    internal fun handleJsAlert(
+        source: WKWebView,
+        message: String,
+        frame: WKFrameInfo,
+        completionHandler: () -> Unit,
+    ) {
+        dispatchIosJsDialog(
+            source = source,
+            kind = WebJsDialogKind.Alert,
+            frame = frame,
+            message = message,
+            defaultPromptText = null,
+            deliverResult = { completionHandler() },
+        )
+    }
+
+    internal fun handleJsConfirm(
+        source: WKWebView,
+        message: String,
+        frame: WKFrameInfo,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        dispatchIosJsDialog(
+            source = source,
+            kind = WebJsDialogKind.Confirm,
+            frame = frame,
+            message = message,
+            defaultPromptText = null,
+            deliverResult = { result ->
+                completionHandler((result as? WebJsDialogResult.Confirm)?.confirmed == true)
+            },
+        )
+    }
+
+    internal fun handleJsPrompt(
+        source: WKWebView,
+        prompt: String,
+        defaultText: String?,
+        frame: WKFrameInfo,
+        completionHandler: (String?) -> Unit,
+    ) {
+        dispatchIosJsDialog(
+            source = source,
+            kind = WebJsDialogKind.Prompt,
+            frame = frame,
+            message = prompt,
+            defaultPromptText = defaultText,
+            deliverResult = { result ->
+                completionHandler((result as? WebJsDialogResult.Prompt)?.value)
+            },
+        )
+    }
+
+    private fun dispatchIosJsDialog(
+        source: WKWebView,
+        kind: WebJsDialogKind,
+        frame: WKFrameInfo,
+        message: String,
+        defaultPromptText: String?,
+        deliverResult: (WebJsDialogResult) -> Unit,
+    ) {
+        val visibleAndActive = !disposed && windowAttached && !appInBackground && raftIsSameObjCObject(source, webView)
+        val handler = events.onJsDialog
+        if (!isWebJsDialogPermitted(allowJsDialogs, visibleAndActive, handler != null)) {
+            val defaultCancel =
+                when (kind) {
+                    WebJsDialogKind.Alert -> WebJsDialogResult.AlertDismissed
+                    WebJsDialogKind.Confirm -> WebJsDialogResult.Confirm(confirmed = false)
+                    WebJsDialogKind.Prompt -> WebJsDialogResult.Prompt(value = null)
+                }
+            runOnIosMainThread { deliverResult(defaultCancel) }
+            return
+        }
+        val originUrl = iosJsDialogOriginUrl(source, frame)
+        var requestRef: WebJsDialogRequest? = null
+        val request =
+            WebJsDialogRequest(
+                kind = kind,
+                originUrl = originUrl,
+                message = message,
+                defaultPromptText = defaultPromptText,
+                onSettled = { requestRef?.let(jsDialogTracker::clearIfSame) },
+                onResult = { dialogResult -> runOnIosMainThread { deliverResult(dialogResult) } },
+            )
+        requestRef = request
+        jsDialogTracker.begin(request)
+        val presented = runCatching { handler!!.invoke(request) }.isSuccess
+        if (!presented) {
+            request.cancel()
+        }
+    }
+
+    private fun iosJsDialogOriginUrl(
+        source: WKWebView,
+        frame: WKFrameInfo,
+    ): String {
+        val sec = frame.securityOrigin
+        val secHost =
+            if (sec.host.contains(':') && !sec.host.startsWith("[")) {
+                "[${sec.host}]"
+            } else {
+                sec.host
+            }
+        if (sec.protocol.isNotEmpty() && secHost.isNotEmpty()) {
+            return if (sec.port > 0L) "${sec.protocol}://$secHost:${sec.port}" else "${sec.protocol}://$secHost"
+        }
+        return source.URL?.absoluteString?.takeIf { it.isNotBlank() } ?: currentURL
+    }
+
+    private inline fun runOnIosMainThread(crossinline block: () -> Unit) {
+        if (NSThread.isMainThread) {
+            block()
+        } else {
+            dispatch_async(dispatch_get_main_queue()) { block() }
+        }
     }
 
     /**
@@ -1398,6 +1570,40 @@ private class RaftIosWebViewDelegate(
                 isMainFrame = initiatedByFrame.mainFrame,
                 type = type,
             ),
+        )
+    }
+
+    override fun webView(
+        webView: WKWebView,
+        runJavaScriptAlertPanelWithMessage: String,
+        initiatedByFrame: WKFrameInfo,
+        completionHandler: () -> Unit,
+    ) {
+        owner.handleJsAlert(webView, runJavaScriptAlertPanelWithMessage, initiatedByFrame, completionHandler)
+    }
+
+    override fun webView(
+        webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage: String,
+        initiatedByFrame: WKFrameInfo,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        owner.handleJsConfirm(webView, runJavaScriptConfirmPanelWithMessage, initiatedByFrame, completionHandler)
+    }
+
+    override fun webView(
+        webView: WKWebView,
+        runJavaScriptTextInputPanelWithPrompt: String,
+        defaultText: String?,
+        initiatedByFrame: WKFrameInfo,
+        completionHandler: (String?) -> Unit,
+    ) {
+        owner.handleJsPrompt(
+            webView,
+            runJavaScriptTextInputPanelWithPrompt,
+            defaultText,
+            initiatedByFrame,
+            completionHandler,
         )
     }
 }

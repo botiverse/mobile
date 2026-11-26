@@ -242,6 +242,7 @@ data class WebContainerConfig(
     val coverActive: Boolean = false,
     val allowsBackForwardNavigationGestures: Boolean = false,
     val showsFormAccessoryBar: Boolean = false,
+    val allowJsDialogs: Boolean = false,
     val keepAliveKey: String? = null,
     val navigationPolicy: WebNavigationPolicy = WebNavigationPolicy(),
     val jsbPolicy: JsbPolicy = JsbPolicy.Disabled,

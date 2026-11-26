@@ -202,6 +202,7 @@ internal class WebContainerIosHost(
 
     private var jsbDispatcher: JsbDispatcher? = null
     private var boundController: WebContainerController? = null
+    private val jsDialogTracker = WebJsDialogTracker()
     private var stateTimer: NSTimer? = null
     private var revealTimer: NSTimer? = null
 
@@ -234,6 +235,7 @@ internal class WebContainerIosHost(
             ) { _ ->
                 if (!disposed) {
                     appInBackground = true
+                    jsDialogTracker.cancelActive()
                     syncWatchdogLifecycle()
                 }
             }
@@ -283,6 +285,9 @@ internal class WebContainerIosHost(
     fun onWindowAttachmentChanged(attached: Boolean) {
         if (disposed) return
         windowAttached = attached
+        if (!attached) {
+            jsDialogTracker.cancelActive()
+        }
         syncWatchdogLifecycle(syncStateOnResume = attached)
     }
 
@@ -303,6 +308,9 @@ internal class WebContainerIosHost(
         val urlChanged = prev == null || prev.url.trim() != next.url.trim()
 
         config = next
+        if (!next.allowJsDialogs) {
+            jsDialogTracker.cancelActive()
+        }
         chainState.configureBudget(next.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0)
         webView?.allowsBackForwardNavigationGestures = next.allowsBackForwardNavigationGestures
         (webView as? WebContainerIosWebView)?.showsFormAccessoryBar = next.showsFormAccessoryBar
@@ -322,6 +330,7 @@ internal class WebContainerIosHost(
     fun dispose() {
         if (disposed) return
         disposed = true
+        jsDialogTracker.cancelActive()
         removeLifecycleObservers()
         boundController?.unbindDispatcher(this)
         boundController = null
@@ -353,6 +362,7 @@ internal class WebContainerIosHost(
     }
 
     private fun tearDownWebView() {
+        jsDialogTracker.cancelActive()
         stopPolling()
         kvoObserver.detach()
         revealTimer?.invalidate()
@@ -1041,6 +1051,7 @@ internal class WebContainerIosHost(
         if (disposed || !isSameObjCObject(source, webView)) return
         if (shouldIgnoreWarmSpareBlankNavigation(usingSpare, source.URL?.absoluteString, config?.url.orEmpty())) return
         downloadCancelledUrl = null
+        jsDialogTracker.cancelActive()
         jsbDispatcher?.cancelInFlight("main_frame_navigation")
         loadGeneration += 1
         currentLoading = true
@@ -1184,6 +1195,7 @@ internal class WebContainerIosHost(
     internal fun contentProcessDidTerminate(source: WKWebView) {
         if (disposed || !isSameObjCObject(source, webView)) return
         val cfg = config ?: return
+        jsDialogTracker.cancelActive()
         jsbDispatcher?.cancelInFlight("web_content_process_terminated")
         events.onContentProcessGone(true)
         val action =
@@ -1230,6 +1242,123 @@ internal class WebContainerIosHost(
     ) {
         if (disposed || !isSameObjCObject(source, webView)) return
         notifyNavigationBlocked(action.request.URL?.absoluteString.orEmpty(), "new_window_blocked")
+    }
+
+    internal fun handleJsAlert(
+        source: WKWebView,
+        message: String,
+        frame: WKFrameInfo,
+        completionHandler: () -> Unit,
+    ) {
+        dispatchIosJsDialog(
+            source = source,
+            kind = WebJsDialogKind.Alert,
+            frame = frame,
+            message = message,
+            defaultPromptText = null,
+            deliverResult = { completionHandler() },
+        )
+    }
+
+    internal fun handleJsConfirm(
+        source: WKWebView,
+        message: String,
+        frame: WKFrameInfo,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        dispatchIosJsDialog(
+            source = source,
+            kind = WebJsDialogKind.Confirm,
+            frame = frame,
+            message = message,
+            defaultPromptText = null,
+            deliverResult = { result ->
+                completionHandler((result as? WebJsDialogResult.Confirm)?.confirmed == true)
+            },
+        )
+    }
+
+    internal fun handleJsPrompt(
+        source: WKWebView,
+        prompt: String,
+        defaultText: String?,
+        frame: WKFrameInfo,
+        completionHandler: (String?) -> Unit,
+    ) {
+        dispatchIosJsDialog(
+            source = source,
+            kind = WebJsDialogKind.Prompt,
+            frame = frame,
+            message = prompt,
+            defaultPromptText = defaultText,
+            deliverResult = { result ->
+                completionHandler((result as? WebJsDialogResult.Prompt)?.value)
+            },
+        )
+    }
+
+    private fun dispatchIosJsDialog(
+        source: WKWebView,
+        kind: WebJsDialogKind,
+        frame: WKFrameInfo,
+        message: String,
+        defaultPromptText: String?,
+        deliverResult: (WebJsDialogResult) -> Unit,
+    ) {
+        val visibleAndActive = !disposed && windowAttached && !appInBackground && isSameObjCObject(source, webView)
+        val handler = events.onJsDialog
+        if (!isWebJsDialogPermitted(config?.allowJsDialogs == true, visibleAndActive, handler != null)) {
+            val defaultCancel =
+                when (kind) {
+                    WebJsDialogKind.Alert -> WebJsDialogResult.AlertDismissed
+                    WebJsDialogKind.Confirm -> WebJsDialogResult.Confirm(confirmed = false)
+                    WebJsDialogKind.Prompt -> WebJsDialogResult.Prompt(value = null)
+                }
+            runOnIosMainThread { deliverResult(defaultCancel) }
+            return
+        }
+        val originUrl = iosJsDialogOriginUrl(source, frame)
+        var requestRef: WebJsDialogRequest? = null
+        val request =
+            WebJsDialogRequest(
+                kind = kind,
+                originUrl = originUrl,
+                message = message,
+                defaultPromptText = defaultPromptText,
+                onSettled = { requestRef?.let(jsDialogTracker::clearIfSame) },
+                onResult = { dialogResult -> runOnIosMainThread { deliverResult(dialogResult) } },
+            )
+        requestRef = request
+        jsDialogTracker.begin(request)
+        val presented = runCatching { handler!!.invoke(request) }.isSuccess
+        if (!presented) {
+            request.cancel()
+        }
+    }
+
+    private fun iosJsDialogOriginUrl(
+        source: WKWebView,
+        frame: WKFrameInfo,
+    ): String {
+        val sec = frame.securityOrigin
+        val secHost =
+            if (sec.host.contains(':') && !sec.host.startsWith("[")) {
+                "[${sec.host}]"
+            } else {
+                sec.host
+            }
+        if (sec.protocol.isNotEmpty() && secHost.isNotEmpty()) {
+            return if (sec.port > 0L) "${sec.protocol}://$secHost:${sec.port}" else "${sec.protocol}://$secHost"
+        }
+        return source.URL?.absoluteString?.takeIf { it.isNotBlank() } ?: currentUrl
+    }
+
+    private inline fun runOnIosMainThread(crossinline block: () -> Unit) {
+        if (NSThread.isMainThread) {
+            block()
+        } else {
+            dispatch_async(dispatch_get_main_queue()) { block() }
+        }
     }
 
     /**
@@ -1419,6 +1548,40 @@ private class WebContainerIosNavigationDelegate(
                 isMainFrame = initiatedByFrame.mainFrame,
                 type = type,
             ),
+        )
+    }
+
+    override fun webView(
+        webView: WKWebView,
+        runJavaScriptAlertPanelWithMessage: String,
+        initiatedByFrame: WKFrameInfo,
+        completionHandler: () -> Unit,
+    ) {
+        owner.handleJsAlert(webView, runJavaScriptAlertPanelWithMessage, initiatedByFrame, completionHandler)
+    }
+
+    override fun webView(
+        webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage: String,
+        initiatedByFrame: WKFrameInfo,
+        completionHandler: (Boolean) -> Unit,
+    ) {
+        owner.handleJsConfirm(webView, runJavaScriptConfirmPanelWithMessage, initiatedByFrame, completionHandler)
+    }
+
+    override fun webView(
+        webView: WKWebView,
+        runJavaScriptTextInputPanelWithPrompt: String,
+        defaultText: String?,
+        initiatedByFrame: WKFrameInfo,
+        completionHandler: (String?) -> Unit,
+    ) {
+        owner.handleJsPrompt(
+            webView,
+            runJavaScriptTextInputPanelWithPrompt,
+            defaultText,
+            initiatedByFrame,
+            completionHandler,
         )
     }
 }

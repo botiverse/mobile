@@ -1030,7 +1030,11 @@ internal fun <T> RaftForwardTargetPicker(
     sourceLabel: String? = null,
     // web mobile picker: a tap forwards to that one place; "Select Multiple" switches to
     // checkboxes and the Continue footer. False keeps the checkbox mode only.
-    singleTapContinues: Boolean = false
+    singleTapContinues: Boolean = false,
+    // Optional direct header subtitle override (e.g. host domain when forwarding a web page URL).
+    subtitleOverride: String? = null,
+    // Whether the header shows the "Select Multiple" toggle when [singleTapContinues] is true.
+    allowMultiSelect: Boolean = singleTapContinues,
 ) {
     var multiSelect by remember(state.sessionKey) { mutableStateOf(!singleTapContinues) }
     val userFacingErrorLabels = threadUserFacingErrorLabels()
@@ -1072,11 +1076,13 @@ internal fun <T> RaftForwardTargetPicker(
         Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
             RaftForwardPickerHeader(
                 subtitle =
-                    sourceLabel?.takeIf { it.isNotBlank() }?.let { source ->
-                        stringResource(Res.string.thread_forward_selected_from, messageCount, source)
-                    } ?: stringResource(Res.string.thread_forward_messages_selected, messageCount),
+                    subtitleOverride?.takeIf { it.isNotBlank() }
+                        ?: sourceLabel?.takeIf { it.isNotBlank() }?.let { source ->
+                            stringResource(Res.string.thread_forward_selected_from, messageCount, source)
+                        }
+                        ?: stringResource(Res.string.thread_forward_messages_selected, messageCount),
                 multiSelect = multiSelect,
-                multiSelectAvailable = singleTapContinues,
+                multiSelectAvailable = allowMultiSelect,
                 dismissEnabled = state.dismissEnabled,
                 onBack = {
                     if (singleTapContinues && multiSelect) {

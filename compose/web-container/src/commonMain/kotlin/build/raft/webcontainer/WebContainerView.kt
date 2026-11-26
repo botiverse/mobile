@@ -149,6 +149,7 @@ data class WebContainerEvents(
     val onContentProcessGone: (didCrash: Boolean) -> Unit = {},
     val onWatchdogTerminalError: (reason: String) -> Unit = {},
     val onDownloadRequested: ((WebDownloadResult) -> Unit)? = null,
+    val onJsDialog: ((WebJsDialogRequest) -> Unit)? = null,
     val catchesMainFrameNavigation: ((WebMainFrameInterceptContext) -> Boolean)? = null,
     val routesMainFrameNavigation: ((String) -> Boolean)? = null,
 )

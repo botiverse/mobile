@@ -6237,6 +6237,10 @@
     <string name="mobile_web_panel_return_to_conversation">回到對話</string>
     <string name="mobile_web_panel_return_to_page">返回</string>
     <string name="mobile_web_panel_apps_source">應用程式</string>
+    <string name="mobile_web_panel_forward_to_raft">轉發至 Raft</string>
+    <string name="mobile_web_panel_forwarded_to">已轉發至 %1$s</string>
+    <string name="mobile_web_panel_forward_failed">無法轉發此連結</string>
+    <string name="mobile_web_panel_js_prompt_placeholder">請輸入內容</string>
     <string name="send_prompt_heading">傳給 agent</string>
     <string name="send_prompt_description">看一下這句話，想改就改，然後送出。送出後會跳到你和這個 agent 的私訊，看它怎麼做。</string>
     <string name="send_prompt_to">傳給</string>

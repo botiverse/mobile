@@ -300,6 +300,8 @@ internal fun RaftMobileWebPanelBottomBar(
     canGoForward: Boolean = false,
     onGoBack: () -> Unit = {},
     onGoForward: () -> Unit = {},
+    onReload: () -> Unit = {},
+    onForwardToRaft: (() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     var menuExpanded by remember { mutableStateOf(false) }
@@ -405,6 +407,27 @@ internal fun RaftMobileWebPanelBottomBar(
                     ) {
                         menuActions.forEach { action ->
                             when (action) {
+                                RaftMobileWebPanelMenuAction.Reload ->
+                                    RaftMenuItem(
+                                        text = stringResource(Res.string.in_app_browser_reload),
+                                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
+                                        onClick = {
+                                            menuExpanded = false
+                                            onReload()
+                                        },
+                                    )
+                                RaftMobileWebPanelMenuAction.ForwardToRaft -> {
+                                    if (onForwardToRaft != null) {
+                                        RaftMenuItem(
+                                            text = stringResource(Res.string.mobile_web_panel_forward_to_raft),
+                                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.Forward) },
+                                            onClick = {
+                                                menuExpanded = false
+                                                onForwardToRaft()
+                                            },
+                                        )
+                                    }
+                                }
                                 RaftMobileWebPanelMenuAction.Share ->
                                     RaftMenuItem(
                                         text = stringResource(Res.string.common_share),

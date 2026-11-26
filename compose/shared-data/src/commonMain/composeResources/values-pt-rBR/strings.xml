@@ -6237,6 +6237,10 @@
     <string name="mobile_web_panel_return_to_conversation">Voltar para a conversa</string>
     <string name="mobile_web_panel_return_to_page">Voltar</string>
     <string name="mobile_web_panel_apps_source">Apps</string>
+    <string name="mobile_web_panel_forward_to_raft">Encaminhar para o Raft</string>
+    <string name="mobile_web_panel_forwarded_to">Encaminhado para %1$s</string>
+    <string name="mobile_web_panel_forward_failed">Não foi possível encaminhar este link</string>
+    <string name="mobile_web_panel_js_prompt_placeholder">Digite um valor</string>
     <string name="send_prompt_heading">Enviar para um agente</string>
     <string name="send_prompt_description">Confira a mensagem, mude se quiser e envie. Você vai para sua DM com o agente para ver o que ele faz.</string>
     <string name="send_prompt_to">Para</string>
