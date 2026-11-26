@@ -1104,6 +1104,14 @@
     <string name="thread_action_card_blocked_source_workspace">This is a history copy. Only the source workspace can run this action.</string>
     <string name="thread_action_card_blocked_need_migrate_agents">Only %1$s's creator or someone with permission to migrate agents can do this.</string>
     <string name="thread_action_card_prepared_request_waiting">Waiting for %1$s to confirm.</string>
+    <string name="thread_action_card_blocked_need_federate_channels">Only a Server owner or admin can invite people outside the server.</string>
+    <string name="thread_action_card_verb_invite_external">Invite people</string>
+    <string name="thread_action_card_verb_connect_own_servers">Connect servers</string>
+    <string name="thread_action_card_verb_decline_invite">Decline</string>
+    <string name="thread_action_card_invite_external_handled_by">Handled by %1$s</string>
+    <string name="thread_action_card_invite_external_declined_by">Declined by %1$s</string>
+    <string name="thread_action_card_invite_external_unavailable">This card can’t be opened now. Reload to see where it stands.</string>
+    <string name="thread_action_card_busy_working">Working…</string>
     <string name="thread_action_card_field_description">Description</string>
     <string name="thread_action_card_field_humans">Humans</string>
     <string name="thread_action_card_field_agents">Agents</string>
@@ -4534,6 +4542,7 @@
     <string name="joint_member_connect_row_owner">You're the owner</string>
     <string name="joint_member_connect_search">Search servers</string>
     <string name="joint_member_connect_title">Connect your servers</string>
+    <string name="joint_member_connect_empty">You don't have a server that can connect to %1$s. Servers you own or administer appear here.</string>
     <string name="joint_member_connect_toast_already_connected_many">%1$s are already connected</string>
     <string name="joint_member_connect_toast_already_connected_one">%1$s is already connected</string>
     <string name="joint_member_connect_toast_connected">Connected %1$s</string>

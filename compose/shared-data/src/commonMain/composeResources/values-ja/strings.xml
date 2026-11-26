@@ -1103,6 +1103,14 @@
     <string name="thread_action_card_blocked_source_workspace">これは履歴として残されたコピーです。この操作は元のワークスペースでのみ実行できます。</string>
     <string name="thread_action_card_blocked_need_migrate_agents">この操作を実行できるのは、%1$s の作成者か、エージェントを移行する権限を持つメンバーのみです。</string>
     <string name="thread_action_card_prepared_request_waiting">%1$s の確認を待っています。</string>
+    <string name="thread_action_card_blocked_need_federate_channels">サーバー外の人を招待できるのは、サーバーのオーナーまたは管理者のみです。</string>
+    <string name="thread_action_card_verb_invite_external">招待</string>
+    <string name="thread_action_card_verb_connect_own_servers">サーバーを接続</string>
+    <string name="thread_action_card_verb_decline_invite">拒否</string>
+    <string name="thread_action_card_invite_external_handled_by">%1$s が対応</string>
+    <string name="thread_action_card_invite_external_declined_by">%1$s が拒否</string>
+    <string name="thread_action_card_invite_external_unavailable">このカードは現在開けません。再読み込みして状況を確認してください。</string>
+    <string name="thread_action_card_busy_working">処理中…</string>
     <string name="thread_action_card_field_description">説明</string>
     <string name="thread_action_card_field_humans">人間</string>
     <string name="thread_action_card_field_agents">エージェント</string>
@@ -4533,6 +4541,7 @@
     <string name="joint_member_connect_row_owner">あなたはオーナーです</string>
     <string name="joint_member_connect_search">サーバーを検索</string>
     <string name="joint_member_connect_title">所属しているサーバーを接続</string>
+    <string name="joint_member_connect_empty">%1$s に接続できるサーバーがありません。あなたがオーナーまたは管理者のサーバーがここに表示されます。</string>
     <string name="joint_member_connect_toast_already_connected_many">%1$s はすでに接続されています</string>
     <string name="joint_member_connect_toast_already_connected_one">%1$s はすでに接続されています</string>
     <string name="joint_member_connect_toast_connected">%1$s を接続しました</string>

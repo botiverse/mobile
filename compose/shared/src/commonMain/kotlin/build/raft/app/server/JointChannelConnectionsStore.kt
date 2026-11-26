@@ -258,8 +258,15 @@ internal sealed interface JointChannelConnectionsIntent {
     data object OpenMemberConnect : JointChannelConnectionsIntent
     /** Guest's Connect your servers entry (slock #16375/#16389): opens with Guest helper line + Create a server and connect. */
     data object OpenGuestMemberConnect : JointChannelConnectionsIntent
-    /** Invite people outside's quiet footer link "Connect your servers" (slock #16643/#16661). */
-    data class OpenFromExternalInvite(val publicChannel: PublicChannelConnect? = null) : JointChannelConnectionsIntent
+    /**
+     * Invite people outside's quiet footer link "Connect your servers" (slock #16643/#16661), or
+     * a connect-only `channel:invite_external` card with `addresses == 0` ([sayWhenEmpty] = true,
+     * slock #16671).
+     */
+    data class OpenFromExternalInvite(
+        val publicChannel: PublicChannelConnect? = null,
+        val sayWhenEmpty: Boolean = false,
+    ) : JointChannelConnectionsIntent
     /** The sheet's × / Cancel / Close (ignored while a request runs). */
     data object DismissMemberConnect : JointChannelConnectionsIntent
     data class SetMemberConnectSelection(val serverIds: Set<String>) : JointChannelConnectionsIntent
@@ -448,19 +455,22 @@ internal class JointChannelConnectionsStore(
             is JointChannelConnectionsIntent.OpenFromExternalInvite -> {
                 val current = mutableState.value
                 val rows = current.memberConnectInviteRows
-                if (current.memberConnectSheet == null && current.actionInFlight == null && rows.isNotEmpty()) {
+                if (current.memberConnectSheet == null && current.actionInFlight == null && (rows.isNotEmpty() || intent.sayWhenEmpty)) {
                     val sheet =
                         MemberConnectSheet(
                             guestEntry = false,
                             hostAdmin = true,
                             eligibleOnly = true,
                             publicChannel = intent.publicChannel,
+                            sayWhenEmpty = intent.sayWhenEmpty,
                         )
                     mutableState.value = current.copy(memberConnectSheet = sheet)
-                    when {
-                        intent.publicChannel == null -> fetchMemberConnectOptions()
-                        intent.publicChannel.canMakePrivate -> fetchHostOwnConnectableServers()
-                        // Public channel non-admin: neither route is called (member route refuses public channels).
+                    if (rows.isNotEmpty()) {
+                        when {
+                            intent.publicChannel == null -> fetchMemberConnectOptions()
+                            intent.publicChannel.canMakePrivate -> fetchHostOwnConnectableServers()
+                            // Public channel non-admin: neither route is called (member route refuses public channels).
+                        }
                     }
                 }
             }

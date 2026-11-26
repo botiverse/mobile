@@ -1103,6 +1103,14 @@
     <string name="thread_action_card_blocked_source_workspace">Esta é uma cópia do histórico. Somente o espaço de trabalho de origem pode executar esta ação.</string>
     <string name="thread_action_card_blocked_need_migrate_agents">Só quem criou %1$s ou alguém com permissão para migrar agentes pode fazer isso.</string>
     <string name="thread_action_card_prepared_request_waiting">Aguardando %1$s confirmar.</string>
+    <string name="thread_action_card_blocked_need_federate_channels">Só um proprietário ou administrador do servidor pode convidar pessoas de fora do servidor.</string>
+    <string name="thread_action_card_verb_invite_external">Convidar pessoas</string>
+    <string name="thread_action_card_verb_connect_own_servers">Conectar servidores</string>
+    <string name="thread_action_card_verb_decline_invite">Recusar</string>
+    <string name="thread_action_card_invite_external_handled_by">Tratado por %1$s</string>
+    <string name="thread_action_card_invite_external_declined_by">Recusado por %1$s</string>
+    <string name="thread_action_card_invite_external_unavailable">Não é possível abrir este cartão agora. Recarregue a página para ver a situação dele.</string>
+    <string name="thread_action_card_busy_working">Processando…</string>
     <string name="thread_action_card_field_description">Descrição</string>
     <string name="thread_action_card_field_humans">Pessoas</string>
     <string name="thread_action_card_field_agents">Agentes</string>
@@ -4354,6 +4362,7 @@
     <string name="joint_member_connect_row_owner">Você é o proprietário</string>
     <string name="joint_member_connect_search">Pesquisar servidores</string>
     <string name="joint_member_connect_title">Conectar seus servidores</string>
+    <string name="joint_member_connect_empty">Você não tem um servidor que possa se conectar a %1$s. Os servidores em que você é proprietário ou administrador aparecem aqui.</string>
     <string name="joint_member_connect_toast_already_connected_many">%1$s já estão conectados</string>
     <string name="joint_member_connect_toast_already_connected_one">%1$s já está conectado</string>
     <string name="joint_member_connect_toast_connected">%1$s conectado</string>

@@ -1172,6 +1172,28 @@ internal class SharedThreadDataSource(
         card: ThreadActionCard,
     ): DataResult<build.raft.app.data.ActionCardCloseOutcome> = actionCardCommands.closeQuestionActionCard(messageId, card)
 
+    suspend fun readExternalInviteCardAddresses(
+        messageId: String,
+        card: ThreadActionCard,
+    ): DataResult<build.raft.app.data.ExternalInviteAddressesOutcome> = actionCardCommands.readExternalInviteCardAddresses(messageId, card)
+
+    suspend fun declineExternalInviteActionCard(
+        messageId: String,
+        card: ThreadActionCard,
+    ): DataResult<build.raft.app.data.ActionCardCloseOutcome> = actionCardCommands.declineExternalInviteActionCard(messageId, card)
+
+    suspend fun markExternalInvitesActionCardExecuted(
+        messageId: String,
+        card: ThreadActionCard,
+        channelId: String,
+        addresses: Int,
+    ): DataResult<ThreadActionCard> = actionCardCommands.markExternalInvitesActionCardExecuted(messageId, card, channelId, addresses)
+
+    suspend fun reconfirmActionCard(
+        messageId: String,
+        card: ThreadActionCard,
+    ): DataResult<ThreadActionCard> = actionCardCommands.reconfirmActionCard(messageId, card)
+
     suspend fun checkSeatRequest(
         messageId: String,
         card: ThreadActionCard,

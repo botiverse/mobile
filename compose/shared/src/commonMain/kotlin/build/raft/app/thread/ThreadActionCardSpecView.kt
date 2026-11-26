@@ -48,6 +48,7 @@ import build.raft.app.data.expiredAsOf
 import build.raft.app.data.expiresAtEpochMillis
 import build.raft.app.data.isAgentMigrateAction
 import build.raft.app.data.isPreparedRequestAction
+import build.raft.app.data.isInviteExternalAction
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
 import build.raft.designsystem.components.RaftBanner
@@ -84,6 +85,8 @@ internal data class ThreadActionCardSpecHost(
     val openPlan: () -> Unit = {},
     /** Permission evaluation for `agent:migrate` cards (web `actionCardCommon.tsx` `canMigrateAgent`). */
     val evaluateMigrateAgentAccess: (ThreadActionCard) -> AgentMigrateCardAccess? = { null },
+    /** Permission evaluation for `channel:invite_external` cards (web `actionCardCommon.tsx` `capabilities.federateChannels`). */
+    val evaluateInviteExternalAccess: (ThreadActionCard) -> InviteExternalCardAccess? = { null },
     /** The host's diagnostics log (the bridge log in the app). */
     val log: (String) -> Unit = {},
 )
@@ -183,10 +186,20 @@ internal fun ThreadActionCard.actionCardExpiredLine(
  */
 @Composable
 internal fun ThreadActionCard.actionCardEndedLine(): String? {
-    if (!isExpired) return null
-    val viewerUserId = LocalThreadActionCardSpecHost.current.viewerUserId
     val names = LocalThreadActionCardNames.current
     val context = currentRaftDateTimeContext(null)
+    if (isClosed && isInviteExternalAction()) {
+        val closer =
+            closedBy?.userId?.let { names.name(ThreadActionCardEntityKind.Human, it) }?.takeIf { it.isNotBlank() }
+                ?: closedBy?.handle?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
+                ?: stringResource(Res.string.action_card_question_someone)
+        val declined = stringResource(Res.string.thread_action_card_invite_external_declined_by, closer)
+        val at = closedAt?.trim()?.takeIf { it.isNotBlank() }
+        val time = at?.let { raw -> context?.formatTimestampLabel(raw)?.takeIf { it != raw } }
+        return time?.let { "$declined · $it" } ?: declined
+    }
+    if (!isExpired) return null
+    val viewerUserId = LocalThreadActionCardSpecHost.current.viewerUserId
     val requesterName = requesterUserId?.let { names.name(ThreadActionCardEntityKind.Human, it) }
     val line =
         actionCardExpiredLine(viewerUserId, requesterName) { at ->
@@ -213,6 +226,7 @@ internal fun threadActionCardSpecErrorDesc(error: ThreadActionCardSpecError?): S
         null -> null
         ThreadActionCardSpecError.FormRequired -> Res.string.thread_action_card_form_required.desc()
         ThreadActionCardSpecError.QuestionNotSent -> Res.string.action_card_question_not_sent.desc()
+        ThreadActionCardSpecError.InviteExternalUnavailable -> Res.string.thread_action_card_invite_external_unavailable.desc()
         is ThreadActionCardSpecError.Failed -> error.serverMessage?.desc() ?: Res.string.thread_action_card_execute_failed.desc()
         // Web `settings.about.feedbackError.rateLimited` in substance; the minutes as the joint invite's 429.
         is ThreadActionCardSpecError.FeedbackRateLimited ->
@@ -282,6 +296,12 @@ internal fun ThreadActionCardSpecView(
     val isPreparedRequest = effectiveCard.isPreparedRequestAction
     val preparedRequestForOther = isPreparedRequest && !effectiveCard.preparedRequestAddressedToViewer(host.viewerUserId)
     val preparedRequestAddresseeName = if (preparedRequestForOther) effectiveCard.localizedAddresseeName() else null
+    val inviteExternalAccess =
+        if (!effectiveCard.isExecuted && !effectiveCard.hasEnded && effectiveCard.isInviteExternalAction()) {
+            host.evaluateInviteExternalAccess(effectiveCard)
+        } else {
+            null
+        }
     val blockedReason =
         when {
             effectiveCard.isExecuted || effectiveCard.hasEnded -> null
@@ -295,10 +315,19 @@ internal fun ThreadActionCardSpecView(
                 )
             preparedRequestForOther ->
                 stringResource(Res.string.thread_action_card_prepared_request_waiting, preparedRequestAddresseeName.orEmpty())
+            inviteExternalAccess != null && !inviteExternalAccess.canInvite ->
+                stringResource(Res.string.thread_action_card_blocked_need_federate_channels)
             else -> null
         }
     val endedLine = effectiveCard.actionCardEndedLine()
-    val committedBy = effectiveCard.executedByUserName?.takeIf { it.isNotBlank() }?.let { stringResource(Res.string.thread_action_card_committed_by, it) }
+    val committedBy =
+        effectiveCard.executedByUserName?.takeIf { it.isNotBlank() }?.let { who ->
+            if (effectiveCard.isInviteExternalAction()) {
+                stringResource(Res.string.thread_action_card_invite_external_handled_by, who)
+            } else {
+                stringResource(Res.string.thread_action_card_committed_by, who)
+            }
+        }
     val record = committedBy?.let { by -> executedTimeLabel?.let { "$by · $it" } ?: by } ?: executedTimeLabel
     val reconfirmLabel = stringResource(Res.string.thread_action_card_reconfirm)
     val viewPlanLabel = stringResource(Res.string.settings_billing_view_your_plan)
@@ -333,12 +362,19 @@ internal fun ThreadActionCardSpecView(
             !isOwnRequest &&
             (question?.asked ?: true) &&
             !preparedRequestForOther
+    val hideZeroExternalInviteResult =
+        effectiveCard.isInviteExternalAction() &&
+            effectiveCard.resultKind == "external-invites" &&
+            effectiveCard.resultAddresses == 0
     val stripPreparedRequestButtons = isPreparedRequest && !canOperate
     val shown =
-        remember(rendered, inline, questionLayout, singleQuestion, stripPreparedRequestButtons) {
+        remember(rendered, inline, questionLayout, singleQuestion, stripPreparedRequestButtons, hideZeroExternalInviteResult) {
             val body = if (inline == null) rendered.spec else rendered.spec.withoutInlineQuestions(inline)
             val layoutBody = if (questionLayout == QuestionCardLayout.SlimCard) body.withoutSlimQuestionRows(singleQuestion) else body
-            rendered.copy(spec = if (stripPreparedRequestButtons) layoutBody.withoutAddressedCardActionButtons() else layoutBody)
+            rendered.copy(
+                spec = if (stripPreparedRequestButtons) layoutBody.withoutAddressedCardActionButtons() else layoutBody,
+                result = if (hideZeroExternalInviteResult) null else rendered.result,
+            )
         }
     val currentCard by rememberUpdatedState(effectiveCard)
     val error = threadActionCardSpecErrorText(slice.error)
@@ -430,23 +466,37 @@ internal fun ThreadActionCardSpecView(
             },
         headerTrailing = closeControl,
         footer =
-            inline?.let { form ->
-                {
-                    val defaults = remember(form) { initialActionCardFormValues(form.form) }
-                    ActionCardQuestionInlineForm(
-                        inline = form,
-                        values = slice.inlineValues ?: defaults,
-                        onValuesChange = { host.onIntent(ThreadActionCardSpecIntent.InlineValuesChanged(messageId, it)) },
-                        serverIssues = slice.inlineIssues,
-                        canSubmit = canAnswer,
-                        showSubmit = canOperate,
-                        submitting = slice.busy == form.buttonId,
-                        displayLocale = displayLocale,
-                        onSend = send(form),
-                        serverIssuesTraceId = slice.inlineIssuesTraceId,
-                        onWaitingChange = { answerWaiting = it },
-                    )
+            when {
+                inline != null -> {
+                    {
+                        val defaults = remember(inline) { initialActionCardFormValues(inline.form) }
+                        ActionCardQuestionInlineForm(
+                            inline = inline,
+                            values = slice.inlineValues ?: defaults,
+                            onValuesChange = { host.onIntent(ThreadActionCardSpecIntent.InlineValuesChanged(messageId, it)) },
+                            serverIssues = slice.inlineIssues,
+                            canSubmit = canAnswer,
+                            showSubmit = canOperate,
+                            submitting = slice.busy == inline.buttonId,
+                            displayLocale = displayLocale,
+                            onSend = send(inline),
+                            serverIssuesTraceId = slice.inlineIssuesTraceId,
+                            onWaitingChange = { answerWaiting = it },
+                        )
+                    }
                 }
+                effectiveCard.isInviteExternalAction() && canOperate && !effectiveCard.isExecuted && !effectiveCard.hasEnded -> {
+                    {
+                        ThreadInviteExternalActionCardButtons(
+                            card = effectiveCard,
+                            busyElementKey = slice.busyElement(typedPending),
+                            onOpen = { host.onIntent(ThreadActionCardSpecIntent.OpenInviteExternal(messageId, currentCard)) },
+                            onDecline = { host.onIntent(ThreadActionCardSpecIntent.DeclineInviteExternal(messageId, currentCard)) },
+                            onReconfirm = { host.onIntent(ThreadActionCardSpecIntent.ReconfirmInviteExternal(messageId, currentCard)) },
+                        )
+                    }
+                }
+                else -> null
             },
     )
 }

@@ -1103,6 +1103,14 @@
     <string name="thread_action_card_blocked_source_workspace">Это копия из истории. Выполнить это действие можно только в исходном рабочем пространстве.</string>
     <string name="thread_action_card_blocked_need_migrate_agents">Это может сделать только создатель агента %1$s или тот, у кого есть разрешение на перенос агентов.</string>
     <string name="thread_action_card_prepared_request_waiting">Ожидается подтверждение: %1$s.</string>
+    <string name="thread_action_card_blocked_need_federate_channels">Приглашать людей не с этого сервера может только владелец или администратор сервера.</string>
+    <string name="thread_action_card_verb_invite_external">Пригласить людей</string>
+    <string name="thread_action_card_verb_connect_own_servers">Подключить серверы</string>
+    <string name="thread_action_card_verb_decline_invite">Отклонить</string>
+    <string name="thread_action_card_invite_external_handled_by">Обработано: %1$s</string>
+    <string name="thread_action_card_invite_external_declined_by">Отклонено: %1$s</string>
+    <string name="thread_action_card_invite_external_unavailable">Сейчас не удаётся открыть эту карточку. Обновите страницу, чтобы узнать её статус.</string>
+    <string name="thread_action_card_busy_working">Обработка…</string>
     <string name="thread_action_card_field_description">Описание</string>
     <string name="thread_action_card_field_humans">Люди</string>
     <string name="thread_action_card_field_agents">Агенты</string>
@@ -4354,6 +4362,7 @@
     <string name="joint_member_connect_row_owner">Вы владелец</string>
     <string name="joint_member_connect_search">Поиск серверов</string>
     <string name="joint_member_connect_title">Подключить свои серверы</string>
+    <string name="joint_member_connect_empty">У вас нет серверов, которые можно подключить к каналу %1$s. Здесь появляются серверы, в которых вы владелец или администратор.</string>
     <string name="joint_member_connect_toast_already_connected_many">Уже подключены: %1$s</string>
     <string name="joint_member_connect_toast_already_connected_one">%1$s уже подключён</string>
     <string name="joint_member_connect_toast_connected">Подключено: %1$s</string>
