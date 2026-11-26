@@ -23,7 +23,7 @@ import kotlinx.serialization.json.JsonPrimitive
     ScreenError("screen_error"),
     Dialog("dialog"),
     InlineBanner("inline_banner"),
-    WebView("webview"),
+    EmbeddedWebView("webview"),
 }
 
 @RaftCoreInternalApi enum class MobileUiErrorCode(val wireValue: String) {

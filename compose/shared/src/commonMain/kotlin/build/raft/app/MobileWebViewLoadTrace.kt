@@ -232,7 +232,7 @@ internal class MobileWebViewLoadTraceRecorder(
         traceId: String,
     ) -> Unit = { serverId, route, errorCode, traceId ->
         MobileUiErrorTrace.record(
-            surface = MobileUiErrorSurface.WebView,
+            surface = MobileUiErrorSurface.EmbeddedWebView,
             route = route,
             errorCode = errorCode,
             requestTraceId = traceId,
