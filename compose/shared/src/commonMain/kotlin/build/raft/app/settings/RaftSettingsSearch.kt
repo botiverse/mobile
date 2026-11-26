@@ -11,8 +11,7 @@ package build.raft.app
  * ([RaftSettingsSearchCopy] in SettingsSearchUi.kt); this file holds where a setting is, who sees
  * it, and the other words people use for it.
  *
- * Not here, because the app has no row for them: passkeys and two-step (the Account page has no
- * such blocks, see [RaftSettingsInAppSections]), ai-providers (no Providers page), desktop-app (the
+ * Not here, because the app has no row for them: ai-providers (no Providers page), desktop-app (the
  * web's About card).
  */
 
@@ -88,6 +87,30 @@ internal val RaftSettingsSearchEntries: List<RaftSettingsSearchEntry> =
             "password",
             "account",
             words(listOf("change password", "sign in", "login"), listOf("密码", "改密码", "登录")),
+            Account,
+        ),
+        RaftSettingsSearchEntry(
+            "passkeys",
+            "account",
+            mapOf(
+                "en" to listOf("passkey", "face id", "touch id", "fingerprint", "face", "screen lock", "instead of a password"),
+                "zh-cn" to listOf("通行密钥", "指纹", "面容", "屏幕锁", "不用输密码"),
+                "zh-tw" to listOf("指紋", "臉部辨識", "螢幕鎖定"),
+                "ja" to listOf("指紋", "顔", "画面ロック"),
+                "ko" to listOf("지문", "얼굴 인식", "화면 잠금"),
+                "es" to listOf("huella digital", "rostro", "bloqueo de pantalla"),
+                "pt-br" to listOf("impressão digital", "rosto", "bloqueio de tela"),
+                "ru" to listOf("отпечаток пальца", "лицо", "блокировка экрана"),
+            ),
+            Account,
+        ),
+        RaftSettingsSearchEntry(
+            "two-step",
+            "account",
+            words(
+                listOf("2fa", "mfa", "totp", "two-factor", "verification code"),
+                listOf("两步验证", "二次验证", "验证码", "双重验证"),
+            ),
             Account,
         ),
         RaftSettingsSearchEntry(

@@ -40,14 +40,26 @@ class RaftSettingsSearchIndexTest {
         val ids = RaftSettingsSearchEntries.map { it.id }
         assertEquals(ids.distinct(), ids)
         assertEquals(webIds.filter { it in ids }, ids)
-        // Passkeys / Two-step (Account › Login & security, rows that open the web) are not indexed;
-        // the app has no Providers page and no About › Desktop app card.
-        assertEquals(setOf("passkeys", "two-step", "ai-providers", "desktop-app"), webIds.toSet() - ids.toSet())
+        // The app has no Providers page and no About › Desktop app card.
+        assertEquals(setOf("ai-providers", "desktop-app"), webIds.toSet() - ids.toSet())
         assertEquals(ids.toSet(), RaftSettingsSearchCopies.keys)
         RaftSettingsSearchEntries.forEach { entry ->
             assertTrue(entry.aliases["en"].orEmpty().isNotEmpty(), entry.id)
             entry.aliases.values.flatten().forEach { word -> assertEquals(word.trim(), word, entry.id) }
         }
+    }
+
+    @Test
+    fun passkeysAndTwoStepAreIndexedUnderAccountWithWebAliases() {
+        val member = ids(RaftSettingsSearchContext(phoneRows, role = "member"))
+        assertTrue("passkeys" in member)
+        assertTrue("two-step" in member)
+        val passkeys = RaftSettingsSearchEntries.first { it.id == "passkeys" }
+        val twoStep = RaftSettingsSearchEntries.first { it.id == "two-step" }
+        assertTrue("face id" in passkeys.aliases["en"].orEmpty())
+        assertTrue("通行密钥" in passkeys.aliases["zh-cn"].orEmpty())
+        assertTrue("2fa" in twoStep.aliases["en"].orEmpty())
+        assertTrue("两步验证" in twoStep.aliases["zh-cn"].orEmpty())
     }
 
     @Test
@@ -76,7 +88,7 @@ class RaftSettingsSearchIndexTest {
         assertEquals(pageOrder.sorted(), pageOrder)
         // Within Account, the index's own order.
         assertEquals(
-            listOf("display-name", "username", "email", "password", "sign-out", "delete-account"),
+            listOf("display-name", "username", "email", "password", "passkeys", "two-step", "sign-out", "delete-account"),
             placements.filter { it.rowKey == SettingsDestinationAccount }.map { it.entry.id },
         )
     }
