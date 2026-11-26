@@ -4410,6 +4410,7 @@ internal class RaftSharedStoreProvider private constructor(
                                 RaftProductEvents.setSignedOut()
                                 serverFeatureFlagLastKnown.clearAll()
                                 RaftMinBuildGate.onSignedOut()
+                                RaftEarlyAccessPolicyHost.onSignedOut()
                                 ProcessDiagnosticFeatureFlagOverrides.registry.clearObservations()
                                 build.raft.app.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
                                 build.raft.app.RaftScreenshotFeedbackRuntime.controller.onEligibilityLost()
@@ -4438,6 +4439,17 @@ internal class RaftSharedStoreProvider private constructor(
                         if (key == MOBILE_FCM_PROBE_FEATURE_FLAG_KEY) RaftFcmProbeHost.onFeatureFlagChanged()
                     },
                 )
+            suspend fun syncEarlyAccessPolicy() {
+                val session = runCatching { authStore.readSession() }.getOrNull() ?: return
+                val serverIds =
+                    buildList {
+                        session.currentServerId?.trim()?.takeIf(String::isNotEmpty)?.let(::add)
+                        session.servers.forEach { server ->
+                            server.id.trim().takeIf(String::isNotEmpty)?.let(::add)
+                        }
+                    }
+                RaftEarlyAccessPolicyHost.onPolicyChanged(serverFeatureFlags.earlyAccessPolicy(serverIds))
+            }
             // An offline cold start may read last-known flags before the binding is known (they read
             // as defaults then); re-read them whenever the binding they are keyed by changes.
             CoroutineScope(SupervisorJob()).launch {
@@ -4446,12 +4458,14 @@ internal class RaftSharedStoreProvider private constructor(
                     .distinctUntilChanged()
                     .collect {
                         serverFeatureFlags.onLastKnownBindingChanged()
+                        syncEarlyAccessPolicy()
                         build.raft.app.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
                         RaftFcmProbeHost.onFeatureFlagChanged()
                     }
             }
             CoroutineScope(SupervisorJob()).launch {
                 serverFeatureFlags.snapshotRevision.collect {
+                    syncEarlyAccessPolicy()
                     build.raft.app.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
                     RaftFcmProbeHost.onFeatureFlagChanged()
                 }

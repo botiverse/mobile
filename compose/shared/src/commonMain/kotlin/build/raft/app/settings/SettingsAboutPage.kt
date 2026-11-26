@@ -47,8 +47,8 @@ internal fun SharedSettingsAboutContent(
     onSendFeedback: (() -> Unit)? = null,
     /** Settings › Developer, opened by tapping the version row [SettingsDeveloperUnlockTapCount] times. */
     onOpenDeveloper: (() -> Unit)? = null,
-    /** Signed-in session for gating Botiverse internal early-access enrollment (#proj-mobile:#370). */
-    session: StoredAuthSession? = null,
+    /** Server-driven visibility gate (`mobile_early_access_visible_v0`, `#proj-mobile:e48030bc`). */
+    earlyAccessVisible: Boolean = false,
     /** Toggle Android direct-install runtime channel between `alpha` (true) and `main` (false). */
     onToggleEarlyAccessChannel: ((Boolean) -> Unit)? = null
 ) {
@@ -71,7 +71,7 @@ internal fun SharedSettingsAboutContent(
     val developer = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
     val earlyAccessOption =
         settingsAboutEarlyAccessOption(
-            session = session,
+            earlyAccessVisible = earlyAccessVisible,
             developer = developer,
             updateCheck = updateCheck,
             actionState = actionState,
@@ -147,12 +147,11 @@ internal const val SETTINGS_ABOUT_CONNECTED_SERVER_ROW = "connectedServer"
 internal const val SETTINGS_ABOUT_SOURCE_CODE_ACTION = "openSourceCode"
 internal const val SETTINGS_ABOUT_EARLY_ACCESS_TOGGLE_ACTION = "toggleEarlyAccessChannel"
 internal const val SETTINGS_ABOUT_EARLY_ACCESS_EXTERNAL_ACTION = "openEarlyAccessProgram"
-internal const val SETTINGS_ABOUT_BOTIVERSE_SERVER_SLUG = "botiverse"
 
 /**
- * Early-access enrollment option surfaced in Settings › About for `botiverse` server members on
- * official Raft (plus anyone already opted into the Hands `alpha` channel so they can always opt
- * back out to `main`), replacing the retired `preview` channel (#proj-mobile:#370).
+ * Early-access enrollment option surfaced in Settings › About when gated on by the server
+ * (`mobile_early_access_visible_v0`, `#proj-mobile:e48030bc`), replacing the retired `preview`
+ * channel (#proj-mobile:#370).
  */
 internal sealed interface SettingsAboutEarlyAccessOption {
     data class HandsAlphaToggle(
@@ -167,40 +166,23 @@ internal sealed interface SettingsAboutEarlyAccessOption {
     ) : SettingsAboutEarlyAccessOption
 }
 
-internal fun settingsAboutIsBotiverseMember(
-    session: StoredAuthSession?,
-    developer: SharedSettingsDeveloperSnapshot?
-): Boolean {
-    if (session == null || developer == null) return false
-    // Official Raft production API only — never match a self-hosted server that chose slug "botiverse".
-    if (developer.apiBaseUrl.isBlank() || settingsAboutConnectedServerHost(developer) != null) return false
-    if (session.selectedServerSlug.orEmpty().trim().equals(SETTINGS_ABOUT_BOTIVERSE_SERVER_SLUG, ignoreCase = true)) {
-        return true
-    }
-    return session.servers.any { server ->
-        server.slug.orEmpty().trim().equals(SETTINGS_ABOUT_BOTIVERSE_SERVER_SLUG, ignoreCase = true)
-    }
-}
-
 internal fun settingsAboutEarlyAccessOption(
-    session: StoredAuthSession?,
+    earlyAccessVisible: Boolean,
     developer: SharedSettingsDeveloperSnapshot?,
     updateCheck: SharedSettingsUpdateCheckSnapshot?,
     actionState: SharedSettingsActionState?,
     canToggleHandsChannel: Boolean = true
 ): SettingsAboutEarlyAccessOption? {
+    if (!earlyAccessVisible) return null
     val effectiveUpdate = updateCheck ?: developer?.updateCheck ?: return null
-    val isBotiverseMember = settingsAboutIsBotiverseMember(session, developer)
     val channel = effectiveUpdate.updateChannel.trim().lowercase()
     val switchSupported = effectiveUpdate.updateChannelSwitchSupported && canToggleHandsChannel
-    val alphaActive = switchSupported && channel == "alpha"
-    if (switchSupported && (isBotiverseMember || alphaActive)) {
+    if (switchSupported) {
         return SettingsAboutEarlyAccessOption.HandsAlphaToggle(
-            enabled = alphaActive,
+            enabled = channel == "alpha",
             busy = actionState?.action == DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL && actionState.inProgress
         )
     }
-    if (!isBotiverseMember) return null
     val guideKind = effectiveUpdate.earlyAccessGuideKind.trim()
     val guideUrl = effectiveUpdate.earlyAccessGuideUrl.trim()
     if (guideKind.isBlank() || !guideUrl.startsWith("https://")) return null

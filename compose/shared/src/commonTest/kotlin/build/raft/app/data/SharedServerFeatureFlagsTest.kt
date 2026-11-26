@@ -586,4 +586,78 @@ class SharedServerFeatureFlagsTest {
             RaftAppIdentityRegistry.resetForTest()
         }
     }
+
+    @Test
+    fun earlyAccessFlagsDefaultOffAggregateAcrossServersAndPersistLastKnown() = runBlocking {
+        assertEquals("mobile_early_access_visible_v0", MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY)
+        assertEquals("mobile_early_access_default_on_v0", MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY)
+        assertTrue(MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertTrue(MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse(MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        assertFalse(MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        assertTrue(MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+        assertTrue(MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+
+        val disk = InMemoryRaftKeyValueStore()
+        val binding = ServerFeatureFlagLastKnownBinding("https://api.raft.build", "user-1")
+        val api =
+            object : RaftFeatureFlagsApi {
+                override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
+                    when (serverId.value) {
+                        "srv-default-only" ->
+                            ok(
+                                """{"evaluations":[{"key":"$MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY","enabled":false},{"key":"$MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY","enabled":true}]}"""
+                            )
+                        "srv-visible-only" ->
+                            ok(
+                                """{"evaluations":[{"key":"$MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY","enabled":true},{"key":"$MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY","enabled":false}]}"""
+                            )
+                        "srv-both" ->
+                            ok(
+                                """{"evaluations":[{"key":"$MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY","enabled":true},{"key":"$MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY","enabled":true}]}"""
+                            )
+                        else -> ok("""{"evaluations":[]}""")
+                    }
+            }
+
+        val flags =
+            SharedServerFeatureFlags(
+                api = api,
+                lastKnown = ServerFeatureFlagLastKnownStore(store = disk, currentBinding = { binding }),
+            )
+        assertEquals(RaftEarlyAccessFlagPolicy(), flags.earlyAccessPolicy(emptyList()))
+        assertEquals(RaftEarlyAccessFlagPolicy(), flags.earlyAccessPolicy(listOf("srv-none")))
+
+        // defaultOn without visible stays false/false.
+        flags.prefetch(ServerId("srv-default-only"))
+        assertEquals(
+            RaftEarlyAccessFlagPolicy(visible = false, defaultOn = false),
+            flags.earlyAccessPolicy(listOf("srv-default-only"))
+        )
+
+        // visible-only yields visible=true, defaultOn=false.
+        flags.prefetch(ServerId("srv-visible-only"))
+        assertEquals(
+            RaftEarlyAccessFlagPolicy(visible = true, defaultOn = false),
+            flags.earlyAccessPolicy(listOf("srv-none", "srv-visible-only"))
+        )
+
+        // Joining a server with both enabled turns on visible + defaultOn across the account.
+        flags.prefetch(ServerId("srv-both"))
+        assertEquals(
+            RaftEarlyAccessFlagPolicy(visible = true, defaultOn = true),
+            flags.earlyAccessPolicy(listOf("srv-none", "srv-both"))
+        )
+
+        // Cold restart reads persisted last-known evaluations offline until refreshed.
+        val coldStart =
+            SharedServerFeatureFlags(
+                api = FakeApi(HomeNetworkResponse(code = 0, bodyText = null)),
+                lastKnown = ServerFeatureFlagLastKnownStore(store = disk, currentBinding = { binding }),
+            )
+        assertEquals(
+            RaftEarlyAccessFlagPolicy(visible = true, defaultOn = true),
+            coldStart.earlyAccessPolicy(listOf("srv-none", "srv-both"))
+        )
+    }
 }

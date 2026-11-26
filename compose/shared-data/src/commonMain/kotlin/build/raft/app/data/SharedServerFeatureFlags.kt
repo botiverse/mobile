@@ -271,6 +271,50 @@ const val MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY: String = "mobile_web_contain
  */
 const val MOBILE_FCM_PROBE_FEATURE_FLAG_KEY: String = "mobile_fcm_probe_v0"
 
+/**
+ * Long-lived UI visibility gate for Early access enrollment in Settings › About
+ * (`#proj-mobile:e48030bc`, artin 2026-11-26). Per server, default OFF (unresolved evaluates false).
+ * Enabled on any joined server surfaces the Early access row (Android direct-install `alpha` toggle
+ * or Google Play / iOS TestFlight enrollment link).
+ */
+const val MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY: String = "mobile_early_access_visible_v0"
+
+/**
+ * Long-lived default-channel gate for Early access (`#proj-mobile:e48030bc`, artin 2026-11-26).
+ * Per server, default OFF (unresolved evaluates false). When [MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY]
+ * is also enabled and the user has not explicitly toggled the local channel override, Android
+ * direct-install defaults to the Hands `alpha` channel.
+ */
+const val MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY: String = "mobile_early_access_default_on_v0"
+
+/** Effective Early access policy across a signed-in account's joined servers. */
+data class RaftEarlyAccessFlagPolicy(
+    val visible: Boolean = false,
+    val defaultOn: Boolean = false,
+)
+
+/**
+ * Lightweight host listener bridging server-driven Early access flags (`#proj-mobile:e48030bc`) to
+ * Android's Hands update channel store. Null on iOS, desktop, and tests that do not install it.
+ */
+interface RaftEarlyAccessPolicyHostListener {
+    fun onPolicyChanged(policy: RaftEarlyAccessFlagPolicy)
+    fun onSignedOut()
+}
+
+object RaftEarlyAccessPolicyHost {
+    @Volatile
+    var listener: RaftEarlyAccessPolicyHostListener? = null
+
+    fun onPolicyChanged(policy: RaftEarlyAccessFlagPolicy) {
+        runCatching { listener?.onPolicyChanged(policy) }
+    }
+
+    fun onSignedOut() {
+        runCatching { listener?.onSignedOut() }
+    }
+}
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -311,6 +355,9 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_WEB_CONTAINER_V1_FEATURE_FLAG_KEY,
     // Android silent FCM reachability probe + dual-engine fallback (#proj-mobile:#379, default OFF).
     MOBILE_FCM_PROBE_FEATURE_FLAG_KEY,
+    // Long-lived Early access visibility & default-channel gates (#proj-mobile:e48030bc, default OFF).
+    MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY,
+    MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,
@@ -538,6 +585,19 @@ class SharedServerFeatureFlags(
      */
     @RaftCoreInternalApi fun isActivityInPlaceEnabled(serverId: ServerId): Boolean =
         isEnabled(serverId, MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY)
+
+    /**
+     * Resolves the account-wide Early access policy across [serverIds] (`#proj-mobile:e48030bc`):
+     * visible iff any joined server enables [MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY];
+     * defaultOn iff visible and any joined server enables [MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY].
+     */
+    fun earlyAccessPolicy(serverIds: Collection<String>): RaftEarlyAccessFlagPolicy {
+        val ids = serverIds.asSequence().map(String::trim).filter(String::isNotEmpty).distinct().toList()
+        if (ids.isEmpty()) return RaftEarlyAccessFlagPolicy()
+        val visible = ids.any { isEnabled(ServerId(it), MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY) }
+        val defaultOn = visible && ids.any { isEnabled(ServerId(it), MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY) }
+        return RaftEarlyAccessFlagPolicy(visible = visible, defaultOn = defaultOn)
+    }
 
     /**
      * An online evaluation from this process always decides. Before the first one lands (offline cold
