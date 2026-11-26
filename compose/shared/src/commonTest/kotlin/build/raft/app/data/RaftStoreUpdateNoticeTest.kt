@@ -138,4 +138,44 @@ class RaftStoreUpdateNoticeTest {
         }
         assertNull(RaftStoreUpdateChecker(channel = { null }, now = { 0L }).answer())
     }
+
+    @Test
+    fun testFlightSameVersionNewerBuildPublishesNoticeAndForwardsUserInitiatedFlag() = runTest {
+        val update =
+            raftStoreUpdateCheckSnapshot(
+                answer =
+                    RaftStoreUpdateAnswer(
+                        channel = "testflight",
+                        latest = RaftInstallChannelLatest.Available(build = 13_000_003L, updateUrl = RAFT_IOS_TESTFLIGHT_JOIN_URL),
+                        fallbackUrl = RAFT_IOS_TESTFLIGHT_JOIN_URL,
+                    ),
+                currentBuild = 13_000_002L,
+                currentVersionLabel = "1.30.0",
+            )
+        assertTrue(update.supported)
+        assertTrue(update.updateAvailable)
+        assertEquals("testflight", update.storeChannel)
+        assertEquals(13_000_003L, update.latestVersionCode)
+        assertEquals("1.30.0", update.latestVersionLabel)
+        assertEquals(RAFT_IOS_TESTFLIGHT_JOIN_URL, update.downloadUrl)
+        val notice = assertNotNull(update.toSharedHomeAppUpdateNotification())
+        assertEquals("Current version 1.30.0 (13000002). Latest version 1.30.0 (13000003).", notice.body)
+        assertNull(update.withSkippedAppUpdateVersionApplied(13_000_003L).toSharedHomeAppUpdateNotification())
+
+        val seenUserInitiated = mutableListOf<Boolean>()
+        val channel =
+            object : RaftInstallChannelUpdates {
+                override val name: String = "testflight"
+                override val offersStoreUpdateNotice: Boolean = true
+                override suspend fun latest(): RaftInstallChannelLatest = latest(userInitiated = false)
+                override suspend fun latest(userInitiated: Boolean): RaftInstallChannelLatest {
+                    seenUserInitiated += userInitiated
+                    return RaftInstallChannelLatest.UpToDate
+                }
+            }
+        val checker = RaftStoreUpdateChecker(channel = { channel }, now = { 100L })
+        checker.answer(force = false)
+        checker.answer(force = true)
+        assertEquals(listOf(false, true), seenUserInitiated)
+    }
 }

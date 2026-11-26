@@ -100,19 +100,27 @@ sealed interface RaftInstallChannelLatest {
  * the `play` build); iOS has the App Store lookup built in; desktop has none.
  */
 interface RaftInstallChannelUpdates {
-    /** A short name for logs (`hands`, `play`, `app_store`). */
+    /** A short name for logs (`hands`, `play`, `app_store`, `testflight`). */
     val name: String
 
     /** Asks the channel; may throw (counted as [RaftInstallChannelLatest.Unknown]). */
     suspend fun latest(): RaftInstallChannelLatest
 
+    /**
+     * Asks the channel, distinguishing an explicit user tap ("Check for update", [userInitiated] = true)
+     * from an automatic background/launch check ([userInitiated] = false). Channels backed by Raft's
+     * own services (`hands`, `testflight`) gate automatic checks on [RaftServicesPrivacyGate] while
+     * still honoring explicit user checks.
+     */
+    suspend fun latest(userInitiated: Boolean): RaftInstallChannelLatest = latest()
+
     /** Where to send the person when the channel could not be asked (store page), or null. */
     fun fallbackUpdateUrl(): String? = null
 
     /**
-     * True when this install came from a store (Google Play, App Store) and its newer build is
-     * shown as the gentle new-version notice ([RaftStoreUpdateChecker]). Hands builds get theirs
-     * from the host's own update check, so the Hands channel keeps false.
+     * True when this install came from a store or TestFlight (Google Play, App Store, TestFlight)
+     * and its newer build is shown as the gentle new-version notice ([RaftStoreUpdateChecker]).
+     * Android Hands APK builds get theirs from the host's own update check, so they keep false.
      */
     val offersStoreUpdateNotice: Boolean
         get() = false
@@ -135,6 +143,7 @@ const val RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_JOIN = "ios_testflight_join"
 const val RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_ACTIVE = "ios_testflight_active"
 const val RAFT_GOOGLE_PLAY_BETA_URL = "https://play.google.com/apps/testing/build.raft.app"
 const val RAFT_IOS_TESTFLIGHT_JOIN_URL = "https://testflight.apple.com/join/JvM5wXuc"
+const val RAFT_IOS_HANDS_TESTFLIGHT_LATEST_URL = "https://hands.build/public/v2/apps/raft-ios/testflight/latest"
 
 /** Platform-native early-access enrollment info when the host bridge does not supply one (iOS). */
 @RaftCoreInternalApi data class RaftEarlyAccessPlatformGuide(
@@ -517,3 +526,97 @@ fun raftAppStoreLatest(listing: RaftAppStoreListing?, currentBuild: Long?): Raft
         RaftInstallChannelLatest.UpToDate
     }
 }
+
+/** Latest active external TestFlight build published by Hands (`GET /public/v2/apps/raft-ios/testflight/latest`). */
+data class RaftHandsTestFlightListing(
+    val versionName: String?,
+    val versionCode: Long,
+    val externalBuildState: String?,
+)
+
+sealed interface RaftHandsTestFlightResponse {
+    data class Ready(val listing: RaftHandsTestFlightListing) : RaftHandsTestFlightResponse
+
+    /** Explicit 404 `code == "no_external_build"`: no active external TestFlight build is currently live. */
+    data object NoExternalBuild : RaftHandsTestFlightResponse
+
+    /** App not found / disabled, malformed payload, or transient HTTP error. */
+    data object Unreadable : RaftHandsTestFlightResponse
+}
+
+@kotlinx.serialization.Serializable
+private data class RaftHandsTestFlightBody(
+    @kotlinx.serialization.SerialName("version_name")
+    val versionName: String? = null,
+    @kotlinx.serialization.SerialName("version_code")
+    val versionCode: Long? = null,
+    @kotlinx.serialization.SerialName("external_build_state")
+    val externalBuildState: String? = null,
+    val code: String? = null,
+)
+
+/**
+ * Parses a Hands `GET /public/v2/apps/:slug/testflight/latest` response (#proj-mobile:#391).
+ * - HTTP 200 with a valid positive `version_code` (>= [RAFT_MIN_BUILD_GATE_THRESHOLD_FLOOR]): [RaftHandsTestFlightResponse.Ready].
+ * - HTTP 404 with `code == "no_external_build"`: [RaftHandsTestFlightResponse.NoExternalBuild] (silent no-update).
+ * - Any other status or malformed body: [RaftHandsTestFlightResponse.Unreadable].
+ */
+fun parseRaftHandsTestFlightResponse(statusCode: Int, body: String): RaftHandsTestFlightResponse {
+    val decoded =
+        try {
+            raftAppStoreLookupJson.decodeFromString(RaftHandsTestFlightBody.serializer(), body)
+        } catch (_: Exception) {
+            return RaftHandsTestFlightResponse.Unreadable
+        }
+    if (statusCode == 404) {
+        return if (decoded.code?.trim().equals("no_external_build", ignoreCase = true)) {
+            RaftHandsTestFlightResponse.NoExternalBuild
+        } else {
+            RaftHandsTestFlightResponse.Unreadable
+        }
+    }
+    if (statusCode !in 200..299) return RaftHandsTestFlightResponse.Unreadable
+    val versionCode = decoded.versionCode?.takeIf { it >= RAFT_MIN_BUILD_GATE_THRESHOLD_FLOOR }
+        ?: return RaftHandsTestFlightResponse.Unreadable
+    return RaftHandsTestFlightResponse.Ready(
+        RaftHandsTestFlightListing(
+            versionName = decoded.versionName?.trim()?.takeIf { it.isNotEmpty() },
+            versionCode = versionCode,
+            externalBuildState = decoded.externalBuildState?.trim()?.takeIf { it.isNotEmpty() },
+        )
+    )
+}
+
+/**
+ * Resolves a Hands TestFlight response against this install's integer build number (`CFBundleVersion`).
+ * Unlike App Store lookup (version-name granularity), TestFlight compares exact integer build codes
+ * so a newer build of the same version (e.g. `13000003` over `13000002`) is detected.
+ */
+fun raftHandsTestFlightLatest(
+    response: RaftHandsTestFlightResponse,
+    currentBuild: Long?,
+    updateUrl: String = RAFT_IOS_TESTFLIGHT_JOIN_URL,
+): RaftInstallChannelLatest =
+    when (response) {
+        RaftHandsTestFlightResponse.NoExternalBuild -> RaftInstallChannelLatest.UpToDate
+        RaftHandsTestFlightResponse.Unreadable -> RaftInstallChannelLatest.Unknown
+        is RaftHandsTestFlightResponse.Ready -> {
+            val current = currentBuild?.takeIf { it >= RAFT_MIN_BUILD_GATE_THRESHOLD_FLOOR }
+                ?: return RaftInstallChannelLatest.Unknown
+            val listing = response.listing
+            if (listing.versionCode < RAFT_MIN_BUILD_GATE_THRESHOLD_FLOOR) {
+                RaftInstallChannelLatest.Unknown
+            } else if (listing.externalBuildState != null &&
+                !listing.externalBuildState.equals("IN_BETA_TESTING", ignoreCase = true)
+            ) {
+                RaftInstallChannelLatest.UpToDate
+            } else if (listing.versionCode > current) {
+                RaftInstallChannelLatest.Available(
+                    build = listing.versionCode,
+                    updateUrl = updateUrl.trim().takeIf { it.startsWith("https://") },
+                )
+            } else {
+                RaftInstallChannelLatest.UpToDate
+            }
+        }
+    }

@@ -71,7 +71,7 @@ class RaftStoreUpdateChecker(
                 val freshFor = if (previous.answer.latest == RaftInstallChannelLatest.Unknown) retryMillis else intervalMillis
                 if (now() - previous.atMillis < freshFor) return@withLock previous.answer
             }
-            val latest = ask(source)
+            val latest = ask(source, userInitiated = force)
             val fallback =
                 try {
                     source.fallbackUpdateUrl()
@@ -85,9 +85,9 @@ class RaftStoreUpdateChecker(
         }
     }
 
-    private suspend fun ask(source: RaftInstallChannelUpdates): RaftInstallChannelLatest =
+    private suspend fun ask(source: RaftInstallChannelUpdates, userInitiated: Boolean): RaftInstallChannelLatest =
         try {
-            withTimeoutOrNull(timeoutMillis) { source.latest() } ?: RaftInstallChannelLatest.Unknown
+            withTimeoutOrNull(timeoutMillis) { source.latest(userInitiated = userInitiated) } ?: RaftInstallChannelLatest.Unknown
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (error: Throwable) {
