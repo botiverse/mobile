@@ -57,12 +57,16 @@ import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.TasksVisibleContent
 import build.raft.app.data.TasksViewMode
 import build.raft.app.data.ServerTaskBoardStatuses
+import build.raft.app.data.TasksBatchAction
+import build.raft.app.data.TasksBatchOutcome
+import build.raft.app.data.TasksBatchViewer
 import build.raft.app.data.TasksBoardColumn
 import build.raft.app.data.TasksPageScope
 import build.raft.app.data.TasksQueryIntent
 import build.raft.app.data.TasksQuerySection
 import build.raft.app.data.TasksQuerySectionRows
 import build.raft.app.data.TasksQueryState
+import build.raft.app.data.tasksBatchViewer
 import build.raft.app.data.headNumber
 import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.app.data.scopeCounts
@@ -96,6 +100,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -152,8 +157,10 @@ import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftEmptyState
 import build.raft.designsystem.components.RaftEmptyStateDefaults
+import build.raft.designsystem.components.RaftSelectionToolbarDefaults
 
 private const val TasksListMaxBeyondBoundsItemCount = 4
 
@@ -178,6 +185,16 @@ internal fun SharedTasksScreen(
     openTaskId: String? = null,
     /** Whether the reader may write a channel's tasks ([LocalTaskChannelWriteCheck]); unknown: yes. */
     canWriteTaskChannel: (ChannelId?) -> Boolean = { true },
+    /** Current signed-in user id for Tasks v2 bulk actions (creator delete check & "Me" assignee). */
+    viewerUserId: String? = null,
+    /** Current server role ("owner", "admin", "member", "guest") for Tasks v2 bulk action permissions. */
+    serverRole: String? = null,
+    /** Executes a Tasks v2 bulk action against the store/server; null when read-only/preview. */
+    onBatchAction: (suspend (TasksBatchAction, List<TaskSummary>, TasksBatchViewer) -> TasksBatchOutcome?)? = null,
+    /** Bottom safe-area padding for the floating bulk selection bar; null uses [raftBottomSafeAreaPadding]. */
+    selectionBarBottomSafeArea: Dp? = null,
+    /** True while the Tasks tab itself is active and visible, gating [RaftNativeTabBarCover]. */
+    selectionHostActive: Boolean = true,
 ) {
     CompositionLocalProvider(
         LocalSharedTasksOpenTaskId provides openTaskId,
@@ -198,7 +215,12 @@ internal fun SharedTasksScreen(
         onListPositionSnapshot = onListPositionSnapshot,
         identityOptions = identityOptions,
         timeContext = timeContext,
-        folds = folds
+        folds = folds,
+        viewerUserId = viewerUserId,
+        serverRole = serverRole,
+        onBatchAction = onBatchAction,
+        selectionBarBottomSafeArea = selectionBarBottomSafeArea,
+        selectionHostActive = selectionHostActive,
     )
     }
 }
@@ -247,7 +269,12 @@ internal fun SharedTasksPanel(
     /** The Tasks page's folds on its server; null (a channel's tasks, fixtures): for the page only. */
     folds: TasksPageFolds? = null,
     /** Optional server id for resolving assignee avatars and agent presence; falls back to [folds]. */
-    serverId: String? = null
+    serverId: String? = null,
+    viewerUserId: String? = null,
+    serverRole: String? = null,
+    onBatchAction: (suspend (TasksBatchAction, List<TaskSummary>, TasksBatchViewer) -> TasksBatchOutcome?)? = null,
+    selectionBarBottomSafeArea: Dp? = null,
+    selectionHostActive: Boolean = true,
 ) {
     val resolvedServerId = serverId ?: folds?.serverId
     var lastContent by remember { mutableStateOf<TasksContent?>(null) }
@@ -287,7 +314,12 @@ internal fun SharedTasksPanel(
                 timeContext = timeContext,
                 query = query,
                 folds = folds,
-                serverId = resolvedServerId
+                serverId = resolvedServerId,
+                viewerUserId = viewerUserId,
+                serverRole = serverRole,
+                onBatchAction = onBatchAction,
+                selectionBarBottomSafeArea = selectionBarBottomSafeArea,
+                selectionHostActive = selectionHostActive,
             )
         } else when (val loadState = displayState) {
             ScreenLoadState.Loading -> {
@@ -318,7 +350,12 @@ internal fun SharedTasksPanel(
                     identityOptions = identityOptions,
                     timeContext = timeContext,
                     folds = folds,
-                    serverId = resolvedServerId
+                    serverId = resolvedServerId,
+                    viewerUserId = viewerUserId,
+                    serverRole = serverRole,
+                    onBatchAction = onBatchAction,
+                    selectionBarBottomSafeArea = selectionBarBottomSafeArea,
+                    selectionHostActive = selectionHostActive,
                 )
             is ScreenLoadState.Empty -> {
                 val showEmptyToolbar = sharedTasksEmptyToolbarVisible(createTasksChannelId)
@@ -345,7 +382,12 @@ internal fun SharedTasksPanel(
                         identityOptions = identityOptions,
                         timeContext = timeContext,
                         folds = folds,
-                        serverId = resolvedServerId
+                        serverId = resolvedServerId,
+                        viewerUserId = viewerUserId,
+                        serverRole = serverRole,
+                        onBatchAction = onBatchAction,
+                        selectionBarBottomSafeArea = selectionBarBottomSafeArea,
+                        selectionHostActive = selectionHostActive,
                     )
                 } else {
                     if (showHeader) {
@@ -485,7 +527,12 @@ private fun SharedTasksLoadedBody(
     timeContext: RaftTimeContext?,
     query: SharedTasksQueryBinding? = null,
     folds: TasksPageFolds? = null,
-    serverId: String? = null
+    serverId: String? = null,
+    viewerUserId: String? = null,
+    serverRole: String? = null,
+    onBatchAction: (suspend (TasksBatchAction, List<TaskSummary>, TasksBatchViewer) -> TasksBatchOutcome?)? = null,
+    selectionBarBottomSafeArea: Dp? = null,
+    selectionHostActive: Boolean = true,
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         SharedTasksLoadedBodyContent(
@@ -508,7 +555,12 @@ private fun SharedTasksLoadedBody(
             timeContext = timeContext,
             query = query,
             folds = folds,
-            serverId = serverId
+            serverId = serverId,
+            viewerUserId = viewerUserId,
+            serverRole = serverRole,
+            onBatchAction = onBatchAction,
+            selectionBarBottomSafeArea = selectionBarBottomSafeArea,
+            selectionHostActive = selectionHostActive,
         )
     }
 }
@@ -556,7 +608,12 @@ private fun SharedTasksLoadedBodyContent(
     timeContext: RaftTimeContext?,
     query: SharedTasksQueryBinding?,
     folds: TasksPageFolds?,
-    serverId: String?
+    serverId: String?,
+    viewerUserId: String?,
+    serverRole: String?,
+    onBatchAction: (suspend (TasksBatchAction, List<TaskSummary>, TasksBatchViewer) -> TasksBatchOutcome?)?,
+    selectionBarBottomSafeArea: Dp?,
+    selectionHostActive: Boolean,
 ) {
     val narrowContainer = availableWidth < SharedTasksCompactNarrowBreakpoint
     val surfaceInset = sharedTasksSurfaceInset(availableWidth)
@@ -736,6 +793,97 @@ private fun SharedTasksLoadedBodyContent(
                 .sortedBy { it.second.lowercase() }
                 .map { (id, name) -> RaftFilterOption(id = id, label = name, icon = RaftLucideIconName.Hash) }
                 .toList()
+        }
+
+    // Tasks v2 bulk selection (web `useTaskSelection` / `TasksSelectionBar`, slock #13852).
+    val shownSelectableTasks =
+        remember(showHeader, query != null, querySections, queryBoardColumns, presentationState.selectedMode, visibleContent.filteredTasks) {
+            if (!showHeader) {
+                emptyList()
+            } else if (query != null) {
+                val rows =
+                    if (presentationState.selectedMode == TasksViewMode.Board) {
+                        queryBoardColumns.flatMap { it.tasks }
+                    } else {
+                        querySections.flatMap { it.rows }
+                    }
+                rows.distinctBy { it.id.value }.filterNot { it.isLegacy }
+            } else {
+                visibleContent.filteredTasks.distinctBy { it.id.value }.filterNot { it.isLegacy }
+            }
+        }
+    val shownSelectableIds =
+        remember(shownSelectableTasks) {
+            shownSelectableTasks.mapTo(LinkedHashSet()) { it.id.value }
+        }
+    val selectedTasks =
+        remember(shownSelectableTasks, state.selectedTaskIds) {
+            if (state.selectedTaskIds.isEmpty()) {
+                emptyList()
+            } else {
+                shownSelectableTasks.filter { it.id.value in state.selectedTaskIds }
+            }
+        }
+    val selecting = showHeader && selectedTasks.isNotEmpty()
+    val hasMoreUnloaded = if (query != null) queryHasMore else state.hasMore
+    val batchViewer =
+        remember(viewerUserId, queryState?.viewerId, serverRole, canWriteTaskChannel) {
+            tasksBatchViewer(
+                userId = viewerUserId ?: queryState?.viewerId,
+                serverRole = serverRole,
+                canWriteChannel = canWriteTaskChannel,
+            )
+        }
+    val toggleTaskSelection: (TaskSummary) -> Unit = { task ->
+        if (!task.isLegacy && !state.batchActionInFlight) {
+            onIntent(SharedTasksRouteIntent.ToggleTaskSelection(task.id.value))
+        }
+    }
+    // Changing tab, view, sort, filters, search, or server clears active selection (web `TasksPage.tsx`).
+    val selectionScopeKey =
+        remember(
+            queryState?.query,
+            presentationState.selectedMode,
+            state.selectedFilter,
+            presentationState.selectedChannelNames,
+            presentationState.selectedCreatorIds,
+            presentationState.selectedAssigneeIds,
+            serverId,
+        ) {
+            listOf(
+                queryState?.query,
+                presentationState.selectedMode,
+                state.selectedFilter,
+                presentationState.selectedChannelNames,
+                presentationState.selectedCreatorIds,
+                presentationState.selectedAssigneeIds,
+                serverId,
+            )
+        }
+    var lastSelectionScopeKey by remember { mutableStateOf(selectionScopeKey) }
+    LaunchedEffect(selectionScopeKey) {
+        if (lastSelectionScopeKey != selectionScopeKey) {
+            lastSelectionScopeKey = selectionScopeKey
+            if (state.selectedTaskIds.isNotEmpty()) {
+                onIntent(SharedTasksRouteIntent.ClearTaskSelection)
+            }
+        }
+    }
+    LaunchedEffect(selecting) {
+        if (selecting) {
+            statusMenuTask = null
+            assigneeMenuTask = null
+            assigneeMenuSearch = ""
+            backlogReasonTask = null
+        }
+    }
+    val resolvedSelectionBottomSafeArea = selectionBarBottomSafeArea ?: raftBottomSafeAreaPadding()
+    val batchScope = rememberCoroutineScope()
+    val effectiveBottomContentPadding =
+        if (selecting) {
+            bottomContentPadding + RaftSelectionToolbarDefaults.Height + RaftSelectionToolbarDefaults.BottomOffset + RaftAppSpacing.Md
+        } else {
+            bottomContentPadding
         }
 
     // Filter popover anchors. Resolved from each chip's live coordinates when opened.
@@ -968,7 +1116,7 @@ private fun SharedTasksLoadedBodyContent(
     // What a card composes beside its assignee chip: the picker in place, on a wide window.
     val cardAssigneePicker: @Composable (TaskSummary) -> Unit = { task -> if (assigneePickerInPlace) assigneePicker(task) }
     RaftBackHandler(
-        enabled = createDialogOpen || statusMenuTask != null || assigneeMenuTask != null || presentationState.openFilterId != null
+        enabled = createDialogOpen || statusMenuTask != null || assigneeMenuTask != null || presentationState.openFilterId != null || selecting
     ) {
         when {
             createDialogOpen && !createLoading -> createDialogOpen = false
@@ -980,6 +1128,8 @@ private fun SharedTasksLoadedBodyContent(
             }
             presentationState.openFilterId != null ->
                 presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null))
+            selecting && !state.batchActionInFlight ->
+                onIntent(SharedTasksRouteIntent.ClearTaskSelection)
         }
     }
 
@@ -1130,20 +1280,38 @@ private fun SharedTasksLoadedBodyContent(
                                     tasks = column.tasks,
                                     collapsed = column.status in collapsedStatuses,
                                     onToggleCollapsed = { toggleCollapsed(column.status) },
-                                    onOpenTask = onOpenTask,
+                                    onOpenTask = { task ->
+                                        if (selecting) {
+                                            toggleTaskSelection(task)
+                                        } else {
+                                            onOpenTask?.invoke(task)
+                                        }
+                                    },
                                     timeContext = timeContext,
                                     onStatusBadgeClick = { task, anchor ->
-                                        statusMenuTask = task
-                                        statusMenuAnchor = anchor
+                                        if (selecting) {
+                                            toggleTaskSelection(task)
+                                        } else {
+                                            statusMenuTask = task
+                                            statusMenuAnchor = anchor
+                                        }
                                     },
                                     onAssigneeBadgeClick = { task, anchor ->
-                                        assigneeMenuTask = task
-                                        assigneeMenuAnchor = anchor
+                                        if (selecting) {
+                                            toggleTaskSelection(task)
+                                        } else {
+                                            assigneeMenuTask = task
+                                            assigneeMenuAnchor = anchor
+                                        }
                                     },
                                     assigneePicker = cardAssigneePicker,
                                     onLongPressTask = { task, anchor ->
-                                        statusMenuTask = task
-                                        statusMenuAnchor = anchor
+                                        if (showHeader) {
+                                            toggleTaskSelection(task)
+                                        } else {
+                                            statusMenuTask = task
+                                            statusMenuAnchor = anchor
+                                        }
                                     },
                                     onReachedEnd = onReachedEnd@{ columnStatus ->
                                         if (query != null) {
@@ -1166,9 +1334,11 @@ private fun SharedTasksLoadedBodyContent(
                                             onIntent(SharedTasksRouteIntent.LoadMoreStatus(columnStatus))
                                         }
                                     },
-                                    bottomContentPadding = bottomContentPadding,
+                                    bottomContentPadding = effectiveBottomContentPadding,
                                     draftProjection = draftProjection,
                                     scrollToTopRequest = scrollToTopRequest,
+                                    selecting = selecting,
+                                    selectedTaskIds = state.selectedTaskIds,
                                 )
                             }
                         }
@@ -1181,15 +1351,27 @@ private fun SharedTasksLoadedBodyContent(
                             narrow = narrowContainer,
                             surfaceInset = surfaceInset,
                             serverId = serverId,
-                            bottomContentPadding = bottomContentPadding,
+                            bottomContentPadding = effectiveBottomContentPadding,
                             draftProjection = draftProjection,
                             timeContext = timeContext,
-                            onOpenTask = onOpenTask,
+                            onOpenTask = { task ->
+                                if (selecting) {
+                                    toggleTaskSelection(task)
+                                } else {
+                                    onOpenTask?.invoke(task)
+                                }
+                            },
                             onStatusMenu = { task, anchor ->
-                                statusMenuTask = task
-                                statusMenuAnchor = anchor
+                                if (showHeader) {
+                                    toggleTaskSelection(task)
+                                } else {
+                                    statusMenuTask = task
+                                    statusMenuAnchor = anchor
+                                }
                             },
                             onRetry = { query.onIntent(TasksQueryIntent.Refresh) },
+                            selecting = selecting,
+                            selectedTaskIds = state.selectedTaskIds,
                         )
                     } else {
                         if (visibleContent.filteredTasks.isEmpty()) {
@@ -1213,7 +1395,7 @@ private fun SharedTasksLoadedBodyContent(
                                         start = RaftTheme.sizes.pageInset,
                                         top = RaftTheme.sizes.pageTop,
                                         end = RaftTheme.sizes.pageInset,
-                                        bottom = bottomContentPadding
+                                        bottom = effectiveBottomContentPadding
                                     ),
                             ) {
                                 listColumns.forEachIndexed { columnIndex, column ->
@@ -1254,11 +1436,16 @@ private fun SharedTasksLoadedBodyContent(
                                                 timeContext = timeContext,
                                                 serverId = serverId,
                                                 captureLongPressAnchor = !listModeListState.isScrollInProgress,
-                                                onClick = { onOpenTask?.invoke(task) },
-                                                onLongPress = { anchor ->
-                                                    statusMenuTask = task
-                                                    statusMenuAnchor = anchor
-                                                }
+                                                onClick = {
+                                                    if (selecting) {
+                                                        toggleTaskSelection(task)
+                                                    } else {
+                                                        onOpenTask?.invoke(task)
+                                                    }
+                                                },
+                                                onLongPress = { toggleTaskSelection(task) },
+                                                selecting = selecting,
+                                                selected = task.id.value in state.selectedTaskIds,
                                             )
                                         }
                                     }
@@ -1321,10 +1508,37 @@ private fun SharedTasksLoadedBodyContent(
                 }
             }
 
-        // --- Overlays. Rendered in z-order: popovers, then status menu, then create dialog.
+        // --- Overlays. Rendered in z-order: selection bar, popovers, then status menu, then create dialog.
         // Each overlay short-circuits on null state so unmounting tears down the gesture
         // capture overlay too (otherwise the dim layer would swallow taps). The filters'
         // pickers are the toolbar's ([filterPicker]), next to their chips.
+
+        if (selecting) {
+            SharedTasksSelectionBar(
+                selectedTasks = selectedTasks,
+                shownSelectableIds = shownSelectableIds,
+                hasMoreUnloaded = hasMoreUnloaded,
+                viewer = batchViewer,
+                identityOptions = visibleContent.assigneeOptions,
+                busy = state.batchActionInFlight,
+                onRunBatch = { action, batchTasks, viewer ->
+                    onBatchAction?.invoke(action, batchTasks, viewer)
+                },
+                onToggleSelectAll = {
+                    val next = tasksBulkSelectAllNext(state.selectedTaskIds, shownSelectableIds)
+                    if (next.isEmpty()) {
+                        onIntent(SharedTasksRouteIntent.ClearTaskSelection)
+                    } else {
+                        onIntent(SharedTasksRouteIntent.SelectTasks(next))
+                    }
+                },
+                onClear = { onIntent(SharedTasksRouteIntent.ClearTaskSelection) },
+                bottomSafeArea = resolvedSelectionBottomSafeArea,
+                hostActive = selectionHostActive,
+                batchScope = batchScope,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
 
         // Read-only tasks (e.g. historical joint tasks) never open mutation menus, like web; nor do
         // tasks of a channel the reader may not write (not joined, archived), nor does the stored
@@ -1628,6 +1842,8 @@ private fun SharedTasksBoardColumn(
     onReachedEnd: (TaskStatus) -> Unit,
     /** What a card composes beside its assignee chip ([SharedTaskCard]). */
     assigneePicker: @Composable (TaskSummary) -> Unit = {},
+    selecting: Boolean = false,
+    selectedTaskIds: Set<String> = emptySet(),
 ) {
     val columnListState = rememberLazyListState()
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
@@ -1698,7 +1914,9 @@ private fun SharedTasksBoardColumn(
                             onStatusBadgeClick = { anchor -> onStatusBadgeClick(task, anchor) },
                             onAssigneeBadgeClick = { anchor -> onAssigneeBadgeClick(task, anchor) },
                             assigneePicker = { assigneePicker(task) },
-                            onLongPress = { anchor -> onLongPressTask(task, anchor) }
+                            onLongPress = { anchor -> onLongPressTask(task, anchor) },
+                            selecting = selecting,
+                            selected = task.id.value in selectedTaskIds,
                         )
                     }
                 }
@@ -1806,7 +2024,9 @@ private fun SharedTaskCard(
     onAssigneeBadgeClick: (RaftPopoverAnchor) -> Unit = {},
     /** Composed beside the assignee chip, in its box: the page's assignee picker hanging from it (a wide window's popover). */
     assigneePicker: @Composable () -> Unit = {},
-    onLongPress: (RaftPopoverAnchor) -> Unit
+    onLongPress: (RaftPopoverAnchor) -> Unit,
+    selecting: Boolean = false,
+    selected: Boolean = false,
 ) {
     // Keep a live card coordinate so long-press conversion remains correct after scrolling.
     val rootAnchor =
@@ -1825,10 +2045,11 @@ private fun SharedTaskCard(
     val description = task.description?.takeIf { it.isNotBlank() }
     // The task open beside the list (web TaskCard `current`): the cell's selected fill.
     val current = LocalSharedTasksOpenTaskId.current == task.id.value
+    val highlighted = current || selected
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (current) Modifier.semantics { selected = true } else Modifier)
+            .then(if (highlighted) Modifier.semantics { this.selected = true } else Modifier)
             .then(
                 if (captureLongPressAnchor) {
                     Modifier.raftCaptureLiveRootAnchor(rootAnchor)
@@ -1843,7 +2064,7 @@ private fun SharedTaskCard(
                 .fillMaxWidth()
                 .raftSlot("task-card")
                 .clip(RoundedCornerShape(RaftAppRadius.Container))
-                .raftCardSurface(fill = if (current) RaftTheme.colors.fillCellSelected else RaftColor.Card)
+                .raftCardSurface(fill = if (highlighted) RaftTheme.colors.fillCellSelected else RaftColor.Card)
                 .raftGesturePointerInput(gestureOwner) { owner ->
                     var gesture: RaftGestureSession<SharedTaskCardGestureCallbacks>? = null
                     // tap = open task; long-press = open status menu. Wrapping both in the
@@ -1876,6 +2097,13 @@ private fun SharedTaskCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                if (selecting) {
+                    RaftCheckboxIndicator(
+                        checked = selected,
+                        enabled = !task.isLegacy,
+                        modifier = Modifier.testTag(SharedTasksBulkTags.RowCheckbox),
+                    )
+                }
                 task.tasksSourceLabel()?.takeIf { it.isNotBlank() }?.let { source ->
                     Text(
                         text = source,
@@ -2420,6 +2648,8 @@ private fun SharedTasksQueryList(
     onOpenTask: ((TaskSummary) -> Unit)?,
     onStatusMenu: (TaskSummary, RaftPopoverAnchor) -> Unit,
     onRetry: () -> Unit,
+    selecting: Boolean = false,
+    selectedTaskIds: Set<String> = emptySet(),
 ) {
     val anyRows = sections.any { it.rows.isNotEmpty() }
     val allLoaded = sections.all { it.loaded }
@@ -2497,7 +2727,9 @@ private fun SharedTasksQueryList(
                             serverId = serverId,
                             captureLongPressAnchor = !listState.isScrollInProgress,
                             onClick = { onOpenTask?.invoke(task) },
-                            onLongPress = { anchor -> onStatusMenu(task, anchor) }
+                            onLongPress = { anchor -> onStatusMenu(task, anchor) },
+                            selecting = selecting,
+                            selected = task.id.value in selectedTaskIds,
                         )
                     }
                 }

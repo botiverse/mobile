@@ -595,6 +595,29 @@ class SharedTasksQueryStore(
     }
 
     /**
+     * Removes deleted tasks from loaded lanes immediately (e.g. after bulk delete) and refreshes
+     * server counts, matching web `taskStore.deleteTask` where deleted rows leave the list at once.
+     */
+    fun onTasksDeleted(taskIds: Set<String>) {
+        if (taskIds.isEmpty()) return
+        val current = state.value
+        if (!current.started || current.unsupported) return
+        val nextTasks = current.tasks.filterKeys { it !in taskIds }
+        var nextLaneStates = current.laneStates
+        current.laneStates.forEach { (key, laneState) ->
+            if (laneState.ids.any { it in taskIds }) {
+                val remainingIds = laneState.ids.filterNot { it in taskIds }
+                val remainingKeys = laneState.keys.filterKeys { it !in taskIds }
+                nextLaneStates = nextLaneStates + (key to laneState.copy(ids = remainingIds, keys = remainingKeys))
+            }
+        }
+        val next = current.copy(tasks = nextTasks, laneStates = nextLaneStates)
+        if (next != current) mutableState.value = next
+        countsLiveRevision++
+        if (visible) scheduleCountsRefresh() else pendingCountsRefreshWhileHidden = true
+    }
+
+    /**
      * Lanes to read again after live changes: the first change starts the wait, later ones join it,
      * so a busy server cannot put the read off for ever (a throttle, not a trailing debounce).
      */

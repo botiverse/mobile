@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
@@ -90,7 +92,11 @@ data class TasksUiState(
      * The tasks shown are the stored (offline) copy, not yet confirmed by the network: read-only (no status,
      * assignee or create) until a network answer replaces them. A failed refresh keeps them.
      */
-    val standIn: Boolean = false
+    val standIn: Boolean = false,
+    /** Selected task ids on the Tasks page (web `useTaskSelection`, slock #13852). */
+    val selectedTaskIds: Set<String> = emptySet(),
+    /** True while a bulk action batch is running (web `TasksSelectionBar` `busy`). */
+    val batchActionInFlight: Boolean = false,
 )
 
 /** One status column's independent pagination position (task #363). */
@@ -283,6 +289,14 @@ sealed interface SharedTasksIntent {
         val errorCode: String,
         val invalidCursor: Boolean = false
     ) : SharedTasksIntent
+
+    /** Tasks v2 bulk selection and batch lifecycle (web `useTaskSelection` / `TasksSelectionBar`, slock #13852). */
+    data class ToggleTaskSelection(val taskId: String) : SharedTasksIntent
+    data class SelectTasks(val taskIds: Set<String>) : SharedTasksIntent
+    data object ClearTaskSelection : SharedTasksIntent
+    data class PruneTaskSelection(val availableTaskIds: Set<String>) : SharedTasksIntent
+    data object BatchActionStarted : SharedTasksIntent
+    data class BatchActionFinished(val failedTaskIds: List<String>) : SharedTasksIntent
 }
 
 sealed interface SharedTasksRouteIntent {
@@ -336,6 +350,12 @@ sealed interface SharedTasksRouteIntent {
         /** Task v2 Create Task's Status (slock #12963); null sends none (the server's default). */
         val status: TaskStatus? = null,
     ) : SharedTasksRouteIntent
+
+    /** Tasks v2 bulk selection (web `useTaskSelection`, slock #13852). */
+    data class ToggleTaskSelection(val taskId: String) : SharedTasksRouteIntent
+    data class SelectTasks(val taskIds: Set<String>) : SharedTasksRouteIntent
+    data object ClearTaskSelection : SharedTasksRouteIntent
+    data class PruneTaskSelection(val availableTaskIds: Set<String>) : SharedTasksRouteIntent
 }
 
 enum class SharedTasksOperation {
@@ -487,6 +507,9 @@ sealed interface TasksPresentationIntent {
     private var createJob: Job? = null
 
     private var loadMoreJob: Job? = null
+
+    /** Single-flight gate for Tasks v2 bulk actions (web `TasksPage.tsx` `batchRunningRef`). */
+    private val batchInFlight = atomic(false)
 
     /** Per-status single-flight (task #363): one in-flight page per status column,
      *  mirroring the global [loadMoreJob] gate. Columns never block each other. */
@@ -845,6 +868,18 @@ sealed interface TasksPresentationIntent {
                         }
                     }
                 }
+            }
+            is SharedTasksRouteIntent.ToggleTaskSelection -> {
+                store.accept(SharedTasksIntent.ToggleTaskSelection(action.taskId))
+            }
+            is SharedTasksRouteIntent.SelectTasks -> {
+                store.accept(SharedTasksIntent.SelectTasks(action.taskIds))
+            }
+            SharedTasksRouteIntent.ClearTaskSelection -> {
+                store.accept(SharedTasksIntent.ClearTaskSelection)
+            }
+            is SharedTasksRouteIntent.PruneTaskSelection -> {
+                store.accept(SharedTasksIntent.PruneTaskSelection(action.availableTaskIds))
             }
         }
     }
@@ -1647,6 +1682,172 @@ sealed interface TasksPresentationIntent {
         }.await()
     }
 
+    /**
+     * Runs a Tasks v2 bulk action on [tasks] (web `TasksPage.tsx` `runBatch` + `tasksBatch.ts`,
+     * slock #13852). Single-flight: returns null while another batch is already running. Tasks the
+     * viewer may not change are skipped; failed/refused tasks stay selected after the batch ends,
+     * while a clean run clears the selection. Runs in this store's scope so writes complete even if
+     * the toolbar leaves composition.
+     */
+    suspend fun runBatchAction(
+        action: TasksBatchAction,
+        tasks: List<TaskSummary>,
+        viewer: TasksBatchViewer,
+    ): TasksBatchOutcome? {
+        if (tasks.isEmpty()) return TasksBatchOutcome(done = 0, skipped = 0, failedIds = emptyList())
+        if (state.value.standIn) {
+            diagnosticsLogger("tasks_batch_skip reason=offline_stand_in action=${action::class.simpleName} count=${tasks.size}")
+            return TasksBatchOutcome(
+                done = 0,
+                skipped = tasks.size,
+                failedIds = tasks.map { it.id.value },
+                firstError = ScreenError(code = "tasks_local_projection_missing", retryable = true),
+            )
+        }
+        if (!batchInFlight.compareAndSet(expect = false, update = true)) return null
+        store.accept(SharedTasksIntent.BatchActionStarted)
+        return runtimeScope.async {
+            var failedIdsToKeep = tasks.map { it.id.value }
+            try {
+                val serverId = useCase.currentServerId()
+                if (serverId == null) {
+                    val outcome =
+                        TasksBatchOutcome(
+                            done = 0,
+                            skipped = tasks.size,
+                            failedIds = tasks.map { it.id.value },
+                            firstError = ScreenError(code = "selected_server_missing", retryable = false),
+                        )
+                    failedIdsToKeep = outcome.failedIds
+                    return@async outcome
+                }
+                val deletedIds = mutableListOf<String>()
+                val deletedIdsLock = Mutex()
+                val outcome =
+                    runTasksBatch(
+                        action = action,
+                        tasks = tasks,
+                        viewer = viewer,
+                    ) { currentAction, task ->
+                        executeSingleBatchTask(
+                            serverId = serverId,
+                            action = currentAction,
+                            task = task,
+                            onDeleted = { deletedId ->
+                                deletedIdsLock.withLock { deletedIds += deletedId }
+                            },
+                        )
+                    }
+                if (deletedIds.isNotEmpty() && queryStoreDelegate.isInitialized()) {
+                    queryStoreDelegate.value.onTasksDeleted(deletedIds.toSet())
+                }
+                failedIdsToKeep = outcome.failedIds
+                diagnosticsLogger(
+                    "tasks_batch action=${action::class.simpleName} requested=${tasks.size} " +
+                        "done=${outcome.done} skipped=${outcome.skipped} failed=${outcome.failedIds.size}"
+                )
+                outcome
+            } finally {
+                store.accept(SharedTasksIntent.BatchActionFinished(failedIdsToKeep))
+                batchInFlight.value = false
+            }
+        }.await()
+    }
+
+    private suspend fun executeSingleBatchTask(
+        serverId: ServerId,
+        action: TasksBatchAction,
+        task: TaskSummary,
+        onDeleted: suspend (String) -> Unit,
+    ): ScreenError? =
+        when (action) {
+            is TasksBatchAction.Status -> {
+                ensureQueryRowInProjection(task)
+                when (
+                    val result =
+                        useCase.updateTaskStatus(
+                            serverId,
+                            TasksStatusUpdateRequest(task.id, action.status, reason = null),
+                        )
+                ) {
+                    is DataResult.Content -> {
+                        applySavedTask(serverId, result.data.task)
+                        null
+                    }
+                    else -> {
+                        val errorCode = result.failureCodeOrNull() ?: "tasks_status_unknown"
+                        if (
+                            errorCode == action.status.taskStatusAlreadyAppliedErrorCode() ||
+                            errorCode == TASKS_STATUS_APPLIED_WITHOUT_PROJECTION
+                        ) {
+                            val updated = (state.value.currentTaskSummary(task.id.value) ?: task).copy(status = action.status)
+                            applySavedTask(serverId, updated)
+                            null
+                        } else {
+                            result.toBatchScreenError(fallbackCode = "tasks_status_unknown")
+                        }
+                    }
+                }
+            }
+            is TasksBatchAction.Assignee -> {
+                ensureQueryRowInProjection(task)
+                when (
+                    val result =
+                        useCase.assignTask(
+                            serverId = serverId,
+                            taskId = task.id,
+                            assignee = action.assignee,
+                            expectedRevision = task.revision,
+                        )
+                ) {
+                    is DataResult.Content -> {
+                        applySavedTask(serverId, result.data.task)
+                        null
+                    }
+                    else -> result.toBatchScreenError(fallbackCode = "tasks_assign_unknown")
+                }
+            }
+            TasksBatchAction.Follow -> {
+                val conversationId =
+                    task.directTaskConversationChannelIdOrNull()
+                        ?: when (val openResult = useCase.openTaskConversation(serverId, task.id)) {
+                            is DataResult.Content -> openResult.data.conversationChannelId
+                            else -> return openResult.toBatchScreenError(fallbackCode = "tasks_conversation_unknown")
+                        }
+                when (val followResult = useCase.followTaskConversation(serverId, conversationId)) {
+                    is DataResult.Content,
+                    is DataResult.Empty -> null
+                    else -> followResult.toBatchScreenError(fallbackCode = "tasks_follow_unknown")
+                }
+            }
+            TasksBatchAction.Delete -> {
+                when (val result = useCase.deleteTask(serverId, task.id)) {
+                    is DataResult.Content,
+                    is DataResult.Empty -> {
+                        sharedTasksDataStore?.removeTaskForCurrentOwner(serverId.value, task.id)
+                        store.accept(SharedTasksIntent.TaskRemoved(task.id.value))
+                        onDeleted(task.id.value)
+                        null
+                    }
+                    else -> result.toBatchScreenError(fallbackCode = "tasks_delete_unknown")
+                }
+            }
+        }
+
+    private fun DataResult<*>.toBatchScreenError(fallbackCode: String): ScreenError =
+        when (this) {
+            is DataResult.Error -> error
+            is DataResult.NoPermission ->
+                ScreenError(
+                    code = blocker.code,
+                    retryable = false,
+                    serverMessage = blocker.serverMessage,
+                    serverCode = blocker.serverCode,
+                    traceId = blocker.traceId,
+                )
+            else -> ScreenError(code = fallbackCode, retryable = false)
+        }
+
     private suspend fun applySavedTask(serverId: ServerId, task: TaskSummary) {
         val sharedStore = sharedTasksDataStore
         if (sharedStore == null) {
@@ -1783,6 +1984,10 @@ private fun SharedTasksRouteIntent.tasksRefreshReason(): String =
         SharedTasksRouteIntent.ClearNavigationError -> "navigation"
         is SharedTasksRouteIntent.SeedContent -> "seed"
         is SharedTasksRouteIntent.CreateTasks -> "create"
+        is SharedTasksRouteIntent.ToggleTaskSelection -> "toggle_selection"
+        is SharedTasksRouteIntent.SelectTasks -> "select_tasks"
+        SharedTasksRouteIntent.ClearTaskSelection -> "clear_selection"
+        is SharedTasksRouteIntent.PruneTaskSelection -> "prune_selection"
     }
 
 private fun DataResult<TaskSnapshot>.tasksDiagnosticsSummary(): String =
@@ -1866,12 +2071,16 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
         is SharedTasksIntent.UpdateTaskStatus -> withTaskStatusUpdating(intent.taskId, intent.nextStatus)
         is SharedTasksIntent.TaskStatusUpdateSucceeded -> withTaskStatusUpdateSuccess(intent.task)
         is SharedTasksIntent.TaskRemoved -> {
+            val nextSelection = selectedTaskIds - intent.taskId
             val contentState = loadState as? ScreenLoadState.Content
             if (contentState == null) {
-                this
+                copy(selectedTaskIds = nextSelection)
             } else {
                 val rest = contentState.data.tasks.filterNot { it.id.value == intent.taskId }
-                copy(loadState = ScreenLoadState.Content(contentState.data.copy(tasks = rest, summaryCounts = rest.summaryCounts())))
+                copy(
+                    loadState = ScreenLoadState.Content(contentState.data.copy(tasks = rest, summaryCounts = rest.summaryCounts())),
+                    selectedTaskIds = nextSelection,
+                )
             }
         }
         is SharedTasksIntent.TaskStatusUpdateFailed ->
@@ -1979,6 +2188,30 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
                 ))
             )
         }
+        is SharedTasksIntent.ToggleTaskSelection -> {
+            val next =
+                if (intent.taskId in selectedTaskIds) {
+                    selectedTaskIds - intent.taskId
+                } else {
+                    selectedTaskIds + intent.taskId
+                }
+            copy(selectedTaskIds = next)
+        }
+        is SharedTasksIntent.SelectTasks ->
+            if (intent.taskIds == selectedTaskIds) this else copy(selectedTaskIds = intent.taskIds)
+        SharedTasksIntent.ClearTaskSelection ->
+            if (selectedTaskIds.isEmpty()) this else copy(selectedTaskIds = emptySet())
+        is SharedTasksIntent.PruneTaskSelection -> {
+            val pruned = selectedTaskIds.filterTo(LinkedHashSet()) { it in intent.availableTaskIds }
+            if (pruned == selectedTaskIds) this else copy(selectedTaskIds = pruned)
+        }
+        SharedTasksIntent.BatchActionStarted ->
+            if (batchActionInFlight) this else copy(batchActionInFlight = true)
+        is SharedTasksIntent.BatchActionFinished ->
+            copy(
+                batchActionInFlight = false,
+                selectedTaskIds = intent.failedTaskIds.toSet(),
+            )
     }
 
 /** Append one status column's page (task #363): the SAME merge-by-id semantics as
@@ -2063,7 +2296,9 @@ private fun TasksUiState.withCreateOperationFrom(previous: TasksUiState): TasksU
         createPendingChannelId = previous.createPendingChannelId,
         createErrorCode = previous.createErrorCode,
         createAttempt = previous.createAttempt,
-        createTerminalAttempt = previous.createTerminalAttempt
+        createTerminalAttempt = previous.createTerminalAttempt,
+        selectedTaskIds = previous.selectedTaskIds,
+        batchActionInFlight = previous.batchActionInFlight,
     )
 
 fun TasksPresentationState.reduce(intent: TasksPresentationIntent): TasksPresentationState =

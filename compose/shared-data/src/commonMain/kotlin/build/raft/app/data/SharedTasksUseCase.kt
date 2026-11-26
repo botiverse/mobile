@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskId
@@ -79,6 +80,12 @@ class SharedTasksUseCase(
 
     suspend fun deleteTask(serverId: ServerId, taskId: TaskId): DataResult<Unit> =
         repository.deleteTask(serverId, taskId)
+
+    suspend fun openTaskConversation(serverId: ServerId, taskId: TaskId): DataResult<TaskConversationOpenResult> =
+        repository.openTaskConversation(serverId, taskId)
+
+    suspend fun followTaskConversation(serverId: ServerId, conversationChannelId: ChannelId): DataResult<Unit> =
+        repository.followTaskConversation(serverId, conversationChannelId)
 
     suspend fun createTasks(request: TasksCreateRequest): DataResult<TaskSnapshot> {
         val serverId = selectedServerIdOrError() ?: return selectedServerMissing()
