@@ -141,7 +141,7 @@ internal fun RuntimeFormV2Fields(
             Text(
                 text = stringResource(Res.string.runtime_form_v2_update_required_blocking),
                 style = RaftType.Caption,
-                color = RaftColor.AccentRed
+                color = RaftColor.DangerStrong
             )
         }
         primary.forEach { field ->
@@ -713,7 +713,7 @@ private fun RuntimeFormV2FieldRow(
                                 Text(
                                     stringResource(Res.string.runtime_form_v2_source_refresh_failed),
                                     style = RaftType.Caption,
-                                    color = RaftColor.AccentRed
+                                    color = RaftColor.DangerStrong
                                 )
                             }
                         }

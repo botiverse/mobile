@@ -900,7 +900,7 @@ internal fun MembersServerRoleEditor(
                 text = it,
                 // Web HumanDetailPanel: text-caption font-semibold (12/16 600).
                 style = RaftType.Caption.withRaftFontWeight(FontWeight.SemiBold),
-                color = RaftColor.AccentRed
+                color = RaftColor.DangerStrong
             )
         }
     }

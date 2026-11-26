@@ -143,7 +143,7 @@ internal fun ThreadMessageLocalSendStatus(
                 RaftLucideIcon(
                     RaftLucideIconName.TriangleAlert,
                     modifier = Modifier.size(13.dp),
-                    color = "#FFF97264"
+                    color = raftArgbHex(RaftColor.DangerStrong)
                 )
             } else {
                 RaftIconSpinner(size = 13.dp, color = RaftColor.TextMutedGray)
@@ -152,9 +152,9 @@ internal fun ThreadMessageLocalSendStatus(
                 text = label,
                 style =
                     RaftType.Caption.copy(
-                        color = if (isFailed) RaftColor.AccentRed else RaftColor.TextMutedGray
+                        color = if (isFailed) RaftColor.DangerStrong else RaftColor.TextMutedGray
                     ),
-                color = if (isFailed) RaftColor.AccentRed else RaftColor.TextMutedGray,
+                color = if (isFailed) RaftColor.DangerStrong else RaftColor.TextMutedGray,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false)
@@ -211,12 +211,12 @@ internal fun ThreadMessageLocalSendStatus(
                     RaftLucideIcon(
                         RaftLucideIconName.RefreshCw,
                         modifier = Modifier.size(12.dp),
-                        color = "#FFF97264"
+                        color = raftArgbHex(RaftColor.DangerStrong)
                     )
                     Text(
                         text = stringResource(Res.string.thread_send_failure_retry),
                         style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                        color = RaftColor.AccentRed
+                        color = RaftColor.DangerStrong
                     )
                 }
             }

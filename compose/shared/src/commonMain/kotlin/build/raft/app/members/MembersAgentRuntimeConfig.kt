@@ -642,7 +642,7 @@ internal fun MembersAgentRuntimeConfigRows(
         Text(
             text = stringResource(Res.string.member_state_runtime_config_unavailable),
             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.AccentRed
+            color = RaftColor.DangerStrong
         )
         Text(
             text = (resolution as MembersAgentRuntimeConfigResolution.Unavailable)

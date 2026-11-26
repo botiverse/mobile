@@ -421,7 +421,7 @@ internal fun AppUpdateSummary(
                             snapshot?.detail.orEmpty()
                         },
                     style = RaftType.Caption,
-                    color = if (errorMessage == null) RaftColor.TextMutedGray else RaftColor.AccentRed,
+                    color = if (errorMessage == null) RaftColor.TextMutedGray else RaftColor.DangerStrong,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )

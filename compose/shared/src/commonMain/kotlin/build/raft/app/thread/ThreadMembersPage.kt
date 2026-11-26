@@ -1863,8 +1863,8 @@ private fun ThreadRemoveMemberConfirmationDialog(
         errorMessage?.let {
             Text(
                 text = it,
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                color = RaftColor.AccentRed
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.DangerStrong),
+                color = RaftColor.DangerStrong
             )
             RaftTraceIdNote(errorTraceId)
         }
