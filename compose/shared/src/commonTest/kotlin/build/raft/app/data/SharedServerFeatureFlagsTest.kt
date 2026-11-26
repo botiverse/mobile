@@ -155,6 +155,9 @@ class SharedServerFeatureFlagsTest {
         assertFalse("sync_core_notification_prefs_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertFalse("mobile_inbox_inplace_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertFalse("mobile_inbox_inplace_v0" in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+        assertFalse("inbox_row_position_v1" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse("inbox_row_position_v1" in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+        assertFalse("agent_context_view_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertFalse("mobile_raft_sign_in_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         // slock staging 82ec87f2 packages/shared/src/featureFlags.ts SLACK_BRIDGE_FEATURE_FLAG_KEYS.master.
         assertEquals("slack_bridge_v0", SLACK_BRIDGE_FEATURE_FLAG_KEY)
@@ -224,14 +227,11 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun activityFlagsKeepTheirLastValueForAColdStart() = runTest {
-        // #triage:#244: the Activity list and badge must not run the off path on a cold start until the
-        // evaluation lands (or offline, at all) when the last session had the flags on.
-        assertEquals("inbox_row_position_v1", INBOX_ROW_POSITION_FEATURE_FLAG_KEY)
-        val keys = listOf(INBOX_ROW_POSITION_FEATURE_FLAG_KEY)
-        keys.forEach { key ->
-            assertTrue(key in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS, key)
-            assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)
-        }
+        // #triage:#244 / #proj-mobile:#163: mobile_activity_inplace_v1 persists its last server
+        // decision across offline cold starts and failed prefetches until the server updates it.
+        assertEquals("mobile_activity_inplace_v1", MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY)
+        assertTrue(MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+        assertTrue(MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         val disk = InMemoryRaftKeyValueStore()
         val binding = ServerFeatureFlagLastKnownBinding("https://api.example", "user-a")
         fun process(api: RaftFeatureFlagsApi) =
@@ -239,18 +239,25 @@ class SharedServerFeatureFlagsTest {
                 api = api,
                 lastKnown = ServerFeatureFlagLastKnownStore(store = disk, currentBinding = { binding }),
             )
-        val evaluations = keys.joinToString(",") { """{"key":"$it","enabled":true}""" }
-        process(FakeApi(ok("""{"evaluations":[$evaluations]}"""))).prefetch(server)
+        // A server-side kill is remembered across offline cold start and failed prefetch.
+        process(
+            FakeApi(
+                ok("""{"evaluations":[{"key":"$MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}""")
+            )
+        ).prefetch(server)
+        val coldAfterKill = process(FakeApi(HomeNetworkResponse(code = 0, bodyText = null)))
+        assertFalse(coldAfterKill.isEnabled(server, MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY), "before the evaluation")
+        coldAfterKill.prefetch(server)
+        assertFalse(coldAfterKill.isEnabled(server, MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY), "a failed evaluation keeps it")
 
-        val coldStart = process(FakeApi(HomeNetworkResponse(code = 0, bodyText = null)))
-        keys.forEach { key -> assertTrue(coldStart.isEnabled(server, key), "before the evaluation: $key") }
-        coldStart.prefetch(server)
-        keys.forEach { key -> assertTrue(coldStart.isEnabled(server, key), "a failed evaluation keeps it: $key") }
-
-        // A server-side kill is followed on the next evaluation, and remembered.
-        process(FakeApi(ok("""{"evaluations":[${evaluations.replace("true", "false")}]}"""))).prefetch(server)
-        val afterKill = process(FakeApi(HomeNetworkResponse(code = 0, bodyText = null)))
-        keys.forEach { key -> assertFalse(afterKill.isEnabled(server, key), "after the kill: $key") }
+        // Re-enabling on the server is followed and remembered across the next cold start.
+        process(
+            FakeApi(
+                ok("""{"evaluations":[{"key":"$MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY","enabled":true,"reason":"server_rule"}]}""")
+            )
+        ).prefetch(server)
+        val coldAfterReenable = process(FakeApi(HomeNetworkResponse(code = 0, bodyText = null)))
+        assertTrue(coldAfterReenable.isEnabled(server, MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY), "after re-enable")
     }
 
     @Test
