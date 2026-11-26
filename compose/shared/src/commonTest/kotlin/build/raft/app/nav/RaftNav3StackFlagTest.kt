@@ -20,7 +20,7 @@ class RaftNav3StackFlagTest {
     }
 
     @Test fun `the last server evaluation of the key is kept and other keys are ignored`() {
-        RaftNav3StackFlag.recordServerEvaluation(store, "drafts_section_v0", true)
+        RaftNav3StackFlag.recordServerEvaluation(store, "server_labs_ui_v0", true)
         assertFalse(RaftNav3StackFlag.stored(store))
         RaftNav3StackFlag.recordServerEvaluation(store, MOBILE_NAV3_STACK_FEATURE_FLAG_KEY, true)
         assertTrue(RaftNav3StackFlag.stored(store))

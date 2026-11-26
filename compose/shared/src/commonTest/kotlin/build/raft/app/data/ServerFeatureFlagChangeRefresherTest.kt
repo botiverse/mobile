@@ -94,10 +94,10 @@ class ServerFeatureFlagChangeRefresherTest {
         val responses =
             ArrayDeque(
                 listOf<() -> HomeNetworkResponse>(
-                    { HomeNetworkResponse(200, """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":true}]}""") },
+                    { HomeNetworkResponse(200, """{"evaluations":[{"key":"$SERVER_LABS_UI_FEATURE_FLAG_KEY","enabled":true}]}""") },
                     { HomeNetworkResponse(503, null) },
                     { error("network down") },
-                    { HomeNetworkResponse(200, """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":false}]}""") },
+                    { HomeNetworkResponse(200, """{"evaluations":[{"key":"$SERVER_LABS_UI_FEATURE_FLAG_KEY","enabled":false}]}""") },
                 ),
             )
         val flags =
@@ -108,7 +108,7 @@ class ServerFeatureFlagChangeRefresherTest {
                 },
             )
         flags.prefetch(server)
-        assertTrue(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
+        assertTrue(flags.isEnabled(server, SERVER_LABS_UI_FEATURE_FLAG_KEY))
         val logs = mutableListOf<String>()
         val refresher =
             ServerFeatureFlagChangeRefresher(
@@ -119,14 +119,14 @@ class ServerFeatureFlagChangeRefresherTest {
             )
         refresher.onFeaturesChanged(server)
         advanceTimeBy(1L)
-        assertTrue(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY), "503 keeps the old value")
+        assertTrue(flags.isEnabled(server, SERVER_LABS_UI_FEATURE_FLAG_KEY), "503 keeps the old value")
         refresher.onReconnected(server)
         advanceTimeBy(1L)
-        assertTrue(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY), "a thrown refetch keeps the old value")
+        assertTrue(flags.isEnabled(server, SERVER_LABS_UI_FEATURE_FLAG_KEY), "a thrown refetch keeps the old value")
         assertTrue(logs.any { it.startsWith("feature_flags change_refetch_failed") }, "logs=$logs")
         refresher.onFeaturesChanged(server)
         advanceTimeBy(1L)
-        assertEquals(false, flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY), "a later good answer applies")
+        assertEquals(false, flags.isEnabled(server, SERVER_LABS_UI_FEATURE_FLAG_KEY), "a later good answer applies")
         assertTrue(responses.isEmpty())
     }
 

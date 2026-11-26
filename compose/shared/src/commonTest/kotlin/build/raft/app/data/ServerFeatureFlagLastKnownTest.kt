@@ -41,7 +41,7 @@ class ServerFeatureFlagLastKnownTest {
             code = 200,
             bodyText =
                 """{"evaluations":[{"key":"thread_markdown_single_paragraph_light_v0","enabled":$enabled},""" +
-                    """{"key":"drafts_section_v0","enabled":true}]}""",
+                    """{"key":"server_labs_ui_v0","enabled":true}]}""",
         )
 
     private val offline = HomeNetworkResponse(code = 0, bodyText = null)
@@ -91,8 +91,8 @@ class ServerFeatureFlagLastKnownTest {
         val device = Device().apply { binding = accountA }
         device.onlineSession(enabled = false)
         val coldStart = device.process(ScriptedApi { offline })
-        // drafts_section_v0 was ON online, but it keeps the defaults-off-until-evaluated contract.
-        assertFalse(coldStart.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
+        // server_labs_ui_v0 was ON online, but it keeps the defaults-off-until-evaluated contract.
+        assertFalse(coldStart.isEnabled(server, SERVER_LABS_UI_FEATURE_FLAG_KEY))
     }
 
     @Test

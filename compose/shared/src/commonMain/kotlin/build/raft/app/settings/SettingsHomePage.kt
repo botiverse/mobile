@@ -97,7 +97,6 @@ import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeChannelRow
-import build.raft.app.data.DRAFTS_SECTION_FEATURE_FLAG_KEY
 import build.raft.app.data.agentLoungeEnabled
 import build.raft.app.data.AGENT_LOUNGE_FEATURE_FLAG_KEY
 import build.raft.app.data.SharedHomeIntent
@@ -6687,17 +6686,10 @@ private fun RaftAppShellReadyContent(
                                         role
                                     )
                             }
-                        // drafts_section_v0 (web DRAFTS_SECTION_FLAG_KEY): the Drafts row under Saved.
+                        // Drafts row under Saved (drafts_section_v0 graduated; always on in 1.31.0+).
                         val homeDraftsSource =
-                            remember(homeListServerId, homeFeatureFlagRevision, appShellNetworkClient) {
-                                val flagServerId = homeListServerId?.takeIf { it.isNotBlank() }
-                                if (
-                                    flagServerId != null &&
-                                        sharedStores.serverFeatureFlags.isEnabled(
-                                            ServerId(flagServerId),
-                                            DRAFTS_SECTION_FEATURE_FLAG_KEY
-                                        )
-                                ) {
+                            remember(homeListServerId, appShellNetworkClient) {
+                                if (homeListServerId?.isNotBlank() == true) {
                                     RaftDraftsSource(appShellNetworkClient, sharedStores.tasksDataStore)
                                 } else {
                                     null
