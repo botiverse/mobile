@@ -89,9 +89,13 @@ internal class RaftDiagnosticsDispatchQueue(
         return true
     }
 
+    internal fun droppedEntryCount(): Long = droppedEntries.get()
+
+    internal fun failedEntryCount(): Long = failedEntries.get()
+
     fun flush(timeoutMillis: Long = 2_000L): Boolean {
         val target = acceptedEntries.get()
-        if (processedEntries.get() >= target) return failedEntries.get() == 0L
+        if (processedEntries.get() >= target) return true
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis.coerceAtLeast(0L))
         synchronized(flushMonitor) {
             while (processedEntries.get() < target) {
@@ -107,7 +111,7 @@ internal class RaftDiagnosticsDispatchQueue(
                 }
             }
         }
-        return failedEntries.get() == 0L
+        return true
     }
 
     private fun runLoop() {

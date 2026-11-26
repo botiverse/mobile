@@ -484,8 +484,8 @@ internal data class SettingsDiagnosticsPayloadCopy(
     val disabled: String = "Disabled",
     val send: String = "Send",
     val shareEnvironment: String = "Share environment info",
-    /** Under the copy/share rows: they carry the environment only, app logs go with Feedback. */
-    val logsViaFeedbackHint: String = "To include logs, send them with Feedback.",
+    /** Under the copy/share rows: they include environment info plus recent sanitized logs; full archive goes with Feedback. */
+    val logsViaFeedbackHint: String = "Includes environment info and recent sanitized logs. For full logs, send Feedback.",
     val sendDiagnostics: String = "Send diagnostics",
     val sendDiagnosticsDetail: String = "Share sanitized diagnostics with support.",
     val app: String = "App",

@@ -3721,7 +3721,7 @@
     <string name="settings_diagnostics_section_load_status">加载状态</string>
     <string name="settings_diagnostics_section_actions">操作</string>
     <string name="settings_diagnostics_action_share_environment">分享环境信息</string>
-    <string name="settings_diagnostics_logs_via_feedback_hint">需要日志时，请在「反馈」里提交。</string>
+    <string name="settings_diagnostics_logs_via_feedback_hint">包含环境信息和脱敏后的近期日志；完整日志请在「反馈」里提交。</string>
     <string name="settings_diagnostics_action_send">发送诊断</string>
     <string name="settings_diagnostics_send_detail">向支持团队分享脱敏诊断信息。</string>
     <string name="settings_diagnostics_detail_basic">认证和脱敏应用诊断</string>

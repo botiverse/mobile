@@ -3542,7 +3542,7 @@
     <string name="settings_diagnostics_section_load_status">로드 상태</string>
     <string name="settings_diagnostics_section_actions">관리</string>
     <string name="settings_diagnostics_action_share_environment">환경 정보 공유</string>
-    <string name="settings_diagnostics_logs_via_feedback_hint">로그가 필요하면 '피드백'으로 보내 주세요.</string>
+    <string name="settings_diagnostics_logs_via_feedback_hint">환경 정보와 민감 정보가 제거된 최근 로그가 포함됩니다. 전체 로그는 '피드백'으로 보내 주세요.</string>
     <string name="settings_diagnostics_action_send">진단 정보 보내기</string>
     <string name="settings_diagnostics_send_detail">민감 정보를 제거한 진단 정보를 지원팀과 공유해요.</string>
     <string name="settings_diagnostics_detail_basic">인증 및 민감 정보를 제거한 앱 진단</string>
