@@ -227,6 +227,64 @@ class SharedHomeStoreServerSwitchTest {
         }
     }
 
+    @Test
+    fun externallyCreatedServerAfterEarlierSwitchDoesNotRevertToOldServer() = runTest {
+        // #proj-mobile:#407: user switched to server-2 earlier in this shell (leaving
+        // serverSwitchState.selectedServerId = "server-2"), then created server-3 via
+        // AuthChooseServerPage -> AuthDataSource.createServer (which committed server-3 into
+        // authStore). Subsequent Start / Refresh / ForegroundRefresh in the reused SharedHomeStore
+        // must land on server-3 rather than overwriting authStore back to server-2.
+        val h = harness()
+        h.store.accept(SharedHomeIntent.SelectServer("server-2"))
+        assertEquals("server-2", h.serverId())
+        assertEquals("server-2", h.switch().selectedServerId)
+
+        h.auth.updateSelectedServer(serverId = "server-3", serverSlug = "three")
+        h.store.accept(SharedHomeIntent.Start)
+
+        assertEquals("server-3", h.auth.readSession()?.currentServerId, "Start must not revert authStore back to server-2")
+        assertEquals("server-3", h.serverId(), "Home must render newly created server-3")
+        assertEquals(listOf("dm-server-3"), h.directMessageIds(), "Home conversations must belong to server-3")
+        assertEquals("server-3", h.switch().selectedServerId)
+        assertNull(h.switch().pendingServerId)
+        assertEquals(0, h.switch().failureCount)
+
+        h.store.accept(SharedHomeIntent.Refresh)
+        assertEquals("server-3", h.auth.readSession()?.currentServerId)
+        assertEquals("server-3", h.serverId())
+
+        h.store.accept(SharedHomeIntent.ForegroundRefresh)
+        assertEquals("server-3", h.auth.readSession()?.currentServerId)
+        assertEquals("server-3", h.serverId())
+        h.close()
+    }
+
+    @Test
+    fun lateOldServerRefreshCannotOverwriteNewlyCreatedServer() = runTest {
+        // #proj-mobile:#407: if a refresh for server-2 was in flight when server-3 was created and
+        // selected in authStore, Start loads server-3 and the late server-2 response is dropped.
+        val h = harness()
+        h.store.accept(SharedHomeIntent.SelectServer("server-2"))
+        assertEquals("server-2", h.serverId())
+
+        val staleGate = h.api.gate("server-2")
+        val staleRefresh = launch { h.store.accept(SharedHomeIntent.Refresh) }
+        runCurrent()
+
+        h.auth.updateSelectedServer(serverId = "server-3", serverSlug = "three")
+        h.store.accept(SharedHomeIntent.Start)
+        assertEquals("server-3", h.serverId())
+        assertEquals("server-3", h.auth.readSession()?.currentServerId)
+
+        staleGate.complete(Unit)
+        staleRefresh.join()
+
+        assertEquals("server-3", h.serverId(), "late server-2 refresh must not overwrite server-3")
+        assertEquals("server-3", h.auth.readSession()?.currentServerId)
+        assertEquals(listOf("dm-server-3"), h.directMessageIds())
+        h.close()
+    }
+
     private enum class Outcome { Content, Error, Throw }
 
     /** Home API per server: answers, fails, throws, or waits on a gate. */

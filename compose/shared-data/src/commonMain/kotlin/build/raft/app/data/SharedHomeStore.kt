@@ -853,6 +853,7 @@ private data class HomeNotificationAuthority(
         return load(
             nextSwitch,
             showRefreshAffordance = true,
+            commitRequestedServerSelection = true,
         )
     }
 
@@ -3182,21 +3183,70 @@ private data class HomeNotificationAuthority(
      * dropped (the session or auth authority moved, a stale publication) or it threw — so the
      * switch fails instead of waiting forever (artin 10-23).
      */
+    private suspend fun alignNonSwitchLoadRequestToSession(
+        request: HomeServerSwitchState,
+    ): HomeServerSwitchState {
+        val sessionServerId = authStore.readSession()?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+            ?: return request
+        val latest = _state.value.serverSwitchState
+        // If another load/switch already advanced past this request before it ran, leave state alone.
+        if (latest.requestGeneration != request.requestGeneration) return request
+        val previousContentServerId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
+        val switchMismatch = latest.selectedServerId != null && latest.selectedServerId != sessionServerId
+        val contentMismatch = previousContentServerId != null && previousContentServerId != sessionServerId
+        if (!switchMismatch && !contentMismatch) return request
+
+        serverSwitchWatchdog?.cancel()
+        serverSwitchWatchdog = null
+        followedThreadUnreadRefresh.cancel()
+        resetLoungeListingState()
+        val aligned = latest.alignToAuthoritativeServer(sessionServerId)
+        diagnosticsLogger(
+            "home_server_switch_aligned_to_session from=${latest.selectedServerId ?: previousContentServerId ?: "_"} " +
+                "to=$sessionServerId generation=${aligned.requestGeneration}"
+        )
+        reduceState(
+            _state.value.copy(
+                serverSwitcherExpanded = false,
+                serverDrawer = _state.value.serverDrawer.copy(expanded = false, reorderMode = false),
+                serverSwitchState = aligned,
+                selectedConversationId = null,
+                selectedTopAction = null,
+                appBadgeCount = AppBadgeCount.DISABLED,
+            )
+        )
+        return aligned
+    }
+
     private suspend fun load(
         request: HomeServerSwitchState,
         showRefreshAffordance: Boolean,
         realtimeUnreadRound: Int = 0,
         priority: DataRequestPriority = DataRequestPriority.Visible,
+        commitRequestedServerSelection: Boolean = false,
     ): Boolean {
         val sessionGeneration = homeSessionGeneration.value
-        val generation = request.requestGeneration
+        val effectiveRequest =
+            if (commitRequestedServerSelection) {
+                request
+            } else {
+                alignNonSwitchLoadRequestToSession(request)
+            }
+        val generation = effectiveRequest.requestGeneration
         synchronized(loadsInFlightLock) {
             loadsInFlightByGeneration[generation] = (loadsInFlightByGeneration[generation] ?: 0) + 1
         }
         var othersInFlight = false
         var succeeded = false
         try {
-            succeeded = loadUnsettled(request, showRefreshAffordance, realtimeUnreadRound, priority)
+            succeeded =
+                loadUnsettled(
+                    request = effectiveRequest,
+                    showRefreshAffordance = showRefreshAffordance,
+                    realtimeUnreadRound = realtimeUnreadRound,
+                    priority = priority,
+                    commitRequestedServerSelection = commitRequestedServerSelection,
+                )
         } finally {
             othersInFlight =
                 synchronized(loadsInFlightLock) {
@@ -3254,6 +3304,7 @@ private data class HomeNotificationAuthority(
         showRefreshAffordance: Boolean,
         realtimeUnreadRound: Int,
         priority: DataRequestPriority,
+        commitRequestedServerSelection: Boolean,
     ): Boolean {
         val sessionGeneration = homeSessionGeneration.value
         diagnosticsLogger("home_ui_load_start refreshAffordance=$showRefreshAffordance")
@@ -3287,10 +3338,11 @@ private data class HomeNotificationAuthority(
                 )
             )
 
-            val requestedServerId = request.selectedServerId
-            val switchingServers =
-                requestedServerId != null &&
-                    requestedServerId != (previous as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
+            // Only an explicit `SelectServer` intent owns mutating the shell's selected server.
+            // Non-switch loads (`Start`, `Refresh`, `ForegroundRefresh`, realtime) must follow the
+            // authoritative session selection rather than overwriting it with a stale prior switch
+            // (#proj-mobile:#407: creating server B after an earlier switch to A reverted back to A).
+            val requestedServerId = if (commitRequestedServerSelection) request.selectedServerId else null
             requestedServerId?.let { serverId ->
                 val server = session.servers.firstOrNull { it.id == serverId }
                 authStore.updateSelectedServer(serverId = serverId, serverSlug = server?.slug)
@@ -3299,6 +3351,9 @@ private data class HomeNotificationAuthority(
             val activeSession = authStore.readSession() ?: session
             if (sessionGeneration != homeSessionGeneration.value) return false
             val activeServerId = requestedServerId ?: activeSession.currentServerId
+            val switchingServers =
+                activeServerId != null &&
+                    activeServerId != (previous as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
             reconcileNotificationAuthority(activeSession, activeServerId)
             reduceState(
                 _state.value.copy(
