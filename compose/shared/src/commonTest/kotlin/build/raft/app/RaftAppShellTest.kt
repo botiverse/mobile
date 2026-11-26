@@ -1095,6 +1095,8 @@ class RaftAppShellTest {
                         parentChannelName = "home-fixes",
                         parentChannelKind = ConversationKind.Channel,
                         parentMessageId = MessageId("parent-message"),
+                        unreadCount = 1,
+                        firstUnreadMessageId = MessageId("reply-1"),
                         latestActivityMessageId = MessageId("reply-1")
                     ).toConversationOpenSourceMessageIdentity(),
                 conversationDirectory = directory,
@@ -1130,6 +1132,8 @@ class RaftAppShellTest {
                 parentMessagePreview = "Original DM question",
                 parentMessageSenderId = "agent-cindy",
                 parentMessageSenderKind = MemberKind.Agent,
+                unreadCount = 1,
+                firstUnreadMessageId = MessageId("reply-1"),
                 latestActivityMessageId = MessageId("reply-1")
             )
         val directory =

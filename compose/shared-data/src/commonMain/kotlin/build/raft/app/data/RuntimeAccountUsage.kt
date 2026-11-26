@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.RaftCoreInternalApi
 
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.reportUnknownTypeDropped
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -710,6 +711,23 @@ private fun JsonObject.limitResetsAvailableOrNull(): Int? {
     return value.toInt().takeIf { it in 0..RUNTIME_LIMIT_RESETS_AVAILABLE_MAX }
 }
 
+/**
+ * Earliest instant a usage window's reset can be: 2000-01-01T00:00:00Z (botiverse/slock #16700
+ * `RUNTIME_USAGE_RESET_FLOOR_MS`). Antigravity (through OAR) reports the Unix epoch as the reset of
+ * a quota with nothing to reset (an unused Claude allowance); no runtime quota resets that long
+ * ago, so a reset at or before this floor means "no reset", not one that passed.
+ */
+@RaftCoreInternalApi const val RUNTIME_USAGE_RESET_FLOOR_MS: Long = 946_684_800_000L
+
+/**
+ * Whether a reported usage reset is a real instant: parseable and strictly after
+ * [RUNTIME_USAGE_RESET_FLOOR_MS] (botiverse/slock #16700 `isPlausibleUsageResetAt`).
+ */
+@RaftCoreInternalApi fun isPlausibleUsageResetAt(value: String?): Boolean {
+    val millis = parseRaftTimestampEpochMillisOrNull(value, 0) ?: return false
+    return millis > RUNTIME_USAGE_RESET_FLOOR_MS
+}
+
 private fun JsonObject.toRuntimeAccountUsageWindow(): RuntimeAccountUsageWindow? {
     val id = stringOrNull("id") ?: return null
     val label = stringOrNull("label") ?: return null
@@ -728,7 +746,12 @@ private fun JsonObject.toRuntimeAccountUsageWindow(): RuntimeAccountUsageWindow?
         label = label,
         status = status,
         usedRatio = if (status == RuntimeAccountUsageWindowStatus.Unavailable) null else validRatio,
-        resetsAt = if (status == RuntimeAccountUsageWindowStatus.Unavailable) null else stringOrNull("resetsAt"),
+        resetsAt =
+            if (status == RuntimeAccountUsageWindowStatus.Unavailable) {
+                null
+            } else {
+                stringOrNull("resetsAt")?.takeIf(::isPlausibleUsageResetAt)
+            },
         scope = (this["scope"] as? JsonObject)?.toRuntimeAccountUsageWindowScope(),
     )
 }

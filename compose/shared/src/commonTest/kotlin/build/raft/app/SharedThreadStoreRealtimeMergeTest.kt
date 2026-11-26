@@ -153,6 +153,8 @@ class SharedThreadStoreRealtimeMergeTest {
                 parentChannelKind = ConversationKind.Channel,
                 parentMessageId = MessageId("m1"),
                 parentMessagePreview = "parent body",
+                unreadCount = 1,
+                firstUnreadMessageId = MessageId("reply-1"),
                 latestActivityMessageId = MessageId("reply-1")
             ).toHomeMessageOpenRequestForTest()
         val initialPayload =

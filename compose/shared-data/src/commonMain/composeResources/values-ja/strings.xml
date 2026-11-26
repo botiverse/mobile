@@ -399,6 +399,7 @@
     <string name="settings_billing_vo_payment_failed">支払いに失敗</string>
     <string name="settings_billing_vo_usage_title">使用状況</string>
     <string name="settings_billing_vo_usage_used">%2$s 中 %1$s 使用</string>
+    <string name="settings_billing_vo_appsumo_unlimited_usage">%1$d 件使用中（上限なし）</string>
     <string name="settings_billing_vo_seats">シート</string>
     <string name="settings_billing_vo_people">メンバー（人）</string>
     <string name="settings_billing_vo_agents">エージェント</string>

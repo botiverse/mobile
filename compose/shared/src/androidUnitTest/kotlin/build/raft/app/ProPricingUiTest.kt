@@ -19,6 +19,12 @@ import build.raft.app.data.ProPricing
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SeatsAddActionCardType
 import build.raft.app.data.SeatsAddPurpose
+import build.raft.app.data.SettingsBillingAppSumoSnapshot
+import build.raft.app.data.SettingsBillingCurrentPlanSnapshot
+import build.raft.app.data.SettingsBillingFileUploadQuotaSnapshot
+import build.raft.app.data.SettingsBillingSeatUsageSnapshot
+import build.raft.app.data.SettingsBillingSnapshot
+import build.raft.app.data.SettingsBillingSubscriptionSnapshot
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.resources.Res
 import build.raft.app.resources.StringDesc
@@ -118,6 +124,56 @@ class ProPricingUiTest {
         }
         onNodeWithText("3 people").assertExists()
         onNodeWithText("12 agents").assertExists()
+    }
+
+    @Test
+    fun billingViewOnlyAppSumoRendersUnlimitedAgentsWithoutNegativeLimitRatio() = runRobolectricComposeUiTest {
+        StringDesc.localeType = StringDesc.LocaleType.Custom("en")
+        val appSumoFixture =
+            ScreenLoadState.Content(
+                SettingsBillingSnapshot(
+                    currentPlan = SettingsBillingCurrentPlanSnapshot(planName = "", usageRows = emptyList()),
+                    plans = emptyList(),
+                    serverPlan = "pro",
+                    summary =
+                        SettingsBillingSubscriptionSnapshot(
+                            effectivePlan = "pro",
+                            source = "appsumo",
+                            appsumo =
+                                SettingsBillingAppSumoSnapshot(
+                                    tier = 1,
+                                    maxHumans = 1,
+                                    maxAgents = -1,
+                                    maxHostedJointChannels = 2,
+                                    hostedJointChannels = 1,
+                                ),
+                            maxUniversalSeats = -1.0,
+                            usage = SettingsBillingSeatUsageSnapshot(humans = 1, agents = 11, universalSeats = 2.1),
+                            fileUploadQuota =
+                                SettingsBillingFileUploadQuotaSnapshot(
+                                    month = null,
+                                    limited = true,
+                                    limitBytes = 1024L * 1024L * 1024L,
+                                    remainingBytes = 512L * 1024L * 1024L,
+                                ),
+                        ),
+                )
+            )
+        setContent {
+            PageHost {
+                SettingsBillingViewOnlyContent(
+                    billing = appSumoFixture,
+                    sessionPlan = null,
+                    onRetry = {},
+                    nowEpochMillis = SettingsBillingViewOnlyFixtureNow,
+                )
+            }
+        }
+        onNodeWithText("AppSumo Lifetime Pro · Tier 1").assertExists()
+        onNodeWithText("1 of 1 used").assertExists()
+        onNodeWithText("11 used · Unlimited").assertExists()
+        onNodeWithText("1 of 2 used").assertExists()
+        onNodeWithText("-1", substring = true).assertDoesNotExist()
     }
 
     @Test

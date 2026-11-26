@@ -60,6 +60,7 @@ class MembersAgentTabOrderTest {
                 MembersAgentDetailTab.Chat,
                 MembersAgentDetailTab.Apps,
                 MembersAgentDetailTab.Profile,
+                MembersAgentDetailTab.Usage,
                 MembersAgentDetailTab.Reminders,
                 MembersAgentDetailTab.Workspace
             ),
@@ -81,6 +82,7 @@ class MembersAgentTabOrderTest {
                 MembersAgentDetailTab.Chat,
                 MembersAgentDetailTab.Profile,
                 MembersAgentDetailTab.Activity,
+                MembersAgentDetailTab.Usage,
                 MembersAgentDetailTab.Reminders,
                 MembersAgentDetailTab.Workspace,
                 MembersAgentDetailTab.Apps

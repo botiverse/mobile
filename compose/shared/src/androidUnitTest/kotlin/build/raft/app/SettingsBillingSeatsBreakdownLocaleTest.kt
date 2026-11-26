@@ -1,6 +1,8 @@
 package build.raft.app
 
+import build.raft.app.data.AppLocale
 import build.raft.app.data.ProPricing
+import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
 import build.raft.app.resources.resolve
 import kotlin.test.AfterTest
@@ -67,5 +69,26 @@ class SettingsBillingSeatsBreakdownLocaleTest {
         ).forEach { (usage, rows) ->
             assertEquals(rows, breakdown("ru", usage.first, usage.second), "$usage")
         }
+    }
+
+    @Test
+    fun appSumoUnlimitedUsageLocalizedAcrossAllEightLocales() {
+        val expectedByLocale =
+            mapOf(
+                AppLocale.English to "11 used · Unlimited",
+                AppLocale.Spanish to "En uso: 11 · Sin límite",
+                AppLocale.Japanese to "11 件使用中（上限なし）",
+                AppLocale.Korean to "11개 사용 중 · 무제한",
+                AppLocale.BrazilianPortuguese to "Em uso: 11 · Sem limite",
+                AppLocale.Russian to "Используется: 11 · Без ограничений",
+                AppLocale.SimplifiedChinese to "已用 11 个，无上限",
+                AppLocale.TraditionalChinese to "已使用 11 個，無上限",
+            )
+        expectedByLocale.forEach { (locale, expected) ->
+            StringDesc.localeType = locale.stringDescLocaleType
+            assertEquals(expected, settingsBillingCountUsageDesc(used = 11, limit = -1).resolve(), locale.name)
+        }
+        StringDesc.localeType = AppLocale.English.stringDescLocaleType
+        assertEquals("1 of 1 used", settingsBillingCountUsageDesc(used = 1, limit = 1).resolve())
     }
 }

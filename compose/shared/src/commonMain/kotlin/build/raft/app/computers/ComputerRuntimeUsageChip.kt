@@ -44,6 +44,7 @@ import build.raft.app.data.RuntimePlanHeading
 import build.raft.app.data.RuntimeQuotaWindowKind
 import build.raft.app.data.cardWindowKind
 import build.raft.app.data.isDefaultAccount
+import build.raft.app.data.isPlausibleUsageResetAt
 import build.raft.app.data.runtimePlanHeading
 import build.raft.app.data.unsupportedReasonLine
 import build.raft.app.data.usageBadge
@@ -1816,7 +1817,7 @@ internal fun ComputerRuntimeUsageWindowRow(
     // "100% used" (rounded), not "Used up", as the web says.
     val usedUp = fill != RuntimeAccountUsageWindowFill.Used
     val reset =
-        window.resetsAt?.let { resetsAt ->
+        window.resetsAt?.takeIf(::isPlausibleUsageResetAt)?.let { resetsAt ->
             computerRuntimeUsageResetText(resetsAt, timeContext) ?: stringResource(Res.string.settings_computers_runtime_usage_later)
         }
     val percentUsed = "${runtimeUsagePercentUsed(ratio)}%"
@@ -1841,13 +1842,14 @@ internal fun ComputerRuntimeUsageWindowRow(
 }
 
 /**
- * Web `usageResetText` (slock #14717): a usage window's reset wherever one is said (the usage card,
- * the profile row): to come, counted as the rack's cell counts it ([raftRackReset]: down, to the
- * largest unit, "in 5 days"); already passed, how long ago ("3 hours ago"). Null when not a time.
+ * Web `usageResetText` (slock #14717, #16700): a usage window's reset wherever one is said (the
+ * usage card, the profile row): to come, counted as the rack's cell counts it ([raftRackReset]:
+ * down, to the largest unit, "in 5 days"); already passed, how long ago ("3 hours ago"). Null when
+ * not a plausible reset instant ([isPlausibleUsageResetAt]: unparseable or at/before 2000-01-01).
  */
 @Composable
 internal fun computerRuntimeUsageResetText(resetsAt: String, timeContext: RaftTimeContext?): String? {
-    if (parseRaftTimestampEpochMillisOrNull(resetsAt, 0) == null) return null
+    if (!isPlausibleUsageResetAt(resetsAt)) return null
     val nowMillis = currentRaftTimeContext(timeContext)?.nowEpochMillis ?: defaultNowMillis()
     val reset = raftRackReset(resetsAt, nowMillis)
     if (reset != null) return RaftRelativeTimeLabel.Relative(reset.count, reset.unit).localized()

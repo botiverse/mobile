@@ -399,6 +399,7 @@
     <string name="settings_billing_vo_payment_failed">Pago fallido</string>
     <string name="settings_billing_vo_usage_title">Uso</string>
     <string name="settings_billing_vo_usage_used">%1$s de %2$s en uso</string>
+    <string name="settings_billing_vo_appsumo_unlimited_usage">En uso: %1$d · Sin límite</string>
     <string name="settings_billing_vo_seats">Puestos</string>
     <string name="settings_billing_vo_people">Personas</string>
     <string name="settings_billing_vo_agents">Agentes</string>

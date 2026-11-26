@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
 
 /**
  * Pure contract, math, wire decoding, and tab-gating tests for the Agent Profile Usage tab
- * (`botiverse/slock` `agentUsage.ts` + `AgentDetailPanel.tsx`, `agent_usage_v0`).
+ * (`botiverse/slock` `agentUsage.ts` + `AgentDetailPanel.tsx`).
  */
 class AgentUsageTest {
     private fun row(
@@ -278,10 +278,8 @@ class AgentUsageTest {
 
     @Test
     fun usageTabGatingAndOrderingMatchesWebRules() {
-        // Feature flag off -> hidden
-        assertFalse(MembersAgentDetailTab.Usage in membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = false, agentUsageEnabled = false))
-        // Feature flag on + private surfaces -> placed between Activity and Chat
-        val enabledTabs = membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = false, agentUsageEnabled = true)
+        // Private surfaces -> Usage is unconditionally shown between Activity and Chat (slock #16937)
+        val visibleTabs = membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = false)
         assertEquals(
             listOf(
                 MembersAgentDetailTab.Profile,
@@ -292,19 +290,19 @@ class AgentUsageTest {
                 MembersAgentDetailTab.Workspace,
                 MembersAgentDetailTab.Apps,
             ),
-            enabledTabs,
+            visibleTabs,
         )
         // Non-private viewer, deleted agent, App Bot, or remote profile -> hidden
-        assertFalse(MembersAgentDetailTab.Usage in membersVisibleAgentTabs(canViewPrivateSurfaces = false, deleted = false, agentUsageEnabled = true))
-        assertFalse(MembersAgentDetailTab.Usage in membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = true, agentUsageEnabled = true))
-        assertFalse(MembersAgentDetailTab.Usage in membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = false, agentUsageEnabled = true, managedByApp = true))
+        assertFalse(MembersAgentDetailTab.Usage in membersVisibleAgentTabs(canViewPrivateSurfaces = false, deleted = false))
+        assertFalse(MembersAgentDetailTab.Usage in membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = true))
+        assertFalse(MembersAgentDetailTab.Usage in membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = false, managedByApp = true))
         assertEquals(
             listOf(MembersAgentDetailTab.Profile),
-            membersAgentDetailTabsForAccess(MemberDetailAccessMode.RemoteProfileOnly, canViewPrivateSurfaces = true, deleted = false, agentUsageEnabled = true),
+            membersAgentDetailTabsForAccess(MemberDetailAccessMode.RemoteProfileOnly, canViewPrivateSurfaces = true, deleted = false),
         )
         // Tab order persistence recognizes "usage"
         assertEquals(MembersAgentDetailTab.Usage, "usage".toMembersAgentDetailTabOrNull())
-        val reordered = membersOrderedAgentTabs(enabledTabs, listOf("usage", "profile"))
+        val reordered = membersOrderedAgentTabs(visibleTabs, listOf("usage", "profile"))
         assertEquals(MembersAgentDetailTab.Usage, reordered.first())
     }
 }

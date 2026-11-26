@@ -233,13 +233,6 @@ const val SERVER_LABS_UI_FEATURE_FLAG_KEY: String = "server_labs_ui_v0"
 const val CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY: String = "claude_limit_reset_v2"
 
 /**
- * Agent Usage tab (botiverse/slock `packages/shared/src/featureFlags.ts` `AGENT_USAGE_FEATURE_FLAG_KEY`):
- * per server, default off. On, an agent's profile shows the Usage tab (between Activity and Chat) for
- * viewers who may see private agent surfaces, excluding App Bots and archived agents.
- */
-const val AGENT_USAGE_FEATURE_FLAG_KEY: String = "agent_usage_v0"
-
-/**
  * Mobile in-app browser App entries (`Raft-Host`) and native "Log in with Raft" catch
  * (#proj-workspace:#356): per server, default off, read live from server flags. Off (or unresolved),
  * entries still open in-app with no `Raft-Host` header and no authorize catch.
@@ -345,8 +338,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY,
     // The Computer usage card's "Use a limit reset" for Claude Code.
     CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY,
-    // Agent profile Usage tab (slock `agent_usage_v0`).
-    AGENT_USAGE_FEATURE_FLAG_KEY,
     // Mobile in-app browser App entries (`Raft-Host`) and native Log in with Raft (#proj-workspace:#356).
     MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY,
     // Screenshot -> quick feedback sheet allowlist (#wg-mobile-feedback:#276).

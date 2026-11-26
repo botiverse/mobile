@@ -564,6 +564,7 @@ class SharedMembersParserTest {
             listOf(
                 MembersAgentDetailTab.Profile,
                 MembersAgentDetailTab.Activity,
+                MembersAgentDetailTab.Usage,
                 MembersAgentDetailTab.Chat,
                 MembersAgentDetailTab.Reminders,
                 MembersAgentDetailTab.Workspace,

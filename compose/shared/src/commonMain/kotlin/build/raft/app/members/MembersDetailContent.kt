@@ -330,9 +330,7 @@ internal class MembersAgentDetailPresentation(
      * issue is offered, and its bundle sent, only while it is [RaftPrivacyMode.Off]. Visual
      * fixtures pin it off.
      */
-    val privacyMode: StateFlow<RaftPrivacyMode> = RaftTelemetryPrivacy.state,
-    /** Server feature flag `agent_usage_v0`: exposes the Usage tab between Activity and Chat. */
-    val agentUsageEnabled: Boolean = false
+    val privacyMode: StateFlow<RaftPrivacyMode> = RaftTelemetryPrivacy.state
 )
 
 @Composable
@@ -750,8 +748,7 @@ internal fun MembersDetailContent(
     val managedByApp =
         !detail?.summary?.managedByAppInstallId.isNullOrBlank() ||
             !member.managedByAppInstallId.isNullOrBlank()
-    val agentUsageEnabled = presentation.agentUsageEnabled
-    val visibleTabs = remember(accessMode, canViewPrivate, deleted, managedByApp, agentUsageEnabled, member.kind, agentPanelTabOrder) {
+    val visibleTabs = remember(accessMode, canViewPrivate, deleted, managedByApp, member.kind, agentPanelTabOrder) {
         if (member.kind == MemberKind.Agent) {
             membersOrderedAgentTabs(
                 visibleTabs =
@@ -759,7 +756,6 @@ internal fun MembersDetailContent(
                         accessMode = accessMode,
                         canViewPrivateSurfaces = canViewPrivate,
                         deleted = deleted,
-                        agentUsageEnabled = agentUsageEnabled,
                         managedByApp = managedByApp,
                     ),
                 storedOrder = agentPanelTabOrder

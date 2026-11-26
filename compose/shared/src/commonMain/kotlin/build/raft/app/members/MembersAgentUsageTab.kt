@@ -148,7 +148,7 @@ internal class MembersAgentUsageTabState {
 }
 
 /**
- * Agent profile Usage tab (`botiverse/slock` `AgentUsageTab.tsx`, behind `agent_usage_v0`):
+ * Agent profile Usage tab (`botiverse/slock` `AgentUsageTab.tsx`):
  * period selector, Cache reads switch (default off), daily stacked bars, headline + prior-period
  * change, token types (with reasoning inside output), context (cache share, per turn, context
  * window meter), and models breakdown.
