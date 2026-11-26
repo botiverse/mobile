@@ -616,6 +616,11 @@
     <string name="thread_new_message_menu_more">More</string>
     <string name="thread_action_reply_in_thread">Reply in thread</string>
     <string name="thread_action_add_reaction">Add reaction</string>
+    <string name="thread_quick_reaction_like">Like</string>
+    <string name="thread_quick_reaction_unlike">Remove like</string>
+    <string name="thread_quick_reaction_react">React with %1$s</string>
+    <string name="thread_quick_reaction_remove">Remove %1$s</string>
+    <string name="thread_quick_reaction_tooltip">%1$s · hover for more reactions</string>
     <string name="thread_message_a11y_open_thread">Open thread</string>
     <string name="thread_message_a11y_add_reaction">Add reaction</string>
     <string name="thread_action_remove_from_saved">Remove from Saved</string>

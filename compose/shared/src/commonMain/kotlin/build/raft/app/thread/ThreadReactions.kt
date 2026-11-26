@@ -64,7 +64,7 @@ private object ThreadReactionGlyphDiagnostics {
     fun logOnce(path: String, emoji: String, detail: String) {
         val key = "$path:$emoji:$detail"
         if (loggedKeys.add(key)) {
-            Utils.logToNative("thread_reaction_glyph path=$path emoji=$emoji $detail")
+            runCatching { Utils.logToNative("thread_reaction_glyph path=$path emoji=$emoji $detail") }
         }
     }
 
@@ -76,7 +76,7 @@ private object ThreadReactionGlyphDiagnostics {
     // token to wait on before snapshotting reaction-bearing cases.
     fun logAtlasReadyOnce(width: Int, height: Int) {
         if (loggedKeys.add("thread_reaction_atlas_ready")) {
-            Utils.logToNative("thread_reaction_atlas_ready imageWidth=$width imageHeight=$height")
+            runCatching { Utils.logToNative("thread_reaction_atlas_ready imageWidth=$width imageHeight=$height") }
         }
     }
 }
@@ -244,10 +244,19 @@ internal fun ThreadMessageQuickReactionBar(
     onDismiss: () -> Unit,
     onReact: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {},
-    fromHoverToolbar: Boolean = false
+    fromHoverToolbar: Boolean = false,
+    onAddReaction: (() -> Unit)? = null,
 ) {
     Modal(onWillDismiss = { onDismiss() }) {
-        ThreadMessageQuickReactionBarPopover(messageId, anchor, onDismiss, onReact, diagnosticsLogger, fromHoverToolbar)
+        ThreadMessageQuickReactionBarPopover(
+            messageId = messageId,
+            anchor = anchor,
+            onDismiss = onDismiss,
+            onReact = onReact,
+            diagnosticsLogger = diagnosticsLogger,
+            fromHoverToolbar = fromHoverToolbar,
+            onAddReaction = onAddReaction,
+        )
     }
 }
 
@@ -263,10 +272,15 @@ internal fun ThreadMessageQuickReactionBarPopover(
     onReact: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {},
     /** [anchor] is the bottom end of the hover toolbar's Add Reaction (web `positionReactionPickerFromRect`). */
-    fromHoverToolbar: Boolean = false
+    fromHoverToolbar: Boolean = false,
+    onAddReaction: (() -> Unit)? = null,
 ) {
     val density = LocalDensity.current
-    val barWidthDp = threadMessageMenuWidthDp(showReactionActions = true)
+    val barWidthDp =
+        threadMessageMenuWidthDp(
+            showReactionActions = true,
+            showAddReactionAction = onAddReaction != null,
+        )
     val contentSize =
         with(density) {
             Size(
@@ -304,7 +318,8 @@ internal fun ThreadMessageQuickReactionBarPopover(
         ) {
             ThreadMessageReactionRow(
                 reactionAtlasImage = LocalThreadReactionAtlasImage.current,
-                onReact = onReact
+                onReact = onReact,
+                onAddReaction = onAddReaction,
             )
         }
     }

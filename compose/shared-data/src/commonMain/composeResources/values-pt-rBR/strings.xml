@@ -616,6 +616,11 @@
     <string name="thread_new_message_menu_more">Mais</string>
     <string name="thread_action_reply_in_thread">Responder na thread</string>
     <string name="thread_action_add_reaction">Adicionar reação</string>
+    <string name="thread_quick_reaction_like">Curtir</string>
+    <string name="thread_quick_reaction_unlike">Descurtir</string>
+    <string name="thread_quick_reaction_react">Reagir com %1$s</string>
+    <string name="thread_quick_reaction_remove">Remover %1$s</string>
+    <string name="thread_quick_reaction_tooltip">%1$s · passe o cursor para mais reações</string>
     <string name="thread_message_a11y_open_thread">Abrir thread</string>
     <string name="thread_message_a11y_add_reaction">Adicionar reação</string>
     <string name="thread_action_remove_from_saved">Remover dos salvos</string>

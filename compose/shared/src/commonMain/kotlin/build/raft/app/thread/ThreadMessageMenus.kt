@@ -43,6 +43,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import build.raft.designsystem.components.RaftConversationKindIcon
@@ -1048,6 +1049,10 @@ internal class ThreadMessageHoverToolbarActions(
     val onToggleSave: () -> Unit,
     /** Whether the toolbar shows: the list draws that row over its neighbours, as the toolbar reaches into the row above. */
     val onShownChange: (Boolean) -> Unit = {},
+    /** A click / Enter / Space on the reaction button toggles the snapshotted favorite reaction (slock #13955). */
+    val onQuickReact: ((String) -> Unit)? = null,
+    /** Optional override for whether the viewer already reacted with the given emoji. */
+    val hasViewerReaction: ((String) -> Boolean)? = null,
 ) {
     val isEmpty: Boolean
         get() = buttonCount == 0
@@ -1063,6 +1068,8 @@ internal fun threadMessageHoverToolbarActions(
     onForward: () -> Unit,
     onToggleSave: () -> Unit,
     onShownChange: (Boolean) -> Unit = {},
+    onQuickReact: ((String) -> Unit)? = null,
+    hasViewerReaction: ((String) -> Boolean)? = null,
 ): ThreadMessageHoverToolbarActions? {
     if (message.isRetracted) return null
     val actions =
@@ -1077,6 +1084,8 @@ internal fun threadMessageHoverToolbarActions(
             onForward = onForward,
             onToggleSave = onToggleSave,
             onShownChange = onShownChange,
+            onQuickReact = onQuickReact,
+            hasViewerReaction = hasViewerReaction,
         )
     return actions.takeUnless { it.isEmpty }
 }
@@ -1091,8 +1100,10 @@ private enum class ThreadMessageHoverToolbarOpener { Reaction, More }
  * row's top right corner (the caller places it), shown only for a mouse or trackpad
  * ([RaftPointerInput.Fine]; web returns null for `pointer: coarse`, where a press and hold opens
  * the menu) while the pointer is over the row or over the toolbar itself (its upper half rides
- * above the row), and while one of the row's popups is open (raft-ui `has-data-popup-open`).
- * The button whose popup is open stays marked (`data-popup-open`). No tooltips, as on the web.
+ * above the row), while keyboard focus is inside the toolbar, and while one of the row's popups is
+ * open (raft-ui `has-data-popup-open`). The reaction button shows the viewer's most-used reaction
+ * snapshotted when the toolbar appears (slock #13955); clicking toggles it and resting 500ms opens
+ * the reaction bar. The button whose popup is open stays marked (`data-popup-open`).
  */
 @Composable
 internal fun ThreadMessageHoverToolbar(
@@ -1103,13 +1114,20 @@ internal fun ThreadMessageHoverToolbar(
     onShowActions: (RaftPopoverAnchor) -> Unit,
     onReplyInThread: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Fallback reaction toggle callback (the card's `onToggleReaction`) when [actions.onQuickReact] is null. */
+    onToggleQuickReaction: (String) -> Unit = {},
+    /** Fallback viewer-reacted check when [actions.hasViewerReaction] is null. */
+    isQuickReactionSelected: (String) -> Boolean = { false },
     /** Whether it shows, for the row (its header fades under it). */
     onShownChange: (Boolean) -> Unit = {},
 ) {
     var toolbarHovered by remember { mutableStateOf(false) }
+    var toolbarFocused by remember { mutableStateOf(false) }
     var opener by remember { mutableStateOf<ThreadMessageHoverToolbarOpener?>(null) }
     LaunchedEffect(popupOpen) { if (!popupOpen) opener = null }
-    val shown = RaftTheme.pointerInput == RaftPointerInput.Fine && (rowHovered || toolbarHovered || popupOpen)
+    val shown =
+        RaftTheme.pointerInput == RaftPointerInput.Fine &&
+            (rowHovered || toolbarHovered || toolbarFocused || popupOpen)
     val currentOnShownChange by rememberUpdatedState(actions.onShownChange)
     val currentOnRowShownChange by rememberUpdatedState(onShownChange)
     DisposableEffect(shown) {
@@ -1119,12 +1137,24 @@ internal fun ThreadMessageHoverToolbar(
         }
         onDispose {
             if (shown) {
+                toolbarHovered = false
+                toolbarFocused = false
                 currentOnShownChange(false)
                 currentOnRowShownChange(false)
             }
         }
     }
     if (!shown) return
+    val reactionFavoriteStore = LocalRaftReactionFavoriteStore.current
+    val reactionFavoriteOwnerKey =
+        LocalRaftEmojiPickerOwnerKey.current ?: LocalThreadActionCardSpecHost.current.viewerUserId
+    // Read once as the toolbar enters composition (shown flips false -> true) and kept stable
+    // while shown so clicking or adding reactions never changes the emoji under the pointer.
+    val quickReaction =
+        remember(messageId, reactionFavoriteStore, reactionFavoriteOwnerKey) {
+            reactionFavoriteStore.currentFavoriteReaction(reactionFavoriteOwnerKey)
+        }
+    val quickReacted = (actions.hasViewerReaction ?: isQuickReactionSelected)(quickReaction)
     val density = LocalDensity.current
     val anchorIdentity = threadMessageMenuOwnerIdentity(messageId)
     val reactionAnchor = remember(anchorIdentity) { RaftLiveRootAnchorRef(identity = anchorIdentity) }
@@ -1132,23 +1162,34 @@ internal fun ThreadMessageHoverToolbar(
     val buttonPx = with(density) { RaftMessageItemToolbarDefaults.ButtonSize.toPx() }
     val gapPx = with(density) { ThreadMessageHoverToolbarPopupGap.toPx() }
     RaftMessageItemToolbar(
-        modifier = modifier.raftPointerHoverPosition { toolbarHovered = it != null }
+        modifier =
+            modifier
+                .raftPointerHoverPosition { toolbarHovered = it != null }
+                .onFocusChanged { toolbarFocused = it.hasFocus }
     ) {
         if (actions.reaction) {
-            RaftMessageItemToolbarButton(
-                onClick = {
+            ThreadMessageHoverToolbarReactionButton(
+                messageId = messageId,
+                quickReaction = quickReaction,
+                quickReacted = quickReacted,
+                reactionPopupOpen = popupOpen && opener == ThreadMessageHoverToolbarOpener.Reaction,
+                reactionAnchor = reactionAnchor,
+                onQuickReact = { emoji ->
+                    val quickReact = actions.onQuickReact
+                    if (quickReact != null) {
+                        quickReact(emoji)
+                    } else {
+                        onToggleQuickReaction(emoji)
+                    }
+                },
+                onOpenReactionBar = {
                     // web `positionReactionPickerFromRect`: the bar's end on the button's end.
                     reactionAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { anchor ->
                         opener = ThreadMessageHoverToolbarOpener.Reaction
                         actions.onShowReactions(anchor)
                     }
                 },
-                label = stringResource(Res.string.thread_action_add_reaction),
-                modifier = Modifier.raftCaptureLiveRootAnchor(reactionAnchor),
-                open = popupOpen && opener == ThreadMessageHoverToolbarOpener.Reaction,
-            ) {
-                RaftSlotIcon(RaftLucideIconName.SmilePlus)
-            }
+            )
         }
         if (actions.reply) {
             RaftMessageItemToolbarButton(
