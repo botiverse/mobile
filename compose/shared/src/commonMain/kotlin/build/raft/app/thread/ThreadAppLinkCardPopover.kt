@@ -19,10 +19,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
@@ -305,7 +302,7 @@ internal fun ThreadAppLinkCardPopover(
         } else {
             raftAppLinkOpenLinkButton(leavesRaft = openLinkLeavesRaft, onOpenLink = onOpenLink)
         }
-    ThreadAppLinkCardPopoverFrame(key = card.url, anchor = anchor, onDismiss = onDismiss) { modifier ->
+    ThreadAppLinkCardPopoverFrame(anchor = anchor, onDismiss = onDismiss) { modifier ->
         RaftAppLinkCardView(
             card = card,
             onAction = { elementId -> raftLogInfo(ThreadAppLinkCardLogTag, "app_link_card_action_ignored element=$elementId") },
@@ -319,11 +316,12 @@ internal fun ThreadAppLinkCardPopover(
 
 /**
  * The item card's popover frame by its chip (see [ThreadAppLinkCardPopover]); [content] draws the
- * card with the modifier that sizes, measures and shields it.
+ * card with the modifier that sizes and shields it. Positioning uses [RaftAnchoredPopover]'s
+ * single-pass measure-then-place path (`contentSize = null`) so the card never flashes at a
+ * guessed placement before its real height is measured.
  */
 @Composable
 internal fun ThreadAppLinkCardPopoverFrame(
-    key: String,
     anchor: RaftPopoverAnchor,
     onDismiss: () -> Unit,
     content: @Composable (Modifier) -> Unit,
@@ -333,11 +331,9 @@ internal fun ThreadAppLinkCardPopoverFrame(
         val gap = ThreadAppLinkCardViewportGap
         val width = min(ThreadAppLinkCardWidth, maxWidth - gap * 2)
         val maxHeight = (maxHeight - gap * 2).coerceAtLeast(0.dp)
-        var measured by remember(key) { mutableStateOf(Size.Zero) }
-        val contentSize = if (measured != Size.Zero) measured else with(density) { Size(width.toPx(), 1f) }
         RaftAnchoredPopover(
             anchor = anchor,
-            contentSize = contentSize,
+            contentSize = null,
             onDismiss = onDismiss,
             viewportGap = with(density) { gap.toPx() },
             horizontalOffset = with(density) { -ThreadAppLinkChipStartInset.toPx() },
@@ -350,9 +346,6 @@ internal fun ThreadAppLinkCardPopoverFrame(
                 Modifier
                     .width(width)
                     .heightIn(max = maxHeight)
-                    .onSizeChanged { measured = Size(it.width.toFloat(), it.height.toFloat()) }
-                    // Placed once measured, so it never shows at a guessed height.
-                    .graphicsLayer { alpha = if (measured == Size.Zero) 0f else 1f }
                     // A tap on the card is not a tap outside it.
                     .raftNativeDispatchCapture()
                     // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control

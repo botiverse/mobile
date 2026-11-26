@@ -84,7 +84,7 @@ internal val RaftFloatingOverlayOutsidePointerMode.installsOutsideDismissBarrier
 @Composable
 internal fun RaftModalAnchoredPopover(
     anchor: RaftPopoverAnchor,
-    contentSize: Size,
+    contentSize: Size? = null,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     viewportGap: Float = RaftFloatingDefaultViewportGap,
@@ -118,10 +118,19 @@ internal fun RaftModalAnchoredPopover(
     }
 }
 
+/**
+ * Places [content] inside [RaftFloatingOverlayHost] relative to [anchor].
+ *
+ * Pass `contentSize = null` (the default) for dynamic-height content: the popover measures
+ * [content] and computes its final anchored offset in a single layout pass before any draw runs,
+ * avoiding first-frame flashes at a guessed placement. Callers with a precomputed footprint (e.g.
+ * menus whose [horizontalOffset] already depends on that width) may still pass an explicit
+ * [contentSize].
+ */
 @Composable
 internal fun RaftAnchoredPopover(
     anchor: RaftPopoverAnchor,
-    contentSize: Size,
+    contentSize: Size? = null,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     viewportGap: Float = RaftFloatingDefaultViewportGap,
