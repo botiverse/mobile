@@ -1,10 +1,7 @@
 package build.raft.app
 
 import build.raft.app.links.ParsedRaftPermalink
-import build.raft.app.assistant.LocalThreadAssistantOtter
 import build.raft.app.assistant.LocalThreadAssistantPanelEmbed
-import build.raft.app.assistant.newAssistantOtterHostId
-import build.raft.app.assistant.rememberThreadAssistantOtter
 import build.raft.app.assistant.threadForegroundBannerOnPage
 import build.raft.app.nav.LocalRaftStackPageInMotion
 import build.raft.app.resources.*
@@ -113,7 +110,6 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.RealtimeCanonicalFinalSinkSurfaceKey
 import build.raft.app.data.RealtimeScopeAuthority
-import build.raft.app.data.appLinkViewerKey
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.isAuthSessionErrorCode
 import build.raft.app.data.authLossTokenFingerprint
@@ -123,18 +119,11 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
-import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
-import build.raft.app.markdown.LocalRaftMarkdownTaskStatusesPending
-import build.raft.app.markdown.LocalRaftMarkdownTaskRefStatuses
-import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
-import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
 import build.raft.app.markdown.LocalRaftMarkdownPlainCandidateSession
 import build.raft.app.markdown.RaftMarkdownPlainCandidateSession
 import build.raft.app.markdown.resolveThreadMarkdownSingleParagraphLightPathEnabled
 import build.raft.app.markdown.threadMarkdownLightGateInputsOrNull
-import build.raft.app.markdown.raftMarkdownProvidedValuesWith
 import build.raft.app.markdown.raftTraceDiagnosticsEnabled
-import build.raft.app.markdown.RaftMarkdownRenderConfig
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.model.ChannelId
@@ -1751,7 +1740,7 @@ private fun ObserveThreadFirstContentPerformanceGate(
     }
 }
 
-private data class ThreadTaskConversationState(
+internal data class ThreadTaskConversationState(
     val conversationId: ChannelId?,
     val headerViewModel: TaskConversationHeaderViewModel?,
     val headerState: TaskConversationHeaderState?,
@@ -4271,308 +4260,104 @@ private fun SharedThreadRouteContentContent(
         // diagnostics OFF the census session Local is NOT part of the vararg
         // at all — the base array is used by identity, so the production
         // provider scope is unchanged by P1.
-        // New Message Menu toggle: message bodies become selectable in place (ThreadInPlaceTextSelection.kt).
-        // Always on where the pointer selects text (desktop: drag, double-click, Cmd+C, like the web).
-        val inPlaceSelectionEnabled = newMessageMenuEnabled || raftPlatformMessageTextPointerSelectable()
-        val inPlaceTextSelectionHost =
-            remember(inPlaceSelectionEnabled, bridge, copiedLabel) {
-                ThreadInPlaceTextSelectionHost(
-                    enabled = inPlaceSelectionEnabled,
-                    // Web: copying a selection shows nothing (artin 2026-11-02).
-                    copyText = { text -> bridge.copyToPasteboard(text) }
-                )
-            }
-        // read_receipts_v0: other participants' read positions for this page's scope (null = no hydrate).
-        val peerReadReceipts =
-            rememberThreadPeerReadReceipts(
-                payload = renderedThread,
+        val threadFeatureHosts =
+            rememberThreadFeatureHosts(
+                bridge = bridge,
                 sharedStores = sharedStores,
                 storeScope = storeScope,
-                serverId = currentServerId,
-                accountId = currentSession?.user?.id,
                 active = active,
-                serverMembersStore = serverMembersStore,
-            )
-        // The line above the composer: who is about to post into this conversation and, in a
-        // channel, who of its agents is working (null = nobody). A Working now row opens the agent.
-        val agentTyping =
-            rememberThreadAgentTyping(
-                payload = renderedThread,
-                sharedStores = sharedStores,
-                storeScope = storeScope,
-                serverId = currentServerId,
+                currentSession = currentSession,
+                currentServerId = currentServerId,
+                newMessageMenuEnabled = newMessageMenuEnabled,
+                copiedLabel = copiedLabel,
+                renderedThread = renderedThread,
+                renderedTimelineSlice = renderedTimelineSlice,
+                initialRouteIdentity = initialRouteIdentity,
                 serverMembersStore = serverMembersStore,
                 agentStatusResolver = agentStatusResolver,
-                openAgent = { agentId ->
-                    memberDetailIdentity(agentId, MemberKind.Agent, currentServerId)?.let { identity ->
-                        onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity)
-                    }
-                },
-            )
-        // The personal assistant's otter (web AssistantOtterAnchor): on this conversation's composer
-        // when the assistant is ready with its DM, never on that DM or a thread in it.
-        val assistantOtterHostId = remember { newAssistantOtterHostId() }
-        val assistantOtterInSplitPane = threadInSplitDetailPane()
-        val assistantOtterReplyThread = renderedThread.surfaceKind == RaftThreadSurfaceKind.ReplyThread
-        val assistantOtter =
-            rememberThreadAssistantOtter(
-                store = remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) },
-                featureFlags = sharedStores.serverFeatureFlags,
-                serverMembersStore = serverMembersStore,
-                homeState = sharedHomeState,
-                serverId = currentServerId,
-                userId = currentSession?.user?.id,
-                viewerIsGuest = threadViewerIsGuest,
-                conversationChannelId =
-                    if (assistantOtterReplyThread) renderedThread.parentChannelId else renderedThread.streamChannelId,
-                hostId = assistantOtterHostId,
-                wide = assistantOtterInSplitPane,
-                replyThread = assistantOtterReplyThread,
-                pageActive = active,
-                // A thread's composer also names the thread: opened from here, the assistant's DM
-                // attaches it (web ThreadPanel's AssistantOtterAnchor threadParentMessageId/Text).
-                threadParentMessageId =
-                    renderedThread.parentMessageId?.takeIf { assistantOtterReplyThread && it.isNotBlank() }
-                        ?: renderedThread.originParentMessageId?.takeIf { assistantOtterReplyThread && it.isNotBlank() },
-                threadParentText =
-                    renderedThread.originMessage
-                        ?.takeIf { message ->
-                            assistantOtterReplyThread &&
-                                message.id == (renderedThread.parentMessageId ?: renderedThread.originParentMessageId)
-                        }
-                        ?.body,
-            )
-        // App link previews (artin #20 lane L): this viewer on this Server, asked once per conversation.
-        val appLinkPreviewViewerId = currentSession?.user?.id?.takeIf(String::isNotBlank)
-        val appLinkPreviewConversationId = renderedThread.streamChannelId ?: initialRouteIdentity.instanceKey
-        val appLinkPreviewHost =
-            remember(sharedStores, appLinkPreviewViewerId, currentServerId, appLinkPreviewConversationId) {
-                val viewerId = appLinkPreviewViewerId
-                val serverId = currentServerId
-                if (viewerId == null || serverId == null) {
-                    null
-                } else {
-                    ThreadAppLinkPreviewHost(
-                        store = sharedStores.appLinkPreviewStore,
-                        viewerKey = appLinkViewerKey(viewerId, serverId),
-                        serverId = serverId,
-                        conversationId = appLinkPreviewConversationId,
-                        toast = { message -> bridge.toast(message) },
-                        toastWithIntent = { message, intent -> bridge.toastWithIntent(message, intent) },
-                        toastWithAction = { message, actionLabel, onAction -> bridge.toastWithAction(message, actionLabel, onAction) },
-                        errorToast = { message, traceId -> bridge.errorToast(message, traceId) },
-                        copyText = { text -> bridge.copyToPasteboard(text) },
-                        // Workspace Artifacts links (behind workspace_artifacts_v0, read per message).
-                        artifacts =
-                            ThreadArtifactLinkHost(
-                                summaries = sharedStores.artifactSummaryStore,
-                                appHosts = sharedStores.clientConfigStore.appHosts,
-                                featureFlags = sharedStores.serverFeatureFlags,
-                                webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
-                                screenshots = sharedStores.artifactScreenshotStore,
-                                readerId = viewerId,
-                                follows = sharedStores.artifactFollowStore,
-                            ),
-                        // The batched link-card read (App link cards v2).
-                        batchedRead = true,
-                        installedAppOrigins = sharedStores.threadInstalledAppOriginResolver(viewerId, serverId),
-                    )
-                }
-            }
-        // Action cards store ids; show the names this server's roster (and channels) already hold.
-        val actionCardNames =
-            rememberThreadActionCardNameLookup(
-                members = threadServerMembersEntry,
-                serverId = currentServerId,
-                jointActors = serverMembersStore?.jointActors,
-                knownEntities = knownEntityResolver,
-                accountId = knownEntityAccountId,
-                knownEntitiesRevision = sharedHomeState.content,
-                // Computers are named from this server's list only (botiverse/slock #14234).
+                onOpenMemberProfile = onOpenMemberProfile,
+                sharedHomeState = sharedHomeState,
+                threadViewerIsGuest = threadViewerIsGuest,
+                threadServerMembersEntry = threadServerMembersEntry,
+                knownEntityResolver = knownEntityResolver,
+                knownEntityAccountId = knownEntityAccountId,
                 computersStore = computersStore,
-            )
-        // The profile card an @mention in a message, or an author's avatar, opens under a mouse or
-        // trackpad pointer (web MentionLink): a mention is the member its click opens.
-        val currentMentionThread by rememberUpdatedState(renderedThread)
-        // Connected servers of this external channel (or parent channel for reply threads / tasks):
-        // feeds server logos & names into message authors, @ badges, and profile preview cards.
-        val channelJointServers =
-            rememberThreadChannelJointServers(
-                lookupIds = conversationDirectoryLookupIds,
-                parentChannelId = renderedThread.parentChannelId,
-                taskParentChannelId = taskConversation.parentChannelId?.value,
-                serverId = headerProjectionServerId?.value,
-                projections = billingDirectoryProjections,
+                conversationDirectoryLookupIds = conversationDirectoryLookupIds,
+                taskConversation = taskConversation,
+                headerProjectionServerId = headerProjectionServerId,
+                billingDirectoryProjections = billingDirectoryProjections,
                 conversationIdentityProvider = conversationIdentityProvider,
-                homeContentRevision = sharedHomeState.content,
-            )
-        val memberModelLabelResolver =
-            remember(serverMembersStore, headerProjectionServerId, channelJointServers) {
-                raftMemberModelLabelResolver(
-                    serverMembersStore = serverMembersStore,
-                    serverId = headerProjectionServerId?.value,
-                    knownServers = channelJointServers,
-                )
-            }
-        val memberPreviewCardSource =
-            remember(serverMembersStore, headerProjectionServerId, agentStatusResolver, memberAvatarResolver, threadMembersServerId, threadMembersChannelId, channelJointServers) {
-                RaftMemberPreviewCardSource(
-                    serverMembersStore = serverMembersStore,
-                    serverId = headerProjectionServerId?.value,
-                    agentStatusResolver = agentStatusResolver,
-                    memberAvatarResolver = memberAvatarResolver,
-                    knownServers = channelJointServers,
-                    resolveMention = { label ->
-                        val serverMembers =
-                            if (serverMembersStore == null || threadMembersServerId == null) {
-                                emptyList()
-                            } else {
-                                serverMembersStore.currentServerMembers(threadMembersServerId) +
-                                    threadMembersChannelId
-                                        ?.let { serverMembersStore.currentChannelMembers(threadMembersServerId, it) }
-                                        .orEmpty()
-                            }
-                        currentMentionThread.resolveMarkdownMentionOpenTarget(label, serverMembers)?.identity
-                    },
-                )
-            }
-        // Member labels (web #14535/#15817): viewer's joined servers overlaid with this external
-        // channel's `jointServers[].serverAvatarUrl` so badges show other servers' logos too.
-        val viewerServerLogos =
-            remember(currentSession?.servers, channelJointServers) {
-                raftOriginServerLogos(currentSession?.servers.orEmpty().map { it.id to it.avatarUrl }, channelJointServers)
-            }
-        val taskConversationId = taskConversation.conversationId
-        val taskConversationHeaderViewModel = taskConversation.headerViewModel
-        val taskConversationHeaderState = taskConversation.headerState
-        val taskConversationParentChannelId = taskConversation.parentChannelId
-        val taskConversationTasksViewModel = taskConversation.tasksViewModel
-        val taskConversationTasksState = taskConversation.tasksState
-        val taskConversationTask = taskConversation.task
-        val threadTaskTitlesByNumber =
-            remember(
-                markdownTaskContextProjectionSlice.tasks,
-                serverTaskProjectionSlice.tasks,
-                markdownTaskContextChannelId,
-                taskConversationTask,
-            ) {
-                threadTaskTitlesByNumber(
-                    channelTasks = markdownTaskContextProjectionSlice.tasks,
-                    serverTasks = serverTaskProjectionSlice.tasks,
-                    currentChannelId = markdownTaskContextChannelId?.value,
-                    currentTask = taskConversationTask,
-                )
-            }
-        val taskConversationDetailsViewModel = taskConversation.detailsViewModel
-        val taskConversationDetailsState = taskConversation.detailsState
-        val taskConversationJointSurface =
-            jointMessageSurface ||
-                parseConversationKindOrNull(taskConversationTask?.channelType) == ConversationKind.Joint ||
-                (taskConversationParentChannelId?.value?.let { id ->
-                    currentServerId?.let(::ServerId)?.let { server ->
-                        conversationIdentityProvider?.resolveProjection(server, id)?.conversationKind == ConversationKind.Joint
-                    }
-                } == true)
-        val effectiveMessageAvatarResolver =
-            remember(messageAvatarResolver, taskConversationJointSurface) {
-                messageAvatarResolver.forJointSurface(taskConversationJointSurface)
-            }
-        val quoteReplyHost =
-            rememberThreadQuoteReplyHost(
-                serverId = currentServerId,
-                renderedThread = renderedThread,
-                timelineMessages = renderedTimelineSlice.messages,
-                serverMembersStore = serverMembersStore,
-                currentSession = currentSession,
-                memberAvatarResolver = effectiveMessageAvatarResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                threadMembersServerId = threadMembersServerId,
+                threadMembersChannelId = threadMembersChannelId,
+                markdownTaskContextProjectionSlice = markdownTaskContextProjectionSlice,
+                serverTaskProjectionSlice = serverTaskProjectionSlice,
+                markdownTaskContextChannelId = markdownTaskContextChannelId,
+                jointMessageSurface = jointMessageSurface,
+                messageAvatarResolver = messageAvatarResolver,
                 composerDraftViewModel = composerDraftViewModel,
                 threadViewModel = threadViewModel,
-                bridge = bridge,
             )
-        val threadProvidedValues = raftMarkdownProvidedValuesWith(
-            arrayOf(
-                LocalPhoneConversationHeaderPrimaryConfig provides
-                    rememberPhoneConversationHeaderPrimaryConfig(
-                        flags = sharedStores.serverFeatureFlags,
-                        serverId = headerProjectionServerId,
-                    ),
-                LocalThreadQuoteReplyHost provides quoteReplyHost,
-                LocalRaftViewerServerLogos provides viewerServerLogos,
-                LocalRaftChannelJointServers provides channelJointServers,
-                // One channel-kind glyph per channel (forward targets, composer suggestions). Read
-                // from values this lambda already captures (see the JVM-limit note below).
-                LocalRaftChannelKinds provides rememberRaftChannelKindsState(sharedHomeStore.homeStateForPage()),
-                LocalRaftMemberPreviewCardSource provides memberPreviewCardSource,
-                LocalThreadAppLinkPreviewHost provides appLinkPreviewHost,
-                // The conversation its Artifacts (cards, links, Files) are opened from (`hostConversation`).
-                // From values this lambda already captures (see the JVM-limit note below).
-                LocalRaftArtifactOpenConversation provides renderedThread.artifactOpenConversationId(),
-                LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
-                LocalThreadPeerReadReceipts provides peerReadReceipts,
-                LocalThreadAgentTyping provides agentTyping,
-                LocalThreadAssistantOtter provides assistantOtter,
-                // The assistant DM's receipt and WeChat notice cards. Read from values this lambda
-                // already captures (see the JVM-limit note below).
-                LocalThreadAssistantDmCards provides
-                    rememberThreadAssistantDmCardsHost(
-                        sharedStores = sharedStores,
-                        storeScope = storeScope,
-                        serverId = currentServerId,
-                        userId = currentSession?.user?.id,
-                        conversationChannelId =
-                            renderedThread.streamChannelId.takeIf { renderedThread.surfaceKind != RaftThreadSurfaceKind.ReplyThread },
-                        bridge = bridge,
-                    ),
-                LocalThreadInlineVideoPreviewHost provides threadRouteAttachmentActions.inlineVideoPreviewHost(),
-                LocalThreadInlineAudioPreviewHost provides threadRouteAttachmentActions.inlineAudioPreviewHost(),
-                LocalThreadInlineImageFallbackHost provides threadRouteAttachmentActions.inlineImageFallbackHost(),
-                LocalThreadAttachmentDownloadHost provides attachmentDownloadHost,
-                LocalRaftMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
-                LocalRaftMarkdownTaskStatuses provides markdownTaskStatuses,
-                LocalRaftMarkdownTaskRefStatuses provides markdownTaskRefStatuses,
-                LocalThreadTaskTitlesByNumber provides threadTaskTitlesByNumber,
-                // The conversation has a task source that has not loaded yet: task refs keep the
-                // status chip's shape in a neutral look until it does.
-                LocalRaftMarkdownTaskStatusesPending provides
-                    (markdownTaskStatuses == null && markdownTaskContextChannelId != null),
-                // web MessageMarkdownBody: a Raft message permalink in a message body is a
-                // PermalinkReferenceChip (link icon, the conversation, a mono "msg"), not a bare URL.
-                LocalRaftMarkdownRenderConfig provides
-                    RaftMarkdownRenderConfig(
-                        renderMessagePermalinksAsTag = true,
-                        singleParagraphLightPath = singleParagraphLightPathEnabled,
-                    ),
-                LocalThreadReverseLayout provides threadReverseLayoutEnabled,
-                LocalThreadFeedbackCardEntryEnabled provides feedbackCardEntryEnabled,
-                LocalThreadViewerServerId provides currentServerId,
-                // A joint channel's conversation (including a task conversation in one, slock #14517):
-                // every person's face (hand-off card, task head, typing, followers, composer chips)
-                // reads the other server's people as its message rows do.
-                LocalRaftJointActorSurface provides taskConversationJointSurface,
-                // The Add Reaction picker keeps its skin tone and frequently used emoji per account.
-                LocalRaftEmojiPickerOwnerKey provides messageBodyOwnerKey,
-                LocalThreadActionCardNames provides actionCardNames,
-                LocalPendingMentionTargetMap provides
-                    rememberThreadPendingMentionTargetMap(
-                        serverMembersEntry = threadServerMembersEntry,
-                        channelMembersSlice = threadChannelMembersSlice,
-                        payloadMembers = renderedThread.members,
-                        payloadMemberCandidates = renderedThread.memberCandidates,
-                        serverId = threadMembersServerId,
-                        jointActors = serverMembersStore?.jointActors,
-                    ),
-                LocalThreadActionCardSpecHost provides actionCardSpecHost,
-                LocalThreadKeyboardTapDismissal provides threadKeyboardTapDismissal,
-                LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
-                LocalThreadMessageLongPressGestureOwnerStore provides
-                    threadMessageLongPressGestureOwnerStore,
-                LocalThreadPendingReactionVisuals provides pendingReactionVisuals,
-                LocalRaftMemberAppBotResolver provides memberAppBotResolver,
-                LocalRaftTimeContextProvider provides timeContextProvider
-            ),
-            LocalRaftMarkdownPlainCandidateSession,
-            plainCandidateCensusSession
-        )
+        val inPlaceTextSelectionHost = threadFeatureHosts.inPlaceTextSelectionHost
+        val assistantOtter = threadFeatureHosts.assistantOtter
+        val actionCardNames = threadFeatureHosts.actionCardNames
+        val memberModelLabelResolver = threadFeatureHosts.memberModelLabelResolver
+        val taskConversationId = threadFeatureHosts.taskConversationId
+        val taskConversationHeaderViewModel = threadFeatureHosts.taskConversationHeaderViewModel
+        val taskConversationHeaderState = threadFeatureHosts.taskConversationHeaderState
+        val taskConversationParentChannelId = threadFeatureHosts.taskConversationParentChannelId
+        val taskConversationTasksViewModel = threadFeatureHosts.taskConversationTasksViewModel
+        val taskConversationTasksState = threadFeatureHosts.taskConversationTasksState
+        val taskConversationTask = threadFeatureHosts.taskConversationTask
+        val taskConversationDetailsViewModel = threadFeatureHosts.taskConversationDetailsViewModel
+        val taskConversationDetailsState = threadFeatureHosts.taskConversationDetailsState
+        val effectiveMessageAvatarResolver = threadFeatureHosts.effectiveMessageAvatarResolver
+        val quoteReplyHost = threadFeatureHosts.quoteReplyHost
+        val threadProvidedValues =
+            rememberThreadProvidedValues(
+                sharedStores = sharedStores,
+                storeScope = storeScope,
+                bridge = bridge,
+                currentSession = currentSession,
+                currentServerId = currentServerId,
+                headerProjectionServerId = headerProjectionServerId,
+                renderedThread = renderedThread,
+                sharedHomeStore = sharedHomeStore,
+                quoteReplyHost = quoteReplyHost,
+                viewerServerLogos = threadFeatureHosts.viewerServerLogos,
+                channelJointServers = threadFeatureHosts.channelJointServers,
+                memberPreviewCardSource = threadFeatureHosts.memberPreviewCardSource,
+                appLinkPreviewHost = threadFeatureHosts.appLinkPreviewHost,
+                inPlaceTextSelectionHost = inPlaceTextSelectionHost,
+                peerReadReceipts = threadFeatureHosts.peerReadReceipts,
+                agentTyping = threadFeatureHosts.agentTyping,
+                assistantOtter = assistantOtter,
+                threadRouteAttachmentActions = threadRouteAttachmentActions,
+                attachmentDownloadHost = attachmentDownloadHost,
+                messagePermalinkLabelResolver = messagePermalinkLabelResolver,
+                markdownTaskStatuses = markdownTaskStatuses,
+                markdownTaskRefStatuses = markdownTaskRefStatuses,
+                threadTaskTitlesByNumber = threadFeatureHosts.threadTaskTitlesByNumber,
+                markdownTaskContextChannelId = markdownTaskContextChannelId,
+                singleParagraphLightPathEnabled = singleParagraphLightPathEnabled,
+                threadReverseLayoutEnabled = threadReverseLayoutEnabled,
+                feedbackCardEntryEnabled = feedbackCardEntryEnabled,
+                taskConversationJointSurface = threadFeatureHosts.taskConversationJointSurface,
+                messageBodyOwnerKey = messageBodyOwnerKey,
+                actionCardNames = actionCardNames,
+                threadServerMembersEntry = threadServerMembersEntry,
+                threadChannelMembersSlice = threadChannelMembersSlice,
+                threadMembersServerId = threadMembersServerId,
+                serverMembersStore = serverMembersStore,
+                actionCardSpecHost = actionCardSpecHost,
+                threadKeyboardTapDismissal = threadKeyboardTapDismissal,
+                threadPointerSessionKey = threadPointerSessionKey,
+                threadMessageLongPressGestureOwnerStore = threadMessageLongPressGestureOwnerStore,
+                pendingReactionVisuals = pendingReactionVisuals,
+                memberAppBotResolver = memberAppBotResolver,
+                timeContextProvider = timeContextProvider,
+                plainCandidateCensusSession = plainCandidateCensusSession,
+            )
         // Task v2: the task channel's people and agents for the assignee picker (web
         // `useChannelMembers(task.channelId)`); a task conversation has no members of its own.
         val taskConversationMembersServerId = currentServerId?.let(::ServerId)
@@ -5441,7 +5226,7 @@ internal fun threadChannelJointServers(
 }
 
 @Composable
-private fun rememberThreadChannelJointServers(
+internal fun rememberThreadChannelJointServers(
     lookupIds: List<String>,
     parentChannelId: String?,
     taskParentChannelId: String?,
