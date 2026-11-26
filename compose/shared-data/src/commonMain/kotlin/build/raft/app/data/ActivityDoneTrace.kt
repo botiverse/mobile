@@ -51,7 +51,8 @@ import kotlinx.serialization.json.put
         InboxItemKind.DirectMessage -> ActivityDoneTraceRowKind.Dm
         InboxItemKind.Thread -> ActivityDoneTraceRowKind.Thread
         InboxItemKind.MentionAction,
-        InboxItemKind.Object -> null
+        InboxItemKind.Object,
+        InboxItemKind.System -> null
     }
 
 @RaftCoreInternalApi sealed interface ActivityDoneTraceEvent {
