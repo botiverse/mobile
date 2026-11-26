@@ -23,6 +23,7 @@ import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /**
  * Verifies command menu sizing (`botiverse/slock#17084`, `raft-ui 0.106.1`):
@@ -35,6 +36,7 @@ import org.robolectric.annotation.Config
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w390dp-h844dp-mdpi")
 class DropdownMenuSizingUiTest {
     @get:Rule
@@ -150,7 +152,7 @@ class DropdownMenuSizingUiTest {
     @Test
     fun baseMenuOverlayGrowsBeyondLegacy280DpCapForLongItemSingleLine() =
         runRobolectricComposeUiTest {
-            val longLabel = "Move channel to a longer custom section"
+            val longLabel = "Move channel to another custom department"
             var scale = 1f
             setContent {
                 scale = LocalDensity.current.density
