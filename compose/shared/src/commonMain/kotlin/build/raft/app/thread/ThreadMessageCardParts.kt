@@ -350,11 +350,14 @@ internal fun ThreadAuthorDescriptionPopover(
                             vertical = ThreadAuthorDescriptionPopoverVerticalPaddingDp.dp
                         )
             ) {
-                Text(
+                RaftProfileDescriptionText(
                     text = request.description,
                     // Web sender subtitle Tooltip: sans text-footnote font-medium (13/18 500).
                     style = RaftType.Footnote.withRaftFontWeight(FontWeight.Medium).copy(color = RaftColor.TextBlack),
-                    color = RaftColor.TextBlack
+                    color = RaftColor.TextBlack,
+                    source = "author_subtitle_popover",
+                    onBeforeOpenArtifact = onDismiss,
+                    enableHoverCards = true,
                 )
             }
         }

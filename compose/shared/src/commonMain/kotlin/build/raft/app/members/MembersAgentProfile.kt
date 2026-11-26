@@ -1550,15 +1550,28 @@ private fun MembersAgentProfileFieldsSection(
                     }
                 }
             } else {
-                Text(
-                    text = member.description?.takeIf { it.isNotBlank() }
-                        ?: stringResource(Res.string.member_state_no_description),
-                    // Web AgentProfileInfo: text-subhead (15/20 400); "No description" in hint ink, upright.
-                    style = RaftType.Subhead,
-                    color = if (member.description.isNullOrBlank()) RaftColor.TextMutedGray else RaftColor.TextBlack,
-                    maxLines = 6,
-                    overflow = TextOverflow.Ellipsis
-                )
+                val currentDescription = member.description?.takeIf { it.isNotBlank() }
+                if (currentDescription != null) {
+                    RaftProfileDescriptionText(
+                        text = currentDescription,
+                        // Web AgentProfileInfo: text-subhead (15/20 400).
+                        style = RaftType.Subhead,
+                        color = RaftColor.TextBlack,
+                        maxLines = 6,
+                        overflow = TextOverflow.Ellipsis,
+                        source = "agent_profile",
+                        enableHoverCards = true,
+                    )
+                } else {
+                    Text(
+                        text = stringResource(Res.string.member_state_no_description),
+                        // Web AgentProfileInfo: text-subhead (15/20 400); "No description" in hint ink, upright.
+                        style = RaftType.Subhead,
+                        color = RaftColor.TextMutedGray,
+                        maxLines = 6,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 RaftDescriptionLinkWarnings(
                     warnings = descriptionLinkWarnings,
                     subject = build.raft.app.data.DescriptionLinkSubject.Agent,

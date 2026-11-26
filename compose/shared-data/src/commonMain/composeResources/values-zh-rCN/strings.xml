@@ -5045,6 +5045,9 @@
     <string name="artifacts_card_deleted_by_name">%1$s 删除</string>
     <string name="artifacts_card_deleted_at">删除于 %1$s</string>
     <string name="artifacts_card_deleted">已删除</string>
+    <string name="artifacts_chip_deleted">已删除</string>
+    <string name="artifacts_chip_placeholder">Artifact</string>
+    <string name="artifacts_chip_description_unavailable_hint">你看不到这个 Artifact，点开可以查看原因。</string>
     <string name="artifacts_facts_bytes">%1$s B</string>
     <string name="artifacts_facts_kilobytes">%1$s KB</string>
     <string name="artifacts_facts_megabytes">%1$s MB</string>

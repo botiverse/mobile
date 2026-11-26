@@ -5521,6 +5521,7 @@ private fun RaftAppShellReadyContent(
             onOpenEdit = { railPlacesEditOpen = true },
             closeMoreSignal = serverMenuState.open || railHelpOpen || appShellTopBar.bellOpen.value,
         )
+    val shellProfileDescriptionArtifacts = rememberShellProfileDescriptionArtifactHost(sharedStores, readyServerId)
     val mainRouteSurface: @Composable () -> Unit = {
         CompositionLocalProvider(
             LocalRaftAppShellTopBar provides appShellTopBar.takeIf { navRailActive },
@@ -5529,6 +5530,7 @@ private fun RaftAppShellReadyContent(
             LocalRaftChannelKinds provides rememberRaftChannelKindsState(homeState),
             // App-shell inline surfaces (wide search, Artifacts rail page, split panes) share the shell's scope.
             LocalRaftArtifactOpenStoreScope provides storeScope,
+            LocalRaftProfileDescriptionArtifacts provides shellProfileDescriptionArtifacts,
         ) {
         RaftAppShellSurface(
             shellScope = shellScope,

@@ -26,7 +26,6 @@ import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.data.runtimeCatalogDisplayName
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftPreviewCard
-import build.raft.designsystem.components.RaftPreviewCardDescription
 import build.raft.designsystem.components.RaftPreviewCardHeader
 import build.raft.designsystem.components.RaftPreviewCardSeparator
 import build.raft.designsystem.components.RaftPreviewCardTitle
@@ -366,10 +365,9 @@ internal fun RaftProfilePreviewCardContent(model: RaftProfilePreviewCardModel) {
     }
     model.description?.let { description ->
         RaftPreviewCardSeparator()
-        // Web ProfileDescription: the box cuts it at two lines and its tooltip says all of it.
-        RaftTooltip(text = description) {
-            RaftPreviewCardDescription(description, maxLines = 2)
-        }
+        // Web ProfileDescription (#14969 / #15230): Artifact links as inline title chips,
+        // clamped at two lines with its tooltip over plain text.
+        RaftProfilePreviewDescription(description)
     }
 }
 

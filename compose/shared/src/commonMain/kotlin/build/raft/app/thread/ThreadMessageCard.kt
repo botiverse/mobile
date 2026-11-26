@@ -1421,6 +1421,7 @@ private fun ThreadMessageCardContent(
                                         authorGuestLabel?.let { guest ->
                                             ThreadMessageAuthorSubtitle(
                                                 description = guest,
+                                                enableArtifactChips = false,
                                                 modifier = Modifier.alignByBaseline()
                                             )
                                         }
@@ -1450,6 +1451,11 @@ private fun ThreadMessageCardContent(
                                                 description = description,
                                                 rootAnchor = subtitleAnchor,
                                                 onClick = handleSubtitleClick,
+                                                enableArtifactChips = message.externalAuthor == null,
+                                                interactive = !shareSelectionActive,
+                                                onBeforeOpenArtifact = {
+                                                    tapMovementGate.rejectChildAction("author_subtitle_artifact")
+                                                },
                                                 modifier = Modifier.weight(1f, fill = false).alignByBaseline()
                                             )
                                         }

@@ -995,11 +995,20 @@ internal fun MemberDetailPageContent(
             detail = selectedAgentDetail,
             timeContext = timeContextProvider.current ?: timeContext,
         )
+    val profileDescriptionServerId =
+        when (val current = routeState) {
+            is MemberDetailRouteState.Agent -> current.server.id.value
+            is MemberDetailRouteState.Human -> current.server.id.value
+            else -> activeServerId
+        }
+    val profileDescriptionArtifacts = rememberMemberDetailProfileDescriptionArtifactHost(bridge, profileDescriptionServerId)
     CompositionLocalProvider(
         LocalMembersRuntimeAccountUsageAccess provides runtimeAccountUsageAccess,
         LocalAssistantOwnerScope provides assistantOwnerScope,
         build.raft.app.agents.LocalAgentVoiceSectionScope provides agentVoiceSectionScope,
         LocalRaftTimeContextProvider provides timeContextProvider,
+        LocalRaftProfileDescriptionArtifacts provides profileDescriptionArtifacts,
+        LocalRaftArtifactOpenStoreScope provides provider.storeScope,
     ) {
         Box(Modifier.fillMaxSize()) {
         when (val current = routeState) {

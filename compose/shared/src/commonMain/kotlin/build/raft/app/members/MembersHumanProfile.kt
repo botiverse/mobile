@@ -559,11 +559,22 @@ private fun MembersHumanDescriptionSection(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                RaftText(
-                    text = displayedDescription ?: stringResource(Res.string.member_state_no_description),
-                    style = RaftTheme.typography.callout,
-                    color = if (displayedDescription == null) colors.foregroundHint else colors.foregroundMuted
-                )
+                val currentDescription = displayedDescription
+                if (currentDescription != null) {
+                    RaftProfileDescriptionText(
+                        text = currentDescription,
+                        style = RaftTheme.typography.callout,
+                        color = colors.foregroundMuted,
+                        source = "human_profile",
+                        enableHoverCards = true,
+                    )
+                } else {
+                    RaftText(
+                        text = stringResource(Res.string.member_state_no_description),
+                        style = RaftTheme.typography.callout,
+                        color = colors.foregroundHint
+                    )
+                }
                 RaftDescriptionLinkWarnings(
                     warnings = linkWarnings,
                     subject = DescriptionLinkSubject.Person,
