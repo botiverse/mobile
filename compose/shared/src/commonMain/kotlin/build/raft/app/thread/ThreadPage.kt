@@ -11,7 +11,6 @@ import build.raft.app.resources.*
 import build.raft.app.downloads.RaftDownloadCenterProcess
 import build.raft.app.data.homeStateForPage
 import build.raft.app.data.HomeFollowedThreadUnread
-import build.raft.app.data.RaftRatingPrompt
 import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
@@ -63,8 +62,6 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.map
-import build.raft.app.data.raftAppActionCardCapabilities
-import build.raft.app.data.featureFlagClientOs
 import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.ThreadApiResult
@@ -76,9 +73,6 @@ import build.raft.app.data.RaftComputersApiClient
 import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
-import build.raft.app.data.SecondFactorStepUpCoordinator
-import build.raft.app.data.SecondFactorStepUpRepository
-import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.RaftIntegrationsActionsPushNetworkApi
 import build.raft.app.data.isRaftHostVisible
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
@@ -4150,130 +4144,33 @@ private fun SharedThreadRouteContentContent(
             false
         }
 
-    // A card execute refused for a fresh second step (two-step verification on; approver-class
-    // cards: Approve Login, Install App, and their spec-card forms): "Verify it's you", then the
-    // card runs once more. One dialog for the typed commit, the install confirmation and spec cards.
-    val actionCardStepUp =
-        remember(sharedStores, storeScope, threadInstanceKey) {
-            threadActionCardStepUpCoordinator(sharedStores.networkClient(storeScope))
-        }
-    val actionCardStepUpState by actionCardStepUp.state.collectAsState()
-    // web InstallAppCardDialog: an install card's button opens this; only its Install executes.
-    val installAppDialogStore =
-        remember(threadInstanceKey) {
-            threadInstallAppActionDialogStore(
-                scope = coroutineScope,
-                dataSource = dataSource,
-                applyCard = { messageId, card -> threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card)) },
-                // The card's done line names what was installed.
-                toastInstalled = { bridge.toast(genericActionCardSuccessLabel) },
-                routeAuthRequired = { result -> routeAuthRequired(result) },
-                stepUp = actionCardStepUp,
-            )
-        }
-    val installAppDialogStateHolder = installAppDialogStore.state.collectAsState()
-
-    // A4: spec card Buttons that run the card (execute, its confirm, a form) go through this store
-    // to SharedThreadDataSource.executeActionCardSpec; links and the typed path don't
-    // (threadActionCardSpecPress).
-    val actionCardSpecStore =
-        remember(threadInstanceKey) {
-            ThreadActionCardSpecStore(
-                scope = coroutineScope,
-                execute = { messageId, card, form -> dataSource.executeActionCardSpec(messageId, card, form) },
-                closeQuestion = { messageId, card -> dataSource.closeQuestionActionCard(messageId, card) },
-                checkSeatRequest = { messageId, card -> dataSource.checkSeatRequest(messageId, card) },
-                completeSeatRequest = { messageId, card -> dataSource.completeSeatRequest(messageId, card) },
-                stepUp = actionCardStepUp,
-                applyCard = { messageId, card -> threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card)) },
-                onNoPermission = { result -> routeAuthRequired(result) },
-                loadWebUrl = { sharedStores.apiEnvironmentStore.current().webUrl },
-                openInBrowser = { url ->
-                    openThreadActionCardWebUrl(
-                        url = url,
-                        activeWebUrl = sharedStores.apiEnvironmentStore.current().webUrl,
-                        pager = pager,
-                        storeScope = storeScope,
-                        bridge = bridge,
-                    )
-                },
-                onApproved = RaftRatingPrompt::onActionCardApproved,
-            )
-        }
-    // The page reads only the open confirm / form / seat-request sheet; each card reads its own slice (ThreadActionCardSpecView).
-    val actionCardSpecDialogsFlow =
-        remember(actionCardSpecStore) {
-            actionCardSpecStore.state.map { ThreadActionCardSpecDialogs(it.confirm, it.form, it.seatRequest) }.distinctUntilChanged()
-        }
-    val actionCardSpecState by actionCardSpecDialogsFlow.collectAsState(ThreadActionCardSpecDialogs())
-    val actionCardAlreadyExecutedLabel = stringResource(Res.string.thread_action_card_already_executed)
-    val actionCardAlreadyExecutedByTemplate =
-        stringResource(Res.string.thread_action_card_already_executed_by, ThreadLocalizedFeedbackPlaceholder)
-    val actionCardOpenInWebFailedLabel = stringResource(Res.string.thread_action_card_open_in_web_failed)
-    val actionCardFrozenClosedLabel = stringResource(Res.string.thread_action_card_frozen_closed)
-    val latestActionCardThread by rememberUpdatedState(renderedThread)
-    val latestActionCardServerSlug by rememberUpdatedState(currentServerSlug)
-    LaunchedEffect(actionCardSpecStore) {
-        actionCardSpecStore.effects.collect { effect ->
-            when (effect) {
-                is ThreadActionCardSpecEffect.AlreadyExecuted ->
-                    bridge.toast(
-                        when {
-                            effect.frozen -> actionCardFrozenClosedLabel
-                            effect.executedByUserName != null ->
-                                actionCardAlreadyExecutedByTemplate.replace(ThreadLocalizedFeedbackPlaceholder, effect.executedByUserName)
-                            else -> actionCardAlreadyExecutedLabel
-                        }
-                    )
-                ThreadActionCardSpecEffect.OpenInWebFailed -> bridge.toast(actionCardOpenInWebFailedLabel)
-                is ThreadActionCardSpecEffect.OpenSeatRequestInWeb ->
-                    actionCardSpecStore.dispatch(
-                        ThreadActionCardSpecIntent.OpenInWeb(
-                            effect.messageId,
-                            latestActionCardThread.threadMessageLink(effect.messageId, latestActionCardServerSlug),
-                        )
-                    )
-            }
-        }
-    }
-    // Home's DM rows: a navigate to a message in a DM opens the DM route.
-    val actionCardDirectMessageIds =
-        remember(sharedHomeState.content) {
-            (sharedHomeState.content as? SharedHomeContentState.Content)?.baseSnapshot?.directMessages.orEmpty().mapTo(HashSet()) { it.channelId.value }
-        }
-    val latestActionCardDirectMessageIds by rememberUpdatedState(actionCardDirectMessageIds)
-    val evaluateMigrateAgentAccess =
-        rememberThreadActionCardMigrateAccess(currentSession, currentServerId, threadServerMembersEntry)
-    // Not keyed on the store's state: each card selects its own slice of it.
-    val actionCardSpecHost =
-        remember(feedbackCardEntryEnabled, actionCardSpecStore, currentSession?.user?.id, evaluateMigrateAgentAccess) {
-            ThreadActionCardSpecHost(
-                capabilities = raftAppActionCardCapabilities(feedbackFormAvailable = feedbackCardEntryEnabled),
-                state = actionCardSpecStore.state,
-                onIntent = actionCardSpecStore::dispatch,
-                openInWeb = { messageId ->
-                    actionCardSpecStore.dispatch(
-                        ThreadActionCardSpecIntent.OpenInWeb(
-                            messageId,
-                            latestActionCardThread.threadMessageLink(messageId, latestActionCardServerSlug),
-                        )
-                    )
-                },
-                isDirectMessageChannel = { channelId -> channelId in latestActionCardDirectMessageIds },
-                viewerUserId = currentSession?.user?.id,
-                clientOs = featureFlagClientOs(),
-                openFeedbackTicket = { ticketId ->
-                    bridge.log("thread_feedback_ticket_open hasTicket=${ticketId != null}")
-                    pager.openSettingsFeedbackPage(storeScope, ticketId = ticketId)
-                },
-                openPlan = {
-                    bridge.log("thread_view_plan_open")
-                    pager.openSettingsBillingPage(storeScope)
-                },
-                evaluateMigrateAgentAccess = evaluateMigrateAgentAccess,
-                log = { line -> bridge.log(line) },
-            )
-        }
+    val threadRouteActionCards =
+        rememberThreadRouteActionCards(
+            bridge = bridge,
+            pager = pager,
+            storeScope = storeScope,
+            sharedStores = sharedStores,
+            threadInstanceKey = threadInstanceKey,
+            coroutineScope = coroutineScope,
+            dataSource = dataSource,
+            threadViewModel = threadViewModel,
+            genericActionCardSuccessLabel = genericActionCardSuccessLabel,
+            routeAuthRequired = { result -> routeAuthRequired(result) },
+            renderedThread = renderedThread,
+            currentServerSlug = currentServerSlug,
+            sharedHomeState = sharedHomeState,
+            currentSession = currentSession,
+            currentServerId = currentServerId,
+            threadServerMembersEntry = threadServerMembersEntry,
+            feedbackCardEntryEnabled = feedbackCardEntryEnabled,
+        )
+    val actionCardStepUp = threadRouteActionCards.actionCardStepUp
+    val actionCardStepUpState by threadRouteActionCards.actionCardStepUpStateHolder
+    val installAppDialogStore = threadRouteActionCards.installAppDialogStore
+    val installAppDialogStateHolder = threadRouteActionCards.installAppDialogStateHolder
+    val actionCardSpecStore = threadRouteActionCards.actionCardSpecStore
+    val actionCardSpecState by threadRouteActionCards.actionCardSpecStateHolder
+    val actionCardSpecHost = threadRouteActionCards.actionCardSpecHost
 
     LaunchedEffect(taskConversation.tasksViewModel, unableToUpdateTaskLabel) {
         taskConversation.tasksViewModel?.uiEvents?.collect { event ->
@@ -6719,44 +6616,6 @@ private fun FlushComposerDraftOnLeave(
             lifecycleOwner.lifecycle.removeObserver(observer)
             composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
         }
-    }
-}
-
-/**
- * The thread's action-card step-up (out of SharedThreadRouteContentContent, whose JVM method size
- * is ratcheted: scripts/ci/check_jvm_method_size.py).
- */
-private fun threadActionCardStepUpCoordinator(networkClient: RaftNetworkClient): SecondFactorStepUpCoordinator {
-    val repository = SecondFactorStepUpRepository(networkClient)
-    return SecondFactorStepUpCoordinator(
-        stepUp = repository::stepUp,
-        passkeyOptions = repository::passkeyAssertionOptions,
-        webStepUp = repository.webStepUp(),
-    )
-}
-
-/**
- * Opens an action card's "Open in web" link with the App Store 3.1.1 guard and own-origin
- * authenticated WebView (out of SharedThreadRouteContentContent to stay below its JVM method-size cap).
- */
-private fun openThreadActionCardWebUrl(
-    url: String,
-    activeWebUrl: String,
-    pager: Pager,
-    storeScope: RaftShellStoreScope,
-    bridge: build.raft.app.base.BridgeModule,
-) {
-    bridge.log("thread_action_card_open_in_web")
-    if (
-        raftPlatformFollowsAppStoreBillingRules() &&
-        raftUrlIsAppStoreRestrictedPurchaseUrl(url, activeWebUrl)
-    ) {
-        bridge.logWarn("thread_action_card_appstore_purchase_blocked url=${raftOwnWebUrlForLog(url)}")
-        if (raftUrlIsOwnBillingPath(url, activeWebUrl)) {
-            pager.openSettingsBillingPage(storeScope)
-        }
-    } else if (!pager.openRaftOwnWebPage(url, storeScope, activeWebBaseUrl = activeWebUrl)) {
-        bridge.hostCapabilities.openUrlInBrowser(url)
     }
 }
 
