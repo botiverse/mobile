@@ -868,7 +868,7 @@ class HandsDeltaUpdateGateTest {
             )
         )
 
-        // Switching a production main/preview build to alpha enables alpha_channel_delta.
+        // Switching a production main/preview build to alpha enables alpha_channel_delta when visible.
         assertEquals(
             HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA,
@@ -883,7 +883,69 @@ class HandsDeltaUpdateGateTest {
                 deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                 deltaChannel = HANDS_DELTA_MAIN_CHANNEL,
                 overrideChannel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
-                channelSwitchSupported = true
+                channelSwitchSupported = true,
+                earlyAccessVisible = true,
+                earlyAccessDefaultOn = false
+            )
+        )
+        // Server defaultOn=true (with visible=true) routes untouched installs to alpha.
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_PREVIEW_CHANNEL,
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_PREVIEW_CHANNEL,
+                overrideChannel = null,
+                channelSwitchSupported = true,
+                earlyAccessVisible = true,
+                earlyAccessDefaultOn = true
+            )
+        )
+        // Explicit user opt-out (overrideChannel=main) wins over server defaultOn=true.
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_MAIN_DELTA,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_MAIN_CHANNEL,
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_MAIN_CHANNEL,
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_MAIN_CHANNEL,
+                overrideChannel = HANDS_DELTA_MAIN_CHANNEL,
+                channelSwitchSupported = true,
+                earlyAccessVisible = true,
+                earlyAccessDefaultOn = true
+            )
+        )
+        // Revoking visibility falls back to main even when overrideChannel or defaultOn was set.
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_MAIN_DELTA,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_MAIN_CHANNEL,
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_PREVIEW_CHANNEL,
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_PREVIEW_CHANNEL,
+                overrideChannel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                channelSwitchSupported = true,
+                earlyAccessVisible = false,
+                earlyAccessDefaultOn = true
             )
         )
         // Switching back to main returns to main_delta even if originally built for alpha.
@@ -901,10 +963,11 @@ class HandsDeltaUpdateGateTest {
                 deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                 deltaChannel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
                 overrideChannel = HANDS_DELTA_MAIN_CHANNEL,
-                channelSwitchSupported = true
+                channelSwitchSupported = true,
+                earlyAccessVisible = true
             )
         )
-        // Unsupported builds ignore any overrideChannel.
+        // Unsupported builds ignore any overrideChannel or server early-access flags.
         assertEquals(
             HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_ALPHA_DELTA,
@@ -919,7 +982,9 @@ class HandsDeltaUpdateGateTest {
                 deltaAppSlug = HANDS_DELTA_ALPHA_APP_SLUG,
                 deltaChannel = HANDS_DELTA_ALPHA_CHANNEL,
                 overrideChannel = HANDS_DELTA_MAIN_CHANNEL,
-                channelSwitchSupported = false
+                channelSwitchSupported = false,
+                earlyAccessVisible = true,
+                earlyAccessDefaultOn = true
             )
         )
     }

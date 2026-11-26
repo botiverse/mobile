@@ -11,6 +11,7 @@ import build.raft.app.resources.*
 import build.raft.app.base.Utils
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.RaftAppUpdateEvents
+import build.raft.app.data.RaftEarlyAccessPolicyHost
 import build.raft.app.data.RaftNotificationPreferenceEvents
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
@@ -56,6 +57,7 @@ import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.SharedRealtimeDomainEventOwner
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RealtimeEvent
+import build.raft.app.model.ServerId
 import build.raft.app.model.ServerNotificationPreferencesChanged
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -82,6 +84,7 @@ import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun SettingsNativeDetailScreen() {
@@ -121,6 +124,34 @@ internal fun SettingsNativeDetailScreen() {
         }
     val settingsState by settingsViewModel.state.collectAsState()
     var session by remember { mutableStateOf<StoredAuthSession?>(null) }
+    val featureFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val aboutServerIds =
+        remember(session) {
+            buildList {
+                session?.currentServerId?.trim()?.takeIf(String::isNotEmpty)?.let(::add)
+                session?.servers?.forEach { server ->
+                    server.id.trim().takeIf(String::isNotEmpty)?.let(::add)
+                }
+            }.distinct()
+        }
+    val earlyAccessPolicy =
+        remember(sharedStores.serverFeatureFlags, aboutServerIds, featureFlagRevision) {
+            sharedStores.serverFeatureFlags.earlyAccessPolicy(aboutServerIds)
+        }
+    LaunchedEffect(route.page, aboutServerIds, sharedStores.serverFeatureFlags) {
+        if (route.page != SettingsNativeDetailPage.About) return@LaunchedEffect
+        aboutServerIds.forEach { serverId ->
+            val id = ServerId(serverId)
+            if (!sharedStores.serverFeatureFlags.snapshotFor(id).resolved) {
+                launch { runCatching { sharedStores.serverFeatureFlags.prefetch(id) } }
+            }
+        }
+    }
+    LaunchedEffect(route.page, earlyAccessPolicy) {
+        if (route.page != SettingsNativeDetailPage.About) return@LaunchedEffect
+        RaftEarlyAccessPolicyHost.onPolicyChanged(earlyAccessPolicy)
+        settingsViewModel.dispatch(SharedSettingsIntent.RefreshHandsUpdateStatus)
+    }
     var notificationPreferenceSnapshot by remember {
         mutableStateOf(NotificationPreferenceSnapshot(enabled = true))
     }
@@ -284,6 +315,7 @@ internal fun SettingsNativeDetailScreen() {
             }
         },
         appearanceAssistantSource = appearanceAssistantSource,
+        earlyAccessVisible = earlyAccessPolicy.visible,
     )
     }
     }
@@ -374,6 +406,8 @@ internal fun SettingsNativeDetailPageContent(
     onOpenComputer: ((machineId: String) -> Unit)? = null,
     /** Viewer's personal assistant binding for Settings › Appearance (web `AssistantOtterSettingsSection`). */
     appearanceAssistantSource: SettingsAppearanceAssistantSource? = null,
+    /** Server-driven visibility gate (`mobile_early_access_visible_v0`, `#proj-mobile:e48030bc`). */
+    earlyAccessVisible: Boolean = false,
     onLogout: () -> Unit
 ) {
     val diagnosticsSnapshot =
@@ -812,7 +846,7 @@ internal fun SettingsNativeDetailPageContent(
                     onOpenApiEnvironment = onOpenApiEnvironmentPage,
                     onOpenDiagnostics = onOpenDiagnosticsPage,
                     onOpenDeveloper = onOpenDeveloperPage,
-                    session = session,
+                    earlyAccessVisible = earlyAccessVisible,
                     onToggleEarlyAccessChannel = { enableAlpha ->
                         onSettingsIntent(
                             SharedSettingsIntent.SetHandsUpdateChannel(if (enableAlpha) "alpha" else "main")

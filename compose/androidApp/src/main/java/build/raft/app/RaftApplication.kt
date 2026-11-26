@@ -26,6 +26,7 @@ import build.raft.app.shared.RaftAndroidStoreReview
 import build.raft.app.shared.RaftAndroidNightMode
 import build.raft.app.shared.RaftBuildStamp
 import build.raft.app.shared.handsEffectiveReleaseChannelForRuntime
+import build.raft.app.shared.installAndroidEarlyAccessPolicyHost
 import build.raft.app.shared.ProcessAndroidAttachmentMediaStoreCleanup
 import build.raft.app.shared.ProcessAndroidAttachmentPublicDownloads
 import build.raft.app.shared.installAndroidThreadComposerTemporaryFileRetirement
@@ -164,6 +165,7 @@ class RaftApplication : Application() {
         // Keep our `raft-build` stamp (AndroidSystemKillReporter reads it); the SDK's ANR
         // reporter reads it too, so it need not rewrite it to its own `hands-build` format.
         HandsCrash.setAnrBuildStampingEnabled(false)
+        installAndroidEarlyAccessPolicyHost(this)
         val effectiveHandsChannel = handsEffectiveReleaseChannelForRuntime(this)
         HandsCrash.install(
             context = this,

@@ -7,6 +7,9 @@ import build.hands.update.models.UpdateCheckResponse
 import build.raft.app.BuildConfig
 import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.data.RaftAppUpdatePermissionResumeRepository
+import build.raft.app.data.RaftEarlyAccessFlagPolicy
+import build.raft.app.data.RaftEarlyAccessPolicyHost
+import build.raft.app.data.RaftEarlyAccessPolicyHostListener
 import build.raft.app.data.SharedSettingsUpdateTransactionState
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -122,10 +125,14 @@ internal fun resolveHandsEffectiveChannel(
     configuredChannel: String,
     overrideChannel: String?,
     switchSupported: Boolean,
+    earlyAccessVisible: Boolean = false,
+    earlyAccessDefaultOn: Boolean = false,
 ): String {
     val normalizedDefault = normalizeHandsReleaseChannel(configuredChannel)
     if (!switchSupported) return normalizedDefault
-    return normalizeHandsRuntimeOverrideChannel(overrideChannel) ?: normalizedDefault
+    if (!earlyAccessVisible) return normalizedDefault
+    return normalizeHandsRuntimeOverrideChannel(overrideChannel)
+        ?: if (earlyAccessDefaultOn) HANDS_DELTA_RELEASE_ALPHA_CHANNEL else normalizedDefault
 }
 
 internal class RaftHandsUpdateChannelStore(context: Context) {
@@ -141,10 +148,67 @@ internal class RaftHandsUpdateChannelStore(context: Context) {
         return normalized
     }
 
+    fun readServerPolicy(): RaftEarlyAccessFlagPolicy {
+        val visible = preferences.getBoolean(KEY_SERVER_POLICY_VISIBLE, false)
+        val defaultOn = visible && preferences.getBoolean(KEY_SERVER_POLICY_DEFAULT_ON, false)
+        return RaftEarlyAccessFlagPolicy(visible = visible, defaultOn = defaultOn)
+    }
+
+    fun writeServerPolicy(policy: RaftEarlyAccessFlagPolicy) {
+        val visible = policy.visible
+        val defaultOn = visible && policy.defaultOn
+        preferences.edit()
+            .putBoolean(KEY_SERVER_POLICY_VISIBLE, visible)
+            .putBoolean(KEY_SERVER_POLICY_DEFAULT_ON, defaultOn)
+            .apply()
+    }
+
+    fun clearAll() {
+        preferences.edit()
+            .remove(KEY_OVERRIDE_CHANNEL)
+            .remove(KEY_SERVER_POLICY_VISIBLE)
+            .remove(KEY_SERVER_POLICY_DEFAULT_ON)
+            .apply()
+    }
+
     private companion object {
         const val PREFS_NAME = "raft_hands_update_channel"
         const val KEY_OVERRIDE_CHANNEL = "override_channel"
+        const val KEY_SERVER_POLICY_VISIBLE = "server_policy_visible"
+        const val KEY_SERVER_POLICY_DEFAULT_ON = "server_policy_default_on"
     }
+}
+
+internal fun installAndroidEarlyAccessPolicyHost(context: Context) {
+    val appContext = context.applicationContext
+    RaftEarlyAccessPolicyHost.listener =
+        object : RaftEarlyAccessPolicyHostListener {
+            override fun onPolicyChanged(policy: RaftEarlyAccessFlagPolicy) {
+                val store = RaftHandsUpdateChannelStore(appContext)
+                val previous = handsEffectiveReleaseChannelForRuntime(appContext)
+                store.writeServerPolicy(policy)
+                val next = handsEffectiveReleaseChannelForRuntime(appContext)
+                if (previous != next) {
+                    RaftAppLog.infoAlways(
+                        "SlockHandsUpdate",
+                        "early_access_policy_channel_changed previous=$previous next=$next " +
+                            "visible=${policy.visible} defaultOn=${policy.defaultOn}"
+                    )
+                }
+            }
+
+            override fun onSignedOut() {
+                val previous = handsEffectiveReleaseChannelForRuntime(appContext)
+                RaftHandsUpdateChannelStore(appContext).clearAll()
+                val next = handsEffectiveReleaseChannelForRuntime(appContext)
+                if (previous != next) {
+                    RaftAppLog.infoAlways(
+                        "SlockHandsUpdate",
+                        "early_access_policy_signed_out previous=$previous next=$next"
+                    )
+                }
+            }
+        }
 }
 
 internal fun handsRuntimeChannelSwitchSupportedForRuntime(context: Context): Boolean =
@@ -158,33 +222,31 @@ internal fun handsRuntimeChannelSwitchSupportedForRuntime(context: Context): Boo
 
 internal fun handsEffectiveReleaseChannelForRuntime(context: Context): String {
     val switchSupported = handsRuntimeChannelSwitchSupportedForRuntime(context)
-    val overrideChannel =
-        if (switchSupported) {
-            runCatching { RaftHandsUpdateChannelStore(context).readOverrideChannel() }.getOrNull()
-        } else {
-            null
-        }
+    val store = if (switchSupported) runCatching { RaftHandsUpdateChannelStore(context) }.getOrNull() else null
+    val overrideChannel = store?.let { runCatching { it.readOverrideChannel() }.getOrNull() }
+    val policy = store?.let { runCatching { it.readServerPolicy() }.getOrNull() } ?: RaftEarlyAccessFlagPolicy()
     return resolveHandsEffectiveChannel(
         configuredChannel = BuildConfig.HANDS_CHANNEL,
         overrideChannel = overrideChannel,
         switchSupported = switchSupported,
+        earlyAccessVisible = policy.visible,
+        earlyAccessDefaultOn = policy.defaultOn,
     )
 }
 
 internal fun handsUpdateRouteForRuntime(context: Context): HandsUpdateRoute {
     val switchSupported = handsRuntimeChannelSwitchSupportedForRuntime(context)
-    val overrideChannel =
-        if (switchSupported) {
-            runCatching { RaftHandsUpdateChannelStore(context).readOverrideChannel() }.getOrNull()
-        } else {
-            null
-        }
+    val store = if (switchSupported) runCatching { RaftHandsUpdateChannelStore(context) }.getOrNull() else null
+    val overrideChannel = store?.let { runCatching { it.readOverrideChannel() }.getOrNull() }
+    val policy = store?.let { runCatching { it.readServerPolicy() }.getOrNull() } ?: RaftEarlyAccessFlagPolicy()
     val effectiveDeltaChannel =
         if (BuildConfig.HANDS_DELTA_APP_SLUG == HANDS_DELTA_PRODUCTION_APP_SLUG) {
             resolveHandsEffectiveChannel(
                 configuredChannel = BuildConfig.HANDS_DELTA_CHANNEL,
                 overrideChannel = overrideChannel,
                 switchSupported = switchSupported,
+                earlyAccessVisible = policy.visible,
+                earlyAccessDefaultOn = policy.defaultOn,
             )
         } else {
             BuildConfig.HANDS_DELTA_CHANNEL
@@ -216,6 +278,8 @@ internal fun handsUpdateRouteForRuntime(context: Context): HandsUpdateRoute {
         deltaChannel = BuildConfig.HANDS_DELTA_CHANNEL,
         overrideChannel = overrideChannel,
         channelSwitchSupported = switchSupported,
+        earlyAccessVisible = policy.visible,
+        earlyAccessDefaultOn = policy.defaultOn,
     )
 }
 
@@ -243,12 +307,16 @@ internal fun resolveHandsUpdateRoute(
     deltaChannel: String,
     overrideChannel: String? = null,
     channelSwitchSupported: Boolean = false,
+    earlyAccessVisible: Boolean = false,
+    earlyAccessDefaultOn: Boolean = false,
 ): HandsUpdateRoute {
     val effectiveDefaultChannel =
         resolveHandsEffectiveChannel(
             configuredChannel = defaultChannel,
             overrideChannel = overrideChannel,
             switchSupported = channelSwitchSupported,
+            earlyAccessVisible = earlyAccessVisible,
+            earlyAccessDefaultOn = earlyAccessDefaultOn,
         )
     val effectiveDeltaChannel =
         if (deltaAppSlug == HANDS_DELTA_PRODUCTION_APP_SLUG) {
@@ -256,6 +324,8 @@ internal fun resolveHandsUpdateRoute(
                 configuredChannel = deltaChannel,
                 overrideChannel = overrideChannel,
                 switchSupported = channelSwitchSupported,
+                earlyAccessVisible = earlyAccessVisible,
+                earlyAccessDefaultOn = earlyAccessDefaultOn,
             )
         } else {
             deltaChannel

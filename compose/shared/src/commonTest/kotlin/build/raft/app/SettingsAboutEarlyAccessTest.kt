@@ -11,9 +11,6 @@ import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
-import build.raft.app.data.StoredAuthServer
-import build.raft.app.data.StoredAuthSession
-import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.preservingChannelMetadataFrom
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,24 +21,9 @@ import kotlin.test.assertTrue
 
 class SettingsAboutEarlyAccessTest {
     private val about = SharedSettingsAboutSnapshot(appName = "Raft", versionLabel = "1.31.0", buildLabel = "13100001")
-    private val officialApi = SharedApiEnvironmentStore.Production.apiBaseUrl
-
-    private fun sessionWithServers(
-        selectedSlug: String? = null,
-        vararg slugs: String?
-    ): StoredAuthSession =
-        StoredAuthSession(
-            user = StoredAuthUser(id = "u-1", email = "member@botiverse.dev", name = "member"),
-            accessToken = "tok",
-            refreshToken = "ref",
-            selectedServerSlug = selectedSlug,
-            servers = slugs.mapIndexed { index, slug ->
-                StoredAuthServer(id = "srv-$index", name = slug ?: "Server $index", slug = slug)
-            }
-        )
 
     private fun developer(
-        apiBaseUrl: String = officialApi,
+        apiBaseUrl: String = SharedApiEnvironmentStore.Production.apiBaseUrl,
         updateCheck: SharedSettingsUpdateCheckSnapshot = SharedSettingsUpdateCheckSnapshot()
     ): SharedSettingsDeveloperSnapshot =
         SharedSettingsDeveloperSnapshot(
@@ -52,20 +34,7 @@ class SettingsAboutEarlyAccessTest {
         )
 
     @Test
-    fun botiverseMemberDetectionRequiresOfficialProductionApiAndBotiverseSlug() {
-        val officialDev = developer()
-        val selfHostedDev = developer(apiBaseUrl = "https://raft.example.test/api")
-
-        assertTrue(settingsAboutIsBotiverseMember(sessionWithServers(selectedSlug = "botiverse"), officialDev))
-        assertTrue(settingsAboutIsBotiverseMember(sessionWithServers(selectedSlug = "other", "other", "Botiverse"), officialDev))
-        assertFalse(settingsAboutIsBotiverseMember(sessionWithServers(selectedSlug = "other", "other", null), officialDev))
-        assertFalse(settingsAboutIsBotiverseMember(sessionWithServers(selectedSlug = "botiverse", "botiverse"), selfHostedDev))
-        assertFalse(settingsAboutIsBotiverseMember(null, officialDev))
-        assertFalse(settingsAboutIsBotiverseMember(sessionWithServers(selectedSlug = "botiverse"), null))
-    }
-
-    @Test
-    fun androidDirectInstallShowsAlphaToggleForBotiverseMembersAndRemainsVisibleForOptedInUsers() {
+    fun androidDirectInstallShowsAlphaToggleOnlyWhenServerVisibilityFlagIsEnabled() {
         val mainUpdate =
             SharedSettingsUpdateCheckSnapshot(
                 supported = true,
@@ -75,21 +44,29 @@ class SettingsAboutEarlyAccessTest {
         val alphaUpdate = mainUpdate.copy(updateChannel = "alpha")
         val dev = developer(updateCheck = mainUpdate)
 
-        // Regular non-botiverse member on main sees no early-access toggle.
+        // When mobile_early_access_visible_v0 is off, the row stays hidden regardless of channel.
         assertNull(
             settingsAboutEarlyAccessOption(
-                session = sessionWithServers(selectedSlug = "acme", "acme"),
+                earlyAccessVisible = false,
                 developer = dev,
                 updateCheck = mainUpdate,
                 actionState = null
             )
         )
+        assertNull(
+            settingsAboutEarlyAccessOption(
+                earlyAccessVisible = false,
+                developer = dev.copy(updateCheck = alphaUpdate),
+                updateCheck = alphaUpdate,
+                actionState = null
+            )
+        )
 
-        // Botiverse member on main sees the toggle OFF.
+        // Visible + on main shows the toggle OFF.
         val offOption =
             assertIs<SettingsAboutEarlyAccessOption.HandsAlphaToggle>(
                 settingsAboutEarlyAccessOption(
-                    session = sessionWithServers(selectedSlug = "acme", "acme", "botiverse"),
+                    earlyAccessVisible = true,
                     developer = dev,
                     updateCheck = mainUpdate,
                     actionState = null
@@ -110,11 +87,11 @@ class SettingsAboutEarlyAccessTest {
         assertEquals("", offRow.badgeLabel)
         assertTrue(offRow.enabled)
 
-        // Someone already on alpha still sees the toggle ON even after leaving botiverse, so they can opt out cleanly.
+        // Visible + on alpha shows the toggle ON (and busy disables interaction during switch).
         val activeOption =
             assertIs<SettingsAboutEarlyAccessOption.HandsAlphaToggle>(
                 settingsAboutEarlyAccessOption(
-                    session = sessionWithServers(selectedSlug = "acme", "acme"),
+                    earlyAccessVisible = true,
                     developer = dev.copy(updateCheck = alphaUpdate),
                     updateCheck = alphaUpdate,
                     actionState = SharedSettingsActionState(DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL, inProgress = true)
@@ -138,10 +115,7 @@ class SettingsAboutEarlyAccessTest {
     }
 
     @Test
-    fun googlePlayAndIosSurfaceExternalEarlyAccessGuidanceForBotiverseMembersOnly() {
-        val botiverse = sessionWithServers(selectedSlug = "botiverse", "botiverse")
-        val nonMember = sessionWithServers(selectedSlug = "other", "other")
-
+    fun googlePlayAndIosSurfaceExternalEarlyAccessGuidanceOnlyWhenVisibleFlagIsEnabled() {
         val playUpdate =
             SharedSettingsUpdateCheckSnapshot(
                 supported = true,
@@ -151,10 +125,10 @@ class SettingsAboutEarlyAccessTest {
                 earlyAccessGuideKind = RAFT_EARLY_ACCESS_GUIDE_GOOGLE_PLAY_BETA,
                 earlyAccessGuideUrl = RAFT_GOOGLE_PLAY_BETA_URL
             )
-        assertNull(settingsAboutEarlyAccessOption(nonMember, developer(updateCheck = playUpdate), playUpdate, null))
+        assertNull(settingsAboutEarlyAccessOption(earlyAccessVisible = false, developer(updateCheck = playUpdate), playUpdate, null))
         val playOption =
             assertIs<SettingsAboutEarlyAccessOption.ExternalProgram>(
-                settingsAboutEarlyAccessOption(botiverse, developer(updateCheck = playUpdate), playUpdate, null)
+                settingsAboutEarlyAccessOption(earlyAccessVisible = true, developer(updateCheck = playUpdate), playUpdate, null)
             )
         assertEquals(RAFT_GOOGLE_PLAY_BETA_URL, playOption.url)
         assertFalse(playOption.alreadyActive)
@@ -170,9 +144,10 @@ class SettingsAboutEarlyAccessTest {
                 earlyAccessGuideKind = RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_JOIN,
                 earlyAccessGuideUrl = RAFT_IOS_TESTFLIGHT_JOIN_URL
             )
+        assertNull(settingsAboutEarlyAccessOption(earlyAccessVisible = false, developer(updateCheck = iosJoinUpdate), iosJoinUpdate, null))
         val iosJoinOption =
             assertIs<SettingsAboutEarlyAccessOption.ExternalProgram>(
-                settingsAboutEarlyAccessOption(botiverse, developer(updateCheck = iosJoinUpdate), iosJoinUpdate, null)
+                settingsAboutEarlyAccessOption(earlyAccessVisible = true, developer(updateCheck = iosJoinUpdate), iosJoinUpdate, null)
             )
         assertFalse(iosJoinOption.alreadyActive)
         val iosJoinRow =
@@ -189,7 +164,7 @@ class SettingsAboutEarlyAccessTest {
         val iosActiveUpdate = iosJoinUpdate.copy(earlyAccessGuideKind = RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_ACTIVE)
         val iosActiveOption =
             assertIs<SettingsAboutEarlyAccessOption.ExternalProgram>(
-                settingsAboutEarlyAccessOption(botiverse, developer(updateCheck = iosActiveUpdate), iosActiveUpdate, null)
+                settingsAboutEarlyAccessOption(earlyAccessVisible = true, developer(updateCheck = iosActiveUpdate), iosActiveUpdate, null)
             )
         assertTrue(iosActiveOption.alreadyActive)
         val iosActiveRow =
