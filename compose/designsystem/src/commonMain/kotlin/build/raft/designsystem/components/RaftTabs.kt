@@ -342,7 +342,8 @@ fun RaftTab(
         RaftTabsVariant.Default -> {
             // `focus-visible:z-raised` (raft-ui 0.105.0, raft-design #1448): the focused tab's ring
             // goes over its neighbour across the 2dp gap.
-            val raised = if (enabled && raftIsFocused(source)) Modifier.zIndex(1f) else Modifier
+            val isFocused = raftIsFocused(source)
+            val raised = if (enabled && isFocused) Modifier.zIndex(1f) else Modifier
             RaftStickerItem(text, selected, enabled, source, modifier.raftDefaultSlot("tabs-tab").then(reveal).then(target).then(select).then(raised), icon = icon)
         }
         RaftTabsVariant.Underline -> RaftUnderlineTab(text, selected, enabled, source, modifier.raftDefaultSlot("tabs-tab").then(reveal).then(select), icon)
