@@ -497,6 +497,8 @@ internal fun SharedCreateAgentDialog(
     errorOffersViewPlan: Boolean = false,
     /** Where Billing offers upgrades: "Upgrade for more" in the agent-limit banner opens Billing. */
     onUpgrade: (() -> Unit)? = null,
+    /** Like [onUpgrade], carrying the current agent name for a Pro `agent:create` seat request (`pro_seat_add`). */
+    onUpgradeWithAgentName: ((String) -> Unit)? = null,
     /**
      * Opens the Add Computer flow from the no-computer dialog (web `setShowAddMachine(true)`);
      * null where that flow is not reachable, which hides the button.
@@ -836,7 +838,11 @@ internal fun SharedCreateAgentDialog(
                             planLabel = limitPlanLabel,
                             seatLimit = seatLimit?.takeIf { seatLimitReached },
                             onViewPlan = onViewPlan,
-                            onUpgrade = onUpgrade,
+                            onUpgrade =
+                                when {
+                                    onUpgradeWithAgentName != null -> ({ onUpgradeWithAgentName(name.trim().take(60)) })
+                                    else -> onUpgrade
+                                },
                         )
                     }
                 } else if (seatLimit != null) {

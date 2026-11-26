@@ -1953,6 +1953,16 @@ data class PermissionUpdatesChanged(
 ) : RealtimeEvent
 
 /**
+ * `seat-join-blocks:changed` (botiverse/slock `#11576` `listChangedEvents.ts`): who a full invite
+ * or join link turned away on [serverId] may have changed (web `useSeatJoinBlocks` reads
+ * `GET /servers/:id/seat-join-blocks` again).
+ */
+@Serializable
+data class SeatJoinBlocksChanged(
+    val serverId: ServerId,
+) : RealtimeEvent
+
+/**
  * `rail_places:updated` (botiverse/slock #16682 + #16773 `routes/servers.ts`
  * `emitRailPlacesUpdated`), sent to the person's own room (`user:<id>`) when their per-server
  * desktop rail places change on any client (`desktopPlaces`, falling back to `places` with kept

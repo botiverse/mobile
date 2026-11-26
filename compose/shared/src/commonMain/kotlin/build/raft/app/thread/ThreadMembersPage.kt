@@ -1249,7 +1249,14 @@ private fun ThreadMembersPageScreen() {
                 onAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) },
                 serverPlan = serverPlan,
                 // Web CreateAgentDialog `seat_limit_agent_create`: Free → upgrade, Pro → add seats.
-                onUpgrade = { pager.openRaftUpgradeDialog(RaftUpgradeGate.SeatLimitAgentCreate, storeScope) },
+                onUpgradeWithAgentName = { agentName ->
+                    pager.openRaftUpgradeDialog(
+                        RaftUpgradeGate.SeatLimitAgentCreate,
+                        storeScope,
+                        seatRequestPurpose =
+                            agentName.trim().takeIf { it.isNotEmpty() }?.let { build.raft.app.data.SeatRequestPurpose.AgentCreate(it) },
+                    )
+                },
             )
         }
         roleChange.protectedDemoteName?.let { name ->

@@ -31,6 +31,7 @@ import build.raft.app.data.PRO_AGENT_SEAT_BLOCK_SIZE
 import build.raft.app.data.ProPricing
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.SeatRequestPurpose
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.StoredAuthSession
@@ -461,6 +462,7 @@ internal fun Pager.openRaftUpgradeDialog(
     knownPricing: ProPricing? = null,
     historyContext: RaftUpgradeHistoryContext? = null,
     knownAgentHistoryBlocks7d: Int? = null,
+    seatRequestPurpose: SeatRequestPurpose? = null,
 ) {
     val bridge = Utils.bridgeModule(pagerId)
     val sharedStores = RaftSharedStoreRegistry.get(bridge)
@@ -490,6 +492,33 @@ internal fun Pager.openRaftUpgradeDialog(
             is RaftUpgradeOutcome.Dialog -> Unit
         }
         val mode = (outcome as RaftUpgradeOutcome.Dialog).mode
+        // Non-owner on a Pro server hitting a seat limit while `pro_seat_add` is enabled:
+        // open the native Ask-an-owner seat request dialog (Android/Desktop only, never iOS 3.1.1).
+        val proSeatAddEnabled =
+            server != null && sharedStores.serverFeatureFlags.isProSeatAddEnabled(server.id)
+        if (
+            raftShouldOpenNativeAskSeatsDialog(
+                mode = mode,
+                isOwner = server?.role == "owner",
+                proSeatAddEnabled = proSeatAddEnabled,
+                offersUpgrade = settingsBillingOffersUpgrade(),
+                purpose = seatRequestPurpose,
+            ) &&
+                server != null &&
+                seatRequestPurpose != null
+        ) {
+            val storedServer = session?.servers?.firstOrNull { it.id == server.id.value }
+            pager.openRaftAskSeatsDialog(
+                storeScope = storeScope,
+                serverId = server.id.value,
+                serverName = server.name,
+                purpose = seatRequestPurpose,
+                creatorUserId = storedServer?.ownerId,
+                rosterHidden = server.role == "member" && server.hideHumansFromMembers,
+                requesterRole = server.role,
+            )
+            return@launch
+        }
         val resolvedSlug =
             server?.slug?.takeIf { it.isNotBlank() }
                 ?: if (requestedServerId == null) standaloneSettingsServerSlug(session) else null

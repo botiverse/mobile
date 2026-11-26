@@ -507,6 +507,7 @@ internal fun MembersListContent(
             onViewPlan = createAgent.createAgentViewPlan,
             errorOffersViewPlan = createAgentErrorIsLimit,
             onUpgrade = createAgent.createAgentUpgrade,
+            onUpgradeWithAgentName = createAgent.createAgentUpgradeWithName,
             onAddComputer = createAgent.createAgentAddComputer,
             machines = createAgentMachines,
             machinesLoading = createAgentMachinesLoading,

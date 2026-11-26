@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.ProPricing
 import build.raft.app.data.SettingsBillingCurrentPlanSnapshot
 import build.raft.app.data.SettingsBillingFileUploadQuotaSnapshot
+import build.raft.app.data.SettingsBillingPrepaidSnapshot
 import build.raft.app.data.SettingsBillingSeatUsageSnapshot
 import build.raft.app.data.SettingsBillingSnapshot
 import build.raft.app.data.SettingsBillingSubscriptionSnapshot
@@ -147,5 +148,177 @@ class SettingsBillingViewOnlyModelTest {
         assertTrue(settingsBillingCountIsUnlimited(-5))
         assertFalse(settingsBillingCountIsUnlimited(0))
         assertFalse(settingsBillingCountIsUnlimited(1))
+    }
+
+    @Test
+    fun parsesPrepaidEntitlementAndRejectsIncompleteOrNegativeSeatPayloads() {
+        val valid =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"pro","source":"prepaid","stripeConfigured":true,"prepaid":{"endsAt":"2026-12-01T00:00:00.000Z","graceEndsAt":"2026-12-04T00:00:00.000Z","inGrace":false,"seatQuantity":6},"capacity":{"maxUniversalSeats":6},"usage":{"humans":4,"agents":10,"universalSeats":5.0}}"""
+            )
+        assertEquals(
+            SettingsBillingPrepaidSnapshot(
+                endsAt = "2026-12-01T00:00:00.000Z",
+                graceEndsAt = "2026-12-04T00:00:00.000Z",
+                inGrace = false,
+                seatQuantity = 6,
+            ),
+            valid?.prepaid,
+        )
+
+        val zeroSeats =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"pro","source":"prepaid","stripeConfigured":true,"prepaid":{"endsAt":"2026-12-01T00:00:00.000Z","graceEndsAt":"2026-12-04T00:00:00.000Z","inGrace":true,"seatQuantity":0}}"""
+            )
+        assertEquals(0, zeroSeats?.prepaid?.seatQuantity)
+        assertEquals(true, zeroSeats?.prepaid?.inGrace)
+
+        val blankEndsAt =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"pro","source":"prepaid","stripeConfigured":true,"prepaid":{"endsAt":"  ","graceEndsAt":"2026-12-04T00:00:00.000Z","inGrace":false,"seatQuantity":5}}"""
+            )
+        assertNull(blankEndsAt?.prepaid)
+
+        val blankGraceEndsAt =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"pro","source":"prepaid","stripeConfigured":true,"prepaid":{"endsAt":"2026-12-01T00:00:00.000Z","graceEndsAt":"","inGrace":false,"seatQuantity":5}}"""
+            )
+        assertNull(blankGraceEndsAt?.prepaid)
+
+        val negativeSeats =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"pro","source":"prepaid","stripeConfigured":true,"prepaid":{"endsAt":"2026-12-01T00:00:00.000Z","graceEndsAt":"2026-12-04T00:00:00.000Z","inGrace":false,"seatQuantity":-1}}"""
+            )
+        assertNull(negativeSeats?.prepaid)
+
+        val missingSeats =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"pro","source":"prepaid","stripeConfigured":true,"prepaid":{"endsAt":"2026-12-01T00:00:00.000Z","graceEndsAt":"2026-12-04T00:00:00.000Z","inGrace":false}}"""
+            )
+        assertNull(missingSeats?.prepaid)
+    }
+
+    @Test
+    fun prepaidProActiveOverSevenDaysShowsSummaryAndSeatMeterWithoutBannerOrSubscriptionDetails() {
+        // now = 2026-11-02T00:00:00Z, endsAt = 2026-11-20T00:00:00Z (18 days remaining -> > 7 days)
+        val model =
+            settingsBillingViewOnlyModel(
+                snapshot(
+                    SettingsBillingSubscriptionSnapshot(
+                        effectivePlan = "pro",
+                        source = "prepaid",
+                        status = "active",
+                        currentPeriodEnd = "2026-12-01T00:00:00.000Z",
+                        prepaid =
+                            SettingsBillingPrepaidSnapshot(
+                                endsAt = "2026-11-20T00:00:00.000Z",
+                                graceEndsAt = "2026-11-23T00:00:00.000Z",
+                                inGrace = false,
+                                seatQuantity = 8,
+                            ),
+                        maxUniversalSeats = 8.0,
+                        usage = SettingsBillingSeatUsageSnapshot(humans = 4, agents = 15, universalSeats = 5.5),
+                        pricing = ProPricing.SeatV1,
+                    )
+                ),
+                sessionPlan = null,
+                nowEpochMillis = now,
+            )
+
+        assertEquals(SettingsBillingViewOnlyPlan.Pro, model.plan)
+        assertEquals(
+            SettingsBillingViewOnlyDescription.PrepaidSummary(seats = 8, endsAt = "2026-11-20T00:00:00.000Z"),
+            model.description,
+        )
+        assertNull(model.status)
+        assertNull(model.prepaidBanner)
+        assertNull(model.details)
+        assertFalse(model.pastDue)
+        assertNull(model.endingOn)
+        assertEquals(
+            SettingsBillingViewOnlySeats(used = 5.5, capacity = 8.0, humans = 4, agents = 15, pricing = ProPricing.SeatV1),
+            model.seats,
+        )
+    }
+
+    @Test
+    fun prepaidProEndingWithinSevenDaysShowsEndsBadgeAndInfoBannerWithoutSubscriptionDetails() {
+        // now = 2026-11-02T00:00:00Z, endsAt = 2026-11-09T00:00:00Z (exactly 7 days -> ending soon)
+        val model =
+            settingsBillingViewOnlyModel(
+                snapshot(
+                    SettingsBillingSubscriptionSnapshot(
+                        effectivePlan = "pro",
+                        source = "prepaid",
+                        prepaid =
+                            SettingsBillingPrepaidSnapshot(
+                                endsAt = "2026-11-09T00:00:00.000Z",
+                                graceEndsAt = "2026-11-12T00:00:00.000Z",
+                                inGrace = false,
+                                seatQuantity = 5,
+                            ),
+                        maxUniversalSeats = 5.0,
+                        usage = SettingsBillingSeatUsageSnapshot(humans = 3, agents = 10, universalSeats = 4.0),
+                    )
+                ),
+                sessionPlan = null,
+                nowEpochMillis = now,
+            )
+
+        assertEquals(
+            SettingsBillingViewOnlyDescription.PrepaidSummary(seats = 5, endsAt = "2026-11-09T00:00:00.000Z"),
+            model.description,
+        )
+        assertEquals(SettingsBillingViewOnlyStatus.EndsOn("2026-11-09T00:00:00.000Z"), model.status)
+        assertEquals(
+            SettingsBillingViewOnlyPrepaidBanner(
+                inGrace = false,
+                endsAt = "2026-11-09T00:00:00.000Z",
+                graceEndsAt = "2026-11-12T00:00:00.000Z",
+            ),
+            model.prepaidBanner,
+        )
+        assertNull(model.details)
+        assertEquals(SettingsBillingViewOnlySeats(used = 4.0, capacity = 5.0, humans = 3, agents = 10), model.seats)
+    }
+
+    @Test
+    fun prepaidProInGraceShowsPrepaidEndedBadgeAndWarningBannerWithGraceDate() {
+        val model =
+            settingsBillingViewOnlyModel(
+                snapshot(
+                    SettingsBillingSubscriptionSnapshot(
+                        effectivePlan = "pro",
+                        source = "prepaid",
+                        prepaid =
+                            SettingsBillingPrepaidSnapshot(
+                                endsAt = "2026-11-01T00:00:00.000Z",
+                                graceEndsAt = "2026-11-04T00:00:00.000Z",
+                                inGrace = true,
+                                seatQuantity = 4,
+                            ),
+                        maxUniversalSeats = 4.0,
+                        usage = SettingsBillingSeatUsageSnapshot(humans = 2, agents = 5, universalSeats = 2.5),
+                    )
+                ),
+                sessionPlan = null,
+                nowEpochMillis = now,
+            )
+
+        assertEquals(
+            SettingsBillingViewOnlyDescription.PrepaidSummary(seats = 4, endsAt = "2026-11-01T00:00:00.000Z"),
+            model.description,
+        )
+        assertEquals(SettingsBillingViewOnlyStatus.PrepaidEnded("2026-11-01T00:00:00.000Z"), model.status)
+        assertEquals(
+            SettingsBillingViewOnlyPrepaidBanner(
+                inGrace = true,
+                endsAt = "2026-11-01T00:00:00.000Z",
+                graceEndsAt = "2026-11-04T00:00:00.000Z",
+            ),
+            model.prepaidBanner,
+        )
+        assertNull(model.details)
+        assertEquals(SettingsBillingViewOnlySeats(used = 2.5, capacity = 4.0, humans = 2, agents = 5), model.seats)
     }
 }

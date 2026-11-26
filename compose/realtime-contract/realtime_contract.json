@@ -110,6 +110,7 @@
     "notificationRetract": "notification:retract",
     "jointInvitesChanged": "joint-invites:changed",
     "permissionUpdatesChanged": "permission-updates:changed",
+    "seatJoinBlocksChanged": "seat-join-blocks:changed",
     "linkCardOperationChanged": "link_card.operation_changed",
     "linkCardChanged": "link_card.changed",
     "actorUpdated": "actor:updated",
@@ -180,6 +181,7 @@
     "notificationRetract",
     "jointInvitesChanged",
     "permissionUpdatesChanged",
+    "seatJoinBlocksChanged",
     "linkCardOperationChanged",
     "linkCardChanged",
     "actorUpdated",
@@ -231,8 +233,7 @@
     "notification:desktop": "Platform-scoped to clientKind desktop sockets and sent with an ack (emitDesktopNotificationWithAck); the desktop client adopts it in realtime unification phase 2.",
     "object:changed": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet.",
     "object:unwatch": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet.",
-    "object:watch": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet.",
-    "seat-join-blocks:changed": "Seat join blocks are admin web only; mobile has no consumer yet."
+    "object:watch": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet."
   },
   "acknowledgedUnemittedServerWireEvents": {
     "computerUpgradeProgress": "No literal server emit site on slock staging (web still lists it; RFC 033 streams it from the Computer). Kept until the server team confirms it is gone.",

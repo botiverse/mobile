@@ -7573,6 +7573,7 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
         is build.raft.app.model.ActivityDoneUpdated -> "activity_done_updated"
         is build.raft.app.model.JointInvitesChanged -> "joint_invites_changed"
         is build.raft.app.model.PermissionUpdatesChanged -> "permission_updates_changed"
+        is build.raft.app.model.SeatJoinBlocksChanged -> "seat_join_blocks_changed"
         is build.raft.app.model.RailPlacesUpdated -> "rail_places_updated"
         is build.raft.app.model.MobilePlacesUpdated -> "mobile_places_updated"
         is build.raft.app.model.ServerAppearanceUpdated -> "appearance_updated"

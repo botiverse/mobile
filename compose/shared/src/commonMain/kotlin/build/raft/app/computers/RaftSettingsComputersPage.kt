@@ -793,7 +793,14 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisible: Boolean) {
                 settingsViewModel.dispatch(SharedSettingsIntent.ShowAddComputerDialog)
             },
             serverPlan = createAgentServerPlan,
-            onUpgrade = { pager.openRaftUpgradeDialog(RaftUpgradeGate.SeatLimitAgentCreate, environment.storeScope) },
+            onUpgradeWithAgentName = { agentName ->
+                pager.openRaftUpgradeDialog(
+                    RaftUpgradeGate.SeatLimitAgentCreate,
+                    environment.storeScope,
+                    seatRequestPurpose =
+                        agentName.trim().takeIf { it.isNotEmpty() }?.let { build.raft.app.data.SeatRequestPurpose.AgentCreate(it) },
+                )
+            },
         )
     }
 }
@@ -3185,7 +3192,14 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                 refresh()
             },
             serverPlan = createAgentServerPlan,
-            onUpgrade = { pager.openRaftUpgradeDialog(RaftUpgradeGate.SeatLimitAgentCreate, environment.storeScope) },
+            onUpgradeWithAgentName = { agentName ->
+                pager.openRaftUpgradeDialog(
+                    RaftUpgradeGate.SeatLimitAgentCreate,
+                    environment.storeScope,
+                    seatRequestPurpose =
+                        agentName.trim().takeIf { it.isNotEmpty() }?.let { build.raft.app.data.SeatRequestPurpose.AgentCreate(it) },
+                )
+            },
         )
     }
     // A new machine key with two-step verification on (RotateComputerKey): "Verify it's you".

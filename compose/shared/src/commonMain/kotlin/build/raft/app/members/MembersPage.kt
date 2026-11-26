@@ -596,8 +596,19 @@ internal fun MembersPageContent(
                     copyToPasteboard = bridge::copyToPasteboard,
                     onDismiss = onDismiss,
                     // Web InviteHumanDialog `seat_limit_invite`; iOS: the error alone (no add-seats entry).
-                    onSeatLimit =
-                        if (settingsBillingOffersUpgrade()) ({ pager.openRaftUpgradeDialog(RaftUpgradeGate.SeatLimitInvite, storeScope) }) else null,
+                    onSeatLimitWithEmails =
+                        if (settingsBillingOffersUpgrade()) {
+                            { emails ->
+                                pager.openRaftUpgradeDialog(
+                                    RaftUpgradeGate.SeatLimitInvite,
+                                    storeScope,
+                                    seatRequestPurpose =
+                                        emails.takeIf { it.isNotEmpty() }?.let { build.raft.app.data.SeatRequestPurpose.Invite(it) },
+                                )
+                            }
+                        } else {
+                            null
+                        },
                 )
             }
         } else {
@@ -725,14 +736,16 @@ internal fun MembersPageContent(
             createAgentViewPlan =
                 if (settingsBillingOffersUpgrade()) null else ({ pager.openSettingsBillingPage(storeScope) }),
             // Web CreateAgentDialog `seat_limit_agent_create`: Free → upgrade, Pro → add seats.
-            createAgentUpgrade =
+            createAgentUpgradeWithName =
                 if (settingsBillingOffersUpgrade()) {
-                    {
+                    { agentName ->
                         pager.openRaftUpgradeDialog(
                             RaftUpgradeGate.SeatLimitAgentCreate,
                             storeScope,
                             knownBillingPresent = createAgentBilling != null,
                             knownPricing = createAgentBilling?.pricing,
+                            seatRequestPurpose =
+                                agentName.trim().takeIf { it.isNotEmpty() }?.let { build.raft.app.data.SeatRequestPurpose.AgentCreate(it) },
                         )
                     }
                 } else {

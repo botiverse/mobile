@@ -706,6 +706,7 @@ private data class WireSettingsBillingSubscription(
     val pricing: String? = null,
     val appsumoBillingReserved: Boolean = false,
     val appsumo: WireSettingsBillingAppSumo? = null,
+    val prepaid: WireSettingsBillingPrepaid? = null,
     val capacity: WireSettingsBillingCapacity? = null,
     val usage: WireSettingsBillingUsage? = null,
     val provisioned: WireSettingsBillingProvisioned? = null,
@@ -724,6 +725,14 @@ private data class WireSettingsBillingAppSumo(
     val maxAgents: Int = 0,
     val maxHostedJointChannels: Int = 0,
     val hostedJointChannels: Int? = null,
+)
+
+@Serializable
+private data class WireSettingsBillingPrepaid(
+    val endsAt: String? = null,
+    val graceEndsAt: String? = null,
+    val inGrace: Boolean = false,
+    val seatQuantity: Int = -1,
 )
 
 @Serializable
@@ -789,6 +798,17 @@ fun parseSharedSettingsBillingSubscription(bodyText: String): SettingsBillingSub
                 maxAgents = it.maxAgents,
                 maxHostedJointChannels = it.maxHostedJointChannels,
                 hostedJointChannels = it.hostedJointChannels ?: 0,
+            )
+        },
+        prepaid = billing.prepaid?.let { p ->
+            val endsAt = p.endsAt?.trim()?.takeIf { it.isNotEmpty() } ?: return@let null
+            val graceEndsAt = p.graceEndsAt?.trim()?.takeIf { it.isNotEmpty() } ?: return@let null
+            if (p.seatQuantity < 0) return@let null
+            SettingsBillingPrepaidSnapshot(
+                endsAt = endsAt,
+                graceEndsAt = graceEndsAt,
+                inGrace = p.inGrace,
+                seatQuantity = p.seatQuantity,
             )
         },
         maxUniversalSeats = billing.capacity?.maxUniversalSeats,

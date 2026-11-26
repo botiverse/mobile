@@ -3702,10 +3702,9 @@ private fun RaftAppShellReadyContent(
                             ) {
                                 realtimeShellForegroundTick += 1
                             }
-                            // Web: the reset notice and usage-limit cards are read again whenever the window comes back.
+                            // Web: reset notice, usage-limit cards, and seat-join blocks refresh when the window returns.
                             if (latestReadySession != null) {
-                                secondFactorRecoveryStore.dispatch(build.raft.app.data.SharedSecondFactorRecoveryIntent.RefreshIfStale)
-                                usageLimitAttentionStore.dispatch(build.raft.app.data.SharedUsageLimitAttentionIntent.RefreshIfStale)
+                                notificationStores.refreshIfStaleOnVisible()
                             }
                         }
                         if (visibleLifecycleEvent && !latestPageVisible) {
@@ -6918,6 +6917,21 @@ private fun RaftAppShellReadyContent(
                                 jointInviteStore = jointInviteStore,
                                 secondFactorRecoveryStore = secondFactorRecoveryStore,
                                 usageLimitAttentionStore = usageLimitAttentionStore,
+                                seatJoinBlocksStore = notificationStores.seatJoinBlocksStore,
+                                serverFeatureFlags = sharedStores.serverFeatureFlags,
+                                onOpenBilling = { pager.openSettingsBillingPage(storeScope) },
+                                onAskSeatJoin = { server, block, usage, onSent ->
+                                    openHomeSeatJoinAskDialog(
+                                        pager = pager,
+                                        storeScope = storeScope,
+                                        session = readySession,
+                                        server = server,
+                                        block = block,
+                                        usage = usage,
+                                        onSent = onSent,
+                                        onOpenDirectMessage = { identity -> openHomeConversation(identity, "seat_request") },
+                                    )
+                                },
                                 topSafeAreaOverride = shellScope.topSafeArea,
                                 bottomContentPadding = appShellBottomContentInset,
                                 listPositionServerId = homeListPositionServerId,
@@ -8311,7 +8325,39 @@ private data class AppShellNotificationStores(
     val appPermissionUpdatesStore: build.raft.app.data.SharedAppPermissionUpdatesStore,
     val secondFactorRecoveryStore: build.raft.app.data.SharedSecondFactorRecoveryStore,
     val usageLimitAttentionStore: build.raft.app.data.SharedUsageLimitAttentionStore,
-)
+    val seatJoinBlocksStore: build.raft.app.data.SharedSeatJoinBlocksStore,
+) {
+    fun refreshIfStaleOnVisible() {
+        secondFactorRecoveryStore.dispatch(build.raft.app.data.SharedSecondFactorRecoveryIntent.RefreshIfStale)
+        usageLimitAttentionStore.dispatch(build.raft.app.data.SharedUsageLimitAttentionIntent.RefreshIfStale)
+        seatJoinBlocksStore.dispatch(build.raft.app.data.SharedSeatJoinBlocksIntent.RefreshIfStale)
+    }
+}
+
+private fun openHomeSeatJoinAskDialog(
+    pager: Pager,
+    storeScope: RaftShellStoreScope,
+    session: StoredAuthSession?,
+    server: build.raft.app.model.ServerSummary,
+    block: build.raft.app.data.SeatJoinBlock,
+    usage: build.raft.app.data.SeatJoinSeatUsage?,
+    onSent: () -> Unit,
+    onOpenDirectMessage: (ThreadLaunchConversationIdentity) -> Unit,
+) {
+    val storedServer = session?.servers?.firstOrNull { it.id == server.id.value }
+    pager.openRaftAskSeatsDialog(
+        storeScope = storeScope,
+        serverId = server.id.value,
+        serverName = server.name,
+        purpose = build.raft.app.data.SeatRequestPurpose.Join(userId = block.userId, name = block.name),
+        creatorUserId = storedServer?.ownerId,
+        rosterHidden = server.role == "member" && server.hideHumansFromMembers,
+        requesterRole = server.role,
+        usage = usage,
+        onSent = onSent,
+        onOpenDirectMessage = onOpenDirectMessage,
+    )
+}
 
 @Composable
 private fun rememberAppShellNotificationStores(
@@ -8360,12 +8406,25 @@ private fun rememberAppShellNotificationStores(
                 scope = scope,
             )
         }
-    return remember(jointInviteStore, appPermissionUpdatesStore, secondFactorRecoveryStore, usageLimitAttentionStore) {
+    // Seat-join-blocked notices (GET /api/servers/:id/seat-join-blocks, slock #11576, behind pro_seat_add).
+    val seatJoinBlocksStore =
+        remember(appShellNetworkClient, scope) {
+            build.raft.app.data.SharedSeatJoinBlocksStore(
+                dataSource = build.raft.app.data.NetworkSeatJoinBlocksDataSource(appShellNetworkClient),
+                scope = scope,
+            )
+        }
+    AppShellSeatJoinBlocksEffect(
+        appShellRealtimeDomainEventOwner = appShellRealtimeDomainEventOwner,
+        seatJoinBlocksStore = seatJoinBlocksStore,
+    )
+    return remember(jointInviteStore, appPermissionUpdatesStore, secondFactorRecoveryStore, usageLimitAttentionStore, seatJoinBlocksStore) {
         AppShellNotificationStores(
             jointInviteStore = jointInviteStore,
             appPermissionUpdatesStore = appPermissionUpdatesStore,
             secondFactorRecoveryStore = secondFactorRecoveryStore,
             usageLimitAttentionStore = usageLimitAttentionStore,
+            seatJoinBlocksStore = seatJoinBlocksStore,
         )
     }
 }

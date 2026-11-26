@@ -476,6 +476,10 @@ class RealtimeEventMapper(
                 decodeOrNull(ServerListChangedDto.serializer(), element)
                     ?.takeIf { it.serverId.isNotBlank() }
                     ?.let { build.raft.app.model.PermissionUpdatesChanged(ServerId(it.serverId)) }
+            RealtimeSocketEvents.SeatJoinBlocksChanged ->
+                decodeOrNull(ServerListChangedDto.serializer(), element)
+                    ?.takeIf { it.serverId.isNotBlank() }
+                    ?.let { build.raft.app.model.SeatJoinBlocksChanged(ServerId(it.serverId)) }
             RealtimeSocketEvents.AnnouncementNew ->
                 RealtimeRefreshRequired(
                     scope = RealtimeRefreshScope.Announcements,
