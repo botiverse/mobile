@@ -1345,7 +1345,7 @@ private fun ThreadMessagesListContent(
                     owns = {
                         !listState.isScrollInProgress &&
                             !listState.isRetired &&
-                            !readingAnchorPageLeavingState.value &&
+                            !stackPageLeavingRef.value &&
                             !threadImeOpenSuppressesProgrammaticViewport(
                                 keyboardInsetDp = liveComposerKeyboardInsetDp,
                                 policy = imeProgrammaticViewportPolicy,
