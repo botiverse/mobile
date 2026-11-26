@@ -1539,8 +1539,16 @@ private fun ThreadMessageCardContent(
                             val feedbackTicketVisible =
                                 shownActionCard.showsFeedbackTicket(specHost.viewerUserId, specHost.clientOs)
                             val specCard =
-                                remember(shownActionCard, specHost.capabilities, feedbackTicketVisible) {
-                                    if (mobileLine != null) null else shownActionCard.actionCardSpecToRender(specHost.capabilities, feedbackTicketVisible)
+                                remember(shownActionCard, specHost.capabilities, feedbackTicketVisible, specHost.mcpPersonalAccountsEnabled) {
+                                    if (mobileLine != null) {
+                                        null
+                                    } else {
+                                        shownActionCard.actionCardSpecToRender(
+                                            capabilities = specHost.capabilities,
+                                            feedbackTicketVisible = feedbackTicketVisible,
+                                            mcpConnectNative = specHost.mcpPersonalAccountsEnabled,
+                                        )
+                                    }
                                 }
                             if (mobileLine != null) {
                                 ThreadActionCardMobileLineView(

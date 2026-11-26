@@ -37,9 +37,11 @@ import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.expiredAsOf
 import build.raft.app.data.isActionCardExpiredRefusal
+import build.raft.app.data.isConnectMcpAction
 import build.raft.app.data.markedExpired
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.isInviteExternalAction
+import build.raft.app.data.resolvedMcpServerId
 import build.raft.app.data.seatRequestEffectiveSeatsShort
 import build.raft.app.data.seatsAddPurposeTenths
 import build.raft.app.data.stripActionCardSpec
@@ -92,8 +94,16 @@ internal fun ThreadActionCard.actionCardSpecToRender(
     capabilities: Collection<String>,
     feedbackTicketVisible: Boolean = false,
     offersUpgrade: Boolean = settingsBillingOffersUpgrade(),
+    mcpConnectNative: Boolean = false,
 ): ActionCardSpecCard? {
-    if (type in ThreadActionCardTypedOnlyTypes) return null
+    if (type in ThreadActionCardTypedOnlyTypes) {
+        val renderNativeMcpConnect =
+            mcpConnectNative &&
+                isConnectMcpAction() &&
+                !resolvedMcpServerId.isNullOrBlank() &&
+                !agentId.isNullOrBlank()
+        if (!renderNativeMcpConnect) return null
+    }
     val read = presentationCard ?: return null
     // iOS view-only Billing: a seat request's Add Seats or a Pro request's Upgrade would strip to
     // "Open in web", a way to buy in the browser. They are kept as "View your plan" instead
@@ -570,6 +580,9 @@ internal const val ACTION_CARD_INVITE_EXTERNAL_OPEN_ELEMENT_ID: String = "__invi
 internal const val ACTION_CARD_INVITE_EXTERNAL_DECLINE_ELEMENT_ID: String = "__invite_external_decline__"
 internal const val ACTION_CARD_INVITE_EXTERNAL_RECONFIRM_ELEMENT_ID: String = "__invite_external_reconfirm__"
 
+/** Synthetic [ThreadActionCardSpecState.busy] element key for `integration:connect_mcp` reconfirm button. */
+internal const val ACTION_CARD_MCP_CONNECT_RECONFIRM_ELEMENT_ID: String = "__mcp_connect_reconfirm__"
+
 internal sealed interface ThreadActionCardSpecIntent {
     /** A Button [threadActionCardSpecPress] routed to the store, on the card as the thread holds it now. */
     data class Press(val messageId: String, val elementId: String, val card: ThreadActionCard, val spec: ActionCardSpecCard) :
@@ -638,6 +651,9 @@ internal sealed interface ThreadActionCardSpecIntent {
 
     /** Closes the external-invite dialog and clears the fetched addresses from memory. */
     data object DismissInviteExternal : ThreadActionCardSpecIntent
+
+    /** `integration:connect_mcp` "Confirm again" click on a `reconfirm_required` card. */
+    data class ReconfirmMcpConnect(val messageId: String, val card: ThreadActionCard) : ThreadActionCardSpecIntent
 }
 
 /** One-shot results for the page. */
@@ -763,6 +779,7 @@ internal class ThreadActionCardSpecStore(
                 markedInviteExternalMessageId = null
                 update { it.copy(inviteExternal = null) }
             }
+            is ThreadActionCardSpecIntent.ReconfirmMcpConnect -> reconfirmMcpConnect(intent)
         }
     }
 
@@ -1276,6 +1293,45 @@ internal class ThreadActionCardSpecStore(
                 is DataResult.NoPermission -> onNoPermission(result)
                 is DataResult.Empty, is DataResult.Error -> Unit
             }
+        }
+    }
+
+    /**
+     * `integration:connect_mcp` "Confirm again" click on a `reconfirm_required` card: posts
+     * `POST /actions/:id/reconfirm`, bringing the card back to `prepared` so the account choice
+     * slot mounts again.
+     */
+    private fun reconfirmMcpConnect(intent: ThreadActionCardSpecIntent.ReconfirmMcpConnect) {
+        val messageId = intent.messageId
+        if (messageId in _state.value.busy) return
+        val card = intent.card.expiredAsOf(nowMillis())
+        if (!card.isConnectMcpAction() || !card.needsReconfirmation) {
+            if (card.hasEnded && !intent.card.hasEnded) applyCard(messageId, card)
+            return
+        }
+        update { it.copy(busy = it.busy + (messageId to ACTION_CARD_MCP_CONNECT_RECONFIRM_ELEMENT_ID), errors = it.errors - messageId) }
+        scope.launch {
+            val result = reconfirmCard(messageId, card)
+            update { it.copy(busy = it.busy - messageId) }
+            val error =
+                when (result) {
+                    is DataResult.Content -> {
+                        applyCard(messageId, result.data)
+                        null
+                    }
+                    is DataResult.Empty -> ThreadActionCardSpecError.Failed()
+                    is DataResult.Error -> expiredOrError(messageId, card, result.error)
+                    is DataResult.NoPermission ->
+                        if (onNoPermission(result)) {
+                            null
+                        } else {
+                            ThreadActionCardSpecError.Failed(
+                                result.blocker.serverMessage?.takeIf { it.isNotBlank() },
+                                result.blocker.traceId,
+                            )
+                        }
+                }
+            if (error != null) update { it.copy(errors = it.errors + (messageId to error)) }
         }
     }
 

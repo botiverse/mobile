@@ -31,9 +31,11 @@ import build.raft.app.data.buildMarkAgentMigrationActionExecutedBody
 import build.raft.app.data.buildMarkChannelActionExecutedBody
 import build.raft.app.data.buildMarkChannelMembersActionExecutedBody
 import build.raft.app.data.buildMarkExternalInvitesActionExecutedBody
+import build.raft.app.data.buildMarkMcpConnectionActionExecutedBody
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.installSetBound
 import build.raft.app.data.isAgentMigrateAction
+import build.raft.app.data.isConnectMcpAction
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.isGenericInlineCommitAction
 import build.raft.app.data.isInstallMarketplaceAppAction
@@ -43,6 +45,7 @@ import build.raft.app.data.withExecutedAgentMigration
 import build.raft.app.data.withExecutedChannel
 import build.raft.app.data.withExecutedChannelMembers
 import build.raft.app.data.withExecutedExternalInvites
+import build.raft.app.data.withExecutedMcpConnection
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
@@ -369,6 +372,37 @@ internal class ThreadActionCardCommands(
                 buildMarkExternalInvitesActionExecutedBody(
                     channelId = channelId,
                     addresses = count,
+                    expectedConfirmationVersion = card.confirmationVersion,
+                ),
+            executedCard = executedCard,
+        ).also(::noteActionCardApproved)
+    }
+
+    /**
+     * Marks an `integration:connect_mcp` card executed once the Agent has an authorized connection
+     * (`POST /api/actions/:messageId/mark-executed`, `{ result: { kind: "mcp-connection",
+     * mcpServerId, agentId } }`, botiverse/slock `actionCardIntentFlows.tsx`).
+     */
+    suspend fun markMcpConnectionActionCardExecuted(
+        messageId: String,
+        card: ThreadActionCard,
+        mcpServerId: String,
+        agentId: String,
+    ): DataResult<ThreadActionCard> {
+        if (!card.isConnectMcpAction()) {
+            return DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
+        }
+        val actionsApi =
+            actionCardsApiClient
+                ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+        val executedCard = card.withExecutedMcpConnection(mcpServerId = mcpServerId, agentId = agentId)
+        return markThreadActionCardExecuted(
+            actionsApi = actionsApi,
+            messageId = messageId,
+            body =
+                buildMarkMcpConnectionActionExecutedBody(
+                    mcpServerId = mcpServerId,
+                    agentId = agentId,
                     expectedConfirmationVersion = card.confirmationVersion,
                 ),
             executedCard = executedCard,

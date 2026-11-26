@@ -1170,3 +1170,49 @@ private data class PushTestResponseDto(
             expectedConfirmationVersion = expectedConfirmationVersion,
         )
     )
+
+/** Body of POST /api/actions/:messageId/mark-executed for `integration:connect_mcp` (`kind: "mcp-connection"`). */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+@RaftCoreInternalApi data class MarkMcpConnectionActionExecutedBody(
+    val result: McpConnectionActionCardResultBody,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val expectedConfirmationVersion: Int? = null,
+)
+
+@Serializable
+@RaftCoreInternalApi data class McpConnectionActionCardResultBody(
+    val kind: String = "mcp-connection",
+    val mcpServerId: String,
+    val agentId: String,
+)
+
+@RaftCoreInternalApi fun buildMarkMcpConnectionActionExecutedBody(
+    mcpServerId: String,
+    agentId: String,
+    expectedConfirmationVersion: Int? = null,
+): String =
+    integrationsActionsPushJson.encodeToString(
+        MarkMcpConnectionActionExecutedBody(
+            result = McpConnectionActionCardResultBody(mcpServerId = mcpServerId, agentId = agentId),
+            expectedConfirmationVersion = expectedConfirmationVersion,
+        )
+    )
+
+/**
+ * Refusal codes from `POST /api/actions/:messageId/mark-executed` for `integration:connect_mcp`
+ * that indicate the card's connection authorization requirement was not actually satisfied
+ * (botiverse/slock `packages/web/src/components/actions/markExecutedRefusal.ts`).
+ */
+@RaftCoreInternalApi const val MCP_CONNECTION_NOT_AUTHORIZED_ERROR_CODE: String = "MCP_CONNECTION_NOT_AUTHORIZED"
+@RaftCoreInternalApi const val MCP_CONNECTION_RESULT_MISMATCH_ERROR_CODE: String = "MCP_CONNECTION_RESULT_MISMATCH"
+
+/**
+ * True when [this] `mark-executed` refusal must be surfaced on the Connect card (web
+ * `isShownMarkExecutedRefusal`). Other bookkeeping errors after the connection grant already
+ * succeeded are swallowed so the person is not told their authorization failed.
+ */
+@RaftCoreInternalApi fun ScreenError.isShownMcpMarkExecutedRefusal(): Boolean {
+    val normalized = serverCode?.trim()?.uppercase() ?: return false
+    return normalized == MCP_CONNECTION_NOT_AUTHORIZED_ERROR_CODE ||
+        normalized == MCP_CONNECTION_RESULT_MISMATCH_ERROR_CODE
+}

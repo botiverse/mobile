@@ -10,6 +10,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.DataResult
+import build.raft.app.data.RaftManagedMcpConnectApiClient
+import build.raft.app.data.RaftManagedMcpConnectNetworkApi
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.RaftRatingPrompt
 import build.raft.app.data.RaftSharedStoreProvider
@@ -23,6 +25,7 @@ import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.featureFlagClientOs
 import build.raft.app.data.raftAppActionCardCapabilities
+import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collect
@@ -169,9 +172,35 @@ internal fun rememberThreadRouteActionCards(
         rememberThreadActionCardMigrateAccess(currentSession, currentServerId, threadServerMembersEntry)
     val evaluateInviteExternalAccess =
         rememberThreadActionCardInviteExternalAccess(currentSession, currentServerId, sharedHomeState)
+    val featureFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val mcpPersonalAccountsEnabled =
+        remember(sharedStores, currentServerId, featureFlagRevision) {
+            sharedStores.serverFeatureFlags.isMcpPersonalAccountsEnabled(currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId))
+        }
+    val mcpConnectCardHost =
+        remember(sharedStores, storeScope, threadInstanceKey, dataSource, threadViewModel, bridge) {
+            RealThreadMcpConnectCardHost(
+                apiClient = RaftManagedMcpConnectApiClient(RaftManagedMcpConnectNetworkApi(sharedStores.networkClient(storeScope))),
+                markExecuted = { messageId, card, mcpServerId, agentId ->
+                    dataSource.markMcpConnectionActionCardExecuted(messageId, card, mcpServerId, agentId)
+                },
+                applyCard = { messageId, card -> threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card)) },
+                onNoPermission = { result -> routeAuthRequired(result) },
+                openExternalUrl = { url -> bridge.hostCapabilities.openUrlInBrowser(url) },
+                onApproved = RaftRatingPrompt::onActionCardApproved,
+            )
+        }
     // Not keyed on the store's state: each card selects its own slice of it.
     val actionCardSpecHost =
-        remember(feedbackCardEntryEnabled, actionCardSpecStore, currentSession?.user?.id, evaluateMigrateAgentAccess, evaluateInviteExternalAccess) {
+        remember(
+            feedbackCardEntryEnabled,
+            actionCardSpecStore,
+            currentSession?.user?.id,
+            evaluateMigrateAgentAccess,
+            evaluateInviteExternalAccess,
+            mcpPersonalAccountsEnabled,
+            mcpConnectCardHost,
+        ) {
             ThreadActionCardSpecHost(
                 capabilities = raftAppActionCardCapabilities(feedbackFormAvailable = feedbackCardEntryEnabled),
                 state = actionCardSpecStore.state,
@@ -197,6 +226,8 @@ internal fun rememberThreadRouteActionCards(
                 },
                 evaluateMigrateAgentAccess = evaluateMigrateAgentAccess,
                 evaluateInviteExternalAccess = evaluateInviteExternalAccess,
+                mcpPersonalAccountsEnabled = mcpPersonalAccountsEnabled,
+                mcpConnectCardHost = mcpConnectCardHost,
                 log = { line -> bridge.log(line) },
             )
         }

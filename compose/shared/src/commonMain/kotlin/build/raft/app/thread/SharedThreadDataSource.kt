@@ -1189,6 +1189,13 @@ internal class SharedThreadDataSource(
         addresses: Int,
     ): DataResult<ThreadActionCard> = actionCardCommands.markExternalInvitesActionCardExecuted(messageId, card, channelId, addresses)
 
+    suspend fun markMcpConnectionActionCardExecuted(
+        messageId: String,
+        card: ThreadActionCard,
+        mcpServerId: String,
+        agentId: String,
+    ): DataResult<ThreadActionCard> = actionCardCommands.markMcpConnectionActionCardExecuted(messageId, card, mcpServerId, agentId)
+
     suspend fun reconfirmActionCard(
         messageId: String,
         card: ThreadActionCard,
