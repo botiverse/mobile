@@ -762,6 +762,10 @@ internal class RaftIosSandboxWebView(
         }
         val targetFrame = action.targetFrame
         val targetURL = action.request.URL
+        val navTypeRaw = raftIosNavigationTypeRaw(action)
+        val isUserGesture =
+            navTypeRaw == WK_NAVIGATION_TYPE_LINK_ACTIVATED ||
+                navTypeRaw == WK_NAVIGATION_TYPE_FORM_SUBMITTED
         if (targetFrame == null) {
             return if (
                 decideNavigationAction(
@@ -769,6 +773,7 @@ internal class RaftIosSandboxWebView(
                     targetURL = targetURL,
                     isNewWindow = true,
                     isMainFrame = false,
+                    isUserGesture = isUserGesture,
                 )
             ) {
                 RaftIosNavigationDecision.Allow
@@ -791,7 +796,7 @@ internal class RaftIosSandboxWebView(
                 source = source,
                 targetURL = targetURL,
                 method = method,
-                rawNavigationType = raftIosNavigationTypeRaw(action),
+                rawNavigationType = navTypeRaw,
                 requestCarriesHeader = requestCarriesHeader,
             )
         return when (outcome) {
@@ -825,10 +830,11 @@ internal class RaftIosSandboxWebView(
         targetURL: NSURL?,
         isNewWindow: Boolean,
         isMainFrame: Boolean,
+        isUserGesture: Boolean = true,
     ): Boolean {
         if (!raftIsSameObjCObject(source, webView)) return false
         if (isNewWindow) {
-            notifyNavigationBlocked(targetURL?.absoluteString ?: "")
+            notifyNavigationBlocked(targetURL?.absoluteString ?: "", isUserGesture = isUserGesture)
             return false
         }
         return decideNavigationPolicy(source, targetURL, isMainFrame = isMainFrame)
@@ -975,18 +981,21 @@ internal class RaftIosSandboxWebView(
             }
         }
 
+        val isUserGesture =
+            rawNavigationType == WK_NAVIGATION_TYPE_LINK_ACTIVATED ||
+                rawNavigationType == WK_NAVIGATION_TYPE_FORM_SUBMITTED
         if (targetURL == null || !isNavigationSchemeAllowed(targetURL) ||
             !isOnLockedOrigin(targetURL) ||
             (!allowNavigation && !isAllowedMainDocumentURL(targetURL))
         ) {
             navInFlight = false
-            handleBlockedMainFrameNavigation(targetString)
+            handleBlockedMainFrameNavigation(targetString, isUserGesture = isUserGesture)
             return RaftIosMainFramePolicyOutcome.Cancel
         }
         if (!isPendingHostLoad && events.routesMainFrameNavigation?.invoke(targetString) == true) {
             navInFlight = false
             diagnosticsInfo("navigation_routed_as_link url=${formatUrlForLog(targetString)}")
-            handleBlockedMainFrameNavigation(targetString)
+            handleBlockedMainFrameNavigation(targetString, isUserGesture = isUserGesture)
             return RaftIosMainFramePolicyOutcome.Cancel
         }
 
@@ -1183,7 +1192,11 @@ internal class RaftIosSandboxWebView(
 
     internal fun createWindowBlocked(source: WKWebView, action: WKNavigationAction) {
         if (!raftIsSameObjCObject(source, webView)) return
-        notifyNavigationBlocked(action.request.URL?.absoluteString ?: "")
+        val navTypeRaw = raftIosNavigationTypeRaw(action)
+        val isUserGesture =
+            navTypeRaw == WK_NAVIGATION_TYPE_LINK_ACTIVATED ||
+                navTypeRaw == WK_NAVIGATION_TYPE_FORM_SUBMITTED
+        notifyNavigationBlocked(action.request.URL?.absoluteString ?: "", isUserGesture = isUserGesture)
     }
 
     internal fun handleJsAlert(
@@ -1356,10 +1369,10 @@ internal class RaftIosSandboxWebView(
         return scheme.isNotEmpty() && scheme in allowedNavigationSchemes
     }
 
-    private fun handleBlockedMainFrameNavigation(url: String) {
+    private fun handleBlockedMainFrameNavigation(url: String, isUserGesture: Boolean = false) {
         currentLoading = false
         notifyNavigationState(force = false)
-        notifyNavigationBlocked(url)
+        notifyNavigationBlocked(url, isUserGesture = isUserGesture)
     }
 
     private fun notifyNavigationState(force: Boolean) {
@@ -1404,8 +1417,9 @@ internal class RaftIosSandboxWebView(
         events.onLoadFailure(reason)
     }
 
-    private fun notifyNavigationBlocked(url: String) {
+    private fun notifyNavigationBlocked(url: String, isUserGesture: Boolean = false) {
         events.onNavigationBlocked(url)
+        events.onNavigationBlockedWithGesture?.invoke(url, isUserGesture)
     }
 
     /**

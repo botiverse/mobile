@@ -716,6 +716,7 @@ class DesktopWebContainerHostController(
             ),
         )
         events.onNavigationBlocked(url, reason)
+        events.onNavigationBlockedWithGesture?.invoke(url, reason, false)
     }
 
     private fun notifyNavigationState(force: Boolean) {

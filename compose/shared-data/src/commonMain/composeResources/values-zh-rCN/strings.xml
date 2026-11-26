@@ -6665,4 +6665,11 @@
     <string name="agent_voice_call_problem_unsupported_runtime">%1$s 不能接听通话。</string>
     <string name="agent_voice_call_problem_rate_limited">你近期拨打的通话太多了，请稍后再试。</string>
     <string name="agent_voice_call_problem_failed">通话没能接通，请重试。</string>
+    <string name="settings_storage_row_in_app_browser">内置浏览器</string>
+    <string name="settings_storage_row_in_app_browser_detail">在 Raft 内打开网页产生的缓存与 Cookie。</string>
+    <string name="settings_storage_clear_in_app_browser">清除浏览器缓存与 Cookie</string>
+    <string name="settings_storage_feedback_in_app_browser_cleared">已清除内置浏览器缓存与 Cookie。</string>
+    <string name="in_app_browser_external_app_title">是否打开外部应用？</string>
+    <string name="in_app_browser_external_app_message">当前页面请求打开外部应用「%1$s」。</string>
+    <string name="in_app_browser_external_app_open">打开</string>
 </resources>

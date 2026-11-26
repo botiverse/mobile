@@ -6665,4 +6665,11 @@
     <string name="agent_voice_call_problem_unsupported_runtime">%1$s は通話を受けられません。</string>
     <string name="agent_voice_call_problem_rate_limited">通話の回数が多すぎます。後でもう一度お試しください。</string>
     <string name="agent_voice_call_problem_failed">通話をつなげられませんでした。もう一度お試しください。</string>
+    <string name="settings_storage_row_in_app_browser">アプリ内ブラウザ</string>
+    <string name="settings_storage_row_in_app_browser_detail">Raft 内で開いた Web ページのキャッシュと Cookie。</string>
+    <string name="settings_storage_clear_in_app_browser">ブラウザのキャッシュと Cookie を削除</string>
+    <string name="settings_storage_feedback_in_app_browser_cleared">アプリ内ブラウザのキャッシュと Cookie を削除しました。</string>
+    <string name="in_app_browser_external_app_title">別のアプリで開きますか？</string>
+    <string name="in_app_browser_external_app_message">このページは別のアプリで「%1$s」を開こうとしています。</string>
+    <string name="in_app_browser_external_app_open">開く</string>
 </resources>

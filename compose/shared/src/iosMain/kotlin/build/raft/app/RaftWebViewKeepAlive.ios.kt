@@ -3,9 +3,13 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import build.raft.webcontainer.IosWebContainerDataStoreRegistry
 import build.raft.webcontainer.WebContainerIosSparePool
+import build.raft.webcontainer.WebIsolationScope
 import kotlin.coroutines.resume
 import kotlin.time.TimeSource
+import kotlinx.cinterop.useContents
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -14,8 +18,10 @@ import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSDate
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
+import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSThread
 import platform.Foundation.NSTimer
+import platform.Foundation.NSUUID
 import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
@@ -49,15 +55,16 @@ internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<Str
     val runOnMain: suspend () -> Unit = {
         runCatching { RaftIosWebViewSpare.drop("logout") }
         runCatching { WebContainerIosSparePool.drop("logout") }
+        val epoch = NSDate.dateWithTimeIntervalSince1970(0.0)
+        val allTypes = WKWebsiteDataStore.allWebsiteDataTypes()
         withTimeoutOrNull(2_000L) {
             suspendCancellableCoroutine<Unit> { cont ->
                 runCatching {
                     val dataStore = WKWebsiteDataStore.defaultDataStore()
-                    val allTypes = WKWebsiteDataStore.allWebsiteDataTypes()
                     if (hosts.isEmpty()) {
                         dataStore.removeDataOfTypes(
                             dataTypes = allTypes,
-                            modifiedSince = NSDate.dateWithTimeIntervalSince1970(0.0),
+                            modifiedSince = epoch,
                             completionHandler = {
                                 if (cont.isActive) cont.resume(Unit)
                             },
@@ -87,11 +94,69 @@ internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<Str
                 }
             }
         }
+        if (hosts.isEmpty()) {
+            clearIosIsolatedThirdPartyDataStores(allTypes = allTypes, epoch = epoch)
+        }
     }
     if (NSThread.isMainThread) {
         runOnMain()
     } else {
         withContext(Dispatchers.Main.immediate) { runOnMain() }
+    }
+}
+
+private suspend fun clearIosIsolatedThirdPartyDataStores(
+    allTypes: Set<*>,
+    epoch: NSDate,
+) {
+    val majorVersion =
+        runCatching {
+            NSProcessInfo.processInfo.operatingSystemVersion.useContents { majorVersion }
+        }.getOrDefault(0L)
+    if (majorVersion < 17L) {
+        // iOS 15–16 uses nonPersistentDataStore() for IsolatedThirdParty, which is already
+        // destroyed when active web panels close.
+        return
+    }
+    // 1. Clear :web-container's named third-party store through the registry's serialized await
+    // helper so cache eviction and identifier removal never race with WKErrorDataStoreInUse.
+    runCatching {
+        IosWebContainerDataStoreRegistry.clearIsolationScopeAndAwait(
+            scope = WebIsolationScope.Named(RAFT_THIRD_PARTY_STORAGE_SCOPE_ID),
+            timeoutMs = 2_000L,
+            osMajorVersion = majorVersion,
+        )
+    }
+    // 2. Clear legacy RaftSandboxWebView's separate fixed-UUID third-party store.
+    val legacyUuid = runCatching { NSUUID(uUIDString = RAFT_IOS_THIRD_PARTY_DATA_STORE_UUID) }.getOrNull() ?: return
+    withTimeoutOrNull(2_000L) {
+        suspendCancellableCoroutine<Unit> { cont ->
+            runCatching {
+                val legacyStore = WKWebsiteDataStore.dataStoreForIdentifier(legacyUuid)
+                legacyStore.removeDataOfTypes(
+                    dataTypes = allTypes,
+                    modifiedSince = epoch,
+                    completionHandler = {
+                        WKWebsiteDataStore.removeDataStoreForIdentifier(legacyUuid) { _ ->
+                            if (cont.isActive) cont.resume(Unit)
+                        }
+                    },
+                )
+            }.onFailure {
+                if (cont.isActive) cont.resume(Unit)
+            }
+        }
+    }
+}
+
+internal actual suspend fun raftClearPlatformInAppBrowserStorage(): Boolean {
+    return try {
+        raftClearPlatformWebViewAuthStorage(emptySet())
+        true
+    } catch (cancel: CancellationException) {
+        throw cancel
+    } catch (_: Throwable) {
+        false
     }
 }
 

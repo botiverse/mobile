@@ -241,6 +241,8 @@ internal fun RaftSandboxWebView(
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
     onNavigationBlocked: (String) -> Unit = {},
+    /** [RaftWebViewEvents.onNavigationBlockedWithGesture]. */
+    onNavigationBlockedWithGesture: ((url: String, isUserGesture: Boolean) -> Unit)? = null,
     onUrlChange: (String) -> Unit = {},
     controller: RaftWebViewController,
     allowedNavigationSchemes: Set<String> = emptySet(),
@@ -345,6 +347,7 @@ internal fun RaftSandboxWebView(
         onLoadFailure(reason)
     }
     events.onNavigationBlocked = onNavigationBlocked
+    events.onNavigationBlockedWithGesture = onNavigationBlockedWithGesture
     events.onDownloadRequested = onDownloadRequested
     events.onJsDialog = onJsDialog
     events.onUrlChange = onUrlChange
@@ -497,6 +500,8 @@ internal fun RaftWebView(
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
     onNavigationBlocked: (String) -> Unit = {},
+    /** [RaftWebViewEvents.onNavigationBlockedWithGesture]. */
+    onNavigationBlockedWithGesture: ((url: String, isUserGesture: Boolean) -> Unit)? = null,
     onUrlChange: (String) -> Unit = {},
     controller: RaftWebViewController,
     allowedNavigationSchemes: Set<String> = emptySet(),
@@ -545,6 +550,7 @@ internal fun RaftWebView(
         onLoadSuccess = onLoadSuccess,
         onLoadFailure = onLoadFailure,
         onNavigationBlocked = onNavigationBlocked,
+        onNavigationBlockedWithGesture = onNavigationBlockedWithGesture,
         onUrlChange = onUrlChange,
         controller = controller,
         allowedNavigationSchemes = allowedNavigationSchemes,

@@ -768,6 +768,9 @@ internal fun RaftWebContainerAdaptedHost(
                 onNavigationBlocked = { url, _ ->
                     events.onNavigationBlocked(url)
                 },
+                onNavigationBlockedWithGesture = { url, _, isUserGesture ->
+                    events.onNavigationBlockedWithGesture?.invoke(url, isUserGesture)
+                },
                 onContentProbe = { hasContent ->
                     events.onContentProbe(hasContent)
                 },

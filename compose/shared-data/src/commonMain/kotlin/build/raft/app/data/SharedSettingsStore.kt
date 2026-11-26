@@ -169,6 +169,12 @@ data class SharedSettingsNavItem(
     val productVisible: Boolean = true
 )
 
+const val SETTINGS_STORAGE_TARGET_IN_APP_BROWSER: String = "inAppBrowser"
+const val SETTINGS_STORAGE_ROW_IN_APP_BROWSER_DETAIL: String =
+    "Cached web pages and cookies from websites opened in Raft."
+const val SETTINGS_STORAGE_FEEDBACK_IN_APP_BROWSER_CLEARED: String =
+    "In-app browser cache and cookies cleared."
+
 data class SharedSettingsStorageSnapshot(
     /** Host-formatted fallback; [totalSizeBytes] wins when the host sends it. */
     val totalSizeLabel: String,
@@ -847,7 +853,12 @@ class SharedSettingsDataSource(
      * `/product-events/config` again so turning it off stops sending at once.
      */
     private val onShareUsageDataChanged: () -> Unit = { RaftProductEvents.invalidateConsent() },
-    private val serverVersionProbe: suspend (String) -> ServerVersionProbe = { SharedServerVersionGate.probe(it) }
+    private val serverVersionProbe: suspend (String) -> ServerVersionProbe = { SharedServerVersionGate.probe(it) },
+    /**
+     * User-initiated Settings › Storage action ("Clear in-app browser cache & cookies",
+     * #proj-mobile:#396). Null where the host does not expose embedded WebView clearing.
+     */
+    private val clearInAppBrowserStorage: (suspend () -> Boolean)? = null,
 ) {
     private var avatarCacheRuntime: RaftAvatarCacheRuntime? = null
     private var avatarCacheNativeCache: RaftAvatarNativeCache = UnsupportedRaftAvatarNativeCache
@@ -1631,11 +1642,34 @@ class SharedSettingsDataSource(
     }
 
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
-        platformCapabilities.loadStorage()
+        platformCapabilities.loadStorage().withInAppBrowserRowIfAvailable()
 
     suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> {
+        if (target == SETTINGS_STORAGE_TARGET_IN_APP_BROWSER) {
+            val clearHook =
+                clearInAppBrowserStorage
+                    ?: return DataResult.Error(ScreenError("settings_storage_clear_unsupported", retryable = false))
+            val cleared =
+                runCatchingPreservingCancellation { clearHook() }
+                    .getOrElse { false }
+            if (!cleared) {
+                return DataResult.Error(ScreenError("settings_storage_clear_failed", retryable = true))
+            }
+            return when (val refreshed = loadStorage()) {
+                is DataResult.Content ->
+                    DataResult.Content(
+                        refreshed.data.copy(
+                            feedback = SETTINGS_STORAGE_FEEDBACK_IN_APP_BROWSER_CLEARED,
+                            feedbackError = null,
+                        ),
+                    )
+                else -> refreshed
+            }
+        }
         val runtime = avatarCacheRuntime
-        if (target != "imageCache" || runtime == null) return platformCapabilities.clearStorage(target)
+        if (target != "imageCache" || runtime == null) {
+            return platformCapabilities.clearStorage(target).withInAppBrowserRowIfAvailable()
+        }
         var nativeResult: DataResult<SharedSettingsStorageSnapshot>? = null
         val receipt =
             runtime.clearAll {
@@ -1645,7 +1679,7 @@ class SharedSettingsDataSource(
             }
         val result = nativeResult
             ?: return DataResult.Error(ScreenError("settings_storage_clear_failed", retryable = true))
-        if (receipt is RaftAvatarCacheClearReceipt.Success) return result
+        if (receipt is RaftAvatarCacheClearReceipt.Success) return result.withInAppBrowserRowIfAvailable()
         diagnosticsLogger?.invoke(
             "avatar_cache_clear result=failure stages=" +
                 (receipt as RaftAvatarCacheClearReceipt.Failed).stages.joinToString(",") { it.name.lowercase() }
@@ -1657,6 +1691,26 @@ class SharedSettingsDataSource(
             is DataResult.Error -> DataResult.Error(result.error)
             is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
         }
+    }
+
+    private fun DataResult<SharedSettingsStorageSnapshot>.withInAppBrowserRowIfAvailable(): DataResult<SharedSettingsStorageSnapshot> {
+        if (this !is DataResult.Content) return this
+        if (clearInAppBrowserStorage == null) return this
+        if (data.rows.any { it.target == SETTINGS_STORAGE_TARGET_IN_APP_BROWSER }) return this
+        return DataResult.Content(
+            data.copy(
+                rows =
+                    data.rows +
+                        SharedSettingsStorageRow(
+                            target = SETTINGS_STORAGE_TARGET_IN_APP_BROWSER,
+                            title = "In-app browser",
+                            detail = SETTINGS_STORAGE_ROW_IN_APP_BROWSER_DETAIL,
+                            sizeLabel = "",
+                            clearEnabled = true,
+                            sizeBytes = null,
+                        ),
+            ),
+        )
     }
 
     suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> {

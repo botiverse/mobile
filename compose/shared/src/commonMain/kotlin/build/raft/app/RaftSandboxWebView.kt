@@ -165,6 +165,12 @@ internal class RaftWebViewEvents {
     var onLoadFailure: (String) -> Unit = {}
     var onNavigationBlocked: (String) -> Unit = {}
     /**
+     * Optional richer variant of [onNavigationBlocked] carrying whether the blocked navigation was
+     * initiated by a real user gesture (Android `WebResourceRequest.hasGesture()` / `onCreateWindow`
+     * `isUserGesture`, iOS `WKNavigationTypeLinkActivated` / `WKNavigationTypeFormSubmitted`).
+     */
+    var onNavigationBlockedWithGesture: ((url: String, isUserGesture: Boolean) -> Unit)? = null
+    /**
      * Synchronous main-frame navigation catch invoked before routing, fencing, and `Raft-Host`
      * re-issue (#proj-workspace:#356 §5, e.g. catching Raft's OAuth authorize endpoint). Returning
      * true cancels the navigation without firing [onNavigationBlocked] or [onLoadFailure].

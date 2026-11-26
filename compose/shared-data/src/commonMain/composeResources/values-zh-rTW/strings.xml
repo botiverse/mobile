@@ -6664,4 +6664,11 @@
     <string name="agent_voice_call_problem_unsupported_runtime">%1$s 無法接聽通話。</string>
     <string name="agent_voice_call_problem_rate_limited">你近期撥打的通話太多了，請稍後再試。</string>
     <string name="agent_voice_call_problem_failed">通話沒能接通，請重試。</string>
+    <string name="settings_storage_row_in_app_browser">內建瀏覽器</string>
+    <string name="settings_storage_row_in_app_browser_detail">在 Raft 內開啟網頁產生的快取與 Cookie。</string>
+    <string name="settings_storage_clear_in_app_browser">清除瀏覽器快取與 Cookie</string>
+    <string name="settings_storage_feedback_in_app_browser_cleared">已清除內建瀏覽器快取與 Cookie。</string>
+    <string name="in_app_browser_external_app_title">要開啟外部應用程式嗎？</string>
+    <string name="in_app_browser_external_app_message">此頁面要求透過外部應用程式開啟「%1$s」。</string>
+    <string name="in_app_browser_external_app_open">開啟</string>
 </resources>

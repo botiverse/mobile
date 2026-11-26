@@ -8,6 +8,9 @@ import android.os.SystemClock
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.webkit.ProfileStore
+import androidx.webkit.WebViewFeature
+import build.raft.webcontainer.AndroidWebContainerProfileStore
 import build.raft.webcontainer.WebContainerAndroidKeepAlive
 import build.raft.webcontainer.WebIsolationScope
 import build.raft.webcontainer.parseWebContainerOrigin
@@ -447,6 +450,7 @@ internal suspend fun clearAndroidWebViewAuthStorage(
     dropKeepAlive: () -> Unit,
     webStorage: RaftAndroidWebStorageClearTarget?,
     cookies: RaftAndroidCookieClearTarget?,
+    clearThirdPartyProfiles: suspend () -> Unit = {},
 ) {
     runCatching { dropKeepAlive() }
     // Chromium's WebStorage.deleteOrigin() (aw_quota_manager_bridge.cc DeleteOriginFramework)
@@ -454,7 +458,7 @@ internal suspend fun clearAndroidWebViewAuthStorage(
     // (DeleteAllDataFramework) clears localStorage where slock_access_token is stored.
     // Always call deleteAllData() so sign-out / account switch never leaves a web access token
     // behind on shared devices, while still clearing cookies per-origin so third-party cookie
-    // logins in InAppBrowserPage survive.
+    // logins in InAppBrowserPage survive when [origins] is explicitly scoped.
     runCatching { webStorage?.deleteAllData() }
     if (cookies != null) {
         if (origins.isNotEmpty()) {
@@ -476,6 +480,75 @@ internal suspend fun clearAndroidWebViewAuthStorage(
         }
         runCatching { cookies.flush() }
     }
+    if (origins.isEmpty()) {
+        try {
+            clearThirdPartyProfiles()
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Throwable) {
+        }
+    }
+}
+
+/** Chromium `MULTI_PROFILE` names holding isolated third-party WebView data across both Android engines. */
+internal fun raftAndroidIsolatedThirdPartyProfileNames(): List<String> =
+    listOf(
+        RAFT_ANDROID_THIRD_PARTY_PROFILE_NAME,
+        AndroidWebContainerProfileStore.profileNameFor(
+            WebIsolationScope.Named(RAFT_THIRD_PARTY_STORAGE_SCOPE_ID),
+        ),
+    ).distinct()
+
+internal suspend fun clearAndroidIsolatedThirdPartyProfiles(
+    supportsMultiProfile: () -> Boolean = {
+        runCatching { WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) }.getOrDefault(false)
+    },
+    clearWebContainerScope: () -> Unit = {
+        runCatching {
+            AndroidWebContainerProfileStore.clearIsolationScope(
+                WebIsolationScope.Named(RAFT_THIRD_PARTY_STORAGE_SCOPE_ID),
+            )
+        }
+    },
+    clearNamedProfile: suspend (String) -> Unit = ::clearAndroidChromiumNamedProfile,
+) {
+    if (!supportsMultiProfile()) return
+    runCatching { clearWebContainerScope() }
+    for (profileName in raftAndroidIsolatedThirdPartyProfileNames()) {
+        try {
+            clearNamedProfile(profileName)
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Throwable) {
+        }
+    }
+}
+
+private suspend fun clearAndroidChromiumNamedProfile(profileName: String) {
+    val profileStore = runCatching { ProfileStore.getInstance() }.getOrNull() ?: return
+    val profile = runCatching { profileStore.getProfile(profileName) }.getOrNull()
+    if (profile != null) {
+        runCatching { profile.webStorage.deleteAllData() }
+        val profileCookies = runCatching { profile.cookieManager }.getOrNull()
+        if (profileCookies != null) {
+            withTimeoutOrNull(2_000L) {
+                suspendCancellableCoroutine<Unit> { cont ->
+                    runCatching {
+                        profileCookies.removeAllCookies {
+                            if (cont.isActive) cont.resume(Unit)
+                        }
+                    }.onFailure {
+                        if (cont.isActive) cont.resume(Unit)
+                    }
+                }
+            }
+            runCatching { profileCookies.flush() }
+        }
+    }
+    // Best-effort profile directory deletion (Chromium rejects deleteProfile if a WebView on
+    // this profile is still finishing destroy, in which case WebStorage + cookies above are
+    // already wiped).
+    runCatching { profileStore.deleteProfile(profileName) }
 }
 
 internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<String>) {
@@ -521,6 +594,7 @@ internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<Str
                         }
                     }
                 },
+            clearThirdPartyProfiles = { clearAndroidIsolatedThirdPartyProfiles() },
         )
     }
     if (Looper.myLooper() == mainLooper) {
@@ -536,8 +610,39 @@ internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<Str
                 runCatching { RaftAndroidWebViewKeepAlive.drop("logout") }
                 runCatching { WebContainerAndroidKeepAlive.clearAll() }
                 runCatching { android.webkit.WebStorage.getInstance().deleteAllData() }
+                if (origins.isEmpty() && runCatching { WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) }.getOrDefault(false)) {
+                    runCatching {
+                        AndroidWebContainerProfileStore.clearIsolationScope(
+                            WebIsolationScope.Named(RAFT_THIRD_PARTY_STORAGE_SCOPE_ID),
+                        )
+                    }
+                    val store = runCatching { ProfileStore.getInstance() }.getOrNull()
+                    if (store != null) {
+                        for (profileName in raftAndroidIsolatedThirdPartyProfileNames()) {
+                            runCatching {
+                                store.getProfile(profileName)?.let { profile ->
+                                    runCatching { profile.webStorage.deleteAllData() }
+                                    runCatching { profile.cookieManager.removeAllCookies(null) }
+                                    runCatching { profile.cookieManager.flush() }
+                                }
+                            }
+                            runCatching { store.deleteProfile(profileName) }
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+internal actual suspend fun raftClearPlatformInAppBrowserStorage(): Boolean {
+    return try {
+        raftClearPlatformWebViewAuthStorage(emptySet())
+        true
+    } catch (cancel: CancellationException) {
+        throw cancel
+    } catch (_: Throwable) {
+        false
     }
 }
 

@@ -134,4 +134,53 @@ class RaftAndroidWebViewAuthStorageClearTest {
             events,
         )
     }
+
+    @Test
+    fun emptyOriginsAlsoClearsThirdPartyProfilesWhileScopedOriginsPreserveThem() = runTest {
+        val fullEvents = mutableListOf<String>()
+        clearAndroidWebViewAuthStorage(
+            origins = emptySet(),
+            dropKeepAlive = { fullEvents += "drop_keep_alive" },
+            webStorage = null,
+            cookies = null,
+            clearThirdPartyProfiles = { fullEvents += "clear_third_party_profiles" },
+        )
+        assertEquals(listOf("drop_keep_alive", "clear_third_party_profiles"), fullEvents)
+
+        val scopedEvents = mutableListOf<String>()
+        clearAndroidWebViewAuthStorage(
+            origins = setOf("https://app.raft.build"),
+            dropKeepAlive = { scopedEvents += "drop_keep_alive" },
+            webStorage = null,
+            cookies = null,
+            clearThirdPartyProfiles = { scopedEvents += "clear_third_party_profiles" },
+        )
+        assertEquals(listOf("drop_keep_alive"), scopedEvents)
+    }
+
+    @Test
+    fun clearAndroidIsolatedThirdPartyProfilesCoversBothLegacyAndWebContainerNames() = runTest {
+        val cleared = mutableListOf<String>()
+        clearAndroidIsolatedThirdPartyProfiles(
+            supportsMultiProfile = { true },
+            clearWebContainerScope = { cleared += "wc_scope_clear" },
+            clearNamedProfile = { name -> cleared += "profile:$name" },
+        )
+        assertEquals(
+            listOf(
+                "wc_scope_clear",
+                "profile:raft_third_party",
+                "profile:raft_wc_raft_third_party",
+            ),
+            cleared,
+        )
+
+        val unsupportedCleared = mutableListOf<String>()
+        clearAndroidIsolatedThirdPartyProfiles(
+            supportsMultiProfile = { false },
+            clearWebContainerScope = { unsupportedCleared += "wc_scope_clear" },
+            clearNamedProfile = { name -> unsupportedCleared += "profile:$name" },
+        )
+        assertEquals(emptyList(), unsupportedCleared)
+    }
 }

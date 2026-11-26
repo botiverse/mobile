@@ -959,9 +959,11 @@ internal class WebContainerIosHost(
             notifyNavigationBlocked(targetUrl, "download_blocked")
             return WKNavigationActionPolicy.WKNavigationActionPolicyCancel
         }
+        val navTypeRaw = iosNavigationTypeRaw(action)
+        val isUserClickOrForm = navTypeRaw == 0L || navTypeRaw == 1L
         if (targetFrame == null) {
             if (!cfg.navigationPolicy.allowNewWindows) {
-                notifyNavigationBlocked(targetUrl, "new_window_blocked")
+                notifyNavigationBlocked(targetUrl, "new_window_blocked", isUserGesture = isUserClickOrForm)
             }
             return WKNavigationActionPolicy.WKNavigationActionPolicyCancel
         }
@@ -980,8 +982,6 @@ internal class WebContainerIosHost(
             return WKNavigationActionPolicy.WKNavigationActionPolicyAllow
         }
 
-        val navTypeRaw = iosNavigationTypeRaw(action)
-        val isUserClickOrForm = navTypeRaw == 0L || navTypeRaw == 1L
         val headerRule = cfg.navigationPolicy.requestHeaderRule
         val carriesHeader =
             headerRule != null && !action.request.valueForHTTPHeaderField(headerRule.headerName).isNullOrBlank()
@@ -1001,7 +1001,7 @@ internal class WebContainerIosHost(
                 method = action.request.HTTPMethod ?: "GET",
                 requestCarriesScopedHeader = carriesHeader,
                 chainState = chainState,
-                isUserGesture = navTypeRaw == 0L,
+                isUserGesture = isUserClickOrForm,
                 catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                 routesMainFrameNavigation = events.routesMainFrameNavigation,
             )
@@ -1013,7 +1013,7 @@ internal class WebContainerIosHost(
             }
             is WebNavigationDecision.Block -> {
                 hostCancelledUrl = targetUrl
-                notifyNavigationBlocked(decision.url, decision.reason)
+                notifyNavigationBlocked(decision.url, decision.reason, isUserGesture = isUserClickOrForm)
                 WKNavigationActionPolicy.WKNavigationActionPolicyCancel
             }
             is WebNavigationDecision.ReissueWithHeader -> {
@@ -1241,7 +1241,13 @@ internal class WebContainerIosHost(
         action: WKNavigationAction,
     ) {
         if (disposed || !isSameObjCObject(source, webView)) return
-        notifyNavigationBlocked(action.request.URL?.absoluteString.orEmpty(), "new_window_blocked")
+        val navTypeRaw = iosNavigationTypeRaw(action)
+        val isUserGesture = navTypeRaw == 0L || navTypeRaw == 1L
+        notifyNavigationBlocked(
+            action.request.URL?.absoluteString.orEmpty(),
+            "new_window_blocked",
+            isUserGesture = isUserGesture,
+        )
     }
 
     internal fun handleJsAlert(
@@ -1425,6 +1431,7 @@ internal class WebContainerIosHost(
     private fun notifyNavigationBlocked(
         url: String,
         reason: String,
+        isUserGesture: Boolean = false,
     ) {
         val cfg = config
         if (cfg != null) {
@@ -1437,6 +1444,7 @@ internal class WebContainerIosHost(
             )
         }
         events.onNavigationBlocked(url, reason)
+        events.onNavigationBlockedWithGesture?.invoke(url, reason, isUserGesture)
     }
 
     private fun notifyNavigationState(force: Boolean) {

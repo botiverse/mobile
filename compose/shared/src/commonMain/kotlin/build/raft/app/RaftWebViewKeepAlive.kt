@@ -68,14 +68,19 @@ internal fun raftWebKitDisplayNameMatchesHosts(displayName: String, hosts: Set<S
     }
 }
 
+/** Logical scope ID shared by Android and iOS isolated third-party WebView storage partitions. */
+internal const val RAFT_THIRD_PARTY_STORAGE_SCOPE_ID: String = "raft_third_party"
+
 /**
- * Clears persistent default WebView storage (`localStorage`, cookies, site data) and drops any
- * kept or spare WebViews, suspending until platform cleanup completes so sign-out or an account
- * switch wipes both Raft auth tokens and Raft App sessions (#proj-workspace:#356 Decision #7).
+ * Clears persistent default WebView storage (`localStorage`, cookies, site data), isolated
+ * third-party WebView storage (when [origins] is empty on full sign-out / account switch), and
+ * drops any kept or spare WebViews, suspending until platform cleanup completes so sign-out or an
+ * account switch leaves no Raft auth tokens, Raft App sessions, or third-party site data behind
+ * (#proj-workspace:#356 Decision #7, #proj-mobile:#396).
  *
- * Passing [origins] as `emptySet()` (the default) clears the entire default store on Android
- * (`WebStorage.deleteAllData()` + `CookieManager.removeAllCookies`) and iOS
- * (`WKWebsiteDataStore.defaultDataStore().removeDataOfTypes(..., modifiedSince = epoch 0)`).
+ * Passing [origins] as `emptySet()` (the default) clears both the default store and isolated
+ * third-party stores on Android (`WebStorage` + `CookieManager` + `MULTI_PROFILE` third-party
+ * profiles) and iOS (`WKWebsiteDataStore.defaultDataStore()` + iOS 17+ named third-party stores).
  */
 internal suspend fun raftClearWebViewAuthStorage(
     origins: Set<String> = emptySet(),
@@ -86,6 +91,20 @@ internal suspend fun raftClearWebViewAuthStorage(
 }
 
 internal expect suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<String>)
+
+/**
+ * User-initiated Settings › Storage action ("Clear in-app browser cache & cookies",
+ * #proj-mobile:#396): closes any active in-app browser panel, drops kept/spare WebViews, and wipes
+ * embedded WebView caches, cookies, and isolated third-party site data without touching the native
+ * Raft account or local database.
+ */
+internal suspend fun raftClearInAppBrowserStorage(): Boolean {
+    RaftMobileWebPanelCoordinator.process.clearAll()
+    raftWebViewKeepAliveClear()
+    return raftClearPlatformInAppBrowserStorage()
+}
+
+internal expect suspend fun raftClearPlatformInAppBrowserStorage(): Boolean
 
 /**
  * Creates and keeps a WebView for [config] (which has a [RaftWebViewConfig.keepAliveKey]) ahead

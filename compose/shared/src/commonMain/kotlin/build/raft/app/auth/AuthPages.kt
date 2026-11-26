@@ -419,7 +419,8 @@ private fun authSettingsDataSource(
         apiEnvironmentStore = sharedStores.apiEnvironmentStore,
         platformCapabilities = settingsCapabilities,
         diagnosticsLogger = { message -> bridge.log("compose_auth_developer $message") },
-        authRuntimeCapabilityStore = sharedStores.authRuntimeCapabilityStore
+        authRuntimeCapabilityStore = sharedStores.authRuntimeCapabilityStore,
+        clearInAppBrowserStorage = { raftClearInAppBrowserStorage() },
     ).withAvatarCacheRuntime(
         runtime = sharedStores.avatarCacheRuntime,
         nativeCache = avatarNativeCache

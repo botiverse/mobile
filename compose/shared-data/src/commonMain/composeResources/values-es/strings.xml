@@ -6664,4 +6664,11 @@
     <string name="agent_voice_call_problem_unsupported_runtime">%1$s no puede recibir llamadas.</string>
     <string name="agent_voice_call_problem_rate_limited">Has hecho demasiadas llamadas por ahora. Inténtalo más tarde.</string>
     <string name="agent_voice_call_problem_failed">No se pudo conectar la llamada. Inténtalo de nuevo.</string>
+    <string name="settings_storage_row_in_app_browser">Navegador integrado</string>
+    <string name="settings_storage_row_in_app_browser_detail">Páginas web en caché y cookies de sitios abiertos en Raft.</string>
+    <string name="settings_storage_clear_in_app_browser">Borrar caché y cookies del navegador</string>
+    <string name="settings_storage_feedback_in_app_browser_cleared">Se borraron la caché y las cookies del navegador integrado.</string>
+    <string name="in_app_browser_external_app_title">¿Abrir en otra app?</string>
+    <string name="in_app_browser_external_app_message">Esta página quiere abrir "%1$s" en otra app.</string>
+    <string name="in_app_browser_external_app_open">Abrir</string>
 </resources>

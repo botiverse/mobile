@@ -236,7 +236,7 @@ internal class RaftDesktopWryWebView(
     }
 
     fun start() {
-        if (initialUrl == null) events.onNavigationBlocked(policy.url.trim())
+        if (initialUrl == null) notifyNavigationBlocked(policy.url.trim())
         notifyState(force = true)
     }
 
@@ -288,7 +288,7 @@ internal class RaftDesktopWryWebView(
                 true
             }
             RaftDesktopWebViewNavigation.Block -> {
-                postToEdt { if (!disposed) events.onNavigationBlocked(url) }
+                postToEdt { if (!disposed) notifyNavigationBlocked(url) }
                 false
             }
         }
@@ -442,7 +442,7 @@ internal class RaftDesktopWryWebView(
         topLevelCheck.reset()
         if (blockedUrl != null && blockedUrl != lastBlockedUrl) {
             lastBlockedUrl = blockedUrl
-            events.onNavigationBlocked(blockedUrl)
+            notifyNavigationBlocked(blockedUrl)
         }
         bridge.stopLoading()
         val back = lastTrustedUrl?.takeIf { restores < RaftDesktopWebViewMaxRestores } ?: "about:blank"
@@ -452,12 +452,17 @@ internal class RaftDesktopWryWebView(
 
     private fun onChannelMessage(raw: String) {
         when (val message = policy.unwrapChannelMessage(raw) ?: return) {
-            is RaftDesktopWebViewChannelMessage.OpenWindow -> events.onNavigationBlocked(message.url)
+            is RaftDesktopWebViewChannelMessage.OpenWindow -> notifyNavigationBlocked(message.url)
             // The secret already ties the message to the trusted top-level script; the address check
             // is the iOS one (the active document is the configured page / origin).
             is RaftDesktopWebViewChannelMessage.Host ->
                 if (policy.canRunRuntimeScript(currentUrl)) events.dispatchHostMessage(message.raw)
         }
+    }
+
+    private fun notifyNavigationBlocked(url: String, isUserGesture: Boolean = false) {
+        events.onNavigationBlocked(url)
+        events.onNavigationBlockedWithGesture?.invoke(url, isUserGesture)
     }
 
     private fun execute(navigationCommand: String) {
