@@ -53,7 +53,13 @@ data class SharedMembersChannelSuggestion(
 data class SharedMembersMentionScope(
     val serverId: String,
     val mentionChannelId: String? = null,
-    val memberScopedMentions: Boolean = false
+    val memberScopedMentions: Boolean = false,
+    /**
+     * `private_mention_add_v0` (botiverse/slock #16718 / #16726): when a private or joint channel
+     * opens its `@` list server-wide for a viewer with `canAddMembers`, outsider server Guests are
+     * still excluded (a Guest can join only its bound channel).
+     */
+    val excludeOutsiderGuests: Boolean = false,
 )
 
 data class SharedMembersMemberSuggestionSlice(

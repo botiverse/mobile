@@ -5470,6 +5470,7 @@
     <string name="agent_lounge_open_failed">Couldn't open the Lounge. Try again.</string>
     <string name="agent_lounge_dm_open_failed">Couldn't open the private chat. Try again.</string>
     <string name="thread_composer_mention_lounge_agent_excluded">%1$s won't be notified: a message posted here goes only to this Lounge's agent. Mention them in a thread to notify them.</string>
+    <string name="thread_composer_mention_not_in_private_channel">%1$s is not in %2$s and cannot see this message until added</string>
     <string name="thread_composer_placeholder_named">Message %1$s</string>
     <string name="thread_archived_notice">This channel is archived.</string>
     <string name="thread_archived_unarchive">Unarchive</string>

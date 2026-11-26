@@ -481,6 +481,35 @@ class PendingMentionActionBannerNamesUiTest {
                 .assertTextEquals("@WA kirby isn’t in #secret. Add them to #secret or send a one-time notification.")
         }
 
+    @Test
+    fun privateChannelAddOnlyPendingMentionExplainsTargetCannotSeeMessageUntilAdded() =
+        runRobolectricComposeUiTest {
+            setContent {
+                ComposerHost(
+                    localTargetMap = PendingMentionTargetMap.Empty,
+                    surface = ThreadComposerSurface(channelId = "c-private", mentionChannelLabel = "#secret"),
+                    state =
+                        ThreadComposerUiState(
+                            pendingMentionActions =
+                                listOf(
+                                    RaftPendingMentionActionItem(
+                                        resolutionId = "res-private-add-only",
+                                        channelName = "secret",
+                                        targetType = "user",
+                                        targetHandle = "Carol",
+                                        reason = "not_member",
+                                        availableActions = listOf("add"),
+                                    ),
+                                ),
+                        ),
+                )
+            }
+
+            onNodeWithTag(PendingMentionActionRowTargetTestTag, useUnmergedTree = true).assertTextEquals("@Carol")
+            onNodeWithTag(PendingMentionActionRowStatusTestTag, useUnmergedTree = true)
+                .assertTextEquals("@Carol is not in #secret and cannot see this message until added")
+        }
+
     @androidx.compose.runtime.Composable
     private fun ComposerHost(
         localTargetMap: PendingMentionTargetMap,

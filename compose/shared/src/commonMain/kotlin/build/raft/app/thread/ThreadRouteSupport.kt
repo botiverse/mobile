@@ -866,8 +866,58 @@ internal fun RaftThreadScreenPayload.threadComposerMemberScopedMentions(): Boole
             typedReplyParentConversationKindOrNull(
                 parentSurfaceKind,
                 parentChannelKind
-            ) == ConversationKind.Joint
-        else -> memberScopedMentions
+            ) == ConversationKind.Joint ||
+                parentChannelKind.equals("private", ignoreCase = true)
+        else ->
+            memberScopedMentions ||
+                channelKind.equals("private", ignoreCase = true) ||
+                channelKind.equals("joint", ignoreCase = true)
+    }
+
+/** Effective `@mention` picker scope for the thread composer (`private_mention_add_v0`). */
+internal data class ThreadComposerMentionScope(
+    val memberScopedMentions: Boolean,
+    val excludeOutsiderGuests: Boolean = false,
+)
+
+/**
+ * Add from a mention in a private or joint channel (`private_mention_add_v0`, botiverse/slock
+ * #16718 / #16726, web `canAddFromPrivateMention`): true only when the flag is enabled, the
+ * conversation's mention scope is a private or joint channel, the channel is not archived, and the
+ * viewer has confirmed `canAddMembers` permission (matching the Add members button).
+ */
+internal fun threadCanAddFromPrivateMention(
+    privateMentionAddEnabled: Boolean,
+    baseMemberScopedMentions: Boolean,
+    channelArchived: Boolean,
+    canAddMembersKnown: Boolean,
+    canAddMembers: Boolean,
+): Boolean =
+    privateMentionAddEnabled &&
+        baseMemberScopedMentions &&
+        !channelArchived &&
+        canAddMembersKnown &&
+        canAddMembers
+
+/**
+ * Resolves the effective `@mention` scope (web `mentionsServerWide` + outsider Guest exclusion):
+ * public channels and DMs stay server-wide; private and joint channels open server-wide (without
+ * outsider Guests) only when [addFromPrivateMention] is true.
+ */
+internal fun threadComposerEffectiveMentionScope(
+    baseMemberScopedMentions: Boolean,
+    addFromPrivateMention: Boolean,
+): ThreadComposerMentionScope =
+    if (baseMemberScopedMentions && addFromPrivateMention) {
+        ThreadComposerMentionScope(
+            memberScopedMentions = false,
+            excludeOutsiderGuests = true,
+        )
+    } else {
+        ThreadComposerMentionScope(
+            memberScopedMentions = baseMemberScopedMentions,
+            excludeOutsiderGuests = false,
+        )
     }
 
 internal fun RaftThreadScreenPayload.threadComposerMemberSuggestionHeadersVisible(): Boolean =

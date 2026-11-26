@@ -5286,6 +5286,7 @@
     <string name="agent_lounge_open_failed">라운지를 열지 못했어요. 다시 시도해 주세요.</string>
     <string name="agent_lounge_dm_open_failed">비공개 채팅을 열지 못했어요. 다시 시도해 주세요.</string>
     <string name="thread_composer_mention_lounge_agent_excluded">%1$s 님은 알림을 받지 않아요. 여기에 바로 올린 메시지는 이 라운지의 에이전트에게만 전달돼요. 알림을 보내려면 스레드에서 멘션해 주세요.</string>
+    <string name="thread_composer_mention_not_in_private_channel">%1$s 님은 %2$s에 없어서 추가되기 전까지 이 메시지를 볼 수 없어요</string>
     <string name="thread_composer_placeholder_named">%1$s에 메시지 보내기</string>
     <string name="thread_archived_notice">보관된 채널이에요.</string>
     <string name="thread_archived_unarchive">보관 취소</string>

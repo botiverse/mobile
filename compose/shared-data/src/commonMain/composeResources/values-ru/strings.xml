@@ -5261,6 +5261,7 @@
     <string name="agent_lounge_open_failed">Не удалось открыть гостиную. Попробуйте ещё раз.</string>
     <string name="agent_lounge_dm_open_failed">Не удалось открыть личный чат. Попробуйте ещё раз.</string>
     <string name="thread_composer_mention_lounge_agent_excluded">%1$s не получит уведомление: сообщение, отправленное сюда, получает только агент этой гостиной. Чтобы уведомить, упомяните в ветке.</string>
+    <string name="thread_composer_mention_not_in_private_channel">%1$s не состоит в канале %2$s и не увидит это сообщение, пока его не добавят</string>
     <string name="thread_composer_placeholder_named">Отправить сообщение: %1$s</string>
     <string name="thread_archived_notice">Этот канал в архиве.</string>
     <string name="thread_archived_unarchive">Вернуть из архива</string>

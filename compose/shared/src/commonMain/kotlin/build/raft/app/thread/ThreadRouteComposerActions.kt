@@ -53,6 +53,7 @@ internal class ThreadRouteComposerActions(
     val threadLimitLocked: Boolean,
     val memberSuggestionScopeChannelId: String?,
     val memberSuggestionScopedMentions: Boolean,
+    val memberSuggestionExcludeOutsiderGuests: Boolean = false,
     val labels: ThreadRouteLabels,
     val userFacingErrorLabels: ThreadUserFacingErrorLabels,
     val composerDraftViewModel: SharedThreadComposerDraftViewModel,
@@ -516,7 +517,8 @@ internal class ThreadRouteComposerActions(
             serverId = serverId,
             mentionChannelId = memberSuggestionScopeChannelId,
             memberScopedMentions = memberSuggestionScopedMentions,
-            force = true
+            force = true,
+            excludeOutsiderGuests = memberSuggestionExcludeOutsiderGuests,
         )
     }
 

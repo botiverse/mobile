@@ -4802,12 +4802,13 @@ internal fun RaftPendingMentionActionItem.pendingMentionActionDescription(
     if (localState == "notified") {
         return "Notified $target once - still not in $channelLabel"
     }
+    if (supportsMentionAction("invite") && !supportsMentionAction("notify")) {
+        return "$target is not in $channelLabel and cannot see this message until added"
+    }
     val actionHint =
         when {
             supportsMentionAction("invite") && supportsMentionAction("notify") ->
                 "Add them to $channelLabel or send a one-time notify."
-            supportsMentionAction("invite") ->
-                "Add them to $channelLabel so future mentions notify them."
             supportsMentionAction("notify") ->
                 "Send a one-time notify without adding them."
             else ->
@@ -4832,12 +4833,14 @@ private fun RaftPendingMentionActionItem.localizedPendingMentionActionDescriptio
     if (localState == "notified") {
         return stringResource(Res.string.thread_composer_mention_notified, target, channelLabel)
     }
+    // Add with no Notify: private/joint channel outsider (private_mention_add_v0, slock #16718 / #16726).
+    if (supportsMentionAction("invite") && !supportsMentionAction("notify")) {
+        return stringResource(Res.string.thread_composer_mention_not_in_private_channel, target, channelLabel)
+    }
     val actionHint =
         when {
             supportsMentionAction("invite") && supportsMentionAction("notify") ->
                 stringResource(Res.string.thread_composer_mention_add_or_notify, channelLabel)
-            supportsMentionAction("invite") ->
-                stringResource(Res.string.thread_composer_mention_add_hint, channelLabel)
             supportsMentionAction("notify") ->
                 stringResource(Res.string.thread_composer_mention_notify_hint)
             else ->

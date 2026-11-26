@@ -78,6 +78,7 @@ import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedHomeStore
+import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.unfollowThreadProjectingHome
 import build.raft.app.data.SharedMembersIntent
 import build.raft.app.data.SharedMembersChannelSuggestionSlice
@@ -3149,6 +3150,17 @@ private fun SharedThreadRouteContentContent(
             payload = renderedPayload,
             headerDmPeerIdentity = headerDisplayModel.dmPeerIdentity,
         )
+    val effectiveMemberSuggestionScope =
+        rememberThreadComposerMentionScope(
+            serverFeatureFlags = sharedStores.serverFeatureFlags,
+            serverId = headerProjectionServerId,
+            serverMembersStore = serverMembersStore,
+            scopeChannelId = memberSuggestionScopeChannelId,
+            threadMembersChannelId = threadMembersChannelId,
+            threadChannelMembersSlice = threadChannelMembersSlice,
+            baseMemberScopedMentions = memberSuggestionScopedMentions,
+            channelArchived = renderedPayload.channelArchived,
+        )
     val renderedTimelineSlice =
         timelineSlice
             .withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && !threadLimitLocked)
@@ -3163,7 +3175,7 @@ private fun SharedThreadRouteContentContent(
             serverMembersStore,
             currentServerId,
             memberSuggestionScopeChannelId,
-            memberSuggestionScopedMentions,
+            effectiveMemberSuggestionScope,
             featureOwnerMountPlan.mountMemberSuggestionsOwner
         ) {
             val serverId = currentServerId?.let(::ServerId)
@@ -3175,13 +3187,15 @@ private fun SharedThreadRouteContentContent(
                 serverMembersStore.memberSuggestionSliceFlow(
                     serverId = serverId,
                     mentionChannelId = memberSuggestionScopeChannelId,
-                    memberScopedMentions = memberSuggestionScopedMentions
+                    memberScopedMentions = effectiveMemberSuggestionScope.memberScopedMentions,
+                    excludeOutsiderGuests = effectiveMemberSuggestionScope.excludeOutsiderGuests,
                 )
                     .onStart {
                         serverMembersStore.ensureMemberSuggestionsForServer(
                             serverId = serverId,
                             mentionChannelId = memberSuggestionScopeChannelId,
-                            memberScopedMentions = memberSuggestionScopedMentions
+                            memberScopedMentions = effectiveMemberSuggestionScope.memberScopedMentions,
+                            excludeOutsiderGuests = effectiveMemberSuggestionScope.excludeOutsiderGuests,
                         )
                     }
                     .distinctUntilChanged()
@@ -3306,8 +3320,9 @@ private fun SharedThreadRouteContentContent(
                         serverMembersStore?.ensureMemberSuggestionsForServer(
                             serverId = ServerId(serverId),
                             mentionChannelId = memberSuggestionScopeChannelId,
-                            memberScopedMentions = memberSuggestionScopedMentions,
-                            force = true
+                            memberScopedMentions = effectiveMemberSuggestionScope.memberScopedMentions,
+                            force = true,
+                            excludeOutsiderGuests = effectiveMemberSuggestionScope.excludeOutsiderGuests,
                         )
                     }
                 }
@@ -3825,7 +3840,8 @@ private fun SharedThreadRouteContentContent(
             threadMembersServerId = threadMembersServerId,
             threadLimitLocked = threadLimitLocked,
             memberSuggestionScopeChannelId = memberSuggestionScopeChannelId,
-            memberSuggestionScopedMentions = memberSuggestionScopedMentions,
+            memberSuggestionScopedMentions = effectiveMemberSuggestionScope.memberScopedMentions,
+            memberSuggestionExcludeOutsiderGuests = effectiveMemberSuggestionScope.excludeOutsiderGuests,
             labels = labels,
             userFacingErrorLabels = userFacingErrorLabels,
             composerDraftViewModel = composerDraftViewModel,
@@ -5130,4 +5146,70 @@ private fun rememberDmMainTimelineLabHidden(
             dmPeerKind = headerDmPeerIdentity?.kind ?: payload.dmPeerIdentity?.kind,
         )
     }
+}
+
+@Composable
+private fun rememberThreadComposerMentionScope(
+    serverFeatureFlags: build.raft.app.data.SharedServerFeatureFlags,
+    serverId: ServerId?,
+    serverMembersStore: SharedServerMembersStore?,
+    scopeChannelId: String?,
+    threadMembersChannelId: ChannelId?,
+    threadChannelMembersSlice: SharedServerChannelMembersSlice,
+    baseMemberScopedMentions: Boolean,
+    channelArchived: Boolean,
+): ThreadComposerMentionScope {
+    val flagRevision by serverFeatureFlags.snapshotRevision.collectAsState()
+    val privateMentionAddEnabled =
+        remember(serverFeatureFlags, serverId, flagRevision) {
+            serverFeatureFlags.isPrivateMentionAddEnabled(serverId)
+        }
+    val needsSeparateScopeSlice =
+        baseMemberScopedMentions &&
+            privateMentionAddEnabled &&
+            !channelArchived &&
+            scopeChannelId != null &&
+            scopeChannelId != threadMembersChannelId?.value
+    val scopeChannelIdObj = remember(scopeChannelId) { scopeChannelId?.let(::ChannelId) }
+    val separateScopeSlice by
+        remember(serverMembersStore, serverId, scopeChannelIdObj, needsSeparateScopeSlice) {
+            if (needsSeparateScopeSlice && serverMembersStore != null && serverId != null && scopeChannelIdObj != null) {
+                serverMembersStore.channelMemberSliceFlow(serverId, scopeChannelIdObj)
+            } else {
+                MutableStateFlow(SharedServerChannelMembersSlice(serverId = serverId?.value, channelId = scopeChannelId.orEmpty()))
+            }
+        }.collectAsState(
+            if (needsSeparateScopeSlice && serverMembersStore != null && serverId != null && scopeChannelIdObj != null) {
+                serverMembersStore.currentChannelMemberSlice(serverId, scopeChannelIdObj)
+            } else {
+                SharedServerChannelMembersSlice(serverId = serverId?.value, channelId = scopeChannelId.orEmpty())
+            }
+        )
+    LaunchedEffect(needsSeparateScopeSlice, serverMembersStore, serverId, scopeChannelIdObj) {
+        if (needsSeparateScopeSlice && serverMembersStore != null && serverId != null && scopeChannelIdObj != null) {
+            serverMembersStore.loadChannelMembers(
+                serverId = serverId,
+                channelId = scopeChannelIdObj,
+                priority = DataRequestPriority.Visible,
+            )
+        }
+    }
+    val effectiveSlice =
+        if (scopeChannelId != null && scopeChannelId == threadMembersChannelId?.value) {
+            threadChannelMembersSlice
+        } else {
+            separateScopeSlice
+        }
+    val addFromPrivateMention =
+        threadCanAddFromPrivateMention(
+            privateMentionAddEnabled = privateMentionAddEnabled,
+            baseMemberScopedMentions = baseMemberScopedMentions,
+            channelArchived = channelArchived,
+            canAddMembersKnown = effectiveSlice.canAddMembersKnown,
+            canAddMembers = effectiveSlice.canAddMembers,
+        )
+    return threadComposerEffectiveMentionScope(
+        baseMemberScopedMentions = baseMemberScopedMentions,
+        addFromPrivateMention = addFromPrivateMention,
+    )
 }
