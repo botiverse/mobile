@@ -735,23 +735,22 @@ internal fun ThreadMessageAuthorSubtitle(
     description: String,
     modifier: Modifier = Modifier,
     rootAnchor: RaftLiveRootAnchorRef? = null,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    enableArtifactChips: Boolean = true,
+    interactive: Boolean = true,
+    onBeforeOpenArtifact: (() -> Unit)? = null,
 ) {
-    val clickableModifier =
-        if (onClick != null) {
-            modifier.raftClickable(onClick = onClick, shape = RoundedCornerShape(RaftAppRadius.Sm), tier = RaftHoverTier.Subtle)
+    val anchoredModifier =
+        if (rootAnchor != null) {
+            modifier.raftCaptureLiveRootAnchor(rootAnchor)
         } else {
             modifier
         }
-    val anchoredModifier =
-        if (rootAnchor != null) {
-            clickableModifier.raftCaptureLiveRootAnchor(rootAnchor)
-        } else {
-            clickableModifier
-        }
     // raft-ui `MessageItemMeta`: text-caption (12/16, medium) on
     // foreground-hint in the sans family; only the time is mono.
-    Text(
+    // ProfileDescription (#14969 / #15230): Artifact links draw as compact inline chips capped at
+    // 16em that keep the single-line caption baseline without wrapping in a Box.
+    RaftProfileDescriptionText(
         text = description,
         style =
             RaftType.Caption.copy(
@@ -761,6 +760,13 @@ internal fun ThreadMessageAuthorSubtitle(
         color = RaftColor.ForegroundHint,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
+        compact = true,
+        enabled = enableArtifactChips,
+        interactive = interactive,
+        source = "author_subtitle",
+        onTextClick = onClick,
+        onBeforeOpenArtifact = onBeforeOpenArtifact,
+        enableHoverCards = false,
         modifier = anchoredModifier
     )
 }

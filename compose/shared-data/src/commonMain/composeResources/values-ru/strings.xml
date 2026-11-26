@@ -4815,6 +4815,9 @@
     <string name="artifacts_card_deleted_by_name">%1$s · удалено</string>
     <string name="artifacts_card_deleted_at">Удалено %1$s</string>
     <string name="artifacts_card_deleted">Удалено</string>
+    <string name="artifacts_chip_deleted">удалено</string>
+    <string name="artifacts_chip_placeholder">Artifact</string>
+    <string name="artifacts_chip_description_unavailable_hint">Вы не можете просмотреть этот Artifact. Откройте его, чтобы узнать почему.</string>
     <string name="artifacts_facts_bytes">%1$s Б</string>
     <string name="artifacts_facts_kilobytes">%1$s КБ</string>
     <string name="artifacts_facts_megabytes">%1$s МБ</string>

@@ -4840,6 +4840,9 @@
     <string name="artifacts_card_deleted_by_name">Excluído por %1$s</string>
     <string name="artifacts_card_deleted_at">Excluído %1$s</string>
     <string name="artifacts_card_deleted">Excluído</string>
+    <string name="artifacts_chip_deleted">excluído</string>
+    <string name="artifacts_chip_placeholder">Artifact</string>
+    <string name="artifacts_chip_description_unavailable_hint">Você não pode ver este Artifact. Abra para ver por quê.</string>
     <string name="artifacts_facts_bytes">%1$s B</string>
     <string name="artifacts_facts_kilobytes">%1$s KB</string>
     <string name="artifacts_facts_megabytes">%1$s MB</string>

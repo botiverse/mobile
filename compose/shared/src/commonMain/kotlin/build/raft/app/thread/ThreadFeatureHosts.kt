@@ -430,6 +430,7 @@ internal fun rememberThreadProvidedValues(
             LocalRaftChannelKinds provides rememberRaftChannelKindsState(sharedHomeStore.homeStateForPage()),
             LocalRaftMemberPreviewCardSource provides memberPreviewCardSource,
             LocalThreadAppLinkPreviewHost provides appLinkPreviewHost,
+            LocalRaftProfileDescriptionArtifacts provides rememberThreadProfileDescriptionArtifactHost(appLinkPreviewHost),
             // The conversation its Artifacts (cards, links, Files) are opened from (`hostConversation`).
             // From values this lambda already captures (see the JVM-limit note below).
             LocalRaftArtifactOpenConversation provides renderedThread.artifactOpenConversationId(),
