@@ -278,7 +278,8 @@ class SharedComputersStoreTest {
                 bodyText =
                     """{"machines":[{"id":"machine-1","name":"Maria Laptop","status":"online","runtimes":["codex"],""" +
                         """"attention":{"count":1,"items":[{"code":"signed_out","resource":{"kind":"login","key":"shared:codex"},""" +
-                        """"actor":"computer_owner","action":"sign_in","agentIds":["a1"],"agentCount":1}],"waitingAgents":0}}]}"""
+                        """"actor":"computer_owner","action":"sign_in","agentIds":["a1"],"agentCount":1}],"waitingAgents":0},""" +
+                        """"readiness":{"state":"ready","primary":null,"scope":null,"actor":null,"also":[],"runtimes":{}}}]}"""
             )
         }
         val store = store(api)
@@ -286,6 +287,8 @@ class SharedComputersStoreTest {
         val renamed = parseSyncedComputerRow(syncMachineRow("machine-1", "Maria Desktop", "online"))!!
         assertNull(renamed.loginSteps)
         assertNull(renamed.serverNeedsAttention)
+        assertNull(renamed.attention)
+        assertNull(renamed.readiness)
 
         assertTrue(store.applySyncedMachineRows("server-1", listOf(renamed), deletes = emptySet()))
 
@@ -293,6 +296,9 @@ class SharedComputersStoreTest {
         assertEquals("Maria Desktop", machine.name)
         assertEquals(listOf(ComputerLoginStep("codex", ComputerLoginStepAction.SignIn)), machine.loginSteps)
         assertEquals(true, machine.serverNeedsAttention)
+        assertEquals(1, machine.attention?.count)
+        assertEquals("signed_out", machine.attention?.items?.single()?.code)
+        assertEquals(ComputerReadinessState.Ready, machine.readiness?.own?.state)
     }
 
     @Test

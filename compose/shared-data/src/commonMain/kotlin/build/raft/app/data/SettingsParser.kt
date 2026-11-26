@@ -587,6 +587,8 @@ private data class WireSettingsComputer(
     val hostProvider: String? = null,
     val deviceClass: String? = null,
     val sameMachineGroup: String? = null,
+    val attention: JsonElement? = null,
+    val readiness: JsonElement? = null,
 )
 
 fun parseSharedSettingsComputers(bodyText: String): SettingsComputersSnapshot? = runCatching {
@@ -604,6 +606,8 @@ fun parseSharedSettingsComputers(bodyText: String): SettingsComputersSnapshot? =
 private fun WireSettingsComputer.toSettingsComputerSnapshot(): SettingsComputerSnapshot {
     val label = name.ifBlank { hostname ?: id }
     val normalizedStatus = status?.lowercase()
+    val parsedAttention = attention?.let(::parseComputerReadinessAttention)
+    val parsedReadiness = readiness?.let(::parseComputerReadiness)
     return SettingsComputerSnapshot(
         id = id.ifBlank { label },
         name = label.ifBlank { "Unknown computer" },
@@ -617,6 +621,10 @@ private fun WireSettingsComputer.toSettingsComputerSnapshot(): SettingsComputerS
         hostProvider = hostProvider?.trim()?.takeIf { it.isNotBlank() },
         deviceClass = deviceClass?.trim()?.takeIf { it.isNotBlank() },
         sameMachineGroup = sameMachineGroup?.trim()?.takeIf { it.isNotBlank() },
+        loginSteps = parsedAttention?.toLoginSteps() ?: attention?.let(::computerLoginSteps).orEmpty(),
+        serverNeedsAttention = parsedAttention?.let { it.count > 0 } ?: attention?.let(::computerServerNeedsAttention),
+        attention = parsedAttention,
+        readiness = parsedReadiness,
     )
 }
 

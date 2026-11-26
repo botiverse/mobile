@@ -3,7 +3,11 @@ package build.raft.app
 import build.raft.app.data.COMPUTER_ACTION_DELETE
 import build.raft.app.data.ComputerLoginStep
 import build.raft.app.data.ComputerLoginStepAction
+import build.raft.app.data.ComputerReadinessAttention
+import build.raft.app.data.ComputerReadinessSnapshot
 import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.isComputerRestartingWindow
+import build.raft.app.data.isComputerUpdatingWindow
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerAgentSnapshot
@@ -82,11 +86,16 @@ internal data class RaftComputerRowModel(
     /** The light on the device icon's corner (web `ComputerRowStatusDot`). */
     val dot: RaftComputerDot = if (online) RaftComputerDot.Online else RaftComputerDot.Offline,
     /**
-     * A web upgrade is in flight (the machines row's `upgradeRequest` is `pending`, which every viewer
-     * reads): the Computer is updating, in progress, even while it restarts offline (raft-design
-     * patterns/status.md: "Updating…", yellow, never "Offline").
+     * A web upgrade is in flight (the machines row's `upgradeRequest` is `pending` or `readiness`
+     * carries `computer_updating`): the Computer is updating, in progress, even while it restarts
+     * offline (raft-design patterns/status.md: "Updating…", yellow, never "Offline").
      */
     val updating: Boolean = false,
+    /**
+     * Planned restart window (`readiness` carries `computer_restarting`, slock #14554 / #14587):
+     * yellow light and "Restarting…", kept out of the offline outage section while the window holds.
+     */
+    val restarting: Boolean = false,
     /** Online with less than 10% and under 20 GiB free (shared `isMachineDiskLow`): the "Low disk" badge. */
     val diskLow: Boolean = false,
     /** Web `liveDiskStatus` as the card's meter: online and reported only; warns when [diskLow]. */
@@ -114,6 +123,10 @@ internal data class RaftComputerRowModel(
      * flag is off / older server. Compare only, never display.
      */
     val sameMachineGroup: String? = null,
+    /** Server `attention` summary (slock #14587 / #14602): drives the orange dot tooltip/semantics and header attention count. */
+    val attention: ComputerReadinessAttention? = null,
+    /** Server `readiness` projection (slock #14554 / #14587 / #14602): Restarting/Updating windows and per-runtime readiness. */
+    val readiness: ComputerReadinessSnapshot? = null,
 )
 
 /**
@@ -183,20 +196,31 @@ internal sealed interface RaftComputerVersionNotice {
     /** "Update required": below the floor, whether an upgrade ([reinstall] false) or a reinstall gets past it. */
     data class BelowFloor(val reinstall: Boolean) : RaftComputerVersionNotice
 
-    /** "Updating to v{version}": a web upgrade to [version] is in flight. */
+    /** "Updating to v{version}" (or "Updating…" when [version] is blank): a web upgrade or readiness updating window is in flight. */
     data class Updating(val version: String) : RaftComputerVersionNotice
+
+    /** "Restarting…": a planned restart window (`readiness.primary.code == "computer_restarting"`). */
+    data object Restarting : RaftComputerVersionNotice
 }
 
 /**
- * The device icon's light (raft-design patterns/status.md): yellow [Updating] while an update is
- * in flight; orange [Upgrade] while Update available or Update required waits (both need
- * attention, xxchan 2026-11-12); else the computer's presence.
+ * The device icon's light (raft-design patterns/status.md, slock #14587): yellow [Updating] /
+ * [Restarting] while an update or planned restart is in flight; orange [Attention] when the server
+ * reports `attention.count > 0` (tooltip lists each item); orange [Upgrade] on older servers while
+ * Update available or Update required waits; else the computer's presence.
  */
-internal enum class RaftComputerDot { Online, Offline, Upgrade, Updating }
+internal enum class RaftComputerDot { Online, Offline, Upgrade, Attention, Updating, Restarting }
 
-/** Web `upgradeRequest.state === "pending"` on a managed Computer: an update is in flight. */
-internal fun SettingsComputerSnapshot.raftComputerUpdating(): Boolean =
-    isComputer && upgradeRequest?.state == "pending"
+/** Web `upgradeRequest.state === "pending"` or `readiness` `computer_updating` on a managed Computer. */
+internal fun SettingsComputerSnapshot.raftComputerUpdating(nowMillis: Long? = null): Boolean {
+    if (!isComputer) return false
+    val pendingUpgrade = upgradeRequest?.state == "pending"
+    return pendingUpgrade || readiness.isComputerUpdatingWindow(nowMillis)
+}
+
+/** Planned restart window (`readiness` `computer_restarting`) while offline and not updating. */
+internal fun SettingsComputerSnapshot.raftComputerRestarting(nowMillis: Long? = null): Boolean =
+    isComputer && !online && !raftComputerUpdating(nowMillis) && readiness.isComputerRestartingWindow(nowMillis)
 
 /** Why a runtime the computer could run isn't detected on it (web `runtimeAvailabilitySuffix`). */
 internal enum class RaftComputerRuntimeAvailability {
@@ -265,7 +289,10 @@ internal data class RaftComputersFailure(
     val permissionBlocker: PermissionBlocker? = null,
 )
 
-internal fun raftComputersListModel(state: ScreenLoadState<SettingsComputersSnapshot>): RaftComputersListModel =
+internal fun raftComputersListModel(
+    state: ScreenLoadState<SettingsComputersSnapshot>,
+    nowMillis: Long? = null,
+): RaftComputersListModel =
     when (state) {
         ScreenLoadState.Loading -> RaftComputersListModel.Loading
         is ScreenLoadState.Error -> RaftComputersListModel.Failed(state.error.toComputersFailure())
@@ -278,7 +305,7 @@ internal fun raftComputersListModel(state: ScreenLoadState<SettingsComputersSnap
             if (snapshot.computers.isEmpty()) {
                 RaftComputersListModel.Empty(canAddComputer = snapshot.canAddComputer)
             } else {
-                val rows = snapshot.computers.map { it.toRaftComputerRow() }
+                val rows = snapshot.computers.map { it.toRaftComputerRow(nowMillis) }
                 RaftComputersListModel.Content(
                     rows = rows,
                     onlineCount = rows.count { it.online },
@@ -334,7 +361,7 @@ internal fun raftComputerDiskLow(computer: SettingsComputerSnapshot): Boolean {
         disk.availableBytes / disk.totalBytes * 100.0 < RAFT_COMPUTER_DISK_LOW_FREE_PERCENT
 }
 
-internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel {
+internal fun SettingsComputerSnapshot.toRaftComputerRow(nowMillis: Long? = null): RaftComputerRowModel {
     val kind = if (isComputer) RaftComputerKind.Computer else RaftComputerKind.Daemon
     val version =
         when (kind) {
@@ -343,10 +370,15 @@ internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel 
         }
     val availableVersion = raftComputerAvailableVersion(this)
     val tier = raftComputerVersionTier(this)
-    val updating = raftComputerUpdating()
+    val updating = raftComputerUpdating(nowMillis)
+    val restarting = raftComputerRestarting(nowMillis)
+    val computerAttention = attention
+    val computerReadiness = readiness
+    val pendingTarget = upgradeRequest?.takeIf { it.state == "pending" }?.targetVersion.orEmpty()
     val versionNotice =
         when {
-            updating -> RaftComputerVersionNotice.Updating(upgradeRequest?.targetVersion.orEmpty())
+            updating -> RaftComputerVersionNotice.Updating(pendingTarget)
+            restarting -> RaftComputerVersionNotice.Restarting
             tier is RaftComputerVersionTier.Notice -> RaftComputerVersionNotice.BelowFloor(reinstall = tier.reinstall)
             availableVersion != null -> RaftComputerVersionNotice.Available(availableVersion)
             else -> null
@@ -370,6 +402,8 @@ internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel 
         dot =
             when {
                 updating -> RaftComputerDot.Updating
+                restarting -> RaftComputerDot.Restarting
+                computerAttention != null && computerAttention.count > 0 -> RaftComputerDot.Attention
                 kind == RaftComputerKind.Computer && versionNotice != null -> RaftComputerDot.Upgrade
                 online -> RaftComputerDot.Online
                 else -> RaftComputerDot.Offline
@@ -380,11 +414,14 @@ internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel 
         canViewRuntimeUsage = canViewRuntimeUsage,
         owner = raftComputerOwner(this),
         updating = updating,
+        restarting = restarting,
         loginSteps = loginSteps,
         revoked = !isComputer && revocation != null,
         hostProvider = hostProvider,
         deviceClass = deviceClass,
         sameMachineGroup = sameMachineGroup?.trim()?.takeIf { it.isNotBlank() },
+        attention = computerAttention,
+        readiness = computerReadiness,
     )
 }
 
@@ -699,8 +736,8 @@ internal sealed interface RaftComputerCardFacts {
     data class Offline(val lastSeenAt: String?) : RaftComputerCardFacts
 }
 
-/** Online, or updating (an update's restart is in progress, not an outage): drawn as present. */
-internal val RaftComputerRowModel.present: Boolean get() = online || updating
+/** Online, updating, or in a planned restart window: drawn as present (never an outage). */
+internal val RaftComputerRowModel.present: Boolean get() = online || updating || restarting
 
 internal fun RaftComputerRowModel.cardFacts(): RaftComputerCardFacts =
     if (present) {
@@ -765,7 +802,7 @@ internal fun raftComputerRackAction(
 ): RaftComputerRackAction? {
     if (!computer.canManage || !computer.isComputer) return null
     if (!computer.online) {
-        if (upgrade.reconnect.reconnecting) return null
+        if (upgrade.reconnect.reconnecting || computer.raftComputerUpdating() || computer.raftComputerRestarting()) return null
         val command = raftComputerCommands(commandContext, raftComputerCommandPlatform(computer.platform))?.restart ?: return null
         return RaftComputerRackAction.OfflineRestart(command)
     }
@@ -902,8 +939,14 @@ internal fun SettingsComputerAgentSnapshot.raftComputerAgentAvatarWireValue(): S
         avatarUrl = memberProfile?.avatar?.wireValue,
     )
 
-/** The page header's counts (web `ComputersRackCounts`): computers, online ones, and their agents. */
-internal data class RaftComputersCounts(val computers: Int, val online: Int, val agents: Int)
+/** The page header's counts (web `ComputersRackCounts`): computers, online ones, agents, and needs-attention count when summarized. */
+internal data class RaftComputersCounts(
+    val computers: Int,
+    val online: Int,
+    val agents: Int,
+    val attention: Int = 0,
+    val attentionSummarized: Boolean = false,
+)
 
 internal fun raftComputersCounts(
     rows: List<RaftComputerRowModel>,
@@ -913,6 +956,11 @@ internal fun raftComputersCounts(
         computers = rows.size,
         online = rows.count { it.online },
         agents = rows.sumOf { agentsByMachine[it.id]?.size ?: 0 },
+        attention = rows.count { row ->
+            val att = row.attention
+            att != null && att.count > 0
+        },
+        attentionSummarized = rows.any { it.attention != null },
     )
 
 internal sealed interface RaftComputerDetailModel {

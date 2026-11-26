@@ -14,6 +14,7 @@ import build.raft.app.data.ComputerHandoverState
 import build.raft.app.data.ComputerLoginStepAction
 import build.raft.app.data.ComputerProcJobSnapshot
 import build.raft.app.data.ComputerProcJobStopResult
+import build.raft.app.data.ComputerReadinessEntry
 import build.raft.app.data.ComputerRuntimeRescanResult
 import build.raft.app.data.DataResult
 import build.raft.app.data.NetworkComputerHandoverRepository
@@ -271,6 +272,7 @@ private data class RaftComputersOpenUsage(
     /** The rack column's runtime, for its sign-in. */
     val runtimeId: String? = null,
     val computerName: String? = null,
+    val runtimeReadiness: ComputerReadinessEntry? = null,
 )
 
 private data class RaftComputersFirstFrame(val computersStore: SharedComputersStore, val serverId: String?)
@@ -587,14 +589,24 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisible: Boolean) {
                         val key = remember(owner, serverId, machineId, column.provider) {
                             RuntimeAccountUsageKey(owner, serverId, machineId, column.provider)
                         }
-                        val runtimeVersion =
+                        val computer =
                             (settingsState.computers as? ScreenLoadState.Content)?.data?.computers
                                 ?.firstOrNull { it.id == machineId }
-                                ?.runtimeVersions
-                                ?.get(column.runtimeId)
-                        val computerName =
-                            (settingsState.computers as? ScreenLoadState.Content)?.data?.computers?.firstOrNull { it.id == machineId }?.name
-                        RaftRackUsagePreviewCard(label, key, usageAccess, runtimeVersion, column.runtimeId, computerName, onTap, trigger)
+                        val runtimeVersion = computer?.runtimeVersions?.get(column.runtimeId)
+                        val computerName = computer?.name
+                        val runtimeReadiness = computer?.readiness?.runtimes?.get(column.runtimeId)
+                        RaftRackUsagePreviewCard(
+                            label = label,
+                            key = key,
+                            access = usageAccess,
+                            runtimeVersion = runtimeVersion,
+                            runtimeId = column.runtimeId,
+                            computerName = computerName,
+                            runtimeReadiness = runtimeReadiness,
+                            runtimeCatalog = runtimeCatalog,
+                            onTap = onTap,
+                            trigger = trigger,
+                        )
                     }
                 }
             }
@@ -643,13 +655,12 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisible: Boolean) {
                     val owner = usageAccess.owner
                     if (owner != null && usageServerId != null) {
                         // Web rack: the sheet names `machine.runtimeVersions[cell.runtimeId]`.
-                        val runtimeVersion =
+                        val computer =
                             (settingsState.computers as? ScreenLoadState.Content)?.data?.computers
                                 ?.firstOrNull { it.id == machineId }
-                                ?.runtimeVersions
-                                ?.get(column.runtimeId)
-                        val computerName =
-                            (settingsState.computers as? ScreenLoadState.Content)?.data?.computers?.firstOrNull { it.id == machineId }?.name
+                        val runtimeVersion = computer?.runtimeVersions?.get(column.runtimeId)
+                        val computerName = computer?.name
+                        val runtimeReadiness = computer?.readiness?.runtimes?.get(column.runtimeId)
                         openUsage =
                             RaftComputersOpenUsage(
                                 RuntimeAccountUsageKey(owner, usageServerId, machineId, column.provider),
@@ -657,6 +668,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisible: Boolean) {
                                 runtimeVersion,
                                 runtimeId = column.runtimeId,
                                 computerName = computerName,
+                                runtimeReadiness = runtimeReadiness,
                             )
                     }
                 },
@@ -666,19 +678,21 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisible: Boolean) {
         }
         }
     }
-    openUsage?.let { (key, label, runtimeVersion, runtimeId, computerName) ->
+    openUsage?.let { usage ->
         RaftComputersTheme {
             ComputerRuntimeUsageSheetHost(
-                runtimeLabel = label,
-                key = key,
+                runtimeLabel = usage.label,
+                key = usage.key,
                 access = usageAccess,
-                runtimeVersion = runtimeVersion,
-                runtimeId = runtimeId,
-                computerName = computerName,
+                runtimeVersion = usage.runtimeVersion,
+                runtimeId = usage.runtimeId,
+                computerName = usage.computerName,
+                runtimeReadiness = usage.runtimeReadiness,
+                runtimeCatalog = runtimeCatalog,
                 onDismiss = {
                     openUsage = null
                     // The sheet may have refreshed it: show the store's value (no request).
-                    usageScope.launch { usageSession.cached(key)?.let { load -> usageReads = usageReads + (key to load) } }
+                    usageScope.launch { usageSession.cached(usage.key)?.let { load -> usageReads = usageReads + (usage.key to load) } }
                 },
             )
         }
@@ -851,12 +865,21 @@ internal fun RaftSettingsComputersContent(
     // loading, empty and after a failed load too, Add Computer at the toolbar's end. A permission
     // wall has no list to search or add to.
     val showToolbar = !(model is RaftComputersListModel.Failed && model.failure.noAccess)
+    val attentionSummary =
+        remember(content?.computers, nowMillis) {
+            content?.computers?.let { raftComputersAttentionSummary(it, nowMillis) }
+        }
     Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         if (content != null && !summaryInHeader) {
             // The phone's counts on a row of their own (the wide head holds them beside the title).
             RaftText(
                 raftComputersCountsLine(raftComputersCounts(content.rows, agentsByMachine)),
-                modifier = Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 20.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .raftSafeAreaHorizontalPadding()
+                        .padding(start = 20.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)
+                        .testTag(COMPUTERS_RACK_COUNTS_TAG),
                 style = RaftTheme.typography.monoMeta,
                 color = RaftTheme.colors.foregroundHint,
                 maxLines = 2,
@@ -870,6 +893,17 @@ internal fun RaftSettingsComputersContent(
                 onIntent = onToolbarIntent,
                 view = rackView,
                 onAddComputer = onAddComputer.takeIf { canAddComputer },
+            )
+        }
+        if (attentionSummary != null) {
+            RaftComputersAttentionSummary(
+                summary = attentionSummary,
+                runtimeCatalog = runtimeCatalog,
+                nowMillis = nowMillis,
+                onFilterAttention = {
+                    onToolbarIntent(RaftComputersRackToolbarIntent.SetStatus(RaftComputersRackStatusFilter.Attention))
+                },
+                onOpenComputer = onOpenComputer,
             )
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -1248,7 +1282,7 @@ internal fun RowScope.RaftComputersWideTitle(title: String, counts: String) {
         )
         RaftText(
             counts,
-            modifier = Modifier.weight(1f, fill = false),
+            modifier = Modifier.weight(1f, fill = false).testTag(COMPUTERS_RACK_COUNTS_TAG),
             style = RaftTheme.typography.monoMeta,
             color = RaftTheme.colors.foregroundHint,
             maxLines = 1,
@@ -1258,25 +1292,39 @@ internal fun RowScope.RaftComputersWideTitle(title: String, counts: String) {
 }
 
 /**
- * The page header's counts line: "4 computers · 3 online · 12 agents" (web `ComputersRackCounts`).
- * On its own phone row it may take two lines: each count stays whole (no-break spaces inside it and
- * before its "·"), so a line only breaks after a "·", and no count is cut off.
+ * The page header's counts line: "4 computers · 3 online · 12 agents" (plus "· 2 need attention"
+ * when the server sent `attention`, web `ComputersRackCounts`). On its own phone row it may take
+ * two lines: each count stays whole (no-break spaces inside it and before its "·"), so a line
+ * only breaks after a "·", and no count is cut off.
  */
 @Composable
 internal fun raftComputersCountsLine(counts: RaftComputersCounts): String =
-    listOf(
-        if (counts.computers == 1) {
-            stringResource(Res.string.settings_computers_rack_computer_count_one, counts.computers)
-        } else {
-            stringResource(Res.string.settings_computers_rack_computer_count_other, counts.computers)
-        },
-        stringResource(Res.string.settings_computers_rack_online_count, counts.online),
-        if (counts.agents == 1) {
-            stringResource(Res.string.settings_computers_rack_agent_count_one, counts.agents)
-        } else {
-            stringResource(Res.string.settings_computers_rack_agent_count_other, counts.agents)
-        },
-    ).joinToString("\u00A0· ") { it.replace(' ', '\u00A0') }
+    buildList {
+        add(
+            if (counts.computers == 1) {
+                stringResource(Res.string.settings_computers_rack_computer_count_one, counts.computers)
+            } else {
+                stringResource(Res.string.settings_computers_rack_computer_count_other, counts.computers)
+            },
+        )
+        add(stringResource(Res.string.settings_computers_rack_online_count, counts.online))
+        add(
+            if (counts.agents == 1) {
+                stringResource(Res.string.settings_computers_rack_agent_count_one, counts.agents)
+            } else {
+                stringResource(Res.string.settings_computers_rack_agent_count_other, counts.agents)
+            },
+        )
+        if (counts.attentionSummarized && counts.attention > 0) {
+            add(
+                if (counts.attention == 1) {
+                    stringResource(Res.string.settings_computers_readiness_attention_count_one, counts.attention)
+                } else {
+                    stringResource(Res.string.settings_computers_readiness_attention_count_other, counts.attention)
+                },
+            )
+        }
+    }.joinToString("\u00A0· ") { it.replace(' ', '\u00A0') }
 
 /**
  * One computer as a web ComputersRack card (`view === "cards"`): the device icon with its light,
@@ -1310,7 +1358,7 @@ private fun RaftComputerRackCard(
 ) {
     RaftCard(modifier = modifier.testTag("rack-row-${row.id}"), onClick = onClick, inactive = !row.present) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            RaftComputerDeviceIcon(row)
+            RaftComputerDeviceIcon(row, runtimeCatalog, nowMillis)
             Spacer(Modifier.size(RaftComputerCardTitleGap))
             // The name and its badge stay together; the ⋯ (when offered) sits at the card's end.
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
@@ -1732,7 +1780,7 @@ private fun RaftComputerRackBlock(
                 modifier = Modifier.fillMaxWidth(),
                 lead = {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RaftComputerDeviceIcon(row)
+                        RaftComputerDeviceIcon(row, runtimeCatalog, nowMillis)
                         RaftText(
                             row.name,
                             modifier = Modifier.weight(1f, fill = false),
@@ -2438,7 +2486,36 @@ private val RaftComputerCardAvatarGap = 4.dp
 
 /** The device shape with the row's light on its corner (web `rack-row-icon` + `ComputerRowStatusDot`). */
 @Composable
-private fun RaftComputerDeviceIcon(row: RaftComputerRowModel) {
+private fun RaftComputerDeviceIcon(
+    row: RaftComputerRowModel,
+    runtimeCatalog: ServerRuntimeCatalog = BundledRuntimeCatalog,
+    nowMillis: Long = 0L,
+) {
+    val attention = row.attention
+    val showAttentionDot = row.dot == RaftComputerDot.Attention && attention != null && attention.count > 0
+    val attentionLines =
+        if (showAttentionDot) {
+            raftAttentionItemLines(attention, runtimeCatalog, nowMillis)
+        } else {
+            emptyList()
+        }
+    val dotTag = computerStatusDotTag(row.id)
+    val dotPresence =
+        when (row.dot) {
+            RaftComputerDot.Online -> RaftPresence.Online
+            RaftComputerDot.Offline -> RaftPresence.Offline
+            RaftComputerDot.Upgrade,
+            RaftComputerDot.Attention -> RaftPresence.Error
+            RaftComputerDot.Updating,
+            RaftComputerDot.Restarting -> RaftPresence.Busy
+        }
+    val dotContentDescription =
+        when {
+            showAttentionDot -> attentionLines.joinToString("; ").takeIf { it.isNotEmpty() }
+            row.dot == RaftComputerDot.Updating -> stringResource(Res.string.settings_computers_status_updating)
+            row.dot == RaftComputerDot.Restarting -> stringResource(Res.string.settings_computers_readiness_computer_restarting_title)
+            else -> null
+        }
     Box(Modifier.size(RaftComputerCardIconSize)) {
         CompositionLocalProvider(LocalRaftContentColor provides RaftTheme.colors.foregroundMuted) {
             RaftComputersIcon(
@@ -2446,18 +2523,23 @@ private fun RaftComputerDeviceIcon(row: RaftComputerRowModel) {
                 size = RaftComputerCardIconSize,
             )
         }
-        RaftStatusDot(
-            modifier = Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp),
-            // raft-design patterns/status.md: yellow only while updating (in progress); orange when
-            // an update is available or required (needs attention), never the pink of unread.
-            presence =
-                when (row.dot) {
-                    RaftComputerDot.Online -> RaftPresence.Online
-                    RaftComputerDot.Offline -> RaftPresence.Offline
-                    RaftComputerDot.Upgrade -> RaftPresence.Error
-                    RaftComputerDot.Updating -> RaftPresence.Busy
-                },
-        )
+        val dotModifier = Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp)
+        val tooltipText = attentionLines.joinToString("\n").takeIf { showAttentionDot && it.isNotEmpty() }
+        if (tooltipText != null) {
+            RaftTooltip(tooltipText, modifier = dotModifier) {
+                RaftStatusDot(
+                    modifier = Modifier.testTag(dotTag),
+                    presence = dotPresence,
+                    contentDescription = dotContentDescription,
+                )
+            }
+        } else {
+            RaftStatusDot(
+                modifier = dotModifier.testTag(dotTag),
+                presence = dotPresence,
+                contentDescription = dotContentDescription,
+            )
+        }
     }
 }
 
@@ -2497,8 +2579,18 @@ private fun RaftComputerCardFactsLine(facts: RaftComputerCardFacts, modifier: Mo
                         stringResource(Res.string.settings_computers_update_available) to RaftTheme.colors.warningStrong
                     is RaftComputerVersionNotice.BelowFloor ->
                         stringResource(Res.string.settings_computers_update_required) to RaftTheme.colors.warningStrong
-                    is RaftComputerVersionNotice.Updating ->
-                        stringResource(Res.string.settings_computers_rack_updating_to, notice.version.removePrefix("v")) to RaftTheme.colors.foreground
+                    is RaftComputerVersionNotice.Updating -> {
+                        val targetVersion = notice.version.removePrefix("v").trim()
+                        val updatingText =
+                            if (targetVersion.isNotEmpty()) {
+                                stringResource(Res.string.settings_computers_rack_updating_to, targetVersion)
+                            } else {
+                                stringResource(Res.string.settings_computers_readiness_computer_updating_title)
+                            }
+                        updatingText to RaftTheme.colors.foreground
+                    }
+                    RaftComputerVersionNotice.Restarting ->
+                        stringResource(Res.string.settings_computers_readiness_computer_restarting_title) to RaftTheme.colors.foreground
                     null -> null
                 }
             val versionText = version?.let { if (facts.osName != null) " · $it" else it }
@@ -3401,6 +3493,8 @@ private fun RaftComputerDetailBody(
                             runtimeVersions = snapshot.computer.runtimeVersions,
                             computerName = computer.name,
                             agents = snapshot.agents,
+                            runtimeReadiness = snapshot.computer.readiness?.runtimes.orEmpty(),
+                            runtimeCatalog = runtimeCatalog,
                         ) { chip ->
                             val installAs = install?.takeIf { chip.availability == RaftComputerRuntimeAvailability.NotInstalled }?.installableAs(chip.id)
                             if (install != null && installAs != null) {
@@ -4463,14 +4557,14 @@ private fun RaftComputerTile(row: RaftComputerRowModel, size: RaftIconTileSize =
     }
 }
 
-/** The detail head's light and word (raft-design patterns/status.md): Online, Key revoked, Offline or Updating…. */
+/** The detail head's light and word (raft-design patterns/status.md): Online, Key revoked, Offline, Restarting… or Updating…. */
 @Composable
 private fun RaftComputerStatus(computer: RaftComputerRowModel) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         RaftStatusDot(
             presence =
                 when {
-                    computer.updating -> RaftPresence.Busy
+                    computer.updating || computer.restarting -> RaftPresence.Busy
                     computer.online -> RaftPresence.Online
                     else -> RaftPresence.Offline
                 },
@@ -4478,6 +4572,7 @@ private fun RaftComputerStatus(computer: RaftComputerRowModel) {
         RaftListRowValue(
             when {
                 computer.updating -> stringResource(Res.string.settings_computers_status_updating)
+                computer.restarting -> stringResource(Res.string.settings_computers_readiness_computer_restarting_title)
                 computer.online -> stringResource(Res.string.settings_computers_status_connected)
                 computer.revoked -> stringResource(Res.string.settings_computers_revoked_status)
                 else -> stringResource(Res.string.settings_computers_status_offline)
@@ -4489,13 +4584,13 @@ private fun RaftComputerStatus(computer: RaftComputerRowModel) {
 
 /**
  * "Update required" (below the version floor) or "Update available", both orange: both need
- * attention and differ only in words (xxchan, raft-design patterns/status.md). None while updating.
+ * attention and differ only in words (xxchan, raft-design patterns/status.md). None while updating or restarting.
  */
 @Composable
 private fun RaftComputerUpdateBadge(computer: RaftComputerRowModel) {
     val text =
         when {
-            computer.updating -> null
+            computer.updating || computer.restarting -> null
             computer.versionNotice is RaftComputerVersionNotice.BelowFloor -> stringResource(Res.string.settings_computers_update_required)
             computer.updateAvailable || computer.versionNotice is RaftComputerVersionNotice.Available ->
                 stringResource(Res.string.settings_computers_update_available)
@@ -4711,6 +4806,8 @@ private fun RaftRackUsagePreviewCard(
     runtimeVersion: String?,
     runtimeId: String,
     computerName: String?,
+    runtimeReadiness: ComputerReadinessEntry? = null,
+    runtimeCatalog: ServerRuntimeCatalog = BundledRuntimeCatalog,
     onTap: () -> Unit,
     trigger: @Composable (onClick: (() -> Unit)?) -> Unit,
 ) {
@@ -4733,5 +4830,16 @@ private fun RaftRackUsagePreviewCard(
     val auth = rememberComputerRuntimeAuthController(access, key.machineId, runtimeId, readNow = false)
     // The line's label is the runtime's display name (web rack `RackRuntimeUsage`).
     val binding = auth?.let { ComputerRuntimeAuthBinding(it, label, computerName, agents = null, openUrl = access.auth?.openUrl ?: {}) }
-    ComputerRuntimeUsagePreviewCard(runtimeLabel = label, controller = controller, runtimeVersion = runtimeVersion, auth = binding, onTap = onTap, trigger = trigger)
+    ComputerRuntimeUsagePreviewCard(
+        runtimeLabel = label,
+        controller = controller,
+        runtimeVersion = runtimeVersion,
+        auth = binding,
+        runtimeReadiness = runtimeReadiness,
+        runtimeId = runtimeId,
+        runtimeCatalog = runtimeCatalog,
+        onOpenReadinessUrl = access.auth?.openUrl ?: {},
+        onTap = onTap,
+        trigger = trigger,
+    )
 }

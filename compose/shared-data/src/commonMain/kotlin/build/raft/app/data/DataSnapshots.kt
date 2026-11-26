@@ -2043,6 +2043,10 @@ data class SettingsComputerSnapshot(
     val loginSteps: List<ComputerLoginStep> = emptyList(),
     /** Server `attention.count > 0` verdict (web `serverNeedsAttention`, slock #15534); null when not reported by the server. */
     val serverNeedsAttention: Boolean? = null,
+    /** Full server `attention` summary (slock #14587 / #14602); null when absent on older servers or cold durable cache. */
+    val attention: ComputerReadinessAttention? = null,
+    /** Full server `readiness` projection (slock #14554 / #14587 / #14602); null when absent on older servers or cold durable cache. */
+    val readiness: ComputerReadinessSnapshot? = null,
     /**
      * Server `revocation` (slock #16468): set for a machine whose Computers are all revoked
      * (when, why, and the names this viewer may see). Null for a live Computer, a legacy row never

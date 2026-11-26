@@ -130,15 +130,18 @@ internal fun raftAttentionFirst(computers: List<SettingsComputerSnapshot>): List
 }
 
 /**
- * Web `rackNeedsAttention`: an upgrade waiting (`getComputerAttentionStatus` "upgrade": Update
- * available and Update required alike, raft-design patterns/status.md), a Computer that is not
- * online (unless it is only restarting for an update in flight, which is in progress), or an
- * online one low on disk (shared `isMachineDiskLow`).
+ * Web `rackNeedsAttention` (`computersRackFilter.ts`, slock #14587): when the server sent an
+ * `attention` summary (`serverNeedsAttention != null`), its verdict (`attention.count > 0`)
+ * decides — so a Computer restarting within its 5-minute window or waiting on quota alone is not
+ * flagged. Without a summary (older server), falls back to upgrade waiting, offline managed
+ * Computer (unless updating/restarting), or low disk.
  */
 internal fun raftRackNeedsAttention(computer: SettingsComputerSnapshot): Boolean {
+    val server = computer.serverNeedsAttention
+    if (server != null) return server
     if (computer.upgradeAvailable) return true
     if (computer.isComputer && raftComputerVersionTier(computer) is RaftComputerVersionTier.Notice) return true
-    if (!computer.online) return computer.isComputer && !computer.raftComputerUpdating()
+    if (!computer.online) return computer.isComputer && !computer.raftComputerUpdating() && !computer.raftComputerRestarting()
     return raftComputerDiskLow(computer)
 }
 
@@ -609,9 +612,9 @@ internal fun raftComputersRackLayout(
             raftAttentionFirst(filtered.raftMineFirst { it.isMyComputer(userId) })
         }
     val offlineSection = model.filters.status != RaftComputersRackStatusFilter.Offline
-    // An updating Computer stays in place while it restarts (raft-design patterns/status.md).
-    val online = if (offlineSection) sorted.filter { it.online || it.raftComputerUpdating() } else sorted
-    val offline = if (offlineSection) sorted.filter { !it.online && !it.raftComputerUpdating() } else emptyList()
+    // An updating or planned-restarting Computer stays in place (raft-design patterns/status.md).
+    val online = if (offlineSection) sorted.filter { it.online || it.raftComputerUpdating() || it.raftComputerRestarting() } else sorted
+    val offline = if (offlineSection) sorted.filter { !it.online && !it.raftComputerUpdating() && !it.raftComputerRestarting() } else emptyList()
     val groups = raftGroupRackComputers(online, groupBy, labels, raftRackGroupRank(online, sort, usage, userId))
     return RaftComputersRackLayout(groups, offline)
 }

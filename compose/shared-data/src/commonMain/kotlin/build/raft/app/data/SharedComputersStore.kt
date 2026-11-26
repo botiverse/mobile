@@ -700,9 +700,11 @@ class SharedComputersStore @RaftCoreInternalApi constructor(
                             machine.copy(
                                 latestComputerVersion = current.latestComputerVersion,
                                 latestComputerReleaseNotes = releaseNotes,
-                                // A sync row never carries `attention` (the list computes it per viewer): keep the list's.
+                                // A sync row never carries `attention` or `readiness` (the list computes them per viewer): keep the list's.
                                 loginSteps = machine.loginSteps ?: previous?.loginSteps,
                                 serverNeedsAttention = machine.serverNeedsAttention ?: previous?.serverNeedsAttention,
+                                attention = machine.attention ?: previous?.attention,
+                                readiness = machine.readiness ?: previous?.readiness,
                                 // Sync rows also omit per-viewer Worker runtime settings; keep the list's until reload.
                                 workerRuntimesTurnedOn = machine.workerRuntimesTurnedOn ?: previous?.workerRuntimesTurnedOn,
                                 canChangeWorkerRuntimes =

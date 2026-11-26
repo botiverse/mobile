@@ -3272,6 +3272,8 @@ private fun List<SettingsComputerAgentSnapshot>.enrichWithMembers(
         memoryStatus = memoryStatus?.let { SettingsComputerSizeStatusSnapshot(it.availableBytes, it.totalBytes) },
         loginSteps = loginSteps.orEmpty(),
         serverNeedsAttention = serverNeedsAttention,
+        attention = attention,
+        readiness = readiness,
         revocation = revocation,
         versionRefusedAt = versionRefusedAt,
         refusedComputerVersion = refusedComputerVersion,
