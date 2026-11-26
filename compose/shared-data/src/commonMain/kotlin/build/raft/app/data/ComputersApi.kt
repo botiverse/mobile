@@ -1258,6 +1258,16 @@ sealed interface ComputerProcJobStopResult {
      * row carried no readable `attention` summary (older server or incremental-sync row).
      */
     val serverNeedsAttention: Boolean? = null,
+    /**
+     * Full server `attention` summary (`ReadinessAttention`, slock #14587 / #14602): items,
+     * waiting agent count, and earliest `waitingUntilMs`. Null from older servers or sync rows.
+     */
+    val attention: ComputerReadinessAttention? = null,
+    /**
+     * Full server `readiness` projection (`ComputerReadiness`, slock #14554 / #14587 / #14602):
+     * the Computer's own readiness plus per-runtime readiness entries. Null from older servers or sync rows.
+     */
+    val readiness: ComputerReadinessSnapshot? = null,
     /** Server `revocation` (slock #16468): set only for a machine whose Computers are all revoked. */
     val revocation: SettingsComputerRevocationSnapshot? = null,
     /** Server `versionRefusedAt` (slock #16514): when connect was last refused below the version floor. */
@@ -1638,9 +1648,12 @@ private data class ComputerDto(
     val memoryStatus: MachineSizeStatusDto? = null,
     // routes/servers.ts GET /:id/machines `attention: computerAttentionForViewer(...)` (slock #14587,
     // packages/shared/src/readiness.ts `ReadinessAttention`): what a person must act on. Additive:
-    // absent from older servers and when the server's readiness read failed. Kept raw and read item
-    // by item ([computerLoginSteps]) so an item this build cannot read never drops the machine.
+    // absent from older servers and when the server's readiness read failed. Kept raw and parsed
+    // leniently ([parseComputerReadinessAttention]) so an unreadable item never drops the machine.
     val attention: JsonElement? = null,
+    // routes/servers.ts GET /:id/machines `readiness: computerReadinessForViewer(...)` (slock #14554,
+    // packages/shared/src/readiness.ts `ComputerReadiness`): Computer & per-runtime readiness. Additive.
+    val readiness: JsonElement? = null,
     // routes/servers.ts GET /:id/machines `revocation` (slock #16468, packages/shared/src/computerRevocation.ts
     // `ComputerRevocation`): set only for a machine whose Computers are all revoked; null/absent otherwise.
     val revocation: ComputerRevocationDto? = null,
@@ -1983,6 +1996,8 @@ private data class MachineRenameDto(
 
 private fun ComputerDto.toSummary(): ComputerSummary? {
     if (id.isBlank() || name.isBlank()) return null
+    val parsedAttention = attention?.let(::parseComputerReadinessAttention)
+    val parsedReadiness = readiness?.let(::parseComputerReadiness)
     return ComputerSummary(
         id = id,
         name = name,
@@ -2024,8 +2039,10 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         agentScopes = agentScopes?.toSnapshot(),
         diskStatus = diskStatus?.toStatus(),
         memoryStatus = memoryStatus?.toStatus(),
-        loginSteps = attention?.let(::computerLoginSteps),
-        serverNeedsAttention = attention?.let(::computerServerNeedsAttention),
+        loginSteps = parsedAttention?.toLoginSteps() ?: attention?.let(::computerLoginSteps),
+        serverNeedsAttention = parsedAttention?.let { it.count > 0 } ?: attention?.let(::computerServerNeedsAttention),
+        attention = parsedAttention,
+        readiness = parsedReadiness,
         revocation = revocation?.toSnapshot(),
         versionRefusedAt = versionRefusedAt?.trim()?.takeIf { it.isNotBlank() },
         refusedComputerVersion = refusedComputerVersion?.trim()?.takeIf { it.isNotBlank() },

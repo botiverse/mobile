@@ -233,6 +233,14 @@ class ComputersApiTest {
         assertEquals(true, machines.getValue("hetzner").toSettingsComputerSnapshot().serverNeedsAttention)
         assertEquals(false, machines.getValue("clear").toSettingsComputerSnapshot().serverNeedsAttention)
         assertEquals(null, machines.getValue("old").toSettingsComputerSnapshot().serverNeedsAttention)
+        // Full attention summary (slock #14587 / #14602): parsed into ComputerReadinessAttention and preserved on snapshot.
+        val hetznerAttention = machines.getValue("hetzner").attention
+        assertEquals(1, hetznerAttention?.count)
+        assertEquals("verification_required", hetznerAttention?.items?.single()?.code)
+        assertEquals("Olive", hetznerAttention?.items?.single()?.actorName)
+        assertEquals(hetznerAttention, machines.getValue("hetzner").toSettingsComputerSnapshot().attention)
+        assertNull(machines.getValue("old").attention)
+        assertNull(machines.getValue("old").readiness)
     }
 
     @Test
