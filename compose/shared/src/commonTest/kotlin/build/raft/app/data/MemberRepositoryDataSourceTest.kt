@@ -114,11 +114,11 @@ class MemberRepositoryDataSourceTest {
             channelMembersResponse = roster
             channelDetailResponse = HomeNetworkResponse(
                 200,
-                """{"id":"ch-joint","name":"shared","type":"joint","jointRole":"participant","channelCapabilities":{"addChannelMembers":true,"removeChannelMembers":false}}""",
+                """{"id":"channel-empty","name":"shared","type":"joint","jointRole":"participant","channelCapabilities":{"addChannelMembers":true,"removeChannelMembers":false}}""",
             )
         }
         val mutableResult = assertIs<DataResult.Content<ChannelMemberSnapshot>>(
-            RealMemberRepository(sampleStore(), mutableNetwork).getChannelMembers(DataRequestPriority.Visible, ChannelId("ch-joint")),
+            RealMemberRepository(sampleStore(), mutableNetwork).getChannelMembers(DataRequestPriority.Visible, ChannelId("channel-empty")),
         )
         assertFalse(mutableResult.data.canRemoveMembers)
         assertEquals(true, mutableResult.data.members.single { it.id == MemberId("a-1") }.canRemoveFromChannel)
@@ -126,7 +126,7 @@ class MemberRepositoryDataSourceTest {
 
         val immutableDetails = listOf(
             HomeNetworkResponse(503, "{}"),
-            HomeNetworkResponse(200, """{"id":"ch-joint","name":"shared","type":"joint","archivedAt":"2026-10-01T00:00:00Z","channelCapabilities":{"removeChannelMembers":false}}"""),
+            HomeNetworkResponse(200, """{"id":"channel-empty","name":"shared","type":"joint","archivedAt":"2026-10-01T00:00:00Z","channelCapabilities":{"removeChannelMembers":false}}"""),
         )
         for (detail in immutableDetails) {
             val network = FakeMemberNetworkClient().apply {
@@ -134,7 +134,7 @@ class MemberRepositoryDataSourceTest {
                 channelDetailResponse = detail
             }
             val result = assertIs<DataResult.Content<ChannelMemberSnapshot>>(
-                RealMemberRepository(sampleStore(), network).getChannelMembers(DataRequestPriority.Visible, ChannelId("ch-joint")),
+                RealMemberRepository(sampleStore(), network).getChannelMembers(DataRequestPriority.Visible, ChannelId("channel-empty")),
             )
             assertEquals(false, result.data.members.single { it.id == MemberId("a-1") }.canRemoveFromChannel)
         }
