@@ -42,7 +42,7 @@ class SharedServerFeatureFlagsTest {
         val snapshot = flags.prefetch(server)
         assertTrue(snapshot.resolved)
         assertTrue(flags.isEnabled(server, SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY))
-        assertFalse(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY)) // absent from evaluations -> off
+        assertFalse(flags.isEnabled(server, SERVER_LABS_UI_FEATURE_FLAG_KEY)) // absent from evaluations -> off
         assertFalse(flags.isEnabled(server, SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY))
         assertEquals(REGISTERED_SERVER_FEATURE_FLAG_KEYS, api.lastKeys) // batch: all registered keys
     }
@@ -139,14 +139,13 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun ordinaryRegisteredFlagsRequireExplicitResolvedEnablement() = runTest {
-        // Task v2 is always on in the app: task_v2_conversations_v0 is no longer asked for.
+        // Task v2 and Drafts are always on in the app: their flags are no longer asked for.
         assertFalse("task_v2_conversations_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse("drafts_section_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         // slock staging 82ec87f2 packages/shared/src/featureFlags.ts SLACK_BRIDGE_FEATURE_FLAG_KEYS.master.
         assertEquals("slack_bridge_v0", SLACK_BRIDGE_FEATURE_FLAG_KEY)
         // slock staging ee41b3f3 packages/server/src/services/featureFlagService.ts PERSONAL_ASSISTANT_FEATURE_FLAG_KEY.
         assertEquals("personal_assistant", PERSONAL_ASSISTANT_FEATURE_FLAG_KEY)
-        // botiverse/slock #12159 packages/web/src/store/serverFeatureFlags.ts DRAFTS_SECTION_FLAG_KEY (default off).
-        assertEquals("drafts_section_v0", DRAFTS_SECTION_FEATURE_FLAG_KEY)
         // New mobile switch for server setup.
         assertEquals("mobile_server_setup_v1", MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY)
         // botiverse/slock packages/shared/src/featureFlags.ts SERVER_LABS_UI_FEATURE_FLAG_KEY (default off).
@@ -169,7 +168,6 @@ class SharedServerFeatureFlagsTest {
                 MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
                 SLACK_BRIDGE_FEATURE_FLAG_KEY,
                 PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
-                DRAFTS_SECTION_FEATURE_FLAG_KEY,
                 SERVER_LABS_UI_FEATURE_FLAG_KEY,
                 MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY,
                 MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY,
@@ -279,7 +277,7 @@ class SharedServerFeatureFlagsTest {
     @Test
     fun decisionStaysPendingUntilAnEvaluationSettlesOrALastKnownValueExists() = runTest {
         // A default-off flag; the cold-start part below keeps it on disk explicitly.
-        val key = DRAFTS_SECTION_FEATURE_FLAG_KEY
+        val key = SERVER_LABS_UI_FEATURE_FLAG_KEY
         class ThrowingApi : RaftFeatureFlagsApi {
             override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
                 throw IllegalStateException("offline")
@@ -423,12 +421,12 @@ class SharedServerFeatureFlagsTest {
                             firstStarted.complete(Unit)
                             releaseFirst.await()
                             ok(
-                                """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
+                                """{"evaluations":[{"key":"$SERVER_LABS_UI_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
                             )
                         }
                         else ->
                             ok(
-                                """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":true,"reason":"default"}]}"""
+                                """{"evaluations":[{"key":"$SERVER_LABS_UI_FEATURE_FLAG_KEY","enabled":true,"reason":"default"}]}"""
                             )
                     }
             }
@@ -450,7 +448,7 @@ class SharedServerFeatureFlagsTest {
         releaseFirst.complete(Unit)
         first.await()
 
-        assertTrue(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
+        assertTrue(flags.isEnabled(server, SERVER_LABS_UI_FEATURE_FLAG_KEY))
         assertEquals(listOf(true to "default", false to "kill_switch"), evaluations.map { it.first to it.second })
         assertTrue(evaluations[0].third > evaluations[1].third)
         assertTrue(diagnostics.any { it.contains("stale_ignored") })
@@ -472,7 +470,7 @@ class SharedServerFeatureFlagsTest {
                             firstStarted.complete(Unit)
                             releaseFirst.await()
                             ok(
-                                """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
+                                """{"evaluations":[{"key":"$SERVER_LABS_UI_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
                             )
                         }
                         else -> HomeNetworkResponse(code = 500, bodyText = null)
@@ -491,7 +489,7 @@ class SharedServerFeatureFlagsTest {
         releaseFirst.complete(Unit)
         first.await()
 
-        assertFalse(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(server, SERVER_LABS_UI_FEATURE_FLAG_KEY))
         assertEquals(listOf(false to "kill_switch"), evaluations.map { it.first to it.second })
         assertTrue(evaluations.single().third > 0L)
     }
@@ -501,7 +499,7 @@ class SharedServerFeatureFlagsTest {
         val flags = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
         val snapshot = flags.prefetch(server)
         assertFalse(snapshot.resolved) // failed -> stays Unresolved, ordinary flags default off (feature stays dark)
-        assertFalse(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(server, SERVER_LABS_UI_FEATURE_FLAG_KEY))
     }
 
     @Test

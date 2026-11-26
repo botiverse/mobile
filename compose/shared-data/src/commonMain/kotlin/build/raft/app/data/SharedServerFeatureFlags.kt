@@ -163,13 +163,6 @@ const val SYNC_INBOX_ROWS_FEATURE_FLAG_KEY: String = "sync_inbox_rows_v0"
 const val PERSONAL_ASSISTANT_FEATURE_FLAG_KEY: String = "personal_assistant"
 
 /**
- * Drafts (botiverse/slock #12159 `DRAFTS_SECTION_FLAG_KEY`, web `serverFeatureFlags.ts`): per server,
- * default off. On, Home (and the wide Chat sidebar) has a Drafts row under Saved listing every unsent
- * composer draft. Off (or unresolved), the row is gone; the composer keeps its drafts either way.
- */
-const val DRAFTS_SECTION_FEATURE_FLAG_KEY: String = "drafts_section_v0"
-
-/**
  * Navigation 3 page stack on Android (plan step 1): the app shell window draws the shared page stack
  * and opens the allowlisted pages on it instead of in Activities of their own. Mobile-only key,
  * default OFF (server-unresolved evaluates false). Unlike the other flags it is not read per
@@ -295,7 +288,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY,
     SYNC_INBOX_ROWS_FEATURE_FLAG_KEY,
     PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
-    DRAFTS_SECTION_FEATURE_FLAG_KEY,
     MOBILE_NAV3_STACK_FEATURE_FLAG_KEY,
     MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY,
     // Slack Bridge (slock `SLACK_BRIDGE_FEATURE_FLAG_KEYS.master`): the Settings IM Bridges row.
