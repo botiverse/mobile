@@ -399,7 +399,7 @@ class ConversationWorkerStateContractAndStoreTest {
                       "id": "m-live-ended",
                       "channelId": "ch-task",
                       "seq": 14,
-                      "senderType": "system",
+                      "senderType": "user",
                       "senderId": "system",
                       "senderName": "System",
                       "messageType": "system",
