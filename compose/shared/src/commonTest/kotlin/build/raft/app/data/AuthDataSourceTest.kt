@@ -1407,11 +1407,14 @@ class AuthDataSourceTest {
         assertEquals(successor, store.readSession())
     }
 
-    private fun storedSession(accessToken: String = "access-token"): StoredAuthSession =
+    private fun storedSession(
+        accessToken: String = "access-token",
+        refreshToken: String = "refresh-token",
+    ): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
             accessToken = accessToken,
-            refreshToken = "refresh-token",
+            refreshToken = refreshToken,
             selectedServerId = "server-1",
             selectedServerSlug = "slock",
             servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
