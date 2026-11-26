@@ -26,7 +26,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -45,6 +49,7 @@ import androidx.compose.ui.unit.isUnspecified
 import build.raft.designsystem.motion.RaftMotion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftOpacity
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
@@ -102,26 +107,44 @@ internal data class RaftSwitchLook(
     val thumb: Color,
     /** The 1.5dp ring outside the thumb (`shadow-[0_0_0_1.5px_…]`). */
     val thumbRing: Color,
+    /** Whole-switch layer alpha (`RaftOpacity.Dimmed` when disabled + checked, else `1f`). */
+    val alpha: Float = 1f,
 )
 
 /**
- * switch.tsx: off is a `fill-muted` track with a `line-strong` edge and a `layer-card`
- * knob ringed in `line-strong`; on is the selected sticker (`selected`, `sticker-ink` edge, the
- * die-cut edge) with a `sticker-paper` knob ringed in `sticker-ink`. Disabled, on or off,
- * is `fill-muted` with `foreground-disabled` edges: no longer a sticker.
+ * switch.tsx (`botiverse/raft-design#1462`): off is a `fill-muted` track with a `line-strong` edge
+ * and a `layer-card` knob ringed in `line-strong`; on is the selected sticker (`selected`,
+ * `sticker-ink` edge, the die-cut edge) with a `sticker-paper` knob ringed in `sticker-ink`.
+ * Disabled off is `fill-muted` with `foreground-disabled` edges; disabled on keeps the on sticker
+ * look faded as a whole to [RaftOpacity.Dimmed] so on and off remain distinguishable in both themes.
  */
 internal fun raftSwitchLook(checked: Boolean, enabled: Boolean, colors: RaftUiThemeColors): RaftSwitchLook =
     when {
-        !enabled -> RaftSwitchLook(colors.fillMuted, colors.foregroundDisabled, Color.Transparent, colors.fillMuted, colors.foregroundDisabled)
         checked ->
             RaftSwitchLook(
-                RaftUiPalette.selected,
-                RaftUiPalette.stickerInk,
-                colors.stickerEdge,
-                RaftUiPalette.stickerPaper,
-                RaftUiPalette.stickerInk,
+                track = RaftUiPalette.selected,
+                trackEdge = RaftUiPalette.stickerInk,
+                dieCut = colors.stickerEdge,
+                thumb = RaftUiPalette.stickerPaper,
+                thumbRing = RaftUiPalette.stickerInk,
+                alpha = if (enabled) 1f else RaftOpacity.Dimmed,
             )
-        else -> RaftSwitchLook(colors.fillMuted, colors.lineStrong, Color.Transparent, colors.layerCard, colors.lineStrong)
+        !enabled ->
+            RaftSwitchLook(
+                track = colors.fillMuted,
+                trackEdge = colors.foregroundDisabled,
+                dieCut = Color.Transparent,
+                thumb = colors.fillMuted,
+                thumbRing = colors.foregroundDisabled,
+            )
+        else ->
+            RaftSwitchLook(
+                track = colors.fillMuted,
+                trackEdge = colors.lineStrong,
+                dieCut = Color.Transparent,
+                thumb = colors.layerCard,
+                thumbRing = colors.lineStrong,
+            )
     }
 
 /** The 20dp box of a checkbox and a radio (`size-5`). */
@@ -301,8 +324,9 @@ internal fun RaftRadioBox(selected: Boolean, enabled: Boolean, focused: Boolean,
  * raft-ui 0.8.0 Switch: a 50 x 30dp pill that turns a setting on or off at once. Off: a
  * `fill-muted` track with a 1.5dp `line-strong` edge and a white knob ringed in
  * `line-strong`. On: a brand sticker (yellow, `sticker-ink` edge, the die-cut edge in
- * dark) with the knob slid 20dp to the end (220ms, `ease-slide`). Disabled is grey in
- * both positions. Keyboard focus rings the track.
+ * dark) with the knob slid 20dp to the end (220ms, `ease-slide`). Disabled off is grey;
+ * disabled on keeps the yellow sticker look faded as a whole to [RaftOpacity.Dimmed] so
+ * on and off remain distinguishable in both themes. Keyboard focus rings the track.
  *
  * Under a fine pointer it is 38 x 22dp with a 14dp knob that slides 16dp (sizing v12, raft-ui
  * 0.65 desktop density: [build.raft.designsystem.theme.RaftControlMetrics.switchWidth]); the
@@ -348,11 +372,26 @@ fun RaftSwitch(
             Modifier
         }
     val radius = controls.switchHeight / 2
+    val dimLayer =
+        if (look.alpha < 1f) {
+            Modifier.drawWithContent {
+                val paint = Paint().apply { alpha = look.alpha }
+                drawIntoCanvas { canvas ->
+                    val edge = RaftStroke.Control.toPx() + 1f
+                    canvas.saveLayer(Rect(-edge, -edge, size.width + edge, size.height + edge), paint)
+                    drawContent()
+                    canvas.restore()
+                }
+            }
+        } else {
+            Modifier
+        }
     Box(
         modifier
             .then(toggle)
             .then(if (name != null) Modifier.semantics { contentDescription = name } else Modifier)
             .size(controls.switchWidth, controls.switchHeight)
+            .then(dimLayer)
             .raftFocusRing(focused, radius, colors)
             .raftDieCutEdge(look.dieCut, radius)
             .background(look.track, CircleShape)
