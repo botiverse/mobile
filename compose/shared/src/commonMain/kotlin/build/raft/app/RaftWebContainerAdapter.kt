@@ -19,6 +19,7 @@ import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMode
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
 import build.raft.app.network.sync.DiagnosticFeatureFlagScope
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
+import build.raft.webcontainer.WEB_MEDIA_CAPTURE_DENIED_REASON
 import build.raft.webcontainer.WebContainerConfig
 import build.raft.webcontainer.WebContainerController
 import build.raft.webcontainer.WebContainerEvents
@@ -596,8 +597,9 @@ internal fun formatWebContainerTelemetryLog(event: WebContainerTelemetryEvent): 
                 }
         is WebContainerTelemetryEvent.IsolationScopeCleared ->
             false to "web_container_scope_cleared scope=${event.scope} evicted=${event.evictedPooledCount} result=${event.result}"
+        // Every web page's request is denied by policy (WEB_MEDIA_CAPTURE_DENIED_REASON): expected, not a warning.
         is WebContainerTelemetryEvent.MediaCapturePermission ->
-            (!event.grantedPrompt) to
+            (!event.grantedPrompt && event.reason != WEB_MEDIA_CAPTURE_DENIED_REASON) to
                 buildString {
                     append("web_container_media_capture surface=${event.surfaceId}")
                     append(" decision=${if (event.grantedPrompt) "prompt" else "deny"}")
