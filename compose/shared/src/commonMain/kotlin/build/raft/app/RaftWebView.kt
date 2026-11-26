@@ -275,6 +275,8 @@ internal fun RaftSandboxWebView(
     onContentProcessGone: ((String) -> Unit)? = null,
     /** [RaftWebViewConfig.allowJsDialogs]. */
     allowJsDialogs: Boolean = false,
+    /** [RaftWebViewConfig.allowNewWindows]. */
+    allowNewWindows: Boolean = false,
     /** [RaftWebViewEvents.onJsDialog]. */
     onJsDialog: ((WebJsDialogRequest) -> Unit)? = null,
 ) {
@@ -388,6 +390,7 @@ internal fun RaftSandboxWebView(
             raftHost,
             coverActive,
             allowJsDialogs,
+            allowNewWindows,
         ) {
             RaftWebViewConfig(
                 url = url,
@@ -413,6 +416,7 @@ internal fun RaftSandboxWebView(
                 raftHost = raftHost,
                 coverActive = coverActive,
                 allowJsDialogs = allowJsDialogs,
+                allowNewWindows = allowNewWindows,
             )
         }
     // Full-bleed: in a clipped pane of the wide row (the Artifact column) the page is cut hard at the pane's edge, never
@@ -521,6 +525,8 @@ internal fun RaftWebView(
     onContentProcessGone: ((String) -> Unit)? = null,
     /** [RaftWebViewConfig.allowJsDialogs]. */
     allowJsDialogs: Boolean = false,
+    /** [RaftWebViewConfig.allowNewWindows]. */
+    allowNewWindows: Boolean = false,
     /** [RaftWebViewEvents.onJsDialog]. */
     onJsDialog: ((WebJsDialogRequest) -> Unit)? = null,
 ) {
@@ -555,6 +561,7 @@ internal fun RaftWebView(
         catchesMainFrameNavigation = catchesMainFrameNavigation,
         onContentProcessGone = onContentProcessGone,
         allowJsDialogs = allowJsDialogs,
+        allowNewWindows = allowNewWindows,
         onJsDialog = onJsDialog,
     )
 }

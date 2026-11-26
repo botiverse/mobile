@@ -733,4 +733,22 @@ class RaftWebContainerAdapterTest {
         assertEquals(1, closedCount)
         assertEquals("1.30.0", wideHost.getAppInfo(ctx)?.appVersion)
     }
+
+    @Test
+    fun toWebContainerConfigMapsAllowNewWindowsAndFailsClosedOnMalformedOrigin() {
+        val defaultMapped = baseConfig().toWebContainerConfig(isDarkTheme = false)
+        assertFalse(defaultMapped.navigationPolicy.allowNewWindows)
+
+        val enabledMapped =
+            baseConfig()
+                .copy(allowNewWindows = true)
+                .toWebContainerConfig(isDarkTheme = false)
+        assertTrue(enabledMapped.navigationPolicy.allowNewWindows)
+
+        val malformedMapped =
+            baseConfig(mainFrameOrigin = "not a valid origin")
+                .copy(allowNewWindows = true)
+                .toWebContainerConfig(isDarkTheme = false)
+        assertFalse(malformedMapped.navigationPolicy.allowNewWindows)
+    }
 }

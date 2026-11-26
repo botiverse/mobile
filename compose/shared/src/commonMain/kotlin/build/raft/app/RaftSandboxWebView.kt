@@ -137,6 +137,12 @@ internal data class RaftWebViewConfig(
      * kept-alive panel is collapsed or hidden so background pages can never hijack the foreground.
      */
     val allowJsDialogs: Boolean = false,
+    /**
+     * Whether user-gesture `window.open` / `target="_blank"` requests are accepted and routed
+     * through the host's main-frame navigation policy (Android Phase 1b, #proj-mobile:#395).
+     * Off by default so origin-locked surfaces (Artifact viewer, Settings) preserve existing behavior.
+     */
+    val allowNewWindows: Boolean = false,
 ) {
     val effectiveStoragePartition: RaftWebViewStoragePartition
         get() =

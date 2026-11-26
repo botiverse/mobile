@@ -352,7 +352,7 @@ internal fun RaftWebViewConfig.toWebContainerConfig(
                 allowedSchemes = allowedNavigationSchemes,
                 lockedMainFrameOrigin = effectiveLockedOrigin,
                 allowedSubframeHosts = frameHosts,
-                allowNewWindows = false,
+                allowNewWindows = allowNewWindows && !malformedMainFrameOrigin,
                 requestHeaderRule = headerRule,
                 restoreBootstrapPathMarkers = setOf(RAFT_WEBVIEW_BOOTSTRAP_PATH),
             ),

@@ -89,6 +89,10 @@ class RaftWebViewClientRenderGoneGuardTest {
                 // process termination through WebContainerWatchdog circuit breaker and returns true.
                 "compose/web-container/src/androidMain/kotlin/build/raft/webcontainer/WebContainerHost.android.kt" to
                     RegisteredSite(sites = 2, handler = "override fun onRenderProcessGone"),
+                // Ephemeral window.open transport WebView (:web-container): destroys transport cleanly
+                // on renderer process termination and returns true.
+                "compose/web-container/src/androidMain/kotlin/build/raft/webcontainer/WebContainerAndroidChromeSupport.kt" to
+                    RegisteredSite(sites = 1, handler = "override fun onRenderProcessGone"),
             )
     }
 }
