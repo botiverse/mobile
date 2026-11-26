@@ -124,6 +124,61 @@ class RaftMinBuildGateDecisionTest {
     }
 
     @Test
+    fun handsTestFlightLookupComparesBuildNumbersAndHandles404NoExternalBuild() {
+        val readyBody =
+            """{"version_name":"1.30.0","version_code":13000003,"external_build_state":"IN_BETA_TESTING","updated_at":1795661379210}"""
+        val ready = parseRaftHandsTestFlightResponse(statusCode = 200, body = readyBody)
+        assertEquals(
+            RaftHandsTestFlightResponse.Ready(
+                RaftHandsTestFlightListing(
+                    versionName = "1.30.0",
+                    versionCode = 13_000_003L,
+                    externalBuildState = "IN_BETA_TESTING",
+                )
+            ),
+            ready,
+        )
+        // Same version name (1.30.0), newer build number (13000003 > 13000002) -> Available with TestFlight link.
+        assertEquals(
+            RaftInstallChannelLatest.Available(build = 13_000_003L, updateUrl = RAFT_IOS_TESTFLIGHT_JOIN_URL),
+            raftHandsTestFlightLatest(ready, currentBuild = 13_000_002L),
+        )
+        // Same or older build -> UpToDate.
+        assertEquals(RaftInstallChannelLatest.UpToDate, raftHandsTestFlightLatest(ready, currentBuild = 13_000_003L))
+        assertEquals(RaftInstallChannelLatest.UpToDate, raftHandsTestFlightLatest(ready, currentBuild = 13_100_001L))
+        // Unknown current build -> Unknown.
+        assertEquals(RaftInstallChannelLatest.Unknown, raftHandsTestFlightLatest(ready, currentBuild = null))
+
+        // Non-active external build state does not prompt.
+        val expired =
+            parseRaftHandsTestFlightResponse(
+                statusCode = 200,
+                body = """{"version_name":"1.30.0","version_code":13000004,"external_build_state":"EXPIRED"}""",
+            )
+        assertEquals(RaftInstallChannelLatest.UpToDate, raftHandsTestFlightLatest(expired, currentBuild = 13_000_002L))
+
+        // Explicit 404 no_external_build -> UpToDate (silent, no error).
+        val noExternal =
+            parseRaftHandsTestFlightResponse(
+                statusCode = 404,
+                body = """{"error":"no external TestFlight build","code":"no_external_build"}""",
+            )
+        assertEquals(RaftHandsTestFlightResponse.NoExternalBuild, noExternal)
+        assertEquals(RaftInstallChannelLatest.UpToDate, raftHandsTestFlightLatest(noExternal, currentBuild = 13_000_002L))
+
+        // 404 app not found, 500, malformed body, or invalid build code -> Unreadable -> Unknown.
+        listOf(
+            parseRaftHandsTestFlightResponse(404, """{"error":"not found"}"""),
+            parseRaftHandsTestFlightResponse(500, """{"error":"internal"}"""),
+            parseRaftHandsTestFlightResponse(200, "<html>"),
+            parseRaftHandsTestFlightResponse(200, """{"version_name":"1.30.0","version_code":12}"""),
+        ).forEach { response ->
+            assertEquals(RaftHandsTestFlightResponse.Unreadable, response)
+            assertEquals(RaftInstallChannelLatest.Unknown, raftHandsTestFlightLatest(response, currentBuild = 13_000_002L))
+        }
+    }
+
+    @Test
     fun theEffectiveThresholdIsTheHighestServerReadingInAnyOrder() {
         val forward = linkedMapOf("server-a" to 12_000_000L, "server-b" to 12_200_000L, "server-c" to 12_100_000L)
         val backward = LinkedHashMap(forward.entries.reversed().associate { it.key to it.value })

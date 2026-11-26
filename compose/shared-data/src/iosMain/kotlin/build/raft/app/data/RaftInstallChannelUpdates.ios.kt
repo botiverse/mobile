@@ -16,7 +16,8 @@ import platform.Foundation.NSLocale
 import platform.Foundation.countryCode
 import platform.Foundation.currentLocale
 
-@RaftCoreInternalApi actual fun raftPlatformInstallChannelUpdates(): RaftInstallChannelUpdates? = RaftAppStoreInstallChannel
+@RaftCoreInternalApi actual fun raftPlatformInstallChannelUpdates(): RaftInstallChannelUpdates? =
+    if (raftIsTestFlightInstall()) RaftTestFlightInstallChannel else RaftAppStoreInstallChannel
 
 @RaftCoreInternalApi actual fun raftPlatformEarlyAccessGuide(): RaftEarlyAccessPlatformGuide? =
     RaftEarlyAccessPlatformGuide(
@@ -70,6 +71,47 @@ import platform.Foundation.currentLocale
         if (!response.status.isSuccess()) return null
         return parseRaftAppStoreLookup(response.bodyAsText(), bundleId)
     }
+}
+
+/**
+ * Hands read-only TestFlight install channel (`#proj-mobile:#391`): when installed via TestFlight
+ * (`sandboxReceipt`), queries `GET https://hands.build/public/v2/apps/raft-ios/testflight/latest`
+ * and compares the integer `version_code` against `CFBundleVersion`. Automatic checks wait briefly
+ * for [RaftServicesPrivacyGate] and stay silent when privacy mode is on/unknown; explicit user
+ * taps on Settings › About › Check for update always check directly.
+ */
+@RaftCoreInternalApi object RaftTestFlightInstallChannel : RaftInstallChannelUpdates {
+    override val name: String = "testflight"
+
+    private const val PRIVACY_WAIT_MILLIS: Long = 10_000L
+
+    private val client by lazy { HttpClient(Darwin) }
+
+    override val offersStoreUpdateNotice: Boolean = true
+
+    override suspend fun latest(): RaftInstallChannelLatest = latest(userInitiated = false)
+
+    override suspend fun latest(userInitiated: Boolean): RaftInstallChannelLatest {
+        if (!userInitiated) {
+            val mode =
+                if (RaftServicesPrivacyGate.allowsAutomatic()) {
+                    RaftPrivacyMode.Off
+                } else {
+                    RaftServicesPrivacyGate.awaitLaunchDecision(waitMillis = PRIVACY_WAIT_MILLIS)
+                }
+            if (!RaftServicesPrivacyGate.allowsAutomatic(mode)) {
+                return RaftInstallChannelLatest.Unknown
+            }
+        }
+        val response = client.get(RAFT_IOS_HANDS_TESTFLIGHT_LATEST_URL)
+        val parsed = parseRaftHandsTestFlightResponse(response.status.value, response.bodyAsText())
+        return raftHandsTestFlightLatest(
+            response = parsed,
+            currentBuild = parseRaftBuildNumber(RaftAppIdentityRegistry.current()?.buildNumber),
+        )
+    }
+
+    override fun fallbackUpdateUrl(): String = RAFT_IOS_TESTFLIGHT_JOIN_URL
 }
 
 @Suppress("DEPRECATION")
