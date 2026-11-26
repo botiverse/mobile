@@ -30,6 +30,17 @@ internal actual fun RaftDialogWindowPolicy(isDark: Boolean, keepsHostKeyboard: B
 @Composable
 internal actual fun RaftPrepareDialogWindow(isDark: Boolean) = Unit
 
+/**
+ * CMP Desktop's `Dialog` draws in an overlay scene above the root `ComposeScene` tree where
+ * `RaftCmpToastLayer`'s in-tree [RaftToastHost] sits, so each dialog renders the shared toast
+ * overlay on top of its scrim and content (when [LocalRaftToastHostState] is provided).
+ */
+@Composable
+internal actual fun RaftDialogToastOverlay() {
+    val toastState = LocalRaftToastHostState.current ?: return
+    RaftToastHost(toastState)
+}
+
 @Composable
 internal actual fun RaftPopupWindowPolicy(onReady: () -> Unit) = Unit
 

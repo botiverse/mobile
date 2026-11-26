@@ -77,6 +77,12 @@ internal actual fun RaftPrepareDialogWindow(isDark: Boolean) {
     context.theme.applyStyle(appearance.raftDialogBarsStyle(), true)
 }
 
+@Composable
+internal actual fun RaftDialogToastOverlay() {
+    val toastState = LocalRaftToastHostState.current ?: return
+    RaftToastHost(toastState)
+}
+
 private fun RaftSystemBarsAppearance.raftDialogBarsStyle(): Int =
     when {
         lightStatusBars && lightNavigationBars -> R.style.RaftDialogBars_LightStatus_LightNav

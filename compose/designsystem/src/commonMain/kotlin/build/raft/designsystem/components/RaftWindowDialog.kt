@@ -91,6 +91,7 @@ fun RaftWindowDialog(
     RaftPrepareDialogWindow(isDark = RaftTheme.isDark)
     // The host's window (read outside the dialog: its own layer may not have a size yet).
     val hostWindow = LocalWindowInfo.current
+    val dialogToastLayer = LocalRaftToastHostLayer.current + 1
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = raftWindowDialogPlatformProperties(properties),
@@ -107,16 +108,19 @@ fun RaftWindowDialog(
                     forceInstall = true,
                 ),
         ) {
-            // Its own OS window: a head in it is no pane's of the row under it, and its local
-            // boundsInRoot() coordinates must not feed the host window's toast avoidances.
-            CompositionLocalProvider(
-                LocalRaftToastAvoidanceActive provides false,
-                LocalRaftFocusModalToken provides modalToken,
-                LocalRaftFocusInteractionObserverInstalled provides true,
-            ) {
-                RaftFocusRegionHost(region = RaftFocusRegion.Modal, modifier = Modifier.fillMaxSize()) {
-                    RaftPaneGridOutsideRow(content)
+            CompositionLocalProvider(LocalRaftToastHostLayer provides dialogToastLayer) {
+                // Its own OS window: a head in it is no pane's of the row under it, and its local
+                // boundsInRoot() coordinates must not feed the host window's toast avoidances.
+                CompositionLocalProvider(
+                    LocalRaftToastAvoidanceActive provides false,
+                    LocalRaftFocusModalToken provides modalToken,
+                    LocalRaftFocusInteractionObserverInstalled provides true,
+                ) {
+                    RaftFocusRegionHost(region = RaftFocusRegion.Modal, modifier = Modifier.fillMaxSize()) {
+                        RaftPaneGridOutsideRow(content)
+                    }
                 }
+                RaftDialogToastOverlay()
             }
         }
     }
@@ -188,6 +192,16 @@ internal expect fun RaftDialogWindowPolicy(isDark: Boolean, keepsHostKeyboard: B
  */
 @Composable
 internal expect fun RaftPrepareDialogWindow(isDark: Boolean)
+
+/**
+ * Renders the shared [RaftToastHost] overlay inside [RaftWindowDialog]'s window on platforms where
+ * dialogs sit above the host's in-tree toast layer (Android's separate `Dialog` window and Desktop's
+ * overlay scene), so toasts posted while a sheet or dialog stays open appear on top of its scrim
+ * and content. No-op on iOS, where `RaftIosToastOverlayWindow` already sits in its own `UIWindow`
+ * above the main window.
+ */
+@Composable
+internal expect fun RaftDialogToastOverlay()
 
 /**
  * Called from inside a focusable popup's content (a [RaftDropdownMenu]): on Android a focusable

@@ -32,6 +32,14 @@ internal actual fun RaftDialogWindowPolicy(isDark: Boolean, keepsHostKeyboard: B
 @Composable
 internal actual fun RaftPrepareDialogWindow(isDark: Boolean) = Unit
 
+/**
+ * Nothing to do: iOS renders toasts in a dedicated pass-through `UIWindow`
+ * (`RaftIosToastOverlayWindow` at `UIWindow.Level.normal + 1`) already above the main window
+ * and every CMP dialog layer inside it.
+ */
+@Composable
+internal actual fun RaftDialogToastOverlay() = Unit
+
 @Composable
 internal actual fun RaftPopupWindowPolicy(onReady: () -> Unit) = Unit
 

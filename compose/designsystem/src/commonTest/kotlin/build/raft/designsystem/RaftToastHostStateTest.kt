@@ -16,6 +16,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.testTimeSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** [RaftToastHostState] on virtual time: raft-ui's limit, timeouts, replace-not-queue, and the dedupe. */
@@ -152,5 +153,74 @@ class RaftToastHostStateTest {
         val first = Rect(left = 40f, top = 700f, right = 340f, bottom = 780f)
         val second = Rect(left = 20f, top = 788f, right = 360f, bottom = 860f)
         assertEquals(Rect(left = 20f, top = 700f, right = 360f, bottom = 860f), raftToastUnionBounds(listOf(first, second)))
+    }
+
+    @Test
+    fun activeHostFollowsLifoRegistrationAndHandsBackOnUnregister() {
+        val state = RaftToastHostState()
+        val activity = Any()
+        val dialog1 = Any()
+        val dialog2 = Any()
+
+        // Empty-list fallback: before DisposableEffect commits, a single host is active.
+        assertTrue(state.isActiveHost(activity))
+
+        // Activity registers at base layer 0.
+        state.registerHost(activity, layer = 0)
+        assertTrue(state.isActiveHost(activity))
+        assertFalse(state.isActiveHost(dialog1))
+
+        // First dialog opens (layer 1) -> takes over from Activity.
+        state.registerHost(dialog1, layer = 1)
+        assertFalse(state.isActiveHost(activity))
+        assertTrue(state.isActiveHost(dialog1))
+
+        // Second sibling dialog opens (layer 1) -> topmost in same layer wins (LIFO).
+        state.registerHost(dialog2, layer = 1)
+        assertFalse(state.isActiveHost(activity))
+        assertFalse(state.isActiveHost(dialog1))
+        assertTrue(state.isActiveHost(dialog2))
+
+        // Duplicate registration of an existing token must not duplicate or reorder it.
+        state.registerHost(dialog1, layer = 1)
+        assertTrue(state.isActiveHost(dialog2))
+
+        // Closing top dialog hands back to dialog1, then closing dialog1 hands back to activity.
+        state.unregisterHost(dialog2)
+        assertTrue(state.isActiveHost(dialog1))
+        assertFalse(state.isActiveHost(activity))
+
+        state.unregisterHost(dialog1)
+        assertTrue(state.isActiveHost(activity))
+
+        // Unregistering the last host restores the empty-list fallback.
+        state.unregisterHost(activity)
+        assertTrue(state.isActiveHost(activity))
+    }
+
+    @Test
+    fun higherLayerDialogBeatsRootHostEvenWhenRegisteredFirst() {
+        val state = RaftToastHostState()
+        val activity = Any()
+        val outerDialog = Any()
+        val nestedDialog = Any()
+
+        // Frame 0 / recreation order where dialog effects commit ahead of the root host.
+        state.registerHost(nestedDialog, layer = 2)
+        state.registerHost(outerDialog, layer = 1)
+        state.registerHost(activity, layer = 0)
+
+        assertTrue(state.isActiveHost(nestedDialog))
+        assertFalse(state.isActiveHost(outerDialog))
+        assertFalse(state.isActiveHost(activity))
+
+        // Unregistering middle dialog keeps topmost nested dialog active.
+        state.unregisterHost(outerDialog)
+        assertTrue(state.isActiveHost(nestedDialog))
+        assertFalse(state.isActiveHost(activity))
+
+        // Closing nested dialog falls back to root activity host.
+        state.unregisterHost(nestedDialog)
+        assertTrue(state.isActiveHost(activity))
     }
 }

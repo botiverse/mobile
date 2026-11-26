@@ -349,6 +349,40 @@ class RaftToastHostState(
             }
         return maxOf(heldPx, liveAvoidedPx, safeBottomPx.coerceAtLeast(0f))
     }
+
+    // ---- Active host coordination (layer-aware LIFO) ----
+
+    private class HostEntry(val token: Any, val layer: Int)
+
+    /**
+     * Mounted [RaftToastHost]s sharing this state, in registration order. When a separate OS
+     * window ([RaftWindowDialog]) mounts its own overlay host, only the topmost mounted host
+     * (the last entry in the highest [HostEntry.layer]) runs timers and draws the toast stack so
+     * toasts appear above open dialogs/sheets without duplicating.
+     */
+    private val registeredHosts = mutableStateListOf<HostEntry>()
+
+    internal fun registerHost(token: Any, layer: Int = 0) {
+        val index = registeredHosts.indexOfFirst { it.token === token }
+        if (index >= 0) {
+            if (registeredHosts[index].layer != layer) {
+                registeredHosts[index] = HostEntry(token, layer)
+            }
+        } else {
+            registeredHosts.add(HostEntry(token, layer))
+        }
+    }
+
+    internal fun unregisterHost(token: Any) {
+        val index = registeredHosts.indexOfFirst { it.token === token }
+        if (index >= 0) registeredHosts.removeAt(index)
+    }
+
+    internal fun isActiveHost(token: Any): Boolean {
+        if (registeredHosts.isEmpty()) return true
+        val topLayer = registeredHosts.maxOf { it.layer }
+        return registeredHosts.lastOrNull { it.layer == topLayer }?.token === token
+    }
 }
 
 /** Something a toast must stay above (a tab bar, a composer, a host-drawn bar). */

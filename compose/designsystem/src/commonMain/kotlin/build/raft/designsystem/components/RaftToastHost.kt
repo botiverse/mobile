@@ -71,6 +71,13 @@ val LocalRaftToastHostState = staticCompositionLocalOf<RaftToastHostState?> { nu
 val LocalRaftToastAvoidanceActive = compositionLocalOf { true }
 
 /**
+ * Nesting depth for [RaftToastHost] active-host arbitration: 0 in the root window, incremented by
+ * each [RaftWindowDialog] so a dialog's toast overlay always wins over the underlying host window
+ * regardless of effect registration order (e.g. when a dialog is open on Frame 0 or recreated).
+ */
+internal val LocalRaftToastHostLayer = staticCompositionLocalOf { 0 }
+
+/**
  * Supplies the live bottom safe-area + keyboard inset (px) read by [RaftToastHost] during layout
  * placement, so toasts follow the exact same IME source as the host/page (Android's dispatched
  * `RaftHostImeInsets`, iOS's curve-matched keyboard slide tracker) while still flooring at
@@ -141,11 +148,13 @@ fun RaftToastHost(
     modifier: Modifier = Modifier,
     onToastBoundsChange: ((Rect?) -> Unit)? = null,
 ) {
-    LaunchedEffect(state) { state.runTimers() }
-    val toasts by state.toasts.collectAsState()
-    // Toasts already on screen when the host appears (handed over from another window) do not
-    // slide in again.
-    val presentAtStart = remember(state) { state.visible.map { it.id }.toSet() }
+    val hostToken = remember { Any() }
+    val hostLayer = LocalRaftToastHostLayer.current
+    DisposableEffect(state, hostToken, hostLayer) {
+        state.registerHost(hostToken, layer = hostLayer)
+        onDispose { state.unregisterHost(hostToken) }
+    }
+    val isActiveHost = state.isActiveHost(hostToken)
     val boundsReporter =
         if (onToastBoundsChange != null) {
             val currentOnBoundsChange by rememberUpdatedState(onToastBoundsChange)
@@ -158,6 +167,17 @@ fun RaftToastHost(
         } else {
             null
         }
+    if (!isActiveHost) {
+        if (boundsReporter != null) {
+            LaunchedEffect(boundsReporter) { boundsReporter.clear() }
+        }
+        return
+    }
+    LaunchedEffect(state) { state.runTimers() }
+    val toasts by state.toasts.collectAsState()
+    // Toasts already on screen when this host takes over (handed over from another window or
+    // transferred from an opening/closing dialog) do not slide in again.
+    val presentAtStart = remember(state, isActiveHost) { state.visible.map { it.id }.toSet() }
     var hostBottomPx by remember { mutableFloatStateOf(Float.NaN) }
     val safeDrawing = WindowInsets.safeDrawing
     val horizontalInsets = rememberRaftStableWindowInsets(safeDrawing.only(WindowInsetsSides.Horizontal))
