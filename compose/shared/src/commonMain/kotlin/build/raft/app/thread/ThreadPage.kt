@@ -4498,8 +4498,10 @@ private fun SharedThreadRouteContentContent(
                     onSendAttachmentComment = ::sendAttachmentComment,
                     onResolveAttachmentComment = ::resolveAttachmentComment,
                 )
+                build.raft.app.agents.StandaloneAgentVoiceCallOverlay()
             },
             lounge = threadLounge,
+            onStartCall = threadLoungeSelectionQuote.onStartCall,
                 onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
                 // task #180: forwarded from the route scope, which owns the workspace store.
                 onToggleFocusMode = threadFocusModeToggle,

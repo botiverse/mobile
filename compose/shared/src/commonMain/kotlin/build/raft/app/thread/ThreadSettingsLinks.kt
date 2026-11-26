@@ -293,6 +293,8 @@ internal fun rememberThreadSettingsLinks(
 internal class ThreadLoungeSelectionQuote(
     val threadLounge: ThreadPageLounge,
     val selectionQuoteTarget: ThreadSelectTextQuoteTarget,
+    /** Raft Agent Voice: starts a voice call for an eligible 1:1 Agent DM; null elsewhere. */
+    val onStartCall: (() -> Unit)? = null,
 )
 
 /** Agent Lounge and the selection quote: see [ThreadLoungeSelectionQuote]. */
@@ -404,8 +406,19 @@ internal fun rememberThreadLoungeSelectionQuote(
         inPlaceTextSelectionHost.quoteIntoComposer = inPlaceSelectionQuote
         inPlaceTextSelectionHost.insertQuoteIntoComposer = inPlaceSelectionQuoteInsert
     }
+    val onStartCall =
+        build.raft.app.agents.rememberThreadDmAgentVoiceCallAction(
+            payload = renderedThread,
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            serverId = currentServerId,
+            serverRole = currentSession?.servers?.firstOrNull { it.id == currentServerId }?.role,
+            serverMembersStore = serverMembersStore,
+            memberAvatarResolver = memberAvatarResolver,
+        )
     return ThreadLoungeSelectionQuote(
         threadLounge = threadLounge,
         selectionQuoteTarget = selectionQuoteTarget,
+        onStartCall = onStartCall,
     )
 }

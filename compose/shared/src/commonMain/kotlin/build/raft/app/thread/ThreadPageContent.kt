@@ -83,6 +83,8 @@ import kotlinx.coroutines.launch
  */
 internal data class ThreadPageContentData(
     val lounge: ThreadPageLounge? = null,
+    /** Raft Agent Voice: starts a voice call for an eligible 1:1 Agent DM; null elsewhere. */
+    val onStartCall: (() -> Unit)? = null,
     val agentFollowersHeader: @Composable () -> Unit,
     /** Task v2: the task conversation's status / assignee / follow bar under the header; null elsewhere. */
     val taskConversationBar: (@Composable () -> Unit)? = null,
@@ -213,6 +215,8 @@ fun rememberThreadPageContentScaffoldSlots(
     postScaffoldOverlays: @Composable () -> Unit = {},
     /** Agent Lounge v0 (see [ThreadPageLounge]); null on pages that never show one. */
     lounge: ThreadPageLounge? = null,
+    /** Raft Agent Voice: starts a voice call for an eligible 1:1 Agent DM; null elsewhere. */
+    onStartCall: (() -> Unit)? = null,
     agentFollowersHeader: @Composable () -> Unit = {},
     taskConversationBar: (@Composable () -> Unit)? = null,
     channelConversionStrip: (@Composable () -> Unit)? = null,
@@ -334,6 +338,7 @@ fun rememberThreadPageContentScaffoldSlots(
         data =
             ThreadPageContentData(
                 lounge = lounge,
+                onStartCall = onStartCall,
                 agentFollowersHeader = agentFollowersHeader,
                 taskConversationBar = taskConversationBar,
                 channelConversionStrip = channelConversionStrip,
@@ -1126,6 +1131,7 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                         onThreadEvent("openMembersPager", null, null, null)
                     },
                     lounge = data.lounge,
+                    onStartCall = data.onStartCall,
                     onShowSettings = showSettings,
                     settingsOpen = channelDetailsOpen,
                     onTitleClick =

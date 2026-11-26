@@ -257,6 +257,8 @@ internal fun MembersDetailHeader(
     onBack: () -> Unit,
     onOpenDirectMessage: () -> Unit,
     directMessageOpening: Boolean = false,
+    /** Raft Agent Voice: starts a voice call to this agent; null hides the action. */
+    onStartCall: (() -> Unit)? = null,
     /** Agent Lounge v0: opens the agent's Lounge; null hides the action (flag off, Guest, or no Lounge for it). */
     onOpenLounge: (() -> Unit)? = null,
     loungeOpening: Boolean = false,
@@ -294,6 +296,7 @@ internal fun MembersDetailHeader(
     val typography = RaftTheme.typography
     // PROTOTYPE (native nav bar): name and meta on the host bar, Message and the management ⋯ as
     // its buttons. The ⋯ opens the same management menu, anchored under the bar's trailing edge.
+    val nativeCallLabel = stringResource(Res.string.agent_voice_call_action)
     val nativeMessageLabel = stringResource(Res.string.member_label_message)
     val nativeLoungeLabel = stringResource(Res.string.agent_lounge_label)
     val nativeMoreLabel = stringResource(Res.string.tab_more)
@@ -312,6 +315,9 @@ internal fun MembersDetailHeader(
             subtitle = headerMetaLabel,
             actions =
                 buildList {
+                    if (onStartCall != null) {
+                        add(RaftNativeNavBarAction("member-call", nativeCallLabel, "phone", onStartCall, icon = RaftLucideIconName.Phone))
+                    }
                     if (onOpenLounge != null) {
                         add(RaftNativeNavBarAction("member-lounge", nativeLoungeLabel, AgentLoungeSystemSymbol, onOpenLounge, icon = AgentLoungeIcon))
                     }
@@ -369,10 +375,11 @@ internal fun MembersDetailHeader(
             BoxWithConstraints(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding()) {
                 val startInset = if (showsBack) RaftBackButtonDefaults.EdgeInset else MembersHeaderContentMargin
                 val endInset = RaftBackButtonDefaults.EdgeInset
+                val hasCall = onStartCall != null
                 val hasLounge = onOpenLounge != null
                 val hasMessage = directMessageEligibility != MembersDirectMessageEligibility.Unavailable
                 val hasMore = member.kind == MemberKind.Agent && canManage && !deleted
-                val ownCount = (if (hasLounge) 1 else 0) + (if (hasMessage) 1 else 0)
+                val ownCount = (if (hasCall) 1 else 0) + (if (hasLounge) 1 else 0) + (if (hasMessage) 1 else 0)
                 val shownOwn =
                     if (headRowTabs != null) {
                         raftPaneGridHeadShownActions(
@@ -392,8 +399,11 @@ internal fun MembersDetailHeader(
                     } else {
                         ownCount
                     }
-                val showLounge = hasLounge && shownOwn >= 1
-                val showMessage = hasMessage && shownOwn >= (if (hasLounge) 2 else 1)
+                val showCall = hasCall && shownOwn >= 1
+                val loungeSlot = if (hasCall) 2 else 1
+                val showLounge = hasLounge && shownOwn >= loungeSlot
+                val messageSlot = (if (hasCall) 1 else 0) + (if (hasLounge) 1 else 0) + 1
+                val showMessage = hasMessage && shownOwn >= messageSlot
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -475,6 +485,19 @@ internal fun MembersDetailHeader(
                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Raft Agent Voice (web AgentProfileOverflowMenu `agent-profile-inline-call`):
+                        // Call action inline in the head, before Lounge and Message.
+                        if (showCall && onStartCall != null) {
+                            RaftIconButton(
+                                onClick = onStartCall,
+                                tooltip = nativeCallLabel,
+                                variant = RaftButtonVariant.Ghost,
+                                size = RaftIconButtonSize.Lg,
+                                modifier = Modifier.testTag("agent-profile-call"),
+                            ) {
+                                RaftContentLucideIcon(RaftLucideIconName.Phone, size = RaftTheme.controls.barIconSize)
+                            }
+                        }
                         // Agent Lounge v0 (web AgentProfileOverflowMenu `agent-profile-inline-lounge`): the
                         // Lounge button inline in the head, before Message.
                         if (showLounge && onOpenLounge != null) {

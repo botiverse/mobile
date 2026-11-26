@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.ui.platform.testTag
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.app.data.AgentBlockedState
+import build.raft.app.agents.AgentVoiceSection
 import build.raft.app.assistant.AssistantOwnerPausedNotice
 import build.raft.app.assistant.AssistantOwnerSection
 import build.raft.app.resources.*
@@ -1965,6 +1966,21 @@ internal fun MembersAgentProfileTab(
             // MembersDetailContent). It has no "Created agents" section (that list lives on a
             // person's profile, HumanDetailPanel), so the agent profile does not render one either.
             MembersAgentSkillsSection(detail)
+        }
+    }
+}
+
+/**
+ * Raft Agent Voice settings & Who asked (web AgentDetailPanel `AgentVoiceSection`), framed as the
+ * profile's other sections: a full-bleed separator, then the section's own padding. Nothing when
+ * `agent_voice_v1` is off, viewer cannot manage, or `voice-settings` returns 404.
+ */
+@Composable
+internal fun MembersAgentVoiceSectionHost(agentId: MemberId) {
+    AgentVoiceSection(agentId = agentId.value) { content ->
+        Column(modifier = Modifier.fillMaxWidth()) {
+            MembersProfileFullBleedDivider()
+            Column(modifier = Modifier.fillMaxWidth().padding(top = MembersProfileSectionPaddingY), content = content)
         }
     }
 }

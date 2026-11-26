@@ -956,11 +956,20 @@ internal fun MemberDetailPageContent(
         }
     // The viewer's own personal assistant, for its owner's section of the agent profile.
     val assistantOwnerScope = rememberMemberDetailAssistantOwnerScope(provider, routeState as? MemberDetailRouteState.Agent, routeScope, closeDetail)
+    val agentVoiceSectionScope =
+        rememberMemberDetailAgentVoiceSectionScope(
+            provider = provider,
+            agentRoute = routeState as? MemberDetailRouteState.Agent,
+            detail = selectedAgentDetail,
+            timeContext = timeContextProvider.current ?: timeContext,
+        )
     CompositionLocalProvider(
         LocalMembersRuntimeAccountUsageAccess provides runtimeAccountUsageAccess,
         LocalAssistantOwnerScope provides assistantOwnerScope,
+        build.raft.app.agents.LocalAgentVoiceSectionScope provides agentVoiceSectionScope,
         LocalRaftTimeContextProvider provides timeContextProvider,
     ) {
+        Box(Modifier.fillMaxSize()) {
         when (val current = routeState) {
             MemberDetailRouteState.Loading ->
                 MemberDetailLoadingPageShell(onBack = { closeDetail() })
@@ -1285,6 +1294,15 @@ internal fun MemberDetailPageContent(
                         actions = MembersDetailActions(
                             onBack = { closeDetail() },
                             directMessageOpening = pendingDirectMessageOpens.isOpening(member.kind, member.id),
+                            onStartCall =
+                                rememberMemberDetailAgentVoiceCallAction(
+                                    provider = provider,
+                                    current = current,
+                                    member = member,
+                                    detail = selectedAgentDetail,
+                                    agentMachineId = agentMachineId,
+                                    machines = computerSliceForLink.machines,
+                                ),
                             onOpenLounge =
                                 if (loungeEnabled) {
                                     {
@@ -1734,6 +1752,8 @@ internal fun MemberDetailPageContent(
                 )
             }
         }
+        build.raft.app.agents.StandaloneAgentVoiceCallOverlay()
+        }
     }
 }
 
@@ -2182,6 +2202,73 @@ private fun rememberMemberDetailAssistantOwnerScope(
             onAssistantDeleted = { closeAfterAssistantDeleted() },
         )
     }
+}
+
+@Composable
+private fun rememberMemberDetailAgentVoiceSectionScope(
+    provider: MemberDetailRouteProvider,
+    agentRoute: MemberDetailRouteState.Agent?,
+    detail: AgentDetailSnapshot?,
+    timeContext: RaftTimeContext?,
+): build.raft.app.agents.AgentVoiceSectionScope? {
+    val bridge = provider.bridge
+    val canManage =
+        agentRoute != null &&
+            membersRouteCanManageAgent(
+                allowsPrivateAgentSurfaces = agentRoute.accessMode.allowsPrivateAgentSurfaces,
+                canManageSettings = agentRoute.server.permissions.canManageSettings,
+                currentUserId = agentRoute.currentUserId,
+                detail = detail,
+            )
+    return remember(bridge, provider, agentRoute?.server?.id, canManage, timeContext) {
+        val route = agentRoute ?: return@remember null
+        val flags = provider.serverFeatureFlags ?: return@remember null
+        val networkClient = build.raft.app.data.RaftSharedStoreRegistry.get(bridge).networkClient(provider.storeScope)
+        build.raft.app.agents.AgentVoiceSectionScope(
+            api = build.raft.app.data.RaftAgentVoiceSettingsApi(networkClient),
+            featureFlags = flags,
+            serverId = route.server.id.value,
+            canManage = canManage,
+            timeContext = timeContext,
+        )
+    }
+}
+
+@Composable
+private fun rememberMemberDetailAgentVoiceCallAction(
+    provider: MemberDetailRouteProvider,
+    current: MemberDetailRouteState.Agent,
+    member: MemberProfile,
+    detail: AgentDetailSnapshot?,
+    agentMachineId: String?,
+    machines: List<build.raft.app.data.ComputerSummary>,
+): (() -> Unit)? {
+    val bounded =
+        membersAgentIsBoundedPublicProjection(
+            accessMode = current.accessMode,
+            profileProjection =
+                detail?.summary?.profileProjection?.takeIf { it.isNotBlank() } ?: member.profileProjection,
+        )
+    if (bounded) return null
+    val sharedStores = remember(provider.bridge) { build.raft.app.data.RaftSharedStoreRegistry.get(provider.bridge) }
+    return build.raft.app.agents.rememberAgentVoiceCallAction(
+        flags = provider.serverFeatureFlags,
+        callStore = sharedStores.agentVoiceCallStore,
+        serverId = current.server.id.value,
+        serverRole = current.server.role,
+        agentId = member.id.value,
+        agentName = member.displayName,
+        avatarWireValue = build.raft.app.model.avatarWireValueForAvatarSlot(
+            kind = member.kind,
+            id = member.id.value,
+            avatarWireValue = member.avatar?.wireValue,
+        ),
+        deletedAt = detail?.summary?.deletedAt ?: member.agentDeletedAt,
+        managedByAppInstallId = detail?.summary?.managedByAppInstallId ?: member.managedByAppInstallId,
+        agentStatus = detail?.summary?.status ?: member.agentLifecycleStatus,
+        machineId = agentMachineId,
+        computerOffline = build.raft.app.agents.isComputerOfflineForVoiceCall(agentMachineId, machines),
+    )
 }
 
 /**

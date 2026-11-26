@@ -290,6 +290,14 @@ const val MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY: String = "mobile_earl
  */
 const val RAIL_PLACES_V0_FEATURE_FLAG_KEY: String = "rail_places_v0"
 
+/**
+ * Raft Agent Voice (`#wg-mobile-sync:#95`, botiverse/slock `packages/shared/src/featureFlags.ts`
+ * `AGENT_VOICE_FEATURE_FLAG_KEY`): per server, default OFF (unresolved or missing evaluates false).
+ * When ON, an agent's profile offers the Voice settings section (`voice-settings` / `voice-questions`,
+ * hidden on 404) and eligible agents offer Call entry points in Agent DM and Agent Profile headers.
+ */
+const val AGENT_VOICE_FEATURE_FLAG_KEY: String = "agent_voice_v1"
+
 /** Effective Early access policy across a signed-in account's joined servers. */
 data class RaftEarlyAccessFlagPolicy(
     val visible: Boolean = false,
@@ -361,6 +369,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY,
     // Per-server wide rail places (botiverse/slock #16715, default OFF).
     RAIL_PLACES_V0_FEATURE_FLAG_KEY,
+    // Raft Agent Voice settings and live voice calls (#wg-mobile-sync:#95, default OFF).
+    AGENT_VOICE_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,
