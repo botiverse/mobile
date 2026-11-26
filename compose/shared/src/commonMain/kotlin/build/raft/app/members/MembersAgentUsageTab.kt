@@ -518,7 +518,7 @@ private fun AgentUsagePeriodSelect(
         RaftDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            width = maxOf(160.dp, with(density) { triggerWidthPx.toDp() }),
+            minWidth = maxOf(160.dp, with(density) { triggerWidthPx.toDp() }),
             offset = 4.dp,
         ) {
             listOf(

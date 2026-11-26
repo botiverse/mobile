@@ -702,7 +702,7 @@ class RaftNativeNavBarBridgeTest {
                 membersTitle = "Members",
                 searchChannelLabel = "Search this channel",
                 searchConversationLabel = "Search this conversation",
-                channelDetailsOpenLabel = "Channel details and settings",
+                channelDetailsOpenLabel = "Channel settings",
                 conversationDetailsOpenLabel = "Details and settings",
             )
         val channelPayload =
@@ -802,7 +802,7 @@ class RaftNativeNavBarBridgeTest {
                                 RaftNativeNavBarAction("thread-search", "Search this channel", "magnifyingglass", { searchTaps++ }, icon = RaftLucideIconName.Search),
                                 RaftNativeNavBarAction("thread-side-card-tasks", "Close Tasks", "checklist", { sideToggles.onToggle(ConversationSideCard.Tasks) }, icon = RaftLucideIconName.ListTodo),
                                 RaftNativeNavBarAction("thread-side-card-files", "Open files", "paperclip", {}, icon = RaftLucideIconName.Paperclip),
-                                RaftNativeNavBarAction("thread-settings", "Channel details and settings", "gearshape", {}, icon = RaftLucideIconName.Settings),
+                                RaftNativeNavBarAction("thread-settings", "Channel settings", "gearshape", {}, icon = RaftLucideIconName.Settings),
                             ),
                         sideCardToggles = sideToggles,
                         settingsOpen = false,

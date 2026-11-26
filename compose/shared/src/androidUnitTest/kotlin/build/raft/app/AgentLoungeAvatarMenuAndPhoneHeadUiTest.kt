@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
@@ -18,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.text.TextLayoutResult
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -270,18 +272,25 @@ class AgentLoungeAvatarMenuAndPhoneHeadUiTest {
             onNodeWithContentDescription("Thread panel menu").assertIsDisplayed()
             onNodeWithContentDescription("Open Tasks").assertDoesNotExist()
             onNodeWithContentDescription("Open files").assertDoesNotExist()
-            onNodeWithContentDescription("Channel details and settings").assertDoesNotExist()
+            onNodeWithContentDescription("Channel settings").assertDoesNotExist()
 
-            // Open ⋯ and verify order: Tasks -> Files -> Channel details and settings.
+            // Open ⋯ and verify order: Tasks -> Files -> Channel settings.
             onNodeWithContentDescription("Thread panel menu").performClick()
             waitForIdle()
             val tasksTop = onNodeWithText("Open Tasks").fetchSemanticsNode().boundsInRoot.top
             val filesTop = onNodeWithText("Open files").fetchSemanticsNode().boundsInRoot.top
-            val detailsTop = onNodeWithText("Channel details and settings").fetchSemanticsNode().boundsInRoot.top
+            val detailsTop = onNodeWithText("Channel settings").fetchSemanticsNode().boundsInRoot.top
             assert(tasksTop < filesTop && filesTop < detailsTop) {
-                "expected Open Tasks ($tasksTop) < Open files ($filesTop) < Channel details and settings ($detailsTop)"
+                "expected Open Tasks ($tasksTop) < Open files ($filesTop) < Channel settings ($detailsTop)"
             }
-            onNodeWithText("Channel details and settings").performClick()
+            val detailsLayouts = mutableListOf<TextLayoutResult>()
+            onNodeWithText("Channel settings", useUnmergedTree = true)
+                .fetchSemanticsNode()
+                .config[SemanticsActions.GetTextLayoutResult]
+                .action
+                ?.invoke(detailsLayouts)
+            assertEquals(1, detailsLayouts.single().lineCount, "Channel settings must stay on a single line")
+            onNodeWithText("Channel settings").performClick()
             waitForIdle()
             assertEquals(1, detailsOpened)
             assertEquals(
@@ -543,7 +552,7 @@ class AgentLoungeAvatarMenuAndPhoneHeadUiTest {
             onNodeWithContentDescription("Thread panel menu").assertIsDisplayed()
             onNodeWithContentDescription("Search this channel").assertDoesNotExist()
             onNodeWithContentDescription("Open files").assertDoesNotExist()
-            onNodeWithContentDescription("Channel details and settings").assertDoesNotExist()
+            onNodeWithContentDescription("Channel settings").assertDoesNotExist()
 
             // Tapping promoted Tasks activates its toggle state and does not double-emit conversation_header_action_selected.
             onNodeWithContentDescription("Open Tasks").performClick()
@@ -552,14 +561,14 @@ class AgentLoungeAvatarMenuAndPhoneHeadUiTest {
             assertEquals(listOf(ConversationSideCard.Tasks), toggledCards)
             assertEquals(emptyList(), headerEvents())
 
-            // Open ⋯: Search this channel -> Open files -> Channel details and settings in canonical order.
+            // Open ⋯: Search this channel -> Open files -> Channel settings in canonical order.
             onNodeWithContentDescription("Thread panel menu").performClick()
             waitForIdle()
             val searchTop = onNodeWithText("Search this channel").fetchSemanticsNode().boundsInRoot.top
             val filesTop = onNodeWithText("Open files").fetchSemanticsNode().boundsInRoot.top
-            val detailsTop = onNodeWithText("Channel details and settings").fetchSemanticsNode().boundsInRoot.top
+            val detailsTop = onNodeWithText("Channel settings").fetchSemanticsNode().boundsInRoot.top
             assert(searchTop < filesTop && filesTop < detailsTop) {
-                "expected Search this channel ($searchTop) < Open files ($filesTop) < Channel details and settings ($detailsTop)"
+                "expected Search this channel ($searchTop) < Open files ($filesTop) < Channel settings ($detailsTop)"
             }
             onNodeWithText("Search this channel").performClick()
             waitForIdle()
@@ -690,12 +699,12 @@ class AgentLoungeAvatarMenuAndPhoneHeadUiTest {
                 }
             }
 
-            onNodeWithContentDescription("Channel details and settings").assertIsDisplayed().assertIsOff()
+            onNodeWithContentDescription("Channel settings").assertIsDisplayed().assertIsOff()
             onNodeWithContentDescription("Search this channel").assertDoesNotExist()
-            onNodeWithContentDescription("Channel details and settings").performClick()
+            onNodeWithContentDescription("Channel settings").performClick()
             waitForIdle()
-            onNodeWithContentDescription("Close channel details and settings").assertIsDisplayed().assertIsOn()
-            onNodeWithContentDescription("Close channel details and settings").performClick()
+            onNodeWithContentDescription("Close channel settings").assertIsDisplayed().assertIsOn()
+            onNodeWithContentDescription("Close channel settings").performClick()
             waitForIdle()
             assertEquals(
                 listOf(
@@ -769,14 +778,14 @@ class AgentLoungeAvatarMenuAndPhoneHeadUiTest {
             onNodeWithContentDescription("Search this channel").assertDoesNotExist()
             onNodeWithContentDescription("Open Tasks").assertDoesNotExist()
             onNodeWithContentDescription("Open files").assertDoesNotExist()
-            onNodeWithContentDescription("Channel details and settings").assertDoesNotExist()
+            onNodeWithContentDescription("Channel settings").assertDoesNotExist()
 
             onNodeWithContentDescription("Thread panel menu").performClick()
             waitForIdle()
             val searchTop = onNodeWithText("Search this channel").fetchSemanticsNode().boundsInRoot.top
             val tasksTop = onNodeWithText("Open Tasks").fetchSemanticsNode().boundsInRoot.top
             val filesTop = onNodeWithText("Open files").fetchSemanticsNode().boundsInRoot.top
-            val detailsTop = onNodeWithText("Channel details and settings").fetchSemanticsNode().boundsInRoot.top
+            val detailsTop = onNodeWithText("Channel settings").fetchSemanticsNode().boundsInRoot.top
             assert(searchTop < tasksTop && tasksTop < filesTop && filesTop < detailsTop) {
                 "expected Search ($searchTop) < Tasks ($tasksTop) < Files ($filesTop) < Details ($detailsTop)"
             }
@@ -836,7 +845,7 @@ class AgentLoungeAvatarMenuAndPhoneHeadUiTest {
             onNodeWithContentDescription("Search this channel").assertIsDisplayed()
             onNodeWithContentDescription("Open Tasks").assertIsDisplayed()
             onNodeWithContentDescription("Open files").assertIsDisplayed()
-            onNodeWithContentDescription("Channel details and settings").assertIsDisplayed()
+            onNodeWithContentDescription("Channel settings").assertIsDisplayed()
             onNodeWithContentDescription("Thread panel menu").assertDoesNotExist()
         }
 }

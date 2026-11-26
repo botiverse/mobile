@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -16,6 +17,14 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import build.raft.app.base.BridgeModule
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.IModuleCreator
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.PageData
+import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.PagerManager
+import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.AgentContextView
 import build.raft.app.data.AgentContextViewAnswer
 import build.raft.app.data.AgentContextViewCompaction
@@ -46,12 +55,15 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
@@ -65,6 +77,20 @@ import org.robolectric.annotation.Config
 class AgentContextViewUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
+
+    // ThreadNewMessageMenuChrome's reaction row logs through LocalActivity's page bridge.
+    private val livePager =
+        object : Pager() {}.apply {
+            pagerId = "agent-context-view-ui-test"
+            pageData = PageData(JSONObject())
+            registerModule(BridgeModule.MODULE_NAME, IModuleCreator { BridgeModule() })
+        }
+
+    @BeforeTest
+    fun registerPager() = PagerManager.register(livePager)
+
+    @AfterTest
+    fun unregisterPager() = PagerManager.unregister(livePager)
 
     private val fixedTimeContext =
         RaftTimeContext(
@@ -148,6 +174,8 @@ class AgentContextViewUiTest {
 
     @Test
     fun panelRendersLoadingSkeletonAndMessageExcerpt() = runRobolectricComposeUiTest {
+        // RaftSkeleton runs an infinite pulse animation; hold the test clock so waitForIdle settles.
+        mainClock.autoAdvance = false
         setContent {
             RaftTheme(appearance = RaftAppearance.Light) {
                 AgentContextViewPanelSurface(
@@ -166,6 +194,7 @@ class AgentContextViewUiTest {
                 )
             }
         }
+        mainClock.advanceTimeBy(16)
         waitForIdle()
         onNodeWithTag(AGENT_CONTEXT_PANEL_ROOT_TAG).assertIsDisplayed()
         onNodeWithTag(AGENT_CONTEXT_PANEL_EXCERPT_TAG).assertIsDisplayed()
@@ -355,25 +384,28 @@ class AgentContextViewUiTest {
 
     @Test
     fun compactMessageMenuShowsOpenRetryOrHidesViewContext() = runRobolectricComposeUiTest {
+        build.raft.app.data.RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
         var entryState by mutableStateOf<AgentContextViewMenuEntryState>(AgentContextViewMenuEntryState.ShowOpen)
         var openClicks = 0
         var retryClicks = 0
         setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                ThreadNewMessageMenuChrome(
-                    availability = ThreadNewMessageMenuActionAvailability(),
-                    onReact = {},
-                    onCopy = {},
-                    onReply = {},
-                    onForward = {},
-                    onSave = {},
-                    onTranslate = {},
-                    onSelect = {},
-                    onMore = {},
-                    viewContextState = entryState,
-                    onViewContext = { openClicks += 1 },
-                    onRetryViewContext = { retryClicks += 1 },
-                )
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
+                RaftTheme(appearance = RaftAppearance.Light) {
+                    ThreadNewMessageMenuChrome(
+                        availability = ThreadNewMessageMenuActionAvailability(),
+                        onReact = {},
+                        onCopy = {},
+                        onReply = {},
+                        onForward = {},
+                        onSave = {},
+                        onTranslate = {},
+                        onSelect = {},
+                        onMore = {},
+                        viewContextState = entryState,
+                        onViewContext = { openClicks += 1 },
+                        onRetryViewContext = { retryClicks += 1 },
+                    )
+                }
             }
         }
         waitForIdle()

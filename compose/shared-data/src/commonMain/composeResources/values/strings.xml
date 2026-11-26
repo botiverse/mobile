@@ -1022,8 +1022,8 @@
     <string name="channel_settings_unavailable_detail">The channel may have been removed, or its settings could not be loaded.</string>
     <string name="channel_settings_invalid_route">This page is missing a valid server or channel identity.</string>
     <string name="channel_details_title">Details</string>
-    <string name="channel_details_open">Channel details and settings</string>
-    <string name="channel_details_close">Close channel details and settings</string>
+    <string name="channel_details_open">Channel settings</string>
+    <string name="channel_details_close">Close channel settings</string>
     <string name="conversation_details_open">Details and settings</string>
     <string name="conversation_details_close">Close details and settings</string>
     <string name="thread_action_search_channel">Search this channel</string>

@@ -1022,8 +1022,8 @@
     <string name="channel_settings_unavailable_detail">频道可能已被删除，或暂时无法加载设置。</string>
     <string name="channel_settings_invalid_route">页面缺少有效的服务器或频道标识。</string>
     <string name="channel_details_title">详情</string>
-    <string name="channel_details_open">频道详情与设置</string>
-    <string name="channel_details_close">关闭频道详情与设置</string>
+    <string name="channel_details_open">频道设置</string>
+    <string name="channel_details_close">关闭频道设置</string>
     <string name="conversation_details_open">详情与设置</string>
     <string name="conversation_details_close">关闭详情与设置</string>
     <string name="thread_action_search_channel">搜索此频道</string>

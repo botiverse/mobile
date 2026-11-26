@@ -24,6 +24,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -34,11 +35,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import build.raft.designsystem.theme.RaftTheme
@@ -83,7 +83,6 @@ internal data class RaftBaseMenuItem(
 
 private val RaftBaseMenuGroupLabelHeight = 28.dp
 
-private val RaftBaseMenuMinWidth = 136.dp
 private val RaftBaseMenuMaxWidth = 280.dp
 // not a token: the legacy base menu's fixed row, on every input; RaftMenu reads `option.height`.
 private val RaftBaseMenuRowHeight = 34.dp
@@ -113,9 +112,9 @@ internal fun RaftBaseMenuOverlay(
     surfaceBorderColor: Color = RaftBaseMenuForegroundColor,
     surfaceShadowColor: Color = RaftBaseMenuForegroundColor,
     uppercaseLabels: Boolean = true,
-    minWidth: Dp = RaftBaseMenuMinWidth,
-    // Exact menu width (border-box, like react's fixed-width menus). When null the
-    // width is estimated from the widest label via raftBaseMenuWidth (task #370).
+    minWidth: Dp = RaftMetrics.MenuMinWidth,
+    // Optional exact menu width. When null (the default), the menu grows from [minWidth] to fit
+    // its widest single-line row up to the available viewport width.
     width: Dp? = null,
     rowHeight: Dp = RaftBaseMenuRowHeight,
     labelFontSize: TextUnit = 12.sp,
@@ -139,7 +138,8 @@ internal fun RaftBaseMenuOverlay(
         selectedId = selectedId,
         onDismiss = onDismiss,
         onSelect = onSelect,
-        width = raftLookBaseMenuWidth(items, fixedWidth = width, minWidth = minWidth),
+        minWidth = minWidth,
+        width = width,
         horizontalOffset = horizontalOffset,
         // The brutal default gap becomes DropdownMenuContent's `sideOffset` 6; a caller's
         // own gap (the 4dp status menu) is kept.
@@ -191,11 +191,8 @@ internal fun RaftTaskStatusMenuOverlay(
         anchor = anchor,
         items = items,
         selectedId = selectedId,
-        // react's status menu renders at exactly its 140px min-width (the longest
-        // label "In Progress" is narrower); the char estimate overshoots to 172dp.
-        // Raft sets the selected label bold, so there 140dp is only the minimum
-        // (see raftLookBaseMenuWidth).
-        width = RaftTaskStatusMenuMinWidth,
+        // react's status menu sets `min-w-[140px]` and grows for bold/longer localized labels.
+        minWidth = RaftTaskStatusMenuMinWidth,
         rowHeight = 36.dp,
         labelFontSize = 14.sp,
         labelLineHeight = 20.sp,
@@ -227,9 +224,10 @@ internal fun RaftTaskStatusMenuPanel(
     RaftLookBaseMenuPanel(
         items = items,
         selectedId = selectedId,
-        width = raftLookBaseMenuWidth(items, fixedWidth = RaftTaskStatusMenuMinWidth, minWidth = RaftBaseMenuMinWidth),
+        width = null,
         onSelect = onSelect,
-        modifier = modifier
+        modifier = modifier,
+        minWidth = RaftTaskStatusMenuMinWidth,
     )
 }
 
@@ -249,23 +247,17 @@ private fun RaftLookBaseMenuOverlay(
     selectedId: String,
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
-    width: Dp,
+    minWidth: Dp,
+    width: Dp?,
     horizontalOffset: Dp,
     verticalOffset: Dp,
     verticalPlacement: RaftFloatingVerticalPlacement,
     modifier: Modifier
 ) {
     val density = LocalDensity.current
-    val separatorHeight = RaftMetrics.MenuSeparatorInset * 2 + RaftAppStroke.Thin
-    val menuHeight =
-        RaftMetrics.MenuRowHeight * items.size +
-            RaftMetrics.PopupPadding * 2 +
-            separatorHeight * items.count { it.dividerBefore } +
-            RaftBaseMenuGroupLabelHeight * items.count { it.groupLabel != null }
     RaftModalAnchoredPopover(
         anchor = anchor,
-        // raft overlays float on a shadow that takes no layout space.
-        contentSize = with(density) { Size(width.toPx(), menuHeight.toPx()) },
+        contentSize = null,
         viewportGap = with(density) { RaftBaseMenuViewportGap.toPx() },
         horizontalOffset = with(density) { horizontalOffset.toPx() },
         verticalOffset = with(density) { verticalOffset.toPx() },
@@ -278,7 +270,8 @@ private fun RaftLookBaseMenuOverlay(
             items = items,
             selectedId = selectedId,
             width = width,
-            onSelect = onSelect
+            onSelect = onSelect,
+            minWidth = minWidth,
         )
     }
 }
@@ -292,13 +285,14 @@ private fun RaftLookBaseMenuOverlay(
 internal fun RaftLookBaseMenuPanel(
     items: List<RaftBaseMenuItem>,
     selectedId: String,
-    width: Dp,
+    width: Dp? = null,
     onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    minWidth: Dp = RaftMetrics.MenuMinWidth
 ) {
     Column(
         modifier = modifier
-            .width(width)
+            .then(if (width != null) Modifier.width(width) else Modifier.widthIn(min = minWidth).width(IntrinsicSize.Max))
             .raftLookOverlaySurface()
             // Keeps blank menu space out of the sibling dismiss barrier (see the
             // brutal surface).

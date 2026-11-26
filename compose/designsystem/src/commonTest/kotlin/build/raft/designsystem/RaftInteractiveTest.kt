@@ -15,6 +15,7 @@ import build.raft.designsystem.components.appendRaftTextLink
 import build.raft.designsystem.components.raftTextLinks
 import build.raft.designsystem.components.raftMenuKeyTarget
 import build.raft.designsystem.components.raftMenuMaxSurfaceHeight
+import build.raft.designsystem.components.raftMenuMaxSurfaceWidth
 import build.raft.designsystem.components.raftMenuPosition
 import build.raft.designsystem.components.raftRevealScrollTarget
 import build.raft.designsystem.components.raftSheetConstraints
@@ -103,6 +104,24 @@ class RaftOverlayTest {
         val surface = raftMenuMaxSurfaceHeight(640, windowMargin = 8, insets = insets, safeArea = keyboard)
         val at = raftMenuPosition(IntRect(20, 60, 140, 92), IntSize(400, 640), popup(240, surface), gap = 6, windowMargin = 8, insets = insets, safeArea = keyboard)
         assertTrue(at.y + insets.top + surface <= 640 - 300 - 8, "surface ends at ${at.y + insets.top + surface}")
+    }
+
+    @Test
+    fun aMenuIsNoWiderThanTheSafeArea() {
+        // A 400px window with a 44px left cutout and a 57px right frame inset: 8px inside both.
+        val sideInsets = RaftSafeArea(left = 44, right = 57)
+        assertEquals(400 - 57 - 8 - (44 + 8), raftMenuMaxSurfaceWidth(400, windowMargin = 8, insets = insets, safeArea = sideInsets))
+        // No safe-area insets: the shadow room (16px each side) stays inside the window too.
+        assertEquals(400 - 16 - 16, raftMenuMaxSurfaceWidth(400, windowMargin = 8, insets = insets, safeArea = RaftSafeArea()))
+        // A tiny window narrower than margins coerces to 0 rather than going negative.
+        assertEquals(0, raftMenuMaxSurfaceWidth(20, windowMargin = 8, insets = insets, safeArea = RaftSafeArea()))
+        // A capped-width menu placed under a right-edge anchor stays inside both safe edges.
+        val surface = raftMenuMaxSurfaceWidth(400, windowMargin = 8, insets = insets, safeArea = sideInsets)
+        val at = raftMenuPosition(IntRect(300, 100, 340, 132), IntSize(400, 640), popup(surface, 160), gap = 6, windowMargin = 8, insets = insets, safeArea = sideInsets)
+        val surfaceLeft = at.x + insets.horizontal
+        val surfaceRight = surfaceLeft + surface
+        assertTrue(surfaceLeft >= sideInsets.left + 8, "surface starts at $surfaceLeft")
+        assertTrue(surfaceRight <= 400 - sideInsets.right - 8, "surface ends at $surfaceRight")
     }
 
     @Test

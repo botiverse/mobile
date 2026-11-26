@@ -396,7 +396,8 @@ internal fun RaftSearchRow(
  * aligned (end aligned with [alignEnd], raft-ui `align="end"`: a trigger at the end of a
  * card, so the menu stays over the card), 6dp below; flipped above when there is more room there, and kept 8dp inside
  * the safe area of the window (clear of the status bar, the home indicator and the
- * keyboard), and no taller than that safe area less 8dp each side (or 480dp): the rows
+ * keyboard), no wider than that safe area less 8dp each side (raft-ui 0.106.1), and no taller
+ * than that safe area less 8dp each side (or 480dp): the rows
  * scroll. Tapping outside or Back calls [onDismissRequest]. Fill it with
  * [RaftMenuItem]s, [RaftMenuLabel]s and [RaftMenuSeparator]s; a row's `onClick` should
  * also close the menu, a `checked` row (picking one value) included: one pick completes the
@@ -516,7 +517,7 @@ fun RaftDropdownMenu(
         // The shadow's room is part of the popup window; a tap there is outside the menu.
         Box(
             Modifier
-                .raftMenuHeightCap(windowMargin, insets, area)
+                .raftMenuViewportCap(windowMargin, insets, area)
                 .raftObserveFocusInteractions(
                     coordinator = autofocusGuard.coordinator,
                     observeWindowFocus = false,
@@ -781,6 +782,24 @@ internal fun raftMenuPosition(
 }
 
 /**
+ * The band a menu's surface may take, left to right in px: [windowMargin] inside the
+ * [safeArea], and far enough from the window's edges that the shadow room ([insets])
+ * stays inside the window.
+ */
+private fun raftMenuHorizontalBounds(windowWidth: Int, windowMargin: Int, insets: RaftPopupMargins, safeArea: RaftSafeArea): Pair<Int, Int> =
+    maxOf(safeArea.left + windowMargin, insets.horizontal) to minOf(windowWidth - safeArea.right - windowMargin, windowWidth - insets.horizontal)
+
+/**
+ * The widest a menu's surface may be in a window [windowWidth] px wide: the band of
+ * [raftMenuHorizontalBounds] (the safe area less [windowMargin] each side, and keeping
+ * the shadow room [insets] inside the window). Mirrors raft-ui 0.106.1 `max-w-(--available-width)`.
+ */
+internal fun raftMenuMaxSurfaceWidth(windowWidth: Int, windowMargin: Int, insets: RaftPopupMargins, safeArea: RaftSafeArea): Int {
+    val (minX, maxX) = raftMenuHorizontalBounds(windowWidth, windowMargin, insets, safeArea)
+    return (maxX - minX).coerceAtLeast(0)
+}
+
+/**
  * The band a menu's surface may take, top to bottom in px: [windowMargin] inside the
  * [safeArea], and far enough from the window's edges that the shadow room ([insets])
  * stays inside the window.
@@ -799,10 +818,12 @@ internal fun raftMenuMaxSurfaceHeight(windowHeight: Int, windowMargin: Int, inse
 }
 
 /**
- * Caps a menu popup (its surface plus the shadow room [insets]) so the surface is no
- * taller than [raftMenuMaxSurfaceHeight] of the window it is measured against. The popup
- * is measured against the whole window, keyboard and bars included; capped, a long menu
- * scrolls its rows instead of running under the keyboard.
+ * Caps a menu popup (its surface plus the shadow room [insets]) so the surface is no wider
+ * than [raftMenuMaxSurfaceWidth] and no taller than [raftMenuMaxSurfaceHeight] of the window
+ * it is measured against. The popup is measured against the whole window, keyboard and bars
+ * included; capped, a wide menu grows to fit its longest single-line item without overflowing
+ * the window (wrapping only when the screen truly can't fit it, raft-ui 0.106.1), and a long
+ * menu scrolls its rows instead of running under the keyboard.
  *
  * Assumption, unverified on devices: this (and [raftMenuPosition]) takes the popup's
  * constraints / window size to be the whole window and subtracts the `safeDrawing` insets
@@ -811,16 +832,23 @@ internal fun raftMenuMaxSurfaceHeight(windowHeight: Int, windowMargin: Int, inse
  * menu capped too short or placed too low. Check on an Android and an iOS device before
  * changing the math (README, TODO "Device check: popup insets").
  */
-internal fun Modifier.raftMenuHeightCap(windowMargin: Int, insets: RaftPopupMargins, safeArea: RaftSafeArea): Modifier =
+internal fun Modifier.raftMenuViewportCap(windowMargin: Int, insets: RaftPopupMargins, safeArea: RaftSafeArea): Modifier =
     layout { measurable, constraints ->
-        val capped =
+        val maxWidth =
+            if (constraints.hasBoundedWidth) {
+                val surface = raftMenuMaxSurfaceWidth(constraints.maxWidth, windowMargin, insets, safeArea)
+                (surface + insets.horizontal * 2).coerceIn(constraints.minWidth, constraints.maxWidth)
+            } else {
+                constraints.maxWidth
+            }
+        val maxHeight =
             if (constraints.hasBoundedHeight) {
                 val surface = raftMenuMaxSurfaceHeight(constraints.maxHeight, windowMargin, insets, safeArea)
-                constraints.copy(maxHeight = (surface + insets.top + insets.bottom).coerceIn(constraints.minHeight, constraints.maxHeight))
+                (surface + insets.top + insets.bottom).coerceIn(constraints.minHeight, constraints.maxHeight)
             } else {
-                constraints
+                constraints.maxHeight
             }
-        val placeable = measurable.measure(capped)
+        val placeable = measurable.measure(constraints.copy(maxWidth = maxWidth, maxHeight = maxHeight))
         layout(placeable.width, placeable.height) { placeable.place(0, 0) }
     }
 

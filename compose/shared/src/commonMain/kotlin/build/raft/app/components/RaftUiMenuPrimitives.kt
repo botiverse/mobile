@@ -523,7 +523,8 @@ internal fun RaftUiControlledMenu(
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    width: Dp = 200.dp,
+    minWidth: Dp = RaftMetrics.MenuMinWidth,
+    width: Dp? = null,
     rowHeight: Dp = 40.dp,
     shadowOffset: Dp = 0.dp,
     horizontalOffset: Dp = 0.dp,
@@ -534,27 +535,9 @@ internal fun RaftUiControlledMenu(
 ) {
     if (!expanded) return
     val density = LocalDensity.current
-    val effectiveRowCount = items.size.coerceAtLeast(1)
-    val dividerCount = items.drop(1).count { it.dividerBefore }
-    val separatorHeight = RaftMetrics.MenuSeparatorInset * 2 + RaftAppStroke.Thin
-    // raft overlays float on a shadow that takes no layout space; the list sits in a p-1 popup.
-    val chromeHeight = RaftMetrics.PopupPadding * 2
-    // raft: the surface turns the legacy 40dp row into `min-h-9` and widens to `min-w-60`.
-    val measuredRowHeight = if (rowHeight == 40.dp) RaftMetrics.MenuRowHeight else rowHeight
-    val measuredWidth = raftMenuWidth(width)
-    val contentSize =
-        with(density) {
-            Size(
-                width = measuredWidth.toPx(),
-                height =
-                    measuredRowHeight.toPx() * effectiveRowCount +
-                        separatorHeight.toPx() * dividerCount +
-                        chromeHeight.toPx()
-            )
-        }
     RaftModalAnchoredPopover(
         anchor = anchor,
-        contentSize = contentSize,
+        contentSize = null,
         onDismiss = onDismiss,
         modifier = modifier,
         viewportGap = with(density) { RaftFloatingDefaultViewportGap.dp.toPx() },
@@ -568,6 +551,7 @@ internal fun RaftUiControlledMenu(
             onSelect = onSelect,
             onDismiss = onDismiss,
             modifier = Modifier,
+            minWidth = minWidth,
             width = width,
             rowHeight = rowHeight,
             shadowOffset = shadowOffset,

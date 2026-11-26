@@ -72,7 +72,7 @@ internal fun ThreadHeaderVisualScreen() {
     }
     // The real channel page (ThreadPageContent) hands the header its Task v2 Tasks / Files card
     // toggles; there is no Chat / Tasks / Files tab row any more (slock #16109). On a phone the
-    // header folds to Search + ⋯ with Tasks, Files and Channel details and settings inside
+    // header folds to Search + ⋯ with Tasks, Files and Channel settings inside
     // (slock #16464). The explicit 120dp canvas matches the react element height
     // (1170x360px @3x = 390x120dp); the white slack under the header shows the height delta.
     val sideCardToggles =
