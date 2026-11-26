@@ -646,12 +646,13 @@ class ComputersApiTest {
         )
         assertEquals(listOf("codex", "pi"), saved.machine?.workerRuntimesTurnedOn)
 
+        val forbiddenTraceId = "abcdef0123456789abcdef0123456789"
         nextResponse =
             HomeNetworkResponse(
                 code = 403,
                 bodyText =
                     """{"code":"worker_runtimes_forbidden","error":"Only @alice, this Computer's owner, or an owner or admin of this server can change which runtimes Workers may use on it."}""",
-                traceId = "trace-403",
+                responseHeaders = mapOf("X-Trace-Id" to listOf(forbiddenTraceId)),
             )
         val forbidden =
             assertIs<DataResult.NoPermission>(
@@ -663,7 +664,7 @@ class ComputersApiTest {
             "Only @alice, this Computer's owner, or an owner or admin of this server can change which runtimes Workers may use on it.",
             forbidden.blocker.serverMessage
         )
-        assertEquals("trace-403", forbidden.blocker.traceId)
+        assertEquals(forbiddenTraceId, forbidden.blocker.traceId)
 
         nextResponse =
             HomeNetworkResponse(
