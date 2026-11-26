@@ -92,9 +92,23 @@ internal data class ThreadTimelineSlice(
      * is a DM, so untitled pinned-content notices say "this DM" instead of "the channel".
      */
     val directMessageSurface: Boolean = false,
+    /**
+     * Web MessageItem `dmMainTimelineLab && isAgentDmSurface` (botiverse/slock #16664,
+     * `dm_main_timeline_lab_v0`): when true, every entry that starts a new thread reply is hidden
+     * or disabled (hover toolbar, classic/context/More menu, row tap, and the Compact menu's Reply
+     * tool), while existing threads still open from their replies badge and inline replies.
+     */
+    val hideThreadReplyStart: Boolean = false,
 ) {
-    /** Derived from [surfaceKind] and [channelKind]; the menu's `reply` capability reads this single source. */
+    /** Derived from [surfaceKind] and [channelKind]; gates thread replies badges, inline replies, and follow. */
     val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
+
+    /**
+     * Whether a message row may start a new thread reply (hover toolbar button, message menu item,
+     * compact menu tool, single-tap on row). False inside a reply thread or task conversation, and
+     * in an agent DM when `dm_main_timeline_lab_v0` is enabled.
+     */
+    val allowStartThreadReply: Boolean get() = showReplyActions && !hideThreadReplyStart
 
     /** The page is a reply thread (its rows other than the origin are thread replies). */
     val replyThreadSurface: Boolean get() = surfaceKind == RaftThreadSurfaceKind.ReplyThread

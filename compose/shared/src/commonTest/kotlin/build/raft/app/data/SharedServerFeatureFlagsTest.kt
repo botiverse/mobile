@@ -744,4 +744,45 @@ class SharedServerFeatureFlagsTest {
         overridden.prefetch(server)
         assertFalse(overridden.isWorkerV1Enabled(server))
     }
+
+    @Test
+    fun dmMainTimelineLabFlagDefaultsOffAndFollowsPerServerEvaluation() = runTest {
+        assertEquals("dm_main_timeline_lab_v0", DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY)
+        assertTrue(DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse(DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        assertFalse(DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+
+        val enabled =
+            SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY","enabled":true,"reason":"lab"}]}"""))
+            )
+        assertFalse(enabled.isDmMainTimelineLabEnabled(null))
+        assertFalse(enabled.isDmMainTimelineLabEnabled(server), "unresolved defaults OFF")
+        enabled.prefetch(server)
+        assertTrue(enabled.isDmMainTimelineLabEnabled(server))
+        assertFalse(enabled.isDmMainTimelineLabEnabled(ServerId("s2")), "other server stays OFF until evaluated")
+
+        val missing = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
+        missing.prefetch(server)
+        assertFalse(missing.isDmMainTimelineLabEnabled(server), "missing_flag stays OFF")
+
+        val defaultOff =
+            SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY","enabled":false,"reason":"default"}]}"""))
+            )
+        defaultOff.prefetch(server)
+        assertFalse(defaultOff.isDmMainTimelineLabEnabled(server))
+
+        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
+        assertFalse(failed.prefetch(server).resolved)
+        assertFalse(failed.isDmMainTimelineLabEnabled(server))
+
+        val overridden =
+            SharedServerFeatureFlags(
+                api = FakeApi(ok("""{"evaluations":[{"key":"$DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY","enabled":true}]}""")),
+                diagnosticOverride = { _, key, eff -> if (key == DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY) false else eff },
+            )
+        overridden.prefetch(server)
+        assertFalse(overridden.isDmMainTimelineLabEnabled(server))
+    }
 }
