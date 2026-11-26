@@ -106,7 +106,6 @@ import build.raft.app.data.TaskConversationHeaderEvent
 import build.raft.app.data.TaskConversationHeaderState
 import build.raft.app.data.TaskConversationHeaderViewModel
 import build.raft.app.data.TasksUiState
-import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.RaftAuthSessionStore
@@ -2884,9 +2883,10 @@ private fun SharedThreadRouteContentContent(
             )
         }
     } else {
-    var selectedThreadTab by remember(threadInstanceKey, payload.selectedTab) {
+    val selectedThreadTabState = remember(threadInstanceKey, payload.selectedTab) {
         mutableStateOf(RaftThreadTab.fromWireValue(payload.selectedTab))
     }
+    var selectedThreadTab by selectedThreadTabState
     val availableThreadTabs =
         remember(payload.showTaskOpenActions, payload.showTaskStatusActions, payload.composer.showAsTaskToggle) {
             RaftThreadTab.entries.filter { tab ->
@@ -3566,217 +3566,28 @@ private fun SharedThreadRouteContentContent(
                 serverId = threadMembersServerId
             )
         }
-    val taskProjectionReferences =
-        remember(timelineSlice) {
-            timelineSlice.threadLinkedTaskReferences()
-        }
-    val initialTaskProjectionSlice =
-        remember(tasksDataStore, taskProjectionOwnerIdentity, currentServerId, taskChannelId?.value) {
-            val channelId = taskChannelId
-            if (tasksDataStore != null && channelId != null) {
-                tasksDataStore.projectionForOwner(
-                    expectedOwnerIdentity = taskProjectionOwnerIdentity,
-                    serverId = currentServerId,
-                    scope = SharedTasksScope.Channel(channelId)
-                )
-            } else {
-                null
-            } ?: SharedTasksProjectionSlice()
-        }
-    val taskProjectionSlice by remember(
-        tasksDataStore,
-        currentServerId,
-        taskChannelId?.value,
-        baseRenderedPayload.title
-    ) {
-        tasksDataStore
-            ?.channelProjectionFlow(
-                serverId = currentServerId,
-                channelId = taskChannelId?.value,
-                channelName = baseRenderedPayload.title
-            )
-            ?.distinctUntilChanged()
-            ?: MutableStateFlow(SharedTasksProjectionSlice())
-    }.collectAsStateWhileStarted(initialTaskProjectionSlice)
-    val initialServerTaskProjectionSlice =
-        remember(tasksDataStore, taskProjectionOwnerIdentity, currentServerId) {
-            tasksDataStore?.projectionForOwner(
-                expectedOwnerIdentity = taskProjectionOwnerIdentity,
-                serverId = currentServerId,
-                scope = SharedTasksScope.Server
-            ) ?: SharedTasksProjectionSlice()
-        }
-    val serverTaskProjectionSlice by remember(tasksDataStore, currentServerId) {
-        tasksDataStore
-            ?.projectionFlow(
-                serverId = currentServerId,
-                scope = SharedTasksScope.Server
-            )
-            ?.distinctUntilChanged()
-            ?: MutableStateFlow(SharedTasksProjectionSlice())
-    }.collectAsStateWhileStarted(initialServerTaskProjectionSlice)
-    var refreshedTaskProjectionChannelId by remember(threadInstanceKey, currentServerId) {
-        mutableStateOf<String?>(null)
-    }
-    ThreadAfterMotionEffect(
-        currentServerId,
-        taskChannelId?.value,
-        selectedThreadTab,
-        payload.status,
-        refreshedTaskProjectionChannelId
-    ) {
-        val serverId = currentServerId ?: return@ThreadAfterMotionEffect
-        val resolvedTaskChannelId = taskChannelId ?: return@ThreadAfterMotionEffect
-        val sharedStore = tasksDataStore ?: return@ThreadAfterMotionEffect
-        val currentPayload = payload.copy(selectedTab = selectedThreadTab.wireValue)
-        if (
-            !shouldRefreshThreadTasksProjection(
-                payload = currentPayload,
-                taskChannelId = resolvedTaskChannelId,
-                refreshStarted = refreshedTaskProjectionChannelId == resolvedTaskChannelId.value
-            )
-        ) {
-            return@ThreadAfterMotionEffect
-        }
-        refreshedTaskProjectionChannelId = resolvedTaskChannelId.value
-        bridge.log(
-            "thread_tasks_projection_refresh_start threadId=${payload.sourceThreadId.orEmpty()} " +
-                "channelId=${resolvedTaskChannelId.value} status=${taskProjectionSlice.status.name} " +
-                "exactLoaded=${taskProjectionSlice.isExactScopeLoaded}"
+    val threadRouteTaskProjection =
+        rememberThreadRouteTaskProjection(
+            bridge = bridge,
+            tasksDataSource = tasksDataSource,
+            tasksDataStore = tasksDataStore,
+            threadInstanceKey = threadInstanceKey,
+            timelineSlice = timelineSlice,
+            payload = payload,
+            baseRenderedPayload = baseRenderedPayload,
+            currentSession = currentSession,
+            currentServerId = currentServerId,
+            taskProjectionOwnerIdentity = taskProjectionOwnerIdentity,
+            taskChannelId = taskChannelId,
+            markdownTaskContextChannelId = markdownTaskContextChannelId,
+            selectedThreadTabState = selectedThreadTabState,
         )
-        when (
-            val result =
-                sharedStore.loadSnapshot(
-                    serverId = serverId,
-                    scope = SharedTasksScope.Channel(resolvedTaskChannelId),
-                    forceRefresh = true
-                ) {
-                    tasksDataSource.loadChannelTasks(
-                        serverId = ServerId(serverId),
-                        channelId = resolvedTaskChannelId,
-                        priority = DataRequestPriority.Background
-                    )
-                }
-        ) {
-            is DataResult.Content -> {
-                bridge.log(
-                    "thread_tasks_projection_refresh_result result=content " +
-                        "channelId=${resolvedTaskChannelId.value} tasks=${result.data.tasks.size}"
-                )
-            }
-            is DataResult.Empty -> {
-                bridge.log(
-                    "thread_tasks_projection_refresh_result result=empty " +
-                        "channelId=${resolvedTaskChannelId.value}"
-                )
-            }
-            is DataResult.Error ->
-                bridge.log(
-                    "thread_tasks_projection_refresh_result result=error " +
-                        "channelId=${resolvedTaskChannelId.value} code=${result.error.code}"
-                )
-            is DataResult.NoPermission ->
-                bridge.log(
-                    "thread_tasks_projection_refresh_result result=no_permission " +
-                        "channelId=${resolvedTaskChannelId.value} code=${result.blocker.code}"
-                )
-        }
-    }
-    // The task context channel's tasks (Web `taskByChannelNumber` for `taskContextChannelId`). In a
-    // task conversation that is the host channel, whose tasks [taskConversationTasksViewModel] loads.
-    val markdownTaskContextChannelName =
-        baseRenderedPayload.title.takeUnless { payload.channelKind == RaftTaskConversationChannelKind }
-    val markdownTaskContextProjectionSlice by remember(
-        tasksDataStore,
-        currentServerId,
-        markdownTaskContextChannelId?.value,
-        markdownTaskContextChannelName
-    ) {
-        markdownTaskContextChannelId?.let { channelId ->
-            tasksDataStore
-                ?.channelProjectionFlow(
-                    serverId = currentServerId,
-                    channelId = channelId.value,
-                    channelName = markdownTaskContextChannelName
-                )
-                ?.distinctUntilChanged()
-        } ?: MutableStateFlow(SharedTasksProjectionSlice())
-    }.collectAsStateWhileStarted(SharedTasksProjectionSlice())
-    // A reader without write access (or whose access is still resolving) has no [taskChannelId], so
-    // nothing above loads the context channel's tasks; load them for its task refs.
-    LaunchedEffect(currentServerId, markdownTaskContextChannelId?.value, taskChannelId?.value, payload.status) {
-        val serverId = currentServerId ?: return@LaunchedEffect
-        val contextChannelId = markdownTaskContextChannelId ?: return@LaunchedEffect
-        val sharedStore = tasksDataStore ?: return@LaunchedEffect
-        if (
-            !shouldLoadMarkdownTaskContextTasks(
-                payload = payload,
-                contextChannelId = contextChannelId,
-                taskChannelId = taskChannelId
-            )
-        ) {
-            return@LaunchedEffect
-        }
-        val result =
-            sharedStore.loadSnapshot(
-                serverId = serverId,
-                scope = SharedTasksScope.Channel(contextChannelId),
-                forceRefresh = false
-            ) {
-                tasksDataSource.loadChannelTasks(
-                    serverId = ServerId(serverId),
-                    channelId = contextChannelId,
-                    priority = DataRequestPriority.Background
-                )
-            }
-        bridge.log(
-            "thread_markdown_task_context_load channelId=${contextChannelId.value} " +
-                "result=${result::class.simpleName}"
-        )
-    }
-    val markdownTaskStatuses =
-        remember(markdownTaskContextProjectionSlice, serverTaskProjectionSlice, markdownTaskContextChannelId) {
-            threadMarkdownTaskStatusesByNumber(
-                channelTasks = markdownTaskContextProjectionSlice.tasks,
-                serverTasks = serverTaskProjectionSlice.tasks,
-                currentChannelId = markdownTaskContextChannelId?.value,
-                loaded = threadMarkdownTaskSourceLoaded(markdownTaskContextProjectionSlice, serverTaskProjectionSlice)
-            )
-        }
-    val markdownTaskRefStatuses =
-        remember(taskProjectionSlice, serverTaskProjectionSlice, payload.dmPeerName, payload.surfaceKind, payload.channelKind) {
-            threadMarkdownTaskRefStatuses(
-                channelTasks = taskProjectionSlice.tasks,
-                serverTasks = serverTaskProjectionSlice.tasks,
-                currentDirectMessagePeerName =
-                    payload.dmPeerName.takeIf {
-                        payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage || payload.channelKind == "dm"
-                    }
-            )
-        }
-    val sourceTaskListsEnabled = payload.supportsChannelTasks()
-    val linkedTasksProjection =
-        remember(
-            taskProjectionSlice,
-            serverTaskProjectionSlice,
-            taskProjectionReferences,
-            sourceTaskListsEnabled,
-            currentSession?.user?.id
-        ) {
-            threadLinkedTasksProjection(
-                channelProjectionSlice = taskProjectionSlice,
-                serverProjectionSlice = serverTaskProjectionSlice,
-                references = taskProjectionReferences
-            ).copy(
-                sourceTaskLists =
-                    if (sourceTaskListsEnabled) {
-                        taskProjectionSlice.tasks.threadSourceTaskLists()
-                    } else {
-                        emptyMap()
-                    },
-                viewerUserId = currentSession?.user?.id
-            )
-        }
+    val taskProjectionSlice by threadRouteTaskProjection.taskProjectionSliceState
+    val serverTaskProjectionSlice by threadRouteTaskProjection.serverTaskProjectionSliceState
+    val markdownTaskContextProjectionSlice by threadRouteTaskProjection.markdownTaskContextProjectionSliceState
+    val markdownTaskStatuses = threadRouteTaskProjection.markdownTaskStatuses
+    val markdownTaskRefStatuses = threadRouteTaskProjection.markdownTaskRefStatuses
+    val linkedTasksProjection = threadRouteTaskProjection.linkedTasksProjection
     val taskAssigneeOptions =
         remember(threadChannelMembersSlice, threadMembersProjection) {
             taskAssigneeIdentityOptions(
@@ -6572,7 +6383,7 @@ private fun ThreadFirstRevealMotionLogger(
  * invalidations.
  */
 @Composable
-private fun ThreadAfterMotionEffect(
+internal fun ThreadAfterMotionEffect(
     vararg keys: Any?,
     block: suspend CoroutineScope.() -> Unit,
 ) {
