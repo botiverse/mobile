@@ -894,6 +894,8 @@ struct iOSApp: App {
         RaftIosVlcVideo.install()
         // Native LiveKit audio engine for Agent Voice calls.
         RaftIosAgentVoiceCallEngine.install()
+        // Native AVAudioEngine PCM16 microphone recorder for composer streaming voice dictation (#wg-mobile-sync:#334).
+        RaftIosVoiceDictationAudioRecorder.install()
         // iOS native navigation (mobile_ios_native_nav_v1): iPhone only; decided at the first page.
         RaftNativeNavProto.installHostSupport()
         // iOS native navigation capture tooling: the login-free capture of the real app on

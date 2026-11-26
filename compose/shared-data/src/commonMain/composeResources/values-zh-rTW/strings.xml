@@ -6967,4 +6967,26 @@
     <string name="thread_action_card_mcp_error_generic">發生錯誤，請再試一次。</string>
     <string name="thread_action_card_mcp_error_header_names_unset">這個應用程式尚未記錄任何標頭名稱。請先在「MCP 伺服器」中設定，再新增連線。</string>
     <string name="thread_action_card_mcp_error_oauth_unsafe_url">該服務傳回的登入網址不是安全的網頁，因此 Raft 沒有開啟。</string>
+    <string name="thread_voice_dictation_start">語音輸入</string>
+    <string name="thread_voice_dictation_stop">停止聽寫</string>
+    <string name="thread_voice_dictation_cancel">取消聽寫</string>
+    <string name="thread_voice_dictation_connecting">連線中…</string>
+    <string name="thread_voice_dictation_listening">聽寫中</string>
+    <string name="thread_voice_dictation_finishing">完成中…</string>
+    <string name="thread_voice_dictation_dismiss_notice">關閉語音輸入提示</string>
+    <string name="thread_voice_dictation_low_quota">今天的語音輸入快用完了，%1$s 重置。</string>
+    <string name="thread_voice_dictation_low_quota_tomorrow">今天的語音輸入快用完了，明天 %1$s 重置。</string>
+    <string name="thread_voice_dictation_low_quota_no_reset">今天的語音輸入快用完了。</string>
+    <string name="thread_voice_dictation_error_mic_permission">Raft 無法使用你的麥克風。請在系統設定中允許 Raft 使用麥克風，然後再試一次。</string>
+    <string name="thread_voice_dictation_error_mic_none">找不到麥克風。請連接一個後再試一次。</string>
+    <string name="thread_voice_dictation_error_quota_exceeded">你今天的語音輸入額度已用完，%1$s 重置。</string>
+    <string name="thread_voice_dictation_error_quota_exceeded_tomorrow">你今天的語音輸入額度已用完，明天 %1$s 重置。</string>
+    <string name="thread_voice_dictation_error_quota_exceeded_no_reset">你今天的語音輸入額度已用完，請明天再試。</string>
+    <string name="thread_voice_dictation_error_rate_limited">語音輸入啟動過於頻繁，請等 %1$d 秒後再試。</string>
+    <string name="thread_voice_dictation_error_rate_limited_no_seconds">語音輸入啟動過於頻繁，請稍候片刻再試。</string>
+    <string name="thread_voice_dictation_error_unavailable">語音輸入暫時無法使用，請稍後再試。</string>
+    <string name="thread_voice_dictation_error_disabled">目前 Server 未開啟語音輸入。</string>
+    <string name="thread_voice_dictation_error_session_limit">單次語音輸入已達到上限，已辨識的文字已保留，點按麥克風即可繼續。</string>
+    <string name="thread_voice_dictation_error_connection_lost">語音辨識連線已中斷，已辨識的文字已保留，可以再試一次。</string>
+    <string name="thread_voice_dictation_error_failed">語音輸入無法啟動，請再試一次。</string>
 </resources>

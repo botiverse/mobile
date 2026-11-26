@@ -2702,6 +2702,8 @@ internal fun ThreadComposerContentLeaf(
     val text = fieldState.text.toString()
     // Quote replies v1 multi-quote interleaved composer (botiverse/slock #16027 / #16210).
     val quoteReplyHost = LocalThreadQuoteReplyHost.current
+    val voiceDictationHost = LocalThreadVoiceDictationHost.current
+    val currentVoiceDictationHost by rememberUpdatedState(voiceDictationHost)
     val unknownQuoteAuthor = stringResource(Res.string.thread_comments_unknown_author)
     val quoteController =
         remember(state.instanceId) {
@@ -2811,6 +2813,7 @@ internal fun ThreadComposerContentLeaf(
             )
             if (snapshot.text != previousText) {
                 editorOwner.markObserved(snapshot, publishedText = snapshot.text)
+                currentVoiceDictationHost?.controller?.onUserEditedComposer(snapshot.text)
                 currentOnEvent("change", snapshot.text, currentAsTask, null)
             }
         }
@@ -3487,6 +3490,7 @@ internal fun ThreadComposerContentLeaf(
     }
 
     fun sendComposerMessage(forceAsTask: Boolean = false) {
+        currentVoiceDictationHost?.controller?.cancel()
         val sourceSessionId = editorOwner.editorSessionId
         if (!editorOwner.isActiveSession(sourceSessionId)) return
         val effectiveAsTask = asTask || (forceAsTask && surface.sendsAsTask)
@@ -3621,6 +3625,14 @@ internal fun ThreadComposerContentLeaf(
                     suggestionsDismissed = true
                     return true
                 }
+            }
+        }
+        // Esc cancels active voice dictation before collapsing an expanded composer.
+        if (key == Key.Escape && currentActiveFieldState().composition == null) {
+            val activeDictation = currentVoiceDictationHost?.controller
+            if (activeDictation != null && activeDictation.state.value.isActive) {
+                activeDictation.cancel()
+                return true
             }
         }
         // Web useComposerExpand (slock #16670): Esc collapses the expanded composer only after
@@ -3805,6 +3817,10 @@ internal fun ThreadComposerContentLeaf(
                 },
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                ThreadVoiceDictationNoticeSlot(
+                    host = voiceDictationHost,
+                    composerEditable = composerEnabled,
+                )
                 state.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
                     Text(
                         text = localizedThreadComposerStatusLabel(status),
@@ -4060,6 +4076,7 @@ internal fun ThreadComposerContentLeaf(
                                         generation = suggestionPortalGeneration,
                                         onFocusedChanged = { focused = it }
                                     )
+                                    currentVoiceDictationHost?.controller?.onUserEditedComposer(activeState.text.toString())
                                     emitChange(nextText = serialized)
                                 },
                                 onActiveFocus = {
@@ -4100,6 +4117,7 @@ internal fun ThreadComposerContentLeaf(
                                         cursor = cursorPos,
                                         publishAsSynced = true,
                                     )
+                                    currentVoiceDictationHost?.controller?.onUserEditedComposer(serialized)
                                     emitChange(nextText = serialized)
                                     if (!quoteController.isSegmented) {
                                         if (keyboardInsetDp > 0f) {
@@ -4385,6 +4403,51 @@ internal fun ThreadComposerContentLeaf(
                                         )
                                     }
                                 }
+                                ThreadVoiceDictationToolbarButton(
+                                    host = voiceDictationHost,
+                                    composerEditable = composerEnabled,
+                                    onStart = {
+                                        val host = currentVoiceDictationHost ?: return@ThreadVoiceDictationToolbarButton
+                                        val serverId = host.serverId ?: return@ThreadVoiceDictationToolbarButton
+                                        if (!host.canShow(composerEditable = composerEnabled)) return@ThreadVoiceDictationToolbarButton
+                                        val segmentedAtStart = quoteController.isSegmented
+                                        val liveState = currentActiveFieldState()
+                                        val baseText = liveState.text.toString()
+                                        val selStart = minOf(liveState.selection.start, liveState.selection.end).coerceIn(0, baseText.length)
+                                        val selEnd = maxOf(liveState.selection.start, liveState.selection.end).coerceIn(selStart, baseText.length)
+                                        val startSessionId = editorOwner.editorSessionId
+                                        host.controller.start(
+                                            serverId = serverId,
+                                            channelId = host.channelId,
+                                            threadId = host.threadId,
+                                            language = host.languageHint,
+                                            baseText = baseText,
+                                            insertStart = selStart,
+                                            insertEnd = selEnd,
+                                            onComposerUpdate = { update ->
+                                                if (segmentedAtStart && quoteController.isSegmented) {
+                                                    val serialized = quoteController.replaceActiveTextBlock(update.composerText, update.caretOffset)
+                                                    if (editorOwner.applyProgrammaticText(startSessionId, serialized, cursor = serialized.length, publishAsSynced = true)) {
+                                                        suggestionSelectionDispatcher.updateDraft(
+                                                            text = update.composerText,
+                                                            selectionStart = update.caretOffset,
+                                                            selectionEnd = update.caretOffset,
+                                                        )
+                                                        currentOnEvent("change", serialized, currentAsTask, null)
+                                                    }
+                                                } else if (editorOwner.applyProgrammaticText(startSessionId, update.composerText, cursor = update.caretOffset, publishAsSynced = true)) {
+                                                    suggestionSelectionDispatcher.updateDraft(
+                                                        text = update.composerText,
+                                                        selectionStart = update.caretOffset,
+                                                        selectionEnd = update.caretOffset,
+                                                    )
+                                                    currentOnEvent("change", update.composerText, currentAsTask, null)
+                                                }
+                                            },
+                                        )
+                                    },
+                                    modifier = Modifier.threadComposerSuggestionKeepsEditorFocus(),
+                                )
                                 if (canExpandComposer && !composerExpanded) {
                                     // Web ComposerExpandButton (slock #16670 / #16767): last before
                                     // Send while collapsed; once expanded, Collapse sits at the end

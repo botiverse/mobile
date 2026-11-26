@@ -6969,4 +6969,26 @@
     <string name="thread_action_card_mcp_error_generic">Something went wrong. Try again.</string>
     <string name="thread_action_card_mcp_error_header_names_unset">This App has no recorded header names. Set them in MCP Server, then add the connection.</string>
     <string name="thread_action_card_mcp_error_oauth_unsafe_url">The service returned a sign-in address that is not a secure web page, so Raft did not open it.</string>
+    <string name="thread_voice_dictation_start">Voice dictation</string>
+    <string name="thread_voice_dictation_stop">Stop dictation</string>
+    <string name="thread_voice_dictation_cancel">Cancel dictation</string>
+    <string name="thread_voice_dictation_connecting">Connecting…</string>
+    <string name="thread_voice_dictation_listening">Listening</string>
+    <string name="thread_voice_dictation_finishing">Finishing…</string>
+    <string name="thread_voice_dictation_dismiss_notice">Dismiss dictation notice</string>
+    <string name="thread_voice_dictation_low_quota">Voice dictation is almost used up for today. Resets at %1$s.</string>
+    <string name="thread_voice_dictation_low_quota_tomorrow">Voice dictation is almost used up for today. Resets tomorrow at %1$s.</string>
+    <string name="thread_voice_dictation_low_quota_no_reset">Voice dictation is almost used up for today.</string>
+    <string name="thread_voice_dictation_error_mic_permission">Raft can't use your microphone. Allow microphone access in your device settings, then try again.</string>
+    <string name="thread_voice_dictation_error_mic_none">No microphone found. Connect one, then try again.</string>
+    <string name="thread_voice_dictation_error_quota_exceeded">You've reached today's voice dictation limit. It resets at %1$s.</string>
+    <string name="thread_voice_dictation_error_quota_exceeded_tomorrow">You've reached today's voice dictation limit. It resets tomorrow at %1$s.</string>
+    <string name="thread_voice_dictation_error_quota_exceeded_no_reset">You've reached today's voice dictation limit. Try again tomorrow.</string>
+    <string name="thread_voice_dictation_error_rate_limited">Too many dictation starts in a row. Wait %1$ds, then try again.</string>
+    <string name="thread_voice_dictation_error_rate_limited_no_seconds">Too many dictation starts in a row. Wait a moment, then try again.</string>
+    <string name="thread_voice_dictation_error_unavailable">Voice dictation isn't available right now. Try again in a moment.</string>
+    <string name="thread_voice_dictation_error_disabled">Voice dictation isn't enabled for this server.</string>
+    <string name="thread_voice_dictation_error_session_limit">Voice dictation reached the session limit. Already transcribed text was kept — tap the mic to continue.</string>
+    <string name="thread_voice_dictation_error_connection_lost">The dictation connection dropped. Already transcribed text was kept — try again.</string>
+    <string name="thread_voice_dictation_error_failed">Voice dictation couldn't start. Try again.</string>
 </resources>

@@ -489,3 +489,358 @@ final class RaftIosAgentVoiceCallEngine: NSObject, RaftAgentVoiceCallEngine, Roo
         session.listener.onDisconnected(reason: reason, detail: detail)
     }
 }
+
+/// Pure audio math & configuration helpers for iOS composer voice dictation (`#wg-mobile-sync:#334`).
+enum RaftIosVoiceDictationPolicy {
+    static let sampleRateHz: Int = 16_000
+    static let chunkDurationMs: Int = 100
+    static let chunkByteSize: Int = sampleRateHz * 2 * chunkDurationMs / 1_000
+    static let rmsNoiseFloor: Float = 0.015
+    static let rmsCeiling: Float = 0.16
+
+    /// Computes raw normalized RMS in `0...1` for signed 16-bit little-endian mono PCM bytes.
+    static func computePcm16RawRms(data: Data) -> Float {
+        let sampleCount = data.count / MemoryLayout<Int16>.size
+        guard sampleCount > 0 else { return 0 }
+        let sumSquares: Double = data.withUnsafeBytes { rawBuffer in
+            guard rawBuffer.count >= sampleCount * 2 else { return 0 }
+            var total: Double = 0
+            for index in 0..<sampleCount {
+                let offset = index * 2
+                let lo = UInt16(rawBuffer[offset])
+                let hi = UInt16(rawBuffer[offset + 1])
+                let sample = Int16(bitPattern: (hi << 8) | lo)
+                let normalized = Double(sample) / 32768.0
+                total += normalized * normalized
+            }
+            return total
+        }
+        let rms = Float(sqrt(sumSquares / Double(sampleCount)))
+        return min(1, max(0, rms))
+    }
+
+    /// Maps raw PCM RMS into perceptual visual level (`0...1`), matching shared & web calibration.
+    static func normalizeRms(_ rawRms: Float) -> Float {
+        guard rawRms.isFinite, rawRms > rmsNoiseFloor else { return 0 }
+        let span = rmsCeiling - rmsNoiseFloor
+        let linear = min(1, max(0, (rawRms - rmsNoiseFloor) / span))
+        let curved = Float(pow(Double(linear), 0.65))
+        return min(1, max(0, curved))
+    }
+
+    /// Computes calibrated visual audio level (`0...1`) directly from a PCM16 LE mono chunk.
+    static func computePcm16AudioLevel(data: Data) -> Float {
+        normalizeRms(computePcm16RawRms(data: data))
+    }
+
+    /// Asymmetric attack/release smoother (~60 ms attack, ~250 ms release at 100 ms frames).
+    static func smoothAudioLevel(previous: Float, target: Float, dtMs: Double = 100.0) -> Float {
+        let prev = previous.isFinite ? min(1, max(0, previous)) : 0
+        let next = target.isFinite ? min(1, max(0, target)) : 0
+        let dt = dtMs > 0 ? dtMs : 100.0
+        let tau = next >= prev ? 60.0 : 250.0
+        let alpha = 1.0 - exp(-dt / tau)
+        let smoothed = prev + (next - prev) * Float(alpha)
+        if next == 0 && smoothed < 0.005 {
+            return 0
+        }
+        return min(1, max(0, smoothed))
+    }
+}
+
+/// Native iOS `AVAudioEngine` + `AVAudioConverter` 16 kHz PCM16 mono microphone recorder for
+/// thin-client v2 composer voice dictation (`#wg-mobile-sync:#334`).
+///
+/// Installed at launch (`iOSApp.init`) via `RaftIosVoiceDictationAudioRecorder.install()`.
+final class RaftIosVoiceDictationAudioRecorder: NSObject, RaftIosVoiceDictationNativeRecorder, @unchecked Sendable {
+    private final class ActiveCapture: @unchecked Sendable {
+        let generation: UInt64
+        let listener: RaftIosVoiceDictationRecorderListener
+        var startTask: Task<Void, Never>?
+        var engine: AVAudioEngine?
+        var sessionActivated: Bool = false
+        var pendingBytes = Data()
+        var smoothedLevel: Float = 0
+
+        init(generation: UInt64, listener: RaftIosVoiceDictationRecorderListener) {
+            self.generation = generation
+            self.listener = listener
+        }
+    }
+
+    private static let sharedInstance = RaftIosVoiceDictationAudioRecorder()
+
+    private let lock = NSLock()
+    private var generationCounter: UInt64 = 0
+    private var activeCapture: ActiveCapture?
+
+    static func install() {
+        RaftIosVoiceDictationRecorderHost.shared.install(recorder: sharedInstance)
+    }
+
+    var sampleRateHz: Int32 {
+        Int32(RaftIosVoiceDictationPolicy.sampleRateHz)
+    }
+
+    func startCapture(listener: RaftIosVoiceDictationRecorderListener) {
+        let previous = detachActiveCapture()
+        teardown(previous)
+
+        let capture: ActiveCapture
+        lock.lock()
+        generationCounter &+= 1
+        capture = ActiveCapture(generation: generationCounter, listener: listener)
+        activeCapture = capture
+        lock.unlock()
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.runStart(capture: capture)
+        }
+
+        lock.lock()
+        if activeCapture === capture {
+            capture.startTask = task
+        } else {
+            task.cancel()
+        }
+        lock.unlock()
+    }
+
+    func stopCapture() {
+        let previous = detachActiveCapture()
+        teardown(previous)
+    }
+
+    private func runStart(capture: ActiveCapture) async {
+        let granted = await Self.requestMicrophonePermission()
+        guard isCurrent(capture) else { return }
+
+        if !granted {
+            _ = clearIfCurrent(capture)
+            capture.listener.onStarted(
+                status: RaftIosVoiceDictationStartStatus.shared.PERMISSION_DENIED,
+                detail: nil
+            )
+            return
+        }
+
+        let audioSession = AVAudioSession.sharedInstance()
+        do {
+            try audioSession.setCategory(.record, mode: .measurement, options: [])
+            try audioSession.setActive(true, options: [])
+        } catch {
+            _ = clearIfCurrent(capture)
+            capture.listener.onStarted(
+                status: RaftIosVoiceDictationStartStatus.shared.DEVICE_UNAVAILABLE,
+                detail: error.localizedDescription
+            )
+            return
+        }
+
+        lock.lock()
+        let stillCurrentAfterSession = activeCapture === capture
+        if stillCurrentAfterSession {
+            capture.sessionActivated = true
+        }
+        lock.unlock()
+
+        if !stillCurrentAfterSession {
+            try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+            return
+        }
+
+        let engine = AVAudioEngine()
+        let inputNode = engine.inputNode
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0,
+              inputFormat.channelCount > 0,
+              let targetFormat = AVAudioFormat(
+                  commonFormat: .pcmFormatInt16,
+                  sampleRate: Double(RaftIosVoiceDictationPolicy.sampleRateHz),
+                  channels: 1,
+                  interleaved: true
+              ),
+              let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+            let detached = clearIfCurrent(capture)
+            teardown(detached ?? capture)
+            capture.listener.onStarted(
+                status: RaftIosVoiceDictationStartStatus.shared.DEVICE_UNAVAILABLE,
+                detail: "Audio input format unavailable"
+            )
+            return
+        }
+
+        let tapBufferFrames = AVAudioFrameCount(max(512, Int(inputFormat.sampleRate * 0.1)))
+        inputNode.installTap(onBus: 0, bufferSize: tapBufferFrames, format: inputFormat) { [weak self] buffer, _ in
+            guard let self else { return }
+            self.handleTapBuffer(buffer, capture: capture, converter: converter, targetFormat: targetFormat)
+        }
+
+        lock.lock()
+        if activeCapture === capture {
+            capture.engine = engine
+        } else {
+            lock.unlock()
+            inputNode.removeTap(onBus: 0)
+            engine.stop()
+            try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+            return
+        }
+        lock.unlock()
+
+        do {
+            engine.prepare()
+            try engine.start()
+        } catch {
+            let detached = clearIfCurrent(capture)
+            teardown(detached ?? capture)
+            capture.listener.onStarted(
+                status: RaftIosVoiceDictationStartStatus.shared.FAILED,
+                detail: error.localizedDescription
+            )
+            return
+        }
+
+        guard isCurrent(capture) else {
+            teardown(capture)
+            return
+        }
+
+        capture.listener.onStarted(
+            status: RaftIosVoiceDictationStartStatus.shared.STARTED,
+            detail: nil
+        )
+    }
+
+    private func handleTapBuffer(
+        _ buffer: AVAudioPCMBuffer,
+        capture: ActiveCapture,
+        converter: AVAudioConverter,
+        targetFormat: AVAudioFormat
+    ) {
+        guard isCurrent(capture), buffer.frameLength > 0 else { return }
+        let ratio = targetFormat.sampleRate / max(1.0, buffer.format.sampleRate)
+        let estimatedFrames = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio)) + 64
+        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: max(64, estimatedFrames)) else {
+            return
+        }
+
+        var convertError: NSError?
+        var providedInput = false
+        let status = converter.convert(to: outputBuffer, error: &convertError) { _, outStatus in
+            if providedInput {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            providedInput = true
+            outStatus.pointee = .haveData
+            return buffer
+        }
+
+        guard status != .error,
+              convertError == nil,
+              outputBuffer.frameLength > 0,
+              let channelData = outputBuffer.int16ChannelData else {
+            return
+        }
+
+        let byteCount = Int(outputBuffer.frameLength) * MemoryLayout<Int16>.size
+        guard byteCount > 0 else { return }
+        let convertedData = Data(bytes: channelData[0], count: byteCount)
+
+        var chunksToEmit: [(Data, Float)] = []
+        let chunkSize = RaftIosVoiceDictationPolicy.chunkByteSize
+
+        lock.lock()
+        guard activeCapture === capture else {
+            lock.unlock()
+            return
+        }
+        capture.pendingBytes.append(convertedData)
+        while capture.pendingBytes.count >= chunkSize {
+            let chunk = Data(capture.pendingBytes.prefix(chunkSize))
+            capture.pendingBytes.removeFirst(chunkSize)
+            let rawLevel = RaftIosVoiceDictationPolicy.computePcm16AudioLevel(data: chunk)
+            let smoothed = RaftIosVoiceDictationPolicy.smoothAudioLevel(
+                previous: capture.smoothedLevel,
+                target: rawLevel
+            )
+            capture.smoothedLevel = smoothed
+            chunksToEmit.append((chunk, smoothed))
+        }
+        lock.unlock()
+
+        for (chunk, level) in chunksToEmit {
+            guard isCurrent(capture) else { return }
+            capture.listener.onPcmChunk(data: chunk, audioLevel: level)
+        }
+    }
+
+    private func detachActiveCapture() -> ActiveCapture? {
+        lock.lock()
+        let previous = activeCapture
+        activeCapture = nil
+        lock.unlock()
+        return previous
+    }
+
+    private func clearIfCurrent(_ capture: ActiveCapture) -> ActiveCapture? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard activeCapture === capture else { return nil }
+        activeCapture = nil
+        return capture
+    }
+
+    private func isCurrent(_ capture: ActiveCapture) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return activeCapture === capture
+    }
+
+    private func teardown(_ capture: ActiveCapture?) {
+        guard let capture else { return }
+        capture.startTask?.cancel()
+        if let engine = capture.engine {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+            capture.engine = nil
+        }
+        if capture.sessionActivated {
+            capture.sessionActivated = false
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
+    }
+
+    private static func requestMicrophonePermission() async -> Bool {
+        if #available(iOS 17.0, *) {
+            switch AVAudioApplication.shared.recordPermission {
+            case .granted:
+                return true
+            case .denied:
+                return false
+            case .undetermined:
+                return await AVAudioApplication.requestRecordPermission()
+            @unknown default:
+                return false
+            }
+        } else {
+            let session = AVAudioSession.sharedInstance()
+            switch session.recordPermission {
+            case .granted:
+                return true
+            case .denied:
+                return false
+            case .undetermined:
+                return await withCheckedContinuation { continuation in
+                    session.requestRecordPermission { granted in
+                        continuation.resume(returning: granted)
+                    }
+                }
+            @unknown default:
+                return false
+            }
+        }
+    }
+}

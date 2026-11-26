@@ -24,6 +24,7 @@ import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.data.RaftDesktopComposerTemporaryFiles
+import build.raft.app.data.RaftDesktopVoiceDictationRecorderHost
 import build.raft.app.data.raftClearLegacyFontPreference
 import build.raft.app.network.installDesktopRaftAppIdentity
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
@@ -56,6 +57,8 @@ fun main(args: Array<String>) {
     RaftDesktopInUse.install()
     // Pasted images: retired by the composer after send / removal; stale ones swept here.
     RaftDesktopComposerTemporaryFiles.install()
+    // Native JVM PCM16 microphone recorder for composer streaming voice dictation (#wg-mobile-sync:#334).
+    RaftDesktopVoiceDictationRecorderHost.install()
 
     application {
         val navigator = RaftDesktopNavigator()
