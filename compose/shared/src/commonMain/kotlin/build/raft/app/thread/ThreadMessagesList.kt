@@ -1288,28 +1288,16 @@ private fun ThreadMessagesListContent(
     var pendingKeyboardBottomAnchor by remember(threadInstanceKey) { mutableStateOf(false) }
     val activeFocusedMessageIdState = remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var activeFocusedMessageId by activeFocusedMessageIdState
-    // Focused-message anchoring is one-shot per explicit request (message id +
-    // request nonce). Timeline growth (secondary refresh hydrating the origin,
-    // realtime arrivals, older pages) re-runs the effect only to retry a target
-    // that was not yet measurable — never to re-scroll a consumed request, and
-    // never against the user: one user drag stamps the pending identity as
-    // interrupted and retires it (task #554 — thread jumped back to the focused
-    // message ~1s after entry, cancelling the active drag).
-    var consumedFocusedMessageAnchorIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var scrollInterruptedFocusedMessageAnchorIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    // task #567 anchor session bookkeeping. Elapsed time accumulates across
-    // effect restarts (structural data changes restart the anchor effect; the
-    // hard cap must span restarts or a busy thread could hold the one-shot
-    // open forever). Reset when a new anchor identity arrives (re-tap).
-    var focusedAnchorSessionIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var focusedAnchorSessionElapsedMs by remember(threadInstanceKey) { mutableStateOf(0L) }
-    var focusedAnchorSessionReanchors by remember(threadInstanceKey) { mutableStateOf(0) }
-    var focusedAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf<Int?>(null) }
-    var correctedFocusedOriginIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var focusedAnchorPlacementState by remember(threadInstanceKey) {
-        mutableStateOf(resetThreadFocusedAnchorPlacement(identity = null))
-    }
-    var bottomAnchorFocusedYieldElapsedMs by remember(threadInstanceKey) { mutableStateOf(0L) }
+    val focusedAnchorState = remember(threadInstanceKey) { ThreadFocusedAnchorState() }
+    var consumedFocusedMessageAnchorIdentity by focusedAnchorState::consumedFocusedMessageAnchorIdentity
+    var scrollInterruptedFocusedMessageAnchorIdentity by focusedAnchorState::scrollInterruptedFocusedMessageAnchorIdentity
+    var focusedAnchorSessionIdentity by focusedAnchorState::focusedAnchorSessionIdentity
+    var focusedAnchorSessionElapsedMs by focusedAnchorState::focusedAnchorSessionElapsedMs
+    var focusedAnchorSessionReanchors by focusedAnchorState::focusedAnchorSessionReanchors
+    var focusedAnchorStartUserScrollGeneration by focusedAnchorState::focusedAnchorStartUserScrollGeneration
+    var correctedFocusedOriginIdentity by focusedAnchorState::correctedFocusedOriginIdentity
+    var focusedAnchorPlacementState by focusedAnchorState::focusedAnchorPlacementState
+    var bottomAnchorFocusedYieldElapsedMs by focusedAnchorState::bottomAnchorFocusedYieldElapsedMs
     val pendingFocusedMessageAnchorIdentityState =
         rememberUpdatedState(
             renderPayload.focusedMessageId
