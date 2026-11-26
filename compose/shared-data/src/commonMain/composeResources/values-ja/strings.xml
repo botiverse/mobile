@@ -3025,9 +3025,6 @@
     <string name="settings_mobile_server_drawer_detail">ホームで新しいマルチサーバー左ドロワーを使用します。オフにすると、現在のサーバー切り替えポップオーバーを維持します。</string>
     <string name="settings_mobile_new_message_menu">新しいメッセージメニュー</string>
     <string name="settings_mobile_new_message_menu_detail">メッセージを押したままにすると、クイックリアクションとよく使う操作を2段のコンパクトメニューで表示します。オフにすると従来のメッセージメニューを使用します。</string>
-    <string name="settings_mobile_conversation_forward_gesture">会話の「進む」ジェスチャー</string>
-    <string name="settings_mobile_conversation_forward_gesture_detail">チャットからホームに戻った後、画面の右端から左へスワイプすると、そのチャットをもう一度開けます。</string>
-    <string name="settings_mobile_conversation_forward_gesture_accessibility">ベータ。会話の「進む」ジェスチャーを設定します。チャットからホームに戻った後、画面の右端から左へスワイプすると、そのチャットをもう一度開けます。</string>
     <string name="settings_badge_beta">ベータ</string>
     <string name="settings_mobile_compact_detail">同じ送信者からの連続するメッセージで、繰り返されるアバターを非表示にします。行を押したままにすると、メッセージの時刻が表示されます。</string>
     <string name="settings_mobile_long_message_collapse">長いメッセージを折りたたむ</string>

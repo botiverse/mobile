@@ -3777,28 +3777,6 @@ NSString *const RaftBridgeCallbackKey = @"callback";
     });
 }
 
-- (void)conversationForwardGesture:(NSDictionary *)args {
-    NSDictionary *params = RaftBridgeParams(args);
-    BOOL enabled = RaftBridgeBool(params[@"enabled"]);
-    RaftBridgeRunOnMain(^{
-        // This module belongs to the AppShell page. Do not follow a presented modal to decide
-        // ownership; modal presence is a separate gesture-admission veto.
-        UIViewController *controller = self.raftHostController;
-        if (![controller isKindOfClass:RaftPageViewController.class]) {
-            RaftIosDiagnosticsRecordWithContext(@"warn", @"SlockConversationForward",
-                [NSString stringWithFormat:@"host_arm_dropped reason=host_not_page enabled=%d", enabled], 0, YES, NO);
-            return;
-        }
-        RaftPageViewController *page = (RaftPageViewController *)controller;
-        if (!page.raftIsAppShellPage) {
-            RaftIosDiagnosticsRecordWithContext(@"warn", @"SlockConversationForward",
-                [NSString stringWithFormat:@"host_arm_dropped reason=not_app_shell enabled=%d", enabled], 0, YES, NO);
-            return;
-        }
-        page.raftConversationForwardGestureEnabled = enabled;
-    });
-}
-
 - (void)openUrl:(NSDictionary *)args {
     NSDictionary *params = RaftBridgeParams(args);
     NSString *urlText = RaftBridgeString(params[@"url"]);

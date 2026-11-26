@@ -1059,7 +1059,6 @@ internal class RaftSharedStoreProvider private constructor(
     private val shellAuthLoginGenerations = RaftShellScopedStoreCache<SharedAuthLoginGeneration>()
     private val shellAuthLoginGenerationJobs = RaftShellScopedStoreCache<Job>()
     private val shellNavigationCoordinators = RaftShellScopedStoreCache<SharedWindowNavigationCoordinator>()
-    private val shellConversationForwardHistories = RaftShellScopedStoreCache<SharedConversationForwardHistory>()
     private val shellForegroundBannerStores = RaftShellScopedStoreCache<SharedForegroundBannerStore>()
     private val shellConversationIdentityHubs =
         RaftShellScopedStoreCache<SharedConversationIdentityHub>()
@@ -3433,10 +3432,6 @@ internal class RaftSharedStoreProvider private constructor(
     fun windowNavigationCoordinator(scope: RaftShellStoreScope): SharedWindowNavigationCoordinator =
         shellNavigationCoordinators.getOrPut(scope) { SharedWindowNavigationCoordinator() }
 
-    /** Identity-only, one-step Forward history owned by one document/AppShell. */
-    fun conversationForwardHistory(scope: RaftShellStoreScope): SharedConversationForwardHistory =
-        shellConversationForwardHistories.getOrPut(scope) { SharedConversationForwardHistory() }
-
     fun foregroundBannerStore(scope: RaftShellStoreScope): SharedForegroundBannerStore =
         shellForegroundBannerStores.getOrPut(scope) { SharedForegroundBannerStore(threadSendScope) }
 
@@ -4061,7 +4056,6 @@ internal class RaftSharedStoreProvider private constructor(
         shellServerRuntimeCatalogRepositories.remove(scope)
         shellServerModelLabelCatalogRepositories.remove(scope)
         shellNavigationCoordinators.remove(scope)?.clear()
-        shellConversationForwardHistories.remove(scope)?.release()
         shellForegroundBannerStores.remove(scope)?.clear()
         shellConversationIdentityHubs.remove(scope)?.clear()
         selectedServerStores.remove(scope)

@@ -280,7 +280,6 @@ internal fun SettingsNativeDetailScreen() {
         onMessageAlignmentSelected = {},
         onCompactConsecutiveMessagesSelected = {},
         onForegroundMessageBannersSelected = {},
-        onConversationForwardGestureSelected = {},
         onServerDrawerSelected = {},
         bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
         timeContext = null,
@@ -382,7 +381,6 @@ internal fun SettingsNativeDetailPageContent(
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
     onForegroundMessageBannersSelected: (Boolean) -> Unit,
-    onConversationForwardGestureSelected: (Boolean) -> Unit,
     onServerDrawerSelected: (Boolean) -> Unit,
     bottomContentPadding: Dp,
     timeContext: RaftTimeContext?,
@@ -585,10 +583,6 @@ internal fun SettingsNativeDetailPageContent(
             },
             onNewMessageMenuChange = { enabled ->
                 onSettingsIntent(SharedSettingsIntent.SetNewMessageMenuEnabled(enabled, appSettingSurface))
-            },
-            onConversationForwardGestureChange = { enabled ->
-                onSettingsIntent(SharedSettingsIntent.SetConversationForwardGestureEnabled(enabled, appSettingSurface))
-                onConversationForwardGestureSelected(enabled)
             },
             onComposerSendKeyChange = { enabled ->
                 onSettingsIntent(SharedSettingsIntent.SetComposerSendKey(enabled, appSettingSurface))

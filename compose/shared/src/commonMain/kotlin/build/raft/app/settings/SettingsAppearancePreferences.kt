@@ -18,8 +18,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.SegmentedControl
@@ -27,7 +25,6 @@ import build.raft.app.components.SegmentedControlOption
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
 import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
-import build.raft.app.data.MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE
 import build.raft.app.data.MOBILE_ACTION_DESKTOP_MODE
 import build.raft.app.data.MOBILE_ACTION_LINK_OPEN_MODE
 import build.raft.app.data.MOBILE_ACTION_LONG_MESSAGE_COLLAPSE
@@ -78,7 +75,6 @@ internal class SettingsAppPreferenceActions(
     val onCompactConsecutiveMessagesChange: (Boolean) -> Unit = {},
     val onLongMessageCollapseChange: (Boolean) -> Unit = {},
     val onNewMessageMenuChange: (Boolean) -> Unit = {},
-    val onConversationForwardGestureChange: (Boolean) -> Unit = {},
     val onComposerSendKeyChange: (Boolean) -> Unit = {},
     val onMultiShellHostChange: (Boolean) -> Unit = {},
     val onDesktopModeOnLargeScreenChange: (Boolean) -> Unit = {},
@@ -258,20 +254,6 @@ internal fun SettingsAppearanceAppRows(
         beta = true,
         onCheckedChange = actions.onNewMessageMenuChange,
     )
-    // iOS only: the host with a native right-edge Forward recognizer.
-    if (snapshot.conversationForwardGesture.available) {
-        val accessibility = stringResource(Res.string.settings_mobile_conversation_forward_gesture_accessibility)
-        SettingsAppearanceToggleRow(
-            title = stringResource(Res.string.settings_mobile_conversation_forward_gesture),
-            preference = snapshot.conversationForwardGesture,
-            action = MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE,
-            actionState = actionState,
-            divider = true,
-            beta = true,
-            modifier = Modifier.semantics { contentDescription = accessibility },
-            onCheckedChange = actions.onConversationForwardGestureChange,
-        )
-    }
     val serverDrawer = snapshot.serverDrawer
     LaunchedEffect(serverDrawer.available, serverDrawer.enabled) {
         actions.diagnosticsLogger(

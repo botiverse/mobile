@@ -1,9 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.KmmResourceLocaleRuntime
-import build.raft.app.buildThreadLaunchConversationIdentity
 import build.raft.app.model.ChannelId
-import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -648,7 +646,6 @@ class SharedSettingsStoreTest {
                         localeRepository = localeRepository,
                         chatLayoutPreferenceRepository = chatLayoutRepository,
                         linkOpenPreferenceRepository = linkOpenPreferenceRepository,
-                        platformCapabilities = ConversationForwardCapableSettingsPlatformCapabilities
                     ),
                 scope = scope
             )
@@ -661,7 +658,6 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetCompactConsecutiveMessages(true))
         store.accept(SharedSettingsIntent.SetLongMessageCollapseEnabled(true))
         store.accept(SharedSettingsIntent.SetNewMessageMenuEnabled(true))
-        store.accept(SharedSettingsIntent.SetConversationForwardGestureEnabled(true))
         store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
         store.accept(SharedSettingsIntent.SetComposerSendKey(false))
         store.accept(SharedSettingsIntent.SetMultiShellHostEnabled(true))
@@ -675,7 +671,6 @@ class SharedSettingsStoreTest {
         assertEquals(true, chatLayoutRepository.compactConsecutiveMessages)
         assertEquals(true, chatLayoutRepository.longMessageCollapseEnabled)
         assertEquals(true, chatLayoutRepository.newMessageMenuEnabled)
-        assertEquals(true, chatLayoutRepository.conversationForwardGestureEnabled)
         assertEquals(true, chatLayoutRepository.foregroundMessageBannersEnabled)
         assertEquals(false, chatLayoutRepository.composerSendKeyEnabled)
         assertEquals(true, chatLayoutRepository.multiShellHostEnabled)
@@ -696,8 +691,6 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.longMessageCollapse.statusLabel)
         assertEquals(true, mobile.newMessageMenu.enabled)
         assertEquals("Enabled", mobile.newMessageMenu.statusLabel)
-        assertEquals(true, mobile.conversationForwardGesture.enabled)
-        assertEquals("Enabled", mobile.conversationForwardGesture.statusLabel)
         assertEquals(true, mobile.foregroundMessageBanners.enabled)
         assertEquals("Enabled", mobile.foregroundMessageBanners.statusLabel)
         assertEquals(false, mobile.composerSendKey.enabled)
@@ -714,102 +707,6 @@ class SharedSettingsStoreTest {
         assertEquals(AppLocale.System, localeRepository.current)
         assertEquals("System default", systemMobile.localePreference.statusLabel)
         scope.cancel()
-    }
-
-    @Test
-    fun unsupportedPlatformHidesConversationForwardGestureAndRejectsPersistence() = runBlocking {
-        val chatLayoutRepository =
-            FakeChatLayoutPreferenceRepository(conversationForwardGestureEnabled = true)
-        val dataSource =
-            SharedSettingsDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                chatLayoutPreferenceRepository = chatLayoutRepository
-            )
-
-        val loaded =
-            assertIs<DataResult.Content<SettingsMobileSnapshot>>(
-                dataSource.loadMobilePreferences()
-            ).data.conversationForwardGesture
-
-        assertFalse(loaded.available)
-        assertFalse(loaded.enabled)
-        assertEquals("Unsupported", loaded.statusLabel)
-
-        chatLayoutRepository.conversationForwardGestureEnabled = false
-        val rejected =
-            assertIs<DataResult.Error>(
-                dataSource.setConversationForwardGestureEnabled(true)
-            )
-        assertEquals("settings_conversation_forward_gesture_unavailable", rejected.error.code)
-        assertFalse(chatLayoutRepository.conversationForwardGestureEnabled)
-    }
-
-    @Test
-    fun delayedMobilePermissionLoadCannotOverrideNewerProcessOff() = runBlocking {
-        val permissionLoad = BlockingCall()
-        val chatLayoutRepository =
-            FakeChatLayoutPreferenceRepository(conversationForwardGestureEnabled = true)
-        val platformCapabilities =
-            object : SharedSettingsPlatformCapabilities {
-                override val supportsConversationForwardGesture: Boolean = true
-
-                override suspend fun loadSystemNotificationPermission(): SettingsMobileActionSnapshot? {
-                    permissionLoad.consume()
-                    return null
-                }
-            }
-        val dataSource =
-            SharedSettingsDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                chatLayoutPreferenceRepository = chatLayoutRepository,
-                platformCapabilities = platformCapabilities
-            )
-        val history = SharedConversationForwardHistory()
-        var nativeDisableCount = 0
-        val runtimeAuthority =
-            ConversationForwardGestureRuntimeAuthority(
-                supported = true
-            ) { enabled ->
-                reconcileConversationForwardGesturePreference(
-                    enabled = enabled,
-                    history = history,
-                    disableNativeGesture = { nativeDisableCount += 1 }
-                )
-            }
-        val entry =
-            buildThreadLaunchConversationIdentity(
-                kind = ConversationKind.Channel,
-                channelId = ChannelId("channel-a")
-            ).toConversationForwardEntry("server-a")
-        runtimeAuthority.seedFromRepository(true)
-        history.recordNewOpen(entry)
-        assertTrue(history.recordHomeVisible())
-        assertTrue(history.canForward)
-
-        var delayedResult: DataResult<SettingsMobileSnapshot>? = null
-        val loadJob =
-            launch {
-                delayedResult = dataSource.loadMobilePreferences()
-            }
-        permissionLoad.awaitStarted()
-
-        chatLayoutRepository.conversationForwardGestureEnabled = false
-        runtimeAuthority.applyProcessPreferenceChange(false)
-        permissionLoad.release()
-        loadJob.join()
-
-        val staleMobileSnapshot =
-            assertIs<DataResult.Content<SettingsMobileSnapshot>>(delayedResult).data
-        assertTrue(staleMobileSnapshot.conversationForwardGesture.enabled)
-        assertFalse(chatLayoutRepository.conversationForwardGestureEnabled)
-        assertFalse(history.enabledForTest())
-        assertFalse(history.canForward)
-        assertNull(history.forwardEntryForTest())
-        assertEquals(1, nativeDisableCount)
-
-        history.recordNewOpen(entry)
-        assertFalse(history.recordHomeVisible())
-        assertFalse(history.canForward)
     }
 
     @Test
@@ -3305,11 +3202,6 @@ class SharedSettingsStoreTest {
         }
     }
 
-    private object ConversationForwardCapableSettingsPlatformCapabilities :
-        SharedSettingsPlatformCapabilities {
-        override val supportsConversationForwardGesture: Boolean = true
-    }
-
     private class FakeNotificationPreferenceRepository(
         var enabled: Boolean = false,
         var foregroundKeepAliveEnabled: Boolean = false,
@@ -3361,7 +3253,6 @@ class SharedSettingsStoreTest {
         var compactConsecutiveMessages: Boolean = false,
         var longMessageCollapseEnabled: Boolean = false,
         var newMessageMenuEnabled: Boolean = false,
-        var conversationForwardGestureEnabled: Boolean = false,
         var foregroundMessageBannersEnabled: Boolean = false,
         var composerSendKeyEnabled: Boolean = true,
         var multiShellHostEnabled: Boolean = false,
@@ -3375,7 +3266,6 @@ class SharedSettingsStoreTest {
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 newMessageMenuEnabled = newMessageMenuEnabled,
-                conversationForwardGestureEnabled = conversationForwardGestureEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 multiShellHostEnabled = multiShellHostEnabled,
@@ -3425,11 +3315,6 @@ class SharedSettingsStoreTest {
 
         override suspend fun setNewMessageMenuEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
             newMessageMenuEnabled = enabled
-            return getChatLayoutPreference()
-        }
-
-        override suspend fun setConversationForwardGestureEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
-            conversationForwardGestureEnabled = enabled
             return getChatLayoutPreference()
         }
 

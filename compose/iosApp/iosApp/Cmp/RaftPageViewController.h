@@ -7,8 +7,8 @@ NS_ASSUME_NONNULL_BEGIN
  * Hosts the page's Compose Multiplatform view controller as a child (created by
  * `RaftPageControllerFactory` and attached with -raftAttachContentController:sendEvent:) and keeps
  * the native host duties: the pageData host context (time, pixel safe areas, window id), live
- * window insets, adaptive pane facts, theme changes, the status bar style, the dormant adaptive
- * navigation transaction and the conversation forward gesture admission bit. Hardware keys (Tab
+ * window insets, adaptive pane facts, theme changes, the status bar style, and the dormant
+ * adaptive navigation transaction. Hardware keys (Tab
  * focus traversal) are handled by the Compose controller itself. Host -> page events go through the CMP page's
  * `RaftHostEvents` (pager events, the Kuikly `sendWithEvent` counterpart).
  */
@@ -17,8 +17,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, readonly) NSString *raftPageName;
 /** The page's pageData with the host context merged in (what the CMP page is created with). */
 @property (nonatomic, copy, readonly) NSDictionary *raftPageData;
-/** Native admission bit only; the identity-only Forward entry remains in the shared store. */
-@property (nonatomic, assign) BOOL raftConversationForwardGestureEnabled;
 @property (nonatomic, assign, readonly) BOOL raftIsAppShellPage;
 @property (nonatomic, assign, readonly) BOOL raftIsLoginPage;
 /**
@@ -113,13 +111,9 @@ NS_ASSUME_NONNULL_BEGIN
 /** Dormant A4 bridge: prepare/commit/cancel. Only this page's own bridge module may call it. */
 - (NSDictionary *)raftAdaptiveNavigation:(NSDictionary *)params;
 
-/** Emits an intent-only pager event; shared code revalidates and rebuilds the route. */
-- (void)raftRequestConversationForward;
-
 /**
- * The app shell's viewDidAppear step (no-op on other pages): re-applies the shell's Forward
- * admission bit to the navigation controller's recognizer (a push detached it) and sends
- * `slockAppShellHostDidAppear` so shared code offers the conversation just left to Forward.
+ * The app shell's viewDidAppear step (no-op on other pages): sends `slockAppShellHostDidAppear`
+ * so shared code knows the shell is visible again after a native pop.
  */
 - (void)raftAppShellDidAppear;
 

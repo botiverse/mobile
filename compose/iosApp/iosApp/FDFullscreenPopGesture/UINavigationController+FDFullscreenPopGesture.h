@@ -22,16 +22,6 @@
 
 #import <UIKit/UIKit.h>
 
-/// One `SlockConversationForward` diagnostics line, also written to the console (os_log), so a
-/// Simulator `log show` capture sees every step of the Forward recognizer path.
-FOUNDATION_EXTERN void RaftConversationForwardLog(NSString *message);
-
-/// The Forward swipe: a pan admitted only for touches that start in the trailing-edge strip
-/// (right in LTR) and move towards the leading edge. Never prevented by Compose's touch
-/// recognizer. Shared owns and validates Forward history.
-@interface RaftConversationForwardPanGestureRecognizer : UIPanGestureRecognizer
-@end
-
 /// "UINavigation+FDFullscreenPopGesture" extends UINavigationController's swipe-
 /// to-pop behavior in iOS 7+ by supporting fullscreen pan gesture. Instead of
 /// screen edge, you can now swipe from any place on the screen and the onboard
@@ -44,13 +34,6 @@ FOUNDATION_EXTERN void RaftConversationForwardLog(NSString *message);
 
 /// The gesture recognizer that actually handles interactive pop.
 @property (nonatomic, strong, readonly) UIPanGestureRecognizer *fd_fullscreenPopGestureRecognizer;
-
-/// Right-edge, leftward intent recognizer. Shared owns and validates Forward history.
-@property (nonatomic, strong, readonly) RaftConversationForwardPanGestureRecognizer *fd_conversationForwardGestureRecognizer;
-
-/// Installs the right-edge recognizer only while shared has admitted Forward.
-/// Disabling removes it from the navigation view, so OFF cannot receive a gesture.
-- (void)fd_setConversationForwardGestureEnabled:(BOOL)enabled;
 
 /// A view controller is able to control navigation bar's appearance by itself,
 /// rather than a global way, checking "fd_prefersNavigationBarHidden" property.

@@ -89,10 +89,6 @@ import build.raft.app.data.SharedTasksRouteOwner
 import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
-import build.raft.app.data.ConversationForwardAction
-import build.raft.app.data.ConversationForwardHomeReturnSignals
-import build.raft.app.data.appShellConversationForwardGestureArmed
-import build.raft.app.data.toConversationForwardEntry
 import build.raft.app.data.realtime.RealtimeCursorPolicy
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeDataSource
@@ -249,7 +245,6 @@ const val HOME_SEARCH_FOCUS_INPUT = "focusSearchInput"
 const val AUTH_CHOOSE_SERVER_PAGE = "compose_auth_choose_server"
 const val RAFT_APP_SHELL_PAGE = "compose_slock_app_shell"
 internal const val RAFT_APP_SHELL_CHILD_TAB_PAGE = "compose_app_shell_child_tab"
-internal const val RAFT_CONVERSATION_FORWARD_PAGER_EVENT = "slockConversationForwardRequested"
 /**
  * iOS host: the app shell's view controller appeared on top of its navigation stack (a pushed
  * page was popped). Sent by RaftPageViewController.viewDidAppear, independent of the Compose
@@ -557,7 +552,6 @@ internal fun RaftAppShellContent(
     initialAuthRestoreTick: Int = 0,
     pageVisible: Boolean = true,
     adaptivePane: RaftAdaptivePaneState = RaftAdaptivePaneState(),
-    conversationForwardRequestTick: Int = 0,
     /** Advances with each [RAFT_APP_SHELL_HOST_DID_APPEAR_PAGER_EVENT] (iOS). */
     hostDidAppearTick: Int = 0,
     /** A desktop shortcut or mouse button's step through the wide layout's history. */
@@ -585,7 +579,6 @@ internal fun RaftAppShellContent(
             initialAuthRestoreTick = initialAuthRestoreTick,
             pageVisible = pageVisible,
             adaptivePane = adaptivePane,
-            conversationForwardRequestTick = conversationForwardRequestTick,
             hostDidAppearTick = hostDidAppearTick,
             wideHistoryRequest = wideHistoryRequest,
             searchHandoff = searchHandoff,
@@ -602,7 +595,6 @@ private fun RaftAppShellReadyContent(
     initialAuthRestoreTick: Int,
     pageVisible: Boolean,
     adaptivePane: RaftAdaptivePaneState,
-    conversationForwardRequestTick: Int,
     hostDidAppearTick: Int,
     wideHistoryRequest: RaftWideNavRequest? = null,
     searchHandoff: RaftSearchTabQueryRequest? = null,
@@ -744,10 +736,6 @@ private fun RaftAppShellReadyContent(
         appShellAppearanceGeneration(pageVisibleTick, initialAuthRestoreTick)
     val windowNavigationCoordinator =
         remember(sharedStores, storeScope) { sharedStores.windowNavigationCoordinator(storeScope) }
-    val conversationForwardHistory =
-        remember(sharedStores, storeScope) { sharedStores.conversationForwardHistory(storeScope) }
-    val conversationForwardHomeReturns = remember { ConversationForwardHomeReturnSignals() }
-    var handledConversationForwardRequestTick by remember { mutableStateOf(0) }
     AppShellAppearanceEffects(
         sharedStores = sharedStores,
         pager = pager,
@@ -1278,8 +1266,6 @@ private fun RaftAppShellReadyContent(
     var foregroundMessageBannersEnabled by foregroundMessageBannersEnabledState
     val serverDrawerEnabledState = remember { mutableStateOf(DEFAULT_SERVER_DRAWER_ENABLED) }
     var serverDrawerEnabled by serverDrawerEnabledState
-    val conversationForwardGestureEnabledState = remember { mutableStateOf(false) }
-    var conversationForwardGestureEnabled by conversationForwardGestureEnabledState
     val serverDrawerProgrammaticCloseFenceState = remember { mutableStateOf<((String) -> Unit)?>(null) }
     var serverDrawerProgrammaticCloseFence by serverDrawerProgrammaticCloseFenceState
     var createChannelDialogOpen by remember { mutableStateOf(false) }
@@ -2223,26 +2209,6 @@ private fun RaftAppShellReadyContent(
         pageVisible &&
             selectedTab == "home" &&
             selectedHomeDestination == null
-    val homeContentReadyForConversationForward = homeState.content is SharedHomeContentState.Content
-
-    // The one arming rule for the iOS Forward recognizer ([appShellConversationForwardGestureArmed]).
-    fun armConversationForwardGesture() {
-        val armed =
-            appShellConversationForwardGestureArmed(
-                preferenceEnabled = conversationForwardGestureEnabled,
-                authoritativeHomeStartAllowed = authoritativeHomeStartAllowed,
-                homeSurfaceVisible = homeSurfaceVisible,
-                homeContentReady = homeContentReadyForConversationForward,
-                canForward = conversationForwardHistory.canForward,
-            )
-        bridge.setConversationForwardGestureEnabled(armed)
-        if (conversationForwardGestureEnabled && homeSurfaceVisible) {
-            bridge.log(
-                "conversation_forward_arm armed=$armed authoritative=$authoritativeHomeStartAllowed " +
-                    "homeReady=$homeContentReadyForConversationForward available=${conversationForwardHistory.canForward}"
-            )
-        }
-    }
     AppShellHomeStartEffects(
         pageVisible = pageVisible,
         desktopModeOnLargeScreenState = desktopModeOnLargeScreenState,
@@ -2510,8 +2476,6 @@ private fun RaftAppShellReadyContent(
         membersAgentDetailRefreshKey = 0
         membersListCachedContent = null
         foregroundBannerStore.clear()
-        conversationForwardHistory.clear()
-        bridge.setConversationForwardGestureEnabled(false)
         sharedStores.homeSavedStateCache.clear()
         selectAppShellTab("home")
         retainedAppShellTabs = setOf("home")
@@ -2543,22 +2507,14 @@ private fun RaftAppShellReadyContent(
 
     AppShellRuntimeAuthorityEffects(
         desktopModeOnLargeScreenState = desktopModeOnLargeScreenState,
-        bridge = bridge,
-        conversationForwardHistory = conversationForwardHistory,
-        settingsCapabilities = settingsCapabilities,
         chatLayoutPreferenceEvents = chatLayoutPreferenceEvents,
         chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
         myMessageAlignmentState = myMessageAlignmentState,
         compactConsecutiveMessagesState = compactConsecutiveMessagesState,
         foregroundMessageBannersEnabledState = foregroundMessageBannersEnabledState,
         serverDrawerEnabledState = serverDrawerEnabledState,
-        conversationForwardGestureEnabledState = conversationForwardGestureEnabledState,
         foregroundBannerStore = foregroundBannerStore,
     )
-    LaunchedEffect(conversationForwardGestureEnabled, authoritativeHomeStartAllowed) {
-        conversationForwardHistory.setEnabled(conversationForwardGestureEnabled)
-        armConversationForwardGesture()
-    }
     val latestForegroundMessageBannersEnabled by rememberUpdatedState(foregroundMessageBannersEnabled)
     // The in-app banner obeys the device push preview choice (read per event from the single store).
     val pushPreviewModeStore = remember { KeyValuePushPreviewModePreferenceStore(raftSharedPreferenceStore()) }
@@ -2648,10 +2604,6 @@ private fun RaftAppShellReadyContent(
             installAdaptiveHandoffLease(opened, launchPayload)
         }
         activityArtifactState.close()
-        // Dual-pane detail does not push a native controller, so it must neither become
-        // a Forward entry nor leave an older native-push branch reachable.
-        conversationForwardHistory.clear()
-        bridge.setConversationForwardGestureEnabled(false)
         return opened
     }
 
@@ -2659,7 +2611,6 @@ private fun RaftAppShellReadyContent(
         conversation: ThreadLaunchConversationIdentity,
         source: String,
         anchorMessageId: String? = null,
-        recordForwardHistory: Boolean = true,
         originFallback: ThreadLaunchOriginFallback? = null,
         // Shell-initiated wide default landing: only ever fills the visible empty pane; it must
         // never fall back to a standalone push or park a compact selection the user did not pick.
@@ -2741,16 +2692,6 @@ private fun RaftAppShellReadyContent(
                 )
             }
         }
-        if (recordForwardHistory) {
-            readyServerId
-                ?.takeIf { it.isNotBlank() }
-                ?.let { serverId ->
-                    conversationForwardHistory.recordNewOpen(
-                        conversation.toConversationForwardEntry(serverId)
-                    )
-                }
-        }
-        bridge.setConversationForwardGestureEnabled(false)
         foregroundBannerStore.topPageFocus.clearPending()
         pager.openStandaloneThreadLaunchPayload(launchPayload, navigationStoreScope)
     }
@@ -2760,91 +2701,8 @@ private fun RaftAppShellReadyContent(
             conversation = request.conversationIdentity,
             source = source,
             anchorMessageId = request.anchorMessageId ?: fallbackAnchorMessageId,
-            // Notification/system window routing is not a user-selected Home branch.
-            recordForwardHistory = false,
             originFallback = request.originFallback
         )
-    }
-
-    // Back on Home from a pushed conversation: the conversation it left becomes the Forward
-    // entry. On iOS the shell's Compose pageDidAppear (pageVisibleTick) does not reliably follow a
-    // native push/pop, so the host's own viewDidAppear (hostDidAppearTick) counts as well.
-    LaunchedEffect(pageVisibleTick, hostDidAppearTick, authoritativeHomeStartAllowed) {
-        if (!authoritativeHomeStartAllowed) {
-            bridge.setConversationForwardGestureEnabled(false)
-            return@LaunchedEffect
-        }
-        if (conversationForwardHomeReturns.consume(pageVisibleTick, hostDidAppearTick)) {
-            conversationForwardHistory.recordHomeVisible()
-            bridge.log(
-                "conversation_forward_home_visible tick=$pageVisibleTick hostTick=$hostDidAppearTick " +
-                    "available=${conversationForwardHistory.canForward}"
-            )
-        }
-        armConversationForwardGesture()
-    }
-
-    // Also keyed on the inputs of the arming rule, so the gesture is armed as soon as they all
-    // hold: a Home whose list is still loading when the shell reappears, or a Beta preference
-    // switched on with Home showing, used to stay unarmed until the next page appearance.
-    LaunchedEffect(
-        homeSurfaceVisible,
-        readyServerId,
-        renderedHomeServerId,
-        conversationForwardRequestTick,
-        authoritativeHomeStartAllowed,
-        homeContentReadyForConversationForward,
-        conversationForwardGestureEnabled,
-    ) {
-        if (!authoritativeHomeStartAllowed) {
-            if (conversationForwardRequestTick > handledConversationForwardRequestTick) {
-                bridge.log("conversation_forward_drop reason=home_start_not_authoritative")
-            }
-            bridge.setConversationForwardGestureEnabled(false)
-            return@LaunchedEffect
-        }
-        if (conversationForwardRequestTick <= handledConversationForwardRequestTick) {
-            armConversationForwardGesture()
-            return@LaunchedEffect
-        }
-        handledConversationForwardRequestTick = conversationForwardRequestTick
-        bridge.setConversationForwardGestureEnabled(false)
-        if (!homeSurfaceVisible) {
-            bridge.log("conversation_forward_drop reason=home_surface_not_visible")
-            return@LaunchedEffect
-        }
-        val content = homeState.content as? SharedHomeContentState.Content
-        val readiness =
-            WindowNavigationReadiness(
-                knownServerIds = readySession?.servers.orEmpty().mapTo(linkedSetOf()) { server -> server.id },
-                canonicalServerId = readySession?.currentServerId,
-                homeSnapshotServerId = content?.snapshot?.server?.id?.value,
-                homeSessionServerId = content?.session?.currentServerId,
-                conversationDirectory = appShellConversationDirectory
-            )
-        when (val action = conversationForwardHistory.requestForward(readiness)) {
-            is ConversationForwardAction.Open -> {
-                bridge.log(
-                    "conversation_forward_open serverId=${action.entry.serverId} " +
-                        "threadId=${action.request.conversationIdentity.threadId.value}"
-                )
-                openHomeConversation(
-                    conversation = action.request.conversationIdentity,
-                    source = "ios_forward_gesture",
-                    anchorMessageId = action.request.anchorMessageId,
-                    recordForwardHistory = false,
-                    originFallback = action.request.originFallback
-                )
-            }
-            is ConversationForwardAction.Drop -> {
-                bridge.logWarn("conversation_forward_drop reason=${action.reason}")
-                bridge.toast(conversationUnavailableMessage)
-            }
-            null -> {
-                bridge.log("conversation_forward_defer reason=home_or_directory_not_ready")
-                armConversationForwardGesture()
-            }
-        }
     }
 
     // External sources only transport this typed identity envelope in pageData. The queue and
@@ -3166,7 +3024,6 @@ private fun RaftAppShellReadyContent(
             openHomeConversation(
                 conversation = landingConversation,
                 source = "adaptive_default_landing",
-                recordForwardHistory = false,
                 adaptiveDefaultLanding = true,
             )
             // openHomeConversation records defaultLandingServerId atomically when it installs the
@@ -4834,10 +4691,6 @@ private fun RaftAppShellReadyContent(
                             onWarn = bridge::logWarn
                 ) ?: return@launch
             homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(identity.threadId.value))
-            conversationForwardHistory.recordNewOpen(
-                identity.toConversationForwardEntry(normalizedServerId)
-            )
-            bridge.setConversationForwardGestureEnabled(false)
             pager.openStandaloneThreadLaunchPayload(payload, targetStoreScope)
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
         }

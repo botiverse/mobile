@@ -16,8 +16,8 @@ import kotlinx.serialization.json.JsonObject
  * method args the native hosts already parse, and results are the host callback payloads.
  *
  * Bridge methods intentionally NOT in this surface yet (they stay on `BridgeModule`, used only by
- * Kuikly pages): page routing (`openPage`, `closePage`, `adaptiveNavigation`,
- * `conversationForwardGesture`), performance scenes/markers, attachment open/save/export/cache
+ * Kuikly pages): page routing (`openPage`, `closePage`, `adaptiveNavigation`),
+ * performance scenes/markers, attachment open/save/export/cache
  * and download-owner calls, thread share-image export/probe, motion, and the legacy template
  * methods. Logging never crossed the bridge (it goes through `raftLog*`), so it is not a host
  * capability either.

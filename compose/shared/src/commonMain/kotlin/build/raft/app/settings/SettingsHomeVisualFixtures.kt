@@ -1171,7 +1171,6 @@ private fun SettingsRouteVisualFixtureDetailContent(
             onMessageAlignmentSelected = {},
             onCompactConsecutiveMessagesSelected = {},
             onForegroundMessageBannersSelected = {},
-            onConversationForwardGestureSelected = {},
             onServerDrawerSelected = {},
                 bottomContentPadding = bottomContentPadding,
             timeContext = timeContext,

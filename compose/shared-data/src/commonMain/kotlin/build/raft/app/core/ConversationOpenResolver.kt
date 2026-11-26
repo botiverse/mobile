@@ -19,7 +19,6 @@ import build.raft.app.model.isInternalJointStorageIdentity
     Markdown,
     ParentConversation,
     AuthResume,
-    HistoryForward,
     AppShortcut,
     // An external Raft message link (Android App Link / iOS Universal Link), resolved and
     // access-checked by RaftMessageLinkResolver before it reaches the window coordinator.
@@ -396,7 +395,6 @@ private fun ConversationOpenSourceMessageIdentity.resolveOpenAnchorMessageId(
                 messageId
             }
         ConversationOpenSource.ForegroundBanner,
-        ConversationOpenSource.HistoryForward,
         ConversationOpenSource.Task,
         ConversationOpenSource.Markdown,
         ConversationOpenSource.ParentConversation,

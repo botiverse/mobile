@@ -174,7 +174,7 @@ class RaftIosToastOverlay internal constructor(
 /**
  * One CMP page created for the iOS host: the Compose view controller the host embeds, plus the
  * host -> page event channel (the Kuikly `sendWithEvent` counterpart: adaptive panes, window
- * insets, theme changes, adaptive navigation receipts, conversation forward requests).
+ * insets, theme changes, adaptive navigation receipts).
  *
  * The host may publish window facts before the page has composed (and subscribed). The latest
  * [stickyEvents] are therefore replayed once the page's first composition is applied; they carry
