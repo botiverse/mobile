@@ -390,7 +390,7 @@ class ThreadWorkerConversationLineFormatTest {
                     displayName = "Kirby",
                     handle = "kirby",
                     kind = MemberKind.Agent,
-                    presence = Presence.Online,
+                    presence = Presence.Active,
                 ),
             )
         val ui =
