@@ -317,7 +317,7 @@ class ThreadActionCardMcpConnectUiTest {
         // Legacy loginRequired notice is stripped when native footer mounts.
         onNodeWithText("Open on web to connect Notion.").assertDoesNotExist()
 
-        gate.complete(DataResult.Error(ScreenError(code = "http_500", traceId = "trace-load-fail-99")))
+        gate.complete(DataResult.Error(ScreenError(code = "http_500", traceId = "0123456789abcdef0123456789abcdef")))
         advance()
         onNodeWithTag(ThreadActionCardMcpConnectLoadFailedTag).assertExists()
         onNodeWithText("Couldn't load this App's connections.").assertExists()
@@ -484,7 +484,7 @@ class ThreadActionCardMcpConnectUiTest {
                                 code = "http_422",
                                 serverCode = "mcp_oauth_dcr_rejected",
                                 serverFields = mapOf(MCP_OAUTH_ERROR_SERVER_FIELD to "invalid_redirect_uri"),
-                                traceId = "trace-dcr-ui-1",
+                                traceId = "abcdef0123456789abcdef0123456789",
                             )
                         )
                     } else {

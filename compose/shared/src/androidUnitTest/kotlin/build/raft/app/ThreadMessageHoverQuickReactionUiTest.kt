@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.MouseButton
@@ -18,8 +19,8 @@ import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
@@ -149,7 +150,7 @@ class ThreadMessageHoverQuickReactionUiTest {
             onNodeWithContentDescription("React with 😂").assertExists().assertIsOff()
 
             // Keyboard / semantics activation toggles 😂 directly.
-            onNodeWithTag(THREAD_HOVER_TOOLBAR_QUICK_REACTION_TAG).performClick()
+            onNodeWithTag(THREAD_HOVER_TOOLBAR_QUICK_REACTION_TAG).performSemanticsAction(SemanticsActions.OnClick)
             waitForIdle()
             assertEquals(listOf("😂"), harness.toggledEmojis.toList())
             onNodeWithContentDescription("Remove 😂").assertExists().assertIsOn()
@@ -163,53 +164,47 @@ class ThreadMessageHoverQuickReactionUiTest {
 
             onNodeWithTag(ROW).performMouseInput { moveTo(center) }
             waitForIdle()
+            mainClock.autoAdvance = false
 
             // Passing over for 300ms then moving back off the button opens nothing.
             onNodeWithTag(THREAD_HOVER_TOOLBAR_QUICK_REACTION_TAG).performMouseInput { moveTo(center) }
-            waitForIdle()
-            mainClock.advanceTimeBy(300)
-            waitForIdle()
+            mainClock.advanceTimeByFrame()
+            mainClock.advanceTimeBy(300, ignoreFrameDuration = true)
             onNodeWithTag(ROW).performMouseInput { moveTo(center) }
-            waitForIdle()
-            mainClock.advanceTimeBy(1_000)
-            waitForIdle()
+            mainClock.advanceTimeByFrame()
+            mainClock.advanceTimeBy(1_000, ignoreFrameDuration = true)
             assertEquals(0, harness.reactionBarOpenCount, "passing over opens nothing")
 
             // Resting 200ms then pressing down cancels the hover timer.
             onNodeWithTag(THREAD_HOVER_TOOLBAR_QUICK_REACTION_TAG).performMouseInput { moveTo(center) }
-            waitForIdle()
-            mainClock.advanceTimeBy(200)
-            waitForIdle()
+            mainClock.advanceTimeByFrame()
+            mainClock.advanceTimeBy(200, ignoreFrameDuration = true)
             onNodeWithTag(THREAD_HOVER_TOOLBAR_QUICK_REACTION_TAG).performMouseInput { press(MouseButton.Primary) }
-            waitForIdle()
-            mainClock.advanceTimeBy(1_000)
-            waitForIdle()
+            mainClock.advanceTimeByFrame()
+            mainClock.advanceTimeBy(1_000, ignoreFrameDuration = true)
             assertEquals(0, harness.reactionBarOpenCount, "holding mouse press does not open reaction bar")
             // Release outside to cancel the press without clicking, then move back off the button.
             onNodeWithTag(ROW).performMouseInput {
                 moveTo(center)
                 release(MouseButton.Primary)
             }
-            waitForIdle()
+            mainClock.advanceTimeByFrame()
 
             // Fresh hover onto the button: not open at 499ms, opens at 500ms without toggling a reaction.
             onNodeWithTag(THREAD_HOVER_TOOLBAR_QUICK_REACTION_TAG).performMouseInput { moveTo(center) }
-            waitForIdle()
-            mainClock.advanceTimeBy(ThreadHoverToolbarReactionHoverOpenDelayMs - 1)
-            waitForIdle()
+            mainClock.advanceTimeByFrame()
+            mainClock.advanceTimeBy(ThreadHoverToolbarReactionHoverOpenDelayMs - 1, ignoreFrameDuration = true)
             assertEquals(0, harness.reactionBarOpenCount, "must not open before 500ms")
 
-            mainClock.advanceTimeBy(1)
-            waitForIdle()
+            mainClock.advanceTimeBy(1, ignoreFrameDuration = true)
             assertEquals(1, harness.reactionBarOpenCount, "reaction bar opens after resting 500ms")
             assertTrue(harness.popupOpen)
             assertTrue(harness.toggledEmojis.isEmpty(), "hovering must not toggle a reaction")
 
             // Closing the reaction bar while the cursor stays on the button must not immediately re-open it.
             harness.popupOpen = false
-            waitForIdle()
-            mainClock.advanceTimeBy(1_000)
-            waitForIdle()
+            mainClock.advanceTimeByFrame()
+            mainClock.advanceTimeBy(1_000, ignoreFrameDuration = true)
             assertEquals(1, harness.reactionBarOpenCount, "closing bar does not bounce back open until pointer exits")
         }
 
