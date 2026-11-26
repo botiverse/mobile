@@ -170,23 +170,28 @@ class AgentContextViewStatusStore(
             return AgentContextViewStatusEntry(gone = true, atMillis = nowMillis())
         }
         val key = cacheKey(cleanAgentId, serverId)
-        val existingDeferred: CompletableDeferred<AgentContextViewStatusEntry>?
-        val ownedDeferred: CompletableDeferred<AgentContextViewStatusEntry>?
-        synchronized(lock) {
-            val running = inFlight[key]
-            if (running != null) {
-                existingDeferred = running
-                ownedDeferred = null
-            } else {
-                val cached = entriesFlow.value[key]
-                if (!force && cached != null && cached.isFresh(nowMillis(), ttlMillis)) {
-                    return cached
+        val (cachedFresh, existingDeferred, ownedDeferred) =
+            synchronized(lock) {
+                val running = inFlight[key]
+                if (running != null) {
+                    Triple<AgentContextViewStatusEntry?, CompletableDeferred<AgentContextViewStatusEntry>?, CompletableDeferred<AgentContextViewStatusEntry>?>(
+                        null,
+                        running,
+                        null,
+                    )
+                } else {
+                    val cached = entriesFlow.value[key]
+                    if (!force && cached != null && cached.isFresh(nowMillis(), ttlMillis)) {
+                        Triple(cached, null, null)
+                    } else {
+                        val created = CompletableDeferred<AgentContextViewStatusEntry>()
+                        inFlight[key] = created
+                        Triple(null, null, created)
+                    }
                 }
-                val created = CompletableDeferred<AgentContextViewStatusEntry>()
-                inFlight[key] = created
-                existingDeferred = null
-                ownedDeferred = created
             }
+        if (cachedFresh != null) {
+            return cachedFresh
         }
         if (existingDeferred != null) {
             return existingDeferred.await()

@@ -371,11 +371,12 @@ internal fun AgentContextViewGrantsSectionContent(
                         RaftListRowGroup {
                             state.grants.forEachIndexed { index, grant ->
                                 val whenLabel = raftLocalizedShortDateTime(grant.grantedAt, timeContext)
+                                val granterName = grant.granter?.name?.takeIf { it.isNotBlank() }
                                 val subtitle =
-                                    if (grant.granter != null && grant.granter.name.isNotBlank()) {
+                                    if (granterName != null) {
                                         stringResource(
                                             Res.string.settings_context_view_grants_granted_by,
-                                            grant.granter.name,
+                                            granterName,
                                             whenLabel,
                                         )
                                     } else {

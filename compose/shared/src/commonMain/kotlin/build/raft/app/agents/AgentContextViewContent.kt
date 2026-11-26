@@ -345,9 +345,10 @@ private fun AgentContextFactsCard(
                 totalStr
             }
         }
+    val sourceVersion = context.source.version?.takeIf { it.isNotBlank() }
     val sourceText =
-        if (!context.source.version.isNullOrBlank()) {
-            stringResource(Res.string.agent_context_view_source_version, context.source.format, context.source.version)
+        if (sourceVersion != null) {
+            stringResource(Res.string.agent_context_view_source_version, context.source.format, sourceVersion)
         } else {
             context.source.format
         }
@@ -625,12 +626,13 @@ private fun AgentContextToolRow(
                     style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold),
                     color = colors.foregroundHint,
                 )
-                if (!tool.inputSchemaJson.isNullOrBlank()) {
+                val schemaJson = tool.inputSchemaJson?.takeIf { it.isNotBlank() }
+                if (schemaJson != null) {
                     RaftCodeBlock(
-                        text = tool.inputSchemaJson,
+                        text = schemaJson,
                         action = {
                             RaftIconButton(
-                                onClick = { onCopyText(tool.inputSchemaJson) },
+                                onClick = { onCopyText(schemaJson) },
                                 tooltip = stringResource(Res.string.common_copy),
                                 variant = RaftButtonVariant.Ghost,
                                 size = RaftIconButtonSize.Sm,
@@ -906,14 +908,15 @@ private fun AgentContextMessagePartView(
             AgentContextFoldableText(text = part.text, mono = false)
         }
         is AgentContextViewPart.Thinking -> {
-            if (part.text.isNullOrBlank()) {
+            val thinkingText = part.text?.takeIf { it.isNotBlank() }
+            if (thinkingText == null) {
                 RaftBadge(
                     text = stringResource(Res.string.agent_context_view_part_thinking_hidden_badge),
                     appearance = RaftBadgeAppearance.Outline,
                     variant = RaftBadgeVariant.Muted,
                 )
             } else {
-                var expanded by remember(part.text) { mutableStateOf(false) }
+                var expanded by remember(thinkingText) { mutableStateOf(false) }
                 Column(
                     modifier =
                         Modifier
@@ -944,7 +947,7 @@ private fun AgentContextMessagePartView(
                     }
                     if (expanded) {
                         Box(Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp)) {
-                            AgentContextFoldableText(text = part.text, mono = false)
+                            AgentContextFoldableText(text = thinkingText, mono = false)
                         }
                     }
                 }
@@ -967,13 +970,14 @@ private fun AgentContextMessagePartView(
             }
         }
         is AgentContextViewPart.ToolResult -> {
+            val resultToolName = part.toolName?.takeIf { it.isNotBlank() }
             val heading =
                 when {
-                    part.isError && !part.toolName.isNullOrBlank() ->
-                        stringResource(Res.string.agent_context_view_part_error_of, part.toolName)
+                    part.isError && resultToolName != null ->
+                        stringResource(Res.string.agent_context_view_part_error_of, resultToolName)
                     part.isError -> stringResource(Res.string.agent_context_view_part_error)
-                    !part.toolName.isNullOrBlank() ->
-                        stringResource(Res.string.agent_context_view_part_result_of, part.toolName)
+                    resultToolName != null ->
+                        stringResource(Res.string.agent_context_view_part_result_of, resultToolName)
                     else -> stringResource(Res.string.agent_context_view_part_result)
                 }
             Column(
@@ -1042,14 +1046,15 @@ private fun AgentContextMessagePartView(
                     style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
                     color = colors.foreground,
                 )
-                if (part.text.isNullOrBlank()) {
+                val compactionText = part.text?.takeIf { it.isNotBlank() }
+                if (compactionText == null) {
                     RaftText(
                         text = stringResource(Res.string.agent_context_view_part_compaction_encrypted),
                         style = RaftTheme.typography.footnote,
                         color = colors.foregroundHint,
                     )
                 } else {
-                    AgentContextFoldableText(text = part.text, mono = false)
+                    AgentContextFoldableText(text = compactionText, mono = false)
                 }
             }
         }
@@ -1177,9 +1182,10 @@ private fun AgentContextToolStepCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (!part.summary.isNullOrBlank()) {
+            val partSummary = part.summary?.takeIf { it.isNotBlank() }
+            if (partSummary != null) {
                 RaftText(
-                    text = part.summary,
+                    text = partSummary,
                     style = RaftTheme.typography.footnote,
                     color = colors.foregroundHint,
                     modifier = Modifier.weight(1f),
@@ -1219,9 +1225,10 @@ private fun AgentContextToolStepCard(
                         )
                     }
                 }
-                if (!part.flatArguments.isNullOrEmpty()) {
+                val flatArgs = part.flatArguments?.takeIf { it.isNotEmpty() }
+                if (flatArgs != null) {
                     RaftDescriptionList(direction = RaftDescriptionListDirection.Vertical) {
-                        part.flatArguments.forEach { (key, value) ->
+                        flatArgs.forEach { (key, value) ->
                             Item(term = key, value = value, mono = true)
                         }
                     }
