@@ -763,6 +763,10 @@ static NSString *RaftBridgeSanitizedLogString(NSString *content) {
             @{
                 @"pattern" : @"(?i)sk_(agent|machine)_[A-Za-z0-9_.=+\\-/]+",
                 @"template" : @"sk_$1_<redacted>"
+            },
+            @{
+                @"pattern" : @"\\beyJ[A-Za-z0-9_-]{4,}\\.[A-Za-z0-9_-]{4,}\\.[A-Za-z0-9_-]{4,}(?![A-Za-z0-9_-])",
+                @"template" : @"<jwt-redacted>"
             }
         ];
         NSMutableArray<NSDictionary<NSString *, id> *> *compiled = [NSMutableArray arrayWithCapacity:specs.count];

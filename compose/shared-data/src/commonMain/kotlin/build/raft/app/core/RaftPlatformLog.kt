@@ -446,6 +446,7 @@ private fun String.sanitizeRaftLogMessage(): String =
                 match.value.startsWith("sk_agent_") -> "sk_agent_<redacted>"
                 match.value.startsWith("sk_machine_") -> "sk_machine_<redacted>"
                 match.value.startsWith("Bearer", ignoreCase = true) -> "Bearer <redacted>"
+                match.value.startsWith("eyJ") -> "<jwt-redacted>"
                 else -> match.groupValues.getOrNull(1)?.let { "$it<redacted>" } ?: "<redacted>"
             }
         }
@@ -461,5 +462,6 @@ private val RaftCredentialLikePatterns =
         Regex("Bearer\\s+[A-Za-z0-9._=-]+", RegexOption.IGNORE_CASE),
         Regex("(?i)(access[_-]?token=)[^\\s&]+"),
         Regex("(?i)(client[_-]?key=)[^\\s&]+"),
-        Regex("(?i)(api[_-]?key=)[^\\s&]+")
+        Regex("(?i)(api[_-]?key=)[^\\s&]+"),
+        Regex("""\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}(?![A-Za-z0-9_-])"""),
     )

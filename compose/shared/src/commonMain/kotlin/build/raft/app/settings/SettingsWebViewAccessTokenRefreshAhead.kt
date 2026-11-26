@@ -1,26 +1,21 @@
 package build.raft.app
 
+import build.raft.app.data.ProcessRaftAccessTokenClock
+import build.raft.app.data.RaftAccessTokenClock
+import build.raft.app.data.RaftAccessTokenTimes
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.parseRaftAccessTokenExpiryMillis
+import build.raft.app.data.parseRaftAccessTokenTimes
 import build.raft.app.data.runCatchingPreservingCancellation
-import kotlinx.atomicfu.locks.SynchronizedObject
-import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.delay
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.longOrNull
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
- * How long before the access token expires a signed-in WebView refreshes it (#300). The server
- * signs access tokens for 15 minutes (botiverse/slock `packages/server/src/middleware/auth.ts`
- * `signAccessToken`, `expiresIn: "15m"`); the WebView holds only that token (its refresh token is
- * stripped, [settingsWebViewAuthStorageJavaScript]), and when one of its requests is refused the
- * web client cannot refresh and signs out to `/` (slock `packages/web/src/api/client.ts`
- * `clearAuthAndRedirect`). So the App refreshes ahead and pushes the new token into the page.
+ * How long before the access token expires a signed-in WebView refreshes it (#300). Under 15m
+ * tokens this refreshes at 13m (`exp - 2m`); under longer TTLs (up to 24h, #proj-desktop:#54) the
+ * app-wide foreground age rotator rotates every ~13m and pushes each fresh token into open WebViews
+ * via [SettingsWebViewAccessTokenSyncEffect], while this loop stays an expiry safety net.
  */
 internal const val SETTINGS_WEBVIEW_REFRESH_LEAD_MS = 2 * 60_000L
 
@@ -37,79 +32,24 @@ internal const val SETTINGS_WEBVIEW_REFRESH_MAX_STEP_MS = 60_000L
 internal const val SETTINGS_WEBVIEW_REFRESH_MIN_GAP_MS = 60_000L
 
 /** The times a JWT access token carries, in epoch milliseconds (server clock). */
-internal data class SettingsWebViewAccessTokenTimes(val expiresAtMs: Long, val issuedAtMs: Long?)
+internal typealias SettingsWebViewAccessTokenTimes = RaftAccessTokenTimes
 
 /** `exp` (and `iat`, when present) of a JWT access token; null when it is not a readable JWT with an `exp`. */
-@OptIn(ExperimentalEncodingApi::class)
-internal fun settingsWebViewAccessTokenTimes(accessToken: String): SettingsWebViewAccessTokenTimes? {
-    val parts = accessToken.trim().split('.')
-    if (parts.size != 3 || parts[1].isEmpty()) return null
-    return runCatching {
-        val payload =
-            Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT_OPTIONAL).decode(parts[1]).decodeToString()
-        val claims = Json.parseToJsonElement(payload) as? JsonObject ?: return@runCatching null
-        val exp = claims["exp"]?.jsonPrimitive?.longOrNull?.takeIf { it > 0 } ?: return@runCatching null
-        val iat = claims["iat"]?.jsonPrimitive?.longOrNull?.takeIf { it in 1..exp }
-        SettingsWebViewAccessTokenTimes(exp * 1_000L, iat?.times(1_000L))
-    }.getOrNull()
-}
+internal fun settingsWebViewAccessTokenTimes(accessToken: String): SettingsWebViewAccessTokenTimes? =
+    parseRaftAccessTokenTimes(accessToken)
 
 /** The `exp` of a JWT access token, in epoch milliseconds; null when it is not a readable JWT. */
 internal fun settingsWebViewAccessTokenExpiryMillis(accessToken: String): Long? =
-    settingsWebViewAccessTokenTimes(accessToken)?.expiresAtMs
+    parseRaftAccessTokenExpiryMillis(accessToken)
 
 /**
- * The device clock against the server's (#300 reviews): the offset is learned from a token this
- * App was just given (its `iat` is the server's "now"), so a device clock that runs fast or slow
- * neither refreshes in a loop nor too late. Unknown until a refresh with an `iat` was seen in this
- * run: the refresh schedule then reads the device clock as the server's ([serverNow]; a fast clock
- * refreshes once, which teaches it), but evidence of expiry ([remainingMillis]) never does.
+ * Shared device-vs-server token clock ([RaftAccessTokenClock]), reused by both WebView refresh-ahead
+ * and the process-wide foreground token-age rotator (#proj-desktop:#54).
  */
-internal class SettingsWebViewTokenClock(private val maxRemembered: Int = 8) {
-    private val lock = SynchronizedObject()
-    private var deviceMinusServerMs: Long? = null
-    private val firstSeenAt = LinkedHashMap<String, Long>()
+internal typealias SettingsWebViewTokenClock = RaftAccessTokenClock
 
-    /** Whether the device-server offset was learned in this run. */
-    val offsetKnown: Boolean get() = synchronized(lock) { deviceMinusServerMs != null }
-
-    /** The server's time at [deviceNowMs]; the device's own while the offset is unknown (the schedule only). */
-    fun serverNow(deviceNowMs: Long): Long = synchronized(lock) { deviceNowMs - (deviceMinusServerMs ?: 0L) }
-
-    /** When [token] was first seen in this run (now, [deviceNowMs], if never before): when the App received it. */
-    fun noteSeen(token: String, deviceNowMs: Long): Long =
-        synchronized(lock) {
-            firstSeenAt[token] ?: deviceNowMs.also {
-                firstSeenAt[token] = it
-                while (firstSeenAt.size > maxRemembered) firstSeenAt.remove(firstSeenAt.keys.first())
-            }
-        }
-
-    /** [token] was minted just now (the App's own refresh returned it at [deviceNowMs]). */
-    fun learnFromFreshToken(token: String, deviceNowMs: Long) {
-        noteSeen(token, deviceNowMs)
-        val issuedAt = settingsWebViewAccessTokenTimes(token)?.issuedAtMs ?: return
-        synchronized(lock) { deviceMinusServerMs = deviceNowMs - issuedAt }
-    }
-
-    /**
-     * How long [token] has left, as evidence that it expired (the viewer's sign-out check); null:
-     * unknown. With the offset known: by the server's clock. Unknown: the device clock is not
-     * trusted against the server's (a fast one would read every fresh token as expired), so the
-     * token lasts its lifetime (`exp − iat`) from when this run first saw it; without `iat`, unknown.
-     */
-    fun remainingMillis(token: String, deviceNowMs: Long): Long? {
-        val times = settingsWebViewAccessTokenTimes(token) ?: return null
-        val seenAt = noteSeen(token, deviceNowMs)
-        val offset = synchronized(lock) { deviceMinusServerMs }
-        if (offset != null) return times.expiresAtMs - (deviceNowMs - offset)
-        val issuedAt = times.issuedAtMs ?: return null
-        return seenAt + (times.expiresAtMs - issuedAt) - deviceNowMs
-    }
-}
-
-/** The process' clock estimate, shared by every signed-in WebView surface. */
-internal val ProcessSettingsWebViewTokenClock = SettingsWebViewTokenClock()
+/** The process' clock estimate, shared by every signed-in WebView surface and background age rotation. */
+internal val ProcessSettingsWebViewTokenClock: SettingsWebViewTokenClock = ProcessRaftAccessTokenClock
 
 /**
  * When a token first seen at [receivedAtDeviceMs] is due for refresh, on the device clock:

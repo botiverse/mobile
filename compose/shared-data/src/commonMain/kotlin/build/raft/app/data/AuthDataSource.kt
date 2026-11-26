@@ -869,6 +869,50 @@ class SharedAuthDataSource(
         }
     }
 
+    /**
+     * #proj-desktop:#54 (Condition #4): non-destructive background access-token rotation by token
+     * age (`iat`), decoupling refresh-token rotation cadence (~13m) from longer access-token `exp`
+     * (up to 24h). Routes through the same single-flight refresh coordinator as every other caller:
+     * if another caller already rotated [currentAccessToken], returns `Success(current)` without
+     * issuing a duplicate request, and passes `clearOnUnauthorized = false` so transient failures,
+     * offline state, 5xx, or 403 refusals never clear the session.
+     */
+    @RaftCoreInternalApi suspend fun rotateAccessTokenByAge(
+        reason: String = "token_age_rotation",
+        currentAccessToken: String,
+    ): SharedAuthResult<StoredAuthSession> {
+        val current = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
+        if (current.accessToken != currentAccessToken) {
+            return SharedAuthResult.Success(current)
+        }
+        if (current.refreshToken.isBlank()) {
+            diagnosticsLogger("auth_token_age_rotate_result result=unauthenticated reason=$reason missing_refresh_token=true")
+            return SharedAuthResult.Unauthenticated
+        }
+        return when (
+            val result =
+                authMiddleware.refreshAfterUnauthorized(
+                    failedSession = current,
+                    clearOnUnauthorized = false,
+                    reason = reason,
+                    caller = "token_age_rotation",
+                )
+        ) {
+            is SharedAuthRefreshResult.Success -> {
+                diagnosticsLogger("auth_token_age_rotate_result result=success reason=$reason")
+                SharedAuthResult.Success(result.session)
+            }
+            is SharedAuthRefreshResult.Failure -> {
+                val failure = result.response.toSharedAuthFailure()
+                diagnosticsLogger(
+                    "auth_token_age_rotate_result result=failure reason=$reason code=${failure.code}"
+                )
+                failure
+            }
+            SharedAuthRefreshResult.Unavailable -> SharedAuthResult.Unauthenticated
+        }
+    }
+
     suspend fun loadServers(): SharedAuthResult<StoredAuthSession> {
         val session =
             sessionStore.readSession()

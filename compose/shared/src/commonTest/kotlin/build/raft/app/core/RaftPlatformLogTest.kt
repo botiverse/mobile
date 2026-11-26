@@ -114,4 +114,38 @@ class RaftPlatformLogTest {
         queue.flush()
         assertEquals("after", messages.last())
     }
+
+    @Test
+    fun redactsBareThreeSegmentJwtsWhileKeepingNonJwtBase64Tokens() = runTest {
+        val sampleJwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLTEifQ.sigPayload1234-"
+        val redacted =
+            raftRedactLogMessage(
+                "bare=$sampleJwt quoted=\"$sampleJwt\" cursor=eyJ1IjoxfQ handle=v1.kid.eyJraW5kIjoiaGFuZGxlIn0.mac12345"
+            )
+        assertFalse(redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"), redacted)
+        assertFalse(redacted.contains("eyJzdWIiOiJ1c2VyLTEifQ"), redacted)
+        assertFalse(redacted.contains("sigPayload1234"), redacted)
+        assertEquals(
+            "bare=<jwt-redacted> quoted=\"<jwt-redacted>\" cursor=eyJ1IjoxfQ handle=v1.kid.eyJraW5kIjoiaGFuZGxlIn0.mac12345",
+            redacted,
+        )
+
+        // Bearer and access_token forms still use their dedicated prefixes without leaking JWT parts.
+        assertEquals(
+            "Bearer <redacted> access_token=<redacted>",
+            raftRedactLogMessage("Bearer $sampleJwt access_token=$sampleJwt"),
+        )
+
+        // Queued log lines pass through the same sanitizer.
+        val messages = mutableListOf<String>()
+        val queue =
+            RaftPlatformLogQueue(
+                scope = backgroundScope,
+                recordSink = { record -> messages += record.message },
+                volumePolicy = null,
+            )
+        assertTrue(queue.enqueue(RaftLogLevel.Warn, "SlockAuth", "rejected token $sampleJwt.", RaftPlatformLogHint.None))
+        queue.flush()
+        assertEquals(listOf("rejected token <jwt-redacted>."), messages)
+    }
 }
