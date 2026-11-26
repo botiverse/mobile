@@ -132,8 +132,9 @@ data class SecondFactorStepUpDialogState(
     val webUrl: String? = null,
     /**
      * The web step-up for only legacy passkeys (iOS, [withOnlyOlderPasskeys]): the passkey is
-     * checked on a web page and this sign-in verified. With no way to answer here it is Continue in
-     * browser ([continuesInBrowser]); beside a code, the link under the field
+     * checked on a web page and this sign-in verified. Straight after Use passkey it is Continue in
+     * browser ([continuesInBrowser], opening the browser immediately; any code methods stay as
+     * secondary switch links); once the person switches to a code, the link under the field
      * ([webStepUpBesideCode]). Null: not offered (other platforms, or the server has none: 404),
      * and with no way to answer here Open on the web stands in.
      */
@@ -145,7 +146,7 @@ data class SecondFactorStepUpDialogState(
     val opensOnWeb: Boolean
         get() = method == null && webStepUp == null && webUrl != null
 
-    /** No way to answer here, and Continue in browser is offered. */
+    /** Continue in browser is the active view (straight after Use passkey on legacy-only passkeys). */
     val continuesInBrowser: Boolean
         get() = method == null && webStepUp != null
 
@@ -252,17 +253,27 @@ private const val TOTP_CODE_LENGTH = 6
 /**
  * "Verify it's you" once Use passkey found only passkeys this platform can't ask for: iOS asks for
  * those under the current RP ID (`app.raft.build`), and the person has only older ones, under
- * `raft.build` (`passkey_rp_unavailable`), which only a web page can use. The passkey leaves the
- * methods and a code, if there is one, takes over saying why ([withoutPasskey]). Where this
- * platform and the server have the web step-up ([webStepUpOffered]), it checks the passkey
- * instead: with no code the dialog goes straight on to it
- * ([SecondFactorStepUpDialogState.continuesInBrowser], #5129); with a code the code entry stays
- * and the web step-up is offered under the field ([SecondFactorStepUpDialogState.webStepUpBesideCode],
- * #158). Without it: the code alone, or the web hand-off (Open on the web).
+ * `raft.build` (`passkey_rp_unavailable`), which only a web page can use. Where this platform and
+ * the server have the web step-up ([webStepUpOffered]), the dialog goes straight into Continue in
+ * browser ([SecondFactorStepUpDialogState.continuesInBrowser], opening the browser immediately with
+ * no warning banner) even when the account also has authenticator or backup codes — those codes
+ * stay in [SecondFactorStepUpDialogState.methods] as secondary links to switch to if needed
+ * (#proj-mobile:#188). Without the web step-up: the passkey leaves the methods and a code, if there
+ * is one, takes over saying why ([withoutPasskey]), or the web hand-off (Open on the web).
  */
 @RaftCoreInternalApi fun SecondFactorStepUpDialogState.withOnlyOlderPasskeys(webStepUpOffered: Boolean): SecondFactorStepUpDialogState {
-    val rest = withoutPasskey(SecondFactorStepUpBanner.PasskeyUnsupported)
-    return if (webStepUpOffered && rest.webStepUp == null) rest.copy(webStepUp = SecondFactorWebStepUpPhase.Ready) else rest
+    if (!webStepUpOffered) return withoutPasskey(SecondFactorStepUpBanner.PasskeyUnsupported)
+    val rest = methods - SecondFactorStepUpMethod.Passkey
+    return copy(
+        methods = rest,
+        method = null,
+        input = "",
+        fieldError = null,
+        banner = null,
+        submitting = false,
+        passkeyCeremony = null,
+        webStepUp = webStepUp ?: SecondFactorWebStepUpPhase.Ready,
+    )
 }
 
 /**
@@ -395,7 +406,7 @@ class SecondFactorStepUpCoordinator(
             }
             is SecondFactorStepUpIntent.SwitchMethod -> update { current ->
                 val sameAnswer = intent.method == current.method && current.view == SecondFactorStepUpView.Answer
-                if (current.busy || sameAnswer || intent.method !in current.methods) {
+                if (current.busy || current.webStepUpUnderWay || sameAnswer || intent.method !in current.methods) {
                     current
                 } else {
                     // The lost page's "Use a backup code" comes back to the answer page too.
@@ -413,7 +424,7 @@ class SecondFactorStepUpCoordinator(
             SecondFactorStepUpIntent.SignInAgain ->
                 if (_state.value?.submitting != true) settle(SecondFactorStepUpSettle.Cancelled)
             SecondFactorStepUpIntent.ShowLost -> update { current ->
-                if (current.submitting || current.recovery == null) {
+                if (current.submitting || current.webStepUpUnderWay || current.recovery == null) {
                     current
                 } else {
                     current.copy(view = SecondFactorStepUpView.Lost, recoveryFailure = null)
@@ -709,12 +720,21 @@ class SecondFactorStepUpCoordinator(
                 )
             }
             AppWebStepUpStartResult.Unavailable -> {
-                // Flag off, or no legacy passkey after all: Open on the web (#5035), from now on;
-                // beside a code, the code alone again, saying why.
+                // Flag off, or no legacy passkey after all: fall back to a code method when the
+                // account has one (saying why the passkey couldn't be used here), else Open on the
+                // web (#5035) from now on.
                 web.log("app_web_step_up_start result=unavailable")
                 webStepUpUnavailable = true
                 failWebAttempt(AppWebStepUpStep.Start, "unavailable")
-                publish(shown.copy(webStepUp = null, banner = SecondFactorStepUpBanner.PasskeyUnsupported.takeIf { shown.method != null }))
+                val fallbackMethod = shown.method ?: shown.methods.firstOrNull()
+                publish(
+                    shown.copy(
+                        method = fallbackMethod,
+                        webStepUp = null,
+                        webStepUpSession = null,
+                        banner = SecondFactorStepUpBanner.PasskeyUnsupported.takeIf { fallbackMethod != null },
+                    )
+                )
             }
             // Two-step verification went off meanwhile: the action just goes again, ending the span.
             AppWebStepUpStartResult.NotEnabled -> settle(SecondFactorStepUpSettle.Verified)

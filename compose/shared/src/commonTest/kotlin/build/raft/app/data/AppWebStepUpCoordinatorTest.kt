@@ -346,31 +346,89 @@ class AppWebStepUpCoordinatorTest {
     }
 
     @Test
-    fun withACodeTheBrowserUnderItRunsTheSameWebStepUp() = runTest {
-        // #158: older passkeys and an authenticator app.
-        val harness = Harness(ArrayDeque(listOf(started("r-12"))))
+    fun withACodeOlderPasskeysGoStraightToTheBrowserAndCanSwitchToACode() = runTest {
+        // #proj-mobile:#188: older passkeys with an authenticator app go straight into Continue in
+        // browser with no warning banner, keep code methods as switch links, and still allow
+        // launching the browser passkey flow beside the code after switching.
+        val harness = Harness(ArrayDeque(listOf(started("r-12a"), started("r-12b"))))
         val action = ScriptedAction(refusal(withCode), DataResult.Content("attached"))
         val outcome = async { harness.coordinator.run(action::invoke) }
         runCurrent()
         harness.coordinator.accept(SecondFactorStepUpIntent.Submit)
+        val browserReady = assertNotNull(harness.coordinator.state.value)
+        assertNull(browserReady.method)
+        assertNull(browserReady.banner)
+        assertTrue(browserReady.continuesInBrowser)
+        assertEquals(listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode), browserReady.otherMethods)
+
+        // Browser opens straight away; switching methods is blocked while the browser session is up.
+        val firstSession = harness.continueInBrowser()
+        harness.coordinator.accept(SecondFactorStepUpIntent.SwitchMethod(SecondFactorStepUpMethod.Totp))
+        assertNull(harness.coordinator.state.value?.method, "cannot switch away while web step-up is under way")
+
+        // Closing the browser leaves Continue in browser + secondary links to switch to a code.
+        harness.finish(firstSession, RaftAppWebStepUpBrowserResult.Closed)
+        val cancelled = assertNotNull(harness.coordinator.state.value)
+        assertNull(cancelled.method)
+        assertEquals(SecondFactorStepUpBanner.WebStepUpCancelled, cancelled.banner)
+        assertEquals(listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode), cancelled.otherMethods)
+
+        // Switching to authenticator code clears the cancel banner and keeps the browser link beside the code.
+        harness.coordinator.accept(SecondFactorStepUpIntent.SwitchMethod(SecondFactorStepUpMethod.Totp))
         val codeEntry = assertNotNull(harness.coordinator.state.value)
         assertEquals(SecondFactorStepUpMethod.Totp, codeEntry.method)
+        assertNull(codeEntry.banner)
         assertTrue(codeEntry.webStepUpBesideCode)
+        assertFalse(codeEntry.continuesInBrowser)
 
-        // Verify with your passkey in the browser: Continue in browser's request and page.
-        val session = harness.continueInBrowser()
-        assertEquals("computer_attach", harness.starts.single().action)
+        // Verify with your passkey in the browser from the code view runs the same web step-up.
+        val secondSession = harness.continueInBrowser()
+        assertEquals(listOf("computer_attach", "computer_attach"), harness.starts.map { it.action })
         // One answer at a time: a code typed meanwhile is not sent.
         harness.coordinator.accept(SecondFactorStepUpIntent.InputChanged("123456"))
         assertFalse(assertNotNull(harness.coordinator.state.value).canSubmit)
         harness.coordinator.accept(SecondFactorStepUpIntent.Submit)
         assertEquals(SecondFactorWebStepUpPhase.Waiting, harness.coordinator.state.value?.webStepUp)
 
-        harness.finish(session, RaftAppWebStepUpBrowserResult.Callback("$returnUri?requestId=r-12&code=k-12"))
+        harness.finish(secondSession, RaftAppWebStepUpBrowserResult.Callback("$returnUri?requestId=r-12b&code=k-12"))
         runCurrent()
         assertEquals(listOf("k-12"), harness.completes.map { it.code })
         assertEquals(SecondFactorStepUpOutcome.Completed(DataResult.Content("attached")), outcome.await())
         assertEquals(2, action.calls, "the refused action goes exactly once more")
+    }
+
+    @Test
+    fun unavailableStartWithACodeFallsBackToCodeInsteadOfOpenOnTheWeb() = runTest {
+        val webUrl = "https://app.raft.build/s/acme/computers"
+        val harness = Harness(ArrayDeque(listOf(AppWebStepUpStartResult.Unavailable)), webUrl = webUrl)
+        val first = async { harness.coordinator.run(ScriptedAction(refusal(withCode))::invoke) }
+        runCurrent()
+        harness.coordinator.accept(SecondFactorStepUpIntent.Submit)
+        assertTrue(assertNotNull(harness.coordinator.state.value).continuesInBrowser)
+
+        harness.coordinator.accept(SecondFactorStepUpIntent.ContinueInBrowser)
+        val fallback = assertNotNull(harness.coordinator.state.value)
+        assertEquals(SecondFactorStepUpMethod.Totp, fallback.method, "falls back to TOTP instead of stranding on Open on the web")
+        assertEquals(listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode), fallback.methods)
+        assertEquals(SecondFactorStepUpBanner.PasskeyUnsupported, fallback.banner)
+        assertNull(fallback.webStepUp)
+        assertNull(fallback.webStepUpSession)
+        assertFalse(fallback.opensOnWeb)
+        assertFalse(fallback.continuesInBrowser)
+        harness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        assertEquals(SecondFactorStepUpOutcome.Cancelled, first.await())
+
+        // The next refusal skips web step-up and lands straight on TOTP with the warning banner.
+        val second = async { harness.coordinator.run(ScriptedAction(refusal(withCode))::invoke) }
+        runCurrent()
+        harness.coordinator.accept(SecondFactorStepUpIntent.Submit)
+        val again = assertNotNull(harness.coordinator.state.value)
+        assertEquals(SecondFactorStepUpMethod.Totp, again.method)
+        assertEquals(SecondFactorStepUpBanner.PasskeyUnsupported, again.banner)
+        assertNull(again.webStepUp)
+        assertEquals(1, harness.starts.size)
+        harness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        second.await()
     }
 
     @Test

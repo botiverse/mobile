@@ -238,6 +238,7 @@ internal fun SecondFactorStepUpDialog(
                     style = RaftTheme.typography.footnote,
                     color = RaftTheme.colors.foregroundMuted
                 )
+                SecondFactorStepUpOtherMethodLinks(state, onIntent)
             } else if (method == null) {
                 RaftBanner(
                     description = stringResource(Res.string.settings_step_up_passkey_only),
@@ -258,23 +259,7 @@ internal fun SecondFactorStepUpDialog(
                         enabled = !state.busy && !state.webStepUpUnderWay
                     )
                 }
-                state.otherMethods.forEach { other ->
-                    RaftTextLink(
-                        text =
-                            stringResource(
-                                when (other) {
-                                    SecondFactorStepUpMethod.Passkey -> Res.string.settings_step_up_use_passkey
-                                    SecondFactorStepUpMethod.BackupCode -> Res.string.settings_step_up_use_backup_code
-                                    SecondFactorStepUpMethod.Totp -> Res.string.settings_step_up_use_authenticator
-                                }
-                            ),
-                        onClick = { onIntent(SecondFactorStepUpIntent.SwitchMethod(other)) },
-                        modifier = Modifier.testTag(secondFactorStepUpMethodLinkTag(other)),
-                        variant = RaftTextLinkVariant.Strong,
-                        style = RaftTheme.typography.callout,
-                        enabled = !state.busy
-                    )
-                }
+                SecondFactorStepUpOtherMethodLinks(state, onIntent)
             }
             if (recovery != null) {
                 RaftTextLink(
@@ -283,7 +268,7 @@ internal fun SecondFactorStepUpDialog(
                     modifier = Modifier.testTag(SECOND_FACTOR_STEP_UP_LOST_LINK_TAG),
                     variant = RaftTextLinkVariant.Strong,
                     style = RaftTheme.typography.callout,
-                    enabled = !state.submitting
+                    enabled = !state.submitting && !state.webStepUpUnderWay
                 )
             }
             // Beside a code, while the web step-up's page opens or is up; its code exchange then shows on Verify.
@@ -306,6 +291,30 @@ internal const val SECOND_FACTOR_STEP_UP_OPEN_ON_WEB_TAG = "step-up-open-on-web"
 internal const val SECOND_FACTOR_STEP_UP_CONTINUE_IN_BROWSER_TAG = "step-up-continue-in-browser"
 internal const val SECOND_FACTOR_STEP_UP_PASSKEY_IN_BROWSER_TAG = "step-up-passkey-in-browser"
 internal const val SECOND_FACTOR_STEP_UP_BANNER_TAG = "step-up-banner"
+
+@Composable
+private fun SecondFactorStepUpOtherMethodLinks(
+    state: SecondFactorStepUpDialogState,
+    onIntent: (SecondFactorStepUpIntent) -> Unit,
+) {
+    state.otherMethods.forEach { other ->
+        RaftTextLink(
+            text =
+                stringResource(
+                    when (other) {
+                        SecondFactorStepUpMethod.Passkey -> Res.string.settings_step_up_use_passkey
+                        SecondFactorStepUpMethod.BackupCode -> Res.string.settings_step_up_use_backup_code
+                        SecondFactorStepUpMethod.Totp -> Res.string.settings_step_up_use_authenticator
+                    }
+                ),
+            onClick = { onIntent(SecondFactorStepUpIntent.SwitchMethod(other)) },
+            modifier = Modifier.testTag(secondFactorStepUpMethodLinkTag(other)),
+            variant = RaftTextLinkVariant.Strong,
+            style = RaftTheme.typography.callout,
+            enabled = !state.busy && !state.webStepUpUnderWay
+        )
+    }
+}
 
 /** The "Use …" link that switches to [method]. */
 internal fun secondFactorStepUpMethodLinkTag(method: SecondFactorStepUpMethod): String = "step-up-use-${method.wireName}"
