@@ -919,6 +919,11 @@ object RaftClientTraceEvents {
     @RaftCoreInternalApi fun emitForegroundSyncUpdated(serverId: String, telemetry: ActivityForegroundSyncUpdated) {
         sender.emit(serverId, RaftStateTransitionTraceName, telemetry.stateTransitionTraceAttrs())
     }
+
+    /** #proj-o11y:#53 (web slock #16943): `slock.activity.item_reappeared` / `slock.activity.done_committed`. */
+    @RaftCoreInternalApi fun emitActivityDoneTrace(serverId: String, event: ActivityDoneTraceEvent) {
+        sender.emit(serverId, event.traceName, event.toTraceAttrs())
+    }
 }
 
 /** `clientPlatform` as `X-Raft-Client-Platform` names the app, its `appVersion`, and `app_build`. */

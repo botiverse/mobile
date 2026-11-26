@@ -450,6 +450,12 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
      */
     private val listRowLoweredSink: (serverId: String, lowered: ActivityListRowLowered) -> Unit = { _, _ -> },
     /**
+     * `#proj-o11y:#53` (web `slock #16943`): where `slock.activity.item_reappeared` and
+     * `slock.activity.done_committed` go ([RaftClientTraceEvents.emitActivityDoneTrace] in the app).
+     * Called under the realtime owner lock: it must only queue.
+     */
+    private val activityDoneTraceSink: (serverId: String, event: ActivityDoneTraceEvent) -> Unit = { _, _ -> },
+    /**
      * Where the 5 s `local_read` ack window's timer runs ([ActivityLocalReadAckHold]), added to
      * [scope]; injectable for tests. The window is measured with `delay` and `ack_delay_ms` with
      * [nowMillis].
@@ -5754,11 +5760,37 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         }
         // The overlay entry is pending until the server confirms the Done;
         // confirmation starts this row's own hold.
+        val clickedAtMillis = nowMillis()
+        val rowKind = item.activityDoneTraceRowKind()
+        val wasUnreadAtClick = item.unreadCount > 0
+        val traceServerId = overlayOwner?.serverId ?: intent.listOwnerServerId ?: activeServerId
+        val localDoneMeta =
+            rowKind?.let { kind ->
+                ActivityLocalDoneMeta(
+                    shownLatestActivitySeq = item.latestActivitySeq?.takeIf(::isCanonicalActivitySeq),
+                    isJoint = item.isJointActivityRow(),
+                    rowKind = kind,
+                    wasUnreadAtClick = wasUnreadAtClick,
+                    clickedAtMillis = clickedAtMillis,
+                )
+            }
         val doneGenerations =
             overlayOwner
-                ?.let { owner -> doneOverlay.remember(owner, item) }
+                ?.let { owner -> doneOverlay.remember(owner, item, localDoneMeta = localDoneMeta) }
                 ?.let { generation -> mapOf(item.key to generation) }
                 .orEmpty()
+        if (overlayOwner != null && doneGenerations.isEmpty() && rowKind != null) {
+            activityDoneTraceSink(
+                overlayOwner.serverId,
+                ActivityDoneTraceEvent.ItemReappeared(
+                    cause = ActivityReappearCause.MarkerNull,
+                    rowKind = rowKind,
+                    wasUnreadAtClick = wasUnreadAtClick,
+                    msSinceClick = nowMillis() - clickedAtMillis,
+                    seqChanged = ActivitySeqChange.None,
+                ),
+            )
+        }
         if (heldItem != null) removeItemOptimistically(heldItem)
         scope.launch {
             withOverlaySettlement(doneOverlay, overlayOwner, doneGenerations) {
@@ -5772,6 +5804,18 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                     // 409/412 (frontier moved / space required) land here too: like
                     // web, drop the hold and take the refreshed row; never replay.
                     doneOverlay.forgetAll(overlayOwner, doneGenerations)
+                    if (rowKind != null && traceServerId != null) {
+                        activityDoneTraceSink(
+                            traceServerId,
+                            ActivityDoneTraceEvent.ItemReappeared(
+                                cause = ActivityReappearCause.DoneFailed,
+                                rowKind = rowKind,
+                                wasUnreadAtClick = wasUnreadAtClick,
+                                msSinceClick = nowMillis() - clickedAtMillis,
+                                seqChanged = ActivitySeqChange.None,
+                            ),
+                        )
+                    }
                     if (sameListServer && previous.snapshot != null) {
                         refreshAfterFailure(previous, "activity_mark_done_failed")
                     } else {
@@ -5785,6 +5829,76 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                     if (sameListServer && previous.snapshot != null) {
                         // Web refreshes after a confirmed Done with the hold still armed.
                         load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Second Done triggered when a held storage-frontier row's served marker caught up with the
+     * in-place realtime activity the user already saw at click time (#proj-o11y:#53, mirrors web
+     * `inboxDoneMarkerOnlyCaughtUp` in `slock #16943`).
+     */
+    private fun scheduleFrontierCatchUpDone(
+        owner: ActivityOverlayOwner,
+        item: InboxItem,
+        meta: ActivityLocalDoneMeta,
+    ) {
+        val frontier = item.activityDoneRequestFrontier()?.toInboxDoneFrontier() ?: return
+        val targetChannelId = item.readReceiptChannelId() ?: return
+        scope.launch {
+            val current = _state.value
+            if (overlayOwner(current) != owner) return@launch
+            activityDoneTraceSink(
+                owner.serverId,
+                ActivityDoneTraceEvent.DoneCommitted(
+                    trigger = ActivityDoneCommitTrigger.FrontierCatchUp,
+                    rowKind = meta.rowKind,
+                    wasUnreadAtClick = meta.wasUnreadAtClick,
+                    waitMs = nowMillis() - meta.clickedAtMillis,
+                    frontierCaughtUp = true,
+                ),
+            )
+            val doneGenerations =
+                doneOverlay.remember(owner, item, localDoneMeta = meta)
+                    ?.let { generation -> mapOf(item.key to generation) }
+                    .orEmpty()
+            withOverlaySettlement(doneOverlay, owner, doneGenerations) {
+                val result =
+                    if (item.kind == InboxItemKind.Thread) {
+                        conversationRepository.markThreadDone(targetChannelId, frontier)
+                    } else {
+                        inboxRepository.markDone(targetChannelId, frontier)
+                    }
+                if (result !is DataResult.Content && result !is DataResult.Empty) {
+                    doneOverlay.forgetAll(owner, doneGenerations)
+                    activityDoneTraceSink(
+                        owner.serverId,
+                        ActivityDoneTraceEvent.ItemReappeared(
+                            cause = ActivityReappearCause.DoneFailed,
+                            rowKind = meta.rowKind,
+                            wasUnreadAtClick = meta.wasUnreadAtClick,
+                            msSinceClick = nowMillis() - meta.clickedAtMillis,
+                            seqChanged = ActivitySeqChange.None,
+                        ),
+                    )
+                    val latest = _state.value
+                    if (overlayOwner(latest) == owner && latest.snapshot != null) {
+                        refreshAfterFailure(latest, "activity_mark_done_frontier_catch_up_failed")
+                    }
+                } else {
+                    doneOverlay.confirmAll(owner, doneGenerations)
+                    onUnreadCountsChanged()
+                    val latest = _state.value
+                    if (overlayOwner(latest) == owner && latest.snapshot != null) {
+                        load(
+                            refresh = true,
+                            pullRefresh = false,
+                            backgroundRefresh = true,
+                            intent = SharedActivityIntent.Refresh,
+                            fetchReason = InboxFetchReason.Manual,
+                        )
                     }
                 }
             }
@@ -7381,15 +7495,45 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         var removedDoneRows = 0
         val suppressedDoneObjects = mutableListOf<InboxItem>()
         for (item in items) {
-            if (item.key in resolvedMentionActions || doneOverlay.holds(owner, item)) {
-                if (item.kind == InboxItemKind.Object) {
-                    suppressedDoneObjects += item
-                } else {
+            if (item.key in resolvedMentionActions) {
+                suppressedDoneUnreadCount += item.unreadCount
+                removedDoneRows += 1
+                continue
+            }
+            when (val outcome = doneOverlay.evaluateDoneHold(owner, item)) {
+                ActivityDoneHoldOutcome.Held -> {
+                    if (item.kind == InboxItemKind.Object) {
+                        suppressedDoneObjects += item
+                    } else {
+                        suppressedDoneUnreadCount += item.unreadCount
+                        removedDoneRows += 1
+                    }
+                }
+                is ActivityDoneHoldOutcome.FrontierCaughtUp -> {
                     suppressedDoneUnreadCount += item.unreadCount
                     removedDoneRows += 1
+                    scheduleFrontierCatchUpDone(owner, item, outcome.meta)
                 }
-            } else {
-                reconciled += item
+                is ActivityDoneHoldOutcome.LiftedMarkerNewer -> {
+                    outcome.meta?.let { meta ->
+                        activityDoneTraceSink(
+                            owner.serverId,
+                            ActivityDoneTraceEvent.ItemReappeared(
+                                cause = ActivityReappearCause.SuppressionMarkerNewer,
+                                rowKind = meta.rowKind,
+                                wasUnreadAtClick = meta.wasUnreadAtClick,
+                                msSinceClick = nowMillis() - meta.clickedAtMillis,
+                                seqChanged =
+                                    if (outcome.newerActivity) ActivitySeqChange.Both else ActivitySeqChange.Frontier,
+                            ),
+                        )
+                    }
+                    reconciled += item
+                }
+                ActivityDoneHoldOutcome.NotHeld,
+                ActivityDoneHoldOutcome.Expired -> {
+                    reconciled += item
+                }
             }
         }
         return ActivityReconcileResult(

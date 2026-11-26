@@ -3712,6 +3712,7 @@ internal class RaftSharedStoreProvider private constructor(
                 conversationsReadOnSight = raftConversationReadOnSight::readingChannels,
                 inPlaceCheckSink = RaftClientTraceEvents::emitInPlaceCheck,
                 listRowLoweredSink = RaftClientTraceEvents::emitListRowLowered,
+                activityDoneTraceSink = RaftClientTraceEvents::emitActivityDoneTrace,
                 inboxRowPositionEnabled = ::inboxRowPositionEnabled,
                 onSyncPullHint = ::requestRealtimeSyncPull,
                 syncInboxRowsEnabled = ::syncInboxRowsEnabled,
