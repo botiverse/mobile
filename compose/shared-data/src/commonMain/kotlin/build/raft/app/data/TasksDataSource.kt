@@ -1729,6 +1729,7 @@ private fun HomeNetworkResponse.tasksServerErrorTextOrNull(): String? =
         isLegacy = isLegacy == true,
         conversationFollowed = conversationFollowed,
         createdAt = createdAt?.trim()?.takeIf { it.isNotBlank() },
+        claimedAt = claimedAt?.trim()?.takeIf { it.isNotBlank() },
         descriptionLoaded = description != null || hasDescription != true,
         conversationDetailsLoaded = conversationDetailsLoaded,
         activityAt = (activityAt ?: lastActivityAt ?: updatedAt)?.trim()?.takeIf { it.isNotBlank() },

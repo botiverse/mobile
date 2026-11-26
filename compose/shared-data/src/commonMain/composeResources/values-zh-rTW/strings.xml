@@ -4956,6 +4956,13 @@
     <string name="artifacts_viewer_unavailable_body">它不存在，或者你沒有權限查看。</string>
     <string name="artifacts_viewer_open_in_browser">在瀏覽器中開啟</string>
     <string name="activity_list_object_home">· %1$s</string>
+    <string name="activity_list_waiting_label">等你處理</string>
+    <string name="activity_list_waiting_assigned_by">%1$s 指派給你 · %2$s</string>
+    <string name="activity_list_waiting_claimed">你已認領 · %1$s</string>
+    <string name="activity_list_waiting_assigned">已指派給你 · %1$s</string>
+    <string name="activity_list_waiting_detail">%1$s · %2$s · %3$s</string>
+    <string name="activity_list_waiting_detail_no_reason">%1$s · %2$s</string>
+    <string name="activity_list_waiting_named">等你處理，%1$s</string>
     <string name="activity_action_unfollow_artifact">取消追蹤</string>
     <string name="activity_unfollowed_artifact">已取消追蹤 %1$s</string>
     <string name="emoji_picker_search_placeholder">搜尋表情符號</string>

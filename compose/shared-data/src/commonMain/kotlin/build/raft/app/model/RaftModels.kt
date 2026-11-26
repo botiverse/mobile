@@ -1132,6 +1132,11 @@ data class TaskSummary(
     /** The task DTO's `createdAt` (ISO), as the server sent it; null from a source without it. */
     val createdAt: String? = null,
     /**
+     * The task DTO's `claimedAt` (ISO), set whenever the task is claimed or assigned; null when
+     * unassigned or from a source without it. Changes on a fresh assignment even to the same user.
+     */
+    val claimedAt: String? = null,
+    /**
      * False for a `detail=summary` row that has a description it did not send (`hasDescription`
      * without `description`): [description] null does not mean "none" there, so the head must not
      * offer to add one over it (web TaskModalHead `descriptionLoaded`).

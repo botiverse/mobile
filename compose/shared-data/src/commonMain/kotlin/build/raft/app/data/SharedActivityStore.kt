@@ -535,6 +535,11 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
      * ([RaftClientTraceEvents.emitActivityUnreadStateFlipped] in the app). Must only queue and never throw.
      */
     private val unreadFlipSink: (serverId: String, event: ActivityUnreadStateFlipped) -> Unit = { _, _ -> },
+    /**
+     * `task_waiting_on_you_v0` (botiverse/slock #16759 / #17085): per-server gate for re-reading
+     * a listed task row when `task:updated` puts a new waiting hold on the signed-in user.
+     */
+    private val taskWaitingOnYouEnabled: (serverId: String) -> Boolean = { false },
 ) {
     private val _state = raftStoreState(SharedActivityState(), "SharedActivityStore")
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
@@ -989,6 +994,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                         scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other)
                     }.start()
                 }
+            is SharedActivityIntent.ReconcileTaskWaiting -> reconcileTaskWaiting(intent)
         }
     }
 
@@ -1752,6 +1758,46 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         val reconcileJob = synchronized(realtimeOwnerLock) { applyRealtimeEventLocked(intent) }
         reconcileJob?.start()
         ensureDmPeerNames()
+    }
+
+    /**
+     * `task_waiting_on_you_v0` (botiverse/slock #16759 / #17085): when `task:updated` lands a new
+     * waiting-on-you hold on a task whose conversation row is currently listed in Activity, re-read
+     * that row (`?ids=`, trigger `task_waiting`) when row-position is on, or schedule a throttled
+     * background list reconcile when it is off. Unlisted tasks, flag-off servers, non-waiting updates,
+     * and repeat updates under the same hold (`claimedAt` unchanged) make zero requests.
+     */
+    private fun reconcileTaskWaiting(intent: SharedActivityIntent.ReconcileTaskWaiting) {
+        val reconcileJob =
+            synchronized(realtimeOwnerLock) {
+                val current = _state.value
+                val ownerServerId = current.ownerServerId?.takeIf { it.isNotBlank() } ?: return@synchronized null
+                if (ownerServerId != intent.serverId) return@synchronized null
+                if (!taskWaitingOnYouEnabled(ownerServerId)) return@synchronized null
+                val currentUserId = current.ownerUserId?.takeIf { it.isNotBlank() } ?: return@synchronized null
+                if (!liveTaskWaitsOn(intent.task, currentUserId)) return@synchronized null
+                val row =
+                    current.snapshot?.items?.firstOrNull { item ->
+                        item.isTaskConversation && item.taskConversation?.taskId == intent.task.id
+                    } ?: return@synchronized null
+                val previous = intent.previous
+                val newHold =
+                    row.taskWaiting == null ||
+                        (
+                            previous != null &&
+                                (!liveTaskWaitsOn(previous, currentUserId) || previous.claimedAt != intent.task.claimedAt)
+                            )
+                if (!newHold) return@synchronized null
+                if (rowPositionOnLocked() && row.isActivityPositionRow()) {
+                    val scopeId = row.activityRowScopeId()
+                    if (scopeId != null) {
+                        requestRowRereadLocked(scopeId, InboxRefreshTrigger.TaskWaiting)
+                        return@synchronized null
+                    }
+                }
+                scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.TaskWaiting)
+            }
+        reconcileJob?.start()
     }
 
     private fun applyRealtimeEventLocked(intent: SharedActivityIntent.ApplyRealtimeEvent): Job? {
@@ -3669,12 +3715,12 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             if (emitLog) {
                 diagnosticsLogger("activity_row_position event=answer scopeId=$scopeId pa=${pa ?: "-"} result=kept")
             }
-            return ActivityRowMerge(current, kept = true, note = note, reread = result.reread)
+            return ActivityRowMerge(current.withServedTaskWaiting(served), kept = true, note = note, reread = result.reread)
         }
         rowPositions.keep(scopeId, result.row)
         val shown = current.latestActivitySeq?.takeIf(::isCanonicalActivitySeq)
         val newer = shown != null && pa != null && compareActivitySeq(shown, pa) > 0
-        val from = if (newer) current else base
+        val from = if (newer) current.withServedTaskWaiting(served) else base
         val extra = result.row.unreadCount != served.unreadCount || result.row.hasMention != served.hasMention
         val merged =
             from.copy(
@@ -8159,6 +8205,17 @@ sealed interface SharedActivityIntent {
      * sync): [SharedActivityStore.applyRemoteDone]; a list that can't tell reads again.
      */
     data class ApplyRemoteDone(val channelId: String, val doneFrontierSeq: String?) : SharedActivityIntent
+
+    /**
+     * `task_waiting_on_you_v0` (botiverse/slock #16759 / #17085): an accepted `task:updated` for
+     * [serverId] with its prior canonical fact [previous]. Re-reads a listed task row when a new
+     * waiting-on-you hold lands on the signed-in user.
+     */
+    data class ReconcileTaskWaiting(
+        val serverId: String,
+        val task: TaskSummary,
+        val previous: TaskSummary? = null,
+    ) : SharedActivityIntent
 }
 
 /** What [SharedActivityStore.applyRemoteDone] did with another device's Done. */
@@ -8204,6 +8261,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.ApplyRealtimeEvent -> "realtime"
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
         is SharedActivityIntent.ApplyRemoteDone -> "remote_done"
+        is SharedActivityIntent.ReconcileTaskWaiting -> "reconcile_task_waiting"
     }
 
 private fun SharedActivityIntent.defaultUnreadFlipSource(): ActivityUnreadFlipSource =
@@ -8229,6 +8287,7 @@ private fun SharedActivityIntent.defaultUnreadFlipSource(): ActivityUnreadFlipSo
             }
         is SharedActivityIntent.ApplyRealtimeSummaryEvent,
         is SharedActivityIntent.ApplyRemoteDone,
+        is SharedActivityIntent.ReconcileTaskWaiting,
         is SharedActivityIntent.ChannelAccessLost -> ActivityUnreadFlipSource.RealtimeEvent
         SharedActivityIntent.LoadInitial,
         SharedActivityIntent.Refresh,
@@ -8288,6 +8347,7 @@ private fun SharedActivityState.showsMessage(messageId: MessageId): Boolean =
         SharedActivityIntent.SurfaceHidden,
         is SharedActivityIntent.SurfaceActive,
         is SharedActivityIntent.RowOpened,
+        is SharedActivityIntent.ReconcileTaskWaiting,
         is SharedActivityIntent.ChannelAccessLost -> false
     }
 

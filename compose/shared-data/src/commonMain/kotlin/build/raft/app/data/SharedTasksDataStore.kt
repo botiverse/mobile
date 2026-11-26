@@ -1190,13 +1190,26 @@ private const val CountedReplyKeyLimit = 512
     suspend fun upsertTaskForCurrentOwner(
         serverId: String,
         task: TaskSummary
-    ): SharedTaskFactFoldOutcome? {
+    ): SharedTaskFactFoldOutcome? =
+        upsertTaskForCurrentOwnerWithPrevious(serverId, task)?.first
+
+    /**
+     * Atomically captures the prior non-conflicted canonical fact (if any) before folding [task].
+     * Used by `task_waiting_on_you_v0` (`task:updated`) to distinguish a new waiting hold from a
+     * status/field update under the same hold (`claimedAt` unchanged).
+     */
+    @RaftCoreInternalApi suspend fun upsertTaskForCurrentOwnerWithPrevious(
+        serverId: String,
+        task: TaskSummary
+    ): Pair<SharedTaskFactFoldOutcome, TaskSummary?>? {
         bindCurrentOwnerIdentity()
         val normalizedServerId = serverId.normalizedTasksStoreId() ?: return null
         return loadMutex.withLock {
-            val upsert = state.value.upsertTaskState(normalizedServerId, task, supersedeStatusMutation = true)
+            val current = state.value
+            val previous = if (task.id in current.canonicalConflicts) null else current.canonicalTaskFacts[task.id]
+            val upsert = current.upsertTaskState(normalizedServerId, task, supersedeStatusMutation = true)
             state.value = upsert.state
-            upsert.outcome
+            upsert.outcome to previous
         }
     }
 
@@ -1501,6 +1514,30 @@ private const val CountedReplyKeyLimit = 512
                     channelName = null
                 )
         }
+
+    /**
+     * Live non-conflicted canonical task facts keyed by [TaskId] for read-only Activity projection
+     * (`task_waiting_on_you_v0`, `shownTaskWaiting`).
+     */
+    @RaftCoreInternalApi fun canonicalTasksFlow(): Flow<Map<TaskId, TaskSummary>> =
+        state
+            .map { current ->
+                if (current.canonicalConflicts.isEmpty()) {
+                    current.canonicalTaskFacts
+                } else {
+                    current.canonicalTaskFacts - current.canonicalConflicts
+                }
+            }
+            .distinctUntilChanged()
+
+    @RaftCoreInternalApi fun canonicalTasksSnapshot(): Map<TaskId, TaskSummary> {
+        val current = state.value
+        return if (current.canonicalConflicts.isEmpty()) {
+            current.canonicalTaskFacts
+        } else {
+            current.canonicalTaskFacts - current.canonicalConflicts
+        }
+    }
 
     /**
      * Resolves a write target only from the currently bound Server's local projection.

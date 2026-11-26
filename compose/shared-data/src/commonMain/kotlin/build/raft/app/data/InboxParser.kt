@@ -15,6 +15,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskId
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.network.sync.ReplyPreview
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -104,6 +105,9 @@ private data class WireInboxItem(
     // task v2 conversation rows (kind "task", channelService.ts TaskConversationInboxItem)
     val taskId: String? = null,
     val taskTitle: String? = null,
+    // `task_waiting_on_you_v0` (slock #16759): optional waiting metadata on `kind: "task"` rows.
+    // Kept as raw JSON and validated per row so malformed fields fail closed without dropping the row.
+    val waiting: JsonElement? = null,
     // thread follow state; only an explicit false means Unfollowed
     val isFollowing: Boolean? = null,
     val unfollowedAt: String? = null,
@@ -171,6 +175,59 @@ private fun JsonElement.isMarkedUnreadFrontier(): Boolean =
 /** A JSON string value only: numbers, booleans, null and containers yield null. */
 private fun JsonObject.stringFieldOrNull(name: String): String? =
     (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+/**
+ * Strict fail-closed parser for `waiting` on `GET /channels/inbox` `kind: "task"` rows
+ * (`task_waiting_on_you_v0`, botiverse/slock `packages/shared/src/taskWaitingOnYou.ts`).
+ *
+ * Rejects missing/unparseable `since` or unknown `via` (returns null without dropping the row).
+ * Reads `assignedBy`, `reason`, and `reasonTruncated` only when `via == "assign"`.
+ */
+@RaftCoreInternalApi fun parseTaskWaiting(raw: JsonElement?): TaskWaitingOnYou? {
+    val obj = raw as? JsonObject ?: return null
+    val since = obj.stringFieldOrNull("since")?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    if (parseRaftTimestampEpochMillisOrNull(since, localOffsetMinutes = 0) == null) return null
+    val via =
+        when (obj.stringFieldOrNull("via")) {
+            "claim" -> TaskWaitingVia.Claim
+            "assign" -> TaskWaitingVia.Assign
+            "system" -> TaskWaitingVia.System
+            else -> return null
+        }
+    if (via != TaskWaitingVia.Assign) {
+        return TaskWaitingOnYou(since = since, via = via)
+    }
+    val assignedBy =
+        (obj["assignedBy"] as? JsonObject)?.let { assignedObj ->
+            val kind =
+                when (assignedObj.stringFieldOrNull("type")) {
+                    "user" -> MemberKind.Human
+                    "agent" -> MemberKind.Agent
+                    else -> null
+                }
+            val id = assignedObj.stringFieldOrNull("id")?.trim()?.takeIf { it.isNotBlank() }
+            if (kind != null && id != null) {
+                TaskWaitingAssignedBy(
+                    kind = kind,
+                    id = id,
+                    name = assignedObj.stringFieldOrNull("name")?.trim()?.takeIf { it.isNotBlank() },
+                )
+            } else {
+                null
+            }
+        }
+    val reason = obj.stringFieldOrNull("reason")?.trim()?.takeIf { it.isNotBlank() }
+    val reasonTruncated =
+        reason != null &&
+            (obj["reasonTruncated"] as? JsonPrimitive)?.let { !it.isString && it.content == "true" } == true
+    return TaskWaitingOnYou(
+        since = since,
+        via = via,
+        assignedBy = assignedBy,
+        reason = reason,
+        reasonTruncated = reasonTruncated,
+    )
+}
 
 @Serializable
 private data class WireThreadReplyPreview(
@@ -410,6 +467,7 @@ private fun WireInboxItem.toTaskConversationDomain(diagnostics: (String) -> Unit
                 taskId = taskId?.trim()?.takeIf { it.isNotBlank() }?.let(::TaskId),
                 taskTitle = title,
             ),
+        taskWaiting = parseTaskWaiting(waiting),
     )
 }
 

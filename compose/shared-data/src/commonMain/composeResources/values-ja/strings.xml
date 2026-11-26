@@ -5162,6 +5162,13 @@
     <string name="artifacts_viewer_unavailable_body">存在しないか、閲覧する権限がありません。</string>
     <string name="artifacts_viewer_open_in_browser">ブラウザで開く</string>
     <string name="activity_list_object_home">· %1$s</string>
+    <string name="activity_list_waiting_label">あなたの対応待ち</string>
+    <string name="activity_list_waiting_assigned_by">%1$s があなたに割り当て · %2$s</string>
+    <string name="activity_list_waiting_claimed">あなたが引き受け · %1$s</string>
+    <string name="activity_list_waiting_assigned">あなたに割り当て済み · %1$s</string>
+    <string name="activity_list_waiting_detail">%1$s · %2$s · %3$s</string>
+    <string name="activity_list_waiting_detail_no_reason">%1$s · %2$s</string>
+    <string name="activity_list_waiting_named">あなたの対応待ち、%1$s</string>
     <string name="activity_action_unfollow_artifact">フォロー解除</string>
     <string name="activity_unfollowed_artifact">%1$s のフォローを解除しました</string>
     <string name="emoji_picker_search_placeholder">絵文字を検索</string>

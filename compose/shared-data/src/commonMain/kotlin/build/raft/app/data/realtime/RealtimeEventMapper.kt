@@ -887,6 +887,7 @@ private data class TaskInfoWireDto(
     val claimedByType: String? = null,
     val claimedById: String? = null,
     val claimedByName: String? = null,
+    val claimedAt: String? = null,
     val createdAt: String? = null,
     val updatedAt: String? = null,
     // The same projection's last activity (`activityAt` = lastActivityAt ?? updatedAt), so a
@@ -1852,6 +1853,7 @@ private fun TaskInfoWireDto.toDomain(
         conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,
         isLegacy = isLegacy == true,
         createdAt = createdAt?.trim()?.takeIf { it.isNotBlank() },
+        claimedAt = claimedAt?.trim()?.takeIf { it.isNotBlank() },
         activityAt = (activityAt ?: lastActivityAt ?: updatedAt)?.trim()?.takeIf { it.isNotBlank() },
         completedAt = completedAt?.trim()?.takeIf { it.isNotBlank() },
     )

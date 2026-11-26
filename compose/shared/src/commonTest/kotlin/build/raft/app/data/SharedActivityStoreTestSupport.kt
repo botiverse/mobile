@@ -135,6 +135,7 @@ internal fun activityStore(
     isBackgroundProjectionDeferred: () -> Boolean = { false },
     awaitBackgroundProjectionWindow: suspend (kotlinx.coroutines.flow.StateFlow<Boolean>) -> Unit = {},
     unreadFlipSink: (serverId: String, event: ActivityUnreadStateFlipped) -> Unit = { _, _ -> },
+    taskWaitingOnYouEnabled: (serverId: String) -> Boolean = { false },
 ): SharedActivityStore =
     SharedActivityStore(
         authStore = authStore,
@@ -189,6 +190,7 @@ internal fun activityStore(
         isBackgroundProjectionDeferred = isBackgroundProjectionDeferred,
         awaitBackgroundProjectionWindow = awaitBackgroundProjectionWindow,
         unreadFlipSink = unreadFlipSink,
+        taskWaitingOnYouEnabled = taskWaitingOnYouEnabled,
     )
 
 internal class FakeInboxRepository(

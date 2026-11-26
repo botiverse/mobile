@@ -5163,6 +5163,13 @@
     <string name="artifacts_viewer_unavailable_body">It doesn't exist, or you don't have access to it.</string>
     <string name="artifacts_viewer_open_in_browser">Open in browser</string>
     <string name="activity_list_object_home">· %1$s</string>
+    <string name="activity_list_waiting_label">Waiting on you</string>
+    <string name="activity_list_waiting_assigned_by">%1$s assigned it to you · %2$s</string>
+    <string name="activity_list_waiting_claimed">You took it · %1$s</string>
+    <string name="activity_list_waiting_assigned">Assigned to you · %1$s</string>
+    <string name="activity_list_waiting_detail">%1$s · %2$s · %3$s</string>
+    <string name="activity_list_waiting_detail_no_reason">%1$s · %2$s</string>
+    <string name="activity_list_waiting_named">Waiting on you, %1$s</string>
     <string name="activity_action_unfollow_artifact">Unfollow</string>
     <string name="activity_unfollowed_artifact">Unfollowed %1$s</string>
     <string name="emoji_picker_search_placeholder">Search emoji</string>
