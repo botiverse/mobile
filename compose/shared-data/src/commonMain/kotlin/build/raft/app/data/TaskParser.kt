@@ -1,8 +1,10 @@
 package build.raft.app.data
 
+import build.raft.app.RaftCoreInternalApi
 import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.model.TaskSummary
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Strict parser for the `/api/tasks` endpoints.
@@ -63,4 +65,21 @@ fun parseSharedServerTasksPagePayload(
         tasks = envelope.tasks.mapNotNull { it.toTaskSummary(diagnostics) },
         nextCursor = envelope.next_cursor?.takeIf { it.isNotBlank() },
     )
+}
+
+/**
+ * One task list row (a `GET /api/tasks/channel/:channelId` item), as the sync log's `task`
+ * entity carries it (botiverse/slock #14975); null when the row does not decode or fails strict
+ * task validation.
+ */
+@RaftCoreInternalApi fun parseSharedTaskRow(
+    row: JsonObject,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): TaskSummary? {
+    val wire =
+        runCatching { taskParserJson.decodeFromJsonElement(TaskWireDto.serializer(), row) }
+            .getOrNull()
+            ?: return null
+    if (wire.id.isBlank()) return null
+    return wire.toTaskSummary(diagnostics)
 }

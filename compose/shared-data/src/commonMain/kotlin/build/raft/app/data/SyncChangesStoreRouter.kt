@@ -2,13 +2,16 @@ package build.raft.app.data
 
 import build.raft.app.RaftCoreInternalApi
 
+import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.ServerSummary
+import build.raft.app.model.TaskId
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * The stores incremental sync writes into, each through its own reducer (MVI: no UI state is
@@ -82,6 +85,27 @@ import kotlinx.atomicfu.locks.synchronized
      * not hold the message changes nothing.
      */
     suspend fun applyMessageRows(serverId: String, messages: List<Message>)
+
+    /**
+     * `task` upserts and channel-scoped deletes (botiverse/slock #14975), in seq order, into
+     * [SharedTasksDataStore]. Returns any channel ids whose upserted task hit a canonical conflict
+     * and needs a channel resnapshot.
+     */
+    suspend fun applyTaskChanges(serverId: String, mutations: List<SharedSyncedTaskMutation>): Set<String> = emptySet()
+
+    /**
+     * Channel tasks left the viewer's scope (`scope` `removed` for a channel): drop cached tasks
+     * for [channelIds] on [serverId] without touching unrelated channels or servers.
+     */
+    suspend fun dropChannelTasks(serverId: String, channelIds: Set<String>) = Unit
+
+    /**
+     * Task list resnapshot (`task` `op: "resnapshot"`, `reset` naming `"tasks"`, or an added
+     * channel scope): re-read loaded task lists for [channelIds], or every held task scope on
+     * [serverId] when null. False when one of them [RaftSyncSnapshotRead.Failed] (a channel the
+     * viewer can no longer read is not a failure).
+     */
+    suspend fun refreshTasks(serverId: String, channelIds: Set<String>?, reason: String): Boolean = true
 }
 
 /** What the Activity stores did with a page's `inbox_row` changes ([RaftSyncStoreTargets.applyInboxRows]). */
@@ -222,11 +246,13 @@ import kotlinx.atomicfu.locks.synchronized
  * Routes pulled changes to the stores ([RaftSyncChangesSink] of the provider).
  *
  * Row-level today: `server_member`, `agent` (roster), `machine` (Computers), `message` (the open
- * conversation pages) and a `conversation` change carrying another device's Done (Activity).
- * Signal-level (the store's existing reload, once per page and only when something changed):
- * `channel`, `sidebar_order`, `server_order`, any other `conversation` change (Home + Activity) and
- * `channel_member` (the loaded rosters of those channels). A row that does not decode retakes its
- * entity's snapshot (a `message` row, which has none, is left to its conversation's next read).
+ * conversation pages), `task` (Tasks store), and a `conversation` change carrying another device's
+ * Done (Activity). Signal-level (the store's existing reload, once per page and only when something
+ * changed): `channel`, `sidebar_order`, `server_order`, any other `conversation` change (Home +
+ * Activity), `channel_member` (the loaded rosters of those channels), and `task` `resnapshot` /
+ * `tasks` snapshot (the held task scopes of those channels or the server). A row that does not
+ * decode retakes its entity's snapshot (a `message` row, which has none, is left to its
+ * conversation's next read).
  *
  * A reload after a pull that fails is read again by the next pull ([RaftSyncReloadLedger]); a
  * first-sync / reset roster or machine snapshot that fails still fails its pull.
@@ -239,8 +265,8 @@ import kotlinx.atomicfu.locks.synchronized
     override suspend fun reloadSnapshots(scope: RaftSyncScope, snapshots: Set<RaftSyncSnapshot>, reason: String): Boolean {
         val failed = reload(scope.serverId, snapshots, channelIds = null, reason = "sync_$reason")
         // The cursor stands on the roster and machine lists (the change log patches them row by
-        // row). Channel member rosters are only the loaded ones: retaken by the next pull.
-        val pullFailed = failed.any { it != RaftSyncSnapshot.ChannelMembers }
+        // row). Channel member rosters and task lists are only the loaded ones: retaken by the next pull.
+        val pullFailed = failed.any { it != RaftSyncSnapshot.ChannelMembers && it != RaftSyncSnapshot.Tasks }
         if (!pullFailed) ledger.markFailed(scope.serverId, failed)
         return !pullFailed
     }
@@ -276,12 +302,20 @@ import kotlinx.atomicfu.locks.synchronized
         val serverId = scope.serverId
         val reason = "sync_changes"
         val resnapshot = LinkedHashSet(plan.snapshots)
+        var wholeServerTaskResnapshot = RaftSyncSnapshot.Tasks in plan.snapshots
 
         val serverRemoved = plan.removedScopes.any { it.kind == RaftSyncScopeKind.Server && it.id == serverId }
         if (serverRemoved) {
             // Lost the whole server: the roster / machine / Home loads validate the access loss and drop
             // what is held under it through their existing access-lost paths.
             resnapshot += setOf(RaftSyncSnapshot.Channels, RaftSyncSnapshot.ServerMembers, RaftSyncSnapshot.Machines)
+        }
+        val removedChannelIds =
+            plan.removedScopes
+                .filter { it.kind == RaftSyncScopeKind.Channel }
+                .mapTo(LinkedHashSet()) { it.id }
+        if (removedChannelIds.isNotEmpty()) {
+            targets.dropChannelTasks(serverId, removedChannelIds)
         }
 
         // Roster: server_member + agent rows.
@@ -369,18 +403,88 @@ import kotlinx.atomicfu.locks.synchronized
         val messages = messageRows.values.mapNotNull { row -> parseSharedMessageRow(row) }
         if (messages.isNotEmpty()) targets.applyMessageRows(serverId, messages)
 
+        // Tasks (botiverse/slock #14975): upserts and channel-scoped deletes apply in seq order; a
+        // malformed row or canonical conflict falls back fail-closed to a channel/tasks resnapshot
+        // without discarding valid changes in the same page.
+        val taskResnapshotChannels = LinkedHashSet(plan.taskResnapshotChannelIds)
+        val taskMutations = ArrayList<SharedSyncedTaskMutation>(plan.taskChanges.size)
+        var taskMalformedCount = 0
+        for (taskChange in plan.taskChanges) {
+            when (taskChange) {
+                is RaftSyncChange.TaskUpsert -> {
+                    val parsed = parseSharedTaskRow(taskChange.row)
+                    val parsedChannelId = parsed?.channelId?.value?.trim()?.takeIf { it.isNotEmpty() }
+                    if (parsed != null && parsed.id.value == taskChange.id && parsedChannelId != null) {
+                        taskMutations += SharedSyncedTaskMutation.Upsert(parsed)
+                    } else {
+                        taskMalformedCount += 1
+                        val fallbackChannelId =
+                            (taskChange.row["channelId"] as? JsonPrimitive)
+                                ?.takeIf { it.isString }
+                                ?.content
+                                ?.trim()
+                                ?.takeIf { it.isNotEmpty() }
+                        if (fallbackChannelId != null) {
+                            taskResnapshotChannels += fallbackChannelId
+                        } else {
+                            resnapshot += RaftSyncSnapshot.Tasks
+                            wholeServerTaskResnapshot = true
+                        }
+                    }
+                }
+                is RaftSyncChange.TaskDelete -> {
+                    val channelId = taskChange.channelId.trim()
+                    if (channelId.isNotEmpty()) {
+                        taskMutations += SharedSyncedTaskMutation.Delete(ChannelId(channelId), TaskId(taskChange.id))
+                    } else {
+                        taskMalformedCount += 1
+                        resnapshot += RaftSyncSnapshot.Tasks
+                        wholeServerTaskResnapshot = true
+                    }
+                }
+                is RaftSyncChange.TaskResnapshot -> {
+                    val channelId = taskChange.channelId.trim()
+                    if (channelId.isNotEmpty()) {
+                        taskResnapshotChannels += channelId
+                    } else {
+                        resnapshot += RaftSyncSnapshot.Tasks
+                        wholeServerTaskResnapshot = true
+                    }
+                }
+            }
+        }
+        if (taskMutations.isNotEmpty()) {
+            taskResnapshotChannels += targets.applyTaskChanges(serverId, taskMutations)
+        }
+        // `scope` `added` for a channel: slock leaves `"tasks"` out of SYNC_CHANNEL_SCOPE_SNAPSHOTS
+        // for legacy web compatibility; a client that keeps task lists also re-reads added channels.
+        if (!serverRemoved && plan.addedChannelIds.isNotEmpty()) {
+            taskResnapshotChannels += plan.addedChannelIds
+        }
+        if (taskResnapshotChannels.isNotEmpty() && RaftSyncSnapshot.Tasks !in resnapshot) {
+            if (!targets.refreshTasks(serverId, taskResnapshotChannels, reason)) {
+                ledger.markFailed(serverId, setOf(RaftSyncSnapshot.Tasks))
+            }
+        }
+
         if (resnapshot.isNotEmpty()) {
             // Snapshots of an added channel scope: only that channel's member roster.
             val channelIds = plan.addedChannelIds.takeIf { it.isNotEmpty() && !serverRemoved }
+            val taskChannelIds = if (wholeServerTaskResnapshot) null else channelIds
             // The cursor goes on past this page: what failed is read again by the next pull.
-            ledger.markFailed(serverId, reload(serverId, resnapshot, channelIds, reason = "sync_resnapshot"))
+            ledger.markFailed(
+                serverId,
+                reload(serverId, resnapshot, channelIds, reason = "sync_resnapshot", taskChannelIds = taskChannelIds),
+            )
         }
         logger(
             "sync_changes_apply serverId=$serverId rosterUpserts=${rosterUpserts.size} rosterDeletes=${rosterDeletes.size} " +
                 "machines=${machineRows.size}/${machineDeletes.size} home=$homeChanged activity=$activityChanged " +
                 "remoteDone=${conversations.remoteDone} channelMembers=${memberChannels.size} resnapshot=${resnapshot.joinToString(",") { it.wireName }.ifEmpty { "none" }} " +
                 "removedScopes=${plan.removedScopes.size} messages=${messages.size}/${messageRows.size} " +
-                "inboxRows=${settledRows.size}/${plan.inboxRows.size}" +
+                "tasks=${taskMutations.size}/${plan.taskChanges.size} taskResnapshot=${taskResnapshotChannels.size}" +
+                (if (taskMalformedCount > 0) " taskMalformed=$taskMalformedCount" else "") +
+                " inboxRows=${settledRows.size}/${plan.inboxRows.size}" +
                 (if (plan.inboxRows.isNotEmpty() && inboxRows == RaftSyncInboxRowsOutcome.NotApplied) " inboxRowsApplied=false" else "")
         )
         return settledRows.size
@@ -441,6 +545,7 @@ import kotlinx.atomicfu.locks.synchronized
         snapshots: Set<RaftSyncSnapshot>,
         channelIds: Set<String>?,
         reason: String,
+        taskChannelIds: Set<String>? = channelIds,
     ): Set<RaftSyncSnapshot> {
         val failed = LinkedHashSet<RaftSyncSnapshot>()
         if (snapshots.any { it in HomeSnapshots }) refreshHome(serverId, reason)
@@ -463,6 +568,9 @@ import kotlinx.atomicfu.locks.synchronized
         }
         if (RaftSyncSnapshot.ChannelMembers in snapshots && !targets.refreshChannelMembers(serverId, channelIds, reason)) {
             failed += RaftSyncSnapshot.ChannelMembers
+        }
+        if (RaftSyncSnapshot.Tasks in snapshots && !targets.refreshTasks(serverId, taskChannelIds, reason)) {
+            failed += RaftSyncSnapshot.Tasks
         }
         return failed
     }

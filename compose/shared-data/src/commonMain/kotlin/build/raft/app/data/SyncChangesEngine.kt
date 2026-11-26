@@ -10,6 +10,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.time.TimeSource
 
 /** The most pages one pull reads before it stops (the cursor is kept; the next trigger goes on). */
@@ -93,11 +94,20 @@ import kotlin.time.TimeSource
      * server sends one per id per response anyway).
      */
     val inboxRows: List<RaftSyncInboxRowChange> = emptyList(),
+    /**
+     * `task` upserts and channel-scoped deletes (botiverse/slock #14975), in seq order, coalesced
+     * per `(taskId, channelId)` so a task move (delete in old channel + upsert in new channel) keeps
+     * both operations.
+     */
+    val taskChanges: List<RaftSyncTaskChange> = emptyList(),
+    /** Channels whose task lists need a full re-read (`task` `op: "resnapshot"`). */
+    val taskResnapshotChannelIds: Set<String> = emptySet(),
 ) {
     val isEmpty: Boolean
         get() =
             upserts.isEmpty() && deletes.isEmpty() && staleConversations.isEmpty() && snapshots.isEmpty() &&
-                addedChannelIds.isEmpty() && removedScopes.isEmpty() && inboxRows.isEmpty()
+                addedChannelIds.isEmpty() && removedScopes.isEmpty() && inboxRows.isEmpty() &&
+                taskChanges.isEmpty() && taskResnapshotChannelIds.isEmpty()
 
     fun upsertsOf(entity: RaftSyncRowEntity): Map<String, JsonObject> = upserts[entity].orEmpty()
 
@@ -113,6 +123,10 @@ import kotlin.time.TimeSource
     val addedChannels = LinkedHashSet<String>()
     val removed = ArrayList<RaftSyncChange.ScopeRemoved>()
     val inboxRows = LinkedHashMap<String, RaftSyncInboxRowChange>()
+    // (taskId, channelId?) -> latest TaskUpsert or TaskDelete so moved tasks keep both old-channel
+    // delete and new-channel upsert (matching slock services/syncChanges.ts `coalesce`).
+    val taskRows = LinkedHashMap<Pair<String, String?>, RaftSyncTaskChange>()
+    val taskResnapshotChannels = LinkedHashSet<String>()
     for (change in this) {
         when (change) {
             is RaftSyncChange.Upsert -> rows.getOrPut(change.entity) { LinkedHashMap() }.apply {
@@ -159,6 +173,8 @@ import kotlin.time.TimeSource
                         stale.remove(channelId)
                         states.remove(channelId)
                         addedChannels.remove(channelId)
+                        taskRows.keys.removeAll { (_, ch) -> ch == channelId }
+                        taskResnapshotChannels.remove(channelId)
                     }
                     // The whole server left: nothing collected so far may be applied.
                     RaftSyncScopeKind.Server -> {
@@ -168,12 +184,40 @@ import kotlin.time.TimeSource
                         snapshots.clear()
                         addedChannels.clear()
                         inboxRows.clear()
+                        taskRows.clear()
+                        taskResnapshotChannels.clear()
                     }
                 }
             }
             is RaftSyncInboxRowChange -> inboxRows.apply {
                 remove(change.id)
                 put(change.id, change)
+            }
+            is RaftSyncChange.TaskUpsert -> {
+                val channelId =
+                    (change.row["channelId"] as? JsonPrimitive)
+                        ?.takeIf { it.isString }
+                        ?.content
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                val key = change.id to channelId
+                taskRows.remove(key)
+                taskRows[key] = change
+            }
+            is RaftSyncChange.TaskDelete -> {
+                val channelId = change.channelId.trim().takeIf { it.isNotEmpty() }
+                val key = change.id to channelId
+                taskRows.remove(key)
+                taskRows[key] = change
+            }
+            is RaftSyncChange.TaskResnapshot -> {
+                val channelId = change.channelId.trim().takeIf { it.isNotEmpty() }
+                if (channelId != null) {
+                    taskRows.keys.removeAll { (_, ch) -> ch == channelId }
+                    taskResnapshotChannels += channelId
+                } else {
+                    snapshots += RaftSyncSnapshot.Tasks
+                }
             }
             is RaftSyncChange.Resnapshot -> snapshots += change.snapshots
         }
@@ -197,6 +241,8 @@ import kotlin.time.TimeSource
         removedScopes = removed,
         // Applied in seq order (stable: the server's order within one seq; message rows share the response's).
         inboxRows = inboxRows.values.sortedBy { it.seq },
+        taskChanges = taskRows.values.sortedBy { it.seq },
+        taskResnapshotChannelIds = taskResnapshotChannels,
     )
 }
 

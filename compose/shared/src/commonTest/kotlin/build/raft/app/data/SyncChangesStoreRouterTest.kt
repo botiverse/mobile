@@ -88,6 +88,28 @@ class SyncChangesStoreRouterTest {
             calls += "message_rows"
             this.messages += messages
         }
+
+        val taskMutations = mutableListOf<SharedSyncedTaskMutation>()
+        val droppedTaskChannels = mutableListOf<Set<String>>()
+        val taskRefreshes = mutableListOf<Set<String>?>()
+        var tasksOk = true
+
+        override suspend fun applyTaskChanges(serverId: String, mutations: List<SharedSyncedTaskMutation>): Set<String> {
+            calls += "task_changes"
+            taskMutations += mutations
+            return emptySet()
+        }
+
+        override suspend fun dropChannelTasks(serverId: String, channelIds: Set<String>) {
+            calls += "drop_channel_tasks"
+            droppedTaskChannels += channelIds
+        }
+
+        override suspend fun refreshTasks(serverId: String, channelIds: Set<String>?, reason: String): Boolean {
+            calls += "tasks"
+            taskRefreshes += channelIds
+            return tasksOk
+        }
     }
 
     private val targets = RecordingTargets()
@@ -232,14 +254,16 @@ class SyncChangesStoreRouterTest {
     @Test
     fun `an added channel scope retakes the channel snapshots and only its member roster`() = runTest {
         apply(syncScope(1, "channel", "room-1", "added", syncChannelScopeSnapshots))
-        assertEquals(listOf("home", "activity", "channel_members"), targets.calls)
+        assertEquals(listOf("tasks", "home", "activity", "channel_members"), targets.calls)
         assertEquals(listOf<Set<String>?>(setOf("room-1")), targets.channelMemberRefreshes)
+        assertEquals(listOf<Set<String>?>(setOf("room-1")), targets.taskRefreshes)
     }
 
     @Test
     fun `a removed channel reloads Home and Activity and a removed server validates its access`() = runTest {
         apply(syncScope(1, "channel", "room-1", "removed", syncChannelScopeSnapshots))
-        assertEquals(listOf("home", "activity"), targets.calls)
+        assertEquals(listOf("drop_channel_tasks", "home", "activity"), targets.calls)
+        assertEquals(listOf(setOf("room-1")), targets.droppedTaskChannels)
 
         targets.calls.clear()
         apply(syncScope(2, "server", "server-1", "removed", syncAllSnapshotNames))
@@ -255,8 +279,9 @@ class SyncChangesStoreRouterTest {
     @Test
     fun `snapshot reloads cover every store and fail when the roster fails`() = runTest {
         assertTrue(router.reloadSnapshots(syncTestScope, RaftSyncSnapshot.All, reason = "first_sync"))
-        assertEquals(listOf("home", "activity", "roster_reload", "machines_reload", "channel_members"), targets.calls)
+        assertEquals(listOf("home", "activity", "roster_reload", "machines_reload", "channel_members", "tasks"), targets.calls)
         assertEquals(listOf<Set<String>?>(null), targets.channelMemberRefreshes)
+        assertEquals(listOf<Set<String>?>(null), targets.taskRefreshes)
 
         targets.calls.clear()
         targets.rosterResults = listOf(serverUnavailable)
