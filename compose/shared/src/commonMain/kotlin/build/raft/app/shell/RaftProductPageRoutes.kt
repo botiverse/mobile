@@ -26,6 +26,8 @@ internal fun appShellTabProductPageView(tab: String): RaftProductPageView? =
         "more" -> RaftProductPageView(RaftPageRoute.More)
         "members" -> RaftProductPageView(RaftPageRoute.Members)
         "settings" -> RaftProductPageView(RaftPageRoute.Settings)
+        RaftAppDestination.Computers.id -> RaftProductPageView(RaftPageRoute.Computers)
+        RaftAppDestination.Apps.id -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Integrations)
         else -> null
     }
 

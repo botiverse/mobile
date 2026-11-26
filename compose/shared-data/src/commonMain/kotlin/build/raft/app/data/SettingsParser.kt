@@ -1045,6 +1045,7 @@ fun parseSharedSettingsSidebarOrder(bodyText: String): SettingsServerSidebarOrde
             ),
         sectionsVersion = order.sectionsVersion,
         railPlaces = parseRaftRailPlacesBody(bodyText),
+        mobilePlaces = parseRaftMobilePlacesBody(bodyText),
     )
 }.getOrNull()
 

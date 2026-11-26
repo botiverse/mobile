@@ -806,11 +806,13 @@ private fun ArtifactsHomeList(
                     } else {
                         if (twoColList) GridCells.Fixed(2) else GridCells.Fixed(1)
                     }
+                val phoneTabBottomInset = LocalRaftPhoneTabRootBottomInset.current
+                val bottomPadding = phoneTabBottomInset ?: (24.dp + raftBottomSafeAreaPadding())
                 val contentPadding =
                     if (isGrid) {
-                        PaddingValues(start = ArtifactsHomeMargin, end = ArtifactsHomeMargin, top = 4.dp, bottom = 24.dp + raftBottomSafeAreaPadding())
+                        PaddingValues(start = ArtifactsHomeMargin, end = ArtifactsHomeMargin, top = 4.dp, bottom = bottomPadding)
                     } else {
-                        PaddingValues(top = 4.dp, bottom = 24.dp + raftBottomSafeAreaPadding())
+                        PaddingValues(top = 4.dp, bottom = bottomPadding)
                     }
                 // Full-span items inside the grid already inherit horizontal padding; in list view they add their own margin.
                 val headerPadding = if (isGrid) 0.dp else ArtifactsHomeMargin

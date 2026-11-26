@@ -45,37 +45,86 @@ internal const val AppShellSearchTabKey = "search"
  */
 internal val AppShellMoreChildTabKeys: Set<String> = setOf("members", "more")
 
+/**
+ * Shell tabs that can be promoted onto the phone bottom tab bar when `tab_bar_places_v0` is ON,
+ * or otherwise open from the server panel as pushed pages with Back.
+ */
+internal val AppShellPromotablePhoneTabKeys: Set<String> =
+    setOf(
+        RaftAppDestination.Artifacts.id,
+        RaftAppDestination.Members.id,
+        RaftAppDestination.Computers.id,
+        RaftAppDestination.Apps.id,
+    )
+
+/**
+ * Whether [tab] is currently a pushed More/Server child page on the phone (carries Back, hides
+ * bottom bar) for the active [phoneTabKeys]. Any promotable tab currently on [phoneTabKeys] is a
+ * top-level phone bottom tab instead.
+ */
+internal fun appShellIsMoreChildTab(
+    tab: String,
+    phoneTabKeys: List<String> = AppShellPhoneBottomBarKeys,
+): Boolean {
+    val retained = retainedAppShellSelectedTab(tab)
+    if (retained == AppShellServerTabKey) return true
+    if (retained in phoneTabKeys) return false
+    return retained in AppShellMoreChildTabKeys || retained in AppShellPromotablePhoneTabKeys
+}
+
 /** The bottom-bar key that shows as selected for [selectedTab]. */
-internal fun appShellPhoneBottomBarSelectedKey(selectedTab: String): String {
+internal fun appShellPhoneBottomBarSelectedKey(
+    selectedTab: String,
+    phoneTabKeys: List<String> = AppShellPhoneBottomBarKeys,
+): String {
     val tab = retainedAppShellSelectedTab(selectedTab)
-    return if (tab in AppShellMoreChildTabKeys || tab == "settings") "more" else tab
+    if (tab == "dms") return tab
+    if (tab in phoneTabKeys && tab != AppShellServerTabKey) return tab
+    return if (appShellIsMoreChildTab(tab, phoneTabKeys) || tab == "settings" || tab !in phoneTabKeys) {
+        AppShellServerTabKey
+    } else {
+        tab
+    }
 }
 
 /**
- * Where Back goes from [selectedTab] on the phone layout: a server page (Members, Settings)
- * returns to [origin], the page that showed when the server panel opened it; opened any other
- * way (a deep link) it returns to Home. Null means the ordinary shell Back rules apply. The
- * wide rail lists them as rail roots, so it never pops them.
+ * Where Back goes from [selectedTab] on the phone layout: a server page (Members, Settings, or a
+ * non-promoted Artifacts/Computers/Apps tab) returns to [origin], the page that showed when the
+ * server panel opened it; opened any other way (a deep link) it returns to the primary phone tab.
+ * Null means the ordinary shell Back rules apply. The wide rail lists them as rail roots, so it
+ * never pops them.
  */
-internal fun appShellMoreChildBackTarget(selectedTab: String, navRailActive: Boolean, origin: String? = null): String? =
-    if (!navRailActive && retainedAppShellSelectedTab(selectedTab) in AppShellMoreChildTabKeys) {
-        appShellServerPageBackTarget(origin)
+internal fun appShellMoreChildBackTarget(
+    selectedTab: String,
+    navRailActive: Boolean,
+    origin: String? = null,
+    phoneTabKeys: List<String> = AppShellPhoneBottomBarKeys,
+): String? =
+    if (!navRailActive && appShellIsMoreChildTab(selectedTab, phoneTabKeys)) {
+        appShellServerPageBackTarget(origin, phoneTabKeys)
     } else {
         null
     }
 
-/** A server page's Back: its origin when that is a tab root of the phone bar, else Home. */
-internal fun appShellServerPageBackTarget(origin: String?): String =
-    origin?.takeIf { it in AppShellPhoneBottomBarKeys && it != AppShellServerTabKey } ?: "home"
+/** A server page's Back: its origin when that is a tab root of the phone bar, else the bar's first tab. */
+internal fun appShellServerPageBackTarget(
+    origin: String?,
+    phoneTabKeys: List<String> = AppShellPhoneBottomBarKeys,
+): String =
+    origin?.takeIf { it in phoneTabKeys && it != AppShellServerTabKey } ?: appShellPhonePrimaryTabKey(phoneTabKeys)
 
 /**
  * The origin to remember when the server panel opens a server page while [selectedTab] shows:
  * that tab, or — when a server page is already showing (Settings -> panel -> Members) — the
  * origin it had, so Back still lands where the person started.
  */
-internal fun appShellServerPageOrigin(selectedTab: String, currentOrigin: String?): String? {
+internal fun appShellServerPageOrigin(
+    selectedTab: String,
+    currentOrigin: String?,
+    phoneTabKeys: List<String> = AppShellPhoneBottomBarKeys,
+): String? {
     val tab = retainedAppShellSelectedTab(selectedTab)
-    return if (tab in AppShellMoreChildTabKeys) currentOrigin else tab
+    return if (appShellIsMoreChildTab(tab, phoneTabKeys)) currentOrigin else tab
 }
 
 /**
@@ -300,11 +349,20 @@ internal fun appShellSearchHandoffTarget(navRailActive: Boolean): AppShellSearch
  */
 internal const val AppShellServerTabKey = "more"
 
-/** The server's pages in the server panel, in order; each opens the page the More row opened. */
+/** The server's pages in the server panel; each opens the corresponding destination. */
 internal enum class RaftServerMenuEntry(val key: String) {
     /**
+     * Built-in places that can overflow into the Server panel when moved off the phone bottom bar
+     * under `tab_bar_places_v0` (never in [RaftDefaultServerMenuEntries] while the flag is OFF).
+     */
+    Home(RaftAppDestination.Chat.id),
+    Activity(RaftAppDestination.Activity.id),
+    Tasks(RaftAppDestination.Tasks.id),
+    Search(AppShellSearchTabKey),
+
+    /**
      * The Artifacts home (web MobileServerTab: first of the server's pages, behind the rail's gate,
-     * workspace_artifacts_v0; guests too). Not a shell tab: a pushed page.
+     * workspace_artifacts_v0; guests too). Not a shell tab when off the bar: a pushed page.
      */
     Artifacts("artifacts"),
     Members(RaftAppDestination.Members.id),
@@ -317,6 +375,16 @@ internal enum class RaftServerMenuEntry(val key: String) {
         fun fromKey(key: String): RaftServerMenuEntry? = entries.firstOrNull { it.key == key }
     }
 }
+
+/** The default flag-off server panel entries, in canonical order. */
+internal val RaftDefaultServerMenuEntries: List<RaftServerMenuEntry> =
+    listOf(
+        RaftServerMenuEntry.Artifacts,
+        RaftServerMenuEntry.Members,
+        RaftServerMenuEntry.Computers,
+        RaftServerMenuEntry.Apps,
+        RaftServerMenuEntry.Settings,
+    )
 
 /**
  * The More dot moves to the menu row behind it (nav spec §4, D1a): an available app update is
@@ -337,7 +405,7 @@ internal data class RaftServerMenuModel(
     val servers: List<RaftServerSwitcherItem>,
     /** The server you are in: the tab's avatar and name, the menu's checked row. */
     val currentServer: RaftServerSwitcherItem,
-    val entries: List<RaftServerMenuEntry> = RaftServerMenuEntry.entries,
+    val entries: List<RaftServerMenuEntry> = RaftDefaultServerMenuEntries,
     /** Menu rows that wear the attention pixel. */
     val attentionEntries: Set<RaftServerMenuEntry> = emptySet(),
     /** Another server has unread: the avatar's attention light (as on the Home switcher). */

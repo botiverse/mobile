@@ -347,6 +347,17 @@ internal fun rememberRaftArtifactOpener(
             val opened =
                 currentOpenPageOverride?.invoke(target, host.openStoreScope, conversation)
                     ?: host.pager.openRaftArtifactViewerPage(target, host.openStoreScope, conversation)
+            if (opened && scope != null) {
+                val recentTitle = header?.title?.trim()?.takeIf { it.isNotEmpty() }
+                if (recentTitle != null) {
+                    host.sharedStores.mobileRecentlyUsedStore.recordArtifact(
+                        accountId = scope.accountId,
+                        serverId = scope.serverId,
+                        artifactId = target.id,
+                        title = recentTitle,
+                    )
+                }
+            }
             if (!opened) {
                 RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_page_scope")
                 currentFallback(target)

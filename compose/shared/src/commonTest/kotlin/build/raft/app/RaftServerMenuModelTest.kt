@@ -14,7 +14,7 @@ class RaftServerMenuModelTest {
     @Test
     fun wideScreenPopoverHasNoPagesRowThePhoneKeepsIt() {
         // raft-design #741 (navigation.md, "The server in the apps' desktop mode").
-        val all = RaftServerMenuEntry.entries
+        val all = RaftDefaultServerMenuEntries
         assertEquals(all - RaftServerMenuEntry.Artifacts, raftServerMenuEntriesFor(all, wide = false, guest = false), "the phone keeps every page")
         // web MobileServerTab: Artifacts first, only behind workspace_artifacts_v0, guests too.
         assertEquals(all, raftServerMenuEntriesFor(all, wide = false, guest = false, artifacts = true))

@@ -8,14 +8,17 @@ internal const val AppShellTabHistoryCap = 8
  * pages, Members and Settings, carry their own Back to the page they were opened from), or the
  * wide rail's tab entries (Search there is the rail's inline cover, not a tab).
  */
-internal fun appShellTabHistoryRoots(navRailActive: Boolean): Set<String> =
+internal fun appShellTabHistoryRoots(
+    navRailActive: Boolean,
+    phoneTabKeys: List<String> = AppShellPhoneBottomTabKeys,
+): Set<String> =
     if (navRailActive) {
         (RaftNavPresentation.Rail.destinations + RaftNavPresentation.Rail.footer)
             .map { it.id }
             .filter { retainedAppShellSelectedTab(it) == it }
             .toSet()
     } else {
-        AppShellPhoneBottomTabKeys.filter { it !in AppShellMoreChildTabKeys }.toSet()
+        phoneTabKeys.filter { it != AppShellServerTabKey && !appShellIsMoreChildTab(it, phoneTabKeys) }.toSet()
     }
 
 /**
@@ -55,9 +58,14 @@ internal data class AppShellTabHistory(val tabs: List<String> = emptyList()) {
 
     /**
      * Where Back on the [current] tab root goes: the newest earlier tab still among [roots], else
-     * Home when [current] is another tab, else null (Home with nothing earlier: leave the app).
+     * [primaryTab] when [current] is another tab, else null ([primaryTab] with nothing earlier:
+     * leave the app).
      */
-    fun backTarget(current: String, roots: Set<String>): String? {
-        return tabs.lastOrNull { it != current && it in roots } ?: "home".takeIf { current != "home" }
+    fun backTarget(
+        current: String,
+        roots: Set<String>,
+        primaryTab: String = "home",
+    ): String? {
+        return tabs.lastOrNull { it != current && it in roots } ?: primaryTab.takeIf { current != primaryTab }
     }
 }

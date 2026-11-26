@@ -38,6 +38,7 @@ internal fun SettingsDetailShell(
     // The wide Settings detail pane (SettingsWideListDetail): the list beside it is the way back,
     // so no Back, and the head sits under the wide top bar (no status-bar inset).
     val wideDetail = LocalRaftSettingsWideDetail.current
+    val phoneTabRoot = LocalRaftPhoneTabRoot.current
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         RaftTopPageHeader(
             title = title,
@@ -46,7 +47,7 @@ internal fun SettingsDetailShell(
             backgroundColor = RaftColor.SurfaceWhite,
             applyTopSafeArea = applyTopSafeArea && !wideDetail,
             headerHeight = headerHeight,
-            onBack = settingsDetailHeaderBack(onBack, wideDetail),
+            onBack = settingsDetailHeaderBack(onBack, wideDetail || phoneTabRoot),
             titleContent = titleContent,
             trailingContent = if (trailingContent != null) {
                 { trailingContent() }

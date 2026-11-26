@@ -66,6 +66,7 @@ internal fun RealtimeEvent.performanceMarkerName(): String =
         is build.raft.app.model.JointInvitesChanged -> "joint_invites_changed"
         is build.raft.app.model.PermissionUpdatesChanged -> "permission_updates_changed"
         is build.raft.app.model.RailPlacesUpdated -> "rail_places_updated"
+        is build.raft.app.model.MobilePlacesUpdated -> "mobile_places_updated"
         is ServerAppearanceUpdated -> "appearance_updated"
         is build.raft.app.model.UserProfileUpdated -> "user_profile_updated"
         is build.raft.app.model.ProductFeedbackUnreadUpdated -> "product_feedback_unread"
@@ -127,6 +128,7 @@ internal fun RealtimeEvent.performanceMarkerPhase(): String =
         is PerReceiverReadStateChanged,
         is ActivityDoneUpdated,
         is build.raft.app.model.RailPlacesUpdated,
+        is build.raft.app.model.MobilePlacesUpdated,
         is PerReceiverNotificationPrefsChanged,
         is ServerNotificationPreferencesChanged,
         is PerReceiverPinnedChanged,
@@ -281,6 +283,7 @@ private fun RealtimeEvent.serverIdHint(): ServerId? =
         is build.raft.app.model.JointInvitesChanged -> serverId
         is build.raft.app.model.PermissionUpdatesChanged -> serverId
         is build.raft.app.model.RailPlacesUpdated -> serverId
+        is build.raft.app.model.MobilePlacesUpdated -> serverId
         is ServerAppearanceUpdated -> serverId
         is build.raft.app.model.UserProfileUpdated -> serverId
         else -> null

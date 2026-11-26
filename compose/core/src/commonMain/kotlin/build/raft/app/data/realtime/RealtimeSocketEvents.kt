@@ -134,6 +134,14 @@ object RealtimeSocketEvents {
      */
     const val RailPlacesUpdated = GeneratedRealtimeContract.SocketEvent.RailPlacesUpdated
 
+    /**
+     * `mobile_places:updated` (botiverse/slock #16964 `routes/servers.ts` `emitMobilePlacesUpdated`):
+     * the person changed their per-server mobile/tablet navigation places (`mobilePlaces`,
+     * `mobilePlacesVersion`) on another client. Sent to `user:<id>` with
+     * `{ serverId, mobilePlaces, mobilePlacesVersion }`.
+     */
+    const val MobilePlacesUpdated = GeneratedRealtimeContract.SocketEvent.MobilePlacesUpdated
+
     // task #459: server-qualified notification stream, emitted to the caller's
     // `user:<id>` room at the sendPushNotifications call point (server PR
     // #4233, staging 31042ed06).

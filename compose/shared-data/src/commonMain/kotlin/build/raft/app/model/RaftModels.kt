@@ -1911,6 +1911,18 @@ data class RailPlacesUpdated(
     val placesVersion: Int,
 ) : RealtimeEvent
 
+/**
+ * `mobile_places:updated` (botiverse/slock #16964 `routes/servers.ts` `emitMobilePlacesUpdated`),
+ * sent to the person's own room (`user:<id>`) when their per-server phone/tablet navigation places
+ * change on any client.
+ */
+@Serializable
+data class MobilePlacesUpdated(
+    val serverId: ServerId,
+    val mobilePlaces: List<build.raft.app.data.RaftRailPlace>,
+    val mobilePlacesVersion: Int,
+) : RealtimeEvent
+
 @Serializable
 data class AgentCreated(
     val agent: AgentProfile
