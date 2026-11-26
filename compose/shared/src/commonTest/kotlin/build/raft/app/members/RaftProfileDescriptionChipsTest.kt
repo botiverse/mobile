@@ -88,7 +88,7 @@ class RaftProfileDescriptionChipsTest {
         val links = content.text.getLinkAnnotations(0, content.text.length)
         val chipLink = links.first { (it.item as? LinkAnnotation.Clickable)?.tag == RaftProfileDescriptionArtifactTag }.item as LinkAnnotation.Clickable
         chipLink.linkInteractionListener!!.onClick(chipLink)
-        assertEquals(listOf(target to summary), opened)
+        assertEquals(listOf<Pair<ArtifactLinkTarget, ArtifactSummary?>>(target to summary), opened.toList())
         assertEquals(0, textClicks)
 
         val bodyLink = links.first { (it.item as? LinkAnnotation.Clickable)?.tag != RaftProfileDescriptionArtifactTag }.item as LinkAnnotation.Clickable
@@ -116,7 +116,7 @@ class RaftProfileDescriptionChipsTest {
                 .first { (it.item as? LinkAnnotation.Clickable)?.tag == RaftProfileDescriptionArtifactUnavailableTag }
                 .item as LinkAnnotation.Clickable
         unavailableLink.linkInteractionListener!!.onClick(unavailableLink)
-        assertEquals(listOf(target to null), openedUnavailable)
+        assertEquals(listOf<Pair<ArtifactLinkTarget, ArtifactSummary?>>(target to null), openedUnavailable.toList())
 
         val openedPending = mutableListOf<Pair<ArtifactLinkTarget, ArtifactSummary?>>()
         val pending =
@@ -135,7 +135,7 @@ class RaftProfileDescriptionChipsTest {
                 .first { (it.item as? LinkAnnotation.Clickable)?.tag == RaftProfileDescriptionArtifactPendingTag }
                 .item as LinkAnnotation.Clickable
         pendingLink.linkInteractionListener!!.onClick(pendingLink)
-        assertEquals(listOf(target to null), openedPending)
+        assertEquals(listOf<Pair<ArtifactLinkTarget, ArtifactSummary?>>(target to null), openedPending.toList())
     }
 
     @Test

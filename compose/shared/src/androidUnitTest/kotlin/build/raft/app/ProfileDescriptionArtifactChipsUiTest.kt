@@ -206,7 +206,7 @@ class ProfileDescriptionArtifactChipsUiTest {
             node.performTouchInput { click(chipCenter) }
             waitForIdle()
 
-            assertEquals(listOf(TARGET to SAMPLE_SUMMARY), opened)
+            assertEquals(listOf<Pair<ArtifactLinkTarget, ArtifactSummary?>>(TARGET to SAMPLE_SUMMARY), opened.toList())
         }
 
     @Test
@@ -236,7 +236,7 @@ class ProfileDescriptionArtifactChipsUiTest {
             val layout = layoutFor(TITLE)
             subtitleNode.performTouchInput { click(layout.centerOf(TITLE)) }
             waitForIdle()
-            assertEquals(listOf(TARGET to SAMPLE_SUMMARY), opened)
+            assertEquals(listOf<Pair<ArtifactLinkTarget, ArtifactSummary?>>(TARGET to SAMPLE_SUMMARY), opened.toList())
             assertEquals(0, popoverClicks)
 
             subtitleNode.performTouchInput { click(layout.centerOf("Docs:")) }
@@ -295,7 +295,7 @@ class ProfileDescriptionArtifactChipsUiTest {
             profileNode.performTouchInput { click(layoutFor("Private doc:").centerOf("Artifact")) }
             waitForIdle()
 
-            assertEquals(listOf(TARGET to null, TARGET to null), opened)
+            assertEquals(listOf<Pair<ArtifactLinkTarget, ArtifactSummary?>>(TARGET to null, TARGET to null), opened.toList())
         }
 
     @Test
@@ -378,7 +378,7 @@ class ProfileDescriptionArtifactChipsUiTest {
             pendingNode.assertIsDisplayed()
             pendingNode.performTouchInput { click(layoutFor("Pending:").centerOf("Artifact")) }
             waitForIdle()
-            assertEquals(listOf(TARGET to null), openedLoading)
+            assertEquals(listOf<Pair<ArtifactLinkTarget, ArtifactSummary?>>(TARGET to null), openedLoading.toList())
 
             // Deleted chip renders deleted title + "deleted" suffix and does not open.
             val deletedNode = onNode(hasText("Archived: Old spec deleted", substring = true), useUnmergedTree = true)
