@@ -188,6 +188,72 @@ class SharedSettingsAvatarCacheTest {
         }
     }
 
+    @Test
+    fun inAppBrowserStorageRowAppendedAndClearedViaHook() = runBlocking {
+        var hookCalls = 0
+        var hookResult = true
+        val capabilities =
+            object : SharedSettingsPlatformCapabilities {
+                override suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
+                    DataResult.Content(
+                        SharedSettingsStorageSnapshot(
+                            totalSizeLabel = "1.0 MB",
+                            rows =
+                                listOf(
+                                    SharedSettingsStorageRow(
+                                        target = "imageCache",
+                                        title = "Image cache",
+                                        detail = "Downloaded image previews kept for faster viewing.",
+                                        sizeLabel = "1.0 MB",
+                                        clearEnabled = true,
+                                    ),
+                                ),
+                        ),
+                    )
+
+                override suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> =
+                    loadStorage()
+            }
+
+        // Without clearInAppBrowserStorage injected, the row is omitted and clear fails unsupported.
+        val withoutHookDataSource =
+            SharedSettingsDataSource(
+                sessionStore = InMemoryRaftAuthSessionStore(fixtures.sampleSession()),
+                platformCapabilities = capabilities,
+            )
+        val withoutHook = withoutHookDataSource.loadStorage() as DataResult.Content
+        assertEquals(listOf("imageCache"), withoutHook.data.rows.map { it.target })
+        val unsupported = withoutHookDataSource.clearStorage(SETTINGS_STORAGE_TARGET_IN_APP_BROWSER)
+        assertEquals(true, unsupported is DataResult.Error)
+
+        // With clearInAppBrowserStorage injected, loadStorage and clearStorage("imageCache") keep the row.
+        val withHookDataSource =
+            SharedSettingsDataSource(
+                sessionStore = InMemoryRaftAuthSessionStore(fixtures.sampleSession()),
+                platformCapabilities = capabilities,
+                clearInAppBrowserStorage = {
+                    hookCalls += 1
+                    hookResult
+                },
+            )
+        val withHook = withHookDataSource.loadStorage() as DataResult.Content
+        assertEquals(listOf("imageCache", SETTINGS_STORAGE_TARGET_IN_APP_BROWSER), withHook.data.rows.map { it.target })
+        val afterImageClear = withHookDataSource.clearStorage("imageCache") as DataResult.Content
+        assertEquals(listOf("imageCache", SETTINGS_STORAGE_TARGET_IN_APP_BROWSER), afterImageClear.data.rows.map { it.target })
+
+        // Clearing inAppBrowser invokes the hook and returns refreshed snapshot with localized feedback key.
+        val cleared = withHookDataSource.clearStorage(SETTINGS_STORAGE_TARGET_IN_APP_BROWSER) as DataResult.Content
+        assertEquals(1, hookCalls)
+        assertEquals(SETTINGS_STORAGE_FEEDBACK_IN_APP_BROWSER_CLEARED, cleared.data.feedback)
+        assertEquals(listOf("imageCache", SETTINGS_STORAGE_TARGET_IN_APP_BROWSER), cleared.data.rows.map { it.target })
+
+        // Hook failure surfaces an error without claiming success.
+        hookResult = false
+        val failed = withHookDataSource.clearStorage(SETTINGS_STORAGE_TARGET_IN_APP_BROWSER)
+        assertEquals(2, hookCalls)
+        assertEquals(true, failed is DataResult.Error)
+    }
+
     private fun avatarRuntime(
         metadata: RecordingAvatarMetadataStore,
         owner: suspend (String?) -> RaftAvatarCacheOwner?

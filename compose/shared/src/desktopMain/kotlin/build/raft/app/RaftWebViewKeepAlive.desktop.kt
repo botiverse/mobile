@@ -78,12 +78,24 @@ suspend fun clearDesktopMacOsNativeDefaultStorage(
 }
 
 internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<String>) {
+    var nativeWebKitCleared = false
     try {
-        clearDesktopMacOsNativeDefaultStorage()
+        nativeWebKitCleared = clearDesktopMacOsNativeDefaultStorage()
     } catch (ce: CancellationException) {
         throw ce
     } catch (_: Throwable) {
         // Best-effort native WebKit cleanup; fall through to legacy disk cleanup.
+    }
+    if (origins.isEmpty() && (nativeWebKitCleared || MacOsNativeWebEngine.Default.isAlreadyLoaded)) {
+        try {
+            MacOsNativeWebEngine.Default.clearIsolationScopeAndAwait(
+                scope = WebIsolationScope.Named(RAFT_THIRD_PARTY_STORAGE_SCOPE_ID),
+                timeoutMs = 2_000L,
+            )
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Throwable) {
+        }
     }
     // Authenticated desktop WebViews use incognito/ephemeral storage (so macOS Wry never writes
     // tokens to ~/Library/WebKit); also purge any legacy disk webview directory off the caller thread.
@@ -92,6 +104,17 @@ internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<Str
             val dir = RaftDesktopPaths.existingWebViewDataDirOrNull() ?: return@runCatching
             dir.listFiles()?.forEach { child -> runCatching { child.deleteRecursively() } }
         }
+    }
+}
+
+internal actual suspend fun raftClearPlatformInAppBrowserStorage(): Boolean {
+    return try {
+        raftClearPlatformWebViewAuthStorage(emptySet())
+        true
+    } catch (ce: CancellationException) {
+        throw ce
+    } catch (_: Throwable) {
+        false
     }
 }
 

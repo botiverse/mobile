@@ -6664,4 +6664,11 @@
     <string name="agent_voice_call_problem_unsupported_runtime">%1$s은(는) 전화를 받을 수 없어요.</string>
     <string name="agent_voice_call_problem_rate_limited">지금은 통화를 너무 많이 했어요. 나중에 다시 시도하세요.</string>
     <string name="agent_voice_call_problem_failed">통화를 연결하지 못했어요. 다시 시도하세요.</string>
+    <string name="settings_storage_row_in_app_browser">인앱 브라우저</string>
+    <string name="settings_storage_row_in_app_browser_detail">Raft에서 연 웹페이지의 캐시와 쿠키입니다.</string>
+    <string name="settings_storage_clear_in_app_browser">브라우저 캐시 및 쿠키 삭제</string>
+    <string name="settings_storage_feedback_in_app_browser_cleared">인앱 브라우저 캐시와 쿠키를 삭제했습니다.</string>
+    <string name="in_app_browser_external_app_title">다른 앱에서 여시겠습니까?</string>
+    <string name="in_app_browser_external_app_message">이 페이지가 다른 앱에서 "%1$s"을(를) 열려고 합니다.</string>
+    <string name="in_app_browser_external_app_open">열기</string>
 </resources>

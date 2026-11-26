@@ -727,7 +727,7 @@ internal class RaftAndroidSandboxWebView(
                     if (!allowNewWindows) {
                         // Multiple windows are off on this surface: route any anchor link as a blocked page.
                         val link = extractAndroidHitTestLinkUrl(view?.hitTestResult)
-                        notifyNavigationBlocked(link)
+                        notifyNavigationBlocked(link, isUserGesture = isUserGesture)
                         return false
                     }
                     if (!isUserGesture || !isForegroundWindow()) {
@@ -1216,7 +1216,7 @@ internal class RaftAndroidSandboxWebView(
         if (tryCatchMainFrameNavigation(configuredWebView, target, stopLoading = false)) {
             return
         }
-        if (shouldRouteMainFrameNavigation(target) || shouldBlockMainFrameNavigation(target)) {
+        if (shouldRouteMainFrameNavigation(target, isUserGesture = true) || shouldBlockMainFrameNavigation(target, isUserGesture = true)) {
             return
         }
         val decision =
@@ -1740,7 +1740,10 @@ internal class RaftAndroidSandboxWebView(
         if (target != null && tryCatchMainFrameNavigation(view, target, stopLoading = false)) {
             return true
         }
-        if (shouldRouteMainFrameNavigation(target) || shouldBlockMainFrameNavigation(target)) {
+        val isUserGesture = request.hasGesture()
+        if (shouldRouteMainFrameNavigation(target, isUserGesture = isUserGesture) ||
+            shouldBlockMainFrameNavigation(target, isUserGesture = isUserGesture)
+        ) {
             return true
         }
         if (target == null) return false
@@ -1808,28 +1811,28 @@ internal class RaftAndroidSandboxWebView(
             url == lastRoutedBlockedUrl &&
             (System.currentTimeMillis() - lastRoutedBlockedAtMs) in 0L..1_500L
 
-    private fun shouldRouteMainFrameNavigation(url: String?): Boolean {
+    private fun shouldRouteMainFrameNavigation(url: String?, isUserGesture: Boolean = false): Boolean {
         val target = url ?: return false
         if (wouldBlockMainFrameNavigation(target)) return false
         if (events.routesMainFrameNavigation?.invoke(target) != true) return false
         diagnosticsInfo("navigation_routed_as_link url=${target.formatUrlForLog()}")
         lastRoutedBlockedUrl = target
         lastRoutedBlockedAtMs = System.currentTimeMillis()
-        handleBlockedMainFrameNavigation(target)
+        handleBlockedMainFrameNavigation(target, isUserGesture = isUserGesture)
         return true
     }
 
-    private fun shouldBlockMainFrameNavigation(url: String?): Boolean {
+    private fun shouldBlockMainFrameNavigation(url: String?, isUserGesture: Boolean = false): Boolean {
         if (!wouldBlockMainFrameNavigation(url)) return false
-        handleBlockedMainFrameNavigation(url)
+        handleBlockedMainFrameNavigation(url, isUserGesture = isUserGesture)
         return true
     }
 
-    private fun handleBlockedMainFrameNavigation(url: String?) {
+    private fun handleBlockedMainFrameNavigation(url: String?, isUserGesture: Boolean = false) {
         if (destroyed) return
         currentIsLoading = false
         notifyNavigationState()
-        url?.let(::notifyNavigationBlocked)
+        url?.let { notifyNavigationBlocked(it, isUserGesture = isUserGesture) }
     }
 
     private fun shouldSilentlyBlockSubframeNavigation(url: String?): Boolean {
@@ -1917,9 +1920,10 @@ internal class RaftAndroidSandboxWebView(
         if (keepAliveKey != null) diagnosticsInfo("page_progress percent=$milestone ${loadElapsedField()}")
     }
 
-    private fun notifyNavigationBlocked(url: String) {
+    private fun notifyNavigationBlocked(url: String, isUserGesture: Boolean = false) {
         if (destroyed) return
         events.onNavigationBlocked(url)
+        events.onNavigationBlockedWithGesture?.invoke(url, isUserGesture)
     }
 
     private fun notifyUrlChange(url: String) {

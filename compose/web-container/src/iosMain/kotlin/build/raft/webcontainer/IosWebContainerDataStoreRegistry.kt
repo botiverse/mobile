@@ -4,7 +4,10 @@ package build.raft.webcontainer
 
 import build.raft.webcontainer.pool.WebIsolationClearResult
 import build.raft.webcontainer.pool.WebIsolationScopeManager
+import kotlin.coroutines.resume
 import kotlinx.cinterop.useContents
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import platform.Foundation.NSDate
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSUUID
@@ -62,6 +65,106 @@ object IosWebContainerDataStoreRegistry {
             },
             deletePlatformStore = { target -> deletePlatformStore(target, osMajorVersion) },
         )
+
+    /**
+     * Clears website data and suspends until WebKit finishes removing data (and, on iOS 17+ when
+     * no foreground views hold [scope], removing the persistent named data store identifier).
+     * Serializes with [cachedNamedStores] so two concurrent removals never race with
+     * `WKErrorDataStoreInUse`.
+     */
+    suspend fun clearIsolationScopeAndAwait(
+        scope: WebIsolationScope,
+        timeoutMs: Long = 2_000L,
+        osMajorVersion: Long = osMajorVersion(),
+    ): WebIsolationClearResult {
+        val epoch = NSDate.dateWithTimeIntervalSince1970(0.0)
+        val allTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+        var pendingAsyncStore: Pair<WKWebsiteDataStore?, NSUUID?>? = null
+        var inlineCall = true
+        val result =
+            scopeManager.clearIsolationScope(
+                scope = scope,
+                evictPooled = { target ->
+                    if (target == WebIsolationScope.Default) WebContainerIosSparePool.drop("clear_scope") else 0
+                },
+                deletePlatformStore = { target ->
+                    if (!inlineCall) {
+                        deletePlatformStore(target, osMajorVersion)
+                    } else {
+                        when (target) {
+                            WebIsolationScope.Default -> {
+                                pendingAsyncStore = WKWebsiteDataStore.defaultDataStore() to null
+                                true
+                            }
+                            WebIsolationScope.Ephemeral -> true
+                            is WebIsolationScope.Named -> {
+                                val cached = cachedNamedStores.remove(target.id)
+                                val uuid =
+                                    if (osMajorVersion >= 17L) {
+                                        NSUUID(uUIDString = deriveDeterministicScopeUuid(target.id))
+                                    } else {
+                                        null
+                                    }
+                                val storeToClear =
+                                    cached ?: uuid?.let { WKWebsiteDataStore.dataStoreForIdentifier(it) }
+                                pendingAsyncStore = storeToClear to uuid
+                                true
+                            }
+                        }
+                    }
+                },
+            )
+        inlineCall = false
+        val targetPair = pendingAsyncStore
+        if (targetPair != null) {
+            val (store, uuid) = targetPair
+            withTimeoutOrNull(timeoutMs) {
+                suspendCancellableCoroutine<Unit> { cont ->
+                    runCatching {
+                        when {
+                            store != null -> {
+                                store.removeDataOfTypes(allTypes, epoch) {
+                                    if (uuid != null) {
+                                        WKWebsiteDataStore.removeDataStoreForIdentifier(uuid) { _ ->
+                                            if (cont.isActive) cont.resume(Unit)
+                                        }
+                                    } else if (cont.isActive) {
+                                        cont.resume(Unit)
+                                    }
+                                }
+                            }
+                            uuid != null -> {
+                                WKWebsiteDataStore.removeDataStoreForIdentifier(uuid) { _ ->
+                                    if (cont.isActive) cont.resume(Unit)
+                                }
+                            }
+                            else -> if (cont.isActive) cont.resume(Unit)
+                        }
+                    }.onFailure {
+                        if (cont.isActive) cont.resume(Unit)
+                    }
+                }
+            }
+        } else if (scope is WebIsolationScope.Named && result == WebIsolationClearResult.DEFERRED_ACTIVE_INSTANCES) {
+            // Foreground views are still closing (deferred deletePlatformStore will remove the
+            // identifier once the last view detaches); still wipe cookies/storage data right now.
+            val activeStore = cachedNamedStores[scope.id]
+            if (activeStore != null) {
+                withTimeoutOrNull(timeoutMs) {
+                    suspendCancellableCoroutine<Unit> { cont ->
+                        runCatching {
+                            activeStore.removeDataOfTypes(allTypes, epoch) {
+                                if (cont.isActive) cont.resume(Unit)
+                            }
+                        }.onFailure {
+                            if (cont.isActive) cont.resume(Unit)
+                        }
+                    }
+                }
+            }
+        }
+        return result
+    }
 
     private fun deletePlatformStore(
         scope: WebIsolationScope,

@@ -6664,4 +6664,11 @@
     <string name="agent_voice_call_problem_unsupported_runtime">%1$s не принимает звонки.</string>
     <string name="agent_voice_call_problem_rate_limited">Вы сделали слишком много звонков. Попробуйте позже.</string>
     <string name="agent_voice_call_problem_failed">Не удалось подключить звонок. Попробуйте ещё раз.</string>
+    <string name="settings_storage_row_in_app_browser">Встроенный браузер</string>
+    <string name="settings_storage_row_in_app_browser_detail">Кэш веб-страниц и файлы cookie сайтов, открытых в Raft.</string>
+    <string name="settings_storage_clear_in_app_browser">Очистить кэш и cookie браузера</string>
+    <string name="settings_storage_feedback_in_app_browser_cleared">Кэш и cookie встроенного браузера очищены.</string>
+    <string name="in_app_browser_external_app_title">Открыть в другом приложении?</string>
+    <string name="in_app_browser_external_app_message">Эта страница хочет открыть «%1$s» в другом приложении.</string>
+    <string name="in_app_browser_external_app_open">Открыть</string>
 </resources>

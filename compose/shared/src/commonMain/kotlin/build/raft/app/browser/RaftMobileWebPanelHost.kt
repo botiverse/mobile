@@ -596,7 +596,17 @@ internal fun RaftMobileWebPanelBrowserBody(
     val forwardedToTemplate = stringResource(Res.string.mobile_web_panel_forwarded_to, "__RAFT_FORWARD_TARGET__")
     var forwardUrlToSend by remember(sessionKey) { mutableStateOf<String?>(null) }
     var forwardTitleToSend by remember(sessionKey) { mutableStateOf<String?>(null) }
-    val jsDialogsEnabled = panelVisible && forwardUrlToSend == null && signInUiState.sheet == null
+    var pendingExternalAppLaunch by remember(sessionKey) { mutableStateOf<RaftExternalAppLaunchDecision.ConfirmExternalApp?>(null) }
+    LaunchedEffect(panelVisible) {
+        if (!panelVisible) {
+            pendingExternalAppLaunch = null
+        }
+    }
+    val jsDialogsEnabled =
+        panelVisible &&
+            forwardUrlToSend == null &&
+            signInUiState.sheet == null &&
+            pendingExternalAppLaunch == null
     val jsDialogState = remember(sessionKey) { RaftWebJsDialogState(initialVisible = jsDialogsEnabled) }
     LaunchedEffect(jsDialogState, jsDialogsEnabled) {
         jsDialogState.onVisibilityChanged(jsDialogsEnabled)
@@ -764,6 +774,7 @@ internal fun RaftMobileWebPanelBrowserBody(
                         },
                         onLoadCommit = {
                             lastCommittedGeneration = navigationState.loadGeneration
+                            pendingExternalAppLaunch = null
                             signInHost.session.onPageCommitted()
                         },
                         onLoadSuccess = {
@@ -783,7 +794,7 @@ internal fun RaftMobileWebPanelBrowserBody(
                             loadError = reason.ifBlank { "webview_load_failed" }
                             bridge.logWarn("in_app_browser_load_failed")
                         },
-                        onNavigationBlocked = { blockedUrl ->
+                        onNavigationBlockedWithGesture = { blockedUrl, isUserGesture ->
                             if (handleAppStoreRestrictedPurchase(blockedUrl, closeCurrentPage = false)) {
                                 return@RaftWebView
                             }
@@ -791,7 +802,26 @@ internal fun RaftMobileWebPanelBrowserBody(
                                 routeRaftHostOut(blockedUrl, closeOnHandoff = false)
                                 return@RaftWebView
                             }
-                            externalNavigator.open(blockedUrl, RaftLinkOpenIntent.ForceExternal)
+                            when (
+                                val decision =
+                                    classifyRaftExternalAppLaunch(
+                                        rawUrl = blockedUrl,
+                                        isUserGesture = isUserGesture,
+                                        panelVisible = latestDetent != RaftMobileWebPanelDetent.Collapsed,
+                                    )
+                            ) {
+                                is RaftExternalAppLaunchDecision.OpenExternalWeb -> {
+                                    externalNavigator.open(decision.url, RaftLinkOpenIntent.ForceExternal)
+                                }
+                                is RaftExternalAppLaunchDecision.ConfirmExternalApp -> {
+                                    pendingExternalAppLaunch = decision
+                                }
+                                is RaftExternalAppLaunchDecision.Drop -> {
+                                    bridge.logWarn(
+                                        "external_app_launch_blocked reason=${decision.reason} scheme=${decision.scheme.orEmpty()}",
+                                    )
+                                }
+                            }
                         },
                         onNavigationStateChange = { nextState ->
                             val nextUrl = nextState.url.trim()
@@ -917,6 +947,17 @@ internal fun RaftMobileWebPanelBrowserBody(
     }
 
     RaftWebJsDialogHost(state = jsDialogState)
+
+    RaftExternalAppLaunchDialogHost(
+        request = pendingExternalAppLaunch,
+        onConfirm = { confirmed ->
+            pendingExternalAppLaunch = null
+            bridge.openUrl(confirmed.url, inBrowser = false)
+        },
+        onDismiss = {
+            pendingExternalAppLaunch = null
+        },
+    )
 
     val activeForwardUrl = forwardUrlToSend
     val activeAuthSession = authSnapshot.session

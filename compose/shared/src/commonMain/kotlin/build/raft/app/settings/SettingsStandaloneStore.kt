@@ -173,7 +173,8 @@ internal fun rememberStandaloneSettingsEnvironment(
                 apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
                 diagnosticsLogger = { message -> bridge.log("settings_standalone $message") },
-                pushPreviewModePreferenceStore = KeyValuePushPreviewModePreferenceStore(sharedPreferenceStore)
+                pushPreviewModePreferenceStore = KeyValuePushPreviewModePreferenceStore(sharedPreferenceStore),
+                clearInAppBrowserStorage = { raftClearInAppBrowserStorage() },
             ).withAvatarCacheRuntime(
                 runtime = sharedStores.avatarCacheRuntime,
                 nativeCache = avatarNativeCache

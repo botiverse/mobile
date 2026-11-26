@@ -940,7 +940,7 @@ internal class WebContainerAndroidView(
                     if (destroyed || parkedForKeepAlive || configuredWebView !== webView) return false
                     if (!config.navigationPolicy.allowNewWindows) {
                         val link = extractAndroidHitTestLinkUrl(view?.hitTestResult)
-                        notifyNavigationBlocked(link, "new_window_blocked")
+                        notifyNavigationBlocked(link, "new_window_blocked", isUserGesture = isUserGesture)
                         return false
                     }
                     if (!isUserGesture || !isForegroundVisibleAndActive(configuredWebView)) {
@@ -1507,7 +1507,7 @@ internal class WebContainerAndroidView(
             WebNavigationDecision.Allow -> false
             is WebNavigationDecision.InterceptedByHost -> true
             is WebNavigationDecision.Block -> {
-                notifyNavigationBlocked(decision.url, decision.reason)
+                notifyNavigationBlocked(decision.url, decision.reason, isUserGesture = isUserGesture)
                 true
             }
             is WebNavigationDecision.ReissueWithHeader -> {
@@ -1567,7 +1567,8 @@ internal class WebContainerAndroidView(
                 configuredWebView.loadUrl(decision.url, mapOf(decision.headerName to decision.headerValue))
             is WebNavigationDecision.ReissueWithoutHeader -> configuredWebView.loadUrl(decision.url)
             is WebNavigationDecision.InterceptedByHost -> Unit
-            is WebNavigationDecision.Block -> notifyNavigationBlocked(decision.url, decision.reason)
+            is WebNavigationDecision.Block ->
+                notifyNavigationBlocked(decision.url, decision.reason, isUserGesture = true)
         }
     }
 
@@ -2066,7 +2067,8 @@ internal class WebContainerAndroidView(
                     is WebNavigationDecision.ReissueWithHeader ->
                         webView.loadUrl(decision.url, mapOf(decision.headerName to decision.headerValue))
                     is WebNavigationDecision.ReissueWithoutHeader -> webView.loadUrl(decision.url)
-                    is WebNavigationDecision.Block -> notifyNavigationBlocked(decision.url, decision.reason)
+                    is WebNavigationDecision.Block ->
+                        notifyNavigationBlocked(decision.url, decision.reason, isUserGesture = false)
                     is WebNavigationDecision.InterceptedByHost -> Unit
                 }
             }
@@ -2145,6 +2147,7 @@ internal class WebContainerAndroidView(
     private fun notifyNavigationBlocked(
         url: String,
         reason: String,
+        isUserGesture: Boolean = false,
     ) {
         telemetrySink?.onEvent(
             WebContainerTelemetryEvent.NavigationBlocked(
@@ -2154,6 +2157,7 @@ internal class WebContainerAndroidView(
             ),
         )
         events.onNavigationBlocked(url, reason)
+        events.onNavigationBlockedWithGesture?.invoke(url, reason, isUserGesture)
     }
 
     private fun notifyNavigationState(force: Boolean = false) {

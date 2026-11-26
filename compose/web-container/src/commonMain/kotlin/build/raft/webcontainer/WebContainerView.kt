@@ -145,6 +145,8 @@ data class WebContainerEvents(
     val onLoadSuccess: () -> Unit = {},
     val onLoadFailure: (String) -> Unit = {},
     val onNavigationBlocked: (url: String, reason: String) -> Unit = { _, _ -> },
+    /** Optional richer variant of [onNavigationBlocked] carrying whether a real user gesture initiated it. */
+    val onNavigationBlockedWithGesture: ((url: String, reason: String, isUserGesture: Boolean) -> Unit)? = null,
     val onContentProbe: (Boolean?) -> Unit = {},
     val onContentProcessGone: (didCrash: Boolean) -> Unit = {},
     val onWatchdogTerminalError: (reason: String) -> Unit = {},
