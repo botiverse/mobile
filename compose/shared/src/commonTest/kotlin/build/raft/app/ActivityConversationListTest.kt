@@ -745,4 +745,65 @@ class ActivityConversationListTest {
             assertEquals(case.expected, next, case.name)
         }
     }
+
+    @Test
+    fun activityMuteByChannelIdIncludesEligibleDirectMessagesAndExcludesRegularDms() {
+        val snapshot =
+            homeSnapshot().copy(
+                channels =
+                    listOf(
+                        HomeChannelRow(
+                            threadId = ThreadId("general"),
+                            channelId = ChannelId("general"),
+                            name = "general",
+                            joined = true,
+                            activityNotificationPreference =
+                                ChannelActivityNotificationPreference(activityMuted = false, activityMuteSupported = true),
+                        ),
+                        HomeChannelRow(
+                            threadId = ThreadId("browse"),
+                            channelId = ChannelId("browse"),
+                            name = "browse",
+                            joined = false,
+                            activityNotificationPreference =
+                                ChannelActivityNotificationPreference(activityMuted = false, activityMuteSupported = true),
+                        ),
+                    ),
+                directMessages =
+                    listOf(
+                        HomeDirectMessageRow(
+                            threadId = ThreadId("dm-human"),
+                            channelId = ChannelId("dm-human"),
+                            name = "Alice",
+                            activityNotificationPreference =
+                                ChannelActivityNotificationPreference(activityMuted = false, activityMuteSupported = false),
+                        ),
+                        HomeDirectMessageRow(
+                            threadId = ThreadId("dm-app-bot"),
+                            channelId = ChannelId("dm-app-bot"),
+                            name = "GitHub Bot",
+                            activityNotificationPreference =
+                                ChannelActivityNotificationPreference(activityMuted = false, activityMuteSupported = true),
+                        ),
+                        HomeDirectMessageRow(
+                            threadId = ThreadId("dm-removed-bot"),
+                            channelId = ChannelId("dm-removed-bot"),
+                            name = "Old Bot",
+                            activityNotificationPreference =
+                                ChannelActivityNotificationPreference(activityMuted = true, activityMuteSupported = false),
+                        ),
+                    ),
+            )
+        val content = SharedHomeContentState.Content(snapshot = snapshot, session = session())
+
+        assertEquals(
+            mapOf(
+                "general" to false,
+                "dm-app-bot" to false,
+                "dm-removed-bot" to true,
+            ),
+            content.activityMuteByChannelId("server-1"),
+        )
+        assertEquals(emptyMap(), content.activityMuteByChannelId("server-2"))
+    }
 }

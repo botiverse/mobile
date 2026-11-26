@@ -217,16 +217,18 @@ internal enum class ActivitySwipeEndAction {
  * - a followed thread row (`kind == "thread" && isFollowing !== false`): Unfollow. Task conversations are
  *   thread rows there too (`unfollowTaskConversation`, the same `/channels/threads/unfollow` route, and
  *   its Undo follows by the conversation's own id).
- * - a channel row whose channel is joined and has a user-reachable Activity mute that is off
- *   (`canToggleActivityMute`): Mute Activity. [mutedByChannelId] holds exactly those channels
- *   ([activityMuteByChannelId]); an unknown or unjoined channel is absent and gets no Mute button, not a guess.
- * - DMs (no Activity mute), mention rows (a mute does not hold back a direct mention), system rows, an
- *   unfollowed thread and a muted channel: none.
+ * - a joined channel row or mute-eligible App-bot DM row whose Activity mute is off
+ *   (`canToggleActivityMute`): Mute Activity. [mutedByChannelId] holds exactly those conversations
+ *   ([activityMuteByChannelId]); an unknown/unjoined channel or non-muteable DM is absent and gets
+ *   no Mute button, not a guess.
+ * - ordinary DMs (no Activity mute), mention rows (a mute does not hold back a direct mention),
+ *   system rows, an unfollowed thread and an already-muted conversation: none.
  */
 internal fun InboxItem.activitySwipeEndAction(mutedByChannelId: Map<String, Boolean>): ActivitySwipeEndAction? =
     when {
         isFollowedActivityThread -> ActivitySwipeEndAction.UnfollowThread
-        kind == InboxItemKind.Channel && mutedByChannelId[channelId.value] == false -> ActivitySwipeEndAction.MuteActivity
+        (kind == InboxItemKind.Channel || kind == InboxItemKind.DirectMessage) &&
+            mutedByChannelId[channelId.value] == false -> ActivitySwipeEndAction.MuteActivity
         else -> null
     }
 
@@ -263,16 +265,25 @@ internal fun activitySwipeEndUndoCommand(item: InboxItem, action: ActivitySwipeE
         ActivitySwipeEndAction.MuteActivity -> ActivitySwipeEndCommand.ChannelMute(item.channelId.value, muted = false)
     }
 
-/** The conversation the Unfollow / Mute toast names: a channel row's channel, a thread's parent (`#name` / `@peer`). */
-internal fun InboxItem.activitySwipeConversationLabel(): String {
-    val (name, kind) =
+/** The conversation the Unfollow / Mute toast names: a channel row's channel, a DM row's peer, or a thread's parent (`#name` / `@peer`). */
+internal fun InboxItem.activitySwipeConversationLabel(resolvedDmPeerName: String? = null): String {
+    val isDirectMessage =
         if (kind == InboxItemKind.Thread) {
-            (parentChannelName ?: channelName) to parentChannelKind
+            parentChannelKind == ConversationKind.DirectMessage
         } else {
-            channelName to channelKind
+            kind == InboxItemKind.DirectMessage || channelKind == ConversationKind.DirectMessage
+        }
+    val name =
+        if (kind == InboxItemKind.Thread) {
+            (if (isDirectMessage) resolvedDmPeerName?.takeIf { it.isNotBlank() } else null)
+                ?: parentChannelName
+                ?: channelName
+        } else {
+            (if (isDirectMessage) resolvedDmPeerName?.takeIf { it.isNotBlank() } else null)
+                ?: channelName
         }
     val bare = name.trim().removePrefix("#").removePrefix("@")
-    return if (kind == ConversationKind.DirectMessage) "@$bare" else "#$bare"
+    return if (isDirectMessage) "@$bare" else "#$bare"
 }
 
 /**
